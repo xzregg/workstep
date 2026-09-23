@@ -103,8 +103,9 @@ async def test_hermes_inspection_timeout_returns_shared_skills(monkeypatch, tmp_
         "status",
         "compact",
         "shared",
+        "workstep-cli",
     ]
-    assert result["input_items"][-1] == {
+    assert next(item for item in result["input_items"] if item["name"] == "shared") == {
         "kind": "skill",
         "name": "shared",
         "description": "Shared workflow skill",

@@ -36,7 +36,7 @@ async def run(
     events = []
 
     async def collect():
-        async for event in engine.spawn(prompt=prompt, cwd=cwd):
+        async for event in engine.spawn_with_retry(prompt=prompt, cwd=cwd):
             events.append(event.to_dict())
 
     try:

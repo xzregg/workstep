@@ -49,9 +49,11 @@ class GitService(GitQueries, GitWrites):
         self.directories = {}
         self.locks = {}
         self.fetched_at = {}
+        self.remote_credentials = {}
         self.read_slots = asyncio.Semaphore(4)
 
     async def close(self):
+        self.remote_credentials.clear()
         for task in self.tasks:
             task.cancel()
         await asyncio.gather(*self.tasks, return_exceptions=True)

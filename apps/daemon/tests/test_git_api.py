@@ -1,6 +1,8 @@
 """Exercise Git management through HTTP against disposable real repositories."""
 import asyncio
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -9,6 +11,7 @@ from httpx import ASGITransport, AsyncClient, ReadTimeout
 
 import api.git as git_api
 from services.git import GitService
+from services.git.command import run_git
 
 
 def git(path, *args):
@@ -92,6 +95,271 @@ async def payment_id(http):
     result = await scan(http)
     repo = next(r for r in result['repositories'] if r['name'] == 'payment')
     return next(w['id'] for w in repo['worktrees'] if w['main'])
+
+
+async def test_task_workspace_selects_only_requested_repository(client, layout):
+    http, service = client
+    root, repo, _ = layout
+    data = await scan(http)
+    payment = next(item for item in data['repositories'] if item['name'] == 'payment')
+    fifth = next(item for item in data['repositories'] if item['name'] == 'fifth')
+    from services.git.task_workspace import TaskGitWorkspace
+
+    workspace = TaskGitWorkspace(service)
+    task_id = 'task-123'
+    opened = await workspace.ensure(root, task_id)
+    assert Path(opened['path']).is_dir()
+    assert opened['worktrees'] == []
+
+    created = await workspace.add(root, task_id, payment['id'], 'payment', 'main')
+    created = await workspace.add(root, task_id, fifth['id'], 'fifth', 'main')
+    assert next(tree for tree in created['worktrees'] if tree['alias'] == 'payment')['path'] == str(root / '.workstep' / 'worktrees' / task_id / 'payment')
+    assert git(repo, 'branch', '--show-current') == 'main'
+    assert all(git(tree['path'], 'branch', '--show-current').startswith('workstep/') for tree in created['worktrees'])
+    assert [tree['alias'] for tree in created['worktrees']] == ['fifth', 'payment']
+    assert len(created['worktrees']) == 2
+    status = await http.get(f"/api/git/worktrees/{created['worktrees'][0]['id']}/status")
+    assert status.status_code == 200, status.text
+    assert (await workspace.ensure(root, task_id))['worktrees'] == created['worktrees']
+    payment_tree = root / '.workstep' / 'worktrees' / task_id / 'payment'
+    (payment_tree / 'one.txt').write_text('modified\n')
+    with pytest.raises(Exception):
+        await workspace.remove(root, task_id, 'payment')
+    (payment_tree / 'one.txt').write_text('original\n')
+    after_remove = await workspace.remove(root, task_id, 'payment')
+    assert [tree['alias'] for tree in after_remove['worktrees']] == ['fifth']
+    assert not payment_tree.exists()
+    assert git(repo, 'show-ref', '--verify', 'refs/heads/workstep/task-123/payment')
+    restored = await workspace.add(root, task_id, payment['id'], 'payment', 'main')
+    assert {tree['alias'] for tree in restored['worktrees']} == {'fifth', 'payment'}
+
+
+async def test_task_worktree_uses_selected_source_branch_and_custom_new_branch(client, layout):
+    http, service = client
+    root, repo, _ = layout
+    git(repo, 'switch', '-c', 'release')
+    (repo / 'one.txt').write_text('release version\n')
+    git(repo, 'add', 'one.txt')
+    git(repo, 'commit', '-m', 'release change')
+    release_head = git(repo, 'rev-parse', 'HEAD')
+    git(repo, 'switch', 'main')
+    data = await scan(http)
+    payment = next(item for item in data['repositories'] if item['name'] == 'payment')
+    from services.git.task_workspace import TaskGitWorkspace
+
+    workspace = TaskGitWorkspace(service)
+    created = await workspace.add(root, 'task-123', payment['id'], 'payment', 'release', 'taskfix/payment-fix')
+    tree = created['worktrees'][0]
+    assert tree['branch'] == 'taskfix/payment-fix'
+    assert tree['head'] == release_head
+    assert git(repo, 'branch', '--show-current') == 'main'
+    assert git(tree['path'], 'show', 'HEAD:one.txt') == 'release version'
+    with pytest.raises(Exception):
+        await workspace.add(root, 'task-other', payment['id'], 'other', 'main', 'taskfix/payment-fix')
+
+
+async def test_task_worktree_uses_fixed_email_only_when_git_email_is_missing(client, layout, monkeypatch):
+    http, service = client
+    root, repo, _ = layout
+    data = await scan(http)
+    payment = next(item for item in data['repositories'] if item['name'] == 'payment')
+    from services.git.task_workspace import TaskGitWorkspace
+
+    command = service.command
+
+    async def no_email(path, *args, **kwargs):
+        if Path(path) == repo and args == ('config', '--get', 'user.email'):
+            return b'', 1
+        return await command(path, *args, **kwargs)
+
+    monkeypatch.setattr(service, 'command', no_email)
+    created = await TaskGitWorkspace(service).add(root, 'task-123', payment['id'], 'payment', 'main', creator_name='任务创建人')
+    tree = Path(created['worktrees'][0]['path'])
+    assert git(tree, 'config', '--worktree', '--get', 'user.name') == '任务创建人'
+    assert git(tree, 'config', '--worktree', '--get', 'user.email') == 'you@example.com'
+    assert git(repo, 'config', '--get', 'user.name') == 'Test User'
+    assert git(repo, 'config', '--get', 'user.email') == 'test@example.invalid'
+    (tree / 'one.txt').write_text('changed by task\n')
+    status = (await http.get(f"/api/git/worktrees/{created['worktrees'][0]['id']}/status")).json()
+    response = await http.post(f"/api/git/worktrees/{created['worktrees'][0]['id']}/commit", json={
+        'paths': ['one.txt'], 'message': 'task change', 'snapshot': status['snapshot'],
+    })
+    assert response.status_code == 200, response.text
+    assert git(tree, 'log', '-1', '--format=%an <%ae>') == '任务创建人 <you@example.com>'
+
+
+async def test_task_workspace_can_select_nested_git_inside_git_project(tmp_path):
+    from services.git.task_workspace import TaskGitWorkspace
+
+    root = repository(tmp_path / 'project')
+    (root / '.gitignore').write_text('.workstep/\n')
+    nested = repository(root / 'B')
+    service = GitService(lambda: [{'id': 'p', 'name': 'Project', 'path': str(root)}], lambda: 5)
+    try:
+        job = await service.start_scan()
+        for _ in range(300):
+            if job['state'] != 'running':
+                break
+            await asyncio.sleep(.01)
+        assert job['state'] == 'complete'
+        repos = service.snapshot['repositories']
+        assert {member['relative_path'] for repo in repos for member in repo['projects']} == {'.', 'B'}
+        nested_repo = next(repo for repo in repos if repo['common_dir'] == str(nested / '.git'))
+        created = await TaskGitWorkspace(service).add(root, 'task-123', nested_repo['id'], 'B', 'main')
+        assert [tree['alias'] for tree in created['worktrees']] == ['B']
+        assert git(created['worktrees'][0]['path'], 'branch', '--show-current') == 'workstep/task-123/B'
+        assert git(root, 'branch', '--show-current') == 'main'
+        assert git(nested, 'branch', '--show-current') == 'main'
+    finally:
+        await service.close()
+
+
+async def test_delete_task_workspace_preflights_all_worktrees_and_preserves_branches(client, layout):
+    http, service = client
+    root, payment, _ = layout
+    data = await scan(http)
+    repos = {repo['name']: repo for repo in data['repositories']}
+    from services.git.task_workspace import TaskGitWorkspace
+
+    workspace = TaskGitWorkspace(service)
+    await workspace.add(root, 'task-123', repos['payment']['id'], 'payment', 'main')
+    await workspace.add(root, 'task-123', repos['fifth']['id'], 'fifth', 'main')
+    folder = root / '.workstep' / 'worktrees' / 'task-123'
+    (folder / 'fifth' / 'one.txt').write_text('dirty\n')
+    with pytest.raises(Exception):
+        await workspace.delete(root, 'task-123')
+    assert (folder / 'payment').is_dir()
+    (folder / 'fifth' / 'one.txt').write_text('original\n')
+    (folder / 'notes.txt').write_text('keep me')
+    with pytest.raises(Exception):
+        await workspace.delete(root, 'task-123')
+    assert (folder / 'payment').is_dir()
+    (folder / 'notes.txt').unlink()
+    deleted = await workspace.delete(root, 'task-123')
+    assert deleted['worktrees'] == []
+    assert not folder.exists()
+    assert git(payment, 'show-ref', '--verify', 'refs/heads/workstep/task-123/payment')
+
+
+async def test_delete_task_workspace_slow_disk_does_not_block_event_loop(client, layout, monkeypatch):
+    _, service = client
+    root, _, _ = layout
+    from services.git.task_workspace import TaskGitWorkspace
+
+    workspace = TaskGitWorkspace(service)
+    await workspace.ensure(root, 'task-123')
+    original_root = TaskGitWorkspace.root
+
+    def slow_root(project_path, task_id):
+        time.sleep(.2)
+        return original_root(project_path, task_id)
+
+    monkeypatch.setattr(TaskGitWorkspace, 'root', staticmethod(slow_root))
+    pending = asyncio.create_task(workspace.delete(root, 'task-123'))
+    start = asyncio.get_running_loop().time()
+    await asyncio.sleep(.02)
+    assert asyncio.get_running_loop().time() - start < .12
+    await pending
+
+
+async def test_task_workspace_rejects_unrelated_or_unsafe_repository(client, layout):
+    http, service = client
+    root, _, _ = layout
+    await scan(http)
+    from services.git.task_workspace import TaskGitWorkspace
+
+    workspace = TaskGitWorkspace(service)
+    with pytest.raises(Exception):
+        await workspace.add(root, 'task-123', 'unknown', 'unknown', 'main')
+    selected = service.snapshot['repositories'][0]
+    with pytest.raises(Exception):
+        await workspace.add(root, 'task-123', selected['id'], '../outside', 'main')
+    assert not (root / '.workstep' / 'worktrees' / 'outside').exists()
+
+
+async def test_task_workspace_api_keeps_execution_directory(layout, monkeypatch):
+    from models import Task
+    from models.fields import utc_now
+    from services.project import ProjectManager
+    import services.project as project_module
+
+    root, repo, _ = layout
+    manager = ProjectManager()
+    project = manager.init_project(root)
+    monkeypatch.setattr(project_module, 'project_manager', manager)
+    now = utc_now()
+    await manager.run_db(project.id, lambda _: Task.create(
+        id='task-123', title='Change payment', cwd=str(root), status='ready',
+        creator_name='任务创建人',
+        created_at=now, updated_at=now,
+    ))
+    service = GitService(lambda: [{'id': project.id, 'name': project.name, 'path': str(root)}], lambda: 5)
+    monkeypatch.setattr(git_api, 'git_service', service)
+    app = FastAPI()
+    app.include_router(git_api.router)
+    @app.get('/health')
+    async def health():
+        return {'ok': True}
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as http:
+            await scan(http)
+            original_get = Task.get_or_none
+            entered = threading.Event()
+
+            def slow_task_read(*args, **kwargs):
+                entered.set()
+                time.sleep(.3)
+                return original_get(*args, **kwargs)
+
+            monkeypatch.setattr(Task, 'get_or_none', slow_task_read)
+            pending = asyncio.create_task(http.post(f'/api/git/projects/{project.id}/tasks/task-123/workspace'))
+            assert await asyncio.to_thread(entered.wait, 1)
+            health_response = await asyncio.wait_for(http.get('/health'), .15)
+            assert health_response.json() == {'ok': True}
+            opened = await pending
+            monkeypatch.setattr(Task, 'get_or_none', original_get)
+            assert opened.status_code == 200, opened.text
+            assert opened.json()['worktrees'] == []
+            listing = await http.get(f'/api/git/projects/{project.id}/repositories')
+            repository_id = next(repo['id'] for repo in listing.json()['repositories'] if repo['name'] == 'payment')
+            await manager.run_db(project.id, lambda _: Task.update(status='running').where(Task.id == 'task-123').execute())
+            created = await http.post(f'/api/git/projects/{project.id}/tasks/task-123/worktrees', json={
+                'repository_id': repository_id, 'alias': 'payment', 'base_ref': 'main',
+                'branch_name': 'taskfix/payment',
+            })
+            assert created.status_code == 200, created.text
+            assert created.json()['worktrees'][0]['branch'] == 'taskfix/payment'
+            tree_path = created.json()['worktrees'][0]['path']
+            assert git(tree_path, 'config', '--worktree', '--get', 'user.name') == '任务创建人'
+            assert git(tree_path, 'config', '--worktree', '--get', 'user.email') == 'test@example.invalid'
+            assert git(repo, 'config', '--get', 'user.name') == 'Test User'
+            git(tree_path, 'config', '--worktree', '--unset', 'user.name')
+            git(tree_path, 'config', '--worktree', '--unset', 'user.email')
+            reopened = await http.post(f'/api/git/projects/{project.id}/tasks/task-123/workspace')
+            assert reopened.status_code == 200, reopened.text
+            assert git(tree_path, 'config', '--worktree', '--get', 'user.name') == '任务创建人'
+            assert git(tree_path, 'config', '--worktree', '--get', 'user.email') == 'test@example.invalid'
+            git(tree_path, 'config', '--worktree', 'user.name', '手动设置')
+            git(tree_path, 'config', '--worktree', 'user.email', 'manual@example.invalid')
+            reopened = await http.post(f'/api/git/projects/{project.id}/tasks/task-123/workspace')
+            assert reopened.status_code == 200, reopened.text
+            assert git(tree_path, 'config', '--worktree', '--get', 'user.name') == '手动设置'
+            assert git(tree_path, 'config', '--worktree', '--get', 'user.email') == 'manual@example.invalid'
+            task_cwd = await manager.run_db(project.id, lambda _: Task.get_by_id('task-123').cwd)
+            assert task_cwd == str(root)
+            blocked = await http.delete(f'/api/git/projects/{project.id}/tasks/task-123/workspace')
+            assert blocked.status_code == 409
+            assert Path(created.json()['path']).is_dir()
+            await manager.run_db(project.id, lambda _: Task.update(status='ready').where(Task.id == 'task-123').execute())
+            removed = await http.delete(f'/api/git/projects/{project.id}/tasks/task-123/worktrees/payment')
+            assert removed.status_code == 200, removed.text
+            assert await manager.run_db(project.id, lambda _: Task.get_by_id('task-123').cwd) == str(root)
+            deleted = await http.delete(f'/api/git/projects/{project.id}/tasks/task-123/workspace')
+            assert deleted.status_code == 200, deleted.text
+            assert not Path(created.json()['path']).exists()
+    finally:
+        await service.close()
+        manager.close_all()
 
 
 async def test_status_diff_history_and_blame_read_real_content(client, layout):
@@ -337,6 +605,33 @@ async def test_commit_handles_literal_new_paths_deletion_and_hook_failure(client
     assert git(repo, 'ls-tree', '--name-only', 'HEAD').splitlines() == [name, 'two.txt'] or name in git(repo, '-c', 'core.quotePath=false', 'ls-tree', '--name-only', 'HEAD')
 
 
+async def test_commit_without_author_identity_explains_repository_config(client, layout, monkeypatch):
+    from services.git.command import GitError
+
+    http, service = client
+    _, repo, _ = layout
+    command = service.command
+
+    async def missing_identity(path, *args, **kwargs):
+        if args and args[0] == 'commit':
+            raise GitError('Author identity unknown\n\n*** Please tell me who you are.\n\nfatal: unable to auto-detect email address')
+        return await command(path, *args, **kwargs)
+
+    monkeypatch.setattr(service, 'command', missing_identity)
+    (repo / 'one.txt').write_text('changed\n')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    snapshot = (await http.get(url + '/status')).json()['snapshot']
+    response = await http.post(url + '/commit', json={'paths': ['one.txt'], 'message': 'change', 'snapshot': snapshot})
+    assert response.status_code == 400
+    detail = response.json()['detail']
+    assert 'Git 未配置提交作者' in detail
+    assert 'git config user.name' in detail
+    assert 'git config user.email' in detail
+    assert 'git config --global' not in detail
+    assert git(repo, 'log', '-1', '--format=%s') == 'initial'
+
+
 async def test_slow_disk_does_not_block_health_requests(client, monkeypatch):
     import time
     import services.git as module
@@ -573,6 +868,74 @@ async def test_remote_inventory_and_explicit_push_target_support_multiple_remote
     assert refreshed.status_code == 200, refreshed.text
     remote = next(item for item in refreshed.json()['remotes'] if item['name'] == 'backup')
     assert any(branch['name'] == 'release/next' for branch in remote['branches'])
+
+
+async def test_https_credentials_are_used_only_for_the_current_git_command(tmp_path):
+    repo = repository(tmp_path / 'repo')
+    auth = {'username': 'git-user', 'token': 'one-time-token'}
+    output, _ = await run_git(repo, 'credential', 'fill',
+        stdin=b'protocol=https\nhost=example.test\n\n', auth=auth)
+    assert b'username=git-user' in output
+    assert b'password=one-time-token' in output
+    assert subprocess.run(['git', '-C', str(repo), 'config', '--local', '--get', 'credential.helper'], capture_output=True).returncode == 1
+
+
+async def test_git_identity_can_be_saved_for_repository(client, layout):
+    http, _ = client
+    root, repo, other_worktree = layout
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}/identity'
+    assert (await http.get(url)).json() == {'name': 'Test User', 'email': 'test@example.invalid'}
+    response = await http.put(url, json={'name': '仓库作者', 'email': 'author@example.com'})
+    assert response.status_code == 200, response.text
+    assert response.json() == {'name': '仓库作者', 'email': 'author@example.com'}
+    assert git(repo, 'config', '--local', '--get', 'user.name') == '仓库作者'
+    assert git(repo, 'config', '--local', '--get', 'user.email') == 'author@example.com'
+    assert git(other_worktree, 'config', '--get', 'user.name') == '仓库作者'
+    assert git(other_worktree, 'config', '--get', 'user.email') == 'author@example.com'
+    from services.git.task_workspace import TaskGitWorkspace
+    workspace = TaskGitWorkspace(client[1])
+    payment = next(item for item in (await scan(http))['repositories'] if item['name'] == 'payment')
+    created = await workspace.add(root, 'identity-task', payment['id'], 'payment', 'main', creator_name='其他创建人')
+    task_tree = created['worktrees'][0]['path']
+    assert git(task_tree, 'config', '--get', 'user.name') == '仓库作者'
+    assert git(task_tree, 'config', '--get', 'user.email') == 'author@example.com'
+    assert (await http.put(url, json={'name': ' ', 'email': 'bad'})).status_code == 422
+
+
+async def test_global_identity_applies_to_other_repositories_without_local_override(client, layout, tmp_path, monkeypatch):
+    http, _ = client
+    monkeypatch.setenv('HOME', str(tmp_path / 'git-home'))
+    (tmp_path / 'git-home').mkdir()
+    id = await payment_id(http)
+    response = await http.put(f'/api/git/worktrees/{id}/identity/global', json={
+        'name': 'Shared Author', 'email': 'shared@example.test'})
+    assert response.status_code == 200, response.text
+    assert response.json() == {'name': 'Shared Author', 'email': 'shared@example.test'}
+    other = repository(tmp_path / 'another-repository')
+    git(other, 'config', '--local', '--unset', 'user.name')
+    git(other, 'config', '--local', '--unset', 'user.email')
+    assert git(other, 'config', '--get', 'user.name') == 'Shared Author'
+    assert git(other, 'config', '--get', 'user.email') == 'shared@example.test'
+
+
+async def test_https_remote_credentials_are_shared_by_host_and_never_returned(client, layout):
+    http, service = client
+    _, repo, _ = layout
+    git(repo, 'remote', 'add', 'origin', 'https://git.example.test/team/repo.git')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}/credentials'
+    response = await http.put(url, json={'remote': 'origin', 'username': 'alice', 'token': 'secret-token'})
+    assert response.status_code == 200, response.text
+    assert response.json()['remotes'][0]['configured'] is True
+    assert 'secret-token' not in response.text
+    directory = await service.directory(id)
+    assert await service.credential_for(directory, 'origin') == {'username': 'alice', 'token': 'secret-token'}
+    git(repo, 'remote', 'add', 'other', 'https://git.example.test/team/other.git')
+    assert await service.credential_for(directory, 'other') == {'username': 'alice', 'token': 'secret-token'}
+    git(repo, 'remote', 'set-url', 'origin', 'https://other.example.test/repo.git')
+    assert await service.credential_for(directory, 'origin') is None
+    assert all(not item['configured'] for item in (await http.delete(url + '/other')).json()['remotes'])
 
 
 async def test_explicit_pull_uses_selected_remote_branch_and_can_set_upstream(client, layout, tmp_path):

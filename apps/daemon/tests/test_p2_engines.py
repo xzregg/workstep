@@ -1608,7 +1608,7 @@ async def test_claude_spawn_injects_custom_settings_env_and_flags(monkeypatch):
     assert merged["permissions"] == {"ask": ["Bash(rm\\s)"]}
     assert merged["model"] == "sonnet"
     assert "env" not in merged
-    assert merged["skillOverrides"] == {}
+    assert merged["skillOverrides"] == {"workstep:workstep-cli": "on"}
 
 
 @pytest.mark.anyio
@@ -2845,7 +2845,7 @@ async def test_claude_agent_sdk_spawn_injects_custom_settings_env_and_options(mo
     assert merged["permissions"] == {"ask": ["Bash(rm\\s)"]}
     assert merged["model"] == "sonnet"
     assert "env" not in merged
-    assert merged["skillOverrides"] == {}
+    assert merged["skillOverrides"] == {"workstep:workstep-cli": "on"}
 
 
 @pytest.mark.anyio
@@ -3771,6 +3771,127 @@ def test_codex_sdk_turn_completed_error():
     )
     assert [event.type for event in events] == ["error"]
     assert events[0].data["message"] == "boom"
+
+
+def test_codex_sdk_reconnect_notice_does_not_fail_completed_turn():
+    engine = CodexSDKEngine()
+    state = {"emitted_text": False, "tool_emitted": set()}
+
+    reconnect = engine._map_notification(
+        _SdkFake(
+            method="error",
+            payload=_SdkFake(error=_SdkFake(message="Reconnecting... 1/5")),
+        ),
+        state,
+    )
+    completed = engine._map_notification(
+        _SdkFake(
+            method="turn/completed",
+            payload=_SdkFake(turn=_SdkFake(
+                status=_SdkFake(value="completed"), error=None,
+            )),
+        ),
+        state,
+    )
+
+    assert [event.type for event in reconnect] == ["acp_raw"]
+    assert reconnect[0].data["raw"]["message"] == "Reconnecting... 1/5"
+    assert [event.type for event in completed] == ["status"]
+    assert completed[0].data["status"] == "done"
+    assert state["turn_completed"] is True
+
+
+@pytest.mark.anyio
+async def test_codex_sdk_reconnect_then_completion_does_not_retry_turn(monkeypatch):
+    import openai_codex as codex_module
+
+    turns_started = 0
+
+    class FakeTurn:
+        async def stream(self):
+            yield _SdkFake(
+                method="error",
+                payload=_SdkFake(error=_SdkFake(message="Reconnecting... 1/5")),
+            )
+            yield _SdkFake(
+                method="turn/completed",
+                payload=_SdkFake(turn=_SdkFake(
+                    status=_SdkFake(value="completed"), error=None,
+                )),
+            )
+
+    class FakeThread:
+        id = "thread-1"
+
+        async def turn(self, prompt, model=None):
+            nonlocal turns_started
+            turns_started += 1
+            return FakeTurn()
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self._client = SimpleNamespace(
+                _sync=SimpleNamespace(_approval_handler=None)
+            )
+
+        async def thread_start(self, **kwargs):
+            return FakeThread()
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(codex_module, "AsyncCodex", FakeClient)
+    events = [
+        event async for event in CodexSDKEngine().spawn_with_retry(
+            prompt="hi", cwd="/tmp",
+        )
+    ]
+
+    assert turns_started == 1
+    assert not any(event.type == "error" for event in events)
+    assert not any(event.data.get("status") == "retrying" for event in events)
+    assert any(event.data.get("status") == "done" for event in events)
+
+
+@pytest.mark.anyio
+async def test_codex_sdk_unfinished_turn_after_error_remains_failure(monkeypatch):
+    import openai_codex as codex_module
+
+    class FakeTurn:
+        async def stream(self):
+            yield _SdkFake(
+                method="error",
+                payload=_SdkFake(error=_SdkFake(message="connection lost")),
+            )
+
+    class FakeThread:
+        id = "thread-1"
+
+        async def turn(self, prompt, model=None):
+            return FakeTurn()
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self._client = SimpleNamespace(
+                _sync=SimpleNamespace(_approval_handler=None)
+            )
+
+        async def thread_start(self, **kwargs):
+            return FakeThread()
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(codex_module, "AsyncCodex", FakeClient)
+    events = [
+        event async for event in CodexSDKEngine().spawn(
+            prompt="hi", cwd="/tmp",
+        )
+    ]
+
+    assert [event.data["message"] for event in events if event.type == "error"] == [
+        "connection lost"
+    ]
 
 
 def test_codex_sdk_turn_completed_done():

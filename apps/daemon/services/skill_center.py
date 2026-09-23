@@ -20,6 +20,7 @@ from typing import Any, Mapping
 
 MANIFEST_NAME = ".workstep-manifest.json"
 MANIFEST_VERSION = 1
+BUILTIN_SKILLS_DIR = Path(__file__).resolve().parent.parent / "data" / "skills"
 
 
 class SkillSyncStatus(str, Enum):
@@ -69,6 +70,7 @@ class SkillCenter:
     def __init__(self, source_roots: Mapping[str, Path] | None = None) -> None:
         home = Path.home()
         roots = source_roots or {
+            "builtin": BUILTIN_SKILLS_DIR,
             "agents": home / ".agents" / "skills",
             "claude": home / ".claude" / "skills",
             "codex": home / ".codex" / "skills",
@@ -319,7 +321,16 @@ class SkillCenter:
         discovered_list = self.discover()
         discovered = {skill.skill_id: skill for skill in discovered_list}
         for skill in discovered_list:
+            is_new = skill.skill_id not in manifest["entries"]
             previous = manifest["entries"].get(skill.skill_id, {})
+            same_name_enabled = any(
+                entry.get("name") == skill.name and entry.get("enabled")
+                for other_id, entry in manifest["entries"].items()
+                if other_id != skill.skill_id
+            )
+            enabled = bool(previous.get("enabled", False))
+            if is_new and skill.source == "builtin" and not same_name_enabled:
+                enabled = True
             manifest["entries"][skill.skill_id] = {
                 **previous,
                 "name": skill.name,
@@ -329,7 +340,7 @@ class SkillCenter:
                 "valid": skill.valid,
                 "error": skill.error,
                 "ui": skill.ui,
-                "enabled": bool(previous.get("enabled", False)),
+                "enabled": enabled,
                 "sync_status": previous.get("sync_status", SkillSyncStatus.DISABLED.value),
             }
         self._sync_enabled(project_root, manifest, discovered)

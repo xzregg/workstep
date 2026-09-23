@@ -64,6 +64,33 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         read_only=True,
     ),
     WorkstepTool(
+        name="workstep_list_workflows",
+        description=(
+            "List workflows of a project, including ids, names, status and "
+            "step counts."
+        ),
+        method="GET",
+        path="/api/workflow/list",
+        parameters={"project_id": {"type": "string", "description": "project id"}},
+        required=("project_id",),
+        read_only=True,
+        query_params=("project_id",),
+    ),
+    WorkstepTool(
+        name="workstep_get_workflow",
+        description="Get one workflow with its complete step definition.",
+        method="GET",
+        path="/api/workflow/{workflow_id}",
+        parameters={
+            "project_id": {"type": "string", "description": "project id"},
+            "workflow_id": {"type": "string", "description": "workflow id"},
+        },
+        required=("project_id", "workflow_id"),
+        read_only=True,
+        path_params=("workflow_id",),
+        query_params=("project_id",),
+    ),
+    WorkstepTool(
         name="workstep_list_tasks",
         description=(
             "List tasks of a project (optionally archived), including status, "
@@ -92,6 +119,46 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         read_only=True,
         path_params=("task_id",),
         query_params=("project_id",),
+    ),
+    WorkstepTool(
+        name="workstep_list_git_repositories",
+        description="List Git repositories discovered in one project before choosing task worktrees.",
+        method="GET",
+        path="/api/git/projects/{project_id}/repositories",
+        parameters={"project_id": {"type": "string", "description": "project id"}},
+        required=("project_id",),
+        path_params=("project_id",),
+    ),
+    WorkstepTool(
+        name="workstep_get_task_workspace",
+        description="List only the Git worktrees attached to one task.",
+        method="GET",
+        path="/api/git/projects/{project_id}/tasks/{task_id}/workspace",
+        parameters={
+            "project_id": {"type": "string", "description": "project id"},
+            "task_id": {"type": "string", "description": "task id"},
+        },
+        required=("project_id", "task_id"),
+        path_params=("project_id", "task_id"),
+    ),
+    WorkstepTool(
+        name="workstep_add_task_worktree",
+        description="Create a task-specific Git worktree only for a repository needed by the task.",
+        method="POST",
+        path="/api/git/projects/{project_id}/tasks/{task_id}/worktrees",
+        parameters={
+            "project_id": {"type": "string", "description": "project id"},
+            "task_id": {"type": "string", "description": "task id"},
+            "repository_id": {"type": "string", "description": "id from workstep_list_git_repositories"},
+            "alias": {"type": "string", "description": "directory name within the task workspace"},
+            "base_ref": {"type": "string", "description": "base branch or commit; defaults to HEAD"},
+            "branch_name": {"type": "string", "description": "new branch name; defaults to workstep/<task_id>/<alias>"},
+        },
+        required=("project_id", "task_id", "repository_id", "alias"),
+        read_only=False,
+        side_effect="create a Git branch and worktree for this task",
+        path_params=("project_id", "task_id"),
+        body_params=("repository_id", "alias", "base_ref", "branch_name"),
     ),
     WorkstepTool(
         name="workstep_list_engines",
@@ -132,12 +199,14 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
             "title": {"type": "string", "description": "task title"},
             "cwd": {"type": "string", "description": "working directory; defaults to the project path"},
             "description": {"type": "string", "description": "task description (optional)"},
+            "workflow_id": {"type": "string", "description": "target workflow id (optional; defaults to the project default workflow)"},
+            "start_step_key": {"type": "string", "description": "workflow step key to start from (optional)"},
         },
         required=("project_id", "title"),
         read_only=False,
         side_effect="create a task in the project",
         query_params=("project_id",),
-        body_params=("title", "cwd", "description"),
+        body_params=("title", "cwd", "description", "workflow_id", "start_step_key"),
     ),
     WorkstepTool(
         name="workstep_list_schedules",
@@ -291,21 +360,42 @@ def workstep_cli_instruction() -> str:
         "# WorkStep CLI\n"
         "\n"
         "You can inspect and manage the WorkStep system by calling the local "
-        "daemon CLI (the daemon is already running). Canonical invocation:\n"
+        "daemon CLI (the daemon is already running). Runtime-safe invocation:\n"
+        "\n"
+        "    \"$WORKSTEP_CLI_PYTHON\" \"$WORKSTEP_DAEMON_DIR/cli.py\" <command>\n"
+        "\n"
+        "PowerShell:\n"
+        "\n"
+        "    & $env:WORKSTEP_CLI_PYTHON \"$env:WORKSTEP_DAEMON_DIR/cli.py\" <command>\n"
+        "\n"
+        "Source-checkout fallback:\n"
         "\n"
         f"    cd {daemon_dir} && uv run python -m cli <command>\n"
         "\n"
         "Read-only commands:\n"
         "- `workstep project list` — list registered projects\n"
+        "- `workstep workflow list --project <project_id>` — list project workflows\n"
+        "- `workstep workflow get --project <project_id> --workflow <workflow_id>` — get one workflow and its steps\n"
         "- `workstep task list --project <project_id>` — list tasks of a project\n"
         "- `workstep task get --project <project_id> --task <task_id>` — get one task\n"
+        "- `workstep task repos --project <project_id>` — list Git repositories in a project\n"
+        "- `workstep task worktrees --project <project_id> --task <task_id>` — list only this task's worktrees\n"
         "- `workstep engine list` — list installed LLM engines\n"
         "- `workstep schedule list --project <project_id>` — list schedules\n"
         "- `workstep schedule get --project <project_id> --schedule <schedule_id>` — get one schedule\n"
         "- `workstep schedule runs --project <project_id> --schedule <schedule_id>` — list schedule runs\n"
         "\n"
+        "Create a task in a chosen workflow with `workstep task create "
+        "--project <project_id> --workflow <workflow_id> --title <title>`; "
+        "add `--start-step <step_key>` when a non-default starting step is needed.\n"
+        "For a task that needs isolated changes in selected repositories, use "
+        "`workstep task worktree-add --project <project_id> --task <task_id> "
+        "--repository <repository_id> --alias <directory_name> [--base <source_branch>] "
+        "[--branch <new_branch>]` "
+        "after inspecting `task repos`. Do not create worktrees for unrelated repositories.\n"
+        "\n"
         "Mutating commands (`project init`, `task create`, `schedule "
-        "create/update/pause/resume/delete`) must only be run with explicit "
+        "worktree-add`, `schedule create/update/pause/resume/delete`) must only be run with explicit "
         "user authorization. Never fabricate ids — look them up with the "
         "list/get commands first.\n"
     )
@@ -395,7 +485,12 @@ class WorkstepClient:
         async with httpx.AsyncClient(
             base_url=self.base_url,
             transport=self._transport,
-            timeout=30.0,
+            timeout=130.0 if tool.name == "workstep_add_task_worktree" else 30.0,
+            headers=(
+                {"X-WorkStep-Desktop-Token": os.environ["WORKSTEP_DESKTOP_TOKEN"]}
+                if os.environ.get("WORKSTEP_DESKTOP_TOKEN")
+                else None
+            ),
         ) as client:
             try:
                 response = await client.request(

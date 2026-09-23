@@ -1,3 +1,4 @@
+import ResizablePanel from './ResizablePanel'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import MobileSheet from './MobileSheet'
 import FlowBookmark, { BookmarkContext, loadBookmarks, saveBookmarks } from './FlowBookmark'
@@ -41,6 +42,8 @@ import StepConfigFields from './StepConfigFields'
 import StepPromptVariablesHint from './StepPromptVariablesHint'
 import { useI18n } from '../i18n'
 import { useEngineRevision } from '../stores/engineAvailabilityStore'
+import { findWorkflowExecutionWarnings, type WorkflowExecutionWarning } from '../utils/workflowExecutionWarnings'
+import WorkflowExecutionWarningDialog from './WorkflowExecutionWarningDialog'
 
 /* ══════════════════════════════════════════
    Reusable flow canvas editor — shared by the
@@ -1131,6 +1134,7 @@ export interface FlowCanvasHandle {
   getSteps: () => any
   /** Structural validation; returns an error message or null. */
   validate: () => string | null
+  getExecutionWarnings: () => WorkflowExecutionWarning[]
   /** Replace the canvas content (marks the canvas dirty). */
   loadSteps: (steps: any) => void
 }
@@ -1192,6 +1196,7 @@ function FlowCanvasInner({
   const [enginesError, setEnginesError] = useState('')
   const [saveMsg, setSaveMsg] = useState('')
   const [saveMsgKind, setSaveMsgKind] = useState<'success' | 'error'>('success')
+  const [saveWarnings, setSaveWarnings] = useState<WorkflowExecutionWarning[]>([])
   const [dirty, setDirtyState] = useState(false)
 
   const setDirty = useCallback((value: boolean) => {
@@ -1229,9 +1234,15 @@ function FlowCanvasInner({
   // Reload canvas when the source steps change (workflow/template switch)
   const stepsKey = JSON.stringify(initialSteps ?? null)
   const loadedKey = useRef<string | null>(null)
+  const savedStepsKey = useRef<string | null>(null)
   useEffect(() => {
     if (loadedKey.current === stepsKey) return
     loadedKey.current = stepsKey
+    if (savedStepsKey.current === stepsKey) {
+      savedStepsKey.current = null
+      return
+    }
+    savedStepsKey.current = null
     const { nodes: nn, connections: nc } = loadCanvasData(initialSteps)
     setNodes([...canvasToFlowNodes(nn), ...loadBookmarks(initialSteps)])
     setEdges(canvasToFlowEdges(nc, nn))
@@ -1538,6 +1549,7 @@ function FlowCanvasInner({
   useImperativeHandle(ref, () => ({
     getSteps: () => buildCanvasJson(),
     validate: () => computeStepError(),
+    getExecutionWarnings: () => findWorkflowExecutionWarnings(buildCanvasJson()),
     loadSteps: (steps: any) => {
       const { nodes: nn, connections: nc } = loadCanvasData(steps)
       setNodes([...canvasToFlowNodes(nn), ...loadBookmarks(steps)])
@@ -1638,7 +1650,7 @@ function FlowCanvasInner({
     setDirty(true)
   }, [nodes, setEdges, setDirty])
 
-  const handleSave = async () => {
+  const handleSave = async (confirmedWarnings = false) => {
     if (readOnly) return
     const activeDraft = selectedNode && nodeConfigDraft?.nodeId === selectedNode.nodeId
       ? { ...nodeConfigDraft, key: (nodeConfigDraft.key ?? '').trim() }
@@ -1654,8 +1666,14 @@ function FlowCanvasInner({
       return
     }
 
+    const steps = buildCanvasJsonFromNodes(nodesToSave, edges)
+    const warnings = findWorkflowExecutionWarnings(steps)
+    if (warnings.length && !confirmedWarnings) {
+      setSaveWarnings(warnings)
+      return
+    }
     try {
-      const steps = buildCanvasJsonFromNodes(nodesToSave, edges)
+      savedStepsKey.current = JSON.stringify(steps)
       await onSave(steps)
       if (activeDraft) {
         setNodes(nodesToSave)
@@ -1668,6 +1686,7 @@ function FlowCanvasInner({
       setSaveMsgKind('success')
       setTimeout(() => setSaveMsg(''), 2000)
     } catch (e) {
+      savedStepsKey.current = null
       console.error('Save failed:', e)
       setSaveMsg(t('flow.saveFailed', { error: e instanceof Error ? e.message : t('flow.networkError') }))
       setSaveMsgKind('error')
@@ -1875,7 +1894,7 @@ function FlowCanvasInner({
       {/* Template list modal */}
       {!readOnly && showTemplatePicker && showTemplateModal && (
         <div className="modal-overlay" onClick={() => setShowTemplateModal(false)} style={{ zIndex: 400 }}>
-          <div className="modal" style={{ width: 520, maxHeight: '80vh' }} onClick={(e) => e.stopPropagation()}>
+          <ResizablePanel className="modal" style={{ width: 520, maxHeight: '80vh' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">{t('flow.templates')}</span>
               <Button variant="icon" onClick={() => setShowTemplateModal(false)}>✕</Button>
@@ -1945,14 +1964,14 @@ function FlowCanvasInner({
               <Button variant="primary" onClick={() => setShowTemplateSave(true)}>{t('flow.saveAsTemplate')}</Button>
               <Button variant="ghost" onClick={() => setShowTemplateModal(false)}>{t('common.cancel')}</Button>
             </div>
-          </div>
+          </ResizablePanel>
         </div>
       )}
 
       {/* Copy node from existing workflow — 3-lane swimlane picker: project → workflow → step */}
       {!readOnly && copyOpen && (
         <div className="modal-overlay" onClick={() => setCopyOpen(false)} style={{ zIndex: 400 }}>
-          <div className="modal" style={{ width: 780, height: 'min(66vh, 620px)' }} onClick={(e) => e.stopPropagation()}>
+          <ResizablePanel className="modal" style={{ width: 780, height: 'min(66vh, 620px)' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">{t('flow.copyNodeTitle')}</span>
               <Button variant="icon" onClick={() => setCopyOpen(false)}>✕</Button>
@@ -2076,14 +2095,14 @@ function FlowCanvasInner({
               <Button variant="ghost" onClick={() => setCopyOpen(false)}>{t('common.cancel')}</Button>
               <Button variant="primary" disabled={!copySelected} onClick={() => copySelected && handleCopyNode(copySelected.data)}>{t('flow.copyNodeConfirm')}</Button>
             </div>
-          </div>
+          </ResizablePanel>
         </div>
       )}
 
       {/* Export workflow JSON preview */}
       {showJson && (
         <div className="modal-overlay" onClick={() => setShowJson(false)} style={{ zIndex: 400 }}>
-          <div className="modal" style={{ width: 600, maxHeight: '80vh' }} onClick={(e) => e.stopPropagation()}>
+          <ResizablePanel className="modal" style={{ width: 600, maxHeight: '80vh' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">{t('flow.jsonConfigTitle')}</span>
               <Button variant="icon" onClick={() => setShowJson(false)}>✕</Button>
@@ -2097,14 +2116,14 @@ function FlowCanvasInner({
               <Button variant="ghost" onClick={handleCopyJson}>{t('common.copy')}</Button>
               <Button variant="primary" onClick={() => setShowJson(false)}>{t('common.close')}</Button>
             </div>
-          </div>
+          </ResizablePanel>
         </div>
       )}
 
       {/* Import workflow JSON */}
       {!readOnly && showImport && (
         <div className="modal-overlay" onClick={() => setShowImport(false)} style={{ zIndex: 400 }}>
-          <div className="modal" style={{ width: 640 }} onClick={(e) => e.stopPropagation()}>
+          <ResizablePanel className="modal" style={{ width: 640 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">{t('flow.importJsonTitle')}</span>
               <Button variant="icon" onClick={() => setShowImport(false)}>✕</Button>
@@ -2123,11 +2142,16 @@ function FlowCanvasInner({
               <Button variant="ghost" onClick={() => setShowImport(false)}>{t('common.cancel')}</Button>
               <Button variant="primary" onClick={handleImport} disabled={!importText.trim()}>{t('flow.confirmImport')}</Button>
             </div>
-          </div>
+          </ResizablePanel>
         </div>
       )}
 
       {/* Delete confirm dialog */}
+      <WorkflowExecutionWarningDialog
+        warnings={saveWarnings}
+        onConfirm={() => { setSaveWarnings([]); void handleSave(true) }}
+        onCancel={() => setSaveWarnings([])}
+      />
       <ConfirmDialog
         open={!readOnly && confirmDeleteId !== null}
         title={t('flow.deleteStepTitle')}

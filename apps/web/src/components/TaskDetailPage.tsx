@@ -1,9 +1,10 @@
 import { useI18n } from '../i18n'
 import type { TaskArtifact } from '../api/client'
 import Button from './Button'
-import ArtifactPreview from './ArtifactPreview'
 import PromptViewerDialog from './PromptViewerDialog'
 import TaskDetailView, { type TaskDetailViewProps } from './TaskDetailView'
+import ProjectDirectoryBrowserDialog from './ProjectDirectoryBrowserDialog'
+import TaskArtifactPreviewDialog from './TaskArtifactPreviewDialog'
 import {
   MarkdownAssetUrlProvider,
   type MarkdownUrlResolver,
@@ -66,61 +67,32 @@ export default function TaskDetailPage({
         />
       )}
 
-      {previewArtifact && (
-        <div
-          role="dialog"          aria-label={t('taskDetail.artifactPreviewAria', {
-            name: previewArtifact.logical_name || previewArtifact.name,
-          })}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 1250,
-            background: 'rgba(0,0,0,0.35)', padding: '5vh 6vw',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-          onClick={onCloseArtifactPreview}
-        >
-          <div
-            style={{
-              width: 'min(900px, 90vw)', height: 'min(720px, 88vh)',
-              background: 'var(--bg)', borderRadius: 12, overflow: 'hidden',
-              boxShadow: '0 18px 48px rgba(0,0,0,0.24)',
-              display: 'flex', flexDirection: 'column',
-            }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="dialog-header" style={{ padding: '12px 16px' }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
-                  {previewArtifact.logical_name || previewArtifact.name}
-                </div>
-                <div style={{
-                  fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {previewArtifact.path}
-                </div>
-              </div>
-              {onOpenArtifactDirectory && (
-                <Button
-                  variant="ghost"
-                  disabled={!canOpenArtifactDirectory}
-                  onClick={onOpenArtifactDirectory}
-                >
-                  {t('taskDetail.openDirectory')}
-                </Button>
-              )}
-              <Button variant="icon" onClick={onCloseArtifactPreview}>✕</Button>
-            </div>
-            <div className="artifact-preview-container" style={{ flex: 1, minHeight: 0 }}>
-              <ArtifactPreview
-                path={previewArtifact.path}
-                isDir={!!previewArtifact.is_dir}
-                projectId={viewProps.projectId}
-                onClose={onCloseArtifactPreview}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      {previewArtifact?.is_dir ? (
+        <ProjectDirectoryBrowserDialog
+          projectId={viewProps.projectId || ''}
+          title={previewArtifact.logical_name || previewArtifact.name}
+          rootPath={previewArtifact.path}
+          displayPath={previewArtifact.path}
+          headerActions={onOpenArtifactDirectory ? (
+            <Button
+              variant="ghost"
+              disabled={!canOpenArtifactDirectory}
+              onClick={onOpenArtifactDirectory}
+            >
+              {t('taskDetail.openDirectory')}
+            </Button>
+          ) : null}
+          onClose={() => onCloseArtifactPreview?.()}
+        />
+      ) : previewArtifact ? (
+        <TaskArtifactPreviewDialog
+          artifact={previewArtifact}
+          projectId={viewProps.projectId}
+          onClose={() => onCloseArtifactPreview?.()}
+          onOpenDirectory={onOpenArtifactDirectory}
+          canOpenDirectory={canOpenArtifactDirectory}
+        />
+      ) : null}
 
       {overlays}
     </div>

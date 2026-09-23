@@ -578,6 +578,11 @@
   .project-settings-layout > section { padding: 16px !important; }
   .file-preview-backdrop { padding: 8px; }
   .file-preview-dialog { width: 100%; max-width: 100%; max-height: calc(var(--app-viewport-height, 100dvh) - 16px); }
+  .project-directory-dialog-backdrop { padding: 8px; }
+  .project-directory-dialog { position: relative; left: auto; top: auto; width: 100%; height: calc(var(--app-viewport-height, 100dvh) - 16px); }
+  .project-directory-browser { grid-template-columns: 1fr; grid-template-rows: minmax(180px, 40%) minmax(0, 1fr); }
+  .project-directory-tree-panel { border-right: 0; border-bottom: 1px solid var(--border-soft); }
+  .project-directory-resizer { display: none; }
   .process-trace-thinking-copy { opacity: 1; }
 }
 
@@ -625,7 +630,7 @@
    ═══════════════════════════════════════════════════════════════ */
 
 @media (max-width: 1023px) {
-  /* 隐藏 40px 会话头部（标题/状态/新建/重命名/删除/打开位置/设置）。
+  /* 隐藏 40px 会话头部（标题/状态/新建/重命名/删除/打开目录/设置）。
      覆盖上面的 padding/flex-wrap 规则：整行不再渲染。
      运行状态由消息区 thinking 气泡承接；「新建对话」只剩顶栏「+」。 */
   .assistant-chat-panel > div:first-child {

@@ -115,7 +115,7 @@ async def run_engine(
 
 
 async def _collect(engine, prompt, cwd, session_id, overrides):
-    async for event in engine.spawn(
+    async for event in engine.spawn_with_retry(
         prompt=prompt,
         cwd=cwd,
         session_id=session_id,

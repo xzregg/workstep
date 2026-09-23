@@ -1,0 +1,23 @@
+# WorkStep Android
+
+Android 应用通过 HTTPS 加载现有 WorkStep 移动端网页。第一次打开时输入服务根地址，例如 `https://workstep.example.com`。连接成功后地址保存在本机，可通过网页标题右侧的悬浮菜单修改；按钮可拖动，位置会保存在本机。
+
+## 服务要求
+
+- 手机浏览器能访问该地址；同一域名和端口提供网页、`/api` 与 `/ws`。
+- HTTPS 证书须被 Android 系统信任。应用拒绝 HTTP、证书错误和混合内容。
+- 电脑端默认后台只监听 `127.0.0.1`，不能直接作为手机连接地址；需另行部署可从手机访问的 HTTPS 入口。
+
+## 构建
+
+需要 JDK 17 或更高版本及 Android SDK 35。设置 `ANDROID_HOME` 后，在此目录运行：
+
+```bash
+./gradlew testDebugUnitTest assembleDebug
+```
+
+生成的调试包在 `app/build/outputs/apk/debug/app-debug.apk`。发布包需要另行配置签名；不要分发调试包作为正式版本。
+
+## 应用行为
+
+首次填写地址会请求 `/api/health`，确认是 WorkStep 服务后才保存。应用沿用网页的登录、接口和实时连接；同一服务的页面留在应用内，外部 HTTPS 链接交给系统浏览器。上传使用系统文件选择器；网页下载会打开系统“另存为”界面，可选择位置和文件名，不需要存储权限。断网时可重试或修改地址。

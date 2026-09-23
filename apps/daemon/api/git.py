@@ -1,10 +1,89 @@
 """Global Git endpoints; never forwarded through a remote-project channel."""
+import asyncio
+import time
 from pydantic import BaseModel, Field, field_validator
 from fastapi import APIRouter, HTTPException, Query
 from services.git import git_service
 from services.git.command import GitError
+from services.git.task_workspace import TaskGitWorkspace
 
 router = APIRouter(prefix='/api/git', tags=['git'])
+
+
+def _task_project(project_id: str):
+    from services.project import project_manager
+    project = project_manager.get_project_by_id(project_id)
+    if project is None:
+        raise HTTPException(404, '项目不存在。')
+    return project
+
+
+async def _task_exists(project_id: str, task_id: str, *, editable: bool = False):
+    from models import Task
+    from services.project import project_manager
+
+    def inspect(_project):
+        task = Task.get_or_none(Task.id == task_id)
+        if task is None:
+            return None
+        return {'status': task.status, 'creator_name': task.creator_name or ''}
+
+    task = await project_manager.run_db(project_id, inspect)
+    if task is None:
+        raise HTTPException(404, '任务不存在。')
+    if editable and task['status'] in {'running', 'queued'}:
+        raise HTTPException(409, '任务运行或排队时不能移除工作目录。')
+    return task
+
+
+class AddTaskWorktreeRequest(BaseModel):
+    repository_id: str = Field(min_length=1)
+    alias: str = Field(min_length=1, max_length=64)
+    base_ref: str = Field(default='HEAD', min_length=1, max_length=1024)
+    branch_name: str | None = Field(default=None, min_length=1, max_length=255)
+
+
+@router.get('/projects/{project_id}/tasks/{task_id}/workspace')
+async def task_workspace(project_id: str, task_id: str):
+    project = _task_project(project_id)
+    await _task_exists(project_id, task_id)
+    await project_repositories(project_id)
+    return await result(TaskGitWorkspace(git_service).list(project.path, task_id))
+
+
+@router.post('/projects/{project_id}/tasks/{task_id}/workspace')
+async def open_task_workspace(project_id: str, task_id: str):
+    project = _task_project(project_id)
+    task = await _task_exists(project_id, task_id)
+    await project_repositories(project_id)
+    return await result(TaskGitWorkspace(git_service).ensure(project.path, task_id, creator_name=task['creator_name']))
+
+
+@router.delete('/projects/{project_id}/tasks/{task_id}/workspace')
+async def delete_task_workspace(project_id: str, task_id: str):
+    project = _task_project(project_id)
+    await _task_exists(project_id, task_id, editable=True)
+    await project_repositories(project_id)
+    return await result(TaskGitWorkspace(git_service).delete(project.path, task_id))
+
+
+@router.post('/projects/{project_id}/tasks/{task_id}/worktrees')
+async def add_task_worktree(project_id: str, task_id: str, body: AddTaskWorktreeRequest):
+    project = _task_project(project_id)
+    task = await _task_exists(project_id, task_id)
+    await project_repositories(project_id)
+    return await result(TaskGitWorkspace(git_service).add(
+        project.path, task_id, body.repository_id, body.alias, body.base_ref, body.branch_name,
+        creator_name=task['creator_name'],
+    ))
+
+
+@router.delete('/projects/{project_id}/tasks/{task_id}/worktrees/{alias}')
+async def remove_task_worktree(project_id: str, task_id: str, alias: str):
+    project = _task_project(project_id)
+    await _task_exists(project_id, task_id, editable=True)
+    await project_repositories(project_id)
+    return await result(TaskGitWorkspace(git_service).remove(project.path, task_id, alias))
 
 
 @router.post('/scans')
@@ -22,6 +101,22 @@ async def scan_progress(id: str):
 @router.get('/repositories')
 async def repositories():
     return git_service.snapshot
+
+
+@router.get('/projects/{project_id}/repositories')
+async def project_repositories(project_id: str):
+    _task_project(project_id)
+    if git_service.snapshot['scanned_at'] is None or time.time() - git_service.snapshot['scanned_at'] > 30:
+        job = await git_service.start_scan()
+        while job['state'] == 'running':
+            await asyncio.sleep(0.05)
+        if job['state'] != 'complete':
+            raise HTTPException(503, 'Git 仓库扫描失败，请重试。')
+    return {'repositories': [
+        {'id': repo['id'], 'name': repo['name'], 'projects': repo['projects'], 'worktrees': repo['worktrees']}
+        for repo in git_service.snapshot['repositories']
+        if any(item['id'] == project_id for item in repo['projects'])
+    ]}
 
 
 @router.post('/projects/{project_id}/initialize')
@@ -51,6 +146,46 @@ async def branches(id: str):
 @router.get('/worktrees/{id}/remotes')
 async def remotes(id: str):
     return await result(git_service.remotes(id))
+
+
+class GitIdentityRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    email: str = Field(min_length=3, max_length=320)
+
+    @field_validator('name', 'email')
+    @classmethod
+    def valid_identity(cls, value):
+        value = value.strip()
+        if not value or any(c in value for c in '\r\n\0'):
+            raise ValueError('用户名和邮箱不能为空或包含换行符')
+        return value
+
+    @field_validator('email')
+    @classmethod
+    def valid_email(cls, value):
+        if '@' not in value or value.startswith('@') or value.endswith('@'):
+            raise ValueError('邮箱格式无效')
+        return value
+
+
+@router.get('/worktrees/{id}/identity')
+async def identity(id: str):
+    return await result(git_service.identity(id))
+
+
+@router.put('/worktrees/{id}/identity')
+async def set_identity(id: str, body: GitIdentityRequest):
+    return await result(git_service.set_identity(id, body.name, body.email))
+
+
+@router.get('/worktrees/{id}/identity/global')
+async def global_identity(id: str):
+    return await result(git_service.global_identity(id))
+
+
+@router.put('/worktrees/{id}/identity/global')
+async def set_global_identity(id: str, body: GitIdentityRequest):
+    return await result(git_service.set_global_identity(id, body.name, body.email))
 
 
 @router.get('/worktrees/{id}/history')
@@ -101,8 +236,39 @@ class RemoteSyncRequest(SwitchRequest):
     set_upstream: bool = False
 
 
+class GitAuth(BaseModel):
+    username: str = Field(min_length=1, max_length=200)
+    token: str = Field(min_length=1, max_length=4096)
+
+    @field_validator('username', 'token')
+    @classmethod
+    def no_control_characters(cls, value):
+        if any(c in value for c in '\r\n\0'):
+            raise ValueError('凭据不能包含换行符或空字符')
+        return value
+
+
+class GitCredentialRequest(GitAuth):
+    remote: str = Field(min_length=1, max_length=1024)
+
+
 class RemoteRequest(BaseModel):
     remote: str = Field(min_length=1, max_length=1024)
+
+
+@router.get('/worktrees/{id}/credentials')
+async def credentials(id: str):
+    return await result(git_service.credentials(id))
+
+
+@router.put('/worktrees/{id}/credentials')
+async def save_credentials(id: str, body: GitCredentialRequest):
+    return await result(git_service.save_credentials(id, body.remote, body.username, body.token))
+
+
+@router.delete('/worktrees/{id}/credentials/{remote}')
+async def clear_credentials(id: str, remote: str):
+    return await result(git_service.clear_credentials(id, remote))
 
 
 class FileActionRequest(BaseModel):

@@ -177,6 +177,315 @@ async def test_runtime_executes_saved_canvas_workflow(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_runtime_persists_selected_entry_with_two_boundary_inputs(tmp_path):
+    """A selected C entry consumes A2/B1 from task context across recovery."""
+    import json
+
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import Message
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="task-direct-c",
+        title="Direct C",
+        description="Deploy the approved build",
+        cwd=str(tmp_path),
+        engine="claude",
+        created_at=1,
+        updated_at=1,
+    )
+    TaskStep.create(task=task, step_key="a", status="skipped")
+    TaskStep.create(task=task, step_key="b", status="skipped")
+    TaskStep.create(task=task, step_key="c", status="pending")
+    project = SimpleNamespace(
+        id="project-direct-c",
+        path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={
+            "nodes": [
+                {
+                    "id": 1,
+                    "type": "a",
+                    "title": "A",
+                    "engine": "claude",
+                    "prompt": "Run A",
+                    "outputs": [{"name": "A2", "type": "md"}],
+                },
+                {
+                    "id": 2,
+                    "type": "b",
+                    "title": "B",
+                    "engine": "claude",
+                    "prompt": "Run B",
+                    "outputs": [{"name": "B1", "type": "md"}],
+                },
+                {
+                    "id": 3,
+                    "type": "c",
+                    "title": "C",
+                    "engine": "claude",
+                    "prompt": "Run C",
+                    "inputs": [
+                        {"name": "A2", "type": "md"},
+                        {"name": "B1", "type": "md"},
+                    ],
+                },
+            ],
+            "connections": [
+                {"from": 1, "fromPort": 0, "to": 3, "toPort": 0},
+                {"from": 2, "fromPort": 0, "to": 3, "toPort": 1},
+            ],
+        },
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    prompts = []
+
+    class RecordingEngine(RuntimeFakeEngine):
+        async def spawn(self, prompt, cwd, **kwargs):
+            prompts.append(prompt)
+            yield InternalEvent(
+                type="agent_message_chunk",
+                data={"content": {"text": "done"}},
+            )
+            yield InternalEvent(type="status", data={"status": "done"})
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = RecordingEngine
+    bus = EventBus()
+    try:
+        runtime = WorkflowRuntime(bus, ProjectManagerStub())
+        await runtime.run(project.id, task.id, "")
+
+        assert len(prompts) == 1
+        assert "## Task title\nDirect C" in prompts[0]
+        assert "## Task description\nDeploy the approved build" in prompts[0]
+        assert prompts[0].count(
+            "Use the task title, description, dispatched inputs"
+        ) == 2
+        statuses = {
+            row.step_key: row.status
+            for row in TaskStep.select().where(TaskStep.task == task)
+        }
+        assert statuses == {"a": "skipped", "b": "skipped", "c": "passed"}
+        workflow_run = WorkflowRun.get(WorkflowRun.task == task)
+        routing_state = json.loads(workflow_run.routing_state_json)
+        assert workflow_run.restart_from_step_key == "c"
+        assert routing_state["entry_step_key"] == "c"
+        assert routing_state["execution_scope"] == ["c"]
+    finally:
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_switching_from_running_a_to_c_does_not_keep_a_in_child_scope(
+    tmp_path,
+):
+    """Directly selecting C cancels running A instead of carrying it forward."""
+    import json
+
+    from engines.core.registry import ENGINE_REGISTRY
+    from services.workflow_runtime import WorkflowRuntime
+
+    class BlockingAEngine(RuntimeFakeEngine):
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def spawn(self, prompt, cwd, **kwargs):
+            if "Do A" in prompt:
+                type(self).started.set()
+                await type(self).release.wait()
+                return
+            yield InternalEvent(
+                type="agent_message_chunk",
+                data={"content": {"text": "c done"}},
+            )
+            yield InternalEvent(type="status", data={"status": "done"})
+
+        async def stop(self):
+            type(self).release.set()
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="task-switch-a-c",
+        title="Switch A to C",
+        description="Stop A and run C",
+        cwd=str(tmp_path),
+        engine="claude",
+        created_at=1,
+        updated_at=1,
+    )
+    project = SimpleNamespace(
+        id="project-switch-a-c",
+        path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={
+            "nodes": [
+                {
+                    "id": 1, "type": "a", "title": "A",
+                    "engine": "claude", "prompt": "Do A",
+                    "outputs": [{"name": "A2"}],
+                },
+                {
+                    "id": 2, "type": "c", "title": "C",
+                    "engine": "claude", "prompt": "Do C",
+                    "inputs": [{"name": "A2"}],
+                },
+            ],
+            "connections": [
+                {"from": 1, "fromPort": 0, "to": 2, "toPort": 0},
+            ],
+        },
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = BlockingAEngine
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, ProjectManagerStub())
+    try:
+        first = await runtime.start(project.id, task.id, "")
+        await asyncio.wait_for(BlockingAEngine.started.wait(), timeout=1)
+        child = await runtime.restart_from_step(project.id, task.id, "c")
+        await asyncio.wait_for(runtime.wait(child), timeout=3)
+        await asyncio.gather(first._completion, return_exceptions=True)
+
+        child_run = WorkflowRun.get_by_id(child.id)
+        assert child_run.restart_from_step_key == "c"
+        assert json.loads(child_run.routing_state_json)["execution_scope"] == ["c"]
+        assert [
+            row.step_key
+            for row in StepRun.select().where(StepRun.run == child_run)
+        ] == ["c"]
+        statuses = {
+            row.step_key: row.status
+            for row in TaskStep.select().where(TaskStep.task == task)
+        }
+        assert statuses == {"a": "cancelled", "c": "passed"}
+    finally:
+        await runtime.shutdown()
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_restart_cancels_parallel_active_steps_and_pending_reviews(tmp_path):
+    """Superseding a run closes active parallel work outside the new scope."""
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import ReviewRun
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    now = utc_now()
+    task = Task.create(
+        id="task-parallel-restart",
+        title="Parallel restart",
+        cwd=str(tmp_path),
+        engine="claude",
+        status="running",
+        created_at=now,
+        updated_at=now,
+    )
+    project = SimpleNamespace(
+        id="project-parallel-restart",
+        path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={
+            "nodes": [
+                {"id": 1, "type": "a", "title": "A", "engine": "claude"},
+                {"id": 2, "type": "b", "title": "B", "engine": "claude"},
+                {"id": 3, "type": "c", "title": "C", "engine": "claude"},
+            ],
+            "connections": [],
+        },
+    )
+    TaskStep.create(task=task, step_key="a", status="running")
+    TaskStep.create(task=task, step_key="b", status="awaiting_review")
+    TaskStep.create(task=task, step_key="c", status="passed")
+    parent = WorkflowRun.create(
+        id="parallel-parent",
+        task=task,
+        status="running",
+        workflow_schema_version=1,
+        workflow_snapshot_json="{}",
+        started_at=now,
+    )
+    a_run = StepRun.create(
+        id="parallel-a-run",
+        run=parent,
+        step_key="a",
+        attempt=1,
+        status="running",
+        engine="claude",
+        started_at=now,
+    )
+    b_run = StepRun.create(
+        id="parallel-b-run",
+        run=parent,
+        step_key="b",
+        attempt=1,
+        status="succeeded",
+        engine="claude",
+        started_at=now,
+        ended_at=now,
+    )
+    review = ReviewRun.create(
+        id="parallel-b-review",
+        workflow_run=parent,
+        step_run=b_run,
+        task=task,
+        step_key="b",
+        attempt=1,
+        mode="manual",
+        status="pending",
+        started_at=now,
+    )
+    task.active_workflow_run_id = parent.id
+    task.save()
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = RuntimeFakeEngine
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, ProjectManagerStub())
+    try:
+        child = await runtime.restart_from_step(project.id, task.id, "c")
+        await asyncio.wait_for(runtime.wait(child), timeout=3)
+
+        statuses = {
+            row.step_key: row.status
+            for row in TaskStep.select().where(TaskStep.task == task)
+        }
+        assert statuses == {"a": "cancelled", "b": "cancelled", "c": "passed"}
+        assert StepRun.get_by_id(a_run.id).status == "cancelled"
+        assert ReviewRun.get_by_id(review.id).status == "cancelled"
+    finally:
+        await runtime.shutdown()
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
 async def test_runtime_merges_pending_inserts_after_step_finishes(tmp_path):
     """阶段结束后由后端合并待插入消息并重跑，不依赖页面存活。"""
     from engines.core.registry import ENGINE_REGISTRY
@@ -2610,6 +2919,143 @@ async def test_restart_step_with_fresh_session_rejects_running_step(tmp_path):
             await runtime.restart_step_with_fresh_session(
                 project.id, task.id, "do"
             )
+    finally:
+        await runtime.shutdown()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_resume_step_message_can_reset_to_fresh_session(tmp_path):
+    """用户选择重置步骤时，消息进入完整提示词且不再传旧 session_id。"""
+    import json
+
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import Message
+    from services.workflow_runtime import WorkflowRuntime
+
+    prompts: list[str] = []
+    received_sessions: list[str | None] = []
+
+    class ResetStepEngine(RuntimeFakeEngine):
+        @property
+        def supports_resume(self):
+            return True
+
+        async def spawn(self, prompt, cwd, **kwargs):
+            prompts.append(prompt)
+            received_sessions.append(kwargs.get("session_id"))
+            yield InternalEvent(
+                type="session_started",
+                data={"session_id": "session-after-reset"},
+            )
+            yield InternalEvent(
+                type="agent_message_chunk",
+                data={"content": {"text": "reset complete"}},
+            )
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    now = utc_now()
+    task = Task.create(
+        id="task-reset-step-session",
+        title="重置步骤任务",
+        description="这是重置后仍需重新注入的任务说明",
+        cwd=str(tmp_path),
+        engine="resettable",
+        created_at=now,
+        updated_at=now,
+    )
+    parent = WorkflowRun.create(
+        id="run-reset-step-session",
+        task=task,
+        status="succeeded",
+        workflow_schema_version=1,
+        workflow_snapshot_json=json.dumps({
+            "nodes": [{
+                "id": 1,
+                "type": "do",
+                "title": "执行",
+                "engine": "resettable",
+                "prompt": "完成当前任务",
+            }],
+            "connections": [],
+        }),
+        started_at=now,
+        ended_at=now,
+    )
+    task.active_workflow_run_id = parent.id
+    task.save()
+    TaskStep.create(
+        task=task,
+        step_key="do",
+        status="passed",
+        engine="resettable",
+        session_id="session-before-reset",
+        session_provider="provider-before-reset",
+        started_at=now,
+        ended_at=now,
+    )
+    Message.create(
+        id="previous-step-output",
+        task=task,
+        channel="execution",
+        step_key="do",
+        sequence=1,
+        role="assistant",
+        engine="resettable",
+        content="previous",
+        run_status="succeeded",
+        position=1,
+        started_at=now,
+        ended_at=now,
+        created_at=now,
+    )
+    project = SimpleNamespace(
+        id="project-reset-step-session",
+        path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={
+            "nodes": [{
+                "id": 1,
+                "type": "do",
+                "title": "执行",
+                "engine": "resettable",
+                "prompt": "完成当前任务",
+            }],
+            "connections": [],
+        },
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            return nullcontext(project)
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["resettable"] = ResetStepEngine
+    runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
+    try:
+        accepted = await runtime.resume_step_with_message(
+            project.id,
+            task.id,
+            "do",
+            "使用干净上下文重新完成",
+            reset_session=True,
+        )
+        assert accepted["status"] == "queued"
+        for _ in range(500):
+            if task.id not in runtime._runners:
+                break
+            await asyncio.sleep(0.01)
+
+        assert received_sessions == [None]
+        assert prompts and "重置步骤任务" in prompts[0]
+        assert "这是重置后仍需重新注入的任务说明" in prompts[0]
+        assert "使用干净上下文重新完成" in prompts[0]
+        step = TaskStep.get(
+            (TaskStep.task == task) & (TaskStep.step_key == "do")
+        )
+        assert step.session_id == "session-after-reset"
     finally:
         await runtime.shutdown()
         ENGINE_REGISTRY.clear()

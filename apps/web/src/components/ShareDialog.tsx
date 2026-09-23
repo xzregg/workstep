@@ -1,3 +1,4 @@
+import ResizablePanel from './ResizablePanel'
 import { useEffect, useMemo, useState } from 'react'
 import Button from './Button'
 import Input from './Input'
@@ -149,7 +150,7 @@ export default function ShareDialog({
           justifyContent: 'center',
         }}
       >
-        <div
+        <ResizablePanel
           onClick={(e) => e.stopPropagation()}
           style={{
             background: 'var(--bg)',
@@ -164,7 +165,7 @@ export default function ShareDialog({
           }}
         >
           {/* Header */}
-          <div style={{ padding: '18px 20px 0' }}>
+          <div data-dialog-drag-handle style={{ padding: '18px 20px 0' }}>
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               gap: 8,
@@ -314,7 +315,7 @@ export default function ShareDialog({
               </div>
             )}
           </div>
-        </div>
+        </ResizablePanel>
       </div>
 
       <ConfirmDialog

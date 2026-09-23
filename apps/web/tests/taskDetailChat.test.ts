@@ -8,11 +8,61 @@ import {
   findPreferredArtifact,
   findStepRoundInputArtifact,
   findStepRoundInputPort,
+  groupStepOutputsByInput,
+  downstreamInputsForOutput,
   hasStepIoContractChanged,
   findActionablePendingReview,
   findLatestDispatchedTask,
+  resolveStepRestartImpact,
   resolveStepDisplayStatus,
 } from '../src/pages/taskDetailChat.ts'
+
+test('shows every solid downstream input connected to an output port', () => {
+  const steps = [
+    { key: 'req', nodeId: 1, label: '需求', inputs: [{ name: '业务需求' }], outputs: [{ name: 'PRD 文档' }, { name: 'SPEC 规范文档' }, { name: '分支名' }] },
+    { key: 'ui', nodeId: 2, label: 'UI 设计', inputs: [{ name: 'PRD 文档' }] },
+    { key: 'backend', nodeId: 4, label: '后端开发', inputs: [{ name: '后端功能开发' }] },
+    { key: 'test', nodeId: 5, label: '测试', inputs: [{ name: '前端功能测试' }, { name: '后端功能测试' }, { name: 'PRD 文档' }] },
+  ]
+  const connections = [
+    { from: 1, fromPort: 0, to: 2, toPort: 0, kind: 'solid' },
+    { from: 1, fromPort: 0, to: 5, toPort: 2, kind: 'solid' },
+    { from: 1, fromPort: 2, to: 4, toPort: 0, kind: 'solid' },
+    { from: 5, fromPort: 0, to: 1, toPort: 0, kind: 'dashed' },
+  ]
+
+  assert.deepEqual(downstreamInputsForOutput(steps, connections, 'req', 0), [
+    { stepKey: 'ui', stepLabel: 'UI 设计', inputName: 'PRD 文档' },
+    { stepKey: 'test', stepLabel: '测试', inputName: 'PRD 文档' },
+  ])
+  assert.deepEqual(downstreamInputsForOutput(steps, connections, 'req', 1), [])
+  assert.deepEqual(downstreamInputsForOutput(steps, connections, 'req', 2), [
+    { stepKey: 'backend', stepLabel: '后端开发', inputName: '后端功能开发' },
+  ])
+})
+
+test('separates active parallel steps from downstream steps during a restart', () => {
+  const steps = [
+    { key: 'a' },
+    { key: 'b' },
+    { key: 'c', dependsOn: ['a'] },
+  ]
+  const progress = [
+    { step_key: 'a', status: 'passed' },
+    { step_key: 'b', status: 'reviewing' },
+    { step_key: 'c', status: 'running' },
+  ]
+
+  const fromA = resolveStepRestartImpact(steps, progress, 'a')
+  assert.deepEqual(fromA.interrupted.map((step) => step.key), ['b', 'c'])
+  assert.deepEqual(fromA.restarted.map((step) => step.key), ['c'])
+  assert.deepEqual(fromA.cancelled.map((step) => step.key), ['b'])
+
+  const fromC = resolveStepRestartImpact(steps, progress, 'c')
+  assert.deepEqual(fromC.interrupted.map((step) => step.key), ['b', 'c'])
+  assert.deepEqual(fromC.restarted.map((step) => step.key), ['c'])
+  assert.deepEqual(fromC.cancelled.map((step) => step.key), ['b'])
+})
 
 test('uses the selected round manifest outputs instead of the workflow declaration', () => {
   const artifacts = [
@@ -25,6 +75,57 @@ test('uses the selected round manifest outputs instead of the workflow declarati
   assert.deepEqual(
     artifactsForStepRoundOutputs(artifacts, 'feedback-eval', 5).map((item) => item.name),
     ['score.md', 'value-report.html'],
+  )
+})
+
+test('groups declared and produced outputs under their configured input ports', () => {
+  const inputs = [
+    { name: '前端功能测试', outputs: [{ name: '测试报告', type: 'md' }, { name: 'Bug 列表', type: 'md' }] },
+    { name: '后端功能测试', outputs: [{ name: 'BUG 列表', type: 'md' }, { name: '测试报告', type: 'md' }] },
+    { name: 'PRD 文档', outputs: [{ name: '测试用例', type: 'md' }, { name: '验收标准', type: 'md' }] },
+  ]
+  const produced = [
+    { name: 'front.html', logical_name: '测试报告', artifact_type: 'HTML' },
+    { name: 'backend.md', logical_name: 'BUG 列表', artifact_type: 'md' },
+  ]
+
+  const declared = groupStepOutputsByInput(inputs, [], [])
+  assert.deepEqual(declared.map((group) => group.map((output) => output.name)), [
+    ['测试报告', 'Bug 列表'],
+    ['BUG 列表', '测试报告'],
+    ['测试用例', '验收标准'],
+  ])
+  const actual = groupStepOutputsByInput(inputs, [], produced)
+  assert.deepEqual(actual.map((group) => group.map((output) => output.name)), [
+    ['测试报告'],
+    ['BUG 列表'],
+    [],
+  ])
+  assert.equal(actual[0][0].artifact, produced[0])
+  assert.equal(actual[1][0].artifact, produced[1])
+
+  const duplicateNames = groupStepOutputsByInput(inputs, [], [
+    { name: 'backend-report.md', logical_name: '测试报告', artifact_type: 'md', output_port: 3 },
+    { name: 'front-report.md', logical_name: '测试报告', artifact_type: 'md', output_port: 0 },
+  ])
+  assert.deepEqual(duplicateNames.map((group) => group.map((output) => output.artifact?.name)), [
+    ['front-report.md'],
+    ['backend-report.md'],
+    [],
+  ])
+})
+
+test('keeps a directory output as one entry instead of listing its scanned files', () => {
+  const artifacts = [
+    { step_key: 'build', round: 2, declared_output: false, name: 'site', logical_name: null, path: '/artifacts/build/2/site', is_dir: true, is_latest: true, is_selected: true },
+    { step_key: 'build', round: 2, declared_output: true, name: 'index.html', logical_name: '首页', path: '/artifacts/build/2/site/index.html', is_dir: false, is_latest: true, is_selected: true },
+    { step_key: 'build', round: 2, declared_output: true, name: 'app.js', logical_name: '脚本', path: '/artifacts/build/2/site/assets/app.js', is_dir: false, is_latest: true, is_selected: true },
+    { step_key: 'build', round: 2, declared_output: true, name: 'summary.md', logical_name: '摘要', path: '/artifacts/build/2/summary.md', is_dir: false, is_latest: true, is_selected: true },
+  ]
+
+  assert.deepEqual(
+    artifactsForStepRoundOutputs(artifacts, 'build', 2).map((item) => item.name),
+    ['site', 'summary.md'],
   )
 })
 

@@ -1,3 +1,4 @@
+import ResizablePanel from './ResizablePanel'
 import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
@@ -33,7 +34,7 @@ export default function FirstUseDialog() {
 
   return (
     <div className="modal-overlay" style={{ zIndex: 3000 }}>
-      <div
+      <ResizablePanel
         className="modal"
         role="dialog"
         aria-modal="true"
@@ -76,7 +77,7 @@ export default function FirstUseDialog() {
             {t('onboarding.quickStart')}
           </Button>
         </div>
-      </div>
+      </ResizablePanel>
     </div>
   )
 }

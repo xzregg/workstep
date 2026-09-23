@@ -3,9 +3,11 @@ import Button from './Button'
 import Icon from './Icon'
 import { fsApi, type DirectoryOpener, type Project } from '../api/client'
 import { type TFunction } from '../i18n'
+import ProjectDirectoryBrowserDialog from './ProjectDirectoryBrowserDialog'
+import { usesWebDirectoryBrowser } from '../utils/openLocation'
 
 /*
- * OpenLocationButton — the "⌂ 打开位置" segmented control (main button + opener
+ * OpenLocationButton — the "⌂ 打开目录" segmented control (main button + opener
  * dropdown) that reveals the active project directory in a chosen app.
  *
  * This is the single source of truth for the directory-opener UI. It is used by
@@ -105,6 +107,7 @@ export default function OpenLocationButton({
       : 'file_manager'),
   )
   const [showOpenerMenu, setShowOpenerMenu] = useState(false)
+  const [showWebBrowser, setShowWebBrowser] = useState(false)
   const openerMenuRef = useRef<HTMLDivElement>(null)
   const noticeTimerRef = useRef<number | null>(null)
   const onNoticeChangeRef = useRef(onNoticeChange)
@@ -113,8 +116,15 @@ export default function OpenLocationButton({
   const openerDisplayLabel = (opener: DirectoryOpener) =>
     opener.id === 'file_manager' ? t('taskList.openLocation') : opener.label
 
+  const webDirectoryMode = activeProject ? usesWebDirectoryBrowser(
+    activeProject.type,
+    typeof window === 'undefined' ? 'localhost' : window.location.hostname,
+    typeof navigator === 'undefined' ? '' : navigator.userAgent,
+  ) : false
+
   // Load the platform's available directory openers.
   useEffect(() => {
+    if (webDirectoryMode) return
     fsApi.directoryOpeners()
       .then(({ openers }) => {
         const available = openers.filter((opener) => opener.available)
@@ -125,7 +135,7 @@ export default function OpenLocationButton({
         }
       })
       .catch(() => setDirectoryOpeners(FALLBACK_OPENERS))
-  }, [selectedOpener])
+  }, [selectedOpener, webDirectoryMode])
 
   // Close the opener menu on outside click / Escape.
   useEffect(() => {
@@ -162,7 +172,11 @@ export default function OpenLocationButton({
   }
 
   const openProjectDirectory = async (openerId = selectedOpener) => {
-    if (!activeProject || activeProject.type === 'remote') return
+    if (!activeProject) return
+    if (webDirectoryMode) {
+      setShowWebBrowser(true)
+      return
+    }
     try {
       const result = await fsApi.openDirectory(activeProject.path, openerId)
       setNotice(t('taskList.opened', { path: result.path }))
@@ -180,7 +194,7 @@ export default function OpenLocationButton({
     void openProjectDirectory(opener.id)
   }
 
-  const disabled = !activeProject || activeProject.type === 'remote'
+  const disabled = !activeProject
   const selectedOpenerEntry = directoryOpeners.find((item) => item.id === selectedOpener)
     ?? { id: 'file_manager', label: '', available: true }
 
@@ -196,30 +210,36 @@ export default function OpenLocationButton({
           variant="ghost"
           onClick={() => void openProjectDirectory()}
           disabled={disabled}
-          title={activeProject?.type === 'remote'
-            ? t('taskList.remoteNoLocalDirectory')
-            : activeProject
-              ? t('taskList.openWithTitle', {
+          title={activeProject
+            ? webDirectoryMode
+              ? t('taskList.browseProjectTitle', { name: activeProject.name })
+              : t('taskList.openWithTitle', {
                   opener: openerDisplayLabel(selectedOpenerEntry),
                   path: activeProject.path,
                 })
-              : t('taskList.selectProjectFirst')}
-          style={{ ...MAIN_BUTTON_BASE, ...mainButtonStyle }}
+            : t('taskList.selectProjectFirst')}
+          style={{
+            ...MAIN_BUTTON_BASE,
+            ...(webDirectoryMode ? { borderRadius: 'var(--radius-sm)', paddingRight: 12 } : null),
+            ...mainButtonStyle,
+          }}
         >
-          <OpenerIcon id={selectedOpener} />
+          <OpenerIcon id={webDirectoryMode ? 'file_manager' : selectedOpener} />
           {t('taskList.openLocation')}
         </Button>
-        <Button
-          variant="ghost"
-          aria-label={t('taskList.chooseOpener')}
-          aria-expanded={showOpenerMenu}
-          onClick={() => setShowOpenerMenu((value) => !value)}
-          disabled={disabled}
-          style={{ ...CHEVRON_BUTTON_BASE, ...chevronButtonStyle }}
-        >
-          <Icon name="chevron-down" size={13} strokeWidth={2.2} />
-        </Button>
-        {showOpenerMenu && (
+        {!webDirectoryMode && (
+          <Button
+            variant="ghost"
+            aria-label={t('taskList.chooseOpener')}
+            aria-expanded={showOpenerMenu}
+            onClick={() => setShowOpenerMenu((value) => !value)}
+            disabled={disabled}
+            style={{ ...CHEVRON_BUTTON_BASE, ...chevronButtonStyle }}
+          >
+            <Icon name="chevron-down" size={13} strokeWidth={2.2} />
+          </Button>
+        )}
+        {!webDirectoryMode && showOpenerMenu && (
           <div role="menu" aria-label={t('taskList.openerMenuAria')} style={MENU_BASE}>
             {directoryOpeners.map((opener) => (
               <button
@@ -242,6 +262,14 @@ export default function OpenLocationButton({
           </div>
         )}
       </div>
+      {showWebBrowser && activeProject && (
+        <ProjectDirectoryBrowserDialog
+          projectId={activeProject.id}
+          title={activeProject.name}
+          displayPath={t('browser.projectRoot')}
+          onClose={() => setShowWebBrowser(false)}
+        />
+      )}
     </>
   )
 }

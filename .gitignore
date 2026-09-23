@@ -31,6 +31,8 @@ apps/desktop/.nuitka-venv/
 
 # WorkStep runtime
 .workstep/
+.agents/skills/workstep-cli/
+.agents/skills/workstep-managed-*/
 *.db
 .pids/
 logs/

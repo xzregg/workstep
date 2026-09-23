@@ -1,3 +1,4 @@
+import ResizablePanel from './ResizablePanel'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useOverlay } from '../hooks/useOverlay'
 import { useRef, type ReactNode } from 'react'
@@ -22,12 +23,13 @@ interface Props {
   secondaryDisabled?: boolean
   /** Override the default dialog width (px). */
   width?: number
+  zIndex?: number
   onConfirm: () => void
   onSecondary?: () => void
   onCancel: () => void
 }
 
-export default function ConfirmDialog({ open, title, message, confirmText, cancelText, secondaryText, danger, children, loading, confirmDisabled, secondaryLoading, secondaryDisabled, width = 380, onConfirm, onSecondary, onCancel }: Props) {
+export default function ConfirmDialog({ open, title, message, confirmText, cancelText, secondaryText, danger, children, loading, confirmDisabled, secondaryLoading, secondaryDisabled, width = 380, zIndex = 2000, onConfirm, onSecondary, onCancel }: Props) {
   const { t } = useI18n()
   const compact = useCompactLayout()
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -39,13 +41,13 @@ export default function ConfirmDialog({ open, title, message, confirmText, cance
     <div
       onClick={onCancel}
       style={{
-        position: 'fixed', inset: 0, zIndex: 2000,
+        position: 'fixed', inset: 0, zIndex,
         background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 16, boxSizing: 'border-box',
       }}
     >
-      <div
+      <ResizablePanel
         ref={dialogRef} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         style={{
@@ -56,7 +58,7 @@ export default function ConfirmDialog({ open, title, message, confirmText, cance
         }}
       >
         {/* Header */}
-        <div style={{ flexShrink: 0, padding: '16px 20px 0' }}>
+        <div data-dialog-drag-handle style={{ flexShrink: 0, padding: '16px 20px 0' }}>
           <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--fg)' }}>
             {title}
           </div>
@@ -99,7 +101,7 @@ export default function ConfirmDialog({ open, title, message, confirmText, cance
             </Button>
           )}
         </div>
-      </div>
+      </ResizablePanel>
     </div>
   )
 }

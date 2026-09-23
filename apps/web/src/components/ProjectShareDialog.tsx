@@ -1,3 +1,4 @@
+import ResizablePanel from './ResizablePanel'
 import { useEffect, useState } from 'react'
 import { remoteProjectApi, type Project, type RemoteDevice } from '../api/client'
 import { useI18n } from '../i18n'
@@ -101,7 +102,7 @@ export default function ProjectShareDialog({ project, onClose }: ProjectShareDia
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div
+      <ResizablePanel
         className="modal"
         role="dialog"
         aria-modal="true"
@@ -198,7 +199,7 @@ export default function ProjectShareDialog({ project, onClose }: ProjectShareDia
             {t('layout.generateShare')}
           </Button>
         </div>
-      </div>
+      </ResizablePanel>
     </div>
   )
 }

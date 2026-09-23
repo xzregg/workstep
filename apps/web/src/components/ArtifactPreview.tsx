@@ -4,8 +4,6 @@ import Icon from './Icon'
 import { useState, useEffect, type ReactNode } from 'react'
 import {
   fsApi,
-  type DirectoryBrowseResult,
-  type DirectoryEntry,
   type FilePreview,
 } from '../api/client'
 import Button from './Button'
@@ -13,6 +11,7 @@ import { useI18n } from '../i18n'
 import MarkdownMessage from './MarkdownMessage'
 import CodeFilePreview from './CodeFilePreview'
 import { copyText } from '../utils/clipboard'
+import ProjectDirectoryBrowser from './ProjectDirectoryBrowser'
 
 interface ArtifactPreviewProps {
   path: string
@@ -22,11 +21,12 @@ interface ArtifactPreviewProps {
   onClose?: () => void
   projectId?: string
   standalone?: boolean
+  onEdit?: () => void
 }
 
 type PreviewView =
-  | { kind: 'listing'; path: string }
-  | { kind: 'file'; path: string; parent: string }
+  | { kind: 'directory'; path: string }
+  | { kind: 'file'; path: string }
 
 function CopyTextButton({ content }: { content: string }) {
   const { t } = useI18n()
@@ -96,18 +96,15 @@ export default function ArtifactPreview({
   onClose,
   projectId,
   standalone = false,
+  onEdit,
 }: ArtifactPreviewProps) {
   const { t } = useI18n()
   const [view, setView] = useState<PreviewView>(() =>
     isDir
-      ? { kind: 'listing', path }
-      : { kind: 'file', path, parent: '' }
+      ? { kind: 'directory', path }
+      : { kind: 'file', path }
   )
   const [showMarkdownSource, setShowMarkdownSource] = useState(false)
-
-  const [listing, setListing] = useState<DirectoryBrowseResult | null>(null)
-  const [listingLoading, setListingLoading] = useState(false)
-  const [listingError, setListingError] = useState<string | null>(null)
 
   const [preview, setPreview] = useState<FilePreview | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
@@ -115,35 +112,12 @@ export default function ArtifactPreview({
 
   // Reset the view when the artifact changes.
   useEffect(() => {
-    setView(isDir ? { kind: 'listing', path } : { kind: 'file', path, parent: '' })
+    setView(isDir ? { kind: 'directory', path } : { kind: 'file', path })
   }, [path, isDir])
 
   useEffect(() => {
     setShowMarkdownSource(false)
   }, [path])
-
-  // Load the directory listing.
-  useEffect(() => {
-    if (view.kind !== 'listing') return
-    let active = true
-    setListingLoading(true)
-    setListingError(null)
-    fsApi.browse(view.path, projectId)
-      .then((data) => {
-        if (active) setListing(data)
-      })
-      .catch((e) => {
-        if (active) {
-          setListingError(e instanceof Error ? e.message : t('artifact.loadFallbackError'))
-        }
-      })
-      .finally(() => {
-        if (active) setListingLoading(false)
-      })
-    return () => {
-      active = false
-    }
-  }, [view, projectId, t])
 
   // Load the file preview.
   useEffect(() => {
@@ -168,42 +142,9 @@ export default function ArtifactPreview({
     }
   }, [view, projectId, t])
 
-  const openEntry = (entry: DirectoryEntry) => {
-    if (entry.type === 'directory') {
-      setView({ kind: 'listing', path: entry.path })
-    } else if (view.kind === 'listing') {
-      setView({ kind: 'file', path: entry.path, parent: view.path })
-    }
-  }
-
-  const goUp = () => {
-    if (view.kind === 'listing' && listing?.parent) {
-      setView({ kind: 'listing', path: listing.parent })
-    }
-  }
-
-  const backToListing = () => {
-    if (view.kind === 'file' && view.parent) {
-      setView({ kind: 'listing', path: view.parent })
-    }
-  }
-
-  const backButton = (
-    <Button
-      variant="icon"
-      onClick={backToListing}
-      title={t('artifact.backToList')}
-      aria-label={t('artifact.backToList')}
-      style={{ width: 28, height: 28, minWidth: 28, padding: 0, justifyContent: 'center' }}
-    >
-      <Icon name="undo-2" size={14} />
-    </Button>
-  )
-
   const fileHeader = (label: string, extra?: ReactNode) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-        {view.kind === 'file' && view.parent ? backButton : null}
         <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {label}
         </div>
@@ -225,83 +166,10 @@ export default function ArtifactPreview({
     </div>
   )
 
-  // ── Directory listing view ──
-  if (view.kind === 'listing') {
+  // ── Directory tree + file preview ──
+  if (view.kind === 'directory') {
     return (
-      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-          <Button
-            variant="icon"
-            onClick={goUp}
-            disabled={!listing?.parent}
-            title={t('artifact.upLevel')}
-            aria-label={t('artifact.upLevel')}
-            style={{ width: 28, height: 28, minWidth: 28, padding: 0, justifyContent: 'center' }}
-          >
-            <Icon name="undo-2" size={14} />
-          </Button>
-          <div style={{ flex: 1, fontSize: 'calc(13px * var(--font-scale))', color: 'var(--fg-2)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {listing?.path || t('common.loading')}
-          </div>
-          {onClose && (
-            <Button variant="ghost" onClick={onClose}>
-              {t('common.close')}
-            </Button>
-          )}
-        </div>
-        <div style={{ flex: 1, overflow: 'auto', background: 'var(--surface)', borderRadius: 8, padding: 4 }}>
-          {listingLoading && (
-            <div style={{ padding: 40, textAlign: 'center', color: 'var(--meta)' }}>
-              {t('common.loading')}
-            </div>
-          )}
-          {!listingLoading && listingError && (
-            <div style={{ padding: 40, textAlign: 'center', color: 'var(--danger)' }}>
-              {t('artifact.loadFailed', { error: listingError })}
-            </div>
-          )}
-          {!listingLoading && !listingError && listing?.entries.length === 0 && (
-            <div style={{ padding: 40, textAlign: 'center', color: 'var(--meta)' }}>
-              {t('browser.emptyDir')}
-            </div>
-          )}
-          {!listingLoading && !listingError && listing?.entries.map((entry) => (
-            <div
-              key={entry.path}
-              role="button"
-              tabIndex={0}
-              onClick={() => openEntry(entry)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  openEntry(entry)
-                }
-              }}
-              title={entry.path}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '7px 10px', borderRadius: 6,
-                cursor: 'pointer', fontSize: 'calc(13px * var(--font-scale))',
-                color: entry.type === 'directory' ? 'var(--fg)' : 'var(--fg-2)',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover, var(--border-soft))' }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-            >
-              <Icon
-                name={entry.type === 'directory' ? 'folder' : 'file'}
-                size={15}
-                color={entry.type === 'directory' ? 'var(--accent)' : 'var(--muted)'}
-              />
-              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {entry.name}
-              </span>
-              <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', flexShrink: 0 }}>
-                {entry.type === 'directory' ? t('artifact.directory') : t('artifact.previewFile')}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
+      <ProjectDirectoryBrowser projectId={projectId || ''} rootPath={view.path} />
     )
   }
 
@@ -362,6 +230,17 @@ export default function ArtifactPreview({
   const downloadButton = (
     <DownloadFileButton href={rawUrl} filename={filenameFromPath(preview.relative_path || view.path)} />
   )
+  const editButton = isText && onEdit ? (
+    <Button
+      variant="ghost"
+      aria-label={t('browser.editMode')}
+      title={t('browser.editMode')}
+      onClick={onEdit}
+      style={{ width: 28, height: 28, minWidth: 28, padding: 0, justifyContent: 'center' }}
+    >
+      <Icon name="pencil" size={14} strokeWidth={2} />
+    </Button>
+  ) : null
   const openWindowButton = projectId ? (
     <Button
       variant="primary"
@@ -400,6 +279,7 @@ export default function ArtifactPreview({
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
         {fileHeader(t('artifact.htmlFile'), (
           <>
+            {editButton}
             {downloadButton}
             <CopyTextButton content={content} />
             {openWindowButton}
@@ -454,6 +334,7 @@ export default function ArtifactPreview({
               <Icon name={showMarkdownSource ? 'eye' : 'file'} size={13} strokeWidth={1.9} />
               {showMarkdownSource ? t('artifact.viewRendered') : t('artifact.viewSource')}
             </Button>
+            {editButton}
             {downloadButton}
             <CopyTextButton content={content} />
             {openWindowButton}
@@ -478,6 +359,7 @@ export default function ArtifactPreview({
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
         {fileHeader(t('artifact.codeFile', { extension }), (
           <>
+            {editButton}
             {downloadButton}
             <CopyTextButton content={content} />
             {openWindowButton}
@@ -515,6 +397,7 @@ export default function ArtifactPreview({
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
       {fileHeader(t('artifact.textPreview', { name: extension || t('artifact.file') }), (
         <>
+          {editButton}
           {downloadButton}
           <CopyTextButton content={content} />
           {openWindowButton}

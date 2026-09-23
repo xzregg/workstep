@@ -65,17 +65,16 @@ def _resolved_with_engine_effort(
 ) -> dict:
     """Resolve the thinking effort shown for an assistant default.
 
-    Non-coordinator assistants inherit the selected engine's own config when
-    the assistant has no explicit effort. The coordinator keeps its dedicated
-    global coordinator-default layer.
+    Every assistant inherits the selected engine's own config when it has no
+    explicit effort. An explicit coordinator default still wins because it is
+    returned in ``configured``.
     """
     resolved = dict(resolved)
-    if name != "task_coordinator":
-        resolved["thinking_effort"] = (
-            configured.get("thinking_effort")
-            or config_store.get_engine_thinking_effort(resolved.get("engine", ""))
-            or ""
-        )
+    resolved["thinking_effort"] = (
+        configured.get("thinking_effort")
+        or config_store.get_engine_thinking_effort(resolved.get("engine", ""))
+        or ""
+    )
     return resolved
 
 

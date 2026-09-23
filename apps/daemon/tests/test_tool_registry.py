@@ -18,8 +18,13 @@ def test_registry_defines_expected_tool_set():
     assert names == {
         "workstep_list_projects",
         "workstep_get_project",
+        "workstep_list_workflows",
+        "workstep_get_workflow",
         "workstep_list_tasks",
         "workstep_get_task",
+        "workstep_list_git_repositories",
+        "workstep_get_task_workspace",
+        "workstep_add_task_worktree",
         "workstep_list_engines",
         "workstep_create_project",
         "workstep_create_task",
@@ -38,6 +43,28 @@ def test_registry_defines_expected_tool_set():
     assert by_name["workstep_create_task"].method == "POST"
     assert by_name["workstep_create_task"].path == "/api/task/create"
     assert by_name["workstep_get_task"].path == "/api/task/{task_id}"
+    assert by_name["workstep_list_workflows"].path == "/api/workflow/list"
+    assert by_name["workstep_get_workflow"].path == "/api/workflow/{workflow_id}"
+    assert "workflow_id" in by_name["workstep_create_task"].body_params
+    assert "start_step_key" in by_name["workstep_create_task"].body_params
+    assert by_name["workstep_add_task_worktree"].read_only is False
+
+
+@pytest.mark.anyio
+async def test_client_creates_task_worktree_only_with_confirmation():
+    calls = []
+
+    async def handler(request):
+        calls.append((request.method, request.url.path, json.loads(request.content)))
+        return httpx.Response(200, json={"path": "/project/.workstep/worktrees/t", "worktrees": []})
+
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    arguments = {"project_id": "p", "task_id": "t", "repository_id": "repo", "alias": "api"}
+    rejected = await client.call("workstep_add_task_worktree", arguments)
+    assert rejected["ok"] is False
+    assert calls == []
+    await client.call("workstep_add_task_worktree", {**arguments, "confirm": "yes"})
+    assert calls == [("POST", "/api/git/projects/p/tasks/t/worktrees", {"repository_id": "repo", "alias": "api"})]
 
 
 def test_registry_lookup_and_documentation():
@@ -63,6 +90,22 @@ async def test_client_reads_project_list():
     assert result == {"projects": []}
     assert captured["method"] == "GET"
     assert captured["url"].endswith("/api/project/list")
+
+
+@pytest.mark.anyio
+async def test_client_forwards_packaged_desktop_token(monkeypatch):
+    captured = {}
+
+    async def handler(request):
+        captured["token"] = request.headers.get("x-workstep-desktop-token")
+        return httpx.Response(200, json={"projects": []})
+
+    monkeypatch.setenv("WORKSTEP_DESKTOP_TOKEN", "desktop-secret")
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+
+    await client.call("workstep_list_projects", {})
+
+    assert captured["token"] == "desktop-secret"
 
 
 @pytest.mark.anyio
@@ -108,6 +151,26 @@ async def test_client_get_task_builds_path_and_query():
 
 
 @pytest.mark.anyio
+async def test_client_lists_and_gets_project_workflows():
+    calls = []
+
+    async def handler(request):
+        calls.append((request.url.path, dict(request.url.params)))
+        return httpx.Response(200, json={"workflows": []})
+
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    await client.call("workstep_list_workflows", {"project_id": "p1"})
+    await client.call("workstep_get_workflow", {
+        "project_id": "p1", "workflow_id": "w1",
+    })
+
+    assert calls == [
+        ("/api/workflow/list", {"project_id": "p1"}),
+        ("/api/workflow/w1", {"project_id": "p1"}),
+    ]
+
+
+@pytest.mark.anyio
 async def test_client_create_task_posts_body_with_confirm():
     captured = {}
 
@@ -122,6 +185,8 @@ async def test_client_create_task_posts_body_with_confirm():
         "project_id": "p1",
         "title": "新任务",
         "cwd": "/tmp/p1",
+        "workflow_id": "w1",
+        "start_step_key": "research",
         "confirm": "yes",
     })
     assert result["id"] == "task-new"
@@ -129,6 +194,8 @@ async def test_client_create_task_posts_body_with_confirm():
     assert "project_id=p1" in captured["url"]
     assert captured["body"]["title"] == "新任务"
     assert captured["body"]["cwd"] == "/tmp/p1"
+    assert captured["body"]["workflow_id"] == "w1"
+    assert captured["body"]["start_step_key"] == "research"
     assert "confirm" not in captured["body"]
 
 

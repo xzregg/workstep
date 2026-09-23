@@ -64,6 +64,14 @@ def list_task_artifacts(project, task_id: str) -> list[dict]:
                         continue
                     manifest_entries[artifact_path] = entry
 
+                output_ports: dict[Path, int] = {}
+                for output in manifest.get("outputs", []):
+                    if not isinstance(output, dict) or not isinstance(output.get("port"), int):
+                        continue
+                    output_path = (round_dir / str(output.get("path", ""))).resolve()
+                    if output_path.is_relative_to(round_dir.resolve()):
+                        output_ports[output_path] = output["port"]
+
                 directory_entries: dict[Path, dict] = {}
                 for manifest_path_entry, manifest_entry in manifest_entries.items():
                     if manifest_path_entry.is_dir():
@@ -73,6 +81,9 @@ def list_task_artifacts(project, task_id: str) -> list[dict]:
                         continue
                     if child.is_dir() and not child.name.startswith("."):
                         directory_entries.setdefault(child, {})
+                directory_roots = tuple(
+                    path.resolve() for path in directory_entries
+                )
 
                 for file_path in sorted(round_dir.rglob("*")):
                     relative = file_path.relative_to(round_dir)
@@ -96,6 +107,11 @@ def list_task_artifacts(project, task_id: str) -> list[dict]:
                         resolved.relative_to(round_dir.resolve())
                     except ValueError:
                         continue
+                    if any(
+                        resolved.is_relative_to(directory_root)
+                        for directory_root in directory_roots
+                    ):
+                        continue
                     metadata = manifest_entries.get(resolved, {})
                     artifacts.append({
                         "step_key": step_dir.name,
@@ -107,6 +123,7 @@ def list_task_artifacts(project, task_id: str) -> list[dict]:
                         "name": file_path.name,
                         "logical_name": metadata.get("name"),
                         "artifact_type": metadata.get("type"),
+                        "output_port": output_ports.get(resolved),
                         "declared_output": resolved in manifest_entries,
                         "path": str(resolved),
                         "relative_path": str(file_path.relative_to(round_dir)),
@@ -129,6 +146,7 @@ def list_task_artifacts(project, task_id: str) -> list[dict]:
                         "name": dir_path.name,
                         "logical_name": metadata.get("name"),
                         "artifact_type": metadata.get("type"),
+                        "output_port": output_ports.get(dir_path.resolve()),
                         "declared_output": dir_path.resolve() in manifest_entries,
                         "path": str(dir_path),
                         "relative_path": str(dir_path.relative_to(round_dir)) + "/",

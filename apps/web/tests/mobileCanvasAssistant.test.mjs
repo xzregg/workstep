@@ -22,6 +22,10 @@ const chatPageSource = await readFile(
   new URL('../src/pages/ChatPage.tsx', import.meta.url),
   'utf8',
 )
+const mobileOpenLocationSource = await readFile(
+  new URL('../src/components/MobileOpenLocationButton.tsx', import.meta.url),
+  'utf8',
+)
 const mobileCss = await readFile(new URL('../src/mobile.css', import.meta.url), 'utf8')
 const indexCss = await readFile(new URL('../src/index.css', import.meta.url), 'utf8')
 
@@ -103,11 +107,20 @@ test('mobile task menu sits beside new task and includes Git', () => {
   assert.match(mobileCss, /\.mobile-task-menu > button svg\s*\{[^}]*width: var\(--mobile-control-icon-size\) !important[^}]*height: var\(--mobile-control-icon-size\) !important/s)
 })
 
-test('mobile chat menu hides open location and keeps Git above settings', () => {
+test('mobile task and chat menus open the project directory browser', () => {
+  const taskSheetStart = taskListSource.indexOf('<MobileSheet open={compact && filtersOpen}')
+  const taskSheet = taskListSource.slice(taskSheetStart, taskListSource.indexOf('</MobileSheet>', taskSheetStart))
+  assert.match(taskSheet, /<MobileOpenLocationButton/)
+  assert.match(taskSheet, /setShowMobileDirectoryBrowser\(true\)/)
+  assert.match(taskListSource, /<ProjectDirectoryBrowserDialog[\s\S]*?projectId=\{activeProject\.id\}/)
+
   const sheetStart = chatPageSource.indexOf('<MobileSheet\n        open={mobileMenuOpen}')
   const sheet = chatPageSource.slice(sheetStart, chatPageSource.indexOf('</MobileSheet>', sheetStart))
   assert.ok(sheetStart >= 0)
-  assert.doesNotMatch(sheet, /<OpenLocationButton/)
+  assert.match(sheet, /<MobileOpenLocationButton/)
+  assert.match(sheet, /setShowMobileDirectoryBrowser\(true\)/)
+  assert.match(chatPageSource, /<ProjectDirectoryBrowserDialog[\s\S]*?projectId=\{activeProject\.id\}/)
+  assert.match(mobileOpenLocationSource, /t\('taskList\.openLocation'\)/)
   assert.match(sheet, /<ProjectGitButton project=\{activeProject\}/)
   assert.ok(sheet.indexOf('<ProjectGitButton') < sheet.indexOf("t('taskList.settings')"))
 })

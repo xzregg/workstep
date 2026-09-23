@@ -295,6 +295,50 @@ export function taskTargetStepsInWorkflowOrder<T extends { key: string }>(
   return steps.filter((step) => available.has(step.key))
 }
 
+const RESTART_IMPACT_ACTIVE_STATUSES = new Set([
+  'running',
+  'reviewing',
+  'awaiting_review',
+  'retrying',
+  'rework',
+  'rework_waiting',
+])
+
+/** Explain which active steps stop, restart, or leave scope after a restart. */
+export function resolveStepRestartImpact<
+  T extends { key: string; dependsOn?: readonly string[] },
+>(
+  steps: readonly T[],
+  progress: readonly { step_key?: string; status?: string }[],
+  targetStepKey: string,
+): { interrupted: T[]; restarted: T[]; cancelled: T[] } {
+  const executionScope = new Set<string>([targetStepKey])
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const step of steps) {
+      if (executionScope.has(step.key)) continue
+      if ((step.dependsOn ?? []).some((dependency) => (
+        executionScope.has(dependency)
+      ))) {
+        executionScope.add(step.key)
+        changed = true
+      }
+    }
+  }
+  const statusByStep = new Map(
+    progress.map((item) => [item.step_key, item.status]),
+  )
+  const interrupted = steps.filter((step) => (
+    RESTART_IMPACT_ACTIVE_STATUSES.has(statusByStep.get(step.key) ?? '')
+  ))
+  return {
+    interrupted,
+    restarted: interrupted.filter((step) => executionScope.has(step.key)),
+    cancelled: interrupted.filter((step) => !executionScope.has(step.key)),
+  }
+}
+
 export interface ArtifactRoundChoice {
   step_key: string
   round: number
@@ -320,11 +364,92 @@ export function artifactsForStepRoundOutputs<
   const matching = artifacts.filter((artifact) => (
     artifact.step_key === stepKey && artifact.round === round
   ))
-  const declared = matching.filter((artifact) => artifact.declared_output === true)
-  if (declared.length > 0) return collapseDirectoryArtifactChildren(declared)
-  return collapseDirectoryArtifactChildren(matching.filter((artifact) => (
+  const collapsed = collapseDirectoryArtifactChildren(matching)
+  const preferred = collapsed.filter((artifact) => (
+    artifact.is_dir || artifact.declared_output === true
+  ))
+  if (preferred.length > 0) return preferred
+  return collapsed.filter((artifact) => (
     artifact.declared_output !== false && Boolean(artifact.logical_name)
-  )))
+  ))
+}
+
+export function groupStepOutputsByInput<
+  T extends { name: string; logical_name?: string | null; artifact_type?: string | null; is_dir?: boolean; output_port?: number | null },
+>(
+  inputs: readonly { outputs?: readonly { name: string; type: string }[] }[],
+  outputs: readonly { name: string; type: string }[],
+  produced: readonly T[],
+) {
+  const groups: Array<Array<{ name: string; type: string; outputIndex: number; artifact?: T }>> =
+    inputs.map(() => [])
+  const hasNestedOutputs = inputs.some((input) => input.outputs?.length)
+  let outputIndex = 0
+  inputs.forEach((input, inputIndex) => {
+    const declared = hasNestedOutputs ? input.outputs || [] : inputIndex === 0 ? outputs : []
+    declared.forEach((output) => {
+      groups[inputIndex].push({ ...output, outputIndex: outputIndex++ })
+    })
+  })
+  if (!produced.length) return groups
+
+  const available = groups.flatMap((group, inputIndex) =>
+    group.map((output) => ({ output, inputIndex })))
+  const result = inputs.map(() => [] as typeof groups[number])
+  produced.forEach((artifact) => {
+    const name = artifact.logical_name || artifact.name
+    const portMatchIndex = artifact.output_port == null ? -1 :
+      available.findIndex(({ output }) => output.outputIndex === artifact.output_port)
+    const matchIndex = portMatchIndex >= 0 ? portMatchIndex :
+      available.findIndex(({ output }) => output.name === name)
+    const match = matchIndex >= 0 ? available.splice(matchIndex, 1)[0] : undefined
+    const inputIndex = match?.inputIndex ?? 0
+    result[inputIndex].push({
+      name,
+      type: artifact.artifact_type || (artifact.is_dir ? 'directory' : 'file'),
+      outputIndex: match?.output.outputIndex ?? -1,
+      artifact,
+    })
+  })
+  return result
+}
+
+export function downstreamInputsForOutput(
+  steps: readonly {
+    key: string
+    nodeId?: string | number
+    label: string
+    inputs: readonly { name: string }[]
+  }[],
+  connections: readonly {
+    from: string | number
+    fromPort?: number
+    to: string | number
+    toPort?: number
+    kind?: string
+  }[],
+  sourceStepKey: string,
+  outputPort: number,
+): Array<{ stepKey: string; stepLabel: string; inputName: string }> {
+  const source = steps.find((step) => step.key === sourceStepKey)
+  if (!source) return []
+  const byNodeId = new Map(steps.map((step) => [String(step.nodeId ?? step.key), step]))
+  const sourceNodeId = String(source.nodeId ?? source.key)
+  const targets: Array<{ stepKey: string; stepLabel: string; inputName: string }> = []
+  const seen = new Set<string>()
+  for (const connection of connections) {
+    if (connection.kind === 'dashed'
+      || String(connection.from) !== sourceNodeId
+      || (connection.fromPort ?? 0) !== outputPort) continue
+    const target = byNodeId.get(String(connection.to))
+    const input = target?.inputs[connection.toPort ?? 0]
+    if (!target || !input) continue
+    const id = `${target.key}:${connection.toPort ?? 0}`
+    if (seen.has(id)) continue
+    seen.add(id)
+    targets.push({ stepKey: target.key, stepLabel: target.label, inputName: input.name })
+  }
+  return targets
 }
 
 interface StepRoundInputSnapshotChoice {

@@ -254,7 +254,7 @@ export default function CoordinatorConfigBar({
     fontSize: 'calc(11px * var(--font-scale))',
     ...(isMenu ? { marginTop: 2 } : {}),
   }
-  const effectiveThinkingEffort = defaultThinkingEffort === 'auto' ? '' : defaultThinkingEffort
+  const effectiveThinkingEffort = defaultThinkingEffort
   const thinkingEffortDefaultLabel = effectiveThinkingEffort
     ? `${t('coord.thinkingEffortDefault')}（${
       THINKING_EFFORT_LEVELS.includes(effectiveThinkingEffort as typeof THINKING_EFFORT_LEVELS[number])

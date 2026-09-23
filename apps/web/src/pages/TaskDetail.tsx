@@ -1,3 +1,4 @@
+import ResizablePanel from '../components/ResizablePanel'
 import { useSearchParams } from 'react-router-dom'
 import { useTaskRoute } from '../hooks/useTaskRoute'
 import { useShallow } from 'zustand/react/shallow'
@@ -39,6 +40,7 @@ import MarkdownEditor from '../components/MarkdownEditor'
 import StepPromptVariablesHint from '../components/StepPromptVariablesHint'
 import Icon from '../components/Icon'
 import ShareDialog from '../components/ShareDialog'
+import ConfirmDialog from '../components/ConfirmDialog'
 import TaskDetailPage from '../components/TaskDetailPage'
 import TaskStepConfigController from '../components/TaskStepConfigController'
 import {
@@ -56,6 +58,7 @@ import {
   findPreferredArtifact,
   findActiveStepIndex,
   findLatestDispatchedTask,
+  resolveStepRestartImpact,
 } from './taskDetailChat'
 import { CUSTOM } from '../utils/agui'
 import {
@@ -335,10 +338,23 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [restartingStepKeys, setRestartingStepKeys] = useState<string[]>([])
   const [coordinatorStopping, setCoordinatorStopping] = useState(false)
   const [stepResuming, setStepResuming] = useState(false)
+  const [resetStep, setResetStep] = useState(false)
+  const [pendingStepRestart, setPendingStepRestart] = useState<{
+    prompt: string
+    targetStep: StepData
+    resetSession: boolean
+    interruptedSteps: StepData[]
+    restartedSteps: StepData[]
+    cancelledSteps: StepData[]
+  } | null>(null)
   const [editingInsertId, setEditingInsertId] = useState<string | null>(null)
   const [editingInsertContent, setEditingInsertContent] = useState('')
   const [stepInsertSendingIds, setStepInsertSendingIds] = useState<string[]>([])
   const [activeCoordinatorMessageId, setActiveCoordinatorMessageId] = useState<string | null>(null)
+
+  useEffect(() => {
+    setResetStep(false)
+  }, [chatTarget, taskId])
   const [coordinatorConfig, setCoordinatorConfig] = useState<CoordinatorConfig | null>(null)
   const [coordinatorConfigSaving, setCoordinatorConfigSaving] = useState(false)
   const [coordinatorConfigError, setCoordinatorConfigError] = useState('')
@@ -1082,15 +1098,20 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   /** 向当前可恢复步骤发送一条消息并重新执行该步骤（step 模式的新 turn）。 */
   const resumeStepWithPrompt = useCallback(async (
     promptText: string,
-    opts?: { onErrorRestore?: () => void },
+    opts?: {
+      onErrorRestore?: () => void
+      targetStep?: StepData
+      resetSession?: boolean
+    },
   ): Promise<boolean> => {
-    if (!taskId || !projectId || !targetStep) return false
+    const resumeTarget = opts?.targetStep ?? targetStep
+    if (!taskId || !projectId || !resumeTarget) return false
     setChatError('')
     const optimisticId = `pending-${randomUuid()}`
     const optimisticMessage = createOptimisticUserMessage(
       optimisticId,
       promptText,
-      targetStep.key,
+      resumeTarget.key,
       new Date().toISOString(),
     )
     shouldFollowMessagesRef.current = true
@@ -1100,9 +1121,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     try {
       const accepted = await taskApi.resumeStepWithMessage(
         taskId,
-        targetStep.key,
+        resumeTarget.key,
         promptText,
         projectId,
+        Boolean(opts?.resetSession),
       )
       setHistoryMessages((current) => current.map((message) => (
         message.id === optimisticId
@@ -1117,6 +1139,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             }
           : message
       )))
+      if (opts?.resetSession) setResetStep(false)
       return true
     } catch (reason) {
       setHistoryMessages((current) => current.filter(
@@ -1151,9 +1174,26 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     if (chatTargetStep) {
       if (stepResuming) return
       if (!targetStep) return
+      const impact = resolveStepRestartImpact(
+        steps,
+        stepProgress,
+        targetStep.key,
+      )
+      if (impact.interrupted.length > 0) {
+        setPendingStepRestart({
+          prompt: submittedPrompt,
+          targetStep,
+          resetSession: resetStep,
+          interruptedSteps: impact.interrupted,
+          restartedSteps: impact.restarted,
+          cancelledSteps: impact.cancelled,
+        })
+        return
+      }
       setPrompt('')
       await resumeStepWithPrompt(submittedPrompt, {
         onErrorRestore: () => setPrompt(submittedPrompt),
+        resetSession: resetStep,
       })
       return
     }
@@ -1197,6 +1237,18 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       setCoordinatorRunning(false)
       setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
     }
+  }
+
+  const confirmUpstreamRestart = async () => {
+    const pending = pendingStepRestart
+    if (!pending || stepResuming) return
+    setPrompt('')
+    const accepted = await resumeStepWithPrompt(pending.prompt, {
+      targetStep: pending.targetStep,
+      resetSession: pending.resetSession,
+      onErrorRestore: () => setPrompt(pending.prompt),
+    })
+    if (accepted) setPendingStepRestart(null)
   }
 
   const handleStopCoordinator = async () => {
@@ -1879,7 +1931,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       >
         {({ inputConfig: stepEngineConfig, loading: stepEngineConfigLoading, error: stepEngineConfigError }) => <TaskDetailPage
         task={task}
+        gitEnabled={detailProject?.type !== 'remote'}
         steps={steps}
+        workflowConnections={detailProject?.steps?.connections || []}
         stepProgress={stepProgress}
         selectedStep={selectedStep}
         onStepClick={handleStepClick}
@@ -1916,6 +1970,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           : handleStopCoordinator}
         stoppingStepKeys={stoppingStepKeys}
         stepResuming={stepResuming}
+        resetStep={resetStep}
+        onResetStepChange={setResetStep}
         onStopStep={handleStopStep}
         onRestartStepWithFreshSession={handleRestartStepWithFreshSession}
         restartingStepKeys={restartingStepKeys}
@@ -2097,6 +2153,35 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onCloseViewingPrompt={() => setViewingPrompt(null)}
         artifactNotice={artifactNotice}
         overlays={<>
+          <ConfirmDialog
+            open={pendingStepRestart !== null}
+            title={t('taskDetail.restartImpactConfirmTitle')}
+            message={pendingStepRestart
+              ? t('taskDetail.restartImpactConfirmMessage', {
+                  target: pendingStepRestart.targetStep.label,
+                  active: pendingStepRestart.interruptedSteps
+                    .map((step) => step.label)
+                    .join('、'),
+                  restarted: pendingStepRestart.restartedSteps.length > 0
+                    ? pendingStepRestart.restartedSteps
+                        .map((step) => step.label)
+                        .join('、')
+                    : t('taskDetail.restartImpactNoSteps'),
+                  cancelled: pendingStepRestart.cancelledSteps.length > 0
+                    ? pendingStepRestart.cancelledSteps
+                        .map((step) => step.label)
+                        .join('、')
+                    : t('taskDetail.restartImpactNoSteps'),
+                })
+              : ''}
+            confirmText={t('taskDetail.restartImpactConfirmAction')}
+            danger
+            loading={stepResuming}
+            onCancel={() => {
+              if (!stepResuming) setPendingStepRestart(null)
+            }}
+            onConfirm={() => void confirmUpstreamRestart()}
+          />
           {showPromptEditor && (
             <div
               role="dialog"
@@ -2110,7 +2195,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               }}
               onClick={() => !promptSaving && setShowPromptEditor(false)}
             >
-              <div
+              <ResizablePanel
+                minWidth={520}
+                minHeight={320}
                 style={{
                   width: 'min(680px, 90vw)', background: 'var(--bg)',
                   borderRadius: 12, boxShadow: '0 18px 48px rgba(0,0,0,0.24)',
@@ -2150,7 +2237,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     {t('taskDetail.savePrompt')}
                   </Button>
                 </div>
-              </div>
+              </ResizablePanel>
             </div>
           )}
           <ShareDialog

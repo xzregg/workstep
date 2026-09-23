@@ -1,3 +1,4 @@
+import ResizablePanel from './ResizablePanel'
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
@@ -9,6 +10,8 @@ import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
 import Field from './Field'
 import FlowCanvas, { type FlowCanvasHandle } from './FlowCanvas'
+import WorkflowExecutionWarningDialog from './WorkflowExecutionWarningDialog'
+import type { WorkflowExecutionWarning } from '../utils/workflowExecutionWarnings'
 import Icon from './Icon'
 import Input from './Input'
 import Select from './Select'
@@ -33,11 +36,11 @@ export default function WorkflowCreateDialog({ projectId, onClose }: WorkflowCre
   const [nameAttempted, setNameAttempted] = useState(false)
   const [confirmClose, setConfirmClose] = useState(false)
   const [pendingAiSteps, setPendingAiSteps] = useState<any>(null)
-  const [dialogSize, setDialogSize] = useState<{ width: number; height: number } | null>(null)
   const [chatWidth, setChatWidth] = useState<number | null>(null)
   const [aiOpen, setAiOpen] = useState(true)
   const [aiMessage, setAiMessage] = useState('')
   const [name, setName] = useState('')
+  const [executionWarnings, setExecutionWarnings] = useState<WorkflowExecutionWarning[]>([])
   const canvasRef = useRef<FlowCanvasHandle>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const nameInputRef = useRef<HTMLInputElement>(null)
@@ -53,11 +56,11 @@ export default function WorkflowCreateDialog({ projectId, onClose }: WorkflowCre
     setNameAttempted(false)
     setConfirmClose(false)
     setPendingAiSteps(null)
-    setDialogSize(null)
     setChatWidth(null)
     setAiOpen(true)
     setAiMessage('')
     setName('')
+    setExecutionWarnings([])
   }
 
   useEffect(() => {
@@ -127,7 +130,7 @@ export default function WorkflowCreateDialog({ projectId, onClose }: WorkflowCre
     setAiOpen(true)
   }
 
-  const handleCreate = async () => {
+  const handleCreate = async (confirmedWarnings = false) => {
     if (generationBusy) return
     if (!name.trim() || hasWhitespace(name)) {
       setNameAttempted(true)
@@ -140,6 +143,11 @@ export default function WorkflowCreateDialog({ projectId, onClose }: WorkflowCre
       return
     }
     const currentSteps = canvasRef.current?.getSteps() ?? steps ?? undefined
+    const warnings = canvasRef.current?.getExecutionWarnings() ?? []
+    if (warnings.length && !confirmedWarnings) {
+      setExecutionWarnings(warnings)
+      return
+    }
     setCreating(true)
     setError('')
     try {
@@ -173,38 +181,18 @@ export default function WorkflowCreateDialog({ projectId, onClose }: WorkflowCre
     document.body.style.cursor = 'col-resize'
   }
 
-  const startDialogResize = (event: React.MouseEvent) => {
-    event.preventDefault()
-    const startX = event.clientX
-    const startY = event.clientY
-    const rect = dialogRef.current?.getBoundingClientRect()
-    const startWidth = rect?.width ?? window.innerWidth * 0.9
-    const startHeight = rect?.height ?? 780
-    const onMove = (moveEvent: MouseEvent) => {
-      setDialogSize({
-        width: Math.min(window.innerWidth - 24, Math.max(760, startWidth + moveEvent.clientX - startX)),
-        height: Math.min(window.innerHeight - 24, Math.max(480, startHeight + moveEvent.clientY - startY)),
-      })
-    }
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-      document.body.style.cursor = ''
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    document.body.style.cursor = 'nwse-resize'
-  }
 
   return (
     <>
       <div className="modal-overlay" style={{ zIndex: 350 }}>
-        <div
+        <ResizablePanel
           ref={dialogRef}
           className="modal"
+          minWidth={760}
+          minHeight={480}
           style={{
-            width: dialogSize ? dialogSize.width : '90vw', maxWidth: '96vw',
-            height: dialogSize ? dialogSize.height : 'min(92vh, 900px)', maxHeight: '92vh',
+            width: '90vw', maxWidth: '96vw',
+            height: 'min(92vh, 900px)', maxHeight: '92vh',
             display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden',
             position: 'relative',
           }}
@@ -348,24 +336,20 @@ export default function WorkflowCreateDialog({ projectId, onClose }: WorkflowCre
               variant="primary"
               disabled={generationBusy || creating || !name.trim()}
               loading={creating}
-              onClick={handleCreate}
+              onClick={() => void handleCreate()}
             >
               {t('layout.createFlow')}
             </Button>
           </div>
-          <div
-            onMouseDown={startDialogResize}
-            title={t('layout.dragResizeModal')}
-            style={{
-              position: 'absolute', right: 0, bottom: 0, width: 20, height: 20,
-              cursor: 'nwse-resize', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end',
-              padding: 3, color: 'var(--meta)', zIndex: 5,
-            }}
-          >
-            <Icon name="resize-corner" size={11} />
-          </div>
-        </div>
+        </ResizablePanel>
       </div>
+
+      <WorkflowExecutionWarningDialog
+        warnings={executionWarnings}
+        confirmText={t('layout.createFlow')}
+        onConfirm={() => { setExecutionWarnings([]); void handleCreate(true) }}
+        onCancel={() => setExecutionWarnings([])}
+      />
 
       <ConfirmDialog
         open={confirmClose}

@@ -31,6 +31,7 @@ from models import (
     CoordinatorSession,
     CoordinatorTurn,
     Message,
+    PendingMessageInsert,
     ReviewRun,
     StepSupplement,
     Task,
@@ -736,6 +737,25 @@ class CoordinatorModule:
                     model=model,
                     created_at=now,
                 )
+                # A manually sent insert starts a new assistant turn. Keep the
+                # other inserts visible on that turn instead of stranding them
+                # on the previous assistant message.
+                if pending_insert_ids:
+                    selected = PendingMessageInsert.get_or_none(
+                        PendingMessageInsert.id == pending_insert_ids[0]
+                    )
+                    if selected is not None:
+                        source = Message.get_or_none(
+                            (Message.id == selected.target_message_id)
+                            & (Message.task == current)
+                        )
+                        if source is not None:
+                            (PendingMessageInsert.update(
+                                target_message_id=assistant_message_id,
+                            ).where(
+                                (PendingMessageInsert.target_message_id == source.id)
+                                & (PendingMessageInsert.id.not_in(pending_insert_ids))
+                            ).execute())
                 delete_pending_insert_batch(pending_insert_ids or [])
 
             return (
@@ -1623,18 +1643,8 @@ class CoordinatorModule:
 
     @staticmethod
     def _coordinator_root(project, task: Task) -> str:
-        """Resolve the coordinator agent's working root directory.
-
-        Defaults to the task's workflow artifacts directory
-        (``.workstep/artifacts/<workflow_id>/``) so the agent can read the
-        task's produced files directly; falls back to ``task.cwd`` for
-        workflow-less tasks.
-        """
-        if task.workflow_id:
-            root = Path(project.workstep_dir) / "artifacts" / task.workflow_id
-            root.mkdir(parents=True, exist_ok=True)
-            return str(root)
-        return task.cwd
+        """Run the coordinator from the project root, never the artifacts tree."""
+        return str(project.path)
 
     def _assemble_context(
         self,
@@ -1748,6 +1758,7 @@ class CoordinatorModule:
         }
         context = {
             "coordinator_root_dir": root_dir or self._coordinator_root(project, task),
+            "project_id": getattr(project, "id", None),
             "task": {
                 "id": task.id,
                 "title": task.title,
@@ -1786,6 +1797,13 @@ class CoordinatorModule:
             "cannot accept image input, use coordinator_vision_model to analyze the "
             "image before replying. Return "
             f"JSON matching this shape: {json.dumps(schema, ensure_ascii=False)}"
+        )
+        instructions += (
+            " For code work that needs an isolated Git branch, inspect this project's "
+            "repositories and create task worktrees only for repositories relevant to "
+            "the task when needed. If no repository is needed, "
+            "leave the task workspace empty. Git worktree setup is separate from "
+            "workflow action proposals."
         )
         if COORDINATOR_CONFIG.workstep_tools and (
             engine is None
@@ -1873,7 +1891,12 @@ class CoordinatorModule:
                 if direct_images or not images
                 else engine.render_image_prompt(prompt, images)
             )
-            return engine.spawn_coordinator(
+            spawn_coordinator = getattr(
+                engine,
+                "spawn_coordinator_with_retry",
+                engine.spawn_coordinator,
+            )
+            return spawn_coordinator(
                 prompt=spawn_prompt,
                 cwd=cwd,
                 model=model,

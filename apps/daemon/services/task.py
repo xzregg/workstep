@@ -407,7 +407,8 @@ class TaskService:
         reported_error: str | None = None
 
         try:
-            async for event in engine.spawn(prompt=prompt, cwd=cwd):
+            spawn = getattr(engine, "spawn_with_retry", engine.spawn)
+            async for event in spawn(prompt=prompt, cwd=cwd):
                 normalize_event = getattr(engine, "normalize_event", None)
                 if normalize_event is not None:
                     event = normalize_event(event)
@@ -638,7 +639,6 @@ class TaskService:
             original = Task.get_by_id(task_id)
             now = utc_now()
             new_id = str(uuid.uuid4())
-
             # Create new task
             new_task = Task.create(
                 id=new_id,

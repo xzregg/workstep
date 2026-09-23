@@ -36,7 +36,7 @@ rm -rf "$output_dir"
 mkdir -p "$output_dir/app/daemon"
 cp -R "$python_root" "$output_dir/python"
 cp "$desktop_dir/backend/main.py" "$desktop_dir/backend/server.py" "$output_dir/app/"
-cp "$daemon_dir/__init__.py" "$daemon_dir/main.py" "$daemon_dir/settings.py" "$daemon_dir/version.py" "$output_dir/app/daemon/"
+cp "$daemon_dir/__init__.py" "$daemon_dir/cli.py" "$daemon_dir/main.py" "$daemon_dir/settings.py" "$daemon_dir/version.py" "$output_dir/app/daemon/"
 for runtime_dir in agent_assistants api data engines models schemas services static streaming; do
   cp -R "$daemon_dir/$runtime_dir" "$output_dir/app/daemon/$runtime_dir"
 done

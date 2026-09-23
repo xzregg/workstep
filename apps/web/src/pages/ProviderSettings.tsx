@@ -1,3 +1,4 @@
+import ResizablePanel from '../components/ResizablePanel'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Button from '../components/Button'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -824,7 +825,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
           }}
           style={{ padding: 24 }}
         >
-          <div
+          <ResizablePanel
             className="modal"
             onMouseDown={(event) => event.stopPropagation()}
             style={{ width: 560, maxWidth: 'calc(100vw - 48px)' }}
@@ -1106,7 +1107,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                 </>
               )}
             </div>
-          </div>
+          </ResizablePanel>
         </div>
       )}
 
@@ -1125,7 +1126,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
           }}
           style={{ padding: 24 }}
         >
-          <div
+          <ResizablePanel
             className="modal"
             onMouseDown={(event) => event.stopPropagation()}
             style={{ width: 560, maxWidth: 'calc(100vw - 48px)' }}
@@ -1283,7 +1284,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                 </Button>
               </div>
             </div>
-          </div>
+          </ResizablePanel>
         </div>
       )}
 

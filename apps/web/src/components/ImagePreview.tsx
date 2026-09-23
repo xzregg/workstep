@@ -1,3 +1,4 @@
+import ResizablePanel from './ResizablePanel'
 import { useEffect } from 'react'
 import Icon from './Icon'
 import { resolveMarkdownImageSrc } from '../utils/markdownImages'
@@ -54,7 +55,10 @@ export default function ImagePreview({ src, alt, projectId, onClose }: ImagePrev
       >
         <Icon name="x" size={16} strokeWidth={2} />
       </button>
-      <img src={resolved} alt={alt || t('md.image')} />
+      <ResizablePanel className="image-preview-window" minWidth={160} minHeight={120}>
+        <div className="preview-drag-handle" data-dialog-drag-handle role="button" tabIndex={0} aria-label={t('taskDetail.dragWindowAria')} title={t('taskDetail.dragWindowTitle')} />
+        <img src={resolved} alt={alt || t('md.image')} />
+      </ResizablePanel>
     </div>
   )
 }

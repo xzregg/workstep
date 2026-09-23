@@ -25,6 +25,41 @@ from streaming.bus import EventBus
 OUTPUT_PATH_RE = re.compile(r"output path: `([^`]+)`")
 
 
+def test_entry_snapshot_keeps_two_boundary_ports_as_distinct_task_contexts(
+    tmp_path,
+):
+    step = Step(
+        key="c",
+        label="C",
+        inputs=[{"name": "A2"}, {"name": "B1"}],
+        incoming_connections=[
+            {
+                "id": "a2-to-c", "from": "a", "fromPort": 1,
+                "to": "c", "toPort": 0, "kind": "solid",
+            },
+            {
+                "id": "b1-to-c", "from": "b", "fromPort": 0,
+                "to": "c", "toPort": 1, "kind": "solid",
+            },
+        ],
+    )
+
+    snapshot = resolve_input_snapshot(
+        step=step,
+        artifacts_root=tmp_path,
+        workflow_id="flow",
+        task_id="task",
+        routing_state=empty_routing_state(),
+        task_context_edges={"a2-to-c", "b1-to-c"},
+    )
+
+    assert snapshot["execution_type"] == "initial"
+    assert snapshot["ports"] == [
+        {"port": 0, "name": "A2", "status": "task_context", "sources": []},
+        {"port": 1, "name": "B1", "status": "task_context", "sources": []},
+    ]
+
+
 def test_legacy_manifest_routes_only_an_unambiguous_declared_output(tmp_path):
     artifact = ArtifactRound(
         round=1,

@@ -29,6 +29,7 @@ def test_review_prompt_uses_step_as_the_product_term(tmp_path):
     task = type("TaskStub", (), {
         "workflow_id": "flow",
         "id": "task",
+        "cwd": str(tmp_path),
     })()
     step = Step(
         key="build",
@@ -351,6 +352,12 @@ async def test_automatic_review_message_is_visible_while_review_is_running(tmp_p
         assert len(running_messages) == 1
         assert running_messages[0].id == starts[0]["messageId"]
         assert running_messages[0].content == "审核中"
+        running_prompt = json.loads(running_messages[0].prompt_json or "{}").get("prompt")
+        assert running_prompt
+        assert "You are the WorkStep step review agent." in running_prompt
+        assert starts[0].get("prompt") == running_prompt
+        history = await asyncio.to_thread(get_task_history, task.id)
+        assert next(message for message in history if message["id"] == starts[0]["messageId"])["prompt"] == running_prompt
 
         release_review.set()
         await pipeline_task
@@ -1069,14 +1076,15 @@ async def test_manual_reject_injects_feedback_into_next_attempt(tmp_path):
             "build",
             review.id,
             "reject",
-            comment="缺少需求文档",
+            comment="请检查 {worktrees} 和 ｛step_name｝，保留 {custom_value}",
         )
         await runtime.wait(reject_handle)
 
         # 阶段被自动重跑，第二次提示词包含人工驳回原因
         assert len(calls) == 2
         assert "## Previous review feedback" in calls[1]
-        assert "缺少需求文档" in calls[1]
+        assert f"请检查 .workstep/worktrees/{task.id} 和 构建，保留 {{custom_value}}" in calls[1]
+        assert "{worktrees}" not in calls[1]
         task_step = TaskStep.get(
             (TaskStep.task == task) & (TaskStep.step_key == "build")
         )
@@ -1090,7 +1098,7 @@ async def test_manual_reject_injects_feedback_into_next_attempt(tmp_path):
         )
         assert len(reviews) == 2
         assert reviews[0].status == "rejected"
-        assert reviews[0].decision_comment == "缺少需求文档"
+        assert reviews[0].decision_comment == "请检查 {worktrees} 和 ｛step_name｝，保留 {custom_value}"
         assert reviews[1].status == "pending"
     finally:
         ENGINE_REGISTRY.clear()

@@ -55,6 +55,7 @@ import MarqueeText from './MarqueeText'
 import TaskStepProgressGraph from './TaskStepProgressGraph'
 import TaskExecutionAnalysis from './TaskExecutionAnalysis'
 import TaskArtifactBrowser from './TaskArtifactBrowser'
+import TaskGitWorkspace from './git/TaskGitWorkspace'
 import { displayUserDetail, displayUserSender } from '../utils/actorDisplay'
 import {
   isVisibleHistoryMessage,
@@ -71,6 +72,8 @@ import {
   findStepRoundInputPort,
   hasStepIoContractChanged,
   artifactsForStepRoundOutputs,
+  groupStepOutputsByInput,
+  downstreamInputsForOutput,
   artifactsForMessage,
   findActionablePendingReview,
   isNearConversationBottom,
@@ -96,6 +99,7 @@ import {
 } from '../utils/datetime'
 import { useI18n, type TKey } from '../i18n'
 import { shouldShowAssistantThinking } from '../utils/assistantThinking'
+import TaskRecoveredBadge from './TaskRecoveredBadge'
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -211,6 +215,13 @@ export interface TaskDetailViewProps {
 
   // ── Step definitions & progress ──
   steps: StepData[]
+  workflowConnections?: Array<{
+    from: string | number
+    fromPort?: number
+    to: string | number
+    toPort?: number
+    kind?: string
+  }>
   stepProgress: StepProgress[]
   selectedStep: number
   onStepClick: (index: number) => void
@@ -258,6 +269,8 @@ export interface TaskDetailViewProps {
   onStop?: () => void
   stoppingStepKeys?: string[]
   stepResuming?: boolean
+  resetStep?: boolean
+  onResetStepChange?: (active: boolean) => void
   onStopStep?: (stepKey: string) => void
   /** 引擎会话丢失时，清空会话并用完整步骤提示词重跑。 */
   onRestartStepWithFreshSession?: (stepKey: string) => void
@@ -369,6 +382,7 @@ export interface TaskDetailViewProps {
 
   // ── Project ──
   projectId?: string
+  gitEnabled?: boolean
   /** Public shares inject their session-scoped report loader instead of a project id. */
   executionReportLoader?: () => Promise<TaskExecutionReport>
 }
@@ -379,6 +393,7 @@ export default function TaskDetailView({
   chatEnabled,
   task,
   steps,
+  workflowConnections = [],
   stepProgress,
   selectedStep,
   onStepClick,
@@ -413,6 +428,8 @@ export default function TaskDetailView({
   onStop,
   stoppingStepKeys,
   stepResuming,
+  resetStep,
+  onResetStepChange,
   onStopStep,
   onRestartStepWithFreshSession,
   restartingStepKeys,
@@ -503,6 +520,7 @@ export default function TaskDetailView({
   onViewingPromptChange,
   running,
   projectId,
+  gitEnabled = false,
   executionReportLoader,
   onChatError,
 }: TaskDetailViewProps) {
@@ -587,7 +605,7 @@ export default function TaskDetailView({
   const compact = useCompactLayout()
   const mobileReviewRef = useRef<HTMLDivElement>(null)
   const [mobileTab, setMobileTab] = useState<'conversation' | 'steps' | 'artifacts'>('conversation')
-  const [detailMode, setDetailMode] = useState<'detail' | 'artifacts' | 'analysis'>('detail')
+  const [detailMode, setDetailMode] = useState<'detail' | 'artifacts' | 'analysis' | 'git'>('detail')
   const SPLIT_RATIO_KEY = 'workstep:task-detail-split-ratio'
   const SPLIT_HANDLE_WIDTH = 8
   const contentSplitRef = useRef<HTMLDivElement>(null)
@@ -1024,6 +1042,11 @@ export default function TaskDetailView({
             >
               {t('taskDetail.currentStep', { step: activeStep.label })}
             </span>
+            <TaskRecoveredBadge
+              status={task.status}
+              recoveredCount={task.recovered_count}
+              className="task-detail-recovered-badge"
+            />
             <span
               style={{
                 display: 'inline-flex',
@@ -1097,42 +1120,6 @@ export default function TaskDetailView({
             <Icon name="x" size={16} />
           </Button>
         )}
-      </div>
-    )
-  }
-
-  // ── Render: Recovered hint ──
-
-  const renderRecoveredHint = () => {
-    if (task?.status !== 'running' || !(task?.recovered_count || 0))
-      return null
-    return (
-      <div
-        role="status"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '8px 16px',
-          fontSize: 'calc(13px * var(--font-scale))',
-          lineHeight: 1.4,
-          color: 'var(--accent)',
-          background: 'color-mix(in oklab, var(--accent), transparent 92%)',
-          borderBottom: '1px solid var(--border-soft)',
-          flexShrink: 0,
-        }}
-      >
-        <span className="task-status-spinner" aria-hidden="true" />
-        <span>
-          {t('taskDetail.recoveredRunning', {
-            count:
-              task.recovered_count && task.recovered_count > 1
-                ? t('taskDetail.recoveredCount', {
-                    count: task.recovered_count,
-                  })
-                : '',
-          })}
-        </span>
       </div>
     )
   }
@@ -1393,35 +1380,20 @@ export default function TaskDetailView({
                 {t('taskDetail.ioInput')}
               </div>
               {(() => {
-                const nextStepIdx = selectedStep + 1
-                const nextStep =
-                  nextStepIdx < steps.length
-                    ? steps[nextStepIdx]
-                    : null
-                const nextInputs = nextStep
-                  ? nextStep.inputs || []
-                  : []
-                const stepOutputs = currentStep.outputs?.length
-                  ? currentStep.outputs
-                  : (currentStep.inputs || [])[0]?.outputs || []
                 const producedOutputs = artifactsForStepRoundOutputs(
                   artifacts,
                   currentStep.key,
                   activeIoRound,
                 )
+                const outputsByInput = groupStepOutputsByInput(
+                  currentStep.inputs || [],
+                  currentStep.outputs || [],
+                  producedOutputs,
+                )
 
                 return (currentStep.inputs || []).map(
                   (inp: any, inpIdx: number) => {
-                    const subOutputs = inpIdx === 0
-                      ? producedOutputs.length > 0
-                        ? producedOutputs.map((artifact) => ({
-                          name: artifact.logical_name || artifact.name,
-                          type: artifact.artifact_type
-                            || (artifact.is_dir ? 'directory' : 'file'),
-                          artifact,
-                        }))
-                        : stepOutputs
-                      : []
+                    const subOutputs = outputsByInput[inpIdx] || []
                     const inputPortSnapshot = findStepRoundInputPort(
                       artifactInputSnapshots,
                       currentStep.key,
@@ -1604,7 +1576,15 @@ export default function TaskDetailView({
                         {/* Sub-outputs */}
                         {subOutputs.map(
                           (out: any, outIdx: number) => {
-                            const nextInput = nextInputs[outIdx]
+                            const downstreamInputs = downstreamInputsForOutput(
+                              steps,
+                              workflowConnections,
+                              currentStep.key,
+                              out.outputIndex,
+                            )
+                            const downstreamLabels = downstreamInputs.map((target) =>
+                              `→ ${target.stepLabel}: ${target.inputName}`,
+                            )
                             const outArtifact = out.artifact ?? findArtifact(
                               out.name,
                               currentStep.key,
@@ -1712,7 +1692,7 @@ export default function TaskDetailView({
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: 6,
-                                    flex: 1,
+                                    flex: '1 1 160px',
                                     minWidth: 0,
                                   }}
                                 >
@@ -1781,27 +1761,19 @@ export default function TaskDetailView({
                                     {t('common.open')}
                                   </span>
                                 )}
-                                {nextInput && (
-                                  <span
+                                {downstreamInputs.length > 0 && (
+                                  <MarqueeText
+                                    className="step-output-route-marquee"
+                                    text={downstreamLabels.join('   ')}
+                                    title={downstreamLabels.join('\n')}
                                     style={{
+                                      flex: '0 1 96px',
+                                      width: 96,
+                                      maxWidth: '20%',
                                       fontSize: 'calc(11px * var(--font-scale))',
                                       color: 'var(--muted)',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: 2,
                                     }}
-                                  >
-                                    <span
-                                      style={{
-                                        color: 'var(--meta)',
-                                        fontSize: 'calc(11px * var(--font-scale))',
-                                      }}
-                                    >
-                                      →
-                                    </span>{' '}
-                                    {nextStep?.label}:{' '}
-                                    {nextInput.name}
-                                  </span>
+                                  />
                                 )}
                               </div>
                             )
@@ -3682,6 +3654,13 @@ export default function TaskDetailView({
                     }
                   : undefined)
               }
+              resetStep={resumableTarget && onResetStepChange
+                ? {
+                    active: Boolean(resetStep),
+                    onChange: onResetStepChange,
+                    disabled: Boolean(stepResuming),
+                  }
+                : undefined}
               stopTitle={
                 chatTarget !== 'coordinator'
                   ? t('taskDetail.stopStepTitle')
@@ -3869,10 +3848,7 @@ export default function TaskDetailView({
       {/* Header */}
       {renderHeader()}
 
-      {/* Recovered hint */}
-      {renderRecoveredHint()}
-
-      {(!compact || canShowAnalysis) && (
+      {(!compact || canShowAnalysis || gitEnabled) && (
         <div className="task-detail-primary-tabs" role="tablist" aria-label={t('executionAnalysis.title')}>
           <button type="button" role="tab" aria-selected={detailMode === 'detail'} onClick={() => setDetailMode('detail')}>{t('taskDetail.detailTab')}</button>
           {!compact && (
@@ -3881,10 +3857,15 @@ export default function TaskDetailView({
           {canShowAnalysis && (
             <button type="button" role="tab" aria-selected={detailMode === 'analysis'} onClick={() => setDetailMode('analysis')}>{t('executionAnalysis.title')}</button>
           )}
+          {gitEnabled && projectId && (
+            <button type="button" role="tab" aria-selected={detailMode === 'git'} onClick={() => setDetailMode('git')}>{t('git.taskWorkspace')}</button>
+          )}
         </div>
       )}
 
-      {detailMode === 'analysis' && canShowAnalysis ? (
+      {detailMode === 'git' && gitEnabled && projectId ? (
+        <TaskGitWorkspace projectId={projectId} taskId={task.id} />
+      ) : detailMode === 'analysis' && canShowAnalysis ? (
         <TaskExecutionAnalysis
           taskId={task.id}
           projectId={projectId}

@@ -61,7 +61,34 @@ def build_parser() -> argparse.ArgumentParser:
     task_create.add_argument("--title", required=True, help="task title")
     task_create.add_argument("--cwd", help="working directory (defaults to project path)")
     task_create.add_argument("--desc", dest="description", help="task description")
+    task_create.add_argument("--workflow", dest="workflow_id", help="target workflow id")
+    task_create.add_argument("--start-step", dest="start_step_key", help="workflow step key to start from")
     add_json(task_create)
+    task_repos = task_sub.add_parser("repos", help="list project Git repositories")
+    task_repos.add_argument("--project", required=True, dest="project_id")
+    add_json(task_repos)
+    task_worktrees = task_sub.add_parser("worktrees", help="list a task's Git worktrees")
+    task_worktrees.add_argument("--project", required=True, dest="project_id")
+    task_worktrees.add_argument("--task", required=True, dest="task_id")
+    add_json(task_worktrees)
+    task_worktree_add = task_sub.add_parser("worktree-add", help="create a Git worktree for a task")
+    task_worktree_add.add_argument("--project", required=True, dest="project_id")
+    task_worktree_add.add_argument("--task", required=True, dest="task_id")
+    task_worktree_add.add_argument("--repository", required=True, dest="repository_id")
+    task_worktree_add.add_argument("--alias", required=True)
+    task_worktree_add.add_argument("--base", default="HEAD", dest="base_ref")
+    task_worktree_add.add_argument("--branch", dest="branch_name", help="new branch name (defaults to workstep/<task>/<alias>)")
+    add_json(task_worktree_add)
+
+    workflow = subparsers.add_parser("workflow", help="inspect project workflows")
+    workflow_sub = workflow.add_subparsers(dest="subcommand", required=True)
+    workflow_list = workflow_sub.add_parser("list", help="list workflows of a project")
+    workflow_list.add_argument("--project", required=True, dest="project_id", help="project id")
+    add_json(workflow_list)
+    workflow_get = workflow_sub.add_parser("get", help="get one workflow with its steps")
+    workflow_get.add_argument("--project", required=True, dest="project_id", help="project id")
+    workflow_get.add_argument("--workflow", required=True, dest="workflow_id", help="workflow id")
+    add_json(workflow_get)
 
     engine = subparsers.add_parser("engine", help="manage engines")
     engine_sub = engine.add_subparsers(dest="subcommand", required=True)
@@ -151,6 +178,20 @@ async def dispatch(args: argparse.Namespace, client: WorkstepClient | None = Non
                 "workstep_get_task",
                 {"project_id": args.project_id, "task_id": args.task_id},
             )
+        if args.subcommand == "repos":
+            return await client.call("workstep_list_git_repositories", {"project_id": args.project_id})
+        if args.subcommand == "worktrees":
+            return await client.call("workstep_get_task_workspace", {"project_id": args.project_id, "task_id": args.task_id})
+        if args.subcommand == "worktree-add":
+            return await client.call("workstep_add_task_worktree", {
+                "project_id": args.project_id,
+                "task_id": args.task_id,
+                "repository_id": args.repository_id,
+                "alias": args.alias,
+                "base_ref": args.base_ref,
+                "branch_name": args.branch_name,
+                "confirm": "yes",
+            })
         if args.subcommand == "create":
             arguments: dict = {
                 "project_id": args.project_id,
@@ -161,7 +202,20 @@ async def dispatch(args: argparse.Namespace, client: WorkstepClient | None = Non
                 arguments["cwd"] = args.cwd
             if args.description:
                 arguments["description"] = args.description
+            if args.workflow_id:
+                arguments["workflow_id"] = args.workflow_id
+            if args.start_step_key:
+                arguments["start_step_key"] = args.start_step_key
             return await client.call("workstep_create_task", arguments)
+    if command == "workflow":
+        arguments = {"project_id": args.project_id}
+        if args.subcommand == "list":
+            return await client.call("workstep_list_workflows", arguments)
+        if args.subcommand == "get":
+            return await client.call(
+                "workstep_get_workflow",
+                {**arguments, "workflow_id": args.workflow_id},
+            )
     if command == "engine" and args.subcommand == "list":
         return await client.call("workstep_list_engines", {})
     if command == "schedule":

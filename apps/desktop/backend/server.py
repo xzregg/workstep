@@ -83,10 +83,18 @@ def prepare_engine_package_dir() -> Path:
     return package_dir.resolve()
 
 
+def prepare_cli_environment(host: str, port: int) -> None:
+    """Expose the bundled CLI location and live daemon endpoint to engines."""
+    os.environ["WORKSTEP_DAEMON_DIR"] = str(_daemon_dir())
+    os.environ["WORKSTEP_CLI_PYTHON"] = sys.executable
+    os.environ["WORKSTEP_DAEMON_URL"] = f"http://{host}:{port}"
+
+
 def _load_app(host: str, port: int):
     os.environ["WORKSTEP_HOST"] = host
     os.environ["WORKSTEP_PORT"] = str(port)
     os.environ.setdefault("WORKSTEP_WEB_DIST", str(_bundle_dir() / "web_dist"))
+    prepare_cli_environment(host, port)
 
     if "__compiled__" in globals():
         from daemon_entry import app  # type: ignore[import-not-found]  # noqa: PLC0415

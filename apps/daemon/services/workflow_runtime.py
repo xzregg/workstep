@@ -36,6 +36,7 @@ from services.artifact_rounds import (
     update_round_manifest_status,
 )
 from services.artifact_routing import (
+    empty_routing_state,
     normalize_routing_state,
     route_artifact_round,
 )
@@ -123,6 +124,8 @@ class _PreparedWorkflowRun:
     steps_config: dict
     artifacts_dir: Path
     user_message: Message | None
+    entry_step_key: str | None = None
+    execution_scope: frozenset[str] | None = None
 
 
 class WorkflowRuntime:
@@ -307,6 +310,15 @@ class WorkflowRuntime:
         workflow = WorkflowDefinition.load(workflow_data)
         compiled = workflow.compile()
         steps_config = compiled.to_steps_config()
+        entry_step_key, execution_scope = self._infer_entry_scope(
+            task,
+            steps_config,
+        )
+        routing_state = empty_routing_state()
+        routing_state["entry_step_key"] = entry_step_key
+        routing_state["execution_scope"] = (
+            sorted(execution_scope) if execution_scope is not None else None
+        )
         now = utc_now()
         workflow_run = WorkflowRun.create(
             id=str(uuid.uuid4()),
@@ -314,6 +326,8 @@ class WorkflowRuntime:
             status="running",
             workflow_schema_version=compiled.schema_version,
             workflow_snapshot_json="{}",
+            routing_state_json=json.dumps(routing_state, ensure_ascii=False),
+            restart_from_step_key=entry_step_key,
             owner_id=self._instance_id,
             heartbeat_at=now,
             started_at=now,
@@ -361,7 +375,46 @@ class WorkflowRuntime:
             steps_config=steps_config,
             artifacts_dir=artifacts_dir,
             user_message=user_message,
+            entry_step_key=entry_step_key,
+            execution_scope=(
+                frozenset(execution_scope)
+                if execution_scope is not None else None
+            ),
         )
+
+    @staticmethod
+    def _infer_entry_scope(
+        task: Task,
+        steps_config: dict,
+    ) -> tuple[str | None, set[str] | None]:
+        """Infer a deliberately selected entry from initial step statuses."""
+        if WorkflowRun.select().where(WorkflowRun.task == task).exists():
+            return None, None
+        scheduler = DAGScheduler([
+            Step.from_dict(item) for item in steps_config.get("steps", [])
+        ])
+        statuses = {
+            row.step_key: row.status
+            for row in TaskStep.select().where(TaskStep.task == task)
+        }
+        if not any(
+            statuses.get(step_key) == "skipped"
+            for step_key in scheduler.steps
+        ):
+            return None, None
+        scope = {
+            step_key
+            for step_key in scheduler.steps
+            if statuses.get(step_key) != "skipped"
+        }
+        roots = [
+            step_key
+            for step_key in scope
+            if not (set(scheduler.steps[step_key].depends_on) & scope)
+        ]
+        if len(roots) != 1:
+            return None, None
+        return roots[0], scope
 
     def _launch_prepared_run(
         self,
@@ -370,11 +423,21 @@ class WorkflowRuntime:
         step_followups: dict[str, str] | None = None,
         input_rounds_by_step: dict[str, dict[str, int]] | None = None,
         execution_scope: set[str] | None = None,
+        entry_step_key: str | None = None,
         step_trigger_names: dict[str, str] | None = None,
     ) -> WorkflowRunHandle:
         """Attach prepared persistent state to event-loop-owned runtime state."""
         task = prepared.task
         workflow_run = prepared.workflow_run
+        resolved_scope = (
+            execution_scope
+            if execution_scope is not None
+            else (
+                set(prepared.execution_scope)
+                if prepared.execution_scope is not None else None
+            )
+        )
+        resolved_entry = entry_step_key or prepared.entry_step_key
         runner = TaskRunner(
             self._event_bus,
             dispatch_service=self._dispatch_service,
@@ -383,7 +446,8 @@ class WorkflowRuntime:
             step_followups=step_followups,
             step_trigger_names=step_trigger_names,
             input_rounds_by_step=input_rounds_by_step,
-            execution_scope=execution_scope,
+            execution_scope=resolved_scope,
+            entry_step_key=resolved_entry,
             initial_user_input_step_key=(
                 prepared.user_message.step_key
                 if prepared.user_message is not None
@@ -402,7 +466,7 @@ class WorkflowRuntime:
                 steps_config=prepared.steps_config,
                 artifacts_dir=prepared.artifacts_dir,
                 user_input=user_input,
-                execution_scope=execution_scope,
+                execution_scope=resolved_scope,
             ),
             name=f"workflow-run:{workflow_run.id}",
         )
@@ -645,6 +709,7 @@ class WorkflowRuntime:
         *,
         author_name: str | None = None,
         pending_insert_ids: list[str] | None = None,
+        reset_session: bool = False,
     ) -> dict:
         """Persist a user message and re-run a stopped or completed step.
 
@@ -757,6 +822,7 @@ class WorkflowRuntime:
             step_key,
             step_followup=normalized,
             trigger_name=trigger_name,
+            reset_session=reset_session,
         )
         await self._publish_user_message(
             task_id,
@@ -841,7 +907,7 @@ class WorkflowRuntime:
         but the step prompt is self-contained, so clearing the saved session
         and starting a fresh engine session reproduces the step from scratch.
         """
-        def reset_session():
+        def validate_reset():
             task = Task.get_or_none(Task.id == task_id)
             if task is None:
                 raise ValueError(f"Task not found: {task_id}")
@@ -855,17 +921,14 @@ class WorkflowRuntime:
                 "rework_waiting",
             ):
                 raise ValueError(f"步骤执行中，不能重建会话: {step_key}")
-            step.session_id = None
-            step.session_provider = None
-            step.pending_handoff_json = None
-            step.save(only=[
-                TaskStep.session_id,
-                TaskStep.session_provider,
-                TaskStep.pending_handoff_json,
-            ])
 
-        await self._run_db(project_id, lambda _project: reset_session())
-        handle = await self.restart_from_step(project_id, task_id, step_key)
+        await self._run_db(project_id, lambda _project: validate_reset())
+        handle = await self.restart_from_step(
+            project_id,
+            task_id,
+            step_key,
+            reset_session=True,
+        )
         return {
             "step_key": step_key,
             "run_id": handle.id,
@@ -887,7 +950,7 @@ class WorkflowRuntime:
                 & (ReviewRun.task == task_id)
                 & (ReviewRun.step_key == step_key)
             )
-            if review is None or review.status != "pending":
+            if review is None or review.status not in {"pending", "cancelled"}:
                 raise RuntimeError("Manual review is no longer pending")
             review.status = "skipped"
             review.ended_at = now
@@ -1203,11 +1266,35 @@ class WorkflowRuntime:
         if task.id in self._runners:
             raise RuntimeError(f"Task is already running: {task.id}")
         heal_task_cwd(task, project)
+        routing_state = normalize_routing_state(
+            json.loads(workflow_run.routing_state_json)
+            if workflow_run.routing_state_json else None
+        )
+        entry_step_key = (
+            routing_state.get("entry_step_key")
+            or workflow_run.restart_from_step_key
+        )
+        persisted_scope = routing_state.get("execution_scope")
+        execution_scope = (
+            {str(value) for value in persisted_scope}
+            if isinstance(persisted_scope, list) else None
+        )
+        if entry_step_key and execution_scope is None:
+            scheduler = DAGScheduler([
+                Step.from_dict(item) for item in steps_config.get("steps", [])
+            ])
+            if entry_step_key in scheduler.steps:
+                execution_scope = {
+                    entry_step_key,
+                    *scheduler.get_all_downstream(entry_step_key),
+                }
         runner = TaskRunner(
             self._event_bus,
             dispatch_service=self._dispatch_service,
             source_project_id=project.id,
             database_executor=getattr(project, "database_executor", None),
+            execution_scope=execution_scope,
+            entry_step_key=entry_step_key,
         )
         self._runners[task.id] = runner
         self._register_lease(workflow_run.id, project.id)
@@ -1220,6 +1307,7 @@ class WorkflowRuntime:
                 steps_config=steps_config,
                 artifacts_dir=Path(project.workstep_dir) / "artifacts",
                 user_input="",
+                execution_scope=execution_scope,
             ),
             name=f"workflow-run:{workflow_run.id}:resume",
         )
@@ -1777,6 +1865,7 @@ class WorkflowRuntime:
         step_followup: str | None = None,
         trigger_name: str | None = None,
         input_rounds: dict[str, int] | None = None,
+        reset_session: bool = False,
     ) -> WorkflowRunHandle:
         """Stop the current runner and start a child run from one DAG step.
 
@@ -1818,25 +1907,12 @@ class WorkflowRuntime:
                 if step_key not in scheduler.steps:
                     raise ValueError(f"Step does not exist: {step_key}")
                 affected = {step_key, *scheduler.get_all_downstream(step_key)}
-                interrupted = {
-                    row.step_key
-                    for row in TaskStep.select().where(
-                        (TaskStep.task == task)
-                        & (
-                            TaskStep.status.in_(
-                                ["running", "reviewing", "retrying", "rework"]
-                            )
-                        )
-                    )
-                }
                 return {
                     "without_parent": False,
                     "parent_run_id": parent_run_id,
                     "compiled": compiled,
                     "steps_config": steps_config,
-                    "workflow_data": workflow_data,
                     "affected": affected,
-                    "interrupted": interrupted,
                 }
 
             inspected = await self._run_db(project_id, inspect_restart)
@@ -1848,14 +1924,12 @@ class WorkflowRuntime:
                     step_followup=step_followup,
                     trigger_name=trigger_name,
                     input_rounds=input_rounds,
+                    reset_session=reset_session,
                 )
             parent_run_id = inspected["parent_run_id"]
             compiled = inspected["compiled"]
             steps_config = inspected["steps_config"]
-            workflow_data = inspected["workflow_data"]
             affected = inspected["affected"]
-            interrupted = inspected["interrupted"]
-
             runner = self._runners.get(task_id)
             if runner is not None:
                 await runner.cancel_task(task_id)
@@ -1870,13 +1944,14 @@ class WorkflowRuntime:
                 task = Task.get_by_id(task_id)
                 heal_task_cwd(task, project)
                 parent = WorkflowRun.get_by_id(parent_run_id)
-                execution_keys = affected | interrupted
+                execution_keys = affected
                 task, child = self._create_restart_run(
                     task,
                     parent,
                     compiled.schema_version,
                     step_key,
                     execution_keys,
+                    reset_session_step_key=(step_key if reset_session else None),
                 )
                 return _PreparedWorkflowRun(
                     project_id=project.id,
@@ -1886,6 +1961,8 @@ class WorkflowRuntime:
                     steps_config=steps_config,
                     artifacts_dir=Path(project.workstep_dir) / "artifacts",
                     user_message=None,
+                    entry_step_key=step_key,
+                    execution_scope=frozenset(affected),
                 )
 
             prepared = await self._run_db(project_id, persist_restart)
@@ -1894,7 +1971,8 @@ class WorkflowRuntime:
                 "",
                 {step_key: step_followup} if step_followup else None,
                 {step_key: input_rounds} if input_rounds else None,
-                execution_scope=affected | interrupted,
+                execution_scope=affected,
+                entry_step_key=step_key,
                 step_trigger_names=(
                     {step_key: trigger_name} if trigger_name else None
                 ),
@@ -1946,11 +2024,15 @@ class WorkflowRuntime:
         step_followup: str | None = None,
         trigger_name: str | None = None,
         input_rounds: dict[str, int] | None = None,
+        reset_session: bool = False,
     ) -> WorkflowRunHandle:
         prepared = await self._run_db(
             project_id,
             lambda project: self._prepare_start_from_step_without_parent(
-                project, task_id, step_key
+                project,
+                task_id,
+                step_key,
+                reset_session=reset_session,
             ),
         )
         return self._launch_prepared_run(
@@ -1958,6 +2040,11 @@ class WorkflowRuntime:
             "",
             step_followups={step_key: step_followup} if step_followup else None,
             input_rounds_by_step={step_key: input_rounds} if input_rounds else None,
+            execution_scope=(
+                set(prepared.execution_scope)
+                if prepared.execution_scope is not None else None
+            ),
+            entry_step_key=prepared.entry_step_key,
             step_trigger_names={step_key: trigger_name} if trigger_name else None,
         )
 
@@ -1966,6 +2053,8 @@ class WorkflowRuntime:
         project,
         task_id: str,
         step_key: str,
+        *,
+        reset_session: bool = False,
     ) -> _PreparedWorkflowRun:
         task = Task.get_by_id(task_id)
         heal_task_cwd(task, project)
@@ -2016,7 +2105,40 @@ class WorkflowRuntime:
         now = utc_now()
         workflow_run = prepared.workflow_run
         workflow_run.restart_from_step_key = step_key
-        workflow_run.save(only=[WorkflowRun.restart_from_step_key])
+        routing_state = normalize_routing_state(
+            json.loads(workflow_run.routing_state_json)
+            if workflow_run.routing_state_json else None
+        )
+        routing_state["entry_step_key"] = step_key
+        routing_state["execution_scope"] = sorted(execution_keys)
+        workflow_run.routing_state_json = json.dumps(
+            routing_state,
+            ensure_ascii=False,
+        )
+        workflow_run.save(only=[
+            WorkflowRun.restart_from_step_key,
+            WorkflowRun.routing_state_json,
+        ])
+        if reset_session:
+            TaskStep.update(
+                session_id=None,
+                session_provider=None,
+                pending_handoff_json=None,
+            ).where(
+                (TaskStep.task == task)
+                & (TaskStep.step_key == step_key)
+            ).execute()
+        prepared = _PreparedWorkflowRun(
+            project_id=prepared.project_id,
+            database_executor=prepared.database_executor,
+            task=prepared.task,
+            workflow_run=prepared.workflow_run,
+            steps_config=prepared.steps_config,
+            artifacts_dir=prepared.artifacts_dir,
+            user_message=prepared.user_message,
+            entry_step_key=step_key,
+            execution_scope=frozenset(execution_keys),
+        )
         for reusable_key in reusable_keys:
             step = scheduler.steps[reusable_key]
             StepRun.create(
@@ -2039,6 +2161,7 @@ class WorkflowRuntime:
         schema_version: int,
         step_key: str,
         execution_keys: set[str],
+        reset_session_step_key: str | None = None,
     ) -> tuple[Task, WorkflowRun]:
         now = utc_now()
         with db_proxy.atomic():
@@ -2052,6 +2175,14 @@ class WorkflowRuntime:
                 (StepRun.run == parent)
                 & (StepRun.status == "running")
             ).execute()
+            ReviewRun.update(
+                status="cancelled",
+                ended_at=now,
+                error="流程运行已被新的入口替代",
+            ).where(
+                (ReviewRun.workflow_run == parent)
+                & (ReviewRun.status.in_(["pending", "running"]))
+            ).execute()
             child = WorkflowRun.create(
                 id=str(uuid.uuid4()),
                 task=task,
@@ -2060,6 +2191,11 @@ class WorkflowRuntime:
                 workflow_snapshot_json="{}",
                 parent_run_id=parent.id,
                 restart_from_step_key=step_key,
+                routing_state_json=json.dumps({
+                    **empty_routing_state(),
+                    "entry_step_key": step_key,
+                    "execution_scope": sorted(execution_keys),
+                }, ensure_ascii=False),
                 owner_id=self._instance_id,
                 heartbeat_at=now,
                 started_at=now,
@@ -2106,6 +2242,27 @@ class WorkflowRuntime:
             ).where(
                 (TaskStep.task == task)
                 & (TaskStep.step_key.in_(execution_keys))
+            ).execute()
+            if reset_session_step_key:
+                TaskStep.update(
+                    session_id=None,
+                    session_provider=None,
+                    pending_handoff_json=None,
+                ).where(
+                    (TaskStep.task == task)
+                    & (TaskStep.step_key == reset_session_step_key)
+                ).execute()
+            TaskStep.update(
+                status="cancelled",
+                ended_at=now,
+                error="已切换到其他流程入口",
+            ).where(
+                (TaskStep.task == task)
+                & (~(TaskStep.step_key.in_(execution_keys)))
+                & (TaskStep.status.in_([
+                    "running", "reviewing", "awaiting_review", "retrying",
+                    "rework", "rework_waiting",
+                ]))
             ).execute()
             task.status = "running"
             task.active_workflow_run_id = child.id

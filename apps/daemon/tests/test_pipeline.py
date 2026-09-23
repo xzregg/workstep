@@ -126,6 +126,40 @@ def test_dag_requires_each_solid_input_connection_to_be_activated():
     ) == []
 
 
+def test_dag_entry_step_accepts_each_boundary_input_as_task_context():
+    c = Step(
+        key="c",
+        label="C",
+        depends_on=["a", "b"],
+        inputs=[{"name": "A2"}, {"name": "B1"}],
+        incoming_connections=[
+            {
+                "id": "a2-to-c", "from": "a", "fromPort": 1,
+                "to": "c", "toPort": 0, "kind": "solid",
+            },
+            {
+                "id": "b1-to-c", "from": "b", "fromPort": 0,
+                "to": "c", "toPort": 1, "kind": "solid",
+            },
+        ],
+    )
+    dag = DAGScheduler([
+        Step(key="a", label="A"),
+        Step(key="b", label="B"),
+        c,
+    ])
+
+    assert dag.get_ready_steps({"a", "b"}, active_edges=set()) == []
+    assert [
+        step.key
+        for step in dag.get_ready_steps(
+            {"a", "b"},
+            active_edges=set(),
+            task_context_edges={"a2-to-c", "b1-to-c"},
+        )
+    ] == ["c"]
+
+
 def test_dag_requires_all_three_connected_outputs_before_downstream_runs():
     connections = [
         {
@@ -304,11 +338,37 @@ def test_assemble_prompt_basic(tmp_path):
     assert "You are" in SYSTEM_PROMPT
     assert all(ord(char) < 128 for char in SYSTEM_PROMPT)
     assert "## Task description\nCurrent task context" in prompt
+    assert "## Task title\nTest" in prompt
     assert "You are executing one step in a WorkStep workflow." in prompt
     assert "## Step requirements\nWrite a PRD" in prompt
     assert not re.search(r"\bstage\b", prompt, re.IGNORECASE)
     assert "Write a PRD" in prompt
-    assert str(artifacts_dir / "default" / task.id / "req") in prompt
+    assert f"artifacts/default/{task.id}/req" in prompt
+    db.close()
+
+
+def test_assemble_prompt_task_worktrees_keep_project_cwd(tmp_path):
+    from models import Task, init_db
+    import time
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id="task-123", title="Update B", cwd=str(tmp_path),
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    workspace = tmp_path / ".workstep" / "worktrees" / task.id
+    (workspace / "B").mkdir(parents=True)
+    (workspace / "B" / ".git").write_text("gitdir: elsewhere")
+    (workspace / "unrelated").mkdir()
+    artifacts = tmp_path / ".workstep" / "artifacts"
+    artifacts.mkdir()
+
+    prompt = assemble_prompt(task, Step(key="build", label="Build", prompt="Edit code"), artifacts)
+    assert f"Workspace directory: {workspace}" in prompt
+    assert "Attached repositories: B." in prompt
+    assert "Attached repositories: B, unrelated" not in prompt
+    assert "The engine still starts in the project root" in prompt
+    assert task.cwd == str(tmp_path)
     db.close()
 
 
@@ -336,6 +396,7 @@ def test_assemble_prompt_renders_step_template_variables(tmp_path):
             "任务：{task_description}\n"
             "步骤：{step_name}（{step_key}）\n"
             "全角变量：｛name｝\n"
+            "工作区：{worktrees} / ｛worktrees｝\n"
             "未知变量：{custom_value}"
         ),
     )
@@ -349,6 +410,7 @@ def test_assemble_prompt_renders_step_template_variables(tmp_path):
     assert "任务：登录后偶发跳回首页" in prompt
     assert "步骤：开发（develop）" in prompt
     assert "全角变量：小李" in prompt
+    assert f"工作区：.workstep/worktrees/{task.id} / .workstep/worktrees/{task.id}" in prompt
     assert "未知变量：{custom_value}" in prompt
     db.close()
 
@@ -560,8 +622,8 @@ def test_assemble_prompt_renders_dynamic_input_port_snapshot(tmp_path):
     assert "connection-3" not in prompt
     assert "kind `solid`" not in prompt
     assert "kind `dashed`" not in prompt
-    assert str(prd) in prompt
-    assert str(bugs) in prompt
+    assert "Path: `prd.md`" in prompt
+    assert "Path: `bugs.md`" in prompt
     assert "当前是首次开发" not in prompt
     assert "不是缺陷返工" not in prompt
     db.close()
@@ -806,7 +868,7 @@ def test_assemble_prompt_multi_output_avoids_generic_delegation_noise(tmp_path):
     db.close()
 
 
-def test_assemble_prompt_explains_output_routes_without_internal_ports(tmp_path):
+def test_assemble_prompt_only_exposes_routing_semantics_that_affect_output_choice(tmp_path):
     from models import init_db, Task
     import time, uuid
 
@@ -831,9 +893,12 @@ def test_assemble_prompt_explains_output_routes_without_internal_ports(tmp_path)
 
     prompt = assemble_prompt(task, step, tmp_path / "artifacts")
 
-    assert "continues the workflow to step `publish`" in prompt
-    assert "requests revision of step `develop`" in prompt
+    assert "continues the workflow to step" not in prompt
+    assert "requests revision of step" not in prompt
+    assert "generate only when revision is required" in prompt
     assert "must not both be generated in the same execution" in prompt
+    assert "`publish`" not in prompt
+    assert "`develop`" not in prompt
     assert "edge-forward" not in prompt
     assert "edge-feedback" not in prompt
     assert "fromPort" not in prompt
@@ -881,7 +946,7 @@ def test_assemble_prompt_formats_dispatched_inputs_once_without_source_ids(tmp_p
     assert "brief.md" in prompt
     assert "Source step: `design`" in prompt
     assert "Source round: 2" in prompt
-    assert prompt.count(str(artifact)) == 1
+    assert prompt.count(f"task-inputs/opaque-dispatch-id/design/brief.md") == 1
     assert "project-secret" not in prompt
     assert "task-secret" not in prompt
     assert "handoff_123" not in prompt
@@ -931,8 +996,8 @@ def test_assemble_prompt_file_output_uses_single_file_path(tmp_path):
 
     prompt = assemble_prompt(task, step, artifacts_dir)
 
-    doc_path = str(artifacts_dir / "default" / task.id / "do" / "说明.md")
-    data_path = str(artifacts_dir / "default" / task.id / "do" / "数据.json")
+    doc_path = f"artifacts/default/{task.id}/do/说明.md"
+    data_path = f"artifacts/default/{task.id}/do/数据.json"
     assert prompt.count(doc_path) == 1
     assert prompt.count(data_path) == 1
     assert "## Artifact output directory" not in prompt
@@ -961,7 +1026,7 @@ def test_assemble_prompt_directory_output_allows_multiple_files(tmp_path):
 
     prompt = assemble_prompt(task, step, artifacts_dir)
 
-    output_path = str(artifacts_dir / "default" / task.id / "design" / "原型集合") + "/"
+    output_path = f"artifacts/default/{task.id}/design/原型集合/"
     assert "type: `directory`" in prompt
     assert "Directory artifact" in prompt
     assert "multiple files and subdirectories" in prompt
@@ -1457,7 +1522,7 @@ async def test_task_runner_persists_usage_json(tmp_path):
         assert "## Project memory\n统一使用公开消息边界" in persisted_prompt
         assert "## Task description\n实现完整提示词展示" in persisted_prompt
         assert persisted_prompt.endswith(
-            str(artifacts_dir / "default" / task.id / "a")
+            f"artifacts/default/{task.id}/a"
         )
         assert "## Step requirements\nDo A" in persisted_prompt
         assert msg.usage_json is not None
@@ -1752,6 +1817,95 @@ async def test_task_runner_starts_after_persisted_skipped_steps(tmp_path):
         }
         assert len(calls) == 1
         assert "上游产物" not in calls[0]
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_task_runner_runs_explicit_entry_with_two_boundary_inputs(tmp_path):
+    """An explicit entry uses task context instead of skipped upstream files."""
+    from models import Task, TaskStep, init_db
+    from engines.core.registry import ENGINE_REGISTRY
+    import time
+    import uuid
+
+    db = init_db(str(tmp_path / "entry.db"))
+    now = int(time.time())
+    task = Task.create(
+        id=str(uuid.uuid4()),
+        title="Direct C",
+        description="直接从 C 完成任务",
+        cwd=str(tmp_path),
+        engine="claude",
+        created_at=now,
+        updated_at=now,
+    )
+    TaskStep.create(task=task, step_key="a", status="skipped")
+    TaskStep.create(task=task, step_key="b", status="skipped")
+    TaskStep.create(task=task, step_key="c", status="pending")
+    prompts = []
+
+    class RecordingEngine(PipelineFakeEngine):
+        async def spawn(self, prompt, cwd, **kwargs):
+            prompts.append(prompt)
+            yield InternalEvent(type="text_delta", data={"delta": "c done"})
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = RecordingEngine
+    try:
+        runner = TaskRunner(
+            EventBus(),
+            execution_scope={"c"},
+            entry_step_key="c",
+        )
+        await runner.run_pipeline(
+            task,
+            {
+                "steps": [
+                    {
+                        "key": "a", "engine": "claude",
+                        "outputs": [{"name": "A2"}],
+                        "outgoingConnections": [{
+                            "id": "a2-to-c", "from": "a", "fromPort": 0,
+                            "to": "c", "toPort": 0, "kind": "solid",
+                        }],
+                    },
+                    {
+                        "key": "b", "engine": "claude",
+                        "outputs": [{"name": "B1"}],
+                        "outgoingConnections": [{
+                            "id": "b1-to-c", "from": "b", "fromPort": 0,
+                            "to": "c", "toPort": 1, "kind": "solid",
+                        }],
+                    },
+                    {
+                        "key": "c", "engine": "claude",
+                        "dependsOn": ["a", "b"],
+                        "inputs": [{"name": "A2"}, {"name": "B1"}],
+                        "incomingConnections": [
+                            {
+                                "id": "a2-to-c", "from": "a", "fromPort": 0,
+                                "to": "c", "toPort": 0, "kind": "solid",
+                            },
+                            {
+                                "id": "b1-to-c", "from": "b", "fromPort": 0,
+                                "to": "c", "toPort": 1, "kind": "solid",
+                            },
+                        ],
+                    },
+                ],
+            },
+            tmp_path / "artifacts",
+            execution_scope={"c"},
+        )
+
+        assert len(prompts) == 1
+        assert prompts[0].count("Use the task title, description, dispatched inputs") == 2
+        assert TaskStep.get(
+            (TaskStep.task == task) & (TaskStep.step_key == "c")
+        ).status == "passed"
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
@@ -2083,8 +2237,8 @@ async def test_new_workflow_run_executes_steps_again(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_failed_execution_does_not_consume_artifact_round(tmp_path):
-    """A failed engine execution keeps attempt history but reuses round 1 on retry."""
+async def test_failed_execution_retries_within_the_same_artifact_round(tmp_path):
+    """A transient engine error retries inside the same step attempt."""
     from models import StepRun, Task, WorkflowRun, init_db
     from engines.core.registry import ENGINE_REGISTRY
     import time
@@ -2136,14 +2290,6 @@ async def test_failed_execution_does_not_consume_artifact_round(tmp_path):
             workflow_snapshot_json="{}",
             started_at=now,
         )
-        second_run = WorkflowRun.create(
-            id=str(uuid.uuid4()),
-            task=task,
-            workflow_schema_version=1,
-            workflow_snapshot_json="{}",
-            started_at=now + 1,
-        )
-
         await runner.run_pipeline(
             task,
             steps_config,
@@ -2151,22 +2297,14 @@ async def test_failed_execution_does_not_consume_artifact_round(tmp_path):
             workflow_run=first_run,
         )
         round_dir = artifacts_dir / "default" / task.id / "build" / "1"
-        assert round_dir.exists() is False
-
-        await runner.run_pipeline(
-            task,
-            steps_config,
-            artifacts_dir,
-            workflow_run=second_run,
-        )
 
         step_runs = list(
             StepRun.select()
             .where(StepRun.step_key == "build")
             .order_by(StepRun.started_at)
         )
+        assert calls == 2
         assert [(run.status, run.artifact_round) for run in step_runs] == [
-            ("failed", None),
             ("succeeded", 1),
         ]
         assert round_dir.is_dir()

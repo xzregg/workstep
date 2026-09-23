@@ -4,6 +4,7 @@ from engines.core.plans import codex_subagent_events
 
 import asyncio
 import importlib.metadata
+import inspect
 import json
 import logging
 import os
@@ -803,6 +804,7 @@ class CodexSDKEngine(AcpEngineBase):
             ))
 
         elif method == "turn/completed":
+            state["turn_completed"] = True
             turn = getattr(payload, "turn", None)
             if turn is None:
                 events.append(InternalEvent(type="status", data={"status": "done"}))
@@ -820,7 +822,10 @@ class CodexSDKEngine(AcpEngineBase):
         elif method == "error":
             error = getattr(payload, "error", None)
             message = getattr(error, "message", None) or str(error or "Codex SDK 错误")
-            events.append(InternalEvent(type="error", data={"message": str(message)}))
+            # SDK error notifications can describe a transient reconnect while
+            # the same turn continues. The final turn result decides success.
+            state["notification_error"] = str(message)
+            events.append(codex_raw_event(method, {"message": str(message)}))
 
         else:
             # 未识别的 SDK 原生通知统一透传 acp_raw（不静默丢弃）。
@@ -911,6 +916,7 @@ class CodexSDKEngine(AcpEngineBase):
         images: list[EngineImage] | None = None,
         live_message_queue: asyncio.Queue | None = None,
         thinking_effort: str | None = None,
+        plan_mode: bool | None = None,
         config_overrides: dict | None = None,
     ) -> AsyncIterator[InternalEvent]:
         async for event in self._spawn_with_sandbox(
@@ -922,6 +928,7 @@ class CodexSDKEngine(AcpEngineBase):
             read_only=False,
             live_message_queue=live_message_queue,
             thinking_effort=thinking_effort,
+            plan_mode=plan_mode,
             config_overrides=config_overrides,
         ):
             yield event
@@ -968,6 +975,7 @@ class CodexSDKEngine(AcpEngineBase):
         images: list[EngineImage] | None = None,
         live_message_queue: asyncio.Queue | None = None,
         thinking_effort: str | None = None,
+        plan_mode: bool | None = None,
         config_overrides: dict | None = None,
     ) -> AsyncIterator[InternalEvent]:
         """Internal spawn with an explicit codex sandbox policy."""
@@ -980,6 +988,7 @@ class CodexSDKEngine(AcpEngineBase):
             from openai_codex import (
                 ApprovalMode,
                 AsyncCodex,
+                AsyncTurnHandle,
                 CodexConfig,
                 Sandbox,
             )
@@ -1036,10 +1045,10 @@ class CodexSDKEngine(AcpEngineBase):
             # thread_start 的 approval_mode 不接受 None（默认 auto_review）
             thread_kwargs["approval_mode"] = approval_mode
         override = self.get_binary_override()
-        from services.skill_runtime import codex_skills_config
+        from services.skill_runtime import prepare_codex_skills
 
         skill_override = await asyncio.to_thread(
-            lambda: codex_skills_config(self.project_skills(cwd))
+            lambda: prepare_codex_skills(self.project_skills(cwd))[1]
         )
         client_config = CodexConfig(
             codex_bin=override or None,
@@ -1179,8 +1188,27 @@ class CodexSDKEngine(AcpEngineBase):
                     await event_queue.put(InternalEvent(
                         type="status", data={"status": "running"}
                     ))
-                    turn = await thread.turn(prompt, model=model or None)
+                    if plan_mode is None:
+                        turn = await thread.turn(prompt, model=model or None)
+                    else:
+                        turn = await self._start_collaboration_turn(
+                            client,
+                            thread,
+                            prompt,
+                            model=model,
+                            reasoning_effort=reasoning_effort,
+                            plan_mode=plan_mode,
+                            turn_handle_type=AsyncTurnHandle,
+                        )
                     await stream_turn(turn)
+                    if (
+                        state.get("notification_error")
+                        and not state.get("turn_completed")
+                    ):
+                        await event_queue.put(InternalEvent(
+                            type="error",
+                            data={"message": state["notification_error"]},
+                        ))
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -1224,6 +1252,70 @@ class CodexSDKEngine(AcpEngineBase):
                     except Exception:
                         pass
             self._running = False
+
+    @staticmethod
+    async def _start_collaboration_turn(
+        client: Any,
+        thread: Any,
+        prompt: str,
+        *,
+        model: str | None,
+        reasoning_effort: str | None,
+        plan_mode: bool,
+        turn_handle_type: Any,
+    ) -> Any:
+        """Start a native Codex collaboration-mode turn.
+
+        The app-server protocol exposes ``turn/start.collaborationMode``, but
+        current openai-codex releases still omit it from ``AsyncThread.turn``.
+        Prefer the public argument once a future SDK adds it; until then use
+        the SDK's raw turn-start seam while preserving its early subscription.
+        """
+        if not model:
+            raise RuntimeError("Codex SDK 原生计划模式需要明确的模型")
+        mode = {
+            "mode": "plan" if plan_mode else "default",
+            "settings": {
+                "model": model,
+                "reasoning_effort": reasoning_effort,
+                "developer_instructions": None,
+            },
+        }
+        try:
+            public_parameters = inspect.signature(thread.turn).parameters
+        except (TypeError, ValueError):
+            public_parameters = {}
+        if "collaboration_mode" in public_parameters:
+            return await thread.turn(
+                prompt,
+                model=model,
+                collaboration_mode=mode,
+            )
+
+        async_client = getattr(client, "_client", None)
+        if async_client is None:
+            raise RuntimeError("当前 openai-codex SDK 不支持原生计划模式")
+        params = {"collaborationMode": mode}
+        start_with_subscription = getattr(async_client, "_start_turn", None)
+        if callable(start_with_subscription):
+            started, subscription = await start_with_subscription(
+                thread.id,
+                prompt,
+                params=params,
+                for_handle=True,
+            )
+            return turn_handle_type(
+                client,
+                thread.id,
+                str(started.turn.id),
+                _subscription=subscription,
+            )
+
+        start_turn = getattr(async_client, "turn_start", None)
+        if not callable(start_turn):
+            raise RuntimeError("当前 openai-codex SDK 不支持原生计划模式")
+        started = await start_turn(thread.id, prompt, params=params)
+        return turn_handle_type(client, thread.id, str(started.turn.id))
 
     @staticmethod
     def _install_approval_handler(client: Any, handler: Any) -> None:
@@ -1375,6 +1467,11 @@ class CodexSDKEngine(AcpEngineBase):
     @property
     def supports_thinking_effort(self) -> bool:
         """``config.model_reasoning_effort`` supports a per-turn override."""
+        return True
+
+    @property
+    def supports_plan_mode(self) -> bool:
+        """Codex app-server accepts native ``collaborationMode`` turns."""
         return True
 
     # --- ACP 会话 / 审批契约（非 ACP 引擎：用自己的传输实现等价语义） ---

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import uuid
 from dataclasses import dataclass
@@ -82,6 +83,7 @@ class ReviewGate:
         mode: str | None = None,
         message_id: str | None = None,
         artifact_round: int | None = None,
+        assembled_prompt: str | None = None,
     ) -> ReviewOutcome:
         config = dict(review_config) if review_config is not None else dict(step.review or {})
         if mode is None:
@@ -100,7 +102,7 @@ class ReviewGate:
             or default_model
             or ""
         )
-        prompt = await asyncio.to_thread(
+        prompt = assembled_prompt if assembled_prompt is not None else await asyncio.to_thread(
             self._assemble_prompt,
             task,
             step,
@@ -170,7 +172,8 @@ class ReviewGate:
             if self._set_active_engine is not None:
                 self._set_active_engine(engine)
             try:
-                async for event in engine.spawn(
+                spawn = getattr(engine, "spawn_with_retry", engine.spawn)
+                async for event in spawn(
                     prompt=prompt,
                     cwd=task.cwd,
                     model=model or None,
@@ -287,8 +290,13 @@ class ReviewGate:
             if artifact_round is not None
             else artifacts_dir / wf_name / task.id / step.key
         )
+        prompt_cwd = task.cwd or artifacts_dir.parent.parent
         files = (
-            [str(path) for path in sorted(out_dir.rglob("*")) if path.is_file()]
+            [
+                Path(os.path.relpath(path, start=prompt_cwd)).as_posix()
+                for path in sorted(out_dir.rglob("*"))
+                if path.is_file()
+            ]
             if out_dir.exists()
             else []
         )

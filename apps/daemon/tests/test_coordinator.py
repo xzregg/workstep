@@ -1257,6 +1257,7 @@ def test_assemble_context_includes_review_mode(tmp_path):
             }]
         }
         workstep_dir = tmp_path
+        path = tmp_path
 
         def workflow_by_id(self, workflow_id):
             return None
@@ -1276,20 +1277,20 @@ def test_assemble_context_includes_review_mode(tmp_path):
         db.close()
 
 
-def test_coordinator_root_defaults_to_workflow_artifacts_dir(tmp_path):
-    """协调 Agent 根目录默认解析到任务所属工作流的产物目录。"""
+def test_coordinator_root_uses_project_root_with_workflow(tmp_path):
+    """协调 Agent 始终从项目根目录启动，不在产物目录创建运行数据。"""
     workstep_dir = tmp_path / ".workstep"
-    project = SimpleNamespace(workstep_dir=workstep_dir)
-    task = SimpleNamespace(workflow_id="f0e8bc06", cwd=str(tmp_path))
+    project = SimpleNamespace(path=tmp_path, workstep_dir=workstep_dir)
+    task = SimpleNamespace(workflow_id="f0e8bc06", cwd=str(tmp_path / "other"))
     root = CoordinatorModule._coordinator_root(project, task)
-    assert root == str(workstep_dir / "artifacts" / "f0e8bc06")
-    assert Path(root).is_dir()
+    assert root == str(tmp_path)
+    assert not (workstep_dir / "artifacts" / "f0e8bc06").exists()
 
 
-def test_coordinator_root_falls_back_to_task_cwd(tmp_path):
-    """无工作流的任务回退到任务 cwd。"""
-    project = SimpleNamespace(workstep_dir=tmp_path / ".workstep")
-    task = SimpleNamespace(workflow_id=None, cwd=str(tmp_path))
+def test_coordinator_root_uses_project_root_without_workflow(tmp_path):
+    """无工作流时也不把任意任务 cwd 当作项目根。"""
+    project = SimpleNamespace(path=tmp_path, workstep_dir=tmp_path / ".workstep")
+    task = SimpleNamespace(workflow_id=None, cwd=str(tmp_path / "other"))
     root = CoordinatorModule._coordinator_root(project, task)
     assert root == str(tmp_path)
 
@@ -1407,6 +1408,7 @@ def test_assemble_context_includes_coordinator_root_dir(tmp_path):
     class StubProject:
         steps = {"steps": []}
         workstep_dir = tmp_path / ".workstep"
+        path = tmp_path
 
         def workflow_by_id(self, workflow_id):
             return None
@@ -1415,9 +1417,7 @@ def test_assemble_context_includes_coordinator_root_dir(tmp_path):
     prompt, _ = module._assemble_context(StubProject(), task, turn)
     try:
         context = json.loads(prompt.split("Context:\n", 1)[1])
-        assert context["coordinator_root_dir"] == str(
-            tmp_path / ".workstep" / "artifacts" / "wf-1"
-        )
+        assert context["coordinator_root_dir"] == str(tmp_path)
     finally:
         db.close()
 
@@ -1438,6 +1438,7 @@ def test_assemble_context_history_handling_depends_on_engine_resume(tmp_path, mo
     class StubProject:
         steps = {}
         workstep_dir = tmp_path
+        path = tmp_path
 
         def workflow_by_id(self, workflow_id):
             return None
@@ -1664,6 +1665,39 @@ async def test_chat_calls_selected_engine_without_starting_workflow(
 
 
 @pytest.mark.anyio
+async def test_coordinator_engine_runtime_data_stays_at_project_root(api_context, monkeypatch):
+    from engines.core.registry import ENGINE_REGISTRY
+
+    class RuntimeWritingEngine(CoordinatorFakeEngine):
+        calls: list[dict] = []
+
+        async def spawn(self, prompt, cwd, model=None, session_id=None, **kwargs):
+            def write_marker():
+                marker = Path(cwd) / ".workstep" / "runtime" / "coordinator-marker"
+                marker.parent.mkdir(parents=True, exist_ok=True)
+                marker.write_text("runtime", encoding="utf-8")
+
+            await asyncio.to_thread(write_marker)
+            async for event in super().spawn(prompt, cwd, model=model, session_id=session_id, **kwargs):
+                yield event
+
+    client, tmp_path = api_context
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", RuntimeWritingEngine)
+    project_id, task_id = await _create_task(client, tmp_path)
+    project_dir = tmp_path / "coordinator-project"
+    response = await client.post(
+        f"/api/task/{task_id}/chat?project_id={project_id}",
+        headers={"Idempotency-Key": "runtime-root"},
+        json={"content": "检查运行目录"},
+    )
+    assert response.status_code == 200
+    await _wait_for_reply(client, project_id, task_id)
+    assert RuntimeWritingEngine.calls[0]["cwd"] == str(project_dir)
+    assert (project_dir / ".workstep" / "runtime" / "coordinator-marker").is_file()
+    assert not list((project_dir / ".workstep" / "artifacts").rglob("coordinator-marker"))
+
+
+@pytest.mark.anyio
 async def test_coordinator_pushes_reply_before_engine_turn_finishes(
     api_context,
     monkeypatch,
@@ -1762,6 +1796,77 @@ async def test_coordinator_can_send_pending_inserts_immediately(
         params={"project_id": project_id, "target_message_id": target_message_id},
     )
     assert pending.json()["items"] == []
+    StreamingCoordinatorFakeEngine.release.set()
+
+
+@pytest.mark.anyio
+async def test_coordinator_keeps_unsent_pending_inserts_after_sending_one(
+    api_context,
+    monkeypatch,
+):
+    import threading
+
+    from engines.core.registry import ENGINE_REGISTRY
+    import main
+
+    client, tmp_path = api_context
+    StreamingCoordinatorFakeEngine.release = asyncio.Event()
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", StreamingCoordinatorFakeEngine)
+    project_id, task_id = await _create_task(client, tmp_path)
+    current = await client.post(
+        f"/api/task/{task_id}/chat?project_id={project_id}",
+        headers={"Idempotency-Key": "chat-before-partial-pending"},
+        json={"content": "先执行当前消息"},
+    )
+    target_message_id = current.json()["assistant_message_id"]
+    queued_ids = []
+    for content in ("消息 A", "消息 B"):
+        queued = await client.post(
+            "/api/pending-message-inserts",
+            json={
+                "project_id": project_id,
+                "target_message_id": target_message_id,
+                "content": content,
+            },
+        )
+        queued_ids.append(queued.json()["id"])
+
+    entered_db = threading.Event()
+    release_db = threading.Event()
+    persist_submission = main.coordinator_module._persist_submission
+
+    def slow_persist_submission(*args, **kwargs):
+        entered_db.set()
+        release_db.wait(timeout=2)
+        return persist_submission(*args, **kwargs)
+
+    monkeypatch.setattr(main.coordinator_module, "_persist_submission", slow_persist_submission)
+    sending = asyncio.create_task(client.post(
+        f"/api/task/{task_id}/chat?project_id={project_id}",
+        headers={"Idempotency-Key": "manual-send-second-pending"},
+        json={"content": "消息 B", "pending_insert_ids": [queued_ids[1]]},
+    ))
+    try:
+        assert await asyncio.to_thread(entered_db.wait, 1)
+        health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+        assert health.status_code == 200
+    finally:
+        release_db.set()
+    sent = await sending
+    assert sent.status_code == 200
+    next_target = sent.json()["assistant_message_id"]
+    old_pending = await client.get(
+        "/api/pending-message-inserts",
+        params={"project_id": project_id, "target_message_id": target_message_id},
+    )
+    new_pending = await client.get(
+        "/api/pending-message-inserts",
+        params={"project_id": project_id, "target_message_id": next_target},
+    )
+    assert old_pending.json()["items"] == []
+    assert [(item["id"], item["content"]) for item in new_pending.json()["items"]] == [
+        (queued_ids[0], "消息 A"),
+    ]
     StreamingCoordinatorFakeEngine.release.set()
 
 

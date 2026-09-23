@@ -225,6 +225,107 @@ async def test_recovery_resumes_from_last_completed_node(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_recovery_preserves_direct_entry_and_boundary_inputs(tmp_path):
+    """Recovery must not expand a direct-C run back to skipped A/B."""
+    from engines.core.registry import ENGINE_REGISTRY
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = RecoveryFakeEngine
+    pm = ProjectManager()
+    project = pm.init_project(tmp_path / "proj", name="Recovery entry")
+    now = utc_now()
+    with pm.activate_project(project.path):
+        task = Task.create(
+            id="task-entry-rec",
+            title="Direct C",
+            description="Recover C only",
+            cwd=str(project.path),
+            engine="claude",
+            status="running",
+            created_at=now,
+            updated_at=now,
+        )
+        TaskStep.create(task=task, step_key="a", status="skipped")
+        TaskStep.create(task=task, step_key="b", status="skipped")
+        TaskStep.create(task=task, step_key="c", status="running")
+        project.steps = {
+            "nodes": [
+                {
+                    "id": 1, "type": "a", "title": "A",
+                    "engine": "claude", "prompt": "Do A",
+                    "outputs": [{"name": "A2"}],
+                },
+                {
+                    "id": 2, "type": "b", "title": "B",
+                    "engine": "claude", "prompt": "Do B",
+                    "outputs": [{"name": "B1"}],
+                },
+                {
+                    "id": 3, "type": "c", "title": "C",
+                    "engine": "claude", "prompt": "Do C",
+                    "inputs": [{"name": "A2"}, {"name": "B1"}],
+                },
+            ],
+            "connections": [
+                {"from": 1, "fromPort": 0, "to": 3, "toPort": 0},
+                {"from": 2, "fromPort": 0, "to": 3, "toPort": 1},
+            ],
+        }
+        run = WorkflowRun.create(
+            id="run-entry-rec",
+            task=task,
+            status="running",
+            workflow_schema_version=1,
+            workflow_snapshot_json="{}",
+            restart_from_step_key="c",
+            routing_state_json=json.dumps({
+                "active_edges": [],
+                "return_counts": {},
+                "feedback_inputs": {},
+                "routed_rounds": {},
+                "entry_step_key": "c",
+                "execution_scope": ["c"],
+            }),
+            started_at=now,
+        )
+        StepRun.create(
+            id="step-c-entry-1",
+            run=run,
+            step_key="c",
+            attempt=1,
+            status="running",
+            engine="claude",
+            started_at=now,
+        )
+        task.active_workflow_run_id = run.id
+        task.save()
+
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, pm)
+    try:
+        assert await runtime.recover_running_workflows() == 1
+        with pm.activate_project(project.path):
+            await _wait_until(
+                lambda: Task.get_by_id(task.id).status == "ready"
+            )
+            assert {
+                row.step_key: row.status
+                for row in TaskStep.select().where(TaskStep.task == task)
+            } == {"a": "skipped", "b": "skipped", "c": "passed"}
+        assert len(RecoveryFakeEngine.prompts) == 1
+        assert "Do C" in RecoveryFakeEngine.prompts[0]
+        assert "Do A" not in RecoveryFakeEngine.prompts[0]
+        assert "Do B" not in RecoveryFakeEngine.prompts[0]
+        assert RecoveryFakeEngine.prompts[0].count(
+            "Use the task title, description, dispatched inputs"
+        ) == 2
+    finally:
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+
+
+@pytest.mark.anyio
 async def test_online_reconciler_recovers_own_running_run_without_runner(tmp_path):
     """进程仍存活但 runner 丢失时，在线巡检接管本实例的孤儿运行。"""
     original, pm, project, run_id = _project_with_run(tmp_path)

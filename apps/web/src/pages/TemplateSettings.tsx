@@ -1,3 +1,4 @@
+import ResizablePanel from '../components/ResizablePanel'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Button from '../components/Button'
@@ -256,7 +257,7 @@ export default function TemplateSettings() {
       {/* New template modal */}
       {createOpen && (
         <div className="modal-overlay" style={{ zIndex: 300 }} onClick={() => setCreateOpen(false)}>
-          <div className="modal" style={{ width: 460 }} onClick={(e) => e.stopPropagation()}>
+          <ResizablePanel className="modal" style={{ width: 460 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">{t('templateSettings.createTitle')}</span>
               <Button variant="icon" aria-label={t('common.close')} onClick={() => setCreateOpen(false)}>✕</Button>
@@ -294,7 +295,7 @@ export default function TemplateSettings() {
                 {t('templateSettings.createAndEdit')}
               </Button>
             </div>
-          </div>
+          </ResizablePanel>
         </div>
       )}
 

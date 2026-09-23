@@ -1,3 +1,4 @@
+import ResizablePanel from './ResizablePanel'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useI18n } from '../i18n'
@@ -74,13 +75,14 @@ export default function MermaidPreviewDialog({ svg, onClose }: MermaidPreviewDia
           <Icon name="x" size={16} />
         </button>
       </div>
-      <div className="mermaid-preview__viewport">
+      <ResizablePanel className="mermaid-preview__viewport" minWidth={320} minHeight={240}>
+        <div className="preview-drag-handle" data-dialog-drag-handle role="button" tabIndex={0} aria-label={t('taskDetail.dragWindowAria')} title={t('taskDetail.dragWindowTitle')} />
         <div
           className="mermaid-preview__canvas"
           style={{ width: `${zoom * 100}%` }}
           dangerouslySetInnerHTML={{ __html: svg }}
         />
-      </div>
+      </ResizablePanel>
     </div>,
     document.body,
   )

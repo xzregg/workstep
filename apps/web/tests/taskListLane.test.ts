@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { deriveTaskLane } from '../src/pages/taskListLane.ts'
+import { deriveTaskLane, orderTaskLanes } from '../src/pages/taskListLane.ts'
 
 const lanes = [
   { key: 'write', label: '编写', color: 'gray' },
@@ -44,4 +44,43 @@ test('流程回退后落在最近实际执行的阶段，而不是工作流最�
   }
 
   assert.equal(deriveTaskLane(task, lanes), 'write')
+})
+
+test('看板按实线依赖排列，忽略回退虚线和节点保存顺序', () => {
+  const workflow = {
+    nodes: [
+      { id: 1, type: 'req' },
+      { id: 2, type: 'ui' },
+      { id: 3, type: 'frontend' },
+      { id: 4, type: 'backend' },
+      { id: 5, type: 'test' },
+    ],
+    connections: [
+      { from: 1, to: 2 },
+      { from: 2, to: 3 },
+      { from: 1, to: 4 },
+      { from: 4, to: 3 },
+      { from: 3, to: 5 },
+      { from: 5, to: 4, kind: 'dashed' },
+    ],
+  }
+  const boardLanes = workflow.nodes.map((node) => ({ key: node.type, label: node.type, color: 'gray' }))
+
+  assert.deepEqual(orderTaskLanes(boardLanes, workflow).map((lane) => lane.key), [
+    'req', 'ui', 'backend', 'frontend', 'test',
+  ])
+})
+
+test('旧版流程按 dependsOn 排列，无依赖节点保持原顺序', () => {
+  const workflow = {
+    steps: [
+      { key: 'write', dependsOn: ['review'] },
+      { key: 'review' },
+      { key: 'publish', dependsOn: ['write'] },
+    ],
+  }
+
+  assert.deepEqual(orderTaskLanes(lanes, workflow).map((lane) => lane.key), [
+    'review', 'write', 'publish',
+  ])
 })

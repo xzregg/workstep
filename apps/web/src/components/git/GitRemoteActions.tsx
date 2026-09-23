@@ -33,9 +33,9 @@ export default function GitRemoteActions({ status, readOnly, onRefresh, onBusy }
     const selectedRemote = preferredRemote && value.remotes.some(item => item.name === preferredRemote)
       ? preferredRemote : value.upstream?.remote || value.remotes[0]?.name || ''
     const selected = value.remotes.find(item => item.name === selectedRemote)
-    const suggested = value.upstream?.remote === selectedRemote ? value.upstream.branch
-      : action === 'pull' ? selected?.branches.find(item => item.name === status.branch)?.name || selected?.branches[0]?.name || ''
-      : status.branch || ''
+    const suggested = action === 'push' ? status.branch || ''
+      : value.upstream?.remote === selectedRemote ? value.upstream.branch
+      : selected?.branches.find(item => item.name === status.branch)?.name || selected?.branches[0]?.name || ''
     setRemote(selectedRemote); setTargetBranch(suggested || ''); setSetUpstream(!value.upstream)
   }
 
