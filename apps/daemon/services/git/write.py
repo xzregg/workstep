@@ -161,7 +161,16 @@ class GitWrites:
 
     async def credential_for(self, directory, remote, *, push=False):
         current = await self.remote_url(directory['path'], remote, push=push)
-        return self.remote_credentials.get(self.credential_host(current))
+        parsed = urlsplit(current)
+        host = self.credential_host(current)
+        upgrade = None
+        if parsed.scheme.lower() == 'http' and parsed.hostname and parsed.port in {None, 80}:
+            host = parsed.hostname.lower()
+            upgrade = {'upgrade_from': f'http://{parsed.netloc}/',
+                       'upgrade_to': f'https://{host}/'}
+        saved = self.remote_credentials.get(host)
+        return {'username': saved['username'], 'token': saved['token'], 'host': host,
+                **(upgrade or {})} if saved else None
 
     async def set_identity(self, id, name, email):
         directory = await self.directory(id)
