@@ -13,7 +13,7 @@ export interface GitTrackedRemoteBranch { name: string; remote: string; branch: 
 export interface GitRemote { name: string; url: string; push_url: string; branches: GitRemoteBranch[] }
 export interface GitRemotes { remotes: GitRemote[]; upstream: { remote: string; branch: string } | null; fetched_at: number | null }
 export interface GitIdentity { name: string; email: string }
-export interface GitCredentialStatus { remotes: { name: string; url: string; configured: boolean }[] }
+export interface GitCredentialStatus { remotes: { name: string; url: string; push_url: string; configured: boolean }[]; hosts: string[] }
 export interface GitCommit { hash: string; author: string; time: number; message: string }
 export interface GitDiff { path: string; old_path: string; base: string | null; target: string | null; patch: string; before: string; after: string; binary: boolean; truncated: boolean; submodule: boolean; snapshot?: string }
 export interface BlameLine { line: number; hash: string; author: string; time: number; message: string }
@@ -40,6 +40,8 @@ export const gitApi = {
   setIdentity: (id: string, identity: GitIdentity) => request<GitIdentity>(route(id) + '/identity', { method: 'PUT', body: JSON.stringify(identity) }),
   setGlobalIdentity: (id: string, identity: GitIdentity) => request<GitIdentity>(route(id) + '/identity/global', { method: 'PUT', body: JSON.stringify(identity) }),
   credentials: (id: string) => request<GitCredentialStatus>(route(id) + '/credentials'),
+  saveHostCredentials: (host: string, username: string, token: string) => request<{ hosts: string[] }>('/git/credentials', { method: 'PUT', body: JSON.stringify({ host, username, token }) }),
+  clearHostCredentials: (host: string) => request<{ hosts: string[] }>('/git/credentials/' + encodeURIComponent(host), { method: 'DELETE' }),
   saveCredentials: (id: string, remote: string, username: string, token: string) => request<GitCredentialStatus>(route(id) + '/credentials', { method: 'PUT', body: JSON.stringify({ remote, username, token }) }),
   clearCredentials: (id: string, remote: string) => request<GitCredentialStatus>(route(id) + '/credentials/' + encodeURIComponent(remote), { method: 'DELETE' }),
   history: (id: string, ref?: string, offset = 0) => request<{ commits: GitCommit[]; has_more: boolean }>(route(id) + '/history' + query({ ref, offset })),

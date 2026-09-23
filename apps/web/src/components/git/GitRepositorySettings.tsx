@@ -1,15 +1,21 @@
 import { useEffect, useState } from 'react'
 import { gitApi, type GitCredentialStatus } from '../../api/git'
+import { ApiError } from '../../api/client'
 import { useI18n } from '../../i18n'
 import Button from '../Button'
 import Icon from '../Icon'
+
+function httpsHost(url: string) {
+  try { const parsed = new URL(url); return parsed.protocol === 'https:' ? parsed.host.toLowerCase() : '' }
+  catch { return '' }
+}
 
 export default function GitRepositorySettings({ id }: { id: string }) {
   const { t } = useI18n()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [inventory, setInventory] = useState<GitCredentialStatus | null>(null)
-  const [remote, setRemote] = useState('')
+  const [host, setHost] = useState('')
   const [username, setUsername] = useState('')
   const [token, setToken] = useState('')
   const [busy, setBusy] = useState(false)
@@ -18,11 +24,12 @@ export default function GitRepositorySettings({ id }: { id: string }) {
   const validIdentity = !!name.trim() && /^[^@\s]+@[^@\s]+$/.test(email.trim())
   useEffect(() => {
     let current = true
-    setError(''); setNotice(''); setInventory(null); setRemote('')
-    Promise.all([gitApi.identity(id), gitApi.credentials(id)]).then(([identity, credentials]) => {
+    setError(''); setNotice(''); setInventory(null); setHost('')
+    Promise.all([gitApi.identity(id), gitApi.credentials(id)]).then(([identity, response]) => {
       if (!current) return
+      const credentials: GitCredentialStatus = { remotes: Array.isArray(response.remotes) ? response.remotes : [], hosts: Array.isArray(response.hosts) ? response.hosts : [] }
       setName(identity.name); setEmail(identity.email); setInventory(credentials)
-      setRemote(credentials.remotes.find(item => item.url.startsWith('https://'))?.name || '')
+      setHost(credentials.remotes.flatMap(item => [httpsHost(item.push_url), httpsHost(item.url)]).find(Boolean) || credentials.hosts[0] || '')
     }).catch(reason => { if (current) setError(reason instanceof Error ? reason.message : String(reason)) })
     return () => { current = false }
   }, [id])
@@ -39,20 +46,21 @@ export default function GitRepositorySettings({ id }: { id: string }) {
     finally { setBusy(false) }
   }
   async function saveCredential() {
-    if (!remote || !username.trim() || !token || busy) return
+    if (!host.trim() || !username.trim() || !token || busy) return
     setBusy(true); setError(''); setNotice('')
-    try { setInventory(await gitApi.saveCredentials(id, remote, username.trim(), token)); setToken(''); setNotice(t('git.credentialsSaved')) }
-    catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
+    try { const result = await gitApi.saveHostCredentials(host.trim(), username.trim(), token); setInventory(current => current && { ...current, hosts: Array.isArray(result.hosts) ? result.hosts : [] }); setToken(''); setNotice(t('git.credentialsSaved')) }
+    catch (reason) { setError(reason instanceof ApiError && reason.status === 404 ? t('git.restartForCredentials') : reason instanceof Error ? reason.message : String(reason)) }
     finally { setBusy(false) }
   }
   async function clearCredential() {
-    if (!remote || busy) return
+    if (!host.trim() || busy) return
     setBusy(true); setError(''); setNotice('')
-    try { setInventory(await gitApi.clearCredentials(id, remote)); setToken(''); setNotice(t('git.credentialsCleared')) }
-    catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
+    try { const result = await gitApi.clearHostCredentials(host.trim()); setInventory(current => current && { ...current, hosts: Array.isArray(result.hosts) ? result.hosts : [] }); setToken(''); setNotice(t('git.credentialsCleared')) }
+    catch (reason) { setError(reason instanceof ApiError && reason.status === 404 ? t('git.restartForCredentials') : reason instanceof Error ? reason.message : String(reason)) }
     finally { setBusy(false) }
   }
-  const selected = inventory?.remotes.find(item => item.name === remote)
+  const suggestedHosts = [...new Set(inventory?.remotes.flatMap(item => [httpsHost(item.url), httpsHost(item.push_url)]).filter(Boolean) || [])]
+  const configured = !!inventory?.hosts?.includes(host.trim().toLowerCase())
   return <section className="git-repository-settings">
     <h2>{t('git.identityTitle')}</h2>
     <p>{t('git.identityHint')}</p>
@@ -62,9 +70,9 @@ export default function GitRepositorySettings({ id }: { id: string }) {
     <small>{t('git.globalIdentityHint')}</small>
     <h2>{t('git.credentialsTitle')}</h2>
     <p>{t('git.credentialsHint')}</p>
-    <label>{t('git.remoteSource')}<select value={remote} onChange={event => { setRemote(event.target.value); setToken(''); setNotice('') }}><option value="">{t('git.selectRemote')}</option>{inventory?.remotes.filter(item => item.url.startsWith('https://')).map(item => <option key={item.name} value={item.name}>{item.name}</option>)}</select></label>
-    {selected && <><small>{selected.url}</small><label>{t('git.authUsername')}<input name="gitAuthUsername" autoComplete="username" value={username} onChange={event => setUsername(event.target.value)} /></label><label>{t('git.authToken')}<input name="gitAuthToken" type="password" autoComplete="new-password" value={token} onChange={event => setToken(event.target.value)} /></label><div className="git-repository-settings__actions"><Button variant="primary" loading={busy} disabled={!username.trim() || !token || busy} onClick={() => void saveCredential()}>{t('git.saveCredentials')}</Button>{selected.configured && <Button disabled={busy} onClick={() => void clearCredential()}>{t('git.clearCredentials')}</Button>}</div>{selected.configured && <small><Icon name="check" size={13} />{t('git.credentialsConfigured')}</small>}</>}
-    {inventory && !inventory.remotes.some(item => item.url.startsWith('https://')) && <p>{t('git.noHttpsRemote')}</p>}
+    <label>{t('git.httpsHost')}<input name="gitAuthHost" list="git-auth-hosts" value={host} placeholder="gitlab.example.com" onChange={event => { setHost(event.target.value); setToken(''); setNotice('') }} /><datalist id="git-auth-hosts">{suggestedHosts.map(value => <option key={value} value={value} />)}</datalist></label>
+    <small>{t('git.httpsHostHint')}</small>
+    <label>{t('git.authUsername')}<input name="gitAuthUsername" autoComplete="username" value={username} onChange={event => setUsername(event.target.value)} /></label><label>{t('git.authToken')}<input name="gitAuthToken" type="password" autoComplete="new-password" value={token} onChange={event => setToken(event.target.value)} /></label><div className="git-repository-settings__actions"><Button variant="primary" loading={busy} disabled={!host.trim() || !username.trim() || !token || busy} onClick={() => void saveCredential()}>{t('git.saveCredentials')}</Button>{configured && <Button disabled={busy} onClick={() => void clearCredential()}>{t('git.clearCredentials')}</Button>}</div>{configured && <small><Icon name="check" size={13} />{t('git.credentialsConfigured')}</small>}
     {error && <p role="alert" className="git-danger">{error}</p>}{notice && <p role="status">{notice}</p>}
   </section>
 }

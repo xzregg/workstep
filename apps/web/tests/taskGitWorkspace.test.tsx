@@ -25,6 +25,8 @@ test('task Git tab opens its directory and shows only attached worktrees', async
   gitApi.deleteTaskWorkspace = async () => { deleted++; return { path: '/project/.workstep/worktrees/t', worktrees: [] } }
   gitApi.status = async () => ({ id: tree.id, path: tree.path, branch: tree.branch, head: 'sha', files: [], snapshot: 'snapshot', operation: null, active: false, ahead: null, behind: null, upstream: null } as GitStatus)
   gitApi.remotes = async () => ({ remotes: [], upstream: null, fetched_at: null })
+  gitApi.identity = async () => ({ name: 'Test User', email: 'test@example.com' })
+  gitApi.credentials = async () => ({ remotes: [], hosts: [] })
   gitApi.branches = async id => ({ branches: id === 'root-main' ? ['main', 'release'].map(name => ({ name, head: 'sha', worktree_id: null, path: null })) : [], remote_branches: [] })
   gitApi.addTaskWorktree = async (...args) => { createdArgs = args; return { path: '/project/.workstep/worktrees/t', worktrees: [tree] } }
   useGitStore.setState({ data, scan: async () => {} })
@@ -36,6 +38,10 @@ test('task Git tab opens its directory and shows only attached worktrees', async
     assert.equal(container.querySelector('.task-git-page h1')?.textContent, 'Git Workspace')
     assert.deepEqual([...container.querySelectorAll('.task-git-tree strong')].map(element => element.textContent), ['B'])
     assert.equal(container.querySelector('.git-context h2')?.textContent, 'workstep/t/B')
+    const settings = container.querySelector<HTMLButtonElement>('.task-git-page .git-settings-toggle')!
+    await act(async () => settings.click())
+    assert.ok(container.querySelector<HTMLInputElement>('input[name="gitAuthHost"]'))
+    await act(async () => settings.click())
     const resizer = container.querySelector<HTMLElement>('.task-git-page .git-tree-resizer')!
     assert.ok(resizer)
     assert.equal(resizer.getAttribute('aria-valuenow'), '280')

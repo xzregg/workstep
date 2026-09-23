@@ -9,7 +9,6 @@ from .command import GitError, text
 
 
 ALIAS = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
-DEFAULT_COMMIT_EMAIL = "you@example.com"
 
 
 class TaskGitWorkspace:
@@ -51,29 +50,7 @@ class TaskGitWorkspace:
         async with self._lock(project_path, task_id):
             root = await asyncio.to_thread(self.root, project_path, task_id)
             await asyncio.to_thread(root.mkdir, parents=True, exist_ok=True)
-            workspace = await self.list(project_path, task_id)
-            for tree in workspace["worktrees"]:
-                path = tree["path"]
-                common = self.git.directories[tree["id"]]["common_dir"]
-                async with self.git.locks.setdefault(common, asyncio.Lock()):
-                    await self.git.command(path, "config", "extensions.worktreeConfig", "true")
-                    email_raw, _ = await self.git.command(path, "config", "--get", "user.email", check=False)
-                    await self._configure_identity(path, creator_name, text(email_raw).strip() or DEFAULT_COMMIT_EMAIL)
-            return workspace
-
-    async def _configure_identity(self, path: str | Path, creator_name: str, email: str) -> None:
-        shared_raw, _ = await self.git.command(path, "config", "--local", "--get", "workstep.sharedIdentity", check=False)
-        if text(shared_raw).strip() == "true":
-            shared_name, _ = await self.git.command(path, "config", "--local", "--get", "user.name", check=False)
-            shared_email, _ = await self.git.command(path, "config", "--local", "--get", "user.email", check=False)
-            creator_name = text(shared_name).strip()
-            email = text(shared_email).strip()
-        name_raw, _ = await self.git.command(path, "config", "--worktree", "--get", "user.name", check=False)
-        if creator_name.strip() and not text(name_raw).strip():
-            await self.git.command(path, "config", "--worktree", "user.name", creator_name.strip())
-        email_raw, _ = await self.git.command(path, "config", "--worktree", "--get", "user.email", check=False)
-        if not text(email_raw).strip():
-            await self.git.command(path, "config", "--worktree", "user.email", email)
+            return await self.list(project_path, task_id)
 
     async def list(self, project_path: str | Path, task_id: str) -> dict:
         root = await asyncio.to_thread(self.root, project_path, task_id)
@@ -150,8 +127,6 @@ class TaskGitWorkspace:
             _, code = await self.git.command(source, "show-ref", "--verify", "--quiet", "refs/heads/" + branch, check=False)
             if not code and branch != default_branch:
                 raise GitError("功能分支已存在，请填写新的分支名。", 409)
-            email_raw, _ = await self.git.command(source, "config", "--get", "user.email", check=False)
-            email = text(email_raw).strip() or DEFAULT_COMMIT_EMAIL
             await self.git.command(source, "config", "extensions.worktreeConfig", "true")
             await asyncio.to_thread(root.mkdir, parents=True, exist_ok=True)
             if code:
@@ -161,7 +136,6 @@ class TaskGitWorkspace:
                 if occupied:
                     raise GitError("此任务的功能分支已在其他工作目录检出。", 409)
                 await self.git.command(source, "worktree", "add", str(target), branch, timeout=120)
-            await self._configure_identity(target, creator_name, email)
             discovered = await self.git.discover_repository(source)
             repo["worktrees"] = discovered["worktrees"]
             tree = next(item for item in discovered["worktrees"] if item["id"] == identity(str(target)))

@@ -11,7 +11,7 @@ from httpx import ASGITransport, AsyncClient, ReadTimeout
 
 import api.git as git_api
 from services.git import GitService
-from services.git.command import run_git
+from services.git.command import run_git, explain_auth_error
 
 
 def git(path, *args):
@@ -158,25 +158,19 @@ async def test_task_worktree_uses_selected_source_branch_and_custom_new_branch(c
         await workspace.add(root, 'task-other', payment['id'], 'other', 'main', 'taskfix/payment-fix')
 
 
-async def test_task_worktree_uses_fixed_email_only_when_git_email_is_missing(client, layout, monkeypatch):
+async def test_task_worktree_inherits_git_identity_without_writing_overrides(client, layout):
     http, service = client
     root, repo, _ = layout
     data = await scan(http)
     payment = next(item for item in data['repositories'] if item['name'] == 'payment')
     from services.git.task_workspace import TaskGitWorkspace
 
-    command = service.command
-
-    async def no_email(path, *args, **kwargs):
-        if Path(path) == repo and args == ('config', '--get', 'user.email'):
-            return b'', 1
-        return await command(path, *args, **kwargs)
-
-    monkeypatch.setattr(service, 'command', no_email)
     created = await TaskGitWorkspace(service).add(root, 'task-123', payment['id'], 'payment', 'main', creator_name='任务创建人')
     tree = Path(created['worktrees'][0]['path'])
-    assert git(tree, 'config', '--worktree', '--get', 'user.name') == '任务创建人'
-    assert git(tree, 'config', '--worktree', '--get', 'user.email') == 'you@example.com'
+    assert subprocess.run(['git', '-C', str(tree), 'config', '--worktree', '--get', 'user.name'], capture_output=True).returncode == 1
+    assert subprocess.run(['git', '-C', str(tree), 'config', '--worktree', '--get', 'user.email'], capture_output=True).returncode == 1
+    assert git(tree, 'config', '--get', 'user.name') == 'Test User'
+    assert git(tree, 'config', '--get', 'user.email') == 'test@example.invalid'
     assert git(repo, 'config', '--get', 'user.name') == 'Test User'
     assert git(repo, 'config', '--get', 'user.email') == 'test@example.invalid'
     (tree / 'one.txt').write_text('changed by task\n')
@@ -185,7 +179,7 @@ async def test_task_worktree_uses_fixed_email_only_when_git_email_is_missing(cli
         'paths': ['one.txt'], 'message': 'task change', 'snapshot': status['snapshot'],
     })
     assert response.status_code == 200, response.text
-    assert git(tree, 'log', '-1', '--format=%an <%ae>') == '任务创建人 <you@example.com>'
+    assert git(tree, 'log', '-1', '--format=%an <%ae>') == 'Test User <test@example.invalid>'
 
 
 async def test_task_workspace_can_select_nested_git_inside_git_project(tmp_path):
@@ -330,15 +324,15 @@ async def test_task_workspace_api_keeps_execution_directory(layout, monkeypatch)
             assert created.status_code == 200, created.text
             assert created.json()['worktrees'][0]['branch'] == 'taskfix/payment'
             tree_path = created.json()['worktrees'][0]['path']
-            assert git(tree_path, 'config', '--worktree', '--get', 'user.name') == '任务创建人'
-            assert git(tree_path, 'config', '--worktree', '--get', 'user.email') == 'test@example.invalid'
+            assert git(tree_path, 'config', '--get', 'user.name') == 'Test User'
+            assert git(tree_path, 'config', '--get', 'user.email') == 'test@example.invalid'
             assert git(repo, 'config', '--get', 'user.name') == 'Test User'
-            git(tree_path, 'config', '--worktree', '--unset', 'user.name')
-            git(tree_path, 'config', '--worktree', '--unset', 'user.email')
+            assert subprocess.run(['git', '-C', tree_path, 'config', '--worktree', '--get', 'user.name'], capture_output=True).returncode == 1
+            assert subprocess.run(['git', '-C', tree_path, 'config', '--worktree', '--get', 'user.email'], capture_output=True).returncode == 1
             reopened = await http.post(f'/api/git/projects/{project.id}/tasks/task-123/workspace')
             assert reopened.status_code == 200, reopened.text
-            assert git(tree_path, 'config', '--worktree', '--get', 'user.name') == '任务创建人'
-            assert git(tree_path, 'config', '--worktree', '--get', 'user.email') == 'test@example.invalid'
+            assert subprocess.run(['git', '-C', tree_path, 'config', '--worktree', '--get', 'user.name'], capture_output=True).returncode == 1
+            assert subprocess.run(['git', '-C', tree_path, 'config', '--worktree', '--get', 'user.email'], capture_output=True).returncode == 1
             git(tree_path, 'config', '--worktree', 'user.name', '手动设置')
             git(tree_path, 'config', '--worktree', 'user.email', 'manual@example.invalid')
             reopened = await http.post(f'/api/git/projects/{project.id}/tasks/task-123/workspace')
@@ -880,6 +874,22 @@ async def test_https_credentials_are_used_only_for_the_current_git_command(tmp_p
     assert subprocess.run(['git', '-C', str(repo), 'config', '--local', '--get', 'credential.helper'], capture_output=True).returncode == 1
 
 
+def test_missing_https_credentials_explain_where_to_configure_them():
+    message = explain_auth_error("fatal: could not read Username for 'https://gitlab.base.packertec.com': terminal prompts disabled")
+    assert 'gitlab.base.packertec.com' in message
+    assert 'Git 设置' in message
+
+
+async def test_unset_https_credentials_use_the_local_git_credential_helper(tmp_path):
+    repo = repository(tmp_path / 'repo')
+    credential_file = tmp_path / 'credentials'
+    credential_file.write_text('https://local-user:local-token@example.test\n')
+    git(repo, 'config', 'credential.helper', f'store --file={credential_file}')
+    output, _ = await run_git(repo, 'credential', 'fill', stdin=b'protocol=https\nhost=example.test\n\n')
+    assert b'username=local-user' in output
+    assert b'password=local-token' in output
+
+
 async def test_git_identity_can_be_saved_for_repository(client, layout):
     http, _ = client
     root, repo, other_worktree = layout
@@ -905,6 +915,7 @@ async def test_git_identity_can_be_saved_for_repository(client, layout):
 
 async def test_global_identity_applies_to_other_repositories_without_local_override(client, layout, tmp_path, monkeypatch):
     http, _ = client
+    _, repo, _ = layout
     monkeypatch.setenv('HOME', str(tmp_path / 'git-home'))
     (tmp_path / 'git-home').mkdir()
     id = await payment_id(http)
@@ -912,6 +923,9 @@ async def test_global_identity_applies_to_other_repositories_without_local_overr
         'name': 'Shared Author', 'email': 'shared@example.test'})
     assert response.status_code == 200, response.text
     assert response.json() == {'name': 'Shared Author', 'email': 'shared@example.test'}
+    git(repo, 'config', '--local', '--unset', 'user.name')
+    git(repo, 'config', '--local', '--unset', 'user.email')
+    assert (await http.get(f'/api/git/worktrees/{id}/identity')).json() == {'name': 'Shared Author', 'email': 'shared@example.test'}
     other = repository(tmp_path / 'another-repository')
     git(other, 'config', '--local', '--unset', 'user.name')
     git(other, 'config', '--local', '--unset', 'user.email')
@@ -936,6 +950,27 @@ async def test_https_remote_credentials_are_shared_by_host_and_never_returned(cl
     git(repo, 'remote', 'set-url', 'origin', 'https://other.example.test/repo.git')
     assert await service.credential_for(directory, 'origin') is None
     assert all(not item['configured'] for item in (await http.delete(url + '/other')).json()['remotes'])
+
+
+async def test_credentials_can_be_set_for_https_push_host_when_fetch_is_ssh(client, layout):
+    http, service = client
+    _, repo, _ = layout
+    git(repo, 'remote', 'add', 'origin', 'git@git.example.test:team/repo.git')
+    git(repo, 'remote', 'set-url', '--push', 'origin', 'https://gitlab.base.packertec.com/team/repo.git')
+    id = await payment_id(http)
+    inventory = (await http.get(f'/api/git/worktrees/{id}/credentials')).json()
+    assert inventory['remotes'][0]['push_url'] == 'https://gitlab.base.packertec.com/team/repo.git'
+    response = await http.put('/api/git/credentials', json={
+        'host': 'gitlab.base.packertec.com', 'username': 'alice', 'token': 'secret-token'})
+    assert response.status_code == 200, response.text
+    assert 'secret-token' not in response.text
+    directory = await service.directory(id)
+    assert await service.credential_for(directory, 'origin') is None
+    assert await service.credential_for(directory, 'origin', push=True) == {
+        'username': 'alice', 'token': 'secret-token'}
+    assert 'gitlab.base.packertec.com' in (await http.get('/api/git/credentials')).json()['hosts']
+    assert (await http.delete('/api/git/credentials/gitlab.base.packertec.com')).status_code == 200
+    assert await service.credential_for(directory, 'origin', push=True) is None
 
 
 async def test_explicit_pull_uses_selected_remote_branch_and_can_set_upstream(client, layout, tmp_path):
