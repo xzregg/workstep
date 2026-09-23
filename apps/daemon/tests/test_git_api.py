@@ -866,12 +866,15 @@ async def test_remote_inventory_and_explicit_push_target_support_multiple_remote
 
 async def test_https_credentials_are_used_only_for_the_current_git_command(tmp_path):
     repo = repository(tmp_path / 'repo')
-    auth = {'username': 'git-user', 'token': 'one-time-token'}
+    auth = {'username': 'git-user', 'token': 'one-time-token', 'host': 'example.test'}
     output, _ = await run_git(repo, 'credential', 'fill',
         stdin=b'protocol=https\nhost=example.test\n\n', auth=auth)
     assert b'username=git-user' in output
     assert b'password=one-time-token' in output
     assert subprocess.run(['git', '-C', str(repo), 'config', '--local', '--get', 'credential.helper'], capture_output=True).returncode == 1
+    with pytest.raises(Exception):
+        await run_git(repo, 'credential', 'fill',
+            stdin=b'protocol=https\nhost=other.example.test\n\n', auth=auth)
 
 
 def test_missing_https_credentials_explain_where_to_configure_them():
@@ -944,9 +947,9 @@ async def test_https_remote_credentials_are_shared_by_host_and_never_returned(cl
     assert response.json()['remotes'][0]['configured'] is True
     assert 'secret-token' not in response.text
     directory = await service.directory(id)
-    assert await service.credential_for(directory, 'origin') == {'username': 'alice', 'token': 'secret-token'}
+    assert await service.credential_for(directory, 'origin') == {'username': 'alice', 'token': 'secret-token', 'host': 'git.example.test'}
     git(repo, 'remote', 'add', 'other', 'https://git.example.test/team/other.git')
-    assert await service.credential_for(directory, 'other') == {'username': 'alice', 'token': 'secret-token'}
+    assert await service.credential_for(directory, 'other') == {'username': 'alice', 'token': 'secret-token', 'host': 'git.example.test'}
     git(repo, 'remote', 'set-url', 'origin', 'https://other.example.test/repo.git')
     assert await service.credential_for(directory, 'origin') is None
     assert all(not item['configured'] for item in (await http.delete(url + '/other')).json()['remotes'])
@@ -967,10 +970,27 @@ async def test_credentials_can_be_set_for_https_push_host_when_fetch_is_ssh(clie
     directory = await service.directory(id)
     assert await service.credential_for(directory, 'origin') is None
     assert await service.credential_for(directory, 'origin', push=True) == {
-        'username': 'alice', 'token': 'secret-token'}
+        'username': 'alice', 'token': 'secret-token', 'host': 'gitlab.base.packertec.com'}
     assert 'gitlab.base.packertec.com' in (await http.get('/api/git/credentials')).json()['hosts']
     assert (await http.delete('/api/git/credentials/gitlab.base.packertec.com')).status_code == 200
     assert await service.credential_for(directory, 'origin', push=True) is None
+
+
+async def test_saved_https_credentials_upgrade_same_host_http_remote_before_git_uses_it(client, layout):
+    http, service = client
+    _, repo, _ = layout
+    git(repo, 'remote', 'add', 'origin', 'http://gitlab.base.packertec.com/team/repo.git')
+    id = await payment_id(http)
+    response = await http.put('/api/git/credentials', json={
+        'host': 'gitlab.base.packertec.com', 'username': 'alice', 'token': 'secret-token'})
+    assert response.status_code == 200, response.text
+    directory = await service.directory(id)
+    auth = await service.credential_for(directory, 'origin', push=True)
+    assert auth == {'username': 'alice', 'token': 'secret-token', 'host': 'gitlab.base.packertec.com',
+                    'upgrade_from': 'http://gitlab.base.packertec.com/',
+                    'upgrade_to': 'https://gitlab.base.packertec.com/'}
+    upgraded, _ = await run_git(repo, 'remote', 'get-url', '--push', 'origin', auth=auth)
+    assert upgraded.decode().strip() == 'https://gitlab.base.packertec.com/team/repo.git'
 
 
 async def test_explicit_pull_uses_selected_remote_branch_and_can_set_upstream(client, layout, tmp_path):

@@ -2,6 +2,7 @@
 import asyncio
 import os
 import re
+import shlex
 import signal
 import shutil
 import sys
@@ -25,11 +26,31 @@ def explain_auth_error(message: str) -> str:
 def _askpass_script():
     directory = Path(tempfile.mkdtemp(prefix='workstep-git-'))
     script = directory / ('askpass.cmd' if os.name == 'nt' else 'askpass.sh')
+    helper = directory / 'askpass.py'
+    helper.write_text('''import os, re, sys
+from urllib.parse import urlsplit
+prompt = sys.argv[1] if len(sys.argv) > 1 else ""
+match = re.search(r"'([^']+)'", prompt)
+if not match:
+    sys.exit(1)
+try:
+    url = urlsplit(match.group(1))
+    host = (url.hostname or "").lower() + (f":{url.port}" if url.port else "")
+except ValueError:
+    sys.exit(1)
+if url.scheme != "https" or host != os.environ.get("WORKSTEP_GIT_HOST"):
+    sys.exit(1)
+if prompt.startswith("Username"):
+    print(os.environ["WORKSTEP_GIT_USERNAME"])
+elif prompt.startswith("Password"):
+    print(os.environ["WORKSTEP_GIT_TOKEN"])
+else:
+    sys.exit(1)
+''')
     if os.name == 'nt':
-        (directory / 'askpass.py').write_text('import os, sys\nprint(os.environ["WORKSTEP_GIT_USERNAME"] if sys.argv[1].startswith("Username") else os.environ["WORKSTEP_GIT_TOKEN"])\n')
         script.write_text(f'@echo off\r\n"{sys.executable}" "%~dp0askpass.py" "%~1"\r\n')
     else:
-        script.write_text('#!/bin/sh\ncase "$1" in\n  Username*) printf "%s\\n" "$WORKSTEP_GIT_USERNAME";;\n  Password*) printf "%s\\n" "$WORKSTEP_GIT_TOKEN";;\nesac\n')
+        script.write_text(f'#!/bin/sh\nexec {shlex.quote(sys.executable)} {shlex.quote(str(helper))} "$1"\n')
         script.chmod(0o700)
     return directory, script
 
@@ -39,10 +60,15 @@ async def run_git(path, *args: str, stdin: bytes | None = None, check=True, time
     env.update(GIT_TERMINAL_PROMPT='0', GIT_OPTIONAL_LOCKS='0', GIT_LITERAL_PATHSPECS='1', LC_ALL='C')
     askpass_dir = None
     if auth:
+        if not auth.get('host'):
+            raise GitError('Git 凭据缺少 HTTPS 主机。')
         askpass_dir, script = await asyncio.to_thread(_askpass_script)
         env.update(GIT_ASKPASS=str(script), GIT_ASKPASS_REQUIRE='force',
-                   WORKSTEP_GIT_USERNAME=auth['username'], WORKSTEP_GIT_TOKEN=auth['token'])
+                   WORKSTEP_GIT_USERNAME=auth['username'], WORKSTEP_GIT_TOKEN=auth['token'],
+                   WORKSTEP_GIT_HOST=auth['host'])
         args = ('-c', 'credential.helper=', *args)
+        if auth.get('upgrade_from'):
+            args = ('-c', f"url.{auth['upgrade_to']}.insteadOf={auth['upgrade_from']}", *args)
     try:
         process = await asyncio.create_subprocess_exec(
             'git', '--no-pager', '-C', str(path), *args,
