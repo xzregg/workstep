@@ -38,6 +38,7 @@ from services.history import (
     message_artifact_projections,
     restore_running_projection,
     session_id_from_events,
+    session_id_from_journal_path,
 )
 from streaming.bus import EventBus
 
@@ -326,13 +327,16 @@ class TaskService:
                 "events": [],
                 "prompt": None,
                 "usage": None,
-                "session_id": None,
+                "session_id": session_id_from_journal_path(msg),
                 "proposals": [],
             }
             if msg.events_json:
                 try:
                     entry["events"] = json_mod.loads(msg.events_json)
-                    entry["session_id"] = session_id_from_events(entry["events"])
+                    entry["session_id"] = (
+                        session_id_from_events(entry["events"])
+                        or entry["session_id"]
+                    )
                 except Exception:
                     pass
             detail = event_detail(msg)

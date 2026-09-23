@@ -26,7 +26,7 @@ const del = (): RequestInit => ({ method: 'DELETE' })
 export const gitApi = {
   taskWorkspace: (projectId: string, taskId: string) => request<TaskGitWorkspace>(`/git/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/workspace`),
   openTaskWorkspace: (projectId: string, taskId: string) => request<TaskGitWorkspace>(`/git/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/workspace`, post()),
-  deleteTaskWorkspace: (projectId: string, taskId: string) => request<TaskGitWorkspace>(`/git/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/workspace`, del()),
+  deleteTaskWorkspace: (projectId: string, taskId: string, force = false) => request<TaskGitWorkspace>(`/git/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/workspace${force ? '?force=true' : ''}`, del()),
   addTaskWorktree: (projectId: string, taskId: string, repositoryId: string, alias: string, baseRef: string, branchName: string) => request<TaskGitWorkspace>(`/git/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/worktrees`, post({ repository_id: repositoryId, alias, base_ref: baseRef, branch_name: branchName })),
   removeTaskWorktree: (projectId: string, taskId: string, alias: string) => request<TaskGitWorkspace>(`/git/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/worktrees/${encodeURIComponent(alias)}`, del()),
   scan: () => request<ScanJob>('/git/scans', post()),

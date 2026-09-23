@@ -2,7 +2,7 @@
 
 import json
 import logging
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from agent_assistants.event_journal import TurnEventJournal
 from agent_assistants.event_truncation import truncate_large_tool_payloads
@@ -67,6 +67,21 @@ def session_id_from_events(events: list[dict]) -> str | None:
         data = event.get("data")
         if isinstance(data, dict) and data.get("session_id"):
             return str(data["session_id"])
+    return None
+
+
+def session_id_from_journal_path(msg: Message) -> str | None:
+    """Recover the session owned by a message segment without replaying its log."""
+    if not msg.event_log_path:
+        return None
+    parts = PurePosixPath(msg.event_log_path).parts
+    if (
+        len(parts) == 4
+        and parts[0] == "event_logs"
+        and parts[1] == f"task-{msg.task_id}"
+        and parts[3] == f"{msg.id}.jsonl"
+    ):
+        return parts[2]
     return None
 
 
@@ -149,7 +164,11 @@ def restore_running_projection(
     snapshot_content = convert_visualize_markers(snapshot["content"] or "")
     if snapshot_content:
         entry["content"] = snapshot_content
-    entry["session_id"] = session_id_from_events(snapshot["events"])
+    entry["session_id"] = (
+        session_id_from_events(snapshot["events"])
+        or entry.get("session_id")
+        or session_id_from_journal_path(msg)
+    )
     entry["events"] = translate_events(
         snapshot["events"],
         task_id=str(msg.task_id),
@@ -197,7 +216,7 @@ def get_task_history(
             "events": [],
             "prompt": None,
             "usage": None,
-            "session_id": None,
+            "session_id": session_id_from_journal_path(msg),
         }
 
         # Parse events_json → AG-UI（旧词汇经兼容映射）
@@ -207,7 +226,9 @@ def get_task_history(
                 raw_events = json.loads(msg.events_json)
             except json.JSONDecodeError:
                 logger.warning("Invalid events_json for message %s", msg.id)
-        entry["session_id"] = session_id_from_events(raw_events)
+        entry["session_id"] = (
+            session_id_from_events(raw_events) or entry["session_id"]
+        )
         entry["events"] = translate_events(
             raw_events,
             task_id=task_id,

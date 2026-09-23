@@ -2363,6 +2363,7 @@ async def test_task_artifacts_are_listed_with_manifest_metadata(api_context):
         "name": "prd.md",
         "logical_name": "PRD 文档",
         "artifact_type": "Markdown",
+        "output_port": None,
         "declared_output": True,
         "path": str((artifact_dir / "prd.md").resolve()),
         "relative_path": "prd.md",

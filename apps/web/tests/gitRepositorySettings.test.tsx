@@ -90,3 +90,22 @@ test('Git settings stay visible while an older daemon omits credential hosts', a
     await window.happyDOM.close()
   }
 })
+
+test('Git settings suggest the HTTPS host for an HTTP remote', async () => {
+  const { window } = installDomEnvironment()
+  const original = { identity: gitApi.identity, credentials: gitApi.credentials }
+  gitApi.identity = async () => ({ name: '', email: '' })
+  gitApi.credentials = async () => ({ remotes: [{ name: 'origin', url: 'http://git.example.test/team/repo.git', push_url: 'http://git.example.test/team/repo.git', configured: true }], hosts: ['git.example.test'] })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><GitRepositorySettings id="repo" /></I18nProvider>))
+    assert.equal(container.querySelector<HTMLInputElement>('input[name="gitAuthHost"]')?.value, 'git.example.test')
+    assert.equal(container.querySelector('datalist option')?.getAttribute('value'), 'git.example.test')
+  } finally {
+    await act(async () => root.unmount())
+    Object.assign(gitApi, original)
+    container.remove()
+    await window.happyDOM.close()
+  }
+})

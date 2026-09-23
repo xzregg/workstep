@@ -148,6 +148,44 @@ def test_task_history_returns_latest_page_in_chronological_order(db_and_service)
     assert [message["content"] for message in history] == ["second", "third"]
 
 
+def test_task_history_uses_journal_session_for_inserted_response_segments(
+    db_and_service, tmp_path,
+):
+    service, _ = db_and_service
+    task = service.create_task(title="Live insert", cwd=str(tmp_path))
+    from models import Message
+
+    session_id = str(uuid.uuid4())
+    message_ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+    for index, message_id in enumerate(message_ids, start=1):
+        relative_path = (
+            f"event_logs/task-{task['id']}/{session_id}/{message_id}.jsonl"
+        )
+        journal_path = tmp_path / relative_path
+        journal_path.parent.mkdir(parents=True, exist_ok=True)
+        journal_path.touch()
+        Message.create(
+            id=message_id,
+            task=task["id"],
+            step_key="do",
+            channel="execution",
+            role="assistant",
+            content="回应插入消息",
+            run_status="running" if index == 2 else "succeeded",
+            event_log_path=relative_path,
+            position=index,
+            created_at=datetime.now(timezone.utc),
+        )
+
+    history = service.get_task_history(
+        task["id"], workstep_dir=str(tmp_path),
+    )
+
+    assert [message["session_id"] for message in history] == [
+        session_id, session_id,
+    ]
+
+
 def test_task_history_infers_artifact_round_for_legacy_messages(db_and_service):
     service, _ = db_and_service
     task = service.create_task(title="Legacy rounds", cwd="/tmp")

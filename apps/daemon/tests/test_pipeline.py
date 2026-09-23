@@ -665,7 +665,7 @@ def test_assemble_prompt_tells_agent_to_inspect_directory_input(tmp_path):
         input_snapshot=snapshot,
     )
 
-    assert f"- Directory: `{package}`" in prompt
+    assert "- Directory: `solution-package`" in prompt
     assert "Inspect this directory and read the files required for this step." in prompt
     db.close()
 
@@ -785,7 +785,7 @@ def test_assemble_retry_prompt_only_contains_current_inputs_and_output_contract(
 
     assert "## Step execution update" in prompt
     assert "Execution reason: `feedback_revision`" in prompt
-    assert str(feedback) in prompt
+    assert "Path: `feedback.md`" in prompt
     assert "交付文档.md" in prompt
     assert "不应重复的任务说明" not in prompt
     assert "不应重复的步骤要求" not in prompt

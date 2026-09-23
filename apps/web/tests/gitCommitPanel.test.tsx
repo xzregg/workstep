@@ -79,6 +79,9 @@ test('AI generation uses checked files and fills the commit message', async () =
   try {
     await act(async () => root.render(<I18nProvider><GitChanges status={state} onRefresh={async () => {}} onDiff={() => {}} /></I18nProvider>))
     const generate = [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('AI 生成'))!
+    const actions = container.querySelector('.git-commit-actions')!
+    assert.deepEqual([...actions.querySelectorAll('button')].map(button => button.textContent?.trim()), ['提交 1 个文件', 'AI 生成'])
+    assert.equal(generate.parentElement, actions)
     await act(async () => generate.click())
     assert.deepEqual(calls, [['test', ['tracked.ts'], 'review']])
     assert.equal(container.querySelector<HTMLTextAreaElement>('textarea')!.value, 'feat(git): 生成规范提交说明')

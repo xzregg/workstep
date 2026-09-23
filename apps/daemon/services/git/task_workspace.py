@@ -147,7 +147,7 @@ class TaskGitWorkspace:
         async with self._lock(project_path, task_id):
             return await self._remove(project_path, task_id, alias)
 
-    async def _remove(self, project_path: str | Path, task_id: str, alias: str) -> dict:
+    async def _remove(self, project_path: str | Path, task_id: str, alias: str, *, force: bool = False) -> dict:
         if not ALIAS.fullmatch(alias) or alias in {".", ".."}:
             raise GitError("无效的工作目录名称。")
         project = await asyncio.to_thread(Path(project_path).resolve)
@@ -161,18 +161,18 @@ class TaskGitWorkspace:
         async with lock:
             target = root / alias
             raw, _ = await self.git.command(target, "status", "--porcelain=v1", "-z", "--untracked-files=all")
-            if raw:
+            if raw and not force:
                 raise GitError("工作目录存在未提交内容，请先处理后再移除。", 409)
             source = next((item["path"] for item in repo["worktrees"] if item["main"] and item["available"]), None)
             if source is None:
                 raise GitError("源仓库目录不可用，请重新扫描。", 409)
-            await self.git.command(source, "worktree", "remove", str(target), timeout=120)
+            await self.git.command(source, "worktree", "remove", *(["--force"] if force else []), str(target), timeout=120)
             repo["worktrees"] = (await self.git.discover_repository(Path(source)))["worktrees"]
             self.git.directories.pop(tree["id"], None)
         return await self.list(project, task_id)
 
-    async def delete(self, project_path: str | Path, task_id: str) -> dict:
-        """Remove only clean, recognized worktrees; keep their Git branches."""
+    async def delete(self, project_path: str | Path, task_id: str, *, force: bool = False) -> dict:
+        """Remove recognized worktrees while retaining their Git branches."""
         async with self._lock(project_path, task_id):
             root = await asyncio.to_thread(self.root, project_path, task_id)
             if not await asyncio.to_thread(root.is_dir):
@@ -191,10 +191,10 @@ class TaskGitWorkspace:
                 if not repo or not any(item["main"] and item["available"] for item in repo["worktrees"]):
                     raise GitError("源仓库目录不可用，请重新扫描。", 409)
                 raw, _ = await self.git.command(tree["path"], "status", "--porcelain=v1", "-z", "--untracked-files=all")
-                if raw:
+                if raw and not force:
                     raise GitError("工作区存在未提交内容，请先处理后再删除。", 409)
             for tree in current["worktrees"]:
-                await self._remove(project_path, task_id, tree["alias"])
+                await self._remove(project_path, task_id, tree["alias"], force=force)
             try:
                 await asyncio.to_thread(root.rmdir)
             except OSError as exc:

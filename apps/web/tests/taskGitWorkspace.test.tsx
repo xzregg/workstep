@@ -19,11 +19,11 @@ test('task Git tab opens its directory and shows only attached worktrees', async
   const data = { projects: [{ id: 'p', name: 'Project', path: '/project' }], repositories, depth: 5, scanned_at: 1, errors: [] } as GitDiscovery
   const tree = { id: 'task-b', path: '/project/.workstep/worktrees/t/B', alias: 'B', repository_id: 'B', repository_name: 'B', branch: 'workstep/t/B', head: 'sha', main: false, available: true, locked: false, prunable: false }
   let opened = 0
-  let deleted = 0
+  const deletions: unknown[][] = []
   let createdArgs: unknown[] | null = null
   gitApi.openTaskWorkspace = async () => { opened++; return { path: '/project/.workstep/worktrees/t', worktrees: [tree] } }
-  gitApi.deleteTaskWorkspace = async () => { deleted++; return { path: '/project/.workstep/worktrees/t', worktrees: [] } }
-  gitApi.status = async () => ({ id: tree.id, path: tree.path, branch: tree.branch, head: 'sha', files: [], snapshot: 'snapshot', operation: null, active: false, ahead: null, behind: null, upstream: null } as GitStatus)
+  gitApi.deleteTaskWorkspace = async (...args) => { deletions.push(args); return { path: '/project/.workstep/worktrees/t', worktrees: [] } }
+  gitApi.status = async () => ({ id: tree.id, path: tree.path, branch: tree.branch, head: 'sha', files: [{ path: 'changed.ts', old_path: null, index_status: ' ', worktree_status: 'M', staged: false, untracked: false, conflict: false, submodule: false }], snapshot: 'snapshot', operation: null, active: false, ahead: 2, behind: 0, upstream: 'origin/workstep/t/B' } as GitStatus)
   gitApi.remotes = async () => ({ remotes: [], upstream: null, fetched_at: null })
   gitApi.identity = async () => ({ name: 'Test User', email: 'test@example.com' })
   gitApi.credentials = async () => ({ remotes: [], hosts: [] })
@@ -91,11 +91,14 @@ test('task Git tab opens its directory and shows only attached worktrees', async
     await act(async () => create.click())
     assert.deepEqual(createdArgs, ['p', 't', 'root', 'manual-directory', 'release', 'feature-four'])
     const deleteButton = container.querySelector<HTMLButtonElement>('.task-git-delete-workspace')!
+    assert.equal(deleteButton, container.querySelector('.git-page-header > button:last-child'))
     await act(async () => deleteButton.click())
-    assert.equal(deleted, 0)
+    assert.equal(deletions.length, 0)
+    assert.match(document.querySelector('[role="dialog"]')?.textContent || '', /uncommitted|未提交/)
+    assert.match(document.querySelector('[role="dialog"]')?.textContent || '', /unpushed|未推送/)
     const confirm = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].at(-1)!
     await act(async () => confirm.click())
-    assert.equal(deleted, 1)
+    assert.deepEqual(deletions, [['p', 't', true]])
   } finally {
     await act(async () => root.unmount())
     Object.assign(gitApi, originalApi)

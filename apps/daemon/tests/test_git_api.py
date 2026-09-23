@@ -223,10 +223,18 @@ async def test_delete_task_workspace_preflights_all_worktrees_and_preserves_bran
     with pytest.raises(Exception):
         await workspace.delete(root, 'task-123')
     assert (folder / 'payment').is_dir()
+    deleted_dirty = await workspace.delete(root, 'task-123', force=True)
+    assert deleted_dirty['worktrees'] == []
+    assert not folder.exists()
+    assert git(payment, 'show-ref', '--verify', 'refs/heads/workstep/task-123/payment')
+    await workspace.add(root, 'task-123', repos['payment']['id'], 'payment', 'main')
+    await workspace.add(root, 'task-123', repos['fifth']['id'], 'fifth', 'main')
     (folder / 'fifth' / 'one.txt').write_text('original\n')
     (folder / 'notes.txt').write_text('keep me')
     with pytest.raises(Exception):
         await workspace.delete(root, 'task-123')
+    with pytest.raises(Exception):
+        await workspace.delete(root, 'task-123', force=True)
     assert (folder / 'payment').is_dir()
     (folder / 'notes.txt').unlink()
     deleted = await workspace.delete(root, 'task-123')
@@ -991,6 +999,22 @@ async def test_saved_https_credentials_upgrade_same_host_http_remote_before_git_
                     'upgrade_to': 'https://gitlab.base.packertec.com/'}
     upgraded, _ = await run_git(repo, 'remote', 'get-url', '--push', 'origin', auth=auth)
     assert upgraded.decode().strip() == 'https://gitlab.base.packertec.com/team/repo.git'
+
+
+async def test_http_remote_can_save_and_show_https_host_credentials(client, layout):
+    http, service = client
+    _, repo, _ = layout
+    git(repo, 'remote', 'add', 'origin', 'http://gitlab.base.packertec.com/team/repo.git')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}/credentials'
+    response = await http.put(url, json={
+        'remote': 'origin', 'username': 'alice', 'token': 'secret-token'})
+    assert response.status_code == 200, response.text
+    assert response.json()['remotes'][0]['configured'] is True
+    assert response.json()['hosts'] == ['gitlab.base.packertec.com']
+    directory = await service.directory(id)
+    assert (await service.credential_for(directory, 'origin'))['host'] == 'gitlab.base.packertec.com'
+    assert (await http.delete(url + '/origin')).json()['remotes'][0]['configured'] is False
 
 
 async def test_explicit_pull_uses_selected_remote_branch_and_can_set_upstream(client, layout, tmp_path):

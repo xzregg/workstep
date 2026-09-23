@@ -32,6 +32,9 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
   const [settings, setSettings] = useState(false)
   const [deleteWorkspaceOpen, setDeleteWorkspaceOpen] = useState(false)
   const [deleteWorkspaceBusy, setDeleteWorkspaceBusy] = useState(false)
+  const [deleteWorkspaceChecking, setDeleteWorkspaceChecking] = useState(false)
+  const [deleteWorkspaceDirty, setDeleteWorkspaceDirty] = useState<string[]>([])
+  const [deleteWorkspaceUnpushed, setDeleteWorkspaceUnpushed] = useState<string[]>([])
   const { treeWidth, startResize, resizeWithKeyboard, resetResize } = useGitTreeResize()
 
   const repositories = useMemo(() => data?.repositories.filter(repo =>
@@ -130,7 +133,7 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
     setDeleteWorkspaceBusy(true)
     setError('')
     try {
-      const result = await gitApi.deleteTaskWorkspace(projectId, taskId)
+      const result = await gitApi.deleteTaskWorkspace(projectId, taskId, deleteWorkspaceDirty.length > 0)
       setWorkspace(result)
       setSelected('')
       setShowAdd(false)
@@ -142,6 +145,20 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
     } finally { setDeleteWorkspaceBusy(false) }
   }
 
+  async function inspectWorkspaceBeforeDelete() {
+    if (deleteWorkspaceChecking || !workspace) return
+    setDeleteWorkspaceChecking(true)
+    setError('')
+    try {
+      const statuses = await Promise.all(workspace.worktrees.map(tree => gitApi.status(tree.id)))
+      setDeleteWorkspaceDirty(statuses.flatMap((status, index) => status.files.length ? [workspace.worktrees[index].alias] : []))
+      setDeleteWorkspaceUnpushed(statuses.flatMap((status, index) => status.branch && (!status.upstream || status.ahead === null || status.ahead > 0) ? [workspace.worktrees[index].alias] : []))
+      setDeleteWorkspaceOpen(true)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    } finally { setDeleteWorkspaceChecking(false) }
+  }
+
   return <section className="git-page task-git-page" aria-label={t('git.taskWorkspace')}>
     <header className="git-page-header">
       <h1>{t('git.taskWorkspace')}</h1>
@@ -149,8 +166,8 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
       <span className="git-grow" />
       {available.length > 0 && <Button size="sm" onClick={() => setShowAdd(value => !value)}>{t('git.taskAddRepository')}</Button>}
       {settingsId && <Button className="git-settings-toggle" size="sm" aria-label={t('git.settings')} aria-expanded={settings} onClick={() => setSettings(value => !value)}><Icon name="settings" size={14} /><span>{t('git.settings')}</span></Button>}
-      <Button className="task-git-delete-workspace" size="sm" variant="danger" disabled={loading} onClick={() => setDeleteWorkspaceOpen(true)}>{t('git.taskDeleteWorkspace')}</Button>
       <Button size="sm" loading={loading} onClick={() => void refresh()}>{t('git.refresh')}</Button>
+      <Button className="task-git-delete-workspace" size="sm" variant="danger" loading={deleteWorkspaceChecking} disabled={loading} onClick={() => void inspectWorkspaceBeforeDelete()}>{t('git.taskDeleteWorkspace')}</Button>
     </header>
     {error && <div className="git-error" role="alert">{error}</div>}
     {loading ? <div className="git-empty"><Icon name="loader-circle" className="git-spin" size={24} />{t('git.loading')}</div> : <>
@@ -213,6 +230,6 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
       </div> : <div className="git-empty"><Icon name="git-fork" size={28} /><h2>{t('git.taskEmpty')}</h2><p>{t('git.taskEmptyHint')}</p></div>}
     </>}
     <ConfirmDialog open={!!removing} title={t('git.taskRemove')} message={t('git.taskRemoveHint', { name: removing })} confirmText={t('git.taskRemove')} danger loading={removeBusy} onConfirm={() => void remove()} onCancel={() => { if (!removeBusy) setRemoving('') }} />
-    <ConfirmDialog open={deleteWorkspaceOpen} title={t('git.taskDeleteWorkspace')} message={t('git.taskDeleteWorkspaceHint', { count: workspace?.worktrees.length ?? 0 })} confirmText={t('git.taskDeleteWorkspace')} danger loading={deleteWorkspaceBusy} onConfirm={() => void deleteWorkspace()} onCancel={() => { if (!deleteWorkspaceBusy) setDeleteWorkspaceOpen(false) }} />
+    <ConfirmDialog open={deleteWorkspaceOpen} title={t('git.taskDeleteWorkspace')} message={[t('git.taskDeleteWorkspaceHint', { count: workspace?.worktrees.length ?? 0 }), deleteWorkspaceDirty.length ? t('git.taskDeleteWorkspaceDirty', { names: deleteWorkspaceDirty.join('、') }) : '', deleteWorkspaceUnpushed.length ? t('git.taskDeleteWorkspaceUnpushed', { names: deleteWorkspaceUnpushed.join('、') }) : ''].filter(Boolean).join(' ')} confirmText={t('git.taskDeleteWorkspace')} danger loading={deleteWorkspaceBusy} onConfirm={() => void deleteWorkspace()} onCancel={() => { if (!deleteWorkspaceBusy) setDeleteWorkspaceOpen(false) }} />
   </section>
 }

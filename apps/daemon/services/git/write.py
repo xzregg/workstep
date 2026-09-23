@@ -100,9 +100,13 @@ class GitWrites:
     @staticmethod
     def credential_host(url):
         parsed = urlsplit(url)
-        if parsed.scheme.lower() != 'https' or not parsed.hostname:
+        if not parsed.hostname:
             return None
-        return parsed.hostname.lower() + (f':{parsed.port}' if parsed.port else '')
+        if parsed.scheme.lower() == 'https':
+            return parsed.hostname.lower() + (f':{parsed.port}' if parsed.port else '')
+        if parsed.scheme.lower() == 'http' and parsed.port in {None, 80}:
+            return parsed.hostname.lower()
+        return None
 
     @classmethod
     def normalize_credential_host(cls, host):
@@ -147,7 +151,7 @@ class GitWrites:
         fetch_url = await self.remote_url(directory['path'], remote)
         host = self.credential_host(fetch_url)
         if not host:
-            raise GitError('用户名和访问令牌仅用于 HTTPS 远程源。')
+            raise GitError('用户名和访问令牌仅用于 HTTPS 或可升级为 HTTPS 的 HTTP 远程源。')
         self.remote_credentials[host] = {'username': username, 'token': token}
         return await self.credentials(id)
 
