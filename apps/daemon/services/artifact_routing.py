@@ -21,6 +21,8 @@ def empty_routing_state() -> dict:
         "return_counts": {},
         "feedback_inputs": {},
         "routed_rounds": {},
+        "entry_step_key": None,
+        "execution_scope": None,
     }
 
 
@@ -30,6 +32,8 @@ def normalize_routing_state(value: object) -> dict:
     state.setdefault("return_counts", {})
     state.setdefault("feedback_inputs", {})
     state.setdefault("routed_rounds", {})
+    state.setdefault("entry_step_key", None)
+    state.setdefault("execution_scope", None)
     return state
 
 
@@ -248,10 +252,12 @@ def resolve_input_snapshot(
     task_id: str,
     routing_state: dict,
     input_rounds: dict[str, int] | None = None,
+    task_context_edges: set[str] | None = None,
 ) -> dict:
     """Resolve exact artifacts available at every dynamic input port."""
     state = normalize_routing_state(routing_state)
     active_edges = {str(value) for value in state["active_edges"]}
+    task_context_edges = task_context_edges or set()
     feedback = state["feedback_inputs"].get(step.key, {})
     connections_by_port: dict[int, list[dict]] = {}
     for connection in step.incoming_connections:
@@ -268,6 +274,7 @@ def resolve_input_snapshot(
         name = str(spec.get("name") or f"input-{port_index}")
         connections = connections_by_port.get(port_index, [])
         sources: list[dict] = []
+        uses_task_context = False
         for connection in connections:
             edge_id = str(connection.get("id"))
             kind = str(connection.get("kind", "solid"))
@@ -276,6 +283,9 @@ def resolve_input_snapshot(
                 if isinstance(source, dict):
                     sources.append(deepcopy(source))
                     triggered_edges.append(edge_id)
+                continue
+            if edge_id in task_context_edges:
+                uses_task_context = True
                 continue
             if edge_id not in active_edges:
                 continue
@@ -303,6 +313,8 @@ def resolve_input_snapshot(
                 )
         if sources:
             status = "ready"
+        elif uses_task_context:
+            status = "task_context"
         elif connections:
             status = "inactive"
         else:
@@ -315,7 +327,7 @@ def resolve_input_snapshot(
         })
     return {
         "execution_type": "feedback" if triggered_edges else (
-            "initial" if not any(
+            "initial" if task_context_edges or not any(
                 connection.get("kind", "solid") == "solid"
                 for connection in step.incoming_connections
             ) else "forward"

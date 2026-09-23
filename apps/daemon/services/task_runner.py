@@ -37,6 +37,7 @@ from services.prompt import (
     assemble_followup_prompt,
     assemble_prompt,
     assemble_retry_prompt,
+    render_step_prompt,
 )
 from services.review_gate import ReviewGate
 from services.config import config_store
@@ -155,6 +156,7 @@ class TaskRunner:
         step_trigger_names: dict[str, str] | None = None,
         input_rounds_by_step: dict[str, dict[str, int]] | None = None,
         execution_scope: set[str] | None = None,
+        entry_step_key: str | None = None,
         initial_user_input_step_key: str | None = None,
     ):
         self._event_bus = event_bus
@@ -166,6 +168,7 @@ class TaskRunner:
         self._input_rounds_by_step = input_rounds_by_step or {}
         # 本次运行只执行这些步骤；范围外的步骤只满足 DAG 依赖，不改其持久状态。
         self._execution_scope = execution_scope
+        self._entry_step_key = entry_step_key
         self._initial_user_input_step_key = initial_user_input_step_key
         self._running_engines: dict[str, object] = {}  # step_run_key → engine
         self._live_message_queues: dict[str, asyncio.Queue] = {}
@@ -215,6 +218,7 @@ class TaskRunner:
         step_run: StepRun,
         artifacts_dir: Path,
         review_config: dict,
+        review_prompt: str,
     ) -> tuple[str, JournalRef]:
         """Persist and publish the review bubble before the reviewer starts."""
         message_id = new_message_id()
@@ -248,6 +252,7 @@ class TaskRunner:
                 step_run_id=step_run.id,
                 artifact_round=step_run.artifact_round,
                 run_status="running",
+                prompt_json=json.dumps({"prompt": review_prompt}, ensure_ascii=False),
                 event_log_path=journal_ref.relative_path,
                 position=0,
                 started_at=now,
@@ -265,6 +270,7 @@ class TaskRunner:
                 "role": "assistant",
                 "status": "running",
                 "content": "审核中",
+                "prompt": review_prompt,
                 "artifact_round": step_run.artifact_round,
             },
             "created_at": now.isoformat(),
@@ -448,6 +454,7 @@ class TaskRunner:
         # 也不再执行，但仍要让依赖它们的下游步骤被视为依赖已满足——否则失败的
         # 上游会被 DAG 判为 ready 而抢先执行（@ 下游却跑了上游）。
         scope = execution_scope if execution_scope is not None else self._execution_scope
+        self._execution_scope = scope
         if scope is not None:
             completed |= {key for key in scheduler.steps if key not in scope}
         running = set()
@@ -493,6 +500,21 @@ class TaskRunner:
 
             task.updated_at = finished_at
             await self._run_db(persist_pipeline_status)
+
+    def _task_context_edges(self, scheduler: DAGScheduler) -> set[str]:
+        """Return entry inputs intentionally replaced by task context."""
+        entry_key = self._entry_step_key
+        scope = self._execution_scope
+        if not entry_key or scope is None or entry_key not in scheduler.steps:
+            return set()
+        explicit_sources = set(self._input_rounds_by_step.get(entry_key, {}))
+        return {
+            str(connection.get("id"))
+            for connection in scheduler.steps[entry_key].incoming_connections
+            if connection.get("kind", "solid") == "solid"
+            and str(connection.get("from")) not in scope
+            and str(connection.get("from")) not in explicit_sources
+        }
 
     async def _seed_completed_forward_routes(
         self,
@@ -612,12 +634,14 @@ class TaskRunner:
             completed,
             running | failed,
             active_edges=set(self._routing_state.get("active_edges", [])),
+            task_context_edges=self._task_context_edges(scheduler),
         )
         if not ready:
             skipped = scheduler.get_skippable_steps(
                 completed,
                 running | failed,
                 active_edges=set(self._routing_state.get("active_edges", [])),
+                task_context_edges=self._task_context_edges(scheduler),
             )
             if skipped:
                 skipped_keys = {step.key for step in skipped}
@@ -659,6 +683,7 @@ class TaskRunner:
                 completed,
                 running | failed,
                 active_edges=set(self._routing_state.get("active_edges", [])),
+                task_context_edges=self._task_context_edges(scheduler),
             )
             if blocked:
                 now = utc_now()
@@ -772,6 +797,10 @@ class TaskRunner:
             task_id=task.id,
             routing_state=self._routing_state,
             input_rounds=input_rounds,
+            task_context_edges=(
+                self._task_context_edges(scheduler)
+                if step_key == self._entry_step_key else set()
+            ),
         )
 
         def prepare_step_state():
@@ -1076,7 +1105,10 @@ class TaskRunner:
         if review_results:
             prompt += (
                 "\n\n## Previous review feedback\n"
-                + "\n\n".join(review_results)
+                + "\n\n".join(
+                    render_step_prompt(value, task, step, trigger_name)
+                    for value in review_results
+                )
             )
             prompt += (
                 "\n\n请根据以上反馈修复问题，保留已有正确结果。\n"
@@ -1237,7 +1269,8 @@ class TaskRunner:
             )
             if live_queue is not None:
                 spawn_kwargs["live_message_queue"] = live_queue
-            spawn_iter = engine.spawn(**spawn_kwargs)
+            spawn = getattr(engine, "spawn_with_retry", engine.spawn)
+            spawn_iter = spawn(**spawn_kwargs)
             idle_timeout = await asyncio.to_thread(
                 config_store.get_engine_idle_timeout_seconds
             )
@@ -1585,7 +1618,18 @@ class TaskRunner:
                         })
                         review_message_id = None
                         review_journal_ref = None
+                        assembled_review_prompt = None
                         if review_mode == "auto":
+                            assembled_review_prompt = await asyncio.to_thread(
+                                ReviewGate._assemble_prompt,
+                                task,
+                                step,
+                                artifacts_dir,
+                                "".join(content_parts),
+                                str(review_config.get("prompt", "")),
+                                prompt,
+                                artifact_round,
+                            )
                             review_message_id, review_journal_ref = (
                                 await self._start_automatic_review_message(
                                     task,
@@ -1593,6 +1637,7 @@ class TaskRunner:
                                     step_run,
                                     artifacts_dir,
                                     review_config,
+                                    assembled_review_prompt,
                                 )
                             )
                         async def _record_review_event(event: dict) -> None:
@@ -1630,6 +1675,7 @@ class TaskRunner:
                             mode=review_mode,
                             message_id=review_message_id,
                             artifact_round=artifact_round,
+                            assembled_prompt=assembled_review_prompt,
                         )
                         cancelled_during_review = run_key in self._cancelled_steps
                         if cancelled_during_review:

@@ -21,7 +21,7 @@ services:
       - ./data/workstep:/root/.workstep
       # Codex 登录态与 rollout：项目库只存 thread id，恢复会话必须有对应 rollout 文件
       - ./data/engines/codex:/root/.codex
-      # Claude Code 登录态与会话（镜像未声明 VOLUME，不挂则重建即丢）
+      # Claude Code 登录态与会话（不挂载则重建容器后丢失）
       - ./data/engines/claude:/root/.claude
       # 项目数据目录：应用内创建项目时路径填 /data/projects/<名称>
       - ${WORKSTEP_PROJECTS_DIR:-./data/projects}:/data/projects

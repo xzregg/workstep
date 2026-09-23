@@ -3,9 +3,30 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
+import { readFileSync } from 'node:fs'
 import { I18nProvider } from '../src/i18n'
 import { gitApi, type GitStatus } from '../src/api/git'
 import GitChanges from '../src/components/git/GitChanges'
+
+test('file selection controls sit next to the file count', async () => {
+  const { window } = installDomEnvironment()
+  const style = document.head.appendChild(document.createElement('style'))
+  style.textContent = readFileSync(new URL('../src/components/git/git.css', import.meta.url), 'utf8')
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const state: GitStatus = { id: 'toolbar', path: '/repo', branch: 'main', head: 'abc', snapshot: 'review', active: false, operation: null, upstream: null, ahead: null, behind: null, files: [] }
+  try {
+    await act(async () => root.render(<I18nProvider><GitChanges status={state} onRefresh={async () => {}} onDiff={() => {}} /></I18nProvider>))
+    const toolbar = container.querySelector<HTMLElement>('.git-file-toolbar')!
+    assert.deepEqual([...toolbar.children].map(child => child.textContent?.trim()), ['文件 0', '全部折叠', '全选', '清空选择'])
+    assert.equal(window.getComputedStyle(toolbar.querySelector('strong')!).marginRight, '0px')
+  } finally {
+    await act(async () => root.unmount())
+    style.remove()
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
 
 test('commit defaults to tracked files, preserves draft on failure, and sends only checked files', async () => {
   const { window } = installDomEnvironment()

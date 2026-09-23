@@ -2423,12 +2423,11 @@ async def test_task_artifacts_include_directories_with_manifest_metadata(api_con
     prd = by_path[str((artifact_dir / "prd.md").resolve())]
     assert prd["is_dir"] is False
     assert prd["declared_output"] is True
-    assert by_path[str((artifact_dir / "docs" / "index.html").resolve())][
-        "declared_output"
-    ] is False
+    assert str((artifact_dir / "docs" / "index.html").resolve()) not in by_path
+    assert str((artifact_dir / "docs" / "guide" / "intro.md").resolve()) not in by_path
 
-    # Only the declared directory appears as a directory artifact; nested and
-    # hidden directories stay browsable via the fs API instead.
+    # A directory output stays as one entry. Its files and nested/hidden
+    # directories remain browsable through the fs API instead.
     directories = [item for item in artifacts if item["is_dir"]]
     assert [item["relative_path"] for item in directories] == ["docs/"]
     assert not any(item["name"] == ".hidden" for item in artifacts)
@@ -2601,6 +2600,228 @@ async def test_file_browser_and_preview_cover_text_image_binary_and_size_limit(
         "/api/fs/preview", params={"path": str(large_file)}
     )
     assert too_large.status_code == 413
+
+
+@pytest.mark.anyio
+async def test_project_file_browser_defaults_to_project_root_and_clamps_parent(
+    api_context,
+):
+    """Project-scoped browsing starts at its root and never exposes a parent above it."""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "browser-project"
+    docs_dir = project_dir / "docs"
+    docs_dir.mkdir(parents=True)
+    (docs_dir / "guide.md").write_text("# Guide")
+    (docs_dir / ".config.json").write_text("{}")
+    (docs_dir / ".settings").mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+
+    root = await client.get(
+        "/api/fs/browse",
+        params={"project_id": project_id},
+    )
+    assert root.status_code == 200
+    assert root.json()["path"] == str(project_dir.resolve())
+    assert root.json()["relative_path"] == ""
+    assert root.json()["parent"] is None
+    assert root.json()["entries"] == [{
+        "name": "docs",
+        "type": "directory",
+        "path": str(docs_dir.resolve()),
+        "relative_path": "docs",
+    }]
+
+    child = await client.get(
+        "/api/fs/browse",
+        params={"path": "docs", "project_id": project_id},
+    )
+    assert child.status_code == 200
+    assert child.json()["relative_path"] == "docs"
+    assert child.json()["parent"] == str(project_dir.resolve())
+    assert child.json()["parent_relative_path"] == ""
+    assert child.json()["entries"][0]["relative_path"] == "docs/guide.md"
+
+    with_hidden = await client.get(
+        "/api/fs/browse",
+        params={"path": "docs", "project_id": project_id, "include_hidden": True},
+    )
+    assert with_hidden.status_code == 200
+    assert {item["relative_path"] for item in with_hidden.json()["entries"]} == {
+        "docs/.settings", "docs/.config.json", "docs/guide.md",
+    }
+
+    escaped = await client.get(
+        "/api/fs/browse",
+        params={"path": str(outside), "project_id": project_id},
+    )
+    assert escaped.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_project_file_search_can_include_dotfiles(
+    api_context,
+):
+    client, tmp_path = api_context
+    project_dir = tmp_path / "search-project"
+    (project_dir / "docs" / "nested").mkdir(parents=True)
+    (project_dir / "docs" / "nested" / "Guide.md").write_text("guide")
+    (project_dir / "docs" / "other.txt").write_text("other")
+    (project_dir / ".private").mkdir()
+    (project_dir / ".private" / "guide-secret.md").write_text("secret")
+    (project_dir / "docs" / ".guide-hidden.md").write_text("hidden")
+
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+
+    response = await client.get(
+        "/api/fs/search",
+        params={"project_id": project_id, "query": "guide"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "query": "guide",
+        "truncated": False,
+        "entries": [{
+            "name": "Guide.md",
+            "type": "file",
+            "path": str((project_dir / "docs" / "nested" / "Guide.md").resolve()),
+            "relative_path": "docs/nested/Guide.md",
+        }],
+    }
+
+    with_hidden = await client.get(
+        "/api/fs/search",
+        params={"project_id": project_id, "query": "guide", "include_hidden": True},
+    )
+    assert with_hidden.status_code == 200
+    assert {item["relative_path"] for item in with_hidden.json()["entries"]} == {
+        ".private/guide-secret.md", "docs/.guide-hidden.md", "docs/nested/Guide.md",
+    }
+
+    escaped = await client.get(
+        "/api/fs/search",
+        params={
+            "project_id": project_id,
+            "root": str(tmp_path),
+            "query": "guide",
+        },
+    )
+    assert escaped.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_project_directory_editor_operations_stay_within_browser_root(api_context):
+    client, tmp_path = api_context
+    project_dir = tmp_path / "editable-project"
+    output_dir = project_dir / "outputs"
+    output_dir.mkdir(parents=True)
+    outside = project_dir / "outside.txt"
+    outside.write_text("keep")
+    initialized = await client.post("/api/project/init", json={"path": str(project_dir)})
+    project_id = initialized.json()["id"]
+    scope = {"project_id": project_id, "root": str(output_dir)}
+
+    created_dir = await client.post("/api/fs/entry", json={
+        **scope, "parent": str(output_dir), "name": "docs", "kind": "directory",
+    })
+    assert created_dir.status_code == 200
+    created_file = await client.post("/api/fs/entry", json={
+        **scope, "parent": str(output_dir / "docs"), "name": "notes.md", "kind": "file",
+    })
+    assert created_file.status_code == 200
+    assert (output_dir / "docs" / "notes.md").read_text() == ""
+    duplicate = await client.post("/api/fs/entry", json={
+        **scope, "parent": str(output_dir / "docs"), "name": "notes.md", "kind": "file",
+    })
+    assert duplicate.status_code == 409
+
+    saved = await client.put("/api/fs/content", json={
+        **scope, "path": str(output_dir / "docs" / "notes.md"),
+        "content": "hello", "expected_content": "",
+    })
+    assert saved.status_code == 200
+    assert (output_dir / "docs" / "notes.md").read_text() == "hello"
+    stale = await client.put("/api/fs/content", json={
+        **scope, "path": str(output_dir / "docs" / "notes.md"),
+        "content": "lost", "expected_content": "",
+    })
+    assert stale.status_code == 409
+
+    renamed = await client.patch("/api/fs/entry", json={
+        **scope, "path": str(output_dir / "docs" / "notes.md"), "name": "renamed.md",
+    })
+    assert renamed.status_code == 200
+    assert (output_dir / "docs" / "renamed.md").read_text() == "hello"
+    deleted = await client.request("DELETE", "/api/fs/entry", json={
+        **scope, "path": str(output_dir / "docs"),
+    })
+    assert deleted.status_code == 200
+    assert not (output_dir / "docs").exists()
+
+    for path in (str(output_dir), str(outside), "../outside.txt"):
+        response = await client.request("DELETE", "/api/fs/entry", json={**scope, "path": path})
+        assert response.status_code == 403
+    assert outside.read_text() == "keep"
+    invalid = await client.post("/api/fs/entry", json={
+        **scope, "parent": str(output_dir), "name": "../escape", "kind": "file",
+    })
+    assert invalid.status_code == 400
+    outside_create = await client.post("/api/fs/entry", json={
+        **scope, "parent": str(project_dir), "name": "escape.txt", "kind": "file",
+    })
+    assert outside_create.status_code == 403
+    outside_save = await client.put("/api/fs/content", json={
+        **scope, "path": str(outside), "content": "changed", "expected_content": "keep",
+    })
+    assert outside_save.status_code == 403
+    assert outside.read_text() == "keep"
+
+
+@pytest.mark.anyio
+async def test_slow_browser_file_save_does_not_block_health(api_context, monkeypatch):
+    client, tmp_path = api_context
+    project_dir = tmp_path / "slow-browser-save"
+    project_dir.mkdir()
+    file_path = project_dir / "note.txt"
+    file_path.write_text("before")
+    initialized = await client.post("/api/project/init", json={"path": str(project_dir)})
+    project_id = initialized.json()["id"]
+    started = threading.Event()
+    release = threading.Event()
+    original_write_text = Path.write_text
+
+    def slow_write(path, content, *args, **kwargs):
+        if path == file_path:
+            started.set()
+            assert release.wait(2)
+        return original_write_text(path, content, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", slow_write)
+    saving = asyncio.create_task(client.put("/api/fs/content", json={
+        "project_id": project_id, "path": "note.txt",
+        "content": "after", "expected_content": "before",
+    }))
+    try:
+        assert await asyncio.to_thread(started.wait, 1)
+        health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+        assert health.status_code == 200
+        assert not saving.done()
+    finally:
+        release.set()
+        saved = await saving
+    assert saved.status_code == 200
+    assert file_path.read_text() == "after"
 
 
 @pytest.mark.anyio
@@ -3558,6 +3779,47 @@ async def test_resume_step_message_routes_to_runtime(api_context, monkeypatch):
         "task-1",
         "do",
         "请改用中文输出",
+        reset_session=False,
+    )
+
+
+@pytest.mark.anyio
+async def test_resume_step_message_can_reset_step_session(api_context, monkeypatch):
+    """重置步骤随本次消息传给 runtime，并要求使用新会话。"""
+    import main
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "reset-step-session-project"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+
+    runtime = AsyncMock()
+    runtime.resume_step_with_message = AsyncMock(return_value={
+        "message_id": "m-reset",
+        "step_key": "do",
+        "run_id": "run-reset",
+        "status": "queued",
+        "sequence": 4,
+        "created_at": "2026-09-23T00:00:00+00:00",
+    })
+    monkeypatch.setattr(main, "workflow_runtime", runtime)
+
+    response = await client.post(
+        f"/api/task/task-1/step/do/resume?project_id={project_id}",
+        json={"content": "按当前任务重新执行", "reset_step": True},
+    )
+
+    assert response.status_code == 200
+    runtime.resume_step_with_message.assert_awaited_once_with(
+        project_id,
+        "task-1",
+        "do",
+        "按当前任务重新执行",
+        reset_session=True,
     )
 
 

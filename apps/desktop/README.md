@@ -2,6 +2,8 @@
 
 Electron 桌面壳负责窗口、安装包和自动更新；FastAPI daemon 运行在随应用分发的独立 Python runtime 中，用户机器无需安装 Python。Codex SDK、Claude Agent SDK 等可选引擎不随桌面包预装，用户点击“安装”后写入 `~/.workstep/runtime/python-packages/`，桌面应用升级不会覆盖它们。
 
+安装包同时携带 daemon CLI。sidecar 会把 bundled Python、daemon 目录、当前随机端口和临时桌面令牌通过 `WORKSTEP_CLI_PYTHON`、`WORKSTEP_DAEMON_DIR`、`WORKSTEP_DAEMON_URL`、`WORKSTEP_DESKTOP_TOKEN` 传给引擎子进程，因此 Skill 调用 CLI 不依赖用户安装 Python，也不把动态地址或令牌写入项目文件。
+
 ```text
 Electron
   └─ resources/backend/python/.../python resources/backend/app/main.py --port <port>

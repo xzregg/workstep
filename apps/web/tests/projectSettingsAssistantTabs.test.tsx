@@ -110,6 +110,10 @@ test('system prompt and reorderable quick buttons use separate settings tabs', a
       draggableButtons.map((button) => button.textContent?.trim()),
       ['解释', '<a href="https://example.com">打开文档</a>'],
     )
+    assert.equal(
+      draggableButtons[1].querySelector('.ws-marquee')?.textContent,
+      '<a href="https://example.com">打开文档</a>',
+    )
 
     await act(async () => {
       draggableButtons[1].dispatchEvent(new Event('dragstart', { bubbles: true }))

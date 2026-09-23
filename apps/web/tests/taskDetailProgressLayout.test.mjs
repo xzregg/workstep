@@ -107,7 +107,8 @@ test('shows artifact round status and modified time in step IO rows', () => {
   assert.match(source, /const snapshotInputArtifact = findStepRoundInputArtifact\(/)
   assert.match(source, /const inputPortSnapshot = findStepRoundInputPort\(/)
   assert.match(source, /const producedOutputs = artifactsForStepRoundOutputs\(/)
-  assert.match(source, /producedOutputs\.length > 0/)
+  assert.match(source, /groupStepOutputsByInput\(/)
+  assert.match(source, /downstreamInputsForOutput\(/)
   assert.match(source, /artifactInputSnapshots,[\s\S]*selectedExecutionRound,[\s\S]*inpIdx/)
   assert.match(source, /inputPortSnapshot \? undefined : findArtifact\(inp\.name\)/)
   assert.match(source, /role=\{inputArtifact \? 'button' : undefined\}/)
@@ -131,7 +132,7 @@ test('keeps artifact dates and times on one line', () => {
 })
 
 test('reuses the mobile artifact panel from a desktop artifact tab', () => {
-  assert.match(source, /useState<'detail' \| 'artifacts' \| 'analysis'>\('detail'\)/)
+  assert.match(source, /useState<'detail' \| 'artifacts' \| 'analysis' \| 'git'>\('detail'\)/)
   assert.match(
     source,
     /!compact && \([\s\S]*setDetailMode\('artifacts'\)[\s\S]*t\('mobile\.artifacts'\)/,

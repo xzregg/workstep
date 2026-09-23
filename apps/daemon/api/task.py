@@ -424,6 +424,7 @@ async def resume_step(
             task_id,
             step_key,
             req.content,
+            reset_session=req.reset_step,
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -724,6 +725,10 @@ async def delete_task(req: DeleteTaskRequest, pid: str = Query(..., alias="proje
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    project = _project(pid)
+    workspace_root = project.workstep_dir / "worktrees" / req.task_id
+    if await asyncio.to_thread(lambda: workspace_root.is_dir() and any(workspace_root.iterdir())):
+        raise HTTPException(status_code=409, detail="请先在任务 Git 标签中移除 Worktree，再删除任务。")
     try:
         deleted = await _run_db(
             pid,
@@ -733,6 +738,11 @@ async def delete_task(req: DeleteTaskRequest, pid: str = Query(..., alias="proje
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not deleted:
         raise HTTPException(status_code=404, detail="Task not found")
+    if await asyncio.to_thread(workspace_root.is_dir):
+        try:
+            await asyncio.to_thread(workspace_root.rmdir)
+        except OSError:
+            pass
     return {"deleted": deleted}
 
 

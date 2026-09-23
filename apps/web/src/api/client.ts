@@ -1289,6 +1289,7 @@ export interface TaskArtifact {
   name: string
   logical_name: string | null
   artifact_type: string | null
+  output_port?: number | null
   declared_output?: boolean
   path: string
   relative_path: string
@@ -1506,12 +1507,18 @@ export const taskApi = {
       `/task/${taskId}/step/${encodeURIComponent(stepKey)}/cancel?project_id=${encodeURIComponent(projectId)}`,
       { method: 'POST' },
     ),
-  resumeStepWithMessage: (taskId: string, stepKey: string, content: string, projectId: string) =>
+  resumeStepWithMessage: (
+    taskId: string,
+    stepKey: string,
+    content: string,
+    projectId: string,
+    resetStep = false,
+  ) =>
     request<{ message_id: string; step_key: string; run_id: string; status: 'queued'; sequence?: number; created_at?: string }>(
       `/task/${taskId}/step/${encodeURIComponent(stepKey)}/resume?project_id=${encodeURIComponent(projectId)}`,
       {
         method: 'POST',
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, reset_step: resetStep }),
       },
     ),
   restartStepWithFreshSession: (taskId: string, stepKey: string, projectId: string) =>
@@ -2742,12 +2749,21 @@ export interface DirectoryEntry {
   name: string
   type: 'directory' | 'file'
   path: string
+  relative_path?: string | null
 }
 
 export interface DirectoryBrowseResult {
   path: string
   name: string
   parent: string | null
+  relative_path?: string | null
+  parent_relative_path?: string | null
+  entries: DirectoryEntry[]
+}
+
+export interface FileSearchResult {
+  query: string
+  truncated: boolean
   entries: DirectoryEntry[]
 }
 
@@ -2794,12 +2810,37 @@ export const fsApi = {
   },
 
   preview: (path: string, projectId?: string) => request<FilePreview>(`/fs/preview?path=${encodeURIComponent(path)}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ''}${path.startsWith('/') ? '&absolute=true' : ''}`),
-  browse: (path?: string, projectId?: string) =>
-    request<DirectoryBrowseResult>(
-      path
-        ? `/fs/browse?path=${encodeURIComponent(path)}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ''}`
-        : `/fs/browse${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`
-    ),
+  browse: (path?: string, projectId?: string, includeHidden = false) => {
+    const params = new URLSearchParams()
+    if (path) params.set('path', path)
+    if (projectId) params.set('project_id', projectId)
+    if (includeHidden) params.set('include_hidden', 'true')
+    const query = params.toString()
+    return request<DirectoryBrowseResult>(`/fs/browse${query ? `?${query}` : ''}`)
+  },
+  search: (query: string, projectId?: string, root?: string, includeHidden = false) => {
+    const params = new URLSearchParams({ query })
+    if (projectId) params.set('project_id', projectId)
+    if (root) params.set('root', root)
+    if (includeHidden) params.set('include_hidden', 'true')
+    return request<FileSearchResult>(`/fs/search?${params.toString()}`)
+  },
+  createEntry: (projectId: string, root: string | undefined, parent: string, name: string, kind: 'file' | 'directory') =>
+    request<{ path: string; name: string; kind: 'file' | 'directory' }>('/fs/entry', {
+      method: 'POST', body: JSON.stringify({ project_id: projectId, root, parent, name, kind }),
+    }),
+  renameEntry: (projectId: string, root: string | undefined, path: string, name: string) =>
+    request<{ path: string; name: string }>('/fs/entry', {
+      method: 'PATCH', body: JSON.stringify({ project_id: projectId, root, path, name }),
+    }),
+  deleteEntry: (projectId: string, root: string | undefined, path: string) =>
+    request<{ deleted: boolean }>('/fs/entry', {
+      method: 'DELETE', body: JSON.stringify({ project_id: projectId, root, path }),
+    }),
+  saveContent: (projectId: string, root: string | undefined, path: string, content: string, expectedContent: string) =>
+    request<{ saved: boolean }>('/fs/content', {
+      method: 'PUT', body: JSON.stringify({ project_id: projectId, root, path, content, expected_content: expectedContent }),
+    }),
   mkdir: (parent: string, name: string) =>
     request<{ path: string; name: string }>('/fs/mkdir', {
       method: 'POST',

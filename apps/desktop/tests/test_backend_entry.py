@@ -45,6 +45,7 @@ def test_ephemeral_socket_reports_the_actual_bound_port():
 
 
 def test_packaged_source_layout_resolves_daemon_and_web_assets(tmp_path, monkeypatch):
+    monkeypatch.delenv("WORKSTEP_DAEMON_DIR", raising=False)
     app_dir = tmp_path / "app"
     daemon_dir = app_dir / "daemon"
     web_dist = tmp_path / "web_dist"
@@ -56,6 +57,23 @@ def test_packaged_source_layout_resolves_daemon_and_web_assets(tmp_path, monkeyp
 
     assert server._daemon_dir() == daemon_dir
     assert server._bundle_dir() == tmp_path
+
+
+def test_cli_environment_uses_bundled_python_daemon_and_actual_port(tmp_path, monkeypatch):
+    monkeypatch.delenv("WORKSTEP_DAEMON_DIR", raising=False)
+    app_dir = tmp_path / "app"
+    daemon_dir = app_dir / "daemon"
+    daemon_dir.mkdir(parents=True)
+    fake_server = app_dir / "server.py"
+    fake_server.touch()
+    monkeypatch.setattr(server, "__file__", str(fake_server))
+    monkeypatch.setattr(server.sys, "executable", str(tmp_path / "python" / "python.exe"))
+
+    server.prepare_cli_environment("127.0.0.1", 43123)
+
+    assert server.os.environ["WORKSTEP_DAEMON_DIR"] == str(daemon_dir)
+    assert server.os.environ["WORKSTEP_CLI_PYTHON"] == str(tmp_path / "python" / "python.exe")
+    assert server.os.environ["WORKSTEP_DAEMON_URL"] == "http://127.0.0.1:43123"
 
 
 def test_engine_packages_use_a_writable_user_directory(tmp_path, monkeypatch):

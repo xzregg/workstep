@@ -1,3 +1,4 @@
+import ResizablePanel from './ResizablePanel'
 import { useEffect, useState } from 'react'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
 import { useI18n } from '../i18n'
@@ -74,7 +75,7 @@ export default function ProjectConnectionDialog({
 
   return (
     <div className="modal-overlay" onClick={close}>
-      <div
+      <ResizablePanel
         className="modal"
         style={{ width: mode === 'local' ? 600 : 440 }}
         onClick={(event) => event.stopPropagation()}
@@ -142,7 +143,7 @@ export default function ProjectConnectionDialog({
             </Button>
           )}
         </div>
-      </div>
+      </ResizablePanel>
     </div>
   )
 }

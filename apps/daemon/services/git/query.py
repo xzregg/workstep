@@ -53,6 +53,20 @@ def read_file(root, value):
 
 
 class GitQueries:
+    async def global_identity(self, id):
+        directory = await self.directory(id)
+        path = directory['path']
+        name, _ = await self.command(path, 'config', '--global', '--get', 'user.name', check=False)
+        email, _ = await self.command(path, 'config', '--global', '--get', 'user.email', check=False)
+        return {'name': text(name).strip(), 'email': text(email).strip()}
+
+    async def identity(self, id):
+        directory = await self.directory(id)
+        path = directory['path']
+        name, _ = await self.command(path, 'config', '--local', '--get', 'user.name', check=False)
+        email, _ = await self.command(path, 'config', '--local', '--get', 'user.email', check=False)
+        return {'name': text(name).strip(), 'email': text(email).strip()}
+
     async def revision(self, path, ref=None):
         if ref and ref != 'HEAD' and not re.fullmatch(r'[0-9a-fA-F]{7,64}', ref):
             _, code = await self.command(path, 'show-ref', '--verify', '--quiet', 'refs/heads/' + ref, check=False)

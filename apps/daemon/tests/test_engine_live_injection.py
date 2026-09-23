@@ -662,6 +662,44 @@ class _FakeAsyncCodex:
         self.closed = True
 
 
+class _FakeNativePlanClient:
+    def __init__(self):
+        self.calls: list[dict] = []
+        self._sync = SimpleNamespace(_approval_handler=None)
+
+    async def _start_turn(self, thread_id, prompt, params, for_handle):
+        self.calls.append({
+            "thread_id": thread_id,
+            "prompt": prompt,
+            "params": params,
+            "for_handle": for_handle,
+        })
+        return (
+            SimpleNamespace(turn=SimpleNamespace(id="turn-native-plan")),
+            "subscription-native-plan",
+        )
+
+
+class _FakeLegacyNativePlanClient:
+    def __init__(self):
+        self.calls: list[dict] = []
+
+    async def turn_start(self, thread_id, prompt, params):
+        self.calls.append({
+            "thread_id": thread_id,
+            "prompt": prompt,
+            "params": params,
+        })
+        return SimpleNamespace(turn=SimpleNamespace(id="turn-legacy-plan"))
+
+
+class _FakeSdkTurnHandle:
+    def __init__(self, client, thread_id, turn_id):
+        self.client = client
+        self.thread_id = thread_id
+        self.id = turn_id
+
+
 def _patch_codex_sdk(monkeypatch):
     _FakeAsyncCodex.instances.clear()
     monkeypatch.setattr("openai_codex.AsyncCodex", _FakeAsyncCodex)
@@ -717,6 +755,90 @@ async def test_codex_sdk_preserves_message_phases_per_item(monkeypatch):
         ("commentary", "progress-2", "正在核对。"),
         ("final_answer", "answer", "已完成。"),
     ]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("plan_mode", "expected_mode"),
+    [(True, "plan"), (False, "default")],
+)
+async def test_codex_sdk_sends_native_collaboration_mode(
+    monkeypatch,
+    plan_mode,
+    expected_mode,
+):
+    """Codex SDK 计划开关必须走 app-server collaborationMode。"""
+    _patch_codex_sdk(monkeypatch)
+    raw_client = _FakeNativePlanClient()
+    created_turns: list[dict] = []
+
+    class NativePlanAsyncCodex(_FakeAsyncCodex):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self._client = raw_client
+
+    class NativePlanTurn(_FakeSdkTurn):
+        def __init__(self, client, thread_id, turn_id, *, _subscription=None):
+            created_turns.append({
+                "client": client,
+                "thread_id": thread_id,
+                "turn_id": turn_id,
+                "subscription": _subscription,
+            })
+            super().__init__(turn_id, ["完成"])
+
+    monkeypatch.setattr("openai_codex.AsyncCodex", NativePlanAsyncCodex)
+    monkeypatch.setattr("openai_codex.AsyncTurnHandle", NativePlanTurn)
+
+    events = [
+        event
+        async for event in CodexSDKEngine().spawn(
+            prompt="处理请求",
+            cwd="/tmp",
+            model="gpt-5.6-codex",
+            thinking_effort="high",
+            plan_mode=plan_mode,
+        )
+    ]
+
+    assert any(event.type == "agent_message_chunk" for event in events)
+    assert raw_client.calls == [{
+        "thread_id": "thread-1",
+        "prompt": "处理请求",
+        "params": {
+            "collaborationMode": {
+                "mode": expected_mode,
+                "settings": {
+                    "model": "gpt-5.6-codex",
+                    "reasoning_effort": "high",
+                    "developer_instructions": None,
+                },
+            },
+        },
+        "for_handle": True,
+    }]
+    assert created_turns[0]["subscription"] == "subscription-native-plan"
+
+
+@pytest.mark.anyio
+async def test_codex_sdk_native_plan_keeps_legacy_sdk_compatibility():
+    """0.147.x 没有早订阅入口时仍能通过 raw turn_start 启动模式。"""
+    raw_client = _FakeLegacyNativePlanClient()
+    client = SimpleNamespace(_client=raw_client)
+    thread = _FakeSdkThread("thread-legacy")
+
+    turn = await CodexSDKEngine._start_collaboration_turn(
+        client,
+        thread,
+        "规划请求",
+        model="gpt-5.6-codex",
+        reasoning_effort=None,
+        plan_mode=True,
+        turn_handle_type=_FakeSdkTurnHandle,
+    )
+
+    assert turn.id == "turn-legacy-plan"
+    assert raw_client.calls[0]["params"]["collaborationMode"]["mode"] == "plan"
 
 
 @pytest.mark.anyio

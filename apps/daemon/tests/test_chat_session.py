@@ -1468,6 +1468,93 @@ async def test_completed_chat_merges_persisted_pending_inserts_into_one_turn(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("send_all", [False, True])
+async def test_live_insert_keeps_other_pending_messages_on_new_reply(
+    chat_module,
+    monkeypatch,
+    send_all,
+):
+    module, _bus, manager, project, _ = chat_module
+    first_chunk_sent = asyncio.Event()
+    allow_split = asyncio.Event()
+    reply_split = asyncio.Event()
+    finish_reply = asyncio.Event()
+
+    async def injecting_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, **kwargs):
+        await on_event(InternalEvent(
+            type="agent_message_chunk",
+            data={"content": {"text": "第一段输出"}},
+        ))
+        first_chunk_sent.set()
+        state = next(state for state in module._turn_states.values()
+                     if state.get("status") == "running")
+        message_id, _content = await state["live_message_queue"].get()
+        await allow_split.wait()
+        await on_event(InternalEvent(
+            type="live_message",
+            data={"message_id": message_id, "status": "delivered"},
+        ))
+        reply_split.set()
+        await finish_reply.wait()
+        return "第二段输出", [], None
+
+    monkeypatch.setattr(module, "_invoke", injecting_invoke)
+    session = module.create_session(project.id, "wf-live-pending-order")
+    accepted = module.submit_message(
+        project.id, session["id"], "开始执行", "idem-live-pending-order",
+    )
+    await asyncio.wait_for(first_chunk_sent.wait(), timeout=1)
+
+    from services.pending_message_inserts import create_pending_insert, list_pending_inserts
+
+    queued = await manager.run_db(project.id, lambda _project: [
+        create_pending_insert(accepted.assistant_message_id, content, "测试用户")
+        for content in ("1", "2", "3", "4")
+    ])
+    selected = queued if send_all else [queued[2]]
+    await module.send_live_message(
+        session["id"],
+        "\n\n".join(item["content"] for item in selected),
+        pending_insert_ids=[item["id"] for item in selected],
+    )
+    entered_db = threading.Event()
+    release_db = threading.Event()
+    save_session = module._config.persistence.save
+
+    def slow_save(*args, **kwargs):
+        entered_db.set()
+        release_db.wait(timeout=2)
+        return save_session(*args, **kwargs)
+
+    monkeypatch.setattr(module._config.persistence, "save", slow_save)
+    try:
+        canary_started = time.perf_counter()
+        allow_split.set()
+        assert await asyncio.to_thread(entered_db.wait, 1)
+        await asyncio.wait_for(asyncio.sleep(0.01), timeout=0.2)
+        assert time.perf_counter() - canary_started < 0.2
+        release_db.set()
+        await asyncio.wait_for(reply_split.wait(), timeout=1)
+        next_target = module._turn_states[accepted.turn_id]["assistant_message_id"]
+        old_pending = await manager.run_db(
+            project.id,
+            lambda _project: list_pending_inserts(accepted.assistant_message_id),
+        )
+        new_pending = await manager.run_db(
+            project.id, lambda _project: list_pending_inserts(next_target),
+        )
+        assert old_pending == []
+        assert [(item["id"], item["content"]) for item in new_pending] == (
+            [] if send_all else [
+                (queued[index]["id"], str(index + 1)) for index in (0, 1, 3)
+            ]
+        )
+    finally:
+        release_db.set()
+        finish_reply.set()
+
+
+@pytest.mark.anyio
 async def test_live_message_splits_chat_reply_around_inserted_user_message(
     chat_module,
     monkeypatch,
@@ -2653,6 +2740,60 @@ async def test_invoke_engine_plan_mode_injects_instruction(monkeypatch):
     )
     assert "Plan mode" not in captured["prompt"]
     assert captured["config_overrides"] is None
+
+
+@pytest.mark.anyio
+async def test_invoke_engine_uses_native_plan_mode_without_prompt_injection(monkeypatch):
+    """原生计划模式由引擎参数承载，不再重复污染用户提示词。"""
+    import agent_assistants.base as base
+
+    captured: dict = {}
+
+    class NativePlanEngine:
+        capabilities = SimpleNamespace(
+            supports_thinking_effort=False,
+            supports_plan_mode=True,
+        )
+        supports_resume = True
+        supports_message_history = False
+
+        async def spawn(self, prompt, cwd, model, session_id, **kwargs):
+            captured["prompt"] = prompt
+            captured["plan_mode"] = kwargs.get("plan_mode")
+            captured["config_overrides"] = kwargs.get("config_overrides")
+            if False:
+                yield None
+
+    monkeypatch.setattr(base, "create_engine", lambda engine_id: NativePlanEngine())
+
+    await base.invoke_engine(
+        "codex_sdk",
+        "gpt-5.6-codex",
+        "/tmp",
+        "请分析这段代码",
+        None,
+        plan_mode=True,
+    )
+    assert captured == {
+        "prompt": "请分析这段代码",
+        "plan_mode": True,
+        "config_overrides": {"sandbox": "read-only"},
+    }
+
+    captured.clear()
+    await base.invoke_engine(
+        "codex_sdk",
+        "gpt-5.6-codex",
+        "/tmp",
+        "现在开始实现",
+        "thread-1",
+        plan_mode=False,
+    )
+    assert captured == {
+        "prompt": "现在开始实现",
+        "plan_mode": False,
+        "config_overrides": None,
+    }
 
 
 @pytest.mark.anyio

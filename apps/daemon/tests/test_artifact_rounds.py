@@ -186,6 +186,37 @@ def test_list_task_artifacts_marks_only_latest_eligible_round_selected(tmp_path)
     assert artifacts[0]["updated_at"].endswith("+00:00")
 
 
+def test_list_task_artifacts_exposes_declared_output_port(tmp_path):
+    artifacts_root = tmp_path / ".workstep" / "artifacts"
+    round_dir = step_round_dir(artifacts_root, "dev", "task-1", "build", 1)
+    round_dir.mkdir(parents=True)
+    (round_dir / "front.md").write_text("front", encoding="utf-8")
+    (round_dir / "back.md").write_text("back", encoding="utf-8")
+    write_round_manifest(
+        artifacts_root=artifacts_root,
+        workflow_id="dev",
+        task_id="task-1",
+        step_key="build",
+        artifact_round=1,
+        status="passed",
+        eligible_for_downstream=True,
+        outputs=[
+            {"name": "front", "type": "md"},
+            {"name": "back", "type": "md"},
+        ],
+    )
+
+    artifacts = list_task_artifacts(
+        type("Project", (), {"workstep_dir": str(tmp_path / ".workstep")})(),
+        "task-1",
+    )
+
+    assert {item["logical_name"]: item["output_port"] for item in artifacts} == {
+        "front": 0,
+        "back": 1,
+    }
+
+
 def test_select_upstream_round_honours_explicit_round(tmp_path):
     artifacts_root = tmp_path / ".workstep" / "artifacts"
     for round_number in (1, 2):

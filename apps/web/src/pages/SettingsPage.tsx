@@ -1,3 +1,4 @@
+import ResizablePanel from '../components/ResizablePanel'
 import GitScanSettings from './GitScanSettings'
 import ProjectDirectorySetting from '../components/ProjectDirectorySetting'
 import { useCompactLayout } from '../hooks/useCompactLayout'
@@ -1148,7 +1149,7 @@ export default function SettingsPage({
       }}
       style={{ padding: 24 }}
     >
-      <div
+      <ResizablePanel
         className="modal"
         onMouseDown={(event) => event.stopPropagation()}
         style={{
@@ -1875,7 +1876,7 @@ export default function SettingsPage({
       </section>
 
       </div>
-      </div>
+      </ResizablePanel>
       {(inspecting || inspectResult || inspectError) && (
         <div
           className="modal-overlay"
@@ -1890,7 +1891,7 @@ export default function SettingsPage({
           }}
           style={{ padding: 24, zIndex: 60 }}
         >
-          <div
+          <ResizablePanel
             className="modal"
             onMouseDown={(event) => event.stopPropagation()}
             style={{ width: 640, maxWidth: 'calc(100vw - 48px)', maxHeight: 'calc(100vh - 48px)' }}
@@ -1999,7 +2000,7 @@ export default function SettingsPage({
                 </div>
               ) : null}
             </div>
-          </div>
+          </ResizablePanel>
         </div>
       )}
       </div>

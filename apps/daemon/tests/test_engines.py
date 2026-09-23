@@ -223,6 +223,104 @@ async def test_base_engine_connection_test_reports_engine_errors(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_engine_retry_reuses_session_from_failed_attempt():
+    class RetryEngine(StubEngine):
+        def __init__(self):
+            super().__init__([])
+            self.session_ids = []
+
+        @property
+        def supports_resume(self):
+            return True
+
+        async def spawn(self, prompt, cwd, session_id=None, **kwargs):
+            self.session_ids.append(session_id)
+            if len(self.session_ids) == 1:
+                yield InternalEvent("session_started", {"session_id": "session-1"})
+                yield InternalEvent("error", {"message": "network unavailable"})
+                return
+            yield InternalEvent(
+                "agent_message_chunk",
+                {"content": {"text": "recovered"}},
+            )
+            yield InternalEvent("status", {"status": "done"})
+
+    engine = RetryEngine()
+
+    events = [
+        event
+        async for event in engine.spawn_with_retry(prompt="hello", cwd="/tmp")
+    ]
+
+    assert engine.session_ids == [None, "session-1"]
+    assert [event.type for event in events] == [
+        "session_started",
+        "status",
+        "agent_message_chunk",
+        "status",
+    ]
+    assert events[1].data == {
+        "status": "retrying",
+        "attempt": 2,
+        "max_attempts": 2,
+        "message": "network unavailable",
+    }
+
+
+@pytest.mark.anyio
+async def test_engine_retry_reports_only_second_error():
+    class FailingEngine(StubEngine):
+        def __init__(self):
+            super().__init__([])
+            self.calls = 0
+
+        @property
+        def supports_resume(self):
+            return True
+
+        async def spawn(self, prompt, cwd, session_id=None, **kwargs):
+            self.calls += 1
+            yield InternalEvent("session_started", {"session_id": "session-1"})
+            yield InternalEvent("error", {"message": f"failure-{self.calls}"})
+
+    engine = FailingEngine()
+
+    events = [
+        event
+        async for event in engine.spawn_with_retry(prompt="hello", cwd="/tmp")
+    ]
+
+    assert engine.calls == 2
+    assert [event.data.get("message") for event in events if event.type == "error"] == [
+        "failure-2"
+    ]
+
+
+@pytest.mark.anyio
+async def test_engine_retry_retries_raised_exception_once():
+    class RaisingEngine(StubEngine):
+        def __init__(self):
+            super().__init__([])
+            self.calls = 0
+
+        async def spawn(self, prompt, cwd, session_id=None, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                raise ConnectionError("connection reset")
+            yield InternalEvent("status", {"status": "done"})
+
+    engine = RaisingEngine()
+
+    events = [
+        event
+        async for event in engine.spawn_with_retry(prompt="hello", cwd="/tmp")
+    ]
+
+    assert engine.calls == 2
+    assert [event.data.get("status") for event in events] == ["retrying", "done"]
+
+
+@pytest.mark.anyio
 async def test_base_engine_model_list_defaults_to_engine_configuration(tmp_path):
     engine = StubEngine([])
 

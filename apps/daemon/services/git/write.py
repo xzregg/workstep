@@ -4,6 +4,7 @@ import os
 import re
 import tempfile
 import time
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -90,6 +91,66 @@ def message_file(message):
 
 
 class GitWrites:
+    async def set_global_identity(self, id, name, email):
+        directory = await self.directory(id)
+        await self.command(directory['path'], 'config', '--global', 'user.name', name)
+        await self.command(directory['path'], 'config', '--global', 'user.email', email)
+        return await self.global_identity(id)
+
+    @staticmethod
+    def credential_host(url):
+        parsed = urlsplit(url)
+        if parsed.scheme.lower() != 'https' or not parsed.hostname:
+            return None
+        return parsed.hostname.lower() + (f':{parsed.port}' if parsed.port else '')
+
+    async def remote_url(self, path, remote, *, push=False):
+        args = ('remote', 'get-url', '--push', '--', remote) if push else ('remote', 'get-url', '--', remote)
+        url, _ = await self.command(path, *args)
+        return text(url).strip()
+
+    async def credentials(self, id):
+        remotes = await self.remotes(id)
+        return {'remotes': [{'name': item['name'], 'url': item['url'],
+            'configured': self.credential_host(item['url']) in self.remote_credentials}
+            for item in remotes['remotes']]}
+
+    async def save_credentials(self, id, remote, username, token):
+        directory = await self.directory(id)
+        await self.validate_remote(directory['path'], remote)
+        fetch_url = await self.remote_url(directory['path'], remote)
+        host = self.credential_host(fetch_url)
+        if not host:
+            raise GitError('用户名和访问令牌仅用于 HTTPS 远程源。')
+        self.remote_credentials[host] = {'username': username, 'token': token}
+        return await self.credentials(id)
+
+    async def clear_credentials(self, id, remote):
+        directory = await self.directory(id)
+        await self.validate_remote(directory['path'], remote)
+        host = self.credential_host(await self.remote_url(directory['path'], remote))
+        if host:
+            self.remote_credentials.pop(host, None)
+        return await self.credentials(id)
+
+    async def credential_for(self, directory, remote, *, push=False):
+        current = await self.remote_url(directory['path'], remote, push=push)
+        return self.remote_credentials.get(self.credential_host(current))
+
+    async def set_identity(self, id, name, email):
+        directory = await self.directory(id)
+        async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
+            await self.command(directory['path'], 'config', '--local', 'user.name', name)
+            await self.command(directory['path'], 'config', '--local', 'user.email', email)
+            await self.command(directory['path'], 'config', '--local', 'workstep.sharedIdentity', 'true')
+            await self.command(directory['path'], 'config', '--local', 'extensions.worktreeConfig', 'true')
+            repository = await self.discover_repository(Path(directory['path']))
+            for worktree in repository['worktrees']:
+                if worktree['available']:
+                    await self.command(worktree['path'], 'config', '--worktree', 'user.name', name)
+                    await self.command(worktree['path'], 'config', '--worktree', 'user.email', email)
+            return await self.identity(id)
+
     async def reviewed(self, id, snapshot):
         state = await self.status(id)
         if state['snapshot'] != snapshot:
@@ -122,6 +183,11 @@ class GitWrites:
                 actual_head = await self.revision(directory['path'])
                 if actual_head != state['head']:
                     raise GitError(str(exc) + '\nHEAD 已变化，可能已生成提交，请先检查提交历史，不要直接重复提交。', 409) from exc
+                if 'Author identity unknown' in str(exc) or 'unable to auto-detect email address' in str(exc):
+                    raise GitError('Git 未配置提交作者。请在此仓库设置真实姓名和邮箱：\n'
+                        'git config user.name "你的姓名"\n'
+                        'git config user.email "你的邮箱"\n'
+                        '然后刷新状态并重试；已暂存的选中文件会保留。', exc.status) from exc
                 raise GitError(str(exc) + '\n提交未完成，请刷新状态；已暂存的选中文件会保留。', exc.status) from exc
             finally:
                 await asyncio.to_thread(Path(name).unlink, missing_ok=True)
@@ -274,7 +340,8 @@ class GitWrites:
                 raise GitError('该分支已在工作目录中检出，请定位到对应目录后拉取。', 409)
             if not target['remote'] or target['remote'] == '.' or not target['upstream_ref']:
                 raise GitError('该分支没有可拉取的远程上游。', 409)
-            await self.command(path, 'fetch', '--prune', '--no-recurse-submodules', '--', target['remote'], timeout=120)
+            auth = await self.credential_for(directory, target['remote'])
+            await self.command(path, 'fetch', '--prune', '--no-recurse-submodules', '--', target['remote'], timeout=120, auth=auth)
             self.fetched_at[directory['common_dir']] = time.time()
             state = await self.reviewed(id, snapshot)
             if state['active']:
@@ -298,7 +365,10 @@ class GitWrites:
     async def fetch(self, id):
         directory = await self.directory(id)
         async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
-            await self.command(directory['path'], 'fetch', '--all', '--prune', '--no-recurse-submodules', timeout=120)
+            names, _ = await self.command(directory['path'], 'remote')
+            for remote in text(names).splitlines():
+                auth = await self.credential_for(directory, remote)
+                await self.command(directory['path'], 'fetch', '--prune', '--no-recurse-submodules', '--', remote, timeout=120, auth=auth)
             self.fetched_at[directory['common_dir']] = time.time()
             return await self.branches(id)
 
@@ -328,7 +398,8 @@ class GitWrites:
         directory = await self.directory(id)
         async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
             remote = await self.validate_remote(directory['path'], remote)
-            await self.command(directory['path'], 'fetch', '--prune', '--no-recurse-submodules', '--', remote, timeout=120)
+            auth = await self.credential_for(directory, remote)
+            await self.command(directory['path'], 'fetch', '--prune', '--no-recurse-submodules', '--', remote, timeout=120, auth=auth)
             self.fetched_at[directory['common_dir']] = time.time()
             return await self.remotes(id)
 
@@ -339,7 +410,8 @@ class GitWrites:
             state = await self.reviewed(id, snapshot)
             self.require_pullable(state, branch)
             remote, target_branch = await self.remote_target(path, branch, remote, target_branch)
-            await self.command(path, 'fetch', '--prune', '--no-recurse-submodules', '--', remote, timeout=120)
+            auth = await self.credential_for(directory, remote)
+            await self.command(path, 'fetch', '--prune', '--no-recurse-submodules', '--', remote, timeout=120, auth=auth)
             self.fetched_at[directory['common_dir']] = time.time()
             # Network I/O may take a while: recheck files, branch and active tasks before updating HEAD.
             state = await self.reviewed(id, snapshot)
@@ -379,12 +451,13 @@ class GitWrites:
             if state['active']:
                 raise GitError('项目有正在运行的任务或对话，请结束后再推送。', 409)
             remote, target_branch = await self.remote_target(path, branch, remote, target_branch)
+            auth = await self.credential_for(directory, remote, push=True)
             remote_ref = 'refs/heads/' + target_branch
             # Explicit reviewed commit + upstream ref: never use push.default, matching,
             # mirror, automatic tags, force, or another branch's current HEAD.
             await self.command(path, '-c', 'remote.' + remote + '.mirror=false', 'push',
                 '--porcelain', '--no-force', '--no-follow-tags', '--recurse-submodules=no',
-                '--', remote, state['head'] + ':' + remote_ref, timeout=120)
+                '--', remote, state['head'] + ':' + remote_ref, timeout=120, auth=auth)
             if set_upstream:
                 await self.command(path, 'branch', '--set-upstream-to=' + remote + '/' + target_branch, '--', branch)
             return await self.status(id)

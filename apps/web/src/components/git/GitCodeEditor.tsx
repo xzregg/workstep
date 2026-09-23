@@ -1,4 +1,4 @@
-import { forwardRef, useDeferredValue, useEffect, useImperativeHandle, useMemo, useRef, type UIEvent } from 'react'
+import { forwardRef, useDeferredValue, useEffect, useImperativeHandle, useMemo, useRef, type CSSProperties, type UIEvent } from 'react'
 import { highlightedLines } from '../CodeFilePreview'
 
 interface Props {
@@ -23,6 +23,7 @@ export default forwardRef<GitCodeEditorHandle, Props>(function GitCodeEditor({ f
   const highlightRef = useRef<HTMLPreElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const targetRef = useRef<HTMLSpanElement>(null)
+  const lineDigits = String(value.split('\n').length).length
 
   function setScrollTop(scrollTop: number) {
     if (textareaRef.current) textareaRef.current.scrollTop = scrollTop
@@ -51,7 +52,7 @@ export default forwardRef<GitCodeEditorHandle, Props>(function GitCodeEditor({ f
     onVerticalScroll?.(event.currentTarget.scrollTop)
   }
 
-  return <div className={`code-preview git-source-editor gutter-${gutter}${editable ? ' is-editable' : ''}`} data-language={highlighted.language} data-target-line={targetLine}>
+  return <div className={`code-preview git-source-editor gutter-${gutter}${editable ? ' is-editable' : ''}`} data-language={highlighted.language} data-target-line={targetLine} style={editable ? ({ '--code-line-digits': `${lineDigits}ch` } as CSSProperties) : undefined}>
     <div className="code-preview-language">{highlighted.language}</div>
     <pre ref={highlightRef} className="code-preview-scroll git-source-highlight" aria-label={editable ? undefined : ariaLabel} aria-hidden={editable || undefined} tabIndex={editable ? -1 : 0} onScroll={event => { if (!editable) onVerticalScroll?.(event.currentTarget.scrollTop) }}><code>{highlighted.lines.map((line, index) => {
       const number = <span className="code-preview-line-number" aria-hidden="true">{index + 1}</span>

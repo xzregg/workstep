@@ -1,6 +1,7 @@
 """Prompt assembly — builds the full prompt for each pipeline step."""
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -42,6 +43,7 @@ def render_step_prompt(
         "task_description": task.description or "",
         "step_name": step.label or "",
         "step_key": step.key or "",
+        "worktrees": f".workstep/worktrees/{task.id}",
     }
 
     def replace(match: re.Match[str]) -> str:
@@ -109,9 +111,27 @@ def assemble_prompt(
     """
     parts = [SYSTEM_PROMPT]
 
+    workspace = artifacts_dir.parent / "worktrees" / task.id
+    if workspace.is_dir():
+        aliases = sorted(
+            path.name for path in workspace.iterdir()
+            if path.is_dir() and (path / ".git").exists()
+        )
+        parts.append(
+            "## Task Git workspace\n"
+            f"Workspace directory: {workspace}. Attached repositories: "
+            f"{', '.join(aliases) if aliases else '(none yet)'}. "
+            "The engine still starts in the project root. Run Git commands inside the relevant "
+            "worktree child directory; add only repositories needed by this task."
+        )
+
     memory = _load_project_memory(artifacts_dir)
     if memory:
         parts.append(f"## Project memory\n{memory}")
+
+    task_title = str(task.title or "").strip()
+    if task_title:
+        parts.append(f"## Task title\n{task_title}")
 
     task_description = _task_description_for_prompt(task)
     if task_description:
@@ -123,7 +143,10 @@ def assemble_prompt(
         except (TypeError, json.JSONDecodeError):
             external_inputs = []
         if isinstance(external_inputs, list) and external_inputs:
-            formatted_inputs = _format_external_inputs(external_inputs)
+            formatted_inputs = _format_external_inputs(
+                external_inputs,
+                task.cwd or artifacts_dir.parent.parent,
+            )
             if formatted_inputs:
                 parts.append(formatted_inputs)
 
@@ -134,8 +157,17 @@ def assemble_prompt(
         if artifact_round is not None
         else artifacts_dir / workflow_name / task.id / step.key
     )
+    prompt_out_dir = _relative_prompt_path(
+        out_dir,
+        task.cwd or artifacts_dir.parent.parent,
+    )
     if input_snapshot is not None:
-        parts.append(_format_input_snapshot(input_snapshot))
+        parts.append(
+            _format_input_snapshot(
+                input_snapshot,
+                task.cwd or artifacts_dir.parent.parent,
+            )
+        )
     else:
         upstream = _collect_upstream_artifacts(
             task,
@@ -145,7 +177,12 @@ def assemble_prompt(
             input_rounds=input_rounds,
         )
         if upstream:
-            parts.append(_format_artifact_refs(upstream))
+            parts.append(
+                _format_artifact_refs(
+                    upstream,
+                    task.cwd or artifacts_dir.parent.parent,
+                )
+            )
 
     # Step prompt
     if step.prompt:
@@ -182,7 +219,7 @@ def assemble_prompt(
         parts.append(
             _format_output_specs(
                 step.outputs,
-                out_dir,
+                prompt_out_dir,
                 step.outgoing_connections,
             )
         )
@@ -192,7 +229,7 @@ def assemble_prompt(
         parts.append(f"## User input\n{user_input}")
 
     if not step.outputs:
-        parts.append(f"## Artifact output directory\n{out_dir}")
+        parts.append(f"## Artifact output directory\n{prompt_out_dir}")
 
     return "\n\n".join(parts)
 
@@ -205,7 +242,15 @@ def _task_description_for_prompt(task: Task) -> str:
     return description
 
 
-def _format_external_inputs(inputs: list[dict]) -> str:
+def _relative_prompt_path(path: str | Path, base_dir: str | Path) -> str:
+    """Format an artifact path relative to the engine's working directory."""
+    try:
+        return Path(os.path.relpath(str(path), start=str(base_dir))).as_posix()
+    except (OSError, ValueError):
+        return str(path)
+
+
+def _format_external_inputs(inputs: list[dict], base_dir: str | Path) -> str:
     """Render dispatched artifacts as useful inputs, hiding internal lineage IDs."""
     blocks: list[str] = []
     for item in inputs:
@@ -217,14 +262,16 @@ def _format_external_inputs(inputs: list[dict]) -> str:
             lines.append(f"- Source step: `{item['source_step_key']}`")
         if item.get("source_round") is not None:
             lines.append(f"- Source round: {item['source_round']}")
-        lines.append(f"- Path: `{item['path']}`")
+        lines.append(
+            f"- Path: `{_relative_prompt_path(item['path'], base_dir)}`"
+        )
         blocks.append("\n".join(lines))
     if not blocks:
         return ""
     return "## Upstream task inputs\n" + "\n\n".join(blocks)
 
 
-def _format_input_snapshot(snapshot: dict) -> str:
+def _format_input_snapshot(snapshot: dict, base_dir: str | Path) -> str:
     """Render runtime inputs as a semantic contract, not graph internals."""
     execution_type = str(snapshot.get("execution_type") or "forward")
     reason = {
@@ -249,7 +296,10 @@ def _format_input_snapshot(snapshot: dict) -> str:
         sources = port.get("sources") or []
         if not sources:
             availability = {
-                "task_context": "Use the task description and step requirements.",
+                "task_context": (
+                    "Use the task title, description, dispatched inputs, "
+                    "user supplements, and step requirements."
+                ),
                 "inactive": "No artifact is available for this input in this execution.",
             }.get(status, "No artifact is available for this input.")
             lines.append(f"- Availability: {availability}")
@@ -265,12 +315,17 @@ def _format_input_snapshot(snapshot: dict) -> str:
                 lines.append(f"- Artifact: {source['name']}")
             if source.get("path"):
                 if source.get("is_dir") or str(source.get("type") or "").lower() == "directory":
-                    lines.append(f"- Directory: `{source['path']}`")
+                    lines.append(
+                        "- Directory: `"
+                        f"{_relative_prompt_path(source['path'], base_dir)}`"
+                    )
                     lines.append(
                         "- Usage: Inspect this directory and read the files required for this step."
                     )
                 else:
-                    lines.append(f"- Path: `{source['path']}`")
+                    lines.append(
+                        f"- Path: `{_relative_prompt_path(source['path'], base_dir)}`"
+                    )
             if source.get("kind") == "dashed":
                 lines.append("- Purpose: revise the affected work using this feedback artifact.")
     return "\n".join(lines)
@@ -300,12 +355,16 @@ def assemble_followup_prompt(
         if artifact_round is not None
         else artifacts_dir / workflow_name / task.id / step.key
     )
+    prompt_out_dir = _relative_prompt_path(
+        out_dir,
+        task.cwd or artifacts_dir.parent.parent,
+    )
 
     if step.outputs:
         parts.append(
             _format_output_specs(
                 step.outputs,
-                out_dir,
+                prompt_out_dir,
                 step.outgoing_connections,
                 heading="Artifact requirements",
             )
@@ -338,17 +397,26 @@ def assemble_retry_prompt(
         "Continue in the existing step session and revise the previous result."
     ]
     if input_snapshot:
-        parts.append(_format_input_snapshot(input_snapshot))
+        parts.append(
+            _format_input_snapshot(
+                input_snapshot,
+                task.cwd or artifacts_dir.parent.parent,
+            )
+        )
+    prompt_out_dir = _relative_prompt_path(
+        out_dir,
+        task.cwd or artifacts_dir.parent.parent,
+    )
     if step.outputs:
         parts.append(
             _format_output_specs(
                 step.outputs,
-                out_dir,
+                prompt_out_dir,
                 step.outgoing_connections,
             )
         )
     else:
-        parts.append(f"## Artifact output directory\n{out_dir}")
+        parts.append(f"## Artifact output directory\n{prompt_out_dir}")
     return "\n\n".join(parts)
 
 
@@ -391,7 +459,10 @@ def _collect_upstream_artifacts(
     return result
 
 
-def _format_artifact_refs(artifacts: list[dict[str, str]]) -> str:
+def _format_artifact_refs(
+    artifacts: list[dict[str, str]],
+    base_dir: str | Path,
+) -> str:
     """Format artifact references as a readable block."""
     lines = ["## Upstream artifacts (completed; may be referenced)"]
     current_step = ""
@@ -400,7 +471,7 @@ def _format_artifact_refs(artifacts: list[dict[str, str]]) -> str:
             current_step = art["step"]
             round_suffix = f" (round {art['round']})" if art.get("round") else ""
             lines.append(f"\n### Step: {current_step}{round_suffix}")
-        lines.append(f"- {art['path']}")
+        lines.append(f"- {_relative_prompt_path(art['path'], base_dir)}")
     return "\n".join(lines)
 
 
@@ -471,18 +542,14 @@ def _format_output_specs(
             for connection in (outgoing_connections or [])
             if int(connection.get("fromPort", 0)) == i - 1
         ]
-        for connection in routes:
-            target = str(connection.get("to") or "the target step")
-            if connection.get("kind", "solid") == "dashed":
-                lines.append(
-                    "   - routing: generate only when revision is required; when non-empty, "
-                    f"requests revision of step `{target}`."
-                )
-            else:
-                lines.append(
-                    "   - routing: when non-empty, "
-                    f"continues the workflow to step `{target}`."
-                )
+        if any(
+            connection.get("kind", "solid") == "dashed"
+            for connection in routes
+        ):
+            lines.append(
+                "   - purpose: generate only when revision is required; "
+                "a non-empty artifact requests rework."
+            )
 
     route_kinds = {
         str(connection.get("kind", "solid"))

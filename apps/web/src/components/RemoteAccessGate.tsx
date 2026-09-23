@@ -1,3 +1,4 @@
+import ResizablePanel from './ResizablePanel'
 import { useEffect, useState, type ReactNode } from 'react'
 import { remoteProjectApi } from '../api/client'
 import { useI18n } from '../i18n'
@@ -58,7 +59,7 @@ export default function RemoteAccessGate({ children }: { children: ReactNode }) 
 
   return (
     <div className="modal-overlay" style={{ zIndex: 4000 }}>
-      <div
+      <ResizablePanel
         className="modal"
         role="dialog"
         aria-modal="true"
@@ -99,7 +100,7 @@ export default function RemoteAccessGate({ children }: { children: ReactNode }) 
             {t('remoteAccess.unlock')}
           </Button>
         </div>
-      </div>
+      </ResizablePanel>
     </div>
   )
 }

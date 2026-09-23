@@ -1,3 +1,4 @@
+import ResizablePanel from '../ResizablePanel'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { gitApi, type BlameLine, type Comparison, type GitDiff } from '../../api/git'
@@ -165,7 +166,7 @@ export default function GitDiffDialog({ id, files, path, comparison, onSelect, o
       {split ? side === 'before' ? <>{source}{blameColumn}{lineNumber}</> : <>{lineNumber}{blameColumn}{source}</> : <>{blameColumn}{lineNumber}{source}</>}
     </div>
   }
-  return createPortal(<><div className="git-diff-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) requestClose() }}><div ref={dialog} className={`git-diff-dialog ${split ? 'split' : 'unified'}`} role="dialog" aria-modal="true" aria-label={t('git.diff')} tabIndex={-1}>
+  return createPortal(<><div className="git-diff-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) requestClose() }}><ResizablePanel ref={dialog} minWidth={360} minHeight={300} className={`git-diff-dialog ${split ? 'split' : 'unified'}`} role="dialog" aria-modal="true" aria-label={t('git.diff')} tabIndex={-1}>
     <header><Icon name="file" size={17} /><strong title={path}>{path}</strong><Button variant="icon" aria-label={t('git.previous')} disabled={editing || index <= 0} onClick={() => onSelect(files[index - 1])}><Icon name="chevron-right" style={{ transform: 'rotate(180deg)' }} size={16} /></Button><Button variant="icon" aria-label={t('git.next')} disabled={editing || index < 0 || index >= files.length - 1} onClick={() => onSelect(files[index + 1])}><Icon name="chevron-right" size={16} /></Button><Button variant="icon" aria-label={t('git.close')} onClick={requestClose}><Icon name="x" size={18} /></Button></header>
     <div className="git-diff-toolbar">{editing ? <><Button size="sm" variant="primary" loading={saving} disabled={!dirty} onClick={() => void save()}><Icon name="check" size={14} />{t('git.saveFile')}</Button><Button size="sm" disabled={saving} onClick={exitEditor}>{t('common.cancel')}</Button><small>{t('git.saveShortcut')}</small></> : <><Button size="sm" onClick={() => setSplit(!split)}>{split ? t('git.unified') : t('git.split')}</Button><Button size="sm" loading={blameLoading} aria-pressed={showBlame} onClick={() => setShowBlame(!showBlame)}>{t('git.blame')}</Button>{editable && <Button size="sm" onClick={startEditing}><Icon name="pencil" size={14} />{t('git.editFile')}</Button>}<select aria-label={t('git.hunks')} defaultValue="" onChange={e => { document.getElementById(`git-hunk-${e.target.value}`)?.scrollIntoView({ block: 'start' }) }}><option value="">{t('git.hunks')}</option>{hunks.map((h, i) => <option key={i} value={i}>{h.label}</option>)}</select></>}</div>
     <div className="git-diff-labels" style={{ gridTemplateColumns: `${leftWidth}% minmax(0, 1fr)` }}><span>{t('git.before')} · {data?.base?.slice(0, 8) || '∅'} · {t('git.readonly')}</span><span>{t('git.after')} · {data?.target?.slice(0, 8) || t('git.changes')}{editing ? ` · ${t('git.editable')}` : ''}</span></div>
@@ -188,5 +189,5 @@ export default function GitDiffDialog({ id, files, path, comparison, onSelect, o
       <small>{commitPopover.commit.author} · {new Date(commitPopover.commit.time * 1000).toLocaleString()}</small>
       <code>{commitPopover.commit.hash}</code>
     </div>}
-  </div></div><ConfirmDialog open={!!pendingExit} title={t('git.unsavedTitle')} message={t('git.unsavedMessage')} confirmText={t('git.discardEditor')} danger onConfirm={confirmExit} onCancel={() => setPendingExit(null)} /></>, document.body)
+  </ResizablePanel></div><ConfirmDialog open={!!pendingExit} title={t('git.unsavedTitle')} message={t('git.unsavedMessage')} confirmText={t('git.discardEditor')} danger onConfirm={confirmExit} onCancel={() => setPendingExit(null)} /></>, document.body)
 }

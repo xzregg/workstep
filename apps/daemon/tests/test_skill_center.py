@@ -9,6 +9,7 @@ from services.skill_center import SkillCenter, SkillSyncStatus
 from services.skill_runtime import (
     codex_skills_config,
     deepseek_skill_provider_config,
+    prepare_codex_skills,
     prepare_claude_plugin,
     prepare_hermes_home,
     prepare_qoder_plugin,
@@ -285,6 +286,12 @@ def test_engine_runtime_projections_only_expose_enabled_skills(
     assert str(roots["codex"] / "off" / "SKILL.md") in codex
     assert "enabled=false" in codex
 
+    codex_runtime, codex_runtime_config = prepare_codex_skills(selection)
+    managed = codex_runtime / "on" / "SKILL.md"
+    assert "name: on" in managed.read_text()
+    assert str(managed) in codex_runtime_config
+    assert str(roots["codex"] / "off" / "SKILL.md") in codex_runtime_config
+
     claude_plugin, claude_names = prepare_claude_plugin(selection)
     assert (claude_plugin / "skills" / "on" / "SKILL.md").is_file()
     assert not (claude_plugin / "skills" / "off").exists()
@@ -300,6 +307,112 @@ def test_engine_runtime_projections_only_expose_enabled_skills(
 
     openclaw = json.loads(write_openclaw_config(selection).read_text())
     assert openclaw["agents"]["defaults"]["skills"] == ["on"]
+
+
+def test_codex_runtime_refresh_only_removes_workstep_managed_skills(
+    tmp_path: Path, roots: dict[str, Path]
+) -> None:
+    write_skill(roots["agents"] / "on", "on")
+    project = tmp_path / "project"
+    personal = write_skill(project / ".agents" / "skills" / "personal", "personal")
+    center = SkillCenter(source_roots=roots)
+    enabled = next(skill for skill in center.list_project(project) if skill.name == "on")
+    center.set_enabled(project, enabled.skill_id, True)
+
+    runtime, _ = prepare_codex_skills(center.runtime_selection(project))
+    managed = runtime / "on"
+    center.set_enabled(project, enabled.skill_id, False)
+    prepare_codex_skills(center.runtime_selection(project))
+
+    assert personal.is_dir()
+    assert not managed.exists()
+
+
+def test_codex_runtime_reuses_unchanged_skill_projection(
+    tmp_path: Path, roots: dict[str, Path], monkeypatch
+) -> None:
+    write_skill(roots["agents"] / "on", "on")
+    project = tmp_path / "project"
+    center = SkillCenter(source_roots=roots)
+    enabled = next(skill for skill in center.list_project(project) if skill.name == "on")
+    center.set_enabled(project, enabled.skill_id, True)
+    selection = center.runtime_selection(project)
+    prepare_codex_skills(selection)
+
+    def unexpected_copy(*_args, **_kwargs):
+        raise AssertionError("unchanged Codex skill must not be copied again")
+
+    monkeypatch.setattr("services.skill_runtime._replace_directory", unexpected_copy)
+    prepare_codex_skills(selection)
+
+
+def test_codex_runtime_refreshes_when_file_size_changes(
+    tmp_path: Path, roots: dict[str, Path]
+) -> None:
+    write_skill(roots["agents"] / "on", "on")
+    project = tmp_path / "project"
+    center = SkillCenter(source_roots=roots)
+    enabled = next(skill for skill in center.list_project(project) if skill.name == "on")
+    center.set_enabled(project, enabled.skill_id, True)
+    selection = center.runtime_selection(project)
+    runtime, _ = prepare_codex_skills(selection)
+
+    (selection.enabled[0].runtime_path / "SKILL.md").write_text(
+        "---\nname: on\ndescription: changed and longer\n---\n"
+    )
+    prepare_codex_skills(selection)
+
+    assert "changed and longer" in (runtime / "on" / "SKILL.md").read_text()
+
+
+def test_codex_runtime_repairs_empty_skill_file(
+    tmp_path: Path, roots: dict[str, Path]
+) -> None:
+    write_skill(roots["agents"] / "on", "on")
+    project = tmp_path / "project"
+    center = SkillCenter(source_roots=roots)
+    enabled = next(skill for skill in center.list_project(project) if skill.name == "on")
+    center.set_enabled(project, enabled.skill_id, True)
+    selection = center.runtime_selection(project)
+    runtime, _ = prepare_codex_skills(selection)
+    projected = runtime / "on" / "SKILL.md"
+    projected.write_text("")
+
+    prepare_codex_skills(selection)
+
+    assert projected.stat().st_size > 0
+
+
+def test_plugin_runtimes_reuse_unchanged_skill_projections(
+    tmp_path: Path, roots: dict[str, Path], monkeypatch
+) -> None:
+    write_skill(roots["agents"] / "on", "on")
+    project = tmp_path / "project"
+    center = SkillCenter(source_roots=roots)
+    enabled = next(skill for skill in center.list_project(project) if skill.name == "on")
+    center.set_enabled(project, enabled.skill_id, True)
+    selection = center.runtime_selection(project)
+    prepare_claude_plugin(selection)
+    prepare_qoder_plugin(selection)
+    prepare_hermes_home(
+        selection,
+        "project-id",
+        source_home=tmp_path / "missing-hermes-home",
+        runtime_root=tmp_path / "hermes-runtime",
+    )
+
+    def unexpected_rebuild(*_args, **_kwargs):
+        raise AssertionError("unchanged engine projection must not be rebuilt")
+
+    monkeypatch.setattr("services.skill_runtime._replace_tree", unexpected_rebuild)
+    prepare_claude_plugin(selection)
+    prepare_qoder_plugin(selection)
+    prepare_hermes_home(
+        selection,
+        "project-id",
+        source_home=tmp_path / "missing-hermes-home",
+        runtime_root=tmp_path / "hermes-runtime",
+    )
 
 
 def test_switching_from_project_local_preserves_original_recoverably(

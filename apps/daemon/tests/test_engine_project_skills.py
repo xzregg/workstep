@@ -26,8 +26,8 @@ async def test_engine_inspection_only_lists_its_project_skills(tmp_path):
 
     # Inspection reports the SkillCenter whitelist, not each engine's native
     # project discovery roots. Existing .workstep skills are adopted enabled.
-    assert {skill["name"] for skill in codex["skills"]} == {"shared"}
-    assert {skill["name"] for skill in claude["skills"]} == {"shared"}
+    assert {skill["name"] for skill in codex["skills"]} == {"shared", "workstep-cli"}
+    assert {skill["name"] for skill in claude["skills"]} == {"shared", "workstep-cli"}
 
 
 @pytest.mark.asyncio
@@ -58,20 +58,22 @@ async def test_engine_inspection_returns_engine_owned_input_items(tmp_path):
         "action": "prompt",
     }
     assert next(item for item in codex["input_items"] if item["name"] == "shared")["insert_text"] == "$shared "
+    assert next(item for item in codex["input_items"] if item["name"] == "workstep-cli")["insert_text"] == "$workstep-cli "
     assert [item["name"] for item in claude["input_items"][:5]] == [
         "goal", "plan", "reasoning", "status", "compact",
     ]
     assert next(item for item in claude["input_items"] if item["name"] == "shared")["insert_text"] == "/shared "
+    assert next(item for item in claude["input_items"] if item["name"] == "workstep-cli")["insert_text"] == "/workstep-cli "
     assert [item["name"] for item in openclaw["input_items"]] == [
-        "goal", "plan", "reasoning", "status", "compact", "shared",
+        "goal", "plan", "reasoning", "status", "compact", "shared", "workstep-cli",
     ]
 
 
 @pytest.mark.asyncio
-async def test_engine_inspection_without_skills_returns_empty_lists(tmp_path):
+async def test_engine_inspection_without_project_skills_returns_builtin_skill(tmp_path):
     result = await OpenClawEngine().inspect_capabilities(str(tmp_path))
 
-    assert result["skills"] == []
+    assert [item["name"] for item in result["skills"]] == ["workstep-cli"]
     assert [item["name"] for item in result["input_items"]] == [
-        "goal", "plan", "reasoning", "status", "compact",
+        "goal", "plan", "reasoning", "status", "compact", "workstep-cli",
     ]

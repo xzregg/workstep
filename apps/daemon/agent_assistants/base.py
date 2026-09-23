@@ -222,7 +222,10 @@ async def invoke_engine(
         if not (engine_accepts_images and model_accepts_images):
             prompt = engine.render_image_prompt(prompt, images)
             images = None
-    if plan_mode:
+    supports_native_plan_mode = bool(
+        getattr(getattr(engine, "capabilities", None), "supports_plan_mode", False)
+    )
+    if plan_mode and not supports_native_plan_mode:
         prompt = f"{prompt}\n\n{PLAN_MODE_INSTRUCTION}"
     content: list[str] = []
     events: list[dict] = []
@@ -274,10 +277,12 @@ async def invoke_engine(
             )
         if plan_mode:
             merged_overrides.update(map_plan_mode_overrides(engine_id))
+        if supports_native_plan_mode:
+            spawn_kwargs["plan_mode"] = bool(plan_mode)
         if merged_overrides:
             spawn_kwargs["config_overrides"] = merged_overrides
         if spawner is None:
-            iterator = engine.spawn(
+            iterator = getattr(engine, "spawn_with_retry", engine.spawn)(
                 prompt=prompt,
                 cwd=cwd,
                 model=model,
@@ -1990,10 +1995,26 @@ class AssistantRuntime:
                                     streamed_reply = ""
                                     active_segment_events.clear()
                                     live_split_count[0] += 1
-                                    if self._config.persistence is not None:
+                                    if self._project_manager is not None:
+                                        previous_message_id = sealed["id"]
+
+                                        def persist_split(_project):
+                                            from models import PendingMessageInsert
+                                            from models.base import db_proxy
+
+                                            with db_proxy.atomic():
+                                                PendingMessageInsert.update(
+                                                    target_message_id=next_message_id,
+                                                ).where(
+                                                    PendingMessageInsert.target_message_id
+                                                    == previous_message_id
+                                                ).execute()
+                                                if self._config.persistence is not None:
+                                                    self._config.persistence.save(session)
+
                                         await self._project_manager.run_db(
                                             session.project_id,
-                                            lambda _project: self._config.persistence.save(session),
+                                            persist_split,
                                         )
                                     await self._publish(
                                         session,

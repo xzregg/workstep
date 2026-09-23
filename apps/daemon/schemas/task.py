@@ -60,6 +60,7 @@ class CoordinatorConfigRequest(BaseSchema):
 
 class StepResumeRequest(BaseSchema):
     content: str
+    reset_step: bool = False
 
 
 class StepExecutionConfigRequest(BaseSchema):

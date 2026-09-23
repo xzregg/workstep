@@ -29,6 +29,13 @@ test('all locale dictionaries share identical key sets', () => {
   }
 })
 
+test('labels the project directory action consistently', () => {
+  assert.equal(zhCNT('taskList.openLocation'), '打开目录')
+  assert.equal(createT(enUS)('taskList.openLocation'), 'Open Directory')
+  assert.equal(createT(zhTW)('taskList.openLocation'), '開啟目錄')
+  assert.equal(createT(jaJP)('taskList.openLocation'), 'ディレクトリを開く')
+})
+
 test('interpolates {name} placeholders', () => {
   assert.equal(
     zhCNT('taskDetail.artifactNotFound', { name: 'report.md' }),

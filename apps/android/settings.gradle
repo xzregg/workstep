@@ -1,0 +1,19 @@
+pluginManagement {
+    repositories {
+        // Reachable on networks where dl.google.com has Java TLS handshake failures.
+        maven { url 'https://mirrors.cloud.tencent.com/nexus/repository/maven-public/' }
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        maven { url 'https://mirrors.cloud.tencent.com/nexus/repository/maven-public/' }
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = 'WorkStepAndroid'
+include ':app'

@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import ArtifactPreview from './ArtifactPreview'
 import Button from './Button'
 import Icon from './Icon'
+import ResizablePanel from './ResizablePanel'
 import { useI18n } from '../i18n'
 
 interface FilePreviewDialogProps {
@@ -24,8 +25,7 @@ export default function FilePreviewDialog({
 }: FilePreviewDialogProps) {
   const { t } = useI18n()
   const closeRef = useRef<HTMLButtonElement>(null)
-  const dialogRef = useRef<HTMLElement>(null)
-
+  const dialogRef = useRef<HTMLDivElement>(null)
   const compact = useCompactLayout()
   useOverlay(true, onClose, dialogRef, compact)
 
@@ -37,9 +37,11 @@ export default function FilePreviewDialog({
         if (event.target === event.currentTarget) onClose()
       }}
     >
-      <section
+      <ResizablePanel
         ref={dialogRef}
         className="file-preview-dialog"
+        minWidth={520}
+        minHeight={320}
         role="dialog"
         aria-modal="true"
         aria-labelledby="file-preview-title"
@@ -72,7 +74,7 @@ export default function FilePreviewDialog({
             projectId={projectId}
           />
         </div>
-      </section>
+      </ResizablePanel>
     </div>,
     document.body,
   )

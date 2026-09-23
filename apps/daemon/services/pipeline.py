@@ -99,6 +99,7 @@ class DAGScheduler:
         running: set[str] | None = None,
         step_results: dict[str, bool] | None = None,
         active_edges: set[str] | None = None,
+        task_context_edges: set[str] | None = None,
     ) -> list[Step]:
         """Return steps whose dependencies are all completed and not already running.
 
@@ -110,12 +111,16 @@ class DAGScheduler:
         running = running or set()
         step_results = step_results or {}
         active_edges = active_edges or set()
+        task_context_edges = task_context_edges or set()
         return [
             s for s in self.steps.values()
             if s.key not in completed
             and s.key not in running
             and all(dep in completed for dep in s.depends_on)
-            and self._solid_inputs_are_active(s, active_edges)
+            and self._solid_inputs_are_active(
+                s,
+                active_edges | task_context_edges,
+            )
             and self._evaluate_condition(s.condition, step_results)
         ]
 
@@ -194,12 +199,14 @@ class DAGScheduler:
         completed: set[str],
         excluded: set[str] | None = None,
         active_edges: set[str] | None = None,
+        task_context_edges: set[str] | None = None,
     ) -> list[Step]:
         """Return optional branches not selected by their completed sources."""
         skippable, _blocked = self._classify_unroutable_steps(
             completed,
             excluded,
             active_edges,
+            task_context_edges,
         )
         return skippable
 
@@ -208,12 +215,14 @@ class DAGScheduler:
         completed: set[str],
         excluded: set[str] | None = None,
         active_edges: set[str] | None = None,
+        task_context_edges: set[str] | None = None,
     ) -> list[Step]:
         """Return steps missing required output from completed sources."""
         _skippable, blocked = self._classify_unroutable_steps(
             completed,
             excluded,
             active_edges,
+            task_context_edges,
         )
         return blocked
 
@@ -222,6 +231,7 @@ class DAGScheduler:
         completed: set[str],
         excluded: set[str] | None,
         active_edges: set[str] | None,
+        task_context_edges: set[str] | None,
     ) -> tuple[list[Step], list[Step]]:
         """Separate unselected branches from missing required outputs.
 
@@ -233,6 +243,8 @@ class DAGScheduler:
         """
         excluded = excluded or set()
         active_edges = active_edges or set()
+        task_context_edges = task_context_edges or set()
+        satisfied_edges = active_edges | task_context_edges
         skippable: list[Step] = []
         blocked: list[Step] = []
         for step in self.steps.values():
@@ -253,7 +265,7 @@ class DAGScheduler:
             inactive = [
                 connection
                 for connection in solid
-                if str(connection.get("id")) not in active_edges
+                if str(connection.get("id")) not in satisfied_edges
             ]
             if not inactive:
                 continue

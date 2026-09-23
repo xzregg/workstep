@@ -176,6 +176,13 @@ export interface ChatInputPlan {
   disabled?: boolean
 }
 
+/** Run the selected workflow step from a fresh engine context next time. */
+export interface ChatInputResetStep {
+  active: boolean
+  onChange: (active: boolean) => void
+  disabled?: boolean
+}
+
 export interface ChatInputMentions {
   options: Array<{ id: string; label: string; color?: string }>
   menuLabel: string
@@ -225,6 +232,8 @@ export interface ChatInputProps {
   quotaRefreshing?: boolean
   /** Plan-mode toggle (Codex-style lightbulb, left side). */
   plan?: ChatInputPlan
+  /** One-shot reset-step toggle, rendered immediately after attachments. */
+  resetStep?: ChatInputResetStep
   /** Optional @ completion used by task chat to select a recipient step. */
   mentions?: ChatInputMentions
   /** Enable image attach: paste-to-upload + the image button. */
@@ -266,6 +275,7 @@ export default function ChatInput({
   onRefreshQuota,
   quotaRefreshing = false,
   plan,
+  resetStep,
   mentions,
   imageAttach,
   left,
@@ -362,9 +372,7 @@ export default function ChatInput({
     high: t('coord.thinkingLevels.high'),
     xhigh: t('coord.thinkingLevels.xhigh'),
   }
-  const effectiveDefaultThinkingEffort = config?.defaultThinkingEffort === 'auto'
-    ? ''
-    : config?.defaultThinkingEffort
+  const effectiveDefaultThinkingEffort = config?.defaultThinkingEffort
   const thinkingEffortDisplay = config?.thinkingEffort
     ? thinkingEffortLabel[config.thinkingEffort] ?? config.thinkingEffort
     : effectiveDefaultThinkingEffort
@@ -1180,6 +1188,21 @@ export default function ChatInput({
                 )}
               </div>
             </>
+          )}
+          {resetStep && (
+            <button
+              type="button"
+              className="chat-input-pill chat-input-reset-step"
+              data-reset-step
+              data-active={resetStep.active}
+              disabled={resetStep.disabled}
+              onClick={() => resetStep.onChange(!resetStep.active)}
+              aria-pressed={resetStep.active}
+              title={t('chatInput.resetStepTitle')}
+            >
+              <Icon name="radio" size={12} strokeWidth={1.8} />
+              <span>{t('chatInput.resetStep')}</span>
+            </button>
           )}
           {plan && (
             <button

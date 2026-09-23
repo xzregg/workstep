@@ -255,6 +255,27 @@ async def test_assistant_list_separates_configured_override_from_resolved_defaul
     assert item["configured"]["thinking_effort"] == ""
 
 
+async def test_task_coordinator_resolves_engine_default_thinking_effort(
+    assistant_client,
+):
+    client, store = assistant_client
+    store.set_execution_default_engine("codex_sdk")
+    store.set_codex_sdk_config(model_reasoning_effort="auto")
+
+    response = await client.get("/api/assistant/list")
+
+    assert response.status_code == 200
+    item = next(
+        item
+        for item in response.json()["assistants"]
+        if item["name"] == "task_coordinator"
+    )
+    assert item["configured"]["engine"] == ""
+    assert item["configured"]["thinking_effort"] == ""
+    assert item["resolved"]["engine"] == "codex_sdk"
+    assert item["resolved"]["thinking_effort"] == "auto"
+
+
 async def test_assistant_set_and_read_config(assistant_client):
     client, store = assistant_client
     response = await client.put(

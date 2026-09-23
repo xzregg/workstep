@@ -329,6 +329,7 @@ class _StreamingClient:
 
 
 class AcpEngineBase(BaseLLMEngine):
+    EXECUTION_MAX_ATTEMPTS = 2
     ACP_COMMAND_DISCOVERY_TIMEOUT = 0.5
     ACP_COMMAND_CACHE_TTL = 30.0
     _acp_command_cache: dict[tuple[str, str], tuple[float, list[dict[str, str]]]] = {}
@@ -376,6 +377,83 @@ class AcpEngineBase(BaseLLMEngine):
         if mode == "read-only":
             return False
         return None
+
+    async def _stream_with_retry(
+        self,
+        spawn_method,
+        **kwargs,
+    ) -> AsyncIterator[InternalEvent]:
+        """Run one engine stream, retrying its first terminal failure once.
+
+        The retry resumes the session announced by the failed attempt when the
+        adapter supports resume.  Events emitted before the failure remain
+        visible to preserve streaming; the first terminal error itself is
+        replaced by a ``retrying`` status.  A second error is passed through.
+        """
+        retry_session_id = kwargs.get("session_id")
+        for attempt_index in range(self.EXECUTION_MAX_ATTEMPTS):
+            attempt_kwargs = dict(kwargs)
+            if self.supports_resume:
+                attempt_kwargs["session_id"] = retry_session_id
+            failed_event: InternalEvent | None = None
+            try:
+                iterator = spawn_method(**attempt_kwargs)
+                async for event in iterator:
+                    if event.type == "session_started":
+                        announced_session_id = str(
+                            event.data.get("session_id") or ""
+                        ).strip()
+                        if announced_session_id:
+                            retry_session_id = announced_session_id
+                    if (
+                        event.type == "error"
+                        and attempt_index + 1 < self.EXECUTION_MAX_ATTEMPTS
+                    ):
+                        failed_event = event
+                        with suppress(Exception):
+                            await iterator.aclose()
+                        break
+                    yield event
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                if attempt_index + 1 >= self.EXECUTION_MAX_ATTEMPTS:
+                    raise
+                failure_message = str(exc) or exc.__class__.__name__
+            else:
+                if failed_event is None:
+                    return
+                failure_message = str(
+                    failed_event.data.get("message")
+                    or failed_event.data.get("error")
+                    or "引擎执行失败"
+                )
+
+            yield InternalEvent(
+                type="status",
+                data={
+                    "status": "retrying",
+                    "attempt": attempt_index + 2,
+                    "max_attempts": self.EXECUTION_MAX_ATTEMPTS,
+                    "message": failure_message,
+                },
+            )
+
+    async def spawn_with_retry(self, **kwargs) -> AsyncIterator[InternalEvent]:
+        """Run the normal execution entry point with one failure retry."""
+        async for event in self._stream_with_retry(self.spawn, **kwargs):
+            yield event
+
+    async def spawn_coordinator_with_retry(
+        self,
+        **kwargs,
+    ) -> AsyncIterator[InternalEvent]:
+        """Run the coordinator entry point with one failure retry."""
+        async for event in self._stream_with_retry(
+            self.spawn_coordinator,
+            **kwargs,
+        ):
+            yield event
 
     async def inspect_capabilities(
         self,
@@ -1346,7 +1424,7 @@ class AcpEngineBase(BaseLLMEngine):
 
         async def collect_events():
             nonlocal completed
-            async for event in self.spawn(
+            async for event in self.spawn_with_retry(
                 prompt=(
                     "Reply with WORKSTEP_ENGINE_OK only. "
                     "Do not use tools and do not modify files."

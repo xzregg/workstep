@@ -2,6 +2,8 @@
 
 import asyncio
 import logging
+import os
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -9,6 +11,13 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from settings import settings
+
+os.environ.setdefault("WORKSTEP_DAEMON_DIR", str(Path(__file__).resolve().parent))
+os.environ.setdefault("WORKSTEP_CLI_PYTHON", sys.executable)
+os.environ.setdefault(
+    "WORKSTEP_DAEMON_URL",
+    f"http://127.0.0.1:{settings.port}",
+)
 from streaming.bus import EventBus
 from api.project import router as project_router
 from api.task import router as task_router

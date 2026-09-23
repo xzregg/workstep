@@ -13,6 +13,8 @@ import Icon from '../components/Icon'
 import Input from '../components/Input'
 import MobileSheet from '../components/MobileSheet'
 import OpenLocationButton from '../components/OpenLocationButton'
+import MobileOpenLocationButton from '../components/MobileOpenLocationButton'
+import ProjectDirectoryBrowserDialog from '../components/ProjectDirectoryBrowserDialog'
 import ProjectSettingsPanel from '../components/ProjectSettingsPanel'
 import {
   assistantApi,
@@ -106,6 +108,7 @@ export default function ChatPage() {
   const [confirmedHandoffMessageCount, setConfirmedHandoffMessageCount] = useState<number | null>(null)
   const [showSettingsPanel, setShowSettingsPanel] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [showMobileDirectoryBrowser, setShowMobileDirectoryBrowser] = useState(false)
   const compact = useCompactLayout()
 
   // Engine/model picker (session-scoped, mirrors the flow assistant wiring).
@@ -1010,6 +1013,7 @@ export default function ChatPage() {
         >
           <Icon name="trash" size={16} /> {t('common.delete')}
         </Button>
+        <MobileOpenLocationButton onClick={() => { setMobileMenuOpen(false); setShowMobileDirectoryBrowser(true) }} />
         <ProjectGitButton project={activeProject} />
         <Button
           variant="ghost"
@@ -1019,6 +1023,14 @@ export default function ChatPage() {
           <Icon name="settings" size={16} /> {t('taskList.settings')}
         </Button>
       </MobileSheet>
+      {showMobileDirectoryBrowser && activeProject && (
+        <ProjectDirectoryBrowserDialog
+          projectId={activeProject.id}
+          title={activeProject.name}
+          displayPath={t('browser.projectRoot')}
+          onClose={() => setShowMobileDirectoryBrowser(false)}
+        />
+      )}
     </>
   )
 }

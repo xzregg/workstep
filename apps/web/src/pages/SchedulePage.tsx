@@ -7,6 +7,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import Field from '../components/Field'
 import Icon from '../components/Icon'
 import Input from '../components/Input'
+import MarqueeText from '../components/MarqueeText'
 import MarkdownEditor from '../components/MarkdownEditor'
 import ReviewOverridesEditor, { type ReviewOverride } from '../components/ReviewOverridesEditor'
 import Select from '../components/Select'
@@ -329,10 +330,18 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
           {loading && <div className="task-status-spinner" style={{ margin: 16 }} />}
           {!loading && items.length === 0 && <div style={{ color: 'var(--meta)', padding: 18, fontSize: 'calc(13px * var(--font-scale))' }}>{t('schedules.empty')}</div>}
           {items.map((item) => (
-            <button key={item.id} onClick={() => { setCreating(false); setSelectedId(item.id) }} style={{ width: '100%', border: 0, borderRadius: 8, padding: 12, marginBottom: 6, textAlign: 'left', cursor: 'pointer', background: selectedId === item.id ? 'var(--accent-light)' : 'transparent', color: 'var(--fg)' }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><strong style={{ flex: 1, fontSize: 'calc(13px * var(--font-scale))' }}>{item.task_template.title || (item.task_template.mode === 'agent' ? t('schedules.agentTask') : '')}</strong><span style={{ color: statusColors[item.status], fontSize: 'calc(11px * var(--font-scale))' }}>{t(`schedules.status_${item.status}` as any)}</span></div>
-              <div style={{ color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))', marginTop: 5 }}>{formatDate(item.next_run_at)}</div>
-              <div style={{ color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))', lineHeight: 1.45, marginTop: 2 }}><ScheduleSummary summary={item.summary} /></div>
+            <button className="schedule-list-item" key={item.id} onClick={() => { setCreating(false); setSelectedId(item.id) }} style={{ display: 'block', width: '100%', minWidth: 0, border: 0, borderRadius: 8, padding: 12, marginBottom: 6, textAlign: 'left', cursor: 'pointer', background: selectedId === item.id ? 'var(--accent-light)' : 'transparent', color: 'var(--fg)' }}>
+              <div className="schedule-list-title-row" style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <MarqueeText
+                  text={item.task_template.title || (item.task_template.mode === 'agent' ? t('schedules.agentTask') : '')}
+                  style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}
+                />
+                <span className="schedule-list-status" style={{ flexShrink: 0, color: statusColors[item.status], fontSize: 'calc(11px * var(--font-scale))' }}>{t(`schedules.status_${item.status}` as any)}</span>
+              </div>
+              <div className="schedule-list-meta" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginTop: 5, color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))', lineHeight: 1.45 }}>
+                <span className="schedule-list-time" style={{ minWidth: 0 }}>{formatDate(item.next_run_at)}</span>
+                <span className="schedule-list-summary" style={{ flexShrink: 0, textAlign: 'right' }}><ScheduleSummary summary={item.summary} /></span>
+              </div>
               {item.task_template.mode === 'agent' && <div style={{ color: 'var(--accent)', fontSize: 'calc(11px * var(--font-scale))', marginTop: 4 }}>{item.task_template.candidate_workflow_ids?.length ? t('schedules.agentCandidates', { count: item.task_template.candidate_workflow_ids.length }) : t('schedules.allWorkflows')}</div>}
             </button>
           ))}

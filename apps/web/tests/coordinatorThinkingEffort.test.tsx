@@ -57,7 +57,7 @@ test('empty thinking effort shows the inherited default level', async () => {
   }
 })
 
-test('auto thinking effort stays rendered as plain default', async () => {
+test('auto thinking effort shows the inherited automatic level', async () => {
   const window = installDom()
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
@@ -82,8 +82,7 @@ test('auto thinking effort stays rendered as plain default', async () => {
       )
     })
 
-    assert.match(container.textContent || '', /默认/)
-    assert.doesNotMatch(container.textContent || '', /默认（自动）/)
+    assert.match(container.textContent || '', /默认（自动）/)
   } finally {
     await act(async () => root.unmount())
     await window.happyDOM.close()

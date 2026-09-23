@@ -1,6 +1,8 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { ProjectFileLink } from '../utils/markdownFilePreview'
 import FilePreviewDialog from './FilePreviewDialog'
+import ImagePreview from './ImagePreview'
 import MarkdownContent from './MarkdownContent'
 import useStreamReveal from '../hooks/useStreamReveal'
 
@@ -48,6 +50,7 @@ function MarkdownMessage({
   reveal = 'a',
 }: MarkdownMessageProps) {
   const [previewFile, setPreviewFile] = useState<ProjectFileLink | null>(null)
+  const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const latestRenderRef = useRef({ content, streaming })
   latestRenderRef.current = { content, streaming }
@@ -90,6 +93,10 @@ function MarkdownMessage({
     reveal === 'a' && !plainText,
   )
   const handleFileClick = useCallback((file: ProjectFileLink) => setPreviewFile(file), [])
+  const handleImageClick = useCallback((src: string, alt: string) => {
+    if (onImageClick) onImageClick(src, alt)
+    else setPreviewImage({ src, alt })
+  }, [onImageClick])
 
   return (
     <>
@@ -100,7 +107,7 @@ function MarkdownMessage({
         className={className}
         compactParagraphs={compactParagraphs}
         plainText={plainText}
-        onImageClick={onImageClick}
+        onImageClick={handleImageClick}
         onFileClick={handleFileClick}
         rootRef={rootRef}
       />
@@ -112,6 +119,15 @@ function MarkdownMessage({
           projectId={projectId}
           onClose={() => setPreviewFile(null)}
         />
+      )}
+      {previewImage && createPortal(
+        <ImagePreview
+          src={previewImage.src}
+          alt={previewImage.alt}
+          projectId={projectId}
+          onClose={() => setPreviewImage(null)}
+        />,
+        document.body,
       )}
     </>
   )

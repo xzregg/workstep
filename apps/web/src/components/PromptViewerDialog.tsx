@@ -1,3 +1,4 @@
+import ResizablePanel from './ResizablePanel'
 import { useState } from 'react'
 import Button from './Button'
 import ImagePreview from './ImagePreview'
@@ -54,7 +55,9 @@ export default function PromptViewerDialog({
       }}
       onClick={onClose}
     >
-      <div
+      <ResizablePanel
+        minWidth={520}
+        minHeight={320}
         style={{
           width: 'min(860px, 92vw)', maxHeight: '84vh',
           background: 'var(--bg)', borderRadius: 12,
@@ -76,7 +79,7 @@ export default function PromptViewerDialog({
             onImageClick={(src, alt) => setPreviewImage({ src, alt })}
           />
         </div>
-      </div>
+      </ResizablePanel>
       {previewImage && (
         <ImagePreview
           src={previewImage.src}

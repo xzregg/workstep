@@ -1,3 +1,4 @@
+import ResizablePanel from './ResizablePanel'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   chatSessionApi,
@@ -16,6 +17,7 @@ import ConcurrencyLimitInput from './ConcurrencyLimitInput'
 import Field from './Field'
 import Input from './Input'
 import MarkdownEditor from './MarkdownEditor'
+import MarqueeText from './MarqueeText'
 import RemoteDeviceAccessList from './RemoteDeviceAccessList'
 import Select from './Select'
 import SkillCenterSettings from '../pages/SkillCenterSettings'
@@ -315,7 +317,7 @@ export default function ProjectSettingsPanel({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div
+      <ResizablePanel
         className="modal"
         role="dialog"
         aria-modal="true"
@@ -501,7 +503,10 @@ export default function ProjectSettingsPanel({
                             opacity: draggedQuickButtonId === button.id ? 0.55 : 1,
                           }}
                         >
-                          {button.label.trim() || t('projectSettings.assistant.newButton')}
+                          <MarqueeText
+                            text={button.label.trim() || t('projectSettings.assistant.newButton')}
+                            title={button.label.trim() || t('projectSettings.assistant.newButton')}
+                          />
                         </button>
                       )
                     })}
@@ -767,7 +772,7 @@ export default function ProjectSettingsPanel({
             )}
           </section>
         </div>
-      </div>
+      </ResizablePanel>
     </div>
   )
 }

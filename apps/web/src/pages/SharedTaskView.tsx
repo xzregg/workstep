@@ -864,6 +864,7 @@ export default function SharedTaskView() {
         chatEnabled={interactive}
         task={task}
         steps={steps}
+        workflowConnections={task?.workflow?.steps?.connections || []}
         stepProgress={stepProgress}
         selectedStep={selectedStep}
         onStepClick={setSelectedStep}

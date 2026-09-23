@@ -142,6 +142,7 @@ class EngineCapabilities:
     supports_vision: bool = False
     supports_workstep_tools: bool = False
     supports_thinking_effort: bool = False
+    supports_plan_mode: bool = False
 
 
 class EngineSkillPolicy(str, Enum):
@@ -862,6 +863,11 @@ class BaseLLMEngine(ABC):
         """Whether ``spawn`` accepts a per-turn thinking effort override."""
         return False
 
+    @property
+    def supports_plan_mode(self) -> bool:
+        """Whether ``spawn`` accepts the engine's native plan-mode switch."""
+        return False
+
 
     @property
     def capabilities(self) -> EngineCapabilities:
@@ -877,6 +883,7 @@ class BaseLLMEngine(ABC):
             supports_vision=self.supports_vision,
             supports_workstep_tools=self.supports_workstep_tools,
             supports_thinking_effort=self.supports_thinking_effort,
+            supports_plan_mode=self.supports_plan_mode,
         )
 
     @property
@@ -923,6 +930,7 @@ class BaseLLMEngine(ABC):
             supports_vision=self.supports_vision,
             supports_workstep_tools=self.supports_workstep_tools,
             supports_thinking_effort=self.supports_thinking_effort,
+            supports_plan_mode=self.supports_plan_mode,
         )
 
     @property

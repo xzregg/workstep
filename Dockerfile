@@ -28,18 +28,24 @@ RUN LANDING_BASE=/landing/ yarn build
 # ============================================================
 # 阶段 2：运行时镜像（最小化）
 # - 基础镜像 node:24-bookworm-slim（Node 24 + npm，约 1/5 体积）
-# - 最小系统依赖：git / curl / ca-certificates（引擎应用内按需安装所需）
+# - 最小系统依赖：git / curl / ca-certificates / jq（引擎安装与 JSON 处理）
 # - Python 3.14：由 uv 按 UV_PYTHON 自动下载 standalone 解释器（无需系统 python）
 # - 依赖缓存与字节码在构建后立即清理，尽量减小镜像体积
 # ============================================================
 FROM node:24-bookworm-slim
 
-# 最小系统依赖（勿裁剪：git/curl 供应用内安装 LLM 引擎使用）
+# 最小系统依赖（git/curl 供应用内安装 LLM 引擎使用，jq 供 JSON 处理）
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates git curl \
+    && apt-get install -y --no-install-recommends ca-certificates git curl jq \
     && rm -rf /var/lib/apt/lists/*
 
 RUN npm config set registry https://registry.npmmirror.com
+
+# Volta 可在容器内直接调用；保留基础镜像的 Node/npm 与引擎安装路径优先级。
+ENV VOLTA_HOME=/root/.volta \
+    PATH="${PATH}:/root/.volta/bin"
+RUN curl -fsSL https://get.volta.sh | bash -s -- --skip-setup \
+    && volta --version
 
 # uv —— Python 依赖与解释器管理；UV_CACHE_DIR 指向 /tmp 便于构建后清理
 ENV UV_PYTHON=3.14 \
@@ -48,8 +54,9 @@ ENV UV_PYTHON=3.14 \
     PATH="/root/.local/bin:${PATH}"
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 引擎按需安装环境自检（npm / uv / git / curl）
-RUN npm --version && uv --version && git --version && curl --version | head -1
+# 引擎按需安装环境与 JSON 工具自检（Node / npm / Volta / uv / git / curl / jq）
+RUN node --version && npm --version && volta --version && uv --version \
+    && git --version && jq --version && curl --version | head -1
 
 # 后端依赖（uv.lock 已入库；固定 Python 3.14）
 WORKDIR /app/apps/daemon
@@ -62,7 +69,12 @@ RUN uv sync --no-dev --frozen \
 ENV NPM_CONFIG_PREFIX=/opt/workstep-engines/npm \
     WORKSTEP_ENGINE_PACKAGE_DIR=/opt/workstep-engines/python \
     PYTHONPATH=/opt/workstep-engines/python \
-    PATH="/opt/workstep-engines/npm/bin:${PATH}"
+    PATH="/app/apps/daemon/.venv/bin:/opt/workstep-engines/npm/bin:${PATH}"
+
+RUN command -v python && python --version \
+    && command -v node && node --version \
+    && command -v npm && npm --version \
+    && command -v volta && volta --version
 
 # 后端源码（清理字节码缓存）
 COPY apps/daemon ./
@@ -73,9 +85,7 @@ RUN find /app -name '__pycache__' -type d -prune -exec rm -rf {} + \
 COPY --from=web-build /app/apps/web/dist ../web/dist
 COPY --from=web-build /app/apps/landing/dist ../landing/dist
 
-# 数据 / 配置 / 会话目录：~/.workstep、~/.codex、~/.claude
-# Codex / Claude 配置由容器自身维护；compose 持久化 Codex rollout。
-VOLUME ["/root/.workstep", "/root/.codex", "/opt/workstep-engines"]
+# 数据、配置、会话与引擎目录由 compose 或 docker run 显式挂载以持久化。
 
 EXPOSE 8765
 

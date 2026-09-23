@@ -102,7 +102,7 @@ async def test_task_runner_dispatch_step_marks_step_passed_without_engine(tmp_pa
 
 @pytest.mark.anyio
 async def test_dispatch_step_creates_child_task_with_direct_inputs(tmp_path):
-    from models import Task, init_db
+    from models import Task, TaskStep, init_db
     from services.task_dispatch import TaskDispatchService
     from services.task import TaskService
     from streaming.bus import EventBus
@@ -119,7 +119,23 @@ async def test_dispatch_step_creates_child_task_with_direct_inputs(tmp_path):
         workstep_dir=target_root,
         workflow_by_id=lambda workflow_id: {
             "id": workflow_id,
-            "steps": {"steps": [{"key": "build", "autoStart": False}]},
+            "steps": {
+                "nodes": [
+                    {"id": 1, "type": "a", "title": "A"},
+                    {"id": 2, "type": "b", "title": "B"},
+                    {
+                        "id": 3,
+                        "type": "deploy",
+                        "title": "Deploy",
+                        "autoStart": False,
+                        "inputs": [{"name": "A2"}, {"name": "B1"}],
+                    },
+                ],
+                "connections": [
+                    {"from": 1, "fromPort": 0, "to": 3, "toPort": 0},
+                    {"from": 2, "fromPort": 0, "to": 3, "toPort": 1},
+                ],
+            },
         } if workflow_id == "workflow-b" else None,
     )
 
@@ -157,7 +173,7 @@ async def test_dispatch_step_creates_child_task_with_direct_inputs(tmp_path):
             dispatch={
                 "targetProjectId": "project-b",
                 "targetWorkflowId": "workflow-b",
-                "targetStartStepKey": "build",
+                "targetStartStepKey": "deploy",
                 "startMode": "immediate",
             },
         ),
@@ -173,6 +189,11 @@ async def test_dispatch_step_creates_child_task_with_direct_inputs(tmp_path):
     assert "handoff" not in result["description"]
     assert result["input_manifest"][0]["name"] == "brief.md"
     assert runtime.started == [("project-b", result["id"], "")]
+    child = Task.get_by_id(result["id"])
+    assert {
+        row.step_key: row.status
+        for row in TaskStep.select().where(TaskStep.task == child)
+    } == {"a": "skipped", "b": "skipped", "deploy": "pending"}
 
 
 def test_local_dispatch_copy_prefers_clone(monkeypatch, tmp_path):

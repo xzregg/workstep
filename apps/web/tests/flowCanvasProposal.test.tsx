@@ -2,7 +2,7 @@ import './helpers/domEnv'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { Window } from 'happy-dom'
-import { act, createRef } from 'react'
+import { act, createRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ReactFlowProvider } from '@xyflow/react'
 import FlowCanvas, { type FlowCanvasHandle } from '../src/components/FlowCanvas'
@@ -41,6 +41,46 @@ function installDom() {
   })
   return window
 }
+
+test('warns before saving when a verifier requires a feedback-only output', async () => {
+  const window = installDom()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const saved: unknown[] = []
+  try {
+    await act(async () => root.render(
+      <I18nProvider><ReactFlowProvider>
+        <FlowCanvas
+          initialSteps={{
+            nodes: [
+              { id: 1, type: 'develop', title: '开发', inputs: [{ name: '需求', type: 'md', outputs: [{ name: '文档', type: 'md' }] }, { name: '修复', type: 'md', outputs: [{ name: '修复列表', type: 'md' }] }], outputs: [{ name: '文档', type: 'md' }, { name: '修复列表', type: 'md' }] },
+              { id: 2, type: 'test', title: '测试', inputs: [{ name: '开发成果', type: 'md' }], outputs: [{ name: 'Bug 列表', type: 'md' }] },
+            ],
+            connections: [
+              { from: 1, fromPort: 0, to: 2, toPort: 0, kind: 'solid' },
+              { from: 1, fromPort: 1, to: 2, toPort: 0, kind: 'solid' },
+              { from: 2, fromPort: 0, to: 1, toPort: 1, kind: 'dashed' },
+            ],
+          }}
+          onSave={(steps) => { saved.push(steps) }}
+        />
+      </ReactFlowProvider></I18nProvider>,
+    ))
+    const save = [...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === '保存')
+    assert.ok(save)
+    await act(async () => save.click())
+    assert.equal(saved.length, 0)
+    assert.match(document.body.textContent || '', /“测试”可能无法执行/)
+    assert.doesNotMatch(document.body.textContent || '', /“开发”→“测试”/)
+    const confirm = [...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === '仍然保存')
+    assert.ok(confirm)
+    await act(async () => confirm.click())
+    assert.equal(saved.length, 1)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
 
 test('renders an applied AI proposal that uses the historical assistant shape', async () => {
   const window = installDom()
@@ -342,6 +382,53 @@ test('saving the workflow also commits the active step draft without staging it 
     await act(async () => save.click())
 
     assert.equal(savedSteps.nodes[0].maxReturnRounds, 6)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+test('staging then saving does not reload the canvas from its own saved steps', async () => {
+  const window = installDom()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const initialSteps = {
+    nodes: [{ id: 1, type: 'test', title: '测试', maxReturnRounds: 3 }],
+    connections: [],
+  }
+  function SavedCanvas() {
+    const [steps, setSteps] = useState<any>(initialSteps)
+    return <FlowCanvas initialSteps={steps} onSave={(nextSteps) => setSteps(nextSteps)} />
+  }
+
+  try {
+    await act(async () => root.render(
+      <I18nProvider><ReactFlowProvider><SavedCanvas /></ReactFlowProvider></I18nProvider>,
+    ))
+    const stepNode = container.querySelector<HTMLElement>('.react-flow__node')!
+    await act(async () => stepNode.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true })))
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="最大返回次数"]')!
+    await act(async () => {
+      setNativeValue(window, input, '4')
+      input.dispatchEvent(new window.Event('input', { bubbles: true }))
+    })
+    const stash = [...container.querySelectorAll('button')].find(button => button.textContent === '暂存')!
+    await act(async () => stash.click())
+    const save = [...container.querySelectorAll('button')].find(button => button.textContent === '保存')!
+    const originalSetTimeout = globalThis.setTimeout
+    let fitViewSchedules = 0
+    globalThis.setTimeout = ((callback: TimerHandler, delay?: number, ...args: any[]) => {
+      if (delay === 100) fitViewSchedules++
+      return originalSetTimeout(callback, delay, ...args)
+    }) as typeof setTimeout
+    try {
+      await act(async () => save.click())
+    } finally {
+      globalThis.setTimeout = originalSetTimeout
+    }
+
+    assert.equal(fitViewSchedules, 0, 'saving should not schedule fitView')
+    assert.equal(container.querySelector<HTMLInputElement>('input[aria-label="最大返回次数"]')?.value, '4')
   } finally {
     await act(async () => root.unmount())
     await window.happyDOM.close()

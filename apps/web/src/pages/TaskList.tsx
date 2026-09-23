@@ -1,3 +1,4 @@
+import ResizablePanel from '../components/ResizablePanel'
 import ProjectGitButton from '../components/git/ProjectGitButton'
 import Select from '../components/Select'
 import { randomUuid } from '../utils/uuid'
@@ -7,6 +8,7 @@ import { useTaskRoute } from '../hooks/useTaskRoute'
 import { useOverlay } from '../hooks/useOverlay'
 import MobileSheet from '../components/MobileSheet'
 import StatusBadge from '../components/StatusBadge'
+import TaskRecoveredBadge from '../components/TaskRecoveredBadge'
 import Icon from '../components/Icon'
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -27,6 +29,8 @@ import AiTaskCreateChat from '../components/AiTaskCreateChat'
 import ReviewOverridesEditor from '../components/ReviewOverridesEditor'
 import MarqueeText from '../components/MarqueeText'
 import OpenLocationButton from '../components/OpenLocationButton'
+import MobileOpenLocationButton from '../components/MobileOpenLocationButton'
+import ProjectDirectoryBrowserDialog from '../components/ProjectDirectoryBrowserDialog'
 import ProjectShareDialog from '../components/ProjectShareDialog'
 import ProjectSettingsPanel from '../components/ProjectSettingsPanel'
 import ArchiveExperienceProgress from '../components/ArchiveExperienceProgress'
@@ -40,7 +44,7 @@ import { resolveTaskCreationErrors } from '../utils/taskCreationErrors.js'
 import { formatScheduledStart, localDateTimeAfter, localDateTimeToIso } from '../utils/scheduledStart'
 import { assistantStarterPrompt, backfillEmptyTitle } from '../utils/assistantTitle'
 import { useOnboardingStore } from '../stores/onboardingStore'
-import { deriveTaskLane, type TaskLane } from './taskListLane'
+import { deriveTaskLane, orderTaskLanes, type TaskLane } from './taskListLane'
 
 /* ── Styles ── */
 const topbarStyle: React.CSSProperties = {
@@ -115,7 +119,7 @@ const STAGE_COLORS: Record<string, string> = {
 
 function getLanesFromSteps(steps: any, t: TFunction): Lane[] {
   if (steps?.nodes?.length) {
-    return steps.nodes.map((n: any) => {
+    const lanes = steps.nodes.map((n: any) => {
       const key = n.type || n.key || String(n.id)
       return {
         key,
@@ -123,13 +127,15 @@ function getLanesFromSteps(steps: any, t: TFunction): Lane[] {
         color: n.color || STAGE_COLORS[key] || 'var(--meta)',
       }
     })
+    return orderTaskLanes(lanes, steps)
   }
   if (steps?.steps?.length) {
-    return steps.steps.map((s: any) => ({
+    const lanes = steps.steps.map((s: any) => ({
       key: s.key || s.id,
       label: s.label || s.name || s.key,
       color: s.color || 'var(--meta)',
     }))
+    return orderTaskLanes(lanes, steps)
   }
   return [{ key: 'do', label: t('taskList.execute'), color: 'var(--accent)' }]
 }
@@ -160,6 +166,7 @@ export default function TaskList() {
   const { taskId: selectedTaskId, openTask, closeTask } = useTaskRoute()
   const compact = useCompactLayout()
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [showMobileDirectoryBrowser, setShowMobileDirectoryBrowser] = useState(false)
   const [mobileStep, setMobileStep] = useState('')
   useEffect(() => { setMobileStep('') }, [activeProject?.id, activeWorkflowId])
   const newPanelRef = useRef<HTMLDivElement>(null)
@@ -838,6 +845,7 @@ export default function TaskList() {
             <Icon name="clock" size={16} />
             {t('schedules.title')}
           </Button>
+          <MobileOpenLocationButton disabled={!activeProject} onClick={() => { setFiltersOpen(false); setShowMobileDirectoryBrowser(true) }} />
           <ProjectGitButton project={activeProject} />
           <Button onClick={() => { setFiltersOpen(false); setShowSettingsPanel(true) }}>
             <Icon name="settings" size={16} />
@@ -845,6 +853,14 @@ export default function TaskList() {
           </Button>
         </div>
       </MobileSheet>
+      {showMobileDirectoryBrowser && activeProject && (
+        <ProjectDirectoryBrowserDialog
+          projectId={activeProject.id}
+          title={activeProject.name}
+          displayPath={t('browser.projectRoot')}
+          onClose={() => setShowMobileDirectoryBrowser(false)}
+        />
+      )}
       <div className="desktop-task-toolbar" style={topbarStyle}>
         <Button
           variant="ghost"
@@ -1157,22 +1173,11 @@ export default function TaskList() {
                             {t('taskList.scheduledStartFailed')}
                           </span>
                         )}
-                        {status === 'running' && (task.recovered_count || 0) > 0 && (
-                          <span
-                            className="task-card-recovered-badge"
-                            title={t('taskList.recoveredTitle', { count: task.recovered_count })}
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 4,
-                              fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600, padding: '2px 7px',
-                              borderRadius: 'var(--radius-pill)', whiteSpace: 'nowrap',
-                              color: 'var(--accent)',
-                              background: 'color-mix(in oklab, var(--accent), transparent 88%)',
-                              border: '1px solid color-mix(in oklab, var(--accent), transparent 60%)',
-                            }}
-                          >
-                            {t('taskList.recovered')}
-                          </span>
-                        )}
+                        <TaskRecoveredBadge
+                          status={status}
+                          recoveredCount={task.recovered_count}
+                          className="task-card-recovered-badge"
+                        />
                         <span
                           className="status-badge task-card-status-badge"
                           data-s={displayStatus}
@@ -1520,20 +1525,20 @@ export default function TaskList() {
         <div
           className="modal-overlay schedule-dialog-overlay"
           role="presentation"
-          style={{ zIndex: 1000, padding: 24 }}
+          style={{ zIndex: 1000, padding: 12 }}
         >
-          <div
+          <ResizablePanel
             className="modal schedule-dialog"
             role="dialog"
             aria-modal="true"
             aria-label={t('schedules.title')}
-            style={{ width: 'min(1500px, 96vw)', height: 'min(900px, 92vh)', maxHeight: '92vh' }}
+            style={{ width: 'min(1500px, 96vw)', height: 'min(1080px, calc(100dvh - 24px))', maxHeight: 'calc(100dvh - 24px)' }}
           >
             <SchedulePage
               onClose={() => setShowScheduleDialog(false)}
               onCountChange={setScheduleCount}
             />
-          </div>
+          </ResizablePanel>
         </div>
       )}
 

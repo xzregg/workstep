@@ -31,17 +31,33 @@ def test_parser_resolves_subcommands():
     args = parser.parse_args(["task", "get", "--project", "p1", "--task", "t1"])
     assert (args.command, args.subcommand) == ("task", "get")
     assert args.task_id == "t1"
+    args = parser.parse_args(["task", "worktree-add", "--project", "p1", "--task", "t1", "--repository", "r1", "--alias", "api"])
+    assert (args.repository_id, args.alias, args.base_ref) == ("r1", "api", "HEAD")
+    args = parser.parse_args(["task", "worktree-add", "--project", "p1", "--task", "t1", "--repository", "r1", "--alias", "api", "--base", "release", "--branch", "feature/api"])
+    assert (args.base_ref, args.branch_name) == ("release", "feature/api")
 
     args = parser.parse_args(
         [
             "task", "create", "--project", "p1", "--title", "标题",
-            "--cwd", "/w", "--desc", "说明",
+            "--cwd", "/w", "--desc", "说明", "--workflow", "w1",
+            "--start-step", "research",
         ]
     )
     assert (args.command, args.subcommand) == ("task", "create")
     assert args.title == "标题"
     assert args.cwd == "/w"
     assert args.description == "说明"
+    assert args.workflow_id == "w1"
+    assert args.start_step_key == "research"
+
+    args = parser.parse_args(["workflow", "list", "--project", "p1"])
+    assert (args.command, args.subcommand) == ("workflow", "list")
+
+    args = parser.parse_args([
+        "workflow", "get", "--project", "p1", "--workflow", "w1",
+    ])
+    assert (args.command, args.subcommand) == ("workflow", "get")
+    assert args.workflow_id == "w1"
 
     args = parser.parse_args(["engine", "list"])
     assert (args.command, args.subcommand) == ("engine", "list")
@@ -83,9 +99,24 @@ async def test_dispatch_maps_commands_to_tools():
         client,
     )
     assert calls[-1][:2] == ("GET", "/api/task/t1")
+    await dispatch(parser.parse_args(["task", "repos", "--project", "p1"]), client)
+    assert calls[-1][:2] == ("GET", "/api/git/projects/p1/repositories")
+    await dispatch(parser.parse_args(["task", "worktrees", "--project", "p1", "--task", "t1"]), client)
+    assert calls[-1][:2] == ("GET", "/api/git/projects/p1/tasks/t1/workspace")
 
     await dispatch(parser.parse_args(["engine", "list"]), client)
     assert calls[-1] == ("GET", "/api/engine/list", {})
+
+    await dispatch(parser.parse_args(["workflow", "list", "--project", "p1"]), client)
+    assert calls[-1] == ("GET", "/api/workflow/list", {"project_id": "p1"})
+
+    await dispatch(
+        parser.parse_args([
+            "workflow", "get", "--project", "p1", "--workflow", "w1",
+        ]),
+        client,
+    )
+    assert calls[-1] == ("GET", "/api/workflow/w1", {"project_id": "p1"})
 
 
 @pytest.mark.anyio
@@ -99,12 +130,17 @@ async def test_dispatch_create_task_posts_title_with_confirm():
     client = WorkstepClient(transport=httpx.MockTransport(handler))
     result = await dispatch(
         build_parser().parse_args(
-            ["task", "create", "--project", "p1", "--title", "T", "--cwd", "/w"]
+            [
+                "task", "create", "--project", "p1", "--title", "T",
+                "--cwd", "/w", "--workflow", "w1", "--start-step", "research",
+            ]
         ),
         client,
     )
     assert result["id"] == "t1"
     assert captured["body"]["title"] == "T"
+    assert captured["body"]["workflow_id"] == "w1"
+    assert captured["body"]["start_step_key"] == "research"
     assert "confirm" not in captured["body"]
 
 

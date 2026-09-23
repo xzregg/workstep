@@ -396,10 +396,10 @@ class CodexEngine(AcpEngineBase):
             model=model,
         )
         model = provider_runtime.model
-        from services.skill_runtime import codex_skills_config
+        from services.skill_runtime import prepare_codex_skills
 
         skill_override = await asyncio.to_thread(
-            lambda: codex_skills_config(self.project_skills(cwd))
+            lambda: prepare_codex_skills(self.project_skills(cwd))[1]
         )
         run_prompt = prompt
         resume_session = session_id or None

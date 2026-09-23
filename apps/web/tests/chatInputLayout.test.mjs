@@ -52,6 +52,15 @@ test('chat input toolbar wraps controls instead of overflowing narrow composers'
   assert.match(css, /\.chat-input-toolbar\s*\{[^}]*flex-wrap:\s*wrap/s)
 })
 
+test('task detail places the optional reset-step control in the shared composer', () => {
+  assert.match(source, /resetStep\?: ChatInputResetStep/)
+  assert.match(source, /data-reset-step/)
+  assert.ok(source.indexOf('data-reset-step') > source.indexOf('className="chat-input-attach"'))
+  assert.match(taskDetail, /resetStep=\{resumableTarget/)
+  assert.match(taskDetailPage, /resumeStepWithMessage\([\s\S]*resetSession/)
+  assert.match(taskDetailPage, /resetSession:\s*resetStep/)
+})
+
 test('mobile chat input controls scroll only within the space before the send button', () => {
   assert.match(source, /className="chat-input-toolbar-scroll"/)
   assert.match(mobileCss, /\.chat-input-toolbar-scroll\s*\{[^}]*flex:\s*1 1 auto[^}]*min-width:\s*0[^}]*overflow-x:\s*auto/s)

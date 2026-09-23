@@ -47,7 +47,7 @@ test('split diff resizes and annotates both versions with their own line attribu
     assert.match(commit.textContent!, /Alice/)
     assert.match(commit.textContent!, /change/)
     assert.match(commit.textContent!, /before/)
-    const separator = document.querySelector<HTMLElement>('[role=separator]')!
+    const separator = document.querySelector<HTMLElement>('.git-diff-divider')!
     assert.equal(separator.getAttribute('aria-valuenow'), '50')
     await act(async () => separator.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })))
     assert.equal(separator.getAttribute('aria-valuenow'), '55')
