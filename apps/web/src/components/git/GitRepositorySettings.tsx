@@ -6,7 +6,12 @@ import Button from '../Button'
 import Icon from '../Icon'
 
 function httpsHost(url: string) {
-  try { const parsed = new URL(url); return parsed.protocol === 'https:' ? parsed.host.toLowerCase() : '' }
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol === 'https:') return parsed.host.toLowerCase()
+    if (parsed.protocol === 'http:' && (!parsed.port || parsed.port === '80')) return parsed.hostname.toLowerCase()
+    return ''
+  }
   catch { return '' }
 }
 

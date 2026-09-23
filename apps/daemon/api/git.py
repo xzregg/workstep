@@ -60,11 +60,11 @@ async def open_task_workspace(project_id: str, task_id: str):
 
 
 @router.delete('/projects/{project_id}/tasks/{task_id}/workspace')
-async def delete_task_workspace(project_id: str, task_id: str):
+async def delete_task_workspace(project_id: str, task_id: str, force: bool = False):
     project = _task_project(project_id)
     await _task_exists(project_id, task_id, editable=True)
     await project_repositories(project_id)
-    return await result(TaskGitWorkspace(git_service).delete(project.path, task_id))
+    return await result(TaskGitWorkspace(git_service).delete(project.path, task_id, force=force))
 
 
 @router.post('/projects/{project_id}/tasks/{task_id}/worktrees')

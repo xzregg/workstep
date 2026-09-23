@@ -25,6 +25,12 @@ from streaming.bus import EventBus
 OUTPUT_PATH_RE = re.compile(r"output path: `([^`]+)`")
 
 
+def engine_output_path(value: str, cwd: str | Path) -> Path:
+    """Resolve prompt paths the same way an engine running in ``cwd`` does."""
+    path = Path(value)
+    return path if path.is_absolute() else Path(cwd) / path
+
+
 def test_entry_snapshot_keeps_two_boundary_ports_as_distinct_task_contexts(
     tmp_path,
 ):
@@ -366,36 +372,31 @@ class ArtifactWritingEngine:
 
     async def spawn(self, prompt, cwd, **kwargs):
         self.calls[self.step].append(prompt)
-        paths = [path for path in OUTPUT_PATH_RE.findall(prompt)]
+        paths = [
+            engine_output_path(path, cwd)
+            for path in OUTPUT_PATH_RE.findall(prompt)
+        ]
         if self.step == "develop":
             for path in paths:
-                from pathlib import Path
-
-                target = Path(path)
+                target = path
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(
                     "API v1" if target.name == "API文档.md" else "实现完成",
                     encoding="utf-8",
                 )
         elif self.step == "test":
-            from pathlib import Path
-
             test_attempt = len(self.calls[self.step])
             wanted = "Bug列表.md" if test_attempt == 1 else "测试报告.md"
-            target = next(Path(path) for path in paths if Path(path).name == wanted)
+            target = next(path for path in paths if path.name == wanted)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text("BUG-1" if test_attempt == 1 else "全部通过", encoding="utf-8")
         elif self.step == "publish":
-            from pathlib import Path
-
-            target = Path(paths[0])
+            target = paths[0]
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text("交付完成", encoding="utf-8")
         else:
-            from pathlib import Path
-
             for path in paths:
-                target = Path(path)
+                target = path
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(f"{self.step} output", encoding="utf-8")
         yield InternalEvent(
@@ -563,10 +564,8 @@ async def test_feedback_connection_stops_after_three_returns(tmp_path):
 
     class AlwaysFeedbackEngine(ArtifactWritingEngine):
         async def spawn(self, prompt, cwd, **kwargs):
-            from pathlib import Path
-
             self.calls[self.step].append(prompt)
-            target = Path(OUTPUT_PATH_RE.findall(prompt)[0])
+            target = engine_output_path(OUTPUT_PATH_RE.findall(prompt)[0], cwd)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text("仍有缺陷", encoding="utf-8")
             yield InternalEvent(
@@ -662,7 +661,7 @@ async def test_review_rejection_cannot_bypass_artifact_feedback_route(tmp_path):
             self.calls[self.step].append(prompt)
             wanted = "Bug列表.md" if len(self.calls[self.step]) <= 2 else "测试报告.md"
             target = next(
-                Path(value)
+                engine_output_path(value, cwd)
                 for value in OUTPUT_PATH_RE.findall(prompt)
                 if Path(value).name == wanted
             )
@@ -769,10 +768,8 @@ async def test_missing_output_skips_only_its_connected_branch(tmp_path):
 
     class FirstOutputOnlyEngine(ArtifactWritingEngine):
         async def spawn(self, prompt, cwd, **kwargs):
-            from pathlib import Path
-
             self.calls[self.step].append(prompt)
-            target = Path(OUTPUT_PATH_RE.findall(prompt)[0])
+            target = engine_output_path(OUTPUT_PATH_RE.findall(prompt)[0], cwd)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text("选择 A", encoding="utf-8")
             yield InternalEvent(
@@ -1234,11 +1231,9 @@ async def test_forward_and_feedback_outputs_in_same_round_pause_as_conflict(tmp_
 
     class BothOutputsEngine(ArtifactWritingEngine):
         async def spawn(self, prompt, cwd, **kwargs):
-            from pathlib import Path
-
             self.calls[self.step].append(prompt)
             for value in OUTPUT_PATH_RE.findall(prompt):
-                target = Path(value)
+                target = engine_output_path(value, cwd)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text("非空", encoding="utf-8")
             yield InternalEvent(

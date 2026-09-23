@@ -45,3 +45,34 @@ test('copying the message id also copies its session id', async () => {
     await window.happyDOM.close()
   }
 })
+
+test('message-only id entry is labelled as message id', async () => {
+  const window = new Window({ width: 1280, url: 'http://localhost' })
+  Object.assign(globalThis, {
+    window,
+    document: window.document,
+    navigator: window.navigator,
+    HTMLElement: window.HTMLElement,
+    IS_REACT_ACT_ENVIRONMENT: true,
+  })
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+
+  try {
+    await act(async () => root.render(
+      <I18nProvider>
+        <MessageIdPopover messageId="message-456" />
+      </I18nProvider>,
+    ))
+
+    assert.equal(
+      container.querySelector<HTMLButtonElement>('[aria-haspopup="true"]')?.textContent,
+      '消息 ID',
+    )
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})

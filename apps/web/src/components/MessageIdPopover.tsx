@@ -208,7 +208,7 @@ export default function MessageIdPopover({ messageId, sessionId, projectId, open
           whiteSpace: 'nowrap',
         }}
       >
-        {t('meta.sessionIdLabel')}
+        {t(hasSession ? 'meta.sessionIdLabel' : 'meta.messageIdLabel')}
       </button>
       {visible && (
         <span

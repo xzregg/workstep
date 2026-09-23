@@ -893,6 +893,8 @@ async def test_rerun_upstream_with_new_artifact_restarts_previously_blocked_down
                 producer_calls += 1
                 if producer_calls >= 2:
                     output_dir = Path(match.group(1))
+                    if not output_dir.is_absolute():
+                        output_dir = Path(cwd) / output_dir
                     output_dir.mkdir(parents=True, exist_ok=True)
                     (output_dir / "result.md").write_text("ready", encoding="utf-8")
             else:
