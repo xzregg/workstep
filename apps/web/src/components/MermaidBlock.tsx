@@ -120,7 +120,13 @@ function MermaidSource({ code }: { code: string }) {
   )
 }
 
-function MermaidBlock({ code }: { code: string }) {
+function MermaidBlock({
+  code,
+  renderDelayMs = STABILITY_DELAY_MS,
+}: {
+  code: string
+  renderDelayMs?: number
+}) {
   const streaming = useContext(MarkdownStreamingContext)
   const { t } = useI18n()
   const [theme, setTheme] = useState<MermaidTheme>(currentTheme)
@@ -152,10 +158,10 @@ function MermaidBlock({ code }: { code: string }) {
           if (generation.current === activeGeneration) setState({ key: renderKey, failed: true })
         },
       )
-    }, STABILITY_DELAY_MS)
+    }, renderDelayMs)
 
     return () => window.clearTimeout(timer)
-  }, [code, renderKey, streaming, theme])
+  }, [code, renderDelayMs, renderKey, streaming, theme])
 
   useEffect(() => () => {
     if (copyResetTimer.current !== null) window.clearTimeout(copyResetTimer.current)

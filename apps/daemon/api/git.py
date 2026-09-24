@@ -26,7 +26,7 @@ async def _task_exists(project_id: str, task_id: str, *, editable: bool = False)
         task = Task.get_or_none(Task.id == task_id)
         if task is None:
             return None
-        return {'status': task.status, 'creator_name': task.creator_name or ''}
+        return {'status': task.status, 'creator_name': task.creator_name or '', 'workflow_id': task.workflow_id}
 
     task = await project_manager.run_db(project_id, inspect)
     if task is None:
@@ -46,9 +46,9 @@ class AddTaskWorktreeRequest(BaseModel):
 @router.get('/projects/{project_id}/tasks/{task_id}/workspace')
 async def task_workspace(project_id: str, task_id: str):
     project = _task_project(project_id)
-    await _task_exists(project_id, task_id)
+    task = await _task_exists(project_id, task_id)
     await project_repositories(project_id)
-    return await result(TaskGitWorkspace(git_service).list(project.path, task_id))
+    return await result(TaskGitWorkspace(git_service, task['workflow_id']).list(project.path, task_id))
 
 
 @router.post('/projects/{project_id}/tasks/{task_id}/workspace')
@@ -56,15 +56,15 @@ async def open_task_workspace(project_id: str, task_id: str):
     project = _task_project(project_id)
     task = await _task_exists(project_id, task_id)
     await project_repositories(project_id)
-    return await result(TaskGitWorkspace(git_service).ensure(project.path, task_id, creator_name=task['creator_name']))
+    return await result(TaskGitWorkspace(git_service, task['workflow_id']).ensure(project.path, task_id, creator_name=task['creator_name']))
 
 
 @router.delete('/projects/{project_id}/tasks/{task_id}/workspace')
 async def delete_task_workspace(project_id: str, task_id: str, force: bool = False):
     project = _task_project(project_id)
-    await _task_exists(project_id, task_id, editable=True)
+    task = await _task_exists(project_id, task_id, editable=True)
     await project_repositories(project_id)
-    return await result(TaskGitWorkspace(git_service).delete(project.path, task_id, force=force))
+    return await result(TaskGitWorkspace(git_service, task['workflow_id']).delete(project.path, task_id, force=force))
 
 
 @router.post('/projects/{project_id}/tasks/{task_id}/worktrees')
@@ -72,7 +72,7 @@ async def add_task_worktree(project_id: str, task_id: str, body: AddTaskWorktree
     project = _task_project(project_id)
     task = await _task_exists(project_id, task_id)
     await project_repositories(project_id)
-    return await result(TaskGitWorkspace(git_service).add(
+    return await result(TaskGitWorkspace(git_service, task['workflow_id']).add(
         project.path, task_id, body.repository_id, body.alias, body.base_ref, body.branch_name,
         creator_name=task['creator_name'],
     ))
@@ -81,9 +81,9 @@ async def add_task_worktree(project_id: str, task_id: str, body: AddTaskWorktree
 @router.delete('/projects/{project_id}/tasks/{task_id}/worktrees/{alias}')
 async def remove_task_worktree(project_id: str, task_id: str, alias: str):
     project = _task_project(project_id)
-    await _task_exists(project_id, task_id, editable=True)
+    task = await _task_exists(project_id, task_id, editable=True)
     await project_repositories(project_id)
-    return await result(TaskGitWorkspace(git_service).remove(project.path, task_id, alias))
+    return await result(TaskGitWorkspace(git_service, task['workflow_id']).remove(project.path, task_id, alias))
 
 
 @router.post('/scans')

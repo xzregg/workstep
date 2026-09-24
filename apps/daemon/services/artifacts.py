@@ -23,7 +23,7 @@ def list_task_artifacts(project, task_id: str) -> list[dict]:
 
     artifacts = []
     for workflow_dir in sorted(artifacts_root.iterdir()):
-        if not workflow_dir.is_dir():
+        if workflow_dir.name == "actions" or not workflow_dir.is_dir():
             continue
         task_dir = (workflow_dir / task_id).resolve()
         try:
@@ -34,7 +34,7 @@ def list_task_artifacts(project, task_id: str) -> list[dict]:
             continue
 
         for step_dir in sorted(task_dir.iterdir()):
-            if not step_dir.is_dir():
+            if step_dir.name.startswith(".") or not step_dir.is_dir():
                 continue
 
             rounds = iter_artifact_rounds(

@@ -5,6 +5,7 @@ import FilePreviewDialog from './FilePreviewDialog'
 import ImagePreview from './ImagePreview'
 import MarkdownContent from './MarkdownContent'
 import useStreamReveal from '../hooks/useStreamReveal'
+import { useTaskFilePreview } from '../contexts/MarkdownAssetUrlContext'
 
 interface MarkdownMessageProps {
   content: string
@@ -30,6 +31,8 @@ interface MarkdownMessageProps {
    * attachments while reading like plain text.
    */
   plainText?: boolean
+  /** Mermaid render delay; use 0 for complete, non-streaming file content. */
+  mermaidRenderDelayMs?: number
   /** When set, images render as clickable thumbnails calling this with (src, alt). */
   onImageClick?: (src: string, alt: string) => void
 }
@@ -46,10 +49,12 @@ function MarkdownMessage({
   className,
   compactParagraphs = false,
   plainText = false,
+  mermaidRenderDelayMs,
   onImageClick,
   reveal = 'a',
 }: MarkdownMessageProps) {
   const [previewFile, setPreviewFile] = useState<ProjectFileLink | null>(null)
+  const taskFilePreview = useTaskFilePreview()
   const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const latestRenderRef = useRef({ content, streaming })
@@ -107,11 +112,12 @@ function MarkdownMessage({
         className={className}
         compactParagraphs={compactParagraphs}
         plainText={plainText}
+        mermaidRenderDelayMs={mermaidRenderDelayMs}
         onImageClick={handleImageClick}
         onFileClick={handleFileClick}
         rootRef={rootRef}
       />
-      {previewFile && projectId && (
+      {previewFile && (projectId || taskFilePreview) && (
         <FilePreviewDialog
           path={previewFile.path}
           name={previewFile.name}

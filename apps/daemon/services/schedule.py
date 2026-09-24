@@ -501,12 +501,17 @@ class ScheduleModule:
 
     @staticmethod
     def _run_to_dict(row: ScheduleRun) -> dict:
+        # Older scheduler runs followed the workflow after task creation.
+        # Their terminal workflow status does not describe the schedule trigger.
+        task_created = bool(row.task_id) and row.status in {
+            "running", "succeeded", "failed"
+        }
         return {
             "id": row.id,
             "schedule_id": row.schedule_id,
             "scheduled_for": row.scheduled_for,
-            "status": row.status,
-            "reason": row.reason,
+            "status": "created" if task_created else row.status,
+            "reason": None if task_created else row.reason,
             "task_id": row.task_id,
             "workflow_run_id": row.workflow_run_id,
             "started_at": row.started_at,
@@ -701,17 +706,12 @@ class ScheduleModule:
         })
 
     def _reconcile_running_rows(self) -> None:
-        from models import WorkflowRun
-
         for run in ScheduleRun.select().where(ScheduleRun.status == "running"):
-            if not run.workflow_run_id:
+            if not run.task_id:
                 continue
-            workflow_run = WorkflowRun.get_or_none(WorkflowRun.id == run.workflow_run_id)
-            if workflow_run is None or workflow_run.status == "running":
-                continue
-            run.status = "succeeded" if workflow_run.status == "succeeded" else "failed"
-            run.reason = None if run.status == "succeeded" else workflow_run.status
-            run.ended_at = workflow_run.ended_at or utc_now()
+            run.status = "created"
+            run.reason = None
+            run.ended_at = run.ended_at or utc_now()
             run.save()
 
     async def _drain_queue(self, project_id: str, schedule_id: str) -> None:
@@ -891,34 +891,15 @@ class ScheduleModule:
         def attach_task():
             run = ScheduleRun.get_by_id(run_id)
             run.task_id = task["id"]
-            if result.run_handle is None:
-                run.status = "created"
-                run.ended_at = utc_now()
-                run.save()
-                return True
-            run.workflow_run_id = result.run_handle.id
-            run.save()
-            return False
-
-        if await self._run_db(project_id, attach_task):
-            return
-        handle = result.run_handle
-        # Stopping the scheduler must not propagate cancellation into the
-        # workflow runtime, which owns and recovers the actual execution.
-        await asyncio.shield(self._runtime.wait(handle))
-
-        def finish_run():
-            from models import WorkflowRun
-            run = ScheduleRun.get_by_id(run_id)
-            workflow_run = WorkflowRun.get_by_id(handle.id)
-            run.status = (
-                "succeeded" if workflow_run.status == "succeeded" else "failed"
+            run.workflow_run_id = (
+                result.run_handle.id if result.run_handle is not None else None
             )
-            run.reason = None if run.status == "succeeded" else workflow_run.status
-            run.ended_at = workflow_run.ended_at or utc_now()
+            run.status = "created"
+            run.reason = None
+            run.ended_at = utc_now()
             run.save()
 
-        await self._run_db(project_id, finish_run)
+        await self._run_db(project_id, attach_task)
 
     def _get_row(self, project_id: str, schedule_id: str) -> Schedule:
         with self._projects.activate_project_by_id(project_id):

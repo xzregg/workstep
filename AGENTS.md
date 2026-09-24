@@ -55,8 +55,8 @@ WorkStep 本地后台服务，最低支持 Python 3.11，使用 FastAPI、Peewee
 ```bash
 cd apps/daemon
 uv sync --dev
-uv run uvicorn main:app --reload --port 8765
-uv run pytest
+uv run --no-sync uvicorn main:app --reload --port 8765
+uv run --no-sync pytest
 ```
 
 ### 后端异步 I/O 开发规范
@@ -97,6 +97,7 @@ yarn build
 - **优先复用**：同一 UI 出现两次即抽公共组件并统一默认值，禁止复制实现。现有入口：消息用 `ChatMessageBubble` + `MessageMetaBar` + `MessageResponseFooter`；输入用 `ChatInput`（配置菜单用 `CoordinatorConfigBar`）；Markdown 编辑/展示用 `MarkdownEditor` / `MarkdownMessage`；确认用 `ConfirmDialog`。
 - **页面与布局职责**：`Layout` 和页面层只负责路由级数据选择、区域编排与少量跨区域协调，不得内联实现完整业务流程。一个弹框、侧栏分区或编辑器只要同时拥有独立状态、异步请求、校验和确认交互，就应抽成自管理的组合模块；调用方只传稳定标识和结果/关闭回调，禁止为了“拆文件”透传整组 state/setter。文件超过 800 行、局部状态超过 15 个或 effect 超过 10 个均视为拆分信号；现有超限文件属于待治理技术债，修改时不得继续加入新的独立业务职责或显著增加复杂度。新增复杂流程必须先抽离模块；确实无法拆分时须在变更说明中写明理由。
 - **模块测试归属**：行为测试应面向实际拥有该行为的模块，不得把页面源码文本当成所有子功能的测试入口。页面层只测试模块是否正确组装；状态、请求、校验、关闭保护和错误恢复由组合模块自己的测试覆盖。重构移动职责时同步迁移测试目标，避免测试反向阻止合理拆分。
+- **任务详情与分享页**：两者共用 `TaskDetailPage`，新增查看类能力须加入 `TaskDetailReadCapabilities`，由任务详情和分享页分别实现，并覆盖分享会话下的行为；分享模式只控制消息输入能力，不能以缺少分享页接口为由隐藏查看功能。
 - **交互与校验**：禁用原生 `alert/confirm`。必填项为空时提交类按钮禁用；触发类按钮（如「AI 创建」）可点击，但须在弹框固定高度区域提示、聚焦缺失字段。侧边面板有改动时，关闭前用 `ConfirmDialog` 确认；无改动时遮罩点击直接关闭。
 - **命名**：新建/重命名项目与工作流时禁止空白字符，前端即时校验，后端 schema 同步强制。
 - **流程与模板**：新项目默认没有流程，初始化和重新打开时均不自动创建默认流程；已有流程原样恢复。新流程默认空画布，模板由用户主动选择。模板以 `~/.workstep/data/templates/*.json` 为准；启动时从 `apps/daemon/data/templates/` 复制缺失文件但不覆盖。模板含 `id/name/description/steps`；内置模板标记 `default: true` 且不可删除。

@@ -1175,7 +1175,16 @@ class AssistantRuntime:
                 continue
             task = self._turn_tasks.get(turn_id)
             if task is None or task.done():
-                return False
+                session = self._sessions.get(state.get("memory_key"))
+                if session is not None:
+                    await self._finalize_queued_turn_as_stopped(
+                        session,
+                        turn_id,
+                        str(state.get("assistant_message_id") or ""),
+                    )
+                else:
+                    state["status"] = "stopped"
+                return True
             state["status"] = "stopping"
             engine = self._running_engines.get(turn_id)
             if engine is not None:
@@ -1379,8 +1388,7 @@ class AssistantRuntime:
             if state.get("session_id") == session_id
         }
         if any(
-            self._turn_states[turn_id].get("status")
-            in {"queued", "running", "stopping"}
+            self._turn_is_active(turn_id)
             for turn_id in related_turn_ids
         ):
             raise ValueError("Cannot reset a running assistant session")
@@ -1400,6 +1408,18 @@ class AssistantRuntime:
             with self._project_ctx(project_id):
                 removed = self._config.persistence.delete(project_id, scope_key) or removed
         return removed
+
+    def _turn_is_active(self, turn_id: str) -> bool:
+        """Return whether a turn still has work that can actually execute."""
+        state = self._turn_states.get(turn_id, {})
+        status = state.get("status")
+        if status not in {"queued", "running", "stopping"}:
+            return False
+        task = self._turn_tasks.get(turn_id)
+        if task is not None:
+            return not task.done()
+        # A queued turn briefly exists before the API schedules its task.
+        return status == "queued"
 
     async def shutdown(self) -> None:
         self._shutting_down = True

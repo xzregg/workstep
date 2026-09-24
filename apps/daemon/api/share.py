@@ -3,6 +3,8 @@
 import asyncio
 import json
 import logging
+import mimetypes
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse
@@ -11,6 +13,8 @@ from api.fs import (
     UploadFileRequest,
     UploadImageRequest,
     _serve_upload_file,
+    _preview_file_sync,
+    _resolve_project_file,
     upload_file,
     upload_image,
 )
@@ -165,6 +169,26 @@ async def _require_share_session_token(session_token: str) -> dict:
     return ctx
 
 
+def _shared_file_path(path: str, ctx: dict) -> Path:
+    """Limit public file access to this task's outputs and message uploads."""
+    from main import project_manager
+
+    project = project_manager.get_project_by_id(ctx["project_id"])
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    target = _resolve_project_file(path, ctx["project_id"])
+    workstep = Path(project.workstep_dir).resolve()
+    uploads = workstep / "uploads"
+    artifacts = workstep / "artifacts"
+    if target.is_relative_to(uploads):
+        return target
+    if target.is_relative_to(artifacts):
+        parts = target.relative_to(artifacts).parts
+        if len(parts) >= 3 and parts[1] == ctx["task_id"]:
+            return target
+    raise HTTPException(status_code=403, detail="File is not part of the shared task")
+
+
 @router.get("/public/{token}/task")
 async def public_share_task(token: str, request: Request):
     """Load the shared task (read-only). Requires an unlocked session."""
@@ -225,6 +249,39 @@ async def public_share_history(
     return {"messages": messages, "limit": limit, "offset": offset}
 
 
+@router.get("/public/{token}/messages/{message_id}/events")
+async def public_share_message_events(
+    token: str,
+    message_id: str,
+    request: Request,
+    cursor: int = Query(0, ge=0),
+    limit: int = Query(30000, ge=1, le=30000),
+):
+    ctx = await _require_share_session(request)
+    if ctx["token"] != token:
+        raise HTTPException(status_code=403, detail="Session does not match share")
+    from main import project_manager
+    from models import Message
+    from services.history import get_message_events
+
+    def load(project):
+        message = Message.get_or_none(
+            (Message.id == message_id)
+            & (Message.task == ctx["task_id"])
+            & (Message.channel == "execution")
+        )
+        if message is None:
+            raise HTTPException(status_code=404, detail="Task message not found")
+        page = get_message_events(
+            ctx["task_id"], message_id, project.workstep_dir,
+            cursor=cursor, limit=limit,
+        )
+        page["events"] = share_service._scrub_events(page["events"], mode=ctx.get("mode", "read_only"))
+        return page
+
+    return await project_manager.run_db(ctx["project_id"], load)
+
+
 @router.get("/public/{token}/artifacts")
 async def public_share_artifacts(token: str, request: Request):
     """List the shared task's produced artifacts (read-only)."""
@@ -243,6 +300,36 @@ async def public_share_artifacts(token: str, request: Request):
         lambda _project: list_task_artifacts(project, ctx["task_id"]),
     )
     return {"artifacts": artifacts}
+
+
+@router.get("/public/{token}/file-preview")
+async def public_share_file_preview(token: str, request: Request, path: str):
+    """Preview a project file through the unlocked share session."""
+    ctx = await _require_share_session(request)
+    if ctx["token"] != token:
+        raise HTTPException(status_code=403, detail="Session does not match share")
+    def preview():
+        target = _shared_file_path(path, ctx)
+        return _preview_file_sync(str(target), ctx["project_id"], False)
+
+    return await asyncio.to_thread(preview)
+
+
+@router.get("/public/{token}/files/{session}/{file_path:path}")
+async def public_share_file(token: str, session: str, file_path: str):
+    """Serve project files, including relative HTML assets, to an unlocked viewer."""
+    ctx = await _require_share_session_token(session)
+    if ctx["token"] != token:
+        raise HTTPException(status_code=403, detail="Session does not match share")
+
+    def response() -> FileResponse:
+        target = _shared_file_path(file_path, ctx)
+        if not target.is_file():
+            raise HTTPException(status_code=404, detail="File not found")
+        content_type, _ = mimetypes.guess_type(str(target))
+        return FileResponse(target, media_type=content_type or "application/octet-stream")
+
+    return await asyncio.to_thread(response)
 
 
 @router.get("/public/{token}/reviews")

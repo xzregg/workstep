@@ -44,7 +44,8 @@ def layout(tmp_path):
 @pytest.fixture
 async def client(layout, monkeypatch):
     root, _, _ = layout
-    service = GitService(lambda: [{'id': 'p', 'name': 'Project', 'path': str(root)}], lambda: 5)
+    service = GitService(lambda: [{'id': 'p', 'name': 'Project', 'path': str(root)}], lambda: 5,
+                         credential_file=root / 'git-credentials.json')
     monkeypatch.setattr(git_api, 'git_service', service)
     app = FastAPI()
     app.include_router(git_api.router)
@@ -132,6 +133,20 @@ async def test_task_workspace_selects_only_requested_repository(client, layout):
     assert git(repo, 'show-ref', '--verify', 'refs/heads/workstep/task-123/payment')
     restored = await workspace.add(root, task_id, payment['id'], 'payment', 'main')
     assert {tree['alias'] for tree in restored['worktrees']} == {'fifth', 'payment'}
+
+
+async def test_workflow_task_workspace_uses_artifact_task_directory(client, layout):
+    http, service = client
+    root, _repo, _ = layout
+    data = await scan(http)
+    payment = next(item for item in data['repositories'] if item['name'] == 'payment')
+    from services.git.task_workspace import TaskGitWorkspace
+
+    workspace = TaskGitWorkspace(service, workflow_id='wf-dev')
+    created = await workspace.add(root, 'task-123', payment['id'], 'payment', 'main')
+    assert created['worktrees'][0]['path'] == str(
+        root / '.workstep' / 'artifacts' / 'wf-dev' / 'task-123' / '.worktrees' / 'payment'
+    )
 
 
 async def test_task_worktree_uses_selected_source_branch_and_custom_new_branch(client, layout):
@@ -961,6 +976,50 @@ async def test_https_remote_credentials_are_shared_by_host_and_never_returned(cl
     git(repo, 'remote', 'set-url', 'origin', 'https://other.example.test/repo.git')
     assert await service.credential_for(directory, 'origin') is None
     assert all(not item['configured'] for item in (await http.delete(url + '/other')).json()['remotes'])
+
+
+async def test_https_credentials_survive_restart_and_delete_persists(client, layout):
+    http, service = client
+    root, repo, _ = layout
+    git(repo, 'remote', 'add', 'origin', 'https://git.example.test/team/repo.git')
+    await http.put('/api/git/credentials', json={
+        'host': 'git.example.test', 'username': 'alice', 'token': 'secret-token'})
+    credential_file = root / 'git-credentials.json'
+    assert credential_file.stat().st_mode & 0o777 == 0o600
+    restarted = GitService(service.projects_provider, service.depth_provider,
+                           credential_file=credential_file)
+    try:
+        assert (await restarted.credential_hosts()) == {'hosts': ['git.example.test']}
+        assert await restarted.credential_for({'path': str(repo)}, 'origin') == {
+            'username': 'alice', 'token': 'secret-token', 'host': 'git.example.test'}
+        await restarted.clear_host_credentials('git.example.test')
+        reloaded = GitService(service.projects_provider, service.depth_provider,
+                              credential_file=credential_file)
+        assert (await reloaded.credential_hosts()) == {'hosts': []}
+        await reloaded.close()
+    finally:
+        await restarted.close()
+
+
+async def test_slow_credential_storage_does_not_block_event_loop(client, monkeypatch):
+    http, _ = client
+    import services.git as git_module
+    original = git_module.save_credentials
+    started = threading.Event()
+
+    def slow_save(path, credentials):
+        started.set()
+        time.sleep(.2)
+        original(path, credentials)
+
+    monkeypatch.setattr(git_module, 'save_credentials', slow_save)
+    start = time.monotonic()
+    request = asyncio.create_task(http.put('/api/git/credentials', json={
+        'host': 'git.example.test', 'username': 'alice', 'token': 'secret-token'}))
+    await asyncio.wait_for(asyncio.to_thread(started.wait), .5)
+    await asyncio.wait_for(asyncio.sleep(.01), .1)
+    assert time.monotonic() - start < .15
+    assert (await request).status_code == 200
 
 
 async def test_credentials_can_be_set_for_https_push_host_when_fetch_is_ssh(client, layout):

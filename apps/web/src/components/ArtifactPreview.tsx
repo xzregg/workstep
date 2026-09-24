@@ -12,6 +12,8 @@ import MarkdownMessage from './MarkdownMessage'
 import CodeFilePreview from './CodeFilePreview'
 import { copyText } from '../utils/clipboard'
 import ProjectDirectoryBrowser from './ProjectDirectoryBrowser'
+import { prepareFrame } from '../utils/htmlPreviewCompat'
+import { useTaskFilePreview } from '../contexts/MarkdownAssetUrlContext'
 
 interface ArtifactPreviewProps {
   path: string
@@ -99,6 +101,7 @@ export default function ArtifactPreview({
   onEdit,
 }: ArtifactPreviewProps) {
   const { t } = useI18n()
+  const taskFilePreview = useTaskFilePreview()
   const [view, setView] = useState<PreviewView>(() =>
     isDir
       ? { kind: 'directory', path }
@@ -125,7 +128,10 @@ export default function ArtifactPreview({
     let active = true
     setPreviewLoading(true)
     setPreviewError(null)
-    fsApi.preview(view.path, projectId)
+    const loadPreview = taskFilePreview
+      ? taskFilePreview.load(view.path)
+      : fsApi.preview(view.path, projectId)
+    loadPreview
       .then((data) => {
         if (active) setPreview(data)
       })
@@ -140,7 +146,7 @@ export default function ArtifactPreview({
     return () => {
       active = false
     }
-  }, [view, projectId, t])
+  }, [view, projectId, taskFilePreview, t])
 
   const fileHeader = (label: string, extra?: ReactNode) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 6 }}>
@@ -186,7 +192,7 @@ export default function ArtifactPreview({
   }
 
   if (previewError) {
-    const fallbackUrl = projectId
+    const fallbackUrl = taskFilePreview ? taskFilePreview.rawUrl(view.path) : projectId
       ? fsApi.projectFileUrl(view.path, projectId)
       : fsApi.fileUrl(view.path)
     return (
@@ -224,7 +230,7 @@ export default function ArtifactPreview({
     'bash', 'c', 'cc', 'cpp', 'css', 'go', 'h', 'hpp', 'java', 'js', 'jsx', 'json',
     'mjs', 'py', 'rb', 'rs', 'sh', 'sql', 'toml', 'ts', 'tsx', 'xml', 'yaml', 'yml', 'zsh',
   ].includes(ext)
-  const rawUrl = projectId
+  const rawUrl = taskFilePreview ? taskFilePreview.rawUrl(preview.relative_path || view.path) : projectId
     ? fsApi.projectFileUrl(preview.relative_path || view.path, projectId)
     : fsApi.fileUrl(view.path)
   const downloadButton = (
@@ -241,13 +247,15 @@ export default function ArtifactPreview({
       <Icon name="pencil" size={14} strokeWidth={2} />
     </Button>
   ) : null
-  const openWindowButton = projectId ? (
+  const openWindowButton = projectId || taskFilePreview ? (
     <Button
       variant="primary"
       className="artifact-open-window-button"
       onClick={() => {
         window.open(
-          previewWindowUrl(view.path, name || filenameFromPath(view.path), projectId, line),
+          taskFilePreview
+            ? taskFilePreview.rawUrl(preview.relative_path || view.path)
+            : previewWindowUrl(view.path, name || filenameFromPath(view.path), projectId!, line),
           '_blank',
           'noopener,noreferrer',
         )
@@ -294,6 +302,7 @@ export default function ArtifactPreview({
             src={rawUrl}
             title={t('artifact.htmlFile')}
             sandbox="allow-scripts allow-same-origin allow-popups"
+            onLoad={(event) => prepareFrame(event.currentTarget)}
             style={{ flex: 1, minHeight: 0, width: '100%', border: 'none', background: '#fff', display: 'block' }}
           />
         </div>
@@ -346,7 +355,7 @@ export default function ArtifactPreview({
           </div>
         ) : (
           <div className="artifact-markdown-preview" data-standalone={standalone ? 'true' : undefined}>
-            <MarkdownMessage content={content} projectId={projectId} />
+            <MarkdownMessage content={content} projectId={projectId} mermaidRenderDelayMs={0} />
           </div>
         )}
         {fileFooter(content_type, file_size)}

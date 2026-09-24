@@ -12,7 +12,7 @@ interface FilePreviewDialogProps {
   path: string
   name: string
   line?: number
-  projectId: string
+  projectId?: string
   onClose: () => void
 }
 

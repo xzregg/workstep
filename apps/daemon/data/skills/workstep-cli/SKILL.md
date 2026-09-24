@@ -29,13 +29,13 @@ probes do not help complete the WorkStep operation.
    command policy. When the workspace is the WorkStep repository root, use:
 
 ```bash
-uv run --directory apps/daemon python -m cli <resource> <action> [options]
+uv run --no-sync --directory apps/daemon python -m cli <resource> <action> [options]
 ```
 
    From any project directory, use the injected daemon directory instead:
 
 ```bash
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli <resource> <action> [options]
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli <resource> <action> [options]
 ```
 
 3. In a packaged desktop runtime, `uv` need not be installed. Use the bundled
@@ -113,8 +113,8 @@ writable, so later sessions use the proven route without repeating discovery.
 ## Projects
 
 ```bash
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli project list --json
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli project init /absolute/project/path --name "Project name" --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli project list --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli project init /absolute/project/path --name "Project name" --json
 ```
 
 ## Workflows
@@ -122,13 +122,13 @@ uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli project init /absolute/p
 List workflows to resolve the target workflow ID:
 
 ```bash
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli workflow list --project <project_id> --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli workflow list --project <project_id> --json
 ```
 
 Read the full workflow, including step definitions and step keys:
 
 ```bash
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli workflow get \
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli workflow get \
   --project <project_id> \
   --workflow <workflow_id> \
   --json
@@ -137,14 +137,14 @@ uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli workflow get \
 ## Tasks
 
 ```bash
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli task list --project <project_id> --json
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli task get --project <project_id> --task <task_id> --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task list --project <project_id> --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task get --project <project_id> --task <task_id> --json
 ```
 
 Create in the project default workflow:
 
 ```bash
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli task create \
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task create \
   --project <project_id> \
   --title "Task title" \
   --desc "Complete Markdown task description" \
@@ -154,7 +154,7 @@ uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli task create \
 Create in a selected workflow, optionally starting from a selected step:
 
 ```bash
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli task create \
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task create \
   --project <project_id> \
   --workflow <workflow_id> \
   --start-step <step_key> \
@@ -169,38 +169,41 @@ For a task that needs isolated changes in only some Git repositories, inspect
 the project's repositories, then create one Worktree for each relevant one:
 
 ```bash
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli task repos --project <project_id> --json
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli task worktrees --project <project_id> --task <task_id> --json
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli task worktree-add \
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task repos --project <project_id> --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task worktrees --project <project_id> --task <task_id> --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli task worktree-add \
   --project <project_id> --task <task_id> \
   --repository <repository_id> --alias <directory_name> \
   --base main --branch workstep/<task_id>/<directory_name> --json
 ```
 
-The task worktree collection lives at
-`<project>/.workstep/worktrees/<task_id>/`. Only select repositories needed for
-the task. `worktree-add` creates a Git branch without changing the task's
-execution directory; the engine continues to start in the project root. Run it
-only when the user's task authorizes code changes.
+New task worktrees live at
+`<project>/.workstep/artifacts/<workflow_id>/<task_id>/.worktrees/<alias>/`.
+Existing tasks may still use their legacy worktrees; use the paths returned by
+`task worktrees` instead of constructing a path or guessing from a branch name.
+Only select repositories needed for the task. `worktree-add` creates a Git
+branch without changing the task's execution directory; the engine continues
+to start in the project root. Run it only when the user's task authorizes code
+changes.
 
 ## Engines
 
 ```bash
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli engine list --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli engine list --json
 ```
 
 ## Schedules
 
 ```bash
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule list --project <project_id> --json
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule get --project <project_id> --schedule <schedule_id> --json
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule runs --project <project_id> --schedule <schedule_id> --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule list --project <project_id> --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule get --project <project_id> --schedule <schedule_id> --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule runs --project <project_id> --schedule <schedule_id> --json
 ```
 
 Create a static recurring schedule:
 
 ```bash
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule create \
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule create \
   --project <project_id> \
   --workflow <workflow_id> \
   --name "Schedule name" \
@@ -217,7 +220,7 @@ Create a dynamic schedule whose task assistant selects one candidate workflow
 and creates one task per occurrence:
 
 ```bash
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule create \
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule create \
   --project <project_id> \
   --mode agent \
   --name "Dynamic schedule" \
@@ -238,10 +241,10 @@ interval rules are available through the native `workstep_call` operation/API.
 Manage an existing schedule:
 
 ```bash
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule update --project <project_id> --schedule <schedule_id> [fields] --json
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule pause --project <project_id> --schedule <schedule_id> --json
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule resume --project <project_id> --schedule <schedule_id> --json
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule delete --project <project_id> --schedule <schedule_id> --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule update --project <project_id> --schedule <schedule_id> [fields] --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule pause --project <project_id> --schedule <schedule_id> --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule resume --project <project_id> --schedule <schedule_id> --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule delete --project <project_id> --schedule <schedule_id> --json
 ```
 
 `--execution` accepts `workflow`, `immediate`, or `manual`. `--overlap` accepts

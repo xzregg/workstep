@@ -92,6 +92,13 @@ class QuickButtonItem(BaseSchema):
     id: str | None = None
     label: str
     prompt: str
+    content: str = ""
+    kind: str = "prompt"
+    immediate_send: bool = False
+    action_id: str | None = None
+    script_path: str | None = None
+    cwd_mode: str | None = None
+    require_confirmation: bool | None = None
 
 
 class QuickButtonsRequest(BaseSchema):

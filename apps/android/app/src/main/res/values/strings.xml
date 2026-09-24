@@ -8,5 +8,7 @@
     <string name="change_address">修改地址</string>
     <string name="connection_options">连接选项</string>
     <string name="reload">重新加载</string>
+    <string name="clear_web_cache">清除网页缓存</string>
+    <string name="web_cache_cleared">网页缓存已清除</string>
     <string name="retry">重试</string>
 </resources>

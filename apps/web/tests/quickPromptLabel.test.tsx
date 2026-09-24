@@ -57,3 +57,55 @@ test('quick prompt still selects non-HTML labels', async () => {
     await window.happyDOM.close()
   }
 })
+
+test('display-only quick button renders safe HTML without an executable button', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  let selected = false
+  try {
+    await act(async () => root.render(
+      <QuickPromptButton
+        label={'<strong>说明</strong><img src=x onerror=alert(1)>'}
+        prompt=""
+        displayOnly
+        onSelect={() => { selected = true }}
+      />,
+    ))
+    assert.equal(container.querySelector('button'), null)
+    assert.equal(container.querySelector('img'), null)
+    assert.equal(container.textContent, '说明')
+    await act(async () => container.click())
+    assert.equal(selected, false)
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
+
+test('display button shows its title but renders HTML from content', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(
+      <QuickPromptButton
+        label="开发地址"
+        prompt=""
+        displayOnly
+        displayContent={'<a href="http://localhost:5173" onclick="alert(1)">打开前端</a>'}
+        onSelect={() => {}}
+      />,
+    ))
+    assert.match(container.textContent || '', /开发地址/)
+    const link = container.querySelector<HTMLAnchorElement>('a')!
+    assert.equal(link.textContent, '打开前端')
+    assert.equal(link.hasAttribute('onclick'), false)
+    assert.equal(container.querySelector('button'), null)
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})

@@ -80,6 +80,10 @@ export interface AssistantChatCopy {
 export interface AssistantQuickPrompt {
   label: string
   prompt: string
+  content?: string
+  id?: string
+  kind?: 'prompt' | 'display' | 'action'
+  disabled?: boolean
 }
 
 export interface AssistantChatPanelProps {
@@ -123,6 +127,7 @@ export interface AssistantChatPanelProps {
   quickPrompts?: AssistantQuickPrompt[]
   quickPromptsLabel?: string
   onQuickPromptSelect?: (prompt: string) => void
+  onQuickPromptItemSelect?: (item: AssistantQuickPrompt) => void
   /** Store 累积的 A2UI 载荷（messageId → payload[]），随消息渲染。 */
   a2uiMessages?: Record<string, Record<string, unknown>[]>
   /** 用户消息上方是否显示身份标签（默认隐藏；仅任务详情对话与分享页显示）。 */
@@ -261,7 +266,7 @@ export default function AssistantChatPanel({
   projectId, sessionId, title, messages, running, stopping, input, sendError, copy,
   locale, config, permission, enhance, context, quota, onRefreshQuota, quotaRefreshing, plan, availableCommands, attachmentPrefix, onInputChange, onSend, onSendContent, onStop, onAttachmentError, onClose,
   onA2uiAction, headerActions, composerActions, composerOverlay, afterMessages, scrollKey, quickPrompts, quickPromptsLabel,
-  onQuickPromptSelect, a2uiMessages, showUserTag = false,
+  onQuickPromptSelect, onQuickPromptItemSelect, a2uiMessages, showUserTag = false,
   onLoadMessageEvents, onForkMessage, allowSendWhileRunning = false,
 }: AssistantChatPanelProps) {
   const deviceId = useUserSettingsStore((state) => state.deviceId)
@@ -772,12 +777,15 @@ export default function AssistantChatPanel({
                 {composerActions}
                 {quickPrompts?.map((item) => (
                   <QuickPromptButton
-                    key={item.label}
-                    disabled={running}
+                    key={item.id || item.label}
+                    disabled={item.disabled ?? (item.kind === 'action' ? false : running)}
                     label={item.label}
-                    prompt={item.prompt}
+                    prompt={item.kind === 'action' ? item.id || '' : item.prompt}
+                    displayOnly={item.kind === 'display'}
+                    displayContent={item.content}
                     onSelect={(prompt) => {
-                      onQuickPromptSelect?.(prompt)
+                      if (onQuickPromptItemSelect) onQuickPromptItemSelect(item)
+                      else onQuickPromptSelect?.(prompt)
                       requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }))
                     }}
                     style={{ flexShrink: 0, borderRadius: 999, whiteSpace: 'nowrap' }}
@@ -823,7 +831,7 @@ export default function AssistantChatPanel({
                 <button
                   type="button"
                   className="chat-quick-bolt"
-                  disabled={running}
+                  disabled={running && !quickPrompts.some((item) => item.kind === 'action' && !item.disabled)}
                   onClick={() => setQuickPromptsOpen(true)}
                   aria-label={quickPromptsLabel}
                   style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'transparent', color: 'var(--meta)', cursor: running ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 'calc(14px * var(--font-scale))', padding: 0 }}
@@ -833,13 +841,16 @@ export default function AssistantChatPanel({
                 <MobileSheet open={quickPromptsOpen} title={quickPromptsLabel || t('chatSession.quickPromptsLabel')} onClose={() => setQuickPromptsOpen(false)}>
                   {quickPrompts.map((item) => (
                     <QuickPromptButton
-                      key={item.label}
+                      key={item.id || item.label}
                       label={item.label}
-                      prompt={item.prompt}
-                      disabled={running}
+                      prompt={item.kind === 'action' ? item.id || '' : item.prompt}
+                      displayOnly={item.kind === 'display'}
+                      displayContent={item.content}
+                      disabled={item.disabled ?? (item.kind === 'action' ? false : running)}
                       onSelect={(prompt) => {
                         setQuickPromptsOpen(false)
-                        onQuickPromptSelect?.(prompt)
+                        if (onQuickPromptItemSelect) onQuickPromptItemSelect(item)
+                        else onQuickPromptSelect?.(prompt)
                         requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }))
                       }}
                       style={{ justifyContent: 'flex-start', width: '100%' }}

@@ -100,6 +100,17 @@ test('shared markdown marks project file links as preview actions', () => {
   assert.doesNotMatch(html, /data-file-preview="true"[^>]*href="https:\/\/example\.com"/)
 })
 
+test('ordinary message URLs open a new window in both markdown modes', () => {
+  for (const plainText of [false, true]) {
+    const html = renderToStaticMarkup(
+      <I18nProvider>
+        <MarkdownMessage content="[website](https://example.com)" plainText={plainText} />
+      </I18nProvider>,
+    )
+    assert.match(html, /href="https:\/\/example\.com"[^>]*target="_blank"[^>]*rel="noopener noreferrer"/)
+  }
+})
+
 test('project raw URLs retain project scope and file hierarchy', () => {
   assert.equal(
     fsApi.projectFileUrl('docs/site/index.html', 'project:one'),

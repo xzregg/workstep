@@ -7,6 +7,10 @@ import { createRoot } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
 
 import ArtifactPreview from '../src/components/ArtifactPreview.tsx'
+import {
+  resetMermaidForTests,
+  setMermaidLoader,
+} from '../src/components/MermaidBlock.tsx'
 import FilePreviewPage from '../src/pages/FilePreviewPage.tsx'
 import { I18nProvider } from '../src/i18n/index.tsx'
 import { installDomEnvironment } from './helpers/domEnv.ts'
@@ -19,6 +23,20 @@ function markdownPreviewResponse() {
     file_size: 38,
     extension: '.md',
     relative_path: 'docs/guide.md',
+  }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+function mermaidPreviewResponse() {
+  return new Response(JSON.stringify({
+    type: 'text',
+    content_type: 'text/markdown',
+    content: '# Flow\n\n```mermaid\nflowchart TD\n  A --> B\n```',
+    file_size: 52,
+    extension: '.md',
+    relative_path: 'docs/flow.md',
   }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
@@ -70,6 +88,44 @@ test('markdown preview renders markdown by default and can switch to source', as
     assert.ok(findButtonByText(document, /查看渲染|View rendered/))
   } finally {
     await act(async () => root.unmount())
+    globalThis.fetch = originalFetch
+    await window.happyDOM.close()
+  }
+})
+
+test('markdown file preview renders Mermaid diagrams like chat messages', async () => {
+  const { window, document } = installDomEnvironment()
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => mermaidPreviewResponse()
+  setMermaidLoader(async () => ({
+    initialize: () => {},
+    render: async (_id: string, code: string) => ({
+      svg: `<svg data-diagram="${code.split('\n')[0]}"></svg>`,
+    }),
+  }))
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+
+  try {
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <ArtifactPreview path="docs/flow.md" projectId="project:one" />
+        </I18nProvider>,
+      )
+    })
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 0))
+    })
+
+    assert.ok(document.querySelector('.artifact-markdown-preview .mermaid-block__diagram'))
+    assert.equal(
+      document.querySelector('.artifact-markdown-preview svg')?.getAttribute('data-diagram'),
+      'flowchart TD',
+    )
+    assert.equal(document.querySelector('.artifact-markdown-preview .mermaid-block__source'), null)
+  } finally {
+    await act(async () => root.unmount())
+    resetMermaidForTests()
     globalThis.fetch = originalFetch
     await window.happyDOM.close()
   }

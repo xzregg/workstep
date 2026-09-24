@@ -761,6 +761,73 @@ export interface ChatQuickButton {
   id: string
   label: string
   prompt: string
+  content?: string
+  kind?: 'prompt' | 'display' | 'action'
+  immediate_send?: boolean
+  action_id?: string
+  script_path?: string
+  cwd_mode?: 'project' | 'task' | 'worktrees'
+  require_confirmation?: boolean
+}
+
+export interface TaskQuickButton extends ChatQuickButton {
+  source: 'project' | 'workflow' | 'stage'
+  step_key?: string
+}
+
+export interface ActionRun {
+  run_id: string
+  task_id: string | null
+  session_id: string | null
+  action_id: string
+  button_id: string
+  source: 'project' | 'stage'
+  title: string
+  script_path: string
+  cwd: string
+  status: string
+  output: string
+  exit_code: number | null
+  user_message_id: string
+  reply_message_id: string
+  started_at: string
+  ended_at: string | null
+  deduplicated?: boolean
+}
+
+export const taskActionApi = {
+  list: (taskId: string, projectId: string, stepKey?: string) =>
+    request<{ buttons: TaskQuickButton[]; runs: ActionRun[] }>(
+      `/tasks/${encodeURIComponent(taskId)}/actions?project_id=${encodeURIComponent(projectId)}${stepKey ? `&step_key=${encodeURIComponent(stepKey)}` : ''}`,
+    ),
+  run: (taskId: string, projectId: string, button: TaskQuickButton, confirmed: boolean) =>
+    request<ActionRun>(`/tasks/${encodeURIComponent(taskId)}/actions/run?project_id=${encodeURIComponent(projectId)}`, {
+      method: 'POST',
+      body: JSON.stringify({ button_id: button.id, source: button.source, step_key: button.step_key, confirmed }),
+    }),
+  get: (runId: string, projectId: string) =>
+    request<ActionRun>(`/action-runs/${encodeURIComponent(runId)}?project_id=${encodeURIComponent(projectId)}`),
+  stop: (runId: string, projectId: string) =>
+    request<ActionRun>(`/action-runs/${encodeURIComponent(runId)}/stop?project_id=${encodeURIComponent(projectId)}`, { method: 'POST' }),
+}
+
+export const actionDirectoryApi = {
+  ensure: (projectId: string, actionId: string, workflowId?: string) =>
+    request<{ path: string }>(
+      `/projects/${encodeURIComponent(projectId)}/actions/${encodeURIComponent(actionId)}/directory${workflowId ? `?workflow_id=${encodeURIComponent(workflowId)}` : ''}`,
+      { method: 'POST' },
+    ),
+}
+
+export const projectActionApi = {
+  list: (sessionId: string, projectId: string) =>
+    request<{ buttons: ChatQuickButton[]; runs: ActionRun[]; active_action_ids: string[] }>(
+      `/project-actions/sessions/${encodeURIComponent(sessionId)}?project_id=${encodeURIComponent(projectId)}`,
+    ),
+  run: (sessionId: string, projectId: string, buttonId: string, confirmed: boolean) =>
+    request<ActionRun>(`/project-actions/sessions/${encodeURIComponent(sessionId)}/run?project_id=${encodeURIComponent(projectId)}`, {
+      method: 'POST', body: JSON.stringify({ button_id: buttonId, confirmed }),
+    }),
 }
 
 export interface ChatAccepted {
@@ -1843,11 +1910,23 @@ export const shareApi = {
     }
     return { messages, limit, offset }
   },
+  messageEvents: (token: string, sessionToken: string, messageId: string, cursor = 0) =>
+    shareRequest<{ events: any[]; complete: boolean; next_cursor: number | null }>(
+      `/task-share/public/${encodeURIComponent(token)}/messages/${encodeURIComponent(messageId)}/events?cursor=${cursor}`,
+      sessionToken,
+    ),
   artifacts: (token: string, sessionToken: string) =>
     shareRequest<{ artifacts: TaskArtifact[] }>(
       `/task-share/public/${encodeURIComponent(token)}/artifacts`,
       sessionToken,
     ),
+  previewFile: (token: string, sessionToken: string, path: string) =>
+    shareRequest<FilePreview>(
+      `/task-share/public/${encodeURIComponent(token)}/file-preview?path=${encodeURIComponent(path)}`,
+      sessionToken,
+    ),
+  fileUrl: (token: string, sessionToken: string, path: string) =>
+    `${BASE}/task-share/public/${encodeURIComponent(token)}/files/${encodeURIComponent(sessionToken)}/${path.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/')}`,
   reviews: (token: string, sessionToken: string) =>
     shareRequest<{ reviews: ReviewRun[] }>(
       `/task-share/public/${encodeURIComponent(token)}/reviews`,

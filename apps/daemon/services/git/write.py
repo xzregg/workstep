@@ -122,15 +122,16 @@ class GitWrites:
         return normalized
 
     async def credential_hosts(self):
+        await self.load_credentials()
         return {'hosts': sorted(self.remote_credentials)}
 
     async def save_host_credentials(self, host, username, token):
         host = self.normalize_credential_host(host)
-        self.remote_credentials[host] = {'username': username, 'token': token}
+        await self.change_credentials(host, {'username': username, 'token': token})
         return await self.credential_hosts()
 
     async def clear_host_credentials(self, host):
-        self.remote_credentials.pop(self.normalize_credential_host(host), None)
+        await self.change_credentials(self.normalize_credential_host(host), None)
         return await self.credential_hosts()
 
     async def remote_url(self, path, remote, *, push=False):
@@ -139,6 +140,7 @@ class GitWrites:
         return text(url).strip()
 
     async def credentials(self, id):
+        await self.load_credentials()
         remotes = await self.remotes(id)
         return {'remotes': [{'name': item['name'], 'url': item['url'],
             'push_url': item['push_url'],
@@ -152,7 +154,7 @@ class GitWrites:
         host = self.credential_host(fetch_url)
         if not host:
             raise GitError('用户名和访问令牌仅用于 HTTPS 或可升级为 HTTPS 的 HTTP 远程源。')
-        self.remote_credentials[host] = {'username': username, 'token': token}
+        await self.change_credentials(host, {'username': username, 'token': token})
         return await self.credentials(id)
 
     async def clear_credentials(self, id, remote):
@@ -160,10 +162,11 @@ class GitWrites:
         await self.validate_remote(directory['path'], remote)
         host = self.credential_host(await self.remote_url(directory['path'], remote))
         if host:
-            self.remote_credentials.pop(host, None)
+            await self.change_credentials(host, None)
         return await self.credentials(id)
 
     async def credential_for(self, directory, remote, *, push=False):
+        await self.load_credentials()
         current = await self.remote_url(directory['path'], remote, push=push)
         parsed = urlsplit(current)
         host = self.credential_host(current)

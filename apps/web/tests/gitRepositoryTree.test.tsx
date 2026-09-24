@@ -44,3 +44,29 @@ test('repository tree collapses and expands every repository with one action', a
     await window.happyDOM.close()
   }
 })
+
+test('selecting a repository name does not collapse it', async () => {
+  const { window } = installDomEnvironment()
+  const originalBranches = gitApi.branches
+  const originalSelection = window.getSelection
+  gitApi.branches = async () => ({ branches: [], fetched_at: null })
+  const data = {
+    projects: [{ id: 'project', name: '项目', path: '/project' }],
+    repositories: [{ id: 'web', name: 'web', common_dir: '/project/web/.git', projects: [{ id: 'project', relative_path: 'web' }], worktrees: [] }],
+    depth: 5, scanned_at: 1, errors: [],
+  } as GitDiscovery
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><GitRepositoryTree data={data} onSelect={() => {}} /></I18nProvider>))
+    window.getSelection = () => ({ toString: () => 'web' }) as Selection
+    await act(async () => container.querySelector<HTMLButtonElement>('.git-repository-title')!.click())
+    assert.equal(container.querySelector('.git-repository-title')!.getAttribute('aria-expanded'), 'true')
+  } finally {
+    window.getSelection = originalSelection
+    await act(async () => root.unmount())
+    gitApi.branches = originalBranches
+    container.remove()
+    await window.happyDOM.close()
+  }
+})

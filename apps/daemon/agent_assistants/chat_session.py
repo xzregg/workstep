@@ -1587,26 +1587,9 @@ class ChatSessionModule(AssistantRuntime):
             ]
 
     def set_quick_buttons(self, project_id: str, buttons: list) -> list[dict]:
-        if not isinstance(buttons, list) or len(buttons) > MAX_QUICK_BUTTONS:
-            raise ValueError(f"最多配置 {MAX_QUICK_BUTTONS} 个快捷按钮")
-        cleaned: list[dict] = []
-        seen: set[str] = set()
-        for item in buttons:
-            if not isinstance(item, dict):
-                raise ValueError("快捷按钮格式无效")
-            label = str(item.get("label") or "").strip()
-            prompt = str(item.get("prompt") or "").strip()
-            if not label:
-                raise ValueError("快捷按钮标签不能为空")
-            if len(label) > MAX_QUICK_BUTTON_LABEL:
-                raise ValueError(f"快捷按钮标签不能超过 {MAX_QUICK_BUTTON_LABEL} 字")
-            if len(prompt) > MAX_QUICK_BUTTON_PROMPT:
-                raise ValueError(f"快捷按钮提示词不能超过 {MAX_QUICK_BUTTON_PROMPT} 字")
-            button_id = str(item.get("id") or str(uuid.uuid4()))
-            if button_id in seen:
-                raise ValueError("快捷按钮 id 重复")
-            seen.add(button_id)
-            cleaned.append({"id": button_id, "label": label, "prompt": prompt})
+        from services.quick_buttons import normalize_quick_buttons
+
+        cleaned = normalize_quick_buttons(buttons, max_buttons=MAX_QUICK_BUTTONS)
         now = utc_now()
         with self._project_ctx(project_id):
             row = ProjectSetting.get_or_none(

@@ -2007,6 +2007,41 @@ async def test_delete_rejects_running_session(chat_module, monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_delete_allows_session_with_stale_running_turn(chat_module):
+    """A dead background task must not leave the session permanently locked."""
+    module, _bus, _manager, project, _ = chat_module
+    session = module.create_session(project.id, "wf-stale-running")
+    turn_id = "stale-running-turn"
+    module._turn_states[turn_id] = {
+        "session_id": session["id"],
+        "status": "running",
+    }
+
+    assert module.delete_session(project.id, session["id"]) is True
+    assert turn_id not in module._turn_states
+    assert module.get_session(project.id, session["id"]) is None
+
+
+@pytest.mark.anyio
+async def test_stop_finalizes_stale_running_turn(chat_module):
+    module, _bus, _manager, project, _ = chat_module
+    session = module.create_session(project.id, "wf-stale-stop")
+    accepted = module.submit_message(
+        project.id,
+        session["id"],
+        "已经失去后台任务的消息",
+        "idem-stale-stop",
+        schedule=False,
+    )
+    module._turn_states[accepted.turn_id]["status"] = "running"
+
+    assert await module.stop_current(session["id"]) is True
+    assert module._turn_states[accepted.turn_id]["status"] == "stopped"
+    detail = module.get_session(project.id, session["id"])
+    assert detail["messages"][-1]["status"] == "stopped"
+
+
+@pytest.mark.anyio
 async def test_shutdown_stops_engine_before_cancelling_turn(chat_module, monkeypatch):
     """Daemon shutdown must terminate the engine before cancelling the task.
 
@@ -2334,6 +2369,30 @@ async def test_quick_buttons_defaults_and_validation(chat_module):
 
 
 @pytest.mark.anyio
+async def test_action_quick_button_round_trip_and_script_validation(chat_module):
+    module, _bus, _manager, project, _ = chat_module
+    button = {
+        "id": "restart",
+        "label": "重启服务",
+        "prompt": "",
+        "kind": "action",
+        "action_id": "restart-services",
+        "script_path": "scripts/restart.sh",
+        "cwd_mode": "task",
+        "require_confirmation": False,
+    }
+    assert module.set_quick_buttons(project.id, [button])[0] == {
+        **button,
+        "immediate_send": False,
+    }
+    assert module.get_quick_buttons(project.id)[0]["script_path"] == "scripts/restart.sh"
+    with pytest.raises(ValueError, match="脚本路径"):
+        module.set_quick_buttons(project.id, [{**button, "script_path": "../escape.sh"}])
+    with pytest.raises(ValueError, match="执行目录"):
+        module.set_quick_buttons(project.id, [{**button, "cwd_mode": "elsewhere"}])
+
+
+@pytest.mark.anyio
 async def test_system_prompt_persistence_validation_and_clear(chat_module):
     module, bus, manager, project, _ = chat_module
 
@@ -2640,7 +2699,27 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
                 "id": resp.json()["buttons"][0]["id"],
                 "label": '<a href="https://example.com">打开文档</a>',
                 "prompt": "",
+                "kind": "prompt",
+                "immediate_send": False,
             }
+            display_button = {
+                "id": "docs-link",
+                "label": "打开文档",
+                "prompt": "",
+                "kind": "display",
+                "content": '<a href="https://example.com">文档地址</a>',
+            }
+            resp = await client.put(
+                "/api/chat-sessions/quick-buttons",
+                json={"project_id": project.id, "buttons": [display_button]},
+            )
+            assert resp.status_code == 200
+            assert resp.json()["buttons"][0]["content"] == display_button["content"]
+            resp = await client.get(
+                "/api/chat-sessions/quick-buttons",
+                params={"project_id": project.id},
+            )
+            assert resp.json()["buttons"][0]["content"] == display_button["content"]
             resp = await client.put(
                 "/api/chat-sessions/quick-buttons",
                 json={

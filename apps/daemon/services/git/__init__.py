@@ -7,6 +7,7 @@ import uuid
 from pathlib import Path
 
 from .command import GitError, run_git, text
+from .credentials import load_credentials, save_credentials
 from .query import GitQueries
 from .write import GitWrites
 
@@ -38,7 +39,7 @@ def ensure_gitignore(path):
 
 
 class GitService(GitQueries, GitWrites):
-    def __init__(self, projects_provider, depth_provider, active_provider=lambda _: False):
+    def __init__(self, projects_provider, depth_provider, active_provider=lambda _: False, credential_file=None):
         self.projects_provider = projects_provider
         self.depth_provider = depth_provider
         self.active_provider = active_provider
@@ -50,13 +51,38 @@ class GitService(GitQueries, GitWrites):
         self.locks = {}
         self.fetched_at = {}
         self.remote_credentials = {}
+        if credential_file is None:
+            from services.config import CONFIG_DIR
+            credential_file = CONFIG_DIR / 'data' / 'git-credentials.json'
+        self.credential_file = Path(credential_file)
+        self.credential_lock = asyncio.Lock()
+        self.credentials_loaded = False
         self.read_slots = asyncio.Semaphore(4)
 
     async def close(self):
         self.remote_credentials.clear()
+        self.credentials_loaded = False
         for task in self.tasks:
             task.cancel()
         await asyncio.gather(*self.tasks, return_exceptions=True)
+
+    async def load_credentials(self):
+        if not self.credentials_loaded:
+            async with self.credential_lock:
+                if not self.credentials_loaded:
+                    self.remote_credentials = await asyncio.to_thread(load_credentials, self.credential_file)
+                    self.credentials_loaded = True
+
+    async def change_credentials(self, host, value):
+        await self.load_credentials()
+        async with self.credential_lock:
+            updated = dict(self.remote_credentials)
+            if value is None:
+                updated.pop(host, None)
+            else:
+                updated[host] = value
+            await asyncio.to_thread(save_credentials, self.credential_file, updated)
+            self.remote_credentials = updated
 
     async def command(self, path, *args, **kwargs):
         async with self.read_slots:

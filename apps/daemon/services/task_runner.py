@@ -820,6 +820,25 @@ class TaskRunner:
                 .order_by(Message.sequence.desc())
                 .first()
             )
+            previous_execution_message = (
+                Message.select()
+                .where(
+                    (Message.task == task)
+                    & (Message.step_key == step_key)
+                    & (Message.channel == "execution")
+                    & (Message.role == "assistant")
+                )
+                .order_by(Message.sequence.desc())
+                .first()
+            )
+            previous_execution_prompt = None
+            if previous_execution_message is not None:
+                try:
+                    previous_execution_prompt = json.loads(
+                        previous_execution_message.prompt_json or "{}"
+                    ).get("prompt")
+                except (TypeError, json.JSONDecodeError):
+                    previous_execution_prompt = None
             session_engine = (
                 last_completed_execution.engine
                 if last_completed_execution is not None
@@ -962,6 +981,7 @@ class TaskRunner:
                 pending_handoff,
                 artifact_round,
                 input_rounds,
+                previous_execution_prompt,
             )
 
         (
@@ -972,6 +992,7 @@ class TaskRunner:
             pending_handoff,
             artifact_round,
             input_rounds,
+            previous_execution_prompt,
         ) = (
             await self._run_db(prepare_step_state)
         )
@@ -1074,6 +1095,7 @@ class TaskRunner:
                 artifacts_dir,
                 input_snapshot,
                 artifact_round,
+                previous_execution_prompt,
             )
         else:
             step_user_input = (

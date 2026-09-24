@@ -145,6 +145,10 @@ test('system prompt and reorderable quick buttons use separate settings tabs', a
     await act(async () => addTab.click())
     assert.equal(buttonList.querySelectorAll('button[draggable="true"]').length, 3)
     assert.equal(buttonList.querySelector('[aria-current="true"]')?.textContent?.trim(), '新快捷按钮')
+    const typeSelect = container.querySelector<HTMLSelectElement>('[data-testid="quick-button-type"]')
+    assert.ok(typeSelect)
+    assert.equal(typeSelect.value, '')
+    assert.equal(container.querySelector('[data-testid="quick-button-prompt"]'), null)
 
     const concurrencyNav = [...container.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent?.trim() === '并发限制')

@@ -360,6 +360,162 @@ async def test_interactive_share_can_upload_and_read_message_attachments(
 
 
 @pytest.mark.asyncio
+async def test_shared_file_preview_uses_session_and_stays_in_project(manager, tmp_path, monkeypatch):
+    import main
+
+    project, task = _create_task_in_project(manager, tmp_path / "proj-share-preview")
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(project_service, "project_manager", manager)
+    report = project.workstep_dir / "artifacts" / "workflow" / task["id"] / "step" / "report.md"
+    report.parent.mkdir(parents=True)
+    report.write_text("# Shared report", encoding="utf-8")
+    report_path = report.relative_to(project.path).as_posix()
+    (project.path / "private.md").write_text("project secret", encoding="utf-8")
+    outside = tmp_path / "private.md"
+    outside.write_text("private", encoding="utf-8")
+    ctx = _bind(project)
+    try:
+        share = share_service.create_share(task["id"])
+    finally:
+        db_proxy.reset(ctx)
+
+    base = f"/api/task-share/public/{share['token']}"
+    transport = ASGITransport(app=main.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        unlocked = await client.post(f"{base}/unlock", json={"password": ""})
+        session = unlocked.json()["session_token"]
+        missing = await client.get(f"{base}/file-preview", params={"path": report_path})
+        preview = await client.get(
+            f"{base}/file-preview", params={"path": report_path},
+            headers={"X-Share-Session": session},
+        )
+        served = await client.get(f"{base}/files/{session}/{report_path}")
+        private = await client.get(
+            f"{base}/file-preview", params={"path": "private.md"},
+            headers={"X-Share-Session": session},
+        )
+        escaped = await client.get(
+            f"{base}/file-preview", params={"path": str(outside)},
+            headers={"X-Share-Session": session},
+        )
+
+    assert missing.status_code == 401
+    assert preview.status_code == 200
+    assert preview.json()["content"] == "# Shared report"
+    assert served.status_code == 200
+    assert served.text == "# Shared report"
+    assert private.status_code == 403
+    assert escaped.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_slow_shared_file_preview_does_not_block_event_loop(manager, tmp_path, monkeypatch):
+    import main
+    import time
+    import api.share as share_api
+
+    project, task = _create_task_in_project(manager, tmp_path / "proj-share-slow-preview")
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(project_service, "project_manager", manager)
+    report = project.workstep_dir / "artifacts" / "workflow" / task["id"] / "step" / "report.md"
+    report.parent.mkdir(parents=True)
+    report.write_text("ready", encoding="utf-8")
+    report_path = report.relative_to(project.path).as_posix()
+    ctx = _bind(project)
+    try:
+        share = share_service.create_share(task["id"])
+    finally:
+        db_proxy.reset(ctx)
+
+    original_preview = share_api._preview_file_sync
+
+    def slow_preview(*args):
+        time.sleep(0.15)
+        return original_preview(*args)
+
+    monkeypatch.setattr(share_api, "_preview_file_sync", slow_preview)
+    base = f"/api/task-share/public/{share['token']}"
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        unlocked = await client.post(f"{base}/unlock", json={"password": ""})
+        session = unlocked.json()["session_token"]
+        pending = asyncio.create_task(client.get(
+            f"{base}/file-preview", params={"path": report_path},
+            headers={"X-Share-Session": session},
+        ))
+        await asyncio.sleep(0.03)
+        assert not pending.done()
+        response = await pending
+
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_shared_history_can_load_its_execution_event_detail(manager, tmp_path, monkeypatch):
+    import main
+    import time
+    import uuid
+    from models import Message
+    from agent_assistants.event_journal import TurnEventJournal
+
+    project, task = _create_task_in_project(manager, tmp_path / "proj-share-events")
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(project_service, "project_manager", manager)
+    journal = TurnEventJournal()
+    message_id = str(uuid.uuid4())
+    ref = journal.start(project.workstep_dir, f"task-{task['id']}", message_id)
+    journal.record(ref, {"type": "agent_message_chunk", "data": {"content": {"text": "hello"}}})
+    journal.finish(ref)
+    ctx = _bind(project)
+    try:
+        share = share_service.create_share(task["id"])
+        Message.create(
+            id=message_id, task=task["id"], step_key="do", channel="execution",
+            role="assistant", content="hello", event_log_path=ref.relative_path,
+            event_count=1, last_event_seq=1, position=1, created_at=int(time.time()),
+        )
+        Message.create(
+            id="private-coordinator-message", task=task["id"], step_key="do",
+            channel="coordinator", role="assistant", content="secret",
+            events_json='[{"type":"agent_message_chunk","data":{"content":{"text":"secret"}}}]',
+            position=2, created_at=int(time.time()),
+        )
+    finally:
+        db_proxy.reset(ctx)
+
+    base = f"/api/task-share/public/{share['token']}"
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        unlocked = await client.post(f"{base}/unlock", json={"password": ""})
+        session = unlocked.json()["session_token"]
+        headers = {"X-Share-Session": session}
+        history = await client.get(f"{base}/history", headers=headers)
+        detail = await client.get(f"{base}/messages/{message_id}/events", headers=headers)
+        private = await client.get(f"{base}/messages/private-coordinator-message/events", headers=headers)
+
+    assert history.status_code == 200
+    assert history.json()["messages"][0]["event_detail"]["available"] is True
+    assert detail.status_code == 200
+    assert detail.json()["events"][0]["type"] == "TEXT_MESSAGE_CHUNK"
+    assert private.status_code == 404
+
+    import services.history as history_service
+
+    original_events = history_service.get_message_events
+
+    def slow_events(*args, **kwargs):
+        time.sleep(0.15)
+        return original_events(*args, **kwargs)
+
+    monkeypatch.setattr(history_service, "get_message_events", slow_events)
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        pending = asyncio.create_task(client.get(
+            f"{base}/messages/{message_id}/events", headers={"X-Share-Session": session},
+        ))
+        await asyncio.sleep(0.03)
+        assert not pending.done()
+        assert (await pending).status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_read_only_share_cannot_upload_message_attachments(
     manager,
     tmp_path,
