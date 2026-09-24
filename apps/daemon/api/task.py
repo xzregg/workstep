@@ -314,7 +314,7 @@ async def send_step_message(
     req: StepMessageRequest,
     pid: str = Query(..., alias="project_id"),
 ):
-    """Inject an ordinary user message into a running step execution."""
+    """Inject a user message into a running step or automatic review."""
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Workflow runtime not initialized")

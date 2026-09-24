@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ChatQuickButton } from '../api/client'
 import { useI18n } from '../i18n'
+import { randomUuid } from '../utils/uuid'
 import ActionButtonFields from './ActionButtonFields'
 import Button from './Button'
 import Field from './Field'
@@ -22,7 +23,7 @@ export default function WorkflowQuickButtonsSection({ projectId, workflowId, but
   const selected = buttons.find((button) => button.id === selectedId) || buttons[0]
   const update = (next: ChatQuickButton) => onChange(buttons.map((button) => button.id === next.id ? next : button))
   const add = () => {
-    const id = `qb-${crypto.randomUUID()}`
+    const id = `qb-${randomUuid()}`
     onChange([...buttons, { id, kind: 'prompt', label: '', prompt: '', immediate_send: false }])
     setSelectedId(id)
   }

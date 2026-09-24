@@ -213,6 +213,27 @@ async def test_workflow_level_action_is_available_to_task(action_client):
 
 
 @pytest.mark.anyio
+async def test_existing_task_sees_stage_button_added_to_workflow(action_client):
+    client, manager, project = action_client
+
+    def add_stage_button(_project):
+        workflow = Workflow.get_by_id(project.workflows[0]["id"])
+        steps = json.loads(workflow.steps_json)
+        steps["nodes"][0]["quickButtons"] = [{
+            "id": "review", "kind": "prompt", "label": "评审", "prompt": "请评审代码",
+        }]
+        workflow.steps_json = json.dumps(steps)
+        workflow.save()
+
+    await manager.run_db(project.id, add_stage_button)
+    response = await client.get(f"/api/tasks/task-action/actions?project_id={project.id}&step_key=build")
+    assert response.status_code == 200
+    assert ("review", "stage") in [
+        (button["id"], button["source"]) for button in response.json()["buttons"]
+    ]
+
+
+@pytest.mark.anyio
 async def test_stop_action_releases_active_button(action_client):
     client, _manager, project = action_client
     action_dir = project.workstep_dir / "actions" / "restart"

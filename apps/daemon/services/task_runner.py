@@ -174,6 +174,7 @@ class TaskRunner:
         self._retry_message_ids = dict(retry_message_ids or {})
         self._running_engines: dict[str, object] = {}  # step_run_key → engine
         self._live_message_queues: dict[str, asyncio.Queue] = {}
+        self._live_message_channels: dict[str, str] = {}
         self._live_message_prompts: dict[str, str] = {}
         self._cancelled_steps: set[str] = set()
         self._graceful_shutdown = False
@@ -327,17 +328,18 @@ class TaskRunner:
             message.event_count = snapshot["event_count"]
             message.last_event_seq = snapshot["last_event_seq"]
             message.usage_json = extract_usage_json(list(outcome.events))
-            message.started_at = outcome.review_run.started_at
+            message.started_at = message.started_at or outcome.review_run.started_at
             message.ended_at = outcome.review_run.ended_at
             message.save()
+            return message.started_at
 
-        await self._run_db(finalize_review_message)
+        message_started_at = await self._run_db(finalize_review_message)
         common = {
             "channel": "review",
             "message_id": message_id,
             "engine": outcome.review_run.engine,
             "model": outcome.review_run.model,
-            "created_at": outcome.review_run.started_at.isoformat(),
+            "created_at": message_started_at.isoformat(),
         }
         await self._publish(task.id, step_key, {
             **common,
@@ -356,6 +358,107 @@ class TaskRunner:
                 ),
             },
         })
+
+    async def _prepare_review_live_messages(
+        self,
+        task: Task,
+        step: Step,
+        step_run: StepRun,
+        artifacts_dir: Path,
+        run_key: str,
+        message_id: str,
+        journal_ref: JournalRef,
+    ):
+        previous_queue = self._live_message_queues.pop(run_key, None)
+        if previous_queue is not None:
+            while not previous_queue.empty():
+                pending_id, _ = previous_queue.get_nowait()
+                self._live_message_prompts.pop(pending_id, None)
+                await self._run_db(lambda mid=pending_id: self._fail_live_message(mid))
+        self._running_engines.pop(run_key, None)
+        queue: asyncio.Queue = asyncio.Queue()
+        self._live_message_queues[run_key] = queue
+        self._live_message_channels[run_key] = "review"
+        segment = {"message_id": message_id, "journal_ref": journal_ref}
+
+        async def record_event(event: dict) -> None:
+            await self._event_journal.arecord(segment["journal_ref"], event)
+            await self._event_journal.async_flush(segment["journal_ref"])
+
+        async def handle_live_message(data: dict) -> str | None:
+            inserted_id = data.get("message_id")
+            if not inserted_id:
+                return None
+            delivered = data.get("status") == "delivered"
+            def finish_user_message():
+                user_message = Message.get_by_id(inserted_id)
+                user_message.run_status = "succeeded" if delivered else "failed"
+                user_message.ended_at = utc_now()
+                user_message.save()
+                return self._live_message_prompts.pop(inserted_id, user_message.content)
+
+            inserted_prompt = await self._run_db(finish_user_message)
+            if not delivered:
+                return None
+
+            seal_time = utc_now()
+            await self._event_journal.afinish(segment["journal_ref"])
+            snapshot = await self._ajournal_snapshot(segment["journal_ref"])
+
+            def seal_review_message():
+                old_message = Message.get_by_id(segment["message_id"])
+                old_message.content = snapshot["content"]
+                old_message.events_json = snapshot["events_json"]
+                old_message.event_summary_json = snapshot["event_summary_json"]
+                old_message.event_count = snapshot["event_count"]
+                old_message.last_event_seq = snapshot["last_event_seq"]
+                old_message.run_status = "succeeded"
+                old_message.ended_at = seal_time
+                old_message.save()
+                return old_message.engine, old_message.model
+
+            engine, model = await self._run_db(seal_review_message)
+            await self._publish(task.id, step.key, {
+                "channel": "review", "message_id": segment["message_id"],
+                "engine": engine, "model": model,
+                "type": "message_completed", "data": {"status": "succeeded"},
+            })
+            next_id = new_message_id()
+            next_journal = await self._event_journal.astart(
+                artifacts_dir.parent, f"task-{task.id}", next_id,
+            )
+            await self._run_db(lambda: create_task_message(
+                id=next_id, task=task, channel="review", step_key=step.key,
+                role="assistant", content="审核中", engine=engine, model=model,
+                run_id=next_id, step_run_id=step_run.id,
+                artifact_round=step_run.artifact_round, run_status="running",
+                prompt_json=json.dumps({"prompt": inserted_prompt}, ensure_ascii=False),
+                event_log_path=next_journal.relative_path,
+                position=0, started_at=seal_time, created_at=seal_time,
+            ))
+            segment.update(message_id=next_id, journal_ref=next_journal)
+            await self._publish(task.id, step.key, {
+                "channel": "review", "message_id": next_id,
+                "engine": engine, "model": model,
+                "type": "message_started",
+                "data": {"role": "assistant", "status": "running", "content": "审核中",
+                         "prompt": inserted_prompt},
+                "created_at": seal_time.isoformat(),
+            })
+            return next_id
+
+        return segment, queue, record_event, handle_live_message
+
+    async def _finish_review_live_messages(self, run_key: str) -> None:
+        queue = self._live_message_queues.pop(run_key, None)
+        self._live_message_channels.pop(run_key, None)
+        self._running_engines.pop(run_key, None)
+        if queue is None:
+            return
+        while not queue.empty():
+            message_id, _ = queue.get_nowait()
+            self._live_message_prompts.pop(message_id, None)
+            await self._run_db(lambda mid=message_id: self._fail_live_message(mid))
 
     async def run_pipeline(
         self,
@@ -792,6 +895,10 @@ class TaskRunner:
                 completed.add(step_key)
             else:
                 assembled_prompt = saved_review_prompt
+                review_segment = None
+                review_queue = None
+                review_event_handler = None
+                review_live_handler = None
                 if review_mode == "auto":
                     if not assembled_prompt:
                         assembled_prompt = await asyncio.to_thread(
@@ -806,18 +913,21 @@ class TaskRunner:
                             review_config, assembled_prompt,
                         )
                     )
-
-                async def record_review_event(event: dict) -> None:
-                    await self._event_journal.arecord(review_journal_ref, event)
-                    await self._event_journal.async_flush(review_journal_ref)
+                    (review_segment, review_queue, review_event_handler,
+                     review_live_handler) = await self._prepare_review_live_messages(
+                        task, step, step_run, artifacts_dir, run_key,
+                        review_message_id, review_journal_ref,
+                    )
 
                 gate = ReviewGate(
                     lambda event: self._publish(task.id, step_key, event),
                     self._run_db,
-                    record_review_event if review_journal_ref is not None else None,
+                    review_event_handler,
                     set_active_engine=lambda engine: self._running_engines.__setitem__(
                         run_key, engine
                     ),
+                    live_message_queue=review_queue,
+                    on_live_message=review_live_handler,
                 )
                 outcome = await gate.evaluate(
                     task=task,
@@ -833,6 +943,10 @@ class TaskRunner:
                     artifact_round=step_run.artifact_round,
                     assembled_prompt=assembled_prompt if review_mode == "auto" else None,
                 )
+                if review_segment is not None:
+                    review_message_id = review_segment["message_id"]
+                    review_journal_ref = review_segment["journal_ref"]
+                    await self._finish_review_live_messages(run_key)
                 if self._graceful_shutdown:
                     raise asyncio.CancelledError
                 cancelled = run_key in self._cancelled_steps
@@ -936,6 +1050,8 @@ class TaskRunner:
                         task, scheduler, artifacts_dir, workflow_run, completed,
                     )
         finally:
+            if self._live_message_channels.get(run_key) == "review":
+                await self._finish_review_live_messages(run_key)
             self._running_engines.pop(run_key, None)
             self._cancelled_steps.discard(run_key)
             running.discard(step_key)
@@ -1974,6 +2090,10 @@ class TaskRunner:
                         review_message_id = None
                         review_journal_ref = None
                         assembled_review_prompt = None
+                        review_segment = None
+                        review_queue = None
+                        review_event_handler = None
+                        review_live_handler = None
                         if review_mode == "auto":
                             assembled_review_prompt = await asyncio.to_thread(
                                 ReviewGate._assemble_prompt,
@@ -1995,28 +2115,23 @@ class TaskRunner:
                                     assembled_review_prompt,
                                 )
                             )
-                        async def _record_review_event(event: dict) -> None:
-                            await self._event_journal.arecord(
-                                review_journal_ref,
-                                event,
-                            )
-                            # 历史接口使用独立的 journal 实例读取磁盘，
-                            # 因此运行中的审核事件必须及时 flush 才能恢复。
-                            await self._event_journal.async_flush(
-                                review_journal_ref,
+                            (review_segment, review_queue, review_event_handler,
+                             review_live_handler) = await self._prepare_review_live_messages(
+                                task, step, step_run, artifacts_dir, run_key,
+                                review_message_id, review_journal_ref,
                             )
 
                         gate = ReviewGate(
                             lambda event: self._publish(task.id, step_key, event),
                             self._run_db,
-                            (
-                                _record_review_event
-                            ) if review_journal_ref is not None else None,
+                            review_event_handler,
                             set_active_engine=lambda active_engine: (
                                 self._running_engines.__setitem__(
                                     run_key, active_engine
                                 )
                             ),
+                            live_message_queue=review_queue,
+                            on_live_message=review_live_handler,
                         )
                         outcome = await gate.evaluate(
                             task=task,
@@ -2032,6 +2147,10 @@ class TaskRunner:
                             artifact_round=artifact_round,
                             assembled_prompt=assembled_review_prompt,
                         )
+                        if review_segment is not None:
+                            review_message_id = review_segment["message_id"]
+                            review_journal_ref = review_segment["journal_ref"]
+                            await self._finish_review_live_messages(run_key)
                         cancelled_during_review = run_key in self._cancelled_steps
                         if cancelled_during_review:
                             def fail_cancelled_review():
@@ -2286,6 +2405,7 @@ class TaskRunner:
 
             self._running_engines.pop(run_key, None)
             live_queue = self._live_message_queues.pop(run_key, None)
+            self._live_message_channels.pop(run_key, None)
             if live_queue is not None:
                 pending: list[tuple[str, str]] = []
                 while not live_queue.empty():
@@ -2719,9 +2839,9 @@ class TaskRunner:
         content: str,
         as_guidance: bool = False,
     ) -> dict:
-        """Send an ordinary user message into a running step execution.
+        """Send a user message into a running step or automatic review.
 
-        Persists an ``execution``-channel user message and queues it for the
+        Persists a user message in the active channel and queues it for the
         running engine to inject mid-run. With ``as_guidance`` the content is
         also saved as active step guidance (``StepSupplement``) so future
         attempts include it in the step prompt. Raises ValueError when the
@@ -2740,6 +2860,7 @@ class TaskRunner:
         queue = self._live_message_queues.get(run_key)
         if queue is None:
             raise ValueError("步骤消息队列不可用")
+        channel = self._live_message_channels.get(run_key, "execution")
         now = utc_now()
         message_id = new_message_id()
         def persist_live_message():
@@ -2750,7 +2871,7 @@ class TaskRunner:
             message = create_task_message(
                 id=message_id,
                 task=task,
-                channel="execution",
+                channel=channel,
                 step_key=step_key,
                 role="user",
                 content=normalized,
@@ -2788,7 +2909,7 @@ class TaskRunner:
         sequence, injected_content = await self._run_db(persist_live_message)
         self._live_message_prompts[message_id] = injected_content
         await self._publish(task_id, step_key, {
-            "channel": "execution",
+            "channel": channel,
             "message_id": message_id,
             "type": "message_started",
             "data": {
@@ -2802,6 +2923,7 @@ class TaskRunner:
         return {
             "message_id": message_id,
             "step_key": step_key,
+            "channel": channel,
             "status": "queued",
             "sequence": sequence,
             "created_at": now.isoformat(),

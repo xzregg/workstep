@@ -1053,6 +1053,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         message.channel === 'execution'
         && (message.context_step_key || message.step_key) === targetStep?.key
       ))?.id as string | undefined,
+      review: [...runningMessages].reverse().find((message) => (
+        message.channel === 'review'
+        && (message.context_step_key || message.step_key) === targetStep?.key
+      ))?.id as string | undefined,
     }
   }, [historyMessages, liveMessages, targetStep?.key])
   const coordinatorMessageId = coordinatorRunning && activeCoordinatorMessageId
@@ -1061,7 +1065,13 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const coordinatorIsRunning = coordinatorRunning || Boolean(coordinatorMessageId)
   const pendingTargetMessageId = chatTarget === 'coordinator'
     ? coordinatorMessageId
-    : (activeStepRunning ? runningMessageByChannel.execution || null : null)
+    : (activeStepRunning
+      ? (stepProgress.some((progress) => (
+          progress.step_key === targetStep?.key && progress.status === 'reviewing'
+        ))
+          ? runningMessageByChannel.review
+          : runningMessageByChannel.execution) || null
+      : null)
   const pendingQueueKey = projectId && pendingTargetMessageId
     ? pendingInsertQueueKey(projectId, pendingTargetMessageId)
     : ''
@@ -1415,7 +1425,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             ...message,
             id: accepted.message_id,
             run_id: accepted.message_id,
-            channel: 'execution',
+            channel: accepted.channel || 'execution',
             run_status: 'running',
             sequence: accepted.sequence,
             created_at: accepted.created_at || message.created_at,

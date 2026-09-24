@@ -63,6 +63,7 @@ interface ConversationMessage {
   run_status?: string
   status?: string
   events?: Array<{ type?: string; data?: Record<string, unknown> }>
+  event_detail?: { event_count?: number }
   prompt?: string | null
   created_at?: string
   started_at?: string | null
@@ -660,7 +661,10 @@ export function isVisibleHistoryMessage(message: ConversationMessage): boolean {
   ) {
     return false
   }
-  if (message.channel === 'review') return hasMessageContent(message.content)
+  if (message.channel === 'review') {
+    return hasMessageContent(message.content)
+      || (message.run_status === 'succeeded' && (message.event_detail?.event_count ?? 0) > 0)
+  }
   if (message.channel === 'coordinator') return true
   if (message.role === 'user' || message.role === 'system') return true
   // 已停止/失败但无内容的执行消息也要保留展示（附带「已停止/失败」状态徽标），

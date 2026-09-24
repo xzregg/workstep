@@ -230,6 +230,28 @@ class BranchSwitchRequest(SwitchRequest):
     remote: str | None = Field(default=None, min_length=1, max_length=1024)
 
 
+class MergeRequest(SwitchRequest):
+    source: str = Field(min_length=1, max_length=1024)
+    remote: str | None = Field(default=None, min_length=1, max_length=1024)
+
+
+class MergeIntoRequest(SwitchRequest):
+    target: str = Field(min_length=1, max_length=1024)
+
+
+class PushBranchRequest(BaseModel):
+    branch: str = Field(min_length=1, max_length=1024)
+    head: str = Field(min_length=40, max_length=64)
+
+
+class CreateBranchRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    base_branch: str = Field(min_length=1, max_length=1024)
+    base_remote: str | None = Field(default=None, min_length=1, max_length=1024)
+    base_head: str = Field(min_length=40, max_length=64)
+    snapshot: str = Field(min_length=64, max_length=64)
+
+
 class RemoteSyncRequest(SwitchRequest):
     remote: str | None = Field(default=None, min_length=1, max_length=1024)
     target_branch: str | None = Field(default=None, min_length=1, max_length=1024)
@@ -338,6 +360,27 @@ async def switch(id: str, body: BranchSwitchRequest):
 @router.post('/worktrees/{id}/advance')
 async def advance(id: str, body: SwitchRequest):
     return await result(git_service.advance(id, body.branch, body.snapshot))
+
+
+@router.post('/worktrees/{id}/merge')
+async def merge(id: str, body: MergeRequest):
+    return await result(git_service.merge(id, body.branch, body.snapshot, body.source, body.remote))
+
+
+@router.post('/worktrees/{id}/merge-into')
+async def merge_into(id: str, body: MergeIntoRequest):
+    return await result(git_service.merge_into(id, body.branch, body.snapshot, body.target))
+
+
+@router.post('/worktrees/{id}/branches')
+async def create_branch(id: str, body: CreateBranchRequest):
+    return await result(git_service.create_branch(id, body.name, body.base_branch, body.base_head,
+                                                  body.snapshot, body.base_remote))
+
+
+@router.post('/worktrees/{id}/push-branch')
+async def push_branch(id: str, body: PushBranchRequest):
+    return await result(git_service.push_branch(id, body.branch, body.head))
 
 
 @router.post('/worktrees/{id}/fetch')

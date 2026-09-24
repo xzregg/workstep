@@ -23,18 +23,43 @@ export default function GitBranchPicker({ status, onLocate, onChanged, onRefresh
   const [remoteBranches, setRemoteBranches] = useState<GitTrackedRemoteBranch[]>([])
   const [showRemote, setShowRemote] = useState(false)
   const [error, setError] = useState('')
-  const [busy, setBusy] = useState<'fetch' | 'pull' | 'switch' | 'update' | null>(null)
+  const [busy, setBusy] = useState<'fetch' | 'pull' | 'switch' | 'update' | 'create' | null>(null)
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
+  const [createOpen, setCreateOpen] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [baseRef, setBaseRef] = useState(`local\0${status.branch || ''}`)
   const [fetchedAt, setFetchedAt] = useState<number | null>(null)
   useEffect(() => {
     let current = true
     setLoading(true); setRemoteBranches([]); setShowRemote(false)
-    gitApi.branches(status.id).then(r => { if (current) { setBranches(r.branches); setFetchedAt(r.fetched_at || null) } }).catch(e => { if (current) setError(e.message) }).finally(() => { if (current) setLoading(false) })
+    gitApi.branches(status.id).then(r => { if (current) { setBranches(r.branches); setBaseRef(value => r.branches.some(branch => value === `local\0${branch.name}`) ? value : `local\0${status.branch || r.branches[0]?.name || ''}`); setFetchedAt(r.fetched_at || null) } }).catch(e => { if (current) setError(e.message) }).finally(() => { if (current) setLoading(false) })
     return () => { current = false }
   }, [status.id, status.branch])
   const blocked = status.active ? t('git.running') : status.operation ? t('git.blocked') : ''
   const dirtyNote = status.files.length ? t('git.switchDirty') : ''
+  const invalidName = !newName || /\s/.test(newName)
+  const [baseKind, baseName, remoteBranch] = baseRef.split('\0')
+  const baseAvailable = baseKind === 'remote'
+    ? remoteBranches.some(item => item.remote === baseName && item.branch === remoteBranch)
+    : branches.some(item => item.name === baseName)
+  async function createBranch() {
+    if (busy || blocked || invalidName || !baseAvailable) return
+    const [kind, first, second] = baseRef.split('\0')
+    const base = kind === 'remote'
+      ? remoteBranches.find(item => item.remote === first && item.branch === second)
+      : branches.find(item => item.name === first)
+    if (!base) { setError(t('git.createBranchBaseMissing')); return }
+    setBusy('create'); setError('')
+    try {
+      const result = await gitApi.createBranch(status.id, newName, kind === 'remote' ? second : first, base.head, status.snapshot, kind === 'remote' ? first : undefined)
+      setBranches(result.branches); setRemoteBranches(result.remote_branches || [])
+      setCreateOpen(false); setNewName(''); setQuery('')
+      useGitStore.getState().referencesChanged()
+      await onRefresh?.()
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); await onRefresh?.() }
+    finally { setBusy(null) }
+  }
   async function run(action: 'fetch' | 'pull' | 'switch' | 'update', branch?: string, remote?: string) {
     if (busy) return
     setBusy(action); setError('')
@@ -63,8 +88,9 @@ export default function GitBranchPicker({ status, onLocate, onChanged, onRefresh
   }
   const filtered = rankMatches(branches, query, branch => branchMatchScore(branch.name, `${branch.upstream || ''} ${branch.path || ''}`, query))
   const filteredRemote = showRemote ? rankMatches(remoteBranches, query, branch => branchMatchScore(branch.branch, `${branch.name} ${branch.remote}`, query)) : []
-  return <div className="git-branch-picker">
-    <div className="git-branch-tools"><label className="git-search"><Icon name="search" size={14} /><input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder={t('git.branchSearch')} aria-label={t('git.branchSearch')} /></label><Button size="sm" disabled={!!busy || loading} loading={busy === 'fetch'} onClick={() => void run('fetch')}>{busy === 'fetch' ? t('git.fetching') : t('git.fetchBranches')}</Button></div>
+  return <div className={`git-branch-picker${createOpen ? ' git-branch-picker--creating' : ''}`}>
+    <div className="git-branch-tools"><label className="git-search"><Icon name="search" size={14} /><input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder={t('git.branchSearch')} aria-label={t('git.branchSearch')} /></label><Button size="sm" disabled={!!busy || loading} loading={busy === 'fetch'} onClick={() => void run('fetch')}>{busy === 'fetch' ? t('git.fetching') : t('git.fetchBranches')}</Button><Button size="sm" disabled={!!busy || loading || !!blocked} onClick={() => setCreateOpen(!createOpen)}>{t('git.newBranch')}</Button></div>
+    {createOpen && <div className="git-branch-create"><label>{t('git.newBranchName')}<input name="newBranch" value={newName} onChange={event => setNewName(event.target.value)} placeholder="feature/example" /></label><label>{t('git.newBranchBase')}<select name="baseBranch" value={baseRef} onChange={event => setBaseRef(event.target.value)}><optgroup label={t('git.localBranches')}>{branches.map(branch => <option key={branch.name} value={`local\0${branch.name}`}>{branch.name}</option>)}</optgroup>{showRemote && <optgroup label={t('git.remoteBranches')}>{remoteBranches.map(branch => <option key={branch.name} value={`remote\0${branch.remote}\0${branch.branch}`}>{branch.name}</option>)}</optgroup>}</select></label><Button size="sm" variant="primary" loading={busy === 'create'} disabled={!!busy || invalidName || !baseAvailable} onClick={() => void createBranch()}>{t('git.createBranch')}</Button><small>{t('git.createBranchHint')}</small></div>}
     <div className="git-branch-meta">
       <p className="git-sync-note">{showRemote ? t('git.remoteBranchesLoaded', { count: remoteBranches.length, time: fetchedAt ? new Date(fetchedAt * 1000).toLocaleString() : '—' }) : t('git.localBranchesOnly')}</p>
       {blocked && <p>{blocked}</p>}{dirtyNote && <p>{dirtyNote}</p>}{error && <p role="alert" className="git-danger">{error}</p>}

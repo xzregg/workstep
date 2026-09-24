@@ -36,6 +36,7 @@ export function createGitApi(client: typeof request = request) {
   initialize: (projectId: string) => client<{ project_id: string; path: string }>(`/git/projects/${encodeURIComponent(projectId)}/initialize`, post()),
   status: (id: string) => client<GitStatus>(route(id) + '/status'),
   branches: (id: string) => client<{ branches: GitBranch[]; remote_branches?: GitTrackedRemoteBranch[]; fetched_at?: number | null }>(route(id) + '/branches'),
+  createBranch: (id: string, name: string, baseBranch: string, baseHead: string, snapshot: string, baseRemote?: string) => client<{ branches: GitBranch[]; remote_branches?: GitTrackedRemoteBranch[]; fetched_at?: number | null }>(route(id) + '/branches', post({ name, base_branch: baseBranch, base_head: baseHead, snapshot, base_remote: baseRemote })),
   remotes: (id: string) => client<GitRemotes>(route(id) + '/remotes'),
   identity: (id: string) => client<GitIdentity>(route(id) + '/identity'),
   setIdentity: (id: string, identity: GitIdentity) => client<GitIdentity>(route(id) + '/identity', { method: 'PUT', body: JSON.stringify(identity) }),
@@ -60,6 +61,9 @@ export function createGitApi(client: typeof request = request) {
   pull: (id: string, branch: string, snapshot: string, target?: { remote: string; targetBranch: string; setUpstream: boolean }) => client<GitStatus>(route(id) + '/pull', post({ branch, snapshot, remote: target?.remote, target_branch: target?.targetBranch, set_upstream: target?.setUpstream || false })),
   switch: (id: string, branch: string, snapshot: string, remote?: string) => client<GitStatus>(route(id) + '/switch', post({ branch, snapshot, remote })),
   advance: (id: string, branch: string, snapshot: string) => client<{ branches: GitBranch[]; remote_branches?: GitTrackedRemoteBranch[]; fetched_at?: number | null }>(route(id) + '/advance', post({ branch, snapshot })),
+  merge: (id: string, branch: string, snapshot: string, source: string, remote?: string) => client<GitStatus>(route(id) + '/merge', post({ branch, snapshot, source, remote })),
+  mergeInto: (id: string, branch: string, snapshot: string, target: string) => client<{ target: string; head: string; updated: boolean; push_available: boolean }>(route(id) + '/merge-into', post({ branch, snapshot, target })),
+  pushBranch: (id: string, branch: string, head: string) => client<{ branch: string; head: string }>(route(id) + '/push-branch', post({ branch, head })),
   }
 }
 

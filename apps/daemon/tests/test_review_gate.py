@@ -3,6 +3,8 @@
 import asyncio
 import json
 import re
+import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -138,6 +140,40 @@ class PausedReviewEngine:
 
     async def stop(self):
         self.release_review.set()
+
+
+class LiveReviewEngine(PausedReviewEngine):
+    capabilities = SimpleNamespace(supports_live_step_message=True)
+
+    async def spawn(self, prompt, cwd, **kwargs):
+        self.calls += 1
+        if self.calls == 1:
+            yield InternalEvent(
+                type="agent_message_chunk",
+                data={"content": {"text": "阶段执行完成"}},
+            )
+            return
+
+        yield InternalEvent(
+            type="agent_message_chunk",
+            data={"content": {"text": "审核前输出"}},
+        )
+        self.review_started.set()
+        await self.release_review.wait()
+        queue = kwargs.get("live_message_queue")
+        assert queue is not None
+        message_id, content = queue.get_nowait()
+        assert "补充审核要求" in content
+        yield InternalEvent(
+            type="live_message",
+            data={"message_id": message_id, "status": "delivered"},
+        )
+        yield InternalEvent(
+            type="agent_message_chunk",
+            data={"content": {"text": json.dumps({
+                "passed": True, "score": 100, "summary": "已按补充要求审核", "issues": [],
+            }, ensure_ascii=False)}},
+        )
 
 
 class StreamingPausedReviewEngine(PausedReviewEngine):
@@ -286,6 +322,81 @@ async def test_cancel_step_stops_active_automatic_review_engine(tmp_path):
         if not pipeline_task.done():
             review_engine.stopped.set()
             await pipeline_task
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_automatic_review_accepts_live_message_and_splits_output(tmp_path):
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="live-review-task", title="Live review", cwd=str(tmp_path),
+        engine="review-test", created_at=1, updated_at=1,
+    )
+    workflow_run = WorkflowRun.create(
+        id="workflow-live-review", task=task, status="running",
+        workflow_schema_version=1, workflow_snapshot_json="{}", started_at=1,
+    )
+    review_started = asyncio.Event()
+    release_review = asyncio.Event()
+    engine = LiveReviewEngine(review_started, release_review)
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["review-test"] = lambda: engine
+    bus = EventBus()
+    runner = TaskRunner(bus)
+    pipeline_task = asyncio.create_task(runner.run_pipeline(
+        task,
+        {"steps": [{
+            "key": "build", "label": "构建", "engine": "review-test",
+            "dependsOn": [], "review": {
+                "auto": True, "maxRetries": 0, "engine": "review-test",
+            },
+        }]},
+        tmp_path / "artifacts", workflow_run=workflow_run,
+    ))
+    try:
+        await asyncio.wait_for(review_started.wait(), timeout=2)
+        original_run_db = runner._run_db
+
+        async def slow_live_message_write(operation):
+            if operation.__name__ != "persist_live_message":
+                return await original_run_db(operation)
+
+            def slow_operation():
+                time.sleep(0.05)
+                return operation()
+
+            return await original_run_db(slow_operation)
+
+        runner._run_db = slow_live_message_write
+        sending = asyncio.create_task(
+            runner.send_live_message(task.id, "build", "补充审核要求")
+        )
+        await asyncio.wait_for(asyncio.sleep(0.01), timeout=0.03)
+        assert not sending.done()
+        accepted = await sending
+        assert accepted["status"] == "queued"
+        assert accepted["channel"] == "review"
+        release_review.set()
+        await pipeline_task
+        messages = list(Message.select().where(Message.task == task).order_by(Message.sequence))
+        review_messages = [m for m in messages if m.channel == "review"]
+        assert [(m.role, m.run_status) for m in review_messages] == [
+            ("assistant", "succeeded"), ("user", "succeeded"),
+            ("assistant", "completed"),
+        ]
+        assert review_messages[0].content == "审核前输出"
+        assert review_messages[1].content == "补充审核要求"
+        assert "已按补充要求审核" in review_messages[2].content
+        assert review_messages[0].sequence < review_messages[1].sequence < review_messages[2].sequence
+        assert review_messages[0].ended_at is not None
+        assert review_messages[2].started_at == review_messages[0].ended_at
+    finally:
+        release_review.set()
+        if not pipeline_task.done():
+            await pipeline_task
+        await bus.close()
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
         db.close()

@@ -524,7 +524,7 @@ class WorkflowRuntime:
         content: str,
         as_guidance: bool = False,
     ) -> dict:
-        """Inject an ordinary user message into a running step."""
+        """Inject a user message into a running step or automatic review."""
         runner = self._runners.get(task_id)
         if runner is None:
             raise ValueError("任务没有正在执行的步骤")
