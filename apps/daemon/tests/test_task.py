@@ -91,6 +91,39 @@ def test_create_task(db_and_service):
     assert task["title"] == "Test"
 
 
+def test_step_round_shows_current_running_artifact_round(db_and_service):
+    from models import StepRun, Task, TaskStep, WorkflowRun
+
+    service, _ = db_and_service
+    created = service.create_task(title="Round display", cwd="/tmp")
+    task = Task.get_by_id(created["id"])
+    step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
+    step.status = "running"
+    step.save()
+    run = WorkflowRun.create(
+        id="round-display-run", task=task, status="running",
+        workflow_schema_version=1, workflow_snapshot_json="{}",
+    )
+    task.active_workflow_run_id = run.id
+    task.save()
+    for attempt, status in [(1, "succeeded"), (2, "succeeded"), (3, "running")]:
+        StepRun.create(
+            id=f"round-display-{attempt}", run=run, step_key="do",
+            attempt=attempt, artifact_round=attempt, status=status,
+        )
+
+    current = service.get_task(task.id)
+    assert current["steps"][0]["artifact_round"] == 3
+
+    step.status = "failed"
+    step.save()
+    StepRun.update(status="failed").where(
+        StepRun.id == "round-display-3"
+    ).execute()
+    after_failure = service.get_task(task.id)
+    assert after_failure["steps"][0]["artifact_round"] == 2
+
+
 def test_create_and_update_scheduled_start(db_and_service):
     service, _ = db_and_service
     at = datetime.now(timezone.utc) + timedelta(hours=1)

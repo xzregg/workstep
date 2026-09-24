@@ -133,3 +133,36 @@ test('dialog title moves the panel without dragging its buttons or leaving the v
     await window.happyDOM.close()
   }
 })
+
+test('selectable file title does not start moving its dialog', async () => {
+  const { window, document } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  try {
+    await act(async () => root.render(<I18nProvider>
+      <ResizablePanel style={{ width: 900, height: 600 }}>
+        <header><strong><span data-dialog-selectable-text>src/example.ts</span></strong></header>
+      </ResizablePanel>
+    </I18nProvider>))
+    const panel = document.querySelector<HTMLElement>('.resizable-panel')!
+    const title = panel.querySelector<HTMLElement>('strong span')!
+    const down = new window.PointerEvent('pointerdown', { bubbles: true, cancelable: true, clientX: 300, clientY: 100 })
+    await act(async () => {
+      title.dispatchEvent(down)
+      window.dispatchEvent(new window.PointerEvent('pointermove', { clientX: 400, clientY: 140 }))
+      window.dispatchEvent(new window.PointerEvent('pointerup'))
+    })
+    assert.equal(down.defaultPrevented, false)
+    assert.equal(panel.style.left, '')
+    assert.equal(panel.style.top, '')
+    await act(async () => {
+      title.parentElement!.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, clientX: 300, clientY: 100 }))
+      window.dispatchEvent(new window.PointerEvent('pointermove', { clientX: 400, clientY: 140 }))
+      window.dispatchEvent(new window.PointerEvent('pointerup'))
+    })
+    assert.match(panel.style.left, /px$/)
+    assert.match(panel.style.top, /px$/)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})

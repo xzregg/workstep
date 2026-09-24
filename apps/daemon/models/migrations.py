@@ -76,6 +76,7 @@ _ADDITIVE_COLUMNS = {
         "reviewer_device_name": "TEXT",
     },
     "chat_sessions": {
+        "archived": "INTEGER NOT NULL DEFAULT 0",
         "vision_model": "TEXT",
         "parent_session_id": "TEXT",
         "forked_from_message_id": "TEXT",

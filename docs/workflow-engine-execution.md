@@ -294,7 +294,9 @@ ActionProposal
 3. 失败、取消和中断的 attempt 不保留产物轮次；
 4. 审核驳回的产物可以保留，但不能成为默认下游输入。
 
-轮次归属于产生产物的步骤，各步骤独立计数。只有某个步骤自己再次执行并形成产物，才会增加该步骤的产物轮次；下游步骤重试或返工不会让上游产物自动升级。步骤编号也不要求对齐，例如可以出现“需求第 1 轮 → 开发第 3 轮 → 测试第 3 轮”。
+轮次归属于产生产物的步骤，各步骤独立计数。某步骤再次执行时会预留下一产物轮次；只有实际执行并保留下来的轮次才成为可供下游使用的产物，失败或中断会清理未完成轮次。下游步骤重试或返工不会让上游产物自动升级。步骤编号也不要求对齐，例如可以出现“需求第 1 轮 → 开发第 3 轮 → 测试第 3 轮”。
+
+界面还显示另外两种不同计数：`Task.run_round` 是本任务第几次流程运行（由父子 `WorkflowRun` 深度决定），不等于任一步骤的产物轮次；产物浏览器的标签是当前已存在、可查看的产物轮次。正在执行的步骤与其消息应显示已预留的当前 `StepRun.artifact_round`，即使该轮文件尚未生成。例如流程第 2 次运行中，开发正执行第 3 轮，而浏览器仍只能查看已产出的第 2 轮产物。
 
 典型研发返工过程如下：
 
@@ -330,6 +332,10 @@ ActionProposal
 人工驳回只重试当前步骤并携带审核反馈，不会自动触发画布虚线。虚线是否触发只由实际返回端口产物决定。
 
 自动审核只接收一份执行契约：首次审核使用完整执行提示词，后续可恢复重试使用增量执行提示词。审核拒绝后，下一轮执行统一收到一份 `Previous review feedback`：人工拒绝时原样传递用户填写的意见，自动拒绝时原样传递审核 LLM 的回复。结构化审核报告只用于流程判断和界面展示，不由流程引擎重新拼装后注入。`skip` 不创建审核提示词；人工通过或强制通过也不再次调用 LLM。
+
+步骤执行与审核是两个独立检查点：执行引擎成功后，先将 `StepRun` 和执行消息记为 `succeeded`，再进入审核；此时 `TaskStep=reviewing` 表示整个步骤尚未通过，**不表示执行引擎仍在运行**。人工审核等待使用 `awaiting_review`。只有审核通过后，步骤才变为 `passed`，产物才可向下游路由。
+
+停止步骤的作用范围包含该步骤当前正在运行的执行引擎或自动审核引擎。审核中停止时，已成功的执行记录不回退，审核记录及审核消息以中止状态收尾，步骤变为 `cancelled`；前端在 `reviewing` 时仍提供同一个步骤的停止入口，但不向审核中的步骤发送执行中插入消息。
 
 ## 八、正向路由、返回线和暂停
 
@@ -452,7 +458,8 @@ daemon 启动时执行两类恢复：
 - 扫描仍为 `running` 的 `WorkflowRun`；
 - 若另一个实例持有新鲜租约，不抢占，等租约过期后重试；
 - 将旧的运行中 `StepRun` 标记为失败并丢弃未完成产物轮次；
-- 将对应 `TaskStep` 恢复为 `pending`；
+- 仅把执行尚未成功的 `TaskStep` 恢复为 `pending`；已有成功 `StepRun` 的步骤保留执行结果并进入 `reviewing`；
+- 对中断的自动审核记录和审核消息收尾，然后只重新执行审核，不再创建第二条步骤执行记录，也不丢弃已成功的产物轮次；
 - 封存未回答的交互请求和仍在转圈的消息；
 - 读取项目最新流程定义，从最后完成位置继续；已执行阶段的真实输入和产物仍以 `StepRun` 与 manifest 为准。
 - 恢复本轮持久化的 `entry_step_key` 和 `execution_scope`；入口边界输入仍按原来的逐连接 `task_context` 语义处理，不扩大为完整流程运行。
@@ -498,12 +505,12 @@ daemon 启动时执行两类恢复：
 
 | 主题 | 实现 | 主要测试 |
 |---|---|---|
-| 创建与起始步骤 | `services/task_creation.py`、`services/task.py` | `tests/test_task.py`、`tests/test_task_draft.py` |
-| 流程编译 | `services/workflow_definition.py` | `tests/test_workflow_definition.py` |
-| 调度与步骤执行 | `services/task_runner.py`、`services/pipeline.py` | `tests/test_pipeline.py`、`tests/test_workflow_runtime.py` |
-| 端口路由 | `services/artifact_routing.py` | `tests/test_artifact_port_routing.py` |
-| 产物轮次 | `services/artifact_rounds.py` | `tests/test_artifact_rounds.py` |
-| 提示词 | `services/prompt.py` | `tests/test_pipeline.py` |
-| 审核 | `services/review_gate.py`、`services/workflow_runtime.py` | `tests/test_review_gate.py`、`tests/test_workflow_runtime.py` |
-| 协调助手 | `agent_assistants/coordinator.py` | `tests/test_coordinator.py` |
-| 并发与恢复 | `services/concurrency.py`、`services/workflow_runtime.py` | `tests/test_concurrency_gate.py`、`tests/test_recovery.py` |
+| 创建与起始步骤 | [task_creation.py](../apps/daemon/services/task_creation.py)、[task.py](../apps/daemon/services/task.py) | [test_task.py](../apps/daemon/tests/test_task.py)、[test_task_draft.py](../apps/daemon/tests/test_task_draft.py) |
+| 流程编译 | [workflow_definition.py](../apps/daemon/services/workflow_definition.py) | [test_workflow_definition.py](../apps/daemon/tests/test_workflow_definition.py) |
+| 调度与步骤执行 | [task_runner.py](../apps/daemon/services/task_runner.py)、[pipeline.py](../apps/daemon/services/pipeline.py) | [test_pipeline.py](../apps/daemon/tests/test_pipeline.py)、[test_workflow_runtime.py](../apps/daemon/tests/test_workflow_runtime.py) |
+| 端口路由 | [artifact_routing.py](../apps/daemon/services/artifact_routing.py) | [test_artifact_port_routing.py](../apps/daemon/tests/test_artifact_port_routing.py) |
+| 产物轮次 | [artifact_rounds.py](../apps/daemon/services/artifact_rounds.py) | [test_artifact_rounds.py](../apps/daemon/tests/test_artifact_rounds.py) |
+| 提示词 | [prompt.py](../apps/daemon/services/prompt.py) | [test_pipeline.py](../apps/daemon/tests/test_pipeline.py) |
+| 审核 | [review_gate.py](../apps/daemon/services/review_gate.py)、[workflow_runtime.py](../apps/daemon/services/workflow_runtime.py) | [test_review_gate.py](../apps/daemon/tests/test_review_gate.py)、[test_workflow_runtime.py](../apps/daemon/tests/test_workflow_runtime.py) |
+| 协调助手 | [coordinator.py](../apps/daemon/agent_assistants/coordinator.py) | [test_coordinator.py](../apps/daemon/tests/test_coordinator.py) |
+| 并发与恢复 | [concurrency.py](../apps/daemon/services/concurrency.py)、[workflow_runtime.py](../apps/daemon/services/workflow_runtime.py) | [test_concurrency_gate.py](../apps/daemon/tests/test_concurrency_gate.py)、[test_recovery.py](../apps/daemon/tests/test_recovery.py) |

@@ -76,7 +76,7 @@ def _available_buttons(project_id: str, task: Task, step_key: str | None) -> lis
     ]
     inherited = []
     selected_ids = steps.get("projectQuickButtonIds")
-    if isinstance(selected_ids, list) or steps.get("inheritProjectQuickButtons", True) is not False:
+    if isinstance(selected_ids, list) or steps.get("inheritProjectQuickButtons") is True:
         inherited = [
             {**button, "source": "project"}
             for button in _buttons_from_setting(project_id)

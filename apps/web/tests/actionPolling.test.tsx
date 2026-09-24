@@ -91,3 +91,34 @@ test('task Action does not poll when no Action is running', async () => {
     await window.happyDOM.close()
   }
 })
+
+test('task shortcuts reload when the selected step changes during an earlier request', async () => {
+  const { window } = installDomEnvironment()
+  const originalList = taskActionApi.list
+  const requests: Array<{ step: string | undefined; resolve: (value: Awaited<ReturnType<typeof taskActionApi.list>>) => void }> = []
+  taskActionApi.list = async (_taskId, _projectId, step) => new Promise((resolve) => {
+    requests.push({ step, resolve })
+  })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  function Harness({ step }: { step?: string }) {
+    const state = useTaskActions('project-1', 'task-1', step)
+    return <div>{state.buttons.map((button) => button.label).join(',')}</div>
+  }
+  try {
+    await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
+    await act(async () => root.render(<I18nProvider><Harness step="review" /></I18nProvider>))
+    assert.deepEqual(requests.map((request) => request.step), [undefined, 'review'])
+    await act(async () => {
+      requests[1].resolve({ buttons: [{ id: 'workflow-review', label: '流程按钮', prompt: '继续', kind: 'prompt', source: 'workflow' }], runs: [] })
+    })
+    assert.equal(container.textContent, '流程按钮')
+    await act(async () => requests[0].resolve({ buttons: [], runs: [] }))
+    assert.equal(container.textContent, '流程按钮')
+  } finally {
+    await act(async () => root.unmount())
+    taskActionApi.list = originalList
+    container.remove()
+    await window.happyDOM.close()
+  }
+})

@@ -587,6 +587,7 @@ def _restore_messages(raw: str | None) -> list[dict]:
 
 
 _PERSISTED_EVENT_TYPES = frozenset({
+    "async_question",
     "status",
     "agent_thought_chunk",
     "tool_call",
@@ -1858,6 +1859,7 @@ class AssistantRuntime:
                             )
                             seq_holder[0] += 1
                         elif event.type in {
+                            "async_question",
                             "interaction_request",
                             "interaction_response",
                             "plan",

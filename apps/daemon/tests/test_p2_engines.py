@@ -3093,6 +3093,27 @@ def test_codex_sdk_maps_started_and_text_delta():
     assert state["emitted_text"] is True
 
 
+def test_codex_sdk_preserves_async_questions_on_completed_message():
+    from openai_codex.generated.v2_all import AgentMessageDelivery
+
+    engine = CodexSDKEngine()
+    root = _SdkFake(
+        type="agentMessage", id="call-question", text="请选择处理方式",
+        phase="final_answer", delivery=AgentMessageDelivery(root="async"),
+        questions=[_SdkFake(title="处理方式？", options=["复制差异块", "逐行复制"])],
+    )
+    events = engine._map_notification(
+        _SdkFake(method="item/completed", payload=_SdkFake(item=_SdkFake(root=root))),
+        {"emitted_text": False, "tool_emitted": set()},
+    )
+
+    assert [event.type for event in events] == ["agent_message_chunk", "async_question"]
+    assert events[1].data == {
+        "source_item_id": "call-question",
+        "questions": [{"title": "处理方式？", "options": ["复制差异块", "逐行复制"]}],
+    }
+
+
 def test_codex_sdk_maps_visualize_marker_across_deltas():
     """visualize 标记可能被拆成多个 delta，跨分片也必须转换成链接。"""
     engine = CodexSDKEngine()

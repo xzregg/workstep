@@ -211,6 +211,25 @@ async def test_session_crud_round_trip(chat_module):
 
 
 @pytest.mark.anyio
+async def test_session_archive_round_trip(chat_module):
+    module, _bus, _manager, project, _ = chat_module
+    first = module.create_session(project.id)
+    second = module.create_session(project.id)
+
+    archived = module.set_archived(project.id, first["id"], True)
+    assert archived["archived"] is True
+    assert [row["id"] for row in module.list_sessions(project.id)] == [second["id"]]
+    assert [row["id"] for row in module.list_sessions(project.id, archived=True)] == [first["id"]]
+    assert module.get_session(project.id, first["id"])["archived"] is True
+
+    restored = module.set_archived(project.id, first["id"], False)
+    assert restored["archived"] is False
+    assert {row["id"] for row in module.list_sessions(project.id)} == {first["id"], second["id"]}
+    with pytest.raises(ValueError, match="not found"):
+        module.set_archived(project.id, "missing", True)
+
+
+@pytest.mark.anyio
 async def test_session_summary_reports_persisted_running_turn(chat_module):
     module, _bus, _manager, project, _ = chat_module
     created = module.create_session(project.id, "wf-running")
@@ -2503,6 +2522,38 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
             )
             assert resp.status_code == 200
             assert resp.json()["id"] == session_id
+
+            # Archiving is persisted through the project DB executor and does
+            # not hold up the event loop when SQLite is slow.
+            original_archive_execute_sql = project.db.execute_sql
+            archive_write_started = threading.Event()
+
+            def slow_archive_update(sql, params=None, commit=None):
+                if not archive_write_started.is_set() and 'UPDATE "chat_sessions"' in sql:
+                    archive_write_started.set()
+                    time.sleep(0.35)
+                return original_archive_execute_sql(sql, params)
+
+            monkeypatch.setattr(project.db, "execute_sql", slow_archive_update)
+            archive_request = asyncio.create_task(client.patch(
+                f"/api/chat-sessions/{session_id}/archive",
+                json={"project_id": project.id, "archived": True},
+            ))
+            await asyncio.to_thread(archive_write_started.wait, 1)
+            archive_health_started = time.perf_counter()
+            archive_health = await client.get("/api/health")
+            assert archive_health.status_code == 200
+            assert time.perf_counter() - archive_health_started < 0.2
+            resp = await archive_request
+            assert resp.status_code == 200
+            assert resp.json()["archived"] is True
+            monkeypatch.setattr(project.db, "execute_sql", original_archive_execute_sql)
+            resp = await client.get("/api/chat-sessions", params={"project_id": project.id})
+            assert resp.json()["sessions"] == []
+            resp = await client.get("/api/chat-sessions", params={"project_id": project.id, "archived": True})
+            assert [item["id"] for item in resp.json()["sessions"]] == [session_id]
+            resp = await client.patch(f"/api/chat-sessions/{session_id}/archive", json={"project_id": project.id, "archived": False})
+            assert resp.status_code == 200
 
             # Permission persistence stays on the project DB executor, so a
             # slow SQLite write cannot stall unrelated event-loop traffic.

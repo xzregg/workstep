@@ -55,3 +55,31 @@ test('workflow shortcut settings lists project buttons with individual use check
     await window.happyDOM.close()
   }
 })
+
+test('workflow shortcut settings leaves project buttons unchecked when inheritance is not configured', async () => {
+  const { window } = installDomEnvironment()
+  const original = chatSessionApi.quickButtons
+  chatSessionApi.quickButtons = async () => ({ buttons: [
+    { id: 'restart', label: '重启服务', prompt: '', kind: 'action' },
+  ] })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  try {
+    await act(async () => root.render(<I18nProvider>
+      <WorkflowShortcutSettingsDialog
+        projectId="project-1" workflowId="workflow-1" workflowName="新流程"
+        inheritByDefault={false} workflowButtons={[]}
+        onSave={async () => {}} onClose={() => {}}
+      />
+    </I18nProvider>))
+    const checkbox = document.querySelector<HTMLInputElement>('[role="dialog"] input[type="checkbox"]')
+    assert.ok(checkbox)
+    assert.equal(checkbox.checked, false)
+  } finally {
+    await act(async () => root.unmount())
+    chatSessionApi.quickButtons = original
+    container.remove()
+    await window.happyDOM.close()
+  }
+})

@@ -498,7 +498,7 @@ class ChatSessionModule(AssistantRuntime):
 
     # ── session CRUD ───────────────────────────────────────────────────
 
-    def list_sessions(self, project_id: str, workflow_id: str | None = None) -> list[dict]:
+    def list_sessions(self, project_id: str, workflow_id: str | None = None, archived: bool = False) -> list[dict]:
         """The active project database owns sessions, including historical registry IDs."""
         if not project_id:
             raise ValueError("project_id is required")
@@ -507,10 +507,30 @@ class ChatSessionModule(AssistantRuntime):
                 ChatSession.select()
                 .where(
                     ChatSession.fork_status == "ready",
+                    ChatSession.archived == archived,
                 )
                 .order_by(ChatSession.sort_order, ChatSession.updated_at.desc())
             )
             return [self._session_summary(row, project_id) for row in rows]
+
+    def set_archived(self, project_id: str, session_id: str, archived: bool) -> dict:
+        if archived and any(
+            state.get("session_id") == session_id
+            and state.get("status") in {"queued", "running", "stopping"}
+            for state in self._turn_states.values()
+        ):
+            raise ValueError("Chat session is running")
+        with self._project_ctx(project_id):
+            row = ChatSession.get_or_none(ChatSession.id == session_id)
+            if row is None:
+                raise ValueError("Chat session not found")
+            if archived and ChatMessage.select().where(
+                ChatMessage.session == row, ChatMessage.status == "running"
+            ).exists():
+                raise ValueError("Chat session is running")
+            row.archived = archived
+            row.save()
+            return self._session_summary(row, project_id)
 
     def create_session(
         self,
@@ -812,6 +832,7 @@ class ChatSessionModule(AssistantRuntime):
             "project_id": project_id,
             "workflow_id": row.workflow_id,
             "title": row.title or "未命名会话",
+            "archived": bool(row.archived),
             "engine": row.engine,
             "model": row.model,
             "fast_model": row.fast_model,

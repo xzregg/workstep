@@ -22,7 +22,7 @@ async def action_client(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "project_manager", manager)
     monkeypatch.setattr(main, "task_service", TaskService(main.event_bus))
     workflow = await manager.run_db(project.id, lambda proj: manager.create_workflow(
-        proj, name="研发流程", steps={"nodes": [{"id": "stage-1", "key": "build"}], "connections": []},
+        proj, name="研发流程", steps={"nodes": [{"id": "stage-1", "key": "build"}], "connections": [], "inheritProjectQuickButtons": True},
     ))
     def seed(_project):
         Task.create(
@@ -134,6 +134,23 @@ async def test_action_rejects_symlink_escaping_action_root(action_client):
         json={"button_id": "restart", "source": "project", "confirmed": True},
     )
     assert response.status_code == 400
+
+
+@pytest.mark.anyio
+async def test_workflow_does_not_inherit_project_buttons_by_default(action_client):
+    client, manager, project = action_client
+
+    def remove_inheritance_setting(_project):
+        workflow = Workflow.get_by_id(project.workflows[0]["id"])
+        steps = json.loads(workflow.steps_json)
+        steps.pop("inheritProjectQuickButtons")
+        workflow.steps_json = json.dumps(steps)
+        workflow.save()
+
+    await manager.run_db(project.id, remove_inheritance_setting)
+    response = await client.get(f"/api/tasks/task-action/actions?project_id={project.id}&step_key=build")
+    assert response.status_code == 200
+    assert response.json()["buttons"] == []
 
 
 @pytest.mark.anyio

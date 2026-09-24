@@ -15,13 +15,14 @@ export function useTaskActions(projectId: string | undefined, taskId: string | u
   const [pending, setPending] = useState<TaskQuickButton | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const inFlight = useRef(false)
+  const inFlightScope = useRef('')
   const scopeRef = useRef('')
   scopeRef.current = `${projectId || ''}:${taskId || ''}:${stepKey || ''}`
   const refresh = useCallback(async () => {
-    if (!projectId || !taskId || inFlight.current) return
+    if (!projectId || !taskId) return
     const scope = scopeRef.current
-    inFlight.current = true
+    if (inFlightScope.current === scope) return
+    inFlightScope.current = scope
     try {
       const result = await taskActionApi.list(taskId, projectId, stepKey)
       if (scope === scopeRef.current) {
@@ -31,7 +32,7 @@ export function useTaskActions(projectId: string | undefined, taskId: string | u
     } catch (reason) {
       if (scope === scopeRef.current) setError(reason instanceof Error ? reason.message : t('actionShortcuts.loadFailed'))
     } finally {
-      inFlight.current = false
+      if (inFlightScope.current === scope) inFlightScope.current = ''
     }
   }, [projectId, taskId, stepKey, t])
 

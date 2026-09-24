@@ -1,4 +1,5 @@
 import ResizablePanel from '../components/ResizablePanel'
+import { gitApi } from '../api/git'
 import { useSearchParams } from 'react-router-dom'
 import { useTaskRoute } from '../hooks/useTaskRoute'
 import { useShallow } from 'zustand/react/shallow'
@@ -53,6 +54,7 @@ import {
   isTaskCompleted,
   isTaskNotStarted,
   isStepResumableWithMessage,
+  isStepActiveForStop,
   resolveStepDisplayStatus,
   mergeLoadedTaskMessageEvents,
   mergeRefreshedTaskHistory,
@@ -349,6 +351,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [chatError, setChatError] = useState('')
   const [stoppingStepKeys, setStoppingStepKeys] = useState<string[]>([])
   const [restartingStepKeys, setRestartingStepKeys] = useState<string[]>([])
+  const [retryingFailedMessageIds, setRetryingFailedMessageIds] = useState<string[]>([])
   const [coordinatorStopping, setCoordinatorStopping] = useState(false)
   const [stepResuming, setStepResuming] = useState(false)
   const [resetStep, setResetStep] = useState(false)
@@ -1008,7 +1011,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const runningSteps = useMemo(() => {
     const runningKeys = new Set(
       stepProgress
-        .filter((progress) => progress.status === 'running')
+        .filter((progress) => isStepActiveForStop(progress.status))
         .map((progress) => progress.step_key),
     )
     return steps.filter((step) => runningKeys.has(step.key))
@@ -1317,6 +1320,23 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       )
     } finally {
       setRestartingStepKeys((current) => current.filter((key) => key !== stepKey))
+    }
+  }
+
+  const handleRetryFailedMessage = async (messageId: string) => {
+    if (!taskId || !projectId || retryingFailedMessageIds.includes(messageId)) return
+    setChatError('')
+    setRetryingFailedMessageIds((current) => [...current, messageId])
+    try {
+      await taskApi.retryFailedMessage(taskId, messageId, projectId)
+      shouldFollowMessagesRef.current = true
+      await refreshTask(taskId, projectId)
+      const result = await taskApi.history(taskId, projectId)
+      setHistoryMessages((current) => mergeRefreshedTaskHistory(current, result.messages || []))
+    } catch (reason) {
+      setChatError(reason instanceof Error ? reason.message : t('taskDetail.lostSessionRestartFailed'))
+    } finally {
+      setRetryingFailedMessageIds((current) => current.filter((id) => id !== messageId))
     }
   }
 
@@ -1826,7 +1846,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   }
 
   const decideReview = async (
-    decision: 'approve' | 'reject' | 'force-approve' | 'terminate',
+    decision: 'approve' | 'reject' | 'force-approve' | 'terminate' | 'complete-task',
     review = selectedReview,
     stepKey = currentStep.key,
   ) => {
@@ -1845,8 +1865,11 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       const [reviewResult] = await Promise.all([
         taskApi.reviews(task.id, projectId),
         fetchTasks(projectId),
+        refreshTask(task.id, projectId),
       ])
       setReviews(reviewResult.reviews || [])
+    } catch (reason) {
+      setChatError(reason instanceof Error ? reason.message : t('taskDetail.reviewActionFailed'))
     } finally {
       setReviewActionPending(false)
     }
@@ -1944,7 +1967,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       >
         {({ inputConfig: stepEngineConfig, loading: stepEngineConfigLoading, error: stepEngineConfigError }) => <TaskDetailPage
         task={task}
-        gitEnabled={detailProject?.type !== 'remote'}
+        gitCapability={projectId && detailProject?.type !== 'remote' ? { api: gitApi, projectId } : undefined}
         steps={steps}
         workflowConnections={detailProject?.steps?.connections || []}
         stepProgress={stepProgress}
@@ -2000,6 +2023,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onStopStep={handleStopStep}
         onRestartStepWithFreshSession={handleRestartStepWithFreshSession}
         restartingStepKeys={restartingStepKeys}
+        onRetryFailedMessage={handleRetryFailedMessage}
+        retryingFailedMessageIds={retryingFailedMessageIds}
         chatInputRef={chatInputRef}
         stepInserts={stepInserts}
         stepInsertSendingIds={stepInsertSendingIds}

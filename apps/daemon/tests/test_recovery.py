@@ -7,12 +7,13 @@ over, and a graceful shutdown leaves runs recoverable for the next start.
 
 import asyncio
 import json
+from datetime import timedelta
 
 import pytest
 
 from engines.core.acp_base import AcpEngineBase
 from engines.core.events import InternalEvent
-from models import StepRun, Task, TaskStep, WorkflowRun
+from models import Message, ReviewRun, StepRun, Task, TaskStep, WorkflowRun
 from models.fields import utc_now
 from services.project import ProjectManager
 from services.workflow_runtime import WorkflowRuntime
@@ -225,6 +226,109 @@ async def test_recovery_resumes_from_last_completed_node(tmp_path):
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("step_status", ["reviewing", "running"])
+@pytest.mark.parametrize("review_status", ["running", "passed"])
+async def test_recovery_restarts_only_review_after_execution_succeeded(
+    tmp_path, step_status, review_status,
+):
+    from engines.core.registry import ENGINE_REGISTRY
+
+    class ReviewRecoveryEngine(RecoveryFakeEngine):
+        async def spawn(self, prompt, cwd, **kwargs):
+            RecoveryFakeEngine.prompts.append(prompt)
+            text = '{"passed":true,"score":100,"summary":"通过","issues":[]}'
+            yield InternalEvent(
+                type="agent_message_chunk",
+                data={"content": {"text": text}},
+            )
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = ReviewRecoveryEngine
+    pm = ProjectManager()
+    project = pm.init_project(tmp_path / "proj", name="Review recovery")
+    now = utc_now()
+    with pm.activate_project(project.path):
+        task = Task.create(
+            id="task-review-rec", title="Review recovery",
+            cwd=str(project.path), engine="claude", status="running",
+            created_at=now, updated_at=now,
+        )
+        TaskStep.create(
+            task=task, step_key="a", status=step_status, engine="claude",
+        )
+        project.steps = {
+            "nodes": [{
+                "id": 1, "type": "a", "title": "A", "engine": "claude",
+                "prompt": "Do A", "review": {"mode": "auto", "maxRetries": 0},
+            }],
+            "connections": [],
+        }
+        run = WorkflowRun.create(
+            id="run-review-rec", task=task, status="running",
+            workflow_schema_version=1, workflow_snapshot_json="{}",
+            started_at=now,
+        )
+        step_run = StepRun.create(
+            id="step-a-review-1", run=run, step_key="a", attempt=1,
+            artifact_round=1, status="succeeded", engine="claude",
+            started_at=now, ended_at=now,
+        )
+        ReviewRun.create(
+            id="review-a-1", workflow_run=run, step_run=step_run,
+            task=task, step_key="a", attempt=1, mode="auto",
+            status=review_status, engine="claude", started_at=now,
+        )
+        Message.create(
+            id="exec-a-1", task=task, step_key="a", channel="execution",
+            role="assistant", content="A 已完成", run_status="running",
+            step_run_id=step_run.id, position=1, created_at=now,
+        )
+        Message.create(
+            id="review-message-a-1", task=task, step_key="a",
+            channel="review", role="assistant", content="审核中",
+            run_status="running", step_run_id=step_run.id,
+            position=0, created_at=now,
+        )
+        task.active_workflow_run_id = run.id
+        task.save()
+
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, pm)
+    try:
+        assert await runtime.recover_running_workflows() == 1
+        with pm.activate_project(project.path):
+            await _wait_until(lambda: Task.get_by_id(task.id).status == "ready")
+            assert TaskStep.get(
+                (TaskStep.task == task) & (TaskStep.step_key == "a")
+            ).status == "passed"
+            assert list(
+                StepRun.select().where(
+                    (StepRun.run == run) & (StepRun.step_key == "a")
+                )
+            ) == [step_run]
+            reviews = list(
+                ReviewRun.select().where(ReviewRun.step_run == step_run)
+                .order_by(ReviewRun.attempt)
+            )
+            assert [(review.attempt, review.status) for review in reviews] == (
+                [(1, "failed"), (2, "passed")]
+                if review_status == "running" else [(1, "passed")]
+            )
+            assert Message.get_by_id("exec-a-1").run_status == "succeeded"
+            if review_status == "running":
+                assert Message.get_by_id("review-message-a-1").run_status == "failed"
+            else:
+                assert Message.get_by_id("review-message-a-1").run_status == "completed"
+        assert len(RecoveryFakeEngine.prompts) == (1 if review_status == "running" else 0)
+        if review_status == "running":
+            assert "step review agent" in RecoveryFakeEngine.prompts[0]
+    finally:
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+
+
+@pytest.mark.anyio
 async def test_recovery_preserves_direct_entry_and_boundary_inputs(tmp_path):
     """Recovery must not expand a direct-C run back to skipped A/B."""
     from engines.core.registry import ENGINE_REGISTRY
@@ -391,6 +495,22 @@ async def test_recovery_marks_stale_messages_failed(tmp_path):
             started_at=now,
             created_at=now,
         )
+        old_run = WorkflowRun.create(
+            id="old-run-b", task=task, status="superseded",
+            workflow_schema_version=1, workflow_snapshot_json="{}",
+            started_at=now - timedelta(hours=1), ended_at=now - timedelta(minutes=30),
+        )
+        old_step = StepRun.create(
+            id="old-step-b", run=old_run, step_key="b", attempt=1,
+            status="succeeded", engine="claude",
+            started_at=now - timedelta(hours=1), ended_at=now - timedelta(minutes=59),
+        )
+        Message.create(
+            id="old-msg-b", task=task, channel="execution", step_key="b",
+            role="assistant", run_status="running", step_run_id=old_step.id,
+            position=0, started_at=now - timedelta(hours=1),
+            created_at=now - timedelta(hours=1),
+        )
     bus = EventBus()
     runtime = WorkflowRuntime(bus, pm)
     try:
@@ -399,6 +519,7 @@ async def test_recovery_marks_stale_messages_failed(tmp_path):
             message = Message.get_by_id("msg-b")
             assert message.run_status == "failed"
             assert message.ended_at is not None
+            assert Message.get_by_id("old-msg-b").run_status == "running"
             sealed = json.loads(message.events_json)
             assert [event["type"] for event in sealed] == [
                 "interaction_request",

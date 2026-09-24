@@ -51,7 +51,7 @@ class WorkflowDefinition:
 
     def validate(self) -> "WorkflowDefinition":
         """Validate this definition, returning itself for fluent use."""
-        inherit = self._raw.get("inheritProjectQuickButtons", True)
+        inherit = self._raw.get("inheritProjectQuickButtons", False)
         if not isinstance(inherit, bool):
             raise WorkflowValidationError("inheritProjectQuickButtons: expected a boolean")
         if "projectQuickButtonIds" in self._raw:

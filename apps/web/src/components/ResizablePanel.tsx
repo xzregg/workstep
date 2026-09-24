@@ -12,7 +12,7 @@ const LABELS = {
   se: 'taskDetail.resize.se', sw: 'taskDetail.resize.sw',
 } as const
 const DRAG_TARGET = '[data-dialog-drag-handle], .modal-header, .dialog-header, .file-preview-dialog-header, .schedule-header, header'
-const INTERACTIVE_TARGET = 'button, input, textarea, select, a, [role="button"], [contenteditable="true"]'
+const INTERACTIVE_TARGET = 'button, input, textarea, select, a, [role="button"], [contenteditable="true"], [data-dialog-selectable-text]'
 
 function clamp(bounds: Bounds): Bounds {
   const width = Math.min(bounds.width, window.innerWidth)

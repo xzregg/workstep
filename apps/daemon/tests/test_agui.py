@@ -134,7 +134,7 @@ def test_message_lifecycle_maps_to_text_message_events():
     started = to_agui_events(
         InternalEvent(
             type="message_started",
-            data={"prompt": "p", "artifact_round": 2},
+            data={"prompt": "p", "artifact_round": 2, "retry": True, "started_at": "2026-01-02T00:00:00Z"},
         ),
         _ctx(),
     )[0]
@@ -142,6 +142,8 @@ def test_message_lifecycle_maps_to_text_message_events():
     assert started["role"] == "assistant"
     assert started["prompt"] == "p"
     assert started["artifact_round"] == 2
+    assert started["retry"] is True
+    assert started["started_at"] == "2026-01-02T00:00:00Z"
 
     snapshot = to_agui_events(
         InternalEvent(type="message_snapshot", data={"content": "full"}),

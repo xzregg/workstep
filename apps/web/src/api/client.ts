@@ -734,6 +734,7 @@ export interface ChatSessionSummary {
   project_id: string
   workflow_id: string
   title: string
+  archived?: boolean
   engine: string
   model?: string | null
   fast_model?: string | null
@@ -950,10 +951,15 @@ export interface ChatMessageOptions {
 }
 
 export const chatSessionApi = {
-  list: (projectId: string) =>
+  list: (projectId: string, archived = false) =>
     request<{ sessions: ChatSessionSummary[] }>(
-      `/chat-sessions?project_id=${encodeURIComponent(projectId)}`,
+      `/chat-sessions?project_id=${encodeURIComponent(projectId)}&archived=${archived}`,
     ),
+  setArchived: (sessionId: string, projectId: string, archived: boolean) =>
+    request<ChatSessionSummary>(`/chat-sessions/${encodeURIComponent(sessionId)}/archive`, {
+      method: 'PATCH',
+      body: JSON.stringify({ project_id: projectId, archived }),
+    }),
   create: (input: ChatSessionCreateInput) =>
     request<ChatSessionDetail>('/chat-sessions', {
       method: 'POST',
@@ -1593,6 +1599,11 @@ export const taskApi = {
       `/task/${taskId}/step/${encodeURIComponent(stepKey)}/restart?project_id=${encodeURIComponent(projectId)}`,
       { method: 'POST' },
     ),
+  retryFailedMessage: (taskId: string, messageId: string, projectId: string) =>
+    request<{ message_id: string; step_key: string; run_id: string; status: 'queued' }>(
+      `/task/${encodeURIComponent(taskId)}/messages/${encodeURIComponent(messageId)}/retry?project_id=${encodeURIComponent(projectId)}`,
+      { method: 'POST' },
+    ),
   stepExecutionConfig: (taskId: string, stepKey: string, projectId: string) =>
     request<StepExecutionConfig>(
       `/task/${encodeURIComponent(taskId)}/step/${encodeURIComponent(stepKey)}/config?project_id=${encodeURIComponent(projectId)}`,
@@ -1676,7 +1687,7 @@ export const taskApi = {
     taskId: string,
     stepKey: string,
     reviewRunId: string,
-    decision: 'approve' | 'reject' | 'force-approve' | 'terminate',
+    decision: 'approve' | 'reject' | 'force-approve' | 'terminate' | 'complete-task',
     projectId: string,
     comment?: string,
   ) =>
@@ -1847,7 +1858,7 @@ async function fileDataUrl(file: File): Promise<string> {
   })
 }
 
-async function shareRequest<T>(
+export async function shareRequest<T>(
   path: string,
   sessionToken: string,
   options?: RequestInit,
@@ -2007,7 +2018,7 @@ export const shareApi = {
     sessionToken: string,
     stepKey: string,
     reviewRunId: string,
-    decision: 'approve' | 'reject' | 'force-approve' | 'terminate',
+    decision: 'approve' | 'reject' | 'force-approve' | 'terminate' | 'complete-task',
     comment?: string,
   ) =>
     shareRequest<{ decision: string; resumed: boolean; run_id: string | null }>(

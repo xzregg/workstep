@@ -425,6 +425,7 @@ class WorkflowRuntime:
         execution_scope: set[str] | None = None,
         entry_step_key: str | None = None,
         step_trigger_names: dict[str, str] | None = None,
+        retry_message_ids: dict[str, str] | None = None,
     ) -> WorkflowRunHandle:
         """Attach prepared persistent state to event-loop-owned runtime state."""
         task = prepared.task
@@ -445,6 +446,7 @@ class WorkflowRuntime:
             database_executor=prepared.database_executor,
             step_followups=step_followups,
             step_trigger_names=step_trigger_names,
+            retry_message_ids=retry_message_ids,
             input_rounds_by_step=input_rounds_by_step,
             execution_scope=resolved_scope,
             entry_step_key=resolved_entry,
@@ -622,7 +624,7 @@ class WorkflowRuntime:
                 ).where(
                     (Message.task == task)
                     & (Message.step_key == step_key)
-                    & (Message.channel == "execution")
+                    & (Message.channel.in_(["execution", "review"]))
                     & (Message.run_status == "running")
                 ).execute()
 
@@ -935,6 +937,96 @@ class WorkflowRuntime:
             "status": "queued",
         }
 
+    def _inspect_failed_message_retry(self, task_id: str, message_id: str) -> tuple[str, str]:
+        task = Task.get_or_none(Task.id == task_id)
+        message = Message.get_or_none(Message.id == message_id)
+        if task is None or message is None or message.task_id != task_id:
+            raise ValueError("失败消息不存在")
+        if (
+            message.role != "assistant"
+            or message.channel != "execution"
+            or message.run_status != "failed"
+            or not message.step_run_id
+        ):
+            raise ValueError("只能重启失败的阶段执行消息")
+        step_run = StepRun.get_or_none(StepRun.id == message.step_run_id)
+        if (
+            step_run is None
+            or step_run.step_key != message.step_key
+            or step_run.status != "failed"
+            or step_run.run_id != task.active_workflow_run_id
+        ):
+            raise ValueError("只能重启当前流程的最新失败消息")
+        latest_task_message = (
+            Message.select()
+            .where(Message.task == task)
+            .order_by(Message.sequence.desc(), Message.created_at.desc())
+            .first()
+        )
+        if latest_task_message is None or latest_task_message.id != message_id:
+            raise ValueError("只能重启任务对话最后一条失败消息")
+        if not (step_run.error or "").strip():
+            raise ValueError("只有异常错误导致的失败消息可以重启")
+        latest_step_run = (
+            StepRun.select()
+            .where(
+                (StepRun.run == step_run.run)
+                & (StepRun.step_key == step_run.step_key)
+            )
+            .order_by(StepRun.attempt.desc(), StepRun.started_at.desc())
+            .first()
+        )
+        latest_message = (
+            Message.select()
+            .where(
+                (Message.task == task)
+                & (Message.step_run_id == step_run.id)
+                & (Message.channel == "execution")
+                & (Message.role == "assistant")
+            )
+            .order_by(Message.sequence.desc(), Message.created_at.desc())
+            .first()
+        )
+        step = TaskStep.get_or_none(
+            (TaskStep.task == task) & (TaskStep.step_key == step_run.step_key)
+        )
+        if (
+            latest_step_run is None or latest_step_run.id != step_run.id
+            or latest_message is None or latest_message.id != message_id
+            or step is None or step.status != "failed"
+        ):
+            raise ValueError("只能重启当前阶段最新的失败消息")
+        active_steps = TaskStep.select().where(
+            (TaskStep.task == task)
+            & (TaskStep.status.in_([
+                *_ACTIVE_STEP_CONFIG_STATUSES,
+                "reviewing", "awaiting_review", "rework_waiting",
+            ]))
+        )
+        if active_steps.exists() or task_id in self._runners:
+            raise ValueError("其他步骤正在执行或等待审核，请先处理后再重启")
+        return step_run.step_key, step_run.run_id
+
+    async def retry_failed_message(
+        self, project_id: str, task_id: str, message_id: str,
+    ) -> dict:
+        step_key, run_id = await self._run_db(
+            project_id,
+            lambda _project: self._inspect_failed_message_retry(task_id, message_id),
+        )
+        handle = await self.restart_from_step(
+            project_id, task_id, step_key,
+            expected_run_id=run_id,
+            expected_failed_message_id=message_id,
+            reset_session=True,
+        )
+        return {
+            "message_id": message_id,
+            "step_key": step_key,
+            "run_id": handle.id,
+            "status": "queued",
+        }
+
     async def _skip_manual_review(
         self,
         project_id: str,
@@ -1012,6 +1104,11 @@ class WorkflowRuntime:
         """Persist a manual decision and resume unless the task was terminated."""
         from services.messages import current_actor_message_fields
 
+        if decision == "complete_task":
+            for _ in range(100):
+                if task_id not in self._runners:
+                    break
+                await asyncio.sleep(0.01)
         actor_fields = current_actor_message_fields()
         decision_data = await self._run_db(
             project_id,
@@ -1025,7 +1122,7 @@ class WorkflowRuntime:
                 actor_fields,
             ),
         )
-        if decision == "terminate":
+        if decision in {"terminate", "complete_task"}:
             event = {
                 "task_id": task_id,
                 "step_key": step_key,
@@ -1034,12 +1131,25 @@ class WorkflowRuntime:
                     "task_id": task_id,
                     "step_key": step_key,
                     "review_run_id": review_run_id,
-                    "status": "terminated",
+                    "status": "terminated" if decision == "terminate" else "passed",
                 },
             }
             ctx = AGUIContext.from_event(event)
             for agui_event in to_agui_events(event, ctx):
                 await self._event_bus.publish(agui_event)
+            if decision == "complete_task":
+                from services.remote_project import current_actor_event_fields
+
+                status_event = {
+                    "task_id": task_id,
+                    "step_key": "",
+                    "type": "status",
+                    "data": {"task_id": task_id, "status": "ready"},
+                    **current_actor_event_fields(),
+                }
+                ctx = AGUIContext.from_event(status_event)
+                for agui_event in to_agui_events(status_event, ctx):
+                    await self._event_bus.publish(agui_event)
         if decision_data is None:
             return None
         task, workflow_run, steps_config = decision_data
@@ -1093,12 +1203,30 @@ class WorkflowRuntime:
             raise RuntimeError("Review already has a different decision")
 
         now = utc_now()
-        approved = decision in {"approve", "force_approve"}
+        completed_task = decision == "complete_task"
+        approved = decision in {"approve", "force_approve", "complete_task"}
         terminated = decision == "terminate"
         task = Task.get_by_id(task_id)
         workflow_run = review.workflow_run
+        if completed_task:
+            if review.mode != "manual" or review.status not in {"pending", "rejected"}:
+                raise RuntimeError("只有待处理的人工审核可以完成任务")
+            if task.active_workflow_run_id != workflow_run.id:
+                raise RuntimeError("审核不属于当前执行轮次")
+            current_step = TaskStep.get_or_none(
+                (TaskStep.task == task) & (TaskStep.step_key == step_key)
+            )
+            if current_step is None or current_step.status != "awaiting_review":
+                raise RuntimeError("当前阶段已不再等待人工审核")
+            other_running = TaskStep.select().where(
+                (TaskStep.task == task)
+                & (TaskStep.step_key != step_key)
+                & (TaskStep.status.in_(["running", "retrying", "rework", "reviewing"]))
+            )
+            if other_running.exists() or task_id in self._runners:
+                raise RuntimeError("其他阶段仍在执行，不能完成任务")
         steps_config = None
-        if not terminated:
+        if not terminated and not completed_task:
             steps_config = (
                 WorkflowDefinition.load(self._current_workflow_steps(project, task))
                 .compile()
@@ -1153,6 +1281,48 @@ class WorkflowRuntime:
             task_step.review_feedback = comment or ""
             task_step.ended_at = None
         task_step.save()
+        if completed_task:
+            if review.step_run.artifact_round is not None:
+                update_round_manifest_status(
+                    artifacts_root=Path(project.workstep_dir) / "artifacts",
+                    workflow_id=task.workflow_id,
+                    task_id=task.id,
+                    step_key=step_key,
+                    artifact_round=review.step_run.artifact_round,
+                    status="passed",
+                    eligible_for_downstream=True,
+                )
+            TaskStep.update(
+                status="skipped", error=None, ended_at=now,
+            ).where(
+                (TaskStep.task == task)
+                & (TaskStep.step_key != step_key)
+                & (TaskStep.status != "passed")
+            ).execute()
+            ReviewRun.update(status="skipped", ended_at=now).where(
+                (ReviewRun.workflow_run == workflow_run)
+                & (ReviewRun.id != review.id)
+                & (ReviewRun.status.in_(["pending", "running"]))
+            ).execute()
+            current_step_run_ids = StepRun.select(StepRun.id).where(
+                StepRun.run == workflow_run
+            )
+            Message.update(run_status="completed", ended_at=now).where(
+                (Message.task == task)
+                & (Message.channel == "review")
+                & (Message.run_status == "running")
+                & (Message.step_run_id.in_(current_step_run_ids))
+            ).execute()
+            task.status = "ready"
+            task.state_version += 1
+            task.updated_at = now
+            task.save()
+            workflow_run.status = "succeeded"
+            workflow_run.ended_at = now
+            workflow_run.owner_id = None
+            workflow_run.heartbeat_at = None
+            workflow_run.save()
+            return None
         if terminated:
             task.status = "stopped"
             task.state_version += 1
@@ -1494,6 +1664,9 @@ class WorkflowRuntime:
                 .to_steps_config()
             )
             stale_keys = set()
+            review_keys = set()
+            review_step_runs = {}
+            review_passed_keys = set()
             for step_run in StepRun.select().where(
                 (StepRun.run == workflow_run)
                 & (StepRun.status == "running")
@@ -1516,23 +1689,89 @@ class WorkflowRuntime:
             for ts in TaskStep.select().where(
                 (TaskStep.task == task) & (TaskStep.status == "running")
             ):
+                latest_step_run = (
+                    StepRun.select()
+                    .where(
+                        (StepRun.run == workflow_run)
+                        & (StepRun.step_key == ts.step_key)
+                    )
+                    .order_by(StepRun.attempt.desc())
+                    .first()
+                )
+                if latest_step_run is not None and latest_step_run.status == "succeeded":
+                    # The process may have died between committing execution
+                    # success and moving the step into review.
+                    ts.status = "reviewing"
+                    ts.save()
+                    continue
                 ts.status = "pending"
                 ts.ended_at = None
                 ts.error = None
                 ts.save()
                 stale_keys.add(ts.step_key)
-            if stale_keys:
+            for ts in TaskStep.select().where(
+                (TaskStep.task == task) & (TaskStep.status == "reviewing")
+            ):
+                latest_step_run = (
+                    StepRun.select()
+                    .where(
+                        (StepRun.run == workflow_run)
+                        & (StepRun.step_key == ts.step_key)
+                    )
+                    .order_by(StepRun.attempt.desc())
+                    .first()
+                )
+                if latest_step_run is None or latest_step_run.status != "succeeded":
+                    continue
+                review_keys.add(ts.step_key)
+                review_step_runs[ts.step_key] = latest_step_run
+                latest_review = (
+                    ReviewRun.select()
+                    .where(ReviewRun.step_run == latest_step_run)
+                    .order_by(ReviewRun.attempt.desc())
+                    .first()
+                )
+                if latest_review is not None and latest_review.status == "passed":
+                    review_passed_keys.add(ts.step_key)
+                ReviewRun.update(
+                    status="failed",
+                    error="进程重启中断，等待自动恢复审核",
+                    ended_at=now,
+                ).where(
+                    (ReviewRun.step_run == latest_step_run)
+                    & (ReviewRun.mode == "auto")
+                    & (ReviewRun.status == "running")
+                ).execute()
+            current_step_run_ids = [
+                row.id for row in StepRun.select(StepRun.id).where(
+                    StepRun.run == workflow_run
+                )
+            ]
+            current_message_run = Message.step_run_id.in_(current_step_run_ids)
+            if workflow_run.started_at is not None:
+                current_message_run |= (
+                    Message.step_run_id.is_null(True)
+                    & (Message.created_at >= workflow_run.started_at)
+                )
+            if stale_keys or review_keys:
                 # Close in-flight execution messages so the UI does not keep
                 # an eternally-running spinner for the interrupted attempt.
                 stale_messages = Message.select().where(
                     (Message.task == task)
                     & (Message.channel == "execution")
                     & (Message.run_status == "running")
-                    & (Message.step_key.in_(stale_keys))
+                    & current_message_run
+                    & (Message.step_key.in_(stale_keys | review_keys))
                 )
                 for stale_message in stale_messages:
-                    stale_message.run_status = "failed"
-                    stale_message.ended_at = now
+                    review_execution_finished = stale_message.step_key in review_keys
+                    stale_message.run_status = (
+                        "succeeded" if review_execution_finished else "failed"
+                    )
+                    stale_message.ended_at = (
+                        review_step_runs[stale_message.step_key].ended_at or now
+                        if review_execution_finished else now
+                    )
                     if stale_message.event_log_path:
                         journal = TurnEventJournal()
                         ref = journal.reopen(
@@ -1563,6 +1802,30 @@ class WorkflowRuntime:
                             stale_message.events_json
                         )
                     stale_message.save()
+            if review_keys:
+                Message.update(
+                    run_status="failed",
+                    content="审核因服务重启中断，正在自动重试",
+                    ended_at=now,
+                ).where(
+                    (Message.task == task)
+                    & (Message.channel == "review")
+                    & (Message.run_status == "running")
+                    & current_message_run
+                    & (Message.step_key.in_(review_keys - review_passed_keys))
+                ).execute()
+                if review_passed_keys:
+                    Message.update(
+                        run_status="completed",
+                        content="审核已通过",
+                        ended_at=now,
+                    ).where(
+                        (Message.task == task)
+                        & (Message.channel == "review")
+                        & (Message.run_status == "running")
+                        & current_message_run
+                        & (Message.step_key.in_(review_passed_keys))
+                    ).execute()
             task.status = "running"
             task.updated_at = now
             task.save()
@@ -1573,7 +1836,9 @@ class WorkflowRuntime:
             workflow_run.owner_id = self._instance_id
             workflow_run.heartbeat_at = now
             workflow_run.save()
-            prepared.append((task, workflow_run, stale_keys, now, steps_config))
+            prepared.append((
+                task, workflow_run, stale_keys | review_keys, now, steps_config,
+            ))
         return prepared, contended
 
     def _current_workflow_steps(self, project, task: Task) -> dict:
@@ -1866,6 +2131,7 @@ class WorkflowRuntime:
         trigger_name: str | None = None,
         input_rounds: dict[str, int] | None = None,
         reset_session: bool = False,
+        expected_failed_message_id: str | None = None,
     ) -> WorkflowRunHandle:
         """Stop the current runner and start a child run from one DAG step.
 
@@ -1897,6 +2163,12 @@ class WorkflowRuntime:
                     raise RuntimeError("The referenced workflow run no longer exists")
                 if expected_run_id and task.active_workflow_run_id != expected_run_id:
                     raise RuntimeError("The active workflow run has changed")
+                if expected_failed_message_id:
+                    retry_step_key, retry_run_id = self._inspect_failed_message_retry(
+                        task_id, expected_failed_message_id,
+                    )
+                    if retry_step_key != step_key or retry_run_id != parent_run_id:
+                        raise ValueError("失败消息已不属于当前阶段")
                 # Re-run from the workflow as it is now, not the parent run's
                 # snapshot, so flow edits (e.g. engine changes) apply.
                 workflow_data = self._current_workflow_steps(project, task)
@@ -1975,6 +2247,10 @@ class WorkflowRuntime:
                 entry_step_key=step_key,
                 step_trigger_names=(
                     {step_key: trigger_name} if trigger_name else None
+                ),
+                retry_message_ids=(
+                    {step_key: expected_failed_message_id}
+                    if expected_failed_message_id else None
                 ),
             )
 
@@ -2183,6 +2459,29 @@ class WorkflowRuntime:
                 (ReviewRun.workflow_run == parent)
                 & (ReviewRun.status.in_(["pending", "running"]))
             ).execute()
+            # A review can be interrupted after its StepRun has succeeded.
+            # Close both bubbles from this parent run before launching the
+            # replacement; otherwise their old "running" state survives.
+            from services.history import project_terminal_message_state
+
+            parent_step_run_ids = [
+                row.id for row in StepRun.select(StepRun.id).where(StepRun.run == parent)
+            ]
+            if parent_step_run_ids:
+                stale_messages = Message.select().where(
+                    (Message.task == task)
+                    & (Message.step_run_id.in_(parent_step_run_ids))
+                    & (Message.role == "assistant")
+                    & (Message.channel.in_(["execution", "review"]))
+                    & (Message.run_status == "running")
+                )
+                for message in stale_messages:
+                    projection = {}
+                    project_terminal_message_state(projection, message)
+                    if projection.get("run_status"):
+                        message.run_status = projection["run_status"]
+                        message.ended_at = projection["ended_at"] or now
+                        message.save(only=[Message.run_status, Message.ended_at])
             child = WorkflowRun.create(
                 id=str(uuid.uuid4()),
                 task=task,

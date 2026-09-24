@@ -5,6 +5,8 @@ import PromptViewerDialog from './PromptViewerDialog'
 import TaskDetailView, { type TaskDetailViewProps } from './TaskDetailView'
 import ProjectDirectoryBrowserDialog from './ProjectDirectoryBrowserDialog'
 import TaskArtifactPreviewDialog from './TaskArtifactPreviewDialog'
+import { GitApiContext } from './git/GitApiContext'
+import { gitApi, type GitApi } from '../api/git'
 import {
   MarkdownAssetUrlProvider,
   type MarkdownUrlResolver,
@@ -23,11 +25,19 @@ export interface TaskDetailReadCapabilities {
   loadExecutionReport: NonNullable<TaskDetailViewProps['executionReportLoader']>
 }
 
+export interface TaskDetailGitCapability {
+  api: GitApi
+  projectId: string
+  shared?: boolean
+  readOnly?: boolean
+}
+
 export interface TaskDetailPageProps extends Omit<
   TaskDetailViewProps,
-  'onLoadMessageEvents' | 'onOpenArtifact' | 'executionReportLoader'
+  'onLoadMessageEvents' | 'onOpenArtifact' | 'executionReportLoader' | 'gitEnabled' | 'gitProjectId'
 > {
   readCapabilities: TaskDetailReadCapabilities
+  gitCapability?: TaskDetailGitCapability
   artifactNotice?: string
   /** 产物预览的挂载与关闭由调用方管理状态，这里只负责统一渲染。 */
   previewArtifact?: TaskArtifact | null
@@ -50,16 +60,20 @@ export default function TaskDetailPage({
   onCloseViewingPrompt,
   overlays,
   readCapabilities,
+  gitCapability,
   onClose,
   ...viewProps
 }: TaskDetailPageProps) {
   const { t } = useI18n()
 
   return (
+    <GitApiContext.Provider value={{ api: gitCapability?.api || gitApi, shared: !!gitCapability?.shared, readOnly: !!gitCapability?.readOnly }}>
     <MarkdownAssetUrlProvider resolver={readCapabilities.resolveAssetUrl} filePreview={readCapabilities.filePreview}>
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <TaskDetailView
         {...viewProps}
+        gitEnabled={!!gitCapability}
+        gitProjectId={gitCapability?.projectId}
         onClose={onClose}
         onLoadMessageEvents={readCapabilities.loadMessageEvents}
         onOpenArtifact={readCapabilities.openArtifact}
@@ -123,5 +137,6 @@ export default function TaskDetailPage({
       {overlays}
     </div>
     </MarkdownAssetUrlProvider>
+    </GitApiContext.Provider>
   )
 }

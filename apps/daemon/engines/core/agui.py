@@ -20,6 +20,7 @@ _RUN_FINISHED_STATUSES = {"done", "passed", "ready", "succeeded", "completed"}
 _RUN_ERROR_STATUSES = {"failed", "cancelled", "error"}
 
 _CUSTOM_NAMES: dict[str, str] = {
+    "async_question": "workstep.async_question",
     "interaction_request": "workstep.interaction_request",
     "interaction_response": "workstep.interaction_response",
     "plan": "workstep.plan",
@@ -276,6 +277,8 @@ def to_agui_events(
                 **({"content": data["content"]} if data.get("content") is not None else {}),
                 **({"status": data["status"]} if data.get("status") is not None else {}),
                 **({"artifact_round": data["artifact_round"]} if data.get("artifact_round") is not None else {}),
+                **({"started_at": data["started_at"]} if data.get("started_at") is not None else {}),
+                **({"retry": True} if data.get("retry") else {}),
             },
         )]
     if event_type == "message_snapshot":

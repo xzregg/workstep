@@ -515,6 +515,21 @@ class CodexSDKEngine(AcpEngineBase):
                         rendered, phase=item.get("phase"), source_item_id=item_id,
                     )
                     events.append(message_event)
+                delivery = getattr(root, "delivery", None)
+                if self._plain(delivery) == "async":
+                    questions = [
+                        {
+                            "title": str(getattr(question, "title", "") or ""),
+                            "options": [str(option) for option in getattr(question, "options", None) or []],
+                        }
+                        for question in getattr(root, "questions", None) or []
+                        if getattr(question, "title", None)
+                    ]
+                    if questions:
+                        events.append(InternalEvent(type="async_question", data={
+                            "source_item_id": item_id,
+                            "questions": questions,
+                        }))
                 item.update(text=str(text), pending="", completed=True)
             elif rtype == "reasoning":
                 text = extract_reasoning_text(getattr(root, "content", None))

@@ -56,6 +56,8 @@ export interface MessageMetaBarProps {
   onViewPrompt: (prompt: string) => void
   /** Terminal message status shown as a pill (cancelled/stopped/failed). */
   status?: 'cancelled' | 'stopped' | 'failed'
+  onRetryFailedMessage?: () => void
+  retryingFailedMessage?: boolean
   /** Render this message as a manual review header (no engine process trace). */
   reviewMode?: boolean
   /** Manual review outcome used to color the badge (passed=green, others=red). */
@@ -90,6 +92,8 @@ export default function MessageMetaBar({
   artifactRound,
   onViewPrompt,
   status,
+  onRetryFailedMessage,
+  retryingFailedMessage = false,
   reviewMode = false,
   reviewStatus,
   pendingInserts = false,
@@ -188,19 +192,36 @@ export default function MessageMetaBar({
             }}
           >
             {status === 'failed' ? (
-              <span
-                title={t('meta.failedTitle')}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 4,
-                  height: 18, padding: '0 7px', borderRadius: 9,
-                  border: '1px solid rgba(217,45,32,0.45)',
-                  background: 'rgba(217,45,32,0.08)',
-                  color: 'var(--danger)', fontSize: 'calc(11px * var(--font-scale))', flexShrink: 0,
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                <Icon name="x" size={8} strokeWidth={2.6} />
-                {t('trace.failed')}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <span
+                  title={t('meta.failedTitle')}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    height: 18, padding: '0 7px', borderRadius: 9,
+                    border: '1px solid rgba(217,45,32,0.45)',
+                    background: 'rgba(217,45,32,0.08)',
+                    color: 'var(--danger)', fontSize: 'calc(11px * var(--font-scale))', flexShrink: 0,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <Icon name="x" size={8} strokeWidth={2.6} />
+                  {t('trace.failed')}
+                </span>
+                {onRetryFailedMessage && (
+                  <button
+                    type="button"
+                    className="chat-message-action"
+                    title={t('footer.retryFailedMessageTitle')}
+                    disabled={retryingFailedMessage}
+                    onClick={onRetryFailedMessage}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '0 4px', minHeight: 18, color: 'var(--danger)', fontSize: 'inherit' }}
+                  >
+                    {retryingFailedMessage
+                      ? <span className="task-status-spinner" aria-hidden="true" />
+                      : <Icon name="rotate-ccw" size={11} />}
+                    {t('footer.restart')}
+                  </button>
+                )}
               </span>
             ) : null}
             {hasIdleTimeoutEvent(events) && (

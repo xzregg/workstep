@@ -472,6 +472,50 @@ async def test_save_file_content_uses_reviewed_snapshot_and_preserves_mode(clien
     assert target.stat().st_mode & 0o777 == 0o755
 
 
+async def test_save_file_can_undo_an_applied_block_after_file_becomes_clean(client, layout, monkeypatch):
+    import services.git.write as git_write
+    http, _ = client
+    _, repo, _ = layout
+    target = repo / 'one.txt'
+    target.write_text('changed\n')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    state = (await http.get(url + '/status')).json()
+    applied = await http.post(url + '/files/content', json={
+        'path': 'one.txt', 'content': 'original\n', 'snapshot': state['snapshot'],
+    })
+    assert applied.status_code == 200, applied.text
+    assert not applied.json()['files']
+
+    entered = threading.Event()
+    release = threading.Event()
+    original_read = git_write.read_file
+    def slow_read(*args):
+        entered.set()
+        release.wait(1)
+        return original_read(*args)
+    monkeypatch.setattr(git_write, 'read_file', slow_read)
+    pending = asyncio.create_task(http.post(url + '/files/content', json={
+        'path': 'one.txt', 'content': 'changed\n', 'snapshot': applied.json()['snapshot'],
+        'expected_content': 'original\n',
+    }))
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        assert (await asyncio.wait_for(http.get('/api/git/repositories'), .15)).status_code == 200
+    finally:
+        release.set()
+    restored = await pending
+    assert restored.status_code == 200, restored.text
+    assert target.read_text() == 'changed\n'
+
+    stale = await http.post(url + '/files/content', json={
+        'path': 'one.txt', 'content': 'wrong\n', 'snapshot': applied.json()['snapshot'],
+        'expected_content': 'original\n',
+    })
+    assert stale.status_code == 409
+    assert target.read_text() == 'changed\n'
+
+
 async def test_generate_commit_message_uses_prompt_enhance_provider_and_selected_diff(client, layout, monkeypatch):
     from services.config import config_store
 

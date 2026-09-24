@@ -1526,7 +1526,7 @@ function FlowCanvasInner({
         kind: (e.data as { kind?: string })?.kind === 'dashed' ? 'dashed' : 'solid',
       }
     })
-    return { nodes: nodesArr, connections: connsArr, bookmarks: saveBookmarks(nds), inheritProjectQuickButtons: initialSteps?.inheritProjectQuickButtons !== false, ...(Array.isArray(initialSteps?.projectQuickButtonIds) ? { projectQuickButtonIds: initialSteps.projectQuickButtonIds } : {}), quickButtons: Array.isArray(initialSteps?.quickButtons) ? initialSteps.quickButtons : [] }
+    return { nodes: nodesArr, connections: connsArr, bookmarks: saveBookmarks(nds), inheritProjectQuickButtons: initialSteps?.inheritProjectQuickButtons === true, ...(Array.isArray(initialSteps?.projectQuickButtonIds) ? { projectQuickButtonIds: initialSteps.projectQuickButtonIds } : {}), quickButtons: Array.isArray(initialSteps?.quickButtons) ? initialSteps.quickButtons : [] }
   }
   const buildCanvasJson = () => buildCanvasJsonFromNodes(nodes, edges)
 

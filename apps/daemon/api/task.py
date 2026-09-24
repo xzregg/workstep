@@ -453,6 +453,23 @@ async def restart_step_with_fresh_session(
     return accepted
 
 
+@router.post("/{task_id}/messages/{message_id}/retry")
+async def retry_failed_message(
+    task_id: str,
+    message_id: str,
+    pid: str = Query(..., alias="project_id"),
+):
+    """Restart the failed execution represented by this message."""
+    from main import workflow_runtime
+    if not workflow_runtime:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    _project(pid)
+    try:
+        return await workflow_runtime.retry_failed_message(pid, task_id, message_id)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.patch("/{task_id}/coordinator-config")
 async def update_coordinator_config(
     task_id: str,
@@ -640,6 +657,16 @@ async def terminate_review(
     pid: str = Query(..., alias="project_id"),
 ):
     return await _decide_review(task_id, step_key, req, pid, "terminate")
+
+
+@router.post("/{task_id}/steps/{step_key}/review/complete-task")
+async def complete_task_at_review(
+    task_id: str,
+    step_key: str,
+    req: ReviewDecisionRequest,
+    pid: str = Query(..., alias="project_id"),
+):
+    return await _decide_review(task_id, step_key, req, pid, "complete_task")
 
 
 @router.post("/run")

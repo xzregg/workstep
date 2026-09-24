@@ -15,7 +15,52 @@ import {
   findLatestDispatchedTask,
   resolveStepRestartImpact,
   resolveStepDisplayStatus,
+  isStepActiveForStop,
+  mergeHistoryMessageWithLive,
+  mergeRefreshedTaskHistory,
+  canRetryFailedExecutionMessage,
 } from '../src/pages/taskDetailChat.ts'
+
+test('only the final execution message with a step error can restart in place', () => {
+  const failed = { id: 'failed', role: 'assistant', channel: 'execution', run_status: 'failed' }
+  assert.equal(canRetryFailedExecutionMessage(failed, 'failed', 'failed', 'network error'), true)
+  assert.equal(canRetryFailedExecutionMessage(failed, 'later-user', 'failed', 'network error'), false)
+  assert.equal(canRetryFailedExecutionMessage(failed, 'failed', 'failed', ''), false)
+  assert.equal(canRetryFailedExecutionMessage(failed, 'failed', 'passed', 'network error'), false)
+})
+
+test('reused failed message shows its new attempt and discards loaded old trace', () => {
+  const oldMessage = {
+    id: 'same-id', role: 'assistant', run_status: 'failed', content: 'old failure',
+    step_run_id: 'old-run', event_log_path: 'old.jsonl',
+    event_detail: { loaded: true }, events: [{ type: 'old' }],
+    created_at: '2026-01-01T00:00:00Z',
+  }
+  const live = {
+    role: 'assistant', status: 'running', content: '', restarted: true,
+    started_at: '2026-01-02T00:00:00Z', events: [{ type: 'TEXT_MESSAGE_START' }],
+  }
+  const running = mergeHistoryMessageWithLive(oldMessage, live)
+  assert.equal(running.run_status, 'running')
+  assert.equal(running.content, '')
+  assert.deepEqual(running.events, live.events)
+  assert.equal(running.started_at, live.started_at)
+  assert.equal(running.created_at, oldMessage.created_at)
+
+  const refreshed = mergeRefreshedTaskHistory([oldMessage], [{
+    ...oldMessage, run_status: 'running', step_run_id: 'new-run',
+    event_log_path: 'new.jsonl', events: [], event_detail: { loaded: false },
+  }])
+  assert.deepEqual(refreshed[0].events, [])
+  assert.equal(refreshed[0].event_detail.loaded, false)
+})
+
+test('keeps the stop action available while an automatic review is running', () => {
+  assert.equal(isStepActiveForStop('running'), true)
+  assert.equal(isStepActiveForStop('reviewing'), true)
+  assert.equal(isStepActiveForStop('awaiting_review'), false)
+  assert.equal(isStepActiveForStop('passed'), false)
+})
 
 test('shows every solid downstream input connected to an output port', () => {
   const steps = [
@@ -846,6 +891,14 @@ test('merges live execution updates into a persisted running message', () => {
   assert.equal(merged.run_status, 'running')
 })
 
+test('keeps a terminal history status when a stale live update still says running', () => {
+  const merged = mergeHistoryMessageWithLive(
+    { id: 'old-review', role: 'assistant', run_status: 'cancelled', ended_at: '2026-09-24T04:48:28Z', content: '审核中', events: [] },
+    { id: 'old-review', role: 'assistant', status: 'running', content: '审核中', events: [] },
+  )
+  assert.equal(merged.run_status, 'cancelled')
+})
+
 test('keeps the inserted user message completed after its live_message ack', () => {
   // 插入的用户消息没有 message_completed 事件，只有 live_message 确认；
   // 合并时必须沿用历史 run_status，避免右侧用户气泡被误标为 streaming。
@@ -929,14 +982,12 @@ test('falls back to created_at when only one side carries a sequence', () => {
   assert.deepEqual(ordered.map((m) => m.id), ['A', 'U', 'B'])
 })
 
-test('moves a still-running step message below the inserted user message', () => {
-  // 阶段仍在进行：按当前时间（创建时间 + 已进行时长）排序，晚于用户消息 → 挪到下方。
-  const now = new Date('2026-08-07T10:05:00.000Z').getTime()
+test('keeps a still-running step message at its start time', () => {
   const ordered = orderConversationMessages([
     { id: 'A', role: 'assistant', run_status: 'running', created_at: '2026-08-07T10:00:00.000Z', content: '正在输出' },
     { id: 'U', role: 'user', created_at: '2026-08-07T10:01:00.000Z', content: '插入内容', run_status: 'completed' },
-  ], now)
-  assert.deepEqual(ordered.map((m) => m.id), ['U', 'A'])
+  ])
+  assert.deepEqual(ordered.map((m) => m.id), ['A', 'U'])
 })
 
 test('keeps a coordinator reply after the user message when their timestamps are equal', () => {
@@ -956,12 +1007,12 @@ test('keeps a coordinator reply after the user message when their timestamps are
       run_status: 'completed',
       created_at: '2026-09-21T06:40:25.000Z',
     },
-  ], new Date('2026-09-21T06:39:00.000Z').getTime())
+  ])
 
   assert.deepEqual(ordered.map((message) => message.id), ['user', 'assistant'])
 })
 
-test('never gives a running reply an effective time before its own creation', () => {
+test('keeps a running reply after a user message sent just before it', () => {
   const ordered = orderConversationMessages([
     {
       id: 'assistant',
@@ -977,20 +1028,79 @@ test('never gives a running reply an effective time before its own creation', ()
       run_status: 'completed',
       created_at: '2026-09-21T06:40:25.000Z',
     },
-  ], new Date('2026-09-21T06:39:00.000Z').getTime())
+  ])
 
   assert.deepEqual(ordered.map((message) => message.id), ['user', 'assistant'])
 })
 
-test('sorts finished step messages by their completion time', () => {
-  // 段 A 在用户消息之后才完成（ended_at 晚于用户发送时间）→ 挪到用户消息下面；
-  // 更早完成的阶段消息保持在用户消息上面。
+test('keeps finished step messages at their start time', () => {
+  // 完成时间可能晚于用户发送时间，消息仍按界面显示的开始时间排列。
   const ordered = orderConversationMessages([
     { id: 'A', role: 'assistant', run_status: 'succeeded', created_at: '2026-08-07T10:00:00.000Z', ended_at: '2026-08-07T10:02:00.000Z', content: '第一段输出' },
     { id: 'U', role: 'user', created_at: '2026-08-07T10:01:00.000Z', content: '插入内容', run_status: 'completed' },
     { id: 'Prev', role: 'assistant', run_status: 'succeeded', created_at: '2026-08-07T09:58:00.000Z', ended_at: '2026-08-07T09:59:00.000Z', content: '早前输出' },
   ])
-  assert.deepEqual(ordered.map((m) => m.id), ['Prev', 'U', 'A'])
+  assert.deepEqual(ordered.map((m) => m.id), ['Prev', 'A', 'U'])
+})
+
+test('keeps later user messages below persisted running steps', () => {
+  const ordered = orderConversationMessages([
+    { id: 'later-user', role: 'user', sequence: 24, created_at: '2026-09-24T05:12:19.511843Z' },
+    { id: 'step', role: 'assistant', channel: 'execution', sequence: 4, run_status: 'running', created_at: '2026-09-24T01:34:56.302751Z' },
+    { id: 'review', role: 'assistant', channel: 'review', sequence: 5, run_status: 'running', created_at: '2026-09-24T01:35:32.235787Z' },
+    { id: 'earlier-user', role: 'user', sequence: 22, created_at: '2026-09-24T05:08:15.161294Z' },
+  ])
+  assert.deepEqual(ordered.map((m) => m.id), ['step', 'review', 'earlier-user', 'later-user'])
+})
+
+test('keeps a live message between persisted messages by its creation time', () => {
+  const messages = [
+    { id: 'later-user', role: 'user', sequence: 2, created_at: '2026-09-24T13:10:00.000Z' },
+    { id: 'live', role: 'assistant', status: 'running', created_at: '2026-09-24T13:15:00.000Z' },
+    { id: 'long-step', role: 'assistant', sequence: 1, run_status: 'succeeded', created_at: '2026-09-24T09:34:56.000Z', ended_at: '2026-09-24T13:20:00.000Z' },
+  ]
+  assert.deepEqual(orderConversationMessages(messages).map((m) => m.id), ['long-step', 'later-user', 'live'])
+  assert.deepEqual(orderConversationMessages([...messages].reverse()).map((m) => m.id), ['long-step', 'later-user', 'live'])
+})
+
+test('keeps concurrent persisted messages in server sequence despite start inversion', () => {
+  const messages = [
+    { id: 'ui-review', role: 'assistant', sequence: 6, started_at: '2026-09-24T01:35:32.233Z' },
+    { id: 'backend-review', role: 'assistant', sequence: 5, started_at: '2026-09-24T01:35:32.235Z' },
+    { id: 'backend-execution', role: 'assistant', sequence: 4, started_at: '2026-09-24T01:34:56.302751Z' },
+  ]
+  assert.deepEqual(orderConversationMessages(messages).map((m) => m.id), [
+    'backend-execution', 'backend-review', 'ui-review',
+  ])
+})
+
+test('keeps the old segment above an inserted user message and its new response', () => {
+  const messages = [
+    { id: 'response', role: 'assistant', channel: 'execution', sequence: 13, started_at: '2026-09-24T03:31:43.531189Z', run_status: 'running' },
+    { id: 'insert', role: 'user', channel: 'execution', sequence: 12, started_at: '2026-09-24T03:31:43.514729Z' },
+    { id: 'old-segment', role: 'assistant', channel: 'execution', sequence: 8, started_at: '2026-09-24T01:44:34.224401Z', ended_at: '2026-09-24T03:31:43.531189Z', run_status: 'succeeded' },
+  ]
+  assert.deepEqual(orderConversationMessages(messages).map((m) => m.id), [
+    'old-segment', 'insert', 'response',
+  ])
+})
+
+test('keeps concurrent executions in creation order when they finish in reverse order', () => {
+  const ordered = orderConversationMessages([
+    { id: 'second', role: 'assistant', channel: 'execution', sequence: 2, started_at: '2026-09-24T10:00:01Z', ended_at: '2026-09-24T10:01:00Z' },
+    { id: 'first', role: 'assistant', channel: 'execution', sequence: 1, started_at: '2026-09-24T10:00:00Z', ended_at: '2026-09-24T10:05:00Z' },
+    { id: 'later-user', role: 'user', sequence: 3, started_at: '2026-09-24T10:02:00Z' },
+  ])
+  assert.deepEqual(ordered.map((m) => m.id), ['first', 'second', 'later-user'])
+})
+
+test('keeps an optimistic insert below its running segment until the server responds', () => {
+  const ordered = orderConversationMessages([
+    { id: 'pending-user', role: 'user', created_at: '2026-09-24T10:02:00Z' },
+    { id: 'old-segment', role: 'assistant', channel: 'execution', sequence: 1, run_status: 'running', started_at: '2026-09-24T10:00:00Z' },
+    { id: 'parallel-step', role: 'assistant', channel: 'execution', sequence: 2, run_status: 'running', started_at: '2026-09-24T10:01:00Z' },
+  ])
+  assert.deepEqual(ordered.map((m) => m.id), ['old-segment', 'parallel-step', 'pending-user'])
 })
 
 test('keeps a step review after its execution when the execution end time is later', () => {

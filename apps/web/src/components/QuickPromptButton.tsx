@@ -84,8 +84,7 @@ export default function QuickPromptButton({
   if (displayOnly) {
     if (displayContent.trim()) {
       const contentHtml = sanitizeQuickPromptLabel(displayContent)
-      return <span className="chat-quick-prompt-html" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, ...style }}>
-        <small style={{ color: 'var(--muted)' }}>{label}</small>
+      return <span className="chat-quick-prompt-html" style={{ display: 'inline-flex', alignItems: 'center', ...style }}>
         <span dangerouslySetInnerHTML={{ __html: contentHtml }} />
       </span>
     }

@@ -1,9 +1,11 @@
+import { useGitApi } from './GitApiContext'
 import { useEffect, useState } from 'react'
-import { gitApi, type GitCommit } from '../../api/git'
+import { type GitCommit } from '../../api/git'
 import { useI18n } from '../../i18n'
 import Button from '../Button'
 
 export default function GitHistory({ id, branch, head, onCommit }: { id: string; branch?: string; head?: string | null; onCommit: (hash: string) => void }) {
+  const gitApi = useGitApi()
   const { t } = useI18n()
   const [commits, setCommits] = useState<GitCommit[]>([])
   const [more, setMore] = useState(false)

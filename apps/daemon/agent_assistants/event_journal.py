@@ -22,6 +22,7 @@ from typing import Any
 
 _SAFE_SEGMENT = re.compile(r"^[A-Za-z0-9_.:-]+$")
 _SUMMARY_EVENT_TYPES = {
+    "async_question",
     "interaction_request",
     "interaction_response",
     "plan",
