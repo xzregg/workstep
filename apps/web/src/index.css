@@ -398,6 +398,17 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 }
 .btn-icon:hover { background: var(--surface); color: var(--fg); }
 
+.task-detail-header {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.task-detail-title {
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 /* 用户消息操作按钮：鼠标悬停到消息上才显示，高度已预留不撑开布局 */
 /* 对话消息组件:始终允许选中文字(默认浏览器蓝色高亮) */
 .chat-message-row,

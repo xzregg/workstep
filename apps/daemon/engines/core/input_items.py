@@ -1,6 +1,11 @@
 """Engine-owned chat input commands shared by related adapters."""
 
 
+NO_MANUAL_COMPACTION = frozenset({
+    "openclaw", "pydantic_ai", "deepseek_harness",
+})
+
+
 def workstep_input_commands() -> list[dict[str, str]]:
     """Commands implemented consistently by WorkStep's shared chat input."""
     return [

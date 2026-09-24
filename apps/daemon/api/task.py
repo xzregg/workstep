@@ -271,6 +271,7 @@ async def chat_with_coordinator(
             req.content,
             idempotency_key,
             pending_insert_ids=req.pending_insert_ids,
+            reset_session=req.reset_session,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -582,6 +583,7 @@ async def get_task_reviews(
             "model": row.model,
             "report": json.loads(row.report_json) if row.report_json else None,
             "decision": row.decision,
+            "error": row.error,
             "decision_comment": row.decision_comment,
             "reviewer_id": row.reviewer_id,
             "reviewer_name": row.reviewer_name,
@@ -605,8 +607,13 @@ async def _decide_review(
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Service not initialized")
     try:
+        options = (
+            {"schedule_downstream": req.schedule_downstream}
+            if decision == "set_complete" else {}
+        )
         handle = await workflow_runtime.decide_review(
-            project_id, task_id, step_key, req.review_run_id, decision, req.comment
+            project_id, task_id, step_key, req.review_run_id, decision, req.comment,
+            **options,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -667,6 +674,16 @@ async def complete_task_at_review(
     pid: str = Query(..., alias="project_id"),
 ):
     return await _decide_review(task_id, step_key, req, pid, "complete_task")
+
+
+@router.post("/{task_id}/steps/{step_key}/review/set-complete")
+async def set_terminated_review_complete(
+    task_id: str,
+    step_key: str,
+    req: ReviewDecisionRequest,
+    pid: str = Query(..., alias="project_id"),
+):
+    return await _decide_review(task_id, step_key, req, pid, "set_complete")
 
 
 @router.post("/run")

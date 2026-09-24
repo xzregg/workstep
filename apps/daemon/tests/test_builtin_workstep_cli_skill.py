@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from services.skill_center import SkillCenter
-from services.tool_registry import workstep_cli_instruction
 
 
 BUILTIN_SKILLS = Path(__file__).parent.parent / "data" / "skills"
@@ -22,6 +21,7 @@ def test_builtin_workstep_cli_skill_is_enabled_and_mirrored_by_default(tmp_path)
     text = mirrored.read_text(encoding="utf-8")
     assert "python -m cli workflow list" in text
     assert "python -m cli workflow get" in text
+    assert "python -m cli workflow action-create" in text
     assert "python -m cli task create" in text
     assert "<project>/.workstep/artifacts/<workflow_id>/<task_id>/.worktrees/<alias>/" in text
     assert "<project>/.workstep/worktrees/<task_id>/" not in text
@@ -46,10 +46,6 @@ def test_builtin_workstep_cli_skill_is_enabled_and_mirrored_by_default(tmp_path)
     assert text.index("uv run --no-sync --directory apps/daemon") < text.index(
         "When the `workstep` executable is already known"
     )
-
-
-def test_source_checkout_cli_prompt_preserves_optional_engine_sdks():
-    assert "uv run --no-sync python -m cli" in workstep_cli_instruction()
 
 
 def test_disabled_builtin_workstep_cli_skill_stays_disabled(tmp_path):

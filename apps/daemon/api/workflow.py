@@ -12,6 +12,7 @@ from services import config as config_service
 from services.config import resolve_execution_engine
 from services.project import project_manager
 from services.workflow_definition import WorkflowDefinition, WorkflowValidationError
+from services.workflow_actions import create_workflow_action, normalize_action_payload
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +163,26 @@ async def get_workflow(workflow_id: str, pid: str = Query(..., alias="project_id
         return wf
 
     return await _run_db(pid, load)
+
+
+@router.post("/{workflow_id}/actions")
+async def create_action_shortcut(
+    workflow_id: str,
+    payload: dict = Body(...),
+    pid: str = Query(..., alias="project_id"),
+):
+    """Publish a script and register its workflow shortcut atomically."""
+    try:
+        cleaned = normalize_action_payload(payload)
+        return await _run_db(
+            pid, lambda project: create_workflow_action(project, workflow_id, cleaned)
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.put("/{workflow_id}")

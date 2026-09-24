@@ -37,11 +37,13 @@ class ScheduledStartRequest(BaseSchema):
 class ReviewDecisionRequest(BaseSchema):
     review_run_id: str
     comment: str | None = None
+    schedule_downstream: bool | None = None
 
 
 class CoordinatorChatRequest(BaseSchema):
     content: str
     pending_insert_ids: list[str] = Field(default_factory=list)
+    reset_session: bool = False
 
 
 class StepMessageRequest(BaseSchema):

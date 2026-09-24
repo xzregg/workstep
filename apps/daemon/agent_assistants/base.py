@@ -225,7 +225,7 @@ async def invoke_engine(
     supports_native_plan_mode = bool(
         getattr(getattr(engine, "capabilities", None), "supports_plan_mode", False)
     )
-    if plan_mode and not supports_native_plan_mode:
+    if plan_mode and not supports_native_plan_mode and prompt.strip() != "/compact":
         prompt = f"{prompt}\n\n{PLAN_MODE_INSTRUCTION}"
     content: list[str] = []
     events: list[dict] = []
@@ -281,6 +281,8 @@ async def invoke_engine(
             spawn_kwargs["plan_mode"] = bool(plan_mode)
         if merged_overrides:
             spawn_kwargs["config_overrides"] = merged_overrides
+        if prompt.strip() == "/compact":
+            spawner = None
         if spawner is None:
             iterator = getattr(engine, "spawn_with_retry", engine.spawn)(
                 prompt=prompt,

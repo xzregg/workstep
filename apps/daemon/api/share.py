@@ -11,7 +11,7 @@ from pathlib import Path
 import httpx
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from api.fs import (
     UploadFileRequest,
@@ -238,14 +238,16 @@ async def public_share_git(token: str, git_path: str, request: Request):
         owned = {tree["id"] for tree in workspace["worktrees"]}
         tree_id, tail = parts[1], "/".join(parts[2:])
         allowed = {
-            "status": {"GET"}, "branches": {"GET"}, "remotes": {"GET"},
+            "status": {"GET"}, "branches": {"GET", "POST"},
+            "branches/delete": {"POST"}, "remotes": {"GET"},
             "identity": {"GET", "PUT"}, "identity/global": {"GET", "PUT"},
             "credentials": {"GET"}, "history": {"GET"}, "changes": {"GET"},
             "diff": {"GET"}, "blame": {"GET"}, "commit": {"POST"},
             "discard": {"POST"}, "ignore": {"POST"}, "files/content": {"POST"},
             "commit-message": {"POST"}, "switch": {"POST"}, "advance": {"POST"},
+            "merge": {"POST"}, "merge-into": {"POST"},
             "fetch": {"POST"}, "fetch-remote": {"POST"}, "pull": {"POST"},
-            "push": {"POST"},
+            "push": {"POST"}, "push-branch": {"POST"},
         }
         source_ids = {
             tree["id"] for repo in repositories["repositories"]

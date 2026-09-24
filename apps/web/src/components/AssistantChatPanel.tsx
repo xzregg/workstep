@@ -9,7 +9,7 @@ import MobileSheet from './MobileSheet'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 
 import type { AssistantChatMessage } from '../stores/assistantStore'
-import { taskApi, type EngineInputItem } from '../api/client'
+import { taskApi, type ActionRun, type EngineInputItem } from '../api/client'
 import { stripA2uiBlocks } from '../utils/a2ui'
 import { formatConversationDateTime } from '../utils/datetime'
 import {
@@ -42,6 +42,8 @@ import { displayUserDetail, displayUserSender } from '../utils/actorDisplay'
 import { useI18n } from '../i18n'
 import PendingMessageInserts from './PendingMessageInserts'
 import QuickPromptButton from './QuickPromptButton'
+import { ActionConversationMessage } from './TaskActionShortcuts'
+import { mergeActionMessages } from '../utils/actionConversation'
 import {
   pendingInsertQueueKey,
   usePendingMessageInsertStore,
@@ -123,6 +125,8 @@ export interface AssistantChatPanelProps {
   /** Floating content anchored immediately above the composer. */
   composerOverlay?: ReactNode
   afterMessages?: ReactNode
+  actionRuns?: ActionRun[]
+  onStopAction?: (runId: string) => void
   scrollKey?: string | number
   quickPrompts?: AssistantQuickPrompt[]
   quickPromptsLabel?: string
@@ -267,14 +271,15 @@ const MessageItem = memo(function MessageItem({
 export default function AssistantChatPanel({
   projectId, sessionId, title, messages, running, stopping, input, sendError, copy,
   locale, config, permission, enhance, context, quota, onRefreshQuota, quotaRefreshing, plan, availableCommands, attachmentPrefix, onInputChange, onSend, onSendContent, onStop, onAttachmentError, onClose,
-  onA2uiAction, headerActions, composerActions, composerOverlay, afterMessages, scrollKey, quickPrompts, quickPromptsLabel,
+  onA2uiAction, headerActions, composerActions, composerOverlay, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, onQuickPromptItemSelect, a2uiMessages, showUserTag = false,
   onLoadMessageEvents, onForkMessage, allowSendWhileRunning = false,
 }: AssistantChatPanelProps) {
   const deviceId = useUserSettingsStore((state) => state.deviceId)
   const userName = useUserSettingsStore((state) => state.userName)
   const { t } = useI18n()
-  const activeMessageId = [...messages].reverse().find((message) => (
+  const engineMessages = messages.filter((message) => message.engine !== 'action')
+  const activeMessageId = [...engineMessages].reverse().find((message) => (
     message.role === 'assistant' && message.status === 'running'
   ))?.id || ''
   const pendingKey = pendingInsertQueueKey(projectId, activeMessageId)
@@ -369,7 +374,7 @@ export default function AssistantChatPanel({
   })
   const showThinkingReply = shouldShowAssistantThinking(
     awaitingReply || running,
-    messages,
+    engineMessages,
   )
   const respondInteraction = useCallback(async (
     interactionId: string,
@@ -426,7 +431,7 @@ export default function AssistantChatPanel({
     setHasUnreadMessages(false)
   }, [scrollKey])
   useEffect(() => {
-    if (messages.at(-1)?.role === 'assistant' || sendError) {
+    if (engineMessages.at(-1)?.role === 'assistant' || sendError) {
       setAwaitingReply(false)
     }
   }, [messages, sendError])
@@ -523,6 +528,23 @@ export default function AssistantChatPanel({
     event.preventDefault()
     setComposerHeight(next === null ? null : clampComposerHeight(next))
   }
+
+  const conversationMessages = actionRuns
+    ? mergeActionMessages(
+      messages,
+      actionRuns,
+      (message) => message.engine === 'action',
+      (run, role): AssistantChatMessage => ({
+        id: role === 'user' ? run.user_message_id : run.reply_message_id,
+        role,
+        engine: 'action',
+        content: role === 'user' ? t('actionShortcuts.runTitle', { title: run.title }) : run.output,
+        status: role === 'user' ? 'succeeded' : ['preparing', 'running', 'stopping'].includes(run.status) ? 'running' : run.status === 'succeeded' ? 'succeeded' : run.status === 'stopped' ? 'stopped' : 'error',
+        created_at: run.started_at,
+        ended_at: role === 'assistant' ? run.ended_at || undefined : run.started_at,
+      }),
+    )
+    : messages
 
   return (
     <div className="assistant-chat-panel" ref={rootRef} style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
@@ -622,12 +644,19 @@ export default function AssistantChatPanel({
             className="chat-history-content"
             style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0, minHeight: '100%' }}
           >
-          {messages.length === 0 && copy.emptyIntro && (
+          {conversationMessages.length === 0 && copy.emptyIntro && (
             <div style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)', padding: '4px 2px', lineHeight: 1.6 }}>
               {copy.emptyIntro}
             </div>
           )}
-          {messages.map((message) => (
+          {conversationMessages.map((message) => message.engine === 'action' ? (
+            <ActionConversationMessage
+              key={message.id}
+              message={message}
+              run={(message as AssistantChatMessage & { actionRun?: ActionRun }).actionRun}
+              onStop={onStopAction}
+            />
+          ) : (
             <MessageItem
               key={message.id}
               message={message}

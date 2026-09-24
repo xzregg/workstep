@@ -180,6 +180,18 @@ async def chat_module(tmp_path, monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_compact_requires_existing_engine_session(chat_module):
+    module, _, _, project, _ = chat_module
+    session = module.create_session(project.id)
+
+    with pytest.raises(ValueError, match="没有可压缩"):
+        module.submit_message(
+            project.id, session["id"], "/compact", "compact-new",
+            schedule=False,
+        )
+
+
+@pytest.mark.anyio
 async def test_session_crud_round_trip(chat_module):
     """create / list / get / rename / delete keep rows in the new tables."""
     module, bus, manager, project, _ = chat_module

@@ -15,6 +15,7 @@ from typing import AsyncIterator
 import re
 
 from engines.core.acp_base import AcpEngineBase
+from engines.core.codex_compaction import compact_codex_thread
 from engines.core.packages import RuntimePackage
 from engines.core.base import (
     EngineInstallResult,
@@ -29,6 +30,7 @@ from engines.core.events import (
     InternalEvent,
     UnphasedMessageClassifier,
     agent_message_chunk,
+    compacted_event,
     extract_reasoning_text,
     normalize_cost,
     tool_call_event,
@@ -401,6 +403,36 @@ class CodexEngine(AcpEngineBase):
         skill_override = await asyncio.to_thread(
             lambda: prepare_codex_skills(self.project_skills(cwd))[1]
         )
+        if prompt.strip() == "/compact":
+            if not session_id:
+                yield InternalEvent(type="error", data={
+                    "message": "没有可压缩的 Codex 会话",
+                })
+                return
+            try:
+                from openai_codex import AsyncCodex, CodexConfig
+
+                client = AsyncCodex(config=CodexConfig(
+                    codex_bin=binary,
+                    cwd=cwd,
+                    config_overrides=provider_runtime.engine_config + (skill_override,),
+                    env=(provider_runtime.child_env() if provider_runtime.provider_id else None),
+                ))
+                try:
+                    thread = await client.thread_resume(session_id, cwd=cwd, model=model)
+                    yield InternalEvent(type="session_started", data={
+                        "session_id": str(thread.id),
+                    })
+                    yield InternalEvent(type="status", data={"status": "running"})
+                    await compact_codex_thread(client, thread)
+                    yield compacted_event()
+                finally:
+                    await client.close()
+            except Exception as exc:
+                yield InternalEvent(type="error", data={
+                    "message": f"Codex 压缩失败：{exc}",
+                })
+            return
         run_prompt = prompt
         resume_session = session_id or None
         self._escalate_sandbox = False

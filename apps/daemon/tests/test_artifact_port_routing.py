@@ -1,5 +1,6 @@
 """Artifact-port routing across forward and feedback workflow connections."""
 
+import json
 import re
 from pathlib import Path
 
@@ -1142,6 +1143,15 @@ async def test_manual_approval_of_feedback_artifact_resumes_target_rework(tmp_pa
             .get()
         )
 
+        # A later restart may scope execution to the verifier while its
+        # feedback still targets an upstream producer outside that scope.
+        run = WorkflowRun.get_by_id(first_review.workflow_run_id)
+        state = json.loads(run.routing_state_json or "{}")
+        state["entry_step_key"] = "test"
+        state["execution_scope"] = ["test", "publish"]
+        run.routing_state_json = json.dumps(state)
+        run.save(only=[WorkflowRun.routing_state_json])
+
         resumed = await runtime.decide_review(
             project.id,
             task.id,
@@ -1173,6 +1183,116 @@ async def test_manual_approval_of_feedback_artifact_resumes_target_rework(tmp_pa
 
         assert Task.get_by_id(task.id).status == "ready"
         assert len(calls["publish"]) == 1
+    finally:
+        await runtime.shutdown()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_manual_approval_reworks_both_feedback_targets_outside_saved_scope(tmp_path):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    from models import ReviewRun
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="two-feedback-targets",
+        title="前后端返工",
+        cwd=str(tmp_path),
+        workflow_id="flow",
+        created_at=1,
+        updated_at=1,
+    )
+    workflow = {
+        "nodes": [
+            {"id": 1, "type": "frontend", "title": "前端开发",
+             "engine": "frontend-engine", "outputs": [{"name": "前端结果", "type": "md"}],
+             "inputs": [{"name": "需求"}, {"name": "前端 BUG"}]},
+            {"id": 2, "type": "backend", "title": "后端开发",
+             "engine": "backend-engine", "outputs": [{"name": "后端结果", "type": "md"}],
+             "inputs": [{"name": "需求"}, {"name": "后端 BUG"}]},
+            {"id": 3, "type": "test", "title": "测试", "engine": "test-engine",
+             "inputs": [{"name": "前端结果"}, {"name": "后端结果"}],
+             "outputs": [
+                 {"name": "测试报告", "type": "md"},
+                 {"name": "前端BUG列表", "type": "md"},
+                 {"name": "后端BUG列表", "type": "md"},
+             ],
+             "review": {"mode": "manual", "auto": False}},
+        ],
+        "connections": [
+            {"from": 1, "fromPort": 0, "to": 3, "toPort": 0},
+            {"from": 2, "fromPort": 0, "to": 3, "toPort": 1},
+            {"from": 3, "fromPort": 1, "to": 1, "toPort": 1, "kind": "dashed"},
+            {"from": 3, "fromPort": 2, "to": 2, "toPort": 1, "kind": "dashed"},
+        ],
+    }
+    project = SimpleNamespace(
+        id="two-feedback-project", path=tmp_path,
+        workstep_dir=tmp_path / ".workstep", steps=workflow,
+        workflow_by_id=lambda workflow_id: {"steps": workflow},
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    calls = {"frontend": [], "backend": [], "test": []}
+
+    class TwoFeedbackEngine(ArtifactWritingEngine):
+        async def spawn(self, prompt, cwd, **kwargs):
+            self.calls["test"].append(prompt)
+            wanted = (
+                {"前端BUG列表.md", "后端BUG列表.md"}
+                if len(self.calls["test"]) == 1 else {"测试报告.md"}
+            )
+            for value in OUTPUT_PATH_RE.findall(prompt):
+                path = engine_output_path(value, cwd)
+                if path.name in wanted:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text("测试结果", encoding="utf-8")
+            yield InternalEvent(
+                type="agent_message_chunk",
+                data={"content": {"text": "test done"}},
+            )
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY.update({
+        "frontend-engine": lambda: ArtifactWritingEngine("frontend", calls),
+        "backend-engine": lambda: ArtifactWritingEngine("backend", calls),
+        "test-engine": lambda: TwoFeedbackEngine("test", calls),
+    })
+    runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
+    try:
+        first = await runtime.start(project.id, task.id, "")
+        await runtime.wait(first)
+        review = ReviewRun.get(
+            (ReviewRun.task == task) & (ReviewRun.status == "pending")
+        )
+        run = WorkflowRun.get_by_id(review.workflow_run_id)
+        state = json.loads(run.routing_state_json or "{}")
+        state["entry_step_key"] = "test"
+        state["execution_scope"] = ["test"]
+        run.routing_state_json = json.dumps(state)
+        run.save(only=[WorkflowRun.routing_state_json])
+
+        resumed = await runtime.decide_review(
+            project.id, task.id, "test", review.id, "approve"
+        )
+        await runtime.wait(resumed)
+
+        assert len(calls["frontend"]) == 2
+        assert len(calls["backend"]) == 2
+        assert len(calls["test"]) == 2
+        assert "前端BUG列表.md" in calls["frontend"][1]
+        assert "后端BUG列表.md" in calls["backend"][1]
+        state = json.loads(WorkflowRun.get_by_id(run.id).routing_state_json)
+        assert set(state["execution_scope"]) == {"frontend", "backend", "test"}
     finally:
         await runtime.shutdown()
         ENGINE_REGISTRY.clear()

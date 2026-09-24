@@ -56,9 +56,9 @@ from services.pending_message_inserts import (
 from services.intervention import intervention_manager
 from services.task_runner import extract_usage_json
 from services.remote_project import current_actor_event_fields
-from services.tool_registry import workstep_cli_instruction
 from services.workflow_definition import WorkflowDefinition
 from services.artifact_rounds import artifact_id_for, iter_artifact_rounds
+from services.workflow_actions import create_workflow_action, normalize_action_payload
 from streaming.bus import EventBus
 
 logger = logging.getLogger(__name__)
@@ -78,10 +78,14 @@ COORDINATOR_CONFIG = AssistantConfig(
     scope=SCOPE_TASK,
     system_prompt=(
         "You are the WorkStep task coordinator. Use task and workflow context to "
-        "answer questions. You may call WorkStep read tools via workstep_call. "
+        "answer questions. When you need to inspect or operate on WorkStep workflows, "
+        "inspect the workstep-cli skill and use its documented native tools or CLI "
+        "transport. Keep using available WorkStep tools for other operations. "
         "Mutating actions require explicit user authorization (confirm='yes'). "
         "At most one action proposal (supplement_step / rerun_from_step / "
-        "review_decision) may be proposed. Never execute workflow actions directly."
+        "review_decision / create_workflow_action) may be proposed. For workflow "
+        "Action creation in task chat, return a proposal for user review; do not "
+        "call the CLI write operation before proposal confirmation. Never execute workflow actions directly."
     ),
     engine_label="Coordinator engine",
     workstep_tools=True,
@@ -95,6 +99,7 @@ ALLOWED_ACTIONS = {
     "supplement_step",
     "rerun_from_step",
     "review_decision",
+    "create_workflow_action",
 }
 
 
@@ -134,6 +139,7 @@ class CoordinatorModule:
         self._operation_locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._active_tasks: set[asyncio.Task] = set()
         self._scheduled_turns: set[str] = set()
+        self._turn_tasks: dict[str, asyncio.Task] = {}
         self._executing_actions: set[str] = set()
         self._running_engines: dict[str, object] = {}
         self._cancelled_turns: set[str] = set()
@@ -245,10 +251,13 @@ class CoordinatorModule:
             self._run_turn(project_id, task_id, turn_id),
             name=f"coordinator-turn:{turn_id}",
         )
+        self._turn_tasks[turn_id] = background
         self._active_tasks.add(background)
 
         def consume(task: asyncio.Task) -> None:
+            self._turn_tasks.pop(turn_id, None)
             self._scheduled_turns.discard(turn_id)
+            self._cancelled_turns.discard(turn_id)
             self._consume_background(task)
 
         background.add_done_callback(consume)
@@ -606,6 +615,7 @@ class CoordinatorModule:
         *,
         author_name: str = "",
         pending_insert_ids: list[str] | None = None,
+        reset_session: bool = False,
     ) -> ChatAccepted:
         normalized = content.strip()
         if not normalized:
@@ -622,6 +632,7 @@ class CoordinatorModule:
                 idempotency_key,
                 author_name=author_name,
                 pending_insert_ids=pending_insert_ids,
+                reset_session=reset_session,
             ),
         )
         accepted, user_message, created = persisted
@@ -646,6 +657,7 @@ class CoordinatorModule:
         *,
         author_name: str = "",
         pending_insert_ids: list[str] | None = None,
+        reset_session: bool = False,
     ):
         with self._project_manager.activate_project_by_id(project_id) as project:
             existing = CoordinatorTurn.get_or_none(
@@ -680,6 +692,23 @@ class CoordinatorModule:
             )
 
             with db_proxy.atomic():
+                if reset_session:
+                    active_turn = CoordinatorTurn.get_or_none(
+                        (CoordinatorTurn.task == task_id)
+                        & (CoordinatorTurn.status.in_(["queued", "running"]))
+                    )
+                    if active_turn is not None:
+                        raise ValueError("Cannot reset a running coordinator session")
+                    session = CoordinatorSession.get_or_none(
+                        CoordinatorSession.task == task_id
+                    )
+                    if session is not None:
+                        session.session_id = None
+                        session.engine_state_json = None
+                        session.status = "reset"
+                        session.version += 1
+                        session.updated_at = now
+                        session.save()
                 current = Task.get_by_id(task.id)
                 # 原子预留两个连续序号（用户消息 + 助手消息），
                 # 并发提交时也不会撞 (task_id, sequence) 唯一索引。
@@ -1013,6 +1042,13 @@ class CoordinatorModule:
                             action,
                             payload,
                         )
+                    elif proposal_type == "create_workflow_action":
+                        result = await self._project_manager.run_db(
+                            project_id,
+                            lambda project: self._execute_create_workflow_action_sync(
+                                project, task_id, payload
+                            ),
+                        )
                     else:
                         raise RuntimeError(f"Unsupported action: {proposal_type}")
                 except Exception as exc:
@@ -1054,6 +1090,7 @@ class CoordinatorModule:
             await asyncio.gather(*tasks, return_exceptions=True)
         self._cancelled_turns.clear()
         self._scheduled_turns.clear()
+        self._turn_tasks.clear()
         self._executing_actions.clear()
         self._active_archive_experience_runs.clear()
         self._cancelled_archive_experience_runs.clear()
@@ -1410,10 +1447,16 @@ class CoordinatorModule:
         _, _, fast_model, vision_model = self._resolve_engine_models(task)
         provider_id = self._resolve_provider_id(task)
         thinking_effort = self._resolve_thinking_effort(task)
-        prompt, artifacts = self._assemble_context(
-            project, task, turn, root_dir=coordinator_root
-        )
         user_message = Message.get_by_id(turn.user_message_id)
+        engine = create_engine(turn.engine) if turn.engine else None
+        if session.session_id and engine is not None and engine.supports_resume:
+            # The engine already has the bootstrap instructions and context.
+            prompt = user_message.content or ""
+            artifacts = self._artifact_index(project, task)
+        else:
+            prompt, artifacts = self._assemble_context(
+                project, task, turn, root_dir=coordinator_root
+            )
         images = extract_uploaded_images(
             project, task.cwd, user_message.content or ""
         )
@@ -1740,9 +1783,12 @@ class CoordinatorModule:
         engine = create_engine(turn.engine) if turn.engine else None
         engine_manages_context = engine is not None and engine.supports_resume
         if engine_manages_context:
-            # 引擎侧会话维护对话历史：prompt 只带当前用户消息，
-            # 历史由引擎（resume / message_history）恢复，不再拼接。
-            recent_messages = messages[-1:] if messages else []
+            # 引擎侧恢复历史；队列中可能已有后续消息，必须取当前 turn。
+            current_message = Message.get_by_id(turn.user_message_id)
+            recent_messages = [{
+                "role": current_message.role,
+                "content": current_message.content,
+            }]
             summary = None
         else:
             recent_messages = messages
@@ -1760,44 +1806,70 @@ class CoordinatorModule:
         context = {
             "coordinator_root_dir": root_dir or self._coordinator_root(project, task),
             "project_id": getattr(project, "id", None),
+            "project_name": getattr(project, "name", None),
             "task": {
                 "id": task.id,
                 "title": task.title,
-                "description": task.description,
+                "description": (
+                    (task.description or "")[:4000]
+                    if engine_manages_context else task.description
+                ),
                 "status": task.status,
                 "state_version": task.state_version,
                 "active_workflow_run_id": task.active_workflow_run_id,
+                "workflow_id": task.workflow_id,
             },
             "coordinator_vision_model": (
                 task.coordinator_vision_model
                 or config_store.get_coordinator_default_vision_model()
                 or None
             ),
-            "workflow": compiled,
-            "steps": steps,
+            "steps": (
+                [{**step, "error": (step["error"] or "")[:500]} for step in steps]
+                if engine_manages_context else steps
+            ),
             "active_step_keys": active_step_keys,
-            "reviews": reviews,
-            "artifacts": artifact_views,
             "recent_coordinator_messages": recent_messages,
             "coordinator_summary": summary,
         }
+        if not engine_manages_context:
+            context.update({
+                "workflow": compiled,
+                "reviews": reviews,
+                "artifacts": artifact_views,
+            })
         instructions = (
             "Understand the task and answer the user. You may propose at most one "
             "action, but never execute it. Allowed proposal types are "
-            "supplement_step, rerun_from_step, review_decision. For a proposal "
+            "supplement_step, rerun_from_step, review_decision, create_workflow_action. For a proposal "
             "return {type, target_step_key, payload}. supplement payload requires "
             "content; review_decision requires review_run_id and decision. For rerun, "
             "choose the earliest target step that should execute; that step and its "
             "DAG downstream steps will run. Decide whether the target step needs "
             "new user context. If it does, include a concise step-specific instruction "
             "in rerun payload.content; otherwise omit content. To reuse a specific "
-            "upstream artifact round, rerun payload may include input_rounds mapping "
-            "step keys to round numbers from artifacts. If active_workflow_run_id is "
+            "direct input artifact round (forward or feedback), rerun payload may "
+            "include input_rounds mapping source step keys to eligible round numbers "
+            "from artifacts. A feedback round must contain a non-empty artifact on "
+            "the edge into the target step. If active_workflow_run_id is "
             "null, rerun starts a new first workflow run from that step. Request artifacts only by "
             "artifact_id. If the user's message references an image and your model "
             "cannot accept image input, use coordinator_vision_model to analyze the "
             "image before replying. Return "
             f"JSON matching this shape: {json.dumps(schema, ensure_ascii=False)}"
+        )
+        instructions += (
+            " For create_workflow_action, use only when asked to create a task workflow "
+            "shortcut. Payload must contain action_id (stable slug), title, "
+            "script_path (relative filename, usually start.sh), script_content, "
+            "cwd_mode (task/project/worktrees), and require_confirmation. "
+            "This is a preview: do not write the script before user confirmation. "
+            "For task Git worktrees, read WORKSTEP_WORKTREES_FILE JSON and select "
+            "paths by repository_id or alias, never branch name. For long-running "
+            "services keep child processes in the foreground process group, print "
+            "actual URLs, wait for children and trap TERM/INT to stop them; do not "
+            "daemonize, nohup, setsid, or disown. The Action stop button then stops "
+            "the whole process group."
         )
         instructions += (
             " For code work that needs an isolated Git branch, inspect this project's "
@@ -1806,13 +1878,20 @@ class CoordinatorModule:
             "leave the task workspace empty. Git worktree setup is separate from "
             "workflow action proposals."
         )
-        if COORDINATOR_CONFIG.workstep_tools and (
-            engine is None
-            or not getattr(engine.capabilities, "supports_workstep_tools", False)
+        if engine_manages_context:
+            instructions += (
+                " Context contains only the current task snapshot and this user message. "
+                "For workflow details, review history, or artifacts, use available "
+                "WorkStep tools to inspect current state."
+            )
+        if engine is not None and not getattr(
+            engine.capabilities, "supports_workstep_tools", False
         ):
-            # 无原生工具宿主能力的引擎（Codex CLI / Claude Code / Hermes 等）
-            # 通过 workstep CLI 调用本地 daemon，而不是被限制为只读。
-            instructions = f"{instructions}\n\n{workstep_cli_instruction()}"
+            instructions += (
+                " For WorkStep CLI access, inspect the workstep-cli skill first. "
+                "For example, use workstep project list or workstep task list "
+                "to locate current records, then read details as needed."
+            )
         prompt = (
             f"{instructions}\n\n"
             f"Context:\n{json.dumps(context, ensure_ascii=False, default=str)}"
@@ -2110,7 +2189,7 @@ class CoordinatorModule:
         step_keys = {
             row.step_key for row in TaskStep.select().where(TaskStep.task == task)
         }
-        if proposal_type != "review_decision" and target_step_key not in step_keys:
+        if proposal_type not in {"review_decision", "create_workflow_action"} and target_step_key not in step_keys:
             return None
         expected_review_run_id = None
         expected_step_run_id = None
@@ -2149,6 +2228,15 @@ class CoordinatorModule:
                 "decision": decision,
                 "comment": payload.get("comment"),
             }
+        elif proposal_type == "create_workflow_action":
+            if not task.workflow_id:
+                return None
+            try:
+                payload = self._normalize_workflow_action_payload(payload)
+            except ValueError:
+                return None
+            payload["workflow_id"] = task.workflow_id
+            target_step_key = None
         impact = {
             "target_step_key": target_step_key,
             "summary": self._impact_summary(proposal_type, target_step_key),
@@ -2171,6 +2259,17 @@ class CoordinatorModule:
             created_at=now,
             updated_at=now,
         )
+
+    @staticmethod
+    def _normalize_workflow_action_payload(payload: dict) -> dict:
+        return normalize_action_payload(payload)
+
+    @staticmethod
+    def _execute_create_workflow_action_sync(project, task_id: str, payload: dict) -> dict:
+        task = Task.get_by_id(task_id)
+        if not task.workflow_id:
+            raise ValueError("任务没有关联流程")
+        return create_workflow_action(project, task.workflow_id, payload)
 
     def _execute_supplement(self, project_id, task_id, proposal_id, payload):
         with self._project_manager.activate_project_by_id(project_id):
@@ -2376,6 +2475,8 @@ class CoordinatorModule:
         return keys[0] if len(keys) == 1 else None
 
     def _impact_summary(self, proposal_type, step_key):
+        if proposal_type == "create_workflow_action":
+            return "确认后创建流程快捷 Action 脚本和按钮，不会立即执行"
         if proposal_type == "supplement_step":
             return f"Save context for future attempts of step '{step_key}'"
         if proposal_type == "review_decision":
@@ -2475,8 +2576,17 @@ class CoordinatorModule:
                     "Engine stop raised while stopping coordinator turn %s",
                     turn_id,
                 )
-        elif turn_id not in self._scheduled_turns:
-            await self._mark_turn_stopped(project_id, task_id, turn_id)
+        task = self._turn_tasks.get(turn_id)
+        if task is not None and not task.done():
+            task.cancel()
+        await self._mark_turn_stopped(project_id, task_id, turn_id)
+        assistant_message_id = await self._run_db(
+            project_id,
+            lambda: CoordinatorTurn.get_by_id(turn_id).assistant_message_id,
+        )
+        await self._consume_pending_inserts(
+            project_id, task_id, assistant_message_id,
+        )
         return True
 
     async def _mark_turn_stopped(
@@ -2490,6 +2600,8 @@ class CoordinatorModule:
         """Persist a stopped turn and notify listeners."""
         def persist_stopped():
             turn = CoordinatorTurn.get_by_id(turn_id)
+            if turn.status in {"stopped", "succeeded", "failed"}:
+                return None
             assistant = Message.get_by_id(turn.assistant_message_id)
             project = self._project_manager.get_project_by_id(project_id)
             journal_ref = self._event_journal.reopen(
@@ -2528,7 +2640,10 @@ class CoordinatorModule:
             return assistant
 
         assistant = await self._run_db(project_id, persist_stopped)
-        self._cancelled_turns.discard(turn_id)
+        if turn_id not in self._scheduled_turns:
+            self._cancelled_turns.discard(turn_id)
+        if assistant is None:
+            return
         await self._publish_message_event(
             task_id,
             assistant,

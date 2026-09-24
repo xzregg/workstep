@@ -8,7 +8,7 @@ import { createRoot } from 'react-dom/client'
 import ChatInput from '../src/components/ChatInput'
 import { I18nProvider } from '../src/i18n'
 
-function Harness() {
+function Harness({ coordinator = false }: { coordinator?: boolean }) {
   const [active, setActive] = useState(false)
   return (
     <I18nProvider>
@@ -17,7 +17,11 @@ function Harness() {
         onChange={() => {}}
         onSend={() => {}}
         imageAttach={{ projectId: 'project-1' }}
-        resetStep={{ active, onChange: setActive }}
+        resetStep={{
+          active,
+          onChange: setActive,
+          ...(coordinator ? { label: 'Reset session', title: 'Start a fresh coordinator session' } : {}),
+        }}
       />
     </I18nProvider>
   )
@@ -43,6 +47,23 @@ test('reset-step toggle sits after the plus button and exposes its selected stat
     await act(async () => toggle.click())
     assert.equal(toggle.getAttribute('aria-pressed'), 'true')
     assert.equal(toggle.getAttribute('data-active'), 'true')
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+test('coordinator reset uses a session label and keeps the same one-shot toggle behavior', async () => {
+  const { window } = installDomEnvironment()
+  const container = window.document.body.appendChild(window.document.createElement('div'))
+  const root = createRoot(container as never)
+  try {
+    await act(async () => root.render(<Harness coordinator />))
+    const toggle = container.querySelector('[data-reset-step]') as HTMLButtonElement
+    assert.equal(toggle.textContent?.trim(), 'Reset session')
+    assert.equal(toggle.title, 'Start a fresh coordinator session')
+    await act(async () => toggle.click())
+    assert.equal(toggle.getAttribute('aria-pressed'), 'true')
   } finally {
     await act(async () => root.unmount())
     await window.happyDOM.close()

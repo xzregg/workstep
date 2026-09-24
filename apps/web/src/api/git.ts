@@ -37,6 +37,7 @@ export function createGitApi(client: typeof request = request) {
   status: (id: string) => client<GitStatus>(route(id) + '/status'),
   branches: (id: string) => client<{ branches: GitBranch[]; remote_branches?: GitTrackedRemoteBranch[]; fetched_at?: number | null }>(route(id) + '/branches'),
   createBranch: (id: string, name: string, baseBranch: string, baseHead: string, snapshot: string, baseRemote?: string) => client<{ branches: GitBranch[]; remote_branches?: GitTrackedRemoteBranch[]; fetched_at?: number | null }>(route(id) + '/branches', post({ name, base_branch: baseBranch, base_head: baseHead, snapshot, base_remote: baseRemote })),
+  deleteBranch: (id: string, branch: string, head: string, snapshot: string) => client<{ branches: GitBranch[]; remote_branches?: GitTrackedRemoteBranch[]; fetched_at?: number | null }>(route(id) + '/branches/delete', post({ branch, head, snapshot })),
   remotes: (id: string) => client<GitRemotes>(route(id) + '/remotes'),
   identity: (id: string) => client<GitIdentity>(route(id) + '/identity'),
   setIdentity: (id: string, identity: GitIdentity) => client<GitIdentity>(route(id) + '/identity', { method: 'PUT', body: JSON.stringify(identity) }),
@@ -63,7 +64,7 @@ export function createGitApi(client: typeof request = request) {
   advance: (id: string, branch: string, snapshot: string) => client<{ branches: GitBranch[]; remote_branches?: GitTrackedRemoteBranch[]; fetched_at?: number | null }>(route(id) + '/advance', post({ branch, snapshot })),
   merge: (id: string, branch: string, snapshot: string, source: string, remote?: string) => client<GitStatus>(route(id) + '/merge', post({ branch, snapshot, source, remote })),
   mergeInto: (id: string, branch: string, snapshot: string, target: string) => client<{ target: string; head: string; updated: boolean; push_available: boolean }>(route(id) + '/merge-into', post({ branch, snapshot, target })),
-  pushBranch: (id: string, branch: string, head: string) => client<{ branch: string; head: string }>(route(id) + '/push-branch', post({ branch, head })),
+  pushBranch: (id: string, branch: string, head: string, target?: { remote: string; targetBranch: string; setUpstream: boolean }) => client<{ branch: string; head: string }>(route(id) + '/push-branch', post({ branch, head, remote: target?.remote, target_branch: target?.targetBranch, set_upstream: target?.setUpstream || false })),
   }
 }
 

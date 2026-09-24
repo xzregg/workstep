@@ -92,6 +92,34 @@ def message_file(message):
 
 
 class GitWrites:
+    async def delete_branch(self, id, branch, head, snapshot):
+        directory = await self.directory(id)
+        path = directory['path']
+        async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
+            state = await self.reviewed(id, snapshot)
+            if state['active'] or state['operation']:
+                raise GitError('项目有正在运行的任务或未完成的 Git 操作，请稍后删除分支。', 409)
+            branch_data = await self.branches(id)
+            target = next((item for item in branch_data['branches'] if item['name'] == branch), None)
+            if not target or target['head'] != head:
+                raise GitError('分支已变化，请刷新后重试。', 409)
+            if target['worktree_id']:
+                raise GitError('分支已在工作目录中检出，请先切换或移除对应工作目录。', 409)
+            other_heads = [item['head'] for item in branch_data['branches'] if item['name'] != branch]
+            if target['upstream_ref']:
+                upstream, code = await self.command(path, 'rev-parse', '--verify',
+                    '--end-of-options', target['upstream_ref'] + '^{commit}', check=False)
+                if not code:
+                    other_heads.append(text(upstream).strip())
+            for other_head in other_heads:
+                _, code = await self.command(path, 'merge-base', '--is-ancestor', head, other_head, check=False)
+                if not code:
+                    break
+            else:
+                raise GitError('此分支的提交尚未合入其他本地分支或其远程上游，已保留分支。', 409)
+            await self.command(path, 'update-ref', '-d', 'refs/heads/' + branch, head)
+            return await self.branches(id)
+
     async def create_branch(self, id, name, base_branch, base_head, snapshot, base_remote=None):
         directory = await self.directory(id)
         path = directory['path']
@@ -555,7 +583,7 @@ class GitWrites:
                     await self.command(path, 'worktree', 'remove', '--force', temporary, timeout=120)
                 await asyncio.to_thread(shutil.rmtree, temporary, ignore_errors=True)
 
-    async def push_branch(self, id, branch, head):
+    async def push_branch(self, id, branch, head, remote=None, target_branch=None, set_upstream=False):
         directory = await self.directory(id)
         path = directory['path']
         async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
@@ -564,11 +592,13 @@ class GitWrites:
             target = next((item for item in (await self.branches(id))['branches'] if item['name'] == branch), None)
             if not target or target['head'] != head:
                 raise GitError('目标分支已变化，请刷新并重新审阅后再推送。', 409)
-            remote, target_branch = await self.remote_target(path, branch)
+            remote, target_branch = await self.remote_target(path, branch, remote, target_branch)
             auth = await self.credential_for(directory, remote, push=True)
             await self.command(path, '-c', 'remote.' + remote + '.mirror=false', 'push',
                 '--porcelain', '--no-force', '--no-follow-tags', '--recurse-submodules=no',
                 '--', remote, head + ':refs/heads/' + target_branch, timeout=120, auth=auth)
+            if set_upstream:
+                await self.command(path, 'branch', '--set-upstream-to=' + remote + '/' + target_branch, '--', branch)
             return {'branch': branch, 'head': head}
 
 
@@ -656,8 +686,6 @@ class GitWrites:
             state = await self.reviewed(id, snapshot)
             if not state['branch'] or state['branch'] != branch or not state['head']:
                 raise GitError('只能推送当前已提交的分支，请刷新状态。', 409)
-            if state['files']:
-                raise GitError('存在未提交修改或未跟踪文件，请全部处理后再推送。', 409)
             if state['active']:
                 raise GitError('项目有正在运行的任务或对话，请结束后再推送。', 409)
             remote, target_branch = await self.remote_target(path, branch, remote, target_branch)

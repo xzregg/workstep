@@ -134,6 +134,32 @@ uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli workflow get \
   --json
 ```
 
+To create a workflow Action shortcut, first inspect the target workflow and
+relevant task repositories/worktrees. Prepare a `.sh`, `.bash`, or `.py` script
+file and show its contents and button settings to the user. After explicit
+authorization, publish the script and button together:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli workflow action-create \
+  --project <project_id> --workflow <workflow_id> \
+  --action-id <stable_action_id> --title "Start services" \
+  --script-file /absolute/path/to/start.sh --cwd task --json
+```
+
+The equivalent native operation is `workstep_create_workflow_action` with
+`project_id`, `workflow_id`, `action_id`, `title`, `script_path`,
+`script_content`, `cwd_mode`, `require_confirmation`, and `confirm='yes'`.
+The CLI performs the confirmation-gated call; do not call it merely to draft
+a suggestion. `--no-run-confirmation` removes the *later* per-click dialog,
+not the authorization required to create the shortcut. WorkStep writes the
+script under `.workstep/artifacts/<workflow_id>/actions/<action_id>/` and
+registers the workflow button. A task coordinator can instead return a
+`create_workflow_action` proposal so the user can review and confirm it in chat.
+Do not claim the shortcut exists before the write succeeds. Scripts should resolve task worktrees via
+`WORKSTEP_WORKTREES_FILE` using repository IDs or aliases, never branch names.
+For stoppable services, keep children in the Action process group and wait for
+them; avoid `nohup`, `setsid`, `disown`, or daemonizing them.
+
 ## Tasks
 
 ```bash

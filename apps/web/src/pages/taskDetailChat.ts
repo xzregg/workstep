@@ -75,6 +75,15 @@ interface ConversationMessage {
   author_device_name?: string | null
 }
 
+export function messageSessionId(
+  message: { session_id?: string | null; run_status?: string },
+  isReview: boolean,
+  stepSessionId?: string | null,
+): string | null {
+  return message.session_id
+    || (!isReview && message.run_status === 'running' ? stepSessionId || null : null)
+}
+
 function eventSequence(event: any): number | null {
   const value = event?.event_sequence ?? event?.sequence ?? event?.seq
   return typeof value === 'number' ? value : null
@@ -148,6 +157,35 @@ export function mergeRefreshedTaskHistory(current: any[], refreshed: any[]): any
     }),
     ...merged,
   ]
+}
+
+export async function loadTaskHistoryWithRetry<T>(
+  load: () => Promise<T>,
+  signal: AbortSignal,
+  retryDelayMs = 1500,
+): Promise<T | undefined> {
+  let failures = 0
+  while (!signal.aborted) {
+    try {
+      return await load()
+    } catch {
+      if (signal.aborted) break
+      const delay = Math.min(retryDelayMs * 2 ** failures, 30_000)
+      failures += 1
+      await new Promise<void>((resolve) => {
+        const onAbort = () => {
+          clearTimeout(timer)
+          resolve()
+        }
+        const timer = setTimeout(() => {
+          signal.removeEventListener('abort', onAbort)
+          resolve()
+        }, delay)
+        signal.addEventListener('abort', onAbort, { once: true })
+      })
+    }
+  }
+  return undefined
 }
 
 interface MessageReview {
@@ -639,6 +677,31 @@ export function isReviewActionable<T extends MessageReview>(
     return itemTime > currentTime ? item : current
   }, undefined)
   return latest?.id === review.id
+}
+
+export function canCompleteStoppedReview<T extends MessageReview & {
+  workflow_run_id: string
+  artifact_round: number | null
+  error?: string | null
+}>(
+  review: T | undefined,
+  reviews: readonly T[],
+  artifacts: readonly { step_key: string; round: number }[],
+  taskStatus?: string,
+  activeRunId?: string | null,
+  stepStatus?: string,
+): boolean {
+  const stoppedManual = review?.mode === 'manual'
+    && review.status === 'terminated' && taskStatus === 'stopped'
+  const stoppedAuto = review?.mode === 'auto'
+    && review.status === 'failed' && review.error === '手动停止'
+    && taskStatus === 'paused'
+  if (!review || (!stoppedManual && !stoppedAuto) || stepStatus !== 'cancelled'
+    || !activeRunId || review.workflow_run_id !== activeRunId
+    || !review.artifact_round
+    || !artifacts.some((artifact) => artifact.step_key === review.step_key
+      && artifact.round === review.artifact_round)) return false
+  return reviews.filter((item) => item.step_key === review.step_key)[0]?.id === review.id
 }
 
 export function isManualReviewMessage<T extends MessageReview>(

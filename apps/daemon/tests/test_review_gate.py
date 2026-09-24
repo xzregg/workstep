@@ -189,6 +189,10 @@ class StreamingPausedReviewEngine(PausedReviewEngine):
             return
 
         yield InternalEvent(
+            type="session_started",
+            data={"session_id": "running-review-session"},
+        )
+        yield InternalEvent(
             type="agent_message_chunk",
             data={"content": {"text": "正在检查验收标准"}},
         )
@@ -640,6 +644,7 @@ async def test_automatic_review_history_restores_running_output(tmp_path):
             and message.get("run_status") == "running"
         )
         assert "正在检查验收标准" in running_review["content"]
+        assert running_review["session_id"] == "running-review-session"
         assert running_review["event_detail"]["event_count"] >= 1
         events_page = await asyncio.to_thread(
             get_message_events,
@@ -652,6 +657,13 @@ async def test_automatic_review_history_restores_running_output(tmp_path):
             and event.get("messageId") == running_review["id"]
             for event in events_page["events"]
         )
+        release_review.set()
+        await pipeline_task
+        history = await asyncio.to_thread(get_task_history, task.id, tmp_path)
+        finished_review = next(
+            message for message in history if message["id"] == running_review["id"]
+        )
+        assert finished_review["session_id"] == "running-review-session"
     finally:
         release_review.set()
         await pipeline_task
@@ -1212,7 +1224,7 @@ async def test_manual_reject_injects_feedback_into_next_attempt(tmp_path):
         # 阶段被自动重跑，第二次提示词包含人工驳回原因
         assert len(calls) == 2
         assert "## Previous review feedback" in calls[1]
-        assert f"请检查 .workstep/worktrees/{task.id} 和 构建，保留 {{custom_value}}" in calls[1]
+        assert f"请检查 .workstep/artifacts/default/{task.id}/.worktrees 和 构建，保留 {{custom_value}}" in calls[1]
         assert "{worktrees}" not in calls[1]
         task_step = TaskStep.get(
             (TaskStep.task == task) & (TaskStep.step_key == "build")
@@ -1320,6 +1332,185 @@ async def test_manual_review_can_terminate_until_user_reruns_step(tmp_path):
         assert WorkflowRun.get_by_id(accepted["run_id"]).status == "paused"
         assert len(calls) == 2
     finally:
+        await runtime.shutdown()
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("schedule_downstream", [True, False])
+async def test_terminated_manual_review_can_be_set_complete_only_with_artifact(
+    tmp_path, schedule_downstream,
+):
+    from contextlib import nullcontext
+    from services.artifact_rounds import step_round_dir
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="terminated-review-complete", title="Complete existing output",
+        cwd=str(tmp_path), engine="claude", created_at=1, updated_at=1,
+    )
+    project = SimpleNamespace(
+        id="project-terminated-review", path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={"nodes": [
+            {"id": 1, "type": "build", "key": "build", "title": "构建",
+             "engine": "review-test", "prompt": "完成构建",
+             "review": {"mode": "manual", "auto": False, "maxRetries": 1}},
+            {"id": 2, "type": "publish", "key": "publish", "title": "发布",
+             "engine": "review-test", "prompt": "完成发布",
+             "review": {"mode": "skip", "auto": True, "maxRetries": 1}},
+        ], "connections": [{"from": 1, "to": 2}]},
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    calls: list[str] = []
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["review-test"] = lambda: SequencedReviewEngine(calls)
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, ProjectManagerStub())
+    try:
+        first = await runtime.start(project.id, task.id, "")
+        await runtime.wait(first)
+        review = ReviewRun.get(ReviewRun.task == task)
+        await runtime.decide_review(project.id, task.id, "build", review.id, "terminate")
+        with pytest.raises(RuntimeError, match="是否继续调度"):
+            await runtime.decide_review(
+                project.id, task.id, "build", review.id, "set_complete",
+            )
+        with pytest.raises(RuntimeError, match="产物"):
+            await runtime.decide_review(
+                project.id, task.id, "build", review.id, "set_complete",
+                schedule_downstream=schedule_downstream,
+            )
+
+        round_dir = step_round_dir(
+            project.workstep_dir / "artifacts", task.workflow_id,
+            task.id, "build", review.step_run.artifact_round,
+        )
+        round_dir.mkdir(parents=True, exist_ok=True)
+        (round_dir / "成品.md").write_text("已完成", encoding="utf-8")
+        resumed = await runtime.decide_review(
+            project.id, task.id, "build", review.id, "set_complete",
+            schedule_downstream=schedule_downstream,
+        )
+        assert (resumed is not None) is schedule_downstream
+        if resumed is not None:
+            await runtime.wait(resumed)
+        assert ReviewRun.get_by_id(review.id).status == "passed"
+        assert ReviewRun.get_by_id(review.id).decision == "set_complete"
+        assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "build")).status == "passed"
+        assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "publish")).status == (
+            "passed" if schedule_downstream else "pending"
+        )
+        assert WorkflowRun.get_by_id(first.id).status == (
+            "succeeded" if schedule_downstream else "stopped"
+        )
+        assert Task.get_by_id(task.id).status == (
+            "ready" if schedule_downstream else "stopped"
+        )
+        assert len(calls) == (2 if schedule_downstream else 1)
+    finally:
+        await runtime.shutdown()
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("schedule_downstream", [True, False])
+async def test_stopped_automatic_review_can_set_step_complete(
+    tmp_path, schedule_downstream,
+):
+    from contextlib import nullcontext
+    from services.artifact_rounds import step_round_dir
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="stopped-auto-review-complete", title="Complete stopped review output",
+        cwd=str(tmp_path), engine="review-test", created_at=1, updated_at=1,
+    )
+    project = SimpleNamespace(
+        id="project-stopped-auto-review", path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={"nodes": [
+            {"id": 1, "type": "build", "key": "build", "title": "构建",
+             "engine": "review-test", "prompt": "完成构建",
+             "review": {"mode": "auto", "auto": True, "engine": "review-test", "maxRetries": 0}},
+            {"id": 2, "type": "publish", "key": "publish", "title": "发布",
+             "engine": "review-test", "prompt": "完成发布",
+             "review": {"mode": "skip", "auto": True, "maxRetries": 0}},
+        ], "connections": [{"from": 1, "to": 2}]},
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    review_started = asyncio.Event()
+    review_engine = StoppableReviewEngine(review_started)
+    engines = [CompletedExecutionEngine(), review_engine, CompletedExecutionEngine()]
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["review-test"] = lambda: engines.pop(0)
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, ProjectManagerStub())
+    try:
+        first = await runtime.start(project.id, task.id, "")
+        await asyncio.wait_for(review_started.wait(), timeout=2)
+        assert await runtime.cancel_step(project.id, task.id, "build") is True
+        await runtime.wait(first)
+        review = ReviewRun.get(ReviewRun.task == task)
+        assert (review.mode, review.status, review.error) == (
+            "auto", "failed", "手动停止",
+        )
+        assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "build")).status == "cancelled"
+        assert Task.get_by_id(task.id).status == "paused"
+        assert WorkflowRun.get_by_id(first.id).status == "failed"
+        with pytest.raises(RuntimeError, match="产物"):
+            await runtime.decide_review(
+                project.id, task.id, "build", review.id, "set_complete",
+                schedule_downstream=schedule_downstream,
+            )
+        round_dir = step_round_dir(
+            project.workstep_dir / "artifacts", task.workflow_id,
+            task.id, "build", review.step_run.artifact_round,
+        )
+        round_dir.mkdir(parents=True, exist_ok=True)
+        (round_dir / "成品.md").write_text("已完成", encoding="utf-8")
+        review.error = "自动审核异常"
+        review.save()
+        with pytest.raises(RuntimeError, match="已停止的审核"):
+            await runtime.decide_review(
+                project.id, task.id, "build", review.id, "set_complete",
+                schedule_downstream=schedule_downstream,
+            )
+        review.error = "手动停止"
+        review.save()
+
+        resumed = await runtime.decide_review(
+            project.id, task.id, "build", review.id, "set_complete",
+            schedule_downstream=schedule_downstream,
+        )
+        assert (resumed is not None) is schedule_downstream
+        if resumed is not None:
+            await runtime.wait(resumed)
+        assert ReviewRun.get_by_id(review.id).status == "passed"
+        assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "build")).status == "passed"
+        assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "publish")).status == (
+            "passed" if schedule_downstream else "pending"
+        )
+    finally:
+        review_engine.stopped.set()
         await runtime.shutdown()
         await bus.close()
         ENGINE_REGISTRY.clear()

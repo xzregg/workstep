@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { projectActionApi, taskActionApi, type ActionRun, type ChatQuickButton } from '../api/client'
 import { useI18n } from '../i18n'
 import ConfirmDialog from './ConfirmDialog'
-import { ActionRunCards } from './TaskActionShortcuts'
 
 export function useProjectActions(projectId: string | undefined, sessionId: string | null) {
   const { t } = useI18n()
@@ -78,7 +77,6 @@ export function useProjectActions(projectId: string | undefined, sessionId: stri
 export function ProjectActionMessages({ state }: { state: ReturnType<typeof useProjectActions> }) {
   const { t } = useI18n()
   return <>
-    <ActionRunCards runs={state.runs} onStop={(runId) => void state.stop(runId)} />
     {state.error && <div role="alert" style={{ color: 'var(--danger)' }}>{state.error}</div>}
     <ConfirmDialog
       open={Boolean(state.pending)} title={t('actionShortcuts.confirmTitle', { title: state.pending?.label || '' })}

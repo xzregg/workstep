@@ -19,6 +19,78 @@ from services.workflow_runtime import WorkflowRuntime
 from streaming.bus import EventBus
 
 
+@pytest.mark.parametrize("script_path", ["../outside.sh", "nested/start.sh", "action.json"])
+def test_coordinator_action_proposal_rejects_unsafe_script_paths(script_path):
+    with pytest.raises(ValueError):
+        CoordinatorModule._normalize_workflow_action_payload({
+            "action_id": "start-services",
+            "title": "启动服务",
+            "script_path": script_path,
+            "script_content": "#!/bin/bash\necho ready\n",
+        })
+
+
+@pytest.mark.anyio
+async def test_coordinator_workflow_action_requires_confirmation(api_context, monkeypatch):
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import Task, Workflow
+    import main
+
+    client, tmp_path = api_context
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", CoordinatorFakeEngine)
+    project_id, task_id = await _create_task(client, tmp_path)
+    action_id = "start-services"
+    CoordinatorFakeEngine.reply = {
+        "version": 1,
+        "reply": "已准备启动服务的快捷按钮，请先检查脚本。",
+        "intent": "propose_action",
+        "proposal": {
+            "type": "create_workflow_action",
+            "payload": {
+                "action_id": action_id,
+                "title": "启动服务",
+                "script_path": "start.sh",
+                "script_content": "#!/bin/bash\necho http://localhost:3000\n",
+                "cwd_mode": "task",
+                "require_confirmation": True,
+            },
+        },
+    }
+    try:
+        await client.post(
+            f"/api/task/{task_id}/chat?project_id={project_id}",
+            headers={"Idempotency-Key": "chat-action-create"},
+            json={"content": "生成启动服务的快捷按钮"},
+        )
+        assistant = await _wait_for_reply(client, project_id, task_id)
+        proposal = assistant["proposals"][0]
+        assert proposal["type"] == "create_workflow_action"
+        workflow_id = await main.project_manager.run_db(
+            project_id, lambda _: Task.get_by_id(task_id).workflow_id
+        )
+        action_root = tmp_path / "coordinator-project" / ".workstep" / "artifacts" / workflow_id / "actions" / action_id
+        assert not action_root.exists()
+        confirmed = await client.post(
+            f"/api/task/{task_id}/actions/{proposal['id']}/confirm?project_id={project_id}",
+            headers={"Idempotency-Key": "confirm-action-create"},
+        )
+        assert confirmed.status_code == 200, confirmed.text
+        assert (action_root / "start.sh").read_text() == CoordinatorFakeEngine.reply["proposal"]["payload"]["script_content"]
+        assert json.loads((action_root / "action.json").read_text())["timeout_seconds"] == 0
+        steps = await main.project_manager.run_db(
+            project_id, lambda _: json.loads(Workflow.get_by_id(workflow_id).steps_json)
+        )
+        assert any(button["action_id"] == action_id for button in steps["quickButtons"])
+        repeated = await client.post(
+            f"/api/task/{task_id}/actions/{proposal['id']}/confirm?project_id={project_id}",
+            headers={"Idempotency-Key": "confirm-action-create"},
+        )
+        assert repeated.status_code == 200
+        assert len([button for button in steps["quickButtons"] if button["action_id"] == action_id]) == 1
+    finally:
+        CoordinatorFakeEngine.reply = {"version": 1, "reply": "协调回复", "intent": "answer", "proposal": None}
+
+
 class MemoryConfigStore:
     def __init__(self):
         self.values = {}
@@ -1359,6 +1431,7 @@ def test_artifact_index_marks_only_latest_eligible_round_selected(tmp_path):
 
 def test_assemble_context_includes_coordinator_root_dir(tmp_path):
     """协调上下文必须带上根目录，让 agent 知道从哪读任务产物。"""
+    from agent_assistants.coordinator import COORDINATOR_CONFIG
     from models import CoordinatorTurn, Message, Task, init_db
 
     db = init_db(str(tmp_path / "root-ctx.db"))
@@ -1418,6 +1491,11 @@ def test_assemble_context_includes_coordinator_root_dir(tmp_path):
     try:
         context = json.loads(prompt.split("Context:\n", 1)[1])
         assert context["coordinator_root_dir"] == str(tmp_path)
+        assert "workstep-cli" in COORDINATOR_CONFIG.system_prompt
+        assert "inspect the workstep-cli skill" in COORDINATOR_CONFIG.system_prompt
+        assert "operate on WorkStep workflows" in COORDINATOR_CONFIG.system_prompt
+        assert "# WorkStep CLI" not in prompt
+        assert "WORKSTEP_CLI_PYTHON" not in prompt
     finally:
         db.close()
 
@@ -1456,6 +1534,7 @@ def test_assemble_context_history_handling_depends_on_engine_resume(tmp_path, mo
         task = Task.create(
             id="ctx-hist-task",
             title="t",
+            description="D" * 10000,
             cwd=str(tmp_path),
             engine="claude",
             created_at=1,
@@ -1522,6 +1601,24 @@ def test_assemble_context_history_handling_depends_on_engine_resume(tmp_path, mo
             m["content"] for m in context["recent_coordinator_messages"]
         ] == ["现在呢"]
         assert context["coordinator_summary"] is None
+        assert "workflow" not in context
+        assert "reviews" not in context
+        assert "artifacts" not in context
+        assert "workstep-cli" in prompt
+        assert len(context["task"]["description"]) == 4000
+
+        Message.create(
+            id="ctx-next-user", task=task, channel="coordinator",
+            step_key="build", role="user", content="排队中的下一问",
+            run_id="ctx-next-user", run_status="completed", position=5,
+            sequence=5, created_at=1,
+        )
+        queued_prompt, _ = module._assemble_context(StubProject(), task, turn)
+        queued_context = json.loads(queued_prompt.split("Context:\n", 1)[1])
+        assert queued_context["recent_coordinator_messages"] == [
+            {"role": "user", "content": "现在呢"}
+        ]
+        Message.delete_by_id("ctx-next-user")
 
         monkeypatch.setattr(
             coordinator_service,
@@ -1534,6 +1631,10 @@ def test_assemble_context_history_handling_depends_on_engine_resume(tmp_path, mo
             m["content"] for m in context["recent_coordinator_messages"]
         ] == ["第一问", "第一答", "现在呢"]
         assert context["coordinator_summary"] == "旧摘要"
+        assert "workflow" in context
+        assert "reviews" in context
+        assert "artifacts" in context
+        assert len(context["task"]["description"]) == 10000
     finally:
         db.close()
 
@@ -1571,6 +1672,10 @@ async def test_coordinator_resume_engine_keeps_history_engine_side(
     assert [
         m["content"] for m in first_context["recent_coordinator_messages"]
     ] == ["第一问"]
+    assert first_context["project_id"] == project_id
+    assert first_context["task"]["id"] == task_id
+    assert "steps" in first_context
+    assert "workstep-cli" in ResumeCoordinatorFakeEngine.calls[0]["prompt"]
     assert first_context["coordinator_summary"] is None
 
     second = await client.post(
@@ -1592,12 +1697,31 @@ async def test_coordinator_resume_engine_keeps_history_engine_side(
     }
     # 第二轮复用第一轮建立的引擎会话 id。
     assert ResumeCoordinatorFakeEngine.calls[1]["session_id"] == "engine-session-1"
-    second_context = json.loads(
-        ResumeCoordinatorFakeEngine.calls[1]["prompt"].split("Context:\n", 1)[1]
+    assert ResumeCoordinatorFakeEngine.calls[1]["prompt"] == "第二问"
+
+    third = await client.post(
+        f"/api/task/{task_id}/chat?project_id={project_id}",
+        headers={"Idempotency-Key": "chat-r3"},
+        json={"content": "重新开始", "reset_session": True},
     )
+    assert third.status_code == 200
+    await _wait_for_reply(
+        client,
+        project_id,
+        task_id,
+        assistant_message_id=third.json()["assistant_message_id"],
+    )
+    assert ResumeCoordinatorFakeEngine.calls[2]["session_id"] is None
+    assert ResumeCoordinatorFakeEngine.calls[2]["message_history"] is None
+    reset_prompt = ResumeCoordinatorFakeEngine.calls[2]["prompt"]
+    reset_context = json.loads(reset_prompt.split("Context:\n", 1)[1])
+    assert reset_context["task"]["id"] == task_id
+    assert reset_context["project_id"] == project_id
+    assert "steps" in reset_context
+    assert "workstep-cli" in reset_prompt
     assert [
-        m["content"] for m in second_context["recent_coordinator_messages"]
-    ] == ["第二问"]
+        message["content"] for message in reset_context["recent_coordinator_messages"]
+    ] == ["重新开始"]
 
 
 @pytest.mark.anyio
@@ -2723,6 +2847,98 @@ class StoppableStreamingEngine(StreamingCoordinatorFakeEngine):
     async def stop(self):
         type(self).stopped = True
         type(self).release.set()
+
+
+class NonCooperativeStopEngine(StoppableStreamingEngine):
+    async def stop(self):
+        type(self).stopped = True
+
+
+class HangingStopEngine(StoppableStreamingEngine):
+    async def stop(self):
+        type(self).stopped = True
+        await asyncio.Event().wait()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("engine_type", [NonCooperativeStopEngine, HangingStopEngine])
+async def test_coordinator_stop_cancels_turn_when_engine_stop_does_not_end_stream(
+    api_context, monkeypatch, engine_type,
+):
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import CoordinatorTurn
+    import agent_assistants.coordinator as coordinator_service
+    import main
+
+    client, tmp_path = api_context
+    engine_type.reset()
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", engine_type)
+    monkeypatch.setattr(coordinator_service, "COORDINATOR_STOP_TIMEOUT_SECONDS", 0.01)
+    project_id, task_id = await _create_task(client, tmp_path)
+    event_queue = main.coordinator_module._event_bus.subscribe()
+    try:
+        accepted = await client.post(
+            f"/api/task/{task_id}/chat?project_id={project_id}",
+            headers={"Idempotency-Key": "chat-noncooperative-stop"},
+            json={"content": "开始后停下来"},
+        )
+        assistant_id = accepted.json()["assistant_message_id"]
+        turn_id = accepted.json()["turn_id"]
+        while True:
+            event = await asyncio.wait_for(event_queue.get(), timeout=1)
+            if event.get("messageId") == assistant_id and event.get("type") == "TEXT_MESSAGE_CHUNK":
+                break
+        queued = await client.post(
+            "/api/pending-message-inserts",
+            json={
+                "project_id": project_id,
+                "target_message_id": assistant_id,
+                "content": "停止后继续处理这条",
+            },
+        )
+        assert queued.status_code == 200
+
+        stopped = await client.post(
+            f"/api/task/{task_id}/coordinator/stop?project_id={project_id}"
+        )
+        assert stopped.json() == {"stopped": True}
+        assistant = await _wait_for_reply(
+            client, project_id, task_id,
+            assistant_message_id=assistant_id, include_stopped=True,
+        )
+        assert assistant["run_status"] == "stopped"
+        assert await main.project_manager.run_db(
+            project_id,
+            lambda _project: CoordinatorTurn.get_by_id(turn_id).status,
+        ) == "stopped"
+        engine_type.release.set()
+        for _ in range(100):
+            history = await client.get(
+                f"/api/task/{task_id}/history?project_id={project_id}"
+            )
+            if any(
+                message["role"] == "user"
+                and message["content"] == "停止后继续处理这条"
+                for message in history.json()["messages"]
+            ):
+                break
+            await asyncio.sleep(0.01)
+        else:
+            raise AssertionError("queued coordinator insert was lost after stopping")
+        followup = await client.post(
+            f"/api/task/{task_id}/chat?project_id={project_id}",
+            headers={"Idempotency-Key": "chat-after-noncooperative-stop"},
+            json={"content": "继续下一轮"},
+        )
+        assert followup.status_code == 200
+        next_reply = await _wait_for_reply(
+            client, project_id, task_id,
+            assistant_message_id=followup.json()["assistant_message_id"],
+        )
+        assert next_reply["run_status"] == "succeeded"
+    finally:
+        engine_type.release.set()
+        main.coordinator_module._event_bus.unsubscribe(event_queue)
 
 
 @pytest.mark.anyio

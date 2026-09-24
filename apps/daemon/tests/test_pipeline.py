@@ -410,7 +410,8 @@ def test_assemble_prompt_renders_step_template_variables(tmp_path):
     assert "任务：登录后偶发跳回首页" in prompt
     assert "步骤：开发（develop）" in prompt
     assert "全角变量：小李" in prompt
-    assert f"工作区：.workstep/worktrees/{task.id} / .workstep/worktrees/{task.id}" in prompt
+    workspace = f".workstep/artifacts/delivery/{task.id}/.worktrees"
+    assert f"工作区：{workspace} / {workspace}" in prompt
     assert "未知变量：{custom_value}" in prompt
     db.close()
 
@@ -626,6 +627,129 @@ def test_assemble_prompt_renders_dynamic_input_port_snapshot(tmp_path):
     assert "Path: `bugs.md`" in prompt
     assert "当前是首次开发" not in prompt
     assert "不是缺陷返工" not in prompt
+    db.close()
+
+
+def test_assemble_prompt_omits_inactive_feedback_input_and_its_outputs(tmp_path):
+    from models import Task, init_db
+    import time
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id="task", title="开发任务", cwd=str(tmp_path),
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    step = Step(
+        key="frontend", label="前端开发", prompt="实现前端功能",
+        inputs=[
+            {"name": "功能开发", "outputs": [
+                {"name": "开发文档", "type": "md"},
+                {"name": "分支名", "type": "md"},
+            ]},
+            {"name": "前端BUG 修复", "outputs": [
+                {"name": "修复列表", "type": "md"},
+            ]},
+        ],
+        outputs=[
+            {"name": "开发文档", "type": "md"},
+            {"name": "分支名", "type": "md"},
+            {"name": "修复列表", "type": "md"},
+        ],
+        outgoing_connections=[
+            {"fromPort": 0, "kind": "solid"},
+            {"fromPort": 2, "kind": "solid"},
+        ],
+    )
+    snapshot = {"execution_type": "forward", "ports": [
+        {"port": 0, "name": "功能开发", "status": "ready", "sources": [
+            {"name": "设计稿", "path": str(tmp_path / "design.html")},
+        ]},
+        {"port": 1, "name": "前端BUG 修复", "status": "inactive", "sources": []},
+    ]}
+
+    prompt = assemble_prompt(task, step, tmp_path / "artifacts", input_snapshot=snapshot)
+
+    assert "### Input: 功能开发" in prompt
+    assert "### Input: 前端BUG 修复" not in prompt
+    assert "No artifact is available" not in prompt
+    assert "开发文档" in prompt
+    assert "分支名" in prompt
+    assert "修复列表" not in prompt
+    db.close()
+
+
+def test_assemble_prompt_feedback_includes_only_feedback_port_outputs(tmp_path):
+    from models import Task, init_db
+    import time
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id="task", title="修复任务", cwd=str(tmp_path),
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    step = Step(
+        key="frontend", label="前端开发", prompt="处理任务",
+        inputs=[
+            {"name": "功能开发", "outputs": [{"name": "开发文档", "type": "md"}]},
+            {"name": "前端BUG 修复", "outputs": [{"name": "修复列表", "type": "md"}]},
+        ],
+        outputs=[
+            {"name": "开发文档", "type": "md"},
+            {"name": "修复列表", "type": "md"},
+        ],
+    )
+    snapshot = {"execution_type": "feedback", "ports": [
+        {"port": 0, "name": "功能开发", "status": "inactive", "sources": []},
+        {"port": 1, "name": "前端BUG 修复", "status": "ready", "sources": [
+            {"kind": "dashed", "name": "Bug列表", "path": str(tmp_path / "bugs.md")},
+        ]},
+    ]}
+
+    prompt = assemble_prompt(task, step, tmp_path / "artifacts", input_snapshot=snapshot)
+
+    assert "### Input: 前端BUG 修复" in prompt
+    assert "### Input: 功能开发" not in prompt
+    assert "修复列表" in prompt
+    assert "开发文档" not in prompt
+    retry_prompt = assemble_retry_prompt(
+        task, step, tmp_path / "artifacts", snapshot, artifact_round=2,
+    )
+    assert "修复列表" in retry_prompt
+    assert "开发文档" not in retry_prompt
+    followup_prompt = assemble_followup_prompt(
+        task, step, tmp_path / "artifacts", "继续修复", input_snapshot=snapshot,
+    )
+    assert "修复列表" in followup_prompt
+    assert "开发文档" not in followup_prompt
+    db.close()
+
+
+def test_assemble_prompt_with_only_inactive_input_has_no_artifact_contract(tmp_path):
+    from models import Task, init_db
+    import time
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id="task", title="开发任务", cwd=str(tmp_path),
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    step = Step(
+        key="frontend", label="前端开发", prompt="处理任务",
+        inputs=[{"name": "前端BUG 修复", "outputs": [
+            {"name": "修复列表", "type": "md"},
+        ]}],
+        outputs=[{"name": "修复列表", "type": "md"}],
+    )
+    snapshot = {"execution_type": "initial", "ports": [
+        {"port": 0, "name": "前端BUG 修复", "status": "inactive", "sources": []},
+    ]}
+
+    prompt = assemble_prompt(task, step, tmp_path / "artifacts", input_snapshot=snapshot)
+
+    assert "## Step execution context" not in prompt
+    assert "## Output specification" not in prompt
+    assert "## Artifact output directory" not in prompt
+    assert "## Step requirements\n处理任务" in prompt
     db.close()
 
 

@@ -205,6 +205,8 @@ async def lifespan(app: FastAPI):
             await channel_chat_module.shutdown()
         if chat_session_module is not None:
             await chat_session_module.shutdown()
+        from services.action_runtime import action_runtime
+        await action_runtime.shutdown()
         await remote_project_client.close()
         await coordinator_module.shutdown()
         await workflow_runtime.shutdown()

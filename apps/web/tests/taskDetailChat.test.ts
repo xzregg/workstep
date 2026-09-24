@@ -19,7 +19,34 @@ import {
   mergeHistoryMessageWithLive,
   mergeRefreshedTaskHistory,
   canRetryFailedExecutionMessage,
+  canCompleteStoppedReview,
+  loadTaskHistoryWithRetry,
 } from '../src/pages/taskDetailChat.ts'
+
+test('retries a failed history request until the execution message is loaded', async () => {
+  let attempts = 0
+  const response = await loadTaskHistoryWithRetry(async () => {
+    attempts += 1
+    if (attempts === 1) throw new Error('Failed to fetch')
+    return { messages: [{ id: 'frontend-execution', sequence: 27 }] }
+  }, new AbortController().signal, 0)
+
+  assert.equal(attempts, 2)
+  assert.deepEqual(response?.messages.map((message) => message.id), ['frontend-execution'])
+})
+
+test('stops retrying history when task detail closes', async () => {
+  const controller = new AbortController()
+  let attempts = 0
+  const response = await loadTaskHistoryWithRetry(async () => {
+    attempts += 1
+    controller.abort()
+    throw new Error('Failed to fetch')
+  }, controller.signal, 0)
+
+  assert.equal(response, undefined)
+  assert.equal(attempts, 1)
+})
 
 test('only the final execution message with a step error can restart in place', () => {
   const failed = { id: 'failed', role: 'assistant', channel: 'execution', run_status: 'failed' }
@@ -27,6 +54,43 @@ test('only the final execution message with a step error can restart in place', 
   assert.equal(canRetryFailedExecutionMessage(failed, 'later-user', 'failed', 'network error'), false)
   assert.equal(canRetryFailedExecutionMessage(failed, 'failed', 'failed', ''), false)
   assert.equal(canRetryFailedExecutionMessage(failed, 'failed', 'passed', 'network error'), false)
+})
+
+test('terminated manual review can be completed only for current stopped step with output', () => {
+  const review = {
+    id: 'review-2', step_key: 'build', workflow_run_id: 'run-2',
+    mode: 'manual', status: 'terminated', artifact_round: 2,
+  }
+  const reviews = [
+    { ...review, started_at: '2026-01-02' },
+    { ...review, id: 'review-1', artifact_round: 1, started_at: '2026-01-01' },
+  ]
+  const artifacts = [{ step_key: 'build', round: 2 }]
+  const eligible = (candidate = review, files = artifacts, status = 'cancelled') =>
+    canCompleteStoppedReview(candidate, reviews, files, 'stopped', 'run-2', status)
+  assert.equal(eligible(), true)
+  assert.equal(eligible(review, [], 'cancelled'), false)
+  assert.equal(eligible({ ...review, id: 'review-1', artifact_round: 1 }), false)
+  assert.equal(eligible({ ...review, workflow_run_id: 'old-run' }), false)
+  assert.equal(eligible(review, artifacts, 'passed'), false)
+})
+
+test('stopped automatic review with output can be marked complete, ordinary failure cannot', () => {
+  const review = {
+    id: 'auto-1', step_key: 'build', workflow_run_id: 'run-1',
+    mode: 'auto', status: 'failed', error: '手动停止', artifact_round: 1,
+  }
+  const artifacts = [{ step_key: 'build', round: 1 }]
+  assert.equal(canCompleteStoppedReview(
+    review, [review], artifacts, 'paused', 'run-1', 'cancelled',
+  ), true)
+  assert.equal(canCompleteStoppedReview(
+    { ...review, error: '审核引擎失败' }, [review], artifacts,
+    'paused', 'run-1', 'cancelled',
+  ), false)
+  assert.equal(canCompleteStoppedReview(
+    review, [review], [], 'paused', 'run-1', 'cancelled',
+  ), false)
 })
 
 test('reused failed message shows its new attempt and discards loaded old trace', () => {

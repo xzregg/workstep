@@ -189,6 +189,8 @@ SDK 可以封装子进程、JSONL、JSON-RPC 或进程内消息流；这些都�
 - `set_config_option` / `reset_options`：配置在 `spawn` 时从 `config_store` 读取，运行中修改无原生入口时安全 no-op。
 - `load_session` / `list_sessions`：无原生实现时保持基类默认（`False` / `[]`）。
 
+手动 `/compact` 只作用于已有引擎会话。ACP 原生 Agent 必须先通过 `available_commands_update` 声明 `compact`，WorkStep 才把它作为单个文本块送入 `session/prompt`；这不是独立的 ACP 方法。Codex CLI 与 Codex SDK 通过官方 SDK 的 `thread.compact()` 执行，并等待 `thread/compacted`。Claude Code、Claude Agent SDK 和 Qoder SDK 沿各自的斜杠命令传输发送，并以 `compacted` 事件确认。OpenClaw 的当前一次性 `agent exec`、Pydantic AI 及 WorkStep 当前的 DeepSeek Harness 组合没有同会话手动压缩入口，不展示该命令，也不得将其当普通提示词发送给模型。手动压缩不得使用执行失败自动重试，以免重复压缩。
+
 ### 3.4 审批方法（非 ACP 原生传输适配器）
 
 非 ACP 原生传输适配器的 `request_permission` 在 `request_interaction` 中自动登记到基类 pending 审批注册表（`tool_call_id → interaction_request`）；上层调用 `approve_tool(tool_use_id, approved)` 或 `approve_tool_option(tool_use_id, option_id)` 时，基类把决定（`allow_once` / `reject_once` / 指定 `option_id`）写回挂起的交互。

@@ -148,7 +148,8 @@ def _script_config(project: Path, task: Task | None, button: dict, source: str) 
             raise ActionError("Action 配置文件无效")
     timeout = metadata.get("timeout_seconds", 600)
     grace = metadata.get("stop_grace_seconds", 3)
-    if not isinstance(timeout, (int, float)) or not 1 <= timeout <= 86400:
+    managed_service = metadata.get("managed_service") is True
+    if not isinstance(timeout, (int, float)) or not (1 <= timeout <= 86400 or (managed_service and timeout == 0)):
         raise ActionError("Action 超时时间无效")
     if not isinstance(grace, (int, float)) or not 0.1 <= grace <= 30:
         raise ActionError("Action 停止宽限期无效")
@@ -178,6 +179,7 @@ def _script_config(project: Path, task: Task | None, button: dict, source: str) 
         "command": command,
         "timeout": float(timeout),
         "grace": float(grace),
+        "managed_service": managed_service,
     }
 
 
@@ -186,6 +188,17 @@ class ActionRuntime:
         self.processes: dict[str, asyncio.subprocess.Process] = {}
         self.tasks: dict[str, asyncio.Task] = {}
         self.stopping: set[str] = set()
+
+    async def shutdown(self) -> None:
+        """Stop managed process groups before the project databases close."""
+        active = list(self.processes.items())
+        self.stopping.update(run_id for run_id, _ in active)
+        await asyncio.gather(
+            *(self._terminate(proc, 3) for _, proc in active),
+            return_exceptions=True,
+        )
+        if self.tasks:
+            await asyncio.gather(*list(self.tasks.values()), return_exceptions=True)
 
     @staticmethod
     def _manager():
@@ -415,6 +428,7 @@ class ActionRuntime:
     async def _execute(self, project_id: str, run: dict, config: dict):
         run_id = run["run_id"]
         proc = None
+        parent_watcher = None
         try:
             if config["task_root"] is not None:
                 await asyncio.to_thread(config["task_root"].mkdir, parents=True, exist_ok=True)
@@ -455,6 +469,16 @@ class ActionRuntime:
                 start_new_session=True,
             )
             self.processes[run_id] = proc
+            if config.get("managed_service"):
+                async def stop_orphaned_children():
+                    # asyncio Process.wait() can wait for inherited stdout pipes
+                    # to close, even after the direct child has exited.
+                    while proc.returncode is None:
+                        await asyncio.sleep(0.05)
+                    # A script that backgrounds servers and exits must not leave
+                    # services detached from this Action's stop control.
+                    await self._terminate(proc, config["grace"])
+                parent_watcher = asyncio.create_task(stop_orphaned_children())
             if run_id in self.stopping:
                 await self._terminate(proc, config["grace"])
             else:
@@ -476,7 +500,10 @@ class ActionRuntime:
                 return await proc.wait()
 
             try:
-                exit_code = await asyncio.wait_for(read_output(), timeout=config["timeout"])
+                exit_code = (
+                    await read_output() if config["timeout"] == 0
+                    else await asyncio.wait_for(read_output(), timeout=config["timeout"])
+                )
                 status = "stopped" if run_id in self.stopping else "succeeded" if exit_code == 0 else "failed"
             except asyncio.TimeoutError:
                 await self._terminate(proc, config["grace"])
@@ -487,6 +514,9 @@ class ActionRuntime:
             await self._update(project_id, run_id, output=f"\n[action] {exc}\n")
             await self._finish(project_id, run_id, "failed", None)
         finally:
+            if parent_watcher is not None:
+                parent_watcher.cancel()
+                await asyncio.gather(parent_watcher, return_exceptions=True)
             self.processes.pop(run_id, None)
             self.stopping.discard(run_id)
 

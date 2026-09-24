@@ -441,6 +441,31 @@ class AcpEngineBase(BaseLLMEngine):
 
     async def spawn_with_retry(self, **kwargs) -> AsyncIterator[InternalEvent]:
         """Run the normal execution entry point with one failure retry."""
+        if str(kwargs.get("prompt") or "").strip() == "/compact":
+            from engines.core.input_items import NO_MANUAL_COMPACTION
+
+            if self.ENGINE_ID in NO_MANUAL_COMPACTION:
+                yield InternalEvent(type="error", data={
+                    "message": f"{self.ENGINE_ID} 当前不支持手动压缩会话",
+                })
+                return
+            if not kwargs.get("session_id"):
+                yield InternalEvent(type="error", data={
+                    "message": "没有可压缩的引擎会话",
+                })
+                return
+            # Compaction changes the current session. Never retry it blindly.
+            confirmed = False
+            failed = False
+            async for event in self.spawn(**kwargs):
+                confirmed |= event.type == "compacted"
+                failed |= event.type == "error"
+                yield event
+            if not confirmed and not failed and not self._is_acp_native:
+                yield InternalEvent(type="error", data={
+                    "message": "引擎未返回压缩完成事件，无法确认上下文已压缩",
+                })
+            return
         async for event in self._stream_with_retry(self.spawn, **kwargs):
             yield event
 
@@ -462,6 +487,12 @@ class AcpEngineBase(BaseLLMEngine):
         result = await super().inspect_capabilities(project_root)
         if result is None or not self._is_acp_native or not project_root:
             return result
+        # ACP slash commands are authoritative only when advertised by the
+        # agent. The shared placeholder must not shadow its native /compact.
+        result["input_items"] = [
+            item for item in result["input_items"]
+            if item["name"] != "compact"
+        ]
         commands = await self._inspect_acp_commands(str(project_root))
         existing_names = {item["name"] for item in result["input_items"]}
         result["input_items"] = result["input_items"] + [
@@ -1164,6 +1195,19 @@ class AcpEngineBase(BaseLLMEngine):
         config_overrides: dict | None = None,
         thinking_effort: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
+        if prompt.strip() == "/compact":
+            if not session_id:
+                yield InternalEvent(type="error", data={
+                    "message": "没有可压缩的 ACP 会话",
+                })
+                return
+            commands = await self._inspect_acp_commands(cwd)
+            if not any(command["name"] == "compact" for command in commands):
+                yield InternalEvent(type="error", data={
+                    "message": "ACP 引擎未声明 /compact 命令",
+                })
+                return
+
         def prepare_spawn():
             provider_runtime = self.resolve_provider_runtime(
                 provider_id=str((config_overrides or {}).get("provider_id") or ""),
@@ -1511,9 +1555,9 @@ class AcpEngineBase(BaseLLMEngine):
         config_overrides: dict | None = None,
     ) -> AsyncIterator[InternalEvent]:
         """Run a no-tools coordinator turn through this adapter seam."""
-        guarded_prompt = self._coordinator_prompt(
-            prompt,
-            workstep_tools=workstep_tools,
+        guarded_prompt = (
+            prompt if session_id and self.supports_resume
+            else self._coordinator_prompt(prompt, workstep_tools=workstep_tools)
         )
         if images and not self.capabilities.supports_vision:
             guarded_prompt = await asyncio.to_thread(

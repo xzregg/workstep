@@ -5,6 +5,8 @@ import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
 import Icon from './Icon'
 import QuickPromptButton from './QuickPromptButton'
+import ChatMessageBubble from './ChatMessageBubble'
+import { formatConversationDateTime } from '../utils/datetime'
 
 const isActive = (status: string) => ['preparing', 'running', 'stopping'].includes(status)
 
@@ -100,8 +102,13 @@ export function useTaskActions(projectId: string | undefined, taskId: string | u
 
 type State = ReturnType<typeof useTaskActions>
 
-export function ActionRunCards({ runs, onStop }: { runs: ActionRun[]; onStop: (runId: string) => void }) {
-  const { t } = useI18n()
+export function ActionConversationMessage({ message, run, onStop }: {
+  message: { id: string; role: string; content: string; created_at?: string }
+  run?: ActionRun
+  onStop?: (runId: string) => void
+}) {
+  const { t, locale } = useI18n()
+  const isUser = message.role === 'user'
   const statusLabel = (status: string) => ({
     preparing: t('actionShortcuts.launching'),
     running: t('actionShortcuts.running'),
@@ -112,20 +119,24 @@ export function ActionRunCards({ runs, onStop }: { runs: ActionRun[]; onStop: (r
     timed_out: t('actionShortcuts.timedOut'),
     interrupted: t('actionShortcuts.interrupted'),
   }[status] || t('actionShortcuts.interrupted'))
-  return <>
-    {[...runs].reverse().map((run) => <div key={run.run_id} className="task-action-message" style={{ alignSelf: 'stretch', border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-        <div><strong>{t('actionShortcuts.runTitle', { title: run.title })}</strong><div style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>{statusLabel(run.status)} · {run.cwd}</div></div>
-        {isActive(run.status) && <Button variant="ghost" className="chat-message-action" disabled={run.status === 'stopping'} onClick={() => onStop(run.run_id)}><Icon name={run.status === 'stopping' ? 'loader-circle' : 'stop'} className={run.status === 'stopping' ? 'git-spin' : undefined} size={14} />{run.status === 'stopping' ? t('actionShortcuts.stopping') : t('actionShortcuts.stop')}</Button>}
-      </div>
-      <pre style={{ margin: '10px 0 0', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 360, overflow: 'auto', background: 'var(--surface)', padding: 10, borderRadius: 6 }}>{run.output || (isActive(run.status) ? t('actionShortcuts.launching') : t('actionShortcuts.noOutput'))}</pre>
-      {run.exit_code !== null && <small style={{ color: 'var(--muted)' }}>{t('actionShortcuts.exitCode', { code: run.exit_code })}</small>}
-    </div>)}
-  </>
-}
-
-export function TaskActionMessages({ state }: { state: State }) {
-  return <ActionRunCards runs={state.runs} onStop={(runId) => void state.stop(runId)} />
+  const output = run?.output || message.content || (run && isActive(run.status) ? t('actionShortcuts.launching') : t('actionShortcuts.noOutput'))
+  return <ChatMessageBubble
+    role={isUser ? 'user' : 'assistant'}
+    sender={isUser ? t('aiFlow.me') : t('actionShortcuts.quickButtons')}
+    initials={isUser ? t('aiFlow.me').slice(0, 2) : 'A'}
+    color={isUser ? 'var(--accent)' : 'var(--ai-assistant)'}
+    content={isUser ? message.content : ''}
+    header={isUser ? (message.created_at ? formatConversationDateTime(message.created_at, Date.now(), locale) : undefined) : run ? <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between', color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+        {isActive(run.status) && <Icon name="loader-circle" className="git-spin" size={13} />}
+        {t('actionShortcuts.runTitle', { title: run.title })} · {statusLabel(run.status)} · {run.cwd}
+      </span>
+      {onStop && isActive(run.status) && <Button variant="ghost" className="chat-message-action" disabled={run.status === 'stopping'} onClick={() => onStop(run.run_id)}><Icon name={run.status === 'stopping' ? 'loader-circle' : 'stop'} className={run.status === 'stopping' ? 'git-spin' : undefined} size={14} />{run.status === 'stopping' ? t('actionShortcuts.stopping') : t('actionShortcuts.stop')}</Button>}
+    </div> : undefined}
+  >
+    {!isUser && <pre style={{ margin: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 360, overflow: 'auto', background: 'var(--surface)', padding: 10, borderRadius: 6 }}>{output}</pre>}
+    {!isUser && run?.exit_code !== null && run?.exit_code !== undefined && <small style={{ color: 'var(--muted)' }}>{t('actionShortcuts.exitCode', { code: run.exit_code })}</small>}
+  </ChatMessageBubble>
 }
 
 export function TaskActionButtons({ state, onFillPrompt, onSendPrompt }: { state: State; onFillPrompt?: (value: string) => void; onSendPrompt?: (value: string) => void }) {

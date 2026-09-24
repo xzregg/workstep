@@ -16,6 +16,7 @@ import argparse
 import asyncio
 import json
 import os
+from pathlib import Path
 
 from services.tool_registry import DEFAULT_DAEMON_URL, WorkstepClient
 
@@ -89,6 +90,15 @@ def build_parser() -> argparse.ArgumentParser:
     workflow_get.add_argument("--project", required=True, dest="project_id", help="project id")
     workflow_get.add_argument("--workflow", required=True, dest="workflow_id", help="workflow id")
     add_json(workflow_get)
+    workflow_action = workflow_sub.add_parser("action-create", help="create a workflow Action shortcut")
+    workflow_action.add_argument("--project", required=True, dest="project_id")
+    workflow_action.add_argument("--workflow", required=True, dest="workflow_id")
+    workflow_action.add_argument("--action-id", required=True, dest="action_id")
+    workflow_action.add_argument("--title", required=True)
+    workflow_action.add_argument("--script-file", required=True, help="local .sh/.bash/.py file to publish")
+    workflow_action.add_argument("--cwd", choices=("task", "project", "worktrees"), default="task", dest="cwd_mode")
+    workflow_action.add_argument("--no-run-confirmation", action="store_true", help="run button without a separate confirmation dialog")
+    add_json(workflow_action)
 
     engine = subparsers.add_parser("engine", help="manage engines")
     engine_sub = engine.add_subparsers(dest="subcommand", required=True)
@@ -216,6 +226,20 @@ async def dispatch(args: argparse.Namespace, client: WorkstepClient | None = Non
                 "workstep_get_workflow",
                 {**arguments, "workflow_id": args.workflow_id},
             )
+        if args.subcommand == "action-create":
+            script_file = Path(args.script_file)
+            script_content = await asyncio.to_thread(script_file.read_text, encoding="utf-8")
+            return await client.call("workstep_create_workflow_action", {
+                **arguments,
+                "workflow_id": args.workflow_id,
+                "action_id": args.action_id,
+                "title": args.title,
+                "script_path": script_file.name,
+                "script_content": script_content,
+                "cwd_mode": args.cwd_mode,
+                "require_confirmation": not args.no_run_confirmation,
+                "confirm": "yes",
+            })
     if command == "engine" and args.subcommand == "list":
         return await client.call("workstep_list_engines", {})
     if command == "schedule":

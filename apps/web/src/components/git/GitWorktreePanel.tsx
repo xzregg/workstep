@@ -9,7 +9,7 @@ import GitBranchPicker from './GitBranchPicker'
 import GitHistory from './GitHistory'
 import GitDiffDialog from './GitDiffDialog'
 import GitRemoteActions from './GitRemoteActions'
-import GitMergeActions from './GitMergeActions'
+import GitMergeActions, { type GitMergeRequest } from './GitMergeActions'
 
 function HistoricalChanges({ id, comparison, onFiles }: { id: string; comparison: Comparison; onFiles: (files: GitFile[], path: string) => void }) {
   const gitApi = useGitApi()
@@ -36,6 +36,7 @@ export default function GitWorktreePanel({ id, branch, onLocate, onChanged }: { 
   const [tab, setTab] = useState<'changes' | 'history'>(branch ? 'history' : 'changes')
   const [remoteBusy, setRemoteBusy] = useState(false)
   const [picker, setPicker] = useState(false)
+  const [mergeRequest, setMergeRequest] = useState<GitMergeRequest | null>(null)
   const pickerRef = useRef<HTMLDivElement>(null)
   const [commit, setCommit] = useState<string>()
   const [diff, setDiff] = useState<{ files: string[]; path: string; comparison: Comparison } | null>(null)
@@ -72,7 +73,7 @@ export default function GitWorktreePanel({ id, branch, onLocate, onChanged }: { 
   const historical = !!branch || !!commit
   const open = (files: GitFile[], path: string) => setDiff({ files: files.map(f => f.path), path, comparison })
   return <main className="git-workspace">
-    <div className="git-context"><div><h2><Icon name="git-fork" size={19} />{branch || status?.branch || t('git.detached')}{(historical || readOnly) && <small>{t('git.readOnly')}</small>}</h2><p title={status?.path}>{status?.path}</p></div><Button size="sm" loading={loading} onClick={() => void refresh()}><Icon name="refresh" size={14} />{t('git.refresh')}</Button>{status && <GitRemoteActions status={status} readOnly={historical || readOnly} onRefresh={refresh} onBusy={busy => { setRemoteBusy(busy); if (busy) setPicker(false) }} />}{status && <GitMergeActions status={status} readOnly={historical || readOnly} otherBusy={remoteBusy} onRefresh={refresh} onBusy={busy => { setRemoteBusy(busy); if (busy) setPicker(false) }} />}{status && !readOnly && <div className="git-branch-popover" ref={pickerRef}><Button size="sm" disabled={remoteBusy} aria-expanded={picker} aria-haspopup="listbox" onClick={() => setPicker(!picker)}>{t('git.switch')}<Icon name="chevron-down" size={13} /></Button>{picker && <GitBranchPicker onRefresh={refresh} status={status} onLocate={onLocate} onChanged={async () => { setPicker(false); await refresh(); await onChanged(); onLocate(id) }} />}</div>}</div>
+    <div className="git-context"><div><h2><Icon name="git-fork" size={19} />{branch || status?.branch || t('git.detached')}{(historical || readOnly) && <small>{t('git.readOnly')}</small>}</h2><p title={status?.path}>{status?.path}</p></div><Button size="sm" loading={loading} onClick={() => void refresh()}><Icon name="refresh" size={14} />{t('git.refresh')}</Button>{status && <GitRemoteActions status={status} readOnly={historical || readOnly} onRefresh={refresh} onBusy={busy => { setRemoteBusy(busy); if (busy) setPicker(false) }} />}{status && <GitMergeActions status={status} readOnly={historical || readOnly} otherBusy={remoteBusy} request={mergeRequest} onRefresh={refresh} onBusy={busy => { setRemoteBusy(busy); if (busy) setPicker(false) }} />}{status && !readOnly && <div className="git-branch-popover" ref={pickerRef}><Button size="sm" disabled={remoteBusy} aria-expanded={picker} aria-haspopup="listbox" onClick={() => setPicker(!picker)}>{t('git.switch')}<Icon name="chevron-down" size={13} /></Button>{picker && <GitBranchPicker onRefresh={refresh} status={status} onLocate={onLocate} onMerge={historical ? undefined : (direction, selectedBranch) => { setPicker(false); setMergeRequest({ direction, branch: selectedBranch }) }} onChanged={async () => { setPicker(false); await refresh(); await onChanged(); onLocate(id) }} />}</div>}</div>
     {error && <div className="git-error" role="alert">{error}<Button size="sm" onClick={() => void refresh()}>{t('git.retry')}</Button></div>}
     <div className="git-tabs"><button className={tab === 'changes' ? 'selected' : ''} onClick={() => { setTab('changes'); setCommit(undefined) }}>{branch ? t('git.compare') : t('git.changes')}{!branch && <small>{status?.files.length || 0}</small>}</button><button className={tab === 'history' ? 'selected' : ''} onClick={() => { setTab('history'); setCommit(undefined) }}>{t('git.history')}</button><span>{status?.upstream ? `${status.upstream} ↑${status.ahead ?? '—'} ↓${status.behind ?? '—'}` : t('git.updated')}</span></div>
     {commit && <div className="git-selection-bar"><code>{commit.slice(0, 8)}</code><Button size="sm" onClick={() => setCommit(undefined)}>{t('git.history')}</Button></div>}

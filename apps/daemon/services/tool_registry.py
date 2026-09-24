@@ -9,7 +9,6 @@ API contract.
 import json
 import os
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -89,6 +88,28 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         read_only=True,
         path_params=("workflow_id",),
         query_params=("project_id",),
+    ),
+    WorkstepTool(
+        name="workstep_create_workflow_action",
+        description="Create a workflow Action shortcut and its script after explicit authorization.",
+        method="POST",
+        path="/api/workflow/{workflow_id}/actions",
+        parameters={
+            "project_id": {"type": "string", "description": "project id"},
+            "workflow_id": {"type": "string", "description": "workflow id"},
+            "action_id": {"type": "string", "description": "stable Action slug"},
+            "title": {"type": "string", "description": "button title"},
+            "script_path": {"type": "string", "description": "script filename (.sh/.bash/.py)"},
+            "script_content": {"type": "string", "description": "full script content"},
+            "cwd_mode": {"type": "string", "description": "task, project or worktrees"},
+            "require_confirmation": {"type": "boolean", "description": "confirm before execution"},
+        },
+        required=("project_id", "workflow_id", "action_id", "title", "script_path", "script_content"),
+        read_only=False,
+        side_effect="write a script and register a workflow shortcut",
+        path_params=("workflow_id",),
+        query_params=("project_id",),
+        body_params=("action_id", "title", "script_path", "script_content", "cwd_mode", "require_confirmation"),
     ),
     WorkstepTool(
         name="workstep_list_tasks",
@@ -345,59 +366,6 @@ def workstep_tools_instruction() -> str:
         "Create, update, pause, resume, and delete operations have side effects; "
         "use them only with explicit user authorization and confirm='yes'. "
         "Never invent ids; look them up with list/get first."
-    )
-
-
-def workstep_cli_instruction() -> str:
-    """Prompt section teaching CLI engines to call the ``workstep`` CLI.
-
-    Engines without native tool hosting (Codex CLI, Claude Code, Hermes, …)
-    call the local daemon through the ``workstep`` CLI instead; the daemon is
-    already running when the coordinator turn executes.
-    """
-    daemon_dir = Path(__file__).resolve().parent.parent
-    return (
-        "# WorkStep CLI\n"
-        "\n"
-        "You can inspect and manage the WorkStep system by calling the local "
-        "daemon CLI (the daemon is already running). Runtime-safe invocation:\n"
-        "\n"
-        "    \"$WORKSTEP_CLI_PYTHON\" \"$WORKSTEP_DAEMON_DIR/cli.py\" <command>\n"
-        "\n"
-        "PowerShell:\n"
-        "\n"
-        "    & $env:WORKSTEP_CLI_PYTHON \"$env:WORKSTEP_DAEMON_DIR/cli.py\" <command>\n"
-        "\n"
-        "Source-checkout fallback:\n"
-        "\n"
-        f"    cd {daemon_dir} && uv run --no-sync python -m cli <command>\n"
-        "\n"
-        "Read-only commands:\n"
-        "- `workstep project list` — list registered projects\n"
-        "- `workstep workflow list --project <project_id>` — list project workflows\n"
-        "- `workstep workflow get --project <project_id> --workflow <workflow_id>` — get one workflow and its steps\n"
-        "- `workstep task list --project <project_id>` — list tasks of a project\n"
-        "- `workstep task get --project <project_id> --task <task_id>` — get one task\n"
-        "- `workstep task repos --project <project_id>` — list Git repositories in a project\n"
-        "- `workstep task worktrees --project <project_id> --task <task_id>` — list only this task's worktrees\n"
-        "- `workstep engine list` — list installed LLM engines\n"
-        "- `workstep schedule list --project <project_id>` — list schedules\n"
-        "- `workstep schedule get --project <project_id> --schedule <schedule_id>` — get one schedule\n"
-        "- `workstep schedule runs --project <project_id> --schedule <schedule_id>` — list schedule runs\n"
-        "\n"
-        "Create a task in a chosen workflow with `workstep task create "
-        "--project <project_id> --workflow <workflow_id> --title <title>`; "
-        "add `--start-step <step_key>` when a non-default starting step is needed.\n"
-        "For a task that needs isolated changes in selected repositories, use "
-        "`workstep task worktree-add --project <project_id> --task <task_id> "
-        "--repository <repository_id> --alias <directory_name> [--base <source_branch>] "
-        "[--branch <new_branch>]` "
-        "after inspecting `task repos`. Do not create worktrees for unrelated repositories.\n"
-        "\n"
-        "Mutating commands (`project init`, `task create`, `schedule "
-        "worktree-add`, `schedule create/update/pause/resume/delete`) must only be run with explicit "
-        "user authorization. Never fabricate ids — look them up with the "
-        "list/get commands first.\n"
     )
 
 

@@ -20,7 +20,6 @@ export default function GitRemoteActions({ status, readOnly, onRefresh, onBusy }
   const [error, setError] = useState('')
   const [notice, setNotice] = useState<{ kind: 'success' | 'error'; title: string; detail: string } | null>(null)
   const blocked = readOnly ? t('git.remoteReadOnly') : status.operation ? t('git.blocked') : status.active ? t('git.remoteRunning') : !status.branch || !status.head ? t('git.remoteNoCommit') : ''
-  const pushBlocked = status.files.length ? t('git.remoteDirty') : blocked
 
   useEffect(() => {
     if (!mode) return
@@ -42,7 +41,7 @@ export default function GitRemoteActions({ status, readOnly, onRefresh, onBusy }
   }
 
   async function open(action: 'pull' | 'push') {
-    if ((action === 'push' ? pushBlocked : blocked) || busy) return
+    if (blocked || busy) return
     setMode(action); setLoading(true); setError(''); setNotice(null)
     try { applyInventory(await gitApi.remotes(status.id), action) }
     catch (e) { setError(e instanceof Error ? e.message : String(e)) }
@@ -66,7 +65,7 @@ export default function GitRemoteActions({ status, readOnly, onRefresh, onBusy }
   }
 
   async function run(action: 'pull' | 'push') {
-    if (busy || (action === 'push' ? pushBlocked : blocked) || !status.branch || !remote || !targetBranch.trim()) return
+    if (busy || blocked || !status.branch || !remote || !targetBranch.trim()) return
     const target = targetBranch.trim()
     setBusy(action); onBusy(true); setError(''); setNotice(null)
     try {
@@ -86,7 +85,7 @@ export default function GitRemoteActions({ status, readOnly, onRefresh, onBusy }
   const route = mode === 'push' ? `${status.branch} → ${remote || '—'}/${targetBranch || '—'}` : `${remote || '—'}/${targetBranch || '—'} → ${status.branch}`
   return <span className="git-remote-actions" ref={root}>
     <Button size="sm" title={blocked || t('git.pullHint')} disabled={!!blocked || !!busy} loading={busy === 'pull'} aria-expanded={mode === 'pull'} onClick={() => void open('pull')}>{busy === 'pull' ? t('git.pulling') : t('git.pullButton')}<Icon name="chevron-down" size={12} /></Button>
-    <Button size="sm" title={pushBlocked || t('git.pushButton')} disabled={!!pushBlocked || !!busy} loading={busy === 'push'} aria-expanded={mode === 'push'} onClick={() => void open('push')}>{busy === 'push' ? t('git.pushing') : t('git.pushButton')}<Icon name="chevron-down" size={12} /></Button>
+    <Button size="sm" title={blocked || t('git.pushButton')} disabled={!!blocked || !!busy} loading={busy === 'push'} aria-expanded={mode === 'push'} onClick={() => void open('push')}>{busy === 'push' ? t('git.pushing') : t('git.pushButton')}<Icon name="chevron-down" size={12} /></Button>
     {mode && <span className="git-remote-panel" role="dialog" aria-label={mode === 'push' ? t('git.pushTitle') : t('git.pullTitle')}>
       <span className="git-remote-panel__heading"><span><strong>{mode === 'push' ? t('git.pushTitle') : t('git.pullTitle')}</strong><small>{mode === 'push' ? t('git.pushDescription') : t('git.pullDescription')}</small></span><Button variant="icon" aria-label={t('git.close')} onClick={() => setMode(null)}><Icon name="x" size={14} /></Button></span>
       {loading && !inventory ? <span className="git-remote-loading"><Icon name="loader-circle" className="git-spin" size={14} />{t('git.remoteLoading')}</span> : <>

@@ -62,6 +62,7 @@ import {
   isVisibleHistoryMessage,
   isVisibleLiveExecutionMessage,
   canRetryFailedExecutionMessage,
+  canCompleteStoppedReview,
   isUnpersistedLiveMessage,
   isManualReviewMessage,
   isMessageReviewActionable,
@@ -85,6 +86,7 @@ import {
   isAutoShrinkClamp,
   liveExecutionStatus,
   mergeHistoryMessageWithLive,
+  messageSessionId,
   observeContentResize,
   orderConversationMessages,
   resolveTaskComposerState,
@@ -102,7 +104,8 @@ import {
 import { useI18n, type TKey } from '../i18n'
 import { shouldShowAssistantThinking } from '../utils/assistantThinking'
 import TaskRecoveredBadge from './TaskRecoveredBadge'
-import { TaskActionButtons, TaskActionMessages, useTaskActions } from './TaskActionShortcuts'
+import { ActionConversationMessage, TaskActionButtons, useTaskActions } from './TaskActionShortcuts'
+import { mergeActionMessages } from '../utils/actionConversation'
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -212,6 +215,7 @@ export interface TaskDetailViewProps {
     restart_from_step_key?: string | null
     coordinator_engine?: string | null
     coordinator_session_id?: string | null
+    active_workflow_run_id?: string | null
     review_overrides?: Record<string, any> | null
     recovered_count?: number
   } | null | undefined
@@ -1040,7 +1044,7 @@ export default function TaskDetailView({
               alignItems: 'center',
             }}
           >
-            <span style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 600, lineHeight: 1.4 }}>
+            <span className="task-detail-title" style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 600, lineHeight: 1.4 }}>
               {task.title}
             </span>
             {headerActions}
@@ -2338,6 +2342,7 @@ export default function TaskDetailView({
               style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0, minHeight: '100%' }}
             >
             {historyMessages.length === 0 &&
+              taskActions.runs.length === 0 &&
               events.length === 0 &&
               !content &&
               liveCoordinatorMessages.length === 0 &&
@@ -2357,7 +2362,7 @@ export default function TaskDetailView({
             {(() => {
               const orderedMessagesRaw = [
                 ...historyMessages
-                  .filter((message: any) => (!onSendPrompt || message.channel !== 'action') && isVisibleHistoryMessage(message))
+                  .filter((message: any) => isVisibleHistoryMessage(message))
                   .map((message: any) =>
                     mergeHistoryMessageWithLive(
                       message,
@@ -2375,7 +2380,21 @@ export default function TaskDetailView({
                           ),
                 })),
               ]
-              const orderedMessages = orderConversationMessages(orderedMessagesRaw)
+              const orderedMessages = orderConversationMessages(mergeActionMessages(
+                orderedMessagesRaw,
+                taskActions.runs,
+                (message: any) => message.channel === 'action',
+                (run, role) => ({
+                  id: role === 'user' ? run.user_message_id : run.reply_message_id,
+                  channel: 'action', role,
+                  content: role === 'user' ? t('actionShortcuts.runTitle', { title: run.title }) : run.output,
+                  created_at: run.started_at,
+                  started_at: run.started_at,
+                  ended_at: role === 'assistant' ? run.ended_at : run.started_at,
+                  run_status: role === 'assistant' ? run.status : 'succeeded',
+                  reply_to_message_id: role === 'assistant' ? run.user_message_id : undefined,
+                }),
+              ))
               const latestTaskMessageId = orderConversationMessages([
                 ...historyMessages,
                 ...Object.values(liveMessages)
@@ -2383,6 +2402,14 @@ export default function TaskDetailView({
                   .map((item) => ({ ...item, run_status: item.status })),
               ]).at(-1)?.id
               return orderedMessages.map((message: any) => {
+                if (message.channel === 'action') {
+                  return <ActionConversationMessage
+                    key={message.id}
+                    message={message}
+                    run={message.actionRun}
+                    onStop={canChat ? (runId) => { void taskActions.stop(runId) } : undefined}
+                  />
+                }
                 const stepKey =
                   message.context_step_key ||
                   message.step_key ||
@@ -2786,12 +2813,11 @@ export default function TaskDetailView({
                                       ? (task
                                           ?.coordinator_session_id ||
                                           null)
-                                      : isReview
-                                        ? undefined
-                                        : msg.session_id ||
-                                          (msg.run_status === 'running'
-                                            ? sessionIdForStep(stepKey)
-                                            : null)
+                                      : messageSessionId(
+                                          msg,
+                                          isReview,
+                                          sessionIdForStep(stepKey),
+                                        )
                                   }
                                   messageId={msg.id}
                                   artifactRound={isCoordinator ? undefined : messageArtifactRound}
@@ -2823,6 +2849,17 @@ export default function TaskDetailView({
                                   reviewStatus={
                                     msgReview?.status
                                   }
+                                  onSetReviewComplete={
+                                    isReview && onReviewAction
+                                    && canCompleteStoppedReview(
+                                      msgReview, reviews, artifacts,
+                                      task?.status, task?.active_workflow_run_id,
+                                      msgStepStatus,
+                                    )
+                                      ? () => onReviewAction('set-complete', msgReview, stepKey)
+                                      : undefined
+                                  }
+                                  settingReviewComplete={!!reviewActionPending}
                                   projectId={projectId}
                                 />
                               )
@@ -3296,7 +3333,6 @@ export default function TaskDetailView({
               />
             )}
 
-            <TaskActionMessages state={taskActions} />
             <div ref={endRef} />
             </div>
           </div>
@@ -3568,11 +3604,17 @@ export default function TaskDetailView({
                     }
                   : undefined)
               }
-              resetStep={resumableTarget && onResetStepChange
+              resetStep={(resumableTarget || chatTarget === 'coordinator') && onResetStepChange
                 ? {
                     active: Boolean(resetStep),
                     onChange: onResetStepChange,
-                    disabled: Boolean(stepResuming),
+                    disabled: Boolean(stepResuming || (chatTarget === 'coordinator' && coordinatorRunning)),
+                    label: chatTarget === 'coordinator'
+                      ? t('chatInput.resetSession')
+                      : t('chatInput.resetStep'),
+                    title: chatTarget === 'coordinator'
+                      ? t('chatInput.resetSessionTitle')
+                      : t('chatInput.resetStepTitle'),
                   }
                 : undefined}
               stopTitle={
@@ -3866,6 +3908,12 @@ function CoordinatorProposalCard({
   const injectedPrompt = typeof current.payload.content === 'string'
     ? current.payload.content.trim()
     : ''
+  const actionScript = current.type === 'create_workflow_action' && typeof current.payload.script_content === 'string'
+    ? current.payload.script_content
+    : ''
+  const actionPath = actionScript
+    ? `.workstep/artifacts/${current.payload.workflow_id}/actions/${current.payload.action_id}/${current.payload.script_path}`
+    : ''
   const retryable =
     current.status === 'failed' && current.type === 'rerun_from_step'
   const canAct = (current.status === 'pending' || retryable) && !pending
@@ -3942,7 +3990,9 @@ function CoordinatorProposalCard({
       }}
     >
       <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 700 }}>
-        {t('taskDetail.proposalTitle', { type: current.type })}
+        {current.type === 'create_workflow_action'
+          ? t('taskDetail.proposalCreateActionTitle')
+          : t('taskDetail.proposalTitle', { type: current.type })}
       </div>
       <div style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--muted)' }}>
         {current.impact?.summary ||
@@ -3950,6 +4000,15 @@ function CoordinatorProposalCard({
             step: current.target_step_key || t('common.none'),
           })}
       </div>
+      {actionScript && (
+        <div style={{ border: '1px solid var(--border-soft)', borderRadius: 6, padding: 10, background: 'var(--surface)' }}>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>{String(current.payload.label)} · {actionPath}</div>
+          <div style={{ color: 'var(--meta)', marginBottom: 6 }}>
+            {t('taskDetail.proposalActionCwd', { directory: String(current.payload.cwd_mode) })} · {t('taskDetail.proposalActionConfirmation', { value: t(current.payload.require_confirmation === false ? 'taskDetail.proposalActionNo' : 'taskDetail.proposalActionYes') })}
+          </div>
+          <pre style={{ maxHeight: 320, overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', margin: 0 }}>{actionScript}</pre>
+        </div>
+      )}
       {injectedPrompt && (
         <div
           style={{

@@ -73,6 +73,12 @@ async def test_codex_sdk_coordinator_accepts_host_history_kwargs(monkeypatch):
     assert "message_history" not in captured
     assert "report_engine_state" not in captured
 
+    async for _ in CodexSDKEngine().spawn_coordinator(
+        "第二问", cwd="/project", session_id="existing-session", workstep_tools=True,
+    ):
+        pass
+    assert captured["prompt"] == "第二问"
+
 
 class PromptCapturingEngine(AcpEngineBase):
     calls: list[str] = []
@@ -117,6 +123,23 @@ class WorkstepToolsEngine(PromptCapturingEngine):
     @property
     def supports_workstep_tools(self):
         return True
+
+
+class ResumableWorkstepToolsEngine(WorkstepToolsEngine):
+    @property
+    def supports_resume(self):
+        return True
+
+
+@pytest.mark.anyio
+async def test_resumed_coordinator_does_not_repeat_bootstrap_guard():
+    ResumableWorkstepToolsEngine.calls.clear()
+    engine = ResumableWorkstepToolsEngine()
+    async for _ in engine.spawn_coordinator(
+        "第二问", cwd="/project", session_id="existing-session", workstep_tools=True,
+    ):
+        pass
+    assert ResumableWorkstepToolsEngine.calls[-1] == "第二问"
 
 
 @pytest.mark.anyio

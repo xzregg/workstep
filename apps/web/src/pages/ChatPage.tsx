@@ -732,7 +732,9 @@ export default function ChatPage() {
         projectId={activeProject.id}
         sessionId={sessionId}
         title={sessionTitle || t('chatSession.title')}
-        messages={messages.filter((message) => message.engine !== 'action')}
+        messages={messages}
+        actionRuns={projectActions.runs}
+        onStopAction={(runId) => { void projectActions.stop(runId) }}
         afterMessages={<ProjectActionMessages state={projectActions} />}
         availableCommands={session?.availableCommands}
         running={running}

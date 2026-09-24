@@ -747,9 +747,15 @@ class BaseLLMEngine(ABC):
 
     def input_commands(self) -> list[dict[str, str]]:
         """Return executable input commands owned by this adapter."""
-        from engines.core.input_items import workstep_input_commands
+        from engines.core.input_items import (
+            NO_MANUAL_COMPACTION,
+            workstep_input_commands,
+        )
 
-        return workstep_input_commands()
+        commands = workstep_input_commands()
+        if self.ENGINE_ID in NO_MANUAL_COMPACTION:
+            return [item for item in commands if item["name"] != "compact"]
+        return commands
 
     # --- Execution ---
 

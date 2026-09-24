@@ -3778,6 +3778,28 @@ async def test_manual_review_complete_task_endpoint_does_not_resume(api_context,
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("schedule_downstream", [True, False])
+async def test_set_complete_review_endpoint_forwards_downstream_choice(
+    api_context, monkeypatch, schedule_downstream,
+):
+    import main
+
+    client, _tmp_path = api_context
+    runtime = AsyncMock()
+    runtime.decide_review.return_value = None
+    monkeypatch.setattr(main, "workflow_runtime", runtime)
+    response = await client.post(
+        "/api/task/task-1/steps/build/review/set-complete?project_id=project-1",
+        json={"review_run_id": "review-1", "schedule_downstream": schedule_downstream},
+    )
+    assert response.status_code == 200
+    runtime.decide_review.assert_awaited_once_with(
+        "project-1", "task-1", "build", "review-1", "set_complete", None,
+        schedule_downstream=schedule_downstream,
+    )
+
+
+@pytest.mark.anyio
 async def test_complete_task_review_api_keeps_health_responsive_during_slow_db(api_context, monkeypatch):
     import main
     from models import ReviewRun, StepRun, Task, TaskStep, WorkflowRun

@@ -181,6 +181,8 @@ export interface ChatInputResetStep {
   active: boolean
   onChange: (active: boolean) => void
   disabled?: boolean
+  label?: string
+  title?: string
 }
 
 export interface ChatInputMentions {
@@ -1198,10 +1200,10 @@ export default function ChatInput({
               disabled={resetStep.disabled}
               onClick={() => resetStep.onChange(!resetStep.active)}
               aria-pressed={resetStep.active}
-              title={t('chatInput.resetStepTitle')}
+              title={resetStep.title ?? t('chatInput.resetStepTitle')}
             >
               <Icon name="radio" size={12} strokeWidth={1.8} />
-              <span>{t('chatInput.resetStep')}</span>
+              <span>{resetStep.label ?? t('chatInput.resetStep')}</span>
             </button>
           )}
           {plan && (
@@ -1523,6 +1525,27 @@ export default function ChatInput({
               )
             )}
           </div>
+          {running && allowSendWhileRunning && value.trim() && onStop && (
+            <button
+              type="button"
+              className="chat-input-send chat-input-stop"
+              data-state="stopped"
+              onClick={onStop}
+              disabled={stopping}
+              aria-label={stopping ? t('chatInput.stopping') : t('common.stop')}
+              title={stopping ? t('chatInput.stopping') : (stopTitle ?? t('chatInput.stopGenerating'))}
+              style={{
+                width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
+                padding: 0, background: 'var(--danger)', color: '#fff',
+                border: 'none', cursor: stopping ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              {stopping
+                ? <span className="task-status-spinner" aria-hidden="true" />
+                : <span style={{ width: 12, height: 12, borderRadius: 2, background: 'currentColor' }} />}
+            </button>
+          )}
           <button
             type="button"
             className="chat-input-send"

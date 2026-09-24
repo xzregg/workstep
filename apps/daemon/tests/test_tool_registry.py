@@ -20,6 +20,7 @@ def test_registry_defines_expected_tool_set():
         "workstep_get_project",
         "workstep_list_workflows",
         "workstep_get_workflow",
+        "workstep_create_workflow_action",
         "workstep_list_tasks",
         "workstep_get_task",
         "workstep_list_git_repositories",
@@ -45,9 +46,34 @@ def test_registry_defines_expected_tool_set():
     assert by_name["workstep_get_task"].path == "/api/task/{task_id}"
     assert by_name["workstep_list_workflows"].path == "/api/workflow/list"
     assert by_name["workstep_get_workflow"].path == "/api/workflow/{workflow_id}"
+    assert by_name["workstep_create_workflow_action"].path == "/api/workflow/{workflow_id}/actions"
     assert "workflow_id" in by_name["workstep_create_task"].body_params
     assert "start_step_key" in by_name["workstep_create_task"].body_params
     assert by_name["workstep_add_task_worktree"].read_only is False
+
+
+@pytest.mark.anyio
+async def test_client_create_workflow_action_requires_confirmation():
+    calls = []
+
+    async def handler(request):
+        calls.append((request.method, request.url.path, json.loads(request.content)))
+        return httpx.Response(200, json={"action_id": "start-services"})
+
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    args = {
+        "project_id": "p", "workflow_id": "w", "action_id": "start-services",
+        "title": "启动服务", "script_path": "start.sh",
+        "script_content": "#!/bin/bash\necho ready\n",
+    }
+    rejected = await client.call("workstep_create_workflow_action", args)
+    assert rejected["ok"] is False
+    assert calls == []
+    await client.call("workstep_create_workflow_action", {**args, "confirm": "yes"})
+    assert calls == [("POST", "/api/workflow/w/actions", {
+        "action_id": "start-services", "title": "启动服务",
+        "script_path": "start.sh", "script_content": args["script_content"],
+    })]
 
 
 @pytest.mark.anyio
