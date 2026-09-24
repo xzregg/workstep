@@ -156,6 +156,7 @@ interface MessageItemProps {
   onLoadMessageEvents?: (messageId: string) => void
   onForkMessage?: (messageId: string) => void
   onSendToInput: (content: string) => void
+  onAsyncQuestionSubmit: (content: string) => Promise<boolean>
   onA2uiAction?: (action: A2uiClientAction) => void
 }
 
@@ -171,7 +172,7 @@ interface MessageItemProps {
 const MessageItem = memo(function MessageItem({
   message, copy, deviceId, userName, locale, showUserTag, projectId, sessionId,
   a2uiEntry, respondInteraction, onViewPrompt, onLoadMessageEvents,
-  onForkMessage, onSendToInput, onA2uiAction,
+  onForkMessage, onSendToInput, onAsyncQuestionSubmit, onA2uiAction,
 }: MessageItemProps) {
   const { t } = useI18n()
   const ownUserMessage = !message.author_device_id || message.author_device_id === deviceId
@@ -256,6 +257,7 @@ const MessageItem = memo(function MessageItem({
         ) : undefined
       }
       onSendToInput={onSendToInput}
+      onAsyncQuestionSubmit={onAsyncQuestionSubmit}
       onA2uiAction={onA2uiAction}
     />
   )
@@ -380,6 +382,9 @@ export default function AssistantChatPanel({
     onInputChange(content)
     requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }))
   }, [onInputChange])
+  const handleAsyncQuestionSubmit = useCallback((content: string) => (
+    onSendContent(content, [])
+  ), [onSendContent])
 
   useEffect(() => {
     const list = listRef.current
@@ -639,6 +644,7 @@ export default function AssistantChatPanel({
               onLoadMessageEvents={onLoadMessageEvents}
               onForkMessage={onForkMessage}
               onSendToInput={handleSendToInput}
+              onAsyncQuestionSubmit={handleAsyncQuestionSubmit}
               onA2uiAction={onA2uiAction}
             />
           ))}

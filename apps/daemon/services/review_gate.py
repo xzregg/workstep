@@ -22,6 +22,7 @@ from services.pipeline import Step
 Publish = Callable[[dict], Awaitable[None]]
 RecordEvent = Callable[[dict], Awaitable[object]]
 SetActiveEngine = Callable[[object], None]
+LiveMessageHandler = Callable[[dict], Awaitable[str | None]]
 
 
 @dataclass(frozen=True)
@@ -63,11 +64,15 @@ class ReviewGate:
         run_db,
         record_event=None,
         set_active_engine: SetActiveEngine | None = None,
+        live_message_queue: asyncio.Queue | None = None,
+        on_live_message: LiveMessageHandler | None = None,
     ):
         self._publish = publish
         self._run_db = run_db
         self._record_event = record_event
         self._set_active_engine = set_active_engine
+        self._live_message_queue = live_message_queue
+        self._on_live_message = on_live_message
 
     async def evaluate(
         self,
@@ -173,7 +178,7 @@ class ReviewGate:
                 self._set_active_engine(engine)
             try:
                 spawn = getattr(engine, "spawn_with_retry", engine.spawn)
-                async for event in spawn(
+                spawn_kwargs = dict(
                     prompt=prompt,
                     cwd=task.cwd,
                     model=model or None,
@@ -185,13 +190,26 @@ class ReviewGate:
                         or step.config
                         or None
                     ),
+                )
+                capabilities = getattr(engine, "capabilities", None)
+                if (
+                    self._live_message_queue is not None
+                    and capabilities is not None
+                    and capabilities.supports_live_step_message
                 ):
+                    spawn_kwargs["live_message_queue"] = self._live_message_queue
+                async for event in spawn(**spawn_kwargs):
                     normalize_event = getattr(engine, "normalize_event", None)
                     if normalize_event is not None:
                         event = normalize_event(event)
                     if event is None:
                         continue
                     event_dict = event.to_dict()
+                    if event.type == "live_message" and self._on_live_message is not None:
+                        next_message_id = await self._on_live_message(event.data or {})
+                        if next_message_id:
+                            message_id = next_message_id
+                            response_parts.clear()
                     events_collected.append(event_dict)
                     if self._record_event is not None:
                         await self._record_event(event_dict)
@@ -212,7 +230,11 @@ class ReviewGate:
                     await self._publish({
                         **event.to_dict(),
                         "channel": "review",
-                        "message_id": message_id,
+                        "message_id": (
+                            event.data.get("message_id")
+                            if event.type == "live_message"
+                            else message_id
+                        ),
                         "engine": engine_id,
                         "model": model,
                     })

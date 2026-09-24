@@ -1,9 +1,10 @@
 import { installDomEnvironment } from './helpers/domEnv'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { act } from 'react'
+import { act, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import QuickButtonEditor, { quickButtonFromDraft, quickButtonToDraft, type QuickButtonDraft } from '../src/components/QuickButtonEditor'
+import WorkflowQuickButtonsSection from '../src/components/WorkflowQuickButtonsSection'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
 
 test('shared shortcut editor exposes display title and HTML content', async () => {
@@ -39,6 +40,39 @@ test('legacy display label becomes a readable title and editable HTML content', 
     assert.equal(draft.label, '新闻')
     assert.equal(draft.content, '<a href="https://example.com">新闻</a>')
   } finally {
+    await window.happyDOM.close()
+  }
+})
+
+test('workflow and stage shortcut editors can add buttons without crypto.randomUUID', async () => {
+  const { window } = installDomEnvironment()
+  const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto')
+  Object.defineProperty(globalThis, 'crypto', { configurable: true, value: {} })
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  function Harness() {
+    const [workflowButtons, setWorkflowButtons] = useState<QuickButtonDraft[]>([])
+    const [stageButtons, setStageButtons] = useState<ReturnType<typeof quickButtonFromDraft>[]>([])
+    const [selected, setSelected] = useState('')
+    return <>
+      <QuickButtonEditor projectId="project-1" workflowId="workflow-1" buttons={workflowButtons} onChange={setWorkflowButtons} selectedId={selected} onSelect={setSelected} onSave={() => {}} />
+      <WorkflowQuickButtonsSection projectId="project-1" workflowId="workflow-1" buttons={stageButtons} onChange={setStageButtons} />
+      <output data-testid="button-counts">{workflowButtons.length},{stageButtons.length}</output>
+    </>
+  }
+  try {
+    await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
+    const addButtons = [...container.querySelectorAll<HTMLButtonElement>('button')].filter((button) => button.textContent?.includes('添加'))
+    assert.equal(addButtons.length, 2)
+    await act(async () => addButtons[0].click())
+    await act(async () => addButtons[1].click())
+    assert.equal(container.querySelector('[data-testid="button-counts"]')?.textContent, '1,1')
+  } finally {
+    await act(async () => root.unmount())
+    if (originalCrypto) Object.defineProperty(globalThis, 'crypto', originalCrypto)
+    else Reflect.deleteProperty(globalThis, 'crypto')
+    container.remove()
     await window.happyDOM.close()
   }
 })

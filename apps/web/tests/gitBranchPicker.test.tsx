@@ -79,6 +79,39 @@ test('dirty working files do not disable a Git-safe branch switch', async () => 
   } finally { await act(async () => root.unmount()); Object.assign(gitApi, original); container.remove(); await window.happyDOM.close() }
 })
 
+test('creates a named branch from the selected local or fetched remote base without switching', async () => {
+  const { window } = installDomEnvironment()
+  const original = { branches: gitApi.branches, fetch: gitApi.fetch, createBranch: gitApi.createBranch }
+  const current: GitBranch = { name: 'main', head: 'a'.repeat(40), worktree_id: 'repo', path: '/repo' }
+  const base: GitBranch = { name: 'dev', head: 'b'.repeat(40), worktree_id: null, path: null }
+  const remote = { name: 'origin/release', remote: 'origin', branch: 'release', head: 'c'.repeat(40) }
+  const status = { id: 'repo', branch: 'main', files: [], active: false, operation: null, snapshot: 'review' } as unknown as GitStatus
+  let created: unknown[] = []
+  gitApi.branches = async () => ({ branches: [current, base] })
+  gitApi.fetch = async () => ({ branches: [current, base], remote_branches: [remote] })
+  gitApi.createBranch = async (...args) => { created = args; return { branches: [current, base, { name: args[1], head: args[3], worktree_id: null, path: null }], remote_branches: [remote] } }
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><GitBranchPicker status={status} onLocate={() => {}} onChanged={async () => {}} /></I18nProvider>))
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'New branch')!.click())
+    const name = container.querySelector<HTMLInputElement>('input[name="newBranch"]')!
+    const baseSelect = container.querySelector<HTMLSelectElement>('select[name="baseBranch"]')!
+    await act(async () => { Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(name, 'topic/dev'); name.dispatchEvent(new Event('input', { bubbles: true })) })
+    await act(async () => { baseSelect.value = 'local\0dev'; baseSelect.dispatchEvent(new Event('change', { bubbles: true })) })
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Create branch')!.click())
+    assert.deepEqual(created, ['repo', 'topic/dev', 'dev', base.head, 'review', undefined])
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '拉取分支')!.click())
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'New branch')!.click())
+    const nextName = container.querySelector<HTMLInputElement>('input[name="newBranch"]')!
+    const nextBase = container.querySelector<HTMLSelectElement>('select[name="baseBranch"]')!
+    await act(async () => { Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(nextName, 'topic/release'); nextName.dispatchEvent(new Event('input', { bubbles: true })) })
+    await act(async () => { nextBase.value = 'remote\0origin\0release'; nextBase.dispatchEvent(new Event('change', { bubbles: true })) })
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Create branch')!.click())
+    assert.deepEqual(created, ['repo', 'topic/release', 'release', remote.head, 'review', 'origin'])
+  } finally { await act(async () => root.unmount()); Object.assign(gitApi, original); container.remove(); await window.happyDOM.close() }
+})
+
 test('branch search ranks an exact branch name before weaker upstream and prefix matches', async () => {
   const { window } = installDomEnvironment()
   const original = gitApi.branches

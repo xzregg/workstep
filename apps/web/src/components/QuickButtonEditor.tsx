@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import type { ChatQuickButton } from '../api/client'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useI18n } from '../i18n'
+import { randomUuid } from '../utils/uuid'
 import ActionButtonFields from './ActionButtonFields'
 import Button from './Button'
 import Field from './Field'
@@ -112,7 +113,7 @@ export default function QuickButtonEditor({ projectId, workflowId, buttons, onCh
           </button>
         })}
         <Button variant="ghost" onClick={() => {
-          const id = `qb-${crypto.randomUUID()}`
+          const id = `qb-${randomUuid()}`
           change([...buttons, { id, label: '', prompt: '', content: '', kind: '', immediateSend: false, actionId: '', scriptPath: '', cwdMode: 'task', requireConfirmation: true }])
           onSelect(id)
         }} style={{ width: '100%', justifyContent: 'flex-start' }}>{t('projectSettings.assistant.addButton')}</Button>

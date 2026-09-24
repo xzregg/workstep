@@ -72,6 +72,8 @@ export interface ChatMessageBubbleProps {
   onEdit?: (content: string) => void
   /** User messages: reuse action (loads the content into the composer). */
   onSendToInput?: (content: string) => void
+  /** Submit a Codex asynchronous question as a conversation reply. */
+  onAsyncQuestionSubmit?: (content: string) => Promise<boolean>
   /** Receives user-initiated A2UI actions rendered inside the bubble. */
   onA2uiAction?: (action: A2uiClientAction) => void
   /** Engine interaction requests persisted in this message's event stream. */
@@ -165,6 +167,7 @@ export default function ChatMessageBubble({
   showLoading = false,
   loading,
   onSendToInput,
+  onAsyncQuestionSubmit,
   onA2uiAction,
   interactionsEnabled = true,
   events = [],
@@ -177,6 +180,9 @@ export default function ChatMessageBubble({
   const isUser = role === 'user'
   const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | null>(null)
   const [asyncAnswers, setAsyncAnswers] = useState<Record<number, string>>({})
+  const [asyncSubmitting, setAsyncSubmitting] = useState(false)
+  const [asyncSubmitted, setAsyncSubmitted] = useState(false)
+  const [asyncSubmitError, setAsyncSubmitError] = useState('')
   // 稳定引用：MarkdownMessage 已 memo 化，内联箭头会每次击穿 memo 让历史消息重新解析 markdown。
   const handleImageClick = useCallback((src: string, alt: string) => {
     setPreviewImage({ src, alt })
@@ -331,15 +337,26 @@ export default function ChatMessageBubble({
                       type="button"
                       className="chat-message-action"
                       aria-pressed={asyncAnswers[index] === option}
-                      disabled={!onSendToInput}
+                      disabled={asyncSubmitting || asyncSubmitted || (!onAsyncQuestionSubmit && !onSendToInput)}
                       onClick={() => {
                         const selected = { ...asyncAnswers, [index]: option }
                         setAsyncAnswers(selected)
-                        onSendToInput?.(asyncQuestions.flatMap((item, itemIndex) => (
+                        const answer = asyncQuestions.flatMap((item, itemIndex) => (
                           selected[itemIndex]
                             ? [asyncQuestionAnswer(item, selected[itemIndex], asyncQuestions.length)]
                             : []
-                        )).join('\n'))
+                        )).join('\n')
+                        if (!onAsyncQuestionSubmit) {
+                          onSendToInput?.(answer)
+                        } else if (asyncQuestions.every((_, itemIndex) => selected[itemIndex])) {
+                          setAsyncSubmitting(true)
+                          setAsyncSubmitError('')
+                          void onAsyncQuestionSubmit(answer).then((sent) => {
+                            if (sent) setAsyncSubmitted(true)
+                          }).catch((reason) => {
+                            setAsyncSubmitError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
+                          }).finally(() => setAsyncSubmitting(false))
+                        }
                       }}
                     >{option}</button>
                   ))}
@@ -347,6 +364,7 @@ export default function ChatMessageBubble({
               )}
             </div>
           ))}
+          {asyncSubmitError && <div role="alert" style={{ color: 'var(--danger)' }}>{asyncSubmitError}</div>}
           {footer}
           {children}
         </div>

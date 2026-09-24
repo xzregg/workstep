@@ -46,6 +46,19 @@ export function useTaskActions(projectId: string | undefined, taskId: string | u
   useEffect(() => {
     void refresh()
   }, [refresh])
+  useEffect(() => {
+    if (!projectId || !taskId) return
+    const refreshOnFocus = () => { void refresh() }
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void refresh()
+    }
+    window.addEventListener('focus', refreshOnFocus)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      window.removeEventListener('focus', refreshOnFocus)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
+  }, [projectId, taskId, refresh])
   const hasActiveAction = runs.some((run) => isActive(run.status))
   useEffect(() => {
     if (!hasActiveAction) return

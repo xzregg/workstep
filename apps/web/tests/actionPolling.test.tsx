@@ -122,3 +122,37 @@ test('task shortcuts reload when the selected step changes during an earlier req
     await window.happyDOM.close()
   }
 })
+
+test('existing task refreshes shortcut buttons when its tab regains focus', async () => {
+  const { window } = installDomEnvironment()
+  const originalList = taskActionApi.list
+  let currentLabel = '旧按钮'
+  let calls = 0
+  taskActionApi.list = async () => {
+    calls += 1
+    return { buttons: [{ id: 'workflow-button', label: currentLabel, prompt: '继续', kind: 'prompt', source: 'workflow' }], runs: [] }
+  }
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  function Harness() {
+    const state = useTaskActions('project-1', 'existing-task', 'build')
+    return <div>{state.buttons.map((button) => button.label).join(',')}</div>
+  }
+  try {
+    await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
+    assert.equal(container.textContent, '旧按钮')
+    currentLabel = '新增按钮'
+    await act(async () => window.dispatchEvent(new window.Event('focus')))
+    assert.equal(calls, 2)
+    assert.equal(container.textContent, '新增按钮')
+    currentLabel = '再次更新'
+    await act(async () => document.dispatchEvent(new window.Event('visibilitychange')))
+    assert.equal(calls, 3)
+    assert.equal(container.textContent, '再次更新')
+  } finally {
+    await act(async () => root.unmount())
+    taskActionApi.list = originalList
+    container.remove()
+    await window.happyDOM.close()
+  }
+})

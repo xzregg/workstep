@@ -756,6 +756,10 @@ test('shows only step execution replies in the main task conversation', () => {
     channel: 'review', role: 'assistant', content: '审核结果', run_status: 'succeeded',
   }), true)
   assert.equal(isVisibleHistoryMessage({
+    channel: 'review', role: 'assistant', content: '', run_status: 'succeeded',
+    event_detail: { event_count: 12 },
+  }), true)
+  assert.equal(isVisibleHistoryMessage({
     channel: 'review', role: 'assistant', content: '等待你审核', run_status: 'completed',
     events: [{
       type: 'review_context',

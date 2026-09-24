@@ -1568,7 +1568,7 @@ export const taskApi = {
       { method: 'POST' },
     ),
   sendStepMessage: (taskId: string, stepKey: string, content: string, projectId: string, asGuidance = false) =>
-    request<{ message_id: string; step_key: string; status: 'queued'; sequence?: number; created_at?: string }>(
+    request<{ message_id: string; step_key: string; channel: 'execution' | 'review'; status: 'queued'; sequence?: number; created_at?: string }>(
       `/task/${taskId}/step/${encodeURIComponent(stepKey)}/message?project_id=${encodeURIComponent(projectId)}`,
       {
         method: 'POST',

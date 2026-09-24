@@ -580,6 +580,72 @@ async def test_switch_checks_dirty_active_and_worktree_occupation(client, layout
     assert git(repo, 'branch', '--show-current') == 'other'
 
 
+async def test_create_branch_from_selected_local_or_remote_ref_without_switching(client, layout, tmp_path):
+    http, _ = client
+    _, repo, external = layout
+    (external / 'feature.txt').write_text('feature\n')
+    git(external, 'add', '.'); git(external, 'commit', '-m', 'feature change')
+    remote = tmp_path / 'branch-origin.git'
+    git(tmp_path, 'init', '--bare', str(remote))
+    git(repo, 'remote', 'add', 'origin', str(remote))
+    git(repo, 'push', 'origin', 'feature:remote-base')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    state = (await http.get(url + '/status')).json()
+    feature_head = git(repo, 'rev-parse', 'feature')
+    created = await http.post(url + '/branches', json={
+        'name': 'topic/local', 'base_branch': 'feature', 'base_head': feature_head, 'snapshot': state['snapshot'],
+    })
+    assert created.status_code == 200, created.text
+    assert git(repo, 'rev-parse', 'topic/local') == feature_head
+    assert git(repo, 'branch', '--show-current') == 'main'
+    assert (await http.post(url + '/branches', json={
+        'name': 'topic/local', 'base_branch': 'feature', 'base_head': feature_head, 'snapshot': state['snapshot'],
+    })).status_code == 409
+
+    await http.post(url + '/fetch')
+    remote_head = git(repo, 'rev-parse', 'refs/remotes/origin/remote-base')
+    created = await http.post(url + '/branches', json={
+        'name': 'topic/remote', 'base_branch': 'remote-base', 'base_remote': 'origin',
+        'base_head': remote_head, 'snapshot': state['snapshot'],
+    })
+    assert created.status_code == 200, created.text
+    assert git(repo, 'rev-parse', 'topic/remote') == remote_head
+    assert (await http.post(url + '/branches', json={
+        'name': 'topic/stale', 'base_branch': 'feature', 'base_head': git(repo, 'rev-parse', 'main'),
+        'snapshot': state['snapshot'],
+    })).status_code == 409
+    assert (await http.post(url + '/branches', json={
+        'name': 'bad name', 'base_branch': 'feature', 'base_head': feature_head,
+        'snapshot': state['snapshot'],
+    })).status_code == 400
+
+
+async def test_slow_branch_creation_keeps_api_responsive(client, layout, monkeypatch):
+    http, service = client
+    _, repo, _ = layout
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    state = (await http.get(url + '/status')).json()
+    command = service.command
+
+    async def slow_branch(path, *args, **kwargs):
+        if args and args[0] == 'branch' and '--no-track' in args:
+            await asyncio.sleep(.2)
+        return await command(path, *args, **kwargs)
+
+    monkeypatch.setattr(service, 'command', slow_branch)
+    pending = asyncio.create_task(http.post(url + '/branches', json={
+        'name': 'topic/slow', 'base_branch': 'main', 'base_head': state['head'], 'snapshot': state['snapshot'],
+    }))
+    await asyncio.sleep(.05)
+    started = asyncio.get_running_loop().time()
+    assert (await http.get('/api/git/repositories')).status_code == 200
+    assert asyncio.get_running_loop().time() - started < .05
+    assert (await pending).status_code == 200
+    assert git(repo, 'branch', '--show-current') == 'main'
+
+
 async def test_switch_allows_git_to_carry_safe_uncommitted_changes(client, layout):
     http, _ = client
     _, repo, _ = layout
@@ -860,6 +926,156 @@ async def test_branch_sync_fetch_and_fast_forward_pull(client, layout, tmp_path)
     assert response.status_code == 200, response.text
     assert (repo / 'remote.txt').read_text() == 'remote change'
     assert response.json()['behind'] == 0
+
+
+async def test_merge_local_and_remote_branch_into_current_and_preserve_conflicts(client, layout, tmp_path):
+    http, _ = client
+    _, repo, external = layout
+    (external / 'feature.txt').write_text('feature\n')
+    git(external, 'add', '.'); git(external, 'commit', '-m', 'feature change')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    state = (await http.get(url + '/status')).json()
+    response = await http.post(url + '/merge', json={'branch': 'main', 'snapshot': state['snapshot'], 'source': 'feature'})
+    assert response.status_code == 200, response.text
+    assert (repo / 'feature.txt').read_text() == 'feature\n'
+
+    remote = tmp_path / 'merge-remote.git'
+    git(tmp_path, 'init', '--bare', str(remote))
+    git(repo, 'remote', 'add', 'origin', str(remote))
+    git(repo, 'push', 'origin', 'feature:remote-feature')
+    git(repo, 'fetch', 'origin')
+    (repo / 'one.txt').write_text('local\n')
+    git(repo, 'add', '.'); git(repo, 'commit', '-m', 'local change')
+    git(external, 'switch', 'feature')
+    (external / 'one.txt').write_text('remote\n')
+    git(external, 'add', '.'); git(external, 'commit', '-m', 'remote change')
+    git(external, 'push', 'origin', 'feature:remote-feature')
+    git(repo, 'fetch', 'origin')
+    (repo / 'dirty.txt').write_text('untouched\n')
+    (repo / 'two.txt').write_text('tracked draft\n')
+    state = (await http.get(url + '/status')).json()
+    response = await http.post(url + '/merge', json={'branch': 'main', 'snapshot': state['snapshot'], 'source': 'remote-feature', 'remote': 'origin'})
+    assert response.status_code == 409, response.text
+    assert '已自动中止' in response.json()['detail']
+    assert not (repo / '.git' / 'MERGE_HEAD').exists()
+    assert (repo / 'one.txt').read_text() == 'local\n'
+    assert (repo / 'dirty.txt').read_text() == 'untouched\n'
+    assert (repo / 'two.txt').read_text() == 'tracked draft\n'
+
+
+async def test_merge_keeps_unrelated_dirty_files_and_does_not_block_event_loop(client, layout, monkeypatch):
+    http, service = client
+    _, repo, external = layout
+    (external / 'feature.txt').write_text('feature\n')
+    git(external, 'add', '.'); git(external, 'commit', '-m', 'feature change')
+    (repo / 'two.txt').write_text('local commit\n')
+    git(repo, 'add', '.'); git(repo, 'commit', '-m', 'local change')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    (repo / 'dirty.txt').write_text('keep me\n')
+    state = (await http.get(url + '/status')).json()
+    body = {'branch': 'main', 'snapshot': state['snapshot'], 'source': 'feature'}
+    command = service.command
+
+    async def slow_merge(path, *args, **kwargs):
+        if 'merge' in args:
+            await asyncio.sleep(.2)
+        return await command(path, *args, **kwargs)
+
+    monkeypatch.setattr(service, 'command', slow_merge)
+    pending = asyncio.create_task(http.post(url + '/merge', json=body))
+    await asyncio.sleep(.05)
+    started = asyncio.get_running_loop().time()
+    assert (await http.get('/api/git/repositories')).status_code == 200
+    assert asyncio.get_running_loop().time() - started < .05
+    assert (await pending).status_code == 200
+    assert (repo / 'dirty.txt').read_text() == 'keep me\n'
+    assert (repo / 'feature.txt').read_text() == 'feature\n'
+
+
+async def test_merge_refuses_to_overwrite_dirty_file_without_changing_it(client, layout):
+    http, _ = client
+    _, repo, external = layout
+    (external / 'one.txt').write_text('feature\n')
+    git(external, 'add', '.'); git(external, 'commit', '-m', 'feature change')
+    (repo / 'one.txt').write_text('local draft\n')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    state = (await http.get(url + '/status')).json()
+    response = await http.post(url + '/merge', json={'branch': 'main', 'snapshot': state['snapshot'], 'source': 'feature'})
+    assert response.status_code == 409, response.text
+    assert (repo / 'one.txt').read_text() == 'local draft\n'
+    assert git(repo, 'rev-parse', 'HEAD') == state['head']
+    assert git(repo, 'status', '--porcelain') == 'M one.txt'
+    assert git(repo, 'diff', '--cached', '--name-only') == ''
+
+
+async def test_merge_current_branch_into_checked_out_target_without_switching(client, layout):
+    http, _ = client
+    _, repo, external = layout
+    (external / 'feature.txt').write_text('feature\n')
+    git(external, 'add', '.'); git(external, 'commit', '-m', 'feature change')
+    (external / 'draft.txt').write_text('uncommitted\n')
+    id = next(w['id'] for r in (await scan(http))['repositories'] for w in r['worktrees'] if w['path'] == str(external))
+    url = f'/api/git/worktrees/{id}'
+    state = (await http.get(url + '/status')).json()
+    response = await http.post(url + '/merge-into', json={'branch': 'feature', 'target': 'main', 'snapshot': state['snapshot']})
+    assert response.status_code == 200, response.text
+    assert (repo / 'feature.txt').read_text() == 'feature\n'
+    assert git(external, 'branch', '--show-current') == 'feature'
+    assert (external / 'draft.txt').read_text() == 'uncommitted\n'
+
+
+async def test_merge_current_branch_into_unchecked_out_target_without_switching(client, layout):
+    http, _ = client
+    _, repo, _ = layout
+    git(repo, 'branch', 'release')
+    (repo / 'main.txt').write_text('main commit\n')
+    git(repo, 'add', '.'); git(repo, 'commit', '-m', 'main change')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    state = (await http.get(url + '/status')).json()
+    response = await http.post(url + '/merge-into', json={'branch': 'main', 'target': 'release', 'snapshot': state['snapshot']})
+    assert response.status_code == 200, response.text
+    assert git(repo, 'branch', '--show-current') == 'main'
+    assert git(repo, 'rev-parse', 'release') == state['head']
+
+
+@pytest.mark.parametrize('target_checked_out', [False, True])
+async def test_merge_into_updates_target_upstream_before_merge_without_pushing(client, layout, tmp_path, target_checked_out):
+    http, _ = client
+    _, repo, external = layout
+    if target_checked_out:
+        git(repo, 'switch', '-c', 'dev')
+    else:
+        git(repo, 'branch', 'dev')
+    remote = tmp_path / 'origin.git'
+    git(tmp_path, 'init', '--bare', str(remote))
+    git(repo, 'remote', 'add', 'origin', str(remote))
+    git(repo, 'push', '-u', 'origin', 'dev')
+    peer = repository(tmp_path / 'peer')
+    git(peer, 'remote', 'add', 'origin', str(remote))
+    git(peer, 'fetch', 'origin')
+    git(peer, 'reset', '--hard', 'origin/dev')
+    (peer / 'remote.txt').write_text('remote\n')
+    git(peer, 'add', '.'); git(peer, 'commit', '-m', 'remote change')
+    git(peer, 'push', 'origin', 'HEAD:dev')
+    (external / 'feature.txt').write_text('feature\n')
+    git(external, 'add', '.'); git(external, 'commit', '-m', 'feature change')
+    id = next(w['id'] for r in (await scan(http))['repositories'] for w in r['worktrees'] if w['path'] == str(external))
+    url = f'/api/git/worktrees/{id}'
+    state = (await http.get(url + '/status')).json()
+    response = await http.post(url + '/merge-into', json={'branch': 'feature', 'target': 'dev', 'snapshot': state['snapshot']})
+    assert response.status_code == 200, response.text
+    assert response.json()['updated'] is True
+    assert git(repo, 'show', 'dev:remote.txt') == 'remote'
+    assert git(repo, 'show', 'dev:feature.txt') == 'feature'
+    assert git(remote, 'rev-parse', 'refs/heads/dev') != git(repo, 'rev-parse', 'dev')
+    assert git(external, 'branch', '--show-current') == 'feature'
+    pushed = await http.post(url + '/push-branch', json={'branch': 'dev', 'head': response.json()['head']})
+    assert pushed.status_code == 200, pushed.text
+    assert git(remote, 'rev-parse', 'refs/heads/dev') == git(repo, 'rev-parse', 'dev')
 
 
 async def test_fast_forward_inactive_branch_keeps_current_dirty_files(client, layout, tmp_path):

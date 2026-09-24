@@ -587,9 +587,6 @@ export default function TaskDetailView({
     chatTarget ?? 'coordinator',
     runningSteps.map((step) => step.key),
   )
-  const selectedStepReviewing = chatTarget !== 'coordinator' && stepProgress.some(
-    (progress) => progress.step_key === chatTarget && progress.status === 'reviewing',
-  )
   const composerState = resolveTaskComposerState({
     target: chatTarget === 'coordinator' ? 'coordinator' : 'step',
     stepRunning: selectedStepRunning,
@@ -3668,13 +3665,13 @@ export default function TaskDetailView({
                     ),
                       } as ChatInputEngineConfig
               }
-              disabled={selectedStepReviewing || composerState.disabled || (
+              disabled={composerState.disabled || (
                 Boolean(projectId)
                 && chatTarget !== 'coordinator'
                 && (stepEngineConfigLoading || !stepEngineConfig || Boolean(stepEngineConfig.saving))
               )}
-              running={selectedStepReviewing || composerState.running}
-              allowSendWhileRunning={!selectedStepReviewing && composerState.running}
+              running={composerState.running}
+              allowSendWhileRunning={composerState.running}
               stopping={
                 (chatTarget !== 'coordinator' &&
                   (stoppingStepKeys ?? []).includes(chatTarget ?? '')) ||
