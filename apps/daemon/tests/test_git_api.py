@@ -646,6 +646,86 @@ async def test_slow_branch_creation_keeps_api_responsive(client, layout, monkeyp
     assert git(repo, 'branch', '--show-current') == 'main'
 
 
+async def test_delete_local_branch_requires_merged_tip_and_unoccupied_worktree(client, layout):
+    http, _ = client
+    _, repo, _ = layout
+    git(repo, 'branch', 'merged')
+    git(repo, 'switch', '-c', 'unmerged')
+    (repo / 'unique.txt').write_text('keep commit\n')
+    git(repo, 'add', '.'); git(repo, 'commit', '-m', 'unique change')
+    unmerged_head = git(repo, 'rev-parse', 'HEAD')
+    git(repo, 'switch', 'main')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    state = (await http.get(url + '/status')).json()
+    merged_head = git(repo, 'rev-parse', 'merged')
+    response = await http.post(url + '/branches/delete', json={
+        'branch': 'merged', 'head': merged_head, 'snapshot': state['snapshot'],
+    })
+    assert response.status_code == 200, response.text
+    assert 'merged' not in {branch['name'] for branch in response.json()['branches']}
+    assert (await http.post(url + '/branches/delete', json={
+        'branch': 'unmerged', 'head': unmerged_head, 'snapshot': state['snapshot'],
+    })).status_code == 409
+    assert git(repo, 'rev-parse', 'unmerged') == unmerged_head
+    assert (await http.post(url + '/branches/delete', json={
+        'branch': 'main', 'head': state['head'], 'snapshot': state['snapshot'],
+    })).status_code == 409
+    assert (await http.post(url + '/branches/delete', json={
+        'branch': 'feature', 'head': git(repo, 'rev-parse', 'feature'), 'snapshot': state['snapshot'],
+    })).status_code == 409
+    assert (await http.post(url + '/branches/delete', json={
+        'branch': 'unmerged', 'head': state['head'], 'snapshot': state['snapshot'],
+    })).status_code == 409
+
+
+async def test_delete_local_branch_allowed_after_pushing_its_upstream(client, layout, tmp_path):
+    http, _ = client
+    _, repo, _ = layout
+    git(repo, 'switch', '-c', 'pushed-only')
+    (repo / 'pushed.txt').write_text('pushed\n')
+    git(repo, 'add', '.'); git(repo, 'commit', '-m', 'pushed change')
+    head = git(repo, 'rev-parse', 'HEAD')
+    remote = tmp_path / 'delete-origin.git'
+    git(tmp_path, 'init', '--bare', str(remote))
+    git(repo, 'remote', 'add', 'origin', str(remote))
+    git(repo, 'push', '-u', 'origin', 'pushed-only')
+    git(repo, 'switch', 'main')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    state = (await http.get(url + '/status')).json()
+    response = await http.post(url + '/branches/delete', json={
+        'branch': 'pushed-only', 'head': head, 'snapshot': state['snapshot'],
+    })
+    assert response.status_code == 200, response.text
+    assert git(remote, 'rev-parse', 'refs/heads/pushed-only') == head
+
+
+async def test_slow_branch_deletion_keeps_api_responsive(client, layout, monkeypatch):
+    http, service = client
+    _, repo, _ = layout
+    git(repo, 'branch', 'obsolete')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    state = (await http.get(url + '/status')).json()
+    command = service.command
+
+    async def slow_delete(path, *args, **kwargs):
+        if args[:2] == ('update-ref', '-d'):
+            await asyncio.sleep(.2)
+        return await command(path, *args, **kwargs)
+
+    monkeypatch.setattr(service, 'command', slow_delete)
+    pending = asyncio.create_task(http.post(url + '/branches/delete', json={
+        'branch': 'obsolete', 'head': git(repo, 'rev-parse', 'obsolete'), 'snapshot': state['snapshot'],
+    }))
+    await asyncio.sleep(.05)
+    started = asyncio.get_running_loop().time()
+    assert (await http.get('/api/git/repositories')).status_code == 200
+    assert asyncio.get_running_loop().time() - started < .05
+    assert (await pending).status_code == 200
+
+
 async def test_switch_allows_git_to_carry_safe_uncommitted_changes(client, layout):
     http, _ = client
     _, repo, _ = layout
@@ -1078,6 +1158,30 @@ async def test_merge_into_updates_target_upstream_before_merge_without_pushing(c
     assert git(remote, 'rev-parse', 'refs/heads/dev') == git(repo, 'rev-parse', 'dev')
 
 
+async def test_push_unchecked_out_branch_with_explicit_remote_sets_upstream(client, layout, tmp_path):
+    http, _ = client
+    _, repo, _ = layout
+    remote = tmp_path / 'push-target.git'
+    git(tmp_path, 'init', '--bare', str(remote))
+    git(repo, 'remote', 'add', 'origin', str(remote))
+    git(repo, 'branch', 'tt')
+    (repo / 'draft.txt').write_text('uncommitted work\n')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    head = git(repo, 'rev-parse', 'tt')
+    response = await http.post(url + '/push-branch', json={
+        'branch': 'tt', 'head': head, 'remote': 'origin', 'target_branch': 'tt', 'set_upstream': True,
+    })
+    assert response.status_code == 200, response.text
+    assert git(remote, 'rev-parse', 'refs/heads/tt') == head
+    assert git(repo, 'for-each-ref', '--format=%(upstream:short)', 'refs/heads/tt') == 'origin/tt'
+    assert (repo / 'draft.txt').read_text() == 'uncommitted work\n'
+    assert (await http.post(url + '/push-branch', json={
+        'branch': 'tt', 'head': git(repo, 'rev-parse', 'main')[:-1] + '0',
+        'remote': 'origin', 'target_branch': 'tt',
+    })).status_code == 409
+
+
 async def test_fast_forward_inactive_branch_keeps_current_dirty_files(client, layout, tmp_path):
     http, _ = client
     _, repo, _ = layout
@@ -1436,7 +1540,7 @@ async def test_pull_rechecks_changes_after_slow_fetch_and_keeps_api_responsive(c
     assert (repo / 'one.txt').read_text() == 'edited during fetch'
 
 
-async def test_push_requires_clean_review_and_only_pushes_current_branch(client, layout, tmp_path):
+async def test_push_sends_committed_head_and_preserves_uncommitted_files(client, layout, tmp_path):
     http, _ = client
     _, repo, _ = layout
     remote = tmp_path / 'push-origin.git'
@@ -1450,19 +1554,22 @@ async def test_push_requires_clean_review_and_only_pushes_current_branch(client,
         state = (await http.get(url + '/status')).json()
         return await http.post(url + '/push', json={'branch': 'main', 'snapshot': state['snapshot']})
     (repo / 'new.txt').write_text('new')
-    assert (await push()).status_code == 409
     git(repo, 'add', 'new.txt')
-    assert (await push()).status_code == 409
     git(repo, 'commit', '-m', 'new commit')
     (repo / 'one.txt').write_text('dirty tracked')
-    assert (await push()).status_code == 409
-    assert git(remote, 'rev-parse', 'refs/heads/main') == initial
     git(repo, 'add', 'one.txt')
-    git(repo, 'commit', '-m', 'second commit')
+    (repo / 'two.txt').write_text('unstaged draft')
+    (repo / 'draft.txt').write_text('untracked draft')
     response = await push()
     assert response.status_code == 200, response.text
+    assert git(remote, 'rev-parse', 'refs/heads/main') != initial
     assert git(remote, 'rev-parse', 'refs/heads/main') == git(repo, 'rev-parse', 'HEAD')
+    assert git(remote, 'show', 'main:one.txt') == 'original'
     assert git(remote, 'for-each-ref', '--format=%(refname)', 'refs/heads/') == 'refs/heads/main'
+    assert git(repo, 'status', '--short').splitlines() == ['M  one.txt', ' M two.txt', '?? draft.txt']
+    state = (await http.get(url + '/status')).json()
+    wrong_branch = await http.post(url + '/push', json={'branch': 'other', 'snapshot': state['snapshot']})
+    assert wrong_branch.status_code == 409
 
 
 async def test_push_does_not_force_remote_and_slow_hook_keeps_api_responsive(client, layout, tmp_path):

@@ -242,6 +242,9 @@ class MergeIntoRequest(SwitchRequest):
 class PushBranchRequest(BaseModel):
     branch: str = Field(min_length=1, max_length=1024)
     head: str = Field(min_length=40, max_length=64)
+    remote: str | None = Field(default=None, min_length=1, max_length=1024)
+    target_branch: str | None = Field(default=None, min_length=1, max_length=1024)
+    set_upstream: bool = False
 
 
 class CreateBranchRequest(BaseModel):
@@ -249,6 +252,12 @@ class CreateBranchRequest(BaseModel):
     base_branch: str = Field(min_length=1, max_length=1024)
     base_remote: str | None = Field(default=None, min_length=1, max_length=1024)
     base_head: str = Field(min_length=40, max_length=64)
+    snapshot: str = Field(min_length=64, max_length=64)
+
+
+class DeleteBranchRequest(BaseModel):
+    branch: str = Field(min_length=1, max_length=1024)
+    head: str = Field(min_length=40, max_length=64)
     snapshot: str = Field(min_length=64, max_length=64)
 
 
@@ -378,9 +387,15 @@ async def create_branch(id: str, body: CreateBranchRequest):
                                                   body.snapshot, body.base_remote))
 
 
+@router.post('/worktrees/{id}/branches/delete')
+async def delete_branch(id: str, body: DeleteBranchRequest):
+    return await result(git_service.delete_branch(id, body.branch, body.head, body.snapshot))
+
+
 @router.post('/worktrees/{id}/push-branch')
 async def push_branch(id: str, body: PushBranchRequest):
-    return await result(git_service.push_branch(id, body.branch, body.head))
+    return await result(git_service.push_branch(id, body.branch, body.head,
+                                                body.remote, body.target_branch, body.set_upstream))
 
 
 @router.post('/worktrees/{id}/fetch')

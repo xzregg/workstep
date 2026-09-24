@@ -11,7 +11,7 @@ test('remote actions choose a remote target and render a compact result notice',
   const { window } = installDomEnvironment()
   const original = { push: gitApi.push, remotes: gitApi.remotes }
   let args: unknown[] = [], refreshes = 0
-  const status = { id: 'repo', branch: 'feat/xzr/canteen_job_person_fields', head: 'sha', upstream: 'origin/staging', files: [], snapshot: 'review', active: false, operation: null } as unknown as GitStatus
+  const status = { id: 'repo', branch: 'feat/xzr/canteen_job_person_fields', head: 'sha', upstream: 'origin/staging', ahead: 1, files: [], snapshot: 'review', active: false, operation: null } as unknown as GitStatus
   gitApi.push = async (...values) => { args = values; return status }
   gitApi.remotes = async () => ({ remotes: [
     { name: 'backup', url: 'git.example.com:team/repo.git', push_url: 'git.example.com:team/repo.git', branches: [{ name: 'release', head: 'abc' }] },
@@ -23,11 +23,11 @@ test('remote actions choose a remote target and render a compact result notice',
   const push = () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === '推送')!
   try {
     await act(async () => root.render(render({ ...status, files: [{ path: 'new.txt', untracked: true } as GitStatus['files'][number]] })))
-    assert.equal(push().disabled, true)
+    assert.equal(push().disabled, false)
     assert.equal([...container.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent?.startsWith('拉取'))!.disabled, false)
     await act(async () => root.render(render(status, true)))
     assert.equal(push().disabled, true)
-    await act(async () => root.render(render(status)))
+    await act(async () => root.render(render({ ...status, files: [{ path: 'new.txt', untracked: true } as GitStatus['files'][number]] })))
     assert.equal(push().disabled, false)
     assert.ok([...container.querySelectorAll('button')].some(b => b.textContent === '拉取'))
     await act(async () => push().click())

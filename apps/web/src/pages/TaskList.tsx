@@ -33,6 +33,7 @@ import MobileOpenLocationButton from '../components/MobileOpenLocationButton'
 import ProjectDirectoryBrowserDialog from '../components/ProjectDirectoryBrowserDialog'
 import ProjectShareDialog from '../components/ProjectShareDialog'
 import ProjectSettingsPanel from '../components/ProjectSettingsPanel'
+import WorkflowShortcutSettingsDialog from '../components/WorkflowShortcutSettingsDialog'
 import ArchiveExperienceProgress from '../components/ArchiveExperienceProgress'
 import TaskTableView from '../components/TaskTableView'
 import type { TaskDraftResult } from '../stores/taskDraftStore'
@@ -160,6 +161,7 @@ export default function TaskList() {
   const activeProject = useProjectStore((s) => s.activeProject)
   const renameProject = useProjectStore((s) => s.renameProject)
   const activeWorkflowId = useProjectStore((s) => s.activeWorkflowId)
+  const saveSteps = useProjectStore((s) => s.saveSteps)
   const activeWorkflowName = activeProject?.workflows?.find((w) => w.id === activeWorkflowId)?.name
   const [showNewPanel, setShowNewPanel] = useState(false)
   const [createStartStepKey, setCreateStartStepKey] = useState<string | null>(null)
@@ -200,6 +202,7 @@ export default function TaskList() {
   }, [confirmArchiveTaskId, selectedTaskId])
   const [scheduleCount, setScheduleCount] = useState(0)
   const [showScheduleDialog, setShowScheduleDialog] = useState(false)
+  const [shortcutSettingsOpen, setShortcutSettingsOpen] = useState(false)
   const [showShareDialog, setShowShareDialog] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [createError, setCreateError] = useState('')
@@ -291,6 +294,7 @@ export default function TaskList() {
     setTaskAiOpen(true)
     setTaskAiBusy(false)
     setShowScheduleDialog(false)
+    setShortcutSettingsOpen(false)
     setShowShareDialog(false)
     setCreateStartStepKey(null)
     setShowArchived(false)
@@ -841,6 +845,9 @@ export default function TaskList() {
             <Icon name="workflow" size={16} />
             {t('taskList.stepEdit')}
           </Button>
+          <Button onClick={() => { setFiltersOpen(false); setShortcutSettingsOpen(true) }} disabled={!activeWorkflowId}>
+            {t('actionShortcuts.quickButtons')}
+          </Button>
           <Button onClick={() => { setFiltersOpen(false); setShowScheduleDialog(true) }}>
             <Icon name="clock" size={16} />
             {t('schedules.title')}
@@ -935,6 +942,14 @@ export default function TaskList() {
             {t('layout.remoteShareTitle')}
           </Button>
         )}
+        <Button
+          variant="ghost"
+          onClick={() => setShortcutSettingsOpen(true)}
+          disabled={!activeWorkflowId}
+          style={{ fontSize: 'calc(13px * var(--font-scale))', gap: 5 }}
+        >
+          {t('actionShortcuts.quickButtons')}
+        </Button>
         <Button
           variant="ghost"
           onClick={() => setShowScheduleDialog(true)}
@@ -1521,6 +1536,19 @@ export default function TaskList() {
       </div>
 
       {/* ── Schedule dialog ── */}
+      {shortcutSettingsOpen && activeProject && activeWorkflowId && <WorkflowShortcutSettingsDialog
+        key={`${activeProject.id}:${activeWorkflowId}`}
+        projectId={activeProject.id}
+        workflowId={activeWorkflowId}
+        workflowName={activeWorkflowName || ''}
+        workflowButtons={Array.isArray(activeProject.steps?.quickButtons) ? activeProject.steps.quickButtons : []}
+        selectedIds={Array.isArray(activeProject.steps?.projectQuickButtonIds) ? activeProject.steps.projectQuickButtonIds : undefined}
+        inheritByDefault={activeProject.steps?.inheritProjectQuickButtons === true}
+        onClose={() => setShortcutSettingsOpen(false)}
+        onSave={async (selectedIds, workflowButtons) => {
+          await saveSteps(activeProject.id, { ...activeProject.steps, projectQuickButtonIds: selectedIds, quickButtons: workflowButtons })
+        }}
+      />}
       {showScheduleDialog && (
         <div
           className="modal-overlay schedule-dialog-overlay"

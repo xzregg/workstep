@@ -1247,6 +1247,15 @@ class ChatSessionModule(AssistantRuntime):
             if row is None:
                 raise ValueError("Chat session not found")
             engine = engine or row.engine
+            if content.strip() == "/compact" and (
+                not row.engine_session_id
+                or engine != row.engine
+                or (
+                    requested_provider_id is not None
+                    and requested_provider_id != (row.provider_id or "")
+                )
+            ):
+                raise ValueError("没有可压缩的当前引擎会话")
             if requested_engine is None:
                 model = row.model if model is None else model
                 fast_model = row.fast_model if fast_model is None else fast_model

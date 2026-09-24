@@ -3,6 +3,8 @@ import pytest
 from engines.claude_code import ClaudeCodeEngine
 from engines.codex import CodexEngine
 from engines.openclaw import OpenClawEngine
+from engines.pydantic_ai.engine import PydanticAIEngine
+from engines.deepseek_harness import DeepSeekHarnessEngine
 
 
 def _skill(root, directory: str, name: str, description: str) -> None:
@@ -65,7 +67,7 @@ async def test_engine_inspection_returns_engine_owned_input_items(tmp_path):
     assert next(item for item in claude["input_items"] if item["name"] == "shared")["insert_text"] == "/shared "
     assert next(item for item in claude["input_items"] if item["name"] == "workstep-cli")["insert_text"] == "/workstep-cli "
     assert [item["name"] for item in openclaw["input_items"]] == [
-        "goal", "plan", "reasoning", "status", "compact", "shared", "workstep-cli",
+        "goal", "plan", "reasoning", "status", "shared", "workstep-cli",
     ]
 
 
@@ -75,5 +77,12 @@ async def test_engine_inspection_without_project_skills_returns_builtin_skill(tm
 
     assert [item["name"] for item in result["skills"]] == ["workstep-cli"]
     assert [item["name"] for item in result["input_items"]] == [
-        "goal", "plan", "reasoning", "status", "compact", "workstep-cli",
+        "goal", "plan", "reasoning", "status", "workstep-cli",
     ]
+
+
+def test_engine_without_manual_compaction_does_not_advertise_compact():
+    for engine in (PydanticAIEngine(), DeepSeekHarnessEngine()):
+        assert "compact" not in {
+            item["name"] for item in engine.input_commands()
+        }

@@ -56,7 +56,7 @@ test('task detail places the optional reset-step control in the shared composer'
   assert.match(source, /resetStep\?: ChatInputResetStep/)
   assert.match(source, /data-reset-step/)
   assert.ok(source.indexOf('data-reset-step') > source.indexOf('className="chat-input-attach"'))
-  assert.match(taskDetail, /resetStep=\{resumableTarget/)
+  assert.match(taskDetail, /resetStep=\{\(resumableTarget \|\| chatTarget === 'coordinator'\)/)
   assert.match(taskDetailPage, /resumeStepWithMessage\([\s\S]*resetSession/)
   assert.match(taskDetailPage, /resetSession:\s*resetStep/)
 })

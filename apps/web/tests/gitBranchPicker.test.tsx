@@ -7,6 +7,30 @@ import { I18nProvider } from '../src/i18n'
 import GitBranchPicker from '../src/components/git/GitBranchPicker'
 import { gitApi, type GitStatus, type GitBranch } from '../src/api/git'
 
+test('branch rows open both merge directions with the selected local branch', async () => {
+  const { window } = installDomEnvironment()
+  const original = gitApi.branches
+  const status = { id: 'repo', branch: 'main', head: 'abc', files: [], active: false, operation: null, snapshot: 'review' } as GitStatus
+  const branches: GitBranch[] = [
+    { name: 'main', head: 'abc', worktree_id: 'repo', path: '/repo' },
+    { name: 'dev', head: 'def', worktree_id: null, path: null },
+  ]
+  const selected: unknown[] = []
+  gitApi.branches = async () => ({ branches })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><GitBranchPicker status={status} onLocate={() => {}} onChanged={async () => {}} onMerge={(direction, branch) => selected.push([direction, branch])} /></I18nProvider>))
+    const rows = container.querySelectorAll('.git-branch-row')
+    assert.equal(rows[0].querySelectorAll('.git-branch-merge button').length, 0)
+    const buttons = rows[1].querySelectorAll<HTMLButtonElement>('.git-branch-merge button')
+    assert.deepEqual([...buttons].map(button => button.textContent), ['Merge to current', 'Merge here'])
+    await act(async () => buttons[0].click())
+    await act(async () => buttons[1].click())
+    assert.deepEqual(selected, [['intoCurrent', 'dev'], ['intoTarget', 'dev']])
+  } finally { await act(async () => root.unmount()); gitApi.branches = original; container.remove(); await window.happyDOM.close() }
+})
+
 test('branch picker filters fuzzy names, shows upstream state and explicitly fetches or pulls current branch', async () => {
   const { window } = installDomEnvironment()
   const original = { ...gitApi }
@@ -140,4 +164,48 @@ test('branch search ranks an exact branch name before weaker upstream and prefix
     container.remove()
     await window.happyDOM.close()
   }
+})
+
+test('pushes a local branch without an upstream from its branch row', async () => {
+  const { window } = installDomEnvironment()
+  const original = { branches: gitApi.branches, remotes: gitApi.remotes, pushBranch: gitApi.pushBranch }
+  const main: GitBranch = { name: 'main', head: 'a'.repeat(40), worktree_id: 'repo', path: '/repo' }
+  const target: GitBranch = { name: 'tt', head: 'b'.repeat(40), worktree_id: null, path: null, upstream: null }
+  const status = { id: 'repo', branch: 'main', files: [], active: false, operation: null, snapshot: 'review' } as unknown as GitStatus
+  let args: unknown[] = []
+  gitApi.branches = async () => ({ branches: [main, target] })
+  gitApi.remotes = async () => ({ remotes: [{ name: 'origin', url: 'example.test/repo', push_url: 'example.test/repo', branches: [] }], upstream: null, fetched_at: null })
+  gitApi.pushBranch = async (...values) => { args = values; return { branch: 'tt', head: target.head } }
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><GitBranchPicker status={status} onLocate={() => {}} onChanged={async () => {}} /></I18nProvider>))
+    const row = [...container.querySelectorAll<HTMLElement>('.git-branch-row')].find(item => item.textContent?.includes('tt'))!
+    await act(async () => [...row.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === '推送')!.click())
+    assert.match(container.querySelector('[role="dialog"]')?.textContent || '', /tt/)
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === '推送到远程')!.click())
+    assert.deepEqual(args, ['repo', 'tt', target.head, { remote: 'origin', targetBranch: 'tt', setUpstream: true }])
+  } finally { await act(async () => root.unmount()); Object.assign(gitApi, original); container.remove(); await window.happyDOM.close() }
+})
+
+test('deletes an unoccupied local branch after confirmation', async () => {
+  const { window } = installDomEnvironment()
+  const original = { branches: gitApi.branches, deleteBranch: gitApi.deleteBranch }
+  const main: GitBranch = { name: 'main', head: 'a'.repeat(40), worktree_id: 'repo', path: '/repo' }
+  const merged: GitBranch = { name: 'merged', head: 'b'.repeat(40), worktree_id: null, path: null }
+  const status = { id: 'repo', branch: 'main', files: [], active: false, operation: null, snapshot: 'review' } as unknown as GitStatus
+  let deleted: unknown[] = []
+  gitApi.branches = async () => ({ branches: [main, merged] })
+  gitApi.deleteBranch = async (...args) => { deleted = args; return { branches: [main] } }
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><GitBranchPicker status={status} onLocate={() => {}} onChanged={async () => {}} /></I18nProvider>))
+    assert.equal(container.querySelector<HTMLButtonElement>('[aria-label="Delete branch main"]')!.disabled, true)
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Delete branch merged"]')!.click())
+    assert.deepEqual(deleted, [])
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Delete local branch')!.click())
+    assert.deepEqual(deleted, ['repo', 'merged', merged.head, 'review'])
+    assert.equal(container.querySelector<HTMLButtonElement>('[aria-label="Delete branch merged"]'), null)
+  } finally { await act(async () => root.unmount()); Object.assign(gitApi, original); container.remove(); await window.happyDOM.close() }
 })

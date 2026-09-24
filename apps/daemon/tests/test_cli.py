@@ -50,6 +50,13 @@ def test_parser_resolves_subcommands():
     assert args.workflow_id == "w1"
     assert args.start_step_key == "research"
 
+    args = parser.parse_args([
+        "workflow", "action-create", "--project", "p1", "--workflow", "w1",
+        "--action-id", "start-services", "--title", "启动服务",
+        "--script-file", "/tmp/start.sh", "--cwd", "task",
+    ])
+    assert (args.command, args.subcommand, args.action_id) == ("workflow", "action-create", "start-services")
+
     args = parser.parse_args(["workflow", "list", "--project", "p1"])
     assert (args.command, args.subcommand) == ("workflow", "list")
 
@@ -61,6 +68,32 @@ def test_parser_resolves_subcommands():
 
     args = parser.parse_args(["engine", "list"])
     assert (args.command, args.subcommand) == ("engine", "list")
+
+
+@pytest.mark.anyio
+async def test_dispatch_create_workflow_action_posts_script(tmp_path):
+    script = tmp_path / "start.sh"
+    script.write_text("#!/bin/bash\necho ready\n")
+    captured = {}
+
+    async def handler(request):
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["query"] = dict(request.url.params)
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"action_id": "start-services"})
+
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    result = await dispatch(build_parser().parse_args([
+        "workflow", "action-create", "--project", "p1", "--workflow", "w1",
+        "--action-id", "start-services", "--title", "启动服务",
+        "--script-file", str(script), "--cwd", "task",
+    ]), client)
+    assert result["action_id"] == "start-services"
+    assert (captured["method"], captured["path"]) == ("POST", "/api/workflow/w1/actions")
+    assert captured["query"] == {"project_id": "p1"}
+    assert captured["body"]["script_content"] == script.read_text()
+    assert captured["body"]["require_confirmation"] is True
 
 
 def test_parser_requires_subcommand():

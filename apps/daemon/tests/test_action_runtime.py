@@ -256,6 +256,151 @@ async def test_stop_action_releases_active_button(action_client):
 
 
 @pytest.mark.anyio
+async def test_create_workflow_action_api_registers_script_and_button(action_client, monkeypatch):
+    import api.workflow as workflow_api
+    client, manager, project = action_client
+    monkeypatch.setattr(workflow_api, "project_manager", manager)
+    workflow_id = await manager.run_db(
+        project.id, lambda _: Task.get_by_id("task-action").workflow_id
+    )
+    payload = {
+        "action_id": "start-services", "title": "启动服务", "script_path": "start.sh",
+        "script_content": "#!/bin/bash\necho http://localhost:3000\n",
+        "cwd_mode": "task", "require_confirmation": True,
+    }
+    response = await client.post(
+        f"/api/workflow/{workflow_id}/actions?project_id={project.id}", json=payload
+    )
+    assert response.status_code == 200, response.text
+    action_root = project.workstep_dir / "artifacts" / workflow_id / "actions" / "start-services"
+    assert (action_root / "start.sh").read_text() == payload["script_content"]
+    workflow = await manager.run_db(
+        project.id, lambda _: json.loads(Workflow.get_by_id(workflow_id).steps_json)
+    )
+    assert any(button.get("action_id") == "start-services" for button in workflow["quickButtons"])
+    duplicate = await client.post(
+        f"/api/workflow/{workflow_id}/actions?project_id={project.id}", json=payload
+    )
+    assert duplicate.status_code == 409
+
+
+@pytest.mark.anyio
+async def test_slow_workflow_action_publish_does_not_block_health(action_client, monkeypatch):
+    import api.workflow as workflow_api
+
+    client, manager, project = action_client
+    monkeypatch.setattr(workflow_api, "project_manager", manager)
+    workflow_id = await manager.run_db(
+        project.id, lambda _: Task.get_by_id("task-action").workflow_id
+    )
+    entered = threading.Event()
+    original = workflow_api.create_workflow_action
+
+    def slow_publish(*args):
+        entered.set()
+        time.sleep(0.8)
+        return original(*args)
+
+    monkeypatch.setattr(workflow_api, "create_workflow_action", slow_publish)
+    publishing = asyncio.create_task(client.post(
+        f"/api/workflow/{workflow_id}/actions?project_id={project.id}",
+        json={
+            "action_id": "slow-publish", "title": "慢盘测试", "script_path": "start.sh",
+            "script_content": "#!/bin/bash\necho ready\n",
+        },
+    ))
+    assert await asyncio.to_thread(entered.wait, 2)
+    before = time.monotonic()
+    health = await client.get("/api/health")
+    assert health.status_code == 200
+    assert time.monotonic() - before < 0.5
+    assert (await publishing).status_code == 200
+
+
+@pytest.mark.anyio
+async def test_managed_service_action_stops_background_child(action_client):
+    client, _manager, project = action_client
+    action_dir = project.workstep_dir / "actions" / "restart"
+    (action_dir / "action.json").write_text(json.dumps({
+        "id": "restart", "interpreter": "bash", "managed_service": True,
+        "timeout_seconds": 30,
+    }))
+    (action_dir / "restart.sh").write_text(
+        '#!/bin/bash\nsleep 20 &\nchild=$!\necho "child:$child"\nwait "$child"\n'
+    )
+    response = await client.post(
+        f"/api/tasks/task-action/actions/run?project_id={project.id}",
+        json={"button_id": "restart", "source": "project", "confirmed": True},
+    )
+    assert response.status_code == 200
+    run_id = response.json()["run_id"]
+    for _ in range(50):
+        current = await client.get(f"/api/action-runs/{run_id}?project_id={project.id}")
+        if "child:" in current.json()["output"]:
+            break
+        await asyncio.sleep(0.05)
+    assert "child:" in current.json()["output"]
+    stopped = await client.post(f"/api/action-runs/{run_id}/stop?project_id={project.id}")
+    assert stopped.status_code == 200
+    for _ in range(50):
+        current = await client.get(f"/api/action-runs/{run_id}?project_id={project.id}")
+        if current.json()["status"] == "stopped":
+            break
+        await asyncio.sleep(0.05)
+    assert current.json()["status"] == "stopped"
+
+
+@pytest.mark.anyio
+async def test_managed_service_action_cleans_up_when_script_exits(action_client):
+    client, _manager, project = action_client
+    action_dir = project.workstep_dir / "actions" / "restart"
+    (action_dir / "action.json").write_text(json.dumps({
+        "id": "restart", "interpreter": "bash", "managed_service": True,
+        "timeout_seconds": 10,
+    }))
+    (action_dir / "restart.sh").write_text('#!/bin/bash\nsleep 20 &\necho launched\n')
+    response = await client.post(
+        f"/api/tasks/task-action/actions/run?project_id={project.id}",
+        json={"button_id": "restart", "source": "project", "confirmed": True},
+    )
+    assert response.status_code == 200
+    run_id = response.json()["run_id"]
+    for _ in range(100):
+        current = await client.get(f"/api/action-runs/{run_id}?project_id={project.id}")
+        if current.json()["status"] in {"succeeded", "failed", "timed_out"}:
+            break
+        await asyncio.sleep(0.05)
+    assert current.json()["status"] == "succeeded", current.json()
+
+
+@pytest.mark.anyio
+async def test_action_runtime_shutdown_stops_service(action_client):
+    from services.action_runtime import action_runtime
+
+    client, _manager, project = action_client
+    action_dir = project.workstep_dir / "actions" / "restart"
+    (action_dir / "action.json").write_text(json.dumps({
+        "id": "restart", "interpreter": "bash", "managed_service": True,
+        "timeout_seconds": 0,
+    }))
+    (action_dir / "restart.sh").write_text('#!/bin/bash\necho ready\nexec sleep 20\n')
+    response = await client.post(
+        f"/api/tasks/task-action/actions/run?project_id={project.id}",
+        json={"button_id": "restart", "source": "project", "confirmed": True},
+    )
+    assert response.status_code == 200
+    run_id = response.json()["run_id"]
+    for _ in range(50):
+        current = await client.get(f"/api/action-runs/{run_id}?project_id={project.id}")
+        if current.json()["status"] == "running":
+            break
+        await asyncio.sleep(0.05)
+    await action_runtime.shutdown()
+    current = await client.get(f"/api/action-runs/{run_id}?project_id={project.id}")
+    assert current.json()["status"] == "stopped"
+
+
+@pytest.mark.anyio
 async def test_project_chat_action_is_session_scoped(action_client):
     client, manager, project = action_client
     def seed(_project):

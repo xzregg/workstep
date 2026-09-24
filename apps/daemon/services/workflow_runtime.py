@@ -39,6 +39,7 @@ from services.artifact_routing import (
     empty_routing_state,
     normalize_routing_state,
     route_artifact_round,
+    source_for_connection,
 )
 from engines.core.agui import AGUIContext, to_agui_events
 from streaming.bus import EventBus
@@ -1100,9 +1101,14 @@ class WorkflowRuntime:
         review_run_id: str,
         decision: str,
         comment: str | None = None,
+        *,
+        schedule_downstream: bool | None = None,
     ) -> WorkflowRunHandle | None:
         """Persist a manual decision and resume unless the task was terminated."""
         from services.messages import current_actor_message_fields
+
+        if decision == "set_complete" and schedule_downstream is None:
+            raise RuntimeError("请先选择是否继续调度下游步骤")
 
         if decision == "complete_task":
             for _ in range(100):
@@ -1120,9 +1126,10 @@ class WorkflowRuntime:
                 decision,
                 comment,
                 actor_fields,
+                schedule_downstream,
             ),
         )
-        if decision in {"terminate", "complete_task"}:
+        if decision in {"terminate", "complete_task", "set_complete"}:
             event = {
                 "task_id": task_id,
                 "step_key": step_key,
@@ -1176,6 +1183,7 @@ class WorkflowRuntime:
         decision,
         comment,
         actor_fields,
+        schedule_downstream,
     ):
         review = ReviewRun.get_or_none(ReviewRun.id == review_run_id)
         if (
@@ -1197,17 +1205,48 @@ class WorkflowRuntime:
         )
         if latest is None or latest.id != review.id:
             raise RuntimeError("Review has been superseded by a newer attempt")
+        setting_complete = decision == "set_complete"
         if review.decision:
             if review.decision == decision:
                 return None
-            raise RuntimeError("Review already has a different decision")
+            if not (setting_complete and review.decision == "terminate"):
+                raise RuntimeError("Review already has a different decision")
 
         now = utc_now()
         completed_task = decision == "complete_task"
-        approved = decision in {"approve", "force_approve", "complete_task"}
+        approved = decision in {"approve", "force_approve", "complete_task", "set_complete"}
         terminated = decision == "terminate"
         task = Task.get_by_id(task_id)
         workflow_run = review.workflow_run
+        if setting_complete:
+            current_step = TaskStep.get_or_none(
+                (TaskStep.task == task) & (TaskStep.step_key == step_key)
+            )
+            stopped_manual_review = (
+                review.mode == "manual" and review.status == "terminated"
+                and task.status == "stopped" and workflow_run.status == "stopped"
+            )
+            stopped_auto_review = (
+                review.mode == "auto" and review.status == "failed"
+                and review.error == "手动停止"
+                and review.step_run.status == "succeeded"
+                and task.status == "paused" and workflow_run.status == "failed"
+            )
+            if (
+                not (stopped_manual_review or stopped_auto_review)
+                or task.active_workflow_run_id != workflow_run.id
+                or current_step is None or current_step.status != "cancelled"
+                or task_id in self._runners
+            ):
+                raise RuntimeError("只有当前已停止的审核可以设置完成")
+            from services.artifacts import list_task_artifacts
+
+            if review.step_run.artifact_round is None or not any(
+                artifact["step_key"] == step_key
+                and artifact["round"] == review.step_run.artifact_round
+                for artifact in list_task_artifacts(project, task_id)
+            ):
+                raise RuntimeError("该审核轮次没有已产生的产物，不能设置完成")
         if completed_task:
             if review.mode != "manual" or review.status not in {"pending", "rejected"}:
                 raise RuntimeError("只有待处理的人工审核可以完成任务")
@@ -1334,6 +1373,21 @@ class WorkflowRuntime:
             workflow_run.heartbeat_at = now
             workflow_run.save()
             return None
+        if setting_complete and not schedule_downstream:
+            if review.step_run.artifact_round is not None:
+                update_round_manifest_status(
+                    artifacts_root=Path(project.workstep_dir) / "artifacts",
+                    workflow_id=task.workflow_id,
+                    task_id=task.id,
+                    step_key=step_key,
+                    artifact_round=review.step_run.artifact_round,
+                    status="passed",
+                    eligible_for_downstream=True,
+                )
+            task.state_version += 1
+            task.updated_at = now
+            task.save()
+            return None
         assert steps_config is not None
         halt_after_routing = False
         if approved and review.step_run.artifact_round is not None:
@@ -1371,9 +1425,6 @@ class WorkflowRuntime:
                     ),
                     routing_state=state,
                 )
-                workflow_run.routing_state_json = json.dumps(
-                    result.state, ensure_ascii=False, sort_keys=True
-                )
                 if result.conflict or result.exhausted_edges:
                     halt_after_routing = True
                     task_step.status = "failed"
@@ -1393,6 +1444,17 @@ class WorkflowRuntime:
                     for target in targets:
                         rewind.add(target)
                         rewind.update(scheduler.get_all_downstream(target))
+                    persisted_scope = result.state.get("execution_scope")
+                    if isinstance(persisted_scope, list):
+                        result.state["execution_scope"] = sorted(
+                            {str(key) for key in persisted_scope} | rewind
+                        )
+                    elif result.state.get("entry_step_key") in scheduler.steps:
+                        entry_key = result.state["entry_step_key"]
+                        result.state["execution_scope"] = sorted(
+                            {entry_key, *scheduler.get_all_downstream(entry_key)}
+                            | rewind
+                        )
                     for key in rewind:
                         row = TaskStep.get(
                             (TaskStep.task == task) & (TaskStep.step_key == key)
@@ -1403,6 +1465,9 @@ class WorkflowRuntime:
                         row.error = None
                         row.ended_at = None
                         row.save()
+                workflow_run.routing_state_json = json.dumps(
+                    result.state, ensure_ascii=False, sort_keys=True
+                )
         if halt_after_routing:
             task.status = "paused"
             task.state_version += 1
@@ -1803,29 +1868,45 @@ class WorkflowRuntime:
                         )
                     stale_message.save()
             if review_keys:
-                Message.update(
-                    run_status="failed",
-                    content="审核因服务重启中断，正在自动重试",
-                    ended_at=now,
-                ).where(
+                review_messages = Message.select().where(
                     (Message.task == task)
                     & (Message.channel == "review")
                     & (Message.run_status == "running")
                     & current_message_run
-                    & (Message.step_key.in_(review_keys - review_passed_keys))
-                ).execute()
-                if review_passed_keys:
-                    Message.update(
-                        run_status="completed",
-                        content="审核已通过",
-                        ended_at=now,
-                    ).where(
-                        (Message.task == task)
-                        & (Message.channel == "review")
-                        & (Message.run_status == "running")
-                        & current_message_run
-                        & (Message.step_key.in_(review_passed_keys))
-                    ).execute()
+                    & (Message.step_key.in_(review_keys))
+                )
+                for review_message in review_messages:
+                    passed = review_message.step_key in review_passed_keys
+                    review_message.run_status = "completed" if passed else "failed"
+                    review_message.content = (
+                        "审核已通过" if passed else "审核因服务重启中断，正在自动重试"
+                    )
+                    review_message.ended_at = now
+                    if review_message.event_log_path:
+                        journal = TurnEventJournal()
+                        ref = journal.reopen(
+                            project.workstep_dir,
+                            review_message.event_log_path,
+                        )
+                        snapshot = journal.snapshot(ref)
+                        sealed_json = seal_unanswered_interactions(
+                            json.dumps(snapshot["events"], ensure_ascii=False)
+                        )
+                        for response_event in json.loads(sealed_json or "[]")[
+                            len(snapshot["events"]):
+                        ]:
+                            journal.record(ref, response_event)
+                        journal.finish(ref)
+                        snapshot = journal.snapshot(ref)
+                        review_message.events_json = json.dumps(
+                            snapshot["events"], ensure_ascii=False
+                        ) if snapshot["events"] else None
+                        review_message.event_summary_json = json.dumps(
+                            snapshot["summary"], ensure_ascii=False
+                        )
+                        review_message.event_count = snapshot["summary"]["event_count"]
+                        review_message.last_event_seq = snapshot["summary"]["last_event_seq"]
+                    review_message.save()
             task.status = "running"
             task.updated_at = now
             task.save()
@@ -2146,7 +2227,7 @@ class WorkflowRuntime:
                 task = Task.get_or_none(Task.id == task_id)
                 if task is None:
                     raise ValueError(f"Task not found: {task_id}")
-                self._validate_input_rounds(
+                feedback_inputs = self._validate_input_rounds(
                     project,
                     task,
                     step_key,
@@ -2154,7 +2235,7 @@ class WorkflowRuntime:
                 )
                 parent_run_id = expected_run_id or task.active_workflow_run_id
                 if not parent_run_id:
-                    return {"without_parent": True}
+                    return {"without_parent": True, "feedback_inputs": feedback_inputs}
                 parent = WorkflowRun.get_or_none(
                     (WorkflowRun.id == parent_run_id)
                     & (WorkflowRun.task == task)
@@ -2185,6 +2266,7 @@ class WorkflowRuntime:
                     "compiled": compiled,
                     "steps_config": steps_config,
                     "affected": affected,
+                    "feedback_inputs": feedback_inputs,
                 }
 
             inspected = await self._run_db(project_id, inspect_restart)
@@ -2196,6 +2278,7 @@ class WorkflowRuntime:
                     step_followup=step_followup,
                     trigger_name=trigger_name,
                     input_rounds=input_rounds,
+                    feedback_inputs=inspected["feedback_inputs"],
                     reset_session=reset_session,
                 )
             parent_run_id = inspected["parent_run_id"]
@@ -2224,6 +2307,7 @@ class WorkflowRuntime:
                     step_key,
                     execution_keys,
                     reset_session_step_key=(step_key if reset_session else None),
+                    feedback_inputs=inspected["feedback_inputs"],
                 )
                 return _PreparedWorkflowRun(
                     project_id=project.id,
@@ -2260,10 +2344,10 @@ class WorkflowRuntime:
         task: Task,
         step_key: str,
         input_rounds: dict[str, int] | None,
-    ) -> None:
+    ) -> dict[str, dict]:
         """Validate explicit upstream artifact rounds before starting a run."""
         if not input_rounds:
-            return
+            return {}
         workflow_data = self._current_workflow_steps(project, task)
         steps_config = WorkflowDefinition.load(workflow_data).compile().to_steps_config()
         step_list = [Step.from_dict(item) for item in steps_config["steps"]]
@@ -2271,11 +2355,18 @@ class WorkflowRuntime:
         if step_key not in scheduler.steps:
             raise ValueError(f"Step does not exist: {step_key}")
         dependencies = set(scheduler.steps[step_key].depends_on)
+        feedback_connections = {}
+        for connection in scheduler.steps[step_key].incoming_connections:
+            if connection.get("kind") == "dashed":
+                feedback_connections.setdefault(str(connection.get("from")), []).append(
+                    connection
+                )
         artifacts_root = Path(project.workstep_dir) / "artifacts"
+        feedback_inputs: dict[str, dict] = {}
         for dep_key, requested_round in input_rounds.items():
-            if dep_key not in dependencies:
+            if dep_key not in dependencies and dep_key not in feedback_connections:
                 raise ValueError(
-                    f"产物轮次 {dep_key} 不是目标步骤 {step_key} 的依赖"
+                    f"产物轮次 {dep_key} 不是目标步骤 {step_key} 的输入来源"
                 )
             rounds = iter_artifact_rounds(
                 artifacts_root,
@@ -2291,6 +2382,21 @@ class WorkflowRuntime:
                 raise ValueError(
                     f"产物轮次 {dep_key} 第 {requested_round} 轮不可沿用"
                 )
+            if dep_key in feedback_connections:
+                for connection in feedback_connections[dep_key]:
+                    source = source_for_connection(
+                        connection, selected, connection.get("output")
+                    )
+                    if source is not None:
+                        feedback_inputs[str(connection.get("id"))] = source
+                if not any(
+                    str(connection.get("id")) in feedback_inputs
+                    for connection in feedback_connections[dep_key]
+                ):
+                    raise ValueError(
+                        f"产物轮次 {dep_key} 第 {requested_round} 轮没有可用的返工产物"
+                    )
+        return feedback_inputs
 
     async def _start_from_step_without_parent_async(
         self,
@@ -2300,6 +2406,7 @@ class WorkflowRuntime:
         step_followup: str | None = None,
         trigger_name: str | None = None,
         input_rounds: dict[str, int] | None = None,
+        feedback_inputs: dict[str, dict] | None = None,
         reset_session: bool = False,
     ) -> WorkflowRunHandle:
         prepared = await self._run_db(
@@ -2309,6 +2416,7 @@ class WorkflowRuntime:
                 task_id,
                 step_key,
                 reset_session=reset_session,
+                feedback_inputs=feedback_inputs,
             ),
         )
         return self._launch_prepared_run(
@@ -2331,6 +2439,7 @@ class WorkflowRuntime:
         step_key: str,
         *,
         reset_session: bool = False,
+        feedback_inputs: dict[str, dict] | None = None,
     ) -> _PreparedWorkflowRun:
         task = Task.get_by_id(task_id)
         heal_task_cwd(task, project)
@@ -2387,6 +2496,11 @@ class WorkflowRuntime:
         )
         routing_state["entry_step_key"] = step_key
         routing_state["execution_scope"] = sorted(execution_keys)
+        if feedback_inputs:
+            routing_state["feedback_inputs"][step_key] = feedback_inputs
+            routing_state["active_edges"] = sorted(
+                set(routing_state["active_edges"]) | set(feedback_inputs)
+            )
         workflow_run.routing_state_json = json.dumps(
             routing_state,
             ensure_ascii=False,
@@ -2438,6 +2552,7 @@ class WorkflowRuntime:
         step_key: str,
         execution_keys: set[str],
         reset_session_step_key: str | None = None,
+        feedback_inputs: dict[str, dict] | None = None,
     ) -> tuple[Task, WorkflowRun]:
         now = utc_now()
         with db_proxy.atomic():
@@ -2482,6 +2597,12 @@ class WorkflowRuntime:
                         message.run_status = projection["run_status"]
                         message.ended_at = projection["ended_at"] or now
                         message.save(only=[Message.run_status, Message.ended_at])
+            routing_state = empty_routing_state()
+            routing_state["entry_step_key"] = step_key
+            routing_state["execution_scope"] = sorted(execution_keys)
+            if feedback_inputs:
+                routing_state["feedback_inputs"][step_key] = feedback_inputs
+                routing_state["active_edges"] = sorted(feedback_inputs)
             child = WorkflowRun.create(
                 id=str(uuid.uuid4()),
                 task=task,
@@ -2490,11 +2611,7 @@ class WorkflowRuntime:
                 workflow_snapshot_json="{}",
                 parent_run_id=parent.id,
                 restart_from_step_key=step_key,
-                routing_state_json=json.dumps({
-                    **empty_routing_state(),
-                    "entry_step_key": step_key,
-                    "execution_scope": sorted(execution_keys),
-                }, ensure_ascii=False),
+                routing_state_json=json.dumps(routing_state, ensure_ascii=False),
                 owner_id=self._instance_id,
                 heartbeat_at=now,
                 started_at=now,

@@ -12,6 +12,9 @@ the native `workstep_call` operations and their CLI equivalents. It is mirrored
 to `<project>/.workstep/skills/workstep-cli/` on the first skill inspection or
 engine launch. Users can disable it per project; an explicit disable is
 preserved on later rescans and application upgrades.
+The task coordinator uses the engine's native WorkStep tools or this enabled
+skill; it does not append a separate copy of the CLI command manual to each
+turn's prompt.
 
 Selections are project-scoped. `services/skill_center.py` owns discovery,
 validation, duplicate-name selection, safe mirroring, and the manifest at

@@ -58,6 +58,7 @@ import {
   resolveStepDisplayStatus,
   mergeLoadedTaskMessageEvents,
   mergeRefreshedTaskHistory,
+  loadTaskHistoryWithRetry,
   findPreferredArtifact,
   findActiveStepIndex,
   findLatestDispatchedTask,
@@ -403,6 +404,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [artifactsLoading, setArtifactsLoading] = useState(false)
   const [reviews, setReviews] = useState<ReviewRun[]>([])
   const [reviewActionPending, setReviewActionPending] = useState(false)
+  const [pendingReviewCompletion, setPendingReviewCompletion] = useState<{
+    review: ReviewRun
+    stepKey: string
+  } | null>(null)
   const [reviewComment, setReviewComment] = useState('')
   const [previewArtifact, setPreviewArtifact] = useState<TaskArtifact | null>(null)
   const [artifactNotice, setArtifactNotice] = useState('')
@@ -528,7 +533,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   }
 
   const beginPanelMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if ((event.target as HTMLElement).closest('button, input, textarea, select, a')) {
+    if ((event.target as HTMLElement).closest('button, input, textarea, select, a, .task-detail-title')) {
       return
     }
     event.preventDefault()
@@ -590,20 +595,27 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     }
     const fetchKey = `${taskId}-${projectId}`
     if (historyFetchedRef.current === fetchKey) return
-    historyFetchedRef.current = fetchKey
+    const controller = new AbortController()
     setHistoryLoading(true)
     historyOffsetRef.current = 0
     historyHasOlderRef.current = true
     historyOlderLoadingRef.current = false
-    taskApi.history(taskId, projectId, TASK_HISTORY_PAGE_SIZE, 0)
-      .then((res) => {
-        const messages = res.messages || []
-        historyOffsetRef.current = messages.length
-        historyHasOlderRef.current = messages.length === TASK_HISTORY_PAGE_SIZE
-        setHistoryMessages((current) => mergeRefreshedTaskHistory(current, messages))
+    setHistoryMessages([])
+    void loadTaskHistoryWithRetry(
+      () => taskApi.history(taskId, projectId, TASK_HISTORY_PAGE_SIZE, 0),
+      controller.signal,
+    ).then((res) => {
+      if (controller.signal.aborted || !res) return
+      const messages = res.messages || []
+      historyOffsetRef.current = messages.length
+      historyHasOlderRef.current = messages.length === TASK_HISTORY_PAGE_SIZE
+      setHistoryMessages((current) => mergeRefreshedTaskHistory(current, messages))
+      historyFetchedRef.current = fetchKey
+    })
+      .finally(() => {
+        if (!controller.signal.aborted) setHistoryLoading(false)
       })
-      .catch(() => setHistoryMessages([]))
-      .finally(() => setHistoryLoading(false))
+    return () => controller.abort()
   }, [taskId, projectId])
 
   const loadOlderHistory = useCallback(async () => {
@@ -1243,6 +1255,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         submittedPrompt,
         projectId,
         randomUuid(),
+        [],
+        resetStep,
       )
       setHistoryMessages((current) => current.map((message) => (
         message.id === optimisticId
@@ -1255,6 +1269,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           : message
       )))
       setActiveCoordinatorMessageId(accepted.assistant_message_id)
+      if (resetStep) setResetStep(false)
     } catch (reason) {
       setHistoryMessages((current) => current.filter(
         (message) => message.id !== optimisticId
@@ -1282,17 +1297,14 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     setCoordinatorStopping(true)
     setChatError('')
     try {
-      const result = await taskApi.stopCoordinator(taskId, projectId)
-      if (!result.stopped) {
-        // No running turn (may have just ended); events will wrap up naturally.
-        setCoordinatorRunning(false)
-        setActiveCoordinatorMessageId(null)
-        taskApi.history(taskId, projectId)
-          .then((res) => setHistoryMessages((current) => (
-            mergeRefreshedTaskHistory(current, res.messages || [])
-          )))
-          .catch(() => undefined)
-      }
+      await taskApi.stopCoordinator(taskId, projectId)
+      setCoordinatorRunning(false)
+      setActiveCoordinatorMessageId(null)
+      taskApi.history(taskId, projectId)
+        .then((res) => setHistoryMessages((current) => (
+          mergeRefreshedTaskHistory(current, res.messages || [])
+        )))
+        .catch(() => undefined)
     } catch (reason) {
       setChatError(reason instanceof Error ? reason.message : t('taskDetail.stopFailed'))
     } finally {
@@ -1856,11 +1868,16 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   }
 
   const decideReview = async (
-    decision: 'approve' | 'reject' | 'force-approve' | 'terminate' | 'complete-task',
+    decision: 'approve' | 'reject' | 'force-approve' | 'terminate' | 'complete-task' | 'set-complete',
     review = selectedReview,
     stepKey = currentStep.key,
+    scheduleDownstream?: boolean,
   ) => {
     if (!review || !projectId) return
+    if (decision === 'set-complete' && scheduleDownstream === undefined) {
+      setPendingReviewCompletion({ review, stepKey })
+      return
+    }
     setReviewActionPending(true)
     try {
       await taskApi.decideReview(
@@ -1870,6 +1887,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         decision,
         projectId,
         reviewComment.trim() || undefined,
+        scheduleDownstream,
       )
       setReviewComment('')
       const [reviewResult] = await Promise.all([
@@ -1882,6 +1900,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       setChatError(reason instanceof Error ? reason.message : t('taskDetail.reviewActionFailed'))
     } finally {
       setReviewActionPending(false)
+      setPendingReviewCompletion(null)
     }
   }
 
@@ -2146,7 +2165,13 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onA2uiAction={handleA2uiAction}
         onInteractionRespond={handleInteractionRespond}
         proposalOverrides={proposalOverrides}
-        onProposalOverride={(updated) => setProposalOverrides((current) => ({ ...current, [updated.id]: updated }))}
+        onProposalOverride={(updated) => {
+          setProposalOverrides((current) => ({ ...current, [updated.id]: updated }))
+          if (!taskId || !projectId) return
+          void taskApi.history(taskId, projectId).then((res) => setHistoryMessages((current) => (
+            mergeRefreshedTaskHistory(current, res.messages || [])
+          ))).catch(() => undefined)
+        }}
         headerActions={
           <>
             <Button
@@ -2213,6 +2238,30 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onCloseViewingPrompt={() => setViewingPrompt(null)}
         artifactNotice={artifactNotice}
         overlays={<>
+          <ConfirmDialog
+            open={pendingReviewCompletion !== null}
+            title={t('taskDetail.setStepCompleteTitle')}
+            message={t('taskDetail.setStepCompleteMessage')}
+            confirmText={t('taskDetail.setStepCompleteAndSchedule')}
+            secondaryText={t('taskDetail.setStepCompleteOnly')}
+            loading={reviewActionPending}
+            secondaryDisabled={reviewActionPending}
+            onCancel={() => {
+              if (!reviewActionPending) setPendingReviewCompletion(null)
+            }}
+            onConfirm={() => {
+              if (pendingReviewCompletion) void decideReview(
+                'set-complete', pendingReviewCompletion.review,
+                pendingReviewCompletion.stepKey, true,
+              )
+            }}
+            onSecondary={() => {
+              if (pendingReviewCompletion) void decideReview(
+                'set-complete', pendingReviewCompletion.review,
+                pendingReviewCompletion.stepKey, false,
+              )
+            }}
+          />
           <ConfirmDialog
             open={pendingStepRestart !== null}
             title={t('taskDetail.restartImpactConfirmTitle')}

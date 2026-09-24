@@ -65,3 +65,55 @@ test('retry action stays hidden for completed and read-only messages', async () 
     await window.happyDOM.close()
   }
 })
+
+test('manual review renders the green set-complete action beside its badge', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(window.document.body.appendChild(window.document.createElement('div')))
+  let completed = 0
+  try {
+    await act(async () => root.render(
+      <I18nProvider>
+        <MessageMetaBar
+          reviewMode
+          reviewStatus="terminated"
+          onViewPrompt={() => undefined}
+          onSetReviewComplete={() => { completed += 1 }}
+        />
+      </I18nProvider>,
+    ))
+    const button = [...window.document.querySelectorAll('button')]
+      .find((item) => item.textContent?.trim() === '设置完成') as HTMLButtonElement | undefined
+    assert.ok(button)
+    assert.equal(button.style.color, 'var(--success)')
+    await act(async () => button.click())
+    assert.equal(completed, 1)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+test('stopped automatic review can show the same set-complete action', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(window.document.body.appendChild(window.document.createElement('div')))
+  let completed = 0
+  try {
+    await act(async () => root.render(
+      <I18nProvider>
+        <MessageMetaBar
+          status="cancelled"
+          onViewPrompt={() => undefined}
+          onSetReviewComplete={() => { completed += 1 }}
+        />
+      </I18nProvider>,
+    ))
+    const button = [...window.document.querySelectorAll('button')]
+      .find((item) => item.textContent?.trim() === '设置完成') as HTMLButtonElement | undefined
+    assert.ok(button)
+    await act(async () => button.click())
+    assert.equal(completed, 1)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})

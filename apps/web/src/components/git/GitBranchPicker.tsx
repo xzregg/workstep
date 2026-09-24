@@ -1,11 +1,14 @@
 import { useGitApi } from './GitApiContext'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { type GitBranch, type GitStatus, type GitTrackedRemoteBranch } from '../../api/git'
 import { useI18n } from '../../i18n'
 import Button from '../Button'
 import { useGitStore } from '../../stores/gitStore'
 import Icon from '../Icon'
 import GitBranchStatus, { branchMatchScore } from './GitBranchStatus'
+import GitBranchPushPanel from './GitBranchPushPanel'
+import ConfirmDialog from '../ConfirmDialog'
+import type { GitMergeRequest } from './GitMergeActions'
 
 function rankMatches<T>(items: T[], query: string, getScore: (item: T) => number | null) {
   if (!query.trim()) return items
@@ -16,19 +19,23 @@ function rankMatches<T>(items: T[], query: string, getScore: (item: T) => number
     .map(entry => entry.item)
 }
 
-export default function GitBranchPicker({ status, onLocate, onChanged, onRefresh }: { status: GitStatus; onLocate: (id: string) => void; onChanged: () => Promise<void>; onRefresh?: () => Promise<void> }) {
+export default function GitBranchPicker({ status, onLocate, onChanged, onRefresh, onMerge }: { status: GitStatus; onLocate: (id: string) => void; onChanged: () => Promise<void>; onRefresh?: () => Promise<void>; onMerge?: (direction: GitMergeRequest['direction'], branch: string) => void }) {
   const gitApi = useGitApi()
   const { t } = useI18n()
   const [branches, setBranches] = useState<GitBranch[]>([])
   const [remoteBranches, setRemoteBranches] = useState<GitTrackedRemoteBranch[]>([])
   const [showRemote, setShowRemote] = useState(false)
   const [error, setError] = useState('')
-  const [busy, setBusy] = useState<'fetch' | 'pull' | 'switch' | 'update' | 'create' | null>(null)
+  const [busy, setBusy] = useState<'fetch' | 'pull' | 'switch' | 'update' | 'create' | 'push' | 'delete' | null>(null)
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [newName, setNewName] = useState('')
   const [baseRef, setBaseRef] = useState(`local\0${status.branch || ''}`)
+  const [pushBranch, setPushBranch] = useState<GitBranch | null>(null)
+  const [deleteBranch, setDeleteBranch] = useState<GitBranch | null>(null)
+  const [deleteError, setDeleteError] = useState('')
+  const [notice, setNotice] = useState('')
   const [fetchedAt, setFetchedAt] = useState<number | null>(null)
   useEffect(() => {
     let current = true
@@ -43,6 +50,26 @@ export default function GitBranchPicker({ status, onLocate, onChanged, onRefresh
   const baseAvailable = baseKind === 'remote'
     ? remoteBranches.some(item => item.remote === baseName && item.branch === remoteBranch)
     : branches.some(item => item.name === baseName)
+  const onPushBusy = useCallback((value: boolean) => setBusy(value ? 'push' : null), [])
+  async function onPushed(branch: string) {
+    const result = await gitApi.branches(status.id)
+    setBranches(result.branches); setRemoteBranches(result.remote_branches || [])
+    setPushBranch(null); setNotice(t('git.branchPushSuccess', { branch }))
+    useGitStore.getState().referencesChanged()
+    await onRefresh?.()
+  }
+  async function deleteSelectedBranch() {
+    if (!deleteBranch || busy) return
+    setBusy('delete'); setDeleteError('')
+    try {
+      const result = await gitApi.deleteBranch(status.id, deleteBranch.name, deleteBranch.head, status.snapshot)
+      setBranches(result.branches); setRemoteBranches(result.remote_branches || [])
+      setDeleteBranch(null); setNotice(t('git.deleteBranchSuccess', { branch: deleteBranch.name }))
+      useGitStore.getState().referencesChanged()
+      await onRefresh?.()
+    } catch (reason) { setDeleteError(reason instanceof Error ? reason.message : String(reason)) }
+    finally { setBusy(null) }
+  }
   async function createBranch() {
     if (busy || blocked || invalidName || !baseAvailable) return
     const [kind, first, second] = baseRef.split('\0')
@@ -88,19 +115,24 @@ export default function GitBranchPicker({ status, onLocate, onChanged, onRefresh
   }
   const filtered = rankMatches(branches, query, branch => branchMatchScore(branch.name, `${branch.upstream || ''} ${branch.path || ''}`, query))
   const filteredRemote = showRemote ? rankMatches(remoteBranches, query, branch => branchMatchScore(branch.branch, `${branch.name} ${branch.remote}`, query)) : []
-  return <div className={`git-branch-picker${createOpen ? ' git-branch-picker--creating' : ''}`}>
+  return <div className={`git-branch-picker${createOpen || pushBranch ? ' git-branch-picker--creating' : ''}`}>
     <div className="git-branch-tools"><label className="git-search"><Icon name="search" size={14} /><input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder={t('git.branchSearch')} aria-label={t('git.branchSearch')} /></label><Button size="sm" disabled={!!busy || loading} loading={busy === 'fetch'} onClick={() => void run('fetch')}>{busy === 'fetch' ? t('git.fetching') : t('git.fetchBranches')}</Button><Button size="sm" disabled={!!busy || loading || !!blocked} onClick={() => setCreateOpen(!createOpen)}>{t('git.newBranch')}</Button></div>
     {createOpen && <div className="git-branch-create"><label>{t('git.newBranchName')}<input name="newBranch" value={newName} onChange={event => setNewName(event.target.value)} placeholder="feature/example" /></label><label>{t('git.newBranchBase')}<select name="baseBranch" value={baseRef} onChange={event => setBaseRef(event.target.value)}><optgroup label={t('git.localBranches')}>{branches.map(branch => <option key={branch.name} value={`local\0${branch.name}`}>{branch.name}</option>)}</optgroup>{showRemote && <optgroup label={t('git.remoteBranches')}>{remoteBranches.map(branch => <option key={branch.name} value={`remote\0${branch.remote}\0${branch.branch}`}>{branch.name}</option>)}</optgroup>}</select></label><Button size="sm" variant="primary" loading={busy === 'create'} disabled={!!busy || invalidName || !baseAvailable} onClick={() => void createBranch()}>{t('git.createBranch')}</Button><small>{t('git.createBranchHint')}</small></div>}
+    {pushBranch && <GitBranchPushPanel id={status.id} branch={pushBranch} onClose={() => setPushBranch(null)} onBusy={onPushBusy} onPushed={onPushed} />}
     <div className="git-branch-meta">
       <p className="git-sync-note">{showRemote ? t('git.remoteBranchesLoaded', { count: remoteBranches.length, time: fetchedAt ? new Date(fetchedAt * 1000).toLocaleString() : '—' }) : t('git.localBranchesOnly')}</p>
-      {blocked && <p>{blocked}</p>}{dirtyNote && <p>{dirtyNote}</p>}{error && <p role="alert" className="git-danger">{error}</p>}
+      {blocked && <p>{blocked}</p>}{dirtyNote && <p>{dirtyNote}</p>}{notice && <p role="status">{notice}</p>}{error && <p role="alert" className="git-danger">{error}</p>}
     </div>
     <div className="git-branch-list" role="listbox" aria-label={t('git.branches')}>
       {loading ? <p><Icon name="loader-circle" className="git-spin" size={14} /> {t('git.loading')}</p> : !filtered.length && !filteredRemote.length ? <p>{t('git.noBranches')}</p> : <><div className="git-branch-section">{t('git.localBranches')}</div>{filtered.map(b => <div className="git-branch-row" role="option" aria-selected={b.name === status.branch} key={b.name}>
         <span className="git-branch-name">{b.name}<small>{b.upstream || b.path}</small></span><GitBranchStatus branch={b} />
         {!!b.behind && !b.ahead && !b.upstream_gone && !(b.worktree_id && b.worktree_id !== status.id) && <Button variant="icon" className="git-branch-update" aria-label={t('git.pullBranchUpdates', { branch: b.name, count: b.behind })} title={t('git.pullBranchUpdates', { branch: b.name, count: b.behind })} disabled={!!busy || !!blocked} loading={busy === 'update'} onClick={() => void run('update', b.name)}><Icon name="download" size={13} /></Button>}
-        {b.name === status.branch ? <small>{t('git.current')}</small> : b.worktree_id && b.worktree_id !== status.id ? <Button size="sm" disabled={!!busy} onClick={() => onLocate(b.worktree_id!)}>{t('git.locate')}</Button> : <Button size="sm" loading={busy === 'switch'} disabled={!!busy || !!blocked} onClick={() => void run('switch', b.name)}>{t('git.switch')}</Button>}
+        <Button size="sm" className="git-branch-push-button" disabled={!!busy || !!blocked} onClick={() => { setPushBranch(b); setNotice(''); setCreateOpen(false) }}>{t('git.pushButton')}</Button>
+        <Button variant="icon" className="git-branch-delete" aria-label={t('git.deleteBranchTitle', { branch: b.name })} title={b.worktree_id ? t('git.deleteBranchOccupied') : t('git.deleteBranchTitle', { branch: b.name })} disabled={!!busy || !!blocked || !!b.worktree_id} onClick={() => { setDeleteBranch(b); setDeleteError('') }}><Icon name="trash" size={13} /></Button>
+        {onMerge && <span className="git-branch-merge">{b.name !== status.branch && <><Button size="sm" disabled={!!busy || !!blocked || !status.head} onClick={() => onMerge('intoCurrent', b.name)}>{t('git.mergeToCurrentButton')}</Button><Button size="sm" disabled={!!busy || !!blocked || !status.head} onClick={() => onMerge('intoTarget', b.name)}>{t('git.mergeToBranchButton')}</Button></>}</span>}
+        <span className="git-branch-final">{b.name === status.branch ? <small>{t('git.current')}</small> : b.worktree_id && b.worktree_id !== status.id ? <Button size="sm" disabled={!!busy} onClick={() => onLocate(b.worktree_id!)}>{t('git.locate')}</Button> : <Button size="sm" loading={busy === 'switch'} disabled={!!busy || !!blocked} onClick={() => void run('switch', b.name)}>{t('git.switch')}</Button>}</span>
       </div>)}{showRemote && <div className="git-branch-section">{t('git.remoteBranches')}</div>}{filteredRemote.map(branch => <div className="git-branch-row git-branch-row--remote" role="option" aria-selected={false} key={branch.name}><span className="git-branch-name">{branch.name}<small>{t('git.remoteBranch')}</small></span><Button size="sm" loading={busy === 'switch'} disabled={!!busy || !!blocked} onClick={() => void run('switch', branch.branch, branch.remote)}>{t('git.switch')}</Button></div>)}</>}
     </div>
+    <ConfirmDialog open={!!deleteBranch} title={t('git.deleteBranchTitle', { branch: deleteBranch?.name || '' })} message={t('git.deleteBranchHint', { branch: deleteBranch?.name || '' })} confirmText={t('git.deleteBranchConfirm')} danger loading={busy === 'delete'} onConfirm={() => void deleteSelectedBranch()} onCancel={() => { if (busy !== 'delete') { setDeleteBranch(null); setDeleteError('') } }}>{deleteError && <p role="alert" className="git-danger">{deleteError}</p>}</ConfirmDialog>
   </div>
 }

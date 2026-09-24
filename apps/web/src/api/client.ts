@@ -782,7 +782,7 @@ export interface ActionRun {
   session_id: string | null
   action_id: string
   button_id: string
-  source: 'project' | 'stage'
+  source: 'project' | 'workflow' | 'stage'
   title: string
   script_path: string
   cwd: string
@@ -1255,6 +1255,7 @@ export interface ReviewRun {
     }>
   } | null
   decision: string | null
+  error?: string | null
   decision_comment: string | null
   reviewer_id: string | null
   reviewer_name: string | null
@@ -1397,7 +1398,7 @@ export interface TaskArtifactInputSnapshot {
 
 export interface ActionProposal {
   id: string
-  type: 'supplement_step' | 'rerun_from_step' | 'review_decision'
+  type: 'supplement_step' | 'rerun_from_step' | 'review_decision' | 'create_workflow_action'
   target_step_key: string | null
   payload: Record<string, unknown>
   impact: { summary?: string; target_step_key?: string } | null
@@ -1551,6 +1552,7 @@ export const taskApi = {
     projectId: string,
     idempotencyKey: string,
     pendingInsertIds: string[] = [],
+    resetSession = false,
   ) =>
     request<{
       turn_id: string
@@ -1560,7 +1562,7 @@ export const taskApi = {
     }>(`/task/${taskId}/chat?project_id=${encodeURIComponent(projectId)}`, {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey },
-      body: JSON.stringify({ content, pending_insert_ids: pendingInsertIds }),
+      body: JSON.stringify({ content, pending_insert_ids: pendingInsertIds, reset_session: resetSession }),
     }),
   stopCoordinator: (taskId: string, projectId: string) =>
     request<{ stopped: boolean }>(
@@ -1687,15 +1689,16 @@ export const taskApi = {
     taskId: string,
     stepKey: string,
     reviewRunId: string,
-    decision: 'approve' | 'reject' | 'force-approve' | 'terminate' | 'complete-task',
+    decision: 'approve' | 'reject' | 'force-approve' | 'terminate' | 'complete-task' | 'set-complete',
     projectId: string,
     comment?: string,
+    scheduleDownstream?: boolean,
   ) =>
     request<{ decision: string; resumed: boolean; run_id: string | null }>(
       `/task/${taskId}/steps/${stepKey}/review/${decision}?project_id=${encodeURIComponent(projectId)}`,
       {
         method: 'POST',
-        body: JSON.stringify({ review_run_id: reviewRunId, comment }),
+        body: JSON.stringify({ review_run_id: reviewRunId, comment, schedule_downstream: scheduleDownstream }),
       },
     ),
   run: (taskId: string, prompt: string, projectId: string) =>

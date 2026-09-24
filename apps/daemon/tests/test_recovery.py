@@ -8,6 +8,7 @@ over, and a graceful shutdown leaves runs recoverable for the next start.
 import asyncio
 import json
 from datetime import timedelta
+from types import SimpleNamespace
 
 import pytest
 
@@ -231,7 +232,9 @@ async def test_recovery_resumes_from_last_completed_node(tmp_path):
 async def test_recovery_restarts_only_review_after_execution_succeeded(
     tmp_path, step_status, review_status,
 ):
+    from agent_assistants.event_journal import TurnEventJournal
     from engines.core.registry import ENGINE_REGISTRY
+    from services.history import get_task_history
 
     class ReviewRecoveryEngine(RecoveryFakeEngine):
         async def spawn(self, prompt, cwd, **kwargs):
@@ -246,6 +249,17 @@ async def test_recovery_restarts_only_review_after_execution_succeeded(
     ENGINE_REGISTRY["claude"] = ReviewRecoveryEngine
     pm = ProjectManager()
     project = pm.init_project(tmp_path / "proj", name="Review recovery")
+    review_ref = None
+    if review_status == "running":
+        journal = TurnEventJournal()
+        review_ref = journal.start(
+            project.workstep_dir, "task-task-review-rec", "review-message-a-1"
+        )
+        journal.record(review_ref, {
+            "type": "session_started",
+            "data": {"session_id": "interrupted-review-session"},
+        })
+        journal.sync(review_ref, durable=True)
     now = utc_now()
     with pm.activate_project(project.path):
         task = Task.create(
@@ -287,6 +301,7 @@ async def test_recovery_restarts_only_review_after_execution_succeeded(
             id="review-message-a-1", task=task, step_key="a",
             channel="review", role="assistant", content="审核中",
             run_status="running", step_run_id=step_run.id,
+            event_log_path=review_ref.relative_path if review_ref else None,
             position=0, created_at=now,
         )
         task.active_workflow_run_id = run.id
@@ -317,6 +332,11 @@ async def test_recovery_restarts_only_review_after_execution_succeeded(
             assert Message.get_by_id("exec-a-1").run_status == "succeeded"
             if review_status == "running":
                 assert Message.get_by_id("review-message-a-1").run_status == "failed"
+                interrupted = next(
+                    item for item in get_task_history(task.id, project.workstep_dir)
+                    if item["id"] == "review-message-a-1"
+                )
+                assert interrupted["session_id"] == "interrupted-review-session"
             else:
                 assert Message.get_by_id("review-message-a-1").run_status == "completed"
         assert len(RecoveryFakeEngine.prompts) == (1 if review_status == "running" else 0)
@@ -326,6 +346,20 @@ async def test_recovery_restarts_only_review_after_execution_succeeded(
         await bus.close()
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
+
+
+def test_review_journal_placeholder_is_not_a_session_id():
+    from services.history import session_id_from_journal_path
+
+    message = SimpleNamespace(
+        id="review-message", task_id="task", channel="review",
+        event_log_path="event_logs/task-task/review-message/review-message.jsonl",
+    )
+    assert session_id_from_journal_path(message) is None
+    message.event_log_path = (
+        "event_logs/task-task/review-session/review-message.jsonl"
+    )
+    assert session_id_from_journal_path(message) == "review-session"
 
 
 @pytest.mark.anyio

@@ -5,7 +5,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { projectActionApi, taskActionApi, type ActionRun } from '../src/api/client'
 import { useProjectActions } from '../src/components/ProjectActionMessages'
-import { useTaskActions } from '../src/components/TaskActionShortcuts'
+import { ActionConversationMessage, useTaskActions } from '../src/components/TaskActionShortcuts'
 import { I18nProvider } from '../src/i18n'
 
 const activeRun = {
@@ -15,6 +15,30 @@ const activeRun = {
   user_message_id: 'user-1', reply_message_id: 'reply-1',
   started_at: '', ended_at: null,
 } as ActionRun
+
+test('Action reply uses a chat message bubble with output and stop control', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const stopped: string[] = []
+  try {
+    await act(async () => root.render(<I18nProvider><ActionConversationMessage
+      message={{ id: 'reply-1', role: 'assistant', content: '' }}
+      run={{ ...activeRun, output: 'http://localhost:3000' }}
+      onStop={(runId) => stopped.push(runId)}
+    /></I18nProvider>))
+    assert.ok(container.querySelector('.chat-message-row'))
+    assert.match(container.textContent || '', /http:\/\/localhost:3000/)
+    const stop = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('停止'))
+    assert.ok(stop)
+    await act(async () => stop.click())
+    assert.deepEqual(stopped, ['run-1'])
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
 
 test('project Action only polls while an Action is active', async () => {
   const { window } = installDomEnvironment()

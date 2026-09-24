@@ -154,12 +154,12 @@ def assemble_prompt(
         task.cwd or artifacts_dir.parent.parent,
     )
     if input_snapshot is not None:
-        parts.append(
-            _format_input_snapshot(
-                input_snapshot,
-                task.cwd or artifacts_dir.parent.parent,
-            )
+        formatted_snapshot = _format_input_snapshot(
+            input_snapshot,
+            task.cwd or artifacts_dir.parent.parent,
         )
+        if formatted_snapshot:
+            parts.append(formatted_snapshot)
     else:
         upstream = _collect_upstream_artifacts(
             task,
@@ -207,12 +207,14 @@ def assemble_prompt(
         )
 
     # Output specifications (type constraints)
-    if step.outputs:
+    output_ports = _active_output_ports(step, input_snapshot)
+    if output_ports:
         parts.append(
             _format_output_specs(
-                step.outputs,
+                [step.outputs[index] for index in output_ports],
                 prompt_out_dir,
                 step.outgoing_connections,
+                output_ports=output_ports,
             )
         )
 
@@ -271,13 +273,14 @@ def _format_input_snapshot(snapshot: dict, base_dir: str | Path) -> str:
         "forward": "upstream_ready",
         "feedback": "feedback_revision",
     }.get(execution_type, execution_type)
-    lines = [
-        "## Step execution context",
-        f"Execution reason: `{reason}`",
-    ]
+    lines = ["## Step execution context", f"Execution reason: `{reason}`"]
+    has_input = False
     for port in snapshot.get("ports", []):
         if not isinstance(port, dict):
             continue
+        if port.get("status") == "inactive":
+            continue
+        has_input = True
         index = port.get("port")
         name = str(port.get("name") or f"input-{index}")
         status = str(port.get("status") or "inactive")
@@ -320,7 +323,29 @@ def _format_input_snapshot(snapshot: dict, base_dir: str | Path) -> str:
                     )
             if source.get("kind") == "dashed":
                 lines.append("- Purpose: revise the affected work using this feedback artifact.")
-    return "\n".join(lines)
+    return "\n".join(lines) if has_input else ""
+
+
+def _active_output_ports(step: Step, input_snapshot: dict | None) -> list[int]:
+    """Keep outputs associated with input ports active in this execution."""
+    all_ports = list(range(len(step.outputs)))
+    if input_snapshot is None or not any("outputs" in item for item in step.inputs):
+        return all_ports
+    nested_outputs = [output for item in step.inputs for output in item.get("outputs", [])]
+    if nested_outputs != step.outputs:
+        return all_ports
+    active_inputs = {
+        port.get("port") for port in input_snapshot.get("ports", [])
+        if isinstance(port, dict) and port.get("status") in ("ready", "task_context")
+    }
+    selected = []
+    output_port = 0
+    for input_port, item in enumerate(step.inputs):
+        for _ in item.get("outputs", []):
+            if input_port in active_inputs:
+                selected.append(output_port)
+            output_port += 1
+    return selected
 
 
 def assemble_followup_prompt(
@@ -330,6 +355,7 @@ def assemble_followup_prompt(
     user_input: str,
     artifact_round: int | None = None,
     trigger_name: str = "",
+    input_snapshot: dict | None = None,
 ) -> str:
     """Build a compact prompt for an existing step engine session.
 
@@ -352,13 +378,15 @@ def assemble_followup_prompt(
         task.cwd or artifacts_dir.parent.parent,
     )
 
-    if step.outputs:
+    output_ports = _active_output_ports(step, input_snapshot)
+    if output_ports:
         parts.append(
             _format_output_specs(
-                step.outputs,
+                [step.outputs[index] for index in output_ports],
                 prompt_out_dir,
                 step.outgoing_connections,
                 heading="Artifact requirements",
+                output_ports=output_ports,
             )
         )
 
@@ -419,9 +447,12 @@ def assemble_retry_prompt(
         out_dir,
         task.cwd or artifacts_dir.parent.parent,
     )
-    if step.outputs:
-        parts.append(_format_retry_output_paths(step.outputs, prompt_out_dir))
-    else:
+    output_ports = _active_output_ports(step, input_snapshot)
+    if output_ports:
+        parts.append(_format_retry_output_paths(
+            [step.outputs[index] for index in output_ports], prompt_out_dir,
+        ))
+    elif not step.outputs:
         parts.append(f"## Artifact output directory\n{prompt_out_dir}")
     return "\n\n".join(parts)
 
@@ -612,6 +643,7 @@ def _format_output_specs(
     outgoing_connections: list[dict] | None = None,
     *,
     heading: str = "Output specification",
+    output_ports: list[int] | None = None,
 ) -> str:
     """Describe optional outputs once, including their exact destination."""
     lines = [f"## {heading}"]
@@ -629,10 +661,11 @@ def _format_output_specs(
         path_label, output_path = _output_path(out_base, name, otype)
         suffix = "/" if path_label == "output directory" else ""
         lines.append(f"   - {path_label}: `{output_path}{suffix}`")
+        output_port = output_ports[i - 1] if output_ports is not None else i - 1
         routes = [
             connection
             for connection in (outgoing_connections or [])
-            if int(connection.get("fromPort", 0)) == i - 1
+            if int(connection.get("fromPort", 0)) == output_port
         ]
         if any(
             connection.get("kind", "solid") == "dashed"
@@ -646,6 +679,7 @@ def _format_output_specs(
     route_kinds = {
         str(connection.get("kind", "solid"))
         for connection in (outgoing_connections or [])
+        if output_ports is None or int(connection.get("fromPort", 0)) in output_ports
     }
     if "dashed" in route_kinds and any(kind != "dashed" for kind in route_kinds):
         lines.append(

@@ -3,6 +3,7 @@
 from contextlib import nullcontext
 from types import SimpleNamespace
 import asyncio
+import json
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -943,6 +944,122 @@ async def test_restart_without_parent_rejects_unusable_input_round(tmp_path):
                 input_rounds={"missing": 1},
             )
         assert TaskStep.select().where(TaskStep.task == task).count() == 0
+    finally:
+        await runtime.shutdown()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_explicit_feedback_round_is_validated_and_resolved(tmp_path):
+    from engines.core.registry import ENGINE_REGISTRY
+    from services.artifact_rounds import step_round_dir, write_round_manifest
+    from services.artifact_routing import empty_routing_state, resolve_input_snapshot
+    from services.pipeline import Step
+    from services.workflow_definition import WorkflowDefinition
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="feedback-round-task", title="Feedback round", cwd=str(tmp_path),
+        created_at=utc_now(), updated_at=utc_now(),
+    )
+    steps = {
+        "nodes": [
+            {"id": 1, "type": "backend", "title": "Backend", "engine": "claude",
+             "inputs": [{"name": "Requirement"}, {"name": "Backend bugs"}],
+             "outputs": [{"name": "API", "type": "md"}]},
+            {"id": 2, "type": "test", "title": "Test", "engine": "claude",
+             "inputs": [{"name": "API"}],
+             "outputs": [{"name": "Report", "type": "md"},
+                         {"name": "Backend bugs", "type": "md"}]},
+        ],
+        "connections": [
+            {"from": 1, "fromPort": 0, "to": 2, "toPort": 0},
+            {"from": 2, "fromPort": 1, "to": 1, "toPort": 1,
+             "kind": "dashed"},
+        ],
+    }
+    project = SimpleNamespace(
+        id="feedback-round-project", path=tmp_path,
+        workstep_dir=tmp_path / ".workstep", steps=steps,
+    )
+    artifacts_root = project.workstep_dir / "artifacts"
+    round_dir = step_round_dir(artifacts_root, None, task.id, "test", 2)
+    round_dir.mkdir(parents=True)
+    (round_dir / "Backend bugs.md").write_text("Fix the API", encoding="utf-8")
+    write_round_manifest(
+        artifacts_root=artifacts_root, workflow_id=None,
+        task_id=task.id, step_key="test", artifact_round=2,
+        status="passed", eligible_for_downstream=True,
+        outputs=steps["nodes"][1]["outputs"],
+    )
+    report_round = step_round_dir(artifacts_root, None, task.id, "test", 3)
+    report_round.mkdir(parents=True)
+    (report_round / "Report.md").write_text("Passed", encoding="utf-8")
+    write_round_manifest(
+        artifacts_root=artifacts_root, workflow_id=None,
+        task_id=task.id, step_key="test", artifact_round=3,
+        status="passed", eligible_for_downstream=True,
+        outputs=steps["nodes"][1]["outputs"],
+    )
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = RuntimeFakeEngine
+    runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
+    try:
+        feedback = runtime._validate_input_rounds(
+            project, task, "backend", {"test": 2},
+        )
+        compiled = WorkflowDefinition.load(steps).compile().to_steps_config()
+        backend = next(
+            Step.from_dict(item) for item in compiled["steps"]
+            if item["key"] == "backend"
+        )
+        state = empty_routing_state()
+        state["feedback_inputs"]["backend"] = feedback
+        snapshot = resolve_input_snapshot(
+            step=backend, artifacts_root=artifacts_root,
+            workflow_id=None, task_id=task.id, routing_state=state,
+        )
+        assert snapshot["execution_type"] == "feedback"
+        assert snapshot["ports"][1]["sources"][0]["round"] == 2
+        assert snapshot["ports"][1]["sources"][0]["name"] == "Backend bugs"
+        prepared = runtime._prepare_start_from_step_without_parent(
+            project, task.id, "backend", feedback_inputs=feedback,
+        )
+        saved_state = json.loads(prepared.workflow_run.routing_state_json)
+        assert saved_state["feedback_inputs"]["backend"] == feedback
+        assert set(feedback) <= set(saved_state["active_edges"])
+        handle = await runtime.restart_from_step(
+            project.id, task.id, "backend", input_rounds={"test": 2},
+        )
+        await runtime.wait(handle)
+        child = WorkflowRun.get_by_id(handle.id)
+        child_state = json.loads(child.routing_state_json)
+        assert child_state["feedback_inputs"]["backend"] == feedback
+        backend_run = StepRun.get(
+            (StepRun.run == child) & (StepRun.step_key == "backend")
+        )
+        assert json.loads(backend_run.input_rounds_json) == {"test": 2}
+        assert json.loads(backend_run.input_snapshot_json)["execution_type"] == "feedback"
+        with pytest.raises(ValueError, match="不可沿用"):
+            runtime._validate_input_rounds(
+                project, task, "backend", {"test": 1},
+            )
+        with pytest.raises(ValueError, match="没有可用的返工产物"):
+            runtime._validate_input_rounds(
+                project, task, "backend", {"test": 3},
+            )
+        with pytest.raises(ValueError, match="不是目标步骤"):
+            runtime._validate_input_rounds(
+                project, task, "backend", {"unrelated": 2},
+            )
     finally:
         await runtime.shutdown()
         ENGINE_REGISTRY.clear()

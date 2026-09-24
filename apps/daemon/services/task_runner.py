@@ -1459,6 +1459,7 @@ class TaskRunner:
                 followup,
                 artifact_round,
                 trigger_name,
+                input_snapshot,
             )
         elif (
             ts.session_id
@@ -2518,6 +2519,14 @@ class TaskRunner:
                 routing_state=self._routing_state,
             )
             self._routing_state = result.state
+            if result.feedback_edges and self._execution_scope is not None:
+                rewind = set()
+                for connection in result.feedback_edges:
+                    target = str(connection.get("to"))
+                    rewind.add(target)
+                    rewind.update(scheduler.get_all_downstream(target))
+                self._execution_scope.update(rewind)
+                self._routing_state["execution_scope"] = sorted(self._execution_scope)
             for connection in result.solid_edges:
                 target_step = str(connection.get("to") or "").strip()
                 if target_step:

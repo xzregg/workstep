@@ -5,6 +5,7 @@ import pytest
 from acp import schema
 
 from engines.hermes import HermesEngine
+from engines.core.acp_base import AcpEngineBase
 
 
 @pytest.mark.anyio
@@ -30,6 +31,10 @@ async def test_hermes_inspection_discovers_and_caches_acp_commands(monkeypatch, 
                             name="test",
                             description="Run project tests",
                             input={"hint": "optional path"},
+                        ),
+                        schema.AvailableCommand(
+                            name="compact",
+                            description="Agent-native context compaction",
                         ),
                     ],
                 ),
@@ -57,12 +62,12 @@ async def test_hermes_inspection_discovers_and_caches_acp_commands(monkeypatch, 
     assert plan["action"] == "toggle_plan"
     assert first["input_items"][-1] == {
         "kind": "command",
-        "name": "test",
-        "description": "Run project tests",
-        "input_hint": "optional path",
-        "insert_text": "/test ",
+        "name": "compact",
+        "description": "Agent-native context compaction",
+        "insert_text": "/compact ",
         "action": "prompt",
     }
+    assert next(item for item in first["input_items"] if item["name"] == "test")["input_hint"] == "optional path"
     assert second["input_items"] == first["input_items"]
     assert calls == 1
     assert closed == ["session-1"]
@@ -101,7 +106,6 @@ async def test_hermes_inspection_timeout_returns_shared_skills(monkeypatch, tmp_
         "plan",
         "reasoning",
         "status",
-        "compact",
         "shared",
         "workstep-cli",
     ]
@@ -112,3 +116,74 @@ async def test_hermes_inspection_timeout_returns_shared_skills(monkeypatch, tmp_
         "insert_text": "/shared ",
         "action": "prompt",
     }
+
+
+@pytest.mark.anyio
+async def test_hermes_rejects_compact_when_agent_does_not_advertise_it(monkeypatch, tmp_path):
+    async def no_native_commands(self, cwd):
+        return []
+
+    async def unexpected_spawn(*args, **kwargs):
+        raise AssertionError("ACP process must not receive an unsupported command")
+        yield
+
+    monkeypatch.setattr(HermesEngine, "_inspect_acp_commands", no_native_commands)
+    monkeypatch.setattr("engines.core.acp_base.acp.spawn_agent_process", unexpected_spawn)
+
+    events = [event async for event in HermesEngine().spawn(
+        prompt="/compact", cwd=str(tmp_path), session_id="existing-session",
+    )]
+
+    assert len(events) == 1
+    assert events[0].type == "error"
+    assert "未声明" in events[0].data["message"]
+
+
+@pytest.mark.anyio
+async def test_advertised_compact_is_sent_as_one_acp_prompt(monkeypatch, tmp_path):
+    prompts = []
+
+    class Engine(AcpEngineBase):
+        COMMAND = ["fake-acp"]
+        ENGINE_ID = "test-acp-compact"
+
+        @staticmethod
+        def is_installed():
+            return True
+
+        @staticmethod
+        def get_version():
+            return "test"
+
+        @staticmethod
+        def resolve_binary():
+            return "fake-acp"
+
+        async def _inspect_acp_commands(self, cwd):
+            return [{"name": "compact", "action": "prompt"}]
+
+    class Client:
+        async def initialize(self, **kwargs):
+            return None
+
+        async def load_session(self, **kwargs):
+            return None
+
+        async def prompt(self, *, prompt, **kwargs):
+            prompts.append(prompt)
+            return SimpleNamespace(usage=None)
+
+    @asynccontextmanager
+    async def fake_spawn(*args, **kwargs):
+        yield Client(), SimpleNamespace()
+
+    monkeypatch.setattr("engines.core.acp_base.acp.spawn_agent_process", fake_spawn)
+
+    events = [event async for event in Engine().spawn(
+        prompt="/compact", cwd=str(tmp_path), session_id="existing-session",
+    )]
+
+    assert len(prompts) == 1
+    assert len(prompts[0]) == 1
+    assert prompts[0][0].text == "/compact"
+    assert not any(event.type == "error" for event in events)

@@ -82,6 +82,10 @@ def session_id_from_journal_path(msg: Message) -> str | None:
         and parts[1] == f"task-{msg.task_id}"
         and parts[3] == f"{msg.id}.jsonl"
     ):
+        # Review journals initially use the message ID as a temporary folder.
+        # It is not an engine session ID when no session event was persisted.
+        if msg.channel == "review" and parts[2] == msg.id:
+            return None
         return parts[2]
     return None
 

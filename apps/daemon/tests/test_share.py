@@ -259,6 +259,16 @@ async def test_interactive_share_git_is_scoped_to_its_task(manager, tmp_path, mo
             f"{base}/worktrees/foreign/status",
             headers={"X-Share-Session": session},
         )
+        foreign_merge = await client.post(
+            f"{base}/worktrees/foreign/merge-into",
+            headers={"X-Share-Session": session},
+            json={"branch": "feature", "snapshot": "stale", "target": "dev"},
+        )
+        readonly_merge = await client.post(
+            f"/api/task-share/public/{readonly['token']}/git/worktrees/foreign/merge-into",
+            headers={"X-Share-Session": read_session},
+            json={"branch": "feature", "snapshot": "stale", "target": "dev"},
+        )
     assert missing.status_code == 401
     assert readonly_view.status_code == 200
     assert denied.status_code == 403
@@ -268,6 +278,9 @@ async def test_interactive_share_git_is_scoped_to_its_task(manager, tmp_path, mo
     assert workspace.status_code == 200
     assert other_task.status_code == 404
     assert foreign_tree.status_code == 403
+    assert foreign_merge.status_code == 403
+    assert readonly_merge.status_code == 403
+    assert readonly_merge.json()["detail"] == "Share is read-only"
 
 
 @pytest.mark.asyncio
@@ -280,6 +293,7 @@ async def test_interactive_share_can_open_and_use_its_git_worktree(manager, tmp_
     root = tmp_path / "proj-share-git-real"
     project, task = _create_task_in_project(manager, root)
     repository(root / "repo")
+    git(root / "repo", "switch", "-c", "dev")
     service = GitService(
         lambda: [{"id": project.id, "name": "Project", "path": str(root)}],
         lambda: 3,
@@ -324,6 +338,15 @@ async def test_interactive_share_can_open_and_use_its_git_worktree(manager, tmp_
         assert committed.status_code == 200, committed.text
         assert git(tree["path"], "log", "-1", "--pretty=%s") == "shared commit"
         assert git(root / "repo", "branch", "--list", "shared-task") == "+ shared-task"
+        latest = await client.get(f"{base}/worktrees/{tree['id']}/status", headers=headers)
+        merged = await client.post(
+            f"{base}/worktrees/{tree['id']}/merge-into", headers=headers,
+            json={"branch": "shared-task", "snapshot": latest.json()["snapshot"], "target": "dev"},
+        )
+        assert merged.status_code == 200, merged.text
+        assert merged.json()["target"] == "dev"
+        assert git(root / "repo", "log", "-1", "--pretty=%s") == "shared commit"
+        assert (root / "repo" / "one.txt").read_text() == "shared edit\n"
     await service.close()
 
 

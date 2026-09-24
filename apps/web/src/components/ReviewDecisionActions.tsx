@@ -1,7 +1,7 @@
 import Button from './Button'
 import { useI18n } from '../i18n'
 
-export type ReviewDecisionAction = 'approve' | 'reject' | 'force-approve' | 'terminate' | 'complete-task'
+export type ReviewDecisionAction = 'approve' | 'reject' | 'force-approve' | 'terminate' | 'complete-task' | 'set-complete'
 
 interface ReviewDecisionActionsProps {
   status: string

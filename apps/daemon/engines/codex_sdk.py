@@ -13,6 +13,7 @@ import uuid
 from typing import Any, AsyncIterator
 
 from engines.core.acp_base import AcpEngineBase
+from engines.core.codex_compaction import compact_codex_thread
 from engines.core.packages import RuntimePackage
 from engines.core.base import (
     EngineInstallResult,
@@ -965,7 +966,8 @@ class CodexSDKEngine(AcpEngineBase):
         # coordinator signature, but do not round-trip host-managed history.
         guarded_prompt = await asyncio.to_thread(
             self.render_image_prompt,
-            self._coordinator_prompt(prompt, workstep_tools=workstep_tools),
+            prompt if session_id and self.supports_resume
+            else self._coordinator_prompt(prompt, workstep_tools=workstep_tools),
             images,
         )
         async for event in self._spawn_with_sandbox(
@@ -1187,6 +1189,8 @@ class CodexSDKEngine(AcpEngineBase):
 
             async def pump() -> None:
                 try:
+                    if prompt.strip() == "/compact" and not session_id:
+                        raise ValueError("没有可压缩的 Codex 会话")
                     if session_id:
                         thread = await client.thread_resume(
                             session_id,
@@ -1203,6 +1207,10 @@ class CodexSDKEngine(AcpEngineBase):
                     await event_queue.put(InternalEvent(
                         type="status", data={"status": "running"}
                     ))
+                    if prompt.strip() == "/compact":
+                        await compact_codex_thread(client, thread)
+                        await event_queue.put(compacted_event())
+                        return
                     if plan_mode is None:
                         turn = await thread.turn(prompt, model=model or None)
                     else:

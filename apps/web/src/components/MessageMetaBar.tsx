@@ -62,6 +62,8 @@ export interface MessageMetaBarProps {
   reviewMode?: boolean
   /** Manual review outcome used to color the badge (passed=green, others=red). */
   reviewStatus?: string
+  onSetReviewComplete?: () => void
+  settingReviewComplete?: boolean
   /** True when the step insert queue has messages waiting to be sent. */
   pendingInserts?: boolean
   eventSummary?: {
@@ -96,6 +98,8 @@ export default function MessageMetaBar({
   retryingFailedMessage = false,
   reviewMode = false,
   reviewStatus,
+  onSetReviewComplete,
+  settingReviewComplete = false,
   pendingInserts = false,
   eventSummary,
   eventDetail,
@@ -118,6 +122,20 @@ export default function MessageMetaBar({
     return typeof sid === 'string' && sid.trim() ? sid : null
   }, null)
   const displaySessionId = sessionId || eventSessionId
+  const setReviewCompleteButton = onSetReviewComplete ? (
+    <button
+      type="button"
+      className="chat-message-action"
+      disabled={settingReviewComplete}
+      onClick={onSetReviewComplete}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '0 5px', minHeight: 18, color: 'var(--success)', fontSize: 'inherit' }}
+    >
+      {settingReviewComplete
+        ? <span className="task-status-spinner" aria-hidden="true" />
+        : <Icon name="check" size={11} />}
+      {t('taskDetail.setStepComplete')}
+    </button>
+  ) : null
 
   return reviewMode ? (
     <div style={{
@@ -148,6 +166,7 @@ export default function MessageMetaBar({
         <Icon name={reviewStatus === 'passed' ? 'check' : 'x'} size={11} strokeWidth={2.2} />
         {t('taskDetail.manualReview')}
       </span>
+      {setReviewCompleteButton}
       {artifactRound && artifactRound > 0 && (
         <span style={{ marginLeft: 'auto', flexShrink: 0, whiteSpace: 'nowrap' }}>
           {t('taskDetail.artifactRound', { round: artifactRound })}
@@ -224,6 +243,7 @@ export default function MessageMetaBar({
                 )}
               </span>
             ) : null}
+            {setReviewCompleteButton}
             {hasIdleTimeoutEvent(events) && (
               <span
                 title={t('meta.idleTimeoutTitle')}

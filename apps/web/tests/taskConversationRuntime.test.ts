@@ -38,8 +38,16 @@ test('the last completed step response renders its output artifacts', () => {
 })
 
 test('historical step messages display their own engine session id', () => {
-  assert.match(taskDetailSource, /msg\.session_id \|\|/)
-  assert.match(taskDetailSource, /msg\.run_status === 'running'/)
+  assert.match(taskDetailSource, /messageSessionId\(/)
+  assert.equal(taskDetailChat.messageSessionId(
+    { session_id: 'review-session', run_status: 'failed' }, true, 'step-session',
+  ), 'review-session')
+  assert.equal(taskDetailChat.messageSessionId(
+    { run_status: 'running' }, true, 'step-session',
+  ), null)
+  assert.equal(taskDetailChat.messageSessionId(
+    { run_status: 'running' }, false, 'step-session',
+  ), 'step-session')
 })
 
 test('refreshing a running task upserts it into an empty store', async () => {

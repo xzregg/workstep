@@ -157,7 +157,7 @@ class InternalEvent:
         "live_message",              # queued live-step message delivery state
         "engine_state",              # serializable in-process engine state snapshot
         "subagent",                  # subagent / background task lifecycle event
-        "compacted",                 # engine auto-compacted its context window
+        "compacted",                 # engine compacted its context window
         "error",                     # error
         "interaction_request",       # ACP permission / form elicitation request
         "async_question",            # Codex non-blocking structured question
@@ -173,7 +173,7 @@ class InternalEvent:
 
 
 def compacted_event(summary: str | None = None) -> InternalEvent:
-    """Build a ``compacted`` event (engine auto-compressed its context)."""
+    """Build a ``compacted`` event after engine context compression."""
     data: dict[str, Any] = {}
     if summary:
         data["summary"] = str(summary)
