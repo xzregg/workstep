@@ -2,11 +2,14 @@ package com.workstep.android;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.ClipData;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Message;
 import android.provider.DocumentsContract;
+import android.provider.MediaStore;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -41,6 +44,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -257,7 +261,8 @@ public final class MainActivity extends Activity {
                 if (fileCallback != null) fileCallback.onReceiveValue(null);
                 fileCallback = callback;
                 try {
-                    startActivityForResult(params.createIntent(), FILE_REQUEST);
+                    Intent picker = createFileChooserIntent(params);
+                    startActivityForResult(picker, FILE_REQUEST);
                     return true;
                 } catch (Exception error) {
                     fileCallback = null;
@@ -304,6 +309,44 @@ public final class MainActivity extends Activity {
         addConnectionMenu();
     }
 
+    private Intent createFileChooserIntent(WebChromeClient.FileChooserParams params) {
+        boolean imageOnly = FileChooserMode.isImageOnly(params.getAcceptTypes());
+        boolean multiple = params.getMode() == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE;
+        if (imageOnly && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Intent picker = new Intent(MediaStore.ACTION_PICK_IMAGES);
+            picker.setType("image/*");
+            if (multiple) {
+                picker.putExtra(
+                        MediaStore.EXTRA_PICK_IMAGES_MAX,
+                        Math.min(20, MediaStore.getPickImagesMaxLimit())
+                );
+            }
+            return picker;
+        }
+
+        Intent picker = params.createIntent();
+        if (imageOnly) {
+            picker.setType("image/*");
+            picker.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple);
+        }
+        return picker;
+    }
+
+    private Uri[] selectedFiles(int resultCode, Intent data) {
+        if (resultCode != RESULT_OK || data == null) return null;
+        ClipData clip = data.getClipData();
+        if (clip != null && clip.getItemCount() > 0) {
+            ArrayList<Uri> uris = new ArrayList<>();
+            for (int index = 0; index < clip.getItemCount(); index += 1) {
+                Uri uri = clip.getItemAt(index).getUri();
+                if (uri != null) uris.add(uri);
+            }
+            return uris.isEmpty() ? null : uris.toArray(new Uri[0]);
+        }
+        if (data.getData() != null) return new Uri[] {data.getData()};
+        return WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+    }
+
     @SuppressLint("ClickableViewAccessibility") // Tap path calls performClick; dragging consumes moves.
     private void addConnectionMenu() {
         ImageButton button = new ImageButton(this);
@@ -323,6 +366,14 @@ public final class MainActivity extends Activity {
             });
             menu.getMenu().add(R.string.reload).setOnMenuItemClickListener(item -> {
                 if (webView != null) webView.reload();
+                return true;
+            });
+            menu.getMenu().add(R.string.clear_web_cache).setOnMenuItemClickListener(item -> {
+                if (webView != null) {
+                    webView.clearCache(true);
+                    webView.reload();
+                    Toast.makeText(this, R.string.web_cache_cleared, Toast.LENGTH_SHORT).show();
+                }
                 return true;
             });
             menu.show();
@@ -521,7 +572,7 @@ public final class MainActivity extends Activity {
             return;
         }
         if (requestCode == FILE_REQUEST && fileCallback != null) {
-            fileCallback.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data));
+            fileCallback.onReceiveValue(selectedFiles(resultCode, data));
             fileCallback = null;
         }
     }

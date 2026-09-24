@@ -13,6 +13,8 @@ import Spinner from './Spinner'
 interface ProjectDirectoryBrowserProps {
   projectId: string
   rootPath?: string
+  initialFilePath?: string
+  onSelectedFileChange?: (path: string | null) => void
   onDirtyChange?: (dirty: boolean) => void
 }
 
@@ -28,6 +30,8 @@ function requestPath(entry: DirectoryEntry) {
 export default function ProjectDirectoryBrowser({
   projectId,
   rootPath,
+  initialFilePath,
+  onSelectedFileChange,
   onDirtyChange,
 }: ProjectDirectoryBrowserProps) {
   const { t } = useI18n()
@@ -72,8 +76,15 @@ export default function ProjectDirectoryBrowser({
     beforeLeave(() => {
       markEditorDirty(false)
       setSelectedFile({ name: entry.name, path })
+      onSelectedFileChange?.(path)
     })
-  }, [beforeLeave, markEditorDirty, selectedFile?.path])
+  }, [beforeLeave, markEditorDirty, onSelectedFileChange, selectedFile?.path])
+
+  useEffect(() => {
+    if (!initialFilePath || rootLoading || !root) return
+    setSelectedFile({ name: initialFilePath.split('/').pop() || initialFilePath, path: initialFilePath })
+    onSelectedFileChange?.(initialFilePath)
+  }, [initialFilePath, onSelectedFileChange, rootLoading, root])
 
   useEffect(() => {
     setSearchQuery('')

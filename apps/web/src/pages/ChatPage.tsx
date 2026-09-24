@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { randomUuid } from '../utils/uuid'
 import AssistantChatPanel from '../components/AssistantChatPanel'
+import { ProjectActionMessages, useProjectActions } from '../components/ProjectActionMessages'
 import Button from '../components/Button'
 import ChatEngineHandoffDialog, { type HandoffEndpoint } from '../components/ChatEngineHandoffDialog'
 import ChatSessionForkDialog from '../components/ChatSessionForkDialog'
@@ -205,6 +206,7 @@ export default function ChatPage() {
     ? messages.findIndex((message) => message.id === forkMessageId)
     : -1
   const quickButtons = useChatListStore((s) => s.quickButtons)
+  const projectActions = useProjectActions(activeProject?.id, sessionId)
   // AssistantChatPanel 的消息行是 memo 化的：copy/quickPrompts/回调必须引用稳定，
   // 否则流式期间每个 token 都会击穿 memo，历史气泡全量重渲染。
   const panelCopy = useMemo(() => ({
@@ -219,8 +221,15 @@ export default function ChatPage() {
     closePrompt: t('aiFlow.closePrompt'),
   }), [t, compact])
   const quickPromptItems = useMemo(
-    () => quickButtons.map((button) => ({ label: button.label, prompt: button.prompt })),
-    [quickButtons],
+    () => quickButtons.map((button) => ({
+      id: button.id,
+      label: button.label,
+      prompt: button.prompt,
+      content: button.content,
+      kind: button.kind || 'prompt',
+      disabled: button.kind === 'action' && projectActions.activeActionIds.includes(button.action_id || button.id),
+    })),
+    [quickButtons, projectActions.activeActionIds],
   )
 
   // Resolve project/workflow from the URL (mirrors CanvasEditor's loader).
@@ -736,7 +745,8 @@ export default function ChatPage() {
         projectId={activeProject.id}
         sessionId={sessionId}
         title={sessionTitle || t('chatSession.title')}
-        messages={messages}
+        messages={messages.filter((message) => message.engine !== 'action')}
+        afterMessages={<ProjectActionMessages state={projectActions} />}
         availableCommands={session?.availableCommands}
         running={running}
         stopping={stopping}
@@ -754,8 +764,12 @@ export default function ChatPage() {
         onForkMessage={handleForkMessage}
         quickPromptsLabel={t('chatSession.quickPromptsLabel')}
         quickPrompts={quickPromptItems}
-        onQuickPromptSelect={(prompt) => {
-          const next = applyAssistantQuickPrompt(input, prompt)
+        onQuickPromptItemSelect={(item) => {
+          const button = quickButtons.find((candidate) => candidate.id === item.id)
+          if (!button || button.kind === 'display') return
+          if (button.kind === 'action') { void projectActions.run(button); return }
+          if (button.immediate_send) { void send(button.prompt); return }
+          const next = applyAssistantQuickPrompt(input, button.prompt)
           setInput(next)
           setSendError('')
         }}

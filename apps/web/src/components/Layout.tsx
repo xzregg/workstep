@@ -186,6 +186,11 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [renameSessionValue, setRenameSessionValue] = useState('')
   const [deleteSessionTarget, setDeleteSessionTarget] = useState<{ sessionId: string; projectId: string; title: string } | null>(null)
   const [sessionDeleteError, setSessionDeleteError] = useState('')
+  useEffect(() => {
+    if (!sessionDeleteError) return
+    const timer = window.setTimeout(() => setSessionDeleteError(''), 5000)
+    return () => window.clearTimeout(timer)
+  }, [sessionDeleteError])
   const [storedSidebarSections] = useState(loadSidebarSectionState)
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>(
     storedSidebarSections.expandedProjectIds,
@@ -1550,15 +1555,28 @@ export default function Layout({ onSelectProject, children }: Props) {
         confirmText={t('chatSession.deleteConfirm')}
         danger
         onConfirm={() => void handleDeleteSession()}
-        onCancel={() => setDeleteSessionTarget(null)}
+        onCancel={() => {
+          setDeleteSessionTarget(null)
+          setSessionDeleteError('')
+        }}
       />
       {sessionDeleteError && (
-        <div style={{
+        <div role="alert" style={{
           position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 2200,
-          padding: '8px 14px', borderRadius: 8, fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)',
+          padding: '8px 8px 8px 14px', borderRadius: 8, fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)',
           background: 'var(--bg)', border: '1px solid var(--danger)', boxShadow: 'var(--elev-raised)',
+          display: 'flex', alignItems: 'center', gap: 8,
         }}>
-          {sessionDeleteError}
+          <span>{sessionDeleteError}</span>
+          <Button
+            variant="icon"
+            size="sm"
+            aria-label={t('common.close')}
+            onClick={() => setSessionDeleteError('')}
+            style={{ padding: 0, color: 'var(--danger)' }}
+          >
+            <Icon name="x" size={13} />
+          </Button>
         </div>
       )}
 

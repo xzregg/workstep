@@ -59,6 +59,8 @@ interface QuickPromptButtonProps {
   label: string
   prompt: string
   disabled?: boolean
+  displayOnly?: boolean
+  displayContent?: string
   onSelect: (prompt: string) => void
   style?: CSSProperties
 }
@@ -67,6 +69,8 @@ export default function QuickPromptButton({
   label,
   prompt,
   disabled = false,
+  displayOnly = false,
+  displayContent = '',
   onSelect,
   style,
 }: QuickPromptButtonProps) {
@@ -75,6 +79,17 @@ export default function QuickPromptButton({
   const containsLink = containsHtml && /<a(?:\s|>)/i.test(html)
   const selectPrompt = () => {
     if (!disabled && prompt.trim()) onSelect(prompt)
+  }
+
+  if (displayOnly) {
+    if (displayContent.trim()) {
+      const contentHtml = sanitizeQuickPromptLabel(displayContent)
+      return <span className="chat-quick-prompt-html" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, ...style }}>
+        <small style={{ color: 'var(--muted)' }}>{label}</small>
+        <span dangerouslySetInnerHTML={{ __html: contentHtml }} />
+      </span>
+    }
+    return <span className="chat-quick-prompt-html" style={style}>{containsHtml ? <span dangerouslySetInnerHTML={{ __html: html }} /> : label}</span>
   }
 
   if (!containsLink) {

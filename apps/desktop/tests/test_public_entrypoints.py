@@ -24,6 +24,12 @@ def test_source_entrypoint_uses_project_package_manager():
     assert "run_yarn build" in start
 
 
+def test_source_entrypoint_preserves_click_installed_engine_sdks():
+    start = (ROOT / "start.sh").read_text()
+
+    assert 'uv run --no-sync uvicorn main:app' in start
+
+
 def test_release_workflow_builds_unsigned_without_signing_secrets():
     workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text()
 

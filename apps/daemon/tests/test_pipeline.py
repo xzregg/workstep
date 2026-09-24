@@ -364,7 +364,7 @@ def test_assemble_prompt_task_worktrees_keep_project_cwd(tmp_path):
     artifacts.mkdir()
 
     prompt = assemble_prompt(task, Step(key="build", label="Build", prompt="Edit code"), artifacts)
-    assert f"Workspace directory: {workspace}" in prompt
+    assert f"Workspace directory: .workstep/worktrees/{task.id}" in prompt
     assert "Attached repositories: B." in prompt
     assert "Attached repositories: B, unrelated" not in prompt
     assert "The engine still starts in the project root" in prompt

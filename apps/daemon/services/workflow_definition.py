@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 from services.config import resolve_execution_engine
+from services.quick_buttons import normalize_quick_buttons
 from services.workflow_limits import (
     MAX_CONFIGURED_RETURN_ROUNDS,
     MAX_RETURN_ROUNDS,
@@ -50,6 +51,23 @@ class WorkflowDefinition:
 
     def validate(self) -> "WorkflowDefinition":
         """Validate this definition, returning itself for fluent use."""
+        inherit = self._raw.get("inheritProjectQuickButtons", True)
+        if not isinstance(inherit, bool):
+            raise WorkflowValidationError("inheritProjectQuickButtons: expected a boolean")
+        if "projectQuickButtonIds" in self._raw:
+            selected = self._raw["projectQuickButtonIds"]
+            if (
+                not isinstance(selected, list)
+                or len(selected) > 100
+                or any(not isinstance(item, str) or not item.strip() for item in selected)
+                or len(set(selected)) != len(selected)
+            ):
+                raise WorkflowValidationError("projectQuickButtonIds: expected unique button IDs")
+        if "quickButtons" in self._raw:
+            try:
+                normalize_quick_buttons(self._raw["quickButtons"])
+            except ValueError as exc:
+                raise WorkflowValidationError(f"quickButtons: {exc}") from exc
         schema_version = self._raw.get(
             "schemaVersion", self.CURRENT_SCHEMA_VERSION
         )
@@ -60,6 +78,14 @@ class WorkflowDefinition:
             )
         collection_name = "nodes" if "nodes" in self._raw else "steps"
         items = self._raw.get(collection_name, [])
+        for index, item in enumerate(items):
+            if "quickButtons" in item:
+                try:
+                    normalize_quick_buttons(item["quickButtons"])
+                except ValueError as exc:
+                    raise WorkflowValidationError(
+                        f"{collection_name}[{index}].quickButtons: {exc}"
+                    ) from exc
         seen_keys: dict[str, int] = {}
         for index, item in enumerate(items):
             key = item.get("key", item.get("type", item.get("id", "")))

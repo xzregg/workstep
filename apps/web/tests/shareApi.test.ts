@@ -125,3 +125,31 @@ test('shared execution analysis loads through the share session', async (t) => {
   const report = await shareApi.executionReport('share-token', 'share-session')
   assert.deepEqual(report, { runs: [], segments: [] })
 })
+
+test('shared file preview and raw URL use the share session', async (t) => {
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  globalThis.fetch = async (input, options) => {
+    assert.equal(String(input), '/api/task-share/public/share-token/file-preview?path=.workstep%2Fartifacts%2Freport.md')
+    assert.equal(new Headers(options?.headers).get('X-Share-Session'), 'share-session')
+    return Response.json({ type: 'text', content: 'report', content_type: 'text/markdown', file_size: 6, extension: '.md' })
+  }
+
+  assert.equal((await shareApi.previewFile('share-token', 'share-session', '.workstep/artifacts/report.md')).content, 'report')
+  assert.equal(
+    shareApi.fileUrl('share-token', 'share-session', '.workstep/artifacts/report.md'),
+    '/api/task-share/public/share-token/files/share-session/.workstep/artifacts/report.md',
+  )
+})
+
+test('shared message event detail uses the share session', async (t) => {
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  globalThis.fetch = async (input, options) => {
+    assert.equal(String(input), '/api/task-share/public/share-token/messages/message-one/events?cursor=3')
+    assert.equal(new Headers(options?.headers).get('X-Share-Session'), 'share-session')
+    return Response.json({ events: [{ type: 'TEXT_MESSAGE_CHUNK' }], complete: true, next_cursor: null })
+  }
+  const detail = await shareApi.messageEvents('share-token', 'share-session', 'message-one', 3)
+  assert.equal(detail.events[0].type, 'TEXT_MESSAGE_CHUNK')
+})

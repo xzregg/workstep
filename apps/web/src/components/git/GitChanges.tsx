@@ -30,10 +30,10 @@ export function GitFileList({ files, selected, onToggle, onDiff, onDiscard, onIg
   }
   const allClosed = groups.size > 0 && [...groups.keys()].every(isClosed)
   return <div className="git-file-browser"><div className="git-file-toolbar"><strong>{t('git.files')} <span>{files.length}</span></strong><Button size="sm" disabled={!files.length} onClick={() => { setCollapseDefault(!allClosed); setExceptions(new Set()) }}>{allClosed ? t('git.expandAll') : t('git.collapseAll')}</Button>{actions}</div><div className="git-file-list">{[...groups].map(([folder, items]) => <section key={folder}>
-    <button type="button" className="git-folder" aria-expanded={!isClosed(folder)} onClick={() => toggleFolder(folder)}><Icon name={isClosed(folder) ? 'chevron-right' : 'chevron-down'} size={12} /><Icon name="folder" size={13} /><span>{folder}</span><small>{items.length}</small></button>
+    <button type="button" className="git-folder" aria-expanded={!isClosed(folder)} onClick={() => { if (!window.getSelection()?.toString()) toggleFolder(folder) }}><Icon name={isClosed(folder) ? 'chevron-right' : 'chevron-down'} size={12} /><Icon name="folder" size={13} /><span>{folder}</span><small>{items.length}</small></button>
     {!isClosed(folder) && items.map(file => <div className={`git-file git-file--${fileTone(file)}`} key={file.path}>
       {onToggle && <input type="checkbox" aria-label={file.path} checked={selected?.includes(file.path) || false} disabled={file.conflict || file.submodule} onChange={() => onToggle(file)} />}
-      <button className="git-file-open" onClick={() => onDiff(file.path)} title={file.old_path ? `${file.old_path} → ${file.path}` : file.path}><Icon name="file" size={15} /><span>{file.path.split('/').at(-1)}</span>
+      <button className="git-file-open" onClick={() => { if (!window.getSelection()?.toString()) onDiff(file.path) }} title={file.old_path ? `${file.old_path} → ${file.path}` : file.path}><Icon name="file" size={15} /><span>{file.path.split('/').at(-1)}</span>
         {file.conflict ? <small className="git-danger">{t('git.conflict')}</small> : file.submodule ? <small>{t('git.submodule')}</small> : file.untracked ? <small>{t('git.untracked')}</small> : file.staged ? <small>{t('git.staged')}</small> : null}
         <code className={file.untracked ? 'git-added' : 'git-modified'}>{file.untracked ? 'A' : (file.worktree_status.trim() || file.index_status)}</code>
       </button>

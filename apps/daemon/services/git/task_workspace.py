@@ -12,26 +12,40 @@ ALIAS = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
 
 
 class TaskGitWorkspace:
-    def __init__(self, git_service):
+    def __init__(self, git_service, workflow_id: str | None = None):
         self.git = git_service
+        self.workflow_id = workflow_id
+
+    def _root(self, project_path: str | Path, task_id: str) -> Path:
+        if self.workflow_id is None:
+            return self.root(project_path, task_id)
+        return self.root(project_path, task_id, self.workflow_id)
 
     def _lock(self, project_path: str | Path, task_id: str) -> asyncio.Lock:
         return self.git.locks.setdefault(f"workspace:{project_path}:{task_id}", asyncio.Lock())
 
     @staticmethod
-    def root(project_path: str | Path, task_id: str) -> Path:
+    def root(project_path: str | Path, task_id: str, workflow_id: str | None = None) -> Path:
         if not re.fullmatch(r"[A-Za-z0-9-]{1,80}", task_id):
             raise GitError("无效的任务 ID。")
         project = Path(project_path).resolve()
         workstep = project / ".workstep"
         if workstep.is_symlink():
             raise GitError("项目元数据目录不能是符号链接。", 409)
-        container = workstep / "worktrees"
-        if container.is_symlink():
+        legacy_container = workstep / "worktrees"
+        legacy = legacy_container / task_id
+        if legacy_container.is_symlink() or legacy.is_symlink():
             raise GitError("任务工作区目录不能是符号链接。", 409)
-        target = container / task_id
-        if target.is_symlink():
-            raise GitError("任务目录不能是符号链接。", 409)
+        if workflow_id is None or (legacy.is_dir() and any(legacy.iterdir())):
+            return legacy
+        if not re.fullmatch(r"[A-Za-z0-9-]{1,80}", workflow_id):
+            raise GitError("无效的流程 ID。")
+        artifacts = workstep / "artifacts"
+        workflow_root = artifacts / workflow_id
+        task_root = workflow_root / task_id
+        target = task_root / ".worktrees"
+        if any(path.is_symlink() for path in (artifacts, workflow_root, task_root, target)):
+            raise GitError("任务工作区目录不能是符号链接。", 409)
         return target
 
     def _project_repositories(self, project_path: Path):
@@ -48,12 +62,12 @@ class TaskGitWorkspace:
 
     async def ensure(self, project_path: str | Path, task_id: str, *, creator_name: str = "") -> dict:
         async with self._lock(project_path, task_id):
-            root = await asyncio.to_thread(self.root, project_path, task_id)
+            root = await asyncio.to_thread(self._root, project_path, task_id)
             await asyncio.to_thread(root.mkdir, parents=True, exist_ok=True)
             return await self.list(project_path, task_id)
 
     async def list(self, project_path: str | Path, task_id: str) -> dict:
-        root = await asyncio.to_thread(self.root, project_path, task_id)
+        root = await asyncio.to_thread(self._root, project_path, task_id)
         if not await asyncio.to_thread(root.is_dir):
             return {"path": str(root), "worktrees": []}
         project = await asyncio.to_thread(Path(project_path).resolve)
@@ -72,7 +86,13 @@ class TaskGitWorkspace:
             if not repo:
                 continue
             discovered = await self.git.discover_repository(entry)
-            tree = next((item for item in discovered["worktrees"] if Path(item["path"]).resolve() == entry.resolve()), None)
+            entry_resolved = await asyncio.to_thread(entry.resolve)
+            tree = await asyncio.to_thread(
+                lambda: next(
+                    (item for item in discovered["worktrees"] if Path(item["path"]).resolve() == entry_resolved),
+                    None,
+                )
+            )
             if tree is None:
                 continue
             self.git.directories[tree["id"]] = {**tree, "repo_id": repo["id"], "common_dir": common,
@@ -105,7 +125,7 @@ class TaskGitWorkspace:
         actual_common = str(await asyncio.to_thread(Path(text(raw).strip()).resolve))
         if actual_common != repo["common_dir"]:
             raise GitError("源仓库已变化，请重新扫描。", 409)
-        root = await asyncio.to_thread(self.root, project, task_id)
+        root = await asyncio.to_thread(self._root, project, task_id)
         target = root / alias
         lock = self.git.locks.setdefault(repo["common_dir"], asyncio.Lock())
         async with lock:
@@ -151,7 +171,7 @@ class TaskGitWorkspace:
         if not ALIAS.fullmatch(alias) or alias in {".", ".."}:
             raise GitError("无效的工作目录名称。")
         project = await asyncio.to_thread(Path(project_path).resolve)
-        root = await asyncio.to_thread(self.root, project, task_id)
+        root = await asyncio.to_thread(self._root, project, task_id)
         current = await self.list(project, task_id)
         tree = next((item for item in current["worktrees"] if item["alias"] == alias), None)
         if tree is None:
@@ -174,7 +194,7 @@ class TaskGitWorkspace:
     async def delete(self, project_path: str | Path, task_id: str, *, force: bool = False) -> dict:
         """Remove recognized worktrees while retaining their Git branches."""
         async with self._lock(project_path, task_id):
-            root = await asyncio.to_thread(self.root, project_path, task_id)
+            root = await asyncio.to_thread(self._root, project_path, task_id)
             if not await asyncio.to_thread(root.is_dir):
                 raise GitError("任务 Git 工作区不存在。", 404)
             current = await self.list(project_path, task_id)

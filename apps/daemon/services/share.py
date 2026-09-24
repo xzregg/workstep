@@ -320,7 +320,7 @@ def load_shared_history(
     )
     result = []
     import json as _json
-    from services.history import message_artifact_projections, translate_events
+    from services.history import event_detail, message_artifact_projections, translate_events
     artifact_projections = message_artifact_projections(task_id, messages)
     for msg in reversed(messages):
         step_run_id, artifact_round = artifact_projections[msg.id]
@@ -341,7 +341,7 @@ def load_shared_history(
             engine=msg.engine,
             model=msg.model,
         ), mode=mode)
-        result.append({
+        entry = {
             "id": msg.id,
             "role": msg.role,
             "content": convert_visualize_markers(msg.content or ""),
@@ -359,7 +359,11 @@ def load_shared_history(
             "created_at": msg.created_at,
             "events": events,
             "usage": _json.loads(msg.usage_json) if msg.usage_json else None,
-        })
+        }
+        detail = event_detail(msg)
+        if detail is not None:
+            entry["event_detail"] = detail
+        result.append(entry)
     return result
 
 

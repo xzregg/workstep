@@ -370,7 +370,7 @@ def workstep_cli_instruction() -> str:
         "\n"
         "Source-checkout fallback:\n"
         "\n"
-        f"    cd {daemon_dir} && uv run python -m cli <command>\n"
+        f"    cd {daemon_dir} && uv run --no-sync python -m cli <command>\n"
         "\n"
         "Read-only commands:\n"
         "- `workstep project list` — list registered projects\n"

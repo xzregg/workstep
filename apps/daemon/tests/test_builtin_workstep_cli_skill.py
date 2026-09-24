@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from services.skill_center import SkillCenter
+from services.tool_registry import workstep_cli_instruction
 
 
 BUILTIN_SKILLS = Path(__file__).parent.parent / "data" / "skills"
@@ -22,13 +23,15 @@ def test_builtin_workstep_cli_skill_is_enabled_and_mirrored_by_default(tmp_path)
     assert "python -m cli workflow list" in text
     assert "python -m cli workflow get" in text
     assert "python -m cli task create" in text
+    assert "<project>/.workstep/artifacts/<workflow_id>/<task_id>/.worktrees/<alias>/" in text
+    assert "<project>/.workstep/worktrees/<task_id>/" not in text
     assert "--workflow" in text
     assert "python -m cli schedule create" in text
     assert "--mode agent" in text
     assert "WORKSTEP_CLI_PYTHON" in text
     assert "WORKSTEP_DAEMON_DIR" in text
-    assert "uv run --directory apps/daemon python -m cli" in text
-    assert 'uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli' in text
+    assert "uv run --no-sync --directory apps/daemon python -m cli" in text
+    assert 'uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli' in text
     assert "Do not probe the shell with `echo`, `pwd`, or" in text
     assert "`which`; restricted engines" in text
     assert "The CLI is the supported HTTP adapter" in text
@@ -40,9 +43,13 @@ def test_builtin_workstep_cli_skill_is_enabled_and_mirrored_by_default(tmp_path)
     assert "Never edit generated copies under `.agents/skills`" in text
     assert "Never persist temporary tokens," in text
     assert "ports, resource IDs" in text
-    assert text.index("uv run --directory apps/daemon") < text.index(
+    assert text.index("uv run --no-sync --directory apps/daemon") < text.index(
         "When the `workstep` executable is already known"
     )
+
+
+def test_source_checkout_cli_prompt_preserves_optional_engine_sdks():
+    assert "uv run --no-sync python -m cli" in workstep_cli_instruction()
 
 
 def test_disabled_builtin_workstep_cli_skill_stays_disabled(tmp_path):

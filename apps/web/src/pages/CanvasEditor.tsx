@@ -7,6 +7,7 @@ import FlowCanvas, { type FlowCanvasHandle } from '../components/FlowCanvas'
 import AiFlowEditorPanel from '../components/AiFlowEditorPanel'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Select from '../components/Select'
+import WorkflowShortcutSettingsDialog from '../components/WorkflowShortcutSettingsDialog'
 import { useProjectStore } from '../stores/projectStore'
 import { useI18n } from '../i18n'
 import { useOnboardingStore } from '../stores/onboardingStore'
@@ -34,6 +35,7 @@ function CanvasEditorInner() {
   const projectParam = searchParams.get('project')
   const activeWorkflow = activeProject?.workflows?.find((workflow) => workflow.id === activeWorkflowId)
   const [confirmLeave, setConfirmLeave] = useState(false)
+  const [shortcutSettingsOpen, setShortcutSettingsOpen] = useState(false)
   const [pendingWfId, setPendingWfId] = useState<string | null>(null)
   const [aiPanelOpen, setAiPanelOpen] = useState(false)
   const [pendingAiSteps, setPendingAiSteps] = useState<any>(null)
@@ -118,6 +120,7 @@ function CanvasEditorInner() {
       <FlowCanvas
         initialSteps={activeProject?.steps}
         projectId={activeProject?.id}
+        workflowId={activeWorkflowId || undefined}
         onDirtyChange={setCanvasDirty}
         onSave={async (steps) => {
           if (!activeProject) return
@@ -169,6 +172,16 @@ function CanvasEditorInner() {
             </Button>
           </div>
         }
+        toolbarRight={
+          <Button
+            variant="ghost"
+            disabled={!activeWorkflowId}
+            onClick={() => setShortcutSettingsOpen(true)}
+            style={{ height: 28, whiteSpace: 'nowrap' }}
+          >
+            {t('actionShortcuts.quickButtons')}
+          </Button>
+        }
         ref={canvasRef}
       />
 
@@ -204,6 +217,23 @@ function CanvasEditorInner() {
         />
         {aiApplyError && <div className="ai-flow-editor-error" role="alert">{aiApplyError}</div>}
       </div>}
+
+      {shortcutSettingsOpen && activeProject && <WorkflowShortcutSettingsDialog
+        key={`${activeProject.id}:${activeWorkflowId || ''}`}
+        projectId={activeProject.id}
+        workflowId={activeWorkflowId || ''}
+        workflowName={activeWorkflow?.name || ''}
+        workflowButtons={Array.isArray(activeProject.steps?.quickButtons) ? activeProject.steps.quickButtons : []}
+        selectedIds={Array.isArray(activeProject.steps?.projectQuickButtonIds) ? activeProject.steps.projectQuickButtonIds : undefined}
+        inheritByDefault={activeProject.steps?.inheritProjectQuickButtons !== false}
+        onClose={() => setShortcutSettingsOpen(false)}
+        onSave={async (selectedIds, workflowButtons) => {
+          const steps = { ...(canvasRef.current?.getSteps() || activeProject.steps), projectQuickButtonIds: selectedIds, quickButtons: workflowButtons }
+          await saveSteps(activeProject.id, steps)
+          setActiveProject({ ...activeProject, steps })
+          setCanvasDirty(false)
+        }}
+      />}
 
       {/* AI panel: close while generating */}
       <ConfirmDialog

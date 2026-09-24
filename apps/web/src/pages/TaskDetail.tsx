@@ -41,7 +41,8 @@ import StepPromptVariablesHint from '../components/StepPromptVariablesHint'
 import Icon from '../components/Icon'
 import ShareDialog from '../components/ShareDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
-import TaskDetailPage from '../components/TaskDetailPage'
+import TaskDetailPage, { type TaskDetailReadCapabilities } from '../components/TaskDetailPage'
+import { resolveMarkdownImageSrc } from '../utils/markdownImages'
 import TaskStepConfigController from '../components/TaskStepConfigController'
 import {
   createOptimisticCoordinatorMessage,
@@ -291,6 +292,18 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [scheduledDraft, setScheduledDraft] = useState('')
 
   const projectId = detailProject?.id || ''
+  const ownerFilePreview = useMemo(() => ({
+    load: (path: string) => fsApi.preview(path, projectId),
+    rawUrl: (path: string) => fsApi.projectFileUrl(path, projectId),
+  }), [projectId])
+  const ownerAssetUrl = useCallback(
+    (src: string) => resolveMarkdownImageSrc(src, projectId),
+    [projectId],
+  )
+  const ownerExecutionReport = useCallback(
+    () => taskApi.executionReport(taskId, projectId),
+    [taskId, projectId],
+  )
   const task = tasks.find((t) => t.id === taskId)
   const taskStatus = task?.status
   const taskNotStarted = isTaskNotStarted(task?.steps || [])
@@ -1153,9 +1166,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     }
   }, [taskId, projectId, targetStep, t])
 
-  const handleRun = async () => {
+  const handleRun = async (contentOverride?: string) => {
     if (!taskId || !projectId) return
-    const submittedPrompt = prompt.trim()
+    const submittedPrompt = (contentOverride ?? prompt).trim()
     if (!submittedPrompt) return
     if ((chatTargetStep && activeStepRunning) || (!chatTargetStep && coordinatorIsRunning)) {
       if (!pendingTargetMessageId) return
@@ -1939,7 +1952,13 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onStepClick={handleStepClick}
         historyMessages={historyMessages}
         onLoadOlderHistory={loadOlderHistory}
-        onLoadMessageEvents={(messageId) => void loadMessageEvents(messageId)}
+        readCapabilities={{
+          resolveAssetUrl: ownerAssetUrl,
+          filePreview: ownerFilePreview,
+          loadMessageEvents,
+          openArtifact,
+          loadExecutionReport: ownerExecutionReport,
+        } satisfies TaskDetailReadCapabilities}
         liveMessages={liveMessages}
         livePromptOverrides={livePromptOverrides}
         availableCommands={availableCommands}
@@ -1952,7 +1971,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onReviewAction={decideReview}
         artifacts={artifacts}
         artifactInputSnapshots={artifactInputSnapshots}
-        onOpenArtifact={openArtifact}
         chatTarget={chatTarget}
         onChatTargetChange={setChatTarget}
         coordinatorRunning={coordinatorIsRunning}
@@ -1965,6 +1983,13 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         prompt={prompt}
         onPromptChange={setPrompt}
         onSend={handleRun}
+        onSendPrompt={(value) => { void handleRun(value) }}
+        onActionChanged={() => {
+          if (!taskId || !projectId) return
+          void taskApi.history(taskId, projectId).then((res) => setHistoryMessages((current) => (
+            mergeRefreshedTaskHistory(current, res.messages || [])
+          )))
+        }}
         onStop={chatTarget !== 'coordinator' && activeStepRunning
           ? () => void handleStopStep(chatTarget)
           : handleStopCoordinator}

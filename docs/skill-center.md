@@ -68,7 +68,7 @@ source engines should use the commonly allowed `uv` entry point without first
 probing `pwd`, `echo`, or a global `workstep` installation:
 
 ```bash
-uv run --directory "$WORKSTEP_DAEMON_DIR" python -m cli <resource> <action>
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli <resource> <action>
 ```
 
 Desktop-packaged engines can invoke the bundled CLI with:

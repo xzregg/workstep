@@ -5,7 +5,7 @@
 ```bash
 cd apps/daemon
 uv sync --dev
-uv run uvicorn main:app --reload --port 8765
+uv run --no-sync uvicorn main:app --reload --port 8765
 ```
 
 ```bash
@@ -15,11 +15,12 @@ corepack yarn dev
 ```
 
 The public landing page is in `apps/landing` and uses Yarn. Do not commit generated builds, local databases, logs, secrets, or personal configuration.
+After installing an optional engine SDK in Settings, use `uv run --no-sync` to preserve it when restarting the daemon. Run `uv sync --dev` when you intentionally want to reset the project environment to the locked dependencies.
 
 ## Verification
 
 ```bash
-cd apps/daemon && uv run pytest
+cd apps/daemon && uv run --no-sync pytest
 cd apps/web && corepack yarn test && corepack yarn build
 cd apps/landing && corepack yarn test && corepack yarn build
 python scripts/check_repository_health.py

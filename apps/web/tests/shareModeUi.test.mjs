@@ -49,7 +49,8 @@ test('shared task view enables interactions only for interactive shares', () => 
   assert.match(sharedViewSource, /uploadAttachment/)
   assert.match(sharedViewSource, /markdownUrlResolver/)
   assert.match(sharedViewSource, /shareApi\.executionReport/)
-  assert.match(sharedViewSource, /executionReportLoader=\{executionReportLoader\}/)
+  assert.match(sharedViewSource, /loadExecutionReport: executionReportLoader/)
+  assert.match(sharedViewSource, /readCapabilities=\{\{/)
 })
 
 test('read-only and interactive shares differ only by the chat composer capability', () => {

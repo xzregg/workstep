@@ -8,12 +8,26 @@ import TaskArtifactPreviewDialog from './TaskArtifactPreviewDialog'
 import {
   MarkdownAssetUrlProvider,
   type MarkdownUrlResolver,
+  type TaskFilePreview,
 } from '../contexts/MarkdownAssetUrlContext'
 
 /**
  * 任务详情的单一页面实现：owner 弹窗与公开分享页都渲染它。
  */
-export interface TaskDetailPageProps extends TaskDetailViewProps {
+/** Both the owner and share routes must supply every task-detail viewing capability. */
+export interface TaskDetailReadCapabilities {
+  resolveAssetUrl: MarkdownUrlResolver
+  filePreview: TaskFilePreview
+  loadMessageEvents: NonNullable<TaskDetailViewProps['onLoadMessageEvents']>
+  openArtifact: TaskDetailViewProps['onOpenArtifact']
+  loadExecutionReport: NonNullable<TaskDetailViewProps['executionReportLoader']>
+}
+
+export interface TaskDetailPageProps extends Omit<
+  TaskDetailViewProps,
+  'onLoadMessageEvents' | 'onOpenArtifact' | 'executionReportLoader'
+> {
+  readCapabilities: TaskDetailReadCapabilities
   artifactNotice?: string
   /** 产物预览的挂载与关闭由调用方管理状态，这里只负责统一渲染。 */
   previewArtifact?: TaskArtifact | null
@@ -24,8 +38,6 @@ export interface TaskDetailPageProps extends TaskDetailViewProps {
   onCloseViewingPrompt?: () => void
   /** 额外浮层（如 owner 的分享弹窗、提示词编辑框）由调用方注入。 */
   overlays?: React.ReactNode
-  /** Resolve project-relative Markdown uploads for session-scoped public views. */
-  markdownUrlResolver?: MarkdownUrlResolver
 }
 
 export default function TaskDetailPage({
@@ -37,16 +49,22 @@ export default function TaskDetailPage({
   viewingPrompt,
   onCloseViewingPrompt,
   overlays,
-  markdownUrlResolver,
+  readCapabilities,
   onClose,
   ...viewProps
 }: TaskDetailPageProps) {
   const { t } = useI18n()
 
   return (
-    <MarkdownAssetUrlProvider resolver={markdownUrlResolver}>
+    <MarkdownAssetUrlProvider resolver={readCapabilities.resolveAssetUrl} filePreview={readCapabilities.filePreview}>
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <TaskDetailView {...viewProps} onClose={onClose} />
+      <TaskDetailView
+        {...viewProps}
+        onClose={onClose}
+        onLoadMessageEvents={readCapabilities.loadMessageEvents}
+        onOpenArtifact={readCapabilities.openArtifact}
+        executionReportLoader={readCapabilities.loadExecutionReport}
+      />
 
       {artifactNotice && (
         <div style={{
@@ -67,7 +85,15 @@ export default function TaskDetailPage({
         />
       )}
 
-      {previewArtifact?.is_dir ? (
+      {previewArtifact?.is_dir && !viewProps.projectId ? (
+        <TaskArtifactPreviewDialog
+          artifact={previewArtifact}
+          directoryFiles={viewProps.artifacts.filter((item) => (
+            !item.is_dir && item.path.startsWith(`${previewArtifact.path.replace(/\/$/, '')}/`)
+          ))}
+          onClose={() => onCloseArtifactPreview?.()}
+        />
+      ) : previewArtifact?.is_dir ? (
         <ProjectDirectoryBrowserDialog
           projectId={viewProps.projectId || ''}
           title={previewArtifact.logical_name || previewArtifact.name}

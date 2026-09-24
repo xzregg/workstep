@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import Button from '../components/Button'
 import Input from '../components/Input'
 import Spinner from '../components/Spinner'
-import TaskDetailPage from '../components/TaskDetailPage'
+import TaskDetailPage, { type TaskDetailReadCapabilities } from '../components/TaskDetailPage'
 import type {
   StepData,
   StepProgress,
@@ -23,6 +23,7 @@ import {
   resolveStepDisplayStatus,
   findPreferredArtifact,
   findActiveStepIndex,
+  mergeLoadedTaskMessageEvents,
 } from './taskDetailChat'
 import { useI18n } from '../i18n'
 import { formatScheduledStart } from '../utils/scheduledStart'
@@ -572,12 +573,52 @@ export default function SharedTaskView() {
       : src,
     [token, shareSessionToken],
   )
+  const sharedFilePreview = useMemo(() => ({
+    load: (path: string) => token && shareSessionToken
+      ? shareApi.previewFile(token, shareSessionToken, path)
+      : Promise.reject(new Error(t('share.sessionExpired'))),
+    rawUrl: (path: string) => token && shareSessionToken
+      ? shareApi.fileUrl(token, shareSessionToken, path)
+      : '',
+  }), [token, shareSessionToken, t])
   const executionReportLoader = useCallback(() => {
     if (!token || !shareSessionToken) {
       return Promise.reject(new Error(t('share.sessionExpired')))
     }
     return shareApi.executionReport(token, shareSessionToken)
   }, [shareSessionToken, t, token])
+  const loadMessageEvents = useCallback(async (messageId: string) => {
+    if (!token || !shareSessionToken) return
+    const message = messages.find((item) => item.id === messageId)
+    if (!message?.event_detail?.available || message.event_detail.loaded || message.event_detail.loading) return
+    setMessages((current) => current.map((item) => item.id === messageId
+      ? { ...item, event_detail: { ...item.event_detail, loading: true, error: '' } }
+      : item))
+    try {
+      let cursor = 0
+      let complete = false
+      const events: any[] = []
+      let nextCursor: number | null = null
+      while (!complete) {
+        const page = await shareApi.messageEvents(token, shareSessionToken, messageId, cursor)
+        events.push(...page.events)
+        complete = page.complete || page.next_cursor === null
+        nextCursor = page.next_cursor
+        if (!complete) {
+          if (nextCursor === cursor) throw new Error('Event detail cursor did not advance')
+          cursor = nextCursor!
+        }
+      }
+      setMessages((current) => mergeLoadedTaskMessageEvents(
+        current, messageId, events, { complete, next_cursor: nextCursor },
+      ))
+    } catch (reason) {
+      const error = reason instanceof Error ? reason.message : String(reason)
+      setMessages((current) => current.map((item) => item.id === messageId
+        ? { ...item, event_detail: { ...item.event_detail, loading: false, error } }
+        : item))
+    }
+  }, [messages, shareSessionToken, token])
   const runningSteps = useMemo(
     () => steps.filter((step) => (
       stepProgress.some((progress) => (
@@ -869,6 +910,13 @@ export default function SharedTaskView() {
         selectedStep={selectedStep}
         onStepClick={setSelectedStep}
         historyMessages={messages}
+        readCapabilities={{
+          resolveAssetUrl: markdownUrlResolver,
+          filePreview: sharedFilePreview,
+          loadMessageEvents,
+          openArtifact,
+          loadExecutionReport: executionReportLoader,
+        } satisfies TaskDetailReadCapabilities}
         liveMessages={{}}
         events={[]}
         content=""
@@ -892,7 +940,6 @@ export default function SharedTaskView() {
         onStopStep={interactive ? handleStopStep : undefined}
         stoppingStepKeys={stoppingStepKeys}
         artifacts={artifacts}
-        onOpenArtifact={openArtifact}
         headerActions={headerActions}
         locale={locale}
         durationNowMs={durationNowMs}
@@ -910,8 +957,6 @@ export default function SharedTaskView() {
         previewArtifact={previewArtifact}
         onCloseArtifactPreview={() => setPreviewArtifact(null)}
         artifactNotice={artifactNotice || undefined}
-        markdownUrlResolver={markdownUrlResolver}
-        executionReportLoader={executionReportLoader}
       />
     </SharePageShell>
   )

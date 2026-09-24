@@ -43,7 +43,9 @@ def render_step_prompt(
         "task_description": task.description or "",
         "step_name": step.label or "",
         "step_key": step.key or "",
-        "worktrees": f".workstep/worktrees/{task.id}",
+        "worktrees": (
+            f".workstep/artifacts/{task.workflow_id or 'default'}/{task.id}/.worktrees"
+        ),
     }
 
     def replace(match: re.Match[str]) -> str:
@@ -111,19 +113,9 @@ def assemble_prompt(
     """
     parts = [SYSTEM_PROMPT]
 
-    workspace = artifacts_dir.parent / "worktrees" / task.id
-    if workspace.is_dir():
-        aliases = sorted(
-            path.name for path in workspace.iterdir()
-            if path.is_dir() and (path / ".git").exists()
-        )
-        parts.append(
-            "## Task Git workspace\n"
-            f"Workspace directory: {workspace}. Attached repositories: "
-            f"{', '.join(aliases) if aliases else '(none yet)'}. "
-            "The engine still starts in the project root. Run Git commands inside the relevant "
-            "worktree child directory; add only repositories needed by this task."
-        )
+    workspace_context = _task_git_workspace_context(task, artifacts_dir)
+    if workspace_context:
+        parts.append(f"## Task Git workspace\n{workspace_context}")
 
     memory = _load_project_memory(artifacts_dir)
     if memory:
@@ -379,12 +371,13 @@ def assemble_retry_prompt(
     artifacts_dir: Path,
     input_snapshot: dict,
     artifact_round: int | None = None,
+    previous_prompt: str | None = None,
 ) -> str:
     """Build the incremental contract for a resumed review/feedback revision.
 
-    The engine session already contains the task and step instructions.  A
-    retry only needs the inputs that are effective now and the new round's
-    exact output destinations.
+    The engine session already contains the task, step and previous input
+    context. A retry only needs new feedback inputs (if any) and the current
+    round's output destinations.
     """
     workflow_name = task.workflow_id or "default"
     out_dir = (
@@ -396,28 +389,127 @@ def assemble_retry_prompt(
         "## Step execution update\n"
         "Continue in the existing step session and revise the previous result."
     ]
-    if input_snapshot:
-        parts.append(
-            _format_input_snapshot(
-                input_snapshot,
-                task.cwd or artifacts_dir.parent.parent,
+    if previous_prompt is not None:
+        previous_workspace = _prompt_section(previous_prompt, "Task Git workspace")
+        current_workspace = _task_git_workspace_context(task, artifacts_dir)
+        if previous_workspace != current_workspace:
+            parts.append(
+                _format_changed_context("Task Git workspace", current_workspace)
             )
-        )
+
+        previous_title = _prompt_section(previous_prompt, "Task title")
+        current_title = str(task.title or "").strip()
+        if previous_title != current_title:
+            parts.append(_format_changed_context("Task title", current_title))
+
+        previous_description = _prompt_section(previous_prompt, "Task description")
+        current_description = _task_description_for_prompt(task)
+        if previous_description != current_description:
+            parts.append(
+                _format_changed_context("Task description", current_description)
+            )
+
+    feedback_inputs = _format_retry_feedback_inputs(
+        input_snapshot,
+        task.cwd or artifacts_dir.parent.parent,
+    )
+    if feedback_inputs:
+        parts.append(feedback_inputs)
     prompt_out_dir = _relative_prompt_path(
         out_dir,
         task.cwd or artifacts_dir.parent.parent,
     )
     if step.outputs:
-        parts.append(
-            _format_output_specs(
-                step.outputs,
-                prompt_out_dir,
-                step.outgoing_connections,
-            )
-        )
+        parts.append(_format_retry_output_paths(step.outputs, prompt_out_dir))
     else:
         parts.append(f"## Artifact output directory\n{prompt_out_dir}")
     return "\n\n".join(parts)
+
+
+def _prompt_section(prompt: str, heading: str) -> str:
+    """Extract a top-level section from a previously persisted prompt."""
+    match = re.search(rf"(?m)^## {re.escape(heading)}\n", prompt)
+    if not match:
+        return ""
+    content = prompt[match.end():]
+    next_section = re.search(
+        r"(?m)^## (?:Project memory|Task description|Upstream task inputs|Step execution context|"
+        r"Upstream artifacts \(completed; may be referenced\)|Step requirements|"
+        r"User-confirmed step supplements|Output specification|User input|"
+        r"Artifact output directory)\s*$",
+        content,
+    )
+    return content[:next_section.start()].strip() if next_section else content.strip()
+
+
+def _format_changed_context(heading: str, value: str) -> str:
+    if value:
+        return f"## Updated {heading}\n{value}"
+    return f"## Updated {heading}\nThe {heading.lower()} was cleared."
+
+
+def _task_git_workspace_context(task: Task, artifacts_dir: Path) -> str:
+    """Describe attached task worktrees using paths relative to engine cwd."""
+    workspace = artifacts_dir / (task.workflow_id or "default") / task.id / ".worktrees"
+    legacy_workspace = artifacts_dir.parent / "worktrees" / task.id
+    if legacy_workspace.is_dir() and any(legacy_workspace.iterdir()):
+        workspace = legacy_workspace
+    if not workspace.is_dir():
+        return ""
+    aliases = sorted(
+        path.name for path in workspace.iterdir()
+        if path.is_dir() and (path / ".git").exists()
+    )
+    workspace_path = _relative_prompt_path(
+        workspace,
+        task.cwd or artifacts_dir.parent.parent,
+    )
+    return (
+        f"Workspace directory: {workspace_path}. Attached repositories: "
+        f"{', '.join(aliases) if aliases else '(none yet)'}. "
+        "The engine still starts in the project root. Run Git commands inside the relevant "
+        "worktree child directory; add only repositories needed by this task."
+    )
+
+
+def _format_retry_feedback_inputs(
+    snapshot: dict,
+    base_dir: str | Path,
+) -> str:
+    """Include only newly delivered feedback artifacts in a resumed session."""
+    ports = []
+    for port in snapshot.get("ports", []):
+        if not isinstance(port, dict):
+            continue
+        feedback_sources = [
+            source for source in port.get("sources", [])
+            if isinstance(source, dict) and source.get("kind") == "dashed"
+        ]
+        if feedback_sources:
+            ports.append({**port, "sources": feedback_sources})
+    if not ports:
+        return ""
+    return _format_input_snapshot(
+        {"execution_type": "feedback", "ports": ports},
+        base_dir,
+    )
+
+
+def _format_retry_output_paths(outputs: list[dict], out_base: str | Path) -> str:
+    """Give a resumed session the new round's destinations without restating
+    the unchanged output format contract already present in that session.
+    """
+    lines = [
+        "## Current-round output destinations",
+        "Output names and formats are unchanged; write this round's results to these paths:",
+    ]
+    for index, output in enumerate(outputs, 1):
+        name = output.get("name", f"artifact-{index}")
+        output_type = output.get("type", "file")
+        path_label, output_path = _output_path(str(out_base), name, output_type)
+        suffix = "/" if path_label == "output directory" else ""
+        lines.append(f"- {name}: `{output_path}{suffix}`")
+    return "\n".join(lines)
 
 
 def _collect_upstream_artifacts(

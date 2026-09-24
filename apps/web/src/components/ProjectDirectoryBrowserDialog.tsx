@@ -13,6 +13,8 @@ interface ProjectDirectoryBrowserDialogProps {
   title: string
   rootPath?: string
   displayPath?: string
+  initialFilePath?: string
+  onSelectFile?: (path: string) => void
   headerActions?: ReactNode
   onClose: () => void
 }
@@ -64,6 +66,8 @@ export default function ProjectDirectoryBrowserDialog({
   title,
   rootPath,
   displayPath,
+  initialFilePath,
+  onSelectFile,
   headerActions,
   onClose,
 }: ProjectDirectoryBrowserDialogProps) {
@@ -72,6 +76,7 @@ export default function ProjectDirectoryBrowserDialog({
   const resizeCleanupRef = useRef<(() => void) | null>(null)
   const [bounds, setBounds] = useState<DialogBounds | null>(null)
   const [dirty, setDirty] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [confirmClose, setConfirmClose] = useState(false)
   const compact = useCompactLayout()
   const requestClose = () => { if (dirty) setConfirmClose(true); else onClose() }
@@ -226,8 +231,15 @@ export default function ProjectDirectoryBrowserDialog({
           </Button>
         </header>
         <div className="project-directory-dialog-body">
-          <ProjectDirectoryBrowser projectId={projectId} rootPath={rootPath} onDirtyChange={setDirty} />
+          <ProjectDirectoryBrowser
+            projectId={projectId} rootPath={rootPath} initialFilePath={initialFilePath}
+            onSelectedFileChange={setSelectedFile} onDirtyChange={setDirty}
+          />
         </div>
+        {onSelectFile && <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '8px 16px', borderTop: '1px solid var(--border)' }}>
+          <Button variant="ghost" onClick={requestClose}>{t('common.cancel')}</Button>
+          <Button variant="primary" disabled={!selectedFile || dirty} onClick={() => { if (selectedFile) onSelectFile(selectedFile) }}>选择此脚本</Button>
+        </div>}
       </section>
     </div>
     <ConfirmDialog

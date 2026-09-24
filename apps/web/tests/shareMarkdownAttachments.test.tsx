@@ -43,3 +43,19 @@ test('share task messages resolve uploaded file links without changing external 
   )
   assert.match(html, /href="https:\/\/example\.com"/)
 })
+
+test('shared project file links become preview actions', () => {
+  const html = renderToStaticMarkup(
+    <I18nProvider>
+      <MarkdownAssetUrlProvider filePreview={{
+        load: async () => { throw new Error('unused') },
+        rawUrl: (path) => `/shared/${path}`,
+      }}>
+        <MarkdownMessage content="[报告](report.md) [网站](https://example.com)" />
+      </MarkdownAssetUrlProvider>
+    </I18nProvider>,
+  )
+
+  assert.match(html, /href="report\.md"[^>]*data-file-preview="true"/)
+  assert.match(html, /href="https:\/\/example\.com"[^>]*target="_blank"/)
+})

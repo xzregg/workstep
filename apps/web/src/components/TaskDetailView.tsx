@@ -100,6 +100,7 @@ import {
 import { useI18n, type TKey } from '../i18n'
 import { shouldShowAssistantThinking } from '../utils/assistantThinking'
 import TaskRecoveredBadge from './TaskRecoveredBadge'
+import { TaskActionButtons, TaskActionMessages, useTaskActions } from './TaskActionShortcuts'
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -266,6 +267,8 @@ export interface TaskDetailViewProps {
   prompt?: string
   onPromptChange?: (value: string) => void
   onSend?: () => void
+  onSendPrompt?: (value: string) => void
+  onActionChanged?: () => void
   onStop?: () => void
   stoppingStepKeys?: string[]
   stepResuming?: boolean
@@ -425,6 +428,8 @@ export default function TaskDetailView({
   prompt,
   onPromptChange,
   onSend,
+  onSendPrompt,
+  onActionChanged,
   onStop,
   stoppingStepKeys,
   stepResuming,
@@ -526,6 +531,12 @@ export default function TaskDetailView({
 }: TaskDetailViewProps) {
   const { t } = useI18n()
   const canChat = chatEnabled ?? true
+  const taskActions = useTaskActions(
+    canChat && onSendPrompt ? projectId : undefined,
+    task?.id,
+    steps[selectedStep]?.key,
+    onActionChanged,
+  )
   const canShowAnalysis = Boolean(projectId || executionReportLoader)
   const localUserName = useUserSettingsStore((state) => state.userName)
   // 协调引擎下拉的可用性走共享状态，设置页改动后即时跟随（由 TaskDetail 拉取时播种）。
@@ -2376,7 +2387,7 @@ export default function TaskDetailView({
             {(() => {
               const orderedMessagesRaw = [
                 ...historyMessages
-                  .filter(isVisibleHistoryMessage)
+                  .filter((message: any) => (!onSendPrompt || message.channel !== 'action') && isVisibleHistoryMessage(message))
                   .map((message: any) =>
                     mergeHistoryMessageWithLive(
                       message,
@@ -3384,6 +3395,7 @@ export default function TaskDetailView({
               />
             )}
 
+            <TaskActionMessages state={taskActions} />
             <div ref={endRef} />
             </div>
           </div>
@@ -3424,6 +3436,7 @@ export default function TaskDetailView({
               flexShrink: 0,
             }}
           >
+            {onSendPrompt && <TaskActionButtons state={taskActions} onFillPrompt={onPromptChange} onSendPrompt={onSendPrompt} />}
             {composerState.running && (
               <ComposerOverlayHostContext.Provider value={registerOverlay}>
               <PendingMessageInserts

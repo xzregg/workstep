@@ -134,7 +134,8 @@ if [ ! -d ".venv" ]; then
     NODE_ENV=development uv sync --group dev 2>&1 | tail -3
 fi
 
-nohup env WORKSTEP_ENV="$MODE" uv run uvicorn main:app \
+# 引擎 SDK 由设置页按需安装；启动时同步依赖会卸载这些额外包。
+nohup env WORKSTEP_ENV="$MODE" uv run --no-sync uvicorn main:app \
     --host 0.0.0.0 \
     --port "$PORT" \
     > "$LOG_DIR/daemon.log" 2>&1 &

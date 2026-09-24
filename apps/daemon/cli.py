@@ -7,9 +7,9 @@ frontend API contract.
 
 Run from ``apps/daemon`` (the daemon must be running):
 
-    uv run python -m cli project list
-    uv run python -m cli task create --project <id> --title "任务标题"
-    uv run python -m cli --json engine list
+    uv run --no-sync python -m cli project list
+    uv run --no-sync python -m cli task create --project <id> --title "任务标题"
+    uv run --no-sync python -m cli --json engine list
 """
 
 import argparse

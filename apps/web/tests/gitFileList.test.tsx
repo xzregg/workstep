@@ -53,3 +53,18 @@ test('file rows show status colors and expose discard and ignore actions', async
     assert.equal(container.querySelector('button[aria-label="加入 Git 忽略 src/changed.ts"]'), null)
   } finally { await act(async () => root.unmount()); container.remove(); await window.happyDOM.close() }
 })
+
+test('selecting a file name does not open its diff', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const original = window.getSelection
+  let opened = 0
+  const file = { path: 'src/copy-me.ts', old_path: null, index_status: ' ', worktree_status: 'M', staged: false, untracked: false, conflict: false, submodule: false } as GitFile
+  try {
+    await act(async () => root.render(<I18nProvider><GitFileList files={[file]} onDiff={() => opened++} /></I18nProvider>))
+    window.getSelection = () => ({ toString: () => 'copy-me.ts' }) as Selection
+    await act(async () => container.querySelector<HTMLButtonElement>('.git-file-open')!.click())
+    assert.equal(opened, 0)
+  } finally { window.getSelection = original; await act(async () => root.unmount()); container.remove(); await window.happyDOM.close() }
+})

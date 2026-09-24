@@ -70,6 +70,8 @@
 .git-file { display:flex; align-items:center; gap:8px; border-bottom:1px solid color-mix(in srgb, var(--border) 55%, transparent); }
 .git-file .git-file-open { flex:1; min-width:0; background:none; border:0; padding:3px 0; min-height:26px; text-align:left; justify-content:flex-start; color:inherit; }
 .git-file .git-file-open span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.git-page .git-file-open, .git-page .git-folder, .git-page .git-repository-title, .git-page .git-tree-item, .task-git-tree button:first-child { cursor:text; user-select:text; -webkit-user-select:text; }
+.git-page .git-file-open *, .git-page .git-folder *, .git-page .git-repository-title *, .git-page .git-tree-item *, .task-git-tree button:first-child * { user-select:text; -webkit-user-select:text; }
 .git-file small { font-size:10px; color:var(--muted); margin-left:auto; white-space:nowrap; }
 .git-file code { margin-left:auto; font-size:11px; }
 .git-file small+code { margin-left:8px; }

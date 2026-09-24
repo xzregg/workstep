@@ -6,7 +6,7 @@ import { convertVisualizeMarkers } from '../utils/markdownVisualize'
 import { classifyProjectFileLink, type ProjectFileLink } from '../utils/markdownFilePreview'
 import { useI18n } from '../i18n'
 import MermaidBlock, { MarkdownStreamingContext } from './MermaidBlock'
-import { useMarkdownUrlResolver } from '../contexts/MarkdownAssetUrlContext'
+import { useMarkdownUrlResolver, useTaskFilePreview } from '../contexts/MarkdownAssetUrlContext'
 
 interface MarkdownContentProps {
   content: string
@@ -15,6 +15,8 @@ interface MarkdownContentProps {
   className?: string
   compactParagraphs?: boolean
   plainText?: boolean
+  /** Mermaid render delay; static content can pass 0 because it is already stable. */
+  mermaidRenderDelayMs?: number
   onImageClick?: (src: string, alt: string) => void
   onFileClick?: (file: ProjectFileLink) => void
   rootRef?: RefObject<HTMLDivElement | null>
@@ -75,12 +77,14 @@ export default function MarkdownContent({
   className,
   compactParagraphs = false,
   plainText = false,
+  mermaidRenderDelayMs,
   onImageClick,
   onFileClick,
   rootRef,
 }: MarkdownContentProps) {
   const { t } = useI18n()
   const markdownUrlResolver = useMarkdownUrlResolver()
+  const taskFilePreview = useTaskFilePreview()
   const normalizedContent = convertVisualizeMarkers(content)
   const markdown = streaming ? closeStreamingFence(normalizedContent) : normalizedContent
   const plainSegments = plainText ? splitPlainText(normalizedContent) : []
@@ -106,9 +110,9 @@ export default function MarkdownContent({
 
   const renderLink = useCallback((href: string | undefined, label: React.ReactNode, title?: string) => {
     const resolvedHref = href && (markdownUrlResolver?.(href) ?? href)
-    const file = classifyProjectFileLink(href, projectId)
+    const file = classifyProjectFileLink(href, projectId || (taskFilePreview ? 'shared' : undefined))
     if (!file || !onFileClick) {
-      return <a href={resolvedHref} title={title}>{label}</a>
+      return <a href={resolvedHref} title={title} target="_blank" rel="noopener noreferrer">{label}</a>
     }
     return (
       <a
@@ -125,7 +129,7 @@ export default function MarkdownContent({
         {label}
       </a>
     )
-  }, [markdownUrlResolver, onFileClick, projectId, t])
+  }, [markdownUrlResolver, onFileClick, projectId, taskFilePreview, t])
 
   const components = useMemo(() => ({
     p: ({ children }: { children?: React.ReactNode }) => compactParagraphs
@@ -138,11 +142,11 @@ export default function MarkdownContent({
       if (isValidElement<{ className?: string; children?: ReactNode }>(children)
         && /(?:^|\s)language-mermaid(?:\s|$)/i.test(children.props.className ?? '')) {
         const code = String(children.props.children ?? '').replace(/\n$/, '')
-        return <MermaidBlock code={code} />
+        return <MermaidBlock code={code} renderDelayMs={mermaidRenderDelayMs} />
       }
       return <pre>{children}</pre>
     },
-  }), [compactParagraphs, renderImage, renderLink])
+  }), [compactParagraphs, mermaidRenderDelayMs, renderImage, renderLink])
 
   return (
     <MarkdownStreamingContext.Provider value={streaming}>

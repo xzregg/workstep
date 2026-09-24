@@ -44,6 +44,8 @@ import { useI18n } from '../i18n'
 import { useEngineRevision } from '../stores/engineAvailabilityStore'
 import { findWorkflowExecutionWarnings, type WorkflowExecutionWarning } from '../utils/workflowExecutionWarnings'
 import WorkflowExecutionWarningDialog from './WorkflowExecutionWarningDialog'
+import WorkflowQuickButtonsSection from './WorkflowQuickButtonsSection'
+import type { ChatQuickButton } from '../api/client'
 
 /* ══════════════════════════════════════════
    Reusable flow canvas editor — shared by the
@@ -162,6 +164,7 @@ interface StepNodeData {
     targetStartStepKey: string
     startMode: 'inherit' | 'immediate'
   }
+  quickButtons?: ChatQuickButton[]
   [k: string]: unknown
 }
 
@@ -267,6 +270,7 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
         maxReturnRounds: normalizeMaxReturnRounds(n.maxReturnRounds),
         kind: n.kind === 'task_dispatch' ? 'task_dispatch' : 'llm',
         dispatch: n.dispatch,
+        quickButtons: Array.isArray(n.quickButtons) ? n.quickButtons : [],
       }
     })
     const nodeById = new Map(nodes.map((node) => [node.nodeId, node]))
@@ -328,6 +332,7 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
       maxReturnRounds: normalizeMaxReturnRounds(s.maxReturnRounds),
       kind: s.kind === 'task_dispatch' ? 'task_dispatch' : 'llm',
       dispatch: s.dispatch,
+      quickButtons: Array.isArray(s.quickButtons) ? s.quickButtons : [],
     }))
     // Build connections from dependsOn
     const conns: CanvasConnection[] = []
@@ -551,7 +556,7 @@ function randomStepColor(currentColor?: string) {
   return candidates[Math.floor(Math.random() * candidates.length)]
 }
 
-function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, enginesError, defaultExecutionEngine, onValidationChange, onDraftChange, onSave, onRequestDelete, onClose, onDirtyChange, projectId }: {
+function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, enginesError, defaultExecutionEngine, onValidationChange, onDraftChange, onSave, onRequestDelete, onClose, onDirtyChange, projectId, workflowId }: {
   node: StepNodeData
   unavailableKeys: string[]
   engines: EngineInfo[]
@@ -565,6 +570,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
   onClose: () => void
   onDirtyChange: (dirty: boolean) => void
   projectId?: string
+  workflowId?: string
 }) {
   const { t } = useI18n()
   const [draft, setDraft] = useState<StepNodeData>({ ...node, inputs: node.inputs.map((i) => ({ ...i, outputs: [...i.outputs] })) })
@@ -1098,6 +1104,12 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
             </div>
           </div>
         </div>
+        {projectId && workflowId && <WorkflowQuickButtonsSection
+          projectId={projectId}
+          workflowId={workflowId}
+          buttons={draft.quickButtons || []}
+          onChange={(buttons) => updateDraft('quickButtons', buttons)}
+        />}
       </div>
 
 
@@ -1117,10 +1129,13 @@ export interface FlowCanvasProps {
   onDirtyChange?: (dirty: boolean) => void
   /** Project id — used by MarkdownEditor to upload images into the project. */
   projectId?: string
+  workflowId?: string
   /** Toolbar slot rendered before the title (e.g. back button). */
   toolbarLeft?: React.ReactNode
   /** Toolbar slot rendered after the dirty indicator (e.g. workflow switcher). */
   toolbarMid?: React.ReactNode
+  /** Toolbar slot on the right, before the built-in canvas actions. */
+  toolbarRight?: React.ReactNode
   title?: string
   saveLabel?: string
   hint?: React.ReactNode
@@ -1144,8 +1159,10 @@ function FlowCanvasInner({
   onSave,
   onDirtyChange,
   projectId,
+  workflowId,
   toolbarLeft,
   toolbarMid,
+  toolbarRight,
   title,
   saveLabel,
   hint,
@@ -1489,6 +1506,7 @@ function FlowCanvasInner({
         prompt: d.prompt,
         kind: d.kind || 'llm',
         dispatch: d.dispatch,
+        quickButtons: d.quickButtons || [],
         config: d.config || {},
         maxReturnRounds: normalizeMaxReturnRounds(d.maxReturnRounds),
         review: d.review || emptyReview(),
@@ -1508,7 +1526,7 @@ function FlowCanvasInner({
         kind: (e.data as { kind?: string })?.kind === 'dashed' ? 'dashed' : 'solid',
       }
     })
-    return { nodes: nodesArr, connections: connsArr, bookmarks: saveBookmarks(nds) }
+    return { nodes: nodesArr, connections: connsArr, bookmarks: saveBookmarks(nds), inheritProjectQuickButtons: initialSteps?.inheritProjectQuickButtons !== false, ...(Array.isArray(initialSteps?.projectQuickButtonIds) ? { projectQuickButtonIds: initialSteps.projectQuickButtonIds } : {}), quickButtons: Array.isArray(initialSteps?.quickButtons) ? initialSteps.quickButtons : [] }
   }
   const buildCanvasJson = () => buildCanvasJsonFromNodes(nodes, edges)
 
@@ -1777,6 +1795,7 @@ function FlowCanvasInner({
         <span className="flow-canvas-toolbar-title" style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 'calc(13px * var(--font-scale))', whiteSpace: 'nowrap' }}>{title ?? t('flow.editorTitle')}</span>
         {toolbarMid && <div className="flow-canvas-toolbar-slot flow-canvas-toolbar-mid">{toolbarMid}</div>}
         <div className="flow-canvas-toolbar-spacer" />
+        {toolbarRight && <div className="flow-canvas-toolbar-slot flow-canvas-toolbar-right">{toolbarRight}</div>}
         {dirty && <span style={{ color: 'var(--warn-text)', fontSize: 'calc(11px * var(--font-scale))', marginLeft: 12 }}>{t('flow.dirtyHint')}</span>}
          {hint !== undefined && <span style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)', marginRight: 10 }}>{hint ?? t('flow.hint')}</span>}
         {!readOnly && <>
@@ -1864,6 +1883,7 @@ function FlowCanvasInner({
             onRequestDelete={() => setConfirmDeleteId(String(selectedNode.nodeId))}
             onDirtyChange={setNodeConfigDirty}
             projectId={projectId}
+            workflowId={workflowId}
             onClose={() => {
               setNodeConfigError('')
               setSelectedNode(null)

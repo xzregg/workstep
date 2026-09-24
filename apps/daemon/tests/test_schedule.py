@@ -248,6 +248,86 @@ async def test_due_manual_schedule_creates_a_task_and_execution_log(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_schedule_run_finishes_when_task_is_created_even_if_workflow_keeps_running(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from threading import Event
+    from time import sleep
+    from models import ScheduleRun
+    from models.fields import utc_now
+    from services.project import ProjectManager
+    from services.schedule import ScheduleModule
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / "project")
+    module = ScheduleModule(manager, None, None)
+    schedule = module.create(
+        project.id, name="Dynamic", workflow_id="",
+        task_template={"mode": "agent", "instruction": "Create a task"},
+        rule={"kind": "once", "run_at": "2099-01-02T03:04:00", "timezone": "UTC"},
+    )
+
+    def create_run():
+        return ScheduleRun.create(
+            id="scheduled-run", schedule=schedule["id"],
+            scheduled_for=datetime(2099, 1, 2, 3, 4, tzinfo=timezone.utc),
+            status="running", created_at=utc_now(),
+        )
+
+    await module._run_db(project.id, create_run)
+    result = SimpleNamespace(
+        task={"id": "created-task"}, run_handle=SimpleNamespace(id="workflow-run")
+    )
+    original_save = ScheduleRun.save
+    slow_save_started = Event()
+
+    def slow_save(self, *args, **kwargs):
+        slow_save_started.set()
+        sleep(0.15)
+        return original_save(self, *args, **kwargs)
+
+    monkeypatch.setattr(ScheduleRun, "save", slow_save)
+    attach = asyncio.create_task(module._attach_task_result(project.id, "scheduled-run", result))
+    assert await asyncio.to_thread(slow_save_started.wait, 1)
+    await asyncio.wait_for(asyncio.sleep(0.01), timeout=0.08)
+    assert not attach.done()
+    await attach
+
+    run = module.list_runs(project.id, schedule["id"])[0]
+    assert run["status"] == "created"
+    assert run["reason"] is None
+    assert run["task_id"] == "created-task"
+    assert run["workflow_run_id"] == "workflow-run"
+    assert run["ended_at"] is not None
+
+
+def test_schedule_history_reports_existing_created_tasks_as_created(tmp_path):
+    from models import ScheduleRun
+    from models.fields import utc_now
+    from services.project import ProjectManager
+    from services.schedule import ScheduleModule
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / "project")
+    module = ScheduleModule(manager, None, None)
+    schedule = module.create(
+        project.id, name="Dynamic", workflow_id="",
+        task_template={"mode": "agent", "instruction": "Create a task"},
+        rule={"kind": "once", "run_at": "2099-01-02T03:04:00", "timezone": "UTC"},
+    )
+    with manager.activate_project_by_id(project.id):
+        ScheduleRun.create(
+            id="old-run", schedule=schedule["id"],
+            scheduled_for=datetime(2099, 1, 2, 3, 4, tzinfo=timezone.utc),
+            status="failed", reason="paused", task_id="created-task",
+            created_at=utc_now(),
+        )
+
+    run = module.list_runs(project.id, schedule["id"])[0]
+    assert run["status"] == "created"
+    assert run["reason"] is None
+
+
+@pytest.mark.anyio
 async def test_one_shot_task_timer_starts_once_and_clears(tmp_path):
     from services.project import ProjectManager
     from services.schedule import ScheduleModule
