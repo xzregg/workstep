@@ -53,6 +53,8 @@ export interface TaskEvent {
   status?: string
   error?: string
   ended_at?: string
+  started_at?: string
+  retry?: boolean
   toolCallId?: string
   toolCallName?: string
   args?: unknown
@@ -74,6 +76,8 @@ export interface LiveMessage {
   prompt?: string
   artifact_round?: number | null
   created_at?: string
+  started_at?: string
+  restarted?: boolean
   role?: 'user' | 'assistant'
   author_id?: string
   author_name?: string
@@ -419,12 +423,13 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       }
       if (mid) {
         const taskMessages = s.liveMessages[taskId] || {}
-        const current = taskMessages[mid] || {
+        const restarted = event.type === 'TEXT_MESSAGE_START' && event.retry === true
+        const current: LiveMessage = (!restarted && taskMessages[mid]) || {
           id: mid,
           channel: event.channel || 'execution',
           step_key: event.step_key,
           role: event.type === 'TEXT_MESSAGE_START'
-            ? event.role
+            ? (event.role === 'user' ? 'user' : 'assistant')
             : event.type === 'TEXT_MESSAGE_CHUNK' && event.role === 'user'
               ? 'user'
               : undefined,
@@ -439,7 +444,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           artifact_round: typeof event.artifact_round === 'number'
             ? event.artifact_round
             : undefined,
-          created_at: event.created_at,
+          created_at: taskMessages[mid]?.created_at || event.created_at,
+          started_at: event.started_at || event.created_at,
+          restarted,
           author_id: event.actor?.id,
           author_name: event.actor?.name,
           author_device_id: event.actor?.device_id,
@@ -475,6 +482,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
                   ? event.artifact_round
                   : current.artifact_round,
                 created_at: current.created_at || event.created_at,
+                started_at: current.started_at || event.started_at,
+                restarted: current.restarted || restarted,
                 author_id: current.author_id || event.actor?.id,
                 author_name: current.author_name || event.actor?.name,
                 author_device_id: current.author_device_id || event.actor?.device_id,

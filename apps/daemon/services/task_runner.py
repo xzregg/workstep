@@ -158,6 +158,7 @@ class TaskRunner:
         execution_scope: set[str] | None = None,
         entry_step_key: str | None = None,
         initial_user_input_step_key: str | None = None,
+        retry_message_ids: dict[str, str] | None = None,
     ):
         self._event_bus = event_bus
         self._dispatch_service = dispatch_service
@@ -170,6 +171,7 @@ class TaskRunner:
         self._execution_scope = execution_scope
         self._entry_step_key = entry_step_key
         self._initial_user_input_step_key = initial_user_input_step_key
+        self._retry_message_ids = dict(retry_message_ids or {})
         self._running_engines: dict[str, object] = {}  # step_run_key → engine
         self._live_message_queues: dict[str, asyncio.Queue] = {}
         self._live_message_prompts: dict[str, str] = {}
@@ -425,6 +427,7 @@ class TaskRunner:
                         "retrying",
                         "failed",
                         "awaiting_review",
+                        "reviewing",
                     }:
                         continue
                     reviews = list(
@@ -744,6 +747,205 @@ class TaskRunner:
             workflow_run,
         )
 
+    async def _resume_review_only(
+        self,
+        task: Task,
+        step: Step,
+        scheduler: DAGScheduler,
+        artifacts_dir: Path,
+        user_input: str,
+        completed: set[str],
+        running: set[str],
+        failed: set[str],
+        workflow_run: WorkflowRun,
+        step_run: StepRun,
+        execution_output: str,
+        execution_prompt: str,
+        saved_review_prompt: str | None,
+        latest_review_status: str | None,
+    ) -> None:
+        """Continue a durable execution checkpoint at its review boundary."""
+        step_key = step.key
+        run_key = f"{task.id}:{step_key}"
+        running.add(step_key)
+        retry_feedback: str | None = None
+        review_message_id = None
+        review_journal_ref = None
+        review_config = dict(step.review or {})
+        if task.review_overrides_json:
+            try:
+                overrides = json.loads(task.review_overrides_json)
+                step_override = overrides.get(step_key, {})
+                if isinstance(step_override, dict):
+                    review_config.update(step_override)
+            except (TypeError, json.JSONDecodeError):
+                pass
+        review_mode = (
+            _effective_review_mode(review_config)
+            if step.review is not None else "skip"
+        )
+        try:
+            if latest_review_status == "passed" or review_mode == "skip":
+                ts = await self._persist_step_status(
+                    task.id, step_key, "passed", None, utc_now()
+                )
+                completed.add(step_key)
+            else:
+                assembled_prompt = saved_review_prompt
+                if review_mode == "auto":
+                    if not assembled_prompt:
+                        assembled_prompt = await asyncio.to_thread(
+                            ReviewGate._assemble_prompt,
+                            task, step, artifacts_dir, execution_output,
+                            str(review_config.get("prompt", "")),
+                            execution_prompt, step_run.artifact_round,
+                        )
+                    review_message_id, review_journal_ref = (
+                        await self._start_automatic_review_message(
+                            task, step, step_run, artifacts_dir,
+                            review_config, assembled_prompt,
+                        )
+                    )
+
+                async def record_review_event(event: dict) -> None:
+                    await self._event_journal.arecord(review_journal_ref, event)
+                    await self._event_journal.async_flush(review_journal_ref)
+
+                gate = ReviewGate(
+                    lambda event: self._publish(task.id, step_key, event),
+                    self._run_db,
+                    record_review_event if review_journal_ref is not None else None,
+                    set_active_engine=lambda engine: self._running_engines.__setitem__(
+                        run_key, engine
+                    ),
+                )
+                outcome = await gate.evaluate(
+                    task=task,
+                    step=step,
+                    workflow_run=workflow_run,
+                    step_run=step_run,
+                    artifacts_dir=artifacts_dir,
+                    execution_output=execution_output,
+                    execution_prompt=execution_prompt,
+                    review_config=review_config,
+                    mode=review_mode,
+                    message_id=review_message_id,
+                    artifact_round=step_run.artifact_round,
+                    assembled_prompt=assembled_prompt if review_mode == "auto" else None,
+                )
+                if self._graceful_shutdown:
+                    raise asyncio.CancelledError
+                cancelled = run_key in self._cancelled_steps
+                if cancelled:
+                    def mark_review_cancelled():
+                        review = ReviewRun.get_by_id(outcome.review_run.id)
+                        review.status = "failed"
+                        review.error = "手动停止"
+                        review.ended_at = review.ended_at or utc_now()
+                        review.save()
+
+                    await self._run_db(mark_review_cancelled)
+                if review_message_id is not None and review_journal_ref is not None:
+                    await self._finish_automatic_review_message(
+                        task, step_key, review_message_id, review_journal_ref,
+                        outcome, cancelled=cancelled,
+                    )
+                if cancelled:
+                    ts = await self._persist_step_status(
+                        task.id, step_key, "cancelled", "手动停止", utc_now()
+                    )
+                    failed.add(step_key)
+                elif outcome.status == "passed":
+                    ts = await self._persist_step_status(
+                        task.id, step_key, "passed", None, utc_now()
+                    )
+                    completed.add(step_key)
+                elif outcome.status == "awaiting_review":
+                    ts = await self._persist_step_status(
+                        task.id, step_key, "awaiting_review", None, None
+                    )
+                    failed.add(step_key)
+                elif step_run.attempt <= int(review_config.get("maxRetries", 1)):
+                    has_feedback_route = any(
+                        connection.get("kind", "solid") == "dashed"
+                        for connection in step.outgoing_connections
+                    )
+                    if step.rework_upstream and not has_feedback_route:
+                        await self._schedule_rework(
+                            task, step, scheduler, completed,
+                            outcome.retry_context, step_run.attempt,
+                        )
+                        ts = await self._persist_step_status(
+                            task.id, step_key, "rework_waiting",
+                            outcome.feedback, None,
+                        )
+                    else:
+                        retry_feedback = outcome.retry_context
+                        ts = await self._persist_step_status(
+                            task.id, step_key, "retrying",
+                            outcome.feedback, None,
+                        )
+                        await self._publish(task.id, step_key, {
+                            "type": "step_retrying",
+                            "data": {
+                                "task_id": task.id,
+                                "step_key": step_key,
+                                "attempt": step_run.attempt + 1,
+                                "max_retries": review_config.get("maxRetries", 1),
+                            },
+                        })
+                else:
+                    manual = await gate.evaluate(
+                        task=task, step=step, workflow_run=workflow_run,
+                        step_run=step_run, artifacts_dir=artifacts_dir,
+                        execution_output=execution_output,
+                        execution_prompt=execution_prompt,
+                        review_config=review_config, mode="manual",
+                        artifact_round=step_run.artifact_round,
+                    )
+                    ts = await self._persist_step_status(
+                        task.id, step_key, "awaiting_review",
+                        manual.feedback, None,
+                    )
+                    failed.add(step_key)
+
+            await self._publish(task.id, step_key, {
+                "type": "status",
+                "data": {
+                    "status": ts.status,
+                    "step_key": step_key,
+                    "task_id": task.id,
+                },
+            })
+
+            if ts.status == "passed":
+                input_rounds = json.loads(step_run.input_rounds_json or "{}")
+                manifest = await self._finalize_artifact_round(
+                    artifacts_dir, task, step, workflow_run, step_run,
+                    step_run.artifact_round, input_rounds, "passed",
+                )
+                if manifest is not None:
+                    await self._apply_artifact_routes(
+                        task=task, step=step, scheduler=scheduler,
+                        workflow_run=workflow_run, artifacts_dir=artifacts_dir,
+                        artifact_round=step_run.artifact_round,
+                        manifest=manifest, completed=completed, failed=failed,
+                    )
+                else:
+                    await self._seed_completed_forward_routes(
+                        task, scheduler, artifacts_dir, workflow_run, completed,
+                    )
+        finally:
+            self._running_engines.pop(run_key, None)
+            self._cancelled_steps.discard(run_key)
+            running.discard(step_key)
+
+        if retry_feedback is not None:
+            await self._run_step(
+                task, step, scheduler, artifacts_dir, user_input,
+                completed, running, failed, workflow_run, retry_feedback,
+            )
+
     async def _run_step(
         self,
         task: Task,
@@ -759,6 +961,69 @@ class TaskRunner:
     ) -> None:
         """Execute a single pipeline step."""
         step_key = step.key
+        if workflow_run is not None:
+            def review_checkpoint():
+                ts = TaskStep.get(
+                    (TaskStep.task == task) & (TaskStep.step_key == step_key)
+                )
+                if ts.status != "reviewing":
+                    return None
+                step_run = (
+                    StepRun.select()
+                    .where(
+                        (StepRun.run == workflow_run)
+                        & (StepRun.step_key == step_key)
+                    )
+                    .order_by(StepRun.attempt.desc())
+                    .first()
+                )
+                if step_run is None or step_run.status != "succeeded":
+                    return None
+                execution_messages = list(
+                    Message.select().where(
+                        (Message.task == task)
+                        & (Message.step_run_id == step_run.id)
+                        & (Message.channel == "execution")
+                        & (Message.role == "assistant")
+                    ).order_by(Message.sequence)
+                )
+                latest_review = (
+                    ReviewRun.select()
+                    .where(ReviewRun.step_run == step_run)
+                    .order_by(ReviewRun.attempt.desc())
+                    .first()
+                )
+                execution_prompt = ""
+                if execution_messages:
+                    try:
+                        execution_prompt = str(json.loads(
+                            execution_messages[0].prompt_json or "{}"
+                        ).get("prompt") or "")
+                    except (TypeError, json.JSONDecodeError):
+                        pass
+                review_prompt = None
+                if latest_review is not None:
+                    try:
+                        review_prompt = json.loads(
+                            latest_review.prompt_json or "{}"
+                        ).get("prompt")
+                    except (TypeError, json.JSONDecodeError):
+                        pass
+                return (
+                    step_run,
+                    "".join(message.content or "" for message in execution_messages),
+                    execution_prompt,
+                    review_prompt,
+                    latest_review.status if latest_review is not None else None,
+                )
+
+            checkpoint = await self._run_db(review_checkpoint)
+            if checkpoint is not None:
+                await self._resume_review_only(
+                    task, step, scheduler, artifacts_dir, user_input,
+                    completed, running, failed, workflow_run, *checkpoint,
+                )
+                return
         run_key = f"{task.id}:{step_key}"
         engine = create_engine(step.engine) if step.kind != "task_dispatch" else None
         configured_provider_id = str(
@@ -1150,7 +1415,8 @@ class TaskRunner:
             if artifact_round is not None
             else artifacts_dir / (task.workflow_id or "default") / task.id / step_key
         )
-        msg_id = new_message_id()
+        retry_message_id = self._retry_message_ids.pop(step_key, None)
+        msg_id = retry_message_id or new_message_id()
         message_started_at = utc_now()
         engine_session_id = (
             ts.session_id
@@ -1163,16 +1429,35 @@ class TaskRunner:
             and engine_session_id is None
             and step.engine == "pydantic_ai"
         ):
-            engine_session_id = msg_id
+            engine_session_id = new_message_id() if retry_message_id else msg_id
         journal_ref = await self._event_journal.astart(
             artifacts_dir.parent,
             f"task-{task.id}",
             msg_id,
-            engine_session_id,
+            step_run.id if retry_message_id and step_run is not None else engine_session_id,
         )
 
         def create_message():
             out_dir.mkdir(parents=True, exist_ok=True)
+            if retry_message_id:
+                message = Message.get_by_id(retry_message_id)
+                message.engine = step.engine
+                message.model = resolved_model
+                message.step_run_id = step_run.id if step_run is not None else None
+                message.artifact_round = artifact_round
+                message.run_status = "running"
+                message.content = ""
+                message.events_json = None
+                message.event_log_path = journal_ref.relative_path
+                message.event_summary_json = None
+                message.event_count = 0
+                message.last_event_seq = 0
+                message.prompt_json = json.dumps({"prompt": prompt}, ensure_ascii=False)
+                message.usage_json = None
+                message.started_at = message_started_at
+                message.ended_at = None
+                message.save()
+                return message.created_at
             create_task_message(
                 id=msg_id,
                 task=task,
@@ -1191,8 +1476,9 @@ class TaskRunner:
                 started_at=message_started_at,
                 created_at=message_started_at,
             )
+            return message_started_at
 
-        await self._run_db(create_message)
+        message_created_at = await self._run_db(create_message)
         await self._publish(task.id, step_key, {
             "channel": "execution",
             "message_id": msg_id,
@@ -1200,8 +1486,12 @@ class TaskRunner:
             "model": resolved_model,
             "event_sequence": 0,
             "type": "message_started",
-            "data": {"prompt": prompt, "artifact_round": artifact_round},
-            "created_at": message_started_at.isoformat(),
+            "data": {
+                "prompt": prompt, "artifact_round": artifact_round,
+                "started_at": message_started_at.isoformat(),
+                **({"retry": True} if retry_message_id else {}),
+            },
+            "created_at": message_created_at.isoformat(),
         })
 
         # Select engine
@@ -1257,6 +1547,46 @@ class TaskRunner:
         retry_feedback: str | None = None
         captured_session_id = ts.session_id
         interrupted = False
+        execution_message_finalized = False
+
+        async def finish_execution_message() -> None:
+            nonlocal execution_message_finalized
+            if execution_message_finalized:
+                return
+
+            def finalize_message():
+                msg = Message.get_by_id(msg_id)
+                self._event_journal.finish(journal_ref)
+                snapshot = self._journal_snapshot(journal_ref)
+                msg.events_json = seal_unanswered_interactions(
+                    snapshot["events_json"]
+                )
+                msg.event_summary_json = snapshot["event_summary_json"]
+                msg.event_count = snapshot["event_count"]
+                msg.last_event_seq = snapshot["last_event_seq"]
+                msg.usage_json = extract_usage_json(events_collected)
+                msg.content = snapshot["content"]
+                if run_key in self._cancelled_steps:
+                    msg.run_status = "cancelled"
+                else:
+                    msg.run_status = (
+                        "succeeded" if execution_succeeded else "failed"
+                    )
+                msg.ended_at = execution_ended_at or utc_now()
+                msg.save()
+                return msg
+
+            msg = await self._run_db(finalize_message)
+            execution_message_finalized = True
+            await self._publish(task.id, step_key, {
+                "channel": "execution",
+                "message_id": msg_id,
+                "engine": msg.engine,
+                "model": msg.model,
+                "event_sequence": len(events_collected) + 1,
+                "type": "message_completed",
+                "data": {"status": msg.run_status},
+            })
 
         async def consume_pending_handoff() -> None:
             nonlocal pending_handoff
@@ -1603,6 +1933,9 @@ class TaskRunner:
                     step_run = await self._persist_step_run_status(
                         step_run.id, "succeeded", None, utc_now()
                     )
+                    # Execution and review are separate checkpoints. Close the
+                    # execution message before the reviewer starts running.
+                    await finish_execution_message()
                     # Merge task-level review overrides with step config
                     review_config = dict(step.review or {})
                     if task.review_overrides_json:
@@ -1937,42 +2270,9 @@ class TaskRunner:
 
         finally:
             interrupted_by_shutdown = interrupted and self._graceful_shutdown
-            # Update message
             try:
                 if not interrupted_by_shutdown:
-                    def finalize_message():
-                        msg = Message.get_by_id(msg_id)
-                        self._event_journal.finish(journal_ref)
-                        snapshot = self._journal_snapshot(journal_ref)
-                        msg.events_json = seal_unanswered_interactions(
-                            snapshot["events_json"]
-                        )
-                        msg.event_summary_json = snapshot["event_summary_json"]
-                        msg.event_count = snapshot["event_count"]
-                        msg.last_event_seq = snapshot["last_event_seq"]
-                        msg.usage_json = extract_usage_json(events_collected)
-                        msg.content = snapshot["content"]
-                        if run_key in self._cancelled_steps:
-                            # 手动停止：与普通失败区分，前端显示「已停止」。
-                            msg.run_status = "cancelled"
-                        else:
-                            msg.run_status = (
-                                "succeeded" if execution_succeeded else "failed"
-                            )
-                        msg.ended_at = execution_ended_at or utc_now()
-                        msg.save()
-                        return msg
-
-                    msg = await self._run_db(finalize_message)
-                    await self._publish(task.id, step_key, {
-                        "channel": "execution",
-                        "message_id": msg_id,
-                        "engine": msg.engine,
-                        "model": msg.model,
-                        "event_sequence": len(events_collected) + 1,
-                        "type": "message_completed",
-                        "data": {"status": msg.run_status},
-                    })
+                    await finish_execution_message()
                     await self._publish(task.id, step_key, {
                         "type": "status",
                         "data": {

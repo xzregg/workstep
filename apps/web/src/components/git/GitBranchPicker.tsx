@@ -1,5 +1,6 @@
+import { useGitApi } from './GitApiContext'
 import { useEffect, useState } from 'react'
-import { gitApi, type GitBranch, type GitStatus, type GitTrackedRemoteBranch } from '../../api/git'
+import { type GitBranch, type GitStatus, type GitTrackedRemoteBranch } from '../../api/git'
 import { useI18n } from '../../i18n'
 import Button from '../Button'
 import { useGitStore } from '../../stores/gitStore'
@@ -16,6 +17,7 @@ function rankMatches<T>(items: T[], query: string, getScore: (item: T) => number
 }
 
 export default function GitBranchPicker({ status, onLocate, onChanged, onRefresh }: { status: GitStatus; onLocate: (id: string) => void; onChanged: () => Promise<void>; onRefresh?: () => Promise<void> }) {
+  const gitApi = useGitApi()
   const { t } = useI18n()
   const [branches, setBranches] = useState<GitBranch[]>([])
   const [remoteBranches, setRemoteBranches] = useState<GitTrackedRemoteBranch[]>([])

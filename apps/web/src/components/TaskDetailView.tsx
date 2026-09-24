@@ -48,6 +48,7 @@ import { stripA2uiBlocks } from '../utils/a2ui'
 import MarkdownEditor from './MarkdownEditor'
 import MarkdownMessage from './MarkdownMessage'
 import ReviewReportContent from './ReviewReportContent'
+import ReviewDecisionActions, { type ReviewDecisionAction } from './ReviewDecisionActions'
 import ProcessTrace from './ProcessTrace'
 import Icon from './Icon'
 import PendingMessageInserts from './PendingMessageInserts'
@@ -60,6 +61,7 @@ import { displayUserDetail, displayUserSender } from '../utils/actorDisplay'
 import {
   isVisibleHistoryMessage,
   isVisibleLiveExecutionMessage,
+  canRetryFailedExecutionMessage,
   isUnpersistedLiveMessage,
   isManualReviewMessage,
   isMessageReviewActionable,
@@ -244,7 +246,7 @@ export interface TaskDetailViewProps {
   reviewComment?: string
   onReviewCommentChange?: (value: string) => void
   onReviewAction?: (
-    action: 'approve' | 'reject' | 'force-approve' | 'terminate',
+    action: ReviewDecisionAction,
     review?: any,
     stepKey?: string,
   ) => void
@@ -279,6 +281,8 @@ export interface TaskDetailViewProps {
   onRestartStepWithFreshSession?: (stepKey: string) => void
   /** 正在重建会话重跑的步骤 key，用于禁用重复点击。 */
   restartingStepKeys?: string[]
+  onRetryFailedMessage?: (messageId: string) => void
+  retryingFailedMessageIds?: string[]
   chatInputRef?: React.RefObject<HTMLTextAreaElement | null>
   /** Alternate attachment transport for public interactive shares. */
   chatAttachment?: ChatInputImageAttach
@@ -386,6 +390,7 @@ export interface TaskDetailViewProps {
   // ── Project ──
   projectId?: string
   gitEnabled?: boolean
+  gitProjectId?: string
   /** Public shares inject their session-scoped report loader instead of a project id. */
   executionReportLoader?: () => Promise<TaskExecutionReport>
 }
@@ -438,6 +443,8 @@ export default function TaskDetailView({
   onStopStep,
   onRestartStepWithFreshSession,
   restartingStepKeys,
+  onRetryFailedMessage,
+  retryingFailedMessageIds,
   chatInputRef,
   chatAttachment,
   // Step inserts
@@ -526,6 +533,7 @@ export default function TaskDetailView({
   running,
   projectId,
   gitEnabled = false,
+  gitProjectId,
   executionReportLoader,
   onChatError,
 }: TaskDetailViewProps) {
@@ -578,6 +586,9 @@ export default function TaskDetailView({
   const selectedStepRunning = isSelectedStepRunning(
     chatTarget ?? 'coordinator',
     runningSteps.map((step) => step.key),
+  )
+  const selectedStepReviewing = chatTarget !== 'coordinator' && stepProgress.some(
+    (progress) => progress.step_key === chatTarget && progress.status === 'reviewing',
   )
   const composerState = resolveTaskComposerState({
     target: chatTarget === 'coordinator' ? 'coordinator' : 'step',
@@ -1365,7 +1376,7 @@ export default function TaskDetailView({
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      <span>{t('taskDetail.runRoundShort', { round })}</span>
+                      <span>{t('taskDetail.artifactRoundTab', { round })}</span>
                     </button>
                   )
                 })}
@@ -1703,7 +1714,7 @@ export default function TaskDetailView({
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: 6,
-                                    flex: '1 1 160px',
+                                    flex: '0 1 auto',
                                     minWidth: 0,
                                   }}
                                 >
@@ -1732,6 +1743,20 @@ export default function TaskDetailView({
                                     {out.type}
                                   </span>
                                 </span>
+                                {downstreamInputs.length > 0 && (
+                                  <MarqueeText
+                                    className="step-output-route-marquee"
+                                    text={downstreamLabels.join('   ')}
+                                    title={downstreamLabels.join('\n')}
+                                    style={{
+                                      flex: '0 1 35%',
+                                      width: '35%',
+                                      fontSize: 'calc(11px * var(--font-scale))',
+                                      color: 'var(--muted)',
+                                    }}
+                                  />
+                                )}
+                                <span style={{ flex: 1, minWidth: 0 }} aria-hidden="true" />
                                 {outArtifact?.round ? (
                                   <span
                                     style={{
@@ -1741,6 +1766,7 @@ export default function TaskDetailView({
                                       border: '1px solid var(--border-soft)',
                                       padding: '0 3px',
                                       borderRadius: 2,
+                                      flexShrink: 0,
                                     }}
                                   >
                                     {t('taskDetail.artifactRound', {
@@ -1756,6 +1782,7 @@ export default function TaskDetailView({
                                     border: '1px solid var(--border-soft)',
                                     padding: '0 3px',
                                     borderRadius: 2,
+                                    flexShrink: 0,
                                   }}
                                 >
                                   {outputReady
@@ -1767,24 +1794,11 @@ export default function TaskDetailView({
                                     style={{
                                       fontSize: 'calc(11px * var(--font-scale))',
                                       color: 'var(--accent)',
+                                      flexShrink: 0,
                                     }}
                                   >
                                     {t('common.open')}
                                   </span>
-                                )}
-                                {downstreamInputs.length > 0 && (
-                                  <MarqueeText
-                                    className="step-output-route-marquee"
-                                    text={downstreamLabels.join('   ')}
-                                    title={downstreamLabels.join('\n')}
-                                    style={{
-                                      flex: '0 1 96px',
-                                      width: 96,
-                                      maxWidth: '20%',
-                                      fontSize: 'calc(11px * var(--font-scale))',
-                                      color: 'var(--muted)',
-                                    }}
-                                  />
                                 )}
                               </div>
                             )
@@ -1963,52 +1977,11 @@ export default function TaskDetailView({
                         'taskDetail.reviewCommentPlaceholder',
                       )}
                     />
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'flex-end',
-                        gap: 8,
-                      }}
-                    >
-                      <Button
-                        variant="danger"
-                        disabled={reviewActionPending}
-                        style={{ marginRight: 'auto' }}
-                        onClick={() => onReviewAction?.('terminate')}
-                      >
-                        {t('taskDetail.terminate')}
-                      </Button>
-                      {selectedReview.status === 'pending' ? (
-                        <>
-                          <Button
-                            variant="ghost"
-                            disabled={reviewActionPending}
-                            onClick={() => onReviewAction?.('reject')}
-                          >
-                            {t('taskDetail.reject')}
-                          </Button>
-                          <Button
-                            variant="primary"
-                            disabled={reviewActionPending}
-                            loading={reviewActionPending}
-                            onClick={() => onReviewAction?.('approve')}
-                          >
-                            {t('taskDetail.approve')}
-                          </Button>
-                        </>
-                      ) : (
-                        <Button
-                          variant="primary"
-                          disabled={reviewActionPending}
-                          loading={reviewActionPending}
-                          onClick={() =>
-                            onReviewAction?.('force-approve')
-                          }
-                        >
-                          {t('taskDetail.forceApprove')}
-                        </Button>
-                      )}
-                    </div>
+                    <ReviewDecisionActions
+                      status={selectedReview.status}
+                      pending={!!reviewActionPending}
+                      onAction={(decision) => onReviewAction?.(decision)}
+                    />
                   </>
                 )}
             </div>
@@ -2405,11 +2378,13 @@ export default function TaskDetailView({
                           ),
                 })),
               ]
-              const orderedMessages =
-                orderConversationMessages(
-                  orderedMessagesRaw,
-                  durationNowMs,
-                )
+              const orderedMessages = orderConversationMessages(orderedMessagesRaw)
+              const latestTaskMessageId = orderConversationMessages([
+                ...historyMessages,
+                ...Object.values(liveMessages)
+                  .filter((item) => isUnpersistedLiveMessage(item, persistedMessageIds))
+                  .map((item) => ({ ...item, run_status: item.status })),
+              ]).at(-1)?.id
               return orderedMessages.map((message: any) => {
                 const stepKey =
                   message.context_step_key ||
@@ -2688,7 +2663,7 @@ export default function TaskDetailView({
                                 : undefined
                             }
                             onSendToInput={
-                              canChat && isUser && onPromptChange
+                              canChat && onPromptChange
                                 ? (content) => {
                                     onPromptChange(content)
                                     chatInputRef?.current?.focus()
@@ -2829,6 +2804,18 @@ export default function TaskDetailView({
                                   status={terminalMessageStatus(
                                     msg.run_status,
                                   )}
+                                  onRetryFailedMessage={
+                                    onRetryFailedMessage
+                                    && canRetryFailedExecutionMessage(
+                                      msg,
+                                      latestTaskMessageId,
+                                      msgStepStatus,
+                                      msgStepIndex >= 0 ? stepProgress[msgStepIndex]?.error : undefined,
+                                    )
+                                      ? () => onRetryFailedMessage(String(msg.id))
+                                      : undefined
+                                  }
+                                  retryingFailedMessage={(retryingFailedMessageIds ?? []).includes(String(msg.id))}
                                   endedAt={
                                     msg.ended_at ||
                                     msgReview?.ended_at
@@ -3017,94 +3004,11 @@ export default function TaskDetailView({
                                       />
                                     )}
                                   {onReviewAction && (
-                                    <div
-                                      style={{
-                                        display:
-                                          'flex',
-                                        justifyContent:
-                                          'flex-end',
-                                        gap: 8,
-                                      }}
-                                    >
-                                      <Button
-                                        variant="danger"
-                                        disabled={
-                                          reviewActionPending
-                                        }
-                                        style={{ marginRight: 'auto' }}
-                                        onClick={() =>
-                                          onReviewAction?.('terminate', msgReview!, stepKey)
-                                        }
-                                      >
-                                        {t(
-                                          'taskDetail.terminate',
-                                        )}
-                                      </Button>
-                                      {msgReview!
-                                          .status ===
-                                        'pending' ? (
-                                        <>
-                                          <Button
-                                            variant="ghost"
-                                            disabled={
-                                              reviewActionPending
-                                            }
-                                            onClick={() =>
-                                              onReviewAction?.(
-                                                'reject',
-                                                msgReview!,
-                                                stepKey,
-                                              )
-                                            }
-                                          >
-                                            {t(
-                                              'taskDetail.reject',
-                                            )}
-                                          </Button>
-                                          <Button
-                                            variant="primary"
-                                            disabled={
-                                              reviewActionPending
-                                            }
-                                            loading={
-                                              reviewActionPending
-                                            }
-                                            onClick={() =>
-                                              onReviewAction?.(
-                                                'approve',
-                                                msgReview!,
-                                                stepKey,
-                                              )
-                                            }
-                                          >
-                                            {t(
-                                              'taskDetail.approve',
-                                            )}
-                                          </Button>
-                                        </>
-                                      ) : (
-                                        <Button
-                                          variant="primary"
-                                          disabled={
-                                            reviewActionPending
-                                          }
-                                          loading={
-                                            reviewActionPending
-                                          }
-                                          onClick={() =>
-                                            onReviewAction?.(
-                                              'force-approve',
-                                              msgReview!,
-                                              stepKey,
-                                            )
-                                          }
-                                        >
-                                          {t(
-                                            'taskDetail.forceApprove',
-                                          )}
-                                        </Button>
-                                      )}
-                                    </div>
+                                    <ReviewDecisionActions
+                                      status={msgReview!.status}
+                                      pending={!!reviewActionPending}
+                                      onAction={(decision) => onReviewAction?.(decision, msgReview!, stepKey)}
+                                    />
                                   )}
                                 </div>
                               )}
@@ -3764,13 +3668,13 @@ export default function TaskDetailView({
                     ),
                       } as ChatInputEngineConfig
               }
-              disabled={composerState.disabled || (
+              disabled={selectedStepReviewing || composerState.disabled || (
                 Boolean(projectId)
                 && chatTarget !== 'coordinator'
                 && (stepEngineConfigLoading || !stepEngineConfig || Boolean(stepEngineConfig.saving))
               )}
-              running={composerState.running}
-              allowSendWhileRunning={composerState.running}
+              running={selectedStepReviewing || composerState.running}
+              allowSendWhileRunning={!selectedStepReviewing && composerState.running}
               stopping={
                 (chatTarget !== 'coordinator' &&
                   (stoppingStepKeys ?? []).includes(chatTarget ?? '')) ||
@@ -3870,14 +3774,14 @@ export default function TaskDetailView({
           {canShowAnalysis && (
             <button type="button" role="tab" aria-selected={detailMode === 'analysis'} onClick={() => setDetailMode('analysis')}>{t('executionAnalysis.title')}</button>
           )}
-          {gitEnabled && projectId && (
+          {gitEnabled && (gitProjectId || projectId) && (
             <button type="button" role="tab" aria-selected={detailMode === 'git'} onClick={() => setDetailMode('git')}>{t('git.taskWorkspace')}</button>
           )}
         </div>
       )}
 
-      {detailMode === 'git' && gitEnabled && projectId ? (
-        <TaskGitWorkspace projectId={projectId} taskId={task.id} />
+      {detailMode === 'git' && gitEnabled && (gitProjectId || projectId) ? (
+        <TaskGitWorkspace projectId={(gitProjectId || projectId)!} taskId={task.id} />
       ) : detailMode === 'analysis' && canShowAnalysis ? (
         <TaskExecutionAnalysis
           taskId={task.id}

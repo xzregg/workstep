@@ -33,6 +33,7 @@ ACP_CONTENT_EVENT_TYPES = frozenset({
 
 # 非 ACP 编排事件：与 ACP 词汇共存，不参与引擎内容映射。
 ORCHESTRATION_EVENT_TYPES = frozenset({
+    "async_question",
     "status",
     "session_started",
     "live_message",
@@ -159,6 +160,7 @@ class InternalEvent:
         "compacted",                 # engine auto-compacted its context window
         "error",                     # error
         "interaction_request",       # ACP permission / form elicitation request
+        "async_question",            # Codex non-blocking structured question
         "interaction_response",      # user response to an interaction request
         "a2ui",                      # A2UI surface payload (createSurface/updateComponents)
         "acp_raw",                   # passthrough of an unmapped ACP session update

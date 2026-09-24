@@ -24,6 +24,7 @@ import {
 import { useI18n } from '../i18n'
 import { latestPlanFromEvents } from '../utils/plan'
 import { visibleAssistantContent } from '../utils/chatMessageDisplay'
+import { asyncQuestionAnswer, asyncQuestionsFromEvents } from '../utils/asyncQuestion'
 
 /* ══════════════════════════════════════════
    ChatMessageBubble — shared conversation message
@@ -175,11 +176,13 @@ export default function ChatMessageBubble({
   const { t } = useI18n()
   const isUser = role === 'user'
   const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | null>(null)
+  const [asyncAnswers, setAsyncAnswers] = useState<Record<number, string>>({})
   // 稳定引用：MarkdownMessage 已 memo 化，内联箭头会每次击穿 memo 让历史消息重新解析 markdown。
   const handleImageClick = useCallback((src: string, alt: string) => {
     setPreviewImage({ src, alt })
   }, [])
   const interactions = pendingInteractionItems(events, interactionsEnabled)
+  const asyncQuestions = asyncQuestionsFromEvents(events)
   const plan = latestPlanFromEvents(events)
   const hasToolActivity = !isUser && events.some((event) => (
     event.type === 'tool_use' || event.type === 'tool_result'
@@ -198,7 +201,7 @@ export default function ChatMessageBubble({
     ...(isUser ? { marginLeft: 'auto' } : {}),
   }
   return (
-    <div {...rootProps} style={rootStyle} className="chat-message-row" data-thinking={!isUser && showLoading && streaming && interactions.length === 0 && !plan && !(visibleContent || hasToolActivity) ? '' : undefined}>
+    <div {...rootProps} style={rootStyle} className="chat-message-row" data-thinking={!isUser && showLoading && streaming && interactions.length === 0 && asyncQuestions.length === 0 && !plan && !(visibleContent || hasToolActivity) ? '' : undefined}>
       {isUser && header && (
         <div style={{
           fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', textAlign: 'right',
@@ -316,6 +319,33 @@ export default function ChatMessageBubble({
               response={item.response}
               onRespond={onInteractionRespond}
             />
+          ))}
+          {!isUser && asyncQuestions.map((question, index) => (
+            <div key={`${question.sourceItemId}-${index}`} className="chat-async-question">
+              <div>{question.title}</div>
+              {question.options.length > 0 && (
+                <div className="chat-async-question-options">
+                  {question.options.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      className="chat-message-action"
+                      aria-pressed={asyncAnswers[index] === option}
+                      disabled={!onSendToInput}
+                      onClick={() => {
+                        const selected = { ...asyncAnswers, [index]: option }
+                        setAsyncAnswers(selected)
+                        onSendToInput?.(asyncQuestions.flatMap((item, itemIndex) => (
+                          selected[itemIndex]
+                            ? [asyncQuestionAnswer(item, selected[itemIndex], asyncQuestions.length)]
+                            : []
+                        )).join('\n'))
+                      }}
+                    >{option}</button>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
           {footer}
           {children}

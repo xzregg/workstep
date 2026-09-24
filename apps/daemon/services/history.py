@@ -14,6 +14,7 @@ from engines.codex_visualize import (
 from engines.core.agui import AGUIContext, to_agui_events
 from engines.core.events import map_legacy_event
 from models.message import Message
+from models.review import ReviewRun
 from models.run import StepRun, WorkflowRun
 from models.task import Task
 
@@ -185,6 +186,46 @@ def restore_running_projection(
     }
 
 
+def project_terminal_message_state(entry: dict, msg: Message) -> None:
+    """Show a terminal parent run's orphaned message as finished, without a DB write."""
+    if msg.run_status != "running" or not msg.step_run_id:
+        return
+    step_run = StepRun.get_or_none(StepRun.id == msg.step_run_id)
+    if step_run is None:
+        return
+    workflow_run = step_run.run
+    if workflow_run.status not in {"completed", "failed", "cancelled", "superseded"}:
+        return
+
+    if msg.channel == "execution":
+        entry["run_status"] = {
+            "succeeded": "succeeded",
+            "reused": "succeeded",
+            "cancelled": "cancelled",
+        }.get(step_run.status, "failed")
+        entry["ended_at"] = step_run.ended_at or workflow_run.ended_at
+    elif msg.channel == "review":
+        reviews = list(
+            ReviewRun.select().where(ReviewRun.step_run == step_run)
+        )
+        message_time = msg.started_at or msg.created_at
+        matching = min(
+            reviews,
+            key=lambda review: abs((review.started_at - message_time).total_seconds())
+            if review.started_at and message_time else float("inf"),
+            default=None,
+        )
+        status = matching.status if matching else workflow_run.status
+        entry["run_status"] = (
+            "completed" if status in {"passed", "rejected", "terminated", "completed"}
+            else "cancelled" if status in {"cancelled", "superseded"}
+            else "failed"
+        )
+        entry["ended_at"] = (
+            (matching.ended_at if matching else None) or workflow_run.ended_at
+        )
+
+
 def get_task_history(
     task_id: str,
     workstep_dir: str | Path | None = None,
@@ -242,6 +283,7 @@ def get_task_history(
         if detail is not None:
             entry["event_detail"] = detail
         restore_running_projection(entry, msg, workstep_dir)
+        project_terminal_message_state(entry, msg)
 
         # Parse usage_json
         if msg.usage_json:
@@ -307,6 +349,7 @@ def get_step_history(
         if detail is not None:
             entry["event_detail"] = detail
         restore_running_projection(entry, msg, workstep_dir)
+        project_terminal_message_state(entry, msg)
         if msg.prompt_json:
             try:
                 entry["prompt"] = json.loads(msg.prompt_json).get("prompt")

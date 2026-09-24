@@ -1,6 +1,7 @@
 """Share service tests — session tokens and per-project DB contexts."""
 
 import asyncio
+from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -216,6 +217,114 @@ async def test_public_share_api_exposes_mode_and_enforces_interactive_writes(
     assert interactive_meta.json()["mode"] == "interactive"
     assert rejected.status_code == 403
     assert rejected.json()["detail"] == "Share is read-only"
+
+
+@pytest.mark.asyncio
+async def test_interactive_share_git_is_scoped_to_its_task(manager, tmp_path, monkeypatch):
+    import main
+
+    project, task = _create_task_in_project(manager, tmp_path / "proj-share-git")
+    other = TaskService(EventBus()).create_task(title="Other", cwd=str(tmp_path / "proj-share-git"))
+    monkeypatch.setattr(main, "project_manager", manager)
+    ctx = _bind(project)
+    try:
+        share = share_service.create_share(task["id"], mode="interactive")
+        readonly = share_service.create_share(other["id"])
+    finally:
+        db_proxy.reset(ctx)
+    session = share_service.verify_share_password(share["token"], "")
+    read_session = share_service.verify_share_password(readonly["token"], "")
+    base = f"/api/task-share/public/{share['token']}/git"
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        missing = await client.get(f"{base}/repositories")
+        readonly_view = await client.get(
+            f"/api/task-share/public/{readonly['token']}/git/repositories",
+            headers={"X-Share-Session": read_session},
+        )
+        denied = await client.post(
+            f"/api/task-share/public/{readonly['token']}/git/projects/shared/tasks/{other['id']}/workspace",
+            headers={"X-Share-Session": read_session},
+        )
+        mismatch = await client.get(f"{base}/repositories", headers={"X-Share-Session": read_session})
+        repository_list = await client.get(f"{base}/repositories", headers={"X-Share-Session": session})
+        workspace = await client.get(
+            f"{base}/projects/shared/tasks/{task['id']}/workspace",
+            headers={"X-Share-Session": session},
+        )
+        other_task = await client.get(
+            f"{base}/projects/shared/tasks/{other['id']}/workspace",
+            headers={"X-Share-Session": session},
+        )
+        foreign_tree = await client.get(
+            f"{base}/worktrees/foreign/status",
+            headers={"X-Share-Session": session},
+        )
+    assert missing.status_code == 401
+    assert readonly_view.status_code == 200
+    assert denied.status_code == 403
+    assert mismatch.status_code == 403
+    assert repository_list.status_code == 200
+    assert repository_list.json()["projects"][0]["id"] == "shared"
+    assert workspace.status_code == 200
+    assert other_task.status_code == 404
+    assert foreign_tree.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_interactive_share_can_open_and_use_its_git_worktree(manager, tmp_path, monkeypatch):
+    import api.git as git_api
+    import main
+    from services.git import GitService
+    from tests.test_git_api import git, repository
+
+    root = tmp_path / "proj-share-git-real"
+    project, task = _create_task_in_project(manager, root)
+    repository(root / "repo")
+    service = GitService(
+        lambda: [{"id": project.id, "name": "Project", "path": str(root)}],
+        lambda: 3,
+        credential_file=root / "git-credentials.json",
+    )
+    monkeypatch.setattr(git_api, "git_service", service)
+    monkeypatch.setattr(main, "project_manager", manager)
+    ctx = _bind(project)
+    try:
+        share = share_service.create_share(task["id"], mode="interactive")
+    finally:
+        db_proxy.reset(ctx)
+    session = share_service.verify_share_password(share["token"], "")
+    headers = {"X-Share-Session": session}
+    base = f"/api/task-share/public/{share['token']}/git"
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        discovery = await client.get(f"{base}/repositories", headers=headers)
+        assert discovery.status_code == 200, discovery.text
+        repo = discovery.json()["repositories"][0]
+        opened = await client.post(
+            f"{base}/projects/shared/tasks/{task['id']}/workspace", headers=headers,
+        )
+        assert opened.status_code == 200, opened.text
+        added = await client.post(
+            f"{base}/projects/shared/tasks/{task['id']}/worktrees",
+            headers=headers,
+            json={"repository_id": repo["id"], "alias": "shared-task", "base_ref": "main", "branch_name": "shared-task"},
+        )
+        assert added.status_code == 200, added.text
+        tree = added.json()["worktrees"][0]
+        status = await client.get(f"{base}/worktrees/{tree['id']}/status", headers=headers)
+        branches = await client.get(f"{base}/worktrees/{tree['id']}/branches", headers=headers)
+        assert status.status_code == 200, status.text
+        assert status.json()["branch"] == "shared-task"
+        assert branches.status_code == 200, branches.text
+        (Path(tree["path"]) / "one.txt").write_text("shared edit\n")
+        changed = await client.get(f"{base}/worktrees/{tree['id']}/status", headers=headers)
+        committed = await client.post(
+            f"{base}/worktrees/{tree['id']}/commit", headers=headers,
+            json={"paths": ["one.txt"], "message": "shared commit", "snapshot": changed.json()["snapshot"]},
+        )
+        assert committed.status_code == 200, committed.text
+        assert git(tree["path"], "log", "-1", "--pretty=%s") == "shared commit"
+        assert git(root / "repo", "branch", "--list", "shared-task") == "+ shared-task"
+    await service.close()
 
 
 @pytest.mark.asyncio

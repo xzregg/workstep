@@ -30,6 +30,11 @@ class ChatSessionRenameRequest(BaseSchema):
     title: str
 
 
+class ChatSessionArchiveRequest(BaseSchema):
+    project_id: str
+    archived: bool
+
+
 class ChatSessionPermissionRequest(BaseSchema):
     project_id: str
     permission_mode: str
@@ -201,16 +206,28 @@ async def enhance_prompt(req: EnhancePromptRequest):
 async def list_sessions(
     project_id: str = Query(..., alias="project_id"),
     workflow_id: str | None = Query(None, alias="workflow_id"),
+    archived: bool = Query(False),
 ):
     """List all chat sessions of a project (newest first)."""
     try:
         sessions = await _run_db(
             project_id,
-            lambda: _module().list_sessions(project_id, workflow_id),
+            lambda: _module().list_sessions(project_id, workflow_id, archived),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"sessions": sessions}
+
+
+@router.patch("/{session_id}/archive")
+async def archive_session(session_id: str, req: ChatSessionArchiveRequest):
+    try:
+        return await _run_db(
+            req.project_id,
+            lambda: _module().set_archived(req.project_id, session_id, req.archived),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
 
 
 @router.post("")

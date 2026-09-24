@@ -121,7 +121,9 @@ export function mergeRefreshedTaskHistory(current: any[], refreshed: any[]): any
   const currentById = new Map(current.map((message) => [message.id, message]))
   const merged = refreshed.map((message) => {
     const existing = currentById.get(message.id)
-    if (!existing?.event_detail?.loaded) return message
+    if (!existing?.event_detail?.loaded
+      || existing.step_run_id !== message.step_run_id
+      || existing.event_log_path !== message.event_log_path) return message
     return {
       ...message,
       events: existing.events,
@@ -267,6 +269,10 @@ export function isSelectedStepRunning(
   runningStepKeys: readonly string[],
 ): boolean {
   return target !== 'coordinator' && runningStepKeys.includes(target)
+}
+
+export function isStepActiveForStop(status?: string): boolean {
+  return status === 'running' || status === 'reviewing'
 }
 
 export function resolveTaskChatTarget(
@@ -674,6 +680,20 @@ export function isVisibleLiveExecutionMessage(message: ConversationMessage): boo
       || hasMessageContent(message.content))
 }
 
+export function canRetryFailedExecutionMessage(
+  message: Pick<ConversationMessage, 'id' | 'role' | 'channel' | 'run_status'>,
+  latestMessageId: string | undefined,
+  stepStatus: string | undefined,
+  stepError: string | null | undefined,
+): boolean {
+  return message.id === latestMessageId
+    && message.role === 'assistant'
+    && message.channel === 'execution'
+    && message.run_status === 'failed'
+    && stepStatus === 'failed'
+    && Boolean(stepError?.trim())
+}
+
 export function isUnpersistedLiveMessage(
   message: ConversationMessage,
   persistedIds: ReadonlySet<string>,
@@ -686,89 +706,74 @@ export function mergeHistoryMessageWithLive(
   liveMessage?: Record<string, any>,
 ): Record<string, any> {
   if (!liveMessage) return historyMessage
+  const restarted = liveMessage.restarted === true
   return {
     ...historyMessage,
-    content: hasMessageContent(liveMessage.content)
+    content: restarted
+      ? liveMessage.content
+      : hasMessageContent(liveMessage.content)
       ? liveMessage.content
       : historyMessage.content,
-    events: mergePlanEvents(
+    events: restarted && historyMessage.run_status === 'failed'
+      ? liveMessage.events
+      : mergePlanEvents(
       historyMessage.events,
       mergeInteractionEvents(historyMessage.events, liveMessage.events),
     ),
-    // 实时插入的用户消息不带完成事件（引擎只发 live_message 确认），
-    // 保持乐观消息的 completed，避免右侧用户消息被误标为 streaming。
+    // Persisted terminal status wins over a stale live "running" update.
+    // Inserted user messages also have no completion event after their ack.
     run_status: liveMessage.role === 'user' || historyMessage.role === 'user'
+      || (!restarted && historyMessage.run_status && !['running', 'queued'].includes(historyMessage.run_status))
       ? historyMessage.run_status
       : liveMessage.status || historyMessage.run_status,
     engine: liveMessage.engine || historyMessage.engine,
     model: liveMessage.model || historyMessage.model,
-    created_at: liveMessage.created_at || historyMessage.created_at,
+    created_at: restarted
+      ? historyMessage.created_at
+      : liveMessage.created_at || historyMessage.created_at,
+    started_at: restarted
+      ? liveMessage.started_at || historyMessage.started_at
+      : historyMessage.started_at,
     prompt: resolveMessagePrompt(historyMessage.prompt, liveMessage.prompt),
   }
 }
 
 /**
- * Order conversation messages by their effective completion time:
- * - finished step messages sort by `ended_at` (完成/中断时间);
- * - still-running step messages sort by `now` (创建时间 + 已进行时长), so any
- *   step output that is still going (or finished) after the user's message
- *   lands below the inserted user message instead of above it;
- * - user messages anchor by their send time (`created_at`).
- * Review and execution messages in the same displayed second use `sequence`,
- * so the review stays after the step output it reviews without faking time.
- * `sequence` is also kept as a tiebreaker for other same-instant messages.
+ * Persisted messages follow their task-local creation sequence. Live messages
+ * without a sequence are inserted by their displayed start time. Completion
+ * time affects duration and status, not the position of an existing bubble.
  */
 export function orderConversationMessages(
   messages: Array<Record<string, any>>,
-  now: number = Date.now(),
 ): Array<Record<string, any>> {
-  const effectiveTime = (message: Record<string, any>): number => {
-    if (message.role !== 'user' && (
-      message.run_status === 'running' || message.status === 'running'
-    )) {
-      return Math.max(now, toMilliseconds(message.created_at) ?? 0)
-    }
-    if (message.role === 'user') {
-      return toMilliseconds(message.created_at) ?? 0
-    }
-    return toMilliseconds(message.ended_at)
-      ?? toMilliseconds(message.created_at)
-      ?? 0
+  const startTime = (message: Record<string, any>) => (
+    toMilliseconds(message.started_at ?? message.created_at) ?? 0
+  )
+  const ordered = messages
+    .filter((message) => typeof message.sequence === 'number')
+    .sort((left, right) => left.sequence - right.sequence)
+  const live = messages
+    .filter((message) => typeof message.sequence !== 'number')
+    .sort((left, right) => {
+      const delta = startTime(left) - startTime(right)
+      if (delta !== 0) return delta
+      if (left.reply_to_message_id === right.id) return 1
+      if (right.reply_to_message_id === left.id) return -1
+      return 0
+    })
+  for (const message of live) {
+    const time = startTime(message)
+    const nextPersisted = ordered.findIndex((existing) => (
+      typeof existing.sequence === 'number' && startTime(existing) > time
+    ))
+    let index = nextPersisted < 0 ? ordered.length : nextPersisted
+    const parentIndex = message.reply_to_message_id
+      ? ordered.findIndex((existing) => existing.id === message.reply_to_message_id)
+      : -1
+    if (parentIndex >= index) index = parentIndex + 1
+    ordered.splice(index, 0, message)
   }
-  return [...messages].sort((left, right) => {
-    // 回复与被回复消息是明确的因果关系，优先级高于时间戳。协调助手的
-    // user/assistant 消息会在同一数据库工作单元里使用相同 created_at；
-    // 实时刷新期间也可能暂时缺少 sequence，因此不能依赖稳定排序碰运气。
-    if (left.reply_to_message_id === right.id) return 1
-    if (right.reply_to_message_id === left.id) return -1
-    const leftTime = effectiveTime(left)
-    const rightTime = effectiveTime(right)
-    const leftStep = left.context_step_key || left.step_key
-    const rightStep = right.context_step_key || right.step_key
-    const isExecutionReviewPair = leftStep === rightStep
-      && left.role !== 'user'
-      && right.role !== 'user'
-      && ((left.channel === 'execution' && right.channel === 'review')
-        || (left.channel === 'review' && right.channel === 'execution'))
-    // 同一步骤的执行与审核消息始终按服务端 sequence 排列：执行消息的
-    // ended_at 可能在整个步骤（含审核）收尾时才写入，晚于审核的 ended_at，
-    // 只按时间排会把审核顶到步骤输出上方。
-    if (isExecutionReviewPair) {
-      const leftSeq = left.sequence
-      const rightSeq = right.sequence
-      if (typeof leftSeq === 'number' && typeof rightSeq === 'number') {
-        return leftSeq - rightSeq
-      }
-    }
-    if (leftTime !== rightTime) return leftTime - rightTime
-    const leftSeq = left.sequence
-    const rightSeq = right.sequence
-    if (typeof leftSeq === 'number' && typeof rightSeq === 'number') {
-      return leftSeq - rightSeq
-    }
-    return (toMilliseconds(left.created_at) ?? 0)
-      - (toMilliseconds(right.created_at) ?? 0)
-  })
+  return ordered
 }
 
 export function liveExecutionStatus(

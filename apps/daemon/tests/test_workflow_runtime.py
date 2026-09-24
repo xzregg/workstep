@@ -80,6 +80,227 @@ def test_user_message_uses_current_task_step(statuses, expected):
     assert resolve_message_step_key(steps_config, statuses) == expected
 
 
+def test_restart_closes_running_messages_from_superseded_parent(tmp_path):
+    from datetime import timedelta
+    from models import Message, ReviewRun
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "restart-messages.db"))
+    try:
+        now = utc_now()
+        started = now - timedelta(minutes=5)
+        task = Task.create(
+            id="task-restart-messages", title="Restart", cwd=str(tmp_path),
+            engine="claude", status="running", created_at=started, updated_at=started,
+        )
+        TaskStep.create(task=task, step_key="do", status="reviewing", engine="claude")
+        parent = WorkflowRun.create(
+            id="parent-restart-messages", task=task, status="running",
+            workflow_schema_version=1, workflow_snapshot_json="{}",
+            started_at=started,
+        )
+        step_run = StepRun.create(
+            id="step-restart-messages", run=parent, step_key="do", attempt=1,
+            status="succeeded", engine="claude",
+            started_at=started, ended_at=started + timedelta(seconds=30),
+        )
+        review = ReviewRun.create(
+            id="review-restart-messages", workflow_run=parent,
+            step_run=step_run, task=task, step_key="do", attempt=1,
+            mode="auto", status="running", engine="claude",
+            started_at=started + timedelta(seconds=31),
+        )
+        for sequence, channel, timestamp in (
+            (1, "execution", started),
+            (2, "review", started + timedelta(seconds=31)),
+        ):
+            Message.create(
+                id=f"restart-{channel}", task=task, step_key="do",
+                channel=channel, sequence=sequence, role="assistant",
+                run_status="running", step_run_id=step_run.id,
+                position=sequence, started_at=timestamp, created_at=timestamp,
+            )
+        runtime = WorkflowRuntime(EventBus(), SimpleNamespace())
+        runtime._create_restart_run(
+            task, parent, 1, "do", {"do"},
+        )
+        assert ReviewRun.get_by_id(review.id).status == "cancelled"
+        execution = Message.get_by_id("restart-execution")
+        review_message = Message.get_by_id("restart-review")
+        assert execution.run_status == "succeeded"
+        assert execution.ended_at == step_run.ended_at
+        assert review_message.run_status == "cancelled"
+        assert review_message.ended_at is not None
+    finally:
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_retry_failed_message_targets_only_the_latest_failed_execution(tmp_path, monkeypatch):
+    from unittest.mock import AsyncMock
+    from models import Message
+    from services.project import ProjectManager
+    from services.workflow_runtime import WorkflowRuntime
+
+    pm = ProjectManager()
+    project = pm.init_project(tmp_path / "retry-project", name="Retry")
+    now = utc_now()
+    with pm.activate_project(project.path):
+        task = Task.create(
+            id="retry-task", title="Retry", cwd=str(project.path),
+            engine="claude", status="failed", created_at=now, updated_at=now,
+        )
+        TaskStep.create(task=task, step_key="do", status="failed", engine="claude")
+        other_step = TaskStep.create(
+            task=task, step_key="other", status="pending", engine="claude",
+        )
+        run = WorkflowRun.create(
+            id="retry-run", task=task, status="failed",
+            workflow_schema_version=1, workflow_snapshot_json="{}",
+            started_at=now, ended_at=now,
+        )
+        step_run = StepRun.create(
+            id="retry-step", run=run, step_key="do", attempt=1,
+            status="failed", engine="claude", error="temporary network error",
+            started_at=now, ended_at=now,
+        )
+        for sequence, message_id in ((1, "older-failure"), (2, "latest-failure")):
+            Message.create(
+                id=message_id, task=task, channel="execution", step_key="do",
+                role="assistant", sequence=sequence, run_status="failed",
+                step_run_id=step_run.id, position=1, created_at=now,
+            )
+        task.active_workflow_run_id = run.id
+        task.save()
+
+    runtime = WorkflowRuntime(EventBus(), pm)
+    restart = AsyncMock(return_value=SimpleNamespace(id="retry-child"))
+    monkeypatch.setattr(runtime, "restart_from_step", restart)
+
+    with pytest.raises(ValueError, match="最后一条"):
+        await runtime.retry_failed_message(project.id, task.id, "older-failure")
+    with pm.activate_project(project.path):
+        other_step.status = "running"
+        other_step.save()
+    with pytest.raises(ValueError, match="其他步骤"):
+        await runtime.retry_failed_message(project.id, task.id, "latest-failure")
+    with pm.activate_project(project.path):
+        other_step.status = "pending"
+        other_step.save()
+
+    with pm.activate_project(project.path):
+        later_message = Message.create(
+            id="later-user-message", task=task, channel="execution", step_key="do",
+            role="user", sequence=3, run_status="completed", position=0,
+            created_at=now,
+        )
+    with pytest.raises(ValueError, match="最后一条"):
+        await runtime.retry_failed_message(project.id, task.id, "latest-failure")
+    with pm.activate_project(project.path):
+        later_message.delete_instance()
+
+    with pm.activate_project(project.path):
+        step_run.error = None
+        step_run.save()
+    with pytest.raises(ValueError, match="异常"):
+        await runtime.retry_failed_message(project.id, task.id, "latest-failure")
+    with pm.activate_project(project.path):
+        step_run.error = "temporary network error"
+        step_run.save()
+
+    result = await runtime.retry_failed_message(project.id, task.id, "latest-failure")
+    assert result == {"message_id": "latest-failure", "step_key": "do", "run_id": "retry-child", "status": "queued"}
+    restart.assert_awaited_once_with(
+        project.id, task.id, "do",
+        expected_run_id=run.id,
+        expected_failed_message_id="latest-failure",
+        reset_session=True,
+    )
+
+
+@pytest.mark.anyio
+async def test_retry_failed_message_reuses_original_message_and_replaces_its_trace(tmp_path):
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import Message
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="retry-same-message", title="Retry same message", cwd=str(tmp_path),
+        engine="retry-fake", created_at=utc_now(), updated_at=utc_now(),
+    )
+    project = SimpleNamespace(
+        id="retry-same-project", path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={"nodes": [{
+            "id": 1, "type": "do", "key": "do", "title": "执行",
+            "engine": "retry-fake", "prompt": "执行",
+            "review": {"mode": "skip"},
+        }]},
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    calls = 0
+    should_fail = True
+
+    class FlakyEngine(RuntimeFakeEngine):
+        async def spawn(self, prompt, cwd, **kwargs):
+            nonlocal calls
+            calls += 1
+            if should_fail:
+                raise RuntimeError("temporary network error")
+            yield InternalEvent(type="agent_message_chunk", data={"content": {"text": "recovered"}})
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["retry-fake"] = FlakyEngine
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, ProjectManagerStub())
+    try:
+        first = await runtime.start(project.id, task.id, "")
+        await runtime.wait(first)
+        failed = Message.get(
+            (Message.task == task) & (Message.role == "assistant")
+            & (Message.channel == "execution")
+        )
+        assert failed.run_status == "failed"
+        original_id = failed.id
+        original_sequence = failed.sequence
+        original_created_at = failed.created_at
+        old_log_path = failed.event_log_path
+
+        should_fail = False
+        accepted = await runtime.retry_failed_message(project.id, task.id, original_id)
+        for _ in range(200):
+            if WorkflowRun.get_by_id(accepted["run_id"]).status != "running":
+                break
+            await asyncio.sleep(0.01)
+
+        messages = list(Message.select().where(
+            (Message.task == task) & (Message.role == "assistant")
+            & (Message.channel == "execution")
+        ))
+        assert len(messages) == 1
+        retried = messages[0]
+        assert retried.id == original_id
+        assert retried.sequence == original_sequence
+        assert retried.created_at == original_created_at
+        assert retried.run_status == "succeeded"
+        assert retried.content == "recovered"
+        assert retried.event_log_path != old_log_path
+        assert retried.step_run_id != failed.step_run_id
+        assert "temporary network error" not in (retried.events_json or "")
+    finally:
+        await runtime.shutdown()
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
 @pytest.mark.anyio
 async def test_runtime_executes_saved_canvas_workflow(tmp_path):
     """A saved canvas workflow runs through the public runtime interface."""

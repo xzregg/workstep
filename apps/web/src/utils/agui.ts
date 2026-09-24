@@ -106,6 +106,7 @@ export const CUSTOM = {
   acpRaw: 'workstep.acp_raw',
   interactionRequest: 'workstep.interaction_request',
   interactionResponse: 'workstep.interaction_response',
+  asyncQuestion: 'workstep.async_question',
   actionProposal: 'workstep.action_proposal',
   flowProposals: 'workstep.flow_proposals',
   flowProposalsRejected: 'workstep.flow_proposals_rejected',

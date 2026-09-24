@@ -1,11 +1,13 @@
+import { useGitApi } from './GitApiContext'
 import { useEffect, useRef, useState } from 'react'
-import { gitApi, type GitRemotes, type GitStatus } from '../../api/git'
+import { type GitRemotes, type GitStatus } from '../../api/git'
 import { useGitStore } from '../../stores/gitStore'
 import { useI18n } from '../../i18n'
 import Button from '../Button'
 import Icon from '../Icon'
 
 export default function GitRemoteActions({ status, readOnly, onRefresh, onBusy }: { status: GitStatus; readOnly: boolean; onRefresh: () => Promise<void>; onBusy: (busy: boolean) => void }) {
+  const gitApi = useGitApi()
   const { t } = useI18n()
   const root = useRef<HTMLSpanElement>(null)
   const [mode, setMode] = useState<'pull' | 'push' | null>(null)

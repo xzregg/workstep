@@ -1132,6 +1132,7 @@ class CoordinatorModule:
                             )
                             live_event_sequence += 1
                         elif event.type in {
+                            "async_question",
                             "status",
                             "agent_thought_chunk",
                             "tool_call",

@@ -84,7 +84,7 @@ test('display-only quick button renders safe HTML without an executable button',
   }
 })
 
-test('display button shows its title but renders HTML from content', async () => {
+test('display button renders only its HTML content, not the configured title', async () => {
   const { window } = installDomEnvironment()
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
@@ -98,7 +98,7 @@ test('display button shows its title but renders HTML from content', async () =>
         onSelect={() => {}}
       />,
     ))
-    assert.match(container.textContent || '', /开发地址/)
+    assert.doesNotMatch(container.textContent || '', /开发地址/)
     const link = container.querySelector<HTMLAnchorElement>('a')!
     assert.equal(link.textContent, '打开前端')
     assert.equal(link.hasAttribute('onclick'), false)

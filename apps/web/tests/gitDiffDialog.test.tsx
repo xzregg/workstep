@@ -103,3 +103,49 @@ test('working-tree diff edits and saves the current file with its review snapsho
     assert.equal(refreshed, 1)
   } finally { await act(async () => root.unmount()); Object.assign(gitApi, original); await window.happyDOM.close() }
 })
+
+test('full file switch shows unchanged lines and a block arrow saves committed code to the working file', async () => {
+  const { window } = installDomEnvironment()
+  Object.defineProperty(globalThis, 'history', { configurable: true, value: window.history })
+  const original = { ...gitApi }
+  const fixture = { path: 'x.ts', old_path: 'x.ts', base: 'before', target: null, patch: '@@ -2 +2 @@\n-old one\n+new one\n@@ -5 +5 @@\n-old two\n+new two\n', before: 'first\nold one\nmiddle one\nmiddle two\nold two\nlast\n', after: 'first\nnew one\nmiddle one\nmiddle two\nnew two\nlast\n', binary: false, truncated: false, submodule: false, snapshot: 's'.repeat(64) } as GitDiff
+  gitApi.diff = async () => fixture
+  let saved: unknown[] = []
+  gitApi.saveFile = async (...args) => { saved = args; return {} as never }
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  try {
+    await act(async () => root.render(<I18nProvider><GitDiffDialog id="repo" files={['x.ts']} path="x.ts" comparison={{}} onSelect={() => {}} onClose={() => {}} /></I18nProvider>))
+    assert.equal(document.querySelector('[data-diff-side="before"]')?.textContent?.includes('middle one'), false)
+    const full = [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('显示完整文件'))!
+    await act(async () => full.click())
+    assert.match(document.querySelector('[data-diff-side="before"]')!.textContent!, /middle one/)
+    const arrows = document.querySelectorAll<HTMLButtonElement>('.git-copy-block')
+    assert.equal(arrows.length, 2)
+    await act(async () => arrows[0].click())
+    assert.deepEqual(saved, ['repo', 'x.ts', 'first\nold one\nmiddle one\nmiddle two\nnew two\nlast\n', 's'.repeat(64)])
+  } finally { await act(async () => root.unmount()); Object.assign(gitApi, original); await window.happyDOM.close() }
+})
+
+test('a block copied with the arrow can be undone after the file becomes clean', async () => {
+  const { window } = installDomEnvironment()
+  Object.defineProperty(globalThis, 'history', { configurable: true, value: window.history })
+  const original = { ...gitApi }
+  const fixture = { path: 'x.ts', old_path: 'x.ts', base: 'before', target: null, patch: '@@ -1 +1 @@\n-old\n+new\n', before: 'old\n', after: 'new\n', binary: false, truncated: false, submodule: false, snapshot: 's'.repeat(64) } as GitDiff
+  let reads = 0
+  gitApi.diff = async () => { if (++reads > 1) throw new Error('文件状态已变化'); return fixture }
+  const writes: unknown[][] = []
+  gitApi.saveFile = async (...args) => { writes.push(args); return { snapshot: 'a'.repeat(64) } as never }
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  try {
+    await act(async () => root.render(<I18nProvider><GitDiffDialog id="repo" files={['x.ts']} path="x.ts" comparison={{}} onSelect={() => {}} onClose={() => {}} /></I18nProvider>))
+    await act(async () => document.querySelector<HTMLButtonElement>('.git-copy-block')!.click())
+    const undo = [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('撤销上次应用'))!
+    assert.ok(undo)
+    await act(async () => undo.click())
+    assert.deepEqual(writes, [
+      ['repo', 'x.ts', 'old\n', 's'.repeat(64)],
+      ['repo', 'x.ts', 'new\n', 'a'.repeat(64), 'old\n'],
+    ])
+    assert.equal(document.querySelector('button[aria-label="撤销上次应用"]'), null)
+  } finally { await act(async () => root.unmount()); Object.assign(gitApi, original); await window.happyDOM.close() }
+})

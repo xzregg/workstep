@@ -297,6 +297,7 @@ class FileActionRequest(BaseModel):
 
 class SaveFileRequest(FileActionRequest):
     content: str = Field(max_length=2 * 1024 * 1024)
+    expected_content: str | None = Field(default=None, max_length=2 * 1024 * 1024)
 
 
 class CommitMessageRequest(BaseModel):
@@ -321,7 +322,7 @@ async def ignore(id: str, body: FileActionRequest):
 
 @router.post('/worktrees/{id}/files/content')
 async def save_file(id: str, body: SaveFileRequest):
-    return await result(git_service.save_file(id, body.path, body.content, body.snapshot))
+    return await result(git_service.save_file(id, body.path, body.content, body.snapshot, body.expected_content))
 
 
 @router.post('/worktrees/{id}/commit-message')

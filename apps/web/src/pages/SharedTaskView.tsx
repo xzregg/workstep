@@ -4,6 +4,7 @@ import Button from '../components/Button'
 import Input from '../components/Input'
 import Spinner from '../components/Spinner'
 import TaskDetailPage, { type TaskDetailReadCapabilities } from '../components/TaskDetailPage'
+import { createGitApi } from '../api/git'
 import type {
   StepData,
   StepProgress,
@@ -11,6 +12,7 @@ import type {
 } from '../components/TaskDetailView'
 import {
   shareApi,
+  shareRequest,
   type ReviewRun,
   type ShareMeta,
   type SharedTask,
@@ -19,6 +21,7 @@ import {
 import {
   createOptimisticUserMessage,
   isStepResumableWithMessage,
+  isStepActiveForStop,
   isTaskCompleted,
   resolveStepDisplayStatus,
   findPreferredArtifact,
@@ -567,6 +570,13 @@ export default function SharedTaskView() {
   const taskCompleted = isTaskCompleted(task?.steps || [])
   const interactive = meta?.mode === 'interactive'
   const shareSessionToken = phase.kind === 'ready' ? phase.sessionToken : ''
+  const sharedGitApi = useMemo(() => createGitApi(<T,>(path: string, options?: RequestInit) =>
+    shareRequest<T>(
+      path.replace(/^\/git/, `/task-share/public/${encodeURIComponent(token || '')}/git`),
+      shareSessionToken,
+      options,
+    ),
+  ), [token, shareSessionToken])
   const markdownUrlResolver = useCallback(
     (src: string) => token && shareSessionToken
       ? shareApi.resolveAttachmentUrl(token, shareSessionToken, src)
@@ -622,7 +632,7 @@ export default function SharedTaskView() {
   const runningSteps = useMemo(
     () => steps.filter((step) => (
       stepProgress.some((progress) => (
-        progress.step_key === step.key && progress.status === 'running'
+        progress.step_key === step.key && isStepActiveForStop(progress.status)
       ))
     )),
     [steps, stepProgress],
@@ -903,6 +913,7 @@ export default function SharedTaskView() {
     <SharePageShell>
       <TaskDetailPage
         chatEnabled={interactive}
+        gitCapability={{ api: sharedGitApi, projectId: 'shared', shared: true, readOnly: !interactive }}
         task={task}
         steps={steps}
         workflowConnections={task?.workflow?.steps?.connections || []}

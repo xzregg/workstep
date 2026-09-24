@@ -232,6 +232,23 @@ test('task store consumes AG-UI text and run events for live messages', () => {
   assert.ok(useTaskStore.getState().taskStatusEvents > 0)
 })
 
+test('restarted execution resets the existing live message instead of appending to its failed attempt', () => {
+  useTaskStore.setState({ tasks: [], liveMessages: {}, events: {}, content: {} })
+  const send = (event: Record<string, unknown>) => useTaskStore.getState().handleWsEvent({
+    ...event, task_id: 'retry-task', channel: 'execution', step_key: 'do', messageId: 'same-id',
+  })
+  send({ type: 'TEXT_MESSAGE_START', created_at: '2026-01-01T00:00:00Z' })
+  send({ type: 'TEXT_MESSAGE_CHUNK', delta: 'old failure' })
+  send({ type: 'TEXT_MESSAGE_END', status: 'failed' })
+  send({ type: 'TEXT_MESSAGE_START', retry: true, started_at: '2026-01-02T00:00:00Z', created_at: '2026-01-01T00:00:00Z' })
+  const message = useTaskStore.getState().liveMessages['retry-task']['same-id']
+  assert.equal(message.status, 'running')
+  assert.equal(message.content, '')
+  assert.equal(message.events.length, 1)
+  assert.equal(message.created_at, '2026-01-01T00:00:00Z')
+  assert.equal(message.started_at, '2026-01-02T00:00:00Z')
+})
+
 test('task store shows an automatic review as soon as its message starts', () => {
   useTaskStore.setState({ tasks: [], liveMessages: {}, events: {}, content: {} })
 

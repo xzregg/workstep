@@ -545,6 +545,7 @@
   .chat-input-quota-refresh,
   .chat-input-image-remove,
   .conversation-new-messages-button,
+  .git-copy-block,
   .artifact-download-button,
   .artifact-open-window-button,
   .file-preview-dialog-close,
@@ -866,6 +867,13 @@
     min-height: var(--mobile-control-compact) !important;
     min-width: var(--mobile-control-compact) !important;
     padding: 0 !important;
+  }
+  .chat-async-question .chat-message-action {
+    width: auto !important;
+    height: auto !important;
+    min-width: 0 !important;
+    min-height: 44px !important;
+    padding: 6px 10px !important;
   }
 
   /* 上下文详情面板：移动端由 JS 计算 fixed 定位，避免被 toolbar overflow 裁剪 */

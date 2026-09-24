@@ -17,6 +17,7 @@ import OpenLocationButton from '../components/OpenLocationButton'
 import MobileOpenLocationButton from '../components/MobileOpenLocationButton'
 import ProjectDirectoryBrowserDialog from '../components/ProjectDirectoryBrowserDialog'
 import ProjectSettingsPanel from '../components/ProjectSettingsPanel'
+import { ArchivedChatSessionsDialog } from '../components/ArchivedChatSessions'
 import {
   assistantApi,
   chatSessionApi,
@@ -41,7 +42,6 @@ import { useI18n } from '../i18n'
 import { clearDraft } from '../utils/chatDraft'
 import {
   clearIncompatibleProvider,
-  clearChatEngineConfig,
   EMPTY_ENGINE_CONFIG,
   hasChatEngineConfig,
   loadChatEngineConfig,
@@ -94,8 +94,6 @@ export default function ChatPage() {
   const [renameOpen, setRenameOpen] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [renameError, setRenameError] = useState('')
-  const [deleteOpen, setDeleteOpen] = useState(false)
-  const [deleting, setDeleting] = useState(false)
   const [creating, setCreating] = useState(false)
   const [forkOpen, setForkOpen] = useState(false)
   const [forking, setForking] = useState(false)
@@ -108,6 +106,7 @@ export default function ChatPage() {
   const [handoffTarget, setHandoffTarget] = useState<HandoffEndpoint | null>(null)
   const [confirmedHandoffMessageCount, setConfirmedHandoffMessageCount] = useState<number | null>(null)
   const [showSettingsPanel, setShowSettingsPanel] = useState(false)
+  const [showArchive, setShowArchive] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [showMobileDirectoryBrowser, setShowMobileDirectoryBrowser] = useState(false)
   const compact = useCompactLayout()
@@ -691,24 +690,6 @@ export default function ChatPage() {
     }
   }, [renameValue, activeProject?.id, sessionId, renaming, t])
 
-  const deleteSession = useCallback(async () => {
-    if (!activeProject?.id || !sessionId || deleting || running) return
-    setDeleting(true)
-    setSendError('')
-    try {
-      await chatSessionApi.remove(sessionId, activeProject.id)
-      useChatSessionStore.getState().resetSession(sessionId)
-      useChatListStore.getState().removeSession(sessionId)
-      clearChatEngineConfig(activeProject.id, sessionId)
-      setDeleteOpen(false)
-      navigate(`/chat?project=${encodeURIComponent(projectParam || activeProject?.name || '')}`, { replace: true })
-    } catch (reason) {
-      setSendError(reason instanceof Error ? reason.message : t('chatSession.deleteFailed'))
-    } finally {
-      setDeleting(false)
-    }
-  }, [activeProject, sessionId, deleting, running, projectParam, navigate, t])
-
   if (!activeProject) {
     return (
       <div style={{ flex: 1, display: 'flex', minHeight: 0, alignItems: 'center', justifyContent: 'center' }}>
@@ -724,18 +705,24 @@ export default function ChatPage() {
 
   if (!sessionId) {
     return (
-      <div style={{ flex: 1, display: 'flex', minHeight: 0, alignItems: 'center', justifyContent: 'center' }}>
-        <EmptyState
-          icon={<Icon name="bot" size={40} strokeWidth={1.5} />}
-          title={t('chatSession.title')}
-          description={t('chatSession.noSession')}
-          action={(
-            <Button variant="primary" loading={creating} onClick={() => void createSession()}>
-              {t('chatSession.createFirst')}
-            </Button>
-          )}
-        />
-      </div>
+      <>
+        <div style={{ flex: 1, display: 'flex', minHeight: 0, alignItems: 'center', justifyContent: 'center' }}>
+          <EmptyState
+            icon={<Icon name="bot" size={40} strokeWidth={1.5} />}
+            title={t('chatSession.title')}
+            description={t('chatSession.noSession')}
+            action={<div style={{ display: 'flex', gap: 8 }}>
+              <Button variant="primary" loading={creating} onClick={() => void createSession()}>
+                {t('chatSession.createFirst')}
+              </Button>
+              <Button variant="ghost" onClick={() => setShowArchive(true)}>
+                <Icon name="archive" size={13} />{t('chatSession.viewArchive')}
+              </Button>
+            </div>}
+          />
+        </div>
+        {showArchive && <ArchivedChatSessionsDialog projectId={activeProject.id} projectName={activeProject.name} onClose={() => setShowArchive(false)} />}
+      </>
     )
   }
 
@@ -795,12 +782,11 @@ export default function ChatPage() {
             <Button
               variant="ghost"
               size="sm"
-              disabled={running}
-              title={running ? t('chatSession.runningDeleteHint') : t('common.delete')}
-              onClick={() => setDeleteOpen(true)}
-              style={{ color: 'var(--danger)' }}
+              title={t('chatSession.viewArchive')}
+              onClick={() => setShowArchive(true)}
             >
-              {t('common.delete')}
+              <Icon name="archive" size={13} strokeWidth={2} />
+              {t('chatSession.viewArchive')}
             </Button>
             <OpenLocationButton activeProject={activeProject} t={t} />
             <ProjectGitButton project={activeProject} />
@@ -972,22 +958,11 @@ export default function ChatPage() {
         </div>
       </ConfirmDialog>
 
-      {/* Delete session */}
-      <ConfirmDialog
-        open={deleteOpen}
-        title={t('chatSession.deleteTitle')}
-        message={t('chatSession.deleteMessage', { title: sessionTitle || t('chatSession.title') })}
-        confirmText={t('chatSession.deleteConfirm')}
-        danger
-        loading={deleting}
-        onConfirm={() => void deleteSession()}
-        onCancel={() => setDeleteOpen(false)}
-      />
-
       <ProjectSettingsPanel
         project={showSettingsPanel ? activeProject : null}
         onClose={() => setShowSettingsPanel(false)}
       />
+      {showArchive && <ArchivedChatSessionsDialog projectId={activeProject.id} projectName={activeProject.name} onClose={() => setShowArchive(false)} />}
       {compact && createPortal(
         <button
           className="mobile-session-kebab"
@@ -1021,11 +996,10 @@ export default function ChatPage() {
         </Button>
         <Button
           variant="ghost"
-          disabled={running}
-          onClick={() => { setMobileMenuOpen(false); setDeleteOpen(true) }}
-          style={{ justifyContent: 'flex-start', gap: 8, color: 'var(--danger)' }}
+          onClick={() => { setMobileMenuOpen(false); setShowArchive(true) }}
+          style={{ justifyContent: 'flex-start', gap: 8 }}
         >
-          <Icon name="trash" size={16} /> {t('common.delete')}
+          <Icon name="archive" size={16} /> {t('chatSession.viewArchive')}
         </Button>
         <MobileOpenLocationButton onClick={() => { setMobileMenuOpen(false); setShowMobileDirectoryBrowser(true) }} />
         <ProjectGitButton project={activeProject} />

@@ -4,7 +4,11 @@ import asyncio
 import json
 import logging
 import mimetypes
+import os
+import re
 from pathlib import Path
+
+import httpx
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse
@@ -187,6 +191,118 @@ def _shared_file_path(path: str, ctx: dict) -> Path:
         if len(parts) >= 3 and parts[1] == ctx["task_id"]:
             return target
     raise HTTPException(status_code=403, detail="File is not part of the shared task")
+
+
+@router.api_route("/public/{token}/git/{git_path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def public_share_git(token: str, git_path: str, request: Request):
+    """Use the normal Git API through a task-scoped interactive share session."""
+    from api import git as git_api
+
+    ctx = await _require_share_session(request)
+    if ctx["token"] != token:
+        raise HTTPException(403, "Session does not match share")
+    if request.method != "GET":
+        _require_interactive_share(ctx)
+
+    project_id, task_id = ctx["project_id"], ctx["task_id"]
+    project = git_api._task_project(project_id)
+    task = await git_api._task_exists(project_id, task_id)
+    repositories = await git_api.project_repositories(project_id)
+    if git_path == "repositories" and request.method == "GET":
+        return {
+            "projects": [{"id": "shared", "name": "Shared task", "path": project.path}],
+            "repositories": [
+                {**repo, "projects": [
+                    {**membership, "id": "shared"}
+                    for membership in repo["projects"] if membership["id"] == project_id
+                ]}
+                for repo in repositories["repositories"]
+            ],
+            "depth": 0, "scanned_at": git_api.git_service.snapshot["scanned_at"], "errors": [],
+        }
+
+    parts = git_path.split("/")
+    if (len(parts) >= 5 and parts[:2] == ["projects", "shared"]
+            and parts[2:4] == ["tasks", task_id]):
+        tail = parts[4:]
+        if (tail == ["workspace"] and request.method in {"GET", "POST", "DELETE"}) or (
+            tail == ["worktrees"] and request.method == "POST"
+        ) or (len(tail) == 2 and tail[0] == "worktrees" and request.method == "DELETE"):
+            downstream = f"/api/git/projects/{project_id}/tasks/{task_id}/" + "/".join(tail)
+        else:
+            raise HTTPException(404, "Git operation not found")
+    elif len(parts) >= 3 and parts[0] == "worktrees":
+        workspace = await git_api.result(
+            git_api.TaskGitWorkspace(git_api.git_service, task["workflow_id"]).list(project.path, task_id)
+        )
+        owned = {tree["id"] for tree in workspace["worktrees"]}
+        tree_id, tail = parts[1], "/".join(parts[2:])
+        allowed = {
+            "status": {"GET"}, "branches": {"GET"}, "remotes": {"GET"},
+            "identity": {"GET", "PUT"}, "identity/global": {"GET", "PUT"},
+            "credentials": {"GET"}, "history": {"GET"}, "changes": {"GET"},
+            "diff": {"GET"}, "blame": {"GET"}, "commit": {"POST"},
+            "discard": {"POST"}, "ignore": {"POST"}, "files/content": {"POST"},
+            "commit-message": {"POST"}, "switch": {"POST"}, "advance": {"POST"},
+            "fetch": {"POST"}, "fetch-remote": {"POST"}, "pull": {"POST"},
+            "push": {"POST"},
+        }
+        source_ids = {
+            tree["id"] for repo in repositories["repositories"]
+            for tree in repo["worktrees"] if tree["available"]
+        }
+        if not (tree_id in owned and request.method in allowed.get(tail, set())) and not (
+            tree_id in source_ids and tail == "branches" and request.method == "GET"
+        ):
+            raise HTTPException(403, "Git worktree is outside the shared task")
+        downstream = f"/api/git/worktrees/{tree_id}/{tail}"
+    elif git_path == "credentials" and request.method == "GET":
+        downstream = "/api/git/credentials"
+    elif re.fullmatch(r"credentials/[^/]+", git_path) and request.method == "DELETE":
+        downstream = "/api/git/" + git_path
+    elif git_path == "credentials" and request.method == "PUT":
+        downstream = "/api/git/credentials"
+    else:
+        raise HTTPException(404, "Git operation not found")
+
+    # Global credential actions are allowed only for hosts configured on this task's remotes.
+    if git_path.startswith("credentials"):
+        from urllib.parse import unquote, urlsplit
+        workspace = await git_api.result(
+            git_api.TaskGitWorkspace(git_api.git_service, task["workflow_id"]).list(project.path, task_id)
+        )
+        if not workspace["worktrees"]:
+            raise HTTPException(403, "Shared task has no Git worktree")
+        hosts = set()
+        for tree in workspace["worktrees"]:
+            remote_info = await git_api.result(git_api.git_service.remotes(tree["id"]))
+            for remote in remote_info["remotes"]:
+                for url in (remote["url"], remote["push_url"]):
+                    host = urlsplit(url).hostname if "://" in url else url.split(":", 1)[0].split("@")[-1]
+                    if host:
+                        hosts.add(host.lower())
+        if request.method != "GET":
+            host = (await request.json()).get("host") if request.method == "PUT" else unquote(parts[1])
+            if not isinstance(host, str) or host.lower() not in hosts:
+                raise HTTPException(403, "Credential host is outside the shared task")
+
+    headers = {"content-type": request.headers.get("content-type", "application/json")}
+    desktop_token = os.environ.get("WORKSTEP_DESKTOP_TOKEN")
+    if desktop_token:
+        headers["x-workstep-desktop-token"] = desktop_token
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=request.app, client=("127.0.0.1", 0)), base_url="http://localhost") as client:
+        response = await client.request(
+            request.method, downstream,
+            params=request.query_params, content=await request.body(), headers=headers,
+        )
+    if response.status_code == 200 and git_path.startswith("credentials"):
+        payload = response.json()
+        payload["hosts"] = [host for host in payload.get("hosts", []) if host.lower() in hosts]
+        return payload
+    return Response(
+        content=response.content, status_code=response.status_code,
+        media_type=response.headers.get("content-type", "application/json"),
+    )
 
 
 @router.get("/public/{token}/task")
@@ -509,13 +625,13 @@ async def public_share_review_decision(
     req: ShareReviewDecisionRequest,
     request: Request,
 ):
-    """Approve, reject, force-approve, or terminate a pending manual review."""
+    """Decide a pending manual review from an interactive share."""
     ctx = await _require_share_session(request)
     if ctx["token"] != token:
         raise HTTPException(status_code=403, detail="Session does not match share")
     _require_interactive_share(ctx)
     normalized = decision.replace("-", "_")
-    if normalized not in {"approve", "reject", "force_approve", "terminate"}:
+    if normalized not in {"approve", "reject", "force_approve", "terminate", "complete_task"}:
         raise HTTPException(status_code=404, detail="Unknown review decision")
     from main import workflow_runtime
     if not workflow_runtime:

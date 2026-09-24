@@ -51,8 +51,8 @@ export default function FilePreviewDialog({
             <Icon name="file" size={15} strokeWidth={1.8} />
           </span>
           <div className="file-preview-dialog-heading">
-            <strong id="file-preview-title">{name}</strong>
-            <span title={path}>{path}</span>
+            <strong id="file-preview-title" data-dialog-selectable-text>{name}</strong>
+            <span title={path} data-dialog-selectable-text>{path}</span>
           </div>
           <Button
             ref={closeRef}

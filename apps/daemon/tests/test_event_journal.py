@@ -80,6 +80,26 @@ def test_journal_recovers_snapshot_without_exposing_thoughts_in_summary(tmp_path
     assert timeline["complete"] is True
 
 
+def test_async_question_survives_journal_summary_and_agui_replay(tmp_path):
+    journal = TurnEventJournal()
+    ref = journal.start(tmp_path, "session-question", "message-question")
+    journal.record(ref, {
+        "type": "async_question",
+        "data": {
+            "source_item_id": "call-1",
+            "questions": [{"title": "处理方式？", "options": ["复制差异块"]}],
+        },
+    })
+    journal.finish(ref)
+
+    summary_events = journal.snapshot(ref)["events"]
+    assert len(summary_events) == 1
+    mapped = to_agui_events(summary_events[0])
+    assert mapped[0]["type"] == "CUSTOM"
+    assert mapped[0]["name"] == "workstep.async_question"
+    assert mapped[0]["value"]["questions"][0]["options"] == ["复制差异块"]
+
+
 def test_journal_ignores_an_incomplete_trailing_line(tmp_path):
     journal = TurnEventJournal()
     ref = journal.start(tmp_path, "session-1", "message-1")

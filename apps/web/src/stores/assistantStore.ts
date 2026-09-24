@@ -619,6 +619,7 @@ export function createAssistantStore(
             || isCustom(event, CUSTOM.planRemoved)
             || isCustom(event, CUSTOM.interactionRequest)
             || isCustom(event, CUSTOM.interactionResponse)
+            || isCustom(event, CUSTOM.asyncQuestion)
             || isCustom(event, CUSTOM.subagent)
             || isCustom(event, CUSTOM.compacted)
             || isCustom(event, CUSTOM.sessionStarted)

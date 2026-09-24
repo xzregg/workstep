@@ -3178,6 +3178,111 @@ async def test_step_history_binds_the_requested_project(api_context):
     assert legacy_events.json()["events"][0]["delta"] == "legacy thought"
 
 
+@pytest.mark.anyio
+async def test_task_history_projects_terminal_parent_messages_without_writing_db(api_context, monkeypatch):
+    client, tmp_path = api_context
+    from datetime import timedelta
+    import api.project as project_api
+    from models import Message, ReviewRun, StepRun, WorkflowRun
+    from models.fields import utc_now
+
+    project_dir = tmp_path / "stale-message-history"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)}
+    )).json()["id"]
+    await _create_test_workflow(client, project_id)
+    task_id = (await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={"title": "Stale message", "cwd": str(project_dir), "engine": "codex"},
+    )).json()["id"]
+    now = utc_now()
+    started = now - timedelta(minutes=5)
+    with project_api.project_manager.activate_project_by_id(project_id):
+        old_run = WorkflowRun.create(
+            id=str(uuid.uuid4()), task=task_id, status="superseded",
+            workflow_schema_version=1, workflow_snapshot_json="{}",
+            started_at=started, ended_at=now,
+        )
+        step_run = StepRun.create(
+            id=str(uuid.uuid4()), run=old_run, step_key="do", attempt=1,
+            status="succeeded", engine="codex",
+            started_at=started, ended_at=started + timedelta(seconds=30),
+        )
+        review = ReviewRun.create(
+            id=str(uuid.uuid4()), workflow_run=old_run, step_run=step_run,
+            task=task_id, step_key="do", attempt=1, mode="auto",
+            status="cancelled", engine="codex",
+            started_at=started + timedelta(seconds=31), ended_at=now,
+        )
+        for sequence, channel, timestamp in (
+            (1, "execution", started),
+            (2, "review", started + timedelta(seconds=31)),
+        ):
+            Message.create(
+                id=f"stale-{channel}", task=task_id, step_key="do",
+                channel=channel, sequence=sequence, role="assistant",
+                content="审核中" if channel == "review" else "旧输出",
+                run_status="running", step_run_id=step_run.id,
+                position=sequence, started_at=timestamp, created_at=timestamp,
+            )
+        active_run = WorkflowRun.create(
+            id=str(uuid.uuid4()), task=task_id, status="running",
+            workflow_schema_version=1, workflow_snapshot_json="{}",
+            started_at=now,
+        )
+        active_step = StepRun.create(
+            id=str(uuid.uuid4()), run=active_run, step_key="do", attempt=1,
+            status="running", engine="codex", started_at=now,
+        )
+        Message.create(
+            id="active-execution", task=task_id, step_key="do",
+            channel="execution", sequence=3, role="assistant",
+            run_status="running", step_run_id=active_step.id,
+            position=3, started_at=now, created_at=now,
+        )
+
+    project = __import__("main").project_manager.get_project_by_id(project_id)
+    original_execute_sql = project.db.execute_sql
+    query_started = threading.Event()
+
+    def slow_step_run_query(sql, params=None, commit=None):
+        if "step_runs" in sql and not query_started.is_set():
+            query_started.set()
+            time.sleep(0.35)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_step_run_query)
+    history_task = asyncio.create_task(client.get(
+        f"/api/task/{task_id}/history", params={"project_id": project_id},
+    ))
+    assert await asyncio.to_thread(query_started.wait, 1)
+    health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+    response = await history_task
+    assert health.status_code == 200
+    assert response.status_code == 200
+    messages = {message["id"]: message for message in response.json()["messages"]}
+    assert messages["stale-execution"]["run_status"] == "succeeded"
+    assert messages["stale-execution"]["ended_at"] == step_run.ended_at.isoformat()
+    assert messages["stale-review"]["run_status"] == "cancelled"
+    assert messages["stale-review"]["ended_at"] == review.ended_at.isoformat()
+    assert messages["active-execution"]["run_status"] == "running"
+    assert messages["active-execution"]["ended_at"] is None
+
+    step_response = await client.get(
+        f"/api/task/{task_id}/step/do/history",
+        params={"project_id": project_id},
+    )
+    assert step_response.status_code == 200
+    step_messages = {message["id"]: message for message in step_response.json()["messages"]}
+    assert step_messages["stale-execution"]["run_status"] == "succeeded"
+    assert step_messages["stale-review"]["run_status"] == "cancelled"
+    assert step_messages["active-execution"]["run_status"] == "running"
+    with project_api.project_manager.activate_project_by_id(project_id):
+        assert Message.get_by_id("stale-execution").run_status == "running"
+        assert Message.get_by_id("stale-review").run_status == "running"
+
+
 
 @pytest.mark.anyio
 async def test_task_message_events_pages_detailed_jsonl_timeline(api_context):
@@ -3651,6 +3756,94 @@ async def test_manual_review_terminate_endpoint_does_not_resume(api_context, mon
     }]
 
 
+@pytest.mark.anyio
+async def test_manual_review_complete_task_endpoint_does_not_resume(api_context, monkeypatch):
+    import main
+
+    client, _tmp_path = api_context
+    runtime = AsyncMock()
+    runtime.decide_review.return_value = None
+    monkeypatch.setattr(main, "workflow_runtime", runtime)
+    response = await client.post(
+        "/api/task/task-1/steps/build/review/complete-task?project_id=project-1",
+        json={"review_run_id": "review-1"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "decision": "complete_task", "resumed": False, "run_id": None,
+    }
+    runtime.decide_review.assert_awaited_once_with(
+        "project-1", "task-1", "build", "review-1", "complete_task", None,
+    )
+
+
+@pytest.mark.anyio
+async def test_complete_task_review_api_keeps_health_responsive_during_slow_db(api_context, monkeypatch):
+    import main
+    from models import ReviewRun, StepRun, Task, TaskStep, WorkflowRun
+    from models.fields import utc_now
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "review-complete-health"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)},
+    )).json()["id"]
+    workflow = await _create_test_workflow(client, project_id)
+    task_id = (await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={"title": "Complete", "cwd": str(project_dir), "workflow_id": workflow["id"]},
+    )).json()["id"]
+    project = main.project_manager.get_project_by_id(project_id)
+    now = utc_now()
+    with main.project_manager.activate_project_by_id(project_id):
+        task = Task.get_by_id(task_id)
+        task.status = "paused"
+        task.save()
+        TaskStep.create(task=task, step_key="do", status="awaiting_review", engine="claude")
+        TaskStep.create(task=task, step_key="later", status="pending", engine="claude")
+        run = WorkflowRun.create(
+            id=str(uuid.uuid4()), task=task, status="paused",
+            workflow_schema_version=1, workflow_snapshot_json="{}", started_at=now,
+        )
+        step_run = StepRun.create(
+            id=str(uuid.uuid4()), run=run, step_key="do", attempt=1,
+            status="succeeded", started_at=now, ended_at=now,
+        )
+        review = ReviewRun.create(
+            id=str(uuid.uuid4()), task=task, workflow_run=run,
+            step_run=step_run, step_key="do", mode="manual", status="pending",
+            started_at=now,
+        )
+        task.active_workflow_run_id = run.id
+        task.save()
+
+    original_execute_sql = project.db.execute_sql
+    query_started = threading.Event()
+
+    def slow_review_query(sql, params=None, commit=None):
+        if "review_runs" in sql and not query_started.is_set():
+            query_started.set()
+            time.sleep(0.35)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_review_query)
+    decision_request = asyncio.create_task(client.post(
+        f"/api/task/{task_id}/steps/do/review/complete-task?project_id={project_id}",
+        json={"review_run_id": review.id},
+    ))
+    assert await asyncio.to_thread(query_started.wait, 1)
+    health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+    response = await decision_request
+
+    assert health.status_code == 200
+    assert response.status_code == 200, response.text
+    with main.project_manager.activate_project_by_id(project_id):
+        assert Task.get_by_id(task_id).status == "ready"
+        assert WorkflowRun.get_by_id(run.id).status == "succeeded"
+        assert TaskStep.get((TaskStep.task == task_id) & (TaskStep.step_key == "later")).status == "skipped"
+
+
 async def _create_workflow(client, project_id: str, name: str):
     response = await client.post(
         f"/api/workflow/create?project_id={project_id}",
@@ -3885,6 +4078,77 @@ async def test_restart_step_reports_conflict_for_running_step(api_context, monke
     )
     assert response.status_code == 409
     assert "不能重建会话" in response.json()["detail"]
+
+
+@pytest.mark.anyio
+async def test_retry_failed_message_api_targets_message_without_blocking_health(api_context, monkeypatch):
+    import main
+    from models import Message, StepRun, Task, TaskStep, WorkflowRun
+    from models.fields import utc_now
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "retry-failed-message"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)},
+    )).json()["id"]
+    workflow = await _create_test_workflow(client, project_id)
+    task_id = (await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "Retry failed message", "cwd": str(project_dir),
+            "workflow_id": workflow["id"], "engine": "claude",
+        },
+    )).json()["id"]
+    project = main.project_manager.get_project_by_id(project_id)
+    now = utc_now()
+    with main.project_manager.activate_project_by_id(project_id):
+        task = Task.get_by_id(task_id)
+        task.status = "failed"
+        task.save()
+        TaskStep.create(task=task, step_key="do", status="failed", engine="claude")
+        run = WorkflowRun.create(
+            id=str(uuid.uuid4()), task=task, status="failed",
+            workflow_schema_version=1, workflow_snapshot_json="{}",
+            started_at=now, ended_at=now,
+        )
+        step_run = StepRun.create(
+            id=str(uuid.uuid4()), run=run, step_key="do", attempt=1,
+            status="failed", engine="claude", error="temporary network error",
+            started_at=now, ended_at=now,
+        )
+        Message.create(
+            id="failed-message", task=task, step_key="do",
+            channel="execution", role="assistant", sequence=1,
+            run_status="failed", step_run_id=step_run.id,
+            position=1, created_at=now,
+        )
+        task.active_workflow_run_id = run.id
+        task.save()
+
+    restart = AsyncMock(return_value=type("Handle", (), {"id": "new-run"})())
+    monkeypatch.setattr(main.workflow_runtime, "restart_from_step", restart)
+    original_execute_sql = project.db.execute_sql
+    query_started = threading.Event()
+
+    def slow_step_run_query(sql, params=None, commit=None):
+        if "step_runs" in sql and not query_started.is_set():
+            query_started.set()
+            time.sleep(0.35)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_step_run_query)
+    retry_request = asyncio.create_task(client.post(
+        f"/api/task/{task_id}/messages/failed-message/retry?project_id={project_id}",
+    ))
+    assert await asyncio.to_thread(query_started.wait, 1)
+    health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+    response = await retry_request
+
+    assert health.status_code == 200
+    assert response.status_code == 200
+    assert response.json()["run_id"] == "new-run"
+    restart.assert_awaited_once()
 
 
 @pytest.mark.anyio

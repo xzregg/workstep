@@ -20,6 +20,7 @@ class ChatSession(BaseModel):
     workflow_id = pw.TextField()
     title = pw.TextField(default="")
     sort_order = pw.IntegerField(default=0)
+    archived = pw.BooleanField(default=False)
     engine = pw.TextField()
     model = pw.TextField(null=True)
     fast_model = pw.TextField(null=True)

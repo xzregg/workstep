@@ -36,6 +36,7 @@ from services.messages import (
 from services.history import (
     event_detail,
     message_artifact_projections,
+    project_terminal_message_state,
     restore_running_projection,
     session_id_from_events,
     session_id_from_journal_path,
@@ -343,6 +344,7 @@ class TaskService:
             if detail is not None:
                 entry["event_detail"] = detail
             restore_running_projection(entry, msg, workstep_dir)
+            project_terminal_message_state(entry, msg)
             if msg.prompt_json:
                 try:
                     prompt_data = json_mod.loads(msg.prompt_json)
@@ -713,8 +715,12 @@ class TaskService:
         coordinator_session_id = (
             coordinator_session.session_id if coordinator_session else None
         )
-        # 每步骤最新产物轮数：以 StepRun.artifact_round 为权威来源，取该步骤
-        # 所有执行记录的最大轮数。一次分组查询取回所有步骤，避免逐步骤查询。
+        # Include the current attempt while it runs: its execution message
+        # already shows that reserved artifact round. Ignore interrupted
+        # attempts from older runs and failed attempts without artifacts.
+        running_step_keys = [
+            step.step_key for step in steps if step.status == "running"
+        ]
         latest_artifact_round_by_step = {
             row.step_key: row.max_round
             for row in (
@@ -726,7 +732,14 @@ class TaskService:
                 .where(
                     (WorkflowRun.task == task)
                     & (StepRun.artifact_round.is_null(False))
-                    & (StepRun.status.in_(["succeeded", "reused"]))
+                    & (
+                        StepRun.status.in_(["succeeded", "reused"])
+                        | (
+                            (StepRun.status == "running")
+                            & (WorkflowRun.id == task.active_workflow_run_id)
+                            & (StepRun.step_key.in_(running_step_keys))
+                        )
+                    )
                 )
                 .group_by(StepRun.step_key)
             )

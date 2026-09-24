@@ -1,5 +1,6 @@
+import { useGitApi } from './GitApiContext'
 import { useEffect, useState } from 'react'
-import { gitApi, type GitCredentialStatus } from '../../api/git'
+import { type GitCredentialStatus } from '../../api/git'
 import { ApiError } from '../../api/client'
 import { useI18n } from '../../i18n'
 import Button from '../Button'
@@ -16,6 +17,7 @@ function httpsHost(url: string) {
 }
 
 export default function GitRepositorySettings({ id }: { id: string }) {
+  const gitApi = useGitApi()
   const { t } = useI18n()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')

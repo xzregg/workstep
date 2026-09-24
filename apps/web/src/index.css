@@ -407,6 +407,29 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 }
 
 .chat-message-row .chat-message-action { opacity: 0; }
+.chat-async-question {
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  display: grid;
+  gap: 8px;
+}
+.chat-async-question-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.chat-async-question .chat-message-action {
+  opacity: 1;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+  cursor: pointer;
+}
+.chat-async-question .chat-message-action:disabled { cursor: default; opacity: .5; }
+.chat-async-question .chat-message-action[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-light);
+}
 .chat-message-row:hover .chat-message-action,
 .chat-message-row:focus-within .chat-message-action { opacity: 1; }
 
@@ -1867,14 +1890,19 @@ details[open] > summary > .process-trace-chevron {
   flex: 1;
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 1px;
 }
 
 .file-preview-dialog-heading strong,
 .file-preview-dialog-heading span {
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .file-preview-dialog-heading strong {

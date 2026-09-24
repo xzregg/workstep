@@ -225,7 +225,7 @@ function CanvasEditorInner() {
         workflowName={activeWorkflow?.name || ''}
         workflowButtons={Array.isArray(activeProject.steps?.quickButtons) ? activeProject.steps.quickButtons : []}
         selectedIds={Array.isArray(activeProject.steps?.projectQuickButtonIds) ? activeProject.steps.projectQuickButtonIds : undefined}
-        inheritByDefault={activeProject.steps?.inheritProjectQuickButtons !== false}
+        inheritByDefault={activeProject.steps?.inheritProjectQuickButtons === true}
         onClose={() => setShortcutSettingsOpen(false)}
         onSave={async (selectedIds, workflowButtons) => {
           const steps = { ...(canvasRef.current?.getSteps() || activeProject.steps), projectQuickButtonIds: selectedIds, quickButtons: workflowButtons }

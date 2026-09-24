@@ -641,6 +641,25 @@ export default function Layout({ onSelectProject, children }: Props) {
     }
   }
 
+  const handleArchiveSession = async (sessionId: string, projectId: string) => {
+    setSessionMenu(null)
+    setSessionDeleteError('')
+    try {
+      await chatSessionApi.setArchived(sessionId, projectId, true)
+      useChatListStore.getState().removeSession(sessionId)
+      if (activeSessionId === sessionId) {
+        const next = useChatListStore.getState().sessionsByProject[projectId]?.[0]
+        const ownerName = projects.find((project) => project.id === projectId)?.name || activeProject?.name || ''
+        navigate(`/chat?project=${encodeURIComponent(ownerName)}${next ? `&session=${encodeURIComponent(next.id)}` : ''}`, {
+          replace: true,
+          state: { preserveNavigationDrawer: true },
+        })
+      }
+    } catch (reason) {
+      setSessionDeleteError(reason instanceof Error ? reason.message : t('chatSession.archiveFailed'))
+    }
+  }
+
   return (
     <div className="app-shell">
       {/* Sidebar */}
@@ -1310,6 +1329,16 @@ export default function Layout({ onSelectProject, children }: Props) {
                             completedTitle={t('layout.completedUnread')}
                           />
                           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0, height: 24 }}>
+                            {hoveredSessionId === session.id && (
+                              <Button
+                                variant="icon"
+                                className="ws-more-btn"
+                                onClick={(e) => { e.stopPropagation(); void handleArchiveSession(session.id, p.id) }}
+                                title={t('chatSession.archive')}
+                                aria-label={t('chatSession.archive')}
+                                style={{ width: 24, height: 24, borderRadius: 4, border: 'none', background: 'transparent', color: 'var(--meta)', padding: 0, flexShrink: 0 }}
+                              ><Icon name="archive" size={13} /></Button>
+                            )}
                             {hoveredSessionId === session.id || !(session.updated_at || session.created_at) ? (
                               <Button
                                 variant="icon"
@@ -1519,6 +1548,15 @@ export default function Layout({ onSelectProject, children }: Props) {
           }}
         >
           <div
+            onClick={() => { void handleArchiveSession(sessionMenu.sessionId, sessionMenu.projectId) }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+            style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
+          >
+            <Icon name="archive" size={14} />
+            {t('chatSession.archive')}
+          </div>
+          <div
             onClick={() => {
               setRenameSessionId(sessionMenu.sessionId)
               setRenameSessionProjectId(sessionMenu.projectId)
@@ -1547,6 +1585,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           </div>
         </div>
       )}
+
 
       <ConfirmDialog
         open={deleteSessionTarget !== null}

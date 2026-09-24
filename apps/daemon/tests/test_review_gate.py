@@ -273,6 +273,15 @@ async def test_cancel_step_stops_active_automatic_review_engine(tmp_path):
         )
         assert task_step.status == "cancelled"
         assert ReviewRun.get(ReviewRun.workflow_run == workflow_run).status == "failed"
+        assert StepRun.get(StepRun.run == workflow_run).status == "succeeded"
+        assert Message.get(
+            (Message.task == task) & (Message.channel == "execution")
+            & (Message.role == "assistant")
+        ).run_status == "succeeded"
+        assert Message.get(
+            (Message.task == task) & (Message.channel == "review")
+            & (Message.role == "assistant")
+        ).run_status == "cancelled"
     finally:
         if not pipeline_task.done():
             review_engine.stopped.set()
@@ -352,6 +361,15 @@ async def test_automatic_review_message_is_visible_while_review_is_running(tmp_p
         assert len(running_messages) == 1
         assert running_messages[0].id == starts[0]["messageId"]
         assert running_messages[0].content == "审核中"
+        execution_messages = await asyncio.to_thread(
+            lambda: list(Message.select().where(
+                (Message.task == task)
+                & (Message.channel == "execution")
+                & (Message.role == "assistant")
+            ))
+        )
+        assert len(execution_messages) == 1
+        assert execution_messages[0].run_status == "succeeded"
         running_prompt = json.loads(running_messages[0].prompt_json or "{}").get("prompt")
         assert running_prompt
         assert "You are the WorkStep step review agent." in running_prompt
@@ -1190,6 +1208,83 @@ async def test_manual_review_can_terminate_until_user_reruns_step(tmp_path):
             await asyncio.sleep(0.01)
         assert WorkflowRun.get_by_id(accepted["run_id"]).status == "paused"
         assert len(calls) == 2
+    finally:
+        await runtime.shutdown()
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_manual_review_can_complete_task_and_later_restart_skipped_step(tmp_path):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="manual-complete-task", title="Complete at review",
+        cwd=str(tmp_path), engine="claude", created_at=1, updated_at=1,
+    )
+    project = SimpleNamespace(
+        id="project-manual-complete", path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={
+            "nodes": [
+                {"id": 1, "type": "build", "key": "build", "title": "构建",
+                 "engine": "review-test", "prompt": "完成构建",
+                 "review": {"mode": "manual", "auto": False, "maxRetries": 1}},
+                {"id": 2, "type": "publish", "key": "publish", "title": "发布",
+                 "engine": "review-test", "prompt": "完成发布",
+                 "review": {"mode": "skip", "auto": True, "maxRetries": 1}},
+            ],
+            "connections": [{"from": 1, "to": 2}],
+        },
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    calls: list[str] = []
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["review-test"] = lambda: SequencedReviewEngine(calls)
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, ProjectManagerStub())
+    try:
+        first = await runtime.start(project.id, task.id, "")
+        await runtime.wait(first)
+        review = ReviewRun.get(ReviewRun.task == task)
+        assert review.status == "pending"
+        assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "publish")).status == "pending"
+
+        resumed = await runtime.decide_review(
+            project.id, task.id, "build", review.id, "complete_task",
+        )
+        assert resumed is None
+        assert ReviewRun.get_by_id(review.id).status == "passed"
+        assert ReviewRun.get_by_id(review.id).decision == "complete_task"
+        assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "build")).status == "passed"
+        assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "publish")).status == "skipped"
+        assert Task.get_by_id(task.id).status == "ready"
+        assert WorkflowRun.get_by_id(first.id).status == "succeeded"
+        assert len(calls) == 1
+
+        later = await runtime.resume_step_with_message(
+            project.id, task.id, "publish", "@发布 继续执行",
+        )
+        for _ in range(200):
+            if WorkflowRun.get_by_id(later["run_id"]).status != "running":
+                break
+            await asyncio.sleep(0.01)
+        assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "build")).status == "passed"
+        assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "publish")).status == "passed"
+        assert Task.get_by_id(task.id).status == "ready"
+        assert WorkflowRun.get_by_id(first.id).status == "superseded"
+        assert WorkflowRun.get_by_id(later["run_id"]).status == "succeeded"
     finally:
         await runtime.shutdown()
         await bus.close()

@@ -267,16 +267,22 @@ class GitWrites:
             await asyncio.to_thread(append_gitignore, root, value)
             return await self.status(id)
 
-    async def save_file(self, id, value, content, snapshot):
+    async def save_file(self, id, value, content, snapshot, expected_content=None):
         directory = await self.directory(id)
         root = directory['path']
         async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
             state = await self.reviewed(id, snapshot)
             file = next((item for item in state['files'] if item['path'] == value), None)
             if not file:
-                raise GitError('文件状态已变化，请刷新后重试。', 409)
-            if file['conflict'] or file['submodule']:
+                tracked, code = await self.command(root, 'ls-files', '-z', '--error-unmatch', '--', value, check=False)
+                if expected_content is None or code or value not in text(tracked).split('\0'):
+                    raise GitError('文件状态已变化，请刷新后重试。', 409)
+            if file and (file['conflict'] or file['submodule']):
                 raise GitError('冲突文件和子模块不能在对比窗口中编辑。', 409)
+            if expected_content is not None:
+                current, truncated = await asyncio.to_thread(read_file, root, value)
+                if truncated or text(current) != expected_content:
+                    raise GitError('文件在审阅期间发生变化，请刷新后重试。', 409)
             await asyncio.to_thread(replace_worktree_file, root, value, content)
             return await self.status(id)
 
