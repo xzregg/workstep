@@ -23,6 +23,7 @@ from services.artifact_rounds import (
 from services.pipeline import DAGScheduler, Step
 from services.task_step_start import start_step_state
 from services.step_execution_start import StepExecutionStart
+from services.step_interaction_messages import StepInteractionMessages
 from services.step_rework import StepRework
 from services.step_artifact_routes import StepArtifactRoutes
 from services.step_live_messages import StepLiveMessages
@@ -33,7 +34,7 @@ from services.messages import extract_usage_json
 from agent_assistants.context_handoff import (
     mark_handoff_consumed,
 )
-from services.intervention import intervention_manager, seal_unanswered_interactions
+from services.intervention import seal_unanswered_interactions
 from agent_assistants.event_journal import JournalRef, TurnEventJournal
 from engines.core.acp_base import AcpEngineBase
 from engines.core.registry import create_engine
@@ -134,6 +135,10 @@ class TaskRunner:
             self._event_journal, self._run_db, self._publish,
             self._step_followups, self._step_trigger_names,
             self._initial_user_input_step_key, self._retry_message_ids,
+        )
+        self._interaction_messages = StepInteractionMessages(
+            self._event_journal, self._run_db, self._publish,
+            self._journal_snapshot,
         )
         self._live = StepLiveMessages(
             self._event_journal,
@@ -1050,34 +1055,10 @@ class TaskRunner:
                         content_parts.clear()
                         events_collected.clear()
                 if event.type == "interaction_request":
-                    # Persist first so a reload after the broker advertises
-                    # this interaction can reconstruct its message card.
-                    def persist_pending_interaction():
-                        pending_message = Message.get_by_id(msg_id)
-                        self._event_journal.sync(journal_ref, durable=True)
-                        snapshot = self._journal_snapshot(journal_ref)
-                        pending_message.content = snapshot["content"]
-                        pending_message.events_json = snapshot["events_json"]
-                        pending_message.event_summary_json = snapshot["event_summary_json"]
-                        pending_message.event_count = snapshot["event_count"]
-                        pending_message.last_event_seq = snapshot["last_event_seq"]
-                        pending_message.save()
-
-                    try:
-                        await self._run_db(persist_pending_interaction)
-                    except Message.DoesNotExist:
-                        pass
-                    interaction_waiter = asyncio.create_task(
-                        intervention_manager.request_response(
-                            interaction_id,
-                            task.id,
-                            step_key,
-                            event.data,
-                        )
+                    interaction_waiter = await self._interaction_messages.begin(
+                        task_id=task.id, step_key=step_key, event=event,
+                        message_id=msg_id, journal_ref=journal_ref,
                     )
-                    # Register before publishing so a fast UI response cannot
-                    # race the in-memory intervention broker.
-                    await asyncio.sleep(0)
                 await self._publish(task.id, step_key, {
                     "channel": "execution",
                     "message_id": live_message_id or msg_id,
@@ -1088,56 +1069,14 @@ class TaskRunner:
                     "data": {**event.data, "task_id": task.id, "step_key": step_key},
                 })
                 if interaction_waiter is not None:
-                    response = await interaction_waiter
-                    if response.get("error"):
-                        response = (
-                            {"outcome": {"outcome": "cancelled"}}
-                            if event.data.get("method") == "session/request_permission"
-                            else {"action": "cancel"}
-                        )
-                    await engine.respond_interaction(event.data, response)
-                    response_event = InternalEvent(
-                        type="interaction_response",
-                        data={
-                            "interaction_id": event.data["interaction_id"],
-                            "method": event.data.get("method"),
-                            "response": response,
-                        },
+                    await self._interaction_messages.finish(
+                        waiter=interaction_waiter,
+                        task_id=task.id, step_key=step_key, event=event,
+                        engine=engine, engine_id=step.engine,
+                        message_id=msg_id, journal_ref=journal_ref,
+                        events_collected=events_collected,
+                        resolved_model=resolved_model,
                     )
-                    events_collected.append(response_event.to_dict())
-                    await self._event_journal.arecord(journal_ref, response_event.to_dict())
-                    # Make the response visible to history before notifying
-                    # the UI. Otherwise the live card disappears immediately,
-                    # but a reload while the engine is still running rebuilds
-                    # the stale request-only projection from SQLite.
-                    def persist_interaction_response():
-                        response_message = Message.get_by_id(msg_id)
-                        self._event_journal.sync(journal_ref, durable=True)
-                        snapshot = self._journal_snapshot(journal_ref)
-                        response_message.content = snapshot["content"]
-                        response_message.events_json = snapshot["events_json"]
-                        response_message.event_summary_json = snapshot["event_summary_json"]
-                        response_message.event_count = snapshot["event_count"]
-                        response_message.last_event_seq = snapshot["last_event_seq"]
-                        response_message.save()
-
-                    try:
-                        await self._run_db(persist_interaction_response)
-                    except Message.DoesNotExist:
-                        pass
-                    await self._publish(task.id, step_key, {
-                        "channel": "execution",
-                        "message_id": msg_id,
-                        "engine": step.engine,
-                        "model": resolved_model,
-                        "event_sequence": len(events_collected),
-                        "type": response_event.type,
-                        "data": {
-                            **response_event.data,
-                            "task_id": task.id,
-                            "step_key": step_key,
-                        },
-                    })
 
             if captured_session_id is None and not engine.supports_resume:
                 # 无状态引擎没有原生会话，仍生成本次运行的会话标识供前端展示。
