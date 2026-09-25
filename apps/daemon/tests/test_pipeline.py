@@ -1671,6 +1671,15 @@ async def test_task_runner_persists_usage_json(tmp_path):
         assert len(started) == 1
         assert started[0]["messageId"] == msg.id
         assert started[0]["prompt"] == persisted_prompt
+        completed = [
+            event for event in list(events._queue)
+            if event.get("type") == "TEXT_MESSAGE_END"
+            and event.get("channel") == "execution"
+        ]
+        assert len(completed) == 1
+        assert completed[0]["messageId"] == msg.id
+        assert completed[0]["status"] == msg.run_status == "succeeded"
+        assert msg.ended_at is not None
         assert received_prompts == [persisted_prompt]
         assert persisted_prompt.startswith("You are executing one step")
         assert "## Project memory\n统一使用公开消息边界" in persisted_prompt
@@ -1737,6 +1746,54 @@ async def test_execution_message_start_slow_insert_keeps_loop_responsive(
         started = time.perf_counter()
         await asyncio.wait_for(asyncio.sleep(0), timeout=0.2)
         assert time.perf_counter() - started < 0.2
+        await pipeline_task
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original_engines)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_execution_message_finish_slow_save_keeps_loop_responsive(
+    tmp_path, monkeypatch,
+):
+    """Finalizing an execution message runs outside the event loop."""
+    import threading
+    import time
+    import uuid
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import Message, Task, init_db
+
+    db = init_db(str(tmp_path / "slow-finish.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Slow finish", cwd=str(tmp_path),
+        engine="claude", created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    save_started = threading.Event()
+    original_save = Message.save
+
+    def slow_execution_save(message, *args, **kwargs):
+        if message.channel == "execution" and message.run_status == "succeeded":
+            save_started.set()
+            time.sleep(0.35)
+        return original_save(message, *args, **kwargs)
+
+    monkeypatch.setattr(Message, "save", slow_execution_save)
+    original_engines = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = lambda: PipelineUsageEngine("output")
+    pipeline_task = asyncio.create_task(TaskRunner(EventBus()).run_pipeline(
+        task,
+        {"steps": [{
+            "key": "a", "label": "A", "engine": "claude", "prompt": "Do A",
+        }]},
+        tmp_path / "artifacts",
+    ))
+    try:
+        assert await asyncio.to_thread(save_started.wait, 2)
+        assert not pipeline_task.done()
+        heartbeat_started = time.perf_counter()
+        await asyncio.wait_for(asyncio.sleep(0), timeout=0.2)
+        assert time.perf_counter() - heartbeat_started < 0.2
         await pipeline_task
     finally:
         ENGINE_REGISTRY.clear()

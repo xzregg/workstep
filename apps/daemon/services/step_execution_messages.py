@@ -1,4 +1,4 @@
-"""Prepare a step's engine prompt and durable execution message."""
+"""Prepare and finalize durable step execution messages."""
 
 import asyncio
 import json
@@ -8,10 +8,14 @@ from typing import NamedTuple
 from agent_assistants.context_handoff import render_handoff_reference
 from agent_assistants.event_journal import JournalRef, TurnEventJournal
 from engines.core.acp_base import AcpEngineBase
-from models import Message, Task
+from engines.core.events import InternalEvent
+from models import Message, StepRun, Task
 from models.fields import utc_now
 from services.artifact_rounds import step_round_dir
-from services.messages import create_task_message, new_message_id
+from services.intervention import seal_unanswered_interactions
+from services.messages import (
+    create_task_message, extract_usage_json, new_message_id,
+)
 from services.pipeline import Step
 from services.prompt import (
     assemble_followup_prompt,
@@ -30,11 +34,18 @@ class StartedExecution(NamedTuple):
     journal_ref: JournalRef
 
 
-class StepExecutionStart:
-    """Own prompt selection and the first persisted/published execution event."""
+class CompletedExecution(NamedTuple):
+    engine: str | None
+    model: str | None
+    status: str
+
+
+class StepExecutionMessages:
+    """Own execution prompt, message start, finish, and unavailable engine failure."""
 
     def __init__(
         self, journal: TurnEventJournal, run_db, publish,
+        snapshot, async_snapshot,
         step_followups: dict[str, str], step_trigger_names: dict[str, str],
         initial_user_input_step_key: str | None,
         retry_message_ids: dict[str, str],
@@ -42,6 +53,8 @@ class StepExecutionStart:
         self._journal = journal
         self._run_db = run_db
         self._publish = publish
+        self._snapshot = snapshot
+        self._async_snapshot = async_snapshot
         self._step_followups = step_followups
         self._step_trigger_names = step_trigger_names
         self._initial_user_input_step_key = initial_user_input_step_key
@@ -197,3 +210,71 @@ class StepExecutionStart:
             "created_at": message_created_at.isoformat(),
         })
         return StartedExecution(prompt, msg_id, engine_session_id, journal_ref)
+
+    async def finish(
+        self, *, message_id: str,
+        journal_ref: JournalRef, events_collected: list[dict],
+        succeeded: bool, cancelled: bool, ended_at,
+    ) -> CompletedExecution:
+        """Seal the execution trace in the project database worker."""
+        def finalize_message():
+            message = Message.get_by_id(message_id)
+            self._journal.finish(journal_ref)
+            projection = self._snapshot(journal_ref)
+            message.events_json = seal_unanswered_interactions(
+                projection["events_json"]
+            )
+            message.event_summary_json = projection["event_summary_json"]
+            message.event_count = projection["event_count"]
+            message.last_event_seq = projection["last_event_seq"]
+            message.usage_json = extract_usage_json(events_collected)
+            message.content = projection["content"]
+            message.run_status = (
+                "cancelled" if cancelled else "succeeded" if succeeded else "failed"
+            )
+            message.ended_at = ended_at or utc_now()
+            message.save()
+            return message.engine, message.model, message.run_status
+
+        return CompletedExecution(*await self._run_db(finalize_message))
+
+    async def publish_completion(
+        self, task_id: str, step_key: str, message_id: str,
+        completion: CompletedExecution, event_sequence: int,
+    ) -> None:
+        """Publish only after the durable completion checkpoint exists."""
+        await self._publish(task_id, step_key, {
+            "channel": "execution", "message_id": message_id,
+            "engine": completion.engine, "model": completion.model,
+            "event_sequence": event_sequence,
+            "type": "message_completed",
+            "data": {"status": completion.status},
+        })
+
+    async def fail_unavailable(
+        self, *, message_id: str, journal_ref: JournalRef,
+        step_run: StepRun | None, error: str,
+    ) -> None:
+        """Finish the message and step attempt when no engine was created."""
+        error_event = InternalEvent(
+            type="error", data={"message": error}
+        ).to_dict()
+        await self._journal.afinish(journal_ref, error_event)
+        projection = await self._async_snapshot(journal_ref)
+
+        def persist_failure():
+            message = Message.get_by_id(message_id)
+            message.events_json = projection["events_json"]
+            message.event_summary_json = projection["event_summary_json"]
+            message.event_count = projection["event_count"]
+            message.last_event_seq = projection["last_event_seq"]
+            message.run_status = "failed"
+            message.ended_at = utc_now()
+            message.save()
+            if step_run is not None:
+                step_run.status = "failed"
+                step_run.error = error
+                step_run.ended_at = utc_now()
+                step_run.save()
+
+        await self._run_db(persist_failure)
