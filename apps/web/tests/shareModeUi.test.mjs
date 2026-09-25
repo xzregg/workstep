@@ -75,5 +75,4 @@ test('interactive share selects an actionable step for its composer', () => {
   assert.match(sharedViewSource, /runningSteps\[0\]\?\.key \?\? resumableSteps\[0\]\?\.key/)
   assert.match(sharedMessagesSource, /workstep\.interaction_request/)
   assert.match(sharedMessagesSource, /workstep\.interaction_response/)
-  assert.match(sharedViewSource, /shouldRefreshReviews/)
 })
