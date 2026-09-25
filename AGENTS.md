@@ -6,6 +6,7 @@
 
 - `README.md` / `README.zh-CN.md`：面向使用者的项目首页与快速开始。
 - `docs/README.md`：架构、开发和 GitHub 维护文档入口。
+- `docs/code-map.md`：按功能定位 Web、API、服务与测试的入口。
 - `PRODUCT.md` / `DESIGN.md`：产品定位与视觉系统。
 - 本文件：Agent 执行约束和当前实现不变量；与代码冲突时以已验证的代码行为为准，并同步修正文档。
 
@@ -109,7 +110,7 @@ yarn build
 - **图标按钮**：按钮直接内联 `svg`/`Icon` 时必须显式 `padding: 0`（或按设计给最小内边距），禁止依赖全局 `button` 默认 padding（`4px 8px`），否则固定尺寸按钮的内容区被压缩、图标被裁剪。
 - **复选框**：原生 `input[type="checkbox"]` 必须使用全局紧凑规格，默认可见尺寸统一为 `16px × 16px`，特殊密集选择场景最多 `18px × 18px`；禁止继承文本输入框的 `width: 100%` / `height: 32px`，也禁止通过放大可见方框满足触控尺寸。需要扩大点击区域时应使用 `label` 或外层容器提供命中范围，复选框本体仍保持紧凑。
 - **移动端适配**（`apps/web/src/mobile.css`，断点 `≤1023px`）：
-  - 所有交互元素最小触控高度 44px（`mobile.css` 全局规则），但消息操作按钮（`.chat-message-action`）和浮层小按钮（如 `.conversation-new-messages-button`）必须排除该规则，保持原始紧凑尺寸。新增浮层/弹出式小按钮时须同步在 `min-height: 44px` 的 `:not()` 排除列表中补充。
+  - 普通可见控件使用 `--mobile-control-regular` 的 32px 高度；菜单项和需要更大点击区域的控件使用 44px 变量。消息操作按钮（`.chat-message-action`）和浮层小按钮（如 `.conversation-new-messages-button`）保持紧凑。新增尺寸须复用 `mobile.css` 的共享变量，不写单独的像素高度。
   - `.btn-ghost` 在消息区域（`.chat-message-row`、`.process-trace-thinking-copy`、`.llm-tool-call`）内必须去掉 border、强制 `min-height/min-width: 24px`，避免 ghost 边框在小按钮上显得过大。
   - 思考中 / 运行中的消息（`[data-thinking]`、`.message-footer--running`）隐藏操作按钮；已完成消息的操作按钮始终可见（移动端无 hover，不依赖 `opacity: 0 → hover: opacity: 1`）。
   - 新增消息区域内的可交互按钮时，必须加 `chat-message-action` class 以复用移动端样式规则；新增类似的小尺寸图标按钮容器须在 `mobile.css` 的 ghost 按钮选择器中补充覆盖。

@@ -14,7 +14,7 @@ test('mobile visible buttons use one shared height', () => {
   assert.match(mobileCss, /--mobile-control-composer:\s*var\(--mobile-button-height\)/)
   assert.match(mobileCss, /--mobile-control-regular:\s*var\(--mobile-button-height\)/)
   assert.match(mobileCss, /--mobile-control-touch:\s*44px/)
-  assert.match(mobileCss, /--mobile-control-menu:\s*48px/)
+  assert.match(mobileCss, /--mobile-control-menu:\s*44px/)
   assert.match(mobileCss, /--mobile-toolbar-control-height:\s*var\(--mobile-control-regular\)/)
   assert.match(mobileCss, /--mobile-control-font-size:\s*calc\(13px \* var\(--font-scale\)\)/)
   assert.match(mobileCss, /--mobile-control-icon-size:\s*16px/)

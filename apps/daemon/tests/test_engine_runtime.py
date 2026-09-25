@@ -4,6 +4,8 @@ import base64
 import hashlib
 import importlib.metadata
 import json
+import threading
+import time
 from pathlib import Path
 
 import httpx
@@ -14,6 +16,39 @@ from httpx import ASGITransport, AsyncClient
 from api.engine import router
 from engines.core.base import EngineInstallResult
 from services import engine_runtime
+
+
+async def test_slow_download_file_open_keeps_event_loop_responsive(tmp_path, monkeypatch):
+    payload = b"download payload"
+    destination = tmp_path / "package.whl"
+    original_open = Path.open
+    opening_file = threading.Event()
+
+    def slow_open(path, *args, **kwargs):
+        if path == destination:
+            opening_file.set()
+            time.sleep(0.2)
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", slow_open)
+    service = engine_runtime.EngineRuntimeManager(
+        tmp_path,
+        transport=httpx.MockTransport(lambda _request: httpx.Response(200, content=payload)),
+    )
+    entry = {
+        "url": "https://files.pythonhosted.org/package.whl",
+        "sha256": hashlib.sha256(payload).hexdigest(),
+        "size_bytes": len(payload),
+    }
+    state = {"downloaded_bytes": 0}
+    start = time.monotonic()
+    download = asyncio.create_task(service._download(entry, destination, state))
+    assert await asyncio.to_thread(opening_file.wait, 2)
+    assert time.monotonic() - start < 0.17
+    await asyncio.sleep(0.02)
+    assert time.monotonic() - start < 0.17
+    await download
+    assert destination.read_bytes() == payload
 
 
 @pytest.fixture
