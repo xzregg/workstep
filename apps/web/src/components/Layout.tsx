@@ -115,8 +115,9 @@ export default function Layout({ onSelectProject, children }: Props) {
     const timer = window.setInterval(() => setSidebarNow(Date.now()), 60_000)
     return () => window.clearInterval(timer)
   }, [])
-  // 悬停会话行时，右侧的相对时间就地切换为 ⋯ 菜单按钮
+  // 鼠标悬停显示行操作；触屏点按时间只显示归档按钮。
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null)
+  const [revealedArchiveSessionId, setRevealedArchiveSessionId] = useState<string | null>(null)
   const { projects, activeProject, activeWorkflowId, fetchProjects, setActiveProject, renameProject, deleteProject, renameWorkflow, createWorkflow, deleteWorkflow, restoreWorkflow, reorderProjects, reorderWorkflows, setActiveWorkflow } = useProjectStore()
   const [showInitModal, setShowInitModal] = useState(false)
   const [renameId, setRenameId] = useState<string | null>(null)
@@ -1212,6 +1213,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             e.stopPropagation()
                             if (consumeSidebarLongPressClick()) return
                             if (renameSessionId === session.id) return
+                            setRevealedArchiveSessionId(null)
                             handleSelect(session.id, { meta: e.metaKey || e.ctrlKey, shift: e.shiftKey }, p.id)
                             // Only navigate on plain click (no modifiers)
                             if (!e.metaKey && !e.ctrlKey && !e.shiftKey) {
@@ -1230,10 +1232,12 @@ export default function Layout({ onSelectProject, children }: Props) {
                           onPointerMove={moveSidebarLongPress}
                           onPointerUp={cancelSidebarLongPress}
                           onPointerCancel={cancelSidebarLongPress}
-                          onPointerLeave={cancelSidebarLongPress}
+                          onPointerLeave={(e) => {
+                            cancelSidebarLongPress()
+                            if (e.pointerType === 'mouse') setHoveredSessionId(null)
+                          }}
                           onContextMenu={(e) => openSessionMenu(e, p.id, session.id, session.title)}
-                          onMouseEnter={() => setHoveredSessionId(session.id)}
-                          onMouseLeave={() => setHoveredSessionId(null)}
+                          onPointerEnter={(e) => { if (e.pointerType === 'mouse') setHoveredSessionId(session.id) }}
                           className="ws-row"
                           draggable={renameSessionId !== session.id && !isMultiSelect}
                           onDragStart={(e) => {
@@ -1329,14 +1333,14 @@ export default function Layout({ onSelectProject, children }: Props) {
                             completedTitle={t('layout.completedUnread')}
                           />
                           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0, height: 24 }}>
-                            {hoveredSessionId === session.id && (
+                            {(hoveredSessionId === session.id || revealedArchiveSessionId === session.id) && (
                               <Button
                                 variant="icon"
                                 className="ws-more-btn"
                                 onClick={(e) => { e.stopPropagation(); void handleArchiveSession(session.id, p.id) }}
                                 title={t('chatSession.archive')}
                                 aria-label={t('chatSession.archive')}
-                                style={{ width: 24, height: 24, borderRadius: 4, border: 'none', background: 'transparent', color: 'var(--meta)', padding: 0, flexShrink: 0 }}
+                                style={{ width: 24, height: 24, borderRadius: 4, border: 'none', background: 'transparent', color: 'var(--meta)', padding: 0, flexShrink: 0, opacity: revealedArchiveSessionId === session.id ? 1 : undefined, pointerEvents: revealedArchiveSessionId === session.id ? 'auto' : undefined }}
                               ><Icon name="archive" size={13} /></Button>
                             )}
                             {hoveredSessionId === session.id || !(session.updated_at || session.created_at) ? (
@@ -1348,18 +1352,26 @@ export default function Layout({ onSelectProject, children }: Props) {
                                 aria-label={t('layout.moreActions')}
                                 style={{ width: 24, height: 24, borderRadius: 4, border: 'none', background: 'transparent', color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))', lineHeight: '22px', padding: 0, flexShrink: 0 }}
                               >⋯</Button>
-                            ) : (
-                              <time
-                                dateTime={session.updated_at || session.created_at}
+                            ) : revealedArchiveSessionId === session.id ? null : (
+                              <button
+                                type="button"
                                 title={formatConversationDateTime(session.updated_at || session.created_at, Date.now(), locale)}
+                                aria-label={formatConversationDateTime(session.updated_at || session.created_at, Date.now(), locale)}
+                                onPointerDown={(e) => e.stopPropagation()}
+                                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation() }}
+                                onClick={(e) => { e.stopPropagation(); setRevealedArchiveSessionId(session.id) }}
+                                className="ws-session-time-button"
                                 style={{
                                   flexShrink: 0, whiteSpace: 'nowrap', padding: '0 6px',
                                   display: 'inline-flex', alignItems: 'center', height: '100%',
+                                  border: 0, background: 'transparent', cursor: 'pointer',
                                   fontSize: 'calc(10.5px * var(--font-scale))', color: 'var(--meta)', opacity: 0.8,
                                 }}
                               >
-                                {formatRelativeTime(session.updated_at || session.created_at, sidebarNow, t)}
-                              </time>
+                                <time dateTime={session.updated_at || session.created_at}>
+                                  {formatRelativeTime(session.updated_at || session.created_at, sidebarNow, t)}
+                                </time>
+                              </button>
                             )}
                           </div>
                         </div>
