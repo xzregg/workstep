@@ -1,4 +1,5 @@
 import ResizablePanel from '../components/ResizablePanel'
+import { useTaskHistory } from '../hooks/useTaskHistory'
 import { gitApi } from '../api/git'
 import { useSearchParams } from 'react-router-dom'
 import { useTaskRoute } from '../hooks/useTaskRoute'
@@ -14,7 +15,6 @@ import {
   useRef,
   useMemo,
   useCallback,
-  useLayoutEffect,
   type PointerEvent as ReactPointerEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
@@ -56,10 +56,8 @@ import {
   isStepResumableWithMessage,
   isStepActiveForStop,
   resolveStepDisplayStatus,
-  mergeLoadedTaskMessageEvents,
   mergeRefreshedTaskHistory,
   runningTaskMessageIds,
-  loadTaskHistoryWithRetry,
   findPreferredArtifact,
   findActiveStepIndex,
   findLatestDispatchedTask,
@@ -394,12 +392,11 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const lastProgrammaticScrollTopRef = useRef(0)
   const stepLastMessageRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const pendingStepScrollRef = useRef<string | null>(null)
-  const [historyMessages, setHistoryMessages] = useState<any[]>([])
-  const [historyLoading, setHistoryLoading] = useState(false)
-  const historyOffsetRef = useRef(0)
-  const historyHasOlderRef = useRef(true)
-  const historyOlderLoadingRef = useRef(false)
-  const historyPrependScrollHeightRef = useRef<number | null>(null)
+  const { historyMessages, setHistoryMessages, historyLoading,
+    loadOlderHistory, loadMessageEvents } = useTaskHistory({
+    taskId, projectId, userMessageEvents, reviewEventSignal,
+    chatScrollRef, shouldFollowMessagesRef, lastProgrammaticScrollTopRef,
+  })
   const [artifacts, setArtifacts] = useState<TaskArtifact[]>([])
   const [artifactDirectory, setArtifactDirectory] = useState('')
   const [artifactInputSnapshots, setArtifactInputSnapshots] = useState<TaskArtifactInputSnapshot[]>([])
@@ -430,7 +427,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   useOverlay(compact && Boolean(task), onClose, mobileDialogRef, false)
   const [panelBounds, setPanelBounds] = useState(initialPanelBounds)
   const [splitRatio, setSplitRatio] = useState(initialSplitRatio)
-  const historyFetchedRef = useRef<string>('')
   const interactionCleanupRef = useRef<(() => void) | null>(null)
   const persistedMessageIds = useMemo(
     () => new Set(historyMessages.map((message) => String(message.id))),
@@ -589,132 +585,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     }))
   }
 
-  // Load historical messages when panel opens (or task changes)
-  useEffect(() => {
-    if (!taskId || !projectId) {
-      historyFetchedRef.current = ''
-      return
-    }
-    const fetchKey = `${taskId}-${projectId}`
-    if (historyFetchedRef.current === fetchKey) return
-    const controller = new AbortController()
-    setHistoryLoading(true)
-    historyOffsetRef.current = 0
-    historyHasOlderRef.current = true
-    historyOlderLoadingRef.current = false
-    setHistoryMessages([])
-    void loadTaskHistoryWithRetry(
-      () => taskApi.history(taskId, projectId, TASK_HISTORY_PAGE_SIZE, 0),
-      controller.signal,
-    ).then((res) => {
-      if (controller.signal.aborted || !res) return
-      const messages = res.messages || []
-      historyOffsetRef.current = messages.length
-      historyHasOlderRef.current = messages.length === TASK_HISTORY_PAGE_SIZE
-      setHistoryMessages((current) => mergeRefreshedTaskHistory(current, messages))
-      historyFetchedRef.current = fetchKey
-    })
-      .finally(() => {
-        if (!controller.signal.aborted) setHistoryLoading(false)
-      })
-    return () => controller.abort()
-  }, [taskId, projectId])
-
-  const loadOlderHistory = useCallback(async () => {
-    if (
-      !taskId || !projectId
-      || historyLoading
-      || historyOlderLoadingRef.current
-      || !historyHasOlderRef.current
-    ) return
-    historyOlderLoadingRef.current = true
-    shouldFollowMessagesRef.current = false
-    const container = chatScrollRef.current
-    historyPrependScrollHeightRef.current = container?.scrollHeight ?? null
-    const offset = historyOffsetRef.current
-    try {
-      const response = await taskApi.history(taskId, projectId, TASK_HISTORY_PAGE_SIZE, offset)
-      const olderMessages = response.messages || []
-      historyOffsetRef.current += olderMessages.length
-      historyHasOlderRef.current = olderMessages.length === TASK_HISTORY_PAGE_SIZE
-      setHistoryMessages((current) => {
-        const currentIds = new Set(current.map((message) => String(message.id)))
-        return [
-          ...olderMessages.filter((message: any) => !currentIds.has(String(message.id))),
-          ...current,
-        ]
-      })
-    } catch {
-      historyPrependScrollHeightRef.current = null
-    } finally {
-      historyOlderLoadingRef.current = false
-    }
-  }, [historyLoading, projectId, taskId])
-
-  useLayoutEffect(() => {
-    const previousHeight = historyPrependScrollHeightRef.current
-    const container = chatScrollRef.current
-    if (previousHeight === null || !container) return
-    const nextTop = container.scrollTop + container.scrollHeight - previousHeight
-    container.scrollTop = nextTop
-    lastProgrammaticScrollTopRef.current = nextTop
-    historyPrependScrollHeightRef.current = null
-  }, [historyMessages])
-
-  const loadMessageEvents = useCallback(async (messageId: string) => {
-    if (!taskId || !projectId) return
-    const message = historyMessages.find((item) => item.id === messageId)
-    if (!message?.event_detail?.available || message.event_detail.loaded || message.event_detail.loading) return
-    setHistoryMessages((current) => current.map((item) => item.id === messageId
-      ? { ...item, event_detail: { ...item.event_detail, loading: true, error: '' } }
-      : item))
-    try {
-      let cursor = 0
-      let complete = false
-      const loadedEvents: any[] = []
-      let nextCursor: number | null = null
-      while (!complete) {
-        const page = await taskApi.messageEvents(taskId, messageId, projectId, cursor)
-        loadedEvents.push(...page.events)
-        complete = page.complete || page.next_cursor === null
-        nextCursor = page.next_cursor
-        if (!complete) {
-          // 游标必须推进，否则 while 会无限翻页拉取（内存无界增长直至崩溃）。
-          if (nextCursor === null || nextCursor === cursor) {
-            throw new Error('Event detail cursor did not advance')
-          }
-          cursor = nextCursor
-        }
-      }
-      setHistoryMessages((current) => mergeLoadedTaskMessageEvents(
-        current,
-        messageId,
-        loadedEvents,
-        { complete, next_cursor: nextCursor },
-      ))
-    } catch (reason) {
-      const error = reason instanceof Error ? reason.message : String(reason)
-      setHistoryMessages((current) => current.map((item) => item.id === messageId
-        ? { ...item, event_detail: { ...item.event_detail, loading: false, error } }
-        : item))
-    }
-  }, [historyMessages, projectId, taskId])
-
-  // A remote peer can send a user message while this detail is open. The
-  // store deliberately does not render user messages as live bubbles (they
-  // come from persisted history), so refresh history as soon as one arrives.
-  useEffect(() => {
-    if (!taskId || !projectId || userMessageEvents === 0) return
-    const timer = window.setTimeout(() => {
-      taskApi.history(taskId, projectId, TASK_HISTORY_PAGE_SIZE, 0)
-        .then((response) => setHistoryMessages((current) => (
-          mergeRefreshedTaskHistory(current, response.messages || [])
-        )))
-        .catch(() => undefined)
-    }, 50)
-    return () => window.clearTimeout(timer)
-  }, [projectId, taskId, userMessageEvents])
-
   useEffect(() => {
     if (!taskId || !projectId || missingLivePromptIds.length === 0) return
     let cancelled = false
@@ -774,18 +644,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       .then((res) => setReviews(res.reviews || []))
       .catch(() => setReviews([]))
   }, [taskId, projectId, task?.updated_at, reviewEventSignal])
-
-  useEffect(() => {
-    if (!taskId || !projectId || !reviewEventSignal) return
-    const timer = window.setTimeout(() => {
-      taskApi.history(taskId, projectId, TASK_HISTORY_PAGE_SIZE, 0)
-        .then((response) => setHistoryMessages((current) => (
-          mergeRefreshedTaskHistory(current, response.messages || [])
-        )))
-        .catch(() => undefined)
-    }, 50)
-    return () => window.clearTimeout(timer)
-  }, [projectId, reviewEventSignal, taskId])
 
   const refreshArtifacts = useCallback((): Promise<TaskArtifact[]> => {
     if (!taskId || !projectId) return Promise.resolve([])
