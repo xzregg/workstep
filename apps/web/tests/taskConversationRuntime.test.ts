@@ -33,7 +33,7 @@ test('a running task keeps the composer editable for live message insertion and 
 test('the last completed step response renders its output artifacts', () => {
   assert.match(taskDetailSource, /isLastExecutionResponse/)
   assert.match(taskDetailSource, /\['succeeded', 'completed'\]\.includes/)
-  assert.match(taskDetailSource, /renderMessageArtifacts\(\s*msgArtifacts/)
+  assert.match(taskDetailSource, /<TaskMessageArtifacts artifacts=\{msgArtifacts\}/)
   assert.match(taskDetailSource, /artifact\.step_key === stepKey/)
 })
 

@@ -32,6 +32,7 @@
 | 审核结果与决策 | `TaskReviewResult.tsx` | `taskReviewResult.test.tsx`、`reviewTerminateAction.test.mjs` |
 | 审核设置 | `TaskReviewConfigPanel.tsx` | `taskReviewConfigPanel.test.tsx` |
 | 消息时间线与滚动 | `taskConversationFeed.ts`、`src/hooks/useTaskConversationScroll.ts` | 对应 conversation 测试 |
+| 单条任务消息中的执行/审核产物入口 | `TaskMessageArtifacts.tsx`；`TaskDetailView.tsx` 提供当前消息的产物与打开回调 | `taskMessageArtifacts.test.tsx` |
 | 任务历史、向上分页与消息事件详情 | `src/hooks/useTaskHistory.ts` | `taskHistory.test.tsx`、`remoteChatSync.test.mjs` |
 | 任务协调引擎配置与供应商/模型选择 | `src/hooks/useTaskCoordinatorConfig.ts`；`TaskDetail.tsx` 负责接入任务详情输入区 | `useTaskCoordinatorConfig.test.tsx` |
 | 步骤停止、丢失会话重启与失败消息重试 | `src/hooks/useTaskStepControls.ts`；任务详情提供历史刷新和错误展示回调 | `useTaskStepControls.test.tsx` |

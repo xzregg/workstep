@@ -55,6 +55,7 @@ import TaskDetailHeader from './TaskDetailHeader'
 import TaskDetailDescription from './TaskDetailDescription'
 import TaskDetailTabs from './TaskDetailTabs'
 import TaskChatTargetTabs from './TaskChatTargetTabs'
+import TaskMessageArtifacts from './TaskMessageArtifacts'
 import TaskReviewConfigPanel from './TaskReviewConfigPanel'
 import TaskReviewResult from './TaskReviewResult'
 import TaskExecutionAnalysis from './TaskExecutionAnalysis'
@@ -659,76 +660,6 @@ export default function TaskDetailView({
     reviews,
     stepProgress[selectedStep]?.status,
   )
-  const renderMessageArtifacts = (
-    messageArtifacts: TaskArtifact[],
-    stepColor?: string,
-  ) => messageArtifacts.length > 0 ? (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
-      <div style={{
-        fontSize: 'calc(11px * var(--font-scale))',
-        fontWeight: 600,
-        color: 'var(--muted)',
-        fontFamily: 'var(--font-mono)',
-        textTransform: 'uppercase',
-        letterSpacing: '0.08em',
-      }}>
-        {t('taskDetail.reviewArtifacts')}
-      </div>
-      {messageArtifacts.map((artifact) => (
-        <div
-          key={artifact.path}
-          role="button"
-          tabIndex={0}
-          aria-label={t('taskDetail.openOutputAria', { name: artifact.name })}
-          onClick={() => onOpenArtifact(
-            artifact.name,
-            artifact.step_key,
-            artifact.round,
-            artifact.path,
-          )}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault()
-              onOpenArtifact(
-                artifact.name,
-                artifact.step_key,
-                artifact.round,
-                artifact.path,
-              )
-            }
-          }}
-          title={t('taskDetail.openFileTitle', { name: artifact.name })}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
-            background: 'var(--surface)', borderRadius: 6,
-            border: '1px solid var(--border-soft)', cursor: 'pointer',
-            fontSize: 'calc(13px * var(--font-scale))',
-          }}
-        >
-          {artifact.is_dir ? (
-            <Icon name="folder" size={14} color="var(--accent)" style={{ flexShrink: 0 }} />
-          ) : (
-            <span style={{
-              width: 6, height: 6, borderRadius: '50%',
-              background: stepColor || 'var(--accent)', flexShrink: 0,
-            }} />
-          )}
-          <span style={{ flex: 1, fontWeight: 500 }}>
-            {artifact.name}
-            {artifact.round ? (
-              <span style={{ marginLeft: 6, color: 'var(--muted)' }}>
-                {t('taskDetail.artifactRound', { round: artifact.round })}
-              </span>
-            ) : null}
-          </span>
-          <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--accent)' }}>
-            {t('common.open')}
-          </span>
-        </div>
-      ))}
-    </div>
-  ) : null
-
   const renderArtifactPanel = () => (
     <TaskArtifactBrowser
       artifacts={artifacts}
@@ -1596,10 +1527,7 @@ export default function TaskDetailView({
                                   },
                                 )}
                             {!isReview &&
-                              renderMessageArtifacts(
-                                msgArtifacts,
-                                stepInfo?.color,
-                              )}
+                              <TaskMessageArtifacts artifacts={msgArtifacts} stepColor={stepInfo?.color} onOpenArtifact={onOpenArtifact} />}
                             {isReview &&
                               msgReviewPending && (
                                 <div
@@ -1612,10 +1540,7 @@ export default function TaskDetailView({
                                     marginTop: 2,
                                   }}
                                 >
-                                  {renderMessageArtifacts(
-                                    msgArtifacts,
-                                    stepInfo?.color,
-                                  )}
+                                  {<TaskMessageArtifacts artifacts={msgArtifacts} stepColor={stepInfo?.color} onOpenArtifact={onOpenArtifact} />}
                                   {onReviewAction &&
                                     msgReview!.status ===
                                       'pending' && (

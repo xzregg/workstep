@@ -506,6 +506,21 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 }
 .task-chat-coordinator-tab[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
 .task-chat-target-hint { font-size: calc(11px * var(--font-scale)); color: var(--warn); }
+.task-message-artifacts { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.task-message-artifacts-heading {
+  font-size: calc(11px * var(--font-scale)); font-weight: 600; color: var(--muted);
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em;
+}
+.task-message-artifact {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  background: var(--surface); border-radius: 6px; border: 1px solid var(--border-soft);
+  cursor: pointer; font-size: calc(13px * var(--font-scale));
+}
+.task-message-artifact-icon, .task-message-artifact-dot { flex-shrink: 0; }
+.task-message-artifact-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--task-message-artifact-color); }
+.task-message-artifact-name { flex: 1; font-weight: 500; }
+.task-message-artifact-round { margin-left: 6px; color: var(--muted); }
+.task-message-artifact-open { font-size: calc(11px * var(--font-scale)); color: var(--accent); }
 .task-chat-step-tab {
   padding: 4px 10px; border-radius: 6px;
   font-size: calc(11px * var(--font-scale)); font-weight: 600;

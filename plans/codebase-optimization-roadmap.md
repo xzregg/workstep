@@ -95,3 +95,4 @@
 - 阶段一进行中：产物轮次选择、步骤输入输出映射、下游连接与接口变更判断移入同一个 `taskArtifactRules.ts`，由任务详情、分享页和 `TaskStepIoPanel` 复用；`taskDetailChat.ts` 从 1164 行降至 920 行。相关既有测试直接导入新模块。
 - 阶段一进行中：协调引擎配置加载、可用供应商与六类字段更新移入 `useTaskCoordinatorConfig.ts`；重复的保存状态与错误处理合并，`TaskDetail.tsx` 从 2251 行降至 2046 行。测试覆盖单次加载、切换引擎时清空模型/供应商，以及模型和思考强度字段更新。
 - 阶段一进行中：步骤停止、丢失会话重启、失败消息重试及各自进行中状态移入 `useTaskStepControls.ts`；`TaskDetail.tsx` 从 2046 行降至 2006 行。测试覆盖 API 请求顺序、历史刷新与跟随行为，重复触发受同一请求锁保护。
+- 阶段一进行中：普通执行消息和审核消息共用的产物列表移入 `TaskMessageArtifacts.tsx`，固定样式归入 CSS 类；`TaskDetailView.tsx` 从 2119 行降至 2044 行。测试覆盖鼠标和键盘打开产物。
