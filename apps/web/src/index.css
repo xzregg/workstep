@@ -4008,7 +4008,19 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   scrollbar-width: thin;
 }
 
+.assistant-chat-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.assistant-chat-error { padding: 6px 12px; font-size: calc(13px * var(--font-scale)); color: var(--danger); background: var(--bg); }
+.chat-composer-outer { position: relative; flex-shrink: 0; background: var(--bg); }
+.chat-composer-inner { display: flex; flex-direction: column; padding: 12px; overflow-y: visible; }
+.chat-composer-inner.is-resized,
+.chat-composer-inner.is-resizing { height: 100%; overflow-y: auto; }
+.chat-composer-inner.is-compact { height: auto; padding: 0; overflow-y: visible; }
+.chat-composer-resizing { cursor: row-resize; user-select: none; }
 .chat-composer-resize-handle {
+  height: 2px;
+  flex-shrink: 0;
+  cursor: row-resize;
+  background: var(--border-soft);
   outline: none;
   touch-action: none;
 }
