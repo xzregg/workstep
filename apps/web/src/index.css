@@ -531,6 +531,22 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .task-message-target-tag--coordinator { background: rgba(124,58,237,0.08); color: var(--ai-assistant); }
 .task-message-target-tag--insert { border: 0; background: var(--accent); color: var(--accent-fg); }
 .task-message-review-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 2px; }
+.step-prompt-editor-overlay {
+  position: fixed; inset: 0; z-index: 1275; background: rgba(0,0,0,0.35);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.step-prompt-editor-panel {
+  width: min(680px, 90vw); background: var(--bg); border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(0,0,0,0.24); overflow: hidden;
+}
+.step-prompt-editor-step-dot {
+  width: 9px; height: 9px; border-radius: 50%; background: var(--step-prompt-color);
+}
+.step-prompt-editor-heading { flex: 1; }
+.step-prompt-editor-title { font-size: calc(13px * var(--font-scale)); font-weight: 600; }
+.step-prompt-editor-subtitle { margin-top: 2px; font-size: calc(11px * var(--font-scale)); color: var(--meta); }
+.step-prompt-editor-body { padding: 18px; }
+.step-prompt-editor-error { margin-top: 8px; color: var(--danger); font-size: calc(13px * var(--font-scale)); }
 .task-chat-step-tab {
   padding: 4px 10px; border-radius: 6px;
   font-size: calc(11px * var(--font-scale)); font-weight: 600;
