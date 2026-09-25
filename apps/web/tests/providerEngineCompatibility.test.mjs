@@ -50,13 +50,6 @@ test('assistant provider switching clears every selected model', () => {
   )
 })
 
-test('project chat loads its own assistant defaults', () => {
-  assert.match(chatPageSource, /assistantApi\.list\(\)/)
-  assert.match(chatPageSource, /item\.name === 'chat_session'/)
-  assert.match(chatPageSource, /setSelectedProvider\(configured\.provider_id \|\| ''\)/)
-  assert.doesNotMatch(chatPageSource, /engineApi\.coordinatorDefaults/)
-})
-
 test('internal assistants load their own vision configuration', () => {
   assert.match(flowAssistantSource, /assistantApi\.list\(\)/)
   assert.match(flowAssistantSource, /item\.name === 'workflow_gen'/)

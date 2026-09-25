@@ -1,5 +1,5 @@
 import ProjectGitButton from '../components/git/ProjectGitButton'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import AssistantChatPanel from '../components/AssistantChatPanel'
@@ -33,18 +33,11 @@ import { useEngineQuota } from '../hooks/useEngineQuota'
 import { useChatSessionTransitions } from '../hooks/useChatSessionTransitions'
 import { useChatSessionActions } from '../hooks/useChatSessionActions'
 import { useChatSessionHistory } from '../hooks/useChatSessionHistory'
+import { useChatSessionEngineSelection } from '../hooks/useChatSessionEngineSelection'
 import { useThrottledMemo } from '../hooks/useThrottledMemo'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useI18n } from '../i18n'
 import { clearDraft } from '../utils/chatDraft'
-import {
-  clearIncompatibleProvider,
-  EMPTY_ENGINE_CONFIG,
-  hasChatEngineConfig,
-  loadChatEngineConfig,
-  saveChatEngineConfig,
-  type ChatEngineConfigState,
-} from '../utils/chatEngineConfig'
 import { applyAssistantQuickPrompt } from '../utils/taskQuickPrompts.js'
 import { contextUsageFromMessages } from '../utils/contextUsage.js'
 
@@ -97,24 +90,22 @@ export default function ChatPage() {
   // 引擎可用性（选项是否禁用）跟随共享状态，设置页改动即时生效。
   const sharedEngines = useCoordinatorEngines()
   const [coordinatorConfigError, setCoordinatorConfigError] = useState('')
-  const [selectedEngine, setSelectedEngine] = useState('')
-  const [selectedProvider, setSelectedProvider] = useState('')
-  const [selectedModel, setSelectedModel] = useState('')
-  const [selectedFastModel, setSelectedFastModel] = useState('')
-  const [selectedVisionModel, setSelectedVisionModel] = useState('')
-  const [selectedThinkingEffort, setSelectedThinkingEffort] = useState('')
-  // 镜像最新的引擎配置选择，供切换会话 / 路由卸载时懒保存到 localStorage。
-  const engineConfigRef = useRef<ChatEngineConfigState>({ ...EMPTY_ENGINE_CONFIG })
-  const engineConfig = useMemo<ChatEngineConfigState>(() => ({
-    engine: selectedEngine,
-    providerId: selectedProvider,
-    model: selectedModel,
-    fastModel: selectedFastModel,
-    visionModel: selectedVisionModel,
-    thinkingEffort: selectedThinkingEffort,
-  }), [selectedEngine, selectedProvider, selectedModel, selectedFastModel, selectedVisionModel, selectedThinkingEffort])
-  engineConfigRef.current = engineConfig
   const [providers, setProviders] = useState<ProviderInfo[]>([])
+  const {
+    config: engineConfig, setDefaults, restoreSession, applyHandoff,
+    chooseEngine, chooseProvider, setModel: setSelectedModel,
+    setFastModel: setSelectedFastModel, setVisionModel: setSelectedVisionModel,
+    setThinkingEffort: setSelectedThinkingEffort, reset: resetEngineSelection,
+  } = useChatSessionEngineSelection({
+    projectId: routeProjectId || activeProject?.id || '',
+    sessionId, savedSessionId: sessionParam, engines: sharedEngines, providers,
+  })
+  const selectedEngine = engineConfig.engine
+  const selectedProvider = engineConfig.providerId
+  const selectedModel = engineConfig.model
+  const selectedFastModel = engineConfig.fastModel
+  const selectedVisionModel = engineConfig.visionModel
+  const selectedThinkingEffort = engineConfig.thinkingEffort
   const [permissionMode, setPermissionMode] = useState('')
   const [planMode, setPlanMode] = useState(false)
   const [goalMode, setGoalMode] = useState(false)
@@ -169,19 +160,12 @@ export default function ChatPage() {
     sessionTitle,
     messageIds: messages.map((message) => message.id),
     running,
-    current: engineConfigRef.current,
+    current: engineConfig,
     defaultEngine: assistantConfig?.configured.engine || assistantConfig?.resolved?.engine || 'pydantic_ai',
     engines: sharedEngines,
     providers,
     permissionMode,
-    onHandoffApplied: (detail) => {
-      setSelectedEngine(detail.engine || '')
-      setSelectedProvider(detail.provider_id || '')
-      setSelectedModel(detail.model || '')
-      setSelectedFastModel(detail.fast_model || '')
-      setSelectedVisionModel(detail.vision_model || '')
-      setSelectedThinkingEffort('')
-    },
+    onHandoffApplied: applyHandoff,
     navigate,
   })
   const quickButtons = useChatListStore((s) => s.quickButtons)
@@ -245,13 +229,7 @@ export default function ChatPage() {
         setAssistantConfig(config)
         publishEngineCatalog(config.available_engines)
         if (!sessionParam) {
-          const configured = config.configured
-          setSelectedEngine(configured.engine || '')
-          setSelectedProvider(configured.provider_id || '')
-          setSelectedModel(configured.model || '')
-          setSelectedFastModel(configured.fast_model || '')
-          setSelectedVisionModel(configured.vision_model || '')
-          setSelectedThinkingEffort(configured.thinking_effort || '')
+          setDefaults(config.configured)
         }
         setCoordinatorConfigError('')
       })
@@ -260,7 +238,7 @@ export default function ChatPage() {
         setCoordinatorConfigError(reason instanceof Error ? reason.message : t('chatSession.configLoadFailed'))
       })
     return () => { active = false }
-  }, [activeProject?.id, t]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeProject?.id, t, setDefaults]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let active = true
@@ -299,45 +277,12 @@ export default function ChatPage() {
     onLoaded: (detail) => {
       setSessionTitle(detail.title || '')
       setPermissionMode(detail.permission_mode || '')
-      setSelectedEngine(detail.engine || '')
-      setSelectedProvider(detail.provider_id || '')
-      setSelectedModel(detail.model || '')
-      setSelectedFastModel(detail.fast_model || '')
-      setSelectedVisionModel(detail.vision_model || '')
-      // The backend does not return thinking effort. Restore this session's
-      // last explicit choice after its detail has loaded.
-      const saved = loadChatEngineConfig(routeProjectId || activeProject?.id || '', detail.id)
-      if (hasChatEngineConfig(saved)) {
-        const restored = clearIncompatibleProvider(saved, sharedEngines, providers)
-        if (restored.providerId !== saved.providerId) {
-          saveChatEngineConfig(routeProjectId || activeProject?.id || '', detail.id, restored)
-        }
-        setSelectedEngine(restored.engine)
-        setSelectedProvider(restored.providerId)
-        setSelectedModel(restored.model)
-        setSelectedFastModel(restored.fastModel)
-        setSelectedVisionModel(restored.visionModel)
-        setSelectedThinkingEffort(restored.thinkingEffort)
-      } else {
-        setSelectedThinkingEffort('')
-      }
+      restoreSession(detail)
     },
     onMissing: () => {
       navigate(`/chat?project=${encodeURIComponent(projectParam || '')}`, { replace: true })
     },
   })
-
-  // The provider catalog may arrive after session history. Revalidate the
-  // saved selection in place instead of fetching the same session again.
-  useEffect(() => {
-    if (!sessionParam || !routeProjectId || !selectedProvider) return
-    const saved = loadChatEngineConfig(routeProjectId, sessionParam)
-    if (saved.engine !== selectedEngine || saved.providerId !== selectedProvider) return
-    const compatible = clearIncompatibleProvider(saved, sharedEngines, providers)
-    if (compatible.providerId === saved.providerId) return
-    setSelectedProvider(compatible.providerId)
-    saveChatEngineConfig(routeProjectId, sessionParam, compatible)
-  }, [sessionParam, routeProjectId, selectedEngine, selectedProvider, sharedEngines, providers])
 
   // Keep the sidebar session list fresh (titles/previews after turns).
   useEffect(() => {
@@ -348,14 +293,6 @@ export default function ChatPage() {
   // The composer owns draft persistence; a new session starts with empty input.
   useEffect(() => {
     if (!sessionId) setInput('')
-  }, [sessionId, routeProjectId])
-
-  // 引擎配置同样懒保存：切换会话 / 路由卸载时把当前会话的选择落盘。
-  useEffect(() => {
-    if (!sessionId || !routeProjectId) return
-    return () => {
-      saveChatEngineConfig(routeProjectId, sessionId, engineConfigRef.current)
-    }
   }, [sessionId, routeProjectId])
 
   const changePermissionMode = useCallback(async (mode: string) => {
@@ -572,33 +509,17 @@ export default function ChatPage() {
             const defaultEngine = assistantConfig?.configured.engine || assistantConfig?.resolved?.engine || 'pydantic_ai'
             const targetEngine = engineId || defaultEngine
             if (requestEngineHandoff(targetEngine)) return
-            setSelectedEngine(engineId)
-            setSelectedProvider('')
-            setSelectedModel('')
-            setSelectedFastModel('')
-            setSelectedVisionModel('')
-            setSelectedThinkingEffort('')
+            chooseEngine(engineId)
           },
           onProviderChange: (providerId) => {
             if (requestProviderHandoff(providerId || '')) return
-            setSelectedProvider(providerId)
-            setSelectedModel('')
-            setSelectedFastModel('')
-            setSelectedVisionModel('')
-            setSelectedThinkingEffort('')
+            chooseProvider(providerId)
           },
           onModelChange: setSelectedModel,
           onFastModelChange: setSelectedFastModel,
           onVisionModelChange: setSelectedVisionModel,
           onThinkingEffortChange: setSelectedThinkingEffort,
-          onReset: () => {
-            setSelectedEngine('')
-            setSelectedProvider('')
-            setSelectedModel('')
-            setSelectedFastModel('')
-            setSelectedVisionModel('')
-            setSelectedThinkingEffort('')
-          },
+          onReset: resetEngineSelection,
         }}
         permission={{
           value: permissionMode,
