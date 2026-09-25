@@ -404,7 +404,7 @@ async def test_automatic_review_accepts_live_message_and_splits_output(tmp_path)
 
             return await original_run_db(slow_operation)
 
-        runner._run_db = slow_live_message_write
+        runner._live._run_db = slow_live_message_write
         sending = asyncio.create_task(
             runner.send_live_message(task.id, "build", "补充审核要求")
         )

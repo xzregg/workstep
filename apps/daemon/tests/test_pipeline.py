@@ -2199,7 +2199,7 @@ async def test_task_runner_cancel_step_finalizes_pipeline_records(tmp_path):
         assert step.status == "cancelled"
         assert step.error == "手动停止"
         assert message.run_status == "cancelled"
-        assert f"{task.id}:a" not in runner._running_engines
+        assert not runner._live.has_running_engine(f"{task.id}:a")
         assert events[-1]["type"] == "RUN_ERROR"
         assert events[-1]["status"] == "cancelled"
 

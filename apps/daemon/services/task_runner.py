@@ -10,7 +10,6 @@ from typing import AsyncIterator, Callable, TypeVar
 from models import (
     Message,
     ReviewRun,
-    StepSupplement,
     StepRun,
     Task,
     TaskStep,
@@ -34,6 +33,7 @@ from services.artifact_routing import (
 from services.pipeline import DAGScheduler, Step
 from services.task_step_start import start_step_state
 from services.step_rework import StepRework
+from services.step_live_messages import StepLiveMessages
 from services.review_messages import AutomaticReviewMessages
 from services.prompt import (
     assemble_followup_prompt,
@@ -59,22 +59,6 @@ from streaming.bus import EventBus
 
 logger = logging.getLogger(__name__)
 ResultT = TypeVar("ResultT")
-ENGINE_STOP_TIMEOUT_SECONDS = 10.0
-
-
-async def _stop_engine_safely(engine: object, run_key: str) -> None:
-    """Bound engine shutdown so a broken adapter cannot trap the workflow."""
-    try:
-        await asyncio.wait_for(
-            engine.stop(),
-            timeout=ENGINE_STOP_TIMEOUT_SECONDS,
-        )
-    except asyncio.TimeoutError:
-        logger.error("Engine stop timed out for %s", run_key)
-    except Exception:
-        logger.exception("Engine stop raised for %s", run_key)
-
-
 def _effective_review_mode(config: dict) -> str:
     """Resolve skip/auto/manual, honouring explicit mode or legacy auto flag."""
     if config.get("mode") in ("skip", "auto", "manual"):
@@ -164,13 +148,14 @@ class TaskRunner:
         self._entry_step_key = entry_step_key
         self._initial_user_input_step_key = initial_user_input_step_key
         self._retry_message_ids = dict(retry_message_ids or {})
-        self._running_engines: dict[str, object] = {}  # step_run_key → engine
-        self._live_message_queues: dict[str, asyncio.Queue] = {}
-        self._live_message_channels: dict[str, str] = {}
-        self._live_message_prompts: dict[str, str] = {}
-        self._cancelled_steps: set[str] = set()
         self._graceful_shutdown = False
         self._event_journal = TurnEventJournal()
+        self._live = StepLiveMessages(
+            self._event_journal,
+            self._run_db,
+            self._publish,
+            self._ajournal_snapshot,
+        )
         self._review_messages = AutomaticReviewMessages(
             self._event_journal, self._run_db, self._publish
         )
@@ -209,107 +194,6 @@ class TaskRunner:
 
     async def close(self) -> None:
         await self._event_journal.aclose()
-
-    async def _prepare_review_live_messages(
-        self,
-        task: Task,
-        step: Step,
-        step_run: StepRun,
-        artifacts_dir: Path,
-        run_key: str,
-        message_id: str,
-        journal_ref: JournalRef,
-    ):
-        previous_queue = self._live_message_queues.pop(run_key, None)
-        if previous_queue is not None:
-            while not previous_queue.empty():
-                pending_id, _ = previous_queue.get_nowait()
-                self._live_message_prompts.pop(pending_id, None)
-                await self._run_db(lambda mid=pending_id: self._fail_live_message(mid))
-        self._running_engines.pop(run_key, None)
-        queue: asyncio.Queue = asyncio.Queue()
-        self._live_message_queues[run_key] = queue
-        self._live_message_channels[run_key] = "review"
-        segment = {"message_id": message_id, "journal_ref": journal_ref}
-
-        async def record_event(event: dict) -> None:
-            await self._event_journal.arecord(segment["journal_ref"], event)
-            await self._event_journal.async_flush(segment["journal_ref"])
-
-        async def handle_live_message(data: dict) -> str | None:
-            inserted_id = data.get("message_id")
-            if not inserted_id:
-                return None
-            delivered = data.get("status") == "delivered"
-            def finish_user_message():
-                user_message = Message.get_by_id(inserted_id)
-                user_message.run_status = "succeeded" if delivered else "failed"
-                user_message.ended_at = utc_now()
-                user_message.save()
-                return self._live_message_prompts.pop(inserted_id, user_message.content)
-
-            inserted_prompt = await self._run_db(finish_user_message)
-            if not delivered:
-                return None
-
-            seal_time = utc_now()
-            await self._event_journal.afinish(segment["journal_ref"])
-            snapshot = await self._ajournal_snapshot(segment["journal_ref"])
-
-            def seal_review_message():
-                old_message = Message.get_by_id(segment["message_id"])
-                old_message.content = snapshot["content"]
-                old_message.events_json = snapshot["events_json"]
-                old_message.event_summary_json = snapshot["event_summary_json"]
-                old_message.event_count = snapshot["event_count"]
-                old_message.last_event_seq = snapshot["last_event_seq"]
-                old_message.run_status = "succeeded"
-                old_message.ended_at = seal_time
-                old_message.save()
-                return old_message.engine, old_message.model
-
-            engine, model = await self._run_db(seal_review_message)
-            await self._publish(task.id, step.key, {
-                "channel": "review", "message_id": segment["message_id"],
-                "engine": engine, "model": model,
-                "type": "message_completed", "data": {"status": "succeeded"},
-            })
-            next_id = new_message_id()
-            next_journal = await self._event_journal.astart(
-                artifacts_dir.parent, f"task-{task.id}", next_id,
-            )
-            await self._run_db(lambda: create_task_message(
-                id=next_id, task=task, channel="review", step_key=step.key,
-                role="assistant", content="审核中", engine=engine, model=model,
-                run_id=next_id, step_run_id=step_run.id,
-                artifact_round=step_run.artifact_round, run_status="running",
-                prompt_json=json.dumps({"prompt": inserted_prompt}, ensure_ascii=False),
-                event_log_path=next_journal.relative_path,
-                position=0, started_at=seal_time, created_at=seal_time,
-            ))
-            segment.update(message_id=next_id, journal_ref=next_journal)
-            await self._publish(task.id, step.key, {
-                "channel": "review", "message_id": next_id,
-                "engine": engine, "model": model,
-                "type": "message_started",
-                "data": {"role": "assistant", "status": "running", "content": "审核中",
-                         "prompt": inserted_prompt},
-                "created_at": seal_time.isoformat(),
-            })
-            return next_id
-
-        return segment, queue, record_event, handle_live_message
-
-    async def _finish_review_live_messages(self, run_key: str) -> None:
-        queue = self._live_message_queues.pop(run_key, None)
-        self._live_message_channels.pop(run_key, None)
-        self._running_engines.pop(run_key, None)
-        if queue is None:
-            return
-        while not queue.empty():
-            message_id, _ = queue.get_nowait()
-            self._live_message_prompts.pop(message_id, None)
-            await self._run_db(lambda mid=message_id: self._fail_live_message(mid))
 
     async def run_pipeline(
         self,
@@ -765,7 +649,7 @@ class TaskRunner:
                         )
                     )
                     (review_segment, review_queue, review_event_handler,
-                     review_live_handler) = await self._prepare_review_live_messages(
+                     review_live_handler) = await self._live.prepare_review(
                         task, step, step_run, artifacts_dir, run_key,
                         review_message_id, review_journal_ref,
                     )
@@ -774,9 +658,7 @@ class TaskRunner:
                     lambda event: self._publish(task.id, step_key, event),
                     self._run_db,
                     review_event_handler,
-                    set_active_engine=lambda engine: self._running_engines.__setitem__(
-                        run_key, engine
-                    ),
+                    set_active_engine=lambda engine: self._live.set_engine(run_key, engine),
                     live_message_queue=review_queue,
                     on_live_message=review_live_handler,
                 )
@@ -797,10 +679,10 @@ class TaskRunner:
                 if review_segment is not None:
                     review_message_id = review_segment["message_id"]
                     review_journal_ref = review_segment["journal_ref"]
-                    await self._finish_review_live_messages(run_key)
+                    await self._live.finish_review(run_key)
                 if self._graceful_shutdown:
                     raise asyncio.CancelledError
-                cancelled = run_key in self._cancelled_steps
+                cancelled = self._live.is_cancelled(run_key)
                 if cancelled:
                     def mark_review_cancelled():
                         review = ReviewRun.get_by_id(outcome.review_run.id)
@@ -902,10 +784,10 @@ class TaskRunner:
                         task, scheduler, artifacts_dir, workflow_run, completed,
                     )
         finally:
-            if self._live_message_channels.get(run_key) == "review":
-                await self._finish_review_live_messages(run_key)
-            self._running_engines.pop(run_key, None)
-            self._cancelled_steps.discard(run_key)
+            if self._live.is_review_channel(run_key):
+                await self._live.finish_review(run_key)
+            self._live.clear_engine(run_key)
+            self._live.discard_cancelled(run_key)
             running.discard(step_key)
 
         if retry_feedback is not None:
@@ -1326,13 +1208,7 @@ class TaskRunner:
             running.discard(step_key)
             return
 
-        self._cancelled_steps.discard(run_key)
-        self._running_engines[run_key] = engine
-        live_queue: asyncio.Queue | None = None
-        engine_capabilities = getattr(engine, "capabilities", None)
-        if engine_capabilities is not None and engine_capabilities.supports_live_step_message:
-            live_queue = asyncio.Queue()
-            self._live_message_queues[run_key] = live_queue
+        live_queue = self._live.start_execution(run_key, engine)
         events_collected = []
         content_parts = []
         reported_error: str | None = None
@@ -1349,6 +1225,7 @@ class TaskRunner:
             nonlocal execution_message_finalized
             if execution_message_finalized:
                 return
+            cancelled_by_user = self._live.is_cancelled(run_key)
 
             def finalize_message():
                 msg = Message.get_by_id(msg_id)
@@ -1362,7 +1239,7 @@ class TaskRunner:
                 msg.last_event_seq = snapshot["last_event_seq"]
                 msg.usage_json = extract_usage_json(events_collected)
                 msg.content = snapshot["content"]
-                if run_key in self._cancelled_steps:
+                if cancelled_by_user:
                     msg.run_status = "cancelled"
                 else:
                     msg.run_status = (
@@ -1484,13 +1361,13 @@ class TaskRunner:
                             )
                             live_message.ended_at = utc_now()
                             live_message.save()
-                            return self._live_message_prompts.pop(
-                                live_message_id,
-                                live_message.content,
-                            )
+                            return live_message.content
                         try:
-                            live_message_content = await self._run_db(
+                            stored_content = await self._run_db(
                                 finish_live_message
+                            )
+                            live_message_content = self._live.pop_prompt(
+                                live_message_id, stored_content
                             )
                         except Message.DoesNotExist:
                             pass
@@ -1696,7 +1573,7 @@ class TaskRunner:
 
             execution_ended_at = utc_now()
 
-            if run_key in self._cancelled_steps:
+            if self._live.is_cancelled(run_key):
                 # 手动停止：步骤状态与普通失败区分，前端显示「手动停止」。
                 ts = await self._persist_step_status(
                     task.id, step_key, "cancelled", "手动停止", utc_now()
@@ -1797,7 +1674,7 @@ class TaskRunner:
                                 )
                             )
                             (review_segment, review_queue, review_event_handler,
-                             review_live_handler) = await self._prepare_review_live_messages(
+                             review_live_handler) = await self._live.prepare_review(
                                 task, step, step_run, artifacts_dir, run_key,
                                 review_message_id, review_journal_ref,
                             )
@@ -1806,10 +1683,8 @@ class TaskRunner:
                             lambda event: self._publish(task.id, step_key, event),
                             self._run_db,
                             review_event_handler,
-                            set_active_engine=lambda active_engine: (
-                                self._running_engines.__setitem__(
-                                    run_key, active_engine
-                                )
+                            set_active_engine=lambda active_engine: self._live.set_engine(
+                                run_key, active_engine
                             ),
                             live_message_queue=review_queue,
                             on_live_message=review_live_handler,
@@ -1831,8 +1706,8 @@ class TaskRunner:
                         if review_segment is not None:
                             review_message_id = review_segment["message_id"]
                             review_journal_ref = review_segment["journal_ref"]
-                            await self._finish_review_live_messages(run_key)
-                        cancelled_during_review = run_key in self._cancelled_steps
+                            await self._live.finish_review(run_key)
+                        cancelled_during_review = self._live.is_cancelled(run_key)
                         if cancelled_during_review:
                             def fail_cancelled_review():
                                 review = ReviewRun.get_by_id(outcome.review_run.id)
@@ -2085,20 +1960,7 @@ class TaskRunner:
             except Exception:
                 logger.exception("Failed to update message %s", msg_id)
 
-            self._running_engines.pop(run_key, None)
-            live_queue = self._live_message_queues.pop(run_key, None)
-            self._live_message_channels.pop(run_key, None)
-            if live_queue is not None:
-                pending: list[tuple[str, str]] = []
-                while not live_queue.empty():
-                    pending.append(live_queue.get_nowait())
-                for message_id, _ in pending:
-                    self._live_message_prompts.pop(message_id, None)
-                    await self._run_db(
-                        lambda mid=message_id: self._fail_live_message(mid)
-                    )
-            cancelled_by_user = run_key in self._cancelled_steps
-            self._cancelled_steps.discard(run_key)
+            cancelled_by_user = await self._live.finish_execution(run_key)
             running.discard(step_key)
             if step_run is not None:
                 if (
@@ -2365,16 +2227,6 @@ class TaskRunner:
             )
         )
 
-    @staticmethod
-    def _fail_live_message(message_id):
-        try:
-            live_message = Message.get_by_id(message_id)
-        except Message.DoesNotExist:
-            return
-        live_message.run_status = "failed"
-        live_message.ended_at = utc_now()
-        live_message.save()
-
     async def _fail_step(self, ts: TaskStep, task: Task, step_key: str, error: str):
         """Mark a step as failed."""
         def persist_failure():
@@ -2395,20 +2247,7 @@ class TaskRunner:
         })
 
     async def cancel_step(self, task_id: str, step_key: str) -> bool:
-        """Cancel a running step (idempotent)."""
-        run_key = f"{task_id}:{step_key}"
-        if run_key in self._cancelled_steps:
-            # 已在停止流程中：重复点击直接视为成功，不再重复 stop。
-            return True
-        cancelled_interactions = intervention_manager.cancel_for_task_step(
-            task_id, step_key
-        )
-        engine = self._running_engines.get(run_key)
-        if not engine:
-            return cancelled_interactions > 0
-        self._cancelled_steps.add(run_key)
-        await _stop_engine_safely(engine, run_key)
-        return True
+        return await self._live.cancel_step(task_id, step_key)
 
     async def send_live_message(
         self,
@@ -2417,135 +2256,17 @@ class TaskRunner:
         content: str,
         as_guidance: bool = False,
     ) -> dict:
-        """Send a user message into a running step or automatic review.
-
-        Persists a user message in the active channel and queues it for the
-        running engine to inject mid-run. With ``as_guidance`` the content is
-        also saved as active step guidance (``StepSupplement``) so future
-        attempts include it in the step prompt. Raises ValueError when the
-        step is not running or its engine cannot deliver live messages.
-        """
-        normalized = content.strip()
-        if not normalized:
-            raise ValueError("消息内容不能为空")
-        run_key = f"{task_id}:{step_key}"
-        engine = self._running_engines.get(run_key)
-        if engine is None:
-            raise ValueError(f"步骤未在运行: {step_key}")
-        engine_capabilities = getattr(engine, "capabilities", None)
-        if engine_capabilities is None or not engine_capabilities.supports_live_step_message:
-            raise ValueError("该引擎不支持执行中消息注入")
-        queue = self._live_message_queues.get(run_key)
-        if queue is None:
-            raise ValueError("步骤消息队列不可用")
-        channel = self._live_message_channels.get(run_key, "execution")
-        now = utc_now()
-        message_id = new_message_id()
-        def persist_live_message():
-            try:
-                task = Task.get_by_id(task_id)
-            except Task.DoesNotExist:
-                raise ValueError(f"任务不存在: {task_id}")
-            message = create_task_message(
-                id=message_id,
-                task=task,
-                channel=channel,
-                step_key=step_key,
-                role="user",
-                content=normalized,
-                run_id=message_id,
-                run_status="running",
-                position=0,
-                started_at=now,
-                created_at=now,
-            )
-            trigger_name = message.author_name or task.creator_name or ""
-            injected_content = (
-                f"## Triggered by\n{trigger_name}\n\n## User message\n{normalized}"
-                if trigger_name
-                else normalized
-            )
-            if as_guidance:
-                StepSupplement.create(
-                    id=str(uuid.uuid4()),
-                    task=task,
-                    step_key=step_key,
-                    content=normalized,
-                    source_proposal=None,
-                    origin="live_guidance",
-                    created_sequence=(
-                        task.next_message_sequence - 1
-                        if task.next_message_sequence > 0
-                        else 0
-                    ),
-                    created_at=now,
-                )
-                task.state_version += 1
-                task.save()
-            return message.sequence, injected_content
-
-        sequence, injected_content = await self._run_db(persist_live_message)
-        self._live_message_prompts[message_id] = injected_content
-        await self._publish(task_id, step_key, {
-            "channel": channel,
-            "message_id": message_id,
-            "type": "message_started",
-            "data": {
-                "content": normalized,
-                "status": "queued",
-                "role": "user",
-                "as_guidance": as_guidance,
-            },
-        })
-        queue.put_nowait((message_id, injected_content))
-        return {
-            "message_id": message_id,
-            "step_key": step_key,
-            "channel": channel,
-            "status": "queued",
-            "sequence": sequence,
-            "created_at": now.isoformat(),
-        }
+        return await self._live.send_live_message(
+            task_id, step_key, content, as_guidance
+        )
 
     async def cancel_task(self, task_id: str) -> bool:
-        """Cancel every running step for a task."""
-        cancelled_interactions = intervention_manager.cancel_for_task(task_id)
-        prefix = f"{task_id}:"
-        run_keys = [
-            run_key
-            for run_key in self._running_engines
-            if run_key.startswith(prefix)
-        ]
-        if not run_keys:
-            return cancelled_interactions > 0
-        for run_key in run_keys:
-            self._cancelled_steps.add(run_key)
-        await asyncio.gather(
-            *(
-                _stop_engine_safely(self._running_engines[run_key], run_key)
-                for run_key in run_keys
-            ),
-        )
-        return True
+        return await self._live.cancel_task(task_id)
 
     async def stop_for_shutdown(self) -> None:
-        """Stop engine subprocesses without marking steps failed.
-
-        Used by graceful daemon shutdown so interrupted runs stay ``running``
-        and are resumed from the last completed node on the next start.
-        """
+        """Stop engines while leaving running steps recoverable."""
         self._graceful_shutdown = True
-        running_engines = list(self._running_engines.items())
-        for run_key, _engine in running_engines:
-            task_id, _separator, _step_key = run_key.partition(":")
-            intervention_manager.cancel_for_task(task_id)
-        await asyncio.gather(
-            *(
-                _stop_engine_safely(engine, run_key)
-                for run_key, engine in running_engines
-            ),
-        )
-        self._running_engines.clear()
+        await self._live.stop_for_shutdown()
 
     async def _publish(self, task_id: str, step_key: str, event: dict):
         """发布出口：内部事件 → AG-UI 标准事件后推送。"""
