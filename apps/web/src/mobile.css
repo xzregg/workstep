@@ -4,7 +4,7 @@
   --mobile-control-composer: var(--mobile-button-height);
   --mobile-control-regular: var(--mobile-button-height);
   --mobile-control-touch: 44px;
-  --mobile-control-menu: 48px;
+  --mobile-control-menu: 44px;
   --mobile-toolbar-control-height: var(--mobile-control-regular);
   --mobile-control-font-size: calc(13px * var(--font-scale));
   --mobile-control-icon-size: 16px;
@@ -531,8 +531,7 @@
 }
 
 @media (pointer: coarse), (max-width: 1023px) {
-  /* 触控高度：默认给按钮一个合理的最小高度（36px），
-     只有特定区域（toolbar、sheet body、菜单项）才需要 44px。 */
+  /* 可见按钮默认 32px；菜单项与少数触控目标使用 44px。 */
   button, [role="button"], .ws-row { min-height: var(--mobile-button-height); }
   .mobile-sheet-body > button, .mobile-sheet-body > select { min-height: var(--mobile-button-height); }
   .chat-input-menu-item { min-height: var(--mobile-control-menu); }

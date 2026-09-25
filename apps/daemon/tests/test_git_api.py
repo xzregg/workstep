@@ -136,6 +136,33 @@ async def test_task_workspace_selects_only_requested_repository(client, layout):
     assert {tree['alias'] for tree in restored['worktrees']} == {'fifth', 'payment'}
 
 
+async def test_slow_workspace_source_check_keeps_event_loop_responsive(client, layout, monkeypatch):
+    http, service = client
+    root, repo, _ = layout
+    repositories = await scan(http)
+    payment = next(item for item in repositories['repositories'] if item['name'] == 'payment')
+    from services.git.task_workspace import TaskGitWorkspace
+
+    original_is_dir = Path.is_dir
+    checking_source = threading.Event()
+
+    def slow_source_check(path):
+        if path == repo:
+            checking_source.set()
+            time.sleep(.2)
+        return original_is_dir(path)
+
+    monkeypatch.setattr(Path, 'is_dir', slow_source_check)
+    workspace = TaskGitWorkspace(service)
+    started = time.monotonic()
+    operation = asyncio.create_task(workspace.add(root, 'slow-check', payment['id'], 'payment', 'main'))
+    assert await asyncio.to_thread(checking_source.wait, 2)
+    assert time.monotonic() - started < .17
+    await asyncio.sleep(.02)
+    assert time.monotonic() - started < .17
+    assert (await operation)['worktrees'][0]['alias'] == 'payment'
+
+
 async def test_workflow_task_workspace_uses_artifact_task_directory(client, layout):
     http, service = client
     root, _repo, _ = layout

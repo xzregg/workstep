@@ -145,9 +145,17 @@ class TaskGitWorkspace:
         repo = (await asyncio.to_thread(self._project_repositories, project)).get(repository_id)
         if not repo:
             raise GitError("仓库不属于当前项目，请重新扫描。", 404)
-        project_ids = {p["id"] for p in self.git.snapshot["projects"] if Path(p["path"]).resolve() == project}
-        source = next((project / m["relative_path"] for m in repo["projects"]
-                       if m["id"] in project_ids and (project / m["relative_path"]).is_dir()), None)
+        def find_source():
+            project_ids = {
+                p["id"] for p in self.git.snapshot["projects"]
+                if Path(p["path"]).resolve() == project
+            }
+            return next((
+                project / m["relative_path"] for m in repo["projects"]
+                if m["id"] in project_ids and (project / m["relative_path"]).is_dir()
+            ), None)
+
+        source = await asyncio.to_thread(find_source)
         if source is None:
             raise GitError("源仓库目录已不存在。", 404)
         actual_source = await asyncio.to_thread(source.resolve)

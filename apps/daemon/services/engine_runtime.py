@@ -32,6 +32,15 @@ from engines.core.registry import list_all_engines
 from services.config import CONFIG_DIR, config_store
 
 
+@asynccontextmanager
+async def _temporary_directory(**kwargs):
+    temporary = await asyncio.to_thread(TemporaryDirectory, **kwargs)
+    try:
+        yield Path(temporary.name)
+    finally:
+        await asyncio.to_thread(temporary.cleanup)
+
+
 class EngineRuntimeManager:
     def __init__(self, directory: Path, *, transport=None):
         self.directory = directory
@@ -220,11 +229,14 @@ class EngineRuntimeManager:
                 length = response.headers.get("content-length")
                 if length and length.isdigit():
                     state["total_bytes"] = int(length)
-                with destination.open("wb") as file:
+                file = await asyncio.to_thread(destination.open, "wb")
+                try:
                     async for chunk in response.aiter_bytes(256 * 1024):
                         await asyncio.to_thread(file.write, chunk)
                         digest.update(chunk)
                         state["downloaded_bytes"] += len(chunk)
+                finally:
+                    await asyncio.to_thread(file.close)
         if state["total_bytes"] is not None and state["total_bytes"] != state["downloaded_bytes"]:
             raise ValueError("安装包下载不完整，请重试")
         if digest.hexdigest() != expected:
@@ -235,17 +247,17 @@ class EngineRuntimeManager:
         package_dir = os.environ.get("WORKSTEP_ENGINE_PACKAGE_DIR", "").strip()
         if not package_dir:
             return await install_python_package(str(archive), upgrade=True)
-        target = Path(package_dir).expanduser().resolve()
+        target = await asyncio.to_thread(lambda: Path(package_dir).expanduser().resolve())
         await asyncio.to_thread(target.parent.mkdir, parents=True, exist_ok=True)
         # pip --target does not remove older dist-info. Stage the shared site,
         # then remove only metadata superseded by the installer report.
-        with TemporaryDirectory(prefix=".workstep-packages-", dir=target.parent, ignore_cleanup_errors=True) as temporary:
-            stage = Path(temporary) / "packages"
-            report = Path(temporary) / "install-report.json"
+        async with _temporary_directory(prefix=".workstep-packages-", dir=target.parent, ignore_cleanup_errors=True) as temporary:
+            stage = temporary / "packages"
+            report = temporary / "install-report.json"
             if await asyncio.to_thread(target.exists):
                 await asyncio.to_thread(shutil.copytree, target, stage)
             else:
-                stage.mkdir()
+                await asyncio.to_thread(stage.mkdir)
             result = await install_with_command([
                 sys.executable, "-m", "pip", "install", "--upgrade", "--target", str(stage),
                 "--report", str(report), str(archive),
@@ -267,7 +279,7 @@ class EngineRuntimeManager:
                                 if canonicalize_name(d.metadata.get("Name", "")) == canonicalize_name(spec.name)), None)
                 if current != version:
                     raise ValueError("临时安装目录版本校验失败，原安装保持不变")
-                backup = Path(temporary) / "previous"
+                backup = temporary / "previous"
                 had_target = target.exists()
                 if had_target:
                     target.rename(backup)
@@ -290,9 +302,9 @@ class EngineRuntimeManager:
                 entry = next((e for e in entries if e["version"] == state["target_version"]), None)
                 if entry is None:
                     raise ValueError("该版本不可用或不满足当前平台和最低版本要求，请刷新版本列表")
-                with TemporaryDirectory(prefix="workstep-engine-") as directory:
-                    destination = Path(directory) / entry["filename"]
-                    if destination.parent != Path(directory):
+                async with _temporary_directory(prefix="workstep-engine-") as directory:
+                    destination = directory / entry["filename"]
+                    if destination.parent != directory:
                         raise ValueError("无效的安装包文件名")
                     await self._download(entry, destination, state)
                     state["stage"] = "installing"
