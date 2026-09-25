@@ -32,6 +32,7 @@ import { usePromptEnhance } from '../hooks/usePromptEnhance'
 import { useEngineQuota } from '../hooks/useEngineQuota'
 import { useChatSessionTransitions } from '../hooks/useChatSessionTransitions'
 import { useChatSessionActions } from '../hooks/useChatSessionActions'
+import { useChatSessionHistory } from '../hooks/useChatSessionHistory'
 import { useThrottledMemo } from '../hooks/useThrottledMemo'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useI18n } from '../i18n'
@@ -277,7 +278,7 @@ export default function ChatPage() {
     void useChatListStore.getState().fetchQuickButtons(activeProject.id)
   }, [activeProject?.id])
 
-  // Load one session's history when the URL session id changes.
+  // URL selection owns the page state; history loading owns the request and store.
   useEffect(() => {
     setSessionId(sessionParam)
     if (!sessionParam) {
@@ -286,79 +287,57 @@ export default function ChatPage() {
       setSendError('')
       setPermissionMode('')
       resetEnhance()
-      return
+    } else {
+      resetEnhance()
     }
-    if (!activeProject?.id) return
-    resetEnhance()
-    let active = true
-    const store = useChatSessionStore.getState()
-    store.newSession(sessionParam)
-    chatSessionApi.get(sessionParam, activeProject.id)
-      .then((detail) => {
-        if (!active) return
-        setSessionTitle(detail.title || '')
-        setPermissionMode(detail.permission_mode || '')
-        setSelectedEngine(detail.engine || '')
-        setSelectedProvider(detail.provider_id || '')
-        setSelectedModel(detail.model || '')
-        setSelectedFastModel(detail.fast_model || '')
-        setSelectedVisionModel(detail.vision_model || '')
-        // 优先恢复本地记录的用户选择（后端会话详情不含 thinking_effort，
-        // 且用户可能改过配置但尚未发消息）。无记录时思考强度归默认。
-        const saved = loadChatEngineConfig(routeProjectId || activeProject.id, sessionParam)
-        if (hasChatEngineConfig(saved)) {
-          const restored = clearIncompatibleProvider(
-            saved,
-            sharedEngines,
-            providers,
-          )
-          if (restored.providerId !== saved.providerId) {
-            saveChatEngineConfig(routeProjectId || activeProject.id, sessionParam, restored)
-          }
-          setSelectedEngine(restored.engine)
-          setSelectedProvider(restored.providerId)
-          setSelectedModel(restored.model)
-          setSelectedFastModel(restored.fastModel)
-          setSelectedVisionModel(restored.visionModel)
-          setSelectedThinkingEffort(restored.thinkingEffort)
-        } else {
-          setSelectedThinkingEffort('')
+  }, [sessionParam, activeProject?.id, resetEnhance, setSendError])
+
+  const { loadMessageEvents } = useChatSessionHistory({
+    sessionId: sessionParam,
+    messageSessionId: sessionId,
+    projectId: activeProject?.id,
+    onLoaded: (detail) => {
+      setSessionTitle(detail.title || '')
+      setPermissionMode(detail.permission_mode || '')
+      setSelectedEngine(detail.engine || '')
+      setSelectedProvider(detail.provider_id || '')
+      setSelectedModel(detail.model || '')
+      setSelectedFastModel(detail.fast_model || '')
+      setSelectedVisionModel(detail.vision_model || '')
+      // The backend does not return thinking effort. Restore this session's
+      // last explicit choice after its detail has loaded.
+      const saved = loadChatEngineConfig(routeProjectId || activeProject?.id || '', detail.id)
+      if (hasChatEngineConfig(saved)) {
+        const restored = clearIncompatibleProvider(saved, sharedEngines, providers)
+        if (restored.providerId !== saved.providerId) {
+          saveChatEngineConfig(routeProjectId || activeProject?.id || '', detail.id, restored)
         }
-        store.newSession(detail.id)
-        store.hydrateSession(
-          detail.id,
-          (detail.messages || []).map((m) => ({
-            id: m.id,
-            role: m.role,
-            content: m.content,
-            status: m.status,
-            engine: m.engine,
-            model: m.model,
-            created_at: m.created_at,
-            ended_at: m.ended_at,
-            prompt: m.prompt,
-            author_id: m.author_id,
-            author_name: m.author_name,
-            author_device_id: m.author_device_id,
-            author_device_name: m.author_device_name,
-            event_summary: m.event_summary,
-            event_detail: m.event_detail,
-            events: (m.events || []).map((e) => ({
-              ...e,
-              type: e.type || '',
-              data: e.data || {},
-            })),
-          })),
-          detail.running,
-        )
-      })
-      .catch(() => {
-        if (!active) return
-        // Session was deleted elsewhere — drop the invalid id from the URL.
-        navigate(`/chat?project=${encodeURIComponent(projectParam || '')}`, { replace: true })
-      })
-    return () => { active = false }
-  }, [sessionParam, activeProject?.id, projectParam, workflowParam, routeProjectId, navigate, resetEnhance, sharedEngines, providers])
+        setSelectedEngine(restored.engine)
+        setSelectedProvider(restored.providerId)
+        setSelectedModel(restored.model)
+        setSelectedFastModel(restored.fastModel)
+        setSelectedVisionModel(restored.visionModel)
+        setSelectedThinkingEffort(restored.thinkingEffort)
+      } else {
+        setSelectedThinkingEffort('')
+      }
+    },
+    onMissing: () => {
+      navigate(`/chat?project=${encodeURIComponent(projectParam || '')}`, { replace: true })
+    },
+  })
+
+  // The provider catalog may arrive after session history. Revalidate the
+  // saved selection in place instead of fetching the same session again.
+  useEffect(() => {
+    if (!sessionParam || !routeProjectId || !selectedProvider) return
+    const saved = loadChatEngineConfig(routeProjectId, sessionParam)
+    if (saved.engine !== selectedEngine || saved.providerId !== selectedProvider) return
+    const compatible = clearIncompatibleProvider(saved, sharedEngines, providers)
+    if (compatible.providerId === saved.providerId) return
+    setSelectedProvider(compatible.providerId)
+    saveChatEngineConfig(routeProjectId, sessionParam, compatible)
+  }, [sessionParam, routeProjectId, selectedEngine, selectedProvider, sharedEngines, providers])
 
   // Keep the sidebar session list fresh (titles/previews after turns).
   useEffect(() => {
@@ -414,51 +393,6 @@ export default function ChatPage() {
     setSendError('')
   }, [enhanceInputChanged])
 
-  const loadMessageEvents = useCallback(async (messageId: string) => {
-    if (!sessionId || !activeProject?.id) return
-    const store = useChatSessionStore.getState()
-    const message = store.sessions[sessionId]?.messages.find((item) => item.id === messageId)
-    if (!message?.event_detail?.available || message.event_detail.loaded || message.event_detail.loading) return
-    store.setMessageEventLoading(sessionId, messageId, true)
-    try {
-      let cursor = 0
-      let complete = false
-      const events = [] as NonNullable<typeof message.events>
-      while (!complete) {
-        const page = await chatSessionApi.messageEvents(
-          sessionId,
-          messageId,
-          activeProject.id,
-          cursor,
-        )
-        events.push(...page.events.map((event) => ({
-          ...event,
-          type: event.type || '',
-          data: event.data || {},
-        })))
-        complete = page.complete || page.next_cursor === null
-        if (!complete) {
-          const nextCursor = page.next_cursor
-          if (nextCursor === null || nextCursor === cursor) {
-            throw new Error('Event detail cursor did not advance')
-          }
-          cursor = nextCursor
-        }
-      }
-      store.setMessageEventDetails(sessionId, messageId, events, {
-        complete: true,
-        next_cursor: null,
-      })
-    } catch (reason) {
-      store.setMessageEventLoading(
-        sessionId,
-        messageId,
-        false,
-        reason instanceof Error ? reason.message : t('chatSession.loadFailed'),
-      )
-    }
-  }, [sessionId, activeProject?.id, t])
-
   const createSession = useCallback(async () => {
     if (!activeProject?.id || creating) return
     setCreating(true)
@@ -504,7 +438,7 @@ export default function ChatPage() {
 
   if (!activeProject) {
     return (
-      <div style={{ flex: 1, display: 'flex', minHeight: 0, alignItems: 'center', justifyContent: 'center' }}>
+      <div className="chat-session-empty">
         <EmptyState
           icon={<Icon name="bot" size={40} strokeWidth={1.5} />}
           title={t('chatSession.title')}
@@ -518,12 +452,12 @@ export default function ChatPage() {
   if (!sessionId) {
     return (
       <>
-        <div style={{ flex: 1, display: 'flex', minHeight: 0, alignItems: 'center', justifyContent: 'center' }}>
+        <div className="chat-session-empty">
           <EmptyState
             icon={<Icon name="bot" size={40} strokeWidth={1.5} />}
             title={t('chatSession.title')}
             description={t('chatSession.noSession')}
-            action={<div style={{ display: 'flex', gap: 8 }}>
+            action={<div className="chat-session-empty-actions">
               <Button variant="primary" loading={creating} onClick={() => void createSession()}>
                 {t('chatSession.createFirst')}
               </Button>
@@ -722,21 +656,21 @@ export default function ChatPage() {
           variant="ghost"
           loading={creating}
           onClick={() => { setMobileMenuOpen(false); void createSession() }}
-          style={{ justifyContent: 'flex-start', gap: 8 }}
+          className="chat-session-mobile-action"
         >
           <Icon name="plus" size={16} /> {t('chatSession.newSession')}
         </Button>
         <Button
           variant="ghost"
           onClick={() => { setMobileMenuOpen(false); setRenameOpen(true) }}
-          style={{ justifyContent: 'flex-start', gap: 8 }}
+          className="chat-session-mobile-action"
         >
           <Icon name="pencil" size={16} /> {t('common.rename')}
         </Button>
         <Button
           variant="ghost"
           onClick={() => { setMobileMenuOpen(false); setShowArchive(true) }}
-          style={{ justifyContent: 'flex-start', gap: 8 }}
+          className="chat-session-mobile-action"
         >
           <Icon name="archive" size={16} /> {t('chatSession.viewArchive')}
         </Button>
@@ -745,7 +679,7 @@ export default function ChatPage() {
         <Button
           variant="ghost"
           onClick={() => { setMobileMenuOpen(false); setShowSettingsPanel(true) }}
-          style={{ justifyContent: 'flex-start', gap: 8 }}
+          className="chat-session-mobile-action"
         >
           <Icon name="settings" size={16} /> {t('taskList.settings')}
         </Button>
