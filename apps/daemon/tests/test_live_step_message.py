@@ -318,7 +318,7 @@ def _make_runner_task(tmp_path, engine_cls):
 async def _wait_for_running_engine(runner, task_id: str, step_key: str) -> None:
     run_key = f"{task_id}:{step_key}"
     for _ in range(500):
-        if run_key in runner._running_engines:
+        if runner._live.has_running_engine(run_key):
             return
         await asyncio.sleep(0.01)
     raise AssertionError(f"Engine did not start in time: {run_key}")
