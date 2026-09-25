@@ -30,6 +30,7 @@ import {
 } from './taskDetailChat'
 import { useI18n } from '../i18n'
 import { formatScheduledStart } from '../utils/scheduledStart'
+import { applySharedMessageEvent, capSharedHistoryEvents } from './sharedTaskMessages'
 
 type Phase =
   | { kind: 'loading-meta' }
@@ -38,21 +39,6 @@ type Phase =
   | { kind: 'loading-task' }
   | { kind: 'ready'; sessionToken: string }
   | { kind: 'error'; message: string }
-
-const MAX_LIVE_SHARED_EVENTS = 2000
-
-function appendCappedSharedEvent(events: any[] | undefined, event: any): any[] {
-  const combined = [...(events ?? []), event]
-  return combined.length > MAX_LIVE_SHARED_EVENTS
-    ? combined.slice(-MAX_LIVE_SHARED_EVENTS)
-    : combined
-}
-
-function capSharedHistoryEvents(message: any): any {
-  return Array.isArray(message?.events) && message.events.length > MAX_LIVE_SHARED_EVENTS
-    ? { ...message, events: message.events.slice(-MAX_LIVE_SHARED_EVENTS) }
-    : message
-}
 
 export default function SharedTaskView() {
   const { token } = useParams<{ token: string }>()
@@ -201,100 +187,7 @@ export default function SharedTaskView() {
 
     const applyEvent = (ev: any) => {
       const evType = ev?.type
-      const mid = ev?.messageId ?? ev?.message_id
-      const isTextChunk = evType === 'text_delta' || evType === 'TEXT_MESSAGE_CHUNK'
-      const isReasoning = evType === 'thinking_delta' || evType === 'REASONING_MESSAGE_CHUNK'
-      const isInteraction = evType === 'interaction_request'
-        || evType === 'interaction_response'
-        || ev?.name === 'workstep.interaction_request'
-        || ev?.name === 'workstep.interaction_response'
-      if (isTextChunk || isReasoning) {
-        const messageId = mid
-        if (!messageId) return
-        setMessages((prev) => {
-          const idx = prev.findIndex((m) => m.id === messageId)
-          if (idx === -1) {
-            const created = {
-              id: messageId,
-              role: 'assistant',
-              content: isTextChunk ? (ev.delta ?? ev.text ?? '') : '',
-              step_key: ev.step_key,
-              channel: 'execution',
-              run_status: 'running',
-              events: isReasoning ? [ev] : [],
-              started_at: ev.created_at ?? new Date().toISOString(),
-              ended_at: null,
-              created_at: ev.created_at ?? new Date().toISOString(),
-            }
-            return [...prev, created]
-          }
-          const existing = prev[idx]
-          const next = { ...existing }
-          if (isTextChunk) {
-            next.content = (next.content ?? '') + (ev.delta ?? ev.text ?? '')
-          } else {
-            next.events = appendCappedSharedEvent(next.events, ev)
-          }
-          const copy = prev.slice()
-          copy[idx] = next
-          return copy
-        })
-      } else if (
-        evType === 'tool_use' ||
-        evType === 'tool_input_delta' ||
-        evType === 'tool_result' ||
-        evType === 'TOOL_CALL_START' ||
-        evType === 'TOOL_CALL_ARGS' ||
-        evType === 'TOOL_CALL_CHUNK' ||
-        evType === 'TOOL_CALL_RESULT'
-      ) {
-        const messageId = mid
-        if (!messageId) return
-        setMessages((prev) => {
-          const idx = prev.findIndex((m) => m.id === messageId)
-          if (idx === -1) return prev
-          const existing = prev[idx]
-          const next = { ...existing, events: appendCappedSharedEvent(existing.events, ev) }
-          const copy = prev.slice()
-          copy[idx] = next
-          return copy
-        })
-      } else if (isInteraction) {
-        const messageId = mid
-        if (!messageId) return
-        setMessages((prev) => {
-          const idx = prev.findIndex((m) => m.id === messageId)
-          if (idx === -1) return prev
-          const existing = prev[idx]
-          const next = { ...existing, events: appendCappedSharedEvent(existing.events, ev) }
-          const copy = prev.slice()
-          copy[idx] = next
-          return copy
-        })
-      } else if (
-        evType === 'status' ||
-        evType === 'done' ||
-        evType === 'RUN_STARTED' ||
-        evType === 'RUN_FINISHED' ||
-        evType === 'RUN_ERROR'
-      ) {
-        const messageId = mid
-        if (messageId) {
-          setMessages((prev) => {
-            const idx = prev.findIndex((m) => m.id === messageId)
-            if (idx === -1) return prev
-            const existing = prev[idx]
-            const next = {
-              ...existing,
-              run_status: ev.status ?? existing.run_status,
-              ended_at: ev.created_at ?? existing.ended_at ?? new Date().toISOString(),
-            }
-            const copy = prev.slice()
-            copy[idx] = next
-            return copy
-          })
-        }
-      }
+      setMessages((previous) => applySharedMessageEvent(previous, ev))
       // Step/status events also refresh the task to keep the progress
       // panel in sync with the conversation.
       if (
