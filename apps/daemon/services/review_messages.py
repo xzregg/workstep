@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Callable, NamedTuple
 
 from agent_assistants.event_journal import JournalRef, TurnEventJournal
-from models import Message, ReviewRun, StepRun, Task, WorkflowRun
+from models import Message, ReviewRun, StepRun, Task, TaskStep, WorkflowRun
 from models.fields import utc_now
 from services.config import config_store
 from services.messages import create_task_message, extract_usage_json, new_message_id
@@ -54,6 +54,14 @@ class ReviewEvaluation(NamedTuple):
     message_persisted: bool
 
 
+class ReviewCheckpoint(NamedTuple):
+    step_run: StepRun
+    execution_output: str
+    execution_prompt: str
+    saved_review_prompt: str | None
+    latest_review_status: str | None
+
+
 class StepReviewMessages:
     def __init__(
         self, journal: TurnEventJournal, run_db, publish,
@@ -63,6 +71,67 @@ class StepReviewMessages:
         self._run_db = run_db
         self._publish = publish
         self._live = live
+
+    async def load_checkpoint(
+        self, task: Task, step: Step, workflow_run: WorkflowRun,
+    ) -> ReviewCheckpoint | None:
+        """Load a durable execution checkpoint before resuming its review."""
+        def read_checkpoint():
+            task_step = TaskStep.get(
+                (TaskStep.task == task) & (TaskStep.step_key == step.key)
+            )
+            if task_step.status != "reviewing":
+                return None
+            step_run = (
+                StepRun.select()
+                .where(
+                    (StepRun.run == workflow_run)
+                    & (StepRun.step_key == step.key)
+                )
+                .order_by(StepRun.attempt.desc())
+                .first()
+            )
+            if step_run is None or step_run.status != "succeeded":
+                return None
+            execution_messages = list(
+                Message.select().where(
+                    (Message.task == task)
+                    & (Message.step_run_id == step_run.id)
+                    & (Message.channel == "execution")
+                    & (Message.role == "assistant")
+                ).order_by(Message.sequence)
+            )
+            latest_review = (
+                ReviewRun.select()
+                .where(ReviewRun.step_run == step_run)
+                .order_by(ReviewRun.attempt.desc())
+                .first()
+            )
+            execution_prompt = ""
+            if execution_messages:
+                try:
+                    execution_prompt = str(json.loads(
+                        execution_messages[0].prompt_json or "{}"
+                    ).get("prompt") or "")
+                except (TypeError, json.JSONDecodeError):
+                    pass
+            review_prompt = None
+            if latest_review is not None:
+                try:
+                    review_prompt = json.loads(
+                        latest_review.prompt_json or "{}"
+                    ).get("prompt")
+                except (TypeError, json.JSONDecodeError):
+                    pass
+            return ReviewCheckpoint(
+                step_run,
+                "".join(message.content or "" for message in execution_messages),
+                execution_prompt,
+                review_prompt,
+                latest_review.status if latest_review is not None else None,
+            )
+
+        return await self._run_db(read_checkpoint)
 
     async def evaluate(
         self, *, task: Task, step: Step, step_run: StepRun,
