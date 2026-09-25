@@ -33,6 +33,7 @@ from services.artifact_routing import (
 )
 from services.pipeline import DAGScheduler, Step
 from services.task_step_start import start_step_state
+from services.step_rework import StepRework
 from services.review_messages import AutomaticReviewMessages
 from services.prompt import (
     assemble_followup_prompt,
@@ -173,6 +174,7 @@ class TaskRunner:
         self._review_messages = AutomaticReviewMessages(
             self._event_journal, self._run_db, self._publish
         )
+        self._step_rework = StepRework(self._run_db, self._publish)
         self._routing_state = empty_routing_state()
         self._routing_lock = asyncio.Lock()
 
@@ -835,7 +837,7 @@ class TaskRunner:
                         for connection in step.outgoing_connections
                     )
                     if step.rework_upstream and not has_feedback_route:
-                        await self._schedule_rework(
+                        await self._step_rework.from_review(
                             task, step, scheduler, completed,
                             outcome.retry_context, step_run.attempt,
                         )
@@ -1880,7 +1882,7 @@ class TaskRunner:
                                 step.rework_upstream
                                 and not has_artifact_feedback_route
                             ):
-                                await self._schedule_rework(
+                                await self._step_rework.from_review(
                                     task,
                                     step,
                                     scheduler,
@@ -2264,7 +2266,7 @@ class TaskRunner:
                 return
 
             if result.feedback_edges:
-                await self._schedule_port_return(
+                await self._step_rework.from_artifact(
                     task,
                     step,
                     scheduler,
@@ -2272,118 +2274,6 @@ class TaskRunner:
                     failed,
                     result.feedback_edges,
                 )
-
-    async def _schedule_port_return(
-        self,
-        task: Task,
-        source_step: Step,
-        scheduler: DAGScheduler,
-        completed: set[str],
-        failed: set[str],
-        feedback_edges: tuple[dict, ...],
-    ) -> None:
-        """Rewind feedback targets while retaining their other input ports."""
-        targets = {str(connection.get("to")) for connection in feedback_edges}
-        rewind: set[str] = set()
-        for target in targets:
-            rewind.add(target)
-            rewind.update(scheduler.get_all_downstream(target))
-        completed.difference_update(rewind)
-        failed.difference_update(rewind)
-
-        def persist_return():
-            for key in rewind:
-                row = TaskStep.get(
-                    (TaskStep.task == task) & (TaskStep.step_key == key)
-                )
-                row.status = (
-                    "rework_waiting" if key == source_step.key else "rework"
-                )
-                # The semantic input snapshot carries feedback artifact names,
-                # rounds and paths.  Do not duplicate the same paths in a
-                # free-form feedback field.
-                row.rework_feedback = None
-                row.error = None
-                row.ended_at = None
-                row.save()
-
-        await self._run_db(persist_return)
-        for key in rewind:
-            await self._publish(task.id, key, {
-                "type": "status",
-                "data": {
-                    "status": (
-                        "rework_waiting" if key == source_step.key else "rework"
-                    ),
-                    "task_id": task.id,
-                    "step_key": key,
-                },
-            })
-        await self._publish(task.id, source_step.key, {
-            "type": "step_return",
-            "data": {
-                "task_id": task.id,
-                "step_key": source_step.key,
-                "targets": sorted(targets),
-                "connections": [
-                    connection.get("id") for connection in feedback_edges
-                ],
-                "max_returns": source_step.max_return_rounds,
-            },
-        })
-
-    async def _schedule_rework(
-        self,
-        task: Task,
-        step: Step,
-        scheduler: DAGScheduler,
-        completed: set[str],
-        feedback: str,
-        attempt: int,
-    ) -> None:
-        """Reset upstream producers and their downstream so the DAG re-runs them.
-
-        Called when an automatic review rejects this (verifier) step and the
-        step declares rework targets via dashed feedback edges. Producers are
-        re-run reusing their own sessions (same task+step), then the verifier
-        is re-picked by the scheduler for another verification attempt.
-        """
-        rewind: set[str] = set()
-        for upstream_key in step.rework_upstream:
-            rewind.add(upstream_key)
-            rewind.update(scheduler.get_all_downstream(upstream_key))
-
-        targets = set(step.rework_upstream)
-        rework_keys = [key for key in sorted(rewind) if key != step.key]
-        completed.difference_update(rework_keys)
-
-        def persist_rework():
-            for key in rework_keys:
-                ts = TaskStep.get(
-                    (TaskStep.task == task) & (TaskStep.step_key == key)
-                )
-                ts.status = "rework"
-                ts.rework_feedback = feedback if key in targets else None
-                ts.ended_at = None
-                ts.save()
-
-        await self._run_db(persist_rework)
-        for key in rework_keys:
-            await self._publish(task.id, key, {
-                "type": "status",
-                "data": {"status": "rework", "task_id": task.id, "step_key": key},
-            })
-
-        await self._publish(task.id, step.key, {
-            "type": "step_rework",
-            "data": {
-                "task_id": task.id,
-                "step_key": step.key,
-                "rework_targets": list(step.rework_upstream),
-                "attempt": attempt,
-                "max_retries": int((step.review or {}).get("maxRetries", 1)),
-            },
-        })
 
     async def _persist_step_status(
         self, task_id, step_key, status, error, ended_at
