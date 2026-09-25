@@ -59,16 +59,14 @@ test('all editable assistant chats reuse the backend pending-insert panel', () =
 
 test('task step and coordinator queues are keyed by the active message id', () => {
   assert.match(taskDetailPageSource, /pendingTargetMessageId/)
-  assert.match(taskDetailPageSource, /pendingInsertQueueKey\(projectId, pendingTargetMessageId\)/)
-  assert.match(taskDetailPageSource, /pendingInsertActions\.add\(projectId, pendingTargetMessageId, submittedPrompt\)/)
+  assert.match(taskDetailPageSource, /useTaskPendingInserts\(\{/)
+  assert.match(taskDetailPageSource, /pendingInserts\.add\(submittedPrompt\)/)
   assert.doesNotMatch(taskDetailPageSource, /chatInsertQueue|loadTaskInsertQueue|saveTaskInsertQueue/)
 })
 
 test('task step pending inserts keep their immediate-send actions wired', () => {
-  assert.match(taskDetailPageSource, /const sendStepInserts = async/)
-  assert.match(taskDetailPageSource, /const sendCoordinatorInserts = async/)
-  assert.match(taskDetailPageSource, /taskApi\.sendStepMessage\(/)
-  assert.match(taskDetailPageSource, /taskApi\.chat\([\s\S]{0,180}sendingIds/)
+  assert.match(taskDetailPageSource, /pendingInserts\.send\(\[insert\]\)/)
+  assert.match(taskDetailPageSource, /pendingInserts\.send\(pendingInserts\.items\)/)
   assert.match(taskDetailPageSource, /onStepInsertSend=/)
   assert.match(taskDetailPageSource, /onSendAllInserts=/)
 })

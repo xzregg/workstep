@@ -39,6 +39,7 @@
 | 消息时间线与滚动 | `taskConversationFeed.ts`；滚动行为由 `src/hooks/useTaskConversationScroll.ts` 管理，任务、助手和过程追踪共用规则在 `src/utils/conversationScroll.ts` | `conversationScroll.test.ts`、`streamingSelection.test.tsx` 及对应 conversation 测试 |
 | 单条任务消息的发送者、执行状态、审核操作、产物与元数据 | `TaskConversationMessage.tsx`；`TaskDetailView.tsx` 只选择消息顺序并接入时间线，`TaskMessageArtifacts.tsx` 展示产物入口 | `taskConversationMessage.test.tsx`、`taskConversationRuntime.test.ts`、`taskMessageArtifacts.test.tsx` |
 | 任务历史、向上分页与消息事件详情 | `src/hooks/useTaskHistory.ts` | `taskHistory.test.tsx`、`remoteChatSync.test.mjs` |
+| 任务对话待插入队列的加载、编辑、排序、立即发送与失败回滚 | `src/hooks/useTaskPendingInserts.ts`；队列持久状态在 `src/stores/pendingMessageInsertStore.ts`，`TaskDetail.tsx` 只选定目标消息并接入对话 | `useTaskPendingInserts.test.tsx`、`pendingMessageInsertStore.test.ts` |
 | 任务协调引擎配置与供应商/模型选择 | `src/hooks/useTaskCoordinatorConfig.ts`；`TaskDetail.tsx` 负责接入任务详情输入区 | `useTaskCoordinatorConfig.test.tsx` |
 | 步骤停止、丢失会话重启与失败消息重试 | `src/hooks/useTaskStepControls.ts`；任务详情提供历史刷新和错误展示回调 | `useTaskStepControls.test.tsx` |
 | 任务历史刷新合并、事件详情归并与失败重试 | `src/pages/taskHistoryModel.ts`；本地详情、分享页及历史 hook 共用 | `taskDetailChat.test.ts`、`taskHistory.test.tsx` |
