@@ -451,7 +451,7 @@ async def test_claude_agent_sdk_client_injects_live_message(monkeypatch):
 
     consumer = asyncio.create_task(consume())
     for _ in range(200):
-        if _FakeSdkClient.instances and _FakeSdkClient.instances[0].connected:
+        if _FakeSdkClient.instances and _FakeSdkClient.instances[0].queries:
             break
         await asyncio.sleep(0.01)
     client = _FakeSdkClient.instances[0]

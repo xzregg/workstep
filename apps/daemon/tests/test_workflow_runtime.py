@@ -968,7 +968,7 @@ async def test_restart_without_parent_rejects_unusable_input_round(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_explicit_feedback_round_is_validated_and_resolved(tmp_path):
+async def test_explicit_feedback_round_is_validated_and_resolved(tmp_path, monkeypatch):
     from engines.core.registry import ENGINE_REGISTRY
     from services.artifact_rounds import step_round_dir, write_round_manifest
     from services.artifact_routing import empty_routing_state, resolve_input_snapshot
@@ -1028,9 +1028,11 @@ async def test_explicit_feedback_round_is_validated_and_resolved(tmp_path):
     original = ENGINE_REGISTRY.copy()
     ENGINE_REGISTRY["claude"] = RuntimeFakeEngine
     runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
+    from services.workflow_restart import validate_restart_input_rounds
     try:
-        feedback = runtime._validate_input_rounds(
+        feedback = validate_restart_input_rounds(
             project, task, "backend", {"test": 2},
+            current_workflow_steps=runtime._current_workflow_steps,
         )
         compiled = WorkflowDefinition.load(steps).compile().to_steps_config()
         backend = next(
@@ -1057,9 +1059,27 @@ async def test_explicit_feedback_round_is_validated_and_resolved(tmp_path):
         saved_state = json.loads(prepared.workflow_run.routing_state_json)
         assert saved_state["feedback_inputs"]["backend"] == feedback
         assert set(feedback) <= set(saved_state["active_edges"])
-        handle = await runtime.restart_from_step(
-            project.id, task.id, "backend", input_rounds={"test": 2},
-        )
+        from services.workflow_restart import iter_artifact_rounds
+        probing = threading.Event()
+
+        def slow_round_probe(*args, **kwargs):
+            probing.set()
+            time.sleep(0.35)
+            return iter_artifact_rounds(*args, **kwargs)
+
+        with monkeypatch.context() as patcher:
+            patcher.setattr(
+                "services.workflow_restart.iter_artifact_rounds",
+                slow_round_probe,
+            )
+            restart = asyncio.create_task(runtime.restart_from_step(
+                project.id, task.id, "backend", input_rounds={"test": 2},
+            ))
+            assert await asyncio.to_thread(probing.wait, 2)
+            heartbeat_started = time.perf_counter()
+            await asyncio.wait_for(asyncio.sleep(0), timeout=0.2)
+            assert time.perf_counter() - heartbeat_started < 0.2
+            handle = await restart
         await runtime.wait(handle)
         child = WorkflowRun.get_by_id(handle.id)
         child_state = json.loads(child.routing_state_json)
@@ -1070,16 +1090,19 @@ async def test_explicit_feedback_round_is_validated_and_resolved(tmp_path):
         assert json.loads(backend_run.input_rounds_json) == {"test": 2}
         assert json.loads(backend_run.input_snapshot_json)["execution_type"] == "feedback"
         with pytest.raises(ValueError, match="不可沿用"):
-            runtime._validate_input_rounds(
+            validate_restart_input_rounds(
                 project, task, "backend", {"test": 1},
+                current_workflow_steps=runtime._current_workflow_steps,
             )
         with pytest.raises(ValueError, match="没有可用的返工产物"):
-            runtime._validate_input_rounds(
+            validate_restart_input_rounds(
                 project, task, "backend", {"test": 3},
+                current_workflow_steps=runtime._current_workflow_steps,
             )
         with pytest.raises(ValueError, match="不是目标步骤"):
-            runtime._validate_input_rounds(
+            validate_restart_input_rounds(
                 project, task, "backend", {"unrelated": 2},
+                current_workflow_steps=runtime._current_workflow_steps,
             )
     finally:
         await runtime.shutdown()
