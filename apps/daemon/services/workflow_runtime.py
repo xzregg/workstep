@@ -23,6 +23,7 @@ from services.task_runner import TaskRunner
 from services.task_dispatch import TaskDispatchService
 from services.workflow_definition import WorkflowDefinition
 from services.review_decision import persist_review_decision
+from services.workflow_restart import create_restart_run
 from services.workflow_recovery import (
     RUN_LEASE_STALE_SECONDS,
     heal_task_cwd,
@@ -1935,12 +1936,13 @@ class WorkflowRuntime:
                 heal_task_cwd(task, project)
                 parent = WorkflowRun.get_by_id(parent_run_id)
                 execution_keys = affected
-                task, child = self._create_restart_run(
+                task, child = create_restart_run(
                     task,
                     parent,
                     compiled.schema_version,
                     step_key,
                     execution_keys,
+                    instance_id=self._instance_id,
                     reset_session_step_key=(step_key if reset_session else None),
                     feedback_inputs=inspected["feedback_inputs"],
                 )
@@ -2178,149 +2180,6 @@ class WorkflowRuntime:
                 ended_at=now,
             )
         return prepared
-
-    def _create_restart_run(
-        self,
-        task: Task,
-        parent: WorkflowRun,
-        schema_version: int,
-        step_key: str,
-        execution_keys: set[str],
-        reset_session_step_key: str | None = None,
-        feedback_inputs: dict[str, dict] | None = None,
-    ) -> tuple[Task, WorkflowRun]:
-        now = utc_now()
-        with db_proxy.atomic():
-            parent.status = "superseded"
-            parent.ended_at = parent.ended_at or now
-            parent.save()
-            StepRun.update(
-                status="cancelled",
-                ended_at=now,
-            ).where(
-                (StepRun.run == parent)
-                & (StepRun.status == "running")
-            ).execute()
-            ReviewRun.update(
-                status="cancelled",
-                ended_at=now,
-                error="流程运行已被新的入口替代",
-            ).where(
-                (ReviewRun.workflow_run == parent)
-                & (ReviewRun.status.in_(["pending", "running"]))
-            ).execute()
-            # A review can be interrupted after its StepRun has succeeded.
-            # Close both bubbles from this parent run before launching the
-            # replacement; otherwise their old "running" state survives.
-            from services.history import project_terminal_message_state
-
-            parent_step_run_ids = [
-                row.id for row in StepRun.select(StepRun.id).where(StepRun.run == parent)
-            ]
-            if parent_step_run_ids:
-                stale_messages = Message.select().where(
-                    (Message.task == task)
-                    & (Message.step_run_id.in_(parent_step_run_ids))
-                    & (Message.role == "assistant")
-                    & (Message.channel.in_(["execution", "review"]))
-                    & (Message.run_status == "running")
-                )
-                for message in stale_messages:
-                    projection = {}
-                    project_terminal_message_state(projection, message)
-                    if projection.get("run_status"):
-                        message.run_status = projection["run_status"]
-                        message.ended_at = projection["ended_at"] or now
-                        message.save(only=[Message.run_status, Message.ended_at])
-            routing_state = empty_routing_state()
-            routing_state["entry_step_key"] = step_key
-            routing_state["execution_scope"] = sorted(execution_keys)
-            if feedback_inputs:
-                routing_state["feedback_inputs"][step_key] = feedback_inputs
-                routing_state["active_edges"] = sorted(feedback_inputs)
-            child = WorkflowRun.create(
-                id=str(uuid.uuid4()),
-                task=task,
-                status="running",
-                workflow_schema_version=schema_version,
-                workflow_snapshot_json="{}",
-                parent_run_id=parent.id,
-                restart_from_step_key=step_key,
-                routing_state_json=json.dumps(routing_state, ensure_ascii=False),
-                owner_id=self._instance_id,
-                heartbeat_at=now,
-                started_at=now,
-            )
-            reusable = {
-                row.step_key
-                for row in TaskStep.select().where(
-                    (TaskStep.task == task)
-                    & (TaskStep.status == "passed")
-                    & (~(TaskStep.step_key.in_(execution_keys)))
-                )
-            }
-            for reusable_key in reusable:
-                source = (
-                    StepRun.select()
-                    .where(
-                        (StepRun.run == parent)
-                        & (StepRun.step_key == reusable_key)
-                        & (StepRun.status.in_(["succeeded", "reused"]))
-                    )
-                    .order_by(StepRun.attempt.desc())
-                    .first()
-                )
-                if source is None:
-                    continue
-                StepRun.create(
-                    id=str(uuid.uuid4()),
-                    run=child,
-                    step_key=reusable_key,
-                    attempt=1,
-                    artifact_round=source.artifact_round,
-                    status="reused",
-                    engine=source.engine,
-                    model=source.model,
-                    source_step_run_id=source.id,
-                    started_at=now,
-                    ended_at=now,
-                )
-            TaskStep.update(
-                status="pending",
-                started_at=None,
-                ended_at=None,
-                error=None,
-            ).where(
-                (TaskStep.task == task)
-                & (TaskStep.step_key.in_(execution_keys))
-            ).execute()
-            if reset_session_step_key:
-                TaskStep.update(
-                    session_id=None,
-                    session_provider=None,
-                    pending_handoff_json=None,
-                ).where(
-                    (TaskStep.task == task)
-                    & (TaskStep.step_key == reset_session_step_key)
-                ).execute()
-            TaskStep.update(
-                status="cancelled",
-                ended_at=now,
-                error="已切换到其他流程入口",
-            ).where(
-                (TaskStep.task == task)
-                & (~(TaskStep.step_key.in_(execution_keys)))
-                & (TaskStep.status.in_([
-                    "running", "reviewing", "awaiting_review", "retrying",
-                    "rework", "rework_waiting",
-                ]))
-            ).execute()
-            task.status = "running"
-            task.active_workflow_run_id = child.id
-            task.state_version += 1
-            task.updated_at = now
-            task.save()
-        return task, child
 
     def _register_lease(self, run_id: str, project_id: str) -> None:
         """Record that this instance owns a run and start the heartbeat loop."""
