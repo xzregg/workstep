@@ -33,7 +33,7 @@
 | 步骤输入、输出、产物轮次及重新执行 | `TaskStepIoPanel.tsx` | `taskStepIoPanel.test.tsx`、`taskDetailProgressLayout.test.mjs` |
 | 审核结果与决策 | `TaskReviewResult.tsx` | `taskReviewResult.test.tsx`、`reviewTerminateAction.test.mjs` |
 | 步骤审核设置的草稿、保存与错误恢复 | `TaskReviewConfigPanel.tsx`；任务页仅开启编辑，分享页不显示设置 | `taskReviewConfigPanel.test.tsx` |
-| 消息时间线与滚动 | `taskConversationFeed.ts`、`src/hooks/useTaskConversationScroll.ts` | 对应 conversation 测试 |
+| 消息时间线与滚动 | `taskConversationFeed.ts`；滚动行为由 `src/hooks/useTaskConversationScroll.ts` 管理，任务、助手和过程追踪共用规则在 `src/utils/conversationScroll.ts` | `conversationScroll.test.ts`、`streamingSelection.test.tsx` 及对应 conversation 测试 |
 | 单条任务消息的发送者、执行状态、审核操作、产物与元数据 | `TaskConversationMessage.tsx`；`TaskDetailView.tsx` 只选择消息顺序并接入时间线，`TaskMessageArtifacts.tsx` 展示产物入口 | `taskConversationMessage.test.tsx`、`taskConversationRuntime.test.ts`、`taskMessageArtifacts.test.tsx` |
 | 任务历史、向上分页与消息事件详情 | `src/hooks/useTaskHistory.ts` | `taskHistory.test.tsx`、`remoteChatSync.test.mjs` |
 | 任务协调引擎配置与供应商/模型选择 | `src/hooks/useTaskCoordinatorConfig.ts`；`TaskDetail.tsx` 负责接入任务详情输入区 | `useTaskCoordinatorConfig.test.tsx` |

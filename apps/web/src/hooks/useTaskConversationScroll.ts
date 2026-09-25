@@ -7,7 +7,7 @@ import {
   isNearConversationBottom,
   observeContentResize,
   shouldPauseConversationFollow,
-} from '../pages/taskDetailChat'
+} from '../utils/conversationScroll'
 import { useComposerOverlayClearance } from './useComposerOverlayClearance'
 
 type ScrollOptions = {
