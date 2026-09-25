@@ -30,7 +30,6 @@ import {
   type TaskStepState,
 } from '../api/client'
 import Button from './Button'
-import Input from './Input'
 import Textarea from './Textarea'
 import ChatMessageBubble from './ChatMessageBubble'
 import AssistantThinkingMessage from './AssistantThinkingMessage'
@@ -45,21 +44,21 @@ import MessageResponseFooter, {
   usageFromEvents,
 } from './MessageResponseFooter'
 import { stripA2uiBlocks } from '../utils/a2ui'
-import MarkdownEditor from './MarkdownEditor'
 import MarkdownMessage from './MarkdownMessage'
-import ReviewReportContent from './ReviewReportContent'
 import ReviewDecisionActions, { type ReviewDecisionAction } from './ReviewDecisionActions'
 import ProcessTrace from './ProcessTrace'
 import Icon from './Icon'
 import PendingMessageInserts from './PendingMessageInserts'
 import MarqueeText from './MarqueeText'
 import TaskStepProgressGraph from './TaskStepProgressGraph'
+import TaskStepIoPanel from './TaskStepIoPanel'
 import TaskDetailHeader from './TaskDetailHeader'
 import TaskDetailDescription from './TaskDetailDescription'
 import TaskDetailTabs from './TaskDetailTabs'
+import TaskReviewConfigPanel from './TaskReviewConfigPanel'
+import TaskReviewResult from './TaskReviewResult'
 import TaskExecutionAnalysis from './TaskExecutionAnalysis'
 import TaskArtifactBrowser from './TaskArtifactBrowser'
-import ArtifactUnchangedBadge from './ArtifactUnchangedBadge'
 import TaskGitWorkspace from './git/TaskGitWorkspace'
 import { displayUserDetail, displayUserSender } from '../utils/actorDisplay'
 import {
@@ -73,13 +72,6 @@ import {
   isLostEngineSessionError,
   isStepResumableWithMessage,
   isSelectedStepRunning,
-  findPreferredArtifact,
-  findStepRoundInputArtifact,
-  findStepRoundInputPort,
-  hasStepIoContractChanged,
-  artifactsForStepRoundOutputs,
-  groupStepOutputsByInput,
-  downstreamInputsForOutput,
   artifactsForMessage,
   findActionablePendingReview,
   liveExecutionStatus,
@@ -94,7 +86,6 @@ import {
 } from '../pages/taskDetailChat'
 import {
   formatConversationDateTime,
-  toMilliseconds,
 } from '../utils/datetime'
 import { useI18n } from '../i18n'
 import { ActionConversationMessage, TaskActionButtons } from './TaskActionShortcuts'
@@ -312,8 +303,6 @@ export interface TaskDetailViewProps {
   onOpenPromptEditor?: () => void
 
   // ── Review config (edit mode only) ──
-  showReviewDrawer?: boolean
-  onShowReviewDrawerChange?: (value: boolean) => void
   editReviewMode?: string
   onEditReviewModeChange?: (value: string) => void
   editReviewRetries?: number
@@ -469,8 +458,6 @@ export default function TaskDetailView({
   // Prompt
   onOpenPromptEditor,
   // Review config
-  showReviewDrawer,
-  onShowReviewDrawerChange,
   editReviewMode,
   onEditReviewModeChange,
   editReviewRetries,
@@ -674,71 +661,11 @@ export default function TaskDetailView({
     () => findActionablePendingReview(reviews, stepProgress),
     [reviews, stepProgress],
   )
-  const selectedReviewActor = selectedReview
-    ? reviewActorLabel(selectedReview)
-    : undefined
   const selectedReviewActionable = isReviewActionable(
     selectedReview,
     reviews,
     stepProgress[selectedStep]?.status,
   )
-  const currentStepArtifactRounds = useMemo(() => {
-    const rounds = new Set<number>()
-    artifacts.forEach((artifact) => {
-      if (artifact.step_key === currentStep.key && artifact.round) {
-        rounds.add(artifact.round)
-      }
-    })
-    return [...rounds].sort((a, b) => a - b)
-  }, [artifacts, currentStep.key])
-  const currentStepRoundUnchangedFrom = useMemo(() => {
-    const matches = new Map<number, number>()
-    artifacts.forEach((artifact) => {
-      if (artifact.step_key === currentStep.key && artifact.round_unchanged_from) {
-        matches.set(artifact.round, artifact.round_unchanged_from)
-      }
-    })
-    return matches
-  }, [artifacts, currentStep.key])
-  const [selectedIoRound, setSelectedIoRound] = useState<number | null>(null)
-  const activeIoRound = selectedIoRound && currentStepArtifactRounds.includes(selectedIoRound)
-    ? selectedIoRound
-    : currentStepArtifactRounds[currentStepArtifactRounds.length - 1]
-  const selectedExecutionRound = activeIoRound ?? stepProgress[selectedStep]?.artifact_round ?? undefined
-  const currentStepProgress = stepProgress[selectedStep]
-  const currentStepRestarting = (restartingStepKeys ?? []).includes(currentStep.key)
-  const canRerunCurrentStep = canChat
-    && Boolean(onRestartStepWithFreshSession)
-    && Boolean(currentStepProgress?.has_history)
-    && hasStepIoContractChanged(currentStep, currentStepProgress?.io_contract)
-    && !['running', 'reviewing', 'retrying', 'rework', 'rework_waiting'].includes(
-      currentStepProgress?.status ?? '',
-    )
-
-  useEffect(() => {
-    setSelectedIoRound(null)
-  }, [currentStep.key])
-
-  const findArtifact = (
-    name: string,
-    preferredStepKey?: string,
-    source?: TaskArtifact[],
-    preferredRound?: number,
-  ) => {
-    return findPreferredArtifact(source || artifacts, name, preferredStepKey, preferredRound)
-  }
-
-  const formatArtifactUpdatedAt = useCallback((value?: string | null) => {
-    const milliseconds = toMilliseconds(value)
-    if (milliseconds === null) return ''
-    return new Date(milliseconds).toLocaleString(locale, {
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }, [locale])
-
   const renderMessageArtifacts = (
     messageArtifacts: TaskArtifact[],
     stepColor?: string,
@@ -859,478 +786,12 @@ export default function TaskDetailView({
           onStepClick={handleStepClick}
         />
 
-        {/* I/O section */}
-        <div>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 8,
-              marginBottom: 8,
-            }}
-          >
-            <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
-              {t('taskDetail.stepIo')}
-            </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-              {canRerunCurrentStep && (
-                <Button
-                  size="sm"
-                  loading={currentStepRestarting}
-                  disabled={currentStepRestarting}
-                  onClick={() => onRestartStepWithFreshSession?.(currentStep.key)}
-                >
-                  {currentStepRestarting
-                    ? t('taskDetail.rerunningLatestWorkflow')
-                    : t('taskDetail.rerunLatestWorkflow')}
-                </Button>
-              )}
-              {currentStepArtifactRounds.length > 0 && <TaskDetailTabs
-                className="task-step-round-tabs" ariaLabel={t('taskDetail.artifactRoundTabsAria')}
-                selected={activeIoRound!} onSelect={setSelectedIoRound}
-                tabs={currentStepArtifactRounds.map(round => ({
-                  id: round,
-                  label: <><span>{t('taskDetail.artifactRoundTab', { round })}</span>
-                    {currentStepRoundUnchangedFrom.get(round) &&
-                      <ArtifactUnchangedBadge fromRound={currentStepRoundUnchangedFrom.get(round)!} />}</>,
-                }))} />}
-            </span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div
-              style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
-            >
-              <div
-                style={{
-                  fontSize: 'calc(13px * var(--font-scale))',
-                  fontWeight: 600,
-                  color: 'var(--muted)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                <span style={{ color: 'var(--meta)' }}>→</span>{' '}
-                {t('taskDetail.ioInput')}
-              </div>
-              {(() => {
-                const producedOutputs = artifactsForStepRoundOutputs(
-                  artifacts,
-                  currentStep.key,
-                  activeIoRound,
-                )
-                const outputsByInput = groupStepOutputsByInput(
-                  currentStep.inputs || [],
-                  currentStep.outputs || [],
-                  producedOutputs,
-                )
-
-                return (currentStep.inputs || []).map(
-                  (inp: any, inpIdx: number) => {
-                    const subOutputs = outputsByInput[inpIdx] || []
-                    const inputPortSnapshot = findStepRoundInputPort(
-                      artifactInputSnapshots,
-                      currentStep.key,
-                      selectedExecutionRound,
-                      inpIdx,
-                    )
-                    const snapshotInputArtifact = findStepRoundInputArtifact(
-                      artifacts,
-                      artifactInputSnapshots,
-                      currentStep.key,
-                      selectedExecutionRound,
-                      inpIdx,
-                    )
-                    const inputArtifact = snapshotInputArtifact
-                      ?? (inputPortSnapshot ? undefined : findArtifact(inp.name))
-                    const inputIsTaskContext = inputPortSnapshot?.status === 'task_context'
-                    const inputIsInactive = inputPortSnapshot?.status === 'inactive'
-                    const inputStatusLabel = inputArtifact
-                      ? t('taskDetail.inputReady')
-                      : inputIsTaskContext
-                        ? t('taskDetail.inputTaskContext')
-                        : inputIsInactive
-                          ? t('taskDetail.inputInactive')
-                          : t('taskDetail.inputUnavailable')
-                    const inputUpdatedAt = formatArtifactUpdatedAt(inputArtifact?.updated_at)
-                    return (
-                      <div
-                        key={inpIdx}
-                        style={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: 4,
-                        }}
-                      >
-                        {/* Input item */}
-                        <div
-                          role={inputArtifact ? 'button' : undefined}
-                          tabIndex={inputArtifact ? 0 : undefined}
-                          aria-label={inputArtifact
-                            ? t('taskDetail.openInputAria', { name: inp.name })
-                            : undefined}
-                          onClick={inputArtifact
-                            ? () => onOpenArtifact(
-                              inputArtifact.name,
-                              inputArtifact.step_key,
-                              inputArtifact.round,
-                              inputArtifact.path,
-                            )
-                            : undefined}
-                          onKeyDown={(event) => {
-                            if (inputArtifact && (
-                              event.key === 'Enter' ||
-                              event.key === ' '
-                            )) {
-                              event.preventDefault()
-                              onOpenArtifact(
-                                inputArtifact.name,
-                                inputArtifact.step_key,
-                                inputArtifact.round,
-                                inputArtifact.path,
-                              )
-                            }
-                          }}
-                          title={inputArtifact
-                            ? t('taskDetail.openFileTitle', { name: inp.name })
-                            : undefined}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 8,
-                            padding: '8px 10px',
-                            background: 'var(--surface)',
-                            borderRadius: 6,
-                            border: '1px solid var(--border-soft)',
-                            cursor: inputArtifact ? 'pointer' : 'default',
-                          }}
-                        >
-                          {inputUpdatedAt && (
-                            <span
-                              title={t('taskDetail.artifactModifiedAt', { time: inputUpdatedAt })}
-                              style={{
-                                width: 82,
-                                flexShrink: 0,
-                                color: 'var(--meta)',
-                                fontSize: 'calc(11px * var(--font-scale))',
-                                fontVariantNumeric: 'tabular-nums',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {inputUpdatedAt}
-                            </span>
-                          )}
-                          <div
-                            style={{
-                              width: 6,
-                              height: 6,
-                              borderRadius: '50%',
-                              background: 'var(--accent)',
-                              flexShrink: 0,
-                            }}
-                          />
-                          <span
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 6,
-                              flex: 1,
-                              minWidth: 0,
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontSize: 'calc(13px * var(--font-scale))',
-                                fontWeight: 500,
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                                minWidth: 0,
-                              }}
-                            >
-                              {inp.name}
-                            </span>
-                            <span
-                              style={{
-                                fontSize: 'calc(11px * var(--font-scale))',
-                                color: 'var(--meta)',
-                                background: 'var(--surface)',
-                                border: '1px solid var(--border-soft)',
-                                padding: '0 4px',
-                                borderRadius: 3,
-                                flexShrink: 0,
-                              }}
-                            >
-                              {inp.type}
-                            </span>
-                          </span>
-                          {inputArtifact?.round ? (
-                            <span
-                              style={{
-                                fontSize: 'calc(11px * var(--font-scale))',
-                                color: 'var(--meta)',
-                                background: 'var(--surface)',
-                                border: '1px solid var(--border-soft)',
-                                padding: '0 3px',
-                                borderRadius: 2,
-                                flexShrink: 0,
-                              }}
-                            >
-                              {t('taskDetail.artifactRound', {
-                                round: inputArtifact.round,
-                              })}
-                            </span>
-                          ) : null}
-                          {inputArtifact?.unchanged_from_round ? (
-                            <ArtifactUnchangedBadge fromRound={inputArtifact.unchanged_from_round} />
-                          ) : null}
-                          <span
-                            style={{
-                              fontSize: 'calc(11px * var(--font-scale))',
-                              color: inputArtifact || inputIsTaskContext
-                                ? 'var(--success)'
-                                : 'var(--meta)',
-                              background: 'var(--surface)',
-                              border: '1px solid var(--border-soft)',
-                              padding: '0 3px',
-                              borderRadius: 2,
-                              flexShrink: 0,
-                            }}
-                          >
-                            {inputStatusLabel}
-                          </span>
-                          {inputArtifact ? (
-                            <span
-                              style={{
-                                fontSize: 'calc(11px * var(--font-scale))',
-                                color: 'var(--accent)',
-                              }}
-                            >
-                              {t('taskDetail.view')}
-                            </span>
-                          ) : null}
-                        </div>
-                        {/* Sub-outputs */}
-                        {subOutputs.map(
-                          (out: any, outIdx: number) => {
-                            const downstreamInputs = downstreamInputsForOutput(
-                              steps,
-                              workflowConnections,
-                              currentStep.key,
-                              out.outputIndex,
-                            )
-                            const downstreamLabels = downstreamInputs.map((target) =>
-                              `→ ${target.stepLabel}: ${target.inputName}`,
-                            )
-                            const outArtifact = out.artifact ?? findArtifact(
-                              out.name,
-                              currentStep.key,
-                              undefined,
-                              activeIoRound,
-                            )
-                            const outputUpdatedAt = formatArtifactUpdatedAt(outArtifact?.updated_at)
-                            const outputReady = Boolean(outArtifact)
-                            return (
-                              <div
-                                key={outIdx}
-                                role={outputReady ? 'button' : undefined}
-                                tabIndex={outputReady ? 0 : undefined}
-                                aria-label={outputReady
-                                  ? t(
-                                    'taskDetail.openOutputAria',
-                                    { name: out.name },
-                                  )
-                                  : undefined}
-                                onClick={outputReady
-                                  ? () =>
-                                    onOpenArtifact(
-                                      outArtifact?.name ?? out.name,
-                                      currentStep.key,
-                                      activeIoRound,
-                                      outArtifact?.path,
-                                    )
-                                  : undefined}
-                                onKeyDown={outputReady
-                                  ? (event) => {
-                                    if (
-                                      event.key === 'Enter' ||
-                                      event.key === ' '
-                                    ) {
-                                      event.preventDefault()
-                                      onOpenArtifact(
-                                        outArtifact?.name ?? out.name,
-                                        currentStep.key,
-                                        activeIoRound,
-                                        outArtifact?.path,
-                                      )
-                                    }
-                                  }
-                                  : undefined}
-                                title={outputReady
-                                  ? t('taskDetail.openFileTitle', {
-                                    name: out.name,
-                                  })
-                                  : undefined}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 6,
-                                  marginLeft: 18,
-                                  padding: '4px 8px',
-                                  cursor: outputReady ? 'pointer' : 'default',
-                                  borderRadius: 4,
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    color: 'var(--meta)',
-                                    fontSize: 'calc(11px * var(--font-scale))',
-                                  }}
-                                >
-                                  ↳
-                                </span>
-                                {outputUpdatedAt && (
-                                  <span
-                                    title={t('taskDetail.artifactModifiedAt', { time: outputUpdatedAt })}
-                                    style={{
-                                      width: 82,
-                                      flexShrink: 0,
-                                      color: 'var(--meta)',
-                                      fontSize: 'calc(11px * var(--font-scale))',
-                                      fontVariantNumeric: 'tabular-nums',
-                                      whiteSpace: 'nowrap',
-                                    }}
-                                  >
-                                    {outputUpdatedAt}
-                                  </span>
-                                )}
-                                {outArtifact?.is_dir ? (
-                                  <Icon
-                                    name="folder"
-                                    size={13}
-                                    color="var(--accent)"
-                                    style={{ flexShrink: 0 }}
-                                  />
-                                ) : (
-                                  <div
-                                    style={{
-                                      width: 6,
-                                      height: 6,
-                                      borderRadius: '50%',
-                                      background: outputReady
-                                        ? 'var(--success)'
-                                        : 'var(--border-soft)',
-                                      flexShrink: 0,
-                                    }}
-                                  />
-                                )}
-                                <span
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 6,
-                                    flex: '0 1 auto',
-                                    minWidth: 0,
-                                  }}
-                                >
-                                  <span
-                                    style={{
-                                      fontSize: 'calc(13px * var(--font-scale))',
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis',
-                                      whiteSpace: 'nowrap',
-                                      minWidth: 0,
-                                    }}
-                                  >
-                                    {out.name}
-                                  </span>
-                                  <span
-                                    style={{
-                                      fontSize: 'calc(11px * var(--font-scale))',
-                                      color: 'var(--meta)',
-                                      background: 'var(--surface)',
-                                      border: '1px solid var(--border-soft)',
-                                      padding: '0 3px',
-                                      borderRadius: 2,
-                                      flexShrink: 0,
-                                    }}
-                                  >
-                                    {out.type}
-                                  </span>
-                                </span>
-                                {downstreamInputs.length > 0 && (
-                                  <MarqueeText
-                                    className="step-output-route-marquee"
-                                    text={downstreamLabels.join('   ')}
-                                    title={downstreamLabels.join('\n')}
-                                    style={{
-                                      flex: '0 1 35%',
-                                      width: '35%',
-                                      fontSize: 'calc(11px * var(--font-scale))',
-                                      color: 'var(--muted)',
-                                    }}
-                                  />
-                                )}
-                                <span style={{ flex: 1, minWidth: 0 }} aria-hidden="true" />
-                                {outArtifact?.round ? (
-                                  <span
-                                    style={{
-                                      fontSize: 'calc(11px * var(--font-scale))',
-                                      color: 'var(--meta)',
-                                      background: 'var(--surface)',
-                                      border: '1px solid var(--border-soft)',
-                                      padding: '0 3px',
-                                      borderRadius: 2,
-                                      flexShrink: 0,
-                                    }}
-                                  >
-                                    {t('taskDetail.artifactRound', {
-                                      round: outArtifact.round,
-                                    })}
-                                  </span>
-                                ) : null}
-                                {outArtifact?.unchanged_from_round ? (
-                                  <ArtifactUnchangedBadge fromRound={outArtifact.unchanged_from_round} />
-                                ) : null}
-                                <span
-                                  style={{
-                                    fontSize: 'calc(11px * var(--font-scale))',
-                                    color: 'var(--meta)',
-                                    background: 'var(--surface)',
-                                    border: '1px solid var(--border-soft)',
-                                    padding: '0 3px',
-                                    borderRadius: 2,
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  {outputReady
-                                    ? t('taskDetail.outputDone')
-                                    : t('taskDetail.outputPending')}
-                                </span>
-                                {outputReady && (
-                                  <span
-                                    style={{
-                                      fontSize: 'calc(11px * var(--font-scale))',
-                                      color: 'var(--accent)',
-                                      flexShrink: 0,
-                                    }}
-                                  >
-                                    {t('common.open')}
-                                  </span>
-                                )}
-                              </div>
-                            )
-                          },
-                        )}
-                      </div>
-                    )
-                  },
-                )
-              })()}
-            </div>
-          </div>
-        </div>
+        <TaskStepIoPanel currentStep={currentStep} steps={steps}
+          workflowConnections={workflowConnections} progress={stepProgress[selectedStep]}
+          artifacts={artifacts} artifactInputSnapshots={artifactInputSnapshots}
+          canChat={canChat} restartingStepKeys={restartingStepKeys}
+          onRestartStepWithFreshSession={onRestartStepWithFreshSession}
+          onOpenArtifact={onOpenArtifact} locale={locale} />
 
         {/* Step prompt */}
         <div>
@@ -1402,319 +863,18 @@ export default function TaskDetailView({
         </div>
 
         {/* Review results */}
-        {selectedReview && (
-          <div ref={mobileReviewRef}>
-            <div
-              style={{
-                fontSize: 'calc(11px * var(--font-scale))',
-                fontWeight: 600,
-                color: 'var(--muted)',
-                fontFamily: 'var(--font-mono)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.08em',
-                marginBottom: 10,
-              }}
-            >
-              {t('taskDetail.reviewResult')}
-            </div>
-            <div
-              style={{
-                border: '1px solid var(--border-soft)',
-                borderRadius: 8,
-                background: 'var(--surface)',
-                padding: 12,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 9,
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  gap: 8,
-                }}
-              >
-                <strong style={{ fontSize: 'calc(13px * var(--font-scale))' }}>
-                  {selectedReview.mode === 'auto'
-                    ? t('taskDetail.autoReview')
-                    : t('taskDetail.manualReview')}
-                </strong>
-                <span
-                  className="status-badge"
-                  data-s={
-                    selectedReview.status === 'passed'
-                      ? 'passed'
-                      : selectedReview.status === 'rejected'
-                        ? 'failed'
-                        : 'paused'
-                  }
-                >
-                  {selectedReview.status === 'passed'
-                    ? t('taskDetail.reviewPassed')
-                    : selectedReview.status === 'rejected'
-                      ? t('taskDetail.reviewRejected')
-                      : selectedReview.status === 'terminated'
-                        ? t('taskDetail.reviewTerminated')
-                      : selectedReview.status === 'running'
-                        ? t('taskDetail.reviewRunning')
-                        : t('taskDetail.reviewWaiting')}
-                </span>
-              </div>
-              {/* 审核报告是 Markdown 文本，统一走 ReviewReportContent 按 Markdown 渲染：
-                  分享页与 owner 弹窗都经 TaskDetailView 渲染，复用同一份实现。 */}
-              {selectedReview.report && (
-                <ReviewReportContent
-                  scoreLabel={
-                    selectedReview.report.score !== null
-                      ? t('taskDetail.scorePoints', {
-                          score: selectedReview.report.score,
-                        })
-                      : ''
-                  }
-                  report={selectedReview.report}
-                  projectId={projectId}
-                />
-              )}
-              {selectedReview.decision && selectedReviewActor && (
-                <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--muted)' }}>
-                  {t('taskDetail.reviewedBy', {
-                    name: selectedReviewActor,
-                  })}
-                </div>
-              )}
-              {/* Review action buttons (edit mode only) */}
-              {onReviewAction && selectedReviewActionable && (
-                  <>
-                    <Textarea
-                      rows={2}
-                      value={reviewComment ?? ''}
-                      onChange={(event) =>
-                        onReviewCommentChange?.(event.target.value)
-                      }
-                      placeholder={t(
-                        'taskDetail.reviewCommentPlaceholder',
-                      )}
-                    />
-                    <ReviewDecisionActions
-                      status={selectedReview.status}
-                      pending={!!reviewActionPending}
-                      onAction={(decision) => onReviewAction?.(decision)}
-                    />
-                  </>
-                )}
-            </div>
-          </div>
-        )}
+        {selectedReview && <TaskReviewResult review={selectedReview} projectId={projectId}
+          actionable={selectedReviewActionable} pending={reviewActionPending}
+          comment={reviewComment} onCommentChange={onReviewCommentChange}
+          onAction={onReviewAction} containerRef={mobileReviewRef} />}
 
         {/* Review config drawer (edit mode only) */}
-        {onShowReviewDrawerChange && (
-          <div style={{ marginTop: 20 }}>
-            <button
-              onClick={() =>
-                onShowReviewDrawerChange?.(!showReviewDrawer)
-              }
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                width: '100%',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: 'var(--muted)',
-                fontSize: 'calc(11px * var(--font-scale))',
-                fontWeight: 600,
-                textTransform: 'uppercase',
-                letterSpacing: '0.08em',
-                padding: '0',
-                fontFamily: 'var(--font-mono)',
-              }}
-            >
-              <span
-                style={{
-                  transform: showReviewDrawer
-                    ? 'rotate(90deg)'
-                    : 'none',
-                  transition: 'transform 150ms',
-                  display: 'inline-block',
-                  fontSize: 'calc(11px * var(--font-scale))',
-                }}
-              >
-                &#9654;
-              </span>
-              {t('taskDetail.stepReviewConfig')}
-            </button>
-            {showReviewDrawer && (
-              <div
-                style={{
-                  marginTop: 10,
-                  padding: '10px 12px',
-                  borderRadius: 6,
-                  border: '1px solid var(--border)',
-                  background: 'var(--surface)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 8,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      gap: 4,
-                      alignItems: 'center',
-                    }}
-                  >
-                    {([
-                      ['skip', t('flow.reviewSkip')],
-                      ['auto', t('flow.autoReview')],
-                      ['manual', t('flow.manualReview')],
-                    ] as const).map(([value, label]) => (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() =>
-                          onEditReviewModeChange?.(value)
-                        }
-                        style={{
-                          padding: '3px 10px',
-                          fontSize: 'calc(12px * var(--font-scale))',
-                          borderRadius: 999,
-                          border:
-                            editReviewMode === value
-                              ? '1px solid var(--accent)'
-                              : '1px solid var(--border)',
-                          background:
-                            editReviewMode === value
-                              ? 'color-mix(in oklab, var(--accent), transparent 88%)'
-                              : 'transparent',
-                          color:
-                            editReviewMode === value
-                              ? 'var(--accent)'
-                              : 'var(--fg-2)',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  {editReviewMode === 'auto' && (
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        fontSize: 'calc(13px * var(--font-scale))',
-                      }}
-                    >
-                      <span
-                        style={{
-                          color: 'var(--meta)',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {t('flow.retry')}
-                      </span>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={5}
-                        value={editReviewRetries ?? 1}
-                        onChange={(e) =>
-                          onEditReviewRetriesChange?.(
-                            Math.max(
-                              1,
-                              Math.min(
-                                5,
-                                Number(e.target.value) || 1,
-                              ),
-                            ),
-                          )
-                        }
-                        style={{
-                          width: 40,
-                          height: 22,
-                          fontSize: 'calc(13px * var(--font-scale))',
-                          padding: '0 6px',
-                          border: '1px solid var(--border)',
-                          borderRadius: 4,
-                          background: 'var(--bg)',
-                          color: 'var(--fg)',
-                        }}
-                      />
-                      <span
-                        style={{
-                          fontSize: 'calc(11px * var(--font-scale))',
-                          color: 'var(--meta)',
-                        }}
-                      >
-                        {t('flow.reviewAutoRetryHint')}
-                      </span>
-                    </div>
-                  )}
-                  {editReviewMode === 'skip' && (
-                    <div
-                      style={{
-                        fontSize: 'calc(11px * var(--font-scale))',
-                        color: 'var(--meta)',
-                      }}
-                    >
-                      {t('flow.reviewSkipHint')}
-                    </div>
-                  )}
-                  {editReviewMode === 'manual' && (
-                    <div
-                      style={{
-                        fontSize: 'calc(11px * var(--font-scale))',
-                        color: 'var(--meta)',
-                      }}
-                    >
-                      {t('flow.reviewPauseHint')}
-                    </div>
-                  )}
-                </div>
-                <MarkdownEditor
-                  value={editReviewPrompt ?? ''}
-                  onChange={
-                    onEditReviewPromptChange ?? (() => {})
-                  }
-                  projectId={projectId}
-                  placeholder={t(
-                    'taskDetail.reviewPromptPlaceholder',
-                  )}
-                  minHeight={64}
-                  maxHeight={160}
-                  ariaLabel={t('taskDetail.reviewPromptAria')}
-                />
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'flex-end',
-                  }}
-                >
-                  <Button
-                    variant="ghost"
-                    onClick={onSaveReviewConfig}
-                    style={{
-                      fontSize: 'calc(11px * var(--font-scale))',
-                      padding: '3px 10px',
-                    }}
-                  >
-                    {t('common.save')}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        {onSaveReviewConfig && <TaskReviewConfigPanel projectId={projectId}
+          mode={editReviewMode} onModeChange={onEditReviewModeChange}
+          retries={editReviewRetries} onRetriesChange={onEditReviewRetriesChange}
+          prompt={editReviewPrompt} onPromptChange={onEditReviewPromptChange}
+          onSave={onSaveReviewConfig} />}
+
       </div>
     )
   }

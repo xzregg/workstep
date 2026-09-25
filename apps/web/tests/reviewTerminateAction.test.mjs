@@ -14,9 +14,14 @@ const actionsSource = fs.readFileSync(
   new URL('../src/components/ReviewDecisionActions.tsx', import.meta.url),
   'utf8',
 )
+const reviewResultSource = fs.readFileSync(
+  new URL('../src/components/TaskReviewResult.tsx', import.meta.url),
+  'utf8',
+)
 
 test('人工审核的详情卡片和消息卡片都提供终止动作', () => {
-  assert.equal((viewSource.match(/<ReviewDecisionActions\b/g) || []).length, 2)
+  assert.equal((viewSource.match(/<ReviewDecisionActions\b/g) || []).length, 1)
+  assert.match(reviewResultSource, /<ReviewDecisionActions\b/)
   assert.match(actionsSource, /onAction\('terminate'\)/)
   assert.match(actionsSource, /variant="danger"[\s\S]*t\('taskDetail\.terminate'\)/)
 })

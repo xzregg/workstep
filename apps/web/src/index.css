@@ -512,6 +512,119 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
   transform: translate(-50%, -50%); color: var(--meta);
   font-size: calc(11px * var(--font-scale)); opacity: 0.5;
 }
+.task-review-config { margin-top: 20px; }
+.task-review-config-toggle {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  background: none; border: 0; cursor: pointer; color: var(--muted);
+  font-size: calc(11px * var(--font-scale)); font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  padding: 0; font-family: var(--font-mono);
+}
+.task-review-config-chevron {
+  transition: transform 150ms; display: inline-block;
+  font-size: calc(11px * var(--font-scale));
+}
+.task-review-config-toggle[aria-expanded="true"] .task-review-config-chevron { transform: rotate(90deg); }
+.task-review-config-body {
+  margin-top: 10px; padding: 10px 12px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--surface);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.task-review-config-fields { display: flex; flex-direction: column; gap: 8px; }
+.task-review-config-modes { display: flex; align-items: center; gap: 4px; }
+.task-review-config-mode {
+  padding: 3px 10px; font-size: calc(12px * var(--font-scale));
+  border-radius: 999px; border: 1px solid var(--border);
+  background: transparent; color: var(--fg-2); cursor: pointer;
+}
+.task-review-config-mode[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent), transparent 88%);
+  color: var(--accent);
+}
+.task-review-config-retries { display: flex; align-items: center; gap: 8px; font-size: calc(13px * var(--font-scale)); }
+.task-review-config-retries > span:first-child { color: var(--meta); white-space: nowrap; }
+.task-review-config-retry-input {
+  width: 40px; height: 22px; font-size: calc(13px * var(--font-scale));
+  padding: 0 6px; border: 1px solid var(--border);
+  border-radius: 4px; background: var(--bg); color: var(--fg);
+}
+.task-review-config-hint { font-size: calc(11px * var(--font-scale)); color: var(--meta); }
+.task-review-config-actions { display: flex; justify-content: flex-end; }
+.task-review-config-save { font-size: calc(11px * var(--font-scale)); padding: 3px 10px; }
+.task-review-result-heading {
+  font-size: calc(11px * var(--font-scale)); font-weight: 600;
+  color: var(--muted); font-family: var(--font-mono);
+  text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;
+}
+.task-review-result-card {
+  border: 1px solid var(--border-soft); border-radius: 8px;
+  background: var(--surface); padding: 12px;
+  display: flex; flex-direction: column; gap: 9px;
+}
+.task-review-result-summary { display: flex; justify-content: space-between; gap: 8px; }
+.task-review-result-summary strong { font-size: calc(13px * var(--font-scale)); }
+.task-review-result-actor { font-size: calc(12px * var(--font-scale)); color: var(--muted); }
+.task-step-io-header, .task-step-io-actions {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+}
+.task-step-io-header { justify-content: space-between; margin-bottom: 8px; }
+.task-step-io-header > strong { font-size: calc(13px * var(--font-scale)); }
+.task-step-io-actions { gap: 6px; }
+.task-step-io-inputs, .task-step-io-group { display: flex; flex-direction: column; gap: 8px; }
+.task-step-io-group { gap: 4px; }
+.task-step-io-label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: calc(13px * var(--font-scale)); font-weight: 600; color: var(--muted);
+}
+.task-step-io-label > span { color: var(--meta); }
+.task-step-io-input, .task-step-io-output {
+  display: flex; align-items: center; gap: 8px;
+  min-width: 0; cursor: default;
+}
+.task-step-io-input[data-openable="true"],
+.task-step-io-output[data-openable="true"] { cursor: pointer; }
+.task-step-io-input {
+  padding: 8px 10px; background: var(--surface);
+  border-radius: 6px; border: 1px solid var(--border-soft);
+}
+.task-step-io-output { gap: 6px; margin-left: 18px; padding: 4px 8px; border-radius: 4px; }
+.task-step-io-date {
+  width: 82px; flex-shrink: 0; color: var(--meta);
+  font-size: calc(11px * var(--font-scale));
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.task-step-io-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--border-soft); flex-shrink: 0;
+}
+.task-step-io-dot--input { background: var(--accent); }
+.task-step-io-dot[data-ready="true"] { background: var(--success); }
+.task-step-io-identity, .task-step-io-output-identity {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+}
+.task-step-io-identity { flex: 1; }
+.task-step-io-output-identity { flex: 0 1 auto; }
+.task-step-io-name {
+  font-size: calc(13px * var(--font-scale)); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.task-step-io-input .task-step-io-name { font-weight: 500; }
+.task-step-io-type, .task-step-io-round, .task-step-io-status {
+  font-size: calc(11px * var(--font-scale)); color: var(--meta);
+  background: var(--surface); border: 1px solid var(--border-soft);
+  padding: 0 3px; border-radius: 2px; flex-shrink: 0;
+}
+.task-step-io-type { padding-inline: 4px; border-radius: 3px; }
+.task-step-io-status[data-ready="true"] { color: var(--success); }
+.task-step-io-open { font-size: calc(11px * var(--font-scale)); color: var(--accent); flex-shrink: 0; }
+.task-step-io-branch { color: var(--meta); font-size: calc(11px * var(--font-scale)); }
+.task-step-io-output > svg { flex-shrink: 0; }
+.task-step-io-output .step-output-route-marquee {
+  flex: 0 1 35%; width: 35%;
+  font-size: calc(11px * var(--font-scale)); color: var(--muted);
+}
+.task-step-io-spacer { flex: 1; min-width: 0; }
 
 /* 用户消息操作按钮：鼠标悬停到消息上才显示，高度已预留不撑开布局 */
 /* 对话消息组件:始终允许选中文字(默认浏览器蓝色高亮) */
