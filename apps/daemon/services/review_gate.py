@@ -167,7 +167,7 @@ class ReviewGate:
             return ReviewOutcome("awaiting_review", review_run, report)
 
         await self._emit(task, step, step_run, review_run, "reviewing")
-        engine = create_engine(engine_id)
+        engine = await asyncio.to_thread(create_engine, engine_id)
         response_parts: list[str] = []
         events_collected: list[dict] = []
         error: str | None = None
