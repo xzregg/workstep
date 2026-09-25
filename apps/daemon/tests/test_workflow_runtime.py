@@ -4,6 +4,8 @@ from contextlib import nullcontext
 from types import SimpleNamespace
 import asyncio
 import json
+import threading
+import time
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -84,7 +86,7 @@ def test_user_message_uses_current_task_step(statuses, expected):
 def test_restart_closes_running_messages_from_superseded_parent(tmp_path):
     from datetime import timedelta
     from models import Message, ReviewRun
-    from services.workflow_runtime import WorkflowRuntime
+    from services.workflow_restart import create_restart_run
 
     db = init_db(str(tmp_path / "restart-messages.db"))
     try:
@@ -121,9 +123,8 @@ def test_restart_closes_running_messages_from_superseded_parent(tmp_path):
                 run_status="running", step_run_id=step_run.id,
                 position=sequence, started_at=timestamp, created_at=timestamp,
             )
-        runtime = WorkflowRuntime(EventBus(), SimpleNamespace())
-        runtime._create_restart_run(
-            task, parent, 1, "do", {"do"},
+        create_restart_run(
+            task, parent, 1, "do", {"do"}, instance_id="restart-test",
         )
         assert ReviewRun.get_by_id(review.id).status == "cancelled"
         execution = Message.get_by_id("restart-execution")
@@ -1318,7 +1319,7 @@ async def test_rerun_upstream_with_new_artifact_restarts_previously_blocked_down
 
 
 @pytest.mark.anyio
-async def test_restart_from_step_picks_up_edited_engine(tmp_path):
+async def test_restart_from_step_picks_up_edited_engine(tmp_path, monkeypatch):
     """编辑流程更换阶段引擎后，重跑该阶段应使用新引擎而非父 run 快照。"""
     import json
 
@@ -1386,8 +1387,24 @@ async def test_restart_from_step_picks_up_edited_engine(tmp_path):
     ENGINE_REGISTRY["engine-a"] = RuntimeFakeEngine
     ENGINE_REGISTRY["engine-b"] = RuntimeFakeEngine
     runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
+    original_execute_sql = db.execute_sql
+    child_insert_started = threading.Event()
+
+    def slow_child_insert(sql, params=None, commit=None):
+        if 'INSERT INTO "workflow_runs"' in sql and not child_insert_started.is_set():
+            child_insert_started.set()
+            time.sleep(0.35)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(db, "execute_sql", slow_child_insert)
     try:
-        handle = await runtime.restart_from_step(project.id, task.id, "do")
+        restart = asyncio.create_task(runtime.restart_from_step(project.id, task.id, "do"))
+        assert await asyncio.to_thread(child_insert_started.wait, 1)
+        assert not restart.done()
+        heartbeat_started = time.perf_counter()
+        await asyncio.wait_for(asyncio.sleep(0), timeout=0.2)
+        assert time.perf_counter() - heartbeat_started < 0.2
+        handle = await restart
         await runtime.wait(handle)
 
         child = WorkflowRun.get_by_id(handle.id)
