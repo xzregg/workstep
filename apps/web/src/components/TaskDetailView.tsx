@@ -8,6 +8,7 @@ import {
   useState,
   useMemo,
   useCallback,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
@@ -39,7 +40,6 @@ import MessageResponseFooter, {
   usageFromEvents,
 } from './MessageResponseFooter'
 import { stripA2uiBlocks } from '../utils/a2ui'
-import MarkdownMessage from './MarkdownMessage'
 import type { ReviewDecisionAction } from './ReviewDecisionActions'
 import ProcessTrace from './ProcessTrace'
 import Icon from './Icon'
@@ -48,6 +48,7 @@ import TaskStepProgressGraph from './TaskStepProgressGraph'
 import TaskStepIoPanel from './TaskStepIoPanel'
 import TaskDetailHeader from './TaskDetailHeader'
 import TaskDetailDescription from './TaskDetailDescription'
+import TaskStepPrompt from './TaskStepPrompt'
 import TaskDetailTabs from './TaskDetailTabs'
 import TaskChatTargetTabs from './TaskChatTargetTabs'
 import TaskConversationMessage from './TaskConversationMessage'
@@ -651,74 +652,8 @@ export default function TaskDetailView({
           onRestartStepWithFreshSession={onRestartStepWithFreshSession}
           onOpenArtifact={onOpenArtifact} locale={locale} />
 
-        {/* Step prompt */}
-        <div>
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 8,
-              color: `${currentStepColor}`,
-            }}
-          >
-            {' '}
-            {currentStep.label}{' '}
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: 12,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 'calc(11px * var(--font-scale))',
-                fontWeight: 600,
-                color: 'var(--muted)',
-                fontFamily: 'var(--font-mono)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.08em',
-              }}
-            >
-              {t('taskDetail.stepPrompt')}
-            </div>
-            {onOpenPromptEditor && (
-              <Button
-                variant="ghost"
-                onClick={onOpenPromptEditor}
-                style={{ height: 28, padding: '0 9px', fontSize: 'calc(13px * var(--font-scale))', gap: 4 }}
-              >
-                <span aria-hidden="true">✎</span>
-                {t('taskDetail.quickEdit')}
-              </Button>
-            )}
-          </div>
-          <div
-            style={{
-              padding: '10px 12px',
-              borderRadius: 8,
-              border: '1px solid var(--border-soft)',
-              fontSize: 'calc(13px * var(--font-scale))',
-              lineHeight: 1.6,
-              overflowWrap: 'anywhere',
-              maxHeight: '33vh',
-              overflowY: 'auto',
-            }}
-          >
-            {currentStep.prompt ? (
-              <MarkdownMessage
-                content={currentStep.prompt}
-                projectId={projectId}
-              />
-            ) : (
-              <div style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)' }}>
-                {t('taskDetail.noStepPrompt')}
-              </div>
-            )}
-          </div>
-        </div>
+        <TaskStepPrompt label={currentStep.label} color={currentStepColor}
+          prompt={currentStep.prompt} projectId={projectId} onEdit={onOpenPromptEditor} />
 
         {/* Review results */}
         {selectedReview && <TaskReviewResult review={selectedReview} projectId={projectId}
@@ -739,41 +674,14 @@ export default function TaskDetailView({
 
   const renderConversation = () => {
     return (
-      <div
-        style={{
-          flex: 1,
-          minWidth: 0,
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          background: 'var(--bg)',
-        }}
-      >
+      <div className="task-conversation-body">
         {/* Chat header */}
-        <div
-          style={{
-            padding: '14px 20px',
-            borderBottom: '1px solid var(--border-soft)',
-            background: 'var(--bg)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            flexShrink: 0,
-          }}
-        >
-          <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, color: 'var(--fg)' }}>
+        <div className="task-conversation-header">
+          <span className="task-conversation-heading">
             {t('taskDetail.conversation')}
           </span>
-          <span
-            style={{
-              fontSize: 'calc(11px * var(--font-scale))',
-              fontWeight: 600,
-              color: currentStepColor,
-              background: `color-mix(in oklab, ${currentStepColor}, transparent 88%)`,
-              padding: '2px 8px',
-              borderRadius: 4,
-            }}
-          >
+          <span className="task-conversation-step-badge"
+            style={{ '--task-conversation-step-color': currentStepColor } as CSSProperties}>
             {currentStep.label}
           </span>
         </div>
@@ -781,13 +689,7 @@ export default function TaskDetailView({
         {/* Chat messages */}
         <div
           className="task-chat-history-wrapper"
-          style={{
-            flex: 1,
-            minWidth: 0,
-            minHeight: 0,
-            // 待插入消息面板悬浮在输入框上方：由包裹层留出「面板高度 + 2px」
-            position: 'relative', paddingBottom: overlayPaddingBottom(1)
-          }}
+          style={{ paddingBottom: overlayPaddingBottom(1) }}
         >
           <div
             className="chat-history-scroll task-chat-history-scroll"
@@ -795,20 +697,10 @@ export default function TaskDetailView({
             onWheelCapture={onWheelCapture}
             onKeyDownCapture={onKeyDownCapture}
             onScroll={onScroll}
-            style={{
-              height: '100%',
-              minWidth: 0,
-              overflowY: 'auto',
-              overflowX: 'hidden',
-              paddingBlock: 20,
-              display: 'flex',
-              flexDirection: 'column',
-            }}
           >
             <div
               ref={contentRef}
-              className="chat-history-content"
-              style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0, minHeight: '100%' }}
+              className="chat-history-content task-conversation-content"
             >
             {historyMessages.length === 0 &&
               taskActions.runs.length === 0 &&
@@ -816,14 +708,7 @@ export default function TaskDetailView({
               !content &&
               liveCoordinatorMessages.length === 0 &&
               !running && (
-                <div
-                  style={{
-                    textAlign: 'center',
-                    color: 'var(--meta)',
-                    padding: 40,
-                    fontSize: 'calc(13px * var(--font-scale))',
-                  }}
-                >
+                <div className="task-conversation-empty">
                   {t('taskDetail.conversationEmpty')}
                 </div>
               )}
@@ -982,19 +867,9 @@ export default function TaskDetailView({
         {canChat && (
           <div
             className="task-detail-composer"
-            style={{
-              position: 'relative',
-              padding: '4px 20px',
-              borderTop: '1px solid var(--border-soft)',
-              background: 'var(--bg)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 10,
-              flexShrink: 0,
-            }}
           >
             {onSendPrompt && !compact && <TaskActionButtons state={taskActions} onFillPrompt={onPromptChange} onSendPrompt={onSendPrompt} />}
-            {onSendPrompt && compact && taskActions.error && <span role="alert" style={{ color: 'var(--danger)' }}>{taskActions.error}</span>}
+            {onSendPrompt && compact && taskActions.error && <span role="alert" className="task-conversation-action-error">{taskActions.error}</span>}
             {composerState.running && (
               <ComposerOverlayHostContext.Provider value={registerOverlay}>
               <PendingMessageInserts
@@ -1024,19 +899,7 @@ export default function TaskDetailView({
               resumableTarget={resumableTarget} onSelect={onChatTargetChange} />
 
             {(chatError || stepEngineConfigError) && (
-              <div
-                role="alert"
-                style={{
-                  fontSize: 'calc(13px * var(--font-scale))',
-                  color: 'var(--danger)',
-                  padding: '6px 10px',
-                  borderRadius: 6,
-                  border:
-                    '1px solid rgba(217,45,32,0.25)',
-                  background:
-                    'rgba(217,45,32,0.06)',
-                }}
-              >
+              <div role="alert" className="task-conversation-chat-error">
                 {chatError || stepEngineConfigError}
               </div>
             )}
@@ -1266,20 +1129,14 @@ export default function TaskDetailView({
 
   if (!task) {
     return (
-      <div
-        style={{
-          padding: 40,
-          textAlign: 'center',
-          color: 'var(--meta)',
-        }}
-      >
+      <div className="task-detail-not-found">
         {t('taskDetail.taskNotFound')}
         {onClose && (
           <>
             <br />
             <Button
               variant="ghost"
-              style={{ marginTop: 12 }}
+              className="task-detail-back"
               onClick={onClose}
             >
               ← {t('common.back')}

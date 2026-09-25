@@ -38,7 +38,7 @@ test('opens the task created by a workflow dispatch step', () => {
 
 test('places step input and output before the step prompt', () => {
   const ioPos = source.indexOf('<TaskStepIoPanel')
-  const promptPos = source.indexOf("{t('taskDetail.stepPrompt')}")
+  const promptPos = source.indexOf('<TaskStepPrompt')
 
   assert.ok(ioPos >= 0, 'step input and output section missing')
   assert.ok(promptPos > ioPos, 'step input and output should precede the step prompt')
