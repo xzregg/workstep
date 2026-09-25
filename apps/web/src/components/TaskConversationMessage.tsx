@@ -21,17 +21,14 @@ import {
   canRetryFailedExecutionMessage,
   canRestartStoppedExecutionMessage,
   failedExecutionCompletionRound,
-  canCompleteStoppedReview,
-  isManualReviewMessage,
-  isMessageReviewActionable,
   isLostEngineSessionError,
   liveExecutionStatus,
   messageSessionId,
   resolveMessageError,
-  resolveMessageReview,
-  reviewActorLabel,
   stepAvatarText,
 } from '../pages/taskDetailChat'
+import { canCompleteStoppedReview, isManualReviewMessage,
+  isMessageReviewActionable, resolveMessageReview, reviewActorLabel } from '../pages/taskReviewRules'
 
 const EMPTY_EVENTS: never[] = []
 

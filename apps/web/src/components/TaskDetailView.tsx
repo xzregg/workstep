@@ -57,15 +57,14 @@ import TaskExecutionAnalysis from './TaskExecutionAnalysis'
 import TaskArtifactBrowser from './TaskArtifactBrowser'
 import TaskGitWorkspace from './git/TaskGitWorkspace'
 import {
-  isReviewActionable,
   isStepResumableWithMessage,
   isSelectedStepRunning,
-  findActionablePendingReview,
   resolveTaskComposerState,
   shouldRenderLegacyExecution,
   stepAvatarText,
   taskTargetStepsInWorkflowOrder,
 } from '../pages/taskDetailChat'
+import { findActionablePendingReview, isReviewActionable } from '../pages/taskReviewRules'
 import { useI18n } from '../i18n'
 import { ActionConversationMessage, TaskActionButtons } from './TaskActionShortcuts'
 import { useTaskActions } from './useActionRuns'
