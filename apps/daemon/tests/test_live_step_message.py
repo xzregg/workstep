@@ -435,6 +435,9 @@ async def test_runner_delivers_live_message_to_running_step(tmp_path):
 async def test_runner_splits_step_message_on_live_insert(tmp_path, monkeypatch):
     """An injected message lands between the pre-insert stage output and the
     stage's follow-up response, like Codex conversation segments."""
+    import threading
+    import time
+
     db, task, steps_config, bus, runner, original = _make_runner_task(tmp_path, SplitLiveFakeEngine)
     from services.remote_project import ActorSnapshot
 
@@ -451,6 +454,26 @@ async def test_runner_splits_step_message_on_live_insert(tmp_path, monkeypatch):
     LiveFakeEngine.received = []
     SplitLiveFakeEngine.ready_for_live = asyncio.Event()
     SplitLiveFakeEngine.continue_after_live = asyncio.Event()
+    events = bus.subscribe()
+    next_segment_insert_started = threading.Event()
+    original_execute_sql = db.execute_sql
+    assistant_inserts = 0
+
+    def slow_next_segment_insert(sql, params=None, commit=None):
+        nonlocal assistant_inserts
+        if (
+            'INSERT INTO "message"' in sql
+            and params is not None
+            and "execution" in params
+            and "assistant" in params
+        ):
+            assistant_inserts += 1
+            if assistant_inserts == 2:
+                next_segment_insert_started.set()
+                time.sleep(0.35)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(db, "execute_sql", slow_next_segment_insert)
     try:
         pipeline = asyncio.create_task(
             runner.run_pipeline(task, steps_config, tmp_path / "artifacts")
@@ -459,6 +482,11 @@ async def test_runner_splits_step_message_on_live_insert(tmp_path, monkeypatch):
         accepted = await runner.send_live_message(task.id, "do", "插入内容")
         assert accepted["status"] == "queued"
         SplitLiveFakeEngine.continue_after_live.set()
+        assert await asyncio.to_thread(next_segment_insert_started.wait, 2)
+        assert not pipeline.done()
+        heartbeat_started = time.perf_counter()
+        await asyncio.wait_for(asyncio.sleep(0), timeout=0.2)
+        assert time.perf_counter() - heartbeat_started < 0.2
         await pipeline
 
         messages = list(
@@ -482,6 +510,19 @@ async def test_runner_splits_step_message_on_live_insert(tmp_path, monkeypatch):
             "## Triggered by\n阶段操作人\n\n## User message\n插入内容"
         )
         assert pre_insert.sequence < inserted.sequence < post_insert.sequence
+        published = []
+        while not events.empty():
+            published.append(events.get_nowait())
+        assistant_starts = [
+            event for event in published
+            if event.get("type") == "TEXT_MESSAGE_START"
+            and event.get("channel") == "execution"
+            and event.get("role") == "assistant"
+        ]
+        assert [event["messageId"] for event in assistant_starts] == [
+            pre_insert.id, post_insert.id,
+        ]
+        assert assistant_starts[1]["prompt"] == json.loads(post_insert.prompt_json)["prompt"]
         # 段 A 的事件快照只含插入前的事件；段 B 的事件从插入后开始累积。
         assert "第二段" not in (tmp_path / pre_insert.event_log_path).read_text()
     finally:

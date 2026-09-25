@@ -29,7 +29,7 @@ from services.step_live_messages import StepLiveMessages
 from services.review_messages import AutomaticReviewMessages
 from services.review_gate import ReviewGate
 from services.config import config_store
-from services.messages import create_task_message, extract_usage_json, new_message_id
+from services.messages import extract_usage_json
 from agent_assistants.context_handoff import (
     mark_handoff_consumed,
 )
@@ -1038,117 +1038,17 @@ class TaskRunner:
                 elif event.type == "live_message":
                     live_data = event.data or {}
                     live_message_id = live_data.get("message_id")
-                    live_message_content = ""
-                    if live_message_id:
-                        def finish_live_message():
-                            live_message = Message.get_by_id(live_message_id)
-                            live_message.run_status = (
-                                "succeeded"
-                                if live_data.get("status") == "delivered"
-                                else "failed"
-                            )
-                            live_message.ended_at = utc_now()
-                            live_message.save()
-                            return live_message.content
-                        try:
-                            stored_content = await self._run_db(
-                                finish_live_message
-                            )
-                            live_message_content = self._live.pop_prompt(
-                                live_message_id, stored_content
-                            )
-                        except Message.DoesNotExist:
-                            pass
+                    msg_id, journal_ref = await self._live.handle_execution_event(
+                        task=task, step=step, step_run=step_run,
+                        artifacts_dir=artifacts_dir, data=live_data,
+                        message_id=msg_id, journal_ref=journal_ref,
+                        session_id=captured_session_id,
+                        resolved_model=resolved_model,
+                        events_collected=events_collected,
+                    )
                     if live_data.get("status") == "delivered":
-                        # 引擎确认收到插入消息：封口当前执行段并开启新的响应段，
-                        # 历史消息呈现「步骤输出 → 用户插入 → 步骤响应」的分段结构。
-                        seal_time = utc_now()
-                        prompt_after_insert = (
-                            live_message_content
-                            or str(live_data.get("content") or "")
-                        ).strip()
-                        def seal_current_message():
-                            sealed = Message.get_by_id(msg_id)
-                            self._event_journal.finish(journal_ref)
-                            snapshot = self._journal_snapshot(journal_ref)
-                            sealed.content = snapshot["content"]
-                            sealed.events_json = snapshot["events_json"]
-                            sealed.event_summary_json = snapshot["event_summary_json"]
-                            sealed.event_count = snapshot["event_count"]
-                            sealed.last_event_seq = snapshot["last_event_seq"]
-                            sealed.usage_json = extract_usage_json(events_collected)
-                            sealed.run_status = "succeeded"
-                            sealed.ended_at = seal_time
-                            sealed.save()
-                            return sealed.engine, sealed.model
-
-                        try:
-                            sealed_engine, sealed_model = await self._run_db(
-                                seal_current_message
-                            )
-                            await self._publish(task.id, step_key, {
-                                "channel": "execution",
-                                "message_id": msg_id,
-                                "engine": sealed_engine,
-                                "model": sealed_model,
-                                "event_sequence": len(events_collected) + 1,
-                                "type": "message_completed",
-                                "data": {"status": "succeeded"},
-                            })
-                        except Message.DoesNotExist:
-                            pass
-                        new_msg_id = new_message_id()
-                        journal_ref = await self._event_journal.astart(
-                            artifacts_dir.parent,
-                            f"task-{task.id}",
-                            new_msg_id,
-                            captured_session_id,
-                        )
-                        await self._run_db(lambda: create_task_message(
-                                id=new_msg_id,
-                                task=task,
-                                channel="execution",
-                                step_key=step_key,
-                                role="assistant",
-                                engine=step.engine,
-                                model=resolved_model,
-                                run_id=new_msg_id,
-                                step_run_id=step_run.id if step_run is not None else None,
-                                artifact_round=artifact_round,
-                                run_status="running",
-                                event_log_path=journal_ref.relative_path,
-                                prompt_json=(
-                                    json.dumps(
-                                        {"prompt": prompt_after_insert},
-                                        ensure_ascii=False,
-                                    )
-                                    if prompt_after_insert
-                                    else None
-                                ),
-                                position=1,
-                                started_at=seal_time,
-                                created_at=seal_time,
-                            ))
-                        msg_id = new_msg_id
                         content_parts.clear()
                         events_collected.clear()
-                        await self._publish(task.id, step_key, {
-                            "channel": "execution",
-                            "message_id": new_msg_id,
-                            "engine": step.engine,
-                            "model": resolved_model,
-                            "event_sequence": 0,
-                            "type": "message_started",
-                            "data": {
-                                "content": "",
-                                **(
-                                    {"prompt": prompt_after_insert}
-                                    if prompt_after_insert
-                                    else {}
-                                ),
-                            },
-                            "created_at": seal_time.isoformat(),
-                        })
                 if event.type == "interaction_request":
                     # Persist first so a reload after the broker advertises
                     # this interaction can reconstruct its message card.
