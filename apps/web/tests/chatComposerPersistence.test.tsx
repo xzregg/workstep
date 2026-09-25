@@ -464,6 +464,70 @@ test('restores the locally recorded engine selection over the session default', 
   }
 })
 
+test('late provider catalog clears an incompatible saved provider without reloading history', async () => {
+  const window = new Window({ url: 'http://localhost/' })
+  Object.assign(globalThis, {
+    window, document: window.document, navigator: window.navigator,
+    localStorage: window.localStorage, sessionStorage: window.sessionStorage,
+    Event: window.Event, InputEvent: window.InputEvent,
+    HTMLElement: window.HTMLElement, HTMLTextAreaElement: window.HTMLTextAreaElement,
+    requestAnimationFrame: (callback: FrameRequestCallback) => window.setTimeout(callback, 0),
+    cancelAnimationFrame: (id: number) => window.clearTimeout(id),
+    IS_REACT_ACT_ENVIRONMENT: true,
+  })
+  const key = 'workstep-chat-engine-config:project-1:session-1'
+  localStorage.setItem(key, JSON.stringify({
+    engine: 'claude', providerId: 'prov-1', model: '',
+    fastModel: '', visionModel: '', thinkingEffort: '',
+  }))
+  const restoreApis = installApiStubs()
+  let resolveProviders!: (value: Awaited<ReturnType<typeof providerApi.list>>) => void
+  const providerResult = new Promise<Awaited<ReturnType<typeof providerApi.list>>>(
+    (resolve) => { resolveProviders = resolve },
+  )
+  providerApi.list = async () => providerResult
+  assistantApi.list = async () => ({ assistants: [{
+    name: 'chat_session',
+    configured: { engine: 'claude', model: '', fast_model: '', vision_model: '', thinking_effort: '' },
+    available_engines: [{
+      id: 'claude', installed: true, configured: true, verified: true,
+      supports_coordinator: true, supports_provider: false, provider_protocols: [],
+    }],
+  }] }) as never
+  let historyRequests = 0
+  chatSessionApi.get = async (sessionId: string, projectId: string) => {
+    historyRequests += 1
+    return {
+      id: sessionId, project_id: projectId, workflow_id: null, title: '会话',
+      engine: 'claude', provider_id: '', model: '', fast_model: '', vision_model: '',
+      permission_mode: '', message_count: 0, messages: [], running: false,
+      created_at: '', updated_at: '',
+    } as never
+  }
+  useProjectStore.setState({ projects: [project] as never, activeProject: project as never, loading: false })
+  useChatListStore.setState({ sessionsByProject: {}, quickButtons: [], listLoadingByProject: {} })
+  useChatSessionStore.setState({ sessions: {} })
+  const container = document.body.appendChild(document.createElement('div'))
+  let root: Root | undefined
+  try {
+    root = await renderChat(container)
+    assert.equal(JSON.parse(localStorage.getItem(key) || '{}').providerId, 'prov-1')
+    await act(async () => {
+      resolveProviders({ providers: [{
+        id: 'prov-1', name: 'Provider', type: 'custom', protocol: 'openai_responses',
+        base_url: '', enabled: true, model_count: 0,
+      }] })
+      await providerResult
+    })
+    assert.equal(JSON.parse(localStorage.getItem(key) || '{}').providerId, '')
+    assert.equal(historyRequests, 1)
+  } finally {
+    if (root) await act(async () => root.unmount())
+    restoreApis()
+    await window.happyDOM.close()
+  }
+})
+
 test('permission mode remains editable and updates immediately while running', async () => {
   const window = new Window({ url: 'http://localhost/' })
   Object.assign(globalThis, {
