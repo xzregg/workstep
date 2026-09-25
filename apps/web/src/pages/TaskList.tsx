@@ -1,7 +1,6 @@
 import ResizablePanel from '../components/ResizablePanel'
 import ProjectGitButton from '../components/git/ProjectGitButton'
 import Select from '../components/Select'
-import { randomUuid } from '../utils/uuid'
 import { copyText } from '../utils/clipboard'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useTaskRoute } from '../hooks/useTaskRoute'
@@ -12,7 +11,7 @@ import TaskRecoveredBadge from '../components/TaskRecoveredBadge'
 import Icon from '../components/Icon'
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useTaskStore, selectWorkflowTasks, type LiveMessage } from '../stores/taskStore'
+import { useTaskStore, selectWorkflowTasks } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
 import { setDetailTaskIds } from '../hooks/useWebSocket'
 import { fsApi, scheduleApi } from '../api/client'
@@ -34,7 +33,7 @@ import ProjectDirectoryBrowserDialog from '../components/ProjectDirectoryBrowser
 import ProjectShareDialog from '../components/ProjectShareDialog'
 import ProjectSettingsPanel from '../components/ProjectSettingsPanel'
 import WorkflowShortcutSettingsDialog from '../components/WorkflowShortcutSettingsDialog'
-import ArchiveExperienceProgress from '../components/ArchiveExperienceProgress'
+import ArchiveExperienceDialog from '../components/ArchiveExperienceDialog'
 import TaskTableView from '../components/TaskTableView'
 import type { TaskDraftResult } from '../stores/taskDraftStore'
 import { useI18n, type TFunction, type TKey } from '../i18n'
@@ -155,7 +154,6 @@ export default function TaskList() {
   const [searchParams, setSearchParams] = useSearchParams()
   const {
     tasks, loading, fetchTasks, createTask, runTask, deleteTask, archiveTask,
-    getArchiveExperienceDraft, prepareArchiveExperience, stopArchiveExperience, confirmArchiveExperience,
     unarchiveTask, setActiveTask,
   } = useTaskStore()
   const activeProject = useProjectStore((s) => s.activeProject)
@@ -174,20 +172,7 @@ export default function TaskList() {
   const newPanelRef = useRef<HTMLDivElement>(null)
   const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<string | null>(null)
   const [confirmStartTaskId, setConfirmStartTaskId] = useState<string | null>(null)
-  const [confirmArchiveTaskId, setConfirmArchiveTaskId] = useState<string | null>(null)
-  const [archiveExperience, setArchiveExperience] = useState('')
-  const [archiveExperienceError, setArchiveExperienceError] = useState('')
-  const [archiveExperiencePhase, setArchiveExperiencePhase] = useState<'loading' | 'intro' | 'generating' | 'stopping' | 'stopped' | 'review' | 'empty' | 'saving' | 'archiving'>('intro')
-  const [archiveExperienceMessageId, setArchiveExperienceMessageId] = useState<string | null>(null)
-  const [archiveExperienceHistory, setArchiveExperienceHistory] = useState<LiveMessage | undefined>()
-  const stoppedArchiveMessageIds = useRef(new Set<string>())
-  const archiveDraftLookupId = useRef<string | null>(null)
-  const archiveProgressMessage = useTaskStore((state) => (
-    confirmArchiveTaskId && archiveExperienceMessageId
-      ? state.liveMessages[confirmArchiveTaskId]?.[archiveExperienceMessageId]
-      : undefined
-  ))
-  const visibleArchiveProgressMessage = archiveProgressMessage || archiveExperienceHistory
+  const [archiveTarget, setArchiveTarget] = useState<{ id: string; title: string } | null>(null)
   const [startingTaskId, setStartingTaskId] = useState<string | null>(null)
   const [showArchived, setShowArchived] = useState(false)
 
@@ -195,11 +180,11 @@ export default function TaskList() {
   // detail panel is open; unsubscribe when closed or navigating away.
   useEffect(() => {
     const taskIds = [...new Set(
-      [selectedTaskId, confirmArchiveTaskId].filter((id): id is string => Boolean(id)),
+      [selectedTaskId, archiveTarget?.id].filter((id): id is string => Boolean(id)),
     )]
     setDetailTaskIds(taskIds)
     return () => setDetailTaskIds([])
-  }, [confirmArchiveTaskId, selectedTaskId])
+  }, [archiveTarget?.id, selectedTaskId])
   const [scheduleCount, setScheduleCount] = useState(0)
   const [showScheduleDialog, setShowScheduleDialog] = useState(false)
   const [shortcutSettingsOpen, setShortcutSettingsOpen] = useState(false)
@@ -614,162 +599,9 @@ export default function TaskList() {
     }
   }
 
-  const requestArchiveCard = async (e: React.MouseEvent, taskId: string) => {
-    e.stopPropagation()
-    setArchiveExperience('')
-    setArchiveExperienceError('')
-    setArchiveExperiencePhase('loading')
-    setArchiveExperienceMessageId(null)
-    setArchiveExperienceHistory(undefined)
-    stoppedArchiveMessageIds.current.clear()
-    setConfirmArchiveTaskId(taskId)
-    if (!activeProject) {
-      setArchiveExperiencePhase('intro')
-      return
-    }
-    const lookupId = randomUuid()
-    archiveDraftLookupId.current = lookupId
-    try {
-      const draft = await getArchiveExperienceDraft(taskId, activeProject.id)
-      if (archiveDraftLookupId.current !== lookupId) return
-      if (!draft.found) {
-        setArchiveExperiencePhase('intro')
-        return
-      }
-      setArchiveExperience(draft.experience)
-      setArchiveExperienceMessageId(draft.message_id)
-      setArchiveExperienceHistory({
-        id: draft.message_id || `archive-experience-${taskId}`,
-        channel: 'archive_experience',
-        content: draft.experience,
-        events: draft.events,
-        status: 'succeeded',
-        prompt: draft.prompt,
-        proposals: [],
-      })
-      setArchiveExperiencePhase(draft.has_experience ? 'review' : 'empty')
-    } catch {
-      if (archiveDraftLookupId.current === lookupId) {
-        setArchiveExperiencePhase('intro')
-      }
-    }
-  }
-
-  const stopArchiveDraft = async (closeAfterStop: boolean) => {
-    if (!confirmArchiveTaskId || !activeProject || !archiveExperienceMessageId) return
-    const taskId = confirmArchiveTaskId
-    const messageId = archiveExperienceMessageId
-    stoppedArchiveMessageIds.current.add(messageId)
-    setArchiveExperienceError('')
-    setArchiveExperiencePhase('stopping')
-    try {
-      await stopArchiveExperience(taskId, activeProject.id, messageId)
-    } catch (error) {
-      if (!closeAfterStop) {
-        setArchiveExperienceError(
-          t('taskList.archiveExperienceStopFailed', {
-            error: error instanceof Error ? error.message : t('common.unknownError'),
-          }),
-        )
-      }
-    } finally {
-      if (closeAfterStop) {
-        setConfirmArchiveTaskId(null)
-      } else {
-        setArchiveExperiencePhase('stopped')
-      }
-    }
-  }
-
-  const handleArchiveConfirm = async () => {
-    if (!confirmArchiveTaskId || !activeProject || archiveExperiencePhase === 'stopping' || archiveExperiencePhase === 'saving' || archiveExperiencePhase === 'archiving') return
-    if (archiveExperiencePhase === 'generating') {
-      await stopArchiveDraft(false)
-      return
-    }
-    const taskId = confirmArchiveTaskId
-    if (archiveExperiencePhase === 'empty') {
-      setArchiveExperienceError('')
-      setArchiveExperiencePhase('archiving')
-      try {
-        await confirmArchiveExperience(taskId, activeProject.id, '')
-        setCardLanes((prev) => { const next = { ...prev }; delete next[taskId]; return next })
-        setConfirmArchiveTaskId(null)
-      } catch (error) {
-        setArchiveExperienceError(
-          t('taskList.archiveExperienceDirectArchiveFailed', {
-            error: error instanceof Error ? error.message : t('common.unknownError'),
-          }),
-        )
-        setArchiveExperiencePhase('empty')
-      }
-      return
-    }
-    if (archiveExperiencePhase === 'intro' || archiveExperiencePhase === 'stopped') {
-      setArchiveExperienceError('')
-      setArchiveExperiencePhase('generating')
-      const messageId = randomUuid()
-      setArchiveExperienceMessageId(messageId)
-      try {
-        const draft = await prepareArchiveExperience(taskId, activeProject.id, messageId)
-        if (stoppedArchiveMessageIds.current.has(messageId)) return
-        setArchiveExperience(draft.experience)
-        setArchiveExperiencePhase(draft.has_experience ? 'review' : 'empty')
-      } catch (error) {
-        if (stoppedArchiveMessageIds.current.has(messageId)) return
-        setArchiveExperienceError(
-          t('taskList.archiveExperienceGenerateFailed', {
-            error: error instanceof Error ? error.message : t('common.unknownError'),
-          }),
-        )
-        setArchiveExperiencePhase('intro')
-      }
-      return
-    }
-    const reviewedExperience = archiveExperience.trim()
-    if (!reviewedExperience) return
-    setArchiveExperienceError('')
-    setArchiveExperiencePhase('saving')
-    try {
-      await confirmArchiveExperience(taskId, activeProject.id, reviewedExperience)
-      setCardLanes((prev) => { const next = { ...prev }; delete next[taskId]; return next })
-      setConfirmArchiveTaskId(null)
-    } catch (error) {
-      setArchiveExperienceError(
-        t('taskList.archiveExperienceSaveFailed', {
-          error: error instanceof Error ? error.message : t('common.unknownError'),
-        }),
-      )
-      setArchiveExperiencePhase('review')
-    }
-  }
-
-  const handleDirectArchive = async () => {
-    if (!confirmArchiveTaskId || !activeProject || archiveExperiencePhase === 'stopping' || archiveExperiencePhase === 'saving' || archiveExperiencePhase === 'archiving') return
-    const taskId = confirmArchiveTaskId
-    const previousPhase = archiveExperiencePhase
-    let stoppedActiveDraft = previousPhase === 'stopped'
-    setArchiveExperienceError('')
-    setArchiveExperiencePhase('archiving')
-    try {
-      if (previousPhase === 'generating' && archiveExperienceMessageId) {
-        stoppedArchiveMessageIds.current.add(archiveExperienceMessageId)
-        await stopArchiveExperience(taskId, activeProject.id, archiveExperienceMessageId)
-        stoppedActiveDraft = true
-      }
-      await archiveTask(taskId, activeProject.id)
-      setCardLanes((prev) => { const next = { ...prev }; delete next[taskId]; return next })
-      setConfirmArchiveTaskId(null)
-    } catch (error) {
-      setArchiveExperienceError(
-        t('taskList.archiveExperienceDirectArchiveFailed', {
-          error: error instanceof Error ? error.message : t('common.unknownError'),
-        }),
-      )
-      setArchiveExperiencePhase(
-        previousPhase === 'review' ? 'review' : stoppedActiveDraft ? 'stopped' : 'intro',
-      )
-    }
+  const requestArchiveCard = (event: React.MouseEvent, taskId: string) => {
+    event.stopPropagation()
+    setArchiveTarget({ id: taskId, title: tasks.find((task) => task.id === taskId)?.title || '' })
   }
 
   const handleUnarchive = async (e: React.MouseEvent, taskId: string) => {
@@ -1620,146 +1452,13 @@ export default function TaskList() {
         onCancel={() => setConfirmDeleteTaskId(null)}
       />
 
-      <ConfirmDialog
-        open={confirmArchiveTaskId !== null}
-        title={t('taskList.archiveTask')}
-        message={archiveExperiencePhase === 'review' || archiveExperiencePhase === 'saving'
-          ? t('taskList.archiveExperienceReviewMessage')
-          : archiveExperiencePhase === 'empty'
-            ? t('taskList.archiveExperienceEmptyMessage')
-          : archiveExperiencePhase === 'loading'
-            ? t('taskList.archiveExperienceLoadingDraft')
-          : archiveExperiencePhase === 'archiving'
-            ? t('taskList.archiveExperienceDirectArchivingMessage')
-          : archiveExperiencePhase === 'generating' || archiveExperiencePhase === 'stopping'
-            ? t('taskList.archiveExperienceProgressMessage')
-          : archiveExperiencePhase === 'stopped'
-            ? t('taskList.archiveExperienceStoppedMessage')
-          : t('taskList.archiveExperienceIntroMessage', {
-            title: tasks.find((task) => task.id === confirmArchiveTaskId)?.title || t('taskList.thatTask'),
-          })}
-        confirmText={archiveExperiencePhase === 'review' || archiveExperiencePhase === 'saving'
-          ? t('taskList.archiveExperienceConfirm')
-          : archiveExperiencePhase === 'empty'
-            ? t('taskList.archiveExperienceDirectArchive')
-          : archiveExperiencePhase === 'loading'
-            ? t('common.loading')
-          : archiveExperiencePhase === 'generating' || archiveExperiencePhase === 'stopping'
-            ? t('taskList.archiveExperienceStop')
-          : archiveExperiencePhase === 'stopped'
-            ? t('taskList.archiveExperienceRetry')
-          : t('taskList.archiveExperienceGenerate')}
-        cancelText={archiveExperiencePhase === 'generating' || archiveExperiencePhase === 'stopping'
-          ? t('taskList.archiveExperienceCancelAndClose')
-          : undefined}
-        secondaryText={archiveExperiencePhase === 'empty' || archiveExperiencePhase === 'loading'
-          ? undefined
-          : t('taskList.archiveExperienceDirectArchive')}
-        secondaryLoading={archiveExperiencePhase === 'archiving'}
-        secondaryDisabled={archiveExperiencePhase === 'stopping'
-          || archiveExperiencePhase === 'saving'}
-        loading={archiveExperiencePhase === 'loading' || archiveExperiencePhase === 'stopping' || archiveExperiencePhase === 'saving'}
-        confirmDisabled={archiveExperiencePhase === 'loading' || archiveExperiencePhase === 'stopping' || archiveExperiencePhase === 'archiving'
-          || ((archiveExperiencePhase === 'review' || archiveExperiencePhase === 'saving') && !archiveExperience.trim())}
-        width={680}
-        onConfirm={handleArchiveConfirm}
-        onSecondary={handleDirectArchive}
-        onCancel={() => {
-          if (archiveExperiencePhase === 'generating') {
-            void stopArchiveDraft(true)
-            return
-          }
-          if (archiveExperiencePhase === 'saving' || archiveExperiencePhase === 'archiving') return
-          setConfirmArchiveTaskId(null)
-        }}
-      >
-        {(archiveExperiencePhase === 'generating'
-          || archiveExperiencePhase === 'stopping'
-          || archiveExperiencePhase === 'stopped'
-          || (archiveExperiencePhase === 'archiving' && archiveExperienceMessageId !== null)) && activeProject && (
-          <div style={{ marginTop: 14 }}>
-            <ArchiveExperienceProgress
-              message={visibleArchiveProgressMessage}
-              projectId={activeProject.id}
-              running={archiveExperiencePhase === 'generating' || archiveExperiencePhase === 'stopping' || archiveExperiencePhase === 'archiving'}
-              agentName={t('taskList.archiveExperienceAgent')}
-              thinkingLabel={t('taskList.archiveExperienceThinking')}
-            />
-          </div>
-        )}
-        {archiveExperiencePhase === 'empty' && activeProject && (
-          <div style={{ marginTop: 14 }}>
-            <ArchiveExperienceProgress
-              message={visibleArchiveProgressMessage}
-              fallbackContent={t('taskList.archiveExperienceEmptyResult')}
-              projectId={activeProject.id}
-              running={false}
-              agentName={t('taskList.archiveExperienceAgent')}
-              thinkingLabel={t('taskList.archiveExperienceThinking')}
-            />
-          </div>
-        )}
-        {(archiveExperiencePhase === 'review' || archiveExperiencePhase === 'saving') && (
-          <div style={{ marginTop: 14 }}>
-            {visibleArchiveProgressMessage && (
-              <details style={{ marginBottom: 12 }}>
-                <summary style={{
-                  cursor: 'pointer',
-                  color: 'var(--muted)',
-                  fontSize: 'calc(12px * var(--font-scale))',
-                  marginBottom: 8,
-                }}>
-                  {t('taskList.archiveExperienceViewProcess')}
-                </summary>
-                <ArchiveExperienceProgress
-                  message={visibleArchiveProgressMessage}
-                  projectId={activeProject?.id || ''}
-                  running={false}
-                  agentName={t('taskList.archiveExperienceAgent')}
-                  thinkingLabel={t('taskList.archiveExperienceThinking')}
-                />
-              </details>
-            )}
-            <MarkdownEditor
-              value={archiveExperience}
-              onChange={setArchiveExperience}
-              placeholder={t('taskList.archiveExperiencePlaceholder')}
-              minHeight={220}
-              maxHeight="42vh"
-              maxLength={800}
-              disabled={archiveExperiencePhase === 'saving'}
-              autoFocus
-              ariaLabel={t('taskList.archiveExperienceAria')}
-            />
-            <div style={{
-              marginTop: 6,
-              color: 'var(--meta)',
-              fontSize: 'calc(11px * var(--font-scale))',
-              textAlign: 'end',
-              fontVariantNumeric: 'tabular-nums',
-            }}>
-              {t('taskList.archiveExperienceLength', { count: archiveExperience.length })}
-            </div>
-          </div>
-        )}
-        {archiveExperienceError && (
-          <div
-            role="alert"
-            style={{
-              marginTop: 12,
-              padding: '10px 12px',
-              borderRadius: 'var(--radius-sm)',
-              background: 'color-mix(in oklab, var(--danger), transparent 92%)',
-              color: 'var(--danger)',
-              fontSize: 'calc(12px * var(--font-scale))',
-              lineHeight: 1.5,
-              overflowWrap: 'anywhere',
-            }}
-          >
-            {archiveExperienceError}
-          </div>
-        )}
-      </ConfirmDialog>
+      {archiveTarget && <ArchiveExperienceDialog key={archiveTarget.id}
+        task={archiveTarget} projectId={activeProject?.id}
+        onClose={() => setArchiveTarget(null)}
+        onArchived={(taskId) => {
+          setCardLanes((prev) => { const next = { ...prev }; delete next[taskId]; return next })
+          setArchiveTarget(null)
+        }} />}
 
       <ConfirmDialog
         open={confirmCloseNewTask}

@@ -625,6 +625,24 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
   font-size: calc(11px * var(--font-scale)); color: var(--muted);
 }
 .task-step-io-spacer { flex: 1; min-width: 0; }
+.archive-experience-section { margin-top: 14px; }
+.archive-experience-process { margin-bottom: 12px; }
+.archive-experience-process > summary {
+  cursor: pointer; color: var(--muted);
+  font-size: calc(12px * var(--font-scale)); margin-bottom: 8px;
+}
+.archive-experience-length {
+  margin-top: 6px; color: var(--meta);
+  font-size: calc(11px * var(--font-scale)); text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+.archive-experience-error {
+  margin-top: 12px; padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--danger), transparent 92%);
+  color: var(--danger); font-size: calc(12px * var(--font-scale));
+  line-height: 1.5; overflow-wrap: anywhere;
+}
 
 /* 用户消息操作按钮：鼠标悬停到消息上才显示，高度已预留不撑开布局 */
 /* 对话消息组件:始终允许选中文字(默认浏览器蓝色高亮) */
