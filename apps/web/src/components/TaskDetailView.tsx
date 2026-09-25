@@ -109,7 +109,8 @@ import {
 import { useI18n, type TKey } from '../i18n'
 import { shouldShowAssistantThinking } from '../utils/assistantThinking'
 import TaskRecoveredBadge from './TaskRecoveredBadge'
-import { ActionConversationMessage, TaskActionButtons, useTaskActions } from './TaskActionShortcuts'
+import { ActionConversationMessage, TaskActionButtons } from './TaskActionShortcuts'
+import { useTaskActions } from './useActionRuns'
 import { mergeActionMessages } from '../utils/actionConversation'
 
 // ─── Types ───────────────────────────────────────────────────────────────

@@ -405,6 +405,61 @@ async def test_create_project_action_api_registers_script_and_button(action_clie
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("scope", ["workflow", "project"])
+async def test_action_publish_rolls_back_files_when_button_save_fails(action_client, monkeypatch, scope):
+    from services.workflow_actions import create_project_action, create_workflow_action
+
+    _client, manager, project = action_client
+    payload = {
+        "action_id": "publish-failure", "title": "发布失败", "script_path": "run.sh",
+        "script_content": "#!/bin/sh\necho ready\n",
+    }
+    workflow_id = project.workflows[0]["id"]
+    model = Workflow if scope == "workflow" else ProjectSetting
+
+    def fail_save(*_args, **_kwargs):
+        raise RuntimeError("button save failed")
+
+    monkeypatch.setattr(model, "save", fail_save)
+    with pytest.raises(RuntimeError, match="button save failed"):
+        if scope == "workflow":
+            await manager.run_db(project.id, lambda proj: create_workflow_action(proj, workflow_id, payload))
+        else:
+            await manager.run_db(project.id, lambda proj: create_project_action(proj, project.id, payload))
+    action_root = project.workstep_dir / (
+        f"artifacts/{workflow_id}/actions/publish-failure" if scope == "workflow"
+        else "actions/publish-failure"
+    )
+    assert not action_root.exists()
+
+
+@pytest.mark.anyio
+async def test_workflow_action_overwrite_restores_original_files_when_button_save_fails(action_client, monkeypatch):
+    from services.workflow_actions import create_workflow_action
+
+    _client, manager, project = action_client
+    workflow_id = project.workflows[0]["id"]
+    payload = {
+        "action_id": "rollback-action", "title": "原始标题", "script_path": "run.sh",
+        "script_content": "#!/bin/sh\necho original\n",
+    }
+    await manager.run_db(project.id, lambda proj: create_workflow_action(proj, workflow_id, payload))
+    action_root = project.workstep_dir / "artifacts" / workflow_id / "actions" / "rollback-action"
+    before = {name: (action_root / name).read_bytes() for name in ("run.sh", "action.json")}
+
+    def fail_save(*_args, **_kwargs):
+        raise RuntimeError("button save failed")
+
+    monkeypatch.setattr(Workflow, "save", fail_save)
+    with pytest.raises(RuntimeError, match="button save failed"):
+        await manager.run_db(project.id, lambda proj: create_workflow_action(proj, workflow_id, {
+            **payload, "title": "新标题", "script_content": "#!/bin/sh\necho replaced\n",
+            "overwrite": True,
+        }))
+    assert {name: (action_root / name).read_bytes() for name in before} == before
+
+
+@pytest.mark.anyio
 async def test_slow_project_action_publish_does_not_block_health(action_client, monkeypatch):
     import api.action as action_api
 

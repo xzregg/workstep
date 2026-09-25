@@ -4,8 +4,8 @@ import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { projectActionApi, taskActionApi, type ActionRun } from '../src/api/client'
-import { useProjectActions } from '../src/components/ProjectActionMessages'
-import { ActionConversationMessage, useTaskActions } from '../src/components/TaskActionShortcuts'
+import { ActionConversationMessage } from '../src/components/TaskActionShortcuts'
+import { useProjectActions, useTaskActions } from '../src/components/useActionRuns'
 import { I18nProvider } from '../src/i18n'
 
 const activeRun = {
@@ -142,6 +142,35 @@ test('task shortcuts reload when the selected step changes during an earlier req
   } finally {
     await act(async () => root.unmount())
     taskActionApi.list = originalList
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
+
+test('project Actions reload when the session changes during an earlier request', async () => {
+  const { window } = installDomEnvironment()
+  const originalList = projectActionApi.list
+  const requests: Array<{ session: string; resolve: (value: Awaited<ReturnType<typeof projectActionApi.list>>) => void }> = []
+  projectActionApi.list = async (session) => new Promise((resolve) => {
+    requests.push({ session, resolve })
+  })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  function Harness({ session }: { session: string }) {
+    const state = useProjectActions('project-1', session)
+    return <div>{state.runs.map((run) => run.title).join(',')}</div>
+  }
+  try {
+    await act(async () => root.render(<I18nProvider><Harness session="first" /></I18nProvider>))
+    await act(async () => root.render(<I18nProvider><Harness session="second" /></I18nProvider>))
+    assert.deepEqual(requests.map((request) => request.session), ['first', 'second'])
+    await act(async () => requests[1].resolve({ buttons: [], runs: [{ ...activeRun, title: '新会话' }], active_action_ids: [] }))
+    assert.equal(container.textContent, '新会话')
+    await act(async () => requests[0].resolve({ buttons: [], runs: [{ ...activeRun, title: '旧会话' }], active_action_ids: [] }))
+    assert.equal(container.textContent, '新会话')
+  } finally {
+    await act(async () => root.unmount())
+    projectActionApi.list = originalList
     container.remove()
     await window.happyDOM.close()
   }
