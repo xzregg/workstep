@@ -21,10 +21,8 @@ import { ArchivedChatSessionsDialog } from '../components/ArchivedChatSessions'
 import {
   assistantApi,
   chatSessionApi,
-  engineApi,
   providerApi,
   type AssistantConfigInfo,
-  type EngineQuota,
   type ChatSessionHandoffInput,
   type ProviderInfo,
   type ChatSessionForkInput,
@@ -36,6 +34,7 @@ import {
 } from '../stores/engineAvailabilityStore'
 import { useProjectStore } from '../stores/projectStore'
 import { usePromptEnhance } from '../hooks/usePromptEnhance'
+import { useEngineQuota } from '../hooks/useEngineQuota'
 import { useThrottledMemo } from '../hooks/useThrottledMemo'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useI18n } from '../i18n'
@@ -164,32 +163,9 @@ export default function ChatPage() {
     || assistantConfig?.configured.engine
     || assistantConfig?.resolved?.engine
     || 'pydantic_ai'
-  const [quota, setQuota] = useState<EngineQuota | null>(null)
-  const [quotaRefreshing, setQuotaRefreshing] = useState(false)
-  const quotaRequestRef = useRef(0)
-  const refreshQuota = useCallback(async () => {
-    if (!activeProject?.id) return
-    const requestId = ++quotaRequestRef.current
-    setQuotaRefreshing(true)
-    try {
-      const result = await engineApi.quota(effectiveEngine, activeProject.id)
-      if (quotaRequestRef.current === requestId) setQuota(result.quota)
-    } catch {
-      if (quotaRequestRef.current === requestId) setQuota(null)
-    } finally {
-      if (quotaRequestRef.current === requestId) setQuotaRefreshing(false)
-    }
-  }, [effectiveEngine, activeProject?.id])
-  useEffect(() => {
-    if (running || !activeProject?.id) {
-      quotaRequestRef.current += 1
-      setQuotaRefreshing(false)
-      return
-    }
-    void refreshQuota()
-    return () => { quotaRequestRef.current += 1 }
-  }, [running, activeProject?.id, refreshQuota])
-  const visibleQuota = quota?.engine_id === effectiveEngine ? quota : null
+  const { quota: visibleQuota, refreshing: quotaRefreshing, refresh: refreshQuota } = useEngineQuota(
+    activeProject?.id, effectiveEngine, running,
+  )
   const providerLabel = useCallback((providerId: string) => (
     providerId
       ? providers.find((item) => item.id === providerId)?.name || providerId
