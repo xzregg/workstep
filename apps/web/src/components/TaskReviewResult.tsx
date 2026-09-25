@@ -1,7 +1,7 @@
 import type { Ref } from 'react'
 import type { ReviewRun } from '../api/client'
 import { useI18n } from '../i18n'
-import { reviewActorLabel } from '../pages/taskDetailChat'
+import { reviewActorLabel } from '../pages/taskReviewRules'
 import ReviewReportContent from './ReviewReportContent'
 import ReviewDecisionActions, { type ReviewDecisionAction } from './ReviewDecisionActions'
 import Textarea from './Textarea'
