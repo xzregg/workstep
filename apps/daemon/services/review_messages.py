@@ -12,6 +12,15 @@ from services.messages import create_task_message, extract_usage_json, new_messa
 from services.pipeline import Step
 
 
+def _format_issues(issues: list[dict] | None) -> str:
+    return "".join(
+        f"- {issue.get('description', '')}"
+        + (f" → {issue.get('suggestion', '')}" if issue.get("suggestion") else "")
+        + "\n"
+        for issue in (issues or [])
+    )
+
+
 class AutomaticReviewMessages:
     def __init__(self, journal: TurnEventJournal, run_db, publish):
         self._journal = journal
@@ -108,15 +117,7 @@ class AutomaticReviewMessages:
         snapshot = await self._snapshot(journal_ref)
         summary = outcome.report.get("summary", "")
         issues = outcome.report.get("issues", [])
-        items = "".join(
-            f"- {issue.get('description', '')}"
-            + (
-                f" → {issue.get('suggestion', '')}"
-                if issue.get("suggestion") else ""
-            )
-            + "\n"
-            for issue in (issues or [])
-        )
+        items = _format_issues(issues)
         if cancelled:
             content = "自动审核已手动停止"
         else:
@@ -177,4 +178,82 @@ class AutomaticReviewMessages:
                     if outcome.review_run.ended_at else None
                 ),
             },
+        })
+
+    async def persist_result(
+        self,
+        task: Task,
+        step_key: str,
+        step_run: StepRun,
+        artifacts_dir: Path,
+        artifact_round: int | None,
+        outcome,
+    ) -> None:
+        """Create the completed bubble for manual or fallback review."""
+        message_id = new_message_id()
+        now = utc_now()
+        journal_ref = await self._journal.astart(
+            artifacts_dir.parent, f"task-{task.id}", message_id,
+        )
+        for review_event in outcome.events:
+            await self._journal.arecord(journal_ref, review_event)
+        await self._journal.afinish(journal_ref)
+        snapshot = await self._snapshot(journal_ref)
+        summary = outcome.report.get("summary", "")
+        items = _format_issues(outcome.report.get("issues", []))
+        if outcome.status == "awaiting_review":
+            content = "等待你审核"
+        else:
+            verdict = "通过" if outcome.status == "passed" else "未通过"
+            content = f"**审核结果：{verdict}**\n{summary}\n{items}"
+
+        await self._run_db(lambda: create_task_message(
+            id=message_id,
+            task=task,
+            channel="review",
+            step_key=step_key,
+            role="assistant",
+            content=content,
+            engine=outcome.review_run.engine,
+            model=outcome.review_run.model,
+            run_id=message_id,
+            step_run_id=step_run.id,
+            artifact_round=artifact_round,
+            run_status="completed",
+            event_log_path=journal_ref.relative_path,
+            prompt_json=outcome.review_run.prompt_json,
+            events_json=json.dumps(
+                [{
+                    "type": "review_context",
+                    "data": {"review_run_id": outcome.review_run.id},
+                }, *snapshot["events"]],
+                ensure_ascii=False,
+            ),
+            event_summary_json=snapshot["event_summary_json"],
+            event_count=snapshot["event_count"],
+            last_event_seq=snapshot["last_event_seq"],
+            usage_json=extract_usage_json(list(outcome.events)),
+            position=0,
+            started_at=outcome.review_run.started_at,
+            ended_at=outcome.review_run.ended_at,
+            created_at=now,
+        ))
+        common = {
+            "channel": "review",
+            "message_id": message_id,
+            "engine": outcome.review_run.engine,
+            "model": outcome.review_run.model,
+            "created_at": now.isoformat(),
+        }
+        await self._publish(task.id, step_key, {
+            **common,
+            "event_sequence": 0,
+            "type": "message_started",
+            "data": {"content": content},
+        })
+        await self._publish(task.id, step_key, {
+            **common,
+            "event_sequence": 1,
+            "type": "message_completed",
+            "data": {"status": "completed", "content": content},
         })

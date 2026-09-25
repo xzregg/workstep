@@ -747,7 +747,10 @@ class TaskRunner:
                 )
                 return
         run_key = f"{task.id}:{step_key}"
-        engine = create_engine(step.engine) if step.kind != "task_dispatch" else None
+        engine = (
+            await asyncio.to_thread(create_engine, step.engine)
+            if step.kind != "task_dispatch" else None
+        )
         configured_provider_id = str(
             (step.config or {}).get("provider_id") or ""
         ).strip()
@@ -1684,100 +1687,10 @@ class TaskRunner:
                     and outcome is not None
                     and not review_message_persisted
                 ):
-                    rmsg_id = new_message_id()
-                    rnow = utc_now()
-                    review_journal_ref = await self._event_journal.astart(
-                        artifacts_dir.parent,
-                        f"task-{task.id}",
-                        rmsg_id,
+                    await self._review_messages.persist_result(
+                        task, step_key, step_run, artifacts_dir,
+                        artifact_round, outcome,
                     )
-                    for review_event in outcome.events:
-                        await self._event_journal.arecord(
-                            review_journal_ref,
-                            review_event,
-                        )
-                    await self._event_journal.afinish(review_journal_ref)
-                    review_snapshot = await self._ajournal_snapshot(review_journal_ref)
-                    rsummary = outcome.report.get("summary", "")
-                    rissues = outcome.report.get("issues", [])
-                    ritems = "".join(
-                        f"- {i.get('description', '')}"
-                        + (
-                            f" → {i.get('suggestion', '')}"
-                            if i.get("suggestion")
-                            else ""
-                        )
-                        + "\n"
-                        for i in (rissues or [])
-                    )
-                    if outcome.status == "awaiting_review":
-                        # 人工审核：不展示「审核结果」格式，直接提示等待用户确认。
-                        rcontent = "等待你审核"
-                    else:
-                        verdict = "通过" if outcome.status == "passed" else "未通过"
-                        rcontent = (
-                            "**审核结果："
-                            f"{verdict}**\n"
-                            f"{rsummary}\n{ritems}"
-                        )
-                    await self._run_db(
-                        lambda: create_task_message(
-                            id=rmsg_id,
-                            task=task,
-                            channel="review",
-                            step_key=step_key,
-                            role="assistant",
-                            content=rcontent,
-                            engine=outcome.review_run.engine,
-                            model=outcome.review_run.model,
-                            run_id=rmsg_id,
-                            step_run_id=step_run.id,
-                            artifact_round=artifact_round,
-                            run_status="completed",
-                            event_log_path=review_journal_ref.relative_path,
-                            prompt_json=outcome.review_run.prompt_json,
-                            events_json=json.dumps(
-                                [{
-                                    "type": "review_context",
-                                    "data": {"review_run_id": outcome.review_run.id},
-                                }, *review_snapshot["events"]],
-                                ensure_ascii=False,
-                            ),
-                            event_summary_json=review_snapshot["event_summary_json"],
-                            event_count=review_snapshot["event_count"],
-                            last_event_seq=review_snapshot["last_event_seq"],
-                            usage_json=extract_usage_json(list(outcome.events)),
-                            position=0,
-                            started_at=outcome.review_run.started_at,
-                            ended_at=outcome.review_run.ended_at,
-                            created_at=rnow,
-                        )
-                    )
-                    # 审核消息已持久化：实时推送完整消息事件，前端据此刷新
-                    # reviews / history（否则打开面板期间不会显示审核消息）。
-                    await self._publish(task.id, step_key, {
-                        "channel": "review",
-                        "message_id": rmsg_id,
-                        "engine": outcome.review_run.engine,
-                        "model": outcome.review_run.model,
-                        "event_sequence": 0,
-                        "type": "message_started",
-                        "data": {"content": rcontent},
-                        "created_at": rnow.isoformat(),
-                    })
-                    await self._publish(task.id, step_key, {
-                        "channel": "review",
-                        "message_id": rmsg_id,
-                        "engine": outcome.review_run.engine,
-                        "model": outcome.review_run.model,
-                        "event_sequence": 1,
-                        "type": "message_completed",
-                        "data": {
-                            "status": "completed",
-                            "content": rcontent,
-                        },
-                        "created_at": rnow.isoformat(),
-                    })
 
                 await self._publish(task.id, step_key, {
                     "type": "status",
