@@ -605,62 +605,9 @@ class TaskRunner:
         """Execute a single pipeline step."""
         step_key = step.key
         if workflow_run is not None:
-            def review_checkpoint():
-                ts = TaskStep.get(
-                    (TaskStep.task == task) & (TaskStep.step_key == step_key)
-                )
-                if ts.status != "reviewing":
-                    return None
-                step_run = (
-                    StepRun.select()
-                    .where(
-                        (StepRun.run == workflow_run)
-                        & (StepRun.step_key == step_key)
-                    )
-                    .order_by(StepRun.attempt.desc())
-                    .first()
-                )
-                if step_run is None or step_run.status != "succeeded":
-                    return None
-                execution_messages = list(
-                    Message.select().where(
-                        (Message.task == task)
-                        & (Message.step_run_id == step_run.id)
-                        & (Message.channel == "execution")
-                        & (Message.role == "assistant")
-                    ).order_by(Message.sequence)
-                )
-                latest_review = (
-                    ReviewRun.select()
-                    .where(ReviewRun.step_run == step_run)
-                    .order_by(ReviewRun.attempt.desc())
-                    .first()
-                )
-                execution_prompt = ""
-                if execution_messages:
-                    try:
-                        execution_prompt = str(json.loads(
-                            execution_messages[0].prompt_json or "{}"
-                        ).get("prompt") or "")
-                    except (TypeError, json.JSONDecodeError):
-                        pass
-                review_prompt = None
-                if latest_review is not None:
-                    try:
-                        review_prompt = json.loads(
-                            latest_review.prompt_json or "{}"
-                        ).get("prompt")
-                    except (TypeError, json.JSONDecodeError):
-                        pass
-                return (
-                    step_run,
-                    "".join(message.content or "" for message in execution_messages),
-                    execution_prompt,
-                    review_prompt,
-                    latest_review.status if latest_review is not None else None,
-                )
-
-            checkpoint = await self._run_db(review_checkpoint)
+            checkpoint = await self._review_messages.load_checkpoint(
+                task, step, workflow_run,
+            )
             if checkpoint is not None:
                 await self._resume_review_only(
                     task, step, scheduler, artifacts_dir, user_input,
