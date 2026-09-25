@@ -516,6 +516,7 @@ daemon 启动时执行两类恢复：
 | 创建与起始步骤 | [task_creation.py](../apps/daemon/services/task_creation.py)、[task.py](../apps/daemon/services/task.py) | [test_task.py](../apps/daemon/tests/test_task.py)、[test_task_draft.py](../apps/daemon/tests/test_task_draft.py) |
 | 流程编译 | [workflow_definition.py](../apps/daemon/services/workflow_definition.py) | [test_workflow_definition.py](../apps/daemon/tests/test_workflow_definition.py) |
 | 调度与步骤执行 | [task_runner.py](../apps/daemon/services/task_runner.py)、[pipeline.py](../apps/daemon/services/pipeline.py) | [test_pipeline.py](../apps/daemon/tests/test_pipeline.py)、[test_workflow_runtime.py](../apps/daemon/tests/test_workflow_runtime.py) |
+| 步骤启动数据库工作单元 | [task_step_start.py](../apps/daemon/services/task_step_start.py)：由 `TaskRunner` 提交到项目数据库执行器，负责步骤与运行记录、会话供应商失效判断、产物轮次及过期运行态恢复 | [test_task_step_start.py](../apps/daemon/tests/test_task_step_start.py)、[test_stale_run_status.py](../apps/daemon/tests/test_stale_run_status.py) |
 | 端口路由 | [artifact_routing.py](../apps/daemon/services/artifact_routing.py) | [test_artifact_port_routing.py](../apps/daemon/tests/test_artifact_port_routing.py) |
 | 产物轮次 | [artifact_rounds.py](../apps/daemon/services/artifact_rounds.py) | [test_artifact_rounds.py](../apps/daemon/tests/test_artifact_rounds.py) |
 | 提示词 | [prompt.py](../apps/daemon/services/prompt.py) | [test_pipeline.py](../apps/daemon/tests/test_pipeline.py) |
