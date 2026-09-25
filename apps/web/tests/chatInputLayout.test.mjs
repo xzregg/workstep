@@ -47,14 +47,8 @@ test('mobile task header keeps the compact id beside the share action', () => {
   assert.match(mobileCss, /\.task-detail-id-button\s*\{[^}]*max-width:\s*180px[^}]*text-overflow:\s*ellipsis/s)
 })
 
-test('session chat requests quota on entry and after an engine run finishes', () => {
-  assert.match(chatPage, /engineApi\.quota/)
-  assert.match(chatPage, /if \(running \|\| !activeProject\?\.id\) \{/)
-  assert.match(chatPage, /\[running, activeProject\?\.id, refreshQuota\]/)
-})
-
-test('session chat wires an explicit loading-aware quota refresh action', () => {
-  assert.match(chatPage, /const refreshQuota = useCallback\(async \(\) =>/)
+test('session chat composes engine quota with its shared input', () => {
+  assert.match(chatPage, /useEngineQuota\(\s*activeProject\?\.id, effectiveEngine, running/)
   assert.match(chatPage, /onRefreshQuota=\{\(\) => \{ void refreshQuota\(\) \}\}/)
   assert.match(chatPage, /quotaRefreshing=\{quotaRefreshing\}/)
   assert.match(assistantPanel, /onRefreshQuota=\{onRefreshQuota\}/)
