@@ -29,7 +29,6 @@ import {
 import { mergeLoadedTaskMessageEvents } from './taskHistoryModel'
 import { findPreferredArtifact } from './taskArtifactRules'
 import { useI18n } from '../i18n'
-import { formatScheduledStart } from '../utils/scheduledStart'
 import { applySharedMessageEvent, capSharedHistoryEvents } from './sharedTaskMessages'
 
 type Phase =
@@ -860,7 +859,6 @@ export default function SharedTaskView() {
         sessionIdForStep={() => null}
         onViewingPromptChange={() => {}}
         running={task.status === 'running'}
-        scheduledStartText={formatScheduledStart(task.scheduled_start_at)}
         previewArtifact={previewArtifact}
         onCloseArtifactPreview={() => setPreviewArtifact(null)}
         artifactNotice={artifactNotice || undefined}

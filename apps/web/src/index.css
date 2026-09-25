@@ -469,6 +469,11 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .task-description-error { margin-top: 6px; color: var(--danger); font-size: calc(11px * var(--font-scale)); }
 .task-description-actions { flex-wrap: wrap; justify-content: flex-end; margin-top: 8px; }
 .task-description-leading-actions { margin-right: auto; }
+.task-description-schedule-editor { display: flex; align-items: center; gap: 8px; width: 380px; max-width: 100%; }
+.task-description-schedule-status { font-size: calc(12px * var(--font-scale)); font-weight: 600; color: var(--warning); }
+.task-description-schedule-status[data-state="pending"] { color: var(--accent); }
+.task-description-schedule-status[data-state="failed"] { color: var(--danger); }
+.task-description-schedule-picker { flex: 1; min-width: 0; }
 .task-description-content {
   padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-soft);
   font-size: calc(13px * var(--font-scale)); line-height: 1.6;

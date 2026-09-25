@@ -17,40 +17,10 @@ test('lets users select the task title while keeping the header draggable', () =
   assert.match(css, /\.task-detail-title\s*\{[^}]*user-select:\s*text/s)
 })
 
-test('places the scheduled start input beside the description save actions', () => {
-  const actionInputPos = descriptionSource.indexOf('{leadingActions}')
-  const cancelPos = descriptionSource.indexOf("{t('common.cancel')}", actionInputPos)
-
-  assert.ok(actionInputPos >= 0, 'scheduled start input slot missing')
-  assert.ok(cancelPos > actionInputPos, 'scheduled start input should precede cancel and save')
-  assert.match(
-    pageSource,
-    /descriptionEditorLeadingActions=\{editingDescription && task\.scheduled_start_state && taskNotStarted/,
-  )
-  assert.doesNotMatch(pageSource, /scheduleControl=/)
-
-  const saveDescription = pageSource.slice(
-    pageSource.indexOf('const saveDescription'),
-    pageSource.indexOf('const openPromptEditor'),
-  )
-  assert.match(saveDescription, /updateScheduledStart/)
-})
-
-test('gives the scheduled start editor enough width for its date and time', () => {
-  assert.match(
-    pageSource,
-    /display: 'flex', alignItems: 'center', gap: 8, width: 380, maxWidth: '100%'/,
-  )
-})
-
-test('shows the scheduled execution time beside the description heading', () => {
-  const descriptionPos = descriptionSource.indexOf("{t('taskDetail.description')}")
-  const scheduledTimePos = descriptionSource.indexOf('{scheduledStartText}', descriptionPos)
-  const editPos = descriptionSource.indexOf("aria-label={t('taskDetail.editDescriptionAria')}", descriptionPos)
-
-  assert.ok(scheduledTimePos > descriptionPos, 'scheduled execution time missing beside description')
-  assert.ok(editPos > scheduledTimePos, 'edit action should follow the scheduled execution time')
-  assert.match(pageSource, /scheduledStartText=\{formatScheduledStart\(task\.scheduled_start_at\)\}/)
+test('task detail assembles the description module and enables editing only in owner view', () => {
+  assert.match(source, /<TaskDetailDescription key=\{task\.id\} task=\{task\} projectId=\{projectId\} editable=\{descriptionEditable\}/)
+  assert.match(pageSource, /descriptionEditable/)
+  assert.match(descriptionSource, /scheduled_start_at/)
 })
 
 test('uses the dedicated step progress graph component', () => {

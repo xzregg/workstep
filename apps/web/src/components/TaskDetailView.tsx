@@ -143,6 +143,8 @@ export interface TaskDetailViewProps {
     creator_device_id?: string | null
     creator_device_name?: string | null
     created_at: string
+    scheduled_start_at?: string | null
+    scheduled_start_state?: string | null
     updated_at?: string
     run_round?: number
     engine?: string
@@ -257,17 +259,8 @@ export interface TaskDetailViewProps {
   coordinatorConfigNotice?: string
   coordinatorStopping?: boolean
 
-  // ── Description editing (edit mode only) ──
-  editingDescription?: boolean
-  descriptionDraft?: string
-  onDescriptionDraftChange?: (value: string) => void
-  descriptionSaving?: boolean
-  descriptionError?: string
-  onSaveDescription?: () => void
-  onCancelDescriptionEdit?: () => void
-  onOpenDescriptionEditor?: () => void
-  scheduledStartText?: string
-  descriptionEditorLeadingActions?: React.ReactNode
+  // ── Description editing (owner mode only) ──
+  descriptionEditable?: boolean
 
   // ── Prompt editing (edit mode only) ──
   onOpenPromptEditor?: () => void
@@ -415,16 +408,7 @@ export default function TaskDetailView({
   coordinatorConfigNotice,
   coordinatorStopping,
   // Description
-  editingDescription,
-  descriptionDraft,
-  onDescriptionDraftChange,
-  descriptionSaving,
-  descriptionError,
-  onSaveDescription,
-  onCancelDescriptionEdit,
-  onOpenDescriptionEditor,
-  scheduledStartText,
-  descriptionEditorLeadingActions,
+  descriptionEditable,
   // Prompt
   onOpenPromptEditor,
   // Review config
@@ -658,13 +642,7 @@ export default function TaskDetailView({
     if (!task) return null
     return (
       <div className="task-detail-step-panel">
-        <TaskDetailDescription taskId={task.id} description={task.description}
-          projectId={projectId} scheduledStartText={scheduledStartText}
-          editing={editingDescription} draft={descriptionDraft}
-          onDraftChange={onDescriptionDraftChange} saving={descriptionSaving}
-          error={descriptionError} onSave={onSaveDescription}
-          onCancel={onCancelDescriptionEdit} onOpenEditor={onOpenDescriptionEditor}
-          leadingActions={descriptionEditorLeadingActions} />
+        <TaskDetailDescription key={task.id} task={task} projectId={projectId} editable={descriptionEditable} />
 
         <TaskStepProgressGraph
           taskStatus={task?.status ?? 'ready'}
