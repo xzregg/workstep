@@ -1856,6 +1856,46 @@ async def test_task_runner_linear_pipeline(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_task_runner_slow_engine_factory_keeps_event_loop_responsive(tmp_path):
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import Task, init_db
+    import threading
+    import time
+    import uuid
+
+    db = init_db(str(tmp_path / "factory.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Slow engine factory", cwd=str(tmp_path),
+        created_at=1, updated_at=1,
+    )
+    started = threading.Event()
+
+    def slow_factory():
+        started.set()
+        time.sleep(0.3)
+        return PipelineFakeEngine()
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["slow-factory"] = slow_factory
+    try:
+        running = asyncio.create_task(TaskRunner(EventBus()).run_pipeline(
+            task,
+            {"steps": [{"key": "do", "label": "执行", "engine": "slow-factory"}]},
+            tmp_path / "artifacts",
+        ))
+        waiting_since = time.perf_counter()
+        assert await asyncio.wait_for(asyncio.to_thread(started.wait), 1)
+        assert time.perf_counter() - waiting_since < 0.2
+        await asyncio.wait_for(asyncio.sleep(0.01), 0.1)
+        await running
+        assert Task.get_by_id(task.id).status == "ready"
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
 async def test_task_runner_inherits_the_engine_default_model(tmp_path, monkeypatch):
     from engines.core.registry import ENGINE_REGISTRY
     from models import Task, init_db
