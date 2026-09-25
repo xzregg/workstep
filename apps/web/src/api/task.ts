@@ -12,6 +12,7 @@ export interface Task {
   description: string | null
   cwd: string
   status: string
+  queue_position?: number | null
   archived?: boolean
   engine: string
   model?: string | null

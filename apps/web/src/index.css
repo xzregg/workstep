@@ -512,6 +512,62 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .task-chat-coordinator-tab[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
 .task-chat-target-hint { font-size: calc(11px * var(--font-scale)); color: var(--warn); }
 .task-message-artifacts { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.task-board-card {
+  background: var(--bg); border-radius: var(--radius-sm); padding: 10px 12px;
+  cursor: grab; border-left: 3px solid var(--task-card-status-color);
+  transition: box-shadow var(--motion-fast);
+}
+.task-board-lanes { flex: 1; display: flex; gap: 0; overflow-x: scroll; overflow-y: hidden; padding: 16px 16px 16px 0; }
+.task-board-table { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 16px 20px 24px; }
+.task-board-loading { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--meta); }
+.task-board-lane {
+  min-width: 260px; max-width: 320px; flex-shrink: 0; background: var(--surface);
+  border-radius: var(--radius-md); display: flex; flex-direction: column;
+  margin-right: 12px; overflow: hidden;
+}
+.task-board-lane-header { padding: 12px 14px 8px; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.task-board-lane-heading {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  font-family: var(--font-display); font-size: calc(13px * var(--font-scale)); font-weight: 600;
+}
+.task-board-lane-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--task-lane-color); }
+.task-board-lane-count { font-size: calc(13px * var(--font-scale)); font-weight: 400; color: var(--meta); }
+.task-board-lane-add { margin-left: auto; height: 24px; padding: 0 7px; font-size: calc(11px * var(--font-scale)); flex-shrink: 0; }
+.task-board-lane-body {
+  flex: 1; overflow-y: auto; padding: 4px 10px 10px; display: flex;
+  flex-direction: column; gap: 8px; min-height: 120px;
+}
+.task-board-lane-body[data-drag-over="true"] { background: color-mix(in oklab, var(--accent), transparent 94%); }
+.task-board-card[data-dragging="true"] { opacity: 0.4; }
+.task-board-card:hover { box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+.task-board-card-heading { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.task-board-card-title { font-size: calc(13px * var(--font-scale)); font-weight: 600; color: var(--fg); }
+.task-board-card-scheduled { display: inline-flex; align-items: center; gap: 3px; color: var(--accent); }
+.task-board-card-schedule-missed { color: var(--warning); }
+.task-board-card-schedule-failed { color: var(--danger); }
+.task-board-card .task-card-status-badge[data-step-status="true"] {
+  color: var(--task-card-status-color);
+  background: color-mix(in oklab, var(--task-card-status-color), transparent 86%);
+}
+.task-board-card-queue-position { font-weight: 600; }
+.task-board-card-description {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden; font-size: calc(13px * var(--font-scale)); color: var(--muted);
+  line-height: 1.4; margin-bottom: 8px;
+}
+.task-board-card-actions {
+  display: flex; flex-wrap: nowrap; align-items: center; gap: 6px;
+  width: 100%; min-width: 0; opacity: 0; transition: opacity var(--motion-fast);
+}
+.task-board-card:hover .task-board-card-actions,
+.task-board-card:focus-within .task-board-card-actions { opacity: 1; }
+.task-board-card .task-card-meta { font-size: calc(11px * var(--font-scale)); color: var(--meta); }
+.task-board-card-meta-spacer { flex: 1; min-width: 0; }
+.task-board-card-buttons { display: flex; flex-wrap: nowrap; gap: 2px; flex-shrink: 0; }
+.task-board-card-icon { width: 22px; height: 22px; flex: 0 0 22px; padding: 0; }
+.task-board-card-icon--success { color: var(--success); }
+.task-board-card-icon--muted { color: var(--meta); }
+.task-board-card-icon--danger { color: var(--danger); }
 .task-message-artifacts-heading {
   font-size: calc(11px * var(--font-scale)); font-weight: 600; color: var(--muted);
   font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em;
