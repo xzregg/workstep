@@ -57,12 +57,12 @@ import {
   isStepActiveForStop,
   resolveStepDisplayStatus,
   runningTaskMessageIds,
-  findPreferredArtifact,
   findActiveStepIndex,
   findLatestDispatchedTask,
   resolveStepRestartImpact,
 } from './taskDetailChat'
 import { mergeRefreshedTaskHistory } from './taskHistoryModel'
+import { findPreferredArtifact } from './taskArtifactRules'
 import { CUSTOM } from '../utils/agui'
 import {
   pendingInsertQueueKey,

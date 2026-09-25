@@ -24,10 +24,10 @@ import {
   isStepActiveForStop,
   isTaskCompleted,
   resolveStepDisplayStatus,
-  findPreferredArtifact,
   findActiveStepIndex,
 } from './taskDetailChat'
 import { mergeLoadedTaskMessageEvents } from './taskHistoryModel'
+import { findPreferredArtifact } from './taskArtifactRules'
 import { useI18n } from '../i18n'
 import { formatScheduledStart } from '../utils/scheduledStart'
 import { applySharedMessageEvent, capSharedHistoryEvents } from './sharedTaskMessages'

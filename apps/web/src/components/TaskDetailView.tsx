@@ -72,7 +72,6 @@ import {
   isLostEngineSessionError,
   isStepResumableWithMessage,
   isSelectedStepRunning,
-  artifactsForMessage,
   findActionablePendingReview,
   liveExecutionStatus,
   messageSessionId,
@@ -88,6 +87,7 @@ import {
   formatConversationDateTime,
 } from '../utils/datetime'
 import { useI18n } from '../i18n'
+import { artifactsForMessage } from '../pages/taskArtifactRules'
 import { ActionConversationMessage, TaskActionButtons } from './TaskActionShortcuts'
 import { useTaskActions } from './useActionRuns'
 
