@@ -4,7 +4,7 @@
 
 | 功能 | Web 入口 | Daemon 入口 | 深入阅读 |
 |---|---|---|---|
-| 任务列表、详情、执行 | `src/pages/TaskList.tsx`、`TaskDetail.tsx`；详情组装在 `src/components/TaskDetailView.tsx`；页头 `TaskDetailHeader.tsx`，描述编辑 `TaskDetailDescription.tsx`，共用页签 `TaskDetailTabs.tsx`，步骤进度图 `TaskStepProgressGraph.tsx`；消息时间线 `taskConversationFeed.ts`，滚动 `src/hooks/useTaskConversationScroll.ts`，请求 `src/api/task.ts` | `api/task.py`、`services/task.py`、`task_creation.py`、`task_runner.py` | `docs/workflow-engine-execution.md`；组件行为测试在 `apps/web/tests/taskDetailTabs.test.tsx` 等对应测试 |
+| 任务列表、详情、执行 | `src/pages/TaskList.tsx`、`TaskDetail.tsx`，`src/components/TaskDetailView.tsx`；详情内部见下表，API 在 `src/api/task.ts` | `api/task.py`、`services/task.py`、`task_creation.py`、`task_runner.py` | `docs/workflow-engine-execution.md` |
 | 流程定义与画布 | `src/components/FlowCanvas.tsx`、`flowCanvasData.ts`、`NodeConfigPanel.tsx` | `api/workflow.py`、`services/workflow_definition.py`、`workflow_runtime.py`；恢复决策在 `workflow_recovery.py` | `docs/workflow-engine-execution.md` |
 | 助手与聊天 | `src/components/AssistantChatPanel.tsx`、`ChatInput.tsx`、`src/api/conversations.ts` | `agent_assistants/base.py`、`session_state.py`、`persistence.py`、`history.py` | `AGENTS.md` 助手架构与事件边界 |
 | 引擎与安装 | `src/api/engine.ts`、`src/pages/SettingsPage.tsx` | `api/engine.py`、`engines/core/`、`services/engine_runtime.py` | `docs/multi-engine-architecture.md`、`docs/engine-runtime-management.md` |
@@ -15,6 +15,21 @@
 | 通用控件与移动样式 | `src/components/Button.tsx`、`Input.tsx`、`Select.tsx`、`Textarea.tsx`、`src/index.css`、`src/mobile.css` | — | `docs/frontend-design.md`、`tests/mobileButtonSizing.test.mjs` |
 
 表中的前端路径均相对于 `apps/web/`，后端路径均相对于 `apps/daemon/`。后端请求模型在 `schemas/`，持久化模型在 `models/`；服务里的同步数据库工作单元通过 `services/project_database.py` 的项目执行器运行。实时事件从 `engines/core/events.py` 经 `engines/core/agui.py` 到前端 `src/utils/agui.ts`。
+
+## 任务详情内部定位
+
+以下组件位于 `apps/web/src/components/`，测试位于 `apps/web/tests/`。`TaskDetailView.tsx` 负责组装和跨区域协调；新增行为应放到实际拥有它的组件，并同步更新此表。
+
+| 功能 | 代码入口 | 行为测试 |
+|---|---|---|
+| 页头、创建者、关闭操作 | `TaskDetailHeader.tsx` | `actorVisibility.test.mjs`、`taskDetailPageReuse.test.mjs` |
+| 描述展示与编辑 | `TaskDetailDescription.tsx` | `taskDetailProgressLayout.test.mjs` |
+| 桌面、移动及产物轮次页签 | `TaskDetailTabs.tsx` | `taskDetailTabs.test.tsx` |
+| 步骤进度图 | `TaskStepProgressGraph.tsx` | `taskDetailProgressLayout.test.mjs` |
+| 步骤输入、输出、产物轮次及重新执行 | `TaskStepIoPanel.tsx` | `taskStepIoPanel.test.tsx`、`taskDetailProgressLayout.test.mjs` |
+| 审核结果与决策 | `TaskReviewResult.tsx` | `taskReviewResult.test.tsx`、`reviewTerminateAction.test.mjs` |
+| 审核设置 | `TaskReviewConfigPanel.tsx` | `taskReviewConfigPanel.test.tsx` |
+| 消息时间线与滚动 | `taskConversationFeed.ts`、`src/hooks/useTaskConversationScroll.ts` | 对应 conversation 测试 |
 
 ## 修改路径
 

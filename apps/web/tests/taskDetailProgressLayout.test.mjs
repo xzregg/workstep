@@ -6,6 +6,7 @@ const source = await readFile(new URL('../src/components/TaskDetailView.tsx', im
 const headerSource = await readFile(new URL('../src/components/TaskDetailHeader.tsx', import.meta.url), 'utf8')
 const descriptionSource = await readFile(new URL('../src/components/TaskDetailDescription.tsx', import.meta.url), 'utf8')
 const tabsSource = await readFile(new URL('../src/components/TaskDetailTabs.tsx', import.meta.url), 'utf8')
+const ioSource = await readFile(new URL('../src/components/TaskStepIoPanel.tsx', import.meta.url), 'utf8')
 const pageSource = await readFile(new URL('../src/pages/TaskDetail.tsx', import.meta.url), 'utf8')
 const css = await readFile(new URL('../src/index.css', import.meta.url), 'utf8')
 
@@ -66,7 +67,7 @@ test('opens the task created by a workflow dispatch step', () => {
 })
 
 test('places step input and output before the step prompt', () => {
-  const ioPos = source.indexOf("{t('taskDetail.stepIo')}")
+  const ioPos = source.indexOf('<TaskStepIoPanel')
   const promptPos = source.indexOf("{t('taskDetail.stepPrompt')}")
 
   assert.ok(ioPos >= 0, 'step input and output section missing')
@@ -74,12 +75,12 @@ test('places step input and output before the step prompt', () => {
 })
 
 test('offers rerunning a completed step with the latest workflow contract', () => {
-  const ioPos = source.indexOf("{t('taskDetail.stepIo')}")
-  const rerunPos = source.indexOf("t('taskDetail.rerunLatestWorkflow')", ioPos)
+  const ioPos = ioSource.indexOf("{t('taskDetail.stepIo')}")
+  const rerunPos = ioSource.indexOf("t('taskDetail.rerunLatestWorkflow')", ioPos)
 
   assert.ok(rerunPos > ioPos, 'latest-workflow rerun action missing from step IO')
-  assert.match(source, /onRestartStepWithFreshSession\?\.\(currentStep\.key\)/)
-  assert.match(source, /hasStepIoContractChanged\(currentStep, currentStepProgress\?\.io_contract\)/)
+  assert.match(ioSource, /onRestartStepWithFreshSession\?\.\(currentStep\.key\)/)
+  assert.match(ioSource, /hasStepIoContractChanged\(currentStep, progress\?\.io_contract\)/)
 })
 
 test('opens directory artifacts in the artifact preview browser', () => {
@@ -94,52 +95,46 @@ test('opens directory artifacts in the artifact preview browser', () => {
 })
 
 test('keeps the output file type beside its name and only opens generated files', () => {
-  const outputReadyPos = source.indexOf('const outputReady = Boolean(outArtifact)')
-  const namePos = source.indexOf('{out.name}', outputReadyPos)
-  const typePos = source.indexOf('{out.type}', namePos)
-  const statusPos = source.indexOf("t('taskDetail.outputDone')", outputReadyPos)
+  const outputReadyPos = ioSource.indexOf('const outputReady = Boolean(outputArtifact)')
+  const namePos = ioSource.indexOf('{output.name}', outputReadyPos)
+  const typePos = ioSource.indexOf('{output.type}', namePos)
+  const statusPos = ioSource.indexOf("t('taskDetail.outputDone')", outputReadyPos)
 
   assert.ok(outputReadyPos >= 0, 'output readiness guard missing')
   assert.ok(namePos > outputReadyPos, 'output name missing')
   assert.ok(typePos > namePos, 'output file type should follow the output name')
   assert.ok(statusPos > outputReadyPos, 'output status badge missing')
   assert.ok(statusPos > typePos, 'output status badge should follow the file type')
-  assert.match(source, /outputReady &&[\s\S]*\{t\('common\.open'\)\}/)
-  assert.match(source, /role=\{outputReady \? 'button' : undefined\}/)
-  assert.match(source, /cursor: outputReady \? 'pointer' : 'default'/)
+  assert.match(ioSource, /outputReady && <span className="task-step-io-open">\{t\('common\.open'\)\}/)
+  assert.match(ioSource, /role=\{outputReady \? 'button' : undefined\}/)
+  assert.match(css, /\.task-step-io-output\[data-openable="true"\][^{]*\{ cursor: pointer/)
 })
 
 test('shows artifact round status and modified time in step IO rows', () => {
-  assert.match(source, /const formatArtifactUpdatedAt = useCallback/)
-  assert.match(source, /return \[\.\.\.rounds\]\.sort\(\(a, b\) => a - b\)/)
-  assert.match(source, /currentStepArtifactRounds\[currentStepArtifactRounds\.length - 1\]/)
+  assert.match(ioSource, /const dateText =/)
+  assert.match(ioSource, /\.sort\(\(a, b\) => a - b\)/)
+  assert.match(ioSource, /rounds\[rounds\.length - 1\]/)
   assert.match(tabsSource, /role="tablist"/)
-  assert.match(source, /onSelect=\{setSelectedIoRound\}/)
-  assert.match(source, /const snapshotInputArtifact = findStepRoundInputArtifact\(/)
-  assert.match(source, /const inputPortSnapshot = findStepRoundInputPort\(/)
-  assert.match(source, /const producedOutputs = artifactsForStepRoundOutputs\(/)
-  assert.match(source, /groupStepOutputsByInput\(/)
-  assert.match(source, /downstreamInputsForOutput\(/)
-  assert.match(source, /artifactInputSnapshots,[\s\S]*selectedExecutionRound,[\s\S]*inpIdx/)
-  assert.match(source, /inputPortSnapshot \? undefined : findArtifact\(inp\.name\)/)
-  assert.match(source, /role=\{inputArtifact \? 'button' : undefined\}/)
-  assert.match(source, /const inputUpdatedAt = formatArtifactUpdatedAt\(inputArtifact\?\.updated_at\)/)
-  assert.match(source, /const outputUpdatedAt = formatArtifactUpdatedAt\(outArtifact\?\.updated_at\)/)
-  assert.match(source, /taskDetail\.artifactModifiedAt/)
-  assert.match(source, /t\('taskDetail\.artifactRound'/)
-  assert.match(source, /t\('taskDetail\.outputDone'\)/)
-  assert.match(source, /t\('taskDetail\.inputReady'\)/)
-  assert.match(source, /t\('taskDetail\.inputUnavailable'\)/)
-  assert.match(source, /t\('taskDetail\.inputTaskContext'\)/)
-  assert.match(source, /t\('taskDetail\.inputInactive'\)/)
+  assert.match(ioSource, /onSelect=\{setSelectedRound\}/)
+  assert.match(ioSource, /findStepRoundInputArtifact\(/)
+  assert.match(ioSource, /findStepRoundInputPort\(/)
+  assert.match(ioSource, /artifactsForStepRoundOutputs\(/)
+  assert.match(ioSource, /groupStepOutputsByInput\(/)
+  assert.match(ioSource, /downstreamInputsForOutput\(/)
+  assert.match(ioSource, /artifactInputSnapshots, currentStep\.key, executionRound, inputIndex/)
+  assert.match(ioSource, /snapshot \? undefined : findPreferredArtifact\(artifacts, input\.name\)/)
+  assert.match(ioSource, /role=\{inputArtifact \? 'button' : undefined\}/)
+  assert.match(ioSource, /const inputUpdatedAt = dateText\(inputArtifact\?\.updated_at\)/)
+  assert.match(ioSource, /const outputUpdatedAt = dateText\(outputArtifact\?\.updated_at\)/)
+  for (const key of ['artifactModifiedAt', 'artifactRound', 'outputDone', 'inputReady',
+    'inputUnavailable', 'inputTaskContext', 'inputInactive']) {
+    assert.match(ioSource, new RegExp(`taskDetail\\.${key}`))
+  }
 })
 
 test('keeps artifact dates and times on one line', () => {
-  const inputUpdatedAtPos = source.indexOf('{inputUpdatedAt}')
-  const outputUpdatedAtPos = source.indexOf('{outputUpdatedAt}')
-
-  assert.match(source.slice(inputUpdatedAtPos - 500, inputUpdatedAtPos), /whiteSpace: 'nowrap'/)
-  assert.match(source.slice(outputUpdatedAtPos - 500, outputUpdatedAtPos), /whiteSpace: 'nowrap'/)
+  assert.match(ioSource, /className="task-step-io-date"/)
+  assert.match(css, /\.task-step-io-date\s*\{[^}]*white-space: nowrap/s)
 })
 
 test('reuses the mobile artifact panel from a desktop artifact tab', () => {

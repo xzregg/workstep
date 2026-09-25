@@ -418,7 +418,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [editReviewMode, setEditReviewMode] = useState<'skip' | 'auto' | 'manual'>('manual')
   const [editReviewRetries, setEditReviewRetries] = useState(1)
   const [editReviewPrompt, setEditReviewPrompt] = useState('')
-  const [showReviewDrawer, setShowReviewDrawer] = useState(false)
   const [promptDraft, setPromptDraft] = useState('')
   const [promptSaving, setPromptSaving] = useState(false)
   const [promptSaveError, setPromptSaveError] = useState('')
@@ -2151,8 +2150,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           </div>
         ) : undefined}
         onOpenPromptEditor={openPromptEditor}
-        showReviewDrawer={showReviewDrawer}
-        onShowReviewDrawerChange={setShowReviewDrawer}
         editReviewMode={editReviewMode}
         onEditReviewModeChange={(value) => setEditReviewMode(value as 'skip' | 'auto' | 'manual')}
         editReviewRetries={editReviewRetries}
