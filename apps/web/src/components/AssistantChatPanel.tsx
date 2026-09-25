@@ -1,11 +1,11 @@
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useChatComposerResize } from '../hooks/useChatComposerResize'
+import { useAssistantPendingInserts } from '../hooks/useAssistantPendingInserts'
 import {
   ComposerOverlayHostContext,
   useComposerOverlayClearance,
 } from '../hooks/useComposerOverlayClearance'
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { useShallow } from 'zustand/react/shallow'
 import MobileSheet from './MobileSheet'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 
@@ -41,16 +41,9 @@ import { useUserSettingsStore } from '../stores/userSettingsStore'
 import { shouldShowAssistantThinking } from '../utils/assistantThinking'
 import { displayUserDetail, displayUserSender } from '../utils/actorDisplay'
 import { useI18n } from '../i18n'
-import PendingMessageInserts from './PendingMessageInserts'
 import QuickPromptButton from './QuickPromptButton'
 import { ActionConversationMessage } from './TaskActionShortcuts'
 import { mergeActionMessages } from '../utils/actionConversation'
-import {
-  pendingInsertQueueKey,
-  usePendingMessageInsertStore,
-} from '../stores/pendingMessageInsertStore'
-
-const EMPTY_PENDING_INSERTS: never[] = []
 
 export interface AssistantChatCopy {
   emptyIntro: string
@@ -267,70 +260,9 @@ export default function AssistantChatPanel({
   const userName = useUserSettingsStore((state) => state.userName)
   const { t } = useI18n()
   const engineMessages = messages.filter((message) => message.engine !== 'action')
-  const activeMessageId = [...engineMessages].reverse().find((message) => (
-    message.role === 'assistant' && message.status === 'running'
-  ))?.id || ''
-  const pendingKey = pendingInsertQueueKey(projectId, activeMessageId)
-  const pendingInserts = usePendingMessageInsertStore((state) => (
-    activeMessageId ? state.queues[pendingKey] || EMPTY_PENDING_INSERTS : EMPTY_PENDING_INSERTS
-  ))
-  const pendingActions = usePendingMessageInsertStore(useShallow((state) => ({
-    loadPending: state.load,
-    addPending: state.add,
-    updatePending: state.update,
-    removePending: state.remove,
-    clearPending: state.clear,
-    reorderPending: state.reorder,
-  })))
-  const [pendingError, setPendingError] = useState('')
-  const [editingInsertId, setEditingInsertId] = useState<string | null>(null)
-  const [editingInsertContent, setEditingInsertContent] = useState('')
-  const [pendingSendingIds, setPendingSendingIds] = useState<string[]>([])
-
-  useEffect(() => {
-    if (!activeMessageId) return
-    void pendingActions.loadPending(projectId, activeMessageId).catch((reason) => {
-      setPendingError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
-    })
-  }, [activeMessageId, pendingActions, projectId, t])
-
-  const queueCurrentInput = useCallback(async () => {
-    const content = input.trim()
-    if (!content || !activeMessageId) return
-    setPendingError('')
-    try {
-      await pendingActions.addPending(projectId, activeMessageId, content)
-      onInputChange('')
-    } catch (reason) {
-      setPendingError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
-    }
-  }, [activeMessageId, input, onInputChange, pendingActions, projectId, t])
-
-  const queueEnabled = Boolean(sessionId && activeMessageId)
-
-  const sendPendingInserts = useCallback(async (
-    items: Array<{ id: string; content: string }>,
-  ) => {
-    if (!activeMessageId || items.length === 0) return
-    const content = items.map((item) => item.content.trim()).filter(Boolean).join('\n\n')
-    if (!content) return
-    const ids = items.map((item) => item.id)
-    setPendingError('')
-    setPendingSendingIds((current) => [...new Set([...current, ...ids])])
-    try {
-      const sent = await onSendContent(content, ids)
-      if (!sent) return
-      await Promise.all(items.map((item) => pendingActions.removePending(
-        projectId,
-        activeMessageId,
-        item.id,
-      )))
-    } catch (reason) {
-      setPendingError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
-    } finally {
-      setPendingSendingIds((current) => current.filter((id) => !ids.includes(id)))
-    }
-  }, [activeMessageId, onSendContent, pendingActions, projectId, t])
+  const { panel: pendingPanel, error: pendingError, queueEnabled, queueCurrentInput } = useAssistantPendingInserts({
+    projectId, sessionId, messages, input, onInputChange, onSendContent,
+  })
 
   const effectiveAllowSendWhileRunning = Boolean(allowSendWhileRunning || queueEnabled)
   const compactLayout = useCompactLayout()
@@ -661,61 +593,7 @@ export default function AssistantChatPanel({
         style={!compactLayout && composerHeight !== null ? { height: composerHeight } : undefined}
       >
         <ComposerOverlayHostContext.Provider value={registerOverlay}>
-          {activeMessageId && pendingInserts.length > 0 && (
-            <PendingMessageInserts
-              items={pendingInserts}
-              title={t('chatSession.pendingInsertTitle')}
-              titleTooltip={t('chatSession.pendingInsertHint')}
-              editingId={editingInsertId}
-              editingContent={editingInsertContent}
-              sendingIds={pendingSendingIds}
-              onEditingContentChange={setEditingInsertContent}
-              onEditStart={(item) => {
-                setEditingInsertId(item.id)
-                setEditingInsertContent(item.content)
-              }}
-              onEditSave={(id) => {
-                const content = editingInsertContent.trim()
-                if (!content) return
-                void pendingActions.updatePending(projectId, activeMessageId, id, content)
-                  .then(() => {
-                    setEditingInsertId(null)
-                    setEditingInsertContent('')
-                  })
-                  .catch((reason) => setPendingError(
-                    reason instanceof Error ? reason.message : t('chatSession.sendFailed'),
-                  ))
-              }}
-              onEditCancel={() => {
-                setEditingInsertId(null)
-                setEditingInsertContent('')
-              }}
-              onSend={(item) => void sendPendingInserts([item])}
-              onSendAll={() => void sendPendingInserts(pendingInserts)}
-              onRemove={(id) => void pendingActions.removePending(
-                projectId,
-                activeMessageId,
-                id,
-              ).catch((reason) => setPendingError(
-                reason instanceof Error ? reason.message : t('chatSession.sendFailed'),
-              ))}
-              onClear={() => void pendingActions.clearPending(
-                projectId,
-                activeMessageId,
-              ).catch((reason) => setPendingError(
-                reason instanceof Error ? reason.message : t('chatSession.sendFailed'),
-              ))}
-              onReorder={(fromIndex, toIndex) => void pendingActions.reorderPending(
-                projectId,
-                activeMessageId,
-                fromIndex,
-                toIndex,
-              ).catch((reason) => setPendingError(
-                reason instanceof Error ? reason.message : t('chatSession.sendFailed'),
-              ))}
-              reorderHint={t('chatSession.pendingInsertReorderHint')}
-            />
-          )}
+          {pendingPanel}
           {composerOverlay}
         </ComposerOverlayHostContext.Provider>
         <div

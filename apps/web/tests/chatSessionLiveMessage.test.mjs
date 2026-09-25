@@ -18,6 +18,10 @@ const pendingSource = await readFile(
   new URL('../src/components/PendingMessageInserts.tsx', import.meta.url),
   'utf8',
 )
+const assistantPendingSource = await readFile(
+  new URL('../src/hooks/useAssistantPendingInserts.tsx', import.meta.url),
+  'utf8',
+)
 const taskDetailSource = await readFile(
   new URL('../src/components/TaskDetailView.tsx', import.meta.url),
   'utf8',
@@ -32,8 +36,7 @@ const taskDetailChatSource = await readFile(
 )
 
 test('session chat queues drafts against the running assistant message', () => {
-  assert.match(panelSource, /message\.role === 'assistant' && message\.status === 'running'/)
-  assert.match(panelSource, /pendingActions\.addPending\(projectId, activeMessageId, content\)/)
+  assert.match(panelSource, /useAssistantPendingInserts\(\{/)
   assert.match(panelSource, /running && queueEnabled/)
   assert.match(pageSource, /chatSessionApi\.sendLiveMessage\(/)
   assert.match(pageSource, /onSendContent=\{sendPendingContent\}/)
@@ -49,9 +52,8 @@ test('session chat treats a running assistant bubble as an active turn', () => {
 
 test('all editable assistant chats reuse the backend pending-insert panel', () => {
   assert.match(pendingSource, /export default function PendingMessageInserts/)
-  assert.match(panelSource, /<PendingMessageInserts/)
-  assert.match(panelSource, /onSend=\{\(item\) => void sendPendingInserts\(\[item\]\)\}/)
-  assert.match(panelSource, /onSendAll=\{\(\) => void sendPendingInserts\(pendingInserts\)\}/)
+  assert.match(assistantPendingSource, /<PendingMessageInserts/)
+  assert.match(panelSource, /\{pendingPanel\}/)
   assert.match(taskDetailSource, /<PendingMessageInserts/)
   assert.match(clientSource, /pendingMessageInsertApi/)
   assert.match(clientSource, /\/pending-message-inserts/)
