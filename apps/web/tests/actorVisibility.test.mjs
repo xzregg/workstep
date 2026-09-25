@@ -4,13 +4,14 @@ import { readFile } from 'node:fs/promises'
 
 const taskListSource = await readFile(new URL('../src/pages/TaskList.tsx', import.meta.url), 'utf8')
 const taskDetailSource = await readFile(new URL('../src/components/TaskDetailView.tsx', import.meta.url), 'utf8')
+const taskDetailHeaderSource = await readFile(new URL('../src/components/TaskDetailHeader.tsx', import.meta.url), 'utf8')
 const assistantSource = await readFile(new URL('../src/components/AssistantChatPanel.tsx', import.meta.url), 'utf8')
 
 test('task cards and detail headers show the creator name', () => {
   assert.match(taskListSource, /task\.creator_name/)
   assert.match(taskListSource, /taskList\.creator/)
-  assert.match(taskDetailSource, /task\.creator_name/)
-  assert.match(taskDetailSource, /taskDetail\.creator/)
+  assert.match(taskDetailHeaderSource, /task\.creator_name/)
+  assert.match(taskDetailHeaderSource, /taskDetail\.creator/)
 })
 
 test('user messages show the stored author name instead of hiding self behind 我', () => {

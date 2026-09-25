@@ -4,7 +4,7 @@
 
 | 功能 | Web 入口 | Daemon 入口 | 深入阅读 |
 |---|---|---|---|
-| 任务列表、详情、执行 | `src/pages/TaskList.tsx`、`TaskDetail.tsx`、`src/components/TaskDetailView.tsx`、`taskConversationFeed.ts`、`src/hooks/useTaskConversationScroll.ts`、`src/api/task.ts` | `api/task.py`、`services/task.py`、`task_creation.py`、`task_runner.py` | `docs/workflow-engine-execution.md` |
+| 任务列表、详情、执行 | `src/pages/TaskList.tsx`、`TaskDetail.tsx`；详情组装在 `src/components/TaskDetailView.tsx`；页头 `TaskDetailHeader.tsx`，描述编辑 `TaskDetailDescription.tsx`，共用页签 `TaskDetailTabs.tsx`，步骤进度图 `TaskStepProgressGraph.tsx`；消息时间线 `taskConversationFeed.ts`，滚动 `src/hooks/useTaskConversationScroll.ts`，请求 `src/api/task.ts` | `api/task.py`、`services/task.py`、`task_creation.py`、`task_runner.py` | `docs/workflow-engine-execution.md`；组件行为测试在 `apps/web/tests/taskDetailTabs.test.tsx` 等对应测试 |
 | 流程定义与画布 | `src/components/FlowCanvas.tsx`、`flowCanvasData.ts`、`NodeConfigPanel.tsx` | `api/workflow.py`、`services/workflow_definition.py`、`workflow_runtime.py`；恢复决策在 `workflow_recovery.py` | `docs/workflow-engine-execution.md` |
 | 助手与聊天 | `src/components/AssistantChatPanel.tsx`、`ChatInput.tsx`、`src/api/conversations.ts` | `agent_assistants/base.py`、`session_state.py`、`persistence.py`、`history.py` | `AGENTS.md` 助手架构与事件边界 |
 | 引擎与安装 | `src/api/engine.ts`、`src/pages/SettingsPage.tsx` | `api/engine.py`、`engines/core/`、`services/engine_runtime.py` | `docs/multi-engine-architecture.md`、`docs/engine-runtime-management.md` |
