@@ -1445,17 +1445,6 @@ class TaskRunner:
                         event.data.get("interaction_id") or uuid.uuid4()
                     )
                     event.data["interaction_id"] = interaction_id
-                    interaction_waiter = asyncio.create_task(
-                        intervention_manager.request_response(
-                            interaction_id,
-                            task.id,
-                            step_key,
-                            event.data,
-                        )
-                    )
-                    # Register before publishing so a fast UI response cannot
-                    # race the in-memory intervention broker.
-                    await asyncio.sleep(0)
                 events_collected.append(event.to_dict())
                 await self._event_journal.arecord(journal_ref, event.to_dict())
                 if event.type == "agent_message_chunk" and not is_commentary(event):
@@ -1595,18 +1584,9 @@ class TaskRunner:
                             },
                             "created_at": seal_time.isoformat(),
                         })
-                await self._publish(task.id, step_key, {
-                    "channel": "execution",
-                    "message_id": live_message_id or msg_id,
-                    "engine": step.engine,
-                    "model": resolved_model,
-                    "event_sequence": len(events_collected),
-                    "type": event.type,
-                    "data": {**event.data, "task_id": task.id, "step_key": step_key},
-                })
-                if interaction_waiter is not None:
-                    # Persist before blocking so navigation/reload can rebuild
-                    # the active interaction card from normal message history.
+                if event.type == "interaction_request":
+                    # Persist first so a reload after the broker advertises
+                    # this interaction can reconstruct its message card.
                     def persist_pending_interaction():
                         pending_message = Message.get_by_id(msg_id)
                         self._event_journal.sync(journal_ref, durable=True)
@@ -1622,6 +1602,27 @@ class TaskRunner:
                         await self._run_db(persist_pending_interaction)
                     except Message.DoesNotExist:
                         pass
+                    interaction_waiter = asyncio.create_task(
+                        intervention_manager.request_response(
+                            interaction_id,
+                            task.id,
+                            step_key,
+                            event.data,
+                        )
+                    )
+                    # Register before publishing so a fast UI response cannot
+                    # race the in-memory intervention broker.
+                    await asyncio.sleep(0)
+                await self._publish(task.id, step_key, {
+                    "channel": "execution",
+                    "message_id": live_message_id or msg_id,
+                    "engine": step.engine,
+                    "model": resolved_model,
+                    "event_sequence": len(events_collected),
+                    "type": event.type,
+                    "data": {**event.data, "task_id": task.id, "step_key": step_key},
+                })
+                if interaction_waiter is not None:
                     response = await interaction_waiter
                     if response.get("error"):
                         response = (

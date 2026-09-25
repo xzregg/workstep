@@ -1,6 +1,7 @@
 """Behavior tests for the production workflow runtime interface."""
 
 from contextlib import nullcontext
+from pathlib import Path
 from types import SimpleNamespace
 import asyncio
 import json
@@ -70,7 +71,7 @@ class RuntimeFakeEngine(AcpEngineBase):
     ],
 )
 def test_user_message_uses_current_task_step(statuses, expected):
-    from services.workflow_runtime import resolve_message_step_key
+    from services.workflow_start import resolve_message_step_key
 
     steps_config = {
         "steps": [
@@ -1045,8 +1046,13 @@ async def test_explicit_feedback_round_is_validated_and_resolved(tmp_path):
         assert snapshot["execution_type"] == "feedback"
         assert snapshot["ports"][1]["sources"][0]["round"] == 2
         assert snapshot["ports"][1]["sources"][0]["name"] == "Backend bugs"
-        prepared = runtime._prepare_start_from_step_without_parent(
-            project, task.id, "backend", feedback_inputs=feedback,
+        from services.workflow_start import prepare_start_from_step_without_parent
+
+        prepared = prepare_start_from_step_without_parent(
+            project, task.id, "backend",
+            instance_id=runtime._leases.instance_id,
+            current_workflow_steps=runtime._current_workflow_steps,
+            feedback_inputs=feedback,
         )
         saved_state = json.loads(prepared.workflow_run.routing_state_json)
         assert saved_state["feedback_inputs"]["backend"] == feedback
@@ -1996,7 +2002,7 @@ async def test_task_step_provider_override_hands_off_history_without_session(tmp
 
 @pytest.mark.anyio
 async def test_runtime_start_immediately_persists_user_message(tmp_path, monkeypatch):
-    """The submitted prompt is available to history before execution finishes."""
+    """Prompt persistence and slow artifact setup leave the loop responsive."""
     from models import Message
     from services.workflow_runtime import WorkflowRuntime
 
@@ -2029,8 +2035,22 @@ async def test_runtime_start_immediately_persists_user_message(tmp_path, monkeyp
         return kwargs["workflow_run"].id
 
     monkeypatch.setattr(runtime, "_execute", skip_execution)
+    mkdir_started = threading.Event()
+    original_mkdir = Path.mkdir
+
+    def slow_artifact_mkdir(path, *args, **kwargs):
+        if path.name == "artifacts":
+            mkdir_started.set()
+            time.sleep(0.2)
+        return original_mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", slow_artifact_mkdir)
     try:
-        handle = await runtime.start(project.id, task.id, "  Build it  ")
+        starting = asyncio.create_task(runtime.start(project.id, task.id, "  Build it  "))
+        assert await asyncio.wait_for(asyncio.to_thread(mkdir_started.wait), 1)
+        assert not starting.done()
+        await asyncio.wait_for(asyncio.sleep(0.01), 0.1)
+        handle = await starting
         user_message = Message.get(
             (Message.task == task) & (Message.role == "user")
         )
@@ -2040,6 +2060,7 @@ async def test_runtime_start_immediately_persists_user_message(tmp_path, monkeyp
         assert user_message.run_id == handle.id
         await runtime.wait(handle)
     finally:
+        await runtime.shutdown()
         db.close()
 
 
