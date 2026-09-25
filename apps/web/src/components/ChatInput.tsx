@@ -11,6 +11,7 @@ import {
   type Ref,
 } from 'react'
 import ChatInputTextSegment from './ChatInputTextSegment'
+import ChatInputUsage from './ChatInputUsage'
 import CoordinatorConfigBar from './CoordinatorConfigBar'
 import FloatingMenu, { useFloatingMenu } from './FloatingMenu'
 import ImagePreview from './ImagePreview'
@@ -290,7 +291,7 @@ export default function ChatInput({
   minHeight = 110,
   maxHeight = 120,
 }: ChatInputProps) {
-  const { t, locale } = useI18n()
+  const { t } = useI18n()
   const markdownUrlResolver = useMarkdownUrlResolver()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const segmentRefs = useRef(new Map<number, HTMLTextAreaElement>())
@@ -311,26 +312,6 @@ export default function ChatInput({
   const [allSelected, setAllSelected] = useState(false)
   const allSelectedRef = useRef(false)
   const undoSnapshotRef = useRef<{ before: string; after: string } | null>(null)
-  const [contextTipOpen, setContextTipOpen] = useState(false)
-  const contextRef = useRef<HTMLSpanElement>(null)
-  const [contextTipStyle, setContextTipStyle] = useState<React.CSSProperties | undefined>(undefined)
-  const [quotaTipOpen, setQuotaTipOpen] = useState(false)
-  const quotaRef = useRef<HTMLSpanElement>(null)
-  const [quotaTipStyle, setQuotaTipStyle] = useState<React.CSSProperties | undefined>(undefined)
-  // Close usage detail tips when clicking outside.
-  useEffect(() => {
-    if (!contextTipOpen && !quotaTipOpen) return
-    const handleClickOutside = (e: MouseEvent) => {
-      if (contextRef.current && !contextRef.current.contains(e.target as Node)) {
-        setContextTipOpen(false)
-      }
-      if (quotaRef.current && !quotaRef.current.contains(e.target as Node)) {
-        setQuotaTipOpen(false)
-      }
-    }
-    document.addEventListener('click', handleClickOutside, true)
-    return () => document.removeEventListener('click', handleClickOutside, true)
-  }, [contextTipOpen, quotaTipOpen])
   const [slashCursor, setSlashCursor] = useState(value.length)
   const [slashDismissedValue, setSlashDismissedValue] = useState<string | null>(null)
   const [inspectedItems, setInspectedItems] = useState<EngineInputItem[]>([])
@@ -499,9 +480,6 @@ export default function ChatInput({
       })
     return () => { cancelled = true }
   }, [effectiveEngine, projectId, slashActive])
-
-  const formatTokens = (count: number) =>
-    new Intl.NumberFormat(locale).format(Math.max(0, Math.round(count)))
 
   const focusMarkdownCursor = (markdown: string, cursor: number) => {
     const segments = splitComposerSegments(markdown)
@@ -1246,171 +1224,7 @@ export default function ChatInput({
             </button>
           )}
           <div style={{ flex: 1 }} />
-          {quota?.primary && (
-            <span
-              ref={quotaRef}
-              className={`chat-input-context chat-input-quota${quotaTipOpen ? ' is-tip-open' : ''}`}
-              tabIndex={0}
-              role="button"
-              onClick={() => {
-                if (isCompact && quotaRef.current) {
-                  const rect = quotaRef.current.getBoundingClientRect()
-                  setQuotaTipStyle({
-                    position: 'fixed',
-                    left: '50%',
-                    bottom: window.innerHeight - rect.top + 8,
-                    transform: 'translateX(-50%)',
-                    zIndex: 9999,
-                    width: 'max-content',
-                    maxWidth: 'calc(100vw - 32px)',
-                    whiteSpace: 'normal',
-                  })
-                } else {
-                  setQuotaTipStyle(undefined)
-                }
-                setQuotaTipOpen((open) => !open)
-              }}
-            >
-              {t('chatInput.quotaCompact', { remaining: quota.primary.remaining_percent })}
-              <span className="chat-input-context-tip chat-input-quota-tip" style={quotaTipStyle}>
-                <span className="chat-input-quota-heading">
-                  <strong>{quota.limit_name || t('chatInput.quotaTitle')}</strong>
-                  {onRefreshQuota && (
-                    <button
-                      type="button"
-                      className="chat-input-quota-refresh"
-                      data-quota-refresh=""
-                      disabled={quotaRefreshing}
-                      aria-label={t('common.refresh')}
-                      title={t('common.refresh')}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        onRefreshQuota()
-                      }}
-                    >
-                      {quotaRefreshing
-                        ? <span className="task-status-spinner" aria-hidden="true" />
-                        : <Icon name="refresh" size={13} strokeWidth={2} />}
-                    </button>
-                  )}
-                </span>
-                <span>{t('chatInput.quotaPrimary', {
-                  remaining: quota.primary.remaining_percent,
-                })}</span>
-                <span>{t('chatInput.quotaReset', {
-                  reset: quota.primary.resets_at
-                    ? new Date(quota.primary.resets_at * 1000).toLocaleString(locale)
-                    : t('chatInput.quotaResetUnknown'),
-                })}</span>
-                {quota.secondary && (
-                  <span>{t('chatInput.quotaSecondary', {
-                    remaining: quota.secondary.remaining_percent,
-                  })}</span>
-                )}
-                {quota.credits && (
-                  <span>{quota.credits.unlimited
-                    ? t('chatInput.quotaCreditsUnlimited')
-                    : t('chatInput.quotaCredits', { balance: quota.credits.balance ?? '0' })}</span>
-                )}
-                {quota.individual_limit && (
-                  <span>{t('chatInput.quotaIndividual', {
-                    used: quota.individual_limit.used,
-                    limit: quota.individual_limit.limit,
-                    remaining: quota.individual_limit.remaining_percent,
-                  })}</span>
-                )}
-              </span>
-            </span>
-          )}
-          {context && (
-            <span
-              ref={contextRef}
-              className={`chat-input-context chat-input-context-breakdown-wrap${contextTipOpen ? ' is-tip-open' : ''}`}
-              tabIndex={0}
-              role="button"
-              onClick={() => {
-                if (isCompact && contextRef.current) {
-                  const rect = contextRef.current.getBoundingClientRect()
-                  setContextTipStyle({
-                    position: 'fixed',
-                    left: '50%',
-                    bottom: window.innerHeight - rect.top + 8,
-                    transform: 'translateX(-50%)',
-                    zIndex: 9999,
-                    width: 'max-content',
-                    maxWidth: 'calc(100vw - 32px)',
-                    whiteSpace: 'normal',
-                  })
-                } else {
-                  setContextTipStyle(undefined)
-                }
-                setContextTipOpen((v) => !v)
-              }}
-              aria-label={t('chatInput.contextTokens', { used: formatTokens(context.used), total: formatTokens(context.total) })}
-              style={{
-                color: context.percent > 90
-                  ? 'var(--danger)'
-                  : context.percent > 70
-                    ? '#d97706'
-                    : 'var(--meta)',
-              }}
-            >
-              <svg className="chat-input-context-ring" viewBox="0 0 24 24" aria-hidden="true">
-                <circle className="chat-input-context-ring-track" cx="12" cy="12" r="9" pathLength="100" />
-                <circle
-                  className="chat-input-context-ring-value"
-                  cx="12"
-                  cy="12"
-                  r="9"
-                  pathLength="100"
-                  strokeDasharray={`${Math.min(100, Math.max(0, context.percent))} 100`}
-                />
-              </svg>
-              <span>{Math.round(context.percent)}%</span>
-              <span className="chat-input-context-tip chat-input-context-detail" style={contextTipStyle}>
-                <span className="chat-input-context-heading">
-                  <strong>{t('chatInput.contextCompact', { percent: Math.round(context.percent) })}</strong>
-                  <span>{context.estimated ? '~' : ''}{formatTokens(context.used)} / {formatTokens(context.total)}</span>
-                </span>
-                <span className="chat-input-context-meter"><i style={{ width: `${Math.min(100, context.percent)}%` }} /></span>
-                {context.breakdown && (
-                  <>
-                    <span className="chat-input-context-section-title">
-                      {context.breakdown.estimated ? t('chatInput.contextBreakdownEstimated') : t('chatInput.contextBreakdown')}
-                    </span>
-                    {([
-                      ['system', 'contextSystem', '#f59e0b'],
-                      ['toolDefinitions', 'contextToolDefinitions', '#0ea5e9'],
-                      ['user', 'contextUserMessages', '#d946ef'],
-                      ['assistant', 'contextAssistantMessages', '#ec4899'],
-                      ['toolRequests', 'contextToolRequests', '#8b5cf6'],
-                      ['toolResults', 'contextToolResults', '#10b981'],
-                      ['other', 'contextOther', '#94a3b8'],
-                    ] as const).filter(([key]) => context.breakdown![key] > 0).map(([key, label, color]) => (
-                      <span className="chat-input-context-row" key={key}>
-                        <i style={{ background: color }} />
-                        <span>{t(`chatInput.${label}`)}</span>
-                        <code>~{formatTokens(context.breakdown![key])}</code>
-                        <em>{Math.round((context.breakdown![key] / context.used) * 100)}%</em>
-                      </span>
-                    ))}
-                    {context.tools && context.tools.length > 0 && (
-                      <>
-                        <span className="chat-input-context-section-title">{t('chatInput.contextToolsTop')}</span>
-                        {context.tools.map((tool) => (
-                          <span className="chat-input-context-tool" key={tool.name}>
-                            <code>{tool.name}</code>
-                            <span>~{formatTokens(tool.tokens)}</span>
-                            <em>{Math.round((tool.tokens / context.used) * 100)}%</em>
-                          </span>
-                        ))}
-                      </>
-                    )}
-                  </>
-                )}
-              </span>
-            </span>
-          )}
+          <ChatInputUsage context={context} quota={quota} onRefreshQuota={onRefreshQuota} quotaRefreshing={quotaRefreshing} compact={isCompact} />
           {permission && (
             <>
               <button

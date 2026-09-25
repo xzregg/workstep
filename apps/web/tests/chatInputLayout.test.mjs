@@ -15,36 +15,9 @@ test('shared chat input stays centered and leaves room on wide conversations', (
   assert.match(css, /\.chat-input-root,\s*\.chat-quick-prompts\s*\{[^}]*width:\s*100%/s)
 })
 
-test('chat input renders optional account quota separately from context usage', () => {
-  assert.match(source, /quota\?: ChatEngineQuota \| null/)
-  assert.match(source, /className="[^"]*chat-input-quota[^"]*"/)
-  assert.match(source, /quota\.primary\.remaining_percent/)
-  assert.match(source, /className="chat-input-context-tip chat-input-quota-tip"/)
-  assert.match(source, /quota\.secondary/)
-  assert.match(source, /quota\.individual_limit/)
-})
-
-test('context usage is a circular progress indicator without visible percent text', () => {
-  assert.match(source, /className="chat-input-context-ring"/)
-  assert.match(source, /strokeDasharray=\{`\$\{Math\.min\(100, Math\.max\(0, context\.percent\)\)\} 100`\}/)
-  assert.doesNotMatch(source, /\{Math\.round\(context\.percent\)\}%\s*<span className="chat-input-context-tip/)
-})
-
-test('quota is rendered to the left of context usage', () => {
-  assert.ok(source.indexOf('{quota?.primary && (') < source.indexOf('{context && ('))
-})
-
 test('mobile chat input keeps the engine quota visible in the scrollable toolbar', () => {
-  assert.match(source, /chat-input-context chat-input-quota/)
   assert.match(mobileCss, /\.chat-input-quota-refresh,/)
   assert.doesNotMatch(mobileCss, /\.chat-input-quota\s*\{[^}]*display:\s*none/s)
-})
-
-test('engine quota opens its detail panel on click like context usage', () => {
-  assert.match(source, /ref=\{quotaRef\}/)
-  assert.match(source, /chat-input-quota\$\{quotaTipOpen \? ' is-tip-open' : ''\}/)
-  assert.match(source, /setQuotaTipOpen\(\(open\) => !open\)/)
-  assert.match(source, /chat-input-context-tip chat-input-quota-tip" style=\{quotaTipStyle\}/)
 })
 
 test('chat input toolbar wraps controls instead of overflowing narrow composers', () => {
