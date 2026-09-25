@@ -26,7 +26,8 @@
 | 描述展示与编辑 | `TaskDetailDescription.tsx` | `taskDetailProgressLayout.test.mjs` |
 | 桌面、移动及产物轮次页签 | `TaskDetailTabs.tsx` | `taskDetailTabs.test.tsx` |
 | 任务消息发送目标、步骤可恢复状态提示 | `TaskChatTargetTabs.tsx`；任务详情 View 仅提供目标与步骤状态 | `taskChatTargetTabs.test.tsx`、`mobileTaskTargetTabs.test.mjs` |
-| 步骤进度图 | `TaskStepProgressGraph.tsx` | `taskDetailProgressLayout.test.mjs` |
+| 步骤进度图交互和渲染 | `TaskStepProgressGraph.tsx` | `taskStepProgressGraph.test.tsx`、`taskDetailProgressLayout.test.mjs` |
+| 步骤进度图的依赖布局、连线几何与轮次 | `taskStepProgressLayout.ts` | `taskStepProgressLayout.test.ts`、`taskStepProgressGraph.test.tsx` |
 | 步骤输入、输出、产物轮次及重新执行 | `TaskStepIoPanel.tsx` | `taskStepIoPanel.test.tsx`、`taskDetailProgressLayout.test.mjs` |
 | 审核结果与决策 | `TaskReviewResult.tsx` | `taskReviewResult.test.tsx`、`reviewTerminateAction.test.mjs` |
 | 审核设置 | `TaskReviewConfigPanel.tsx` | `taskReviewConfigPanel.test.tsx` |

@@ -90,3 +90,4 @@
 - 阶段一进行中：项目记忆读取、编辑、保存与未保存改动确认移入 `ProjectMemoryPanel.tsx`，`TaskList.tsx` 从 1125 行降至 1006 行。测试覆盖项目 ID 读取、保存及改动后关闭确认；固定样式归入 `project-memory-*` CSS 类。
 - 阶段一进行中：任务详情输入区的发送目标选择、步骤状态标题与可恢复提示移入 `TaskChatTargetTabs.tsx`；`TaskDetailView.tsx` 从 2255 行降至 2119 行。测试覆盖目标切换及失败步骤提示，固定样式归入 CSS 类，步骤颜色作为运行时变量保留。
 - 阶段一进行中：分享页的实时事件到消息状态的转换移入纯领域模块 `sharedTaskMessages.ts`，`SharedTaskView.tsx` 从 1016 行降至 909 行，保留连接、鉴权与任务/审核刷新。测试覆盖文本、工具、结束状态及 2000 事件上限。
+- 阶段一进行中：步骤进度图的依赖布局、连线几何与轮次计算移入 `taskStepProgressLayout.ts`，渲染与拖拽缩放保留在 `TaskStepProgressGraph.tsx`，从 869 行降至 702 行。布局测试覆盖并行步骤、返工虚线和连线端点，既有交互测试继续覆盖选中、拖拽与缩放。
