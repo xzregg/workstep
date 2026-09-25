@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState,
   type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from 'react'
 import { taskApi } from '../api/client'
 import { loadTaskHistoryWithRetry, mergeLoadedTaskMessageEvents,
-  mergeRefreshedTaskHistory } from '../pages/taskDetailChat'
+  mergeRefreshedTaskHistory } from '../pages/taskHistoryModel'
 
 const PAGE_SIZE = 300
 

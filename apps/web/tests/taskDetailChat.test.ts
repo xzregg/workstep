@@ -17,7 +17,6 @@ import {
   resolveStepDisplayStatus,
   isStepActiveForStop,
   mergeHistoryMessageWithLive,
-  mergeRefreshedTaskHistory,
   canRetryFailedExecutionMessage,
   canRestartStoppedExecutionMessage,
   latestMessageIdsByStep,
@@ -25,8 +24,9 @@ import {
   failedExecutionCompletionRound,
   canCompleteStoppedReview,
   runningTaskMessageIds,
-  loadTaskHistoryWithRetry,
 } from '../src/pages/taskDetailChat.ts'
+import { loadTaskHistoryWithRetry, mergeLoadedTaskMessageEvents,
+  mergeRefreshedTaskHistory } from '../src/pages/taskHistoryModel.ts'
 
 test('persisted coordinator stop clears stale live running state', () => {
   const history = [{ id: 'assistant-1', channel: 'coordinator', role: 'assistant', run_status: 'stopped' }]
@@ -587,7 +587,6 @@ import {
   isStepResumableWithMessage,
   isSelectedStepRunning,
   liveExecutionStatus,
-  mergeLoadedTaskMessageEvents,
   orderConversationMessages,
   resolveMessageReview,
   resolveTaskChatTarget,
