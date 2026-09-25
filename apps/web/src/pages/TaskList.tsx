@@ -4,7 +4,6 @@ import Select from '../components/Select'
 import { copyText } from '../utils/clipboard'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useTaskRoute } from '../hooks/useTaskRoute'
-import { useOverlay } from '../hooks/useOverlay'
 import MobileSheet from '../components/MobileSheet'
 import StatusBadge from '../components/StatusBadge'
 import TaskRecoveredBadge from '../components/TaskRecoveredBadge'
@@ -20,12 +19,7 @@ import { isTaskCompleted, isTaskNotStarted } from './taskDetailChat'
 import Button from '../components/Button'
 import ConfirmDialog from '../components/ConfirmDialog'
 import EmptyState from '../components/EmptyState'
-import Field from '../components/Field'
-import Input from '../components/Input'
-import DateTimePicker from '../components/DateTimePicker'
 import MarkdownEditor from '../components/MarkdownEditor'
-import AiTaskCreateChat from '../components/AiTaskCreateChat'
-import ReviewOverridesEditor from '../components/ReviewOverridesEditor'
 import MarqueeText from '../components/MarqueeText'
 import OpenLocationButton from '../components/OpenLocationButton'
 import MobileOpenLocationButton from '../components/MobileOpenLocationButton'
@@ -34,16 +28,13 @@ import ProjectShareDialog from '../components/ProjectShareDialog'
 import ProjectSettingsPanel from '../components/ProjectSettingsPanel'
 import WorkflowShortcutSettingsDialog from '../components/WorkflowShortcutSettingsDialog'
 import ArchiveExperienceDialog from '../components/ArchiveExperienceDialog'
+import TaskCreatePanel from '../components/TaskCreatePanel'
+import { formatScheduledStart } from '../utils/scheduledStart'
 import TaskTableView from '../components/TaskTableView'
-import type { TaskDraftResult } from '../stores/taskDraftStore'
 import { useI18n, type TFunction, type TKey } from '../i18n'
 import { formatDuration, toMilliseconds } from '../utils/datetime'
 import { formatTokenTotal } from '../utils/statistics'
 import SchedulePage from './SchedulePage'
-import { resolveTaskCreationErrors } from '../utils/taskCreationErrors.js'
-import { formatScheduledStart, localDateTimeAfter, localDateTimeToIso } from '../utils/scheduledStart'
-import { assistantStarterPrompt, backfillEmptyTitle } from '../utils/assistantTitle'
-import { useOnboardingStore } from '../stores/onboardingStore'
 import { deriveTaskLane, orderTaskLanes, type TaskLane } from './taskListLane'
 
 /* ── Styles ── */
@@ -153,7 +144,7 @@ export default function TaskList() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const {
-    tasks, loading, fetchTasks, createTask, runTask, deleteTask, archiveTask,
+    tasks, loading, fetchTasks, runTask, deleteTask, archiveTask,
     unarchiveTask, setActiveTask,
   } = useTaskStore()
   const activeProject = useProjectStore((s) => s.activeProject)
@@ -161,15 +152,17 @@ export default function TaskList() {
   const activeWorkflowId = useProjectStore((s) => s.activeWorkflowId)
   const saveSteps = useProjectStore((s) => s.saveSteps)
   const activeWorkflowName = activeProject?.workflows?.find((w) => w.id === activeWorkflowId)?.name
-  const [showNewPanel, setShowNewPanel] = useState(false)
-  const [createStartStepKey, setCreateStartStepKey] = useState<string | null>(null)
+  const [createRequest, setCreateRequest] = useState<{ stepKey?: string; id: number } | null>(null)
+  const createRequestId = useRef(0)
+  const openNewPanel = (stepKey?: string) => {
+    setCreateRequest({ stepKey, id: ++createRequestId.current })
+  }
   const { taskId: selectedTaskId, openTask, closeTask } = useTaskRoute()
   const compact = useCompactLayout()
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [showMobileDirectoryBrowser, setShowMobileDirectoryBrowser] = useState(false)
   const [mobileStep, setMobileStep] = useState('')
   useEffect(() => { setMobileStep('') }, [activeProject?.id, activeWorkflowId])
-  const newPanelRef = useRef<HTMLDivElement>(null)
   const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<string | null>(null)
   const [confirmStartTaskId, setConfirmStartTaskId] = useState<string | null>(null)
   const [archiveTarget, setArchiveTarget] = useState<{ id: string; title: string } | null>(null)
@@ -189,13 +182,6 @@ export default function TaskList() {
   const [showScheduleDialog, setShowScheduleDialog] = useState(false)
   const [shortcutSettingsOpen, setShortcutSettingsOpen] = useState(false)
   const [showShareDialog, setShowShareDialog] = useState(false)
-  const [newTitle, setNewTitle] = useState('')
-  const [createError, setCreateError] = useState('')
-  const [activeTab, setActiveTab] = useState<'content' | 'review' | 'assistant'>('content')
-  const [newDesc, setNewDesc] = useState('')
-  const [newAutoStart, setNewAutoStart] = useState(false)
-  const [newStartMode, setNewStartMode] = useState<'manual' | 'immediate' | 'scheduled'>('manual')
-  const [newScheduledStart, setNewScheduledStart] = useState('')
   const [dragOverLane, setDragOverLane] = useState<string | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
   const [copiedWorkflowId, setCopiedWorkflowId] = useState(false)
@@ -207,23 +193,7 @@ export default function TaskList() {
   const [memoryError, setMemoryError] = useState('')
   const [memoryNotice, setMemoryNotice] = useState('')
   const [confirmCloseMemory, setConfirmCloseMemory] = useState(false)
-  const [confirmCloseNewTask, setConfirmCloseNewTask] = useState(false)
-  const [taskAiOpen, setTaskAiOpen] = useState(true)
-  const [taskAiBusy, setTaskAiBusy] = useState(false)
-  const [taskAiMessage, setTaskAiMessage] = useState('')
-  const [taskAiChatWidth, setTaskAiChatWidth] = useState<number | null>(null)
-  const [pendingTaskDraft, setPendingTaskDraft] = useState<TaskDraftResult | null>(null)
-  const newTitleInputRef = useRef<HTMLInputElement>(null)
   const memorySavedRef = useRef('')
-  const newPanelBaselineRef = useRef<{
-    title: string
-    desc: string
-    autoStart: boolean
-    startMode: 'manual' | 'immediate' | 'scheduled'
-    scheduledStart: string
-    startStepKey: string | null
-    overrides: Record<string, { mode: 'skip' | 'auto' | 'manual'; auto: boolean; prompt: string; maxRetries: number }>
-  }>({ title: '', desc: '', autoStart: false, startMode: 'manual', scheduledStart: '', startStepKey: null, overrides: {} })
   const [directoryNotice, setDirectoryNotice] = useState('')
   // Local lane override for unstarted cards moved manually in the board.
   const [cardLanes, setCardLanes] = useState<Record<string, string>>({})
@@ -275,79 +245,19 @@ export default function TaskList() {
   // Reset local state when project changes
   useEffect(() => {
     setCardLanes({})
-    setShowNewPanel(false)
-    setTaskAiOpen(true)
-    setTaskAiBusy(false)
+    setCreateRequest(null)
     setShowScheduleDialog(false)
     setShortcutSettingsOpen(false)
     setShowShareDialog(false)
-    setCreateStartStepKey(null)
     setShowArchived(false)
   }, [activeProject?.path])
 
 
   const lanes = useMemo(() => getLanesFromSteps(activeProject?.steps, t), [activeProject?.steps, t])
-  const createLane = lanes.find((lane) => lane.key === createStartStepKey) || lanes[0]
-  const createLaneIndex = Math.max(0, lanes.findIndex((lane) => lane.key === createLane?.key))
-
-  const [reviewOverrides, setReviewOverrides] = useState<Record<string, { mode: 'skip' | 'auto' | 'manual'; auto: boolean; prompt: string; maxRetries: number }>>({})
-
-  const openNewPanel = (stepKey?: string) => {
-    const selectedStepKey = stepKey || lanes[0]?.key || null
-    setCreateStartStepKey(selectedStepKey)
-    setNewTitle('')
-    setNewDesc('')
-    setCreateError('')
-    setTaskAiOpen(true)
-    setTaskAiBusy(false)
-    setTaskAiMessage('')
-    setPendingTaskDraft(null)
-    setActiveTab(compact ? 'assistant' : 'content')
-    // Initialize review overrides from canvas step config
-    const nodeConfigs: Record<string, { mode: 'skip' | 'auto' | 'manual'; auto: boolean; prompt: string; maxRetries: number }> = {}
-    const canvasSteps = activeProject?.steps
-    const selectedStep = [
-      ...(canvasSteps?.nodes || []),
-      ...(canvasSteps?.steps || []),
-    ].find((step: any) => (
-      step.type || step.key || String(step.id)
-    ) === selectedStepKey)
-    setNewAutoStart(Boolean(selectedStep?.autoStart))
-    setNewStartMode(selectedStep?.autoStart ? 'immediate' : 'manual')
-    setNewScheduledStart('')
-    if (canvasSteps?.nodes) {
-      for (const n of canvasSteps.nodes) {
-        const key = (n.type || n.key || String(n.id)) as string
-        const rv = n.review || {}
-        nodeConfigs[key] = {
-          mode: ['skip', 'auto', 'manual'].includes(rv.mode)
-            ? rv.mode
-            : rv.auto
-              ? 'auto'
-              : 'manual',
-          auto: !!rv.auto,
-          prompt: String(rv.prompt || ''),
-          maxRetries: Math.max(1, Math.min(5, Number(rv.maxRetries) || 1)),
-        }
-      }
-    }
-    setReviewOverrides(nodeConfigs)
-    newPanelBaselineRef.current = {
-      title: '',
-      desc: '',
-      autoStart: Boolean(selectedStep?.autoStart),
-      startMode: selectedStep?.autoStart ? 'immediate' : 'manual',
-      scheduledStart: '',
-      startStepKey: selectedStepKey,
-      overrides: JSON.parse(JSON.stringify(nodeConfigs)),
-    }
-    setShowNewPanel(true)
-  }
-
   useEffect(() => {
     const command = searchParams.get('onboarding')
     const taskId = searchParams.get('task')
-    if (command === 'create-task' && activeProject && activeWorkflowId && lanes.length > 0 && !showNewPanel) {
+    if (command === 'create-task' && activeProject && activeWorkflowId && lanes.length > 0 && !createRequest) {
       openNewPanel()
       const next = new URLSearchParams(searchParams)
       next.delete('onboarding')
@@ -358,7 +268,7 @@ export default function TaskList() {
       setActiveTask(taskId)
 
     }
-  }, [searchParams, setSearchParams, activeProject, activeWorkflowId, lanes.length, showNewPanel, setActiveTask]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searchParams, setSearchParams, activeProject, activeWorkflowId, lanes.length, createRequest, setActiveTask]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Backend step progress is the source of truth; local assignment is only a
   // temporary override before a task has started executing.
@@ -397,98 +307,6 @@ export default function TaskList() {
     const timer = window.setInterval(() => setDurationNowMs(Date.now()), 1000)
     return () => window.clearInterval(timer)
   }, [anyRunning])
-
-  const handleCreate = async () => {
-    if (!activeProject || taskAiBusy) return
-    try {
-      const task = await createTask(
-        newTitle.trim(),
-        activeProject.path,
-        activeProject.id,
-        newDesc.trim() || undefined,
-        createLane?.key,
-        Object.keys(reviewOverrides).length > 0 ? reviewOverrides : undefined,
-        activeWorkflowId,
-        newStartMode === 'immediate',
-        newStartMode === 'scheduled' ? localDateTimeToIso(newScheduledStart) : null,
-      )
-      const onboarding = useOnboardingStore.getState()
-      if (
-        onboarding.status === 'active'
-        && onboarding.currentStep === 'task'
-        && onboarding.workflowId === activeWorkflowId
-      ) {
-        onboarding.recordTask(task.id)
-      }
-      setNewTitle('')
-      setNewDesc('')
-      setNewScheduledStart('')
-      setShowNewPanel(false)
-      setTaskAiOpen(false)
-      setCreateError('')
-    } catch (e: any) {
-      setCreateError(e?.message || t('taskList.createFailed'))
-    }
-  }
-
-  const requestCloseTaskAi = () => {
-    if (compact) setActiveTab('content')
-    if (taskAiBusy) {
-      setConfirmCloseNewTask(true)
-      return
-    }
-    setTaskAiOpen(false)
-  }
-
-  const handleStartTaskAi = () => {
-    if (taskAiOpen) {
-      requestCloseTaskAi()
-      return
-    }
-    setCreateError('')
-    setTaskAiMessage(assistantStarterPrompt(
-      newTitle,
-      (name) => t('taskList.aiCreatePrompt', { name }),
-    ))
-    setTaskAiOpen(true)
-    setActiveTab(compact ? 'assistant' : 'content')
-  }
-
-  const applyTaskDraft = useCallback((draft: TaskDraftResult) => {
-    const targetLane = lanes.find((lane) => lane.key === draft.start_step_key)
-    if (!targetLane) {
-      setCreateError(t('taskList.aiGenerateFailed'))
-      return
-    }
-    setNewTitle((current) => backfillEmptyTitle(current, draft.title))
-    setNewDesc(draft.description)
-    setCreateStartStepKey(targetLane.key)
-    setPendingTaskDraft(null)
-  }, [lanes, t])
-
-  const handleTaskDraft = useCallback((draft: TaskDraftResult) => {
-    if (newDesc.trim()) {
-      setPendingTaskDraft(draft)
-      return
-    }
-    applyTaskDraft(draft)
-  }, [applyTaskDraft, newDesc])
-
-  const startTaskAiDividerDrag = (event: React.MouseEvent) => {
-    event.preventDefault()
-    const startX = event.clientX
-    const panelWidth = Math.min(1100, window.innerWidth * 0.9)
-    const startWidth = taskAiChatWidth ?? Math.round((panelWidth * 2) / 5)
-    const onMove = (moveEvent: MouseEvent) => {
-      setTaskAiChatWidth(Math.max(280, Math.min(panelWidth - 320, startWidth + (startX - moveEvent.clientX))))
-    }
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-    }
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-  }
 
   const handleSelectTask = (taskId: string) => {
     setActiveTask(taskId)
@@ -535,25 +353,6 @@ export default function TaskList() {
       setMemorySaving(false)
     }
   }
-
-  const closeNewPanel = () => {
-    const baseline = newPanelBaselineRef.current
-    const dirty = newTitle !== baseline.title
-      || newDesc !== baseline.desc
-      || newAutoStart !== baseline.autoStart
-      || newStartMode !== baseline.startMode
-      || newScheduledStart !== baseline.scheduledStart
-      || createStartStepKey !== baseline.startStepKey
-      || JSON.stringify(reviewOverrides) !== JSON.stringify(baseline.overrides)
-    if (dirty || taskAiBusy) {
-      setConfirmCloseNewTask(true)
-    } else {
-      setShowNewPanel(false)
-      setTaskAiOpen(false)
-    }
-  }
-
-  useOverlay(compact && showNewPanel, closeNewPanel, newPanelRef)
 
   const closeMemoryPanel = () => {
     if (memoryContent !== memorySavedRef.current) {
@@ -645,8 +444,6 @@ export default function TaskList() {
     }
     setDragId(null)
   }
-
-  const taskCreationErrors = resolveTaskCreationErrors('', createError)
 
   return (
     <>
@@ -1143,229 +940,16 @@ export default function TaskList() {
         )}
       </div>
 
-      {/* Backdrop: click outside closes the new-task panel when unchanged */}
-      {showNewPanel && (
-        <div
-          onClick={closeNewPanel}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.2)', zIndex: 999 }}
+      {createRequest && activeProject && (
+        <TaskCreatePanel
+          key={createRequest.id}
+          project={activeProject}
+          workflowId={activeWorkflowId}
+          lanes={lanes}
+          initialStepKey={createRequest.stepKey}
+          onClose={() => setCreateRequest(null)}
         />
       )}
-
-      {/* ── New requirement panel (slide-in from right, fixed to viewport) ── */}
-      <div ref={newPanelRef} role="dialog" aria-modal={showNewPanel || undefined} aria-label={t('taskList.new')} inert={!showNewPanel} className="task-create-panel" data-tab={activeTab} style={{
-        position: 'fixed', right: 0, top: 0, bottom: 0,
-        width: taskAiOpen ? 'min(1100px, 90vw)' : '50vw', minWidth: 420, background: 'var(--bg)',
-        borderLeft: '1px solid var(--border-soft)',
-        boxShadow: '-4px 0 16px rgba(0,0,0,0.12)',
-        display: 'flex', flexDirection: 'column',
-        zIndex: 1000,
-        transform: showNewPanel ? 'translateX(0)' : 'translateX(100%)',
-        transition: 'transform 0.3s ease',
-      }}>
-        <div className="panel-header">
-          <span style={{ fontWeight: 600, fontSize: 'calc(13px * var(--font-scale))' }}>{t('taskList.newTaskTitle', { lane: createLane?.label || t('taskList.requirement') })}</span>
-          <Button variant="icon" onClick={closeNewPanel} aria-label={t('common.close')}>✕</Button>
-        </div>
-        <div className="task-create-body" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        <div className="task-create-form" style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        {/* ── Tab bar ── */}
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-soft)', padding: '0 16px', gap: 0, flexShrink: 0 }}>
-          <button
-            onClick={() => setActiveTab('content')}
-            style={{
-              padding: '10px 16px', fontSize: 'calc(13px * var(--font-scale))', fontWeight: activeTab === 'content' ? 600 : 400,
-              border: 'none', borderBottom: activeTab === 'content' ? '2px solid var(--accent)' : '2px solid transparent',
-              background: 'none', cursor: 'pointer',
-              color: activeTab === 'content' ? 'var(--fg)' : 'var(--meta)',
-              fontFamily: 'var(--font-body)',
-            }}
-          >{t('taskList.contentTab')}</button>
-          <button
-            onClick={() => setActiveTab('review')}
-            style={{
-              padding: '10px 16px', fontSize: 'calc(13px * var(--font-scale))', fontWeight: activeTab === 'review' ? 600 : 400,
-              border: 'none', borderBottom: activeTab === 'review' ? '2px solid var(--accent)' : '2px solid transparent',
-              background: 'none', cursor: 'pointer',
-              color: activeTab === 'review' ? 'var(--fg)' : 'var(--meta)',
-              fontFamily: 'var(--font-body)',
-            }}
-          >{t('taskList.reviewTab')}</button>
-          {compact && <button className="mobile-assistant-tab" aria-pressed={activeTab === 'assistant'} onClick={() => { setTaskAiOpen(true); setActiveTab('assistant') }}>{t('mobile.aiAssistant')}</button>}
-        </div>
-
-        {/* ── Tab: content ── */}
-        {(activeTab === 'content' || (!compact && activeTab === 'assistant')) && (
-        <div style={{ flex: 1, padding: 16, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {createLaneIndex > 0 && (
-            <div style={{
-              marginBottom: 10, padding: '11px 12px', borderRadius: 8,
-              background: `color-mix(in oklab, ${createLane?.color || 'var(--accent)'}, transparent 91%)`,
-              borderLeft: `3px solid ${createLane?.color || 'var(--accent)'}`,
-              color: 'var(--fg-2)', fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.55,
-            }}>
-              {t('taskList.startAtStep', { label: createLane?.label })}
-              <br />
-              {t('taskList.skipPrevious', {
-                steps: lanes.slice(0, createLaneIndex)
-                  .map((lane) => t('taskList.stepQuote', { label: lane.label }))
-                  .join(t('taskList.joinList')),
-              })}
-            </div>
-          )}
-          <Field
-            label={t('taskList.taskTitle')}
-            htmlFor="new-task-title"
-            error={taskCreationErrors.titleError || undefined}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <Input
-                id="new-task-title"
-                ref={newTitleInputRef}
-                value={newTitle}
-                onChange={(e) => {
-                  setNewTitle(e.target.value)
-                  setCreateError('')
-                }}
-                placeholder={t('taskList.titlePlaceholder')}
-                onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-                style={{ flex: 1, minWidth: 180 }}
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleStartTaskAi}
-                aria-expanded={taskAiOpen}
-                title={t('taskList.aiCreateTitle')}
-                style={{
-                  flexShrink: 0, whiteSpace: 'nowrap', color: 'var(--accent)',
-                  border: '1px solid color-mix(in oklab, var(--accent), transparent 55%)',
-                  background: 'color-mix(in oklab, var(--accent), transparent 93%)',
-                }}
-              >
-                <Icon name="sparkles" size={13} style={{ marginRight: 4, verticalAlign: -2 }} />
-                {t('taskList.aiCreate')}
-              </Button>
-            </div>
-          </Field>
-          <label style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--muted)', marginTop: 8 }}>{t('taskList.taskDescription')}</label>
-          <MarkdownEditor
-            value={newDesc}
-            onChange={setNewDesc}
-            projectId={activeProject?.id}
-            placeholder={t('taskList.descPlaceholder', { lane: createLane?.label || t('taskList.currentStep') })}
-            minHeight={102}
-            showAttachmentHint
-          />
-          <div style={{ display: 'grid', gridTemplateColumns: newStartMode === 'scheduled' ? '1fr 1fr' : '1fr', gap: 12, marginTop: 8 }}>
-            <Field label={t('taskList.startMode')}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', minHeight: 34 }}>
-                {([
-                  ['manual', t('taskList.startModeManual')],
-                  ['immediate', t('taskList.startModeImmediate')],
-                  ['scheduled', t('taskList.startModeScheduled')],
-                ] as const).map(([mode, label]) => (
-                  <label key={mode} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 'calc(13px * var(--font-scale))', whiteSpace: 'nowrap' }}>
-                    <input
-                      type="radio"
-                      name="new-task-start-mode"
-                      value={mode}
-                      checked={newStartMode === mode}
-                      onChange={() => {
-                        setNewStartMode(mode)
-                        setNewAutoStart(mode === 'immediate')
-                        if (mode !== 'scheduled') setNewScheduledStart('')
-                      }}
-                      style={{ width: 16, height: 16, margin: 0 }}
-                    />
-                    {label}
-                  </label>
-                ))}
-              </div>
-            </Field>
-            {newStartMode === 'scheduled' && (
-              <Field label={t('taskList.scheduledStart')}>
-                <DateTimePicker
-                  value={newScheduledStart}
-                  min={localDateTimeAfter(1)}
-                  onChange={setNewScheduledStart}
-                />
-              </Field>
-            )}
-          </div>
-        </div>
-        )}
-
-        {/* ── Tab: review ── */}
-        {activeTab === 'review' && (
-        <div style={{ flex: 1, padding: '12px 16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <ReviewOverridesEditor value={reviewOverrides} onChange={setReviewOverrides} lanes={lanes} startStepKey={createLane?.key} projectId={activeProject?.id} />
-        </div>
-        )}
-
-        {/* ── Error & Footer ── */}
-        {taskCreationErrors.panelError && (
-          <div style={{ padding: '8px 16px 0', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)' }}>{taskCreationErrors.panelError}</div>
-        )}
-        <div className="task-create-footer">
-          <Button
-            variant="primary"
-            className="task-create-primary"
-            disabled={!newTitle.trim() || taskAiBusy || (newStartMode === 'scheduled' && !localDateTimeToIso(newScheduledStart))}
-            onClick={handleCreate}
-          >
-            <Icon name="plus" size={16} />
-            {t('taskList.createTask')}
-          </Button>
-          <div className="task-create-secondary-row">
-            <button
-              type="button"
-              className="task-create-assistant-status"
-              aria-pressed={taskAiOpen}
-              onClick={handleStartTaskAi}
-            >
-              <Icon name="sparkles" size={14} />
-              {taskAiOpen ? t('taskList.assistantExpanded') : t('taskList.assistantCollapsed')}
-            </button>
-            <Button variant="ghost" className="task-create-cancel" onClick={closeNewPanel}>{t('common.cancel')}</Button>
-          </div>
-        </div>
-        </div>
-        {taskAiOpen && activeProject && (
-          <>
-            <div
-              className="task-create-divider"
-              onMouseDown={startTaskAiDividerDrag}
-              title={t('layout.dragResizeChat')}
-              style={{
-                width: 8, flexShrink: 0, cursor: 'col-resize', position: 'relative',
-                background: 'transparent',              }}
-            >
-              <div style={{
-                position: 'absolute', insetBlock: 0, left: '50%', width: 1,
-                transform: 'translateX(-50%)', background: 'var(--border-soft)',
-              }} />
-            </div>
-            <div className="task-create-assistant" style={{
-              width: taskAiChatWidth ?? '40%', maxWidth: '45vw', minWidth: 280, flexShrink: 0, minHeight: 0,
-              display: 'flex', flexDirection: 'column', background: 'var(--bg)',
-            }}>
-              <AiTaskCreateChat
-                projectId={activeProject.id}
-                taskTitle={newTitle.trim()}
-                taskDescription={newDesc}
-                allowGenerateTitle={!newTitle.trim()}
-                workflowId={activeWorkflowId || undefined}
-                startStepKey={createLane?.key}
-                initialMessage={taskAiMessage}
-                onDraft={handleTaskDraft}
-                onBusyChange={setTaskAiBusy}
-                onClose={requestCloseTaskAi}
-              />
-            </div>
-          </>
-        )}
-        </div>
-      </div>
 
       {/* ── Schedule dialog ── */}
       {shortcutSettingsOpen && activeProject && activeWorkflowId && <WorkflowShortcutSettingsDialog
@@ -1459,35 +1043,6 @@ export default function TaskList() {
           setCardLanes((prev) => { const next = { ...prev }; delete next[taskId]; return next })
           setArchiveTarget(null)
         }} />}
-
-      <ConfirmDialog
-        open={confirmCloseNewTask}
-        title={t('taskList.discardNewTitle')}
-        message={taskAiBusy ? t('taskList.aiRunningCloseMessage') : t('taskList.discardNewMessage')}
-        confirmText={t('taskList.discard')}
-        danger
-        onConfirm={() => {
-          setConfirmCloseNewTask(false)
-          setShowNewPanel(false)
-          setTaskAiOpen(false)
-        }}
-        onCancel={() => setConfirmCloseNewTask(false)}
-      />
-
-      <ConfirmDialog
-        open={pendingTaskDraft !== null}
-        title={t('taskList.aiOverwriteTitle')}
-        message={t('taskList.aiOverwriteMessage', {
-          step: lanes.find((lane) => lane.key === pendingTaskDraft?.start_step_key)?.label
-            || pendingTaskDraft?.start_step_key
-            || t('taskList.currentStep'),
-        })}
-        confirmText={t('taskList.aiApply')}
-        onConfirm={() => {
-          if (pendingTaskDraft) applyTaskDraft(pendingTaskDraft)
-        }}
-        onCancel={() => setPendingTaskDraft(null)}
-      />
 
       <ConfirmDialog
         open={confirmCloseMemory}
