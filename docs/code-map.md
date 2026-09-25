@@ -42,6 +42,7 @@
 | 步骤停止、丢失会话重启与失败消息重试 | `src/hooks/useTaskStepControls.ts`；任务详情提供历史刷新和错误展示回调 | `useTaskStepControls.test.tsx` |
 | 任务历史刷新合并、事件详情归并与失败重试 | `src/pages/taskHistoryModel.ts`；本地详情、分享页及历史 hook 共用 | `taskDetailChat.test.ts`、`taskHistory.test.tsx` |
 | 任务产物选择、轮次、步骤输入输出映射与接口变更判断 | `src/pages/taskArtifactRules.ts`；`TaskStepIoPanel.tsx` 展示结果，本地详情与分享页共用产物查找 | `taskDetailChat.test.ts`、`taskStepIoPanel.test.tsx` |
+| 任务产物列表加载、生成后刷新、预览与打开本地目录 | `src/hooks/useTaskArtifacts.ts`；`TaskDetail.tsx` 负责将状态接入详情页，远端项目禁用本地目录操作 | `useTaskArtifacts.test.tsx` |
 | 任务归档经验草稿、生成和确认 | `ArchiveExperienceDialog.tsx`；任务列表只负责打开和归档后移除卡片 | `archiveExperienceDialog.test.tsx`、`archiveExperienceControls.test.mjs` |
 | 看板任务卡片的状态、时长、定时标签与操作按钮 | `TaskBoardCard.tsx`；`TaskList.tsx` 负责项目筛选、分组、拖放及请求编排；固定卡片和看板样式在 `src/index.css` 的 `task-board-*` 类 | `taskBoardCard.test.tsx`、`taskListCardStepLabel.test.mjs` |
 | 分享页实时消息事件合并、状态更新与事件数量上限 | `src/pages/sharedTaskMessages.ts`；`src/hooks/useSharedTaskSession.ts` 将事件写入消息状态 | `sharedTaskMessages.test.ts`、`useSharedTaskSession.test.tsx` |

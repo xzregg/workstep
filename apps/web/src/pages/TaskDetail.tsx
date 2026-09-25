@@ -23,8 +23,6 @@ import {
   taskApi,
   type ActionProposal,
   type ReviewRun,
-  type TaskArtifact,
-  type TaskArtifactInputSnapshot,
   type TaskStepState,
 } from '../api/client'
 import { copyMessageText } from '../components/MessageResponseFooter'
@@ -52,7 +50,7 @@ import {
   resolveStepRestartImpact,
 } from './taskDetailChat'
 import { mergeRefreshedTaskHistory } from './taskHistoryModel'
-import { findPreferredArtifact } from './taskArtifactRules'
+import { useTaskArtifacts } from '../hooks/useTaskArtifacts'
 import { CUSTOM } from '../utils/agui'
 import {
   pendingInsertQueueKey,
@@ -272,10 +270,11 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     onHistoryRefresh: (messages) => setHistoryMessages((current) =>
       mergeRefreshedTaskHistory(current, messages)),
   })
-  const [artifacts, setArtifacts] = useState<TaskArtifact[]>([])
-  const [artifactDirectory, setArtifactDirectory] = useState('')
-  const [artifactInputSnapshots, setArtifactInputSnapshots] = useState<TaskArtifactInputSnapshot[]>([])
-  const [artifactsLoading, setArtifactsLoading] = useState(false)
+  const {
+    artifacts, artifactDirectory, inputSnapshots: artifactInputSnapshots,
+    previewArtifact, closePreview: closeArtifactPreview, notice: artifactNotice,
+    openArtifact, openArtifactDirectory,
+  } = useTaskArtifacts({ taskId, projectId, steps: task?.steps, remote: detailProject?.type === 'remote' })
   const [reviews, setReviews] = useState<ReviewRun[]>([])
   const [reviewActionPending, setReviewActionPending] = useState(false)
   const [pendingReviewCompletion, setPendingReviewCompletion] = useState<
@@ -284,8 +283,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     | null
   >(null)
   const [reviewComment, setReviewComment] = useState('')
-  const [previewArtifact, setPreviewArtifact] = useState<TaskArtifact | null>(null)
-  const [artifactNotice, setArtifactNotice] = useState('')
   const [showPromptEditor, setShowPromptEditor] = useState(false)
   const persistedMessageIds = useMemo(
     () => new Set(historyMessages.map((message) => String(message.id))),
@@ -337,33 +334,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       .then((res) => setReviews(res.reviews || []))
       .catch(() => setReviews([]))
   }, [taskId, projectId, task?.updated_at, reviewEventSignal])
-
-  const refreshArtifacts = useCallback((): Promise<TaskArtifact[]> => {
-    if (!taskId || !projectId) return Promise.resolve([])
-    return taskApi.artifacts(taskId, projectId)
-      .then((res) => {
-        setArtifacts(res.artifacts || [])
-        setArtifactDirectory(res.artifact_directory || '')
-        setArtifactInputSnapshots(res.input_snapshots || [])
-        return res.artifacts || []
-      })
-      .catch(() => {
-        setArtifacts([])
-        setArtifactDirectory('')
-        setArtifactInputSnapshots([])
-        return []
-      })
-  }, [taskId, projectId])
-
-  useEffect(() => {
-    if (!taskId || !projectId) {
-      setArtifacts([])
-      setArtifactInputSnapshots([])
-      return
-    }
-    setArtifactsLoading(true)
-    refreshArtifacts().finally(() => setArtifactsLoading(false))
-  }, [taskId, projectId, task?.steps, refreshArtifacts])
 
   // Fetch tasks if not already loaded
   useEffect(() => {
@@ -1139,59 +1109,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     }
   }
 
-  const findArtifact = (
-    name: string,
-    preferredStepKey?: string,
-    source?: TaskArtifact[],
-    round?: number,
-    path?: string,
-  ) => {
-    return findPreferredArtifact(source || artifacts, name, preferredStepKey, round, path)
-  }
-
-  const openArtifact = (
-    name: string,
-    preferredStepKey?: string,
-    round?: number,
-    path?: string,
-  ) => {
-    if (artifactsLoading && artifacts.length === 0) {
-      setArtifactNotice(t('taskDetail.artifactLoading'))
-    } else {
-      const artifact = findArtifact(name, preferredStepKey, undefined, round, path)
-      if (artifact) {
-        setPreviewArtifact(artifact)
-        setArtifactNotice('')
-        return
-      }
-      // 步骤可能刚执行完、产物列表尚未刷新：重新拉取一次再尝试打开。
-      setArtifactNotice(t('taskDetail.artifactLoading'))
-      refreshArtifacts().then((fresh) => {
-        const latest = findArtifact(name, preferredStepKey, fresh, round, path)
-        if (latest) {
-          setPreviewArtifact(latest)
-          setArtifactNotice('')
-        } else {
-          setArtifactNotice(t('taskDetail.artifactNotFound', { name }))
-        }
-      })
-    }
-    setTimeout(() => setArtifactNotice(''), 3000)
-  }
-
-  const openArtifactDirectory = async () => {
-    if (!previewArtifact || detailProject?.type === 'remote') return
-    try {
-      const result = await fsApi.openDirectory(previewArtifact.path)
-      setArtifactNotice(t('taskDetail.directoryOpened', { path: result.path }))
-    } catch (error) {
-      setArtifactNotice(
-        t('taskDetail.directoryOpenFailed', { error: error instanceof Error ? error.message : t('common.unknownError') })
-      )
-    }
-    setTimeout(() => setArtifactNotice(''), 3000)
-  }
-
   return (
     <TaskDetailWindow title={task.title} onClose={onClose}>
       {(headerHandlers) => <TaskStepConfigController
@@ -1371,7 +1288,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         running={running}
         projectId={projectId}
         previewArtifact={previewArtifact}
-        onCloseArtifactPreview={() => setPreviewArtifact(null)}
+        onCloseArtifactPreview={closeArtifactPreview}
         onOpenArtifactDirectory={openArtifactDirectory}
         canOpenArtifactDirectory={detailProject?.type !== 'remote'}
         projectType={detailProject?.type}
