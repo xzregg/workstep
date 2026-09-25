@@ -96,6 +96,7 @@ export const CUSTOM = {
   status: 'workstep.status',
   plan: 'workstep.plan',
   planUpdate: 'workstep.plan_update',
+  goalUpdate: 'workstep.goal_update',
   planRemoved: 'workstep.plan_removed',
   usage: 'workstep.usage',
   sessionStarted: 'workstep.session_started',

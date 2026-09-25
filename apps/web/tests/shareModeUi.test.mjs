@@ -53,9 +53,9 @@ test('shared task view enables interactions only for interactive shares', () => 
   assert.match(sharedViewSource, /readCapabilities=\{\{/)
 })
 
-test('read-only and interactive shares differ only by the chat composer capability', () => {
+test('share mode controls the chat composer and Git write access without hiding task content', () => {
   assert.match(sharedViewSource, /chatEnabled=\{interactive\}/)
-  assert.doesNotMatch(sharedViewSource, /\breadOnly\b/)
+  assert.match(sharedViewSource, /gitCapability=\{\{[^}]*readOnly: !interactive/)
   assert.doesNotMatch(taskDetailViewSource, /\breadOnly\b/)
   assert.doesNotMatch(sharedViewSource, /runningSteps=\{interactive \?/)
   assert.doesNotMatch(sharedViewSource, /sharePrimaryAction/)

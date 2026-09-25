@@ -319,8 +319,50 @@ def build_manifest_entry(path: Path, round_dir: Path, metadata: dict | None = No
     }
     if path.is_file():
         entry["size"] = resolved.stat().st_size
-        entry["sha256"] = hashlib.sha256(resolved.read_bytes()).hexdigest()
+        digest = hashlib.sha256()
+        with resolved.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        entry["sha256"] = digest.hexdigest()
     return entry
+
+
+def _manifest_content_index(manifest: dict | None) -> tuple[dict[str, str], set[str]] | None:
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("directory_paths"), list):
+        return None
+    directories = manifest["directory_paths"]
+    if not all(isinstance(path, str) for path in directories):
+        return None
+    files: dict[str, str] = {}
+    for entry in manifest.get("artifacts", []):
+        if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+            return None
+        if entry["path"] in directories:
+            continue
+        if not isinstance(entry.get("sha256"), str):
+            return None
+        files[entry["path"]] = entry["sha256"]
+    return files, set(directories)
+
+
+def _same_manifest_path(
+    path: str,
+    current: tuple[dict[str, str], set[str]],
+    previous: tuple[dict[str, str], set[str]],
+) -> bool:
+    current_files, current_dirs = current
+    previous_files, previous_dirs = previous
+    if path not in current_dirs:
+        return path in previous_files and current_files.get(path) == previous_files[path]
+    if path not in previous_dirs:
+        return False
+    prefix = path + "/"
+    return (
+        {key[len(prefix):]: value for key, value in current_files.items() if key.startswith(prefix)}
+        == {key[len(prefix):]: value for key, value in previous_files.items() if key.startswith(prefix)}
+        and {key[len(prefix):] for key in current_dirs if key.startswith(prefix)}
+        == {key[len(prefix):] for key in previous_dirs if key.startswith(prefix)}
+    )
 
 
 def write_round_manifest(
@@ -346,19 +388,16 @@ def write_round_manifest(
         artifact_round,
     )
     round_dir.mkdir(parents=True, exist_ok=True)
-    previous_round = max(
+    previous = max(
         (
-            item.round
-            for item in iter_artifact_rounds(
-                artifacts_root,
-                workflow_id,
-                task_id,
-                step_key,
-            )
-            if item.round < int(artifact_round)
+            item for item in iter_artifact_rounds(
+                artifacts_root, workflow_id, task_id, step_key,
+            ) if item.round < int(artifact_round)
         ),
+        key=lambda item: item.round,
         default=None,
     )
+    previous_round = previous.round if previous else None
     declared = _declared_entries(round_dir, outputs)
 
     entries: dict[Path, dict] = {}
@@ -371,6 +410,29 @@ def write_round_manifest(
     for directory, metadata in declared.items():
         if directory.is_dir():
             entries[directory] = build_manifest_entry(directory, round_dir, metadata)
+
+    round_paths = sorted(round_dir.rglob("*"))
+    directory_paths = [
+        path.relative_to(round_dir).as_posix()
+        for path in round_paths
+        if path.is_dir() and not path.is_symlink()
+    ]
+    has_symlinks = any(path.is_symlink() for path in round_paths)
+    comparison = None
+    current_index = _manifest_content_index({
+        "directory_paths": None if has_symlinks else directory_paths,
+        "artifacts": list(entries.values()),
+    })
+    previous_index = _manifest_content_index(previous.manifest) if previous else None
+    if previous_round is not None and current_index is not None and previous_index is not None:
+        comparison = {
+            "previous_round": previous_round,
+            "round_unchanged": current_index == previous_index,
+            "unchanged_paths": sorted(
+                entry["path"] for entry in entries.values()
+                if _same_manifest_path(entry["path"], current_index, previous_index)
+            ),
+        }
 
     manifest = {
         "version": 1,
@@ -385,6 +447,8 @@ def write_round_manifest(
         "status": status,
         "eligible_for_downstream": bool(eligible_for_downstream),
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "directory_paths": None if has_symlinks else directory_paths,
+        "content_comparison": comparison,
         "outputs": _declared_output_statuses(round_dir, declared),
         "artifacts": sorted(entries.values(), key=lambda item: str(item["path"])),
     }

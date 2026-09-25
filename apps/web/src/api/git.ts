@@ -4,8 +4,8 @@ export interface GitFile { path: string; old_path: string | null; index_status: 
 export interface GitWorktree { id: string; path: string; branch: string | null; head: string; main: boolean; available: boolean; locked: boolean; prunable: boolean }
 export interface GitRepository { id: string; name: string; common_dir: string; worktrees: GitWorktree[]; projects: { id: string; relative_path: string }[] }
 export interface GitDiscovery { projects: { id: string; name: string; path: string }[]; repositories: GitRepository[]; depth: number; scanned_at: number | null; errors: { path: string; message: string }[] }
-export interface TaskGitWorktree extends GitWorktree { alias: string; repository_id: string; repository_name: string }
-export interface TaskGitWorkspace { path: string; worktrees: TaskGitWorktree[] }
+export interface TaskGitWorktree extends GitWorktree { alias: string; repository_id: string; repository_name: string; relative_path?: string }
+export interface TaskGitWorkspace { path: string; relative_path?: string; worktrees: TaskGitWorktree[] }
 export interface GitStatus { id: string; path: string; head: string | null; branch: string | null; files: GitFile[]; snapshot: string; operation: string | null; active: boolean; ahead: number | null; behind: number | null; upstream: string | null }
 export interface GitBranch { upstream?: string | null; upstream_gone?: boolean; remote?: string | null; ahead?: number | null; behind?: number | null; name: string; head: string; worktree_id: string | null; path: string | null }
 export interface GitRemoteBranch { name: string; head: string }
@@ -14,7 +14,10 @@ export interface GitRemote { name: string; url: string; push_url: string; branch
 export interface GitRemotes { remotes: GitRemote[]; upstream: { remote: string; branch: string } | null; fetched_at: number | null }
 export interface GitIdentity { name: string; email: string }
 export interface GitCredentialStatus { remotes: { name: string; url: string; push_url: string; configured: boolean }[]; hosts: string[] }
-export interface GitCommit { hash: string; author: string; time: number; message: string }
+export interface GitCommit { hash: string; author: string; time: number; message: string; parents: string[] }
+export interface GitMergeOperation { id: string; target: string; source: string; before: string; base: string; after: string; undone_by: string | null }
+export interface GitRecoveryRequest { mode: 'undo_merge' | 'undo_commit' | 'restore_tree'; target: string; commit?: string; operation_id?: string; expected_head?: string }
+export interface GitRecoveryPreview { head: string; files: string[]; changes: { path: string; added: string; deleted: string }[]; request: GitRecoveryRequest; strategy: string }
 export interface GitDiff { path: string; old_path: string; base: string | null; target: string | null; patch: string; before: string; after: string; binary: boolean; truncated: boolean; submodule: boolean; snapshot?: string }
 export interface BlameLine { line: number; hash: string; author: string; time: number; message: string }
 export interface ScanJob { id: string; state: 'running' | 'complete' | 'failed' | 'superseded' | 'cancelled'; completed_projects: number; total_projects: number; error?: string }
@@ -64,6 +67,9 @@ export function createGitApi(client: typeof request = request) {
   advance: (id: string, branch: string, snapshot: string) => client<{ branches: GitBranch[]; remote_branches?: GitTrackedRemoteBranch[]; fetched_at?: number | null }>(route(id) + '/advance', post({ branch, snapshot })),
   merge: (id: string, branch: string, snapshot: string, source: string, remote?: string) => client<GitStatus>(route(id) + '/merge', post({ branch, snapshot, source, remote })),
   mergeInto: (id: string, branch: string, snapshot: string, target: string) => client<{ target: string; head: string; updated: boolean; push_available: boolean }>(route(id) + '/merge-into', post({ branch, snapshot, target })),
+  recoveries: (id: string) => client<{ merges: GitMergeOperation[] }>(route(id) + '/recoveries'),
+  recoveryPreview: (id: string, body: GitRecoveryRequest) => client<GitRecoveryPreview>(route(id) + '/recovery/preview', post(body)),
+  recoveryApply: (id: string, body: GitRecoveryRequest) => client<{ target: string; head: string; files: string[]; push_available: boolean }>(route(id) + '/recovery/apply', post(body)),
   pushBranch: (id: string, branch: string, head: string, target?: { remote: string; targetBranch: string; setUpstream: boolean }) => client<{ branch: string; head: string }>(route(id) + '/push-branch', post({ branch, head, remote: target?.remote, target_branch: target?.targetBranch, set_upstream: target?.setUpstream || false })),
   }
 }

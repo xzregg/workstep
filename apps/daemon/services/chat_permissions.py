@@ -94,3 +94,16 @@ def map_plan_mode_overrides(engine_id: str) -> dict:
     if engine_id == "pydantic_ai":
         return {"sandbox": "read-only"}
     return {}
+
+
+def parse_goal_command(prompt: str) -> tuple[str, str] | None:
+    """Parse WorkStep's engine-independent goal command."""
+    command, _, argument = prompt.strip().partition(" ")
+    if command != "/goal":
+        return None
+    argument = argument.strip()
+    if argument in {"pause", "resume", "clear", "status"}:
+        return argument, ""
+    if not argument:
+        return "status", ""
+    return "start", argument

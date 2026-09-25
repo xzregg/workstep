@@ -6,16 +6,9 @@ NO_MANUAL_COMPACTION = frozenset({
 })
 
 
-def workstep_input_commands() -> list[dict[str, str]]:
+def workstep_input_commands(*, goal: bool = False) -> list[dict[str, str]]:
     """Commands implemented consistently by WorkStep's shared chat input."""
-    return [
-        {
-            "kind": "command",
-            "name": "goal",
-            "description": "设置或更新当前目标",
-            "insert_text": "/goal ",
-            "action": "prompt",
-        },
+    commands = [
         {
             "kind": "command",
             "name": "plan",
@@ -45,3 +38,12 @@ def workstep_input_commands() -> list[dict[str, str]]:
             "action": "prompt",
         },
     ]
+    if goal:
+        commands.insert(0, {
+            "kind": "command",
+            "name": "goal",
+            "description": "设置或管理当前目标",
+            "insert_text": "/goal ",
+            "action": "prompt",
+        })
+    return commands

@@ -53,9 +53,25 @@ def test_parser_resolves_subcommands():
     args = parser.parse_args([
         "workflow", "action-create", "--project", "p1", "--workflow", "w1",
         "--action-id", "start-services", "--title", "启动服务",
-        "--script-file", "/tmp/start.sh", "--cwd", "task",
+        "--script-file", "/tmp/start.sh", "--cwd", "task", "--overwrite",
+        "--input-prompt", "请输入 Commit 消息",
     ])
     assert (args.command, args.subcommand, args.action_id) == ("workflow", "action-create", "start-services")
+    assert args.overwrite is True
+    assert args.input_prompt == "请输入 Commit 消息"
+
+    args = parser.parse_args([
+        "project", "action-create", "--project", "p1",
+        "--action-id", "restart", "--title", "重启服务",
+        "--script-file", "/tmp/restart.sh",
+    ])
+    assert (args.command, args.subcommand, args.action_id) == ("project", "action-create", "restart")
+
+    args = parser.parse_args(["project", "quick-buttons", "--project", "p1", "--json"])
+    assert (args.command, args.subcommand, args.project_id, args.json) == ("project", "quick-buttons", "p1", True)
+
+    args = parser.parse_args(["workflow", "quick-buttons", "--project", "p1", "--workflow", "w1", "--json"])
+    assert (args.command, args.subcommand, args.workflow_id, args.json) == ("workflow", "quick-buttons", "w1", True)
 
     args = parser.parse_args(["workflow", "list", "--project", "p1"])
     assert (args.command, args.subcommand) == ("workflow", "list")
@@ -88,12 +104,138 @@ async def test_dispatch_create_workflow_action_posts_script(tmp_path):
         "workflow", "action-create", "--project", "p1", "--workflow", "w1",
         "--action-id", "start-services", "--title", "启动服务",
         "--script-file", str(script), "--cwd", "task",
+        "--input-prompt", "请输入 Commit 消息",
     ]), client)
     assert result["action_id"] == "start-services"
     assert (captured["method"], captured["path"]) == ("POST", "/api/workflow/w1/actions")
     assert captured["query"] == {"project_id": "p1"}
     assert captured["body"]["script_content"] == script.read_text()
     assert captured["body"]["require_confirmation"] is True
+    assert captured["body"]["confirmation_input_prompt"] == "请输入 Commit 消息"
+
+
+@pytest.mark.anyio
+async def test_dispatch_overwrites_workflow_action_only_when_explicit(tmp_path):
+    script = tmp_path / "start.sh"
+    script.write_text("#!/bin/bash\necho updated\n")
+    bodies = []
+
+    async def handler(request):
+        bodies.append(json.loads(request.content))
+        return httpx.Response(200, json={"overwritten": bodies[-1].get("overwrite", False)})
+
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    base = ["workflow", "action-create", "--project", "p1", "--workflow", "w1",
+            "--action-id", "start", "--title", "启动", "--script-file", str(script)]
+    await dispatch(build_parser().parse_args(base), client)
+    await dispatch(build_parser().parse_args([*base, "--overwrite"]), client)
+    assert bodies[0]["overwrite"] is False
+    assert bodies[1]["overwrite"] is True
+
+
+@pytest.mark.anyio
+async def test_dispatch_create_project_action_posts_script(tmp_path):
+    script = tmp_path / "restart.sh"
+    script.write_text("#!/bin/bash\necho restarted\n")
+    captured = {}
+
+    async def handler(request):
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"action_id": "restart"})
+
+    result = await dispatch(build_parser().parse_args([
+        "project", "action-create", "--project", "p1",
+        "--action-id", "restart", "--title", "重启服务",
+        "--script-file", str(script),
+    ]), WorkstepClient(transport=httpx.MockTransport(handler)))
+    assert result["action_id"] == "restart"
+    assert (captured["method"], captured["path"]) == ("POST", "/api/projects/p1/actions")
+    assert captured["body"]["script_content"] == script.read_text()
+
+
+@pytest.mark.anyio
+async def test_dispatch_reads_project_quick_buttons():
+    async def handler(request):
+        assert request.method == "GET"
+        assert request.url.path == "/api/chat-sessions/quick-buttons"
+        assert dict(request.url.params) == {"project_id": "p1"}
+        return httpx.Response(200, json={"buttons": [{"id": "restart", "kind": "action", "label": "重启"}]})
+
+    result = await dispatch(build_parser().parse_args([
+        "project", "quick-buttons", "--project", "p1",
+    ]), WorkstepClient(transport=httpx.MockTransport(handler)))
+    assert result["buttons"][0]["id"] == "restart"
+
+
+@pytest.mark.anyio
+async def test_dispatch_reads_workflow_quick_buttons_with_selected_project_buttons():
+    calls = []
+
+    async def handler(request):
+        calls.append((request.method, request.url.path))
+        if request.url.path == "/api/workflow/w1":
+            return httpx.Response(200, json={"id": "w1", "steps": {
+                "projectQuickButtonIds": ["restart"],
+                "quickButtons": [{"id": "local", "kind": "display", "label": "说明"}],
+                "nodes": [{"key": "build", "title": "开发", "quickButtons": [{"id": "stage", "kind": "prompt", "label": "检查"}]}],
+            }})
+        return httpx.Response(200, json={"buttons": [
+            {"id": "restart", "kind": "action", "label": "重启"},
+            {"id": "review", "kind": "prompt", "label": "评审"},
+        ]})
+
+    result = await dispatch(build_parser().parse_args([
+        "workflow", "quick-buttons", "--project", "p1", "--workflow", "w1",
+    ]), WorkstepClient(transport=httpx.MockTransport(handler)))
+    assert calls == [("GET", "/api/workflow/w1"), ("GET", "/api/chat-sessions/quick-buttons")]
+    assert [button["id"] for button in result["workflow_buttons"]] == ["local"]
+    assert result["stage_buttons"][0]["step_key"] == "build"
+    assert [button["id"] for button in result["inherited_project_buttons"]] == ["restart"]
+    assert result["project_button_ids"] == ["restart"]
+
+
+@pytest.mark.anyio
+async def test_dispatch_reads_legacy_inherit_all_project_quick_buttons():
+    async def handler(request):
+        if request.url.path == "/api/workflow/w1":
+            return httpx.Response(200, json={"id": "w1", "steps": {"inheritProjectQuickButtons": True}})
+        return httpx.Response(200, json={"buttons": [{"id": "restart"}, {"id": "review"}]})
+
+    result = await dispatch(build_parser().parse_args([
+        "workflow", "quick-buttons", "--project", "p1", "--workflow", "w1",
+    ]), WorkstepClient(transport=httpx.MockTransport(handler)))
+    assert result["project_button_ids"] is None
+    assert result["inherit_all_project_buttons"] is True
+    assert [button["id"] for button in result["inherited_project_buttons"]] == ["restart", "review"]
+
+
+@pytest.mark.anyio
+async def test_project_action_create_uses_existing_daemon_quick_button_api(tmp_path):
+    script = tmp_path / "restart.py"
+    script.write_text("print('ready')\n")
+    calls = []
+
+    async def handler(request):
+        calls.append((request.method, request.url.path))
+        if request.url.path == "/api/projects/p1/actions":
+            return httpx.Response(405, json={"detail": "Method Not Allowed"})
+        if request.url.path == "/api/project/list":
+            return httpx.Response(200, json={"projects": [{"id": "p1", "path": str(tmp_path)}]})
+        if request.method == "GET":
+            return httpx.Response(200, json={"buttons": [{"id": "existing", "label": "保留", "prompt": "x"}]})
+        body = json.loads(request.content)
+        assert [button["id"] for button in body["buttons"]] == ["existing", "restart"]
+        return httpx.Response(200, json={"buttons": body["buttons"]})
+
+    result = await dispatch(build_parser().parse_args([
+        "project", "action-create", "--project", "p1", "--action-id", "restart",
+        "--title", "重启", "--script-file", str(script), "--cwd", "project",
+    ]), WorkstepClient(transport=httpx.MockTransport(handler)))
+    assert result["action_id"] == "restart"
+    assert calls[-1] == ("PUT", "/api/chat-sessions/quick-buttons")
+    assert (tmp_path / result["script_path"]).read_text() == script.read_text()
 
 
 def test_parser_requires_subcommand():

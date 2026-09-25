@@ -4,14 +4,16 @@ import asyncio
 import json
 import os
 import uuid
+from pathlib import Path
 
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Body, Header, HTTPException, Query
 
 from schemas.base import BaseSchema
 from schemas.task import (
     CreateTaskRequest,
     CoordinatorChatRequest,
     CoordinatorConfigRequest,
+    FailedStepCompletionRequest,
     ReviewDecisionRequest,
     RunTaskRequest,
     ScheduledStartRequest,
@@ -471,6 +473,32 @@ async def retry_failed_message(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@router.post("/{task_id}/messages/{message_id}/set-complete")
+async def set_failed_execution_complete(
+    task_id: str,
+    message_id: str,
+    req: FailedStepCompletionRequest,
+    pid: str = Query(..., alias="project_id"),
+):
+    """Accept an existing artifact after a failed step execution."""
+    from main import workflow_runtime
+    if not workflow_runtime:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    _project(pid)
+    try:
+        handle = await workflow_runtime.complete_failed_step(
+            pid, task_id, message_id, req.artifact_round,
+            schedule_downstream=req.schedule_downstream,
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "completed": True,
+        "resumed": handle is not None,
+        "run_id": handle.id if handle else None,
+    }
+
+
 @router.patch("/{task_id}/coordinator-config")
 async def update_coordinator_config(
     task_id: str,
@@ -501,6 +529,7 @@ async def confirm_coordinator_action(
     proposal_id: str,
     pid: str = Query(..., alias="project_id"),
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
+    overwrite: bool = Body(False, embed=True),
 ):
     from main import coordinator_module
     if not coordinator_module:
@@ -511,7 +540,10 @@ async def confirm_coordinator_action(
             task_id,
             proposal_id,
             idempotency_key,
+            overwrite=overwrite,
         )
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -555,7 +587,12 @@ async def get_task_artifacts(
             list_task_artifact_input_snapshots(task_id),
         ),
     )
-    return {"artifacts": artifacts, "input_snapshots": input_snapshots}
+    artifact_directory = Path(project.workstep_dir) / "artifacts" / (exists["workflow_id"] or "default") / task_id
+    return {
+        "artifacts": artifacts,
+        "input_snapshots": input_snapshots,
+        "artifact_directory": str(artifact_directory),
+    }
 
 
 @router.get("/{task_id}/reviews")

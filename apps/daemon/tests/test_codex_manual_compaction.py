@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from engines.core.codex_compaction import compact_codex_thread
+from engines.codex_compaction import compact_codex_thread
 from engines.codex import CodexEngine
 from engines.codex_sdk import CodexSDKEngine
 from engines.openclaw import OpenClawEngine
@@ -73,6 +73,153 @@ async def test_compact_codex_thread_receives_sdk_turn_routed_event():
                     thread_id="thread-1", turn_id="compact-turn",
                 ),
             ))
+
+    await compact_codex_thread(
+        SimpleNamespace(_client=Notifications()), Thread(), timeout=0.1,
+    )
+
+
+@pytest.mark.anyio
+async def test_compact_codex_thread_accepts_persisted_compaction_when_notification_is_lost():
+    class Route:
+        def __init__(self):
+            self.items = queue.Queue()
+
+        def next_notification(self):
+            item = self.items.get()
+            if isinstance(item, BaseException):
+                raise item
+            return item
+
+        def fail(self, exc):
+            self.items.put(exc)
+
+        def finish(self):
+            pass
+
+    class Notifications:
+        def register_goal_operation(self, thread_id):
+            return Route()
+
+        def unregister_goal_operation(self, route):
+            pass
+
+    class Client:
+        _client = Notifications()
+        reads = 0
+        compacted = False
+
+    client = Client()
+
+    class Thread:
+        id = "thread-1"
+
+        async def read(self, *, include_turns=False):
+            assert include_turns
+            client.reads += 1
+            turns = [SimpleNamespace(id="old", status="completed", items=[
+                SimpleNamespace(type="contextCompaction"),
+            ])]
+            if client.compacted:
+                turns.append(SimpleNamespace(id="new", status="completed", items=[
+                    SimpleNamespace(type="contextCompaction"),
+                ]))
+            return SimpleNamespace(thread=SimpleNamespace(turns=turns))
+
+        async def compact(self):
+            client.compacted = True
+
+    await compact_codex_thread(client, Thread(), timeout=0.5, poll_interval=0.01)
+    assert client.reads >= 2
+
+
+@pytest.mark.anyio
+async def test_compact_codex_thread_accepts_rollout_completion_without_thread_item(tmp_path):
+    rollout = tmp_path / "rollout-thread-1.jsonl"
+    rollout.write_text('{"type":"compacted"}\n{"type":"event_msg","payload":{"type":"task_complete"}}\n')
+
+    class Route:
+        def __init__(self):
+            self.items = queue.Queue()
+
+        def next_notification(self):
+            item = self.items.get()
+            if isinstance(item, BaseException):
+                raise item
+            return item
+
+        def fail(self, exc):
+            self.items.put(exc)
+
+        def finish(self):
+            pass
+
+    class Notifications:
+        def register_goal_operation(self, thread_id):
+            return Route()
+
+        def unregister_goal_operation(self, route):
+            pass
+
+    class Thread:
+        id = "thread-1"
+
+        async def read(self, *, include_turns=False):
+            return SimpleNamespace(thread=SimpleNamespace(path=str(rollout), turns=[]))
+
+        async def compact(self):
+            with rollout.open("a") as stream:
+                stream.write('{"type":"compacted"}\n')
+                stream.write('{"type":"event_msg","payload":{"type":"task_complete"}}\n')
+
+    await compact_codex_thread(
+        SimpleNamespace(_client=Notifications()), Thread(),
+        timeout=0.5, poll_interval=0.01,
+    )
+
+
+@pytest.mark.anyio
+async def test_compact_codex_thread_completes_from_item_and_turn_events():
+    class Route:
+        def __init__(self):
+            self.items = queue.Queue()
+            for item in [
+                SimpleNamespace(method="item/completed", payload=SimpleNamespace(
+                    thread_id="thread-1", turn_id="turn-1",
+                    item=SimpleNamespace(type="contextCompaction"),
+                )),
+                SimpleNamespace(method="turn/completed", payload=SimpleNamespace(
+                    thread_id="thread-1", turn=SimpleNamespace(
+                        id="turn-1", status="completed", items=[],
+                    ),
+                )),
+            ]:
+                self.items.put(item)
+
+        def next_notification(self):
+            item = self.items.get()
+            if isinstance(item, BaseException):
+                raise item
+            return item
+
+        def fail(self, exc):
+            self.items.put(exc)
+
+        def finish(self):
+            pass
+
+    class Notifications:
+        def register_goal_operation(self, thread_id):
+            return Route()
+
+        def unregister_goal_operation(self, route):
+            pass
+
+    class Thread:
+        id = "thread-1"
+
+        async def compact(self):
+            pass
 
     await compact_codex_thread(
         SimpleNamespace(_client=Notifications()), Thread(), timeout=0.1,

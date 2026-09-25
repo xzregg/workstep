@@ -213,10 +213,11 @@ class GitQueries:
         if not sha:
             return {'commits': [], 'has_more': False}
         raw, _ = await self.command(directory['path'], 'log', '--max-count=51', f'--skip={offset}',
-            '--format=%H%x00%an%x00%at%x00%s%x00', sha, '--')
+            '--format=%H%x00%an%x00%at%x00%s%x00%P%x00', sha, '--')
         fields = raw.split(b'\0')
         commits = [{'hash': text(fields[i]).lstrip('\n'), 'author': text(fields[i + 1]),
-            'time': int(fields[i + 2]), 'message': text(fields[i + 3])} for i in range(0, len(fields) - 1, 4)]
+            'time': int(fields[i + 2]), 'message': text(fields[i + 3]),
+            'parents': text(fields[i + 4]).split()} for i in range(0, len(fields) - 1, 5)]
         return {'commits': commits[:50], 'has_more': len(commits) > 50}
 
     async def comparison(self, path, ref=None, commit=None):

@@ -58,6 +58,7 @@ import {
   resolveStepDisplayStatus,
   mergeLoadedTaskMessageEvents,
   mergeRefreshedTaskHistory,
+  runningTaskMessageIds,
   loadTaskHistoryWithRetry,
   findPreferredArtifact,
   findActiveStepIndex,
@@ -400,14 +401,16 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const historyOlderLoadingRef = useRef(false)
   const historyPrependScrollHeightRef = useRef<number | null>(null)
   const [artifacts, setArtifacts] = useState<TaskArtifact[]>([])
+  const [artifactDirectory, setArtifactDirectory] = useState('')
   const [artifactInputSnapshots, setArtifactInputSnapshots] = useState<TaskArtifactInputSnapshot[]>([])
   const [artifactsLoading, setArtifactsLoading] = useState(false)
   const [reviews, setReviews] = useState<ReviewRun[]>([])
   const [reviewActionPending, setReviewActionPending] = useState(false)
-  const [pendingReviewCompletion, setPendingReviewCompletion] = useState<{
-    review: ReviewRun
-    stepKey: string
-  } | null>(null)
+  const [pendingReviewCompletion, setPendingReviewCompletion] = useState<
+    | { kind: 'review'; review: ReviewRun; stepKey: string }
+    | { kind: 'execution'; messageId: string; artifactRound: number }
+    | null
+  >(null)
   const [reviewComment, setReviewComment] = useState('')
   const [previewArtifact, setPreviewArtifact] = useState<TaskArtifact | null>(null)
   const [artifactNotice, setArtifactNotice] = useState('')
@@ -790,11 +793,13 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     return taskApi.artifacts(taskId, projectId)
       .then((res) => {
         setArtifacts(res.artifacts || [])
+        setArtifactDirectory(res.artifact_directory || '')
         setArtifactInputSnapshots(res.input_snapshots || [])
         return res.artifacts || []
       })
       .catch(() => {
         setArtifacts([])
+        setArtifactDirectory('')
         setArtifactInputSnapshots([])
         return []
       })
@@ -1049,28 +1054,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     : null
   const activeStepRunning = targetStep !== null
     && runningSteps.some((step) => step.key === targetStep.key)
-  const runningMessageByChannel = useMemo(() => {
-    const messages = new Map<string, any>()
-    for (const message of historyMessages) messages.set(String(message.id), message)
-    for (const message of Object.values(liveMessages)) messages.set(String(message.id), message)
-    const runningMessages = [...messages.values()].filter((message) => (
-      message.role !== 'user'
-      && ['queued', 'running'].includes(message.status || message.run_status || '')
-    ))
-    return {
-      coordinator: [...runningMessages].reverse().find(
-        (message) => message.channel === 'coordinator',
-      )?.id as string | undefined,
-      execution: [...runningMessages].reverse().find((message) => (
-        message.channel === 'execution'
-        && (message.context_step_key || message.step_key) === targetStep?.key
-      ))?.id as string | undefined,
-      review: [...runningMessages].reverse().find((message) => (
-        message.channel === 'review'
-        && (message.context_step_key || message.step_key) === targetStep?.key
-      ))?.id as string | undefined,
-    }
-  }, [historyMessages, liveMessages, targetStep?.key])
+  const runningMessageByChannel = useMemo(
+    () => runningTaskMessageIds(historyMessages, liveMessages, targetStep?.key ?? null),
+    [historyMessages, liveMessages, targetStep?.key],
+  )
   const coordinatorMessageId = coordinatorRunning && activeCoordinatorMessageId
     ? activeCoordinatorMessageId
     : runningMessageByChannel.coordinator || null
@@ -1875,7 +1862,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   ) => {
     if (!review || !projectId) return
     if (decision === 'set-complete' && scheduleDownstream === undefined) {
-      setPendingReviewCompletion({ review, stepKey })
+      setPendingReviewCompletion({ kind: 'review', review, stepKey })
       return
     }
     setReviewActionPending(true)
@@ -1896,6 +1883,24 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         refreshTask(task.id, projectId),
       ])
       setReviews(reviewResult.reviews || [])
+    } catch (reason) {
+      setChatError(reason instanceof Error ? reason.message : t('taskDetail.reviewActionFailed'))
+    } finally {
+      setReviewActionPending(false)
+      setPendingReviewCompletion(null)
+    }
+  }
+
+  const completeFailedExecution = async (
+    messageId: string, artifactRound: number, scheduleDownstream: boolean,
+  ) => {
+    if (!projectId) return
+    setReviewActionPending(true)
+    try {
+      await taskApi.completeFailedMessage(
+        task.id, messageId, artifactRound, scheduleDownstream, projectId,
+      )
+      await Promise.all([fetchTasks(projectId), refreshTask(task.id, projectId)])
     } catch (reason) {
       setChatError(reason instanceof Error ? reason.message : t('taskDetail.reviewActionFailed'))
     } finally {
@@ -2005,6 +2010,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         historyMessages={historyMessages}
         onLoadOlderHistory={loadOlderHistory}
         readCapabilities={{
+          artifactDirectory,
           resolveAssetUrl: ownerAssetUrl,
           filePreview: ownerFilePreview,
           loadMessageEvents,
@@ -2053,6 +2059,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onRestartStepWithFreshSession={handleRestartStepWithFreshSession}
         restartingStepKeys={restartingStepKeys}
         onRetryFailedMessage={handleRetryFailedMessage}
+        onSetFailedExecutionComplete={(messageId, artifactRound) => {
+          setPendingReviewCompletion({ kind: 'execution', messageId, artifactRound })
+        }}
         retryingFailedMessageIds={retryingFailedMessageIds}
         chatInputRef={chatInputRef}
         stepInserts={stepInserts}
@@ -2234,6 +2243,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onCloseArtifactPreview={() => setPreviewArtifact(null)}
         onOpenArtifactDirectory={openArtifactDirectory}
         canOpenArtifactDirectory={detailProject?.type !== 'remote'}
+        projectType={detailProject?.type}
         viewingPrompt={viewingPrompt}
         onCloseViewingPrompt={() => setViewingPrompt(null)}
         artifactNotice={artifactNotice}
@@ -2250,16 +2260,30 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               if (!reviewActionPending) setPendingReviewCompletion(null)
             }}
             onConfirm={() => {
-              if (pendingReviewCompletion) void decideReview(
-                'set-complete', pendingReviewCompletion.review,
-                pendingReviewCompletion.stepKey, true,
-              )
+              if (pendingReviewCompletion?.kind === 'review') {
+                void decideReview(
+                  'set-complete', pendingReviewCompletion.review,
+                  pendingReviewCompletion.stepKey, true,
+                )
+              } else if (pendingReviewCompletion?.kind === 'execution') {
+                void completeFailedExecution(
+                  pendingReviewCompletion.messageId,
+                  pendingReviewCompletion.artifactRound, true,
+                )
+              }
             }}
             onSecondary={() => {
-              if (pendingReviewCompletion) void decideReview(
-                'set-complete', pendingReviewCompletion.review,
-                pendingReviewCompletion.stepKey, false,
-              )
+              if (pendingReviewCompletion?.kind === 'review') {
+                void decideReview(
+                  'set-complete', pendingReviewCompletion.review,
+                  pendingReviewCompletion.stepKey, false,
+                )
+              } else if (pendingReviewCompletion?.kind === 'execution') {
+                void completeFailedExecution(
+                  pendingReviewCompletion.messageId,
+                  pendingReviewCompletion.artifactRound, false,
+                )
+              }
             }}
           />
           <ConfirmDialog

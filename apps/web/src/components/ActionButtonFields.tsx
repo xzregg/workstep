@@ -12,6 +12,7 @@ export interface ActionButtonValue {
   scriptPath: string
   cwdMode: 'project' | 'task' | 'worktrees'
   requireConfirmation: boolean
+  confirmationInputPrompt: string
 }
 
 interface Props {
@@ -61,6 +62,9 @@ export default function ActionButtonFields({ projectId, workflowId, value, onCha
       <input type="checkbox" checked={value.requireConfirmation} onChange={(event) => onChange({ ...value, requireConfirmation: event.target.checked })} />
       {t('actionShortcuts.requireConfirmation')}
     </label>
+    {value.requireConfirmation && <Field label={t('actionShortcuts.confirmationInputPrompt')} help={t('actionShortcuts.confirmationInputHelp')}>
+      <Input value={value.confirmationInputPrompt} maxLength={200} onChange={(event) => onChange({ ...value, confirmationInputPrompt: event.target.value })} placeholder={t('actionShortcuts.confirmationInputPlaceholder')} />
+    </Field>}
     {browser && <ProjectDirectoryBrowserDialog
       projectId={projectId}
       title={browser === 'select' ? t('actionShortcuts.selectScript') : t('actionShortcuts.fileDirectory')}

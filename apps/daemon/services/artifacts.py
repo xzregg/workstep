@@ -15,6 +15,40 @@ def _mtime_iso(path: Path) -> str:
     return datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()
 
 
+def _manifest_validation(
+    manifest: dict | None,
+    actual_files: dict[str, tuple[int, float]],
+    actual_dirs: set[str],
+    symlinks: set[str],
+) -> set[str] | None:
+    """Validate observed metadata; never read artifact bytes in a listing."""
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("directory_paths"), list):
+        return None
+    try:
+        generated_at = datetime.fromisoformat(manifest["generated_at"]).timestamp()
+        expected_dirs = set(manifest["directory_paths"])
+        expected_files = {
+            entry["path"]: entry
+            for entry in manifest["artifacts"]
+            if isinstance(entry, dict) and isinstance(entry.get("sha256"), str)
+        }
+        invalid = set(symlinks)
+        for relative, (size, modified_at) in actual_files.items():
+            entry = expected_files.get(relative)
+            if entry is None or entry.get("size") != size or modified_at > generated_at:
+                invalid.add(relative)
+        return invalid | (set(actual_files) ^ set(expected_files)) | (actual_dirs ^ expected_dirs)
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _path_still_valid(path: str, invalid: set[str] | None) -> bool:
+    if invalid is None:
+        return False
+    path = path.rstrip("/")
+    return not any(item == path or item.startswith(path + "/") for item in invalid)
+
+
 def list_task_artifacts(project, task_id: str) -> list[dict]:
     """List files produced for a task, enriched by step manifests."""
     artifacts_root = (Path(project.workstep_dir) / "artifacts").resolve()
@@ -52,8 +86,14 @@ def list_task_artifacts(project, task_id: str) -> list[dict]:
                 ),
                 default=-1,
             )
+            previous_invalid = None
+            previous_round = None
             for artifact_round in rounds:
                 round_dir = artifact_round.path
+                round_start = len(artifacts)
+                observed_files: dict[str, tuple[int, float]] = {}
+                observed_dirs: set[str] = set()
+                observed_symlinks: set[str] = set()
                 manifest_entries: dict[Path, dict] = {}
                 manifest = artifact_round.manifest or {}
                 for entry in manifest.get("artifacts", []):
@@ -87,12 +127,22 @@ def list_task_artifacts(project, task_id: str) -> list[dict]:
 
                 for file_path in sorted(round_dir.rglob("*")):
                     relative = file_path.relative_to(round_dir)
+                    if file_path.name == MANIFEST_NAME:
+                        continue
                     if (
                         artifact_round.legacy
                         and relative.parts
                         and is_round_child_name(relative.parts[0])
                     ):
                         continue
+                    relative_name = relative.as_posix()
+                    if file_path.is_symlink():
+                        observed_symlinks.add(relative_name)
+                    elif file_path.is_dir():
+                        observed_dirs.add(relative_name)
+                    elif file_path.is_file():
+                        file_stat = file_path.stat()
+                        observed_files[relative_name] = (file_stat.st_size, file_stat.st_mtime)
                     if (
                         not file_path.is_file()
                         or file_path.name == MANIFEST_NAME
@@ -154,6 +204,29 @@ def list_task_artifacts(project, task_id: str) -> list[dict]:
                         "is_dir": True,
                         "updated_at": _mtime_iso(dir_path),
                     })
+                invalid = _manifest_validation(
+                    manifest, observed_files, observed_dirs, observed_symlinks,
+                )
+                comparison = manifest.get("content_comparison")
+                if not isinstance(comparison, dict) or comparison.get("previous_round") != previous_round:
+                    comparison = None
+                round_unchanged_from = (
+                    previous_round
+                    if comparison is not None and comparison.get("round_unchanged") is True
+                    and invalid == set() and previous_invalid == set() else None
+                )
+                unchanged_paths = set(comparison.get("unchanged_paths", [])) if comparison else set()
+                for artifact in artifacts[round_start:]:
+                    artifact["round_unchanged_from"] = round_unchanged_from
+                    artifact["unchanged_from_round"] = (
+                        previous_round
+                        if artifact["relative_path"].rstrip("/") in unchanged_paths
+                        and _path_still_valid(artifact["relative_path"], invalid)
+                        and _path_still_valid(artifact["relative_path"], previous_invalid)
+                        else None
+                    )
+                previous_invalid = invalid
+                previous_round = artifact_round.round
     return artifacts
 
 

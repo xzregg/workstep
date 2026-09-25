@@ -113,6 +113,10 @@
 .git-history strong { font-weight:500; font-size:12px; overflow:hidden; text-overflow:ellipsis; display:block; }
 .git-history small { display:block; font-size:11px; margin-top:5px; color:var(--muted); }
 .git-history code { color:var(--muted); font-size:11px; }
+.git-recovery-list { display:flex; flex-direction:column; align-items:stretch; gap:8px; max-height:300px; overflow:auto; margin-top:14px; }
+.git-recovery-list .btn { justify-content:flex-start; text-align:left; white-space:normal; }
+.git-recovery-files { margin-top:14px; }
+.git-recovery-files ul { max-height:280px; overflow:auto; margin:8px 0 0; padding-left:20px; overflow-wrap:anywhere; }
 .git-history-dot { width:7px; height:7px; border:1px solid var(--accent); border-radius:50%; flex:0 0 7px; }
 .git-selection-bar { display:flex; align-items:center; justify-content:space-between; padding:8px 24px; }
 .git-settings { flex:1; overflow:auto; padding:28px; }

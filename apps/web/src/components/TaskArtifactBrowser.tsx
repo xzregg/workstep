@@ -3,7 +3,10 @@ import type { TaskArtifact } from '../api/client'
 import { useI18n } from '../i18n'
 import Icon from './Icon'
 import MarqueeText from './MarqueeText'
+import ProjectDirectoryBrowserDialog from './ProjectDirectoryBrowserDialog'
+import TaskArtifactPreviewDialog from './TaskArtifactPreviewDialog'
 import { collapseDirectoryArtifactChildren } from '../utils/artifactListing'
+import ArtifactUnchangedBadge from './ArtifactUnchangedBadge'
 
 interface ArtifactStepDefinition {
   key: string
@@ -69,6 +72,25 @@ export function artifactFileType(artifact: Pick<TaskArtifact, 'name' | 'path' | 
   return artifact.artifact_type || ''
 }
 
+function parentDirectory(path: string) {
+  const parent = path.replace(/[\\/][^\\/]+$/, '')
+  return parent === path ? '' : parent
+}
+
+export function artifactDirectories(artifact: Pick<TaskArtifact, 'path' | 'relative_path' | 'round'>) {
+  const relativeParts = artifact.relative_path?.split(/[\\/]/).filter(Boolean) || []
+  if (!relativeParts.length) return null
+  let roundDirectory = artifact.path.replace(/[\\/]+$/, '')
+  for (const _part of relativeParts) roundDirectory = parentDirectory(roundDirectory)
+  if (!roundDirectory) return null
+  const roundName = roundDirectory.split(/[\\/]/).pop()
+  const step = roundName === String(artifact.round)
+    ? parentDirectory(roundDirectory)
+    : roundDirectory
+  const task = parentDirectory(step)
+  return step && task ? { task, step } : null
+}
+
 function latestUpdatedAt(artifacts: TaskArtifact[]) {
   return artifacts.reduce<string | null>((latest, artifact) => {
     if (!artifact.updated_at) return latest
@@ -93,10 +115,14 @@ function formatUpdatedAt(value: string | null | undefined, locale: string) {
 
 export default function TaskArtifactBrowser({
   artifacts,
+  artifactDirectory,
+  projectId,
   steps,
   onOpenArtifact,
 }: {
   artifacts: TaskArtifact[]
+  artifactDirectory?: string
+  projectId?: string
   steps: ArtifactStepDefinition[]
   onOpenArtifact: (name: string, stepKey?: string, round?: number, path?: string) => void
 }) {
@@ -106,6 +132,8 @@ export default function TaskArtifactBrowser({
     [artifacts, steps],
   )
   const [selectedRounds, setSelectedRounds] = useState<Record<string, number>>({})
+  const [openDirectory, setOpenDirectory] = useState<{ path: string; title: string } | null>(null)
+  const taskDirectory = artifactDirectory || artifacts.map(artifactDirectories).find(Boolean)?.task || ''
 
   if (!stepGroups.length) {
     return <div className="task-detail-artifacts task-artifact-browser-empty">{t('mobile.noArtifacts')}</div>
@@ -113,6 +141,18 @@ export default function TaskArtifactBrowser({
 
   return (
     <div className="task-detail-artifacts">
+      {taskDirectory && (
+        <div className="task-artifact-toolbar">
+          <button
+            type="button"
+            className="task-artifact-open-directory"
+            aria-label={`${t('mobile.artifacts')} ${t('taskList.openLocation')}`}
+            onClick={() => setOpenDirectory({ path: taskDirectory, title: t('mobile.artifacts') })}
+          >
+            <Icon name="folder" size={15} /> {t('taskList.openLocation')}
+          </button>
+        </div>
+      )}
       <div className="task-artifact-browser">
         {stepGroups.map((step) => {
           const activeRoundNumber = resolveArtifactRound(
@@ -121,6 +161,8 @@ export default function TaskArtifactBrowser({
           )
           const activeRound = step.rounds.find((item) => item.round === activeRoundNumber)
           if (!activeRound) return null
+          const stepDirectory = step.rounds.flatMap((round) => round.artifacts)
+            .map(artifactDirectories).find(Boolean)?.step || (taskDirectory ? `${taskDirectory}/${step.key}` : '')
           const updatedAt = latestUpdatedAt(activeRound.artifacts)
           const updatedAtLabel = updatedAt
             ? new Date(updatedAt).toLocaleString(locale, {
@@ -152,10 +194,27 @@ export default function TaskArtifactBrowser({
                     >
                       <span className="task-artifact-round-tab-label">
                         {t('taskDetail.artifactRoundTab', { round: round.round })}
+                        {round.artifacts[0]?.round_unchanged_from ? (
+                          <ArtifactUnchangedBadge fromRound={round.artifacts[0].round_unchanged_from} />
+                        ) : null}
                       </span>
                     </button>
                   ))}
                 </div>
+                {stepDirectory && (
+                  <button
+                    type="button"
+                    className="task-artifact-open-directory task-artifact-open-directory--step"
+                    aria-label={`${step.label} ${t('taskList.openLocation')}`}
+                    title={`${step.label} ${t('taskList.openLocation')}`}
+                    onClick={() => setOpenDirectory({
+                      path: stepDirectory,
+                      title: step.label,
+                    })}
+                  >
+                    <Icon name="folder" size={14} />
+                  </button>
+                )}
               </div>
 
               <div className="task-artifact-round-heading">
@@ -205,6 +264,9 @@ export default function TaskArtifactBrowser({
                           {artifactUpdatedAt}
                         </time>
                       )}
+                      {artifact.unchanged_from_round ? (
+                        <ArtifactUnchangedBadge fromRound={artifact.unchanged_from_round} />
+                      ) : null}
                       <span className="task-artifact-file-status">{t('taskDetail.outputDone')}</span>
                       <span className="task-artifact-file-open">{t('common.open')}</span>
                     </button>
@@ -215,6 +277,30 @@ export default function TaskArtifactBrowser({
           )
         })}
       </div>
+      {openDirectory && projectId && (
+        <ProjectDirectoryBrowserDialog
+          projectId={projectId}
+          title={openDirectory.title}
+          rootPath={openDirectory.path}
+          displayPath={openDirectory.path}
+          onClose={() => setOpenDirectory(null)}
+        />
+      )}
+      {openDirectory && !projectId && artifacts.length > 0 && (
+        <TaskArtifactPreviewDialog
+          artifact={{
+            ...artifacts[0],
+            name: openDirectory.title,
+            logical_name: openDirectory.title,
+            path: openDirectory.path,
+            is_dir: true,
+          }}
+          directoryFiles={artifacts.filter((artifact) => (
+            !artifact.is_dir && artifact.path.startsWith(`${openDirectory.path.replace(/[\\/]+$/, '')}/`)
+          ))}
+          onClose={() => setOpenDirectory(null)}
+        />
+      )}
     </div>
   )
 }

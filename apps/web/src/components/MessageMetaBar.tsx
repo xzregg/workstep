@@ -58,6 +58,8 @@ export interface MessageMetaBarProps {
   status?: 'cancelled' | 'stopped' | 'failed'
   onRetryFailedMessage?: () => void
   retryingFailedMessage?: boolean
+  onRestartStoppedMessage?: () => void
+  restartingStoppedMessage?: boolean
   /** Render this message as a manual review header (no engine process trace). */
   reviewMode?: boolean
   /** Manual review outcome used to color the badge (passed=green, others=red). */
@@ -96,6 +98,8 @@ export default function MessageMetaBar({
   status,
   onRetryFailedMessage,
   retryingFailedMessage = false,
+  onRestartStoppedMessage,
+  restartingStoppedMessage = false,
   reviewMode = false,
   reviewStatus,
   onSetReviewComplete,
@@ -127,7 +131,10 @@ export default function MessageMetaBar({
       type="button"
       className="chat-message-action"
       disabled={settingReviewComplete}
-      onClick={onSetReviewComplete}
+      onClick={(event) => {
+        event.stopPropagation()
+        onSetReviewComplete()
+      }}
       style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '0 5px', minHeight: 18, color: 'var(--success)', fontSize: 'inherit' }}
     >
       {settingReviewComplete
@@ -201,6 +208,8 @@ export default function MessageMetaBar({
         detailsError={eventDetail?.error}
         onLoadDetails={onLoadEventDetails}
         summaryMeta={(
+          <>
+          {setReviewCompleteButton}
           <span
             className="message-meta-details"
             onClick={(event) => event.stopPropagation()}
@@ -217,8 +226,8 @@ export default function MessageMetaBar({
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 4,
                     height: 18, padding: '0 7px', borderRadius: 9,
-                    border: '1px solid rgba(217,45,32,0.45)',
-                    background: 'rgba(217,45,32,0.08)',
+                    border: '1px solid color-mix(in oklab, var(--danger), transparent 55%)',
+                    background: 'color-mix(in oklab, var(--danger), transparent 92%)',
                     color: 'var(--danger)', fontSize: 'calc(11px * var(--font-scale))', flexShrink: 0,
                     whiteSpace: 'nowrap',
                   }}
@@ -243,7 +252,21 @@ export default function MessageMetaBar({
                 )}
               </span>
             ) : null}
-            {setReviewCompleteButton}
+            {(status === 'stopped' || status === 'cancelled') && onRestartStoppedMessage && (
+              <button
+                type="button"
+                className="chat-message-action"
+                title={t('taskDetail.lostSessionRestart')}
+                disabled={restartingStoppedMessage}
+                onClick={onRestartStoppedMessage}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '0 4px', minHeight: 18, color: 'var(--danger)', fontSize: 'inherit' }}
+              >
+                {restartingStoppedMessage
+                  ? <span className="task-status-spinner" aria-hidden="true" />
+                  : <Icon name="rotate-ccw" size={11} />}
+                {t('footer.restart')}
+              </button>
+            )}
             {hasIdleTimeoutEvent(events) && (
               <span
                 title={t('meta.idleTimeoutTitle')}
@@ -324,6 +347,7 @@ export default function MessageMetaBar({
               {formatConversationDateTime(displayStartedAt, Date.now(), locale)}
             </span>
           </span>
+          </>
         )}
       />
     </div>

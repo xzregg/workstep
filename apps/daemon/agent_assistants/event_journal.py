@@ -29,6 +29,7 @@ _SUMMARY_EVENT_TYPES = {
     "plan_update",
     "plan_removed",
     "compacted",
+    "goal_update",
     "session_started",
     "error",
     "a2ui",

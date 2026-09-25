@@ -1229,6 +1229,7 @@ class ChatSessionModule(AssistantRuntime):
         thinking_effort: str | None = None,
         permission_mode: str | None = None,
         plan_mode: bool | None = None,
+        goal_mode: bool | None = None,
         provider_id: str | None = None,
         schedule: bool = True,
     ) -> ChatAccepted:
@@ -1301,6 +1302,7 @@ class ChatSessionModule(AssistantRuntime):
             thinking_effort=thinking_effort,
             permission_mode=permission_mode or None,
             plan_mode=plan_mode,
+            goal_mode=goal_mode,
             provider_id=provider_id,
             schedule=schedule,
         )

@@ -60,17 +60,33 @@ class TaskGitWorkspace:
             )
         }
 
+    async def _relative_links_supported(self, path: str | Path) -> bool:
+        raw, _ = await self.git.command(path, "version")
+        version = re.search(r"git version (\d+)\.(\d+)", text(raw))
+        return bool(version and (int(version[1]), int(version[2])) >= (2, 48))
+
     async def ensure(self, project_path: str | Path, task_id: str, *, creator_name: str = "") -> dict:
         async with self._lock(project_path, task_id):
             root = await asyncio.to_thread(self._root, project_path, task_id)
             await asyncio.to_thread(root.mkdir, parents=True, exist_ok=True)
+            workspace = await self.list(project_path, task_id)
+            for tree in workspace["worktrees"]:
+                gitfile = Path(tree["path"]) / ".git"
+                link = await asyncio.to_thread(gitfile.read_text, encoding="utf-8")
+                if not link.startswith("gitdir: ") or not Path(link[8:].strip()).is_absolute():
+                    continue
+                if not await self._relative_links_supported(tree["path"]):
+                    continue
+                directory = self.git.directories[tree["id"]]
+                async with self.git.locks.setdefault(directory["common_dir"], asyncio.Lock()):
+                    await self.git.command(tree["path"], "worktree", "repair", "--relative-paths", tree["path"])
             return await self.list(project_path, task_id)
 
     async def list(self, project_path: str | Path, task_id: str) -> dict:
         root = await asyncio.to_thread(self._root, project_path, task_id)
-        if not await asyncio.to_thread(root.is_dir):
-            return {"path": str(root), "worktrees": []}
         project = await asyncio.to_thread(Path(project_path).resolve)
+        if not await asyncio.to_thread(root.is_dir):
+            return {"path": str(root), "relative_path": root.relative_to(project).as_posix(), "worktrees": []}
         repos = await asyncio.to_thread(self._project_repositories, project)
         by_common = {repo["common_dir"]: repo for repo in repos.values()}
         entries = await asyncio.to_thread(lambda: sorted(root.iterdir()))
@@ -97,8 +113,9 @@ class TaskGitWorkspace:
                 continue
             self.git.directories[tree["id"]] = {**tree, "repo_id": repo["id"], "common_dir": common,
                 "project_ids": [m["id"] for m in repo["projects"]]}
-            result.append({"alias": entry.name, "repository_id": repo["id"], "repository_name": repo["name"], **tree})
-        return {"path": str(root), "worktrees": result}
+            result.append({"alias": entry.name, "repository_id": repo["id"], "repository_name": repo["name"],
+                           **tree, "relative_path": entry.relative_to(project).as_posix()})
+        return {"path": str(root), "relative_path": root.relative_to(project).as_posix(), "worktrees": result}
 
     async def add(self, project_path: str | Path, task_id: str, repository_id: str, alias: str, base_ref: str, branch_name: str | None = None, *, creator_name: str = "") -> dict:
         async with self._lock(project_path, task_id):
@@ -149,13 +166,15 @@ class TaskGitWorkspace:
                 raise GitError("功能分支已存在，请填写新的分支名。", 409)
             await self.git.command(source, "config", "extensions.worktreeConfig", "true")
             await asyncio.to_thread(root.mkdir, parents=True, exist_ok=True)
+            if not await self._relative_links_supported(source):
+                raise GitError("创建可跨容器使用的工作目录需要 Git 2.48 或更新版本。", 400)
             if code:
-                await self.git.command(source, "worktree", "add", "-b", branch, str(target), sha, timeout=120)
+                await self.git.command(source, "worktree", "add", "--relative-paths", "-b", branch, str(target), sha, timeout=120)
             else:
                 occupied = next((tree for tree in repo["worktrees"] if tree["branch"] == branch and tree["available"]), None)
                 if occupied:
                     raise GitError("此任务的功能分支已在其他工作目录检出。", 409)
-                await self.git.command(source, "worktree", "add", str(target), branch, timeout=120)
+                await self.git.command(source, "worktree", "add", "--relative-paths", str(target), branch, timeout=120)
             discovered = await self.git.discover_repository(source)
             repo["worktrees"] = discovered["worktrees"]
             tree = next(item for item in discovered["worktrees"] if item["id"] == identity(str(target)))

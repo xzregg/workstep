@@ -3291,6 +3291,7 @@ def test_codex_sdk_maps_plan_item_completion_to_plan_update():
     assert [event.type for event in events] == ["plan_update"]
     assert events[0].data["id"] == "plan1"
     assert events[0].data["content"] == "- 第一步\n- 第二步\n"
+    assert events[0].data["complete"] is True
 
 
 def test_codex_sdk_unknown_item_lifecycle_is_normalized():
@@ -3362,6 +3363,93 @@ def test_codex_sdk_maps_plan_delta_to_plan_update():
     assert events[0].data["id"] == "plan1"
     assert events[0].data["type"] == "markdown"
     assert events[0].data["content"] == "- 第一步\n"
+
+
+def test_codex_sdk_maps_goal_lifecycle_to_shared_event():
+    engine = CodexSDKEngine()
+    goal = _SdkFake(objective="修复性能问题", status="active", tokens_used=42)
+    events = engine._map_notification(
+        _SdkFake(method="thread/goal/updated", payload=_SdkFake(goal=goal)),
+        {"emitted_text": False, "tool_emitted": set()},
+    )
+    assert [event.type for event in events] == ["goal_update"]
+    assert events[0].data == {
+        "objective": "修复性能问题", "status": "active", "tokens_used": 42,
+    }
+
+
+@pytest.mark.anyio
+async def test_codex_sdk_goal_stream_waits_for_goal_completion_across_turns(monkeypatch):
+    engine = CodexSDKEngine()
+
+    class GoalState:
+        index = 0
+
+        def is_finished(self):
+            return self.index == 4
+
+    goal_state = GoalState()
+    notifications = [
+        [InternalEvent(type="goal_update", data={"status": "active"}),
+         InternalEvent(type="status", data={"status": "running"})],
+        [InternalEvent(type="status", data={"status": "done"})],
+        [InternalEvent(type="agent_message_chunk", data={"content": {"text": "继续执行"}}),
+         InternalEvent(type="status", data={"status": "running"})],
+        [InternalEvent(type="goal_update", data={"status": "complete"}),
+         InternalEvent(type="status", data={"status": "done"})],
+    ]
+
+    class RawClient:
+        unregistered = False
+
+        async def start_goal_operation(self, thread_id, objective):
+            assert (thread_id, objective) == ("thread-1", "修复性能问题")
+            return goal_state, "first-turn"
+
+        async def next_goal_notification(self, state):
+            item = notifications[state.index]
+            state.index += 1
+            return item
+
+        def unregister_goal_operation(self, state):
+            self.unregistered = True
+
+    raw = RawClient()
+    monkeypatch.setattr(engine, "_map_notification", lambda item, state: item)
+    queue = asyncio.Queue()
+    await engine._run_goal_command(
+        SimpleNamespace(_client=raw), SimpleNamespace(id="thread-1"),
+        "start", "修复性能问题", {}, queue,
+    )
+    events = [queue.get_nowait() for _ in range(queue.qsize())]
+    assert [event.data.get("status") for event in events if event.type == "status"] == [
+        "running", "done",
+    ]
+    assert [event.data["status"] for event in events if event.type == "goal_update"] == [
+        "active", "complete",
+    ]
+    assert raw.unregistered is True
+
+
+def test_codex_sdk_plan_deltas_are_snapshots_and_completion_is_authoritative():
+    engine = CodexSDKEngine()
+    state = {"emitted_text": False, "tool_emitted": set()}
+    first = engine._map_notification(
+        _SdkFake(method="item/plan/delta", payload=_SdkFake(item_id="plan1", delta="# 方案\n")), state,
+    )
+    second = engine._map_notification(
+        _SdkFake(method="item/plan/delta", payload=_SdkFake(item_id="plan1", delta="正文草稿")), state,
+    )
+    completed = engine._map_notification(
+        _SdkFake(method="item/completed", payload=_SdkFake(item=_SdkFake(root=_SdkFake(
+            type="plan", id="plan1", text="# 方案\n最终正文",
+        )))), state,
+    )
+    assert first[0].data == {"id": "plan1", "type": "markdown", "content": "# 方案\n"}
+    assert second[0].data == {"id": "plan1", "type": "markdown", "content": "# 方案\n正文草稿"}
+    assert completed[0].data == {
+        "id": "plan1", "type": "markdown", "content": "# 方案\n最终正文", "complete": True,
+    }
 
 
 def test_codex_sdk_maps_thread_name_update_to_session_info():

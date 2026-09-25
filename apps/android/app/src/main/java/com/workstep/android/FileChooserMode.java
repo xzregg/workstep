@@ -10,9 +10,14 @@ public final class FileChooserMode {
         if (acceptTypes == null || acceptTypes.length == 0) return false;
         boolean found = false;
         for (String raw : acceptTypes) {
-            if (raw == null || raw.trim().isEmpty()) continue;
-            found = true;
-            if (!raw.trim().toLowerCase(Locale.ROOT).startsWith("image/")) return false;
+            if (raw == null) continue;
+            for (String value : raw.split(",")) {
+                String type = value.trim().toLowerCase(Locale.ROOT);
+                if (type.isEmpty()) continue;
+                found = true;
+                if (!type.startsWith("image/")
+                        && !type.matches("\\.(jpg|jpeg|png|gif|webp|heic|heif|bmp|avif)")) return false;
+            }
         }
         return found;
     }

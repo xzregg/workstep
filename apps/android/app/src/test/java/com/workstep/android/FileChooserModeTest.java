@@ -9,8 +9,11 @@ public class FileChooserModeTest {
     public void detectsImageOnlyAcceptTypes() {
         assertEquals(true, FileChooserMode.isImageOnly(new String[] {"image/*"}));
         assertEquals(true, FileChooserMode.isImageOnly(new String[] {"image/png", "image/jpeg"}));
+        assertEquals(true, FileChooserMode.isImageOnly(new String[] {"image/png, image/jpeg"}));
+        assertEquals(true, FileChooserMode.isImageOnly(new String[] {".jpg,.png"}));
         assertEquals(false, FileChooserMode.isImageOnly(new String[] {"*/*"}));
         assertEquals(false, FileChooserMode.isImageOnly(new String[] {"image/*", "application/pdf"}));
+        assertEquals(false, FileChooserMode.isImageOnly(new String[] {"image/png,application/pdf"}));
         assertEquals(false, FileChooserMode.isImageOnly(new String[0]));
     }
 }

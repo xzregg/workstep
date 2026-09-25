@@ -92,6 +92,29 @@ class ReworkAlwaysRejectEngine:
         return None
 
 
+class ReworkReviewErrorEngine:
+    def __init__(self, calls: list[str]):
+        self.calls = calls
+
+    @property
+    def supports_resume(self):
+        return False
+
+    async def spawn(self, prompt, cwd, **kwargs):
+        self.calls.append(prompt)
+        if len(self.calls) == 1:
+            yield InternalEvent(type="agent_message_chunk", data={
+                "content": {"text": "验证产物完成"},
+            })
+        else:
+            yield InternalEvent(type="error", data={
+                "message": "Review engine request failed: invalid_id_prefix",
+            })
+
+    async def stop(self):
+        return None
+
+
 def _make_task(tmp_path, task_id="rework-task"):
     db = init_db(str(tmp_path / "workstep.db"))
     task = Task.create(
@@ -111,6 +134,49 @@ def _make_task(tmp_path, task_id="rework-task"):
         started_at=1,
     )
     return db, task, workflow_run
+
+
+@pytest.mark.anyio
+async def test_review_engine_error_does_not_send_feedback_upstream(tmp_path):
+    db, task, workflow_run = _make_task(tmp_path, task_id="rework-review-error")
+    producer_calls: list[str] = []
+    verifier_calls: list[str] = []
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["fe-engine"] = lambda: ReworkProducerEngine(producer_calls)
+    ENGINE_REGISTRY["check-engine"] = lambda: ReworkReviewErrorEngine(verifier_calls)
+    try:
+        await TaskRunner(EventBus()).run_pipeline(
+            task,
+            {"steps": [
+                {
+                    "key": "build", "label": "构建", "engine": "fe-engine",
+                    "prompt": "构建前端", "dependsOn": [],
+                },
+                {
+                    "key": "check", "label": "验证", "engine": "check-engine",
+                    "prompt": "验证产物", "dependsOn": ["build"],
+                    "review": {"auto": True, "maxRetries": 2, "engine": "check-engine"},
+                    "reworkUpstream": ["build"],
+                },
+            ]},
+            tmp_path / "artifacts", workflow_run=workflow_run,
+        )
+
+        assert len(producer_calls) == 1
+        assert len(verifier_calls) == 2
+        assert TaskStep.get(
+            (TaskStep.task == task) & (TaskStep.step_key == "build")
+        ).status == "passed"
+        assert TaskStep.get(
+            (TaskStep.task == task) & (TaskStep.step_key == "check")
+        ).status == "awaiting_review"
+        assert [review.status for review in ReviewRun.select().where(
+            ReviewRun.workflow_run == workflow_run,
+        ).order_by(ReviewRun.attempt)] == ["failed", "pending"]
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
 
 
 @pytest.mark.anyio

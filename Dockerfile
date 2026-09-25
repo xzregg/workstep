@@ -25,6 +25,18 @@ COPY apps/landing ./
 # 官网以 /landing 子路径托管（与 start.sh 生产模式一致），否则资源路径错误
 RUN LANDING_BASE=/landing/ yarn build
 
+# Git 2.48+ is required for portable worktree links across container and host paths.
+FROM node:24-bookworm-slim AS git-build
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl build-essential libcurl4-openssl-dev libssl-dev zlib1g-dev libexpat1-dev \
+    && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL https://www.kernel.org/pub/software/scm/git/git-2.50.1.tar.xz -o /tmp/git.tar.xz \
+    && echo '7e3e6c36decbd8f1eedd14d42db6674be03671c2204864befa2a41756c5c8fc4  /tmp/git.tar.xz' | sha256sum -c - \
+    && tar -xf /tmp/git.tar.xz -C /tmp \
+    && cd /tmp/git-2.50.1 \
+    && make prefix=/opt/git NO_GETTEXT=YesPlease NO_TCLTK=YesPlease -j"$(nproc)" all \
+    && make prefix=/opt/git NO_GETTEXT=YesPlease NO_TCLTK=YesPlease install
+
 # ============================================================
 # 阶段 2：运行时镜像（最小化）
 # - 基础镜像 node:24-bookworm-slim（Node 24 + npm，约 1/5 体积）
@@ -38,6 +50,8 @@ FROM node:24-bookworm-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git curl jq \
     && rm -rf /var/lib/apt/lists/*
+COPY --from=git-build /opt/git /opt/git
+ENV PATH="/opt/git/bin:${PATH}"
 
 RUN npm config set registry https://registry.npmmirror.com
 

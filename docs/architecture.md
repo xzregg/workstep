@@ -135,7 +135,7 @@ WorkflowRuntime
 
 运行中的步骤可以接收普通用户消息。步骤消息使用 `channel=execution`，协调助手消息使用 `channel=coordinator`，两条流不会混入彼此的上下文。
 
-步骤审核支持关闭、自动和人工模式。自动审核失败可以按配置重试；人工审核会停在 `awaiting_review`，通过、驳回和强制通过均作用于明确的 `StepRun` / `ReviewRun`。
+步骤审核支持关闭、自动和人工模式。自动审核明确拒绝时可按配置重试执行步骤；审核 Agent 报错或返回无效结果时转人工审核，不把错误当作返工意见。人工审核会停在 `awaiting_review`，通过、驳回和强制通过均作用于明确的 `StepRun` / `ReviewRun`。
 
 审核与路由是两个独立门：`skip` 只跳过审核，不跳过产物路由。步骤执行成功且审核通过（或配置为 `skip`）后，运行时才读取本轮 manifest 的端口状态；只有声明产物存在且大小大于 0 的输出端口会激活相连的下游。未产出、缺失或 0 字节输出不会激活连接，依赖这些连接的分支会一次性标记为 `skipped`，不会轮询重扫。
 
@@ -169,6 +169,8 @@ manifest 除文件清单外，还为每个声明输出记录 `port`、`exists`�
 所有引擎继承 `AcpEngineBase`。ACP 原生引擎复用基类客户端；CLI、SDK 和进程内引擎覆盖自己的传输实现，但仍产出 ACP 对齐事件。引擎由 `engines/core/registry.py` 自动发现，新增实现需要声明唯一 `ENGINE_ID`。
 
 当前实现包括 Claude Code、Codex CLI、Hermes ACP、OpenClaw、Claude Agent SDK、Codex SDK、Qoder SDK、DeepSeek Harness 和内置 Pydantic AI。各引擎只声明真实具备的 capability 和 `acp_events`；没有原生来源的事件不能伪造。
+
+目标模式通过统一助手入口的 `goal_mode` 和 `/goal` 命令进入引擎层，由 `supports_goal_mode` 声明原生能力。当前 Codex SDK 对接原生 Goal 生命周期（开始、暂停、恢复、清除和查询）；其他引擎不展示该模式，也不把目标文本伪装成普通提示词。Goal 不是标准 ACP session update，因此引擎产生 WorkStep 扩展 `goal_update`，外层统一翻译成 AG-UI `CUSTOM{name:"workstep.goal_update"}`，实时流和历史回放使用同一映射。
 
 会话恢复与会话分叉是不同能力。当前 Codex SDK 映射官方 `thread_fork`；不支持原生分叉的引擎通过结构化跨引擎上下文交接创建新会话，绝不把旧引擎 session ID 交给新引擎。
 

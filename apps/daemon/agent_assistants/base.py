@@ -35,6 +35,7 @@ from services.chat_permissions import (
     is_valid_permission_mode,
     map_permission_overrides,
     map_plan_mode_overrides,
+    parse_goal_command,
     PLAN_MODE_INSTRUCTION,
 )
 from services.config import CODEX_REASONING_EFFORTS, config_store, resolve_execution_engine
@@ -182,6 +183,7 @@ async def invoke_engine(
     thinking_effort: str | None = None,
     permission_mode: str | None = None,
     plan_mode: bool | None = None,
+    goal_mode: bool | None = None,
     workstep_tools: bool = False,
     config_overrides: dict | None = None,
     live_message_queue: asyncio.Queue | None = None,
@@ -225,6 +227,19 @@ async def invoke_engine(
     supports_native_plan_mode = bool(
         getattr(getattr(engine, "capabilities", None), "supports_plan_mode", False)
     )
+    goal_command = parse_goal_command(prompt)
+    if goal_mode and goal_command is None:
+        goal_command = ("start", prompt)
+    if goal_command:
+        if plan_mode:
+            raise ValueError("目标模式不能与计划模式同时启用")
+        if not getattr(getattr(engine, "capabilities", None), "supports_goal_mode", False):
+            raise ValueError(f"当前引擎不支持目标模式：{engine_id}")
+        goal_action, prompt = goal_command
+        if goal_action != "start" and not session_id:
+            raise ValueError("当前会话还没有可操作的目标")
+        if goal_action == "start" and not prompt.strip():
+            raise ValueError("目标内容不能为空")
     if plan_mode and not supports_native_plan_mode and prompt.strip() != "/compact":
         prompt = f"{prompt}\n\n{PLAN_MODE_INSTRUCTION}"
     content: list[str] = []
@@ -279,6 +294,8 @@ async def invoke_engine(
             merged_overrides.update(map_plan_mode_overrides(engine_id))
         if supports_native_plan_mode:
             spawn_kwargs["plan_mode"] = bool(plan_mode)
+        if goal_command:
+            spawn_kwargs["goal_action"] = goal_action
         if merged_overrides:
             spawn_kwargs["config_overrides"] = merged_overrides
         if prompt.strip() == "/compact":
@@ -601,6 +618,7 @@ _PERSISTED_EVENT_TYPES = frozenset({
     "plan_removed",
     "subagent",
     "compacted",
+    "goal_update",
     "usage_update",
     "session_started",
     "error",
@@ -798,6 +816,7 @@ class AssistantRuntime:
         thinking_effort: str | None = None,
         permission_mode: str | None = None,
         plan_mode: bool | None = None,
+        goal_mode: bool | None = None,
         provider_id: str | None = None,
         steps: dict | None = None,
         extra: dict | None = None,
@@ -986,6 +1005,7 @@ class AssistantRuntime:
             "thinking_effort": normalized_effort or None,
             "permission_mode": normalized_permission or None,
             "plan_mode": bool(plan_mode),
+            "goal_mode": bool(goal_mode),
             "provider_id": normalized_provider or None,
             "engine_overridden": bool(engine),
             "journal_ref": journal_ref,
@@ -1871,6 +1891,7 @@ class AssistantRuntime:
                             "tool_call_update",
                             "subagent",
                             "compacted",
+                            "goal_update",
                             "session_started",
                         }:
                             await self._record_journal_event(
@@ -2485,6 +2506,11 @@ class AssistantRuntime:
             if run_key
             else None
         )
+        goal_mode = (
+            self._turn_states.get(run_key, {}).get("goal_mode")
+            if run_key
+            else None
+        )
         turn_state = self._turn_states.get(run_key, {}) if run_key else {}
         turn_provider = turn_state.get("provider_id")
         if turn_provider or turn_state.get("engine_overridden"):
@@ -2513,6 +2539,7 @@ class AssistantRuntime:
             thinking_effort=thinking_effort,
             permission_mode=permission_mode,
             plan_mode=plan_mode,
+            goal_mode=goal_mode,
             workstep_tools=self._config.workstep_tools,
             config_overrides=config_overrides,
             live_message_queue=turn_state.get("live_message_queue"),

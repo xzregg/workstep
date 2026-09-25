@@ -75,6 +75,7 @@ class ChatMessageRequest(BaseSchema):
     thinking_effort: str | None = None
     permission_mode: str | None = None
     plan_mode: bool | None = None
+    goal_mode: bool | None = None
 
 
 class ChatLiveMessageRequest(BaseSchema):
@@ -408,6 +409,7 @@ async def chat_message(
                 thinking_effort=req.thinking_effort,
                 permission_mode=req.permission_mode,
                 plan_mode=req.plan_mode,
+                goal_mode=req.goal_mode,
                 schedule=False,
             ),
         )

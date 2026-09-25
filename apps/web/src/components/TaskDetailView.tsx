@@ -56,12 +56,17 @@ import MarqueeText from './MarqueeText'
 import TaskStepProgressGraph from './TaskStepProgressGraph'
 import TaskExecutionAnalysis from './TaskExecutionAnalysis'
 import TaskArtifactBrowser from './TaskArtifactBrowser'
+import ArtifactUnchangedBadge from './ArtifactUnchangedBadge'
 import TaskGitWorkspace from './git/TaskGitWorkspace'
 import { displayUserDetail, displayUserSender } from '../utils/actorDisplay'
 import {
   isVisibleHistoryMessage,
   isVisibleLiveExecutionMessage,
   canRetryFailedExecutionMessage,
+  canRestartStoppedExecutionMessage,
+  latestExecutionMessageIdsByStep,
+  failedExecutionCompletionRound,
+  latestMessageIdsByStep,
   canCompleteStoppedReview,
   isUnpersistedLiveMessage,
   isManualReviewMessage,
@@ -257,6 +262,7 @@ export interface TaskDetailViewProps {
 
   // ── Artifacts ──
   artifacts: TaskArtifact[]
+  artifactDirectory?: string
   artifactInputSnapshots?: TaskArtifactInputSnapshot[]
   onOpenArtifact: (name: string, stepKey?: string, round?: number, path?: string) => void
 
@@ -286,6 +292,7 @@ export interface TaskDetailViewProps {
   /** 正在重建会话重跑的步骤 key，用于禁用重复点击。 */
   restartingStepKeys?: string[]
   onRetryFailedMessage?: (messageId: string) => void
+  onSetFailedExecutionComplete?: (messageId: string, artifactRound: number) => void
   retryingFailedMessageIds?: string[]
   chatInputRef?: React.RefObject<HTMLTextAreaElement | null>
   /** Alternate attachment transport for public interactive shares. */
@@ -423,6 +430,7 @@ export default function TaskDetailView({
   onReviewCommentChange,
   onReviewAction,
   artifacts,
+  artifactDirectory,
   artifactInputSnapshots = [],
   onOpenArtifact,
   // Chat
@@ -448,6 +456,7 @@ export default function TaskDetailView({
   onRestartStepWithFreshSession,
   restartingStepKeys,
   onRetryFailedMessage,
+  onSetFailedExecutionComplete,
   retryingFailedMessageIds,
   chatInputRef,
   chatAttachment,
@@ -834,6 +843,9 @@ export default function TaskDetailView({
     [...historyMessages, ...liveCoordinatorMessages],
     'coordinator',
   )
+  const latestCoordinatorUser = [...historyMessages, ...liveCoordinatorMessages]
+    .filter((message) => message.channel === 'coordinator' && message.role === 'user')
+    .at(-1)
 
   const hasStructuredExecutionMessage = useMemo(
     () =>
@@ -868,6 +880,15 @@ export default function TaskDetailView({
       }
     })
     return [...rounds].sort((a, b) => a - b)
+  }, [artifacts, currentStep.key])
+  const currentStepRoundUnchangedFrom = useMemo(() => {
+    const matches = new Map<number, number>()
+    artifacts.forEach((artifact) => {
+      if (artifact.step_key === currentStep.key && artifact.round_unchanged_from) {
+        matches.set(artifact.round, artifact.round_unchanged_from)
+      }
+    })
+    return matches
   }, [artifacts, currentStep.key])
   const [selectedIoRound, setSelectedIoRound] = useState<number | null>(null)
   const activeIoRound = selectedIoRound && currentStepArtifactRounds.includes(selectedIoRound)
@@ -981,6 +1002,8 @@ export default function TaskDetailView({
   const renderArtifactPanel = () => (
     <TaskArtifactBrowser
       artifacts={artifacts}
+      artifactDirectory={artifactDirectory}
+      projectId={projectId}
       steps={steps}
       onOpenArtifact={onOpenArtifact}
     />
@@ -1378,6 +1401,9 @@ export default function TaskDetailView({
                       }}
                     >
                       <span>{t('taskDetail.artifactRoundTab', { round })}</span>
+                      {currentStepRoundUnchangedFrom.get(round) ? (
+                        <ArtifactUnchangedBadge fromRound={currentStepRoundUnchangedFrom.get(round)!} />
+                      ) : null}
                     </button>
                   )
                 })}
@@ -1569,6 +1595,9 @@ export default function TaskDetailView({
                                 round: inputArtifact.round,
                               })}
                             </span>
+                          ) : null}
+                          {inputArtifact?.unchanged_from_round ? (
+                            <ArtifactUnchangedBadge fromRound={inputArtifact.unchanged_from_round} />
                           ) : null}
                           <span
                             style={{
@@ -1774,6 +1803,9 @@ export default function TaskDetailView({
                                       round: outArtifact.round,
                                     })}
                                   </span>
+                                ) : null}
+                                {outArtifact?.unchanged_from_round ? (
+                                  <ArtifactUnchangedBadge fromRound={outArtifact.unchanged_from_round} />
                                 ) : null}
                                 <span
                                   style={{
@@ -2379,6 +2411,21 @@ export default function TaskDetailView({
                             message.events,
                           ),
                 })),
+                ...liveCoordinatorMessages.map((message) => ({
+                  ...message,
+                  run_status: message.status,
+                })),
+                ...(showCoordinatorThinking ? [{
+                  id: 'pending-coordinator-thinking',
+                  channel: 'coordinator',
+                  role: 'assistant',
+                  content: '',
+                  run_status: 'running',
+                  created_at: latestCoordinatorUser?.created_at || new Date().toISOString(),
+                  started_at: latestCoordinatorUser?.started_at || latestCoordinatorUser?.created_at,
+                  reply_to_message_id: latestCoordinatorUser?.id,
+                  thinkingPlaceholder: true,
+                }] : []),
               ]
               const orderedMessages = orderConversationMessages(mergeActionMessages(
                 orderedMessagesRaw,
@@ -2395,13 +2442,30 @@ export default function TaskDetailView({
                   reply_to_message_id: role === 'assistant' ? run.user_message_id : undefined,
                 }),
               ))
-              const latestTaskMessageId = orderConversationMessages([
+              const orderedStepMessages = orderConversationMessages([
                 ...historyMessages,
                 ...Object.values(liveMessages)
                   .filter((item) => isUnpersistedLiveMessage(item, persistedMessageIds))
                   .map((item) => ({ ...item, run_status: item.status })),
-              ]).at(-1)?.id
+              ])
+              const latestStepMessageIds = latestMessageIdsByStep(orderedStepMessages)
+              const latestExecutionMessageIds = latestExecutionMessageIdsByStep(orderedStepMessages)
               return orderedMessages.map((message: any) => {
+                if (message.thinkingPlaceholder) {
+                  return <AssistantThinkingMessage
+                    key={message.id}
+                    sender={t('aiFlow.agent')}
+                    initials={t('aiFlow.agentInitials')}
+                    footer={task?.engine || task?.model ? (
+                      <MessageResponseFooter
+                        content=""
+                        engine={task?.engine}
+                        model={task?.model}
+                        running
+                      />
+                    ) : undefined}
+                  />
+                }
                 if (message.channel === 'action') {
                   return <ActionConversationMessage
                     key={message.id}
@@ -2465,6 +2529,15 @@ export default function TaskDetailView({
                             msg,
                             reviews,
                           )
+                        const failedCompletionRound = onSetFailedExecutionComplete
+                          ? failedExecutionCompletionRound(
+                              msg, artifacts,
+                              ['cancelled', 'stopped'].includes(msg.run_status)
+                                ? latestExecutionMessageIds.get(stepKey)
+                                : latestStepMessageIds.get(stepKey),
+                              task?.status, msgStepStatus,
+                            )
+                          : null
                         const msgReviewPending =
                           isMessageReviewActionable(
                             msg,
@@ -2831,13 +2904,23 @@ export default function TaskDetailView({
                                     onRetryFailedMessage
                                     && canRetryFailedExecutionMessage(
                                       msg,
-                                      latestTaskMessageId,
+                                      latestStepMessageIds.get(stepKey),
                                       msgStepStatus,
                                       msgStepIndex >= 0 ? stepProgress[msgStepIndex]?.error : undefined,
                                     )
                                       ? () => onRetryFailedMessage(String(msg.id))
                                       : undefined
                                   }
+                                  onRestartStoppedMessage={
+                                    onRestartStepWithFreshSession
+                                    && canRestartStoppedExecutionMessage(
+                                      msg, latestExecutionMessageIds.get(stepKey),
+                                      task?.status, msgStepStatus,
+                                    )
+                                      ? () => onRestartStepWithFreshSession(stepKey)
+                                      : undefined
+                                  }
+                                  restartingStoppedMessage={(restartingStepKeys ?? []).includes(stepKey)}
                                   retryingFailedMessage={(retryingFailedMessageIds ?? []).includes(String(msg.id))}
                                   endedAt={
                                     msg.ended_at ||
@@ -2857,7 +2940,9 @@ export default function TaskDetailView({
                                       msgStepStatus,
                                     )
                                       ? () => onReviewAction('set-complete', msgReview, stepKey)
-                                      : undefined
+                                      : failedCompletionRound !== null && onSetFailedExecutionComplete
+                                        ? () => onSetFailedExecutionComplete(String(msg.id), failedCompletionRound)
+                                        : undefined
                                   }
                                   settingReviewComplete={!!reviewActionPending}
                                   projectId={projectId}
@@ -2866,7 +2951,6 @@ export default function TaskDetailView({
                             }
                             showLoading={
                               !isUser &&
-                              !isCoordinator &&
                               msg.run_status ===
                                 'running' &&
                               !msg.content
@@ -2877,11 +2961,13 @@ export default function TaskDetailView({
                                 'running'
                                 ? (
                                   <StreamingStatusText
-                                    label={liveExecutionStatus(
-                                      processEvents,
-                                      t,
-                                      (stepInserts ?? []).length > 0,
-                                    )}
+                                    label={isCoordinator
+                                      ? t('bubble.thinking')
+                                      : liveExecutionStatus(
+                                          processEvents,
+                                          t,
+                                          (stepInserts ?? []).length > 0,
+                                        )}
                                   />
                                 )
                                 : undefined
@@ -3055,213 +3141,6 @@ export default function TaskDetailView({
               })
             })()}
 
-            {showCoordinatorThinking && (
-              <AssistantThinkingMessage
-                sender={t('aiFlow.agent')}
-                initials={t('aiFlow.agentInitials')}
-                footer={task?.engine || task?.model ? (
-                  <MessageResponseFooter
-                    content=""
-                    engine={task?.engine}
-                    model={task?.model}
-                    running
-                  />
-                ) : undefined}
-              />
-            )}
-
-            {liveCoordinatorMessages.map(
-              (message) => {
-                const isUser =
-                  message.role === 'user'
-                const sender = isUser
-                  ? displayUserSender(
-                      message.author_name,
-                      localUserName,
-                      t('aiFlow.me'),
-                    )
-                  : t('aiFlow.agent')
-                return (
-                  <ChatMessageBubble
-                    key={message.id}
-                    role={
-                      isUser ? 'user' : 'assistant'
-                    }
-                    sender={sender}
-                    senderTitle={
-                      isUser
-                        ? displayUserDetail(
-                            message.author_name,
-                            message.author_device_name,
-                            t('aiFlow.me'),
-                          )
-                        : undefined
-                    }
-                    initials={
-                      isUser
-                        ? sender.slice(0, 2)
-                        : t('aiFlow.agentInitials')
-                    }
-                    color={
-                      isUser
-                        ? 'var(--accent)'
-                        : 'var(--ai-assistant)'
-                    }
-                    content={
-                      message.content || ''
-                    }
-                    projectId={projectId}
-                    streaming={
-                      !isUser &&
-                      message.status === 'running'
-                    }
-                    variant="bg"
-                    onA2uiAction={onA2uiAction}
-                    events={message.events}
-                    interactionsEnabled={
-                      !isUser &&
-                      message.status === 'running'
-                    }
-                    onInteractionRespond={onInteractionRespond}
-                    header={
-                      isUser ? (
-                        <>
-                          <span>
-                            {t(
-                              'taskDetail.coordinatorTag',
-                            )}
-                          </span>
-                          {sender !== t('aiFlow.me') && (
-                            <MarqueeText text={sender} className="user-sender-marquee" />
-                          )}
-                          {formatConversationDateTime(
-                            message.created_at,
-                            Date.now(),
-                            locale,
-                          )}
-                        </>
-                      ) : (
-                        <MessageMetaBar
-                          createdAt={
-                            message.created_at
-                          }
-                          running={
-                            message.status ===
-                            'running'
-                          }
-                          events={message.events}
-                          prompt={
-                            message.prompt ||
-                            livePromptOverrides?.[
-                              String(message.id)
-                            ]
-                          }
-                          sessionId={
-                            task?.coordinator_session_id ||
-                            sessionIdForStep(
-                              message.step_key,
-                            )
-                          }
-                          messageId={message.id}
-                          onViewPrompt={
-                            onViewingPromptChange
-                          }
-                          status={terminalMessageStatus(
-                            message.status,
-                          )}
-                          projectId={projectId}
-                        />
-                      )
-                    }
-                    showLoading={
-                      !isUser &&
-                      !message.content &&
-                      message.status === 'running'
-                    }
-                    loading={
-                      <StreamingStatusText label={t('bubble.thinking')} />
-                    }
-                    footer={
-                      !isUser &&
-                      (message.content ||
-                        message.status ===
-                          'running') ? (
-                        <MessageResponseFooter
-                          content={stripA2uiBlocks(
-                            message.content,
-                          )}
-                          usage={usageFromEvents(
-                            message.events,
-                          )}
-                          events={message.events}
-                          engine={
-                            message.engine
-                          }
-                          model={
-                            message.model
-                          }
-                          startedAt={
-                            message.created_at
-                          }
-                          endedAt={
-                            message.status ===
-                            'running'
-                              ? undefined
-                              : lastEventTimestamp(
-                                  message.events,
-                                )
-                          }
-                          running={
-                            message.status ===
-                            'running'
-                          }
-                        />
-                      ) : undefined
-                    }
-                  >
-                    {!isUser &&
-                      onProposalOverride && projectId &&
-                      message.proposals.map(
-                        (rawProposal) => {
-                          const proposal =
-                            rawProposal as unknown as ActionProposal
-                          const currentProposal =
-                            (proposalOverrides ??
-                              {})[
-                              proposal.id
-                            ] || proposal
-                          return (
-                            <CoordinatorProposalCard
-                              key={
-                                proposal.id
-                              }
-                              proposal={
-                                currentProposal
-                              }
-                              taskId={
-                                task?.id ||
-                                ''
-                              }
-                              projectId={
-                                projectId ||
-                                ''
-                              }
-                              onChanged={(
-                                updated,
-                              ) =>
-                                onProposalOverride?.(
-                                  updated,
-                                )
-                              }
-                            />
-                          )
-                        },
-                      )}
-                  </ChatMessageBubble>
-                )
-              },
-            )}
-
             {/* Legacy execution */}
             {shouldRenderLegacyExecution(
               running ?? false,
@@ -3373,7 +3252,8 @@ export default function TaskDetailView({
               flexShrink: 0,
             }}
           >
-            {onSendPrompt && <TaskActionButtons state={taskActions} onFillPrompt={onPromptChange} onSendPrompt={onSendPrompt} />}
+            {onSendPrompt && !compact && <TaskActionButtons state={taskActions} onFillPrompt={onPromptChange} onSendPrompt={onSendPrompt} />}
+            {onSendPrompt && compact && taskActions.error && <span role="alert" style={{ color: 'var(--danger)' }}>{taskActions.error}</span>}
             {composerState.running && (
               <ComposerOverlayHostContext.Provider value={registerOverlay}>
               <PendingMessageInserts
@@ -3554,6 +3434,7 @@ export default function TaskDetailView({
             <ChatInput
               projectId={projectId}
               taskId={task?.id}
+              left={onSendPrompt && compact ? <TaskActionButtons state={taskActions} onFillPrompt={onPromptChange} onSendPrompt={onSendPrompt} compact /> : undefined}
               mentions={{
                 options: [
                   {
@@ -3890,7 +3771,7 @@ export default function TaskDetailView({
 
 // ─── CoordinatorProposalCard (inline) ────────────────────────────────────
 
-function CoordinatorProposalCard({
+export function CoordinatorProposalCard({
   proposal,
   taskId,
   projectId,
@@ -3914,11 +3795,14 @@ function CoordinatorProposalCard({
   const actionPath = actionScript
     ? `.workstep/artifacts/${current.payload.workflow_id}/actions/${current.payload.action_id}/${current.payload.script_path}`
     : ''
-  const retryable =
-    current.status === 'failed' && current.type === 'rerun_from_step'
+  const retryable = current.status === 'failed'
+    && (current.type === 'rerun_from_step' || current.type === 'create_workflow_action')
+  const overwriteRetry = current.status === 'failed'
+    && current.type === 'create_workflow_action'
+    && current.error?.includes('流程中已存在同名 Action')
   const canAct = (current.status === 'pending' || retryable) && !pending
 
-  const confirm = async () => {
+  const confirm = async (overwrite = false) => {
     setPending(true)
     setError('')
     try {
@@ -3930,6 +3814,7 @@ function CoordinatorProposalCard({
           current.id,
           projectId,
           randomUuid(),
+          overwrite,
         ),
       )
     } catch (reason) {
@@ -3991,7 +3876,7 @@ function CoordinatorProposalCard({
     >
       <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 700 }}>
         {current.type === 'create_workflow_action'
-          ? t('taskDetail.proposalCreateActionTitle')
+          ? t(current.payload.overwrite === true ? 'taskDetail.proposalOverwriteActionTitle' : 'taskDetail.proposalCreateActionTitle')
           : t('taskDetail.proposalTitle', { type: current.type })}
       </div>
       <div style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--muted)' }}>
@@ -4060,9 +3945,9 @@ function CoordinatorProposalCard({
             variant="primary"
             disabled={!canAct}
             loading={pending}
-            onClick={() => void confirm()}
+            onClick={() => void confirm(Boolean(overwriteRetry))}
           >
-            {retryable ? t('common.retry') : t('common.confirm')}
+            {overwriteRetry ? t('taskDetail.proposalOverwriteRetry') : retryable ? t('common.retry') : t('common.confirm')}
           </Button>
           {current.status === 'pending' && (
             <Button

@@ -234,6 +234,7 @@ export interface ChatInputProps {
   quotaRefreshing?: boolean
   /** Plan-mode toggle (Codex-style lightbulb, left side). */
   plan?: ChatInputPlan
+  goal?: ChatInputPlan
   /** One-shot reset-step toggle, rendered immediately after attachments. */
   resetStep?: ChatInputResetStep
   /** Optional @ completion used by task chat to select a recipient step. */
@@ -277,6 +278,7 @@ export default function ChatInput({
   onRefreshQuota,
   quotaRefreshing = false,
   plan,
+  goal,
   resetStep,
   mentions,
   imageAttach,
@@ -1186,6 +1188,26 @@ export default function ChatInput({
                           )}
                         </button>
                       )}
+                      {goal && (
+                        <button
+                          type="button"
+                          className="chat-input-menu-item"
+                          data-selected={goal.active}
+                          disabled={goal.disabled}
+                          onClick={() => {
+                            setAttachMenuOpen(false)
+                            goal.onChange(!goal.active)
+                          }}
+                        >
+                          <span className="chat-input-menu-icon">
+                            <Icon name="radio" size={14} strokeWidth={1.8} />
+                          </span>
+                          <span className="chat-input-menu-name">{t('chatInput.attachGoalMode')}</span>
+                          {goal.active && (
+                            <Icon name="check" size={13} strokeWidth={2.2} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                          )}
+                        </button>
+                      )}
                   </ResponsivePopover>
                 )}
               </div>
@@ -1525,30 +1547,10 @@ export default function ChatInput({
               )
             )}
           </div>
-          {running && allowSendWhileRunning && value.trim() && onStop && (
-            <button
-              type="button"
-              className="chat-input-send chat-input-stop"
-              data-state="stopped"
-              onClick={onStop}
-              disabled={stopping}
-              aria-label={stopping ? t('chatInput.stopping') : t('common.stop')}
-              title={stopping ? t('chatInput.stopping') : (stopTitle ?? t('chatInput.stopGenerating'))}
-              style={{
-                width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
-                padding: 0, background: 'var(--danger)', color: '#fff',
-                border: 'none', cursor: stopping ? 'not-allowed' : 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}
-            >
-              {stopping
-                ? <span className="task-status-spinner" aria-hidden="true" />
-                : <span style={{ width: 12, height: 12, borderRadius: 2, background: 'currentColor' }} />}
-            </button>
-          )}
           <button
             type="button"
             className="chat-input-send"
+            data-state={stopped ? 'stopped' : undefined}
             onClick={handleClick}
             disabled={buttonDisabled}
             aria-label={stopped
@@ -1575,7 +1577,9 @@ export default function ChatInput({
               transition: 'background 0.15s, color 0.15s, transform 0.15s',
             }}
           >
-            {stopped ? (
+            {stopped && stopping ? (
+              <span className="task-status-spinner" aria-hidden="true" />
+            ) : stopped ? (
               <div style={{ width: 12, height: 12, borderRadius: 2, background: 'currentColor' }} />
             ) : running && !canSend ? (
               <span className="task-status-spinner" aria-hidden="true" />

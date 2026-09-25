@@ -87,6 +87,41 @@ async def test_coordinator_workflow_action_requires_confirmation(api_context, mo
         )
         assert repeated.status_code == 200
         assert len([button for button in steps["quickButtons"] if button["action_id"] == action_id]) == 1
+        CoordinatorFakeEngine.reply = {
+            **CoordinatorFakeEngine.reply,
+            "proposal": {
+                "type": "create_workflow_action",
+                "payload": {
+                    **CoordinatorFakeEngine.reply["proposal"]["payload"],
+                    "title": "重新启动服务",
+                    "script_content": "#!/bin/bash\necho updated\n",
+                },
+            },
+        }
+        submitted = await client.post(
+            f"/api/task/{task_id}/chat?project_id={project_id}",
+            headers={"Idempotency-Key": "chat-action-overwrite"},
+            json={"content": "更新启动服务快捷按钮"},
+        )
+        replacement = await _wait_for_reply(
+            client, project_id, task_id, submitted.json()["assistant_message_id"]
+        )
+        replacement_proposal = replacement["proposals"][0]
+        failed_replacement = await client.post(
+            f"/api/task/{task_id}/actions/{replacement_proposal['id']}/confirm?project_id={project_id}",
+            headers={"Idempotency-Key": "confirm-action-duplicate"},
+        )
+        assert failed_replacement.status_code == 409
+        history = await client.get(f"/api/task/{task_id}/history?project_id={project_id}")
+        failed = next(proposal for message in history.json()["messages"] for proposal in message.get("proposals", []) if proposal["id"] == replacement_proposal["id"])
+        assert failed["status"] == "failed"
+        confirmed_replacement = await client.post(
+            f"/api/task/{task_id}/actions/{replacement_proposal['id']}/confirm?project_id={project_id}",
+            headers={"Idempotency-Key": "confirm-action-overwrite"},
+            json={"overwrite": True},
+        )
+        assert confirmed_replacement.status_code == 200, confirmed_replacement.text
+        assert (action_root / "start.sh").read_text() == "#!/bin/bash\necho updated\n"
     finally:
         CoordinatorFakeEngine.reply = {"version": 1, "reply": "协调回复", "intent": "answer", "proposal": None}
 
@@ -2858,6 +2893,56 @@ class HangingStopEngine(StoppableStreamingEngine):
     async def stop(self):
         type(self).stopped = True
         await asyncio.Event().wait()
+
+
+@pytest.mark.anyio
+async def test_coordinator_stop_persists_before_cancelled_stop_request(api_context, monkeypatch):
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import CoordinatorTurn, Message
+    import main
+
+    client, tmp_path = api_context
+    HangingStopEngine.reset()
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", HangingStopEngine)
+    project_id, task_id = await _create_task(client, tmp_path)
+    accepted = await client.post(
+        f"/api/task/{task_id}/chat?project_id={project_id}",
+        headers={"Idempotency-Key": "cancelled-stop-request"},
+        json={"content": "开始后停止"},
+    )
+    turn_id = accepted.json()["turn_id"]
+    assistant_id = accepted.json()["assistant_message_id"]
+    for _ in range(100):
+        if await main.project_manager.run_db(
+            project_id,
+            lambda _project: CoordinatorTurn.get_by_id(turn_id).status,
+        ) == "running":
+            break
+        await asyncio.sleep(0.01)
+    else:
+        raise AssertionError("coordinator turn did not start")
+
+    stop_request = asyncio.create_task(
+        main.coordinator_module.stop_current(project_id, task_id)
+    )
+    for _ in range(100):
+        if HangingStopEngine.stopped:
+            break
+        await asyncio.sleep(0.01)
+    else:
+        raise AssertionError("engine stop was not called")
+    stop_request.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await stop_request
+
+    state = await main.project_manager.run_db(
+        project_id,
+        lambda _project: (
+            CoordinatorTurn.get_by_id(turn_id).status,
+            Message.get_by_id(assistant_id).run_status,
+        ),
+    )
+    assert state == ("stopped", "stopped")
 
 
 @pytest.mark.anyio

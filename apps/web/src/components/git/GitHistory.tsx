@@ -4,7 +4,7 @@ import { type GitCommit } from '../../api/git'
 import { useI18n } from '../../i18n'
 import Button from '../Button'
 
-export default function GitHistory({ id, branch, head, onCommit }: { id: string; branch?: string; head?: string | null; onCommit: (hash: string) => void }) {
+export default function GitHistory({ id, branch, head, onCommit }: { id: string; branch?: string; head?: string | null; onCommit: (commit: GitCommit) => void }) {
   const gitApi = useGitApi()
   const { t } = useI18n()
   const [commits, setCommits] = useState<GitCommit[]>([])
@@ -23,5 +23,5 @@ export default function GitHistory({ id, branch, head, onCommit }: { id: string;
     catch (e) { setError(e instanceof Error ? e.message : String(e)) }
     finally { setLoading(false) }
   }
-  return <div className="git-history">{commits.map(c => <button key={c.hash} onClick={() => onCommit(c.hash)}><span className="git-history-dot" /><span><strong>{c.message}</strong><small>{c.author} · {new Date(c.time * 1000).toLocaleString()}</small></span><code>{c.hash.slice(0, 8)}</code></button>)}{error && <p role="alert" className="git-danger">{error}</p>}{!commits.length && !loading && !error && <p>{t('git.historyEmpty')}</p>}{(more || loading || error) && <Button loading={loading} onClick={() => void next()}>{error ? t('git.retry') : t('git.more')}</Button>}</div>
+  return <div className="git-history">{commits.map(c => <button key={c.hash} onClick={() => onCommit(c)}><span className="git-history-dot" /><span><strong>{c.message}</strong><small>{c.author} · {new Date(c.time * 1000).toLocaleString()}</small></span><code>{c.hash.slice(0, 8)}</code></button>)}{error && <p role="alert" className="git-danger">{error}</p>}{!commits.length && !loading && !error && <p>{t('git.historyEmpty')}</p>}{(more || loading || error) && <Button loading={loading} onClick={() => void next()}>{error ? t('git.retry') : t('git.more')}</Button>}</div>
 }

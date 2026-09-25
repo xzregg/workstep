@@ -158,6 +158,7 @@ class InternalEvent:
         "engine_state",              # serializable in-process engine state snapshot
         "subagent",                  # subagent / background task lifecycle event
         "compacted",                 # engine compacted its context window
+        "goal_update",               # native goal lifecycle snapshot (WorkStep extension)
         "error",                     # error
         "interaction_request",       # ACP permission / form elicitation request
         "async_question",            # Codex non-blocking structured question
@@ -173,7 +174,11 @@ class InternalEvent:
 
 
 def compacted_event(summary: str | None = None) -> InternalEvent:
-    """Build a ``compacted`` event after engine context compression."""
+    """Engine adapter confirmation that context compression has completed.
+
+    Native engine notifications or a successful native compact command must
+    establish completion before the adapter emits this shared event.
+    """
     data: dict[str, Any] = {}
     if summary:
         data["summary"] = str(summary)

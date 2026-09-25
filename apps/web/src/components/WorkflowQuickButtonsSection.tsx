@@ -57,8 +57,8 @@ export default function WorkflowQuickButtonsSection({ projectId, workflowId, but
           </>}
           {selected.kind === 'action' && <ActionButtonFields
             projectId={projectId} workflowId={workflowId}
-            value={{ actionId: selected.action_id || '', scriptPath: selected.script_path || '', cwdMode: selected.cwd_mode || 'task', requireConfirmation: selected.require_confirmation !== false }}
-            onChange={(value) => update({ ...selected, action_id: value.actionId, script_path: value.scriptPath, cwd_mode: value.cwdMode, require_confirmation: value.requireConfirmation })}
+            value={{ actionId: selected.action_id || '', scriptPath: selected.script_path || '', cwdMode: selected.cwd_mode || 'task', requireConfirmation: selected.require_confirmation !== false, confirmationInputPrompt: selected.confirmation_input_prompt || '' }}
+            onChange={(value) => update({ ...selected, action_id: value.actionId, script_path: value.scriptPath, cwd_mode: value.cwdMode, require_confirmation: value.requireConfirmation, confirmation_input_prompt: value.confirmationInputPrompt })}
           />}
           <Button variant="ghost" onClick={() => {
             onChange(buttons.filter((button) => button.id !== selected.id))

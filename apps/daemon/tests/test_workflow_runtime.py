@@ -190,6 +190,19 @@ async def test_retry_failed_message_targets_only_the_latest_failed_execution(tmp
         other_step.save()
 
     with pm.activate_project(project.path):
+        later_other_step = Message.create(
+            id="later-other-step", task=task, channel="execution", step_key="other",
+            role="assistant", sequence=3, run_status="failed", position=1,
+            created_at=now,
+        )
+    assert await runtime._run_db(
+        project.id,
+        lambda _project: runtime._inspect_failed_message_retry(task.id, "latest-failure"),
+    ) == ("do", run.id)
+    with pm.activate_project(project.path):
+        later_other_step.delete_instance()
+
+    with pm.activate_project(project.path):
         later_message = Message.create(
             id="later-user-message", task=task, channel="execution", step_key="do",
             role="user", sequence=3, run_status="completed", position=0,

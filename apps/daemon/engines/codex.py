@@ -15,7 +15,7 @@ from typing import AsyncIterator
 import re
 
 from engines.core.acp_base import AcpEngineBase
-from engines.core.codex_compaction import compact_codex_thread
+from engines.codex_compaction import compact_codex_thread
 from engines.core.packages import RuntimePackage
 from engines.core.base import (
     EngineInstallResult,

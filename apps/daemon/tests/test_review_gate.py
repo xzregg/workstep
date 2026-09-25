@@ -101,6 +101,36 @@ class SequencedReviewEngine:
         return None
 
 
+class FailingReviewEngine:
+    calls: list[str] = []
+    failure_mode = "engine_error"
+
+    @property
+    def supports_resume(self):
+        return False
+
+    async def spawn(self, prompt, cwd, **kwargs):
+        type(self).calls.append(prompt)
+        if len(type(self).calls) == 1:
+            yield InternalEvent(type="agent_message_chunk", data={
+                "content": {"text": "阶段执行完成"},
+            })
+        elif type(self).failure_mode == "invalid_report":
+            yield InternalEvent(type="agent_message_chunk", data={
+                "content": {"text": "not valid review JSON"},
+            })
+        else:
+            yield InternalEvent(type="session_started", data={
+                "session_id": "bad-review-session",
+            })
+            yield InternalEvent(type="error", data={
+                "message": "Review engine request failed: invalid_id_prefix",
+            })
+
+    async def stop(self):
+        return None
+
+
 class PausedReviewEngine:
     """Pause the automatic review so its in-progress UI state is observable."""
 
@@ -1101,6 +1131,65 @@ async def test_review_skip_mode_passes_without_review(tmp_path):
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("failure_mode", ["engine_error", "invalid_report"])
+async def test_review_engine_error_waits_for_manual_review_without_rerunning_step(
+    tmp_path, failure_mode,
+):
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="review-engine-error-task", title="Review engine error",
+        cwd=str(tmp_path), engine="claude", created_at=1, updated_at=1,
+    )
+    workflow_run = WorkflowRun.create(
+        id="workflow-review-engine-error", task=task, status="running",
+        workflow_schema_version=1, workflow_snapshot_json="{}", started_at=1,
+    )
+    original = ENGINE_REGISTRY.copy()
+    FailingReviewEngine.calls = []
+    FailingReviewEngine.failure_mode = failure_mode
+    ENGINE_REGISTRY["review-test"] = FailingReviewEngine
+    try:
+        await TaskRunner(EventBus()).run_pipeline(
+            task,
+            {"steps": [{
+                "key": "build", "label": "构建", "engine": "review-test",
+                "prompt": "完成构建", "dependsOn": [],
+                "review": {"mode": "auto", "auto": True, "maxRetries": 2},
+            }]},
+            tmp_path / "artifacts", workflow_run=workflow_run,
+        )
+
+        assert len(FailingReviewEngine.calls) == 2
+        assert StepRun.select().where(StepRun.run == workflow_run).count() == 1
+        reviews = list(ReviewRun.select().where(
+            ReviewRun.workflow_run == workflow_run,
+        ).order_by(ReviewRun.attempt))
+        assert [(review.mode, review.status) for review in reviews] == [
+            ("auto", "failed"), ("manual", "pending"),
+        ]
+        assert reviews[0].error == (
+            "Review engine request failed: invalid_id_prefix"
+            if failure_mode == "engine_error" else "Review agent returned invalid JSON"
+        )
+        task_step = TaskStep.get(
+            (TaskStep.task == task) & (TaskStep.step_key == "build")
+        )
+        assert task_step.status == "awaiting_review"
+        assert task_step.review_session_id is None
+        review_message = Message.get(
+            (Message.task == task) & (Message.channel == "review")
+            & (Message.role == "assistant") & (Message.run_status == "failed")
+        )
+        assert "审核失败" in review_message.content
+        assert "审核结果：未通过" not in review_message.content
+        assert "## Previous review feedback" not in FailingReviewEngine.calls[0]
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
 async def test_auto_review_exhaustion_falls_back_to_manual(tmp_path):
     """自动审核次数耗尽后转入人工审核（awaiting_review），不再继续自动重跑。"""
     db = init_db(str(tmp_path / "workstep.db"))
@@ -1427,8 +1516,9 @@ async def test_terminated_manual_review_can_be_set_complete_only_with_artifact(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("schedule_downstream", [True, False])
+@pytest.mark.parametrize("superseded", [True, False])
 async def test_stopped_automatic_review_can_set_step_complete(
-    tmp_path, schedule_downstream,
+    tmp_path, schedule_downstream, superseded,
 ):
     from contextlib import nullcontext
     from services.artifact_rounds import step_round_dir
@@ -1496,6 +1586,32 @@ async def test_stopped_automatic_review_can_set_step_complete(
             )
         review.error = "手动停止"
         review.save()
+        if superseded:
+            from datetime import timedelta
+
+            newer_run = WorkflowRun.create(
+                id="later-run", task=task, status="failed",
+                workflow_schema_version=1,
+                routing_state_json=WorkflowRun.get_by_id(first.id).routing_state_json,
+            )
+            newer_step_run = StepRun.create(
+                id="later-step-run", run=newer_run, step_key="build",
+                attempt=1, artifact_round=review.step_run.artifact_round + 1,
+                status="failed",
+            )
+            ReviewRun.create(
+                id="later-review", workflow_run=newer_run,
+                step_run=newer_step_run, task=task, step_key="build",
+                mode="auto", status="failed",
+                error="Review agent returned invalid JSON",
+                started_at=review.started_at + timedelta(seconds=1),
+            )
+            task.active_workflow_run_id = newer_run.id
+            task.status = "stopped"
+            task.save()
+            TaskStep.update(status="failed").where(
+                (TaskStep.task == task) & (TaskStep.step_key == "build")
+            ).execute()
 
         resumed = await runtime.decide_review(
             project.id, task.id, "build", review.id, "set_complete",
@@ -1509,8 +1625,110 @@ async def test_stopped_automatic_review_can_set_step_complete(
         assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "publish")).status == (
             "passed" if schedule_downstream else "pending"
         )
+        if superseded and schedule_downstream:
+            assert WorkflowRun.get_by_id(newer_run.id).status == "succeeded"
     finally:
         review_engine.stopped.set()
+        await runtime.shutdown()
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("schedule_downstream", [True, False])
+@pytest.mark.parametrize("other_step_status", ["pending", "awaiting_review"])
+@pytest.mark.parametrize("message_status", ["failed", "cancelled"])
+async def test_failed_execution_with_existing_artifact_can_be_set_complete(
+    tmp_path, schedule_downstream, other_step_status, message_status,
+):
+    from contextlib import nullcontext
+    from services.artifact_rounds import step_round_dir
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="failed-execution-complete", title="Complete existing output",
+        cwd=str(tmp_path), status="paused", engine="review-test",
+        created_at=1, updated_at=1,
+    )
+    project = SimpleNamespace(
+        id="project-failed-execution", path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={"nodes": [
+            {"id": 1, "type": "build", "key": "build", "title": "构建",
+             "engine": "review-test", "prompt": "完成构建",
+             "review": {"mode": "skip", "auto": True}},
+            {"id": 2, "type": "publish", "key": "publish", "title": "发布",
+             "engine": "review-test", "prompt": "完成发布",
+             "review": {"mode": "skip", "auto": True}},
+        ], "connections": [{"from": 1, "to": 2}]},
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    run = WorkflowRun.create(
+        id="failed-run", task=task, status="failed", workflow_schema_version=1,
+    )
+    task.active_workflow_run_id = run.id
+    task.save()
+    TaskStep.create(task=task, step_key="build", status="failed", error="429 Too Many Requests")
+    TaskStep.create(task=task, step_key="publish", status=other_step_status)
+    step_run = StepRun.create(
+        id="failed-step-run", run=run, step_key="build", attempt=1,
+        artifact_round=1, status="failed", error="429 Too Many Requests",
+    )
+    Message.create(
+        id="failed-execution", task=task, channel="execution", step_key="build",
+        role="assistant", sequence=1, position=1, run_status=message_status,
+        step_run_id=step_run.id, content="429 Too Many Requests", created_at=1,
+    )
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["review-test"] = lambda: CompletedExecutionEngine()
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, ProjectManagerStub())
+    try:
+        if other_step_status == "pending":
+            with pytest.raises(RuntimeError, match="产物"):
+                await runtime.complete_failed_step(
+                    project.id, task.id, "failed-execution", 1,
+                    schedule_downstream=schedule_downstream,
+                )
+        round_dir = step_round_dir(
+            project.workstep_dir / "artifacts", task.workflow_id, task.id, "build", 1,
+        )
+        round_dir.mkdir(parents=True, exist_ok=True)
+        (round_dir / "成品.md").write_text("已完成", encoding="utf-8")
+        if schedule_downstream and other_step_status == "awaiting_review":
+            with pytest.raises(RuntimeError, match="其他步骤"):
+                await runtime.complete_failed_step(
+                    project.id, task.id, "failed-execution", 1,
+                    schedule_downstream=True,
+                )
+            return
+        resumed = await runtime.complete_failed_step(
+            project.id, task.id, "failed-execution", 1,
+            schedule_downstream=schedule_downstream,
+        )
+        assert (resumed is not None) is schedule_downstream
+        if resumed:
+            await runtime.wait(resumed)
+        assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "build")).status == "passed"
+        assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "publish")).status == (
+            "passed" if schedule_downstream else other_step_status
+        )
+        assert StepRun.select().where(
+            (StepRun.run == run) & (StepRun.step_key == "build")
+            & (StepRun.status == "reused")
+        ).count() == 1
+        if not schedule_downstream:
+            assert Task.get_by_id(task.id).status == "paused"
+            assert WorkflowRun.get_by_id(run.id).status == "failed"
+    finally:
         await runtime.shutdown()
         await bus.close()
         ENGINE_REGISTRY.clear()

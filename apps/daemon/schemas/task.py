@@ -40,6 +40,11 @@ class ReviewDecisionRequest(BaseSchema):
     schedule_downstream: bool | None = None
 
 
+class FailedStepCompletionRequest(BaseSchema):
+    artifact_round: int = Field(ge=1)
+    schedule_downstream: bool
+
+
 class CoordinatorChatRequest(BaseSchema):
     content: str
     pending_insert_ids: list[str] = Field(default_factory=list)

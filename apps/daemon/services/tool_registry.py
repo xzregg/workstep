@@ -63,6 +63,46 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         read_only=True,
     ),
     WorkstepTool(
+        name="workstep_get_project_quick_buttons",
+        description="List project chat quick buttons, including prompt, display, and Action settings.",
+        method="GET", path="/api/chat-sessions/quick-buttons",
+        parameters={"project_id": {"type": "string", "description": "project id"}},
+        required=("project_id",), query_params=("project_id",),
+    ),
+    WorkstepTool(
+        name="workstep_set_project_quick_buttons",
+        description="Save the complete project chat quick-button list.",
+        method="PUT", path="/api/chat-sessions/quick-buttons",
+        parameters={
+            "project_id": {"type": "string", "description": "project id"},
+            "buttons": {"type": "array", "description": "complete button list"},
+        },
+        required=("project_id", "buttons"), read_only=False,
+        side_effect="replace project chat quick buttons",
+        body_params=("project_id", "buttons"),
+    ),
+    WorkstepTool(
+        name="workstep_create_project_action",
+        description="Create a project-wide Action shortcut and script after explicit authorization.",
+        method="POST",
+        path="/api/projects/{project_id}/actions",
+        parameters={
+            "project_id": {"type": "string", "description": "project id"},
+            "action_id": {"type": "string", "description": "stable Action slug"},
+            "title": {"type": "string", "description": "button title"},
+            "script_path": {"type": "string", "description": "script filename (.sh/.bash/.py)"},
+            "script_content": {"type": "string", "description": "full script content"},
+            "cwd_mode": {"type": "string", "description": "task, project or worktrees"},
+            "require_confirmation": {"type": "boolean", "description": "confirm before execution"},
+            "confirmation_input_prompt": {"type": "string", "description": "when non-empty, require confirmation text passed as WORKSTEP_ACTION_INPUT"},
+        },
+        required=("project_id", "action_id", "title", "script_path", "script_content"),
+        read_only=False,
+        side_effect="write a project Action script and register a global shortcut",
+        path_params=("project_id",),
+        body_params=("action_id", "title", "script_path", "script_content", "cwd_mode", "require_confirmation", "confirmation_input_prompt"),
+    ),
+    WorkstepTool(
         name="workstep_list_workflows",
         description=(
             "List workflows of a project, including ids, names, status and "
@@ -77,7 +117,7 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
     ),
     WorkstepTool(
         name="workstep_get_workflow",
-        description="Get one workflow with its complete step definition.",
+        description="Get one workflow with its complete step definition, including workflow and stage quick buttons and inherited project button IDs.",
         method="GET",
         path="/api/workflow/{workflow_id}",
         parameters={
@@ -91,7 +131,7 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
     ),
     WorkstepTool(
         name="workstep_create_workflow_action",
-        description="Create a workflow Action shortcut and its script after explicit authorization.",
+        description="Create a workflow Action shortcut, or explicitly overwrite an existing Action with the same ID after authorization.",
         method="POST",
         path="/api/workflow/{workflow_id}/actions",
         parameters={
@@ -103,13 +143,15 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
             "script_content": {"type": "string", "description": "full script content"},
             "cwd_mode": {"type": "string", "description": "task, project or worktrees"},
             "require_confirmation": {"type": "boolean", "description": "confirm before execution"},
+            "confirmation_input_prompt": {"type": "string", "description": "when non-empty, require confirmation text passed as WORKSTEP_ACTION_INPUT"},
+            "overwrite": {"type": "boolean", "description": "replace only an existing workflow Action with the same ID"},
         },
         required=("project_id", "workflow_id", "action_id", "title", "script_path", "script_content"),
         read_only=False,
         side_effect="write a script and register a workflow shortcut",
         path_params=("workflow_id",),
         query_params=("project_id",),
-        body_params=("action_id", "title", "script_path", "script_content", "cwd_mode", "require_confirmation"),
+        body_params=("action_id", "title", "script_path", "script_content", "cwd_mode", "require_confirmation", "confirmation_input_prompt", "overwrite"),
     ),
     WorkstepTool(
         name="workstep_list_tasks",

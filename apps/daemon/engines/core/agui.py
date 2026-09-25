@@ -35,6 +35,7 @@ _CUSTOM_NAMES: dict[str, str] = {
     "elicitation_completed": "workstep.elicitation_completed",
     "subagent": "workstep.subagent",
     "compacted": "workstep.compacted",
+    "goal_update": "workstep.goal_update",
     "engine_state": "workstep.engine_state",
     "session_started": "workstep.session_started",
     "error": "workstep.error",

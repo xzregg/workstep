@@ -13,7 +13,7 @@ import uuid
 from typing import Any, AsyncIterator
 
 from engines.core.acp_base import AcpEngineBase
-from engines.core.codex_compaction import compact_codex_thread
+from engines.codex_compaction import compact_codex_thread
 from engines.core.packages import RuntimePackage
 from engines.core.base import (
     EngineInstallResult,
@@ -122,6 +122,7 @@ class CodexSDKEngine(AcpEngineBase):
         self._running = False
         self._stream_task: asyncio.Task | None = None
         self._client: Any | None = None
+        self._goal_state: Any | None = None
 
     # --- Engine discovery ---
 
@@ -546,12 +547,15 @@ class CodexSDKEngine(AcpEngineBase):
                     )
             elif rtype == "plan":
                 text = getattr(root, "text", None)
+                plan_id = str(getattr(root, "id", "") or "")
                 data: dict[str, Any] = {
-                    "id": str(getattr(root, "id", "") or ""),
+                    "id": plan_id,
                     "type": "markdown",
+                    "complete": True,
                 }
                 if text is not None:
                     data["content"] = str(text)
+                    state.setdefault("plan_items", {})[plan_id] = str(text)
                 events.append(InternalEvent(type="plan_update", data=data))
             elif rtype in {
                 "commandExecution", "fileChange", "mcpToolCall",
@@ -600,6 +604,15 @@ class CodexSDKEngine(AcpEngineBase):
         elif method == "thread/compacted":
             events.append(compacted_event())
 
+        elif method == "thread/goal/updated":
+            goal = getattr(payload, "goal", None)
+            events.append(InternalEvent(
+                type="goal_update", data=self._goal_data(goal),
+            ))
+
+        elif method == "thread/goal/cleared":
+            events.append(InternalEvent(type="goal_update", data={"status": "cleared"}))
+
         elif method == "turn/plan/updated":
             entries = []
             for step in getattr(payload, "plan", None) or []:
@@ -618,7 +631,9 @@ class CodexSDKEngine(AcpEngineBase):
             item_id = str(getattr(payload, "item_id", "") or "")
             data: dict[str, Any] = {"id": item_id, "type": "markdown"}
             if delta is not None:
-                data["content"] = str(delta)
+                plans = state.setdefault("plan_items", {})
+                plans[item_id] = plans.get(item_id, "") + str(delta)
+                data["content"] = plans[item_id]
             events.append(InternalEvent(type="plan_update", data=data))
 
         elif method in (
@@ -933,6 +948,7 @@ class CodexSDKEngine(AcpEngineBase):
         live_message_queue: asyncio.Queue | None = None,
         thinking_effort: str | None = None,
         plan_mode: bool | None = None,
+        goal_action: str | None = None,
         config_overrides: dict | None = None,
     ) -> AsyncIterator[InternalEvent]:
         async for event in self._spawn_with_sandbox(
@@ -945,6 +961,7 @@ class CodexSDKEngine(AcpEngineBase):
             live_message_queue=live_message_queue,
             thinking_effort=thinking_effort,
             plan_mode=plan_mode,
+            goal_action=goal_action,
             config_overrides=config_overrides,
         ):
             yield event
@@ -993,6 +1010,7 @@ class CodexSDKEngine(AcpEngineBase):
         live_message_queue: asyncio.Queue | None = None,
         thinking_effort: str | None = None,
         plan_mode: bool | None = None,
+        goal_action: str | None = None,
         config_overrides: dict | None = None,
     ) -> AsyncIterator[InternalEvent]:
         """Internal spawn with an explicit codex sandbox policy."""
@@ -1211,6 +1229,11 @@ class CodexSDKEngine(AcpEngineBase):
                         await compact_codex_thread(client, thread)
                         await event_queue.put(compacted_event())
                         return
+                    if goal_action:
+                        await self._run_goal_command(
+                            client, thread, goal_action, prompt, state, event_queue,
+                        )
+                        return
                     if plan_mode is None:
                         turn = await thread.turn(prompt, model=model or None)
                     else:
@@ -1275,6 +1298,96 @@ class CodexSDKEngine(AcpEngineBase):
                     except Exception:
                         pass
             self._running = False
+
+    async def _run_goal_command(
+        self,
+        client: Any,
+        thread: Any,
+        action: str,
+        objective: str,
+        state: dict[str, Any],
+        event_queue: asyncio.Queue,
+    ) -> None:
+        """Run one native goal operation through the shared engine event stream."""
+        from openai_codex.generated.v2_all import ThreadGoalGetResponse, ThreadGoalStatus
+
+        raw = client._client
+        if action in {"status", "pause", "clear"}:
+            if action == "clear":
+                await raw.thread_goal_clear(thread.id)
+                await event_queue.put(InternalEvent(
+                    type="goal_update", data={"status": "cleared"},
+                ))
+                return
+            if action == "pause":
+                response = await raw.pause_goal(thread.id)
+            else:
+                response = await raw.request(
+                    "thread/goal/get", {"threadId": thread.id},
+                    response_model=ThreadGoalGetResponse,
+                )
+            goal = getattr(response, "goal", None)
+            await event_queue.put(InternalEvent(type="goal_update", data=(
+                self._goal_data(goal) if goal is not None else {"status": "cleared"}
+            )))
+            return
+
+        if action == "start":
+            goal_state, _ = await raw.start_goal_operation(thread.id, objective)
+        elif action == "resume":
+            goal_state = raw.register_goal_operation(thread.id)
+            try:
+                goal_state.activate_turn_routing()
+                await raw.thread_goal_set(thread.id, status=ThreadGoalStatus.active)
+                started = await asyncio.to_thread(goal_state.wait_for_start, 30)
+                if started is None:
+                    raise RuntimeError("等待 Codex 目标恢复超时")
+            except BaseException:
+                raw.unregister_goal_operation(goal_state)
+                raise
+        else:
+            raise ValueError(f"Unsupported goal action: {action}")
+
+        self._goal_state = goal_state
+        seen_running = False
+        try:
+            while True:
+                notification = await raw.next_goal_notification(goal_state)
+                for event in self._map_notification(notification, state):
+                    if event.type == "status":
+                        status = str(event.data.get("status") or "")
+                        if status == "running":
+                            if seen_running:
+                                continue
+                            seen_running = True
+                        elif status in {"done", "failed", "cancelled"}:
+                            # Physical turn completion is not goal completion.
+                            continue
+                    await event_queue.put(event)
+                if goal_state.is_finished():
+                    break
+            await event_queue.put(InternalEvent(type="status", data={"status": "done"}))
+        except asyncio.CancelledError:
+            await raw.cancel_goal_operation(goal_state)
+            await event_queue.put(InternalEvent(
+                type="goal_update", data={"objective": objective, "status": "paused"},
+            ))
+            raise
+        finally:
+            raw.unregister_goal_operation(goal_state)
+            self._goal_state = None
+
+    @classmethod
+    def _goal_data(cls, goal: Any) -> dict[str, Any]:
+        data = {
+            "objective": str(getattr(goal, "objective", "") or ""),
+            "status": str(cls._plain(getattr(goal, "status", "")) or ""),
+        }
+        for key in ("tokens_used", "token_budget", "time_used_seconds"):
+            value = getattr(goal, key, None)
+            if value is not None:
+                data[key] = value
+        return data
 
     @staticmethod
     async def _start_collaboration_turn(
@@ -1497,6 +1610,11 @@ class CodexSDKEngine(AcpEngineBase):
         """Codex app-server accepts native ``collaborationMode`` turns."""
         return True
 
+    @property
+    def supports_goal_mode(self) -> bool:
+        """Codex app-server persists goals and automatically continues turns."""
+        return True
+
     # --- ACP 会话 / 审批契约（非 ACP 引擎：用自己的传输实现等价语义） ---
 
     #: spawn 实际产出的 ACP 词汇事件（声明 = 实际；无原生来源不合成）。
@@ -1621,4 +1739,4 @@ class CodexSDKEngine(AcpEngineBase):
         return "$"
 
     def input_commands(self) -> list[dict[str, str]]:
-        return workstep_input_commands()
+        return workstep_input_commands(goal=True)

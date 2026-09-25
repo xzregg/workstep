@@ -1,12 +1,12 @@
 ---
 name: workstep-cli
-description: Inspect and manage WorkStep projects, workflows, tasks, engines, and schedules through the local daemon CLI or native WorkStep tools.
+description: Inspect and manage WorkStep projects, workflows, tasks, quick buttons, engines, and schedules through the local daemon CLI or native WorkStep tools.
 ---
 
 # WorkStep CLI
 
 Use this skill when the user asks to inspect or manage WorkStep itself: projects,
-workflows, tasks, LLM engines, or schedules.
+workflows, tasks, quick buttons, LLM engines, or schedules.
 
 ## Transport
 
@@ -117,6 +117,52 @@ uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli project list -
 uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli project init /absolute/project/path --name "Project name" --json
 ```
 
+Read every project-level quick button (prompt, display, and Action), including
+its title, content or prompt, Action script path, working-directory mode, and
+confirmation setting:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli project quick-buttons \
+  --project <project_id> --json
+```
+
+The equivalent native operation is `workstep_get_project_quick_buttons` with
+`project_id`. This is read-only; it returns button settings, not script file
+contents. Use it before proposing a new project button to avoid duplicates.
+
+To create a project-wide Action shortcut, prepare a `.sh`, `.bash`, or `.py`
+script file, show the script and button settings to the user, and wait for
+explicit authorization. Then run:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli project action-create \
+  --project <project_id> \
+  --action-id <stable_action_id> --title "Restart services" \
+  --script-file /absolute/path/to/restart.sh --cwd task --json
+```
+
+The equivalent native operation is `workstep_create_project_action` with
+`project_id`, `action_id`, `title`, `script_path`, `script_content`,
+`cwd_mode`, `require_confirmation`, and `confirm='yes'`. WorkStep saves the
+script under `<project>/.workstep/actions/<action_id>/` and registers the
+button in project settings. The button appears in project chats and can be
+inherited by workflows. With `--cwd task` (the default), inherited task
+Actions run in that task's artifact directory; in a project chat without a
+task, they run at the project root. `--cwd project` always runs at the project
+root. `--no-run-confirmation` only removes the later per-click confirmation;
+it does not remove the authorization required to create the shortcut.
+
+For an Action that needs one text value at execution time, add
+`--input-prompt "Enter Commit message"` (or native
+`confirmation_input_prompt`). The confirmation dialog then requires text and
+passes it unchanged in `WORKSTEP_ACTION_INPUT`. Shell scripts must always read
+it as `"$WORKSTEP_ACTION_INPUT"`; never interpolate it into generated shell
+syntax or execute it with `eval`. For example:
+
+```bash
+git commit -m "$WORKSTEP_ACTION_INPUT" && git push
+```
+
 ## Workflows
 
 List workflows to resolve the target workflow ID:
@@ -134,6 +180,23 @@ uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli workflow get \
   --json
 ```
 
+To inspect shortcut buttons without reading the full canvas, use:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli workflow quick-buttons \
+  --project <project_id> --workflow <workflow_id> --json
+```
+
+The result separates workflow-level buttons, stage-level buttons (with step
+keys), and project buttons actually inherited by this workflow. It also
+includes `project_button_ids`; an empty list means none are selected, while
+`inherit_all_project_buttons: true` means the legacy all-project mode. Native
+tools can obtain the same data by calling `workstep_get_workflow` and
+`workstep_get_project_quick_buttons`, then matching the workflow's
+`projectQuickButtonIds` (or legacy `inheritProjectQuickButtons`) to project
+button IDs. These read-only calls return button settings, not Action script
+contents. Inspect existing buttons before suggesting or creating another one.
+
 To create a workflow Action shortcut, first inspect the target workflow and
 relevant task repositories/worktrees. Prepare a `.sh`, `.bash`, or `.py` script
 file and show its contents and button settings to the user. After explicit
@@ -143,18 +206,28 @@ authorization, publish the script and button together:
 uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli workflow action-create \
   --project <project_id> --workflow <workflow_id> \
   --action-id <stable_action_id> --title "Start services" \
-  --script-file /absolute/path/to/start.sh --cwd task --json
+  --script-file /absolute/path/to/start.sh --cwd task \
+  --input-prompt "Enter Commit message" --json
 ```
 
 The equivalent native operation is `workstep_create_workflow_action` with
 `project_id`, `workflow_id`, `action_id`, `title`, `script_path`,
-`script_content`, `cwd_mode`, `require_confirmation`, and `confirm='yes'`.
+`script_content`, `cwd_mode`, `require_confirmation`, optional
+`confirmation_input_prompt`, optional `overwrite`,
+and `confirm='yes'`.
 The CLI performs the confirmation-gated call; do not call it merely to draft
 a suggestion. `--no-run-confirmation` removes the *later* per-click dialog,
 not the authorization required to create the shortcut. WorkStep writes the
 script under `.workstep/artifacts/<workflow_id>/actions/<action_id>/` and
 registers the workflow button. A task coordinator can instead return a
 `create_workflow_action` proposal so the user can review and confirm it in chat.
+If `workflow quick-buttons` shows an Action with the same `action_id`, do not
+create a duplicate or silently replace it. Read its existing button settings
+and script, show the proposed changes, and obtain explicit approval to replace
+it. Then reuse that `action_id` and script filename and add `--overwrite` to
+the `workflow action-create` command (or `overwrite: true` to the native call
+or coordinator proposal). Without this flag, a duplicate remains a conflict;
+the flag never replaces a prompt/display button with the same ID.
 Do not claim the shortcut exists before the write succeeds. Scripts should resolve task worktrees via
 `WORKSTEP_WORKTREES_FILE` using repository IDs or aliases, never branch names.
 For stoppable services, keep children in the Action process group and wait for

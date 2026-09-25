@@ -68,9 +68,26 @@ def latest_previous_step_statuses(task: Task) -> dict[str, str]:
     ):
         latest_review_by_key.setdefault(review.step_key, review)
 
+    failed_run_ids = [
+        step_run.id for step_run in latest_step_run_by_key.values()
+        if step_run.status == "failed"
+    ]
+    stopped_run_ids = set()
+    if failed_run_ids:
+        stopped_run_ids = {
+            message.step_run_id for message in Message.select(Message.step_run_id).where(
+                (Message.step_run_id.in_(failed_run_ids))
+                & (Message.channel == "execution")
+                & (Message.role == "assistant")
+                & (Message.run_status.in_(["cancelled", "stopped"]))
+            )
+        }
+
     previous: dict[str, str] = {}
     for step_key, step_run in latest_step_run_by_key.items():
         status = step_run.status
+        if status == "failed" and step_run.id in stopped_run_ids:
+            status = "cancelled"
         if status in ("succeeded", "reused"):
             review = latest_review_by_key.get(step_key)
             if review is not None and review.step_run_id == step_run.id:

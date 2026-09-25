@@ -171,7 +171,7 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
   return <section className="git-page task-git-page" aria-label={t('git.taskWorkspace')}>
     <header className="git-page-header">
       <h1>{t('git.taskWorkspace')}</h1>
-      <small title={workspace?.path}>{workspace?.path}</small>
+      <small title={workspace?.relative_path || workspace?.path}>{workspace?.relative_path || workspace?.path}</small>
       <span className="git-grow" />
       {!readOnly && available.length > 0 && <Button size="sm" onClick={() => setShowAdd(value => !value)}>{t('git.taskAddRepository')}</Button>}
       {!readOnly && settingsId && <Button className="git-settings-toggle" size="sm" aria-label={t('git.settings')} aria-expanded={settings} onClick={() => setSettings(value => !value)}><Icon name="settings" size={14} /><span>{t('git.settings')}</span></Button>}
@@ -226,14 +226,14 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
       {!readOnly && settings && settingsId ? <main className="git-settings"><GitRepositorySettings key={settingsId} id={settingsId} /></main> : workspace?.worktrees.length ? <div className="git-page-body">
         <aside className="task-git-tree" style={{ width: treeWidth, flexBasis: treeWidth }}>
           {workspace.worktrees.map(tree => <div className="task-git-tree-row" key={tree.id}>
-            <button type="button" className={tree.id === selectedTree?.id ? 'selected' : ''} onClick={() => setSelected(tree.id)} title={tree.path}>
+            <button type="button" className={tree.id === selectedTree?.id ? 'selected' : ''} onClick={() => setSelected(tree.id)} title={tree.relative_path || tree.path}>
               <Icon name="git-fork" size={16} /><span><strong>{tree.alias}</strong><small>{tree.branch}</small></span>
             </button>
             {!readOnly && <button type="button" className="task-git-remove" title={t('git.taskRemove')} aria-label={`${t('git.taskRemove')} ${tree.alias}`} onClick={() => setRemoving(tree.alias)}><Icon name="trash" size={14} /></button>}
           </div>)}
         </aside>
         <div className="git-tree-resizer" role="separator" aria-orientation="vertical" aria-label={t('git.resizeTree')} aria-valuemin={230} aria-valuemax={clampGitTreeWidth(Number.MAX_SAFE_INTEGER)} aria-valuenow={treeWidth} tabIndex={0} onPointerDown={startResize} onDoubleClick={resetResize} onKeyDown={resizeWithKeyboard} />
-        {selectedTree && <GitWorktreePanel key={selectedTree.id} id={selectedTree.id} onLocate={id => {
+        {selectedTree && <GitWorktreePanel key={selectedTree.id} id={selectedTree.id} displayPath={selectedTree.relative_path} onLocate={id => {
           if (workspace.worktrees.some(tree => tree.id === id)) setSelected(id)
         }} onChanged={refresh} />}
       </div> : <div className="git-empty"><Icon name="git-fork" size={28} /><h2>{t('git.taskEmpty')}</h2><p>{t('git.taskEmptyHint')}</p></div>}

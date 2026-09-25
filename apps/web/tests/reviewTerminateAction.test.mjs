@@ -10,10 +10,15 @@ const detailSource = fs.readFileSync(
   new URL('../src/pages/TaskDetail.tsx', import.meta.url),
   'utf8',
 )
+const actionsSource = fs.readFileSync(
+  new URL('../src/components/ReviewDecisionActions.tsx', import.meta.url),
+  'utf8',
+)
 
 test('人工审核的详情卡片和消息卡片都提供终止动作', () => {
-  assert.equal((viewSource.match(/onReviewAction\?\.\('terminate'/g) || []).length, 2)
-  assert.match(viewSource, /variant="danger"[\s\S]*t\('taskDetail\.terminate'\)/)
+  assert.equal((viewSource.match(/<ReviewDecisionActions\b/g) || []).length, 2)
+  assert.match(actionsSource, /onAction\('terminate'\)/)
+  assert.match(actionsSource, /variant="danger"[\s\S]*t\('taskDetail\.terminate'\)/)
 })
 
 test('任务详情允许把 terminate 决策发送给后端', () => {

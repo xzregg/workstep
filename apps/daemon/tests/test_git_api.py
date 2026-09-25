@@ -1,5 +1,6 @@
 """Exercise Git management through HTTP against disposable real repositories."""
 import asyncio
+import shutil
 import subprocess
 import threading
 import time
@@ -11,7 +12,7 @@ from httpx import ASGITransport, AsyncClient, ReadTimeout
 
 import api.git as git_api
 from services.git import GitService
-from services.git.command import run_git, explain_auth_error
+from services.git.command import GitError, run_git, explain_auth_error
 
 
 def git(path, *args):
@@ -147,6 +148,78 @@ async def test_workflow_task_workspace_uses_artifact_task_directory(client, layo
     assert created['worktrees'][0]['path'] == str(
         root / '.workstep' / 'artifacts' / 'wf-dev' / 'task-123' / '.worktrees' / 'payment'
     )
+
+
+async def test_task_worktree_git_links_survive_project_relocation(client, layout, tmp_path):
+    http, service = client
+    root, _repo, _ = layout
+    help_text = subprocess.run(['git', 'worktree', 'add', '-h'], capture_output=True, text=True)
+    if 'relative-paths' not in help_text.stdout + help_text.stderr:
+        pytest.skip('Git before 2.48 cannot create portable worktree links')
+    data = await scan(http)
+    payment = next(item for item in data['repositories'] if item['name'] == 'payment')
+    from services.git.task_workspace import TaskGitWorkspace
+
+    workspace = TaskGitWorkspace(service)
+    created = await workspace.add(root, 'task-123', payment['id'], 'payment', 'main')
+    tree = created['worktrees'][0]
+    assert created['relative_path'] == '.workstep/worktrees/task-123'
+    assert tree['relative_path'] == '.workstep/worktrees/task-123/payment'
+    assert (Path(tree['path']) / '.git').read_text().startswith('gitdir: ../')
+    relocated = tmp_path / 'relocated-project'
+    shutil.copytree(root, relocated)
+    relocated_tree = relocated / '.workstep' / 'worktrees' / 'task-123' / 'payment'
+    assert git(relocated_tree, 'rev-parse', '--show-toplevel') == str(relocated_tree)
+    assert git(relocated_tree, 'branch', '--show-current') == 'workstep/task-123/payment'
+
+
+async def test_task_worktree_requires_git_with_relative_links(client, layout, monkeypatch):
+    http, service = client
+    root, _repo, _ = layout
+    data = await scan(http)
+    payment = next(item for item in data['repositories'] if item['name'] == 'payment')
+    from services.git.task_workspace import TaskGitWorkspace
+
+    workspace = TaskGitWorkspace(service)
+
+    async def unsupported(_path):
+        return False
+
+    monkeypatch.setattr(workspace, '_relative_links_supported', unsupported)
+    with pytest.raises(GitError, match='Git 2.48'):
+        await workspace.add(root, 'task-123', payment['id'], 'payment', 'main')
+
+
+async def test_open_task_workspace_repairs_existing_absolute_worktree_link(client, layout, monkeypatch):
+    http, service = client
+    root, repo, _ = layout
+    help_text = subprocess.run(['git', 'worktree', 'repair', '-h'], capture_output=True, text=True)
+    if 'relative-paths' not in help_text.stdout + help_text.stderr:
+        pytest.skip('Git before 2.48 cannot repair portable worktree links')
+    data = await scan(http)
+    payment = next(item for item in data['repositories'] if item['name'] == 'payment')
+    from services.git.task_workspace import TaskGitWorkspace
+
+    workspace = TaskGitWorkspace(service)
+    tree = (await workspace.add(root, 'task-123', payment['id'], 'payment', 'main'))['worktrees'][0]
+    git(repo, 'worktree', 'repair', '--no-relative-paths', tree['path'])
+    assert (Path(tree['path']) / '.git').read_text().startswith('gitdir: /')
+    command = service.command
+
+    async def slow_repair(path, *args, **kwargs):
+        if args[:2] == ('worktree', 'repair'):
+            await asyncio.sleep(.2)
+        return await command(path, *args, **kwargs)
+
+    monkeypatch.setattr(service, 'command', slow_repair)
+    pending = asyncio.create_task(workspace.ensure(root, 'task-123'))
+    await asyncio.sleep(.05)
+    started = asyncio.get_running_loop().time()
+    assert (await http.get('/api/git/repositories')).status_code == 200
+    assert asyncio.get_running_loop().time() - started < .1
+    reopened = await pending
+    assert reopened['worktrees'][0]['id'] == tree['id']
+    assert (Path(tree['path']) / '.git').read_text().startswith('gitdir: ../')
 
 
 async def test_task_worktree_uses_selected_source_branch_and_custom_new_branch(client, layout):
@@ -1107,6 +1180,242 @@ async def test_merge_current_branch_into_checked_out_target_without_switching(cl
     assert (external / 'draft.txt').read_text() == 'uncommitted\n'
 
 
+async def test_recovery_undoes_fast_forward_merge_into_target_with_new_commit(client, layout):
+    http, _ = client
+    _, repo, external = layout
+    before = git(repo, 'rev-parse', 'HEAD')
+    (external / 'feature.txt').write_text('feature\n')
+    git(external, 'add', '.'); git(external, 'commit', '-m', 'feature change')
+    id = next(w['id'] for r in (await scan(http))['repositories'] for w in r['worktrees'] if w['path'] == str(external))
+    url = f'/api/git/worktrees/{id}'
+    state = (await http.get(url + '/status')).json()
+    merged = await http.post(url + '/merge-into', json={'branch': 'feature', 'target': 'main', 'snapshot': state['snapshot']})
+    assert merged.status_code == 200, merged.text
+    records = (await http.get(url + '/recoveries')).json()
+    assert len(records['merges']) == 1
+    operation = records['merges'][0]
+    assert operation['before'] == before
+    assert operation['target'] == 'main'
+    preview = await http.post(url + '/recovery/preview', json={'mode': 'undo_merge', 'target': 'main', 'operation_id': operation['id']})
+    assert preview.status_code == 200, preview.text
+    assert 'feature.txt' in preview.json()['files']
+    assert preview.json()['changes'] == [{'path': 'feature.txt', 'added': '0', 'deleted': '1'}]
+    applied = await http.post(url + '/recovery/apply', json={**preview.json()['request'], 'expected_head': preview.json()['head']})
+    assert applied.status_code == 200, applied.text
+    assert not (repo / 'feature.txt').exists()
+    assert git(repo, 'rev-parse', 'HEAD') != before
+    assert git(repo, 'rev-parse', 'HEAD^') == merged.json()['head']
+
+
+async def test_recovery_restores_historical_tree_without_rewriting_history(client, layout):
+    http, _ = client
+    _, repo, _ = layout
+    old = git(repo, 'rev-parse', 'HEAD')
+    (repo / 'one.txt').write_text('new\n')
+    (repo / 'new.txt').write_text('new file\n')
+    git(repo, 'add', '.'); git(repo, 'commit', '-m', 'new state')
+    current = git(repo, 'rev-parse', 'HEAD')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    preview = await http.post(url + '/recovery/preview', json={'mode': 'restore_tree', 'target': 'main', 'commit': old})
+    assert preview.status_code == 200, preview.text
+    applied = await http.post(url + '/recovery/apply', json={**preview.json()['request'], 'expected_head': preview.json()['head']})
+    assert applied.status_code == 200, applied.text
+    assert git(repo, 'rev-parse', 'HEAD^') == current
+    assert git(repo, 'rev-parse', 'HEAD^{tree}') == git(repo, 'rev-parse', old + '^{tree}')
+    assert not (repo / 'new.txt').exists()
+
+
+async def test_recovery_commit_uses_target_worktree_identity(client, layout):
+    http, _ = client
+    _, repo, _ = layout
+    old = git(repo, 'rev-parse', 'HEAD')
+    (repo / 'one.txt').write_text('new\n')
+    git(repo, 'add', '.'); git(repo, 'commit', '-m', 'new state')
+    git(repo, 'config', 'extensions.worktreeConfig', 'true')
+    git(repo, 'config', '--worktree', 'user.name', 'Target Writer')
+    git(repo, 'config', '--worktree', 'user.email', 'target@example.test')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    preview = (await http.post(url + '/recovery/preview', json={'mode': 'restore_tree', 'target': 'main', 'commit': old})).json()
+    response = await http.post(url + '/recovery/apply', json={**preview['request'], 'expected_head': preview['head']})
+    assert response.status_code == 200, response.text
+    assert git(repo, 'log', '-1', '--format=%an <%ae>') == 'Target Writer <target@example.test>'
+
+
+async def test_recovery_undoes_merge_commit_without_removing_later_changes(client, layout):
+    http, _ = client
+    _, repo, external = layout
+    (repo / 'main.txt').write_text('main\n')
+    git(repo, 'add', '.'); git(repo, 'commit', '-m', 'main change')
+    (external / 'feature.txt').write_text('feature\n')
+    git(external, 'add', '.'); git(external, 'commit', '-m', 'feature change')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    state = (await http.get(url + '/status')).json()
+    merged = await http.post(url + '/merge', json={'branch': 'main', 'snapshot': state['snapshot'], 'source': 'feature'})
+    assert merged.status_code == 200, merged.text
+    merge_head = git(repo, 'rev-parse', 'HEAD')
+    assert len(git(repo, 'rev-list', '--parents', '-n', '1', 'HEAD').split()) == 3
+    (repo / 'later.txt').write_text('later\n')
+    git(repo, 'add', '.'); git(repo, 'commit', '-m', 'later change')
+    preview = await http.post(url + '/recovery/preview', json={'mode': 'undo_commit', 'target': 'main', 'commit': merge_head})
+    assert preview.status_code == 200, preview.text
+    applied = await http.post(url + '/recovery/apply', json={**preview.json()['request'], 'expected_head': preview.json()['head']})
+    assert applied.status_code == 200, applied.text
+    assert not (repo / 'feature.txt').exists()
+    assert (repo / 'main.txt').read_text() == 'main\n'
+    assert (repo / 'later.txt').read_text() == 'later\n'
+
+
+async def test_recovery_undoes_fast_forward_with_later_commit(client, layout):
+    http, _ = client
+    _, repo, external = layout
+    (external / 'feature.txt').write_text('feature\n')
+    git(external, 'add', '.'); git(external, 'commit', '-m', 'feature change')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    state = (await http.get(url + '/status')).json()
+    assert (await http.post(url + '/merge', json={'branch': 'main', 'snapshot': state['snapshot'], 'source': 'feature'})).status_code == 200
+    record = (await http.get(url + '/recoveries')).json()['merges'][0]
+    (repo / 'later.txt').write_text('later\n')
+    git(repo, 'add', '.'); git(repo, 'commit', '-m', 'later change')
+    preview = await http.post(url + '/recovery/preview', json={'mode': 'undo_merge', 'target': 'main', 'operation_id': record['id']})
+    assert preview.status_code == 200, preview.text
+    applied = await http.post(url + '/recovery/apply', json={**preview.json()['request'], 'expected_head': preview.json()['head']})
+    assert applied.status_code == 200, applied.text
+    assert not (repo / 'feature.txt').exists()
+    assert (repo / 'later.txt').read_text() == 'later\n'
+
+
+async def test_recovery_of_pushed_merge_can_be_pushed_without_force(client, layout, tmp_path):
+    http, _ = client
+    _, repo, external = layout
+    remote = tmp_path / 'recovery-remote.git'
+    git(tmp_path, 'init', '--bare', str(remote))
+    git(repo, 'remote', 'add', 'origin', str(remote))
+    git(repo, 'push', '-u', 'origin', 'main')
+    (external / 'feature.txt').write_text('feature\n')
+    git(external, 'add', '.'); git(external, 'commit', '-m', 'feature change')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    state = (await http.get(url + '/status')).json()
+    assert (await http.post(url + '/merge', json={'branch': 'main', 'snapshot': state['snapshot'], 'source': 'feature'})).status_code == 200
+    git(repo, 'push', 'origin', 'main')
+    record = (await http.get(url + '/recoveries')).json()['merges'][0]
+    preview = (await http.post(url + '/recovery/preview', json={'mode': 'undo_merge', 'target': 'main', 'operation_id': record['id']})).json()
+    response = await http.post(url + '/recovery/apply', json={**preview['request'], 'expected_head': preview['head']})
+    assert response.status_code == 200, response.text
+    assert response.json()['push_available'] is True
+    git(repo, 'push', 'origin', 'main')
+    assert git(remote, 'rev-parse', 'refs/heads/main') == response.json()['head']
+
+
+async def test_recovery_refuses_stale_preview_and_preserves_dirty_file(client, layout):
+    http, _ = client
+    _, repo, _ = layout
+    old = git(repo, 'rev-parse', 'HEAD')
+    (repo / 'one.txt').write_text('new\n')
+    git(repo, 'add', '.'); git(repo, 'commit', '-m', 'new state')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    preview = (await http.post(url + '/recovery/preview', json={'mode': 'restore_tree', 'target': 'main', 'commit': old})).json()
+    (repo / 'one.txt').write_text('draft\n')
+    response = await http.post(url + '/recovery/apply', json={**preview['request'], 'expected_head': preview['head']})
+    assert response.status_code == 409, response.text
+    assert (repo / 'one.txt').read_text() == 'draft\n'
+    git(repo, 'restore', 'one.txt')
+    (repo / 'later.txt').write_text('later\n')
+    git(repo, 'add', '.'); git(repo, 'commit', '-m', 'later change')
+    response = await http.post(url + '/recovery/apply', json={**preview['request'], 'expected_head': preview['head']})
+    assert response.status_code == 409, response.text
+
+
+async def test_recovery_preview_keeps_api_responsive_during_slow_git(client, layout, monkeypatch):
+    http, service = client
+    _, repo, _ = layout
+    old = git(repo, 'rev-parse', 'HEAD')
+    (repo / 'one.txt').write_text('new\n')
+    git(repo, 'add', '.'); git(repo, 'commit', '-m', 'new state')
+    id = await payment_id(http)
+    command = service.command
+
+    async def slow_restore(path, *args, **kwargs):
+        if args and args[0] == 'restore':
+            await asyncio.sleep(.2)
+        return await command(path, *args, **kwargs)
+
+    monkeypatch.setattr(service, 'command', slow_restore)
+    pending = asyncio.create_task(http.post(f'/api/git/worktrees/{id}/recovery/preview', json={
+        'mode': 'restore_tree', 'target': 'main', 'commit': old,
+    }))
+    await asyncio.sleep(.05)
+    started = asyncio.get_running_loop().time()
+    assert (await http.get('/api/git/repositories')).status_code == 200
+    assert asyncio.get_running_loop().time() - started < .1
+    assert (await pending).status_code == 200
+
+
+async def test_merge_into_checked_out_target_keeps_unrelated_uncommitted_files(client, layout):
+    http, _ = client
+    _, repo, external = layout
+    (repo / 'one.txt').write_text('target draft\n')
+    (external / 'two.txt').write_text('source commit\n')
+    git(external, 'add', 'two.txt'); git(external, 'commit', '-m', 'source change')
+    id = next(w['id'] for r in (await scan(http))['repositories'] for w in r['worktrees'] if w['path'] == str(external))
+    state = (await http.get(f'/api/git/worktrees/{id}/status')).json()
+    response = await http.post(f'/api/git/worktrees/{id}/merge-into', json={
+        'branch': 'feature', 'target': 'main', 'snapshot': state['snapshot'],
+    })
+    assert response.status_code == 200, response.text
+    assert git(repo, 'show', 'HEAD:two.txt') == 'source commit'
+    assert (repo / 'one.txt').read_text() == 'target draft\n'
+    assert git(repo, 'status', '--short') == 'M one.txt'
+    assert not (repo / '.git' / 'MERGE_HEAD').exists()
+
+
+async def test_merge_into_checked_out_target_rejects_overlapping_uncommitted_file_without_merge_state(client, layout):
+    http, _ = client
+    _, repo, external = layout
+    target_head = git(repo, 'rev-parse', 'HEAD')
+    (repo / 'one.txt').write_text('target draft\n')
+    (external / 'one.txt').write_text('source commit\n')
+    git(external, 'add', 'one.txt'); git(external, 'commit', '-m', 'source change')
+    id = next(w['id'] for r in (await scan(http))['repositories'] for w in r['worktrees'] if w['path'] == str(external))
+    state = (await http.get(f'/api/git/worktrees/{id}/status')).json()
+    response = await http.post(f'/api/git/worktrees/{id}/merge-into', json={
+        'branch': 'feature', 'target': 'main', 'snapshot': state['snapshot'],
+    })
+    assert response.status_code == 409, response.text
+    assert '未提交' in response.json()['detail']
+    assert git(repo, 'rev-parse', 'HEAD') == target_head
+    assert (repo / 'one.txt').read_text() == 'target draft\n'
+    assert git(repo, 'status', '--short') == 'M one.txt'
+    assert not (repo / '.git' / 'MERGE_HEAD').exists()
+
+
+async def test_merge_into_detects_committed_conflict_without_touching_dirty_target(client, layout):
+    http, _ = client
+    _, repo, external = layout
+    (repo / 'one.txt').write_text('target commit\n')
+    git(repo, 'add', 'one.txt'); git(repo, 'commit', '-m', 'target change')
+    target_head = git(repo, 'rev-parse', 'HEAD')
+    (repo / 'one.txt').write_text('target draft\n')
+    (external / 'one.txt').write_text('source commit\n')
+    git(external, 'add', 'one.txt'); git(external, 'commit', '-m', 'source change')
+    id = next(w['id'] for r in (await scan(http))['repositories'] for w in r['worktrees'] if w['path'] == str(external))
+    state = (await http.get(f'/api/git/worktrees/{id}/status')).json()
+    response = await http.post(f'/api/git/worktrees/{id}/merge-into', json={
+        'branch': 'feature', 'target': 'main', 'snapshot': state['snapshot'],
+    })
+    assert response.status_code == 409, response.text
+    assert '已自动中止' in response.json()['detail']
+    assert git(repo, 'rev-parse', 'HEAD') == target_head
+    assert (repo / 'one.txt').read_text() == 'target draft\n'
+    assert git(repo, 'status', '--short') == 'M one.txt'
+    assert not (repo / '.git' / 'MERGE_HEAD').exists()
+
+
 async def test_merge_current_branch_into_unchecked_out_target_without_switching(client, layout):
     http, _ = client
     _, repo, _ = layout
@@ -1156,6 +1465,66 @@ async def test_merge_into_updates_target_upstream_before_merge_without_pushing(c
     pushed = await http.post(url + '/push-branch', json={'branch': 'dev', 'head': response.json()['head']})
     assert pushed.status_code == 200, pushed.text
     assert git(remote, 'rev-parse', 'refs/heads/dev') == git(repo, 'rev-parse', 'dev')
+
+
+async def test_merge_into_conflict_does_not_advance_checked_out_target_upstream(client, layout, tmp_path):
+    http, _ = client
+    _, repo, external = layout
+    git(repo, 'switch', '-c', 'dev')
+    remote = tmp_path / 'origin.git'
+    git(tmp_path, 'init', '--bare', str(remote))
+    git(repo, 'remote', 'add', 'origin', str(remote))
+    git(repo, 'push', '-u', 'origin', 'dev')
+    original_head = git(repo, 'rev-parse', 'HEAD')
+    peer = repository(tmp_path / 'peer')
+    git(peer, 'remote', 'add', 'origin', str(remote))
+    git(peer, 'fetch', 'origin')
+    git(peer, 'reset', '--hard', 'origin/dev')
+    (peer / 'one.txt').write_text('remote change\n')
+    git(peer, 'add', 'one.txt'); git(peer, 'commit', '-m', 'remote change')
+    git(peer, 'push', 'origin', 'HEAD:dev')
+    (external / 'one.txt').write_text('source change\n')
+    git(external, 'add', 'one.txt'); git(external, 'commit', '-m', 'source change')
+    (repo / 'two.txt').write_text('local draft\n')
+    id = next(w['id'] for r in (await scan(http))['repositories'] for w in r['worktrees'] if w['path'] == str(external))
+    state = (await http.get(f'/api/git/worktrees/{id}/status')).json()
+    response = await http.post(f'/api/git/worktrees/{id}/merge-into', json={
+        'branch': 'feature', 'target': 'dev', 'snapshot': state['snapshot'],
+    })
+    assert response.status_code == 409, response.text
+    assert '已自动中止' in response.json()['detail']
+    assert git(repo, 'rev-parse', 'HEAD') == original_head
+    assert (repo / 'two.txt').read_text() == 'local draft\n'
+    assert not (repo / '.git' / 'MERGE_HEAD').exists()
+
+
+async def test_merge_into_temporary_worktree_keeps_api_responsive(client, layout, monkeypatch):
+    http, service = client
+    _, _, external = layout
+    (external / 'feature.txt').write_text('feature\n')
+    git(external, 'add', 'feature.txt'); git(external, 'commit', '-m', 'feature change')
+    id = next(w['id'] for r in (await scan(http))['repositories'] for w in r['worktrees'] if w['path'] == str(external))
+    url = f'/api/git/worktrees/{id}'
+    state = (await http.get(url + '/status')).json()
+    entered = asyncio.Event()
+    original = service.command
+
+    async def delayed(path, *args, **kwargs):
+        if args[:2] == ('worktree', 'add'):
+            entered.set()
+            await asyncio.sleep(.2)
+        return await original(path, *args, **kwargs)
+
+    monkeypatch.setattr(service, 'command', delayed)
+    pending = asyncio.create_task(http.post(url + '/merge-into', json={
+        'branch': 'feature', 'target': 'main', 'snapshot': state['snapshot'],
+    }))
+    await asyncio.wait_for(entered.wait(), 2)
+    started = asyncio.get_running_loop().time()
+    assert (await asyncio.wait_for(http.get('/api/git/repositories'), .1)).status_code == 200
+    assert asyncio.get_running_loop().time() - started < .1
+    response = await pending
+    assert response.status_code == 200, response.text
 
 
 async def test_push_unchecked_out_branch_with_explicit_remote_sets_upstream(client, layout, tmp_path):

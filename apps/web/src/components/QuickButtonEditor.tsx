@@ -24,6 +24,7 @@ export interface QuickButtonDraft {
   scriptPath: string
   cwdMode: 'project' | 'task' | 'worktrees'
   requireConfirmation: boolean
+  confirmationInputPrompt: string
 }
 
 export function quickButtonToDraft(button: ChatQuickButton): QuickButtonDraft {
@@ -40,6 +41,7 @@ export function quickButtonToDraft(button: ChatQuickButton): QuickButtonDraft {
     kind: button.kind || 'prompt', immediateSend: button.immediate_send === true,
     actionId: button.action_id || '', scriptPath: button.script_path || '',
     cwdMode: button.cwd_mode || 'task', requireConfirmation: button.require_confirmation !== false,
+    confirmationInputPrompt: button.confirmation_input_prompt || '',
   }
 }
 
@@ -51,6 +53,7 @@ export function quickButtonFromDraft(button: QuickButtonDraft): ChatQuickButton 
     ...(button.kind === 'action' ? {
       action_id: button.actionId.trim(), script_path: button.scriptPath,
       cwd_mode: button.cwdMode, require_confirmation: button.requireConfirmation,
+      confirmation_input_prompt: button.confirmationInputPrompt.trim(),
     } : {}),
   }
 }
@@ -114,7 +117,7 @@ export default function QuickButtonEditor({ projectId, workflowId, buttons, onCh
         })}
         <Button variant="ghost" onClick={() => {
           const id = `qb-${randomUuid()}`
-          change([...buttons, { id, label: '', prompt: '', content: '', kind: '', immediateSend: false, actionId: '', scriptPath: '', cwdMode: 'task', requireConfirmation: true }])
+          change([...buttons, { id, label: '', prompt: '', content: '', kind: '', immediateSend: false, actionId: '', scriptPath: '', cwdMode: 'task', requireConfirmation: true, confirmationInputPrompt: '' }])
           onSelect(id)
         }} style={{ width: '100%', justifyContent: 'flex-start' }}>{t('projectSettings.assistant.addButton')}</Button>
       </div>
@@ -149,7 +152,7 @@ export default function QuickButtonEditor({ projectId, workflowId, buttons, onCh
               {selected.content.trim() && <QuickPromptButton label={selected.label} prompt="" displayOnly displayContent={selected.content} onSelect={() => {}} />}
             </>}
             {selected.kind === 'action' && <ActionButtonFields projectId={projectId} workflowId={workflowId}
-              value={{ actionId: selected.actionId, scriptPath: selected.scriptPath, cwdMode: selected.cwdMode, requireConfirmation: selected.requireConfirmation }}
+              value={{ actionId: selected.actionId, scriptPath: selected.scriptPath, cwdMode: selected.cwdMode, requireConfirmation: selected.requireConfirmation, confirmationInputPrompt: selected.confirmationInputPrompt }}
               onChange={(next) => update(next)} />}
           </>}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

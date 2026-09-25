@@ -1,9 +1,11 @@
 """Validate and publish workflow-level Action shortcuts."""
 
 import json
+import os
+import uuid
 from pathlib import Path
 
-from models import Workflow
+from models import ProjectSetting, Workflow
 from models.fields import utc_now
 from services.quick_buttons import ACTION_ID, normalize_quick_buttons, valid_script_path
 
@@ -26,12 +28,13 @@ def normalize_action_payload(payload: dict) -> dict:
         "action_id": action_id, "script_path": script_path,
         "cwd_mode": payload.get("cwd_mode") or "task",
         "require_confirmation": payload.get("require_confirmation") is not False,
+        "confirmation_input_prompt": payload.get("confirmation_input_prompt") or "",
     }])[0]
-    return {**button, "script_content": script_content}
+    return {**button, "script_content": script_content, "overwrite": payload.get("overwrite") is True}
 
 
 def create_workflow_action(project, workflow_id: str, payload: dict) -> dict:
-    """Run inside the project's database executor; never overwrite an Action."""
+    """Run inside the project's database executor; replace only an explicitly matched Action."""
     workflow = Workflow.get_or_none(
         (Workflow.id == workflow_id) & (Workflow.deleted == 0)
     )
@@ -40,14 +43,110 @@ def create_workflow_action(project, workflow_id: str, payload: dict) -> dict:
     payload = normalize_action_payload(payload)
     steps = json.loads(workflow.steps_json or "{}")
     buttons = steps.get("quickButtons", [])
-    if not isinstance(buttons, list) or len(buttons) >= 20:
+    if not isinstance(buttons, list):
         raise ValueError("流程快捷按钮已满或配置无效")
+    matches = [index for index, item in enumerate(buttons) if isinstance(item, dict) and (
+        item.get("id") == payload["id"] or item.get("action_id") == payload["action_id"]
+    )]
+    replacing = bool(matches)
+    if replacing and (not payload["overwrite"] or len(matches) != 1
+                      or buttons[matches[0]].get("kind") != "action"
+                      or buttons[matches[0]].get("id") != payload["id"]
+                      or buttons[matches[0]].get("action_id") != payload["action_id"]):
+        raise FileExistsError("流程中已存在同名 Action")
+    if replacing and buttons[matches[0]].get("script_path") != payload["script_path"]:
+        raise ValueError("覆盖 Action 时需沿用现有脚本文件名")
+    if not replacing and len(buttons) >= 20:
+        raise ValueError("流程快捷按钮已满或配置无效")
+    project_root = Path(project.path).resolve()
+    action_root = project_root / ".workstep" / "artifacts" / workflow.id / "actions" / payload["action_id"]
+    if not action_root.resolve().is_relative_to(project_root):
+        raise ValueError("Action 目录超出项目根目录")
+    if replacing:
+        if not action_root.is_dir() or action_root.is_symlink():
+            raise ValueError("现有 Action 目录无效")
+    else:
+        action_root.mkdir(parents=True, exist_ok=False)
+    script = action_root / payload["script_path"]
+    metadata = action_root / "action.json"
+    if script.is_symlink() or metadata.is_symlink():
+        raise ValueError("Action 文件不能是符号链接")
+    original_script = script.read_bytes() if replacing and script.exists() else None
+    original_metadata = metadata.read_bytes() if replacing and metadata.exists() else None
+    try:
+        script_data = payload["script_content"].encode("utf-8")
+        metadata_data = json.dumps({
+                "id": payload["action_id"],
+                "interpreter": "python" if script.suffix == ".py" else "bash",
+                "timeout_seconds": 0,
+                "managed_service": True,
+            }, ensure_ascii=False).encode("utf-8")
+        if replacing:
+            for target, data in ((script, script_data), (metadata, metadata_data)):
+                staged = action_root / f".{target.name}.{uuid.uuid4().hex}.tmp"
+                try:
+                    staged.write_bytes(data)
+                    os.replace(staged, target)
+                finally:
+                    staged.unlink(missing_ok=True)
+        else:
+            script.write_bytes(script_data)
+            metadata.write_bytes(metadata_data)
+        button = {key: value for key, value in payload.items() if key not in {"script_content", "workflow_id", "overwrite"}}
+        updated_buttons = list(buttons)
+        if replacing:
+            updated_buttons[matches[0]] = button
+        else:
+            updated_buttons.append(button)
+        steps["quickButtons"] = normalize_quick_buttons(updated_buttons)
+        workflow.steps_json = json.dumps(steps, ensure_ascii=False)
+        workflow.updated_at = utc_now()
+        workflow.save(only=[Workflow.steps_json, Workflow.updated_at])
+        for cached in project.workflows:
+            if cached["id"] == workflow.id:
+                cached["steps"] = steps
+                if cached.get("is_default"):
+                    project.steps = steps
+                break
+    except Exception:
+        if replacing:
+            for target, original in ((script, original_script), (metadata, original_metadata)):
+                if original is None:
+                    target.unlink(missing_ok=True)
+                else:
+                    target.write_bytes(original)
+        else:
+            # The directory was created exclusively by this call.
+            for child in (script, metadata):
+                child.unlink(missing_ok=True)
+            action_root.rmdir()
+        raise
+    return {
+        "workflow_id": workflow.id,
+        "action_id": payload["action_id"],
+        "script_path": str(script.relative_to(project_root)),
+        "overwritten": replacing,
+    }
+
+
+def create_project_action(project, project_id: str, payload: dict) -> dict:
+    """Publish a project Action without replacing existing quick buttons."""
+    from agent_assistants.chat_session import DEFAULT_QUICK_BUTTONS
+
+    payload = normalize_action_payload(payload)
+    row = ProjectSetting.get_or_none(
+        (ProjectSetting.project_id == project_id)
+        & (ProjectSetting.key == "chat_quick_buttons")
+    )
+    buttons = json.loads(row.value_json) if row else [dict(item) for item in DEFAULT_QUICK_BUTTONS]
+    if not isinstance(buttons, list) or len(buttons) >= 20:
+        raise ValueError("项目快捷按钮已满或配置无效")
     if any(isinstance(item, dict) and (
         item.get("id") == payload["id"] or item.get("action_id") == payload["action_id"]
     ) for item in buttons):
-        raise FileExistsError("流程中已存在同名 Action")
+        raise FileExistsError("项目中已存在同名 Action")
     project_root = Path(project.path).resolve()
-    action_root = project_root / ".workstep" / "artifacts" / workflow.id / "actions" / payload["action_id"]
+    action_root = project_root / ".workstep" / "actions" / payload["action_id"]
     if not action_root.resolve().is_relative_to(project_root):
         raise ValueError("Action 目录超出项目根目录")
     action_root.mkdir(parents=True, exist_ok=False)
@@ -63,13 +162,20 @@ def create_workflow_action(project, workflow_id: str, payload: dict) -> dict:
             }, ensure_ascii=False),
             encoding="utf-8",
         )
-        button = {key: value for key, value in payload.items() if key not in {"script_content", "workflow_id"}}
-        steps["quickButtons"] = normalize_quick_buttons([*buttons, button])
-        workflow.steps_json = json.dumps(steps, ensure_ascii=False)
-        workflow.updated_at = utc_now()
-        workflow.save(only=[Workflow.steps_json, Workflow.updated_at])
+        button = {key: value for key, value in payload.items() if key not in {"script_content", "overwrite"}}
+        cleaned = normalize_quick_buttons([*buttons, button])
+        now = utc_now()
+        if row is None:
+            ProjectSetting.create(
+                id=str(uuid.uuid4()), project_id=project_id,
+                key="chat_quick_buttons", value_json=json.dumps(cleaned, ensure_ascii=False),
+                updated_at=now,
+            )
+        else:
+            row.value_json = json.dumps(cleaned, ensure_ascii=False)
+            row.updated_at = now
+            row.save(only=[ProjectSetting.value_json, ProjectSetting.updated_at])
     except Exception:
-        # The directory was created exclusively by this call.
         for filename in (payload["script_path"], "action.json"):
             child = action_root / filename
             if child.exists():
@@ -77,7 +183,7 @@ def create_workflow_action(project, workflow_id: str, payload: dict) -> dict:
         action_root.rmdir()
         raise
     return {
-        "workflow_id": workflow.id,
+        "project_id": project_id,
         "action_id": payload["action_id"],
         "script_path": str(script.relative_to(project_root)),
     }

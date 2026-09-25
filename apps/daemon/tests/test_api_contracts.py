@@ -1257,7 +1257,7 @@ async def test_task_http_crud_lifecycle(api_context):
 async def test_task_api_keeps_previous_step_status_after_restart_reset(api_context):
     """A reset downstream step keeps its latest historical result for display."""
     import main
-    from models import StepRun, Task, TaskStep, WorkflowRun
+    from models import Message, StepRun, Task, TaskStep, WorkflowRun
     from models.fields import utc_now
 
     client, tmp_path = api_context
@@ -1342,6 +1342,23 @@ async def test_task_api_keeps_previous_step_status_after_restart_reset(api_conte
     assert steps["ui"]["status"] == "pending"
     assert steps["ui"]["previous_status"] == "passed"
     assert steps["frontend"]["previous_status"] is None
+
+    with main.project_manager.activate_project_by_id(project_id):
+        task = Task.get_by_id(task_id)
+        stopped_run = StepRun.create(
+            id="previous-status-stopped", run=child, step_key="frontend",
+            attempt=1, status="failed", started_at=now, ended_at=now,
+        )
+        Message.create(
+            id="previous-status-stop-message", task=task, channel="execution",
+            step_key="frontend", role="assistant", run_status="cancelled",
+            step_run_id=stopped_run.id, content="已停止", sequence=1, position=1,
+            created_at=1,
+        )
+    fetched = await client.get(f"/api/task/{task_id}?project_id={project_id}")
+    assert fetched.status_code == 200
+    steps = {step["step_key"]: step for step in fetched.json()["steps"]}
+    assert steps["frontend"]["previous_status"] == "cancelled"
 
 
 @pytest.mark.anyio
@@ -2369,7 +2386,49 @@ async def test_task_artifacts_are_listed_with_manifest_metadata(api_context):
         "relative_path": "prd.md",
         "size": 22,
         "is_dir": False,
+        "round_unchanged_from": None,
+        "unchanged_from_round": None,
     }]
+
+
+@pytest.mark.anyio
+async def test_artifact_content_comparison_does_not_block_health(api_context, monkeypatch):
+    import services.artifacts as artifact_service
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "artifact-comparison-canary"
+    project_dir.mkdir()
+    initialized = await client.post("/api/project/init", json={"path": str(project_dir)})
+    project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={"title": "Comparison canary", "cwd": str(project_dir)},
+    )
+    task_id = created.json()["id"]
+    artifact_dir = project_dir / ".workstep" / "artifacts" / "default" / task_id / "req"
+    artifact_dir.mkdir(parents=True)
+    (artifact_dir / "prd.md").write_text("same", encoding="utf-8")
+    original_validation = artifact_service._manifest_validation
+    started = threading.Event()
+
+    def slow_validation(*args, **kwargs):
+        started.set()
+        time.sleep(0.25)
+        return original_validation(*args, **kwargs)
+
+    monkeypatch.setattr(artifact_service, "_manifest_validation", slow_validation)
+    listing = asyncio.create_task(client.get(
+        f"/api/task/{task_id}/artifacts", params={"project_id": project_id},
+    ))
+    assert await asyncio.to_thread(started.wait, 1)
+    health_started = time.perf_counter()
+    health = await client.get("/api/health")
+    health_elapsed = time.perf_counter() - health_started
+    response = await listing
+    assert health.status_code == 200
+    assert health_elapsed < 0.15
+    assert response.status_code == 200
 
 
 @pytest.mark.anyio
@@ -2545,6 +2604,9 @@ async def test_task_artifacts_include_the_input_snapshot_for_each_step_round(api
     )
 
     assert response.status_code == 200
+    assert response.json()["artifact_directory"] == str(
+        project_dir / ".workstep" / "artifacts" / (created.json()["workflow_id"] or "default") / task_id
+    )
     assert response.json()["input_snapshots"] == [{
         "step_key": "build",
         "round": 3,
@@ -4171,6 +4233,86 @@ async def test_retry_failed_message_api_targets_message_without_blocking_health(
     assert response.status_code == 200
     assert response.json()["run_id"] == "new-run"
     restart.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_set_failed_step_complete_api_does_not_block_health(api_context, monkeypatch):
+    import main
+    from models import Message, StepRun, Task, TaskStep, WorkflowRun
+    from models.fields import utc_now
+    from services.artifact_rounds import step_round_dir
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "complete-failed-step"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)},
+    )).json()["id"]
+    workflow = await _create_test_workflow(client, project_id)
+    task_id = (await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "Complete failed step", "cwd": str(project_dir),
+            "workflow_id": workflow["id"], "engine": "claude",
+        },
+    )).json()["id"]
+    project = main.project_manager.get_project_by_id(project_id)
+    now = utc_now()
+    with main.project_manager.activate_project_by_id(project_id):
+        task = Task.get_by_id(task_id)
+        task.status = "paused"
+        run = WorkflowRun.create(
+            id=str(uuid.uuid4()), task=task, status="failed",
+            workflow_schema_version=1, started_at=now, ended_at=now,
+        )
+        task.active_workflow_run_id = run.id
+        task.save()
+        TaskStep.get_or_create(
+            task=task, step_key="do", defaults={"status": "failed"},
+        )
+        TaskStep.update(status="failed", error="429 Too Many Requests").where(
+            (TaskStep.task == task) & (TaskStep.step_key == "do")
+        ).execute()
+        TaskStep.create(task=task, step_key="other", status="awaiting_review")
+        step_run = StepRun.create(
+            id=str(uuid.uuid4()), run=run, step_key="do", attempt=1,
+            artifact_round=1, status="failed", error="429 Too Many Requests",
+        )
+        Message.create(
+            id="ui-failure", task=task, step_key="do", channel="execution",
+            role="assistant", sequence=1, run_status="failed",
+            step_run_id=step_run.id, position=1, created_at=now,
+        )
+    round_dir = step_round_dir(
+        project.workstep_dir / "artifacts", workflow["id"], task_id, "do", 1,
+    )
+    round_dir.mkdir(parents=True, exist_ok=True)
+    (round_dir / "成品.md").write_text("已完成", encoding="utf-8")
+    original_execute_sql = project.db.execute_sql
+    query_started = threading.Event()
+
+    def slow_step_query(sql, params=None, commit=None):
+        if 'FROM "message"' in sql and not query_started.is_set():
+            query_started.set()
+            time.sleep(0.35)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_step_query)
+    completion = asyncio.create_task(client.post(
+        f"/api/task/{task_id}/messages/ui-failure/set-complete?project_id={project_id}",
+        json={"artifact_round": 1, "schedule_downstream": False},
+    ))
+    assert await asyncio.to_thread(query_started.wait, 1)
+    health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+    response = await completion
+
+    assert health.status_code == 200
+    assert response.status_code == 200
+    assert response.json() == {"completed": True, "resumed": False, "run_id": None}
+    with main.project_manager.activate_project_by_id(project_id):
+        assert TaskStep.get(
+            (TaskStep.task == task_id) & (TaskStep.step_key == "other")
+        ).status == "awaiting_review"
 
 
 @pytest.mark.anyio

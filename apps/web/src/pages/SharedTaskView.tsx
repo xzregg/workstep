@@ -63,6 +63,7 @@ export default function SharedTaskView() {
   const [task, setTask] = useState<SharedTask | null>(null)
   const [messages, setMessages] = useState<any[]>([])
   const [artifacts, setArtifacts] = useState<TaskArtifact[]>([])
+  const [artifactDirectory, setArtifactDirectory] = useState('')
   const [reviews, setReviews] = useState<ReviewRun[]>([])
   const [previewArtifact, setPreviewArtifact] =
     useState<TaskArtifact | null>(null)
@@ -95,6 +96,7 @@ export default function SharedTaskView() {
     setTask(taskData)
     setMessages(historyData.messages.map(capSharedHistoryEvents))
     setArtifacts(artifactsData.artifacts)
+    setArtifactDirectory(artifactsData.artifact_directory || '')
     setReviews(reviewsData.reviews || [])
     setPhase({ kind: 'ready', sessionToken })
   }, [token])
@@ -922,6 +924,7 @@ export default function SharedTaskView() {
         onStepClick={setSelectedStep}
         historyMessages={messages}
         readCapabilities={{
+          artifactDirectory,
           resolveAssetUrl: markdownUrlResolver,
           filePreview: sharedFilePreview,
           loadMessageEvents,

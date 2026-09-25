@@ -27,6 +27,7 @@ from engines.core.events import (
     acp_raw_event,
     agent_message_chunk,
     agent_thought_chunk,
+    compacted_event,
     normalize_token_usage,
     tool_call_event,
     tool_call_update_event,
@@ -461,7 +462,7 @@ class AcpEngineBase(BaseLLMEngine):
                 confirmed |= event.type == "compacted"
                 failed |= event.type == "error"
                 yield event
-            if not confirmed and not failed and not self._is_acp_native:
+            if not confirmed and not failed:
                 yield InternalEvent(type="error", data={
                     "message": "引擎未返回压缩完成事件，无法确认上下文已压缩",
                 })
@@ -1396,6 +1397,11 @@ class AcpEngineBase(BaseLLMEngine):
                         "message": f"ACP Agent 提前停止：{stop_reason}",
                         "stop_reason": stop_reason,
                     })
+                    return
+                if prompt.strip() == "/compact":
+                    # The advertised ACP command has finished successfully.
+                    yield compacted_event()
+                    yield InternalEvent(type="status", data={"status": "done"})
                     return
 
                 if live_message_queue is not None:

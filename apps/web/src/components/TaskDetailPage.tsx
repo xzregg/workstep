@@ -1,5 +1,5 @@
 import { useI18n } from '../i18n'
-import type { TaskArtifact } from '../api/client'
+import type { Project, TaskArtifact } from '../api/client'
 import Button from './Button'
 import PromptViewerDialog from './PromptViewerDialog'
 import TaskDetailView, { type TaskDetailViewProps } from './TaskDetailView'
@@ -18,6 +18,7 @@ import {
  */
 /** Both the owner and share routes must supply every task-detail viewing capability. */
 export interface TaskDetailReadCapabilities {
+  artifactDirectory: string
   resolveAssetUrl: MarkdownUrlResolver
   filePreview: TaskFilePreview
   loadMessageEvents: NonNullable<TaskDetailViewProps['onLoadMessageEvents']>
@@ -44,6 +45,7 @@ export interface TaskDetailPageProps extends Omit<
   onCloseArtifactPreview?: () => void
   onOpenArtifactDirectory?: () => void
   canOpenArtifactDirectory?: boolean
+  projectType?: Project['type']
   viewingPrompt?: string | null
   onCloseViewingPrompt?: () => void
   /** 额外浮层（如 owner 的分享弹窗、提示词编辑框）由调用方注入。 */
@@ -56,6 +58,7 @@ export default function TaskDetailPage({
   onCloseArtifactPreview,
   onOpenArtifactDirectory,
   canOpenArtifactDirectory = false,
+  projectType,
   viewingPrompt,
   onCloseViewingPrompt,
   overlays,
@@ -72,6 +75,7 @@ export default function TaskDetailPage({
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <TaskDetailView
         {...viewProps}
+        artifactDirectory={readCapabilities.artifactDirectory}
         gitEnabled={!!gitCapability}
         gitProjectId={gitCapability?.projectId}
         onClose={onClose}
@@ -128,6 +132,7 @@ export default function TaskDetailPage({
         <TaskArtifactPreviewDialog
           artifact={previewArtifact}
           projectId={viewProps.projectId}
+          projectType={projectType}
           onClose={() => onCloseArtifactPreview?.()}
           onOpenDirectory={onOpenArtifactDirectory}
           canOpenDirectory={canOpenArtifactDirectory}

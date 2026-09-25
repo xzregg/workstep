@@ -21,7 +21,7 @@ test('user messages show the stored author name instead of hiding self behind æˆ
 })
 
 test('live coordinator user messages render with their author instead of as the agent', () => {
-  assert.match(taskDetailSource, /const isUser =\s*message\.role === 'user'/)
-  assert.match(taskDetailSource, /role=\{\s*isUser \? 'user' : 'assistant'\s*\}/)
-  assert.match(taskDetailSource, /displayUserSender\(\s*message\.author_name,\s*localUserName,\s*t\('aiFlow\.me'\),\s*\)/)
+  assert.match(taskDetailSource, /const isUser =\s*msg\.role === 'user'/)
+  assert.match(taskDetailSource, /role=\{[\s\S]*?isUser\s*\? 'user'\s*: 'assistant'/)
+  assert.match(taskDetailSource, /displayUserSender\(\s*msg\.author_name,\s*localUserName,\s*t\('aiFlow\.me'\),\s*\)/)
 })

@@ -29,22 +29,33 @@ class ActionError(ValueError):
         self.status_code = status_code
 
 
+def _action_input(button: dict, value: str) -> str:
+    value = str(value or "")
+    if len(value) > 4000:
+        raise ActionError("Action 输入内容不能超过 4000 字", 422)
+    if button.get("require_confirmation") is not False and button.get("confirmation_input_prompt") and not value.strip():
+        raise ActionError("请填写 Action 执行内容", 422)
+    return value
+
+
 def _within(path: Path, root: Path) -> bool:
     return path == root or path.is_relative_to(root)
 
 
 def _buttons_from_setting(project_id: str) -> list[dict]:
+    from agent_assistants.chat_session import DEFAULT_QUICK_BUTTONS
+
     row = ProjectSetting.get_or_none(
         (ProjectSetting.project_id == project_id)
         & (ProjectSetting.key == "chat_quick_buttons")
     )
     if row is None:
-        return []
+        return [dict(button) for button in DEFAULT_QUICK_BUTTONS]
     try:
         value = json.loads(row.value_json)
-        return value if isinstance(value, list) else []
+        return value if isinstance(value, list) else [dict(button) for button in DEFAULT_QUICK_BUTTONS]
     except (ValueError, TypeError):
-        return []
+        return [dict(button) for button in DEFAULT_QUICK_BUTTONS]
 
 
 def _workflow_steps(task: Task) -> dict:
@@ -267,7 +278,7 @@ class ActionRuntime:
             result = await self._db(project_id, load)
         return result
 
-    async def start(self, project_id: str, task_id: str, button_id: str, source: str, step_key: str | None, confirmed: bool) -> dict:
+    async def start(self, project_id: str, task_id: str, button_id: str, source: str, step_key: str | None, confirmed: bool, action_input: str = "") -> dict:
         project = self._manager().get_project_by_id(project_id)
         if project is None:
             raise ActionError("项目不存在", 404)
@@ -284,11 +295,13 @@ class ActionRuntime:
                 raise ActionError("Action 快捷按钮不存在", 404)
             if button.get("require_confirmation", True) and not confirmed:
                 raise ActionError("需要用户确认后执行", 409)
+            input_value = _action_input(button, action_input)
             active_key = f"task:{task_id}:action:{button['action_id']}"
             existing = ActionRun.get_or_none(ActionRun.active_key == active_key)
             if existing is not None:
                 return _serialize(existing), None
             config = _script_config(Path(project.path), task, button, source)
+            config["action_input"] = input_value
             run_id = str(uuid.uuid4())
             now = utc_now()
             with db_proxy.atomic():
@@ -327,7 +340,7 @@ class ActionRuntime:
         await self._bus().publish({"type": "action_run_started", "project_id": project_id, "task_id": task_id, **result})
         return {**result, "deduplicated": False}
 
-    async def start_session(self, project_id: str, session_id: str, button_id: str, confirmed: bool) -> dict:
+    async def start_session(self, project_id: str, session_id: str, button_id: str, confirmed: bool, action_input: str = "") -> dict:
         project = self._manager().get_project_by_id(project_id)
         if project is None:
             raise ActionError("项目不存在", 404)
@@ -344,11 +357,13 @@ class ActionRuntime:
                 raise ActionError("Action 快捷按钮不存在", 404)
             if button.get("require_confirmation", True) and not confirmed:
                 raise ActionError("需要用户确认后执行", 409)
+            input_value = _action_input(button, action_input)
             active_key = f"project:{project_id}:action:{button['action_id']}"
             existing = ActionRun.get_or_none(ActionRun.active_key == active_key)
             if existing is not None:
                 return _serialize(existing), None
             config = _script_config(Path(project.path), None, button, "project")
+            config["action_input"] = input_value
             run_id = str(uuid.uuid4())
             now = utc_now()
             with db_proxy.atomic():
@@ -447,7 +462,7 @@ class ActionRuntime:
                 from services.git import git_service
                 from services.git.task_workspace import TaskGitWorkspace
                 worktrees = await TaskGitWorkspace(git_service, run["workflow_id"]).list(config["project_root"], run["task_id"])
-            mapping = {"worktrees": [{key: tree.get(key) for key in ("repository_id", "repository_name", "alias", "branch", "path")}
+            mapping = {"worktrees": [{key: tree.get(key) for key in ("repository_id", "repository_name", "alias", "branch", "path", "relative_path")}
                                      for tree in worktrees.get("worktrees", [])]}
             await asyncio.to_thread(worktrees_file.write_text, json.dumps(mapping, ensure_ascii=False, indent=2), "utf-8")
             env = os.environ.copy()
@@ -462,6 +477,7 @@ class ActionRuntime:
                 "WORKSTEP_TASK_ID": run["task_id"] or "",
                 "WORKSTEP_STEP_KEY": run["step_key"] or "",
                 "WORKSTEP_ACTION_RUN_ID": run_id,
+                "WORKSTEP_ACTION_INPUT": config.get("action_input", ""),
             })
             proc = await asyncio.create_subprocess_exec(
                 *config["command"], cwd=str(config["cwd"]), env=env,

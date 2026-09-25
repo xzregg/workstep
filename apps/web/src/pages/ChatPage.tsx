@@ -135,6 +135,7 @@ export default function ChatPage() {
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [permissionMode, setPermissionMode] = useState('')
   const [planMode, setPlanMode] = useState(false)
+  const [goalMode, setGoalMode] = useState(false)
 
   const {
     enhance,
@@ -425,6 +426,7 @@ export default function ChatPage() {
         thinking_effort: selectedThinkingEffort || undefined,
         permission_mode: permissionMode || undefined,
         plan_mode: planMode || undefined,
+        goal_mode: goalMode && effectiveEngine === 'codex_sdk' || undefined,
       })
       if (accepted.session_id && accepted.session_id !== sessionId) {
         const store = useChatSessionStore.getState()
@@ -453,7 +455,7 @@ export default function ChatPage() {
       setSendError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
       return false
     }
-  }, [sessionId, activeProject?.id, selectedEngine, selectedProvider, selectedModel, selectedFastModel, selectedVisionModel, selectedThinkingEffort, permissionMode, planMode, t])
+  }, [sessionId, activeProject?.id, selectedEngine, selectedProvider, selectedModel, selectedFastModel, selectedVisionModel, selectedThinkingEffort, permissionMode, planMode, goalMode, effectiveEngine, t])
 
   const changePermissionMode = useCallback(async (mode: string) => {
     const previousMode = permissionMode
@@ -881,9 +883,14 @@ export default function ChatPage() {
         }}
         plan={{
           active: planMode,
-          onChange: setPlanMode,
+          onChange: (active) => { setPlanMode(active); if (active) setGoalMode(false) },
           disabled: running,
         }}
+        goal={effectiveEngine === 'codex_sdk' ? {
+          active: goalMode,
+          onChange: (active) => { setGoalMode(active); if (active) setPlanMode(false) },
+          disabled: running,
+        } : undefined}
         enhance={enhance}
         context={context}
         quota={visibleQuota}
