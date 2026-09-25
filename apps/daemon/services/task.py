@@ -344,7 +344,7 @@ class TaskService:
             logger.error("Task not found: %s", task_id)
             return
         engine_id, cwd, msg_id, journal_ref = prepared
-        engine = create_engine(engine_id)
+        engine = await asyncio.to_thread(create_engine, engine_id)
         if not engine:
             await self._publish(task_id, "do", {
                 "type": "error",

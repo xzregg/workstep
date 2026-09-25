@@ -468,6 +468,17 @@ async def test_automatic_review_message_is_visible_while_review_is_running(
     event_queue = bus.subscribe()
     original_execute_sql = db.execute_sql
     review_insert_started = threading.Event()
+    review_factory_started = threading.Event()
+    factory_started_at: list[float] = []
+
+    def slow_review_factory(engine_id):
+        assert engine_id == "review-test"
+        factory_started_at.append(time.perf_counter())
+        review_factory_started.set()
+        time.sleep(0.35)
+        return engine
+
+    monkeypatch.setattr("services.review_gate.create_engine", slow_review_factory)
 
     def slow_review_insert(sql, params=None, commit=None):
         if (
@@ -505,6 +516,8 @@ async def test_automatic_review_message_is_visible_while_review_is_running(
         heartbeat_started = time.perf_counter()
         await asyncio.wait_for(asyncio.sleep(0), timeout=0.2)
         assert time.perf_counter() - heartbeat_started < 0.2
+        assert await asyncio.to_thread(review_factory_started.wait, 2)
+        assert time.perf_counter() - factory_started_at[0] < 0.2
         await asyncio.wait_for(review_started.wait(), timeout=2)
         published = []
         while not event_queue.empty():
