@@ -30,6 +30,7 @@
 | 审核结果与决策 | `TaskReviewResult.tsx` | `taskReviewResult.test.tsx`、`reviewTerminateAction.test.mjs` |
 | 审核设置 | `TaskReviewConfigPanel.tsx` | `taskReviewConfigPanel.test.tsx` |
 | 消息时间线与滚动 | `taskConversationFeed.ts`、`src/hooks/useTaskConversationScroll.ts` | 对应 conversation 测试 |
+| 任务历史、向上分页与消息事件详情 | `src/hooks/useTaskHistory.ts` | `taskHistory.test.tsx`、`remoteChatSync.test.mjs` |
 
 ## 修改路径
 
