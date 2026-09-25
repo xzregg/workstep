@@ -3,7 +3,7 @@ import test from 'node:test'
 import { readFile } from 'node:fs/promises'
 
 const flowCanvasSource = await readFile(
-  new URL('../src/components/FlowCanvas.tsx', import.meta.url),
+  new URL('../src/components/NodeConfigPanel.tsx', import.meta.url),
   'utf8',
 )
 
