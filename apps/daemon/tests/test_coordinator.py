@@ -945,6 +945,40 @@ async def test_archive_experience_uses_coordinator_with_task_history(
 
 
 @pytest.mark.anyio
+async def test_archive_experience_slow_evidence_keeps_health_responsive(
+    api_context, monkeypatch,
+):
+    import threading
+    from engines.core.registry import ENGINE_REGISTRY
+    import main
+
+    client, tmp_path = api_context
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", CoordinatorFakeEngine)
+    project_id, task_id = await _create_task(client, tmp_path)
+    drafts = main.coordinator_module._archive_drafts
+    original = drafts._load_archive_evidence_sync
+    entered = threading.Event()
+    release = threading.Event()
+
+    def slow_evidence(project_id, task_id):
+        entered.set()
+        release.wait(timeout=2)
+        return original(project_id, task_id)
+
+    monkeypatch.setattr(drafts, "_load_archive_evidence_sync", slow_evidence)
+    prepare = asyncio.create_task(client.post(
+        f"/api/task/{task_id}/archive-experience/prepare?project_id={project_id}"
+    ))
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+        assert health.status_code == 200
+    finally:
+        release.set()
+    assert (await prepare).status_code == 200
+
+
+@pytest.mark.anyio
 async def test_archive_experience_streams_visible_coordinator_progress(
     api_context, monkeypatch
 ):
