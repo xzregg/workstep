@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises'
 const source = await readFile(new URL('../src/components/ProcessTrace.tsx', import.meta.url), 'utf8')
 const messageTimelineSource = await readFile(new URL('../src/components/MessageTimeline.tsx', import.meta.url), 'utf8')
 const messageMetaBarSource = await readFile(new URL('../src/components/MessageMetaBar.tsx', import.meta.url), 'utf8')
-const taskDetailSource = await readFile(new URL('../src/components/TaskDetailView.tsx', import.meta.url), 'utf8')
+const taskDetailSource = await readFile(new URL('../src/components/TaskConversationMessage.tsx', import.meta.url), 'utf8')
 const styles = await readFile(new URL('../src/index.css', import.meta.url), 'utf8')
 const subagentSource = await readFile(
   new URL('../src/components/SubagentTimelineItem.tsx', import.meta.url),
