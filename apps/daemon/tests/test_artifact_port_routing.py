@@ -337,7 +337,7 @@ async def test_new_upstream_round_replaces_recovered_input_pin(tmp_path):
         input_rounds_by_step={"review": {"write": 2}},
     )
     try:
-        await runner._apply_artifact_routes(
+        await runner._artifact_routes.apply(
             task=task,
             step=write,
             scheduler=DAGScheduler([write, review]),
@@ -357,7 +357,7 @@ async def test_new_upstream_round_replaces_recovered_input_pin(tmp_path):
             failed=set(),
         )
 
-        assert runner._input_rounds_by_step["review"]["write"] == 3
+        assert runner._artifact_routes.input_rounds_for("review")["write"] == 3
     finally:
         db.close()
 
