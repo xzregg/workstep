@@ -10,7 +10,7 @@ from agent_assistants.event_journal import JournalRef, TurnEventJournal
 from models import Message, StepRun, StepSupplement, Task
 from models.fields import utc_now
 from services.intervention import intervention_manager
-from services.messages import create_task_message, new_message_id
+from services.messages import create_task_message, extract_usage_json, new_message_id
 from services.pipeline import Step
 
 logger = logging.getLogger(__name__)
@@ -73,6 +73,92 @@ class StepLiveMessages:
 
     def pop_prompt(self, message_id: str, fallback: str) -> str:
         return self._prompts.pop(message_id, fallback)
+
+    async def handle_execution_event(
+        self, *, task: Task, step: Step, step_run: StepRun | None,
+        artifacts_dir: Path, data: dict, message_id: str,
+        journal_ref: JournalRef, session_id: str | None,
+        resolved_model: str | None, events_collected: list[dict],
+    ) -> tuple[str, JournalRef]:
+        """Acknowledge an injected message and split delivered execution output."""
+        inserted_id = data.get("message_id")
+        inserted_content = ""
+        if inserted_id:
+            def finish_user_message():
+                user_message = Message.get_by_id(inserted_id)
+                user_message.run_status = (
+                    "succeeded" if data.get("status") == "delivered" else "failed"
+                )
+                user_message.ended_at = utc_now()
+                user_message.save()
+                return user_message.content
+
+            try:
+                stored_content = await self._run_db(finish_user_message)
+                inserted_content = self.pop_prompt(inserted_id, stored_content)
+            except Message.DoesNotExist:
+                pass
+        if data.get("status") != "delivered":
+            return message_id, journal_ref
+
+        seal_time = utc_now()
+        prompt_after_insert = (
+            inserted_content or str(data.get("content") or "")
+        ).strip()
+        await self._journal.afinish(journal_ref)
+        snapshot = await self._ajournal_snapshot(journal_ref)
+
+        def seal_current_message():
+            sealed = Message.get_by_id(message_id)
+            sealed.content = snapshot["content"]
+            sealed.events_json = snapshot["events_json"]
+            sealed.event_summary_json = snapshot["event_summary_json"]
+            sealed.event_count = snapshot["event_count"]
+            sealed.last_event_seq = snapshot["last_event_seq"]
+            sealed.usage_json = extract_usage_json(events_collected)
+            sealed.run_status = "succeeded"
+            sealed.ended_at = seal_time
+            sealed.save()
+            return sealed.engine, sealed.model
+
+        try:
+            sealed_engine, sealed_model = await self._run_db(seal_current_message)
+            await self._publish(task.id, step.key, {
+                "channel": "execution", "message_id": message_id,
+                "engine": sealed_engine, "model": sealed_model,
+                "event_sequence": len(events_collected) + 1,
+                "type": "message_completed", "data": {"status": "succeeded"},
+            })
+        except Message.DoesNotExist:
+            pass
+        next_id = new_message_id()
+        next_journal = await self._journal.astart(
+            artifacts_dir.parent, f"task-{task.id}", next_id, session_id,
+        )
+        await self._run_db(lambda: create_task_message(
+            id=next_id, task=task, channel="execution", step_key=step.key,
+            role="assistant", engine=step.engine, model=resolved_model,
+            run_id=next_id,
+            step_run_id=step_run.id if step_run is not None else None,
+            artifact_round=step_run.artifact_round if step_run is not None else None,
+            run_status="running", event_log_path=next_journal.relative_path,
+            prompt_json=(
+                json.dumps({"prompt": prompt_after_insert}, ensure_ascii=False)
+                if prompt_after_insert else None
+            ),
+            position=1, started_at=seal_time, created_at=seal_time,
+        ))
+        await self._publish(task.id, step.key, {
+            "channel": "execution", "message_id": next_id,
+            "engine": step.engine, "model": resolved_model,
+            "event_sequence": 0, "type": "message_started",
+            "data": {
+                "content": "",
+                **({"prompt": prompt_after_insert} if prompt_after_insert else {}),
+            },
+            "created_at": seal_time.isoformat(),
+        })
+        return next_id, next_journal
 
     @staticmethod
     def _fail_live_message(message_id: str) -> None:
