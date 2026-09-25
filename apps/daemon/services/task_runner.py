@@ -17,22 +17,14 @@ from models import (
 )
 from models.fields import utc_now
 from services.artifact_rounds import (
-    ArtifactRound,
     discard_artifact_round,
-    select_upstream_round,
     step_round_dir,
     write_round_manifest,
-)
-from services.artifact_routing import (
-    empty_routing_state,
-    normalize_routing_state,
-    resolve_input_snapshot,
-    route_artifact_round,
-    source_for_connection,
 )
 from services.pipeline import DAGScheduler, Step
 from services.task_step_start import start_step_state
 from services.step_rework import StepRework
+from services.step_artifact_routes import StepArtifactRoutes
 from services.step_live_messages import StepLiveMessages
 from services.review_messages import AutomaticReviewMessages
 from services.prompt import (
@@ -142,10 +134,6 @@ class TaskRunner:
         self._database_executor = database_executor
         self._step_followups = step_followups or {}
         self._step_trigger_names = step_trigger_names or {}
-        self._input_rounds_by_step = input_rounds_by_step or {}
-        # 本次运行只执行这些步骤；范围外的步骤只满足 DAG 依赖，不改其持久状态。
-        self._execution_scope = execution_scope
-        self._entry_step_key = entry_step_key
         self._initial_user_input_step_key = initial_user_input_step_key
         self._retry_message_ids = dict(retry_message_ids or {})
         self._graceful_shutdown = False
@@ -160,8 +148,14 @@ class TaskRunner:
             self._event_journal, self._run_db, self._publish
         )
         self._step_rework = StepRework(self._run_db, self._publish)
-        self._routing_state = empty_routing_state()
-        self._routing_lock = asyncio.Lock()
+        self._artifact_routes = StepArtifactRoutes(
+            input_rounds_by_step=input_rounds_by_step or {},
+            execution_scope=execution_scope,
+            entry_step_key=entry_step_key,
+            run_db=self._run_db,
+            publish=self._publish,
+            rework=self._step_rework,
+        )
 
     def _journal_snapshot(self, ref: JournalRef) -> dict:
         return self._journal_projection(self._event_journal.snapshot(ref))
@@ -220,7 +214,7 @@ class TaskRunner:
 
         scheduler = DAGScheduler(step_list)
 
-        def initialize_pipeline_state() -> tuple[set[str], dict]:
+        def initialize_pipeline_state() -> tuple[set[str], str | None]:
             # Ensure task_steps exist for all steps.
             for step in step_list:
                 TaskStep.get_or_create(
@@ -280,27 +274,22 @@ class TaskRunner:
                     (TaskStep.task == task) & (TaskStep.status == "passed")
                 ):
                     persisted_completed.add(ts.step_key)
-            routing_state = empty_routing_state()
-            if workflow_run is not None and workflow_run.routing_state_json:
-                try:
-                    routing_state = normalize_routing_state(
-                        json.loads(workflow_run.routing_state_json)
-                    )
-                except (TypeError, json.JSONDecodeError):
-                    routing_state = empty_routing_state()
-            return persisted_completed, routing_state
+            return (
+                persisted_completed,
+                workflow_run.routing_state_json if workflow_run is not None else None,
+            )
 
-        completed, self._routing_state = await self._run_db(initialize_pipeline_state)
+        completed, routing_state_json = await self._run_db(initialize_pipeline_state)
+        self._artifact_routes.restore(routing_state_json, execution_scope)
         # 重启某步骤时只重跑该步骤及其下游（scope）。范围外的步骤即便未通过
         # 也不再执行，但仍要让依赖它们的下游步骤被视为依赖已满足——否则失败的
         # 上游会被 DAG 判为 ready 而抢先执行（@ 下游却跑了上游）。
-        scope = execution_scope if execution_scope is not None else self._execution_scope
-        self._execution_scope = scope
+        scope = self._artifact_routes.scope
         if scope is not None:
             completed |= {key for key in scheduler.steps if key not in scope}
         running = set()
         failed = set()
-        await self._seed_completed_forward_routes(
+        await self._artifact_routes.seed_completed_forward_routes(
             task,
             scheduler,
             artifacts_dir,
@@ -342,123 +331,6 @@ class TaskRunner:
             task.updated_at = finished_at
             await self._run_db(persist_pipeline_status)
 
-    def _task_context_edges(self, scheduler: DAGScheduler) -> set[str]:
-        """Return entry inputs intentionally replaced by task context."""
-        entry_key = self._entry_step_key
-        scope = self._execution_scope
-        if not entry_key or scope is None or entry_key not in scheduler.steps:
-            return set()
-        explicit_sources = set(self._input_rounds_by_step.get(entry_key, {}))
-        return {
-            str(connection.get("id"))
-            for connection in scheduler.steps[entry_key].incoming_connections
-            if connection.get("kind", "solid") == "solid"
-            and str(connection.get("from")) not in scope
-            and str(connection.get("from")) not in explicit_sources
-        }
-
-    async def _seed_completed_forward_routes(
-        self,
-        task: Task,
-        scheduler: DAGScheduler,
-        artifacts_dir: Path,
-        workflow_run: WorkflowRun | None,
-        completed: set[str],
-    ) -> None:
-        """Restore forward-edge readiness for reused or recovered steps."""
-        active_edges = {
-            str(value) for value in self._routing_state.get("active_edges", [])
-        }
-        run_artifact_rounds: dict[str, int] = {}
-        if workflow_run is not None:
-            def load_run_artifact_rounds():
-                result: dict[str, int] = {}
-                rows = (
-                    StepRun.select()
-                    .where(
-                        (StepRun.run == workflow_run)
-                        & (StepRun.status.in_(["succeeded", "reused"]))
-                        & (StepRun.artifact_round.is_null(False))
-                    )
-                    .order_by(StepRun.attempt)
-                )
-                for row in rows:
-                    result[row.step_key] = int(row.artifact_round)
-                return result
-
-            run_artifact_rounds = await self._run_db(load_run_artifact_rounds)
-        changed = False
-        for step_key in completed:
-            step = scheduler.steps.get(step_key)
-            if step is None or not step.outgoing_connections:
-                continue
-            solid = [
-                connection
-                for connection in step.outgoing_connections
-                if connection.get("kind", "solid") != "dashed"
-            ]
-            if not solid:
-                continue
-            if not step.outputs:
-                for connection in solid:
-                    edge_id = str(connection.get("id"))
-                    if edge_id not in active_edges:
-                        active_edges.add(edge_id)
-                        changed = True
-                continue
-            selected_round = run_artifact_rounds.get(step_key)
-            selected = await asyncio.to_thread(
-                select_upstream_round,
-                artifacts_dir,
-                task.workflow_id,
-                task.id,
-                step.key,
-                selected_round,
-            )
-            if selected is None:
-                continue
-            for connection in solid:
-                output_port = int(connection.get("fromPort", 0))
-                output_spec = (
-                    step.outputs[output_port]
-                    if 0 <= output_port < len(step.outputs)
-                    else None
-                )
-                source = await asyncio.to_thread(
-                    source_for_connection,
-                    connection,
-                    selected,
-                    output_spec,
-                    allow_artifact_remap=True,
-                )
-                if source is None:
-                    continue
-                if selected_round is not None:
-                    target_step = str(connection.get("to") or "").strip()
-                    if target_step:
-                        self._input_rounds_by_step.setdefault(
-                            target_step,
-                            {},
-                        )[step_key] = selected.round
-                edge_id = str(connection.get("id"))
-                if edge_id not in active_edges:
-                    active_edges.add(edge_id)
-                    changed = True
-        if not changed:
-            return
-        self._routing_state["active_edges"] = sorted(active_edges)
-        if workflow_run is None:
-            return
-
-        def persist():
-            row = WorkflowRun.get_by_id(workflow_run.id)
-            row.routing_state_json = json.dumps(
-                self._routing_state, ensure_ascii=False, sort_keys=True
-            )
-            row.save(only=[WorkflowRun.routing_state_json])
-
-        await self._run_db(persist)
-
     async def _execute_dag(
         self,
         task: Task,
@@ -474,15 +346,15 @@ class TaskRunner:
         ready = scheduler.get_ready_steps(
             completed,
             running | failed,
-            active_edges=set(self._routing_state.get("active_edges", [])),
-            task_context_edges=self._task_context_edges(scheduler),
+            active_edges=self._artifact_routes.active_edges,
+            task_context_edges=self._artifact_routes.task_context_edges(scheduler),
         )
         if not ready:
             skipped = scheduler.get_skippable_steps(
                 completed,
                 running | failed,
-                active_edges=set(self._routing_state.get("active_edges", [])),
-                task_context_edges=self._task_context_edges(scheduler),
+                active_edges=self._artifact_routes.active_edges,
+                task_context_edges=self._artifact_routes.task_context_edges(scheduler),
             )
             if skipped:
                 skipped_keys = {step.key for step in skipped}
@@ -523,8 +395,8 @@ class TaskRunner:
             blocked = scheduler.get_blocked_steps(
                 completed,
                 running | failed,
-                active_edges=set(self._routing_state.get("active_edges", [])),
-                task_context_edges=self._task_context_edges(scheduler),
+                active_edges=self._artifact_routes.active_edges,
+                task_context_edges=self._artifact_routes.task_context_edges(scheduler),
             )
             if blocked:
                 now = utc_now()
@@ -773,14 +645,14 @@ class TaskRunner:
                     step_run.artifact_round, input_rounds, "passed",
                 )
                 if manifest is not None:
-                    await self._apply_artifact_routes(
+                    await self._artifact_routes.apply(
                         task=task, step=step, scheduler=scheduler,
                         workflow_run=workflow_run, artifacts_dir=artifacts_dir,
                         artifact_round=step_run.artifact_round,
                         manifest=manifest, completed=completed, failed=failed,
                     )
                 else:
-                    await self._seed_completed_forward_routes(
+                    await self._artifact_routes.seed_completed_forward_routes(
                         task, scheduler, artifacts_dir, workflow_run, completed,
                     )
         finally:
@@ -903,19 +775,9 @@ class TaskRunner:
             or default_model
             or None
         )
-        input_rounds = self._input_rounds_by_step.get(step_key, {})
-        input_snapshot = await asyncio.to_thread(
-            resolve_input_snapshot,
-            step=step,
-            artifacts_root=artifacts_dir,
-            workflow_id=task.workflow_id,
-            task_id=task.id,
-            routing_state=self._routing_state,
-            input_rounds=input_rounds,
-            task_context_edges=(
-                self._task_context_edges(scheduler)
-                if step_key == self._entry_step_key else set()
-            ),
+        input_rounds = self._artifact_routes.input_rounds_for(step_key)
+        input_snapshot = await self._artifact_routes.input_snapshot(
+            task, step, scheduler, artifacts_dir,
         )
 
         (
@@ -1994,7 +1856,7 @@ class TaskRunner:
                         ts.status,
                     )
                     if ts.status == "passed" and manifest is not None:
-                        await self._apply_artifact_routes(
+                        await self._artifact_routes.apply(
                             task=task,
                             step=step,
                             scheduler=scheduler,
@@ -2027,116 +1889,6 @@ class TaskRunner:
                 workflow_run,
                 retry_feedback,
             )
-
-    async def _apply_artifact_routes(
-        self,
-        *,
-        task: Task,
-        step: Step,
-        scheduler: DAGScheduler,
-        workflow_run: WorkflowRun | None,
-        artifacts_dir: Path,
-        artifact_round: int,
-        manifest: dict,
-        completed: set[str],
-        failed: set[str],
-    ) -> None:
-        """Apply one passed round's non-empty output ports to the scheduler."""
-        if workflow_run is None or not step.outgoing_connections:
-            return
-        artifact = ArtifactRound(
-            round=int(artifact_round),
-            path=step_round_dir(
-                artifacts_dir,
-                task.workflow_id,
-                task.id,
-                step.key,
-                artifact_round,
-            ),
-            manifest=manifest,
-        )
-        async with self._routing_lock:
-            result = route_artifact_round(
-                step=step,
-                artifact_round=artifact,
-                routing_state=self._routing_state,
-            )
-            self._routing_state = result.state
-            if result.feedback_edges and self._execution_scope is not None:
-                rewind = set()
-                for connection in result.feedback_edges:
-                    target = str(connection.get("to"))
-                    rewind.add(target)
-                    rewind.update(scheduler.get_all_downstream(target))
-                self._execution_scope.update(rewind)
-                self._routing_state["execution_scope"] = sorted(self._execution_scope)
-            for connection in result.solid_edges:
-                target_step = str(connection.get("to") or "").strip()
-                if target_step:
-                    self._input_rounds_by_step.setdefault(
-                        target_step,
-                        {},
-                    )[step.key] = artifact.round
-
-            def persist_routing_state():
-                row = WorkflowRun.get_by_id(workflow_run.id)
-                row.routing_state_json = json.dumps(
-                    self._routing_state, ensure_ascii=False, sort_keys=True
-                )
-                row.save(only=[WorkflowRun.routing_state_json])
-
-            await self._run_db(persist_routing_state)
-
-            if result.conflict:
-                error = "同一轮同时产生了正常输出和返回输出，路由冲突"
-                await self._persist_step_status(
-                    task.id, step.key, "failed", error, utc_now()
-                )
-                completed.discard(step.key)
-                failed.add(step.key)
-                await self._publish(task.id, step.key, {
-                    "type": "status",
-                    "data": {
-                        "status": "failed",
-                        "error": error,
-                        "task_id": task.id,
-                        "step_key": step.key,
-                    },
-                })
-                return
-
-            if result.exhausted_edges:
-                error = f"返回线已达到配置上限 {step.max_return_rounds} 次"
-                await self._persist_step_status(
-                    task.id, step.key, "failed", error, utc_now()
-                )
-                completed.discard(step.key)
-                failed.add(step.key)
-                await self._publish(task.id, step.key, {
-                    "type": "return_limit_reached",
-                    "data": {
-                        "status": "failed",
-                        "error": error,
-                        "task_id": task.id,
-                        "step_key": step.key,
-                        "max_returns": step.max_return_rounds,
-                        "connections": [
-                            connection.get("id")
-                            for connection in result.exhausted_edges
-                        ],
-                    },
-                })
-                return
-
-            if result.feedback_edges:
-                await self._step_rework.from_artifact(
-                    task,
-                    step,
-                    scheduler,
-                    completed,
-                    failed,
-                    result.feedback_edges,
-                )
 
     async def _persist_step_status(
         self, task_id, step_key, status, error, ended_at
