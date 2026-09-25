@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFile } from 'node:fs/promises'
 
-const taskListSource = await readFile(new URL('../src/pages/TaskList.tsx', import.meta.url), 'utf8')
+const taskCardSource = await readFile(new URL('../src/components/TaskBoardCard.tsx', import.meta.url), 'utf8')
 const archiveSource = await readFile(new URL('../src/components/ArchiveExperienceDialog.tsx', import.meta.url), 'utf8')
 const confirmDialogSource = await readFile(new URL('../src/components/ConfirmDialog.tsx', import.meta.url), 'utf8')
 const progressSource = await readFile(new URL('../src/components/ArchiveExperienceProgress.tsx', import.meta.url), 'utf8')
@@ -26,11 +26,11 @@ test('archive experience waiting state shows elapsed time', () => {
 
 test('every non-running active task can enter the archive experience flow', () => {
   assert.ok(
-    taskListSource.includes("{!showArchived && status !== 'running' && ("),
+    taskCardSource.includes("{!showArchived && status !== 'running' && ("),
     'archive action should be available for every non-running active task',
   )
   assert.ok(
-    !taskListSource.includes("{!showArchived && taskCompleted && isLastLane && status !== 'running' && ("),
+    !taskCardSource.includes("{!showArchived && taskCompleted && isLastLane && status !== 'running' && ("),
     'archive action should not require completion in the last lane',
   )
 })

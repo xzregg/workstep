@@ -2,21 +2,22 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
-const taskListSource = await readFile(new URL('../src/pages/TaskList.tsx', import.meta.url), 'utf8')
+const taskCardSource = await readFile(new URL('../src/components/TaskBoardCard.tsx', import.meta.url), 'utf8')
 const tableSource = await readFile(new URL('../src/components/TaskTableView.tsx', import.meta.url), 'utf8')
+const css = await readFile(new URL('../src/index.css', import.meta.url), 'utf8')
 
 test('keeps task card metadata and fixed action buttons on one line', () => {
-  assert.match(taskListSource, /className="task-card-meta"/)
-  assert.match(taskListSource, /text=\{cardMetaText\}/)
-  assert.match(taskListSource, /forceActive/)
-  assert.match(taskListSource, /className="card-action-buttons"/)
-  assert.match(taskListSource, /flexShrink: 0/)
-  assert.match(taskListSource, /flexWrap: 'nowrap'/)
+  assert.match(taskCardSource, /className="task-card-meta"/)
+  assert.match(taskCardSource, /text=\{cardMetaText\}/)
+  assert.match(taskCardSource, /forceActive/)
+  assert.match(taskCardSource, /className="card-action-buttons task-board-card-buttons"/)
+  assert.match(css, /\.task-board-card-buttons\s*\{[^}]*flex-wrap:\s*nowrap/s)
+  assert.match(css, /\.task-board-card-buttons\s*\{[^}]*flex-shrink:\s*0/s)
 })
 
 test('task card metadata shows the creator name without a creator prefix', () => {
-  assert.match(taskListSource, /task\.creator_name \? task\.creator_name : ''/)
-  assert.doesNotMatch(taskListSource, /task\.creator_name \? `\$\{t\('taskList\.creator'\)\}：\$\{task\.creator_name\}`/)
+  assert.match(taskCardSource, /task\.creator_name \? task\.creator_name : ''/)
+  assert.doesNotMatch(taskCardSource, /task\.creator_name \? `\$\{t\('taskList\.creator'\)\}：\$\{task\.creator_name\}`/)
 })
 
 test('table view supports selecting individual and all actionable tasks', () => {

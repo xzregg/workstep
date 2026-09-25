@@ -40,6 +40,7 @@
 | 任务历史刷新合并、事件详情归并与失败重试 | `src/pages/taskHistoryModel.ts`；本地详情、分享页及历史 hook 共用 | `taskDetailChat.test.ts`、`taskHistory.test.tsx` |
 | 任务产物选择、轮次、步骤输入输出映射与接口变更判断 | `src/pages/taskArtifactRules.ts`；`TaskStepIoPanel.tsx` 展示结果，本地详情与分享页共用产物查找 | `taskDetailChat.test.ts`、`taskStepIoPanel.test.tsx` |
 | 任务归档经验草稿、生成和确认 | `ArchiveExperienceDialog.tsx`；任务列表只负责打开和归档后移除卡片 | `archiveExperienceDialog.test.tsx`、`archiveExperienceControls.test.mjs` |
+| 看板任务卡片的状态、时长、定时标签与操作按钮 | `TaskBoardCard.tsx`；`TaskList.tsx` 负责项目筛选、分组、拖放及请求编排；固定卡片和看板样式在 `src/index.css` 的 `task-board-*` 类 | `taskBoardCard.test.tsx`、`taskListCardStepLabel.test.mjs` |
 | 分享页实时消息事件合并、状态更新与事件数量上限 | `src/pages/sharedTaskMessages.ts`；`SharedTaskView.tsx` 管理分享会话和 WebSocket 连接 | `sharedTaskMessages.test.ts`、`sharedTaskEventCap.test.mjs` |
 | 新建任务、起始步骤与启动方式、审核覆盖、AI 草稿和关闭保护 | `TaskCreatePanel.tsx`；`TaskList.tsx` 只负责入口和当前项目/流程选择；样式在 `src/index.css` 的 `task-create-*` 类 | `taskCreatePanel.test.tsx`、`assistantPanelToggle.test.mjs` |
 | 项目记忆 `.workstep/MEMORY.md` 读取、编辑、保存与放弃确认 | `ProjectMemoryPanel.tsx`；任务列表只负责打开入口；样式在 `src/index.css` 的 `project-memory-*` 类 | `projectMemoryPanel.test.tsx` |

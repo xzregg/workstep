@@ -6,7 +6,6 @@ import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useTaskRoute } from '../hooks/useTaskRoute'
 import MobileSheet from '../components/MobileSheet'
 import StatusBadge from '../components/StatusBadge'
-import TaskRecoveredBadge from '../components/TaskRecoveredBadge'
 import Icon from '../components/Icon'
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -15,11 +14,9 @@ import { useProjectStore } from '../stores/projectStore'
 import { setDetailTaskIds } from '../hooks/useWebSocket'
 import { scheduleApi } from '../api/client'
 import TaskDetail from './TaskDetail'
-import { isTaskCompleted, isTaskNotStarted } from './taskDetailChat'
 import Button from '../components/Button'
 import ConfirmDialog from '../components/ConfirmDialog'
 import EmptyState from '../components/EmptyState'
-import MarqueeText from '../components/MarqueeText'
 import OpenLocationButton from '../components/OpenLocationButton'
 import MobileOpenLocationButton from '../components/MobileOpenLocationButton'
 import ProjectDirectoryBrowserDialog from '../components/ProjectDirectoryBrowserDialog'
@@ -29,11 +26,9 @@ import WorkflowShortcutSettingsDialog from '../components/WorkflowShortcutSettin
 import ArchiveExperienceDialog from '../components/ArchiveExperienceDialog'
 import TaskCreatePanel from '../components/TaskCreatePanel'
 import ProjectMemoryPanel from '../components/ProjectMemoryPanel'
-import { formatScheduledStart } from '../utils/scheduledStart'
 import TaskTableView from '../components/TaskTableView'
-import { useI18n, type TFunction, type TKey } from '../i18n'
-import { formatDuration, toMilliseconds } from '../utils/datetime'
-import { formatTokenTotal } from '../utils/statistics'
+import TaskBoardCard from '../components/TaskBoardCard'
+import { useI18n, type TFunction } from '../i18n'
 import SchedulePage from './SchedulePage'
 import { deriveTaskLane, orderTaskLanes, type TaskLane } from './taskListLane'
 
@@ -43,60 +38,6 @@ const topbarStyle: React.CSSProperties = {
   borderBottom: '1px solid var(--border-soft)',
   display: 'flex', alignItems: 'center',
   padding: '0 20px', gap: 12, flexShrink: 0,
-}
-
-const kanbanStyle: React.CSSProperties = {
-  flex: 1, display: 'flex', gap: 0,
-  overflowX: 'scroll', overflowY: 'hidden',
-  padding: '16px 16px 16px 0',
-}
-
-const laneStyle: React.CSSProperties = {
-  minWidth: 260, maxWidth: 320, flexShrink: 0,
-  background: 'var(--surface)', borderRadius: 'var(--radius-md)',
-  display: 'flex', flexDirection: 'column',
-  marginRight: 12, overflow: 'hidden',
-}
-
-const laneBodyStyle: React.CSSProperties = {
-  flex: 1, overflowY: 'auto',
-  padding: '4px 10px 10px',
-  display: 'flex', flexDirection: 'column', gap: 8,
-  minHeight: 120,
-}
-
-const boardTableViewStyle: React.CSSProperties = {
-  flex: 1, overflowY: 'auto', overflowX: 'hidden',
-  padding: '16px 20px 24px',
-}
-
-/* ── Status machine ── */
-const STATUS_LABEL_KEYS: Record<string, TKey> = {
-  ready: 'status.ready', running: 'status.running', paused: 'status.paused', stopped: 'status.stopped',
-  queued: 'status.queued',
-  done: 'status.done',
-  reviewing: 'status.reviewing', awaiting_review: 'status.awaiting_review',
-  retrying: 'status.retrying', rejected: 'status.rejected',
-  cancelled: 'status.cancelled',
-  rework: 'status.rework', rework_waiting: 'status.rework_waiting',
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  ready: 'var(--status-ready)',
-  running: 'var(--status-running)',
-  paused: 'var(--status-paused)',
-  stopped: 'var(--status-stopped)',
-  queued: '#a16207',
-  done: 'var(--status-done)',
-  passed: 'var(--status-done)',
-  failed: 'var(--status-failed)',
-  reviewing: 'var(--accent)',
-  awaiting_review: 'var(--status-paused)',
-  retrying: 'var(--warn)',
-  rejected: 'var(--status-failed)',
-  cancelled: '#d97706',
-  rework: 'var(--warn)',
-  rework_waiting: 'var(--warn)',
 }
 
 /* ── Extract lanes from steps.json ── */
@@ -315,16 +256,6 @@ export default function TaskList() {
     }
   }
 
-  const deleteCard = (e: React.MouseEvent, taskId: string) => {
-    e.stopPropagation()
-    setConfirmDeleteTaskId(taskId)
-  }
-
-  const requestStartCard = (e: React.MouseEvent, taskId: string) => {
-    e.stopPropagation()
-    setConfirmStartTaskId(taskId)
-  }
-
   const handleStartConfirm = async () => {
     if (!confirmStartTaskId || !activeProject || startingTaskId) return
     const taskId = confirmStartTaskId
@@ -351,13 +282,7 @@ export default function TaskList() {
     }
   }
 
-  const requestArchiveCard = (event: React.MouseEvent, taskId: string) => {
-    event.stopPropagation()
-    setArchiveTarget({ id: taskId, title: tasks.find((task) => task.id === taskId)?.title || '' })
-  }
-
-  const handleUnarchive = async (e: React.MouseEvent, taskId: string) => {
-    e.stopPropagation()
+  const handleUnarchive = async (taskId: string) => {
     if (!activeProject) return
     try {
       await unarchiveTask(taskId, activeProject.id)
@@ -372,12 +297,10 @@ export default function TaskList() {
   // Drag handlers
   const onDragStart = (e: React.DragEvent, taskId: string) => {
     setDragId(taskId);
-    (e.currentTarget as HTMLElement).style.opacity = '0.4'
     e.dataTransfer.effectAllowed = 'move'
   }
 
-  const onDragEnd = (e: React.DragEvent) => {
-    (e.currentTarget as HTMLElement).style.opacity = '1';
+  const onDragEnd = () => {
     setDragId(null)
     setDragOverLane(null)
   }
@@ -642,9 +565,9 @@ export default function TaskList() {
           <span className="mobile-task-row-meta"><StatusBadge status={task.status} loading={['running', 'reviewing', 'retrying'].includes(task.status)} label={t(`status.${task.status === 'completed' ? 'passed' : task.status || 'ready'}` as 'status.ready')} />{task.creator_name && <span>{t('taskList.creator')}：{task.creator_name}</span>}<span>{lanes.find(lane => lane.key === getCardLane(task.id))?.label}</span><time>{new Date(task.updated_at || task.created_at).toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></span>
         </button>)}
       </div>}
-      <div className="desktop-task-board" style={boardView === 'lanes' ? kanbanStyle : boardTableViewStyle}>
+      <div className={`desktop-task-board ${boardView === 'lanes' ? 'task-board-lanes' : 'task-board-table'}`}>
         {loading && (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--meta)' }}>
+          <div className="task-board-loading">
             {t('common.loading')}
           </div>
         )}
@@ -660,12 +583,12 @@ export default function TaskList() {
         {!loading && activeProject && boardView === 'lanes' && lanes.map((lane) => {
           const laneTasks = tasksByLane[lane.key] || []
           return (
-            <div key={lane.key} style={laneStyle}>
-              <div style={{ padding: '12px 14px 8px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, fontFamily: 'var(--font-display)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: lane.color }} />
+            <div key={lane.key} className="task-board-lane" style={{ '--task-lane-color': lane.color } as React.CSSProperties}>
+              <div className="task-board-lane-header">
+                <div className="task-board-lane-heading">
+                  <span className="task-board-lane-dot" />
                   {lane.label}
-                  <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 400, color: 'var(--meta)' }}>({laneTasks.length})</span>
+                  <span className="task-board-lane-count">({laneTasks.length})</span>
                 </div>
                 {!showArchived && (
                   <Button
@@ -673,201 +596,34 @@ export default function TaskList() {
                     aria-label={t('taskList.addTaskToLane', { lane: lane.label })}
                     title={t('taskList.addTaskToLane', { lane: lane.label })}
                     onClick={() => openNewPanel(lane.key)}
-                    style={{ marginLeft: 'auto', height: 24, padding: '0 7px', fontSize: 'calc(11px * var(--font-scale))', flexShrink: 0 }}
+                    className="task-board-lane-add"
                   >
                     {t('taskList.add')}
                   </Button>
                 )}
               </div>
               <div
-                style={{
-                  ...laneBodyStyle,
-                  background: dragOverLane === lane.key ? 'color-mix(in oklab, var(--accent), transparent 94%)' : 'transparent',
-                }}
+                className="task-board-lane-body"
+                data-drag-over={dragOverLane === lane.key || undefined}
                 onDragOver={(e) => onDragOver(e, lane.key)}
                 onDragLeave={onDragLeave}
                 onDrop={(e) => onDrop(e, lane.key)}
               >
-                {laneTasks.map((task: any) => {
-                  const status = task.status || 'ready'
-                  const taskNotStarted = isTaskNotStarted(task.steps || [])
-                  const taskCompleted = isTaskCompleted(task.steps || [])
-                  const stepStatus = ['reviewing', 'awaiting_review', 'retrying', 'rejected']
-                    .find((candidate) =>
-                      (task.steps || []).some((step: any) => step.status === candidate)
-                    )
-                  const displayStatus = taskCompleted ? 'done' : stepStatus || status
-                  const statusColor = STATUS_COLORS[displayStatus] || 'var(--status-ready)'
-                  const isRunning = status === 'running'
-                  const startedMs = toMilliseconds(task.first_message_at)
-                  const createdMs = toMilliseconds(task.created_at)
-                  let cardDurationMs: number | null = null
-                  if (isRunning) {
-                    const startMs = startedMs ?? createdMs
-                    if (startMs !== null) cardDurationMs = Math.max(0, durationNowMs - startMs)
-                  } else if (task.duration_ms != null) {
-                    cardDurationMs = task.duration_ms
-                  } else if (startedMs !== null) {
-                    const endMs = toMilliseconds(task.updated_at) ?? durationNowMs
-                    cardDurationMs = Math.max(0, endMs - startedMs)
-                  }
-                  const cardMetaText = [
-                    task.creator_name ? task.creator_name : '',
-                    (task.total_tokens ?? 0) > 0
-                      ? `${formatTokenTotal(task.total_tokens as number, locale)} ${t('taskList.tokens')}`
-                      : '',
-                    cardDurationMs !== null && cardDurationMs > 0
-                      ? `${t('taskList.duration')} ${formatDuration(cardDurationMs, t)}`
-                      : '',
-                  ].filter(Boolean).join(' · ')
-                  return (
-                    <div
-                      key={task.id}
-                      data-task-status={status}
-                      draggable={!showArchived}
-                      onDragStart={(e) => onDragStart(e, task.id)}
-                      onDragEnd={onDragEnd}
-                      onClick={() => handleSelectTask(task.id)}
-                      style={{
-                        background: 'var(--bg)', borderRadius: 'var(--radius-sm)',
-                        padding: '10px 12px', cursor: 'grab',
-                        borderLeft: `3px solid ${statusColor}`,
-                        transition: 'box-shadow var(--motion-fast)',
-                      }}
-                      onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 6px rgba(0,0,0,0.05)'
-                        const actions = e.currentTarget.querySelector('.card-actions') as HTMLElement
-                        if (actions) actions.style.opacity = '1'
-                      }}
-                      onMouseLeave={(e) => {
-                        (e.currentTarget as HTMLElement).style.boxShadow = 'none'
-                        const actions = e.currentTarget.querySelector('.card-actions') as HTMLElement
-                        if (actions) actions.style.opacity = '0'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                        <MarqueeText
-                          text={task.title}
-                          style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, color: 'var(--fg)' }}
-                        />
-                        {task.scheduled_start_state === 'pending' && task.scheduled_start_at && (
-                          <span
-                            className="status-badge"
-                            title={t('taskList.scheduledStartPending')}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: 'var(--accent)' }}
-                          >
-                            <Icon name="clock" size={11} strokeWidth={2} />
-                            {formatScheduledStart(task.scheduled_start_at)}
-                          </span>
-                        )}
-                        {task.scheduled_start_state === 'missed' && (
-                          <span className="status-badge" title={task.scheduled_start_error || undefined} style={{ color: 'var(--warning)' }}>
-                            {t('taskList.scheduledStartMissed')}
-                          </span>
-                        )}
-                        {task.scheduled_start_state === 'failed' && (
-                          <span className="status-badge" title={task.scheduled_start_error || undefined} style={{ color: 'var(--danger)' }}>
-                            {t('taskList.scheduledStartFailed')}
-                          </span>
-                        )}
-                        <TaskRecoveredBadge
-                          status={status}
-                          recoveredCount={task.recovered_count}
-                          className="task-card-recovered-badge"
-                        />
-                        <span
-                          className="status-badge task-card-status-badge"
-                          data-s={displayStatus}
-                          style={stepStatus ? {
-                            color: statusColor,
-                            background: `color-mix(in oklab, ${statusColor}, transparent 86%)`,
-                          } : undefined}
-                        >
-                          {(displayStatus === 'running' || displayStatus === 'reviewing') && (
-                            <span className="task-status-spinner" aria-hidden="true" />
-                          )}
-                          {t(STATUS_LABEL_KEYS[displayStatus] ?? (displayStatus as TKey))}
-                          {status === 'queued' && task.queue_position != null && task.queue_position > 0 && (
-                            <span style={{ fontWeight: 600 }}>{` #${task.queue_position}`}</span>
-                          )}
-                        </span>
-                      </div>
-                      {task.description && (
-                        <div style={{
-                          display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
-                          overflow: 'hidden', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--muted)',
-                          lineHeight: 1.4, marginBottom: 8,
-                        }}>
-                          {task.description}
-                        </div>
-                      )}
-                      <div className="card-actions" style={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'center', gap: 6, width: '100%', minWidth: 0, opacity: 0, transition: 'opacity var(--motion-fast)' }}>
-          {cardMetaText ? (
-            <MarqueeText
-              className="task-card-meta"
-              text={cardMetaText}
-              title={cardMetaText}
-              forceActive
-              style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}
-            />
-          ) : (
-            <span style={{ flex: 1, minWidth: 0 }} />
-          )}
-          <div className="card-action-buttons" style={{ display: 'flex', flexWrap: 'nowrap', gap: 2, flexShrink: 0 }}>
-          {taskNotStarted && status !== 'running' && (
-            <Button
-              variant="icon"
-              title={t('taskList.startTask')}
-              aria-label={t('taskList.startTask')}
-              disabled={startingTaskId === task.id}
-              loading={startingTaskId === task.id}
-              onClick={(e) => requestStartCard(e, task.id)}
-              style={{ width: 22, height: 22, flex: '0 0 22px', color: 'var(--success)' }}
-            >
-              ▶️
-            </Button>
-          )}
-          <Button variant="icon" title={t('common.edit')} onClick={(e) => { e.stopPropagation(); handleSelectTask(task.id) }} style={{ width: 22, height: 22, flex: '0 0 22px' }}>
-            <Icon name="pencil" size={12} strokeWidth={2} />
-          </Button>
-          {!showArchived && status !== 'running' && (
-            <Button
-              variant="icon"
-              title={t('taskList.archiveTask')}
-              aria-label={t('taskList.archiveTask')}
-              onClick={(e) => requestArchiveCard(e, task.id)}
-              style={{ width: 22, height: 22, flex: '0 0 22px', color: 'var(--meta)' }}
-            >
-              <Icon name="archive" size={12} strokeWidth={2} />
-            </Button>
-          )}
-          {showArchived && (
-            <Button
-              variant="icon"
-              title={t('taskList.restoreToBoard')}
-              aria-label={t('taskList.restoreToBoard')}
-              onClick={(e) => handleUnarchive(e, task.id)}
-              style={{ width: 22, height: 22, flex: '0 0 22px', color: 'var(--success)' }}
-            >
-              <Icon name="rotate-ccw" size={12} strokeWidth={2} />
-            </Button>
-          )}
-            {!isRunning && (
-              <Button variant="icon" title={t('common.delete')} onClick={(e) => deleteCard(e, task.id)} style={{ width: 22, height: 22, flex: '0 0 22px', color: 'var(--danger)' }}>
-                <Icon name="x" size={12} strokeWidth={2} />
-              </Button>
-            )}
-          </div>
-                      </div>
-                      {status === 'running' && (
-                        <div className="card-progress">
-                          <span className="card-progress-fill" />
-                        </div>
-                      )}
-
-                    </div>
-                  )
-                })}
+                {laneTasks.map((task) => <TaskBoardCard
+                  key={task.id}
+                  task={task}
+                  durationNowMs={durationNowMs}
+                  showArchived={showArchived}
+                  starting={startingTaskId === task.id}
+                  dragging={dragId === task.id}
+                  onOpen={() => handleSelectTask(task.id)}
+                  onStart={() => setConfirmStartTaskId(task.id)}
+                  onArchive={() => setArchiveTarget({ id: task.id, title: task.title })}
+                  onRestore={() => { void handleUnarchive(task.id) }}
+                  onDelete={() => setConfirmDeleteTaskId(task.id)}
+                  onDragStart={(event) => onDragStart(event, task.id)}
+                  onDragEnd={onDragEnd}
+                />)}
               </div>
             </div>
           )
