@@ -1,4 +1,3 @@
-import ResizablePanel from '../components/ResizablePanel'
 import { useTaskHistory } from '../hooks/useTaskHistory'
 import { useTaskCoordinatorConfig } from '../hooks/useTaskCoordinatorConfig'
 import { useTaskStepControls } from '../hooks/useTaskStepControls'
@@ -25,7 +24,6 @@ import { useTaskStore, type LiveMessage } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
 import {
   fsApi,
-  projectApi,
   taskApi,
   type ActionProposal,
   type ReviewRun,
@@ -35,8 +33,7 @@ import {
 } from '../api/client'
 import { copyMessageText } from '../components/MessageResponseFooter'
 import { a2uiActionMessageParams } from '../utils/a2ui'
-import MarkdownEditor from '../components/MarkdownEditor'
-import StepPromptVariablesHint from '../components/StepPromptVariablesHint'
+import StepPromptEditor from '../components/StepPromptEditor'
 import Icon from '../components/Icon'
 import ShareDialog from '../components/ShareDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -430,9 +427,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [editReviewMode, setEditReviewMode] = useState<'skip' | 'auto' | 'manual'>('manual')
   const [editReviewRetries, setEditReviewRetries] = useState(1)
   const [editReviewPrompt, setEditReviewPrompt] = useState('')
-  const [promptDraft, setPromptDraft] = useState('')
-  const [promptSaving, setPromptSaving] = useState(false)
-  const [promptSaveError, setPromptSaveError] = useState('')
   const [editingDescription, setEditingDescription] = useState(false)
   const [descriptionDraft, setDescriptionDraft] = useState('')
   const [descriptionSaving, setDescriptionSaving] = useState(false)
@@ -1379,51 +1373,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     }
   }
 
-  const openPromptEditor = () => {
-    setPromptDraft(currentStep.prompt)
-    setPromptSaveError('')
-    setShowPromptEditor(true)
-  }
-
-  const saveStepPrompt = async () => {
-    if (!detailProject) return
-    const currentSteps = detailProject.steps
-    let nextSteps = currentSteps
-    if (currentSteps?.nodes?.length) {
-      nextSteps = {
-        ...currentSteps,
-        nodes: currentSteps.nodes.map((node: any) =>
-          (node.type || node.key) === currentStep.key
-            ? { ...node, prompt: promptDraft }
-            : node
-        ),
-      }
-    } else if (currentSteps?.steps?.length) {
-      nextSteps = {
-        ...currentSteps,
-        steps: currentSteps.steps.map((step: any) =>
-          (step.key || step.id) === currentStep.key
-            ? { ...step, prompt: promptDraft }
-            : step
-        ),
-      }
-    }
-
-    setPromptSaving(true)
-    setPromptSaveError('')
-    try {
-      await projectApi.saveSteps(detailProject.id, nextSteps)
-      setActiveProject({ ...detailProject, steps: nextSteps })
-      setShowPromptEditor(false)
-    } catch (error) {
-      setPromptSaveError(
-        t('taskDetail.saveFailed', { error: error instanceof Error ? error.message : t('common.unknownError') })
-      )
-    } finally {
-      setPromptSaving(false)
-    }
-  }
-
   const handleStepClick = async (stepIndex: number) => {
     const clickedStep = steps[stepIndex]
     if (clickedStep?.kind === 'task_dispatch') {
@@ -1762,7 +1711,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             </div>
           </div>
         ) : undefined}
-        onOpenPromptEditor={openPromptEditor}
+        onOpenPromptEditor={() => setShowPromptEditor(true)}
         editReviewMode={editReviewMode}
         onEditReviewModeChange={(value) => setEditReviewMode(value as 'skip' | 'auto' | 'manual')}
         editReviewRetries={editReviewRetries}
@@ -1925,64 +1874,16 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             }}
             onConfirm={() => void confirmUpstreamRestart()}
           />
-          {showPromptEditor && (
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label={t('taskDetail.quickEditPromptAria', { step: currentStep.label })}
-              style={{
-                position: 'fixed', inset: 0, zIndex: 1275,
-                background: 'rgba(0,0,0,0.35)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                padding: 24,
-              }}
-              onClick={() => !promptSaving && setShowPromptEditor(false)}
-            >
-              <ResizablePanel
-                minWidth={520}
-                minHeight={320}
-                style={{
-                  width: 'min(680px, 90vw)', background: 'var(--bg)',
-                  borderRadius: 12, boxShadow: '0 18px 48px rgba(0,0,0,0.24)',
-                  overflow: 'hidden',
-                }}
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="dialog-header">
-                  <span style={{ width: 9, height: 9, borderRadius: '50%', background: currentStepColor }} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>{t('taskDetail.quickEditPrompt')}</div>
-                    <div style={{ marginTop: 2, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>{currentStep.label} · {currentStep.key}</div>
-                  </div>
-                  <Button variant="icon" disabled={promptSaving} onClick={() => setShowPromptEditor(false)}>✕</Button>
-                </div>
-                <div style={{ padding: 18 }}>
-                  <MarkdownEditor
-                    value={promptDraft}
-                    onChange={setPromptDraft}
-                    projectId={projectId}
-                    placeholder={t('taskDetail.promptEditorPlaceholder')}
-                    minHeight={260}
-                    maxHeight="55vh"
-                    autoFocus
-                    ariaLabel={t('taskDetail.stepPromptAria', { step: currentStep.label })}
-                  />
-                  <StepPromptVariablesHint />
-                  {promptSaveError && (
-                    <div role="alert" style={{ marginTop: 8, color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))' }}>
-                      {promptSaveError}
-                    </div>
-                  )}
-                </div>
-                <div className="dialog-footer">
-                  <Button variant="ghost" disabled={promptSaving} onClick={() => setShowPromptEditor(false)}>{t('common.cancel')}</Button>
-                  <Button variant="primary" disabled={promptSaving} loading={promptSaving} onClick={saveStepPrompt}>
-                    {t('taskDetail.savePrompt')}
-                  </Button>
-                </div>
-              </ResizablePanel>
-            </div>
-          )}
+          {showPromptEditor && <StepPromptEditor
+            key={currentStep.key}
+            project={detailProject}
+            step={currentStep}
+            projectId={projectId}
+            onSaved={(nextSteps) => {
+              if (detailProject) setActiveProject({ ...detailProject, steps: nextSteps })
+            }}
+            onClose={() => setShowPromptEditor(false)}
+          />}
           <ShareDialog
             open={shareOpen && !!task}
             taskId={taskId}
