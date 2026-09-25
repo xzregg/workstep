@@ -120,6 +120,7 @@ export const enUS: Messages = {
     taskDeleteWorkspaceHint: 'Remove all {count} task worktrees and the workspace directory. Branches are kept. The task and source repositories are not deleted.',
     taskDeleteWorkspaceDirty: 'These worktrees have uncommitted changes: {names}. Deleting them will permanently discard those changes.',
     taskDeleteWorkspaceUnpushed: 'These branches have unpushed commits or no upstream: {names}. Their commits will remain on the local branches. Please confirm.',
+    taskDeleteWorkspacePartial: 'Workspace deletion was partial. Removed: {names}. Reason: {reason}',
     title: "Git 管理",
     back: "Back",
     refresh: "刷新",

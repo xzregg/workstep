@@ -144,10 +144,13 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
     try {
       const result = await gitApi.deleteTaskWorkspace(projectId, taskId, deleteWorkspaceDirty.length > 0)
       setWorkspace(result)
-      setSelected('')
+      setSelected(result.worktrees[0]?.id || '')
       setShowAdd(false)
       setDeleteWorkspaceOpen(false)
-      await refreshRepositories()
+      const partial = result.outcome === 'partial' ? t('git.taskDeleteWorkspacePartial', { names: result.removed_aliases.join('、'), reason: result.failure }) : ''
+      try { await refreshRepositories() }
+      catch (reason) { setError([partial, reason instanceof Error ? reason.message : String(reason)].filter(Boolean).join(' ')); return }
+      if (partial) setError(partial)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
       setDeleteWorkspaceOpen(false)

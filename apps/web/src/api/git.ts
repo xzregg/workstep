@@ -6,6 +6,7 @@ export interface GitRepository { id: string; name: string; common_dir: string; w
 export interface GitDiscovery { projects: { id: string; name: string; path: string }[]; repositories: GitRepository[]; depth: number; scanned_at: number | null; errors: { path: string; message: string }[] }
 export interface TaskGitWorktree extends GitWorktree { alias: string; repository_id: string; repository_name: string; relative_path?: string }
 export interface TaskGitWorkspace { path: string; relative_path?: string; worktrees: TaskGitWorktree[] }
+export type TaskGitWorkspaceDeletion = TaskGitWorkspace & ({ outcome: 'deleted'; removed_aliases: string[] } | { outcome: 'partial'; removed_aliases: string[]; failure: string })
 export interface GitStatus { id: string; path: string; head: string | null; branch: string | null; files: GitFile[]; snapshot: string; operation: string | null; active: boolean; ahead: number | null; behind: number | null; upstream: string | null }
 export interface GitBranch { upstream?: string | null; upstream_gone?: boolean; remote?: string | null; ahead?: number | null; behind?: number | null; name: string; head: string; worktree_id: string | null; path: string | null }
 export interface GitRemoteBranch { name: string; head: string }
@@ -30,7 +31,7 @@ export function createGitApi(client: typeof request = request) {
   return {
   taskWorkspace: (projectId: string, taskId: string) => client<TaskGitWorkspace>(`/git/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/workspace`),
   openTaskWorkspace: (projectId: string, taskId: string) => client<TaskGitWorkspace>(`/git/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/workspace`, post()),
-  deleteTaskWorkspace: (projectId: string, taskId: string, force = false) => client<TaskGitWorkspace>(`/git/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/workspace${force ? '?force=true' : ''}`, del()),
+  deleteTaskWorkspace: (projectId: string, taskId: string, force = false) => client<TaskGitWorkspaceDeletion>(`/git/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/workspace${force ? '?force=true' : ''}`, del()),
   addTaskWorktree: (projectId: string, taskId: string, repositoryId: string, alias: string, baseRef: string, branchName: string) => client<TaskGitWorkspace>(`/git/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/worktrees`, post({ repository_id: repositoryId, alias, base_ref: baseRef, branch_name: branchName })),
   removeTaskWorktree: (projectId: string, taskId: string, alias: string) => client<TaskGitWorkspace>(`/git/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/worktrees/${encodeURIComponent(alias)}`, del()),
   scan: () => client<ScanJob>('/git/scans', post()),

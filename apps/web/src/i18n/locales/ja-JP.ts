@@ -120,6 +120,7 @@ export const jaJP: Messages = {
     taskDeleteWorkspaceHint: 'このタスクの Worktree {count} 件とワークスペースのディレクトリを削除します。ブランチは残ります。タスクと元のリポジトリは削除しません。',
     taskDeleteWorkspaceDirty: '未コミットの変更がある作業ディレクトリ: {names}。削除すると変更は完全に失われます。',
     taskDeleteWorkspaceUnpushed: '未プッシュのコミットがあるか、上流ブランチが未設定のブランチ: {names}。コミットはローカルブランチに残ります。確認してください。',
+    taskDeleteWorkspacePartial: 'ワークスペースの削除は一部のみ完了しました。削除済み: {names}。理由: {reason}',
     title: "Git 管理",
     back: "戻る",
     refresh: "刷新",

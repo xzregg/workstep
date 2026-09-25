@@ -2,6 +2,7 @@
 
 import asyncio
 import re
+import time
 from pathlib import Path
 
 from . import identity
@@ -60,6 +61,18 @@ class TaskGitWorkspace:
             )
         }
 
+    async def _ensure_repositories(self) -> None:
+        if self.git.snapshot['scanned_at'] is not None and time.time() - self.git.snapshot['scanned_at'] <= 30:
+            return
+        async with self.git.locks.setdefault('workspace:scan', asyncio.Lock()):
+            if self.git.snapshot['scanned_at'] is not None and time.time() - self.git.snapshot['scanned_at'] <= 30:
+                return
+            job = await self.git.start_scan()
+            while job['state'] == 'running':
+                await asyncio.sleep(.05)
+            if job['state'] != 'complete':
+                raise GitError('Git 仓库扫描失败，请重试。', 503)
+
     async def _relative_links_supported(self, path: str | Path) -> bool:
         raw, _ = await self.git.command(path, "version")
         version = re.search(r"git version (\d+)\.(\d+)", text(raw))
@@ -87,6 +100,7 @@ class TaskGitWorkspace:
         project = await asyncio.to_thread(Path(project_path).resolve)
         if not await asyncio.to_thread(root.is_dir):
             return {"path": str(root), "relative_path": root.relative_to(project).as_posix(), "worktrees": []}
+        await self._ensure_repositories()
         repos = await asyncio.to_thread(self._project_repositories, project)
         by_common = {repo["common_dir"]: repo for repo in repos.values()}
         entries = await asyncio.to_thread(lambda: sorted(root.iterdir()))
@@ -127,6 +141,7 @@ class TaskGitWorkspace:
         if not base_ref or base_ref.startswith("-") or "\0" in base_ref:
             raise GitError("无效的基准分支。")
         project = await asyncio.to_thread(Path(project_path).resolve)
+        await self._ensure_repositories()
         repo = (await asyncio.to_thread(self._project_repositories, project)).get(repository_id)
         if not repo:
             raise GitError("仓库不属于当前项目，请重新扫描。", 404)
@@ -232,10 +247,18 @@ class TaskGitWorkspace:
                 raw, _ = await self.git.command(tree["path"], "status", "--porcelain=v1", "-z", "--untracked-files=all")
                 if raw and not force:
                     raise GitError("工作区存在未提交内容，请先处理后再删除。", 409)
-            for tree in current["worktrees"]:
-                await self._remove(project_path, task_id, tree["alias"], force=force)
             try:
+                for tree in current["worktrees"]:
+                    await self._remove(project_path, task_id, tree["alias"], force=force)
                 await asyncio.to_thread(root.rmdir)
-            except OSError as exc:
-                raise GitError("工作区目录未清空，请检查后重试。", 409) from exc
-            return {"path": str(root), "worktrees": []}
+            except (GitError, OSError) as exc:
+                remaining = await self.list(project_path, task_id)
+                remaining_aliases = {tree['alias'] for tree in remaining['worktrees']}
+                removed = [tree['alias'] for tree in current['worktrees'] if tree['alias'] not in remaining_aliases]
+                if not removed:
+                    if isinstance(exc, OSError):
+                        raise GitError("工作区目录未清空，请检查后重试。", 409) from exc
+                    raise
+                return {**remaining, 'outcome': 'partial', 'removed_aliases': removed, 'failure': str(exc)}
+            return {"path": str(root), "worktrees": [], 'outcome': 'deleted',
+                    'removed_aliases': [tree['alias'] for tree in current['worktrees']]}
