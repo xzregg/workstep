@@ -2,7 +2,7 @@
 
 import uuid
 
-from models import PendingMessageInsert
+from models import Message, PendingMessageInsert
 from models.fields import utc_now
 
 
@@ -118,6 +118,26 @@ def pending_insert_batch(target_message_id: str) -> tuple[list[str], str, str]:
         "\n\n".join(row.content.strip() for row in rows if row.content.strip()),
         next((row.username for row in rows if row.username.strip()), ""),
     )
+
+
+def oldest_task_pending_batch(
+    task_id: str,
+) -> tuple[str, list[str], str, str] | None:
+    """Select the oldest pending target for a task and merge its inserts."""
+    first = (
+        PendingMessageInsert.select(PendingMessageInsert, Message)
+        .join(Message, on=(PendingMessageInsert.target_message_id == Message.id))
+        .where(Message.task == task_id)
+        .order_by(PendingMessageInsert.created_at, PendingMessageInsert.position)
+        .first()
+    )
+    if first is None:
+        return None
+    target = Message.get_by_id(first.target_message_id)
+    ids, content, username = pending_insert_batch(target.id)
+    if not ids or not content:
+        return None
+    return target.step_key, ids, content, username
 
 
 def delete_pending_insert_batch(ids: list[str]) -> int:

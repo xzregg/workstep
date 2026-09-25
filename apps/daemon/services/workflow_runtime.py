@@ -22,6 +22,7 @@ from services.task_dispatch import TaskDispatchService
 from services.review_decision import persist_review_decision
 from services.failed_step_completion import persist_failed_step_completion
 from services.orphan_step_stop import persist_orphan_stop
+from services.pending_message_inserts import oldest_task_pending_batch
 from services.step_message_restart import (
     inspect_failed_message_retry,
     persist_step_followup,
@@ -480,29 +481,9 @@ class WorkflowRuntime:
         task_id: str,
     ) -> None:
         """Start one merged follow-up for the oldest completed step target."""
-        def load_batch(_project):
-            from models import PendingMessageInsert
-            from services.pending_message_inserts import pending_insert_batch
-
-            first = (
-                PendingMessageInsert.select(PendingMessageInsert, Message)
-                .join(
-                    Message,
-                    on=(PendingMessageInsert.target_message_id == Message.id),
-                )
-                .where(Message.task == task_id)
-                .order_by(PendingMessageInsert.created_at, PendingMessageInsert.position)
-                .first()
-            )
-            if first is None:
-                return None
-            target = Message.get_by_id(first.target_message_id)
-            ids, content, username = pending_insert_batch(target.id)
-            if not ids or not content:
-                return None
-            return target.step_key, ids, content, username
-
-        batch = await self._run_db(project_id, load_batch)
+        batch = await self._run_db(
+            project_id, lambda _project: oldest_task_pending_batch(task_id)
+        )
         if batch is None:
             return
         step_key, ids, content, username = batch

@@ -724,6 +724,46 @@ async def test_restart_cancels_parallel_active_steps_and_pending_reviews(tmp_pat
 
 
 @pytest.mark.anyio
+async def test_pending_insert_batch_query_does_not_block_event_loop(
+    tmp_path, monkeypatch,
+):
+    from services import workflow_runtime as runtime_module
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    project = SimpleNamespace(id="pending-project")
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    original = runtime_module.oldest_task_pending_batch
+    entered = threading.Event()
+
+    def slow_batch(task_id):
+        entered.set()
+        time.sleep(0.15)
+        return original(task_id)
+
+    monkeypatch.setattr(runtime_module, "oldest_task_pending_batch", slow_batch)
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, ProjectManagerStub())
+    try:
+        work = asyncio.create_task(
+            runtime._consume_task_pending_inserts(project.id, "missing-task")
+        )
+        assert await asyncio.to_thread(entered.wait, 1)
+        started = time.monotonic()
+        await asyncio.sleep(0.01)
+        assert time.monotonic() - started < 0.1
+        await work
+    finally:
+        await bus.close()
+        db.close()
+
+
+@pytest.mark.anyio
 async def test_runtime_merges_pending_inserts_after_step_finishes(tmp_path):
     """阶段结束后由后端合并待插入消息并重跑，不依赖页面存活。"""
     from engines.core.registry import ENGINE_REGISTRY
