@@ -140,6 +140,53 @@ test('pasting an image inserts it at the caret without adding line breaks', asyn
   }
 })
 
+test('pasting several attachments keeps successful uploads in order when one fails', async () => {
+  const { window } = installDomEnvironment()
+  const changes: string[] = []
+  const errors: string[] = []
+  let root!: Root
+
+  try {
+    const container = window.document.body.appendChild(window.document.createElement('div'))
+    await act(async () => {
+      root = createRoot(container as never)
+      root.render(<Harness initial="前后" onChange={(value) => changes.push(value)} imageAttach={{
+        upload: async (file) => {
+          if (file.name === 'broken.pdf') throw new Error('上传失败')
+          return { url: `.workstep/uploads/${file.name}`, filename: file.name, size: 1 }
+        },
+        onError: (message) => errors.push(message),
+      }} />)
+    })
+
+    const textarea = container.querySelector('textarea') as HTMLTextAreaElement
+    textarea.setSelectionRange(1, 1)
+    await act(async () => { textarea.dispatchEvent(new window.MouseEvent('click', { bubbles: true })) })
+    const files = [
+      new window.File(['pdf'], 'one.pdf', { type: 'application/pdf' }),
+      new window.File(['png'], 'shot.png', { type: 'image/png' }),
+      new window.File(['pdf'], 'broken.pdf', { type: 'application/pdf' }),
+    ]
+    const pasteEvent = new window.Event('paste', { bubbles: true, cancelable: true })
+    Object.defineProperty(pasteEvent, 'clipboardData', {
+      value: { items: files.map((file) => ({ kind: 'file', getAsFile: () => file })) },
+    })
+    await act(async () => {
+      textarea.dispatchEvent(pasteEvent)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    assert.equal(changes.at(-1), '前\n\n[one.pdf](.workstep/uploads/one.pdf)\n\n![shot.png](.workstep/uploads/shot.png)后')
+    assert.deepEqual(errors, ['', '上传失败'])
+    assert.equal(container.querySelector('.chat-input-attach')?.hasAttribute('disabled'), false)
+
+    await act(async () => { root.unmount() })
+  } finally {
+    await window.happyDOM.close()
+  }
+})
+
 test('delete removes an image immediately after the caret', async () => {
   const { window } = installDomEnvironment()
   const changes: string[] = []

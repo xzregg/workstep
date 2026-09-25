@@ -2,12 +2,12 @@ import ResponsivePopover from './ResponsivePopover'
 import Icon from './Icon'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useChatInputDraft } from '../hooks/useChatInputDraft'
+import { useChatInputAttachments } from '../hooks/useChatInputAttachments'
 import {
   useEffect,
   useRef,
   useState,
   type ClipboardEvent,
-  type DragEvent,
   type ReactNode,
   type Ref,
 } from 'react'
@@ -16,7 +16,7 @@ import ChatInputUsage from './ChatInputUsage'
 import CoordinatorConfigBar from './CoordinatorConfigBar'
 import FloatingMenu, { useFloatingMenu } from './FloatingMenu'
 import ImagePreview from './ImagePreview'
-import { engineApi, fsApi, type CoordinatorEngineSummary, type EngineConfigField, type EngineInputItem, type EngineQuota, type ProviderInfo } from '../api/client'
+import { engineApi, type CoordinatorEngineSummary, type EngineConfigField, type EngineInputItem, type EngineQuota, type ProviderInfo } from '../api/client'
 import { engineLabel } from '../engineMeta'
 import { useI18n } from '../i18n'
 import {
@@ -28,7 +28,6 @@ import {
   type MarkdownTextSegment,
 } from '../utils/markdownImages'
 import { applySlashInputItem, slashInputQuery } from '../utils/slashSkills'
-import { formatMarkdownAttachment } from '../utils/markdownAttachment'
 import { useMarkdownUrlResolver } from '../contexts/MarkdownAssetUrlContext'
 import {
   applyTaskStepMention,
@@ -296,8 +295,6 @@ export default function ChatInput({
   const permissionMenu = useFloatingMenu()
   const permissionButtonRef = useRef<HTMLButtonElement>(null)
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
-  const [uploadingImage, setUploadingImage] = useState(false)
-  const [dragActive, setDragActive] = useState(false)
   const [previewImage, setPreviewImage] = useState<MarkdownImageSegment | null>(null)
   const [focused, setFocused] = useState(false)
   const [allSelected, setAllSelected] = useState(false)
@@ -455,6 +452,18 @@ export default function ChatInput({
     element.focus({ preventScroll: true })
     element.setSelectionRange(localCursor, localCursor)
   }
+
+  const {
+    uploadingImage, dragActive, setDragActive, handleAttachments, handleAttachPaste, handleDrop,
+  } = useChatInputAttachments({
+    imageAttach,
+    valueRef,
+    cursor: slashCursor,
+    onChange,
+    onCursorChange: setSlashCursor,
+    undoSnapshotRef,
+    focusCursor: focusMarkdownCursor,
+  })
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const modifier = event.metaKey || event.ctrlKey
@@ -619,83 +628,11 @@ export default function ChatInput({
     })
   }
 
-  // ── Attachments (single implementation shared by every chat) ───────────
-  const handleAttachments = async (files: File[]) => {
-    if (!imageAttach || files.length === 0) return
-    imageAttach.onError?.('')
-    setUploadingImage(true)
-    const previousValue = valueRef.current
-    let nextValue = previousValue
-    let nextCursor = Math.max(0, Math.min(slashCursor, nextValue.length))
-    let uploadedAny = false
-    try {
-      for (const file of files) {
-        const isImage = file.type.startsWith('image/')
-        try {
-          const uploaded = imageAttach.upload
-            ? await imageAttach.upload(file, imageAttach.prefix)
-            : isImage
-              ? await fsApi.uploadImage(file, imageAttach.projectId!, imageAttach.prefix)
-              : await fsApi.uploadFile(file, imageAttach.projectId!, imageAttach.prefix)
-          const markdown = formatMarkdownAttachment(file, uploaded.url)
-          const before = nextValue.slice(0, nextCursor)
-          const after = nextValue.slice(nextCursor)
-          const beforeEndsWithImage = splitMarkdownImages(before)
-            .some((segment) => segment.type === 'image' && segment.end === before.length)
-          const afterStartsWithImage = splitMarkdownImages(after)
-            .some((segment) => segment.type === 'image' && segment.start === 0)
-          const prefix = !isImage && before && !before.endsWith('\n') && !beforeEndsWithImage
-            ? '\n\n'
-            : ''
-          const suffix = !isImage && after && !after.startsWith('\n') && !afterStartsWithImage
-            ? '\n\n'
-            : ''
-          nextValue = before + prefix + markdown + suffix + after
-          nextCursor = before.length + prefix.length + markdown.length + suffix.length
-          uploadedAny = true
-        } catch (reason) {
-          imageAttach.onError?.(reason instanceof Error
-            ? reason.message
-            : isImage ? t('chatInput.imageUploadFailed') : t('chatInput.fileUploadFailed'))
-        }
-      }
-      if (uploadedAny) {
-        undoSnapshotRef.current = { before: previousValue, after: nextValue }
-        valueRef.current = nextValue
-        onChange(nextValue)
-        setSlashCursor(nextCursor)
-        requestAnimationFrame(() => focusMarkdownCursor(nextValue, nextCursor))
-      }
-    } finally {
-      setUploadingImage(false)
-    }
-  }
-
-  const handleAttachPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
-    const items = Array.from(event.clipboardData?.items || [])
-    const files = items
-      .filter((item) => item.kind === 'file')
-      .map((item) => item.getAsFile())
-      .filter((file): file is File => Boolean(file))
-    if (files.length === 0) return
-    event.preventDefault()
-    void handleAttachments(files)
-  }
-
   const handleCopy = (event: ClipboardEvent<HTMLDivElement>) => {
     if (!allSelectedRef.current || !event.clipboardData) return
     event.preventDefault()
     event.clipboardData.setData('text/plain', value)
     event.clipboardData.setData('text/markdown', value)
-  }
-
-  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
-    if (!imageAttach) return
-    const files = Array.from(event.dataTransfer?.files || [])
-    setDragActive(false)
-    if (files.length === 0) return
-    event.preventDefault()
-    void handleAttachments(files)
   }
 
   const updateTextSegment = (
@@ -1028,7 +965,7 @@ export default function ChatInput({
                   e.target.value = ''
                 }}
               />
-              <div style={{ position: 'relative' }}>
+              <div className="chat-input-attach-anchor">
                 <button
                   type="button"
                   className="chat-input-attach"
@@ -1041,11 +978,6 @@ export default function ChatInput({
                   aria-label={t('chatInput.attachMenuTitle')}
                   aria-expanded={attachMenuOpen}
                   onClick={() => setAttachMenuOpen((open) => !open)}
-                  style={{
-                    position: 'relative',
-                    cursor: uploadingImage ? 'wait' : 'pointer',
-                    opacity: uploadingImage ? 0.7 : 1,
-                  }}
                 >
                   {uploadingImage
                     ? <span className="task-status-spinner" aria-hidden="true" />
@@ -1054,27 +986,20 @@ export default function ChatInput({
                         name="plus"
                         size={15}
                         strokeWidth={1.8}
-                        style={{
-                          transform: attachMenuOpen ? 'rotate(45deg)' : undefined,
-                          transition: 'transform 200ms cubic-bezier(0.35, 1.55, 0.65, 1)',
-                        }}
+                        className="chat-input-attach-plus"
                       />
                     )}
                   {hasImage && !uploadingImage && (
                     <span
                       aria-hidden="true"
-                      style={{
-                        position: 'absolute', right: 0, bottom: 0, width: 9, height: 9,
-                        borderRadius: '50%', background: 'var(--accent)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}
+                      className="chat-input-attach-indicator"
                     >
                       <Icon name="check" size={6} strokeWidth={4} color="var(--accent-fg)" />
                     </span>
                   )}
                 </button>
                 {attachMenuOpen && (
-                  <ResponsivePopover title={t('chatInput.attachMenuTitle')} onClose={() => setAttachMenuOpen(false)} className="chat-input-menu" style={{ left: 0, bottom: 'calc(100% + 6px)', zIndex: 1301, width: 190 }}>
+                  <ResponsivePopover title={t('chatInput.attachMenuTitle')} onClose={() => setAttachMenuOpen(false)} className="chat-input-menu chat-input-attach-menu">
                       <button
                         type="button"
                         className="chat-input-menu-item"
