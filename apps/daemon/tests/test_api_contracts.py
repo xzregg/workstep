@@ -4688,6 +4688,60 @@ async def test_step_execution_config_write_does_not_block_health_check(api_conte
     assert updated.status_code == 200
 
 
+@pytest.mark.anyio
+async def test_step_config_slow_engine_factory_does_not_block_health(
+    api_context, monkeypatch
+):
+    """Synchronous engine discovery stays off the event loop."""
+    import engines.core.registry as registry
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "slow-step-engine-factory"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)}
+    )).json()["id"]
+    await _create_test_workflow(client, project_id)
+    workflow_id = (await client.get(
+        "/api/workflow/list", params={"project_id": project_id}
+    )).json()["workflows"][0]["id"]
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "Slow engine factory", "cwd": str(project_dir),
+            "workflow_id": workflow_id, "auto_start": False,
+        },
+    )
+    task_id = created.json()["id"]
+    step_key = created.json()["steps"][0]["step_key"]
+    factory_started = threading.Event()
+    factory_started_at = [0.0]
+    original_factory = registry.create_engine
+
+    def slow_factory(engine_id):
+        factory_started_at[0] = time.perf_counter()
+        factory_started.set()
+        time.sleep(0.35)
+        return original_factory(engine_id)
+
+    monkeypatch.setattr(registry, "create_engine", slow_factory)
+    update = asyncio.create_task(client.patch(
+        f"/api/task/{task_id}/step/{step_key}/config?project_id={project_id}",
+        json={"engine": "pydantic_ai", "model": None, "config": {}},
+    ))
+    assert await asyncio.to_thread(factory_started.wait, 1)
+    assert time.perf_counter() - factory_started_at[0] < 0.2
+    assert not update.done()
+    started_at = time.perf_counter()
+    health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+    elapsed = time.perf_counter() - started_at
+    updated = await update
+
+    assert health.status_code == 200
+    assert elapsed < 0.2
+    assert updated.status_code == 200
+
+
 # --- /api/fs/mkdir (project path picker) ---
 
 @pytest.mark.anyio
