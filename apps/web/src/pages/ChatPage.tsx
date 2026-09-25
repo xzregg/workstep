@@ -9,10 +9,9 @@ import { useProjectActions } from '../components/useActionRuns'
 import Button from '../components/Button'
 import ChatEngineHandoffDialog, { type HandoffEndpoint } from '../components/ChatEngineHandoffDialog'
 import ChatSessionForkDialog from '../components/ChatSessionForkDialog'
-import ConfirmDialog from '../components/ConfirmDialog'
+import ChatSessionRenameDialog from '../components/ChatSessionRenameDialog'
 import EmptyState from '../components/EmptyState'
 import Icon from '../components/Icon'
-import Input from '../components/Input'
 import MobileSheet from '../components/MobileSheet'
 import OpenLocationButton from '../components/OpenLocationButton'
 import MobileOpenLocationButton from '../components/MobileOpenLocationButton'
@@ -91,10 +90,7 @@ export default function ChatPage() {
   const [input, setInput] = useState('')
   const [sendError, setSendError] = useState('')
   const [stopping, setStopping] = useState(false)
-  const [renaming, setRenaming] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
-  const [renameValue, setRenameValue] = useState('')
-  const [renameError, setRenameError] = useState('')
   const [creating, setCreating] = useState(false)
   const [forkOpen, setForkOpen] = useState(false)
   const [forking, setForking] = useState(false)
@@ -672,27 +668,6 @@ export default function ChatPage() {
     }
   }, [sessionId, activeProject?.id, handingOff, messages.length, t])
 
-  const renameSession = useCallback(async () => {
-    const title = renameValue.trim()
-    if (!title) {
-      setRenameError(t('chatSession.renameEmptyHint'))
-      return
-    }
-    if (!activeProject?.id || !sessionId || renaming) return
-    setRenaming(true)
-    setRenameError('')
-    try {
-      const updated = await chatSessionApi.rename(sessionId, activeProject.id, title)
-      setSessionTitle(updated.title)
-      useChatListStore.getState().renameSession(sessionId, updated.title)
-      setRenameOpen(false)
-    } catch (reason) {
-      setRenameError(reason instanceof Error ? reason.message : t('chatSession.renameFailed'))
-    } finally {
-      setRenaming(false)
-    }
-  }, [renameValue, activeProject?.id, sessionId, renaming, t])
-
   if (!activeProject) {
     return (
       <div style={{ flex: 1, display: 'flex', minHeight: 0, alignItems: 'center', justifyContent: 'center' }}>
@@ -780,7 +755,7 @@ export default function ChatPage() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => { setRenameValue(sessionTitle); setRenameError(''); setRenameOpen(true) }}
+              onClick={() => setRenameOpen(true)}
             >
               {t('common.rename')}
             </Button>
@@ -944,29 +919,13 @@ export default function ChatPage() {
         }}
       />
 
-      {/* Rename session */}
-      <ConfirmDialog
-        open={renameOpen}
-        title={t('common.rename')}
-        confirmText={t('common.save')}
-        onConfirm={() => void renameSession()}
-        onCancel={() => setRenameOpen(false)}
-      >
-        <div style={{ padding: '0 20px 4px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <Input
-            autoFocus
-            value={renameValue}
-            onChange={(e) => { setRenameValue(e.target.value); setRenameError('') }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void renameSession()
-              if (e.key === 'Escape') setRenameOpen(false)
-            }}
-            placeholder={t('chatSession.renamePlaceholder')}
-            style={{ width: '100%' }}
-          />
-          {renameError && <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--danger)' }}>{renameError}</div>}
-        </div>
-      </ConfirmDialog>
+      {renameOpen && <ChatSessionRenameDialog
+        projectId={activeProject.id}
+        sessionId={sessionId}
+        title={sessionTitle}
+        onRenamed={(nextTitle) => { setSessionTitle(nextTitle); setRenameOpen(false) }}
+        onClose={() => setRenameOpen(false)}
+      />}
 
       <ProjectSettingsPanel
         project={showSettingsPanel ? activeProject : null}
@@ -999,7 +958,7 @@ export default function ChatPage() {
         </Button>
         <Button
           variant="ghost"
-          onClick={() => { setMobileMenuOpen(false); setRenameValue(sessionTitle); setRenameError(''); setRenameOpen(true) }}
+          onClick={() => { setMobileMenuOpen(false); setRenameOpen(true) }}
           style={{ justifyContent: 'flex-start', gap: 8 }}
         >
           <Icon name="pencil" size={16} /> {t('common.rename')}
