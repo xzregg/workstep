@@ -27,7 +27,7 @@ LiveMessageHandler = Callable[[dict], Awaitable[str | None]]
 
 @dataclass(frozen=True)
 class ReviewOutcome:
-    status: str  # passed / rejected / awaiting_review
+    status: str  # passed / rejected / failed / awaiting_review
     review_run: ReviewRun
     report: dict
     events: tuple[dict, ...] = ()
@@ -249,18 +249,19 @@ class ReviewGate:
             report = self._error_report(error)
 
         passed = bool(report.get("passed", False))
+        status = "failed" if error is not None else "passed" if passed else "rejected"
         def finish_review():
-            if review_session_id:
+            if review_session_id or error is not None:
                 ts = TaskStep.get_or_none(
                     (TaskStep.task == task) & (TaskStep.step_key == step.key)
                 )
                 if ts is not None:
-                    ts.review_session_id = review_session_id
+                    ts.review_session_id = None if error is not None else review_session_id
                     ts.save(only=[TaskStep.review_session_id])
             row = ReviewRun.get_by_id(review_run.id)
             row.response_text = response
             row.report_json = json.dumps(report, ensure_ascii=False)
-            row.status = "passed" if passed else "rejected"
+            row.status = status
             row.error = error
             row.ended_at = utc_now()
             row.save()
@@ -275,16 +276,16 @@ class ReviewGate:
                     task_id=task.id,
                     step_key=step.key,
                     artifact_round=artifact_round,
-                    status="passed" if passed else "rejected",
-                    eligible_for_downstream=passed,
+                    status=status,
+                    eligible_for_downstream=status == "passed",
                 )
             )
         await self._emit(
             task, step, step_run, review_run,
-            "passed" if passed else "rejected", report,
+            status, report,
         )
         return ReviewOutcome(
-            "passed" if passed else "rejected",
+            status,
             review_run,
             report,
             tuple(events_collected),

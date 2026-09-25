@@ -169,6 +169,14 @@ def test_plan_interaction_usage_map_to_custom():
     assert plan["name"] == "workstep.plan"
     assert plan["value"]["entries"][0]["content"] == "x"
 
+    goal = to_agui_events(
+        InternalEvent(type="goal_update", data={"objective": "ship", "status": "active"}),
+        _ctx(),
+    )[0]
+    assert goal["type"] == "CUSTOM"
+    assert goal["name"] == "workstep.goal_update"
+    assert goal["value"] == {"objective": "ship", "status": "active"}
+
     interaction = to_agui_events(
         InternalEvent(type="interaction_request", data={"interaction_id": "i1", "method": "elicitation/create"}),
         _ctx(),

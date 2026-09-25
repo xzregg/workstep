@@ -307,15 +307,20 @@ class TaskRunner:
         if cancelled:
             content = "自动审核已手动停止"
         else:
-            verdict = "通过" if outcome.status == "passed" else "未通过"
-            content = f"**审核结果：{verdict}**\n{summary}\n{items}"
+            if outcome.status == "failed":
+                content = f"**审核失败**\n{summary}\n{items}"
+            else:
+                verdict = "通过" if outcome.status == "passed" else "未通过"
+                content = f"**审核结果：{verdict}**\n{summary}\n{items}"
 
         def finalize_review_message():
             message = Message.get_by_id(message_id)
             message.content = content
             message.engine = outcome.review_run.engine
             message.model = outcome.review_run.model
-            message.run_status = "cancelled" if cancelled else "completed"
+            message.run_status = "cancelled" if cancelled else (
+                "failed" if outcome.status == "failed" else "completed"
+            )
             message.prompt_json = outcome.review_run.prompt_json
             message.events_json = json.dumps(
                 [{
@@ -350,7 +355,9 @@ class TaskRunner:
             **common,
             "type": "message_completed",
             "data": {
-                "status": "cancelled" if cancelled else "completed",
+                "status": "cancelled" if cancelled else (
+                    "failed" if outcome.status == "failed" else "completed"
+                ),
                 "content": content,
                 "ended_at": (
                     outcome.review_run.ended_at.isoformat()
@@ -979,7 +986,8 @@ class TaskRunner:
                         task.id, step_key, "awaiting_review", None, None
                     )
                     failed.add(step_key)
-                elif step_run.attempt <= int(review_config.get("maxRetries", 1)):
+                elif (outcome.status == "rejected"
+                      and step_run.attempt <= int(review_config.get("maxRetries", 1))):
                     has_feedback_route = any(
                         connection.get("kind", "solid") == "dashed"
                         for connection in step.outgoing_connections
@@ -2193,7 +2201,8 @@ class TaskRunner:
                                 task.id, step_key, "awaiting_review", ts.error, None
                             )
                             failed.add(step_key)
-                        elif step_run.attempt <= int(review_config.get("maxRetries", 1)):
+                        elif (outcome.status == "rejected"
+                              and step_run.attempt <= int(review_config.get("maxRetries", 1))):
                             has_artifact_feedback_route = any(
                                 connection.get("kind", "solid") == "dashed"
                                 for connection in step.outgoing_connections
@@ -2236,7 +2245,7 @@ class TaskRunner:
                                     },
                                 })
                         else:
-                            # 自动审核次数耗尽：转入人工审核，等待用户确认或驳回修正。
+                            # 审核执行失败或有效驳回次数耗尽：转人工，不重跑执行步骤。
                             outcome = await gate.evaluate(
                                 task=task,
                                 step=step,

@@ -702,6 +702,53 @@ details[open] > summary > .process-trace-chevron {
   flex-direction: column;
 }
 
+.process-trace-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 3px 0 4px 8px;
+  border-left: 2px solid var(--border-soft);
+  color: var(--meta);
+  font-size: calc(11px * var(--font-scale));
+  line-height: 18px;
+  -webkit-mask-image: linear-gradient(90deg, var(--fg) 0%, var(--fg) 35%, color-mix(in srgb, var(--fg) 40%, transparent) 45%, color-mix(in srgb, var(--fg) 40%, transparent) 55%, var(--fg) 65%, var(--fg) 100%);
+  mask-image: linear-gradient(90deg, var(--fg) 0%, var(--fg) 35%, color-mix(in srgb, var(--fg) 40%, transparent) 45%, color-mix(in srgb, var(--fg) 40%, transparent) 55%, var(--fg) 65%, var(--fg) 100%);
+  -webkit-mask-size: 300% 100%;
+  mask-size: 300% 100%;
+  animation: process-trace-shine 1.75s cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
+}
+
+.process-trace-preview:not([data-visible]) {
+  visibility: hidden;
+  height: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .process-trace-preview {
+    animation: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+}
+
+.process-trace-preview-item {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.process-trace-preview-text {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .process-trace-section-title {
   display: flex;
   align-items: center;
@@ -765,9 +812,13 @@ details[open] > summary > .process-trace-chevron {
 @keyframes process-trace-shine {
   0%, 18% {
     background-position: 100% 0;
+    -webkit-mask-position: 100% 0;
+    mask-position: 100% 0;
   }
   82%, 100% {
     background-position: 0% 0;
+    -webkit-mask-position: 0% 0;
+    mask-position: 0% 0;
   }
 }
 
@@ -866,6 +917,27 @@ details[open] > summary > .process-trace-chevron {
 }
 
 /* ── Plan Checklist (aicss-inspired) ── */
+
+.chat-proposed-plan {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.chat-proposed-plan-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.chat-proposed-plan-title {
+  color: var(--accent);
+  font-size: calc(12px * var(--font-scale));
+  font-weight: 600;
+}
 
 .plan-checklist {
   font-size: calc(13px * var(--font-scale));
@@ -2353,6 +2425,40 @@ details[open] > summary > .process-trace-chevron {
   overflow-y: auto;
 }
 
+.task-artifact-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+  padding-right: 11px;
+}
+
+.task-artifact-open-directory {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex-shrink: 0;
+  min-height: 26px;
+  padding: 2px 7px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-xs);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: calc(12px * var(--font-scale));
+  white-space: nowrap;
+}
+
+.task-artifact-open-directory:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.task-artifact-open-directory--step {
+  width: 26px;
+  min-width: 26px;
+  padding: 0;
+}
+
 .task-artifact-step-section {
   flex-shrink: 0;
   padding: 10px;
@@ -2433,6 +2539,26 @@ details[open] > summary > .process-trace-chevron {
   border: 1px solid var(--border-soft);
   border-radius: 5px;
   background: var(--surface);
+  gap: 5px;
+}
+
+.artifact-unchanged-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  padding: 0 4px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-pill);
+  color: var(--meta);
+  font-size: calc(10px * var(--font-scale));
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+[role="tab"][aria-selected="true"] .artifact-unchanged-badge {
+  color: inherit;
 }
 
 .task-artifact-round-tabs > button[aria-selected="true"] .task-artifact-round-tab-label {
@@ -3338,6 +3464,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
 .chat-history-scroll {
   padding-inline: max(12px, calc((100% - 900px) / 2));
+  scrollbar-width: thin;
+}
+
+.chat-history-scroll::-webkit-scrollbar {
+  width: 6px;
 }
 
 .task-chat-history-scroll {

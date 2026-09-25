@@ -2415,6 +2415,7 @@ async def test_action_quick_button_round_trip_and_script_validation(chat_module)
     assert module.set_quick_buttons(project.id, [button])[0] == {
         **button,
         "immediate_send": False,
+        "confirmation_input_prompt": "",
     }
     assert module.get_quick_buttons(project.id)[0]["script_path"] == "scripts/restart.sh"
     with pytest.raises(ValueError, match="脚本路径"):
@@ -2936,6 +2937,49 @@ async def test_invoke_engine_uses_native_plan_mode_without_prompt_injection(monk
         "plan_mode": False,
         "config_overrides": None,
     }
+
+
+@pytest.mark.anyio
+async def test_invoke_engine_routes_goal_command_only_to_native_adapter(monkeypatch):
+    import agent_assistants.base as base
+
+    captured: dict = {}
+
+    class GoalEngine:
+        capabilities = SimpleNamespace(supports_goal_mode=True, supports_thinking_effort=False)
+        supports_resume = True
+        supports_message_history = False
+
+        async def spawn(self, prompt, cwd, model, session_id, **kwargs):
+            captured.update(prompt=prompt, goal_action=kwargs.get("goal_action"))
+            if False:
+                yield None
+
+    monkeypatch.setattr(base, "create_engine", lambda engine_id: GoalEngine())
+    await base.invoke_engine("codex_sdk", None, "/tmp", "/goal 修复性能问题", "thread-1")
+    assert captured == {"prompt": "修复性能问题", "goal_action": "start"}
+
+    captured.clear()
+    await base.invoke_engine("codex_sdk", None, "/tmp", "/goal pause", "thread-1")
+    assert captured == {"prompt": "", "goal_action": "pause"}
+
+
+@pytest.mark.anyio
+async def test_invoke_engine_rejects_unsupported_goal_mode(monkeypatch):
+    import agent_assistants.base as base
+
+    class PlainEngine:
+        capabilities = SimpleNamespace(supports_goal_mode=False, supports_thinking_effort=False)
+        supports_resume = False
+        supports_message_history = False
+
+        async def spawn(self, **kwargs):
+            raise AssertionError("unsupported goal must not become a normal prompt")
+            yield
+
+    monkeypatch.setattr(base, "create_engine", lambda engine_id: PlainEngine())
+    with pytest.raises(ValueError, match="目标模式"):
+        await base.invoke_engine("codex", None, "/tmp", "/goal 修复性能问题", None)
 
 
 @pytest.mark.anyio

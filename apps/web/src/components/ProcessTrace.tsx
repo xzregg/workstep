@@ -236,8 +236,10 @@ export default function ProcessTrace({
 }: ProcessTraceProps) {
   const { t } = useI18n()
   const [now, setNow] = useState(() => Date.now())
-  const [open, setOpen] = useState(running)
+  const [open, setOpen] = useState(false)
   const [showAllItems, setShowAllItems] = useState(false)
+  const titleRef = useRef<HTMLSpanElement>(null)
+  const previewRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!running) return
     setNow(Date.now())
@@ -245,7 +247,7 @@ export default function ProcessTrace({
     return () => window.clearInterval(timer)
   }, [running])
   useEffect(() => {
-    setOpen(running)
+    setOpen(false)
   }, [running])
 
   // 时间线与各项统计全部按 events 引用 memo：running 时秒针每秒 tick、父级
@@ -320,6 +322,18 @@ export default function ProcessTrace({
     ? ''
     : formatDuration(elapsedMs, t)
 
+  useLayoutEffect(() => {
+    if (!running || open || processItems.length === 0) return
+    const findShine = (element: Element | null) => element?.getAnimations?.().find(
+      (animation) => 'animationName' in animation && animation.animationName === 'process-trace-shine',
+    )
+    const titleAnimation = findShine(titleRef.current)
+    const previewAnimation = findShine(previewRef.current)
+    if (titleAnimation?.currentTime != null && previewAnimation) {
+      previewAnimation.currentTime = titleAnimation.currentTime
+    }
+  }, [running, open, processItems.length])
+
   if (!duration && processItems.length === 0 && !summaryMeta && !detailsAvailable) return null
 
   const toggleSession = () => {
@@ -338,6 +352,7 @@ export default function ProcessTrace({
   const visibleProcessItems = hiddenItemCount > 0
     ? processItems.slice(hiddenItemCount)
     : processItems
+  const previewItems = running && !open ? processItems.slice(-2) : []
 
   return (
     <div className={`process-trace${compact ? ' process-trace-compact' : ''}`}>
@@ -360,7 +375,7 @@ export default function ProcessTrace({
             toggleSession()
           }}
         >
-          <span className={running ? 'process-trace-thinking-label is-shimmer' : undefined}>
+          <span ref={titleRef} className={running ? 'process-trace-thinking-label is-shimmer' : undefined}>
             {running ? t('trace.processing') : stopped ? '' : t('trace.processed')}
             {!running && stopped
               ? (duration ? t('trace.stoppedAfter', { duration }) : t('trace.stopped'))
@@ -379,6 +394,34 @@ export default function ProcessTrace({
           </svg>
           {summaryMeta}
         </div>
+        {running && (
+          <div ref={previewRef} className="process-trace-preview" data-visible={previewItems.length > 0 ? 'true' : undefined} aria-hidden={previewItems.length === 0} aria-live="off">
+            {previewItems.map((item) => {
+              const label = item.type === 'tool'
+                ? item.activity.name || t('chat.tool')
+                : item.type === 'tool-group'
+                  ? t('trace.commandGroup', { count: item.activities.length })
+                  : item.type === 'subagent'
+                    ? item.activity.description
+                    : ''
+              const detail = item.type === 'thinking' || item.type === 'commentary'
+                ? item.content
+                : item.type === 'tool-group'
+                  ? item.activities[item.activities.length - 1]?.name
+                  : ''
+              const previewDetail = detail && detail.length > 160
+                ? `…${detail.slice(-160)}`
+                : detail
+              return (
+                <div className="process-trace-preview-item" key={item.id}>
+                  <span className="process-trace-preview-text">
+                    {label}{label && previewDetail ? ' ' : ''}{previewDetail}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )}
         {open && (
         <div className="process-trace-body">
           {detailsLoading && (

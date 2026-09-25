@@ -18,7 +18,62 @@ import json
 import os
 from pathlib import Path
 
+from services.quick_buttons import ACTION_ID, normalize_quick_buttons
 from services.tool_registry import DEFAULT_DAEMON_URL, WorkstepClient
+
+
+async def _create_project_action_on_existing_daemon(args, client, script_content: str) -> dict:
+    """Use the project quick-button API when the daemon predates action-create."""
+    if not ACTION_ID.fullmatch(args.action_id):
+        raise ValueError("Action ID 无效")
+    script_file = Path(args.script_file)
+    if script_file.suffix not in {".sh", ".bash", ".py"}:
+        raise ValueError("Action 脚本必须是 .sh、.bash 或 .py 文件")
+    if not script_content.strip() or len(script_content.encode("utf-8")) > 128 * 1024:
+        raise ValueError("Action 脚本为空或过大")
+    projects = (await client.call("workstep_list_projects", {}))["projects"]
+    project = next((item for item in projects if item["id"] == args.project_id), None)
+    if project is None:
+        raise ValueError("项目不存在")
+    buttons = (await client.call("workstep_get_project_quick_buttons", {
+        "project_id": args.project_id,
+    }))["buttons"]
+    button = normalize_quick_buttons([{
+        "id": args.action_id, "kind": "action", "label": args.title,
+        "action_id": args.action_id, "script_path": script_file.name,
+        "cwd_mode": args.cwd_mode,
+        "require_confirmation": not args.no_run_confirmation,
+        "confirmation_input_prompt": args.input_prompt or "",
+    }])[0]
+    if any(item.get("id") == button["id"] or item.get("action_id") == args.action_id for item in buttons):
+        raise FileExistsError("项目中已存在同名 Action")
+    normalize_quick_buttons([*buttons, button])
+    root = Path(project["path"]).resolve()
+    action_root = root / ".workstep" / "actions" / args.action_id
+    await asyncio.to_thread(action_root.mkdir, parents=True, exist_ok=False)
+    script = action_root / script_file.name
+    metadata = action_root / "action.json"
+    try:
+        await asyncio.to_thread(script.write_text, script_content, encoding="utf-8")
+        await asyncio.to_thread(metadata.write_text, json.dumps({
+            "id": args.action_id,
+            "interpreter": "python" if script.suffix == ".py" else "bash",
+            "timeout_seconds": 0,
+            "managed_service": True,
+        }), encoding="utf-8")
+        saved = await client.call("workstep_set_project_quick_buttons", {
+            "project_id": args.project_id, "buttons": [*buttons, button], "confirm": "yes",
+        })
+        if saved.get("ok") is False:
+            raise RuntimeError(saved["error"])
+    except Exception:
+        for child in (script, metadata):
+            if child.exists():
+                await asyncio.to_thread(child.unlink)
+        await asyncio.to_thread(action_root.rmdir)
+        raise
+    return {"project_id": args.project_id, "action_id": args.action_id,
+            "script_path": str(script.relative_to(root))}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -43,10 +98,22 @@ def build_parser() -> argparse.ArgumentParser:
     project = subparsers.add_parser("project", help="manage projects")
     project_sub = project.add_subparsers(dest="subcommand", required=True)
     add_json(project_sub.add_parser("list", help="list registered projects"))
+    project_buttons = project_sub.add_parser("quick-buttons", help="list project chat quick buttons")
+    project_buttons.add_argument("--project", required=True, dest="project_id", help="project id")
+    add_json(project_buttons)
     project_init = project_sub.add_parser("init", help="initialize a new project")
     project_init.add_argument("path", help="absolute path of the project directory")
     project_init.add_argument("--name", help="project name (defaults to directory name)")
     add_json(project_init)
+    project_action = project_sub.add_parser("action-create", help="create a project-wide Action shortcut")
+    project_action.add_argument("--project", required=True, dest="project_id")
+    project_action.add_argument("--action-id", required=True, dest="action_id")
+    project_action.add_argument("--title", required=True)
+    project_action.add_argument("--script-file", required=True, help="local .sh/.bash/.py file to publish")
+    project_action.add_argument("--cwd", choices=("task", "project", "worktrees"), default="task", dest="cwd_mode")
+    project_action.add_argument("--no-run-confirmation", action="store_true")
+    project_action.add_argument("--input-prompt", help="require text in the confirmation dialog and pass it as WORKSTEP_ACTION_INPUT")
+    add_json(project_action)
 
     task = subparsers.add_parser("task", help="manage tasks")
     task_sub = task.add_subparsers(dest="subcommand", required=True)
@@ -90,6 +157,10 @@ def build_parser() -> argparse.ArgumentParser:
     workflow_get.add_argument("--project", required=True, dest="project_id", help="project id")
     workflow_get.add_argument("--workflow", required=True, dest="workflow_id", help="workflow id")
     add_json(workflow_get)
+    workflow_buttons = workflow_sub.add_parser("quick-buttons", help="list workflow, stage and inherited project quick buttons")
+    workflow_buttons.add_argument("--project", required=True, dest="project_id", help="project id")
+    workflow_buttons.add_argument("--workflow", required=True, dest="workflow_id", help="workflow id")
+    add_json(workflow_buttons)
     workflow_action = workflow_sub.add_parser("action-create", help="create a workflow Action shortcut")
     workflow_action.add_argument("--project", required=True, dest="project_id")
     workflow_action.add_argument("--workflow", required=True, dest="workflow_id")
@@ -98,6 +169,8 @@ def build_parser() -> argparse.ArgumentParser:
     workflow_action.add_argument("--script-file", required=True, help="local .sh/.bash/.py file to publish")
     workflow_action.add_argument("--cwd", choices=("task", "project", "worktrees"), default="task", dest="cwd_mode")
     workflow_action.add_argument("--no-run-confirmation", action="store_true", help="run button without a separate confirmation dialog")
+    workflow_action.add_argument("--input-prompt", help="require text in the confirmation dialog and pass it as WORKSTEP_ACTION_INPUT")
+    workflow_action.add_argument("--overwrite", action="store_true", help="replace the existing workflow Action with the same ID")
     add_json(workflow_action)
 
     engine = subparsers.add_parser("engine", help="manage engines")
@@ -173,11 +246,30 @@ async def dispatch(args: argparse.Namespace, client: WorkstepClient | None = Non
     if command == "project":
         if args.subcommand == "list":
             return await client.call("workstep_list_projects", {})
+        if args.subcommand == "quick-buttons":
+            return await client.call("workstep_get_project_quick_buttons", {"project_id": args.project_id})
         if args.subcommand == "init":
             return await client.call(
                 "workstep_create_project",
                 {"path": args.path, "name": args.name, "confirm": "yes"},
             )
+        if args.subcommand == "action-create":
+            script_file = Path(args.script_file)
+            script_content = await asyncio.to_thread(script_file.read_text, encoding="utf-8")
+            result = await client.call("workstep_create_project_action", {
+                "project_id": args.project_id,
+                "action_id": args.action_id,
+                "title": args.title,
+                "script_path": script_file.name,
+                "script_content": script_content,
+                "cwd_mode": args.cwd_mode,
+                "require_confirmation": not args.no_run_confirmation,
+                "confirmation_input_prompt": args.input_prompt or "",
+                "confirm": "yes",
+            })
+            if result.get("ok") is False and result.get("error") in {"Not Found", "Method Not Allowed"}:
+                return await _create_project_action_on_existing_daemon(args, client, script_content)
+            return result
     if command == "task":
         if args.subcommand == "list":
             return await client.call(
@@ -226,6 +318,34 @@ async def dispatch(args: argparse.Namespace, client: WorkstepClient | None = Non
                 "workstep_get_workflow",
                 {**arguments, "workflow_id": args.workflow_id},
             )
+        if args.subcommand == "quick-buttons":
+            workflow = await client.call("workstep_get_workflow", {**arguments, "workflow_id": args.workflow_id})
+            if workflow.get("ok") is False:
+                return workflow
+            project_buttons = await client.call("workstep_get_project_quick_buttons", arguments)
+            if project_buttons.get("ok") is False:
+                return project_buttons
+            steps = workflow.get("steps") or {}
+            selected_ids = steps.get("projectQuickButtonIds")
+            inherit_all = not isinstance(selected_ids, list) and steps.get("inheritProjectQuickButtons") is True
+            inherited = [
+                button for button in project_buttons["buttons"]
+                if inherit_all or (isinstance(selected_ids, list) and button.get("id") in selected_ids)
+            ]
+            return {
+                "project_id": args.project_id,
+                "workflow_id": args.workflow_id,
+                "workflow_buttons": steps.get("quickButtons", []),
+                "stage_buttons": [
+                    {"step_key": node.get("key", node.get("type", node.get("id"))),
+                     "label": node.get("title"), "buttons": node["quickButtons"]}
+                    for node in steps.get("nodes", steps.get("steps", []))
+                    if isinstance(node, dict) and node.get("quickButtons")
+                ],
+                "project_button_ids": selected_ids if isinstance(selected_ids, list) else None,
+                "inherit_all_project_buttons": inherit_all,
+                "inherited_project_buttons": inherited,
+            }
         if args.subcommand == "action-create":
             script_file = Path(args.script_file)
             script_content = await asyncio.to_thread(script_file.read_text, encoding="utf-8")
@@ -238,6 +358,8 @@ async def dispatch(args: argparse.Namespace, client: WorkstepClient | None = Non
                 "script_content": script_content,
                 "cwd_mode": args.cwd_mode,
                 "require_confirmation": not args.no_run_confirmation,
+                "confirmation_input_prompt": args.input_prompt or "",
+                "overwrite": args.overwrite,
                 "confirm": "yes",
             })
     if command == "engine" and args.subcommand == "list":

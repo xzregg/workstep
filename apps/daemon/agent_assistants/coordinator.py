@@ -998,6 +998,7 @@ class CoordinatorModule:
         task_id: str,
         proposal_id: str,
         idempotency_key: str,
+        overwrite: bool = False,
     ) -> dict:
         if not idempotency_key.strip():
             raise ValueError("Idempotency-Key is required")
@@ -1011,7 +1012,7 @@ class CoordinatorModule:
                 action = await self._run_db(
                     project_id,
                     lambda: self._begin_action_sync(
-                        task_id, proposal_id, idempotency_key
+                        task_id, proposal_id, idempotency_key, overwrite
                     ),
                 )
                 if "completed" in action:
@@ -1863,9 +1864,16 @@ class CoordinatorModule:
             "shortcut. Payload must contain action_id (stable slug), title, "
             "script_path (relative filename, usually start.sh), script_content, "
             "cwd_mode (task/project/worktrees), and require_confirmation. "
+            "If execution needs user text such as a Commit message, also set "
+            "confirmation_input_prompt; the confirmed text is passed to the script "
+            "unchanged as WORKSTEP_ACTION_INPUT, so quote that variable in shell. "
+            "When replacing an existing workflow Action, inspect current shortcuts, "
+            "reuse its action_id and script filename, set overwrite=true, and clearly "
+            "tell the user the confirmation will replace that script and button. "
             "This is a preview: do not write the script before user confirmation. "
             "For task Git worktrees, read WORKSTEP_WORKTREES_FILE JSON and select "
-            "paths by repository_id or alias, never branch name. For long-running "
+            "paths by repository_id or alias, never branch name. Use relative_path "
+            "in saved scripts and path only for runtime execution. For long-running "
             "services keep child processes in the foreground process group, print "
             "actual URLs, wait for children and trap TERM/INT to stop them; do not "
             "daemonize, nohup, setsid, or disown. The Action stop button then stops "
@@ -1876,7 +1884,9 @@ class CoordinatorModule:
             "repositories and create task worktrees only for repositories relevant to "
             "the task when needed. If no repository is needed, "
             "leave the task workspace empty. Git worktree setup is separate from "
-            "workflow action proposals."
+            "workflow action proposals. Use project-relative paths in generated scripts; "
+            "when creating Git worktrees manually, use git worktree add --relative-paths "
+            "inside the task workspace, never container absolute paths."
         )
         if engine_manages_context:
             instructions += (
@@ -2364,7 +2374,7 @@ class CoordinatorModule:
         )
         return supplement.id
 
-    def _begin_action_sync(self, task_id, proposal_id, idempotency_key):
+    def _begin_action_sync(self, task_id, proposal_id, idempotency_key, overwrite=False):
         proposal = ActionProposal.get_or_none(
             (ActionProposal.id == proposal_id)
             & (ActionProposal.task == task_id)
@@ -2376,7 +2386,9 @@ class CoordinatorModule:
                 return {"completed": self._proposal_to_dict(proposal)}
             raise RuntimeError("Action proposal has already executed")
         proposal_type = _canonical_action_type(proposal.type)
-        if proposal.status == "failed" and proposal_type == "rerun_from_step":
+        if overwrite and (proposal.status != "failed" or proposal_type != "create_workflow_action"):
+            raise RuntimeError("Only a failed workflow Action proposal can be retried with overwrite")
+        if proposal.status == "failed" and proposal_type in {"rerun_from_step", "create_workflow_action"}:
             proposal.status = "pending"
             proposal.error = None
         if proposal.status != "pending":
@@ -2389,13 +2401,17 @@ class CoordinatorModule:
             proposal.save()
             raise RuntimeError(proposal.error)
         proposal.status = "executing"
+        payload = json.loads(proposal.payload_json)
+        if overwrite:
+            payload["overwrite"] = True
+            proposal.payload_json = json.dumps(payload, ensure_ascii=False)
         proposal.confirm_idempotency_key = idempotency_key
         proposal.confirmed_at = utc_now()
         proposal.updated_at = proposal.confirmed_at
         proposal.save()
         return {
             "type": proposal_type,
-            "payload": json.loads(proposal.payload_json),
+            "payload": payload,
             "target_step_key": proposal.target_step_key,
             "expected_workflow_run_id": proposal.expected_workflow_run_id,
         }
@@ -2555,11 +2571,20 @@ class CoordinatorModule:
         turn_id = await self._run_db(project_id, find_turn_id)
         if turn_id is None:
             return False
-        if turn_id in self._cancelled_turns:
-            return True
         self._cancelled_turns.add(turn_id)
         intervention_manager.cancel_for_task_step(turn_id, "assistant")
         engine = self._running_engines.get(turn_id)
+        task = self._turn_tasks.get(turn_id)
+        if task is not None and not task.done():
+            task.cancel()
+        await self._mark_turn_stopped(project_id, task_id, turn_id)
+        assistant_message_id = await self._run_db(
+            project_id,
+            lambda: CoordinatorTurn.get_by_id(turn_id).assistant_message_id,
+        )
+        await self._consume_pending_inserts(
+            project_id, task_id, assistant_message_id,
+        )
         if engine is not None:
             try:
                 await asyncio.wait_for(
@@ -2576,17 +2601,6 @@ class CoordinatorModule:
                     "Engine stop raised while stopping coordinator turn %s",
                     turn_id,
                 )
-        task = self._turn_tasks.get(turn_id)
-        if task is not None and not task.done():
-            task.cancel()
-        await self._mark_turn_stopped(project_id, task_id, turn_id)
-        assistant_message_id = await self._run_db(
-            project_id,
-            lambda: CoordinatorTurn.get_by_id(turn_id).assistant_message_id,
-        )
-        await self._consume_pending_inserts(
-            project_id, task_id, assistant_message_id,
-        )
         return True
 
     async def _mark_turn_stopped(

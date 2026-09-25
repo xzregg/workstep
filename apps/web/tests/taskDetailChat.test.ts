@@ -19,9 +19,29 @@ import {
   mergeHistoryMessageWithLive,
   mergeRefreshedTaskHistory,
   canRetryFailedExecutionMessage,
+  canRestartStoppedExecutionMessage,
+  latestMessageIdsByStep,
+  latestExecutionMessageIdsByStep,
+  failedExecutionCompletionRound,
   canCompleteStoppedReview,
+  runningTaskMessageIds,
   loadTaskHistoryWithRetry,
 } from '../src/pages/taskDetailChat.ts'
+
+test('persisted coordinator stop clears stale live running state', () => {
+  const history = [{ id: 'assistant-1', channel: 'coordinator', role: 'assistant', run_status: 'stopped' }]
+  const live = { 'assistant-1': { id: 'assistant-1', channel: 'coordinator', role: 'assistant', status: 'running' } }
+
+  assert.equal(runningTaskMessageIds(history, live, null).coordinator, undefined)
+  assert.equal(runningTaskMessageIds(history, live, null).execution, undefined)
+})
+
+test('newer live completion clears a persisted running coordinator turn', () => {
+  const history = [{ id: 'assistant-1', channel: 'coordinator', role: 'assistant', run_status: 'running' }]
+  const live = { 'assistant-1': { id: 'assistant-1', channel: 'coordinator', role: 'assistant', status: 'failed' } }
+
+  assert.equal(runningTaskMessageIds(history, live, null).coordinator, undefined)
+})
 
 test('retries a failed history request until the execution message is loaded', async () => {
   let attempts = 0
@@ -56,7 +76,65 @@ test('only the final execution message with a step error can restart in place', 
   assert.equal(canRetryFailedExecutionMessage(failed, 'failed', 'passed', 'network error'), false)
 })
 
-test('terminated manual review can be completed only for current stopped step with output', () => {
+test('a later message from another step does not hide restart on a failed step', () => {
+  const latest = latestMessageIdsByStep([
+    { id: 'ui-failure', step_key: 'ui' },
+    { id: 'backend-failure', step_key: 'backend' },
+  ])
+  assert.equal(latest.get('ui'), 'ui-failure')
+  assert.equal(canRetryFailedExecutionMessage(
+    { id: 'ui-failure', role: 'assistant', channel: 'execution', run_status: 'failed' },
+    latest.get('ui'), 'failed', '429 Too Many Requests',
+  ), true)
+})
+
+test('a failed step offers completion using its existing output round', () => {
+  const message = {
+    id: 'ui-failure', role: 'assistant', channel: 'execution',
+    run_status: 'failed', step_key: 'ui', artifact_round: 3,
+  }
+  const artifacts = [{ step_key: 'ui', round: 2 }, { step_key: 'ui', round: 3 }]
+  assert.equal(failedExecutionCompletionRound(
+    message, artifacts, 'ui-failure', 'paused', 'failed',
+  ), 3)
+  assert.equal(failedExecutionCompletionRound(
+    message, artifacts, 'ui-failure', 'paused', 'passed',
+  ), null)
+  assert.equal(failedExecutionCompletionRound(
+    message, [], 'ui-failure', 'paused', 'failed',
+  ), null)
+  assert.equal(failedExecutionCompletionRound(
+    message, artifacts, 'newer-ui', 'paused', 'failed',
+  ), null)
+})
+
+test('a stopped execution can restart and can use an existing output for completion', () => {
+  const message = {
+    id: 'test-stopped', role: 'assistant', channel: 'execution',
+    run_status: 'cancelled', step_key: 'test', artifact_round: 3,
+  }
+  assert.equal(canRestartStoppedExecutionMessage(message, 'test-stopped', 'stopped', 'pending'), true)
+  assert.equal(canRestartStoppedExecutionMessage(message, 'newer-test', 'stopped', 'pending'), false)
+  assert.equal(canRestartStoppedExecutionMessage(message, 'test-stopped', 'running', 'pending'), false)
+  assert.equal(failedExecutionCompletionRound(
+    message, [{ step_key: 'test', round: 3 }], 'test-stopped', 'stopped', 'pending',
+  ), 3)
+  assert.equal(failedExecutionCompletionRound(
+    message, [], 'test-stopped', 'stopped', 'pending',
+  ), null)
+})
+
+test('later contextual messages do not hide actions on the latest stopped execution', () => {
+  const latest = latestExecutionMessageIdsByStep([
+    { id: 'execution-1', channel: 'execution', role: 'assistant', step_key: 'test' },
+    { id: 'coordinator-2', channel: 'coordinator', role: 'assistant', step_key: 'test' },
+    { id: 'execution-3', channel: 'execution', role: 'assistant', step_key: 'backend' },
+  ])
+  assert.equal(latest.get('test'), 'execution-1')
+  assert.equal(latest.get('backend'), 'execution-3')
+})
+
+test('terminated manual review can be completed for a stopped step with output', () => {
   const review = {
     id: 'review-2', step_key: 'build', workflow_run_id: 'run-2',
     mode: 'manual', status: 'terminated', artifact_round: 2,
@@ -71,7 +149,7 @@ test('terminated manual review can be completed only for current stopped step wi
   assert.equal(eligible(), true)
   assert.equal(eligible(review, [], 'cancelled'), false)
   assert.equal(eligible({ ...review, id: 'review-1', artifact_round: 1 }), false)
-  assert.equal(eligible({ ...review, workflow_run_id: 'old-run' }), false)
+  assert.equal(eligible({ ...review, workflow_run_id: 'old-run' }), true)
   assert.equal(eligible(review, artifacts, 'passed'), false)
 })
 
@@ -90,6 +168,25 @@ test('stopped automatic review with output can be marked complete, ordinary fail
   ), false)
   assert.equal(canCompleteStoppedReview(
     review, [review], [], 'paused', 'run-1', 'cancelled',
+  ), false)
+})
+
+test('stopped review remains completable after an accidental rerun if its output still exists', () => {
+  const stopped = {
+    id: 'review-old', step_key: 'backend', workflow_run_id: 'run-old',
+    mode: 'auto', status: 'failed', error: '手动停止', artifact_round: 3,
+  }
+  const newer = {
+    ...stopped, id: 'review-new', workflow_run_id: 'run-new',
+    error: 'Review agent returned invalid JSON', started_at: '2026-09-24',
+  }
+  assert.equal(canCompleteStoppedReview(
+    stopped, [newer, stopped], [{ step_key: 'backend', round: 3 }],
+    'stopped', 'run-new', 'failed',
+  ), true)
+  assert.equal(canCompleteStoppedReview(
+    stopped, [newer, stopped], [{ step_key: 'backend', round: 3 }],
+    'running', 'run-new', 'running',
   ), false)
 })
 
@@ -1129,6 +1226,22 @@ test('keeps a live message between persisted messages by its creation time', () 
   ]
   assert.deepEqual(orderConversationMessages(messages).map((m) => m.id), ['long-step', 'later-user', 'live'])
   assert.deepEqual(orderConversationMessages([...messages].reverse()).map((m) => m.id), ['long-step', 'later-user', 'live'])
+})
+
+test('keeps a live coordinator reply and its placeholder above a later action', () => {
+  const history = [
+    { id: 'coordinator-user', role: 'user', channel: 'coordinator', sequence: 1, started_at: '2026-09-25T00:03:48Z' },
+    { id: 'action-user', role: 'user', channel: 'action', sequence: 2, started_at: '2026-09-25T00:03:55Z' },
+    { id: 'action-reply', role: 'assistant', channel: 'action', sequence: 3, started_at: '2026-09-25T00:03:55Z' },
+  ]
+  const reply = { id: 'live-coordinator', role: 'assistant', channel: 'coordinator', started_at: '2026-09-25T00:03:48Z', reply_to_message_id: 'coordinator-user' }
+  const placeholder = { ...reply, id: 'pending-coordinator-thinking' }
+  assert.deepEqual(orderConversationMessages([...history, reply]).map((message) => message.id), [
+    'coordinator-user', 'live-coordinator', 'action-user', 'action-reply',
+  ])
+  assert.deepEqual(orderConversationMessages([...history, placeholder]).map((message) => message.id), [
+    'coordinator-user', 'pending-coordinator-thinking', 'action-user', 'action-reply',
+  ])
 })
 
 test('keeps concurrent persisted messages in server sequence despite start inversion', () => {

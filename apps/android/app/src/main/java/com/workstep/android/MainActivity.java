@@ -323,12 +323,14 @@ public final class MainActivity extends Activity {
             }
             return picker;
         }
+        if (imageOnly) {
+            Intent picker = new Intent(Intent.ACTION_PICK);
+            picker.setDataAndType(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "image/*");
+            picker.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple);
+            return picker;
+        }
 
         Intent picker = params.createIntent();
-        if (imageOnly) {
-            picker.setType("image/*");
-            picker.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple);
-        }
         return picker;
     }
 

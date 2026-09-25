@@ -6,6 +6,7 @@ from acp import schema
 
 from engines.hermes import HermesEngine
 from engines.core.acp_base import AcpEngineBase
+from engines.core.events import InternalEvent
 
 
 @pytest.mark.anyio
@@ -179,7 +180,7 @@ async def test_advertised_compact_is_sent_as_one_acp_prompt(monkeypatch, tmp_pat
 
     monkeypatch.setattr("engines.core.acp_base.acp.spawn_agent_process", fake_spawn)
 
-    events = [event async for event in Engine().spawn(
+    events = [event async for event in Engine().spawn_with_retry(
         prompt="/compact", cwd=str(tmp_path), session_id="existing-session",
     )]
 
@@ -187,3 +188,32 @@ async def test_advertised_compact_is_sent_as_one_acp_prompt(monkeypatch, tmp_pat
     assert len(prompts[0]) == 1
     assert prompts[0][0].text == "/compact"
     assert not any(event.type == "error" for event in events)
+    assert [event.type for event in events if event.type == "compacted"] == ["compacted"]
+
+
+@pytest.mark.anyio
+async def test_native_acp_compact_requires_unified_completion_event():
+    class Engine(AcpEngineBase):
+        ENGINE_ID = "test-acp-missing-compact-event"
+
+        @staticmethod
+        def is_installed():
+            return True
+
+        @staticmethod
+        def get_version():
+            return "test"
+
+        @staticmethod
+        def resolve_binary():
+            return "fake-acp"
+
+        async def spawn(self, **kwargs):
+            yield InternalEvent(type="status", data={"status": "done"})
+
+    events = [event async for event in Engine().spawn_with_retry(
+        prompt="/compact", cwd="/tmp", session_id="existing-session",
+    )]
+
+    assert events[-1].type == "error"
+    assert "压缩完成事件" in events[-1].data["message"]

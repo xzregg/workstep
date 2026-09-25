@@ -217,6 +217,160 @@ def test_list_task_artifacts_exposes_declared_output_port(tmp_path):
     }
 
 
+def test_list_task_artifacts_marks_identical_content_across_rounds(tmp_path, monkeypatch):
+    artifacts_root = tmp_path / ".workstep" / "artifacts"
+    for round_number in (1, 2):
+        round_dir = step_round_dir(artifacts_root, "dev", "task-1", "ui", round_number)
+        round_dir.mkdir(parents=True)
+        (round_dir / "design.md").write_text("沿用原设计", encoding="utf-8")
+        write_round_manifest(
+            artifacts_root=artifacts_root, workflow_id="dev", task_id="task-1",
+            step_key="ui", artifact_round=round_number,
+            status="passed", eligible_for_downstream=True,
+        )
+
+    project = type("Project", (), {"workstep_dir": str(tmp_path / ".workstep")})()
+    from pathlib import Path
+
+    original_open = Path.open
+
+    def reject_artifact_read(path, mode="r", *args, **kwargs):
+        if path.name == "design.md" and "b" in mode:
+            raise AssertionError("listing must not read artifact contents")
+        return original_open(path, mode, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "open", reject_artifact_read)
+        artifacts = list_task_artifacts(project, "task-1")
+    first, second = sorted(artifacts, key=lambda item: item["round"])
+    assert first["unchanged_from_round"] is None
+    assert second["unchanged_from_round"] == 1
+    assert second["round_unchanged_from"] == 1
+
+    # A same-size edit must not be mistaken for an unchanged artifact.
+    (step_round_dir(artifacts_root, "dev", "task-1", "ui", 2) / "design.md").write_text(
+        "重新做设计", encoding="utf-8",
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "open", reject_artifact_read)
+        second = next(item for item in list_task_artifacts(project, "task-1") if item["round"] == 2)
+    assert second["unchanged_from_round"] is None
+    assert second["round_unchanged_from"] is None
+
+
+def test_manifest_streams_file_hashes_and_records_round_comparison(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    artifacts_root = tmp_path / ".workstep" / "artifacts"
+    original_read_bytes = Path.read_bytes
+
+    def reject_whole_file_read(path):
+        if path.name == "large.bin":
+            raise AssertionError("manifest must stream large file contents")
+        return original_read_bytes(path)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "read_bytes", reject_whole_file_read)
+        for round_number in (1, 2):
+            round_dir = step_round_dir(artifacts_root, "dev", "task-1", "ui", round_number)
+            round_dir.mkdir(parents=True)
+            (round_dir / "large.bin").write_bytes(b"same content")
+            manifest = write_round_manifest(
+                artifacts_root=artifacts_root, workflow_id="dev", task_id="task-1",
+                step_key="ui", artifact_round=round_number,
+                status="passed", eligible_for_downstream=True,
+            )
+    assert manifest["content_comparison"] == {
+        "previous_round": 1,
+        "round_unchanged": True,
+        "unchanged_paths": ["large.bin"],
+    }
+
+
+def test_manifest_does_not_mark_same_size_different_content_as_unchanged(tmp_path):
+    artifacts_root = tmp_path / ".workstep" / "artifacts"
+    for round_number, content in ((1, b"abcd"), (2, b"wxyz")):
+        round_dir = step_round_dir(artifacts_root, "dev", "task-1", "ui", round_number)
+        round_dir.mkdir(parents=True)
+        (round_dir / "design.bin").write_bytes(content)
+        manifest = write_round_manifest(
+            artifacts_root=artifacts_root, workflow_id="dev", task_id="task-1",
+            step_key="ui", artifact_round=round_number,
+            status="passed", eligible_for_downstream=True,
+        )
+    assert manifest["content_comparison"] == {
+        "previous_round": 1,
+        "round_unchanged": False,
+        "unchanged_paths": [],
+    }
+
+
+def test_new_round_does_not_guess_equality_against_legacy_manifest(tmp_path):
+    artifacts_root = tmp_path / ".workstep" / "artifacts"
+    old_dir = step_round_dir(artifacts_root, "dev", "task-1", "ui", 1)
+    old_dir.mkdir(parents=True)
+    (old_dir / "design.md").write_text("same", encoding="utf-8")
+    (old_dir / "manifest.json").write_text(json.dumps({
+        "artifacts": [{"path": "design.md", "name": "design.md"}],
+        "eligible_for_downstream": True,
+    }), encoding="utf-8")
+    new_dir = step_round_dir(artifacts_root, "dev", "task-1", "ui", 2)
+    new_dir.mkdir(parents=True)
+    (new_dir / "design.md").write_text("same", encoding="utf-8")
+    manifest = write_round_manifest(
+        artifacts_root=artifacts_root, workflow_id="dev", task_id="task-1",
+        step_key="ui", artifact_round=2,
+        status="passed", eligible_for_downstream=True,
+    )
+    assert manifest["content_comparison"] is None
+    project = type("Project", (), {"workstep_dir": str(tmp_path / ".workstep")})()
+    newest = next(item for item in list_task_artifacts(project, "task-1") if item["round"] == 2)
+    assert newest["unchanged_from_round"] is None
+    assert newest["round_unchanged_from"] is None
+
+
+def test_list_task_artifacts_distinguishes_file_and_whole_round_changes(tmp_path):
+    artifacts_root = tmp_path / ".workstep" / "artifacts"
+    for round_number in (1, 2):
+        round_dir = step_round_dir(artifacts_root, "dev", "task-1", "ui", round_number)
+        (round_dir / "assets").mkdir(parents=True)
+        (round_dir / "assets" / "icon.svg").write_text("same", encoding="utf-8")
+        (round_dir / "spec.md").write_text("same", encoding="utf-8")
+        write_round_manifest(
+            artifacts_root=artifacts_root, workflow_id="dev", task_id="task-1",
+            step_key="ui", artifact_round=round_number,
+            status="passed", eligible_for_downstream=True,
+            outputs=[{"name": "assets", "type": "directory"}],
+        )
+    (step_round_dir(artifacts_root, "dev", "task-1", "ui", 2) / "assets" / "icon.svg").write_text(
+        "diff", encoding="utf-8",
+    )
+    project = type("Project", (), {"workstep_dir": str(tmp_path / ".workstep")})()
+    second = [item for item in list_task_artifacts(project, "task-1") if item["round"] == 2]
+    assert all(item["round_unchanged_from"] is None for item in second)
+    assert next(item for item in second if item["name"] == "spec.md")["unchanged_from_round"] == 1
+    assert next(item for item in second if item["name"] == "assets")["unchanged_from_round"] is None
+
+
+def test_list_task_artifacts_does_not_mark_round_unchanged_after_file_removal(tmp_path):
+    artifacts_root = tmp_path / ".workstep" / "artifacts"
+    for round_number in (1, 2):
+        round_dir = step_round_dir(artifacts_root, "dev", "task-1", "ui", round_number)
+        round_dir.mkdir(parents=True)
+        (round_dir / "kept.md").write_text("same", encoding="utf-8")
+        if round_number == 1:
+            (round_dir / "removed.md").write_text("old", encoding="utf-8")
+        write_round_manifest(
+            artifacts_root=artifacts_root, workflow_id="dev", task_id="task-1",
+            step_key="ui", artifact_round=round_number,
+            status="passed", eligible_for_downstream=True,
+        )
+    project = type("Project", (), {"workstep_dir": str(tmp_path / ".workstep")})()
+    kept = next(item for item in list_task_artifacts(project, "task-1") if item["round"] == 2)
+    assert kept["unchanged_from_round"] == 1
+    assert kept["round_unchanged_from"] is None
+
+
 def test_select_upstream_round_honours_explicit_round(tmp_path):
     artifacts_root = tmp_path / ".workstep" / "artifacts"
     for round_number in (1, 2):

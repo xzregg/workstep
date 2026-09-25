@@ -40,6 +40,15 @@ test('shows a thinking reply until the running assistant message arrives', () =>
   }], 'coordinator'), false)
 })
 
+test('an action inserted during a coordinator reply does not create another coordinator bubble', () => {
+  assert.equal(shouldShowAssistantThinking(true, [
+    { channel: 'coordinator', role: 'user' },
+    { channel: 'coordinator', role: 'assistant', run_status: 'running' },
+    { channel: 'action', role: 'user' },
+    { channel: 'action', role: 'assistant', run_status: 'failed' },
+  ], 'coordinator'), false)
+})
+
 test('all editable conversation containers use the shared thinking reply', () => {
   assert.match(assistantPanelSource, /<AssistantThinkingMessage/)
   assert.match(taskDetailSource, /<AssistantThinkingMessage/)

@@ -42,6 +42,23 @@ def test_display_button_keeps_title_and_html_content():
     assert buttons[0]["prompt"] == ""
 
 
+def test_action_button_keeps_confirmation_input_prompt():
+    buttons = normalize_quick_buttons([{
+        "id": "commit", "kind": "action", "label": "提交并推送",
+        "action_id": "commit", "script_path": "commit.sh",
+        "confirmation_input_prompt": "请输入 Commit 消息",
+    }])
+    assert buttons[0]["confirmation_input_prompt"] == "请输入 Commit 消息"
+    without_confirmation = normalize_quick_buttons([{
+        **buttons[0], "require_confirmation": False,
+    }])
+    assert without_confirmation[0]["confirmation_input_prompt"] == ""
+    with pytest.raises(ValueError, match="确认输入提示"):
+        normalize_quick_buttons([{
+            **buttons[0], "confirmation_input_prompt": "x" * 201,
+        }])
+
+
 def test_workflow_level_quick_buttons_are_validated():
     button = {"id": "restart", "kind": "action", "label": "重启", "action_id": "restart", "script_path": "restart.sh"}
     WorkflowDefinition.load({"nodes": [], "connections": [], "quickButtons": [button]}).validate()

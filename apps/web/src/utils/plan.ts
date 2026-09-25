@@ -117,6 +117,27 @@ export function mergePlanEvents(
   return latestPersistedPlan ? [latestPersistedPlan, ...live] : live
 }
 
+export interface MarkdownPlan {
+  id: string
+  content: string
+  complete: boolean
+}
+
+export function latestMarkdownPlanFromEvents(events: PlanStreamEvent[]): MarkdownPlan | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event.type !== 'plan_update' && !isCustom(event, CUSTOM.planUpdate)) continue
+    const data = isCustom(event, CUSTOM.planUpdate) ? customValue(event) : event.data
+    if (data?.type !== 'markdown' || typeof data.content !== 'string' || !data.content.trim()) continue
+    return {
+      id: String(data.id || ''),
+      content: data.content,
+      complete: data.complete === true,
+    }
+  }
+  return undefined
+}
+
 export function latestPlanFromEvents(
   events: PlanStreamEvent[],
 ): PlanSnapshot | undefined {

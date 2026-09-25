@@ -19,9 +19,16 @@ def test_builtin_workstep_cli_skill_is_enabled_and_mirrored_by_default(tmp_path)
     mirrored = project / ".workstep" / "skills" / "workstep-cli" / "SKILL.md"
     assert mirrored.is_file()
     text = mirrored.read_text(encoding="utf-8")
+    assert "quick buttons" in text.split("---", 2)[1]
     assert "python -m cli workflow list" in text
     assert "python -m cli workflow get" in text
     assert "python -m cli workflow action-create" in text
+    assert "--overwrite" in text
+    assert "--input-prompt" in text
+    assert "WORKSTEP_ACTION_INPUT" in text
+    assert "python -m cli project action-create" in text
+    assert "python -m cli project quick-buttons" in text
+    assert "python -m cli workflow quick-buttons" in text
     assert "python -m cli task create" in text
     assert "<project>/.workstep/artifacts/<workflow_id>/<task_id>/.worktrees/<alias>/" in text
     assert "<project>/.workstep/worktrees/<task_id>/" not in text

@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import TaskArtifactBrowser, {
   artifactFileType,
+  artifactDirectories,
   buildArtifactStepGroups,
   resolveArtifactRound,
 } from '../src/components/TaskArtifactBrowser.tsx'
@@ -110,6 +111,23 @@ test('shows relative paths so same-named files remain distinguishable', () => {
   assert.match(html, /方案二\/solution\.md/)
 })
 
+test('shows a neutral unchanged marker on both the round tab and copied file', () => {
+  const html = renderToStaticMarkup(createElement(
+    I18nProvider, null,
+    createElement(TaskArtifactBrowser, {
+      artifacts: [{
+        step_key: 'ui', round: 2, name: 'design.md', logical_name: '设计稿',
+        path: '/artifacts/ui/2/design.md', relative_path: 'design.md',
+        round_unchanged_from: 1, unchanged_from_round: 1,
+      }] as any[],
+      steps: [{ key: 'ui', label: '界面设计' }],
+      onOpenArtifact: () => {},
+    }),
+  ))
+  assert.match(html, /task-artifact-round-tab-label[\s\S]*同第1轮/)
+  assert.match(html, /task-artifact-file-row[\s\S]*同第1轮/)
+})
+
 test('stacks step sections without a left sidebar and keeps compact visible round tabs', () => {
   const completeArtifacts = artifacts.slice(0, 2).map((artifact) => ({
     ...artifact,
@@ -148,4 +166,64 @@ test('stacks step sections without a left sidebar and keeps compact visible roun
   assert.match(firstStepHeading, /task-artifact-step-title[\s\S]*ws-marquee/)
   assert.match(firstStepHeading, /task-artifact-round-tab-label">2 轮</)
   assert.doesNotMatch(firstStepHeading, /task-artifact-round-tab-label">第/)
+})
+
+test('shows task and step artifact directory actions when the project directory is available', () => {
+  const html = renderToStaticMarkup(createElement(
+    I18nProvider,
+    null,
+    createElement(TaskArtifactBrowser, {
+      artifacts: artifacts as any,
+      steps: [{ key: 'req', label: '需求分析' }, { key: 'build', label: '开发实现' }],
+      projectId: 'project-one',
+      artifactDirectory: '/project/.workstep/artifacts/workflow/task',
+      onOpenArtifact: () => {},
+    }),
+  ))
+
+  assert.equal((html.match(/class="task-artifact-open-directory(?: task-artifact-open-directory--step)?"/g) || []).length, 3)
+  assert.match(html, /aria-label="需求分析[^\"]*打开目录"/)
+  assert.match(html, /aria-label="开发实现[^\"]*打开目录"/)
+  const reqHeading = html.slice(html.indexOf('class="task-artifact-step-heading"'))
+  assert.ok(reqHeading.indexOf('task-artifact-round-tabs') < reqHeading.indexOf('aria-label="需求分析 打开目录"'))
+  assert.match(html, /class="task-artifact-open-directory task-artifact-open-directory--step"[^>]*aria-label="需求分析 打开目录"[^>]*><svg/)
+})
+
+test('shared task also shows artifact directory actions without a project id', () => {
+  const html = renderToStaticMarkup(createElement(
+    I18nProvider,
+    null,
+    createElement(TaskArtifactBrowser, {
+      artifacts: artifacts as any,
+      steps: [{ key: 'req', label: '需求分析' }, { key: 'build', label: '开发实现' }],
+      artifactDirectory: '/project/.workstep/artifacts/workflow/task',
+      onOpenArtifact: () => {},
+    }),
+  ))
+
+  assert.equal((html.match(/class="task-artifact-open-directory(?: task-artifact-open-directory--step)?"/g) || []).length, 3)
+})
+
+test('derives task and step directories from existing artifact paths when the API omits them', () => {
+  const artifact = {
+    step_key: 'req', round: 2, name: 'spec.md', logical_name: null,
+    path: '/project/.workstep/artifacts/workflow/task/req/2/docs/spec.md',
+    relative_path: 'docs/spec.md',
+  } as any
+  assert.deepEqual(artifactDirectories(artifact), {
+    task: '/project/.workstep/artifacts/workflow/task',
+    step: '/project/.workstep/artifacts/workflow/task/req',
+  })
+
+  const html = renderToStaticMarkup(createElement(
+    I18nProvider,
+    null,
+    createElement(TaskArtifactBrowser, {
+      artifacts: [artifact],
+      steps: [{ key: 'req', label: '需求分析' }],
+      projectId: 'project-one',
+      onOpenArtifact: () => {},
+    }),
+  ))
+  assert.equal((html.match(/class="task-artifact-open-directory(?: task-artifact-open-directory--step)?"/g) || []).length, 2)
 })

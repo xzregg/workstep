@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { taskActionApi, type ActionRun, type TaskQuickButton } from '../api/client'
 import { useI18n } from '../i18n'
 import Button from './Button'
-import ConfirmDialog from './ConfirmDialog'
+import ActionConfirmDialog from './ActionConfirmDialog'
 import Icon from './Icon'
 import QuickPromptButton from './QuickPromptButton'
 import ChatMessageBubble from './ChatMessageBubble'
+import MobileSheet from './MobileSheet'
 import { formatConversationDateTime } from '../utils/datetime'
 
 const isActive = (status: string) => ['preparing', 'running', 'stopping'].includes(status)
@@ -68,14 +69,14 @@ export function useTaskActions(projectId: string | undefined, taskId: string | u
     return () => window.clearInterval(timer)
   }, [hasActiveAction, refresh])
 
-  const run = async (button: TaskQuickButton, confirmed = false) => {
+  const run = async (button: TaskQuickButton, confirmed = false, actionInput = '') => {
     if (!projectId || !taskId || busy) return
     if (runs.some((item) => item.action_id === button.action_id && isActive(item.status))) return
     if (button.require_confirmation !== false && !confirmed) { setPending(button); return }
     setBusy(true)
     setError('')
     try {
-      const result = await taskActionApi.run(taskId, projectId, button, confirmed)
+      const result = await taskActionApi.run(taskId, projectId, button, confirmed, actionInput)
       setRuns((current) => [result, ...current.filter((item) => item.run_id !== result.run_id)])
       setPending(null)
       onChanged?.()
@@ -139,37 +140,44 @@ export function ActionConversationMessage({ message, run, onStop }: {
   </ChatMessageBubble>
 }
 
-export function TaskActionButtons({ state, onFillPrompt, onSendPrompt }: { state: State; onFillPrompt?: (value: string) => void; onSendPrompt?: (value: string) => void }) {
+export function TaskActionButtons({ state, onFillPrompt, onSendPrompt, compact = false }: { state: State; onFillPrompt?: (value: string) => void; onSendPrompt?: (value: string) => void; compact?: boolean }) {
   const { t } = useI18n()
+  const [open, setOpen] = useState(false)
+  const renderButton = (button: TaskQuickButton, inSheet: boolean) => {
+    const actionRunning = button.kind === 'action' && state.runs.some((run) => run.action_id === button.action_id && isActive(run.status))
+    return <QuickPromptButton
+      key={`${button.source}:${button.id}`}
+      label={button.label}
+      prompt={button.kind === 'action' ? button.id : button.prompt || ''}
+      disabled={Boolean(actionRunning || (button.kind === 'action' && state.busy))}
+      displayOnly={button.kind === 'display'}
+      displayContent={button.content}
+      onSelect={() => {
+        if (inSheet) setOpen(false)
+        if (button.kind === 'action') { void state.run(button); return }
+        if (button.kind === 'prompt') {
+          if (button.immediate_send) onSendPrompt?.(button.prompt)
+          else onFillPrompt?.(button.prompt)
+        }
+      }}
+      style={inSheet ? { justifyContent: 'flex-start', width: '100%' } : { flexShrink: 0, borderRadius: 999, whiteSpace: 'nowrap' }}
+    />
+  }
   return <>
-    {state.buttons.length > 0 && <div className="chat-quick-prompts" role="group" aria-label={t('actionShortcuts.quickButtons')} style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '0 1px 8px' }}>
-      {state.buttons.map((button) => {
-        const actionRunning = button.kind === 'action' && state.runs.some((run) => run.action_id === button.action_id && isActive(run.status))
-        return <QuickPromptButton
-          key={`${button.source}:${button.id}`}
-          label={button.label}
-          prompt={button.kind === 'action' ? button.id : button.prompt || ''}
-          disabled={Boolean(actionRunning || (button.kind === 'action' && state.busy))}
-          displayOnly={button.kind === 'display'}
-          displayContent={button.content}
-          onSelect={() => {
-            if (button.kind === 'action') { void state.run(button); return }
-            if (button.kind === 'prompt') {
-              if (button.immediate_send) onSendPrompt?.(button.prompt)
-              else onFillPrompt?.(button.prompt)
-            }
-          }}
-          style={{ flexShrink: 0, borderRadius: 999, whiteSpace: 'nowrap' }}
-        />
-      })}
-    </div>}
-    {state.error && <span role="alert" style={{ color: 'var(--danger)' }}>{state.error}</span>}
-    <ConfirmDialog
-      open={Boolean(state.pending)} title={t('actionShortcuts.confirmTitle', { title: state.pending?.label || '' })}
-      message={state.pending ? t('actionShortcuts.confirmMessage', { script: state.pending.script_path || '', directory: state.pending.cwd_mode || 'task' }) : ''}
-      confirmText={t('actionShortcuts.confirm')} loading={state.busy}
+    {state.buttons.length > 0 && (compact ? <>
+      <button type="button" className="chat-quick-bolt" onClick={() => setOpen(true)} aria-label={t('actionShortcuts.quickButtons')}
+        style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'transparent', color: 'var(--meta)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 'calc(14px * var(--font-scale))', padding: 0 }}>⚡</button>
+      <MobileSheet open={open} title={t('actionShortcuts.quickButtons')} onClose={() => setOpen(false)}>
+        {state.buttons.map((button) => renderButton(button, true))}
+      </MobileSheet>
+    </> : <div className="chat-quick-prompts" role="group" aria-label={t('actionShortcuts.quickButtons')} style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '0 1px 8px' }}>
+      {state.buttons.map((button) => renderButton(button, false))}
+    </div>)}
+    {state.error && !compact && <span role="alert" style={{ color: 'var(--danger)' }}>{state.error}</span>}
+    <ActionConfirmDialog
+      button={state.pending} directory={state.pending?.cwd_mode || 'task'} loading={state.busy}
       onCancel={() => state.setPending(null)}
-      onConfirm={() => { if (state.pending) void state.run(state.pending, true) }}
+      onConfirm={(input) => { if (state.pending) void state.run(state.pending, true, input) }}
     />
   </>
 }

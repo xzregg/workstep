@@ -22,7 +22,8 @@ import {
   type InteractionEvent,
 } from '../utils/interaction'
 import { useI18n } from '../i18n'
-import { latestPlanFromEvents } from '../utils/plan'
+import { latestMarkdownPlanFromEvents, latestPlanFromEvents } from '../utils/plan'
+import { latestGoalFromEvents } from '../utils/goal'
 import { visibleAssistantContent } from '../utils/chatMessageDisplay'
 import { asyncQuestionAnswer, asyncQuestionsFromEvents } from '../utils/asyncQuestion'
 
@@ -190,6 +191,8 @@ export default function ChatMessageBubble({
   const interactions = pendingInteractionItems(events, interactionsEnabled)
   const asyncQuestions = asyncQuestionsFromEvents(events)
   const plan = latestPlanFromEvents(events)
+  const goal = latestGoalFromEvents(events)
+  const markdownPlan = latestMarkdownPlanFromEvents(events)
   const hasToolActivity = !isUser && events.some((event) => (
     event.type === 'tool_use' || event.type === 'tool_result'
     || isToolEvent(event)
@@ -207,7 +210,7 @@ export default function ChatMessageBubble({
     ...(isUser ? { marginLeft: 'auto' } : {}),
   }
   return (
-    <div {...rootProps} style={rootStyle} className="chat-message-row" data-thinking={!isUser && showLoading && streaming && interactions.length === 0 && asyncQuestions.length === 0 && !plan && !(visibleContent || hasToolActivity) ? '' : undefined}>
+    <div {...rootProps} style={rootStyle} className="chat-message-row" data-thinking={!isUser && showLoading && streaming && interactions.length === 0 && asyncQuestions.length === 0 && !plan && !markdownPlan && !(visibleContent || hasToolActivity) ? '' : undefined}>
       {isUser && header && (
         <div style={{
           fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', textAlign: 'right',
@@ -281,7 +284,7 @@ export default function ChatMessageBubble({
               )}
             </div>
           ) : (
-            !isUser && showLoading && streaming && interactions.length === 0 && !plan && (
+            !isUser && showLoading && streaming && interactions.length === 0 && !plan && !markdownPlan && (
               loading ?? (
                 <StreamingStatusText label={t('bubble.thinking')} />
               )
@@ -317,7 +320,38 @@ export default function ChatMessageBubble({
             <div style={{ color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))', marginTop: 4 }}>{error}</div>
           )}
           {!isUser && error && errorActions}
+          {!isUser && markdownPlan && (
+            <section className="chat-proposed-plan" aria-label={t('plan.proposalTitle')}>
+              <div className="chat-proposed-plan-header">
+                <div className="chat-proposed-plan-title">{t('plan.proposalTitle')}</div>
+                <MessageCopyButton content={markdownPlan.content} className="chat-message-action" />
+              </div>
+              <MarkdownMessage
+                content={markdownPlan.content}
+                projectId={projectId}
+                streaming={streaming && !markdownPlan.complete}
+                onImageClick={handleImageClick}
+              />
+            </section>
+          )}
           {!isUser && plan && <PlanChecklist plan={plan} />}
+          {!isUser && goal && (
+            <section className="chat-goal-card" aria-label={t('goal.title')} style={{
+              padding: '10px 12px', border: '1px solid var(--border-soft)', borderRadius: 8,
+              background: 'var(--surface)', fontSize: 'calc(12px * var(--font-scale))',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <strong>{t('goal.title')}</strong>
+                <span>{t(`goal.status.${goal.status}` as Parameters<typeof t>[0])}</span>
+              </div>
+              {goal.objective && <div style={{ marginTop: 6, whiteSpace: 'pre-wrap' }}>{goal.objective}</div>}
+              {goal.tokens_used !== undefined && (
+                <div style={{ marginTop: 6, color: 'var(--meta)' }}>
+                  {goal.tokens_used.toLocaleString()}{goal.token_budget ? ` / ${goal.token_budget.toLocaleString()}` : ''} tokens
+                </div>
+              )}
+            </section>
+          )}
           {!isUser && onInteractionRespond && interactions.map((item) => (
             <InteractionPrompt
               key={item.request.interaction_id}

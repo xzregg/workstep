@@ -616,6 +616,7 @@ export function createAssistantStore(
             isCustom(event, CUSTOM.usage)
             || isCustom(event, CUSTOM.plan)
             || isCustom(event, CUSTOM.planUpdate)
+            || isCustom(event, CUSTOM.goalUpdate)
             || isCustom(event, CUSTOM.planRemoved)
             || isCustom(event, CUSTOM.interactionRequest)
             || isCustom(event, CUSTOM.interactionResponse)

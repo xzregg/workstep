@@ -499,7 +499,10 @@ def _task_git_workspace_context(task: Task, artifacts_dir: Path) -> str:
         f"Workspace directory: {workspace_path}. Attached repositories: "
         f"{', '.join(aliases) if aliases else '(none yet)'}. "
         "The engine still starts in the project root. Run Git commands inside the relevant "
-        "worktree child directory; add only repositories needed by this task."
+        "worktree child directory; add only repositories needed by this task. "
+        "Use project-relative paths in instructions and scripts, never container absolute paths. "
+        "If creating a worktree with Git, place it under this workspace directory and use "
+        "git worktree add --relative-paths so the checkout also works at the host path."
     )
 
 

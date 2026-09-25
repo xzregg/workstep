@@ -769,6 +769,7 @@ export interface ChatQuickButton {
   script_path?: string
   cwd_mode?: 'project' | 'task' | 'worktrees'
   require_confirmation?: boolean
+  confirmation_input_prompt?: string
 }
 
 export interface TaskQuickButton extends ChatQuickButton {
@@ -801,10 +802,10 @@ export const taskActionApi = {
     request<{ buttons: TaskQuickButton[]; runs: ActionRun[] }>(
       `/tasks/${encodeURIComponent(taskId)}/actions?project_id=${encodeURIComponent(projectId)}${stepKey ? `&step_key=${encodeURIComponent(stepKey)}` : ''}`,
     ),
-  run: (taskId: string, projectId: string, button: TaskQuickButton, confirmed: boolean) =>
+  run: (taskId: string, projectId: string, button: TaskQuickButton, confirmed: boolean, actionInput = '') =>
     request<ActionRun>(`/tasks/${encodeURIComponent(taskId)}/actions/run?project_id=${encodeURIComponent(projectId)}`, {
       method: 'POST',
-      body: JSON.stringify({ button_id: button.id, source: button.source, step_key: button.step_key, confirmed }),
+      body: JSON.stringify({ button_id: button.id, source: button.source, step_key: button.step_key, confirmed, action_input: actionInput }),
     }),
   get: (runId: string, projectId: string) =>
     request<ActionRun>(`/action-runs/${encodeURIComponent(runId)}?project_id=${encodeURIComponent(projectId)}`),
@@ -825,9 +826,9 @@ export const projectActionApi = {
     request<{ buttons: ChatQuickButton[]; runs: ActionRun[]; active_action_ids: string[] }>(
       `/project-actions/sessions/${encodeURIComponent(sessionId)}?project_id=${encodeURIComponent(projectId)}`,
     ),
-  run: (sessionId: string, projectId: string, buttonId: string, confirmed: boolean) =>
+  run: (sessionId: string, projectId: string, buttonId: string, confirmed: boolean, actionInput = '') =>
     request<ActionRun>(`/project-actions/sessions/${encodeURIComponent(sessionId)}/run?project_id=${encodeURIComponent(projectId)}`, {
-      method: 'POST', body: JSON.stringify({ button_id: buttonId, confirmed }),
+      method: 'POST', body: JSON.stringify({ button_id: buttonId, confirmed, action_input: actionInput }),
     }),
 }
 
@@ -948,6 +949,7 @@ export interface ChatMessageOptions {
   thinking_effort?: string
   permission_mode?: string
   plan_mode?: boolean
+  goal_mode?: boolean
 }
 
 export const chatSessionApi = {
@@ -1037,6 +1039,7 @@ export const chatSessionApi = {
         thinking_effort: options.thinking_effort || undefined,
         permission_mode: options.permission_mode || undefined,
         plan_mode: options.plan_mode || undefined,
+        goal_mode: options.goal_mode || undefined,
       }),
     }),
   sendLiveMessage: (
@@ -1370,6 +1373,8 @@ export interface TaskArtifact {
   size: number | null
   is_dir?: boolean
   updated_at?: string | null
+  unchanged_from_round?: number | null
+  round_unchanged_from?: number | null
 }
 
 export interface TaskArtifactInputSource {
@@ -1606,6 +1611,13 @@ export const taskApi = {
       `/task/${encodeURIComponent(taskId)}/messages/${encodeURIComponent(messageId)}/retry?project_id=${encodeURIComponent(projectId)}`,
       { method: 'POST' },
     ),
+  completeFailedMessage: (
+    taskId: string, messageId: string, artifactRound: number,
+    scheduleDownstream: boolean, projectId: string,
+  ) => request<{ completed: boolean; resumed: boolean; run_id: string | null }>(
+    `/task/${encodeURIComponent(taskId)}/messages/${encodeURIComponent(messageId)}/set-complete?project_id=${encodeURIComponent(projectId)}`,
+    { method: 'POST', body: JSON.stringify({ artifact_round: artifactRound, schedule_downstream: scheduleDownstream }) },
+  ),
   stepExecutionConfig: (taskId: string, stepKey: string, projectId: string) =>
     request<StepExecutionConfig>(
       `/task/${encodeURIComponent(taskId)}/step/${encodeURIComponent(stepKey)}/config?project_id=${encodeURIComponent(projectId)}`,
@@ -1668,9 +1680,10 @@ export const taskApi = {
     proposalId: string,
     projectId: string,
     idempotencyKey: string,
+    overwrite = false,
   ) => request<ActionProposal>(
     `/task/${taskId}/actions/${proposalId}/confirm?project_id=${encodeURIComponent(projectId)}`,
-    { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey } },
+    { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, ...(overwrite ? { body: JSON.stringify({ overwrite: true }) } : {}) },
   ),
   cancelAction: (taskId: string, proposalId: string, projectId: string) =>
     request<ActionProposal>(
@@ -1678,7 +1691,7 @@ export const taskApi = {
       { method: 'POST' },
     ),
   artifacts: (taskId: string, projectId: string) =>
-    request<{ artifacts: TaskArtifact[]; input_snapshots: TaskArtifactInputSnapshot[] }>(
+    request<{ artifacts: TaskArtifact[]; input_snapshots: TaskArtifactInputSnapshot[]; artifact_directory: string }>(
       `/task/${taskId}/artifacts?project_id=${encodeURIComponent(projectId)}`
     ),
   reviews: (taskId: string, projectId: string) =>
@@ -1930,7 +1943,7 @@ export const shareApi = {
       sessionToken,
     ),
   artifacts: (token: string, sessionToken: string) =>
-    shareRequest<{ artifacts: TaskArtifact[] }>(
+    shareRequest<{ artifacts: TaskArtifact[]; artifact_directory: string }>(
       `/task-share/public/${encodeURIComponent(token)}/artifacts`,
       sessionToken,
     ),

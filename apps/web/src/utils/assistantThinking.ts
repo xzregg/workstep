@@ -13,7 +13,8 @@ export function shouldShowAssistantThinking(
   if (!running) return false
   let lastUserIndex = -1
   for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index]?.role === 'user') {
+    if (messages[index]?.role === 'user'
+      && (!channel || messages[index]?.channel === channel)) {
       lastUserIndex = index
       break
     }

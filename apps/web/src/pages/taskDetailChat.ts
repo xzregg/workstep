@@ -59,6 +59,7 @@ interface ConversationMessage {
   channel?: string
   role?: string
   step_key?: string
+  artifact_round?: number | null
   content?: unknown
   run_status?: string
   status?: string
@@ -692,16 +693,17 @@ export function canCompleteStoppedReview<T extends MessageReview & {
   stepStatus?: string,
 ): boolean {
   const stoppedManual = review?.mode === 'manual'
-    && review.status === 'terminated' && taskStatus === 'stopped'
+    && review.status === 'terminated'
   const stoppedAuto = review?.mode === 'auto'
     && review.status === 'failed' && review.error === '手动停止'
-    && taskStatus === 'paused'
-  if (!review || (!stoppedManual && !stoppedAuto) || stepStatus !== 'cancelled'
-    || !activeRunId || review.workflow_run_id !== activeRunId
+  if (!review || (!stoppedManual && !stoppedAuto)
+    || !['stopped', 'paused'].includes(taskStatus || '')
+    || !['cancelled', 'failed', 'pending'].includes(stepStatus || '')
+    || !activeRunId
     || !review.artifact_round
     || !artifacts.some((artifact) => artifact.step_key === review.step_key
       && artifact.round === review.artifact_round)) return false
-  return reviews.filter((item) => item.step_key === review.step_key)[0]?.id === review.id
+  return reviews.some((item) => item.id === review.id)
 }
 
 export function isManualReviewMessage<T extends MessageReview>(
@@ -761,6 +763,63 @@ export function canRetryFailedExecutionMessage(
     && Boolean(stepError?.trim())
 }
 
+export function canRestartStoppedExecutionMessage(
+  message: Pick<ConversationMessage, 'id' | 'role' | 'channel' | 'run_status'>,
+  latestMessageId: string | undefined,
+  taskStatus: string | undefined,
+  stepStatus: string | undefined,
+): boolean {
+  return message.id === latestMessageId
+    && message.role === 'assistant'
+    && message.channel === 'execution'
+    && ['cancelled', 'stopped'].includes(message.run_status || '')
+    && ['paused', 'stopped'].includes(taskStatus || '')
+    && ['failed', 'pending', 'cancelled'].includes(stepStatus || '')
+}
+
+export function latestMessageIdsByStep(
+  messages: readonly { id?: string; step_key?: string; context_step_key?: string }[],
+): Map<string, string> {
+  const latest = new Map<string, string>()
+  for (const message of messages) {
+    const stepKey = message.context_step_key || message.step_key
+    if (stepKey && message.id) latest.set(stepKey, message.id)
+  }
+  return latest
+}
+
+export function latestExecutionMessageIdsByStep(
+  messages: readonly { id?: string; step_key?: string; channel?: string; role?: string }[],
+): Map<string, string> {
+  const latest = new Map<string, string>()
+  for (const message of messages) {
+    if (message.channel === 'execution' && message.role === 'assistant'
+      && message.step_key && message.id) {
+      latest.set(message.step_key, message.id)
+    }
+  }
+  return latest
+}
+
+export function failedExecutionCompletionRound(
+  message: Pick<ConversationMessage, 'id' | 'role' | 'channel' | 'run_status' | 'step_key' | 'artifact_round'>,
+  artifacts: readonly { step_key: string; round: number }[],
+  latestMessageId: string | undefined,
+  taskStatus: string | undefined,
+  stepStatus: string | undefined,
+): number | null {
+  if (message.id !== latestMessageId
+    || message.role !== 'assistant' || message.channel !== 'execution'
+    || !['failed', 'cancelled', 'stopped'].includes(message.run_status || '')
+    || !['paused', 'stopped'].includes(taskStatus || '')
+    || !['failed', 'pending', 'cancelled'].includes(stepStatus || '')) return null
+  const rounds = artifacts.filter((artifact) => artifact.step_key === message.step_key)
+    .map((artifact) => artifact.round)
+  if (rounds.length === 0) return null
+  return message.artifact_round && rounds.includes(message.artifact_round)
+    ? message.artifact_round : Math.max(...rounds)
+}
+
 export function isUnpersistedLiveMessage(
   message: ConversationMessage,
   persistedIds: ReadonlySet<string>,
@@ -802,6 +861,35 @@ export function mergeHistoryMessageWithLive(
       ? liveMessage.started_at || historyMessage.started_at
       : historyMessage.started_at,
     prompt: resolveMessagePrompt(historyMessage.prompt, liveMessage.prompt),
+  }
+}
+
+export function runningTaskMessageIds(
+  historyMessages: Array<Record<string, any>>,
+  liveMessages: Record<string, Record<string, any>>,
+  targetStepKey: string | null,
+): { coordinator?: string; execution?: string; review?: string } {
+  const messages = new Map<string, Record<string, any>>()
+  for (const message of historyMessages) {
+    messages.set(String(message.id), mergeHistoryMessageWithLive(
+      message, liveMessages[String(message.id)],
+    ))
+  }
+  for (const message of Object.values(liveMessages)) {
+    if (!messages.has(String(message.id))) messages.set(String(message.id), message)
+  }
+  const running = [...messages.values()].filter((message) => (
+    message.role !== 'user'
+    && ['queued', 'running'].includes(message.run_status || message.status || '')
+  ))
+  const latest = (channel: string, stepKey?: string | null) => [...running].reverse().find(
+    (message) => message.channel === channel
+      && (stepKey == null || (message.context_step_key || message.step_key) === stepKey),
+  )?.id as string | undefined
+  return {
+    coordinator: latest('coordinator'),
+    execution: targetStepKey == null ? undefined : latest('execution', targetStepKey),
+    review: targetStepKey == null ? undefined : latest('review', targetStepKey),
   }
 }
 

@@ -958,14 +958,14 @@ class WorkflowRuntime:
             or step_run.run_id != task.active_workflow_run_id
         ):
             raise ValueError("只能重启当前流程的最新失败消息")
-        latest_task_message = (
+        latest_step_message = (
             Message.select()
-            .where(Message.task == task)
+            .where((Message.task == task) & (Message.step_key == step_run.step_key))
             .order_by(Message.sequence.desc(), Message.created_at.desc())
             .first()
         )
-        if latest_task_message is None or latest_task_message.id != message_id:
-            raise ValueError("只能重启任务对话最后一条失败消息")
+        if latest_step_message is None or latest_step_message.id != message_id:
+            raise ValueError("只能重启该步骤最后一条失败消息")
         if not (step_run.error or "").strip():
             raise ValueError("只有异常错误导致的失败消息可以重启")
         latest_step_run = (
@@ -1027,6 +1027,185 @@ class WorkflowRuntime:
             "run_id": handle.id,
             "status": "queued",
         }
+
+    async def complete_failed_step(
+        self,
+        project_id: str,
+        task_id: str,
+        message_id: str,
+        artifact_round: int,
+        *,
+        schedule_downstream: bool,
+    ) -> WorkflowRunHandle | None:
+        """Accept an existing output after its execution message failed."""
+        lock = self._operation_locks.setdefault(task_id, asyncio.Lock())
+        async with lock:
+            decision_data = await self._run_db(
+                project_id,
+                lambda project: self._persist_failed_step_completion_sync(
+                    project, task_id, message_id, artifact_round,
+                    schedule_downstream=schedule_downstream,
+                ),
+            )
+            if decision_data is None:
+                return None
+            task, workflow_run, steps_config = decision_data
+            project = await self._run_db(project_id, lambda project: project)
+            return self._resume_in_project(project, task, workflow_run, steps_config)
+
+    def _persist_failed_step_completion_sync(
+        self, project, task_id, message_id, artifact_round, *, schedule_downstream,
+    ):
+        with db_proxy.atomic():
+            return self._persist_failed_step_completion_transaction(
+                project, task_id, message_id, artifact_round,
+                schedule_downstream=schedule_downstream,
+            )
+
+    def _persist_failed_step_completion_transaction(
+        self, project, task_id, message_id, artifact_round, *, schedule_downstream,
+    ):
+        from services.artifacts import list_task_artifacts
+
+        task = Task.get_or_none(Task.id == task_id)
+        message = Message.get_or_none(Message.id == message_id)
+        if (
+            task is None or message is None or message.task_id != task_id
+            or message.channel != "execution" or message.role != "assistant"
+            or message.run_status not in {"failed", "cancelled", "stopped"}
+            or not message.step_run_id
+        ):
+            raise ValueError("失败执行消息不存在")
+        source = StepRun.get_or_none(StepRun.id == message.step_run_id)
+        workflow_run = WorkflowRun.get_or_none(
+            WorkflowRun.id == task.active_workflow_run_id
+        )
+        task_step = TaskStep.get_or_none(
+            (TaskStep.task == task) & (TaskStep.step_key == message.step_key)
+        )
+        if (
+            source is None or source.step_key != message.step_key
+            or source.run.task_id != task_id or source.status != "failed"
+            or workflow_run is None or workflow_run.task_id != task_id
+            or workflow_run.status not in {"failed", "paused", "stopped"}
+            or task.status not in {"paused", "stopped"}
+            or task_step is None or task_step.status not in {"failed", "pending", "cancelled"}
+            or task_id in self._runners
+        ):
+            raise RuntimeError("只有已停止且未完成的失败步骤可以设置完成")
+        active_steps = TaskStep.select().where(
+            (TaskStep.task == task) &
+            (TaskStep.status.in_(["running", "retrying", "rework", "reviewing", "awaiting_review"]))
+        )
+        if schedule_downstream and active_steps.exists():
+            raise RuntimeError("其他步骤正在执行或等待审核，暂不能调度下游；可选择只设置完成当前步骤")
+        if artifact_round < 1 or not any(
+            artifact["step_key"] == message.step_key
+            and artifact["round"] == artifact_round
+            for artifact in list_task_artifacts(project, task_id)
+        ):
+            raise RuntimeError("该步骤没有已产生的产物，不能设置完成")
+
+        steps_config = None
+        if schedule_downstream:
+            steps_config = (
+                WorkflowDefinition.load(self._current_workflow_steps(project, task))
+                .compile().to_steps_config()
+            )
+            if message.step_key not in {
+                str(item.get("key") or "") for item in steps_config["steps"]
+            }:
+                raise ValueError(f"Step does not exist in latest workflow: {message.step_key}")
+        now = utc_now()
+        latest_attempt = (
+            StepRun.select()
+            .where((StepRun.run == workflow_run) & (StepRun.step_key == message.step_key))
+            .order_by(StepRun.attempt.desc())
+            .first()
+        )
+        StepRun.create(
+            id=str(uuid.uuid4()), run=workflow_run, step_key=message.step_key,
+            attempt=latest_attempt.attempt + 1 if latest_attempt else 1,
+            artifact_round=artifact_round, status="reused",
+            engine=source.engine, model=source.model,
+            source_step_run_id=source.id, started_at=now, ended_at=now,
+        )
+        task_step.status = "passed"
+        task_step.error = None
+        task_step.review_feedback = None
+        task_step.rework_feedback = None
+        task_step.ended_at = now
+        task_step.save()
+        manifest = update_round_manifest_status(
+            artifacts_root=Path(project.workstep_dir) / "artifacts",
+            workflow_id=task.workflow_id, task_id=task.id,
+            step_key=message.step_key, artifact_round=artifact_round,
+            status="passed", eligible_for_downstream=True,
+        )
+        task.state_version += 1
+        task.updated_at = now
+        task.save()
+        if not schedule_downstream:
+            return None
+        assert steps_config is not None
+        if manifest is not None:
+            scheduler = DAGScheduler([
+                Step.from_dict(item) for item in steps_config["steps"]
+            ])
+            state = normalize_routing_state(
+                json.loads(workflow_run.routing_state_json)
+                if workflow_run.routing_state_json else None
+            )
+            result = route_artifact_round(
+                step=scheduler.steps[message.step_key],
+                artifact_round=ArtifactRound(
+                    round=artifact_round,
+                    path=step_round_dir(
+                        Path(project.workstep_dir) / "artifacts",
+                        task.workflow_id, task.id, message.step_key, artifact_round,
+                    ),
+                    manifest=manifest,
+                ),
+                routing_state=state,
+            )
+            if result.conflict or result.exhausted_edges:
+                reason = (
+                    "同一轮同时产生了正常输出和返回输出，路由冲突"
+                    if result.conflict else "返回线已达到配置上限"
+                )
+                raise RuntimeError(reason)
+            if result.feedback_edges:
+                targets = {str(edge.get("to")) for edge in result.feedback_edges}
+                rewind: set[str] = set()
+                for target in targets:
+                    rewind.add(target)
+                    rewind.update(scheduler.get_all_downstream(target))
+                scope = result.state.get("execution_scope")
+                if isinstance(scope, list):
+                    result.state["execution_scope"] = sorted(
+                        {str(key) for key in scope} | rewind
+                    )
+                for key in rewind:
+                    row = TaskStep.get_or_none(
+                        (TaskStep.task == task) & (TaskStep.step_key == key)
+                    )
+                    if row is None:
+                        continue
+                    row.status = "rework_waiting" if key == message.step_key else "rework"
+                    row.error = None
+                    row.ended_at = None
+                    row.save()
+            workflow_run.routing_state_json = json.dumps(
+                result.state, ensure_ascii=False, sort_keys=True,
+            )
+        task.status = "running"
+        task.save()
+        workflow_run.status = "running"
+        workflow_run.ended_at = None
+        workflow_run.owner_id = self._instance_id
+        workflow_run.heartbeat_at = now
+        workflow_run.save()
+        return task, workflow_run, steps_config
 
     async def _skip_manual_review(
         self,
@@ -1203,9 +1382,9 @@ class WorkflowRuntime:
             .order_by(ReviewRun.started_at.desc(), ReviewRun.id.desc())
             .first()
         )
-        if latest is None or latest.id != review.id:
-            raise RuntimeError("Review has been superseded by a newer attempt")
         setting_complete = decision == "set_complete"
+        if not setting_complete and (latest is None or latest.id != review.id):
+            raise RuntimeError("Review has been superseded by a newer attempt")
         if review.decision:
             if review.decision == decision:
                 return None
@@ -1217,28 +1396,32 @@ class WorkflowRuntime:
         approved = decision in {"approve", "force_approve", "complete_task", "set_complete"}
         terminated = decision == "terminate"
         task = Task.get_by_id(task_id)
-        workflow_run = review.workflow_run
+        workflow_run = (
+            WorkflowRun.get_or_none(WorkflowRun.id == task.active_workflow_run_id)
+            if setting_complete else review.workflow_run
+        )
         if setting_complete:
             current_step = TaskStep.get_or_none(
                 (TaskStep.task == task) & (TaskStep.step_key == step_key)
             )
             stopped_manual_review = (
                 review.mode == "manual" and review.status == "terminated"
-                and task.status == "stopped" and workflow_run.status == "stopped"
             )
             stopped_auto_review = (
                 review.mode == "auto" and review.status == "failed"
                 and review.error == "手动停止"
                 and review.step_run.status == "succeeded"
-                and task.status == "paused" and workflow_run.status == "failed"
             )
             if (
                 not (stopped_manual_review or stopped_auto_review)
-                or task.active_workflow_run_id != workflow_run.id
-                or current_step is None or current_step.status != "cancelled"
+                or workflow_run is None or workflow_run.task_id != task_id
+                or task.status not in {"stopped", "paused"}
+                or workflow_run.status not in {"stopped", "failed", "paused"}
+                or current_step is None
+                or current_step.status not in {"cancelled", "failed", "pending"}
                 or task_id in self._runners
             ):
-                raise RuntimeError("只有当前已停止的审核可以设置完成")
+                raise RuntimeError("只有任务已停止、步骤未完成时，已停止的审核才能设置完成")
             from services.artifacts import list_task_artifacts
 
             if review.step_run.artifact_round is None or not any(
@@ -1320,6 +1503,26 @@ class WorkflowRuntime:
             task_step.review_feedback = comment or ""
             task_step.ended_at = None
         task_step.save()
+        if setting_complete and review.workflow_run_id != workflow_run.id:
+            latest_attempt = (
+                StepRun.select()
+                .where((StepRun.run == workflow_run) & (StepRun.step_key == step_key))
+                .order_by(StepRun.attempt.desc())
+                .first()
+            )
+            StepRun.create(
+                id=str(uuid.uuid4()),
+                run=workflow_run,
+                step_key=step_key,
+                attempt=(latest_attempt.attempt + 1) if latest_attempt else 1,
+                artifact_round=review.step_run.artifact_round,
+                status="reused",
+                engine=review.step_run.engine,
+                model=review.step_run.model,
+                source_step_run_id=review.step_run_id,
+                started_at=now,
+                ended_at=now,
+            )
         if completed_task:
             if review.step_run.artifact_round is not None:
                 update_round_manifest_status(

@@ -37,6 +37,10 @@ for (const width of [390, 1280]) {
     const render = (done: boolean) => root.render(<I18nProvider><ProcessTrace running events={done ? [...events, frame('completed')] : events} /></I18nProvider>)
     try {
       await act(async () => render(false))
+      await act(async () => {
+        container.querySelector<HTMLDivElement>('.process-trace-session-summary')!
+          .dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      })
       const child = container.querySelector<HTMLDetailsElement>('.subagent-timeline')!
       assert.ok(child)
       assert.equal(child.open, true)
@@ -72,6 +76,10 @@ test('a newer running subagent folds the previous one and opens only itself', as
   ]
   try {
     await act(async () => root.render(<I18nProvider><ProcessTrace running events={[frame('running')]} /></I18nProvider>))
+    await act(async () => {
+      container.querySelector<HTMLDivElement>('.process-trace-session-summary')!
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    })
     assert.deepEqual(
       [...container.querySelectorAll<HTMLDetailsElement>('.subagent-timeline')].map((child) => child.open),
       [true],

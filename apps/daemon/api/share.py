@@ -246,6 +246,7 @@ async def public_share_git(token: str, git_path: str, request: Request):
             "discard": {"POST"}, "ignore": {"POST"}, "files/content": {"POST"},
             "commit-message": {"POST"}, "switch": {"POST"}, "advance": {"POST"},
             "merge": {"POST"}, "merge-into": {"POST"},
+            "recoveries": {"GET"}, "recovery/preview": {"POST"}, "recovery/apply": {"POST"},
             "fetch": {"POST"}, "fetch-remote": {"POST"}, "pull": {"POST"},
             "push": {"POST"}, "push-branch": {"POST"},
         }
@@ -417,7 +418,15 @@ async def public_share_artifacts(token: str, request: Request):
         ctx["project_id"],
         lambda _project: list_task_artifacts(project, ctx["task_id"]),
     )
-    return {"artifacts": artifacts}
+    artifact_directory = ""
+    if artifacts:
+        first = artifacts[0]
+        round_directory = Path(first["path"])
+        for _ in Path(first["relative_path"]).parts:
+            round_directory = round_directory.parent
+        step_directory = round_directory.parent if round_directory.name == str(first["round"]) else round_directory
+        artifact_directory = str(step_directory.parent)
+    return {"artifacts": artifacts, "artifact_directory": str(artifact_directory)}
 
 
 @router.get("/public/{token}/file-preview")

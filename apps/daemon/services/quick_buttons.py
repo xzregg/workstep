@@ -54,17 +54,22 @@ def normalize_quick_buttons(buttons: list, *, max_buttons: int = 20) -> list[dic
             action_id = str(item.get("action_id") or "").strip()
             script_path = str(item.get("script_path") or "").strip()
             cwd_mode = str(item.get("cwd_mode") or "task")
+            confirmation_input_prompt = str(item.get("confirmation_input_prompt") or "").strip()
             if not ACTION_ID.fullmatch(action_id):
                 raise ValueError("Action ID 无效")
             if not valid_script_path(script_path):
                 raise ValueError("脚本路径无效")
             if cwd_mode not in {"project", "task", "worktrees"}:
                 raise ValueError("执行目录无效")
+            if len(confirmation_input_prompt) > 200:
+                raise ValueError("确认输入提示不能超过 200 字")
+            require_confirmation = item.get("require_confirmation") is not False
             result.update({
                 "action_id": action_id,
                 "script_path": script_path,
                 "cwd_mode": cwd_mode,
-                "require_confirmation": item.get("require_confirmation") is not False,
+                "require_confirmation": require_confirmation,
+                "confirmation_input_prompt": confirmation_input_prompt if require_confirmation else "",
             })
         cleaned.append(result)
     return cleaned

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { projectActionApi, taskActionApi, type ActionRun, type ChatQuickButton } from '../api/client'
 import { useI18n } from '../i18n'
-import ConfirmDialog from './ConfirmDialog'
+import ActionConfirmDialog from './ActionConfirmDialog'
 
 export function useProjectActions(projectId: string | undefined, sessionId: string | null) {
   const { t } = useI18n()
@@ -45,13 +45,13 @@ export function useProjectActions(projectId: string | undefined, sessionId: stri
     return () => window.clearInterval(timer)
   }, [hasActiveAction, refresh])
 
-  const run = async (button: ChatQuickButton, confirmed = false) => {
+  const run = async (button: ChatQuickButton, confirmed = false, actionInput = '') => {
     if (!projectId || !sessionId || busy || activeActionIds.includes(button.action_id || '')) return
     if (button.require_confirmation !== false && !confirmed) { setPending(button); return }
     setBusy(true)
     setError('')
     try {
-      const result = await projectActionApi.run(sessionId, projectId, button.id, confirmed)
+      const result = await projectActionApi.run(sessionId, projectId, button.id, confirmed, actionInput)
       setRuns((current) => [result, ...current.filter((item) => item.run_id !== result.run_id)])
       setActiveActionIds((current) => [...current, result.action_id])
       setPending(null)
@@ -78,12 +78,10 @@ export function ProjectActionMessages({ state }: { state: ReturnType<typeof useP
   const { t } = useI18n()
   return <>
     {state.error && <div role="alert" style={{ color: 'var(--danger)' }}>{state.error}</div>}
-    <ConfirmDialog
-      open={Boolean(state.pending)} title={t('actionShortcuts.confirmTitle', { title: state.pending?.label || '' })}
-      message={state.pending ? t('actionShortcuts.confirmMessage', { script: state.pending.script_path || '', directory: t('actionShortcuts.projectDirectory') }) : ''}
-      confirmText={t('actionShortcuts.confirm')} loading={state.busy}
+    <ActionConfirmDialog
+      button={state.pending} directory={t('actionShortcuts.projectDirectory')} loading={state.busy}
       onCancel={() => state.setPending(null)}
-      onConfirm={() => { if (state.pending) void state.run(state.pending, true) }}
+      onConfirm={(input) => { if (state.pending) void state.run(state.pending, true, input) }}
     />
   </>
 }

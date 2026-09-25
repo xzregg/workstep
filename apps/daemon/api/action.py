@@ -3,11 +3,12 @@
 import asyncio
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query
 
 from schemas.base import BaseSchema
 from services.action_runtime import ActionError, action_runtime
 from services.quick_buttons import ACTION_ID
+from services.workflow_actions import create_project_action, normalize_action_payload
 
 
 task_router = APIRouter(prefix="/api/tasks", tags=["快捷动作"])
@@ -21,11 +22,13 @@ class RunActionRequest(BaseSchema):
     source: str = "project"
     step_key: str | None = None
     confirmed: bool = False
+    action_input: str = ""
 
 
 class RunProjectActionRequest(BaseSchema):
     button_id: str
     confirmed: bool = False
+    action_input: str = ""
 
 
 @session_router.get("/{session_id}")
@@ -39,7 +42,9 @@ async def list_session_actions(session_id: str, project_id: str = Query(...)):
 @session_router.post("/{session_id}/run")
 async def run_session_action(session_id: str, request: RunProjectActionRequest, project_id: str = Query(...)):
     try:
-        return await action_runtime.start_session(project_id, session_id, request.button_id, request.confirmed)
+        return await action_runtime.start_session(
+            project_id, session_id, request.button_id, request.confirmed, request.action_input,
+        )
     except ActionError as exc:
         raise HTTPException(exc.status_code, str(exc)) from exc
 
@@ -76,6 +81,22 @@ async def ensure_action_directory(project_id: str, action_id: str, workflow_id: 
         raise HTTPException(exc.status_code, str(exc)) from exc
 
 
+@project_router.post("/{project_id}/actions")
+async def create_project_action_shortcut(project_id: str, payload: dict = Body(...)):
+    from main import project_manager
+
+    try:
+        cleaned = normalize_action_payload(payload)
+        return await project_manager.run_db(
+            project_id,
+            lambda project: create_project_action(project, project_id, cleaned),
+        )
+    except FileExistsError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 @task_router.get("/{task_id}/actions")
 async def list_task_actions(task_id: str, project_id: str = Query(...), step_key: str | None = Query(None)):
     try:
@@ -89,7 +110,7 @@ async def run_task_action(task_id: str, request: RunActionRequest, project_id: s
     try:
         return await action_runtime.start(
             project_id, task_id, request.button_id, request.source,
-            request.step_key, request.confirmed,
+            request.step_key, request.confirmed, request.action_input,
         )
     except ActionError as exc:
         raise HTTPException(exc.status_code, str(exc)) from exc

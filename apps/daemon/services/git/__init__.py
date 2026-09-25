@@ -9,6 +9,7 @@ from pathlib import Path
 from .command import GitError, run_git, text
 from .credentials import load_credentials, save_credentials
 from .query import GitQueries
+from .recovery import GitRecoveries
 from .write import GitWrites
 
 
@@ -38,7 +39,7 @@ def ensure_gitignore(path):
         stream.write('.workstep/\n')
 
 
-class GitService(GitQueries, GitWrites):
+class GitService(GitQueries, GitWrites, GitRecoveries):
     def __init__(self, projects_provider, depth_provider, active_provider=lambda _: False, credential_file=None):
         self.projects_provider = projects_provider
         self.depth_provider = depth_provider

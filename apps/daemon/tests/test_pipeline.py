@@ -368,6 +368,8 @@ def test_assemble_prompt_task_worktrees_keep_project_cwd(tmp_path):
     assert "Attached repositories: B." in prompt
     assert "Attached repositories: B, unrelated" not in prompt
     assert "The engine still starts in the project root" in prompt
+    assert "project-relative paths" in prompt
+    assert "git worktree add --relative-paths" in prompt
     assert task.cwd == str(tmp_path)
     db.close()
 

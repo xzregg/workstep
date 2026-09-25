@@ -495,6 +495,9 @@ class GitWrites:
             if code:
                 raise GitError('来源分支已变化，请刷新。', 409)
             await self.merge_commit(path, text(source_head).strip())
+            after = await self.revision(path)
+            await self.record_merge(directory, target=branch, source=ref, before=state['head'],
+                                    base=state['head'], after=after)
             return await self.status(id)
 
     async def merge_commit(self, path, source_head):
@@ -531,6 +534,7 @@ class GitWrites:
                 if target_state['branch'] != target_name or target_state['active'] or target_state['operation']:
                     raise GitError('目标分支正在使用或有未完成的 Git 操作。', 409)
             updated = False
+            merge_base_head = target['head']
             if target['remote'] and target['remote'] != '.' and target['upstream_ref']:
                 auth = await self.credential_for(directory, target['remote'])
                 await self.command(path, 'fetch', '--prune', '--no-recurse-submodules', '--', target['remote'], timeout=120, auth=auth)
@@ -550,32 +554,37 @@ class GitWrites:
                 if ahead and behind:
                     raise GitError('目标分支与上游已分叉，无法先快进更新。', 409)
                 if behind:
-                    if target_path:
-                        await self.command(target_path, '-c', 'merge.autoStash=false', 'merge', '--ff-only', '--no-edit', remote_sha, timeout=120)
-                    else:
-                        await self.command(path, 'update-ref', 'refs/heads/' + target_name, remote_sha, target['head'])
-                    target['head'] = remote_sha
+                    merge_base_head = remote_sha
                     updated = True
             current_head, _ = await self.command(path, 'rev-parse', '--verify', 'refs/heads/' + target_name)
             if text(current_head).strip() != target['head']:
                 raise GitError('目标分支已变化，请刷新后重试。', 409)
-            if target_path:
-                target_state = await self.status(target_id)
-                if target_state['branch'] != target_name or target_state['head'] != target['head'] or target_state['active'] or target_state['operation']:
-                    raise GitError('目标分支状态已变化，请刷新后重试。', 409)
-                await self.merge_commit(target_path, state['head'])
-                head, _ = await self.command(target_path, 'rev-parse', 'HEAD')
-                return {'target': target_name, 'head': text(head).strip(), 'updated': updated,
-                        'push_available': bool(target['remote'] and target['remote'] != '.' and target['upstream_ref'])}
             temporary = await asyncio.to_thread(tempfile.mkdtemp, prefix='workstep-git-merge-')
             added = False
             try:
-                await self.command(path, 'worktree', 'add', '--detach', temporary, target['head'], timeout=120)
+                await self.command(path, 'worktree', 'add', '--detach', temporary, merge_base_head, timeout=120)
                 added = True
                 await self.merge_commit(temporary, state['head'])
                 head, _ = await self.command(temporary, 'rev-parse', 'HEAD')
                 merged_head = text(head).strip()
-                await self.command(path, 'update-ref', 'refs/heads/' + target_name, merged_head, target['head'])
+                state = await self.reviewed(id, snapshot)
+                if state['branch'] != branch or state['active'] or state['operation']:
+                    raise GitError('合并期间当前分支已变化，请刷新后重试。', 409)
+                if target_path:
+                    latest = await self.status(target_id)
+                    if (latest['branch'] != target_name or latest['head'] != target['head']
+                            or latest['snapshot'] != target_state['snapshot'] or latest['active'] or latest['operation']):
+                        raise GitError('目标工作目录已变化，请刷新后重试。', 409)
+                    try:
+                        await self.command(target_path, '-c', 'merge.autoStash=false', 'merge', '--ff-only', '--no-edit', merged_head, timeout=120)
+                    except GitError as exc:
+                        if latest['files'] and ('would be overwritten' in str(exc) or 'not uptodate' in str(exc)):
+                            raise GitError('目标工作目录的未提交修改与合并结果重叠；已保留原样，请先处理对应文件。\n' + str(exc), 409) from exc
+                        raise
+                else:
+                    await self.command(path, 'update-ref', 'refs/heads/' + target_name, merged_head, target['head'])
+                await self.record_merge(directory, target=target_name, source='refs/heads/' + branch,
+                                        before=target['head'], base=merge_base_head, after=merged_head)
                 return {'target': target_name, 'head': merged_head, 'updated': updated,
                         'push_available': bool(target['remote'] and target['remote'] != '.' and target['upstream_ref'])}
             finally:

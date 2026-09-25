@@ -264,6 +264,11 @@ async def test_interactive_share_git_is_scoped_to_its_task(manager, tmp_path, mo
             headers={"X-Share-Session": session},
             json={"branch": "feature", "snapshot": "stale", "target": "dev"},
         )
+        foreign_recovery = await client.post(
+            f"{base}/worktrees/foreign/recovery/apply",
+            headers={"X-Share-Session": session},
+            json={"mode": "restore_tree", "target": "dev", "commit": "abc", "expected_head": "def"},
+        )
         readonly_merge = await client.post(
             f"/api/task-share/public/{readonly['token']}/git/worktrees/foreign/merge-into",
             headers={"X-Share-Session": read_session},
@@ -278,6 +283,7 @@ async def test_interactive_share_git_is_scoped_to_its_task(manager, tmp_path, mo
     assert workspace.status_code == 200
     assert other_task.status_code == 404
     assert foreign_tree.status_code == 403
+    assert foreign_recovery.status_code == 403
     assert foreign_merge.status_code == 403
     assert readonly_merge.status_code == 403
     assert readonly_merge.json()["detail"] == "Share is read-only"
@@ -347,6 +353,19 @@ async def test_interactive_share_can_open_and_use_its_git_worktree(manager, tmp_
         assert merged.json()["target"] == "dev"
         assert git(root / "repo", "log", "-1", "--pretty=%s") == "shared commit"
         assert (root / "repo" / "one.txt").read_text() == "shared edit\n"
+        records = await client.get(f"{base}/worktrees/{tree['id']}/recoveries", headers=headers)
+        assert records.status_code == 200, records.text
+        operation = records.json()["merges"][0]
+        preview = await client.post(
+            f"{base}/worktrees/{tree['id']}/recovery/preview", headers=headers,
+            json={"mode": "undo_merge", "target": "dev", "operation_id": operation["id"]},
+        )
+        assert preview.status_code == 200, preview.text
+        applied = await client.post(
+            f"{base}/worktrees/{tree['id']}/recovery/apply", headers=headers,
+            json={**preview.json()["request"], "expected_head": preview.json()["head"]},
+        )
+        assert applied.status_code == 200, applied.text
     await service.close()
 
 

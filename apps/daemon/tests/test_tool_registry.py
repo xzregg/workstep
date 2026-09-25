@@ -18,6 +18,11 @@ def test_registry_defines_expected_tool_set():
     assert names == {
         "workstep_list_projects",
         "workstep_get_project",
+        "workstep_get_project_quick_buttons",
+        "workstep_set_project_quick_buttons",
+        "workstep_get_project_quick_buttons",
+        "workstep_set_project_quick_buttons",
+        "workstep_create_project_action",
         "workstep_list_workflows",
         "workstep_get_workflow",
         "workstep_create_workflow_action",
@@ -46,6 +51,7 @@ def test_registry_defines_expected_tool_set():
     assert by_name["workstep_get_task"].path == "/api/task/{task_id}"
     assert by_name["workstep_list_workflows"].path == "/api/workflow/list"
     assert by_name["workstep_get_workflow"].path == "/api/workflow/{workflow_id}"
+    assert by_name["workstep_create_project_action"].path == "/api/projects/{project_id}/actions"
     assert by_name["workstep_create_workflow_action"].path == "/api/workflow/{workflow_id}/actions"
     assert "workflow_id" in by_name["workstep_create_task"].body_params
     assert "start_step_key" in by_name["workstep_create_task"].body_params

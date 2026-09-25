@@ -726,7 +726,7 @@
   .chat-input-send:disabled {
     display: none !important;
   }
-  .chat-input-stop:disabled {
+  .chat-input-send[data-state="stopped"]:disabled {
     display: flex !important;
   }
   .chat-input-pill {
@@ -851,7 +851,17 @@
   /* ⚡ 快捷提示已嵌入 toolbar 行内（通过 ChatInput left prop），不再单独一行 */
 
   /* 步骤目标 tab（协调 / 需求 / 开发）：紧凑高度 */
+  .step-target-tabs {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    white-space: nowrap;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
   .step-target-tabs button {
+    flex: 0 0 auto;
     min-height: var(--mobile-control-compact) !important;
     padding: 2px 8px !important;
   }
@@ -875,7 +885,7 @@
     width: auto !important;
     height: auto !important;
     min-width: 0 !important;
-    min-height: 44px !important;
+    min-height: var(--mobile-control-touch) !important;
     padding: 6px 10px !important;
   }
 

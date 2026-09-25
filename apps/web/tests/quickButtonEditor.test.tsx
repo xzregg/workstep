@@ -14,7 +14,7 @@ test('shared shortcut editor exposes display title and HTML content', async () =
   const root = createRoot(container)
   const buttons: QuickButtonDraft[] = [{
     id: 'link', label: '开发地址', prompt: '', content: '<a href="http://localhost:5173">前端</a>',
-    kind: 'display', immediateSend: false, actionId: '', scriptPath: '', cwdMode: 'task', requireConfirmation: true,
+    kind: 'display', immediateSend: false, actionId: '', scriptPath: '', cwdMode: 'task', requireConfirmation: true, confirmationInputPrompt: '',
   }]
   try {
     await act(async () => root.render(<I18nProvider>
@@ -42,6 +42,15 @@ test('legacy display label becomes a readable title and editable HTML content', 
   } finally {
     await window.happyDOM.close()
   }
+})
+
+test('Action draft preserves its confirmation input prompt', () => {
+  const draft = quickButtonToDraft({
+    id: 'commit', label: '提交', prompt: '', kind: 'action', action_id: 'commit',
+    script_path: 'commit.sh', confirmation_input_prompt: '请输入 Commit 消息',
+  })
+  assert.equal(draft.confirmationInputPrompt, '请输入 Commit 消息')
+  assert.equal(quickButtonFromDraft(draft).confirmation_input_prompt, '请输入 Commit 消息')
 })
 
 test('workflow and stage shortcut editors can add buttons without crypto.randomUUID', async () => {

@@ -43,6 +43,14 @@ class AddTaskWorktreeRequest(BaseModel):
     branch_name: str | None = Field(default=None, min_length=1, max_length=255)
 
 
+class RecoveryRequest(BaseModel):
+    mode: str
+    target: str = Field(min_length=1)
+    commit: str | None = None
+    operation_id: str | None = None
+    expected_head: str | None = None
+
+
 @router.get('/projects/{project_id}/tasks/{task_id}/workspace')
 async def task_workspace(project_id: str, task_id: str):
     project = _task_project(project_id)
@@ -379,6 +387,24 @@ async def merge(id: str, body: MergeRequest):
 @router.post('/worktrees/{id}/merge-into')
 async def merge_into(id: str, body: MergeIntoRequest):
     return await result(git_service.merge_into(id, body.branch, body.snapshot, body.target))
+
+
+@router.get('/worktrees/{id}/recoveries')
+async def recoveries(id: str):
+    return await result(git_service.recoveries(id))
+
+
+@router.post('/worktrees/{id}/recovery/preview')
+async def recovery_preview(id: str, body: RecoveryRequest):
+    return await result(git_service.recovery_preview(id, body.mode, body.target, body.commit, body.operation_id))
+
+
+@router.post('/worktrees/{id}/recovery/apply')
+async def recovery_apply(id: str, body: RecoveryRequest):
+    if not body.expected_head:
+        raise HTTPException(422, '缺少预览时的目标提交。')
+    return await result(git_service.recovery_apply(id, body.mode, body.target, body.expected_head,
+                                                   body.commit, body.operation_id))
 
 
 @router.post('/worktrees/{id}/branches')

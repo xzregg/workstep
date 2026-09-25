@@ -1,23 +1,36 @@
-import type { TaskArtifact } from '../api/client'
+import type { Project, TaskArtifact } from '../api/client'
 import { useI18n } from '../i18n'
 import { useState } from 'react'
 import ArtifactPreview from './ArtifactPreview'
 import Button from './Button'
 import ResizablePanel from './ResizablePanel'
+import ProjectDirectoryBrowserDialog from './ProjectDirectoryBrowserDialog'
+import { usesWebDirectoryBrowser } from '../utils/openLocation'
 
 interface Props {
   artifact: TaskArtifact
   projectId?: string
+  projectType?: Project['type']
   onClose: () => void
   onOpenDirectory?: () => void
   canOpenDirectory?: boolean
   directoryFiles?: TaskArtifact[]
 }
 
-export default function TaskArtifactPreviewDialog({ artifact, projectId, onClose, onOpenDirectory, canOpenDirectory, directoryFiles }: Props) {
+export default function TaskArtifactPreviewDialog({ artifact, projectId, projectType = 'local', onClose, onOpenDirectory, canOpenDirectory, directoryFiles }: Props) {
   const { t } = useI18n()
   const [selectedFile, setSelectedFile] = useState<TaskArtifact | null>(null)
-  return <div
+  const [showDirectoryBrowser, setShowDirectoryBrowser] = useState(false)
+  const webDirectoryMode = !!projectId && usesWebDirectoryBrowser(
+    projectType,
+    typeof window === 'undefined' ? 'localhost' : window.location.hostname,
+    typeof navigator === 'undefined' ? '' : navigator.userAgent,
+  )
+  const directoryPath = artifact.is_dir
+    ? artifact.path
+    : artifact.path.replace(/[\\/][^\\/]+$/, '')
+  return <>
+  <div
     role="dialog"
     aria-label={t('taskDetail.artifactPreviewAria', { name: artifact.logical_name || artifact.name })}
     style={{
@@ -50,7 +63,11 @@ export default function TaskArtifactPreviewDialog({ artifact, projectId, onClose
             {artifact.path}
           </div>
         </div>
-        {onOpenDirectory && <Button variant="ghost" disabled={!canOpenDirectory} onClick={onOpenDirectory}>
+        {(onOpenDirectory || webDirectoryMode) && <Button
+          variant="ghost"
+          disabled={!webDirectoryMode && !canOpenDirectory}
+          onClick={webDirectoryMode ? () => setShowDirectoryBrowser(true) : onOpenDirectory}
+        >
           {t('taskDetail.openDirectory')}
         </Button>}
         <Button variant="icon" onClick={onClose}>✕</Button>
@@ -81,4 +98,14 @@ export default function TaskArtifactPreviewDialog({ artifact, projectId, onClose
       </div>
     </ResizablePanel>
   </div>
+  {showDirectoryBrowser && projectId && (
+    <ProjectDirectoryBrowserDialog
+      projectId={projectId}
+      title={artifact.logical_name || artifact.name}
+      rootPath={directoryPath}
+      displayPath={directoryPath}
+      onClose={() => setShowDirectoryBrowser(false)}
+    />
+  )}
+  </>
 }

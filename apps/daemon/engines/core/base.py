@@ -143,6 +143,7 @@ class EngineCapabilities:
     supports_workstep_tools: bool = False
     supports_thinking_effort: bool = False
     supports_plan_mode: bool = False
+    supports_goal_mode: bool = False
 
 
 class EngineSkillPolicy(str, Enum):
@@ -752,7 +753,7 @@ class BaseLLMEngine(ABC):
             workstep_input_commands,
         )
 
-        commands = workstep_input_commands()
+        commands = workstep_input_commands(goal=self.supports_goal_mode)
         if self.ENGINE_ID in NO_MANUAL_COMPACTION:
             return [item for item in commands if item["name"] != "compact"]
         return commands
@@ -874,6 +875,11 @@ class BaseLLMEngine(ABC):
         """Whether ``spawn`` accepts the engine's native plan-mode switch."""
         return False
 
+    @property
+    def supports_goal_mode(self) -> bool:
+        """Whether ``spawn`` implements native goal lifecycle commands."""
+        return False
+
 
     @property
     def capabilities(self) -> EngineCapabilities:
@@ -890,6 +896,7 @@ class BaseLLMEngine(ABC):
             supports_workstep_tools=self.supports_workstep_tools,
             supports_thinking_effort=self.supports_thinking_effort,
             supports_plan_mode=self.supports_plan_mode,
+            supports_goal_mode=self.supports_goal_mode,
         )
 
     @property
@@ -937,6 +944,7 @@ class BaseLLMEngine(ABC):
             supports_workstep_tools=self.supports_workstep_tools,
             supports_thinking_effort=self.supports_thinking_effort,
             supports_plan_mode=self.supports_plan_mode,
+            supports_goal_mode=self.supports_goal_mode,
         )
 
     @property
