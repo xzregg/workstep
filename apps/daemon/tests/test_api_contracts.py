@@ -4298,6 +4298,69 @@ async def test_restart_step_reports_conflict_for_running_step(api_context, monke
 
 
 @pytest.mark.anyio
+async def test_resume_step_message_slow_sql_does_not_block_health(
+    api_context, monkeypatch
+):
+    """A stopped step's follow-up is persisted in its project DB executor."""
+    import main
+    from models import TaskStep
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "slow-step-followup"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)}
+    )).json()["id"]
+    workflow = await _create_test_workflow(client, project_id)
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "Step follow-up", "cwd": str(project_dir),
+            "workflow_id": workflow["id"], "auto_start": False,
+        },
+    )
+    task_id = created.json()["id"]
+    step_key = created.json()["steps"][0]["step_key"]
+    await main.project_manager.run_db(
+        project_id,
+        lambda _project: TaskStep.update(status="cancelled").where(
+            (TaskStep.task == task_id) & (TaskStep.step_key == step_key)
+        ).execute(),
+    )
+    restart = AsyncMock(return_value=type("Handle", (), {"id": "followup-run"})())
+    monkeypatch.setattr(main.workflow_runtime, "restart_from_step", restart)
+    project = main.project_manager.get_project_by_id(project_id)
+    original_execute_sql = project.db.execute_sql
+    query_started = threading.Event()
+    query_started_at = [0.0]
+
+    def slow_task_query(sql, params=None, commit=None):
+        if 'FROM "tasks"' in sql and not query_started.is_set():
+            query_started_at[0] = time.perf_counter()
+            query_started.set()
+            time.sleep(0.35)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_task_query)
+    followup = asyncio.create_task(client.post(
+        f"/api/task/{task_id}/step/{step_key}/resume?project_id={project_id}",
+        json={"content": "补充验收要求"},
+    ))
+    assert await asyncio.to_thread(query_started.wait, 1)
+    assert time.perf_counter() - query_started_at[0] < 0.2
+    assert not followup.done()
+    health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+    accepted = await followup
+
+    assert health.status_code == 200
+    assert accepted.status_code == 200
+    assert accepted.json()["run_id"] == "followup-run"
+    restart.assert_awaited_once()
+    history = await client.get(f"/api/task/{task_id}/history?project_id={project_id}")
+    assert any(message["content"] == "补充验收要求" for message in history.json()["messages"])
+
+
+@pytest.mark.anyio
 async def test_retry_failed_message_api_targets_message_without_blocking_health(api_context, monkeypatch):
     import main
     from models import Message, StepRun, Task, TaskStep, WorkflowRun
