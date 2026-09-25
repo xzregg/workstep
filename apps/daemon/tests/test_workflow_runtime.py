@@ -142,6 +142,7 @@ async def test_retry_failed_message_targets_only_the_latest_failed_execution(tmp
     from unittest.mock import AsyncMock
     from models import Message
     from services.project import ProjectManager
+    from services.step_message_restart import inspect_failed_message_retry
     from services.workflow_runtime import WorkflowRuntime
 
     pm = ProjectManager()
@@ -198,7 +199,7 @@ async def test_retry_failed_message_targets_only_the_latest_failed_execution(tmp
         )
     assert await runtime._run_db(
         project.id,
-        lambda _project: runtime._inspect_failed_message_retry(task.id, "latest-failure"),
+        lambda _project: inspect_failed_message_retry(task.id, "latest-failure", False),
     ) == ("do", run.id)
     with pm.activate_project(project.path):
         later_other_step.delete_instance()
