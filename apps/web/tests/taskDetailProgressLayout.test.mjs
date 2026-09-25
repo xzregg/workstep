@@ -3,19 +3,22 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 const source = await readFile(new URL('../src/components/TaskDetailView.tsx', import.meta.url), 'utf8')
+const headerSource = await readFile(new URL('../src/components/TaskDetailHeader.tsx', import.meta.url), 'utf8')
+const descriptionSource = await readFile(new URL('../src/components/TaskDetailDescription.tsx', import.meta.url), 'utf8')
+const tabsSource = await readFile(new URL('../src/components/TaskDetailTabs.tsx', import.meta.url), 'utf8')
 const pageSource = await readFile(new URL('../src/pages/TaskDetail.tsx', import.meta.url), 'utf8')
 const css = await readFile(new URL('../src/index.css', import.meta.url), 'utf8')
 
 test('lets users select the task title while keeping the header draggable', () => {
-  assert.match(source, /className="task-detail-title"/)
+  assert.match(headerSource, /className="task-detail-title"/)
   assert.match(pageSource, /closest\([^)]*\.task-detail-title/)
   assert.match(css, /\.task-detail-header\s*\{[^}]*user-select:\s*none/s)
   assert.match(css, /\.task-detail-title\s*\{[^}]*user-select:\s*text/s)
 })
 
 test('places the scheduled start input beside the description save actions', () => {
-  const actionInputPos = source.indexOf('{descriptionEditorLeadingActions}')
-  const cancelPos = source.indexOf("{t('common.cancel')}", actionInputPos)
+  const actionInputPos = descriptionSource.indexOf('{leadingActions}')
+  const cancelPos = descriptionSource.indexOf("{t('common.cancel')}", actionInputPos)
 
   assert.ok(actionInputPos >= 0, 'scheduled start input slot missing')
   assert.ok(cancelPos > actionInputPos, 'scheduled start input should precede cancel and save')
@@ -40,9 +43,9 @@ test('gives the scheduled start editor enough width for its date and time', () =
 })
 
 test('shows the scheduled execution time beside the description heading', () => {
-  const descriptionPos = source.indexOf("{t('taskDetail.description')}")
-  const scheduledTimePos = source.indexOf('{scheduledStartText}', descriptionPos)
-  const editPos = source.indexOf("aria-label={t('taskDetail.editDescriptionAria')}", descriptionPos)
+  const descriptionPos = descriptionSource.indexOf("{t('taskDetail.description')}")
+  const scheduledTimePos = descriptionSource.indexOf('{scheduledStartText}', descriptionPos)
+  const editPos = descriptionSource.indexOf("aria-label={t('taskDetail.editDescriptionAria')}", descriptionPos)
 
   assert.ok(scheduledTimePos > descriptionPos, 'scheduled execution time missing beside description')
   assert.ok(editPos > scheduledTimePos, 'edit action should follow the scheduled execution time')
@@ -110,8 +113,8 @@ test('shows artifact round status and modified time in step IO rows', () => {
   assert.match(source, /const formatArtifactUpdatedAt = useCallback/)
   assert.match(source, /return \[\.\.\.rounds\]\.sort\(\(a, b\) => a - b\)/)
   assert.match(source, /currentStepArtifactRounds\[currentStepArtifactRounds\.length - 1\]/)
-  assert.match(source, /role="tablist"/)
-  assert.match(source, /setSelectedIoRound\(round\)/)
+  assert.match(tabsSource, /role="tablist"/)
+  assert.match(source, /onSelect=\{setSelectedIoRound\}/)
   assert.match(source, /const snapshotInputArtifact = findStepRoundInputArtifact\(/)
   assert.match(source, /const inputPortSnapshot = findStepRoundInputPort\(/)
   assert.match(source, /const producedOutputs = artifactsForStepRoundOutputs\(/)
@@ -141,10 +144,7 @@ test('keeps artifact dates and times on one line', () => {
 
 test('reuses the mobile artifact panel from a desktop artifact tab', () => {
   assert.match(source, /useState<'detail' \| 'artifacts' \| 'analysis' \| 'git'>\('detail'\)/)
-  assert.match(
-    source,
-    /!compact && \([\s\S]*setDetailMode\('artifacts'\)[\s\S]*t\('mobile\.artifacts'\)/,
-  )
+  assert.match(source, /!compact \? \[\{ id: 'artifacts', label: t\('mobile\.artifacts'\) \}\]/)
   assert.match(source, /detailMode === 'artifacts' && !compact[\s\S]*renderArtifactPanel\(\)/)
   assert.match(source, /compact && renderArtifactPanel\(\)/)
 })

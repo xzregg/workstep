@@ -11,6 +11,7 @@ import {
   useCallback,
   type PointerEvent as ReactPointerEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type CSSProperties,
 } from 'react'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 import type { LiveMessage } from '../stores/taskStore'
@@ -53,6 +54,9 @@ import Icon from './Icon'
 import PendingMessageInserts from './PendingMessageInserts'
 import MarqueeText from './MarqueeText'
 import TaskStepProgressGraph from './TaskStepProgressGraph'
+import TaskDetailHeader from './TaskDetailHeader'
+import TaskDetailDescription from './TaskDetailDescription'
+import TaskDetailTabs from './TaskDetailTabs'
 import TaskExecutionAnalysis from './TaskExecutionAnalysis'
 import TaskArtifactBrowser from './TaskArtifactBrowser'
 import ArtifactUnchangedBadge from './ArtifactUnchangedBadge'
@@ -92,8 +96,7 @@ import {
   formatConversationDateTime,
   toMilliseconds,
 } from '../utils/datetime'
-import { useI18n, type TKey } from '../i18n'
-import TaskRecoveredBadge from './TaskRecoveredBadge'
+import { useI18n } from '../i18n'
 import { ActionConversationMessage, TaskActionButtons } from './TaskActionShortcuts'
 import { useTaskActions } from './useActionRuns'
 
@@ -150,14 +153,6 @@ const PROCESS_EVENT_TYPES = new Set([
 
 /** 稳定空数组：避免无 events 的消息每次渲染都生成新引用，击穿下游 memo。 */
 const EMPTY_EVENTS: never[] = []
-
-const STATUS_LABEL_KEYS: Record<string, TKey> = {
-  ready: 'status.ready',
-  running: 'status.running',
-  paused: 'status.paused',
-  stopped: 'status.stopped',
-  done: 'status.done',
-}
 
 function hasProcessEvents(events: any[]) {
   return events.some((event) => PROCESS_EVENT_TYPES.has(event.type))
@@ -582,22 +577,6 @@ export default function TaskDetailView({
     prompt: prompt ?? '',
   })
 
-  // 「发给谁」步骤 tab 样式：背景色与对应步骤颜色一致（选中加深并加描边）。
-  const stepTabStyle = (stepColor: string, selected: boolean) => ({
-    padding: '4px 10px',
-    borderRadius: 6,
-    fontSize: 'calc(11px * var(--font-scale))',
-    fontWeight: 600,
-    border: selected ? `1px solid ${stepColor}` : '1px solid transparent',
-    cursor: 'pointer',
-    background: `color-mix(in oklab, ${stepColor}, transparent ${selected ? 82 : 93}%)`,
-    color: stepColor,
-    maxWidth: 140,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  })
-
   // ── Split ratio (draggable divider between left panel & conversation) ──
   const compact = useCompactLayout()
   const mobileReviewRef = useRef<HTMLDivElement>(null)
@@ -854,309 +833,19 @@ export default function TaskDetailView({
     })
   }
 
-  // ── Render: Header ──
-
-  const renderHeader = () => {
-    if (!task) return null
-    const time = new Date(task.created_at).toLocaleString(locale)
-    const draggable = Boolean(onHeaderPointerDown)
-
-    return (
-      <div
-        className="task-detail-header"
-        role={draggable ? 'group' : undefined}
-        tabIndex={draggable ? 0 : undefined}
-        aria-label={draggable ? t('taskDetail.dragWindowAria') : undefined}
-        title={draggable ? t('taskDetail.dragWindowTitle') : undefined}
-        onPointerDown={onHeaderPointerDown}
-        onKeyDown={onHeaderKeyDown}
-        onDoubleClick={onHeaderDoubleClick}
-        style={{
-          padding: '10px',
-          borderBottom: '1px solid var(--border-soft)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 16,
-          flexShrink: 0,
-          ...(draggable ? { cursor: 'move' } : {}),
-        }}
-      >
-        {draggable && (
-          <span
-            aria-hidden="true"
-            style={{ cursor: 'move', lineHeight: 1 }}
-          >
-            ⠿
-          </span>
-        )}
-        <div style={{ flex: 1 }}>
-          <div
-            style={{
-              display: 'flex',
-              gap: 8,
-              flexWrap: 'wrap',
-              alignItems: 'center',
-            }}
-          >
-            <span className="task-detail-title" style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 600, lineHeight: 1.4 }}>
-              {task.title}
-            </span>
-            {headerActions}
-            {taskHeaderExtra}
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                minHeight: 22,
-                fontSize: 'calc(11px * var(--font-scale))',
-                fontWeight: 500,
-                padding: '0 8px',
-                borderRadius: 4,
-                lineHeight: 1,
-                background: `color-mix(in oklab, ${activeStepColor}, transparent 85%)`,
-                color: activeStepColor,
-              }}
-            >
-              {t('taskDetail.currentStep', { step: activeStep.label })}
-            </span>
-            <TaskRecoveredBadge
-              status={task.status}
-              recoveredCount={task.recovered_count}
-              className="task-detail-recovered-badge"
-            />
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                minHeight: 22,
-                fontSize: 'calc(11px * var(--font-scale))',
-                fontWeight: 500,
-                padding: '0 8px',
-                borderRadius: 4,
-                lineHeight: 1,
-                background: `color-mix(in oklab, var(--status-${
-                  taskCompleted
-                    ? 'done'
-                    : task.status === 'ready'
-                      ? 'ready'
-                      : task.status
-                }), transparent 85%)`,
-                color: `var(--status-${
-                  taskCompleted
-                    ? 'done'
-                    : task.status === 'ready'
-                      ? 'ready'
-                      : task.status
-                })`,
-              }}
-            >
-              {t(
-                STATUS_LABEL_KEYS[
-                  taskCompleted ? 'done' : task.status
-                ] ?? (task.status as TKey),
-              )}
-            </span>
-            {task.creator_name && (
-              <span
-                title={task.creator_device_name ? `${task.creator_name} · ${task.creator_device_name}` : task.creator_name}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  minHeight: 22,
-                  fontSize: 'calc(12px * var(--font-scale))',
-                  lineHeight: 1,
-                  color: 'var(--meta)',
-                }}
-              >
-                {t('taskDetail.creator')}：{task.creator_name}
-              </span>
-            )}
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                minHeight: 22,
-                fontSize: 'calc(13px * var(--font-scale))',
-                lineHeight: 1,
-                color: 'var(--meta)',
-              }}
-            >
-              {time}
-            </span>
-          </div>
-        </div>
-        {onClose && (
-          <Button
-            variant="icon"
-            aria-label={t('common.close')}
-            title={t('common.close')}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={onClose}
-            style={{ padding: 0, flexShrink: 0 }}
-          >
-            <Icon name="x" size={16} />
-          </Button>
-        )}
-      </div>
-    )
-  }
-
   // ── Render: Left panel ──
 
   const renderLeftPanel = () => {
     if (!task) return null
     return (
-      <div
-        style={{
-          minWidth: 0,
-          overflowY: 'auto',
-          padding: '20px 24px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 24,
-        }}
-      >
-        {/* Description */}
-        <div>
-          <div
-            className="task-description-header"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: 8,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap' }}>
-              <div
-                style={{
-                  fontSize: 'calc(11px * var(--font-scale))',
-                  fontWeight: 600,
-                  color: 'var(--muted)',
-                  fontFamily: 'var(--font-mono)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                }}
-              >
-                {t('taskDetail.description')}
-              </div>
-              {scheduledStartText && (
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    color: 'var(--meta)',
-                    fontSize: 'calc(11px * var(--font-scale))',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  <Icon name="clock" size={11} strokeWidth={2} />
-                  {scheduledStartText}
-                </span>
-              )}
-            </div>
-            {onOpenDescriptionEditor && !editingDescription && (
-              <Button
-                variant="ghost"
-                aria-label={t('taskDetail.editDescriptionAria')}
-                onClick={onOpenDescriptionEditor}
-                style={{ height: 28, padding: '0 9px', fontSize: 'calc(11px * var(--font-scale))', gap: 4 }}
-              >
-                <span aria-hidden="true">✎</span>
-                {t('common.edit')}
-              </Button>
-            )}
-          </div>
-          {editingDescription ? (
-            <div>
-              <MarkdownEditor
-                value={descriptionDraft ?? ''}
-                onChange={onDescriptionDraftChange ?? (() => {})}
-                projectId={projectId}
-                imagePrefix={task.id.slice(0, 8)}
-                placeholder={t('taskDetail.descriptionPlaceholder')}
-                minHeight={140}
-                maxHeight="33vh"
-                disabled={descriptionSaving}
-                autoFocus
-              />
-              {descriptionError && (
-                <div
-                  role="alert"
-                  style={{
-                    marginTop: 6,
-                    color: 'var(--danger)',
-                    fontSize: 'calc(11px * var(--font-scale))',
-                  }}
-                >
-                  {descriptionError}
-                </div>
-              )}
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  justifyContent: 'flex-end',
-                  gap: 8,
-                  marginTop: 8,
-                }}
-              >
-                {descriptionEditorLeadingActions && (
-                  <div style={{ marginRight: 'auto' }}>
-                    {descriptionEditorLeadingActions}
-                  </div>
-                )}
-                <Button
-                  variant="ghost"
-                  disabled={descriptionSaving}
-                  onClick={onCancelDescriptionEdit}
-                >
-                  {t('common.cancel')}
-                </Button>
-                <Button
-                  variant="primary"
-                  disabled={descriptionSaving}
-                  loading={descriptionSaving}
-                  onClick={onSaveDescription}
-                >
-                  {t('common.save')}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div
-              style={{
-                padding: '10px 12px',
-                borderRadius: 8,
-                border: '1px solid var(--border-soft)',
-                fontSize: 'calc(13px * var(--font-scale))',
-                lineHeight: 1.6,
-                overflowWrap: 'anywhere',
-                maxHeight: '33vh',
-                overflowY: 'auto',
-              }}
-            >
-              {task.description ? (
-                <MarkdownMessage
-                  content={task.description}
-                  projectId={projectId}
-                />
-              ) : (
-                <span
-                  style={{
-                    color: 'var(--meta)',
-                    fontStyle: 'italic',
-                  }}
-                >
-                  {t('taskDetail.noDescription')}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-
+      <div className="task-detail-step-panel">
+        <TaskDetailDescription taskId={task.id} description={task.description}
+          projectId={projectId} scheduledStartText={scheduledStartText}
+          editing={editingDescription} draft={descriptionDraft}
+          onDraftChange={onDescriptionDraftChange} saving={descriptionSaving}
+          error={descriptionError} onSave={onSaveDescription}
+          onCancel={onCancelDescriptionEdit} onOpenEditor={onOpenDescriptionEditor}
+          leadingActions={descriptionEditorLeadingActions} />
 
         <TaskStepProgressGraph
           taskStatus={task?.status ?? 'ready'}
@@ -1197,49 +886,15 @@ export default function TaskDetailView({
                     : t('taskDetail.rerunLatestWorkflow')}
                 </Button>
               )}
-              {currentStepArtifactRounds.length > 0 && (
-              <span
-                role="tablist"
-                aria-label={t('taskDetail.artifactRoundTabsAria')}
-                style={{
-                  display: 'flex',
-                  gap: 4,
-                  overflowX: 'auto',
-                  minWidth: 0,
-                }}
-              >
-                {currentStepArtifactRounds.map((round) => {
-                  const selected = round === activeIoRound
-                  return (
-                    <button
-                      key={round}
-                      type="button"
-                      role="tab"
-                      aria-selected={selected}
-                      onClick={() => setSelectedIoRound(round)}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        height: 24,
-                        padding: '0 7px',
-                        borderRadius: 4,
-                        border: '1px solid var(--border-soft)',
-                        background: selected ? 'var(--accent)' : 'var(--surface)',
-                        color: selected ? 'var(--accent-fg)' : 'var(--meta)',
-                        fontSize: 'calc(11px * var(--font-scale))',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      <span>{t('taskDetail.artifactRoundTab', { round })}</span>
-                      {currentStepRoundUnchangedFrom.get(round) ? (
-                        <ArtifactUnchangedBadge fromRound={currentStepRoundUnchangedFrom.get(round)!} />
-                      ) : null}
-                    </button>
-                  )
-                })}
-              </span>
-              )}
+              {currentStepArtifactRounds.length > 0 && <TaskDetailTabs
+                className="task-step-round-tabs" ariaLabel={t('taskDetail.artifactRoundTabsAria')}
+                selected={activeIoRound!} onSelect={setSelectedIoRound}
+                tabs={currentStepArtifactRounds.map(round => ({
+                  id: round,
+                  label: <><span>{t('taskDetail.artifactRoundTab', { round })}</span>
+                    {currentStepRoundUnchangedFrom.get(round) &&
+                      <ArtifactUnchangedBadge fromRound={currentStepRoundUnchangedFrom.get(round)!} />}</>,
+                }))} />}
             </span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -3063,10 +2718,8 @@ export default function TaskDetailView({
                         step: step.label,
                       },
                     )}
-                    style={stepTabStyle(
-                      step.color || 'var(--accent)',
-                      chatTarget === step.key,
-                    )}
+                    className="task-chat-step-tab"
+                    style={{ '--step-color': step.color || 'var(--accent)' } as CSSProperties}
                   >
                     {step.label}
                   </button>
@@ -3379,22 +3032,21 @@ export default function TaskDetailView({
   return (
     <>
       {/* Header */}
-      {renderHeader()}
+      {task && <TaskDetailHeader task={task} locale={locale} activeStep={activeStep}
+        activeStepColor={activeStepColor} taskCompleted={taskCompleted}
+        headerActions={headerActions} taskHeaderExtra={taskHeaderExtra} onClose={onClose}
+        onHeaderPointerDown={onHeaderPointerDown} onHeaderKeyDown={onHeaderKeyDown}
+        onHeaderDoubleClick={onHeaderDoubleClick} />}
 
-      {(!compact || canShowAnalysis || gitEnabled) && (
-        <div className="task-detail-primary-tabs" role="tablist" aria-label={t('executionAnalysis.title')}>
-          <button type="button" role="tab" aria-selected={detailMode === 'detail'} onClick={() => setDetailMode('detail')}>{t('taskDetail.detailTab')}</button>
-          {!compact && (
-            <button type="button" role="tab" aria-selected={detailMode === 'artifacts'} onClick={() => setDetailMode('artifacts')}>{t('mobile.artifacts')}</button>
-          )}
-          {canShowAnalysis && (
-            <button type="button" role="tab" aria-selected={detailMode === 'analysis'} onClick={() => setDetailMode('analysis')}>{t('executionAnalysis.title')}</button>
-          )}
-          {gitEnabled && (gitProjectId || projectId) && (
-            <button type="button" role="tab" aria-selected={detailMode === 'git'} onClick={() => setDetailMode('git')}>{t('git.taskWorkspace')}</button>
-          )}
-        </div>
-      )}
+      {(!compact || canShowAnalysis || gitEnabled) && <TaskDetailTabs
+        className="task-detail-primary-tabs" ariaLabel={t('executionAnalysis.title')}
+        selected={detailMode} onSelect={setDetailMode}
+        tabs={[
+          { id: 'detail', label: t('taskDetail.detailTab') },
+          ...(!compact ? [{ id: 'artifacts', label: t('mobile.artifacts') }] : []),
+          ...(canShowAnalysis ? [{ id: 'analysis', label: t('executionAnalysis.title') }] : []),
+          ...(gitEnabled && (gitProjectId || projectId) ? [{ id: 'git', label: t('git.taskWorkspace') }] : []),
+        ] as Array<{ id: typeof detailMode; label: string }>} />}
 
       {detailMode === 'git' && gitEnabled && (gitProjectId || projectId) ? (
         <TaskGitWorkspace projectId={(gitProjectId || projectId)!} taskId={task.id} />
@@ -3407,9 +3059,10 @@ export default function TaskDetailView({
       ) : detailMode === 'artifacts' && !compact ? (
         renderArtifactPanel()
       ) : <>
-      {compact && <div className="mobile-detail-tabs" role="tablist">
-        {(['conversation', 'steps', 'artifacts'] as const).map(tab => <button key={tab} role="tab" aria-selected={mobileTab === tab} onClick={() => setMobileTab(tab)}>{t(`mobile.${tab}`)}</button>)}
-      </div>}
+      {compact && <TaskDetailTabs className="mobile-detail-tabs"
+        selected={mobileTab} onSelect={setMobileTab}
+        tabs={(['conversation', 'steps', 'artifacts'] as const).map(id => ({ id, label: t(`mobile.${id}`) }))} />}
+
       {compact && actionablePendingReview && <button className="mobile-review-entry" onClick={() => {
         const index = steps.findIndex(step => step.key === actionablePendingReview.step_key)
         if (index >= 0) onStepClick(index)
@@ -3420,38 +3073,14 @@ export default function TaskDetailView({
       <div
         className="task-detail-content" data-mobile-tab={mobileTab}
         ref={contentSplitRef}
-        style={{
-          flex: 1,
-          minHeight: 0,
-          display: 'grid',
-          gridTemplateColumns: `${splitRatio}fr ${SPLIT_HANDLE_WIDTH}px ${1 - splitRatio}fr`,
-        }}
+        style={{ gridTemplateColumns: `${splitRatio}fr ${SPLIT_HANDLE_WIDTH}px ${1 - splitRatio}fr` }}
       >
         {/* Left panel */}
         <div className="task-detail-steps">{renderLeftPanel()}</div>
 
         {/* Split handle */}
-        <div
-          style={{
-            background: 'var(--border-soft)',
-            cursor: 'col-resize',
-            position: 'relative',
-            width: "2px",
-          }}
-          onPointerDown={beginSplitResize}
-        >
-          <span
-            aria-hidden="true"
-            style={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              color: 'var(--meta)',
-              fontSize: 'calc(11px * var(--font-scale))',
-              opacity: 0.5,
-            }}
-          >
+        <div className="task-detail-split-handle" onPointerDown={beginSplitResize}>
+          <span className="task-detail-split-grip" aria-hidden="true">
             ⋮
           </span>
         </div>
