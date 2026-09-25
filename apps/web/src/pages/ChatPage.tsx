@@ -2,7 +2,6 @@ import ProjectGitButton from '../components/git/ProjectGitButton'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { randomUuid } from '../utils/uuid'
 import AssistantChatPanel from '../components/AssistantChatPanel'
 import { ProjectActionMessages } from '../components/ProjectActionMessages'
 import { useProjectActions } from '../components/useActionRuns'
@@ -32,6 +31,7 @@ import { useProjectStore } from '../stores/projectStore'
 import { usePromptEnhance } from '../hooks/usePromptEnhance'
 import { useEngineQuota } from '../hooks/useEngineQuota'
 import { useChatSessionTransitions } from '../hooks/useChatSessionTransitions'
+import { useChatSessionActions } from '../hooks/useChatSessionActions'
 import { useThrottledMemo } from '../hooks/useThrottledMemo'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useI18n } from '../i18n'
@@ -83,8 +83,6 @@ export default function ChatPage() {
   const [sessionId, setSessionId] = useState<string | null>(sessionParam)
   const [sessionTitle, setSessionTitle] = useState('')
   const [input, setInput] = useState('')
-  const [sendError, setSendError] = useState('')
-  const [stopping, setStopping] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [showSettingsPanel, setShowSettingsPanel] = useState(false)
@@ -106,30 +104,19 @@ export default function ChatPage() {
   const [selectedThinkingEffort, setSelectedThinkingEffort] = useState('')
   // 镜像最新的引擎配置选择，供切换会话 / 路由卸载时懒保存到 localStorage。
   const engineConfigRef = useRef<ChatEngineConfigState>({ ...EMPTY_ENGINE_CONFIG })
-  engineConfigRef.current = {
+  const engineConfig = useMemo<ChatEngineConfigState>(() => ({
     engine: selectedEngine,
     providerId: selectedProvider,
     model: selectedModel,
     fastModel: selectedFastModel,
     visionModel: selectedVisionModel,
     thinkingEffort: selectedThinkingEffort,
-  }
+  }), [selectedEngine, selectedProvider, selectedModel, selectedFastModel, selectedVisionModel, selectedThinkingEffort])
+  engineConfigRef.current = engineConfig
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [permissionMode, setPermissionMode] = useState('')
   const [planMode, setPlanMode] = useState(false)
   const [goalMode, setGoalMode] = useState(false)
-
-  const {
-    enhance,
-    onInputChange: enhanceInputChanged,
-    reset: resetEnhance,
-  } = usePromptEnhance({
-    projectId: activeProject?.id,
-    getDraft: () => input,
-    setDraft: setInput,
-    onError: setSendError,
-    errorMessage: t('chatSession.enhanceFailed'),
-  })
 
   const session = useChatSessionStore((s) => (sessionId ? s.sessions[sessionId] : undefined))
   const messages = session?.messages ?? []
@@ -149,6 +136,24 @@ export default function ChatPage() {
     || assistantConfig?.configured.engine
     || assistantConfig?.resolved?.engine
     || 'pydantic_ai'
+  const {
+    sendMessageNow, sendPendingContent, stop, sendError, setSendError, stopping,
+  } = useChatSessionActions({
+    sessionId, projectId: activeProject?.id, running, engineConfig,
+    permissionMode, planMode, goalMode, effectiveEngine,
+    onSessionIdChange: setSessionId, onTitleChange: setSessionTitle,
+  })
+  const {
+    enhance,
+    onInputChange: enhanceInputChanged,
+    reset: resetEnhance,
+  } = usePromptEnhance({
+    projectId: activeProject?.id,
+    getDraft: () => input,
+    setDraft: setInput,
+    onError: setSendError,
+    errorMessage: t('chatSession.enhanceFailed'),
+  })
   const { quota: visibleQuota, refreshing: quotaRefreshing, refresh: refreshQuota } = useEngineQuota(
     activeProject?.id, effectiveEngine, running,
   )
@@ -279,7 +284,6 @@ export default function ChatPage() {
       setSessionTitle('')
       setInput('')
       setSendError('')
-      setStopping(false)
       setPermissionMode('')
       resetEnhance()
       return
@@ -362,12 +366,9 @@ export default function ChatPage() {
     void useChatListStore.getState().fetchSessions(activeProject.id)
   }, [activeProject?.id, running])
 
-  // Reset transient state when switching sessions. The composer owns draft
-  // persistence; this effect only clears page-local UI state.
+  // The composer owns draft persistence; a new session starts with empty input.
   useEffect(() => {
     if (!sessionId) setInput('')
-    setSendError('')
-    setStopping(false)
   }, [sessionId, routeProjectId])
 
   // 引擎配置同样懒保存：切换会话 / 路由卸载时把当前会话的选择落盘。
@@ -377,57 +378,6 @@ export default function ChatPage() {
       saveChatEngineConfig(routeProjectId, sessionId, engineConfigRef.current)
     }
   }, [sessionId, routeProjectId])
-
-  const sendMessageNow = useCallback(async (
-    content: string,
-  ): Promise<boolean> => {
-    if (!content || !sessionId) {
-      if (!sessionId) setSendError(t('chatSession.noSession'))
-      return false
-    }
-    if (!activeProject?.id) return false
-    setSendError('')
-    try {
-      useChatSessionStore.getState().addUserMessage(sessionId, content)
-      const accepted = await chatSessionApi.chat(sessionId, activeProject.id, content, randomUuid(), {
-        engine: selectedEngine || undefined,
-        provider_id: selectedProvider || undefined,
-        model: selectedModel || undefined,
-        fast_model: selectedFastModel || undefined,
-        vision_model: selectedVisionModel || undefined,
-        thinking_effort: selectedThinkingEffort || undefined,
-        permission_mode: permissionMode || undefined,
-        plan_mode: planMode || undefined,
-        goal_mode: goalMode && effectiveEngine === 'codex_sdk' || undefined,
-      })
-      if (accepted.session_id && accepted.session_id !== sessionId) {
-        const store = useChatSessionStore.getState()
-        const oldSession = store.sessions[sessionId]
-        store.newSession(accepted.session_id)
-        if (oldSession) {
-          useChatSessionStore.setState((s) => ({
-            sessions: { ...s.sessions, [accepted.session_id]: oldSession },
-          }))
-          store.resetSession(sessionId)
-        }
-        setSessionId(accepted.session_id)
-      }
-      // Auto-title from the first user message: refresh the header + sidebar.
-      const finalSessionId = accepted.session_id || sessionId
-      if (activeProject?.id) {
-        const { sessions } = await chatSessionApi.list(activeProject.id)
-        const summary = sessions.find((s) => s.id === finalSessionId)
-        if (summary?.title) {
-          setSessionTitle(summary.title)
-          useChatListStore.getState().renameSession(finalSessionId, summary.title)
-        }
-      }
-      return true
-    } catch (reason) {
-      setSendError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
-      return false
-    }
-  }, [sessionId, activeProject?.id, selectedEngine, selectedProvider, selectedModel, selectedFastModel, selectedVisionModel, selectedThinkingEffort, permissionMode, planMode, goalMode, effectiveEngine, t])
 
   const changePermissionMode = useCallback(async (mode: string) => {
     const previousMode = permissionMode
@@ -458,55 +408,11 @@ export default function ChatPage() {
     return sendMessageNow(content)
   }, [input, sessionId, activeProject?.id, sendMessageNow, t, resetEnhance])
 
-  const sendPendingContent = useCallback(async (
-    content: string,
-    pendingInsertIds: string[],
-  ): Promise<boolean> => {
-    if (!sessionId || !activeProject?.id) return false
-    if (!running) return sendMessageNow(content)
-    setSendError('')
-    try {
-      await chatSessionApi.sendLiveMessage(
-        sessionId,
-        activeProject.id,
-        content,
-        pendingInsertIds,
-      )
-      return true
-    } catch (reason) {
-      const message = reason instanceof Error ? reason.message : ''
-      if (message.includes('待插入消息已被处理')) return true
-      if (message.includes('not running') || message.includes('未在运行')) {
-        return sendMessageNow(content)
-      }
-      setSendError(message || t('chatSession.sendFailed'))
-      return false
-    }
-  }, [activeProject?.id, running, sendMessageNow, sessionId, t])
-
   const handleInputChange = useCallback((value: string) => {
     enhanceInputChanged(value)
     setInput(value)
     setSendError('')
   }, [enhanceInputChanged])
-
-  const stop = useCallback(async () => {
-    if (!sessionId || !activeProject?.id || stopping) return
-    setStopping(true)
-    setSendError('')
-    try {
-      const result = await chatSessionApi.stop(sessionId, activeProject.id)
-      if (result.stopped) {
-        useChatSessionStore.getState().markStopped(sessionId)
-      } else {
-        setSendError(t('chatSession.stopFailed'))
-      }
-    } catch (reason) {
-      setSendError(reason instanceof Error ? reason.message : t('chatSession.stopFailed'))
-    } finally {
-      setStopping(false)
-    }
-  }, [sessionId, activeProject?.id, stopping, t])
 
   const loadMessageEvents = useCallback(async (messageId: string) => {
     if (!sessionId || !activeProject?.id) return
