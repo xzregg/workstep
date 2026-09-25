@@ -124,9 +124,6 @@ interface PanelBounds {
 type ResizeEdge = 'n' | 'e' | 's' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
 const PANEL_BOUNDS_KEY = 'workstep:task-detail-bounds'
-const SPLIT_RATIO_KEY = 'workstep:task-detail-split-ratio'
-const DEFAULT_SPLIT_RATIO = 1 / 3
-const SPLIT_HANDLE_WIDTH = 8
 const TASK_HISTORY_PAGE_SIZE = 300
 const RESIZE_EDGES: ResizeEdge[] = ['n', 'e', 's', 'w', 'ne', 'nw', 'se', 'sw']
 const RESIZE_LABEL_KEYS: Record<ResizeEdge, TKey> = {
@@ -186,22 +183,6 @@ function initialPanelBounds(): PanelBounds {
   } catch {
     return fallback
   }
-}
-
-function clampSplitRatio(ratio: number, containerWidth: number): number {
-  const usableWidth = Math.max(1, containerWidth - SPLIT_HANDLE_WIDTH)
-  const minLeft = Math.min(240, usableWidth * 0.45)
-  const minRight = Math.min(320, usableWidth * 0.55)
-  const minimum = minLeft / usableWidth
-  const maximum = Math.max(minimum, (usableWidth - minRight) / usableWidth)
-  return Math.min(maximum, Math.max(minimum, ratio))
-}
-
-function initialSplitRatio(): number {
-  const stored = Number(sessionStorage.getItem(SPLIT_RATIO_KEY))
-  return Number.isFinite(stored) && stored > 0 && stored < 1
-    ? stored
-    : DEFAULT_SPLIT_RATIO
 }
 
 function resizePanelBounds(
@@ -421,7 +402,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const mobileDialogRef = useRef<HTMLDivElement>(null)
   useOverlay(compact && Boolean(task), onClose, mobileDialogRef, false)
   const [panelBounds, setPanelBounds] = useState(initialPanelBounds)
-  const [splitRatio, setSplitRatio] = useState(initialSplitRatio)
   const interactionCleanupRef = useRef<(() => void) | null>(null)
   const persistedMessageIds = useMemo(
     () => new Set(historyMessages.map((message) => String(message.id))),
@@ -446,15 +426,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     if (compact) return
     sessionStorage.setItem(PANEL_BOUNDS_KEY, JSON.stringify(panelBounds))
   }, [panelBounds, compact])
-
-  useEffect(() => {
-    if (compact) return
-    sessionStorage.setItem(SPLIT_RATIO_KEY, String(splitRatio))
-  }, [splitRatio, compact])
-
-  useEffect(() => {
-    setSplitRatio((current) => clampSplitRatio(current, panelBounds.width))
-  }, [panelBounds.width])
 
   useEffect(() => {
     const handleViewportResize = () => {
