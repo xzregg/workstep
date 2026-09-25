@@ -7,6 +7,7 @@ const layoutSource = await readFile(new URL('../src/components/Layout.tsx', impo
 const settingsSource = await readFile(new URL('../src/pages/SettingsPage.tsx', import.meta.url), 'utf8')
 const mobileCss = await readFile(new URL('../src/mobile.css', import.meta.url), 'utf8')
 const taskListSource = await readFile(new URL('../src/pages/TaskList.tsx', import.meta.url), 'utf8')
+const taskCreateSource = await readFile(new URL('../src/components/TaskCreatePanel.tsx', import.meta.url), 'utf8')
 const canvasSource = await readFile(new URL('../src/pages/CanvasEditor.tsx', import.meta.url), 'utf8')
 const onboardingSource = await readFile(new URL('../src/utils/onboarding.ts', import.meta.url), 'utf8')
 
@@ -34,7 +35,8 @@ test('onboarding actions reuse the real settings, project, workflow, and task pa
   assert.match(layoutSource, /chooseSetupMode\('local'\)/)
   assert.match(layoutSource, /buildStarterWorkflow\(engineId, model\)/)
   assert.match(layoutSource, /onboarding=create-task/)
-  assert.match(taskListSource, /onboarding\.recordTask\(task\.id\)/)
+  assert.match(taskListSource, /<TaskCreatePanel/)
+  assert.match(taskCreateSource, /onboarding\.recordTask\(task\.id\)/)
 })
 
 test('onboarding offers provider and local Agent paths', () => {
