@@ -521,5 +521,6 @@ daemon 启动时执行两类恢复：
 | 产物轮次 | [artifact_rounds.py](../apps/daemon/services/artifact_rounds.py) | [test_artifact_rounds.py](../apps/daemon/tests/test_artifact_rounds.py) |
 | 提示词 | [prompt.py](../apps/daemon/services/prompt.py) | [test_pipeline.py](../apps/daemon/tests/test_pipeline.py) |
 | 审核 | [review_gate.py](../apps/daemon/services/review_gate.py)、[workflow_runtime.py](../apps/daemon/services/workflow_runtime.py) | [test_review_gate.py](../apps/daemon/tests/test_review_gate.py)、[test_workflow_runtime.py](../apps/daemon/tests/test_workflow_runtime.py) |
+| 人工审核决策事务 | [review_decision.py](../apps/daemon/services/review_decision.py)：在项目数据库执行器内校验决策、更新任务/步骤/审核、处理已确认的产物路由；运行时负责事件发布和恢复调度 | [test_review_gate.py](../apps/daemon/tests/test_review_gate.py) |
 | 协调助手 | [coordinator.py](../apps/daemon/agent_assistants/coordinator.py) | [test_coordinator.py](../apps/daemon/tests/test_coordinator.py) |
 | 并发与恢复 | [concurrency.py](../apps/daemon/services/concurrency.py)、[workflow_runtime.py](../apps/daemon/services/workflow_runtime.py) | [test_concurrency_gate.py](../apps/daemon/tests/test_concurrency_gate.py)、[test_recovery.py](../apps/daemon/tests/test_recovery.py) |

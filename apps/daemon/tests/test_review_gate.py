@@ -1300,14 +1300,32 @@ async def test_manual_reject_injects_feedback_into_next_attempt(tmp_path):
         assert review.mode == "manual"
         assert review.status == "pending"
 
-        reject_handle = await runtime.decide_review(
-            project.id,
-            task.id,
-            "build",
-            review.id,
-            "reject",
-            comment="请检查 {worktrees} 和 ｛step_name｝，保留 {custom_value}",
-        )
+        import threading
+        from unittest.mock import patch
+
+        lookup_started = threading.Event()
+        original_lookup = ReviewRun.get_or_none
+
+        def slow_review_lookup(*args, **kwargs):
+            lookup_started.set()
+            time.sleep(0.2)
+            return original_lookup(*args, **kwargs)
+
+        with patch.object(ReviewRun, "get_or_none", side_effect=slow_review_lookup):
+            deciding = asyncio.create_task(runtime.decide_review(
+                project.id,
+                task.id,
+                "build",
+                review.id,
+                "reject",
+                comment="请检查 {worktrees} 和 ｛step_name｝，保留 {custom_value}",
+            ))
+            assert await asyncio.to_thread(lookup_started.wait, 1)
+            heartbeat = asyncio.get_running_loop().time()
+            await asyncio.sleep(0.02)
+            assert asyncio.get_running_loop().time() - heartbeat < 0.1
+            assert not deciding.done()
+            reject_handle = await deciding
         await runtime.wait(reject_handle)
 
         # 阶段被自动重跑，第二次提示词包含人工驳回原因
