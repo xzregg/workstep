@@ -279,7 +279,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const availableCommands = useTaskStore((s) => (
     taskId ? s.availableCommands[taskId] : undefined
   ))
-  const updateTaskDescription = useTaskStore((s) => s.updateTaskDescription)
   const fetchTasks = useTaskStore((s) => s.fetchTasks)
   const refreshTask = useTaskStore((s) => s.refreshTask)
 
@@ -418,9 +417,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [previewArtifact, setPreviewArtifact] = useState<TaskArtifact | null>(null)
   const [artifactNotice, setArtifactNotice] = useState('')
   const [showPromptEditor, setShowPromptEditor] = useState(false)
-  const [editReviewMode, setEditReviewMode] = useState<'skip' | 'auto' | 'manual'>('manual')
-  const [editReviewRetries, setEditReviewRetries] = useState(1)
-  const [editReviewPrompt, setEditReviewPrompt] = useState('')
   const compact = useCompactLayout()
   const mobileDialogRef = useRef<HTMLDivElement>(null)
   useOverlay(compact && Boolean(task), onClose, mobileDialogRef, false)
@@ -825,18 +821,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     if (selectedStepTaskRef.current !== task.id) selectedStepTaskRef.current = task.id
     setSelectedStep(activeStepIndex)
   }, [activeStepIndex, task?.id])
-
-  useEffect(() => {
-    const config = (task?.review_overrides || {})[currentStep.key]
-    const mode = ['skip', 'auto', 'manual'].includes(config?.mode)
-      ? config.mode
-      : config?.auto
-        ? 'auto'
-        : 'manual'
-    setEditReviewMode(mode)
-    setEditReviewRetries(config?.maxRetries ?? 1)
-    setEditReviewPrompt(config?.prompt ?? '')
-  }, [currentStep.key, task?.review_overrides])
 
   const shouldTickDuration = coordinatorRunning
     || Boolean(activeCoordinatorMessageId)
@@ -1631,24 +1615,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         coordinatorStopping={coordinatorStopping}
         descriptionEditable
         onOpenPromptEditor={() => setShowPromptEditor(true)}
-        editReviewMode={editReviewMode}
-        onEditReviewModeChange={(value) => setEditReviewMode(value as 'skip' | 'auto' | 'manual')}
-        editReviewRetries={editReviewRetries}
-        onEditReviewRetriesChange={setEditReviewRetries}
-        editReviewPrompt={editReviewPrompt}
-        onEditReviewPromptChange={setEditReviewPrompt}
-        onSaveReviewConfig={async () => {
-          const updated = {
-            ...(task.review_overrides || {}),
-            [currentStep.key]: {
-              mode: editReviewMode,
-              auto: editReviewMode === 'auto',
-              maxRetries: editReviewRetries,
-              prompt: editReviewPrompt,
-            },
-          }
-          await updateTaskDescription(task.id, undefined, projectId!, updated)
-        }}
+        reviewConfigEditable
         onA2uiAction={handleA2uiAction}
         onInteractionRespond={handleInteractionRespond}
         proposalOverrides={proposalOverrides}

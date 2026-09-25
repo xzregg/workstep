@@ -266,13 +266,7 @@ export interface TaskDetailViewProps {
   onOpenPromptEditor?: () => void
 
   // ── Review config (edit mode only) ──
-  editReviewMode?: string
-  onEditReviewModeChange?: (value: string) => void
-  editReviewRetries?: number
-  onEditReviewRetriesChange?: (value: number) => void
-  editReviewPrompt?: string
-  onEditReviewPromptChange?: (value: string) => void
-  onSaveReviewConfig?: () => void
+  reviewConfigEditable?: boolean
 
   // ── A2UI (edit mode only) ──
   onA2uiAction?: (action: A2uiClientAction) => void
@@ -412,13 +406,7 @@ export default function TaskDetailView({
   // Prompt
   onOpenPromptEditor,
   // Review config
-  editReviewMode,
-  onEditReviewModeChange,
-  editReviewRetries,
-  onEditReviewRetriesChange,
-  editReviewPrompt,
-  onEditReviewPromptChange,
-  onSaveReviewConfig,
+  reviewConfigEditable,
   // A2UI
   onA2uiAction,
   onInteractionRespond,
@@ -739,11 +727,9 @@ export default function TaskDetailView({
           onAction={onReviewAction} containerRef={mobileReviewRef} />}
 
         {/* Review config drawer (edit mode only) */}
-        {onSaveReviewConfig && <TaskReviewConfigPanel projectId={projectId}
-          mode={editReviewMode} onModeChange={onEditReviewModeChange}
-          retries={editReviewRetries} onRetriesChange={onEditReviewRetriesChange}
-          prompt={editReviewPrompt} onPromptChange={onEditReviewPromptChange}
-          onSave={onSaveReviewConfig} />}
+        {reviewConfigEditable && task && projectId && <TaskReviewConfigPanel
+          key={`${task.id}:${currentStep.key}`} taskId={task.id} stepKey={currentStep.key}
+          projectId={projectId} reviewOverrides={task.review_overrides} />}
 
       </div>
     )
