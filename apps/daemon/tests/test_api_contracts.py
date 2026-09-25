@@ -1667,6 +1667,52 @@ async def test_confirmed_archive_experience_is_appended_to_memory(api_context):
 
 
 @pytest.mark.anyio
+async def test_archive_experience_slow_memory_write_does_not_block_health(
+    api_context, monkeypatch
+):
+    """The memory write and task archive stay off the event loop."""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "slow-archive-memory"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init", json={"path": str(project_dir)}
+    )
+    project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={"title": "Slow memory", "cwd": str(project_dir)},
+    )
+    task_id = created.json()["id"]
+    original_write_text = Path.write_text
+    write_started = threading.Event()
+
+    def slow_memory_write(path, *args, **kwargs):
+        if path.name.startswith(".MEMORY.md."):
+            write_started.set()
+            time.sleep(0.35)
+        return original_write_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", slow_memory_write)
+    confirm_task = asyncio.create_task(client.post(
+        f"/api/task/{task_id}/archive-experience/confirm?project_id={project_id}",
+        json={"experience": "先复现故障再修复"},
+    ))
+    assert await asyncio.to_thread(write_started.wait, 1)
+    started_at = time.perf_counter()
+    health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+    elapsed = time.perf_counter() - started_at
+    confirmed = await confirm_task
+
+    assert health.status_code == 200
+    assert elapsed < 0.2
+    assert confirmed.status_code == 200
+    assert confirmed.json() == {"archived": True, "memory_saved": True}
+    memory = await client.get(f"/api/fs/memory?project_id={project_id}")
+    assert "先复现故障再修复" in memory.json()["content"]
+
+
+@pytest.mark.anyio
 async def test_task_search_filters_the_requested_project(api_context):
     """Search returns matching tasks from the explicitly selected project."""
     client, tmp_path = api_context

@@ -5,6 +5,7 @@
 | 功能 | Web 入口 | Daemon 入口 | 深入阅读 |
 |---|---|---|---|
 | 任务列表、详情、执行 | `src/pages/TaskList.tsx`、`TaskDetail.tsx`，`src/components/TaskDetailView.tsx`；详情内部见下表，API 在 `src/api/task.ts` | `api/task.py`、`services/task.py`、`task_creation.py`、`task_runner.py` | `docs/workflow-engine-execution.md` |
+| 任务归档、恢复、归档经验草稿与确认写入项目记忆 | `src/components/ArchiveExperienceDialog.tsx`、`src/pages/TaskList.tsx` | `api/task_archive.py` 持有归档和经验接口；`api/task_context.py` 提供项目数据库执行入口；经验生成由 `agent_assistants/coordinator.py` 负责 | `tests/test_api_contracts.py`、`tests/test_coordinator.py` |
 | 任务步骤启动、会话供应商切换、运行记录与产物轮次分配 | `src/components/TaskStepProgressGraph.tsx` 展示状态 | `services/task_step_start.py` 是同步数据库工作单元；`services/task_runner.py` 经项目数据库执行器调用 | `tests/test_task_step_start.py`、`tests/test_pipeline.py` |
 | 人工审核决策、标记步骤/任务完成与产物返回线处理 | `src/hooks/useTaskReviewActions.ts` 接入确认与提交 | `services/review_decision.py` 是同步数据库事务；`services/workflow_runtime.py` 负责异步事件发布和恢复调度 | `tests/test_review_gate.py`、`tests/test_workflow_runtime.py` |
 | 流程定义与画布 | `src/components/FlowCanvas.tsx`、`flowCanvasData.ts`、`NodeConfigPanel.tsx` | `api/workflow.py`、`services/workflow_definition.py`、`workflow_runtime.py`；恢复决策在 `workflow_recovery.py` | `docs/workflow-engine-execution.md` |
