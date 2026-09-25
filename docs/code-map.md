@@ -34,6 +34,7 @@
 | 消息时间线与滚动 | `taskConversationFeed.ts`、`src/hooks/useTaskConversationScroll.ts` | 对应 conversation 测试 |
 | 任务历史、向上分页与消息事件详情 | `src/hooks/useTaskHistory.ts` | `taskHistory.test.tsx`、`remoteChatSync.test.mjs` |
 | 任务协调引擎配置与供应商/模型选择 | `src/hooks/useTaskCoordinatorConfig.ts`；`TaskDetail.tsx` 负责接入任务详情输入区 | `useTaskCoordinatorConfig.test.tsx` |
+| 步骤停止、丢失会话重启与失败消息重试 | `src/hooks/useTaskStepControls.ts`；任务详情提供历史刷新和错误展示回调 | `useTaskStepControls.test.tsx` |
 | 任务历史刷新合并、事件详情归并与失败重试 | `src/pages/taskHistoryModel.ts`；本地详情、分享页及历史 hook 共用 | `taskDetailChat.test.ts`、`taskHistory.test.tsx` |
 | 任务产物选择、轮次、步骤输入输出映射与接口变更判断 | `src/pages/taskArtifactRules.ts`；`TaskStepIoPanel.tsx` 展示结果，本地详情与分享页共用产物查找 | `taskDetailChat.test.ts`、`taskStepIoPanel.test.tsx` |
 | 任务归档经验草稿、生成和确认 | `ArchiveExperienceDialog.tsx`；任务列表只负责打开和归档后移除卡片 | `archiveExperienceDialog.test.tsx`、`archiveExperienceControls.test.mjs` |

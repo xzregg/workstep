@@ -1,6 +1,7 @@
 import ResizablePanel from '../components/ResizablePanel'
 import { useTaskHistory } from '../hooks/useTaskHistory'
 import { useTaskCoordinatorConfig } from '../hooks/useTaskCoordinatorConfig'
+import { useTaskStepControls } from '../hooks/useTaskStepControls'
 import { gitApi } from '../api/git'
 import { useSearchParams } from 'react-router-dom'
 import { useTaskRoute } from '../hooks/useTaskRoute'
@@ -346,9 +347,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [coordinatorRunning, setCoordinatorRunning] = useState(false)
   const [chatTarget, setChatTarget] = useState<string | 'coordinator'>('coordinator')
   const [chatError, setChatError] = useState('')
-  const [stoppingStepKeys, setStoppingStepKeys] = useState<string[]>([])
-  const [restartingStepKeys, setRestartingStepKeys] = useState<string[]>([])
-  const [retryingFailedMessageIds, setRetryingFailedMessageIds] = useState<string[]>([])
   const [coordinatorStopping, setCoordinatorStopping] = useState(false)
   const [stepResuming, setStepResuming] = useState(false)
   const [resetStep, setResetStep] = useState(false)
@@ -401,6 +399,18 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     loadOlderHistory, loadMessageEvents } = useTaskHistory({
     taskId, projectId, userMessageEvents, reviewEventSignal,
     chatScrollRef, shouldFollowMessagesRef, lastProgrammaticScrollTopRef,
+  })
+  const {
+    stoppingStepKeys, restartingStepKeys, retryingFailedMessageIds,
+    stopStep: handleStopStep,
+    restartStepWithFreshSession: handleRestartStepWithFreshSession,
+    retryFailedMessage: handleRetryFailedMessage,
+  } = useTaskStepControls({
+    taskId, projectId,
+    onError: setChatError,
+    onFollow: () => { shouldFollowMessagesRef.current = true },
+    onHistoryRefresh: (messages) => setHistoryMessages((current) =>
+      mergeRefreshedTaskHistory(current, messages)),
   })
   const [artifacts, setArtifacts] = useState<TaskArtifact[]>([])
   const [artifactDirectory, setArtifactDirectory] = useState('')
@@ -1130,56 +1140,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       setChatError(reason instanceof Error ? reason.message : t('taskDetail.stopFailed'))
     } finally {
       setCoordinatorStopping(false)
-    }
-  }
-
-  const handleStopStep = async (stepKey: string) => {
-    if (!taskId || !projectId) return
-    if (stoppingStepKeys.includes(stepKey)) return
-    setChatError('')
-    setStoppingStepKeys((current) => [...current, stepKey])
-    try {
-      await taskApi.cancelStep(taskId, stepKey, projectId)
-    } catch (reason) {
-      setChatError(reason instanceof Error ? reason.message : t('taskDetail.stopFailed'))
-    } finally {
-      setStoppingStepKeys((current) => current.filter((key) => key !== stepKey))
-    }
-  }
-
-  /** 引擎会话丢失（rollout / session 文件被清理）：清空会话，用同一步骤提示词重跑。 */
-  const handleRestartStepWithFreshSession = async (stepKey: string) => {
-    if (!taskId || !projectId) return
-    if (restartingStepKeys.includes(stepKey)) return
-    setChatError('')
-    setRestartingStepKeys((current) => [...current, stepKey])
-    try {
-      await taskApi.restartStepWithFreshSession(taskId, stepKey, projectId)
-      shouldFollowMessagesRef.current = true
-      await refreshTask(taskId, projectId)
-    } catch (reason) {
-      setChatError(
-        reason instanceof Error ? reason.message : t('taskDetail.lostSessionRestartFailed'),
-      )
-    } finally {
-      setRestartingStepKeys((current) => current.filter((key) => key !== stepKey))
-    }
-  }
-
-  const handleRetryFailedMessage = async (messageId: string) => {
-    if (!taskId || !projectId || retryingFailedMessageIds.includes(messageId)) return
-    setChatError('')
-    setRetryingFailedMessageIds((current) => [...current, messageId])
-    try {
-      await taskApi.retryFailedMessage(taskId, messageId, projectId)
-      shouldFollowMessagesRef.current = true
-      await refreshTask(taskId, projectId)
-      const result = await taskApi.history(taskId, projectId)
-      setHistoryMessages((current) => mergeRefreshedTaskHistory(current, result.messages || []))
-    } catch (reason) {
-      setChatError(reason instanceof Error ? reason.message : t('taskDetail.lostSessionRestartFailed'))
-    } finally {
-      setRetryingFailedMessageIds((current) => current.filter((id) => id !== messageId))
     }
   }
 
