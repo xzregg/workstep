@@ -241,10 +241,10 @@ def load_shared_task(task_id: str) -> dict | None:
         task = Task.get_by_id(task_id)
     except Task.DoesNotExist:
         return None
-    from services.task import TaskService  # local import to avoid cycles
+    from services.task_read_model import task_to_dict
 
     import json as _json
-    canonical = TaskService._task_to_dict(task)
+    canonical = task_to_dict(task)
     shared_fields = (
         "id",
         "title",

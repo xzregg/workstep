@@ -1441,6 +1441,49 @@ async def test_task_execution_report_slow_sql_does_not_block_health(api_context,
 
 
 @pytest.mark.anyio
+async def test_task_read_model_slow_sql_does_not_block_health(api_context, monkeypatch):
+    """Project task projection runs on its database executor."""
+    import main
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "slow-task-read-model"
+    project_dir.mkdir()
+    initialized = await client.post("/api/project/init", json={"path": str(project_dir)})
+    project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={"title": "Slow task projection", "cwd": str(project_dir)},
+    )
+    task_id = created.json()["id"]
+    project = main.project_manager.get_project_by_id(project_id)
+    original_execute_sql = project.db.execute_sql
+    query_started = threading.Event()
+
+    def slow_task_query(sql, params=None, commit=None):
+        if 'FROM "step_runs"' in sql and not query_started.is_set():
+            query_started.set()
+            time.sleep(0.35)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_task_query)
+    task_request = asyncio.create_task(client.get(
+        f"/api/task/{task_id}?project_id={project_id}"
+    ))
+    assert await asyncio.to_thread(query_started.wait, 1)
+    assert not task_request.done()
+    started_at = time.perf_counter()
+    health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+    elapsed = time.perf_counter() - started_at
+    detail = await task_request
+
+    assert health.status_code == 200
+    assert elapsed < 0.2
+    assert detail.status_code == 200
+    assert detail.json()["title"] == "Slow task projection"
+
+
+@pytest.mark.anyio
 async def test_task_archive_contract(api_context):
     """Archive hides a task from the board list and restores it on demand."""
     client, tmp_path = api_context

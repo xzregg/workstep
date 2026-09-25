@@ -769,7 +769,7 @@ async def test_graceful_shutdown_leaves_run_recoverable(tmp_path):
 async def test_e2e_three_step_run_resumes_after_crash(tmp_path):
     """A three-stage workflow survives a simulated daemon crash."""
     from engines.core.registry import ENGINE_REGISTRY
-    from services.task import TaskService
+    from services.task_read_model import task_to_dict
 
     class CrashStepEngine(RecoveryFakeEngine):
         """Hangs on the first invocation of stage b (an in-flight crash)."""
@@ -900,9 +900,7 @@ async def test_e2e_three_step_run_resumes_after_crash(tmp_path):
             assert a_run.status == "succeeded"
             assert c_run.status == "succeeded"
             # The task API surfaces the recovery marker for the UI hint.
-            task_dict = TaskService(EventBus())._task_to_dict(
-                Task.get_by_id(task_id)
-            )
+            task_dict = task_to_dict(Task.get_by_id(task_id))
             assert task_dict["recovered_count"] == 1
             assert task_dict["recovered_at"] is not None
 
