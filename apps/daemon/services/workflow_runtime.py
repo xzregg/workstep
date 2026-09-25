@@ -19,7 +19,6 @@ from models import (
 from models.fields import utc_now
 from services.task_runner import TaskRunner
 from services.task_dispatch import TaskDispatchService
-from services.workflow_definition import WorkflowDefinition
 from services.review_decision import persist_review_decision
 from services.failed_step_completion import persist_failed_step_completion
 from services.orphan_step_stop import persist_orphan_stop
@@ -27,7 +26,7 @@ from services.step_message_restart import (
     inspect_failed_message_retry,
     persist_step_followup,
 )
-from services.workflow_restart import create_restart_run
+from services.workflow_restart import create_restart_run, inspect_restart_run
 from services.workflow_start import (
     PreparedWorkflowRun,
     prepare_start_from_step_without_parent,
@@ -43,12 +42,8 @@ from services.workflow_recovery import (
     prepare_project_recovery,
 )
 from services.pipeline import DAGScheduler, Step
-from services.artifact_rounds import (
-    iter_artifact_rounds,
-)
 from services.artifact_routing import (
     normalize_routing_state,
-    source_for_connection,
 )
 from engines.core.agui import AGUIContext, to_agui_events
 from streaming.bus import EventBus
@@ -1081,53 +1076,17 @@ class WorkflowRuntime:
         lock = self._operation_locks.setdefault(task_id, asyncio.Lock())
         async with lock:
             active_runner = task_id in self._runners
-            def inspect_restart(project):
-                task = Task.get_or_none(Task.id == task_id)
-                if task is None:
-                    raise ValueError(f"Task not found: {task_id}")
-                feedback_inputs = self._validate_input_rounds(
-                    project,
-                    task,
-                    step_key,
-                    input_rounds,
-                )
-                parent_run_id = expected_run_id or task.active_workflow_run_id
-                if not parent_run_id:
-                    return {"without_parent": True, "feedback_inputs": feedback_inputs}
-                parent = WorkflowRun.get_or_none(
-                    (WorkflowRun.id == parent_run_id)
-                    & (WorkflowRun.task == task)
-                )
-                if parent is None:
-                    raise RuntimeError("The referenced workflow run no longer exists")
-                if expected_run_id and task.active_workflow_run_id != expected_run_id:
-                    raise RuntimeError("The active workflow run has changed")
-                if expected_failed_message_id:
-                    retry_step_key, retry_run_id = inspect_failed_message_retry(
-                        task_id, expected_failed_message_id, active_runner,
-                    )
-                    if retry_step_key != step_key or retry_run_id != parent_run_id:
-                        raise ValueError("失败消息已不属于当前阶段")
-                # Re-run from the workflow as it is now, not the parent run's
-                # snapshot, so flow edits (e.g. engine changes) apply.
-                workflow_data = self._current_workflow_steps(project, task)
-                compiled = WorkflowDefinition.load(workflow_data).compile()
-                steps_config = compiled.to_steps_config()
-                step_list = [Step.from_dict(item) for item in steps_config["steps"]]
-                scheduler = DAGScheduler(step_list)
-                if step_key not in scheduler.steps:
-                    raise ValueError(f"Step does not exist: {step_key}")
-                affected = {step_key, *scheduler.get_all_downstream(step_key)}
-                return {
-                    "without_parent": False,
-                    "parent_run_id": parent_run_id,
-                    "compiled": compiled,
-                    "steps_config": steps_config,
-                    "affected": affected,
-                    "feedback_inputs": feedback_inputs,
-                }
-
-            inspected = await self._run_db(project_id, inspect_restart)
+            inspected = await self._run_db(
+                project_id,
+                lambda project: inspect_restart_run(
+                    project, task_id, step_key,
+                    input_rounds=input_rounds,
+                    expected_run_id=expected_run_id,
+                    expected_failed_message_id=expected_failed_message_id,
+                    active_runner=active_runner,
+                    current_workflow_steps=self._current_workflow_steps,
+                ),
+            )
             if inspected["without_parent"]:
                 return await self._start_from_step_without_parent_async(
                     project_id,
@@ -1196,66 +1155,6 @@ class WorkflowRuntime:
                     if expected_failed_message_id else None
                 ),
             )
-
-    def _validate_input_rounds(
-        self,
-        project,
-        task: Task,
-        step_key: str,
-        input_rounds: dict[str, int] | None,
-    ) -> dict[str, dict]:
-        """Validate explicit upstream artifact rounds before starting a run."""
-        if not input_rounds:
-            return {}
-        workflow_data = self._current_workflow_steps(project, task)
-        steps_config = WorkflowDefinition.load(workflow_data).compile().to_steps_config()
-        step_list = [Step.from_dict(item) for item in steps_config["steps"]]
-        scheduler = DAGScheduler(step_list)
-        if step_key not in scheduler.steps:
-            raise ValueError(f"Step does not exist: {step_key}")
-        dependencies = set(scheduler.steps[step_key].depends_on)
-        feedback_connections = {}
-        for connection in scheduler.steps[step_key].incoming_connections:
-            if connection.get("kind") == "dashed":
-                feedback_connections.setdefault(str(connection.get("from")), []).append(
-                    connection
-                )
-        artifacts_root = Path(project.workstep_dir) / "artifacts"
-        feedback_inputs: dict[str, dict] = {}
-        for dep_key, requested_round in input_rounds.items():
-            if dep_key not in dependencies and dep_key not in feedback_connections:
-                raise ValueError(
-                    f"产物轮次 {dep_key} 不是目标步骤 {step_key} 的输入来源"
-                )
-            rounds = iter_artifact_rounds(
-                artifacts_root,
-                task.workflow_id,
-                task.id,
-                dep_key,
-            )
-            selected = next(
-                (item for item in rounds if item.round == int(requested_round)),
-                None,
-            )
-            if selected is None or not selected.eligible_for_downstream:
-                raise ValueError(
-                    f"产物轮次 {dep_key} 第 {requested_round} 轮不可沿用"
-                )
-            if dep_key in feedback_connections:
-                for connection in feedback_connections[dep_key]:
-                    source = source_for_connection(
-                        connection, selected, connection.get("output")
-                    )
-                    if source is not None:
-                        feedback_inputs[str(connection.get("id"))] = source
-                if not any(
-                    str(connection.get("id")) in feedback_inputs
-                    for connection in feedback_connections[dep_key]
-                ):
-                    raise ValueError(
-                        f"产物轮次 {dep_key} 第 {requested_round} 轮没有可用的返工产物"
-                    )
-        return feedback_inputs
 
     async def _start_from_step_without_parent_async(
         self,
