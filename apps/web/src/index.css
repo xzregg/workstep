@@ -5758,3 +5758,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   .channel-card-body { grid-template-columns: 1fr; }
   .channel-status { display: none; }
 }
+
+.chat-session-rename-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 20px 4px;
+}
+.chat-session-rename-input { width: 100%; }
+.chat-session-rename-error { color: var(--danger); font-size: calc(12px * var(--font-scale)); }
