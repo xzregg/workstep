@@ -1406,11 +1406,24 @@ async def test_running_chat_accepts_and_persists_live_message(
         ),
     )
 
-    inserted = await module.send_live_message(
+    import agent_assistants.base as assistant_base
+
+    original_factory = assistant_base.create_engine
+
+    def slow_factory(engine_id):
+        time.sleep(0.15)
+        return original_factory(engine_id)
+
+    monkeypatch.setattr(assistant_base, "create_engine", slow_factory)
+    started = time.monotonic()
+    insertion = asyncio.create_task(module.send_live_message(
         session["id"],
         "改为先补测试",
         pending_insert_ids=[queued["id"]],
-    )
+    ))
+    await asyncio.sleep(0.01)
+    assert time.monotonic() - started < 0.1
+    inserted = await insertion
 
     assert inserted["status"] == "queued"
     queue = module._turn_states[accepted.turn_id]["live_message_queue"]
@@ -3013,3 +3026,75 @@ async def test_invoke_engine_forwards_live_message_queue(monkeypatch):
         live_message_queue=queue,
     )
     assert captured["queue"] is queue
+
+
+@pytest.mark.anyio
+async def test_invoke_engine_factory_does_not_block_event_loop(monkeypatch):
+    """A synchronous engine constructor must leave other coroutines runnable."""
+    import agent_assistants.base as base
+
+    class Engine:
+        capabilities = SimpleNamespace(supports_thinking_effort=False)
+        supports_resume = False
+        supports_message_history = False
+
+        async def spawn(self, prompt, cwd, model, session_id, **kwargs):
+            if False:
+                yield None
+
+    def slow_factory(_engine_id):
+        time.sleep(0.15)
+        return Engine()
+
+    monkeypatch.setattr(base, "create_engine", slow_factory)
+    started = time.monotonic()
+    work = asyncio.create_task(
+        base.invoke_engine("codex", None, "/tmp", "执行任务", None)
+    )
+    try:
+        await asyncio.sleep(0.01)
+        assert time.monotonic() - started < 0.1
+        await work
+    finally:
+        if not work.done():
+            work.cancel()
+            await asyncio.gather(work, return_exceptions=True)
+
+
+@pytest.mark.anyio
+async def test_invoke_engine_image_config_does_not_block_event_loop(monkeypatch):
+    import agent_assistants.base as base
+    from engines.core.schema import EngineImage
+
+    class Engine:
+        capabilities = SimpleNamespace(
+            supports_vision=True, supports_thinking_effort=False,
+        )
+        supports_resume = False
+        supports_message_history = False
+
+        async def spawn(self, prompt, cwd, model, session_id, **kwargs):
+            if False:
+                yield None
+
+    def slow_multimodal(_engine_id, _model, _provider_id):
+        time.sleep(0.15)
+        return True
+
+    monkeypatch.setattr(base, "create_engine", lambda _engine_id: Engine())
+    monkeypatch.setattr(
+        base.config_store, "model_supports_multimodal", slow_multimodal
+    )
+    started = time.monotonic()
+    work = asyncio.create_task(base.invoke_engine(
+        "codex", "vision-model", "/tmp", "查看图片", None,
+        images=[EngineImage(url="data:image/png;base64,AA==")],
+    ))
+    try:
+        await asyncio.sleep(0.01)
+        assert time.monotonic() - started < 0.1
+        await work
+    finally:
+        if not work.done():
+            work.cancel()
+            await asyncio.gather(work, return_exceptions=True)

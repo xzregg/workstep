@@ -24,7 +24,7 @@
 | 流程运行租约、心跳续约与失效后的延迟恢复 | `src/components/TaskStepProgressGraph.tsx` 展示运行状态 | `services/workflow_lease.py` 持有实例身份、租约状态与后台任务；`services/workflow_runtime.py` 在启动、结束及恢复时调用 | `tests/test_workflow_lease.py`、`tests/test_recovery.py` |
 | 流程运行启动、入口范围、用户首条消息及无父运行的步骤启动 | `src/hooks/useTaskStepControls.ts` 发起步骤重跑 | `services/workflow_start.py` 在项目数据库线程内准备运行与复用上游步骤；`services/workflow_runtime.py` 持有并发控制、事件发布和执行调度 | `tests/test_workflow_runtime.py`、`tests/test_recovery.py` |
 | 流程定义与画布 | `src/components/FlowCanvas.tsx`、`flowCanvasData.ts`、`NodeConfigPanel.tsx` | `api/workflow.py`、`services/workflow_definition.py`、`workflow_runtime.py`；恢复决策在 `workflow_recovery.py` | `docs/workflow-engine-execution.md` |
-| 助手与聊天 | `src/components/AssistantChatPanel.tsx`、`ChatInput.tsx`、`src/api/conversations.ts` | `agent_assistants/base.py`、`session_state.py`、`persistence.py`、`history.py` | `AGENTS.md` 助手架构与事件边界 |
+| 助手与聊天 | `src/components/AssistantChatPanel.tsx`、`ChatInput.tsx`、`src/api/conversations.ts` | `agent_assistants/base.py` 持有通用回合与引擎调用，`chat_session.py` 持有会话操作，`chat_row_persistence.py` 持有会话/消息行加载与保存；其他助手共用 `session_state.py`、`persistence.py`、`history.py` | `AGENTS.md` 助手架构与事件边界；`tests/test_chat_session.py` |
 | 引擎与安装 | `src/api/engine.ts`、`src/pages/SettingsPage.tsx` | `api/engine.py`、`engines/core/`、`services/engine_runtime.py` | `docs/multi-engine-architecture.md`、`docs/engine-runtime-management.md` |
 | 项目与远程项目 | `src/api/project.ts`、`src/pages/SettingsPage.tsx` | `api/project.py`、`remote_project.py`、`services/project.py`、`remote_project.py` | `docs/architecture.md` |
 | Git 与任务工作区 | `src/components/git/`、`src/api/git.ts` | `api/git.py`、`services/git/` | `services/git/task_workspace.py` 负责任务工作区 |
