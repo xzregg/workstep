@@ -22,7 +22,7 @@ from services.artifact_rounds import (
 )
 from services.pipeline import DAGScheduler, Step
 from services.task_step_start import start_step_state
-from services.step_execution_start import StepExecutionStart
+from services.step_execution_messages import StepExecutionMessages
 from services.step_interaction_messages import StepInteractionMessages
 from services.step_rework import StepRework
 from services.step_artifact_routes import StepArtifactRoutes
@@ -30,11 +30,9 @@ from services.step_live_messages import StepLiveMessages
 from services.review_messages import AutomaticReviewMessages
 from services.review_gate import ReviewGate
 from services.config import config_store
-from services.messages import extract_usage_json
 from agent_assistants.context_handoff import (
     mark_handoff_consumed,
 )
-from services.intervention import seal_unanswered_interactions
 from agent_assistants.event_journal import JournalRef, TurnEventJournal
 from engines.core.acp_base import AcpEngineBase
 from engines.core.registry import create_engine
@@ -131,8 +129,9 @@ class TaskRunner:
         self._retry_message_ids = dict(retry_message_ids or {})
         self._graceful_shutdown = False
         self._event_journal = TurnEventJournal()
-        self._execution_start = StepExecutionStart(
+        self._execution_messages = StepExecutionMessages(
             self._event_journal, self._run_db, self._publish,
+            self._journal_snapshot, self._ajournal_snapshot,
             self._step_followups, self._step_trigger_names,
             self._initial_user_input_step_key, self._retry_message_ids,
         )
@@ -857,7 +856,7 @@ class TaskRunner:
                 })
             return
 
-        execution = await self._execution_start.start(
+        execution = await self._execution_messages.start(
             task=task, step=step, artifacts_dir=artifacts_dir,
             user_input=user_input, input_snapshot=input_snapshot,
             state=started_state, review_feedback=review_feedback,
@@ -870,27 +869,10 @@ class TaskRunner:
             error = f"Engine '{step.engine}' not available"
             await self._fail_step(ts, task, step_key, error)
             failed.add(step_key)
-            error_event = InternalEvent(
-                type="error", data={"message": error}
-            ).to_dict()
-            await self._event_journal.afinish(journal_ref, error_event)
-            snapshot = await self._ajournal_snapshot(journal_ref)
-            def persist_unavailable_engine():
-                message = Message.get_by_id(msg_id)
-                message.events_json = snapshot["events_json"]
-                message.event_summary_json = snapshot["event_summary_json"]
-                message.event_count = snapshot["event_count"]
-                message.last_event_seq = snapshot["last_event_seq"]
-                message.run_status = "failed"
-                message.ended_at = utc_now()
-                message.save()
-                if step_run is not None:
-                    step_run.status = "failed"
-                    step_run.error = error
-                    step_run.ended_at = utc_now()
-                    step_run.save()
-
-            await self._run_db(persist_unavailable_engine)
+            await self._execution_messages.fail_unavailable(
+                message_id=msg_id, journal_ref=journal_ref,
+                step_run=step_run, error=error,
+            )
             await self._discard_artifact_round(
                 artifacts_dir,
                 task,
@@ -918,41 +900,18 @@ class TaskRunner:
             nonlocal execution_message_finalized
             if execution_message_finalized:
                 return
-            cancelled_by_user = self._live.is_cancelled(run_key)
-
-            def finalize_message():
-                msg = Message.get_by_id(msg_id)
-                self._event_journal.finish(journal_ref)
-                snapshot = self._journal_snapshot(journal_ref)
-                msg.events_json = seal_unanswered_interactions(
-                    snapshot["events_json"]
-                )
-                msg.event_summary_json = snapshot["event_summary_json"]
-                msg.event_count = snapshot["event_count"]
-                msg.last_event_seq = snapshot["last_event_seq"]
-                msg.usage_json = extract_usage_json(events_collected)
-                msg.content = snapshot["content"]
-                if cancelled_by_user:
-                    msg.run_status = "cancelled"
-                else:
-                    msg.run_status = (
-                        "succeeded" if execution_succeeded else "failed"
-                    )
-                msg.ended_at = execution_ended_at or utc_now()
-                msg.save()
-                return msg
-
-            msg = await self._run_db(finalize_message)
+            completion = await self._execution_messages.finish(
+                message_id=msg_id, journal_ref=journal_ref,
+                events_collected=events_collected,
+                succeeded=execution_succeeded,
+                cancelled=self._live.is_cancelled(run_key),
+                ended_at=execution_ended_at,
+            )
             execution_message_finalized = True
-            await self._publish(task.id, step_key, {
-                "channel": "execution",
-                "message_id": msg_id,
-                "engine": msg.engine,
-                "model": msg.model,
-                "event_sequence": len(events_collected) + 1,
-                "type": "message_completed",
-                "data": {"status": msg.run_status},
-            })
+            await self._execution_messages.publish_completion(
+                task.id, step_key, msg_id, completion,
+                len(events_collected) + 1,
+            )
 
         async def consume_pending_handoff() -> None:
             nonlocal pending_handoff
