@@ -3,13 +3,16 @@
 import asyncio
 import json
 from pathlib import Path
+from typing import Callable, NamedTuple
 
 from agent_assistants.event_journal import JournalRef, TurnEventJournal
-from models import Message, StepRun, Task
+from models import Message, ReviewRun, StepRun, Task, WorkflowRun
 from models.fields import utc_now
 from services.config import config_store
 from services.messages import create_task_message, extract_usage_json, new_message_id
 from services.pipeline import Step
+from services.review_gate import ReviewGate, ReviewOutcome
+from services.step_live_messages import StepLiveMessages
 
 
 def _format_issues(issues: list[dict] | None) -> str:
@@ -21,11 +24,122 @@ def _format_issues(issues: list[dict] | None) -> str:
     )
 
 
-class AutomaticReviewMessages:
-    def __init__(self, journal: TurnEventJournal, run_db, publish):
+def resolve_review_config(task: Task, step: Step) -> tuple[dict, str]:
+    """Apply task overrides and resolve the effective review mode."""
+    if step.review is None:
+        return {}, "skip"
+    config = dict(step.review)
+    if task.review_overrides_json:
+        try:
+            overrides = json.loads(task.review_overrides_json)
+            step_override = (
+                overrides.get(step.key, {})
+                if isinstance(overrides, dict) else {}
+            )
+            if isinstance(step_override, dict):
+                config.update(step_override)
+        except (TypeError, json.JSONDecodeError):
+            pass
+    if config.get("mode") in ("skip", "auto", "manual"):
+        mode = str(config["mode"])
+    else:
+        mode = "auto" if config.get("auto", False) else "manual"
+    return config, mode
+
+
+class ReviewEvaluation(NamedTuple):
+    outcome: ReviewOutcome
+    gate: ReviewGate
+    cancelled: bool
+    message_persisted: bool
+
+
+class StepReviewMessages:
+    def __init__(
+        self, journal: TurnEventJournal, run_db, publish,
+        live: StepLiveMessages,
+    ):
         self._journal = journal
         self._run_db = run_db
         self._publish = publish
+        self._live = live
+
+    async def evaluate(
+        self, *, task: Task, step: Step, step_run: StepRun,
+        workflow_run: WorkflowRun, artifacts_dir: Path,
+        execution_output: str, execution_prompt: str,
+        review_config: dict, mode: str, run_key: str,
+        saved_prompt: str | None = None,
+        should_interrupt: Callable[[], bool] | None = None,
+    ) -> ReviewEvaluation:
+        """Run review with its live queue and durable review message."""
+        message_id = None
+        journal_ref = None
+        assembled_prompt = saved_prompt
+        segment = None
+        review_queue = None
+        event_handler = None
+        live_handler = None
+        if mode == "auto":
+            if not assembled_prompt:
+                assembled_prompt = await asyncio.to_thread(
+                    ReviewGate._assemble_prompt,
+                    task, step, artifacts_dir, execution_output,
+                    str(review_config.get("prompt", "")),
+                    execution_prompt, step_run.artifact_round,
+                )
+            message_id, journal_ref = await self.start(
+                task, step, step_run, artifacts_dir,
+                review_config, assembled_prompt,
+            )
+            segment, review_queue, event_handler, live_handler = (
+                await self._live.prepare_review(
+                    task, step, step_run, artifacts_dir, run_key,
+                    message_id, journal_ref,
+                )
+            )
+
+        gate = ReviewGate(
+            lambda event: self._publish(task.id, step.key, event),
+            self._run_db,
+            event_handler,
+            set_active_engine=lambda engine: self._live.set_engine(run_key, engine),
+            live_message_queue=review_queue,
+            on_live_message=live_handler,
+        )
+        outcome = await gate.evaluate(
+            task=task, step=step, workflow_run=workflow_run,
+            step_run=step_run, artifacts_dir=artifacts_dir,
+            execution_output=execution_output,
+            execution_prompt=execution_prompt,
+            review_config=review_config, mode=mode,
+            message_id=message_id,
+            artifact_round=step_run.artifact_round,
+            assembled_prompt=assembled_prompt if mode == "auto" else None,
+        )
+        if segment is not None:
+            message_id = segment["message_id"]
+            journal_ref = segment["journal_ref"]
+            await self._live.finish_review(run_key)
+        if should_interrupt is not None and should_interrupt():
+            raise asyncio.CancelledError
+        cancelled = self._live.is_cancelled(run_key)
+        if cancelled:
+            def mark_review_cancelled():
+                review = ReviewRun.get_by_id(outcome.review_run.id)
+                review.status = "failed"
+                review.error = "手动停止"
+                review.ended_at = review.ended_at or utc_now()
+                review.save()
+
+            await self._run_db(mark_review_cancelled)
+        message_persisted = message_id is not None and journal_ref is not None
+        if message_persisted:
+            await self.finish(
+                task, step.key, message_id, journal_ref,
+                outcome, cancelled=cancelled,
+            )
+        return ReviewEvaluation(outcome, gate, cancelled, message_persisted)
 
     async def _snapshot(self, ref: JournalRef) -> dict:
         snapshot = await self._journal.asnapshot(ref)

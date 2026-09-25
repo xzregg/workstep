@@ -24,6 +24,7 @@ from models import (
 from services.task_runner import TaskRunner
 from services.pipeline import Step
 from services.review_gate import ReviewGate
+from services.review_messages import resolve_review_config
 from services.history import get_message_events, get_task_history
 from streaming.bus import EventBus
 
@@ -57,6 +58,21 @@ def test_review_prompt_uses_step_as_the_product_term(tmp_path):
     assert prompt.count("完成构建") == 1
     assert "declared outputs" not in prompt
     assert not re.search(r"\bstage\b", prompt, re.IGNORECASE)
+
+
+def test_review_config_task_override_and_invalid_metadata():
+    step = Step(key="build", label="构建", review={"mode": "auto", "maxRetries": 2})
+    task = SimpleNamespace(review_overrides_json=json.dumps({
+        "build": {"mode": "skip", "maxRetries": 0},
+    }))
+    config, mode = resolve_review_config(task, step)
+    assert config == {"mode": "skip", "maxRetries": 0}
+    assert mode == "skip"
+
+    task.review_overrides_json = "[]"
+    config, mode = resolve_review_config(task, step)
+    assert config == {"mode": "auto", "maxRetries": 2}
+    assert mode == "auto"
 
 
 class SequencedReviewEngine:
