@@ -2729,7 +2729,7 @@ async def test_cancel_orphaned_running_step_preserves_session_for_restart(tmp_pa
 
         # 租约过期后才允许本实例将失联步骤收尾。
         WorkflowRun.update(heartbeat_at=1).where(WorkflowRun.id == run.id).execute()
-        runtime._leased_runs[run.id] = project.id
+        runtime._leases._leased_runs[run.id] = project.id
         assert await runtime.cancel(task.id) is True
 
         step = TaskStep.get_by_id((task.id, "do"))
@@ -2752,7 +2752,7 @@ async def test_cancel_orphaned_running_step_preserves_session_for_restart(tmp_pa
         assert run.status == "failed"
         assert run.owner_id is None
         assert run.heartbeat_at is None
-        assert run.id not in runtime._leased_runs
+        assert run.id not in runtime._leases._leased_runs
 
         # 重复点击停止保持幂等，不会破坏为后续 @ 重跑保留的 session。
         assert await runtime.cancel_step(project.id, task.id, "do") is True

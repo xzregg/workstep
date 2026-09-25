@@ -537,7 +537,7 @@ async def test_online_reconciler_recovers_own_running_run_without_runner(tmp_pat
     try:
         with pm.activate_project(project.path):
             WorkflowRun.update(
-                owner_id=runtime._instance_id,
+                owner_id=runtime._leases.instance_id,
                 heartbeat_at=utc_now(),
             ).where(WorkflowRun.id == run_id).execute()
 
@@ -848,11 +848,11 @@ async def test_e2e_three_step_run_resumes_after_crash(tmp_path):
         # flight. A dead process stops renewing its run lease, so expire the
         # heartbeat (and halt runtime1's lease loop) before a fresh daemon
         # instance recovers it.
-        if runtime1._lease_task is not None:
-            runtime1._lease_task.cancel()
+        if runtime1._leases._heartbeat_task is not None:
+            runtime1._leases._heartbeat_task.cancel()
         from datetime import timedelta
 
-        from services.workflow_runtime import RUN_LEASE_STALE_SECONDS
+        from services.workflow_lease import RUN_LEASE_STALE_SECONDS
 
         with pm.activate_project(project.path):
             WorkflowRun.update(
@@ -951,7 +951,7 @@ async def test_recovery_skips_run_leased_by_live_daemon(tmp_path):
             assert Task.get_by_id("task-rec").status == "running"
         # A stale-lease retry is scheduled so a genuinely crashed peer is
         # still recovered instead of orphaned.
-        assert runtime._lease_retry_tasks
+        assert runtime._leases._retry_tasks
     finally:
         await runtime.shutdown()
         await bus.close()
@@ -965,7 +965,7 @@ async def test_recovery_takes_over_expired_lease(tmp_path):
     """An expired lease from a crashed peer is recovered as before."""
     from datetime import timedelta
 
-    from services.workflow_runtime import RUN_LEASE_STALE_SECONDS
+    from services.workflow_lease import RUN_LEASE_STALE_SECONDS
 
     original, pm, project, run_id = _project_with_run(tmp_path)
     bus = EventBus()
@@ -1029,7 +1029,7 @@ async def test_run_lease_claimed_on_start_and_released_on_finish(tmp_path):
         handle = await runtime.start(project.id, "task-lease", "")
         with pm.activate_project(project.path):
             run = WorkflowRun.get_by_id(handle.id)
-            assert run.owner_id == runtime._instance_id
+            assert run.owner_id == runtime._leases.instance_id
             assert run.heartbeat_at is not None
         await asyncio.wait_for(runtime.wait(handle), timeout=5)
         with pm.activate_project(project.path):
@@ -1037,7 +1037,7 @@ async def test_run_lease_claimed_on_start_and_released_on_finish(tmp_path):
             assert run.owner_id is None
             assert run.heartbeat_at is None
             assert run.status == "succeeded"
-        assert handle.id not in runtime._leased_runs
+        assert handle.id not in runtime._leases._leased_runs
     finally:
         await runtime.shutdown()
         await bus.close()
