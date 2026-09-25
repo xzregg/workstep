@@ -26,8 +26,8 @@ import {
   resolveStepDisplayStatus,
   findPreferredArtifact,
   findActiveStepIndex,
-  mergeLoadedTaskMessageEvents,
 } from './taskDetailChat'
+import { mergeLoadedTaskMessageEvents } from './taskHistoryModel'
 import { useI18n } from '../i18n'
 import { formatScheduledStart } from '../utils/scheduledStart'
 import { applySharedMessageEvent, capSharedHistoryEvents } from './sharedTaskMessages'

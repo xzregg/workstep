@@ -56,13 +56,13 @@ import {
   isStepResumableWithMessage,
   isStepActiveForStop,
   resolveStepDisplayStatus,
-  mergeRefreshedTaskHistory,
   runningTaskMessageIds,
   findPreferredArtifact,
   findActiveStepIndex,
   findLatestDispatchedTask,
   resolveStepRestartImpact,
 } from './taskDetailChat'
+import { mergeRefreshedTaskHistory } from './taskHistoryModel'
 import { CUSTOM } from '../utils/agui'
 import {
   pendingInsertQueueKey,
