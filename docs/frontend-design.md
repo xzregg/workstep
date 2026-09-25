@@ -292,6 +292,8 @@
 
 2026-09-25 进展：`src/api/client.ts` 已按传输、项目、会话、任务、引擎、分享、统计和定时任务拆成领域模块，原入口只保留其余 API 与兼容导出（约 499 行）。`SettingsPage` 的助手配置和提示词增强已成为自管理组件；`TaskDetailView` 的协调提案卡片也已独立。`SettingsPage`（约 1355 行）和 `TaskDetailView`（约 3771 行）仍触发拆分信号，后续按上表的业务边界继续抽离，避免用大量 state/setter 透传制造浅模块。
 
+画布编辑器已将数据格式转换与节点配置表单分别放到 `flowCanvasData.ts` 和 `NodeConfigPanel.tsx`；`FlowCanvas.tsx` 继续负责画布状态、交互与保存。行数只用于发现职责混杂，不要求把文件拆到固定行数以下。
+
 ### 5.2 基础层组件规范
 
 - `Button`：变体 `primary`（accent 底 + `--accent-fg` 文字，hover `brightness(1.06)`）、`ghost`（`--border` 描边）、`danger`、`icon`（圆形图标钮）；尺寸 `sm`/默认；loading 态内置 `Spinner`。

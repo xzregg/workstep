@@ -19,7 +19,7 @@ const providerSource = await readFile(
   'utf8',
 )
 const flowCanvasSource = await readFile(
-  new URL('../src/components/FlowCanvas.tsx', import.meta.url),
+  new URL('../src/components/NodeConfigPanel.tsx', import.meta.url),
   'utf8',
 )
 const chatPageSource = await readFile(
