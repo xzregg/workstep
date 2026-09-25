@@ -57,7 +57,7 @@
 |---|---|
 | `agent_assistants/coordinator.py`（当前 1659） | 归档经验、上下文和提案流程已有独立所有者；继续核对回合调度和会话状态，复用通用 AssistantRuntime。 |
 | `agent_assistants/base.py`（当前 2128） | 引擎调用已归 `engine_invocation.py`；继续核对 turn 生命周期、事件日志与发布、会话状态的所有权；助手专有规则不得进入通用层。 |
-| `agent_assistants/chat_session.py`（1644） | 区分持久化适配器、会话增删/交接/分叉、消息提交与系统提示词。 |
+| `agent_assistants/chat_session.py`（当前 1081） | 持久化与交接/分叉已有独立所有者；保留会话增删、消息提交与系统提示词。 |
 | `agent_assistants/workflow_gen.py`（当前 729） | 流程选择界面已按业务投影拆出；模块保留流程提案解析、校验、修复与发布，以及助手配置。 |
 | `components/ChatInput.tsx`（当前 1275） | 草稿与附件已有独立所有者；分段编辑与工具栏仍共用光标和选择状态，保留统一协调，保持输入高度和按钮规格。 |
 | `components/AssistantChatPanel.tsx`（当前 712） | 待插入消息与输入区尺寸已按功能收口；面板保留通用消息渲染、滚动跟随、输入区装配与助手插槽。 |
@@ -91,6 +91,7 @@
 
 ## 阶段执行记录
 
+- 阶段三进行中：聊天会话的引擎交接、原生/历史分叉、消息复制和失败清理归入 `agent_assistants/chat_session_transitions.py`；`chat_session.py` 从约 1391 行降至 1081 行，保留会话操作和消息提交。原生分叉同步引擎构造及项目路径读取移到工作线程；慢工厂回归先复现事件循环阻塞，再由真实分叉 API 健康检查 canary 验证修复。daemon 全量 1681/1681 通过，Code Map 已更新。
 - 阶段三进行中：协调助手提案生成、幂等确认/取消、步骤补充、审核决定、重跑与流程 Action 创建整体归入 `agent_assistants/coordinator_actions.py`，所有 Peewee 工作单元继续走项目数据库执行器；`coordinator.py` 从 2081 行降至 1659 行，保留 API 入口与回合调度。协调助手 56 项、daemon 全量 1679/1679 通过；新增真实确认 API 的慢数据库健康检查 canary，Code Map 已更新。
 - 阶段三进行中：通用助手的引擎能力判断、参数组装、流式事件和交互审批归入 `agent_assistants/engine_invocation.py`；`base.py` 从 2311 行降至 2128 行，保留原 `invoke_engine` 入口供既有助手调用与测试注入。新所有者的事件流测试、现有慢工厂与慢模型能力读取的事件循环 canary、daemon 全量 1678/1678 通过；Code Map 已更新。
 - 阶段三进行中：`ChatInput.tsx` 的外框、焦点/拖放状态、工具栏、配置菜单和发送/停止按钮固定样式迁入 CSS 类及属性选择器，只保留外部选项颜色和编辑器动态高度的运行时样式；从 1295 行降至 1275 行。富文本分段、快捷命令和工具栏依赖同一光标、选择、撤销状态，暂不按行数拆散。Web 全量 985/985、构建和 lint、差异检查通过。
