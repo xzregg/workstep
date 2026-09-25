@@ -120,6 +120,7 @@ export const zhTW: Messages = {
     taskDeleteWorkspaceHint: '將移除此任務的 {count} 個 Worktree 並刪除工作區目錄，功能分支會保留。此操作不會刪除任務或來源倉庫。',
     taskDeleteWorkspaceDirty: '以下工作目錄有未提交內容：{names}。確認刪除會永久失去這些內容。',
     taskDeleteWorkspaceUnpushed: '以下分支有未推送提交或未設定上游分支：{names}。提交仍會保留在本機分支，請確認。',
+    taskDeleteWorkspacePartial: '工作區僅部分刪除。已移除：{names}。原因：{reason}',
     title: "Git 管理",
     back: "返回",
     refresh: "刷新",

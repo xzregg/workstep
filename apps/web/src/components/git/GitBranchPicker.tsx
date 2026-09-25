@@ -9,6 +9,7 @@ import GitBranchStatus, { branchMatchScore } from './GitBranchStatus'
 import GitBranchPushPanel from './GitBranchPushPanel'
 import ConfirmDialog from '../ConfirmDialog'
 import type { GitMergeRequest } from './GitMergeActions'
+import { usePanelGitWrites } from './gitPanelWrites'
 
 function rankMatches<T>(items: T[], query: string, getScore: (item: T) => number | null) {
   if (!query.trim()) return items
@@ -21,6 +22,7 @@ function rankMatches<T>(items: T[], query: string, getScore: (item: T) => number
 
 export default function GitBranchPicker({ status, onLocate, onChanged, onRefresh, onMerge }: { status: GitStatus; onLocate: (id: string) => void; onChanged: () => Promise<void>; onRefresh?: () => Promise<void>; onMerge?: (direction: GitMergeRequest['direction'], branch: string) => void }) {
   const gitApi = useGitApi()
+  const writes = usePanelGitWrites()
   const { t } = useI18n()
   const [branches, setBranches] = useState<GitBranch[]>([])
   const [remoteBranches, setRemoteBranches] = useState<GitTrackedRemoteBranch[]>([])
@@ -59,19 +61,23 @@ export default function GitBranchPicker({ status, onLocate, onChanged, onRefresh
     await onRefresh?.()
   }
   async function deleteSelectedBranch() {
-    if (!deleteBranch || busy) return
+    if (!deleteBranch || busy || writes.busy) return
     setBusy('delete'); setDeleteError('')
     try {
-      const result = await gitApi.deleteBranch(status.id, deleteBranch.name, deleteBranch.head, status.snapshot)
-      setBranches(result.branches); setRemoteBranches(result.remote_branches || [])
-      setDeleteBranch(null); setNotice(t('git.deleteBranchSuccess', { branch: deleteBranch.name }))
-      useGitStore.getState().referencesChanged()
-      await onRefresh?.()
+      await writes.run(async () => {
+        try {
+          const result = await gitApi.deleteBranch(status.id, deleteBranch.name, deleteBranch.head, status.snapshot)
+          setBranches(result.branches); setRemoteBranches(result.remote_branches || [])
+          setDeleteBranch(null); setNotice(t('git.deleteBranchSuccess', { branch: deleteBranch.name }))
+          useGitStore.getState().referencesChanged()
+          await onRefresh?.()
+        } catch (reason) { setDeleteError(reason instanceof Error ? reason.message : String(reason)) }
+      })
     } catch (reason) { setDeleteError(reason instanceof Error ? reason.message : String(reason)) }
     finally { setBusy(null) }
   }
   async function createBranch() {
-    if (busy || blocked || invalidName || !baseAvailable) return
+    if (busy || writes.busy || blocked || invalidName || !baseAvailable) return
     const [kind, first, second] = baseRef.split('\0')
     const base = kind === 'remote'
       ? remoteBranches.find(item => item.remote === first && item.branch === second)
@@ -79,38 +85,46 @@ export default function GitBranchPicker({ status, onLocate, onChanged, onRefresh
     if (!base) { setError(t('git.createBranchBaseMissing')); return }
     setBusy('create'); setError('')
     try {
-      const result = await gitApi.createBranch(status.id, newName, kind === 'remote' ? second : first, base.head, status.snapshot, kind === 'remote' ? first : undefined)
-      setBranches(result.branches); setRemoteBranches(result.remote_branches || [])
-      setCreateOpen(false); setNewName(''); setQuery('')
-      useGitStore.getState().referencesChanged()
-      await onRefresh?.()
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); await onRefresh?.() }
+      await writes.run(async () => {
+        try {
+          const result = await gitApi.createBranch(status.id, newName, kind === 'remote' ? second : first, base.head, status.snapshot, kind === 'remote' ? first : undefined)
+          setBranches(result.branches); setRemoteBranches(result.remote_branches || [])
+          setCreateOpen(false); setNewName(''); setQuery('')
+          useGitStore.getState().referencesChanged()
+          await onRefresh?.()
+        } catch (e) { setError(e instanceof Error ? e.message : String(e)); await onRefresh?.() }
+      })
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
     finally { setBusy(null) }
   }
   async function run(action: 'fetch' | 'pull' | 'switch' | 'update', branch?: string, remote?: string) {
-    if (busy) return
+    if (busy || writes.busy) return
     setBusy(action); setError('')
     try {
-      if (action === 'fetch') {
-        const result = await gitApi.fetch(status.id)
-        setBranches(result.branches); setRemoteBranches(result.remote_branches || []); setShowRemote(true); setFetchedAt(result.fetched_at || null)
-        useGitStore.getState().referencesChanged()
-        await onRefresh?.()
-      } else if (action === 'pull') {
-        await gitApi.pull(status.id, branch!, status.snapshot)
-        await onChanged()
-      } else if (action === 'update') {
-        if (branch === status.branch) {
-          await gitApi.pull(status.id, branch, status.snapshot)
-          await onChanged()
-        } else {
-          const result = await gitApi.advance(status.id, branch!, status.snapshot)
-          setBranches(result.branches); setFetchedAt(result.fetched_at || null)
-          useGitStore.getState().referencesChanged()
-          await onRefresh?.()
-        }
-      } else { await gitApi.switch(status.id, branch!, status.snapshot, remote); await onChanged() }
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); await onRefresh?.() }
+      await writes.run(async () => {
+        try {
+          if (action === 'fetch') {
+            const result = await gitApi.fetch(status.id)
+            setBranches(result.branches); setRemoteBranches(result.remote_branches || []); setShowRemote(true); setFetchedAt(result.fetched_at || null)
+            useGitStore.getState().referencesChanged()
+            await onRefresh?.()
+          } else if (action === 'pull') {
+            await gitApi.pull(status.id, branch!, status.snapshot)
+            await onChanged()
+          } else if (action === 'update') {
+            if (branch === status.branch) {
+              await gitApi.pull(status.id, branch, status.snapshot)
+              await onChanged()
+            } else {
+              const result = await gitApi.advance(status.id, branch!, status.snapshot)
+              setBranches(result.branches); setFetchedAt(result.fetched_at || null)
+              useGitStore.getState().referencesChanged()
+              await onRefresh?.()
+            }
+          } else { await gitApi.switch(status.id, branch!, status.snapshot, remote); await onChanged() }
+        } catch (e) { setError(e instanceof Error ? e.message : String(e)); await onRefresh?.() }
+      })
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
     finally { setBusy(null) }
   }
   const filtered = rankMatches(branches, query, branch => branchMatchScore(branch.name, `${branch.upstream || ''} ${branch.path || ''}`, query))

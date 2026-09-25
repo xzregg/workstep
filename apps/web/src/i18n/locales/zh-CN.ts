@@ -118,6 +118,7 @@ export const zhCN = {
     taskDeleteWorkspaceHint: '将移除此任务的 {count} 个 Worktree 并删除工作区目录，功能分支会保留。此操作不会删除任务或源仓库。',
     taskDeleteWorkspaceDirty: '以下工作目录有未提交内容：{names}。确认删除会永久丢失这些内容。',
     taskDeleteWorkspaceUnpushed: '以下分支有未推送提交或未设置上游分支：{names}。提交会保留在本地分支中，请确认。',
+    taskDeleteWorkspacePartial: '工作区仅部分删除。已移除：{names}。原因：{reason}',
     title: "Git 管理",
     back: "返回",
     refresh: "刷新",

@@ -312,6 +312,7 @@ async def test_delete_task_workspace_preflights_all_worktrees_and_preserves_bran
         await workspace.delete(root, 'task-123')
     assert (folder / 'payment').is_dir()
     deleted_dirty = await workspace.delete(root, 'task-123', force=True)
+    assert deleted_dirty['outcome'] == 'deleted'
     assert deleted_dirty['worktrees'] == []
     assert not folder.exists()
     assert git(payment, 'show-ref', '--verify', 'refs/heads/workstep/task-123/payment')
@@ -326,9 +327,75 @@ async def test_delete_task_workspace_preflights_all_worktrees_and_preserves_bran
     assert (folder / 'payment').is_dir()
     (folder / 'notes.txt').unlink()
     deleted = await workspace.delete(root, 'task-123')
+    assert deleted['outcome'] == 'deleted'
     assert deleted['worktrees'] == []
     assert not folder.exists()
     assert git(payment, 'show-ref', '--verify', 'refs/heads/workstep/task-123/payment')
+
+
+async def test_delete_task_workspace_reports_partial_progress(client, layout, monkeypatch):
+    http, service = client
+    root, _, _ = layout
+    data = await scan(http)
+    repos = {repo['name']: repo for repo in data['repositories']}
+    from services.git.task_workspace import TaskGitWorkspace
+
+    workspace = TaskGitWorkspace(service)
+    await workspace.add(root, 'task-123', repos['payment']['id'], 'payment', 'main')
+    await workspace.add(root, 'task-123', repos['fifth']['id'], 'fifth', 'main')
+    original_remove = workspace._remove
+
+    async def fail_second(project_path, task_id, alias, *, force=False):
+        if alias == 'payment':
+            raise GitError('second removal failed', 409)
+        return await original_remove(project_path, task_id, alias, force=force)
+
+    monkeypatch.setattr(workspace, '_remove', fail_second)
+    result = await workspace.delete(root, 'task-123')
+    assert result['outcome'] == 'partial'
+    assert result['removed_aliases'] == ['fifth']
+    assert [tree['alias'] for tree in result['worktrees']] == ['payment']
+    assert 'second removal failed' in result['failure']
+
+
+async def test_task_workspace_list_discovers_repositories_with_cold_snapshot(client, layout):
+    http, service = client
+    root, _, _ = layout
+    data = await scan(http)
+    payment = next(repo for repo in data['repositories'] if repo['name'] == 'payment')
+    from services.git.task_workspace import TaskGitWorkspace
+
+    await TaskGitWorkspace(service).add(root, 'task-123', payment['id'], 'payment', 'main')
+    cold = GitService(lambda: [{'id': 'p', 'name': 'Project', 'path': str(root)}], lambda: 5,
+                      credential_file=root / 'git-credentials.json')
+    try:
+        listed = await TaskGitWorkspace(cold).list(root, 'task-123')
+        assert [tree['alias'] for tree in listed['worktrees']] == ['payment']
+        assert listed['worktrees'][0]['id'] in cold.directories
+    finally:
+        await cold.close()
+
+
+async def test_task_workspace_cold_scan_does_not_block_event_loop(layout):
+    root, _, _ = layout
+
+    def slow_projects():
+        time.sleep(.2)
+        return [{'id': 'p', 'name': 'Project', 'path': str(root)}]
+
+    service = GitService(slow_projects, lambda: 5, credential_file=root / 'git-credentials.json')
+    from services.git.task_workspace import TaskGitWorkspace
+    workspace = TaskGitWorkspace(service)
+    folder = root / '.workstep' / 'worktrees' / 'task-123'
+    folder.mkdir(parents=True)
+    try:
+        pending = asyncio.create_task(workspace.list(root, 'task-123'))
+        start = asyncio.get_running_loop().time()
+        await asyncio.sleep(.02)
+        assert asyncio.get_running_loop().time() - start < .12
+        await pending
+    finally:
+        await service.close()
 
 
 async def test_delete_task_workspace_slow_disk_does_not_block_event_loop(client, layout, monkeypatch):
@@ -1546,7 +1613,7 @@ async def test_push_unchecked_out_branch_with_explicit_remote_sets_upstream(clie
     assert git(repo, 'for-each-ref', '--format=%(upstream:short)', 'refs/heads/tt') == 'origin/tt'
     assert (repo / 'draft.txt').read_text() == 'uncommitted work\n'
     assert (await http.post(url + '/push-branch', json={
-        'branch': 'tt', 'head': git(repo, 'rev-parse', 'main')[:-1] + '0',
+        'branch': 'tt', 'head': head[:-1] + ('1' if head.endswith('0') else '0'),
         'remote': 'origin', 'target_branch': 'tt',
     })).status_code == 409
 

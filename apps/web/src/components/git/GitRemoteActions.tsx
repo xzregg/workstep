@@ -5,9 +5,11 @@ import { useGitStore } from '../../stores/gitStore'
 import { useI18n } from '../../i18n'
 import Button from '../Button'
 import Icon from '../Icon'
+import { usePanelGitWrites } from './gitPanelWrites'
 
 export default function GitRemoteActions({ status, readOnly, onRefresh, onBusy }: { status: GitStatus; readOnly: boolean; onRefresh: () => Promise<void>; onBusy: (busy: boolean) => void }) {
   const gitApi = useGitApi()
+  const writes = usePanelGitWrites()
   const { t } = useI18n()
   const root = useRef<HTMLSpanElement>(null)
   const [mode, setMode] = useState<'pull' | 'push' | null>(null)
@@ -57,35 +59,40 @@ export default function GitRemoteActions({ status, readOnly, onRefresh, onBusy }
   }
 
   async function refreshRemote() {
-    if (!remote || loading) return
+    if (!remote || loading || writes.busy) return
     setLoading(true); setError('')
-    try { applyInventory(await gitApi.fetchRemote(status.id, remote), mode || 'pull', remote) }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)) }
+    try {
+      await writes.run(async () => {
+        try { applyInventory(await gitApi.fetchRemote(status.id, remote), mode || 'pull', remote) }
+        finally { useGitStore.getState().referencesChanged(); await onRefresh() }
+      })
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
     finally { setLoading(false) }
   }
 
   async function run(action: 'pull' | 'push') {
-    if (busy || blocked || !status.branch || !remote || !targetBranch.trim()) return
+    if (busy || writes.busy || blocked || !status.branch || !remote || !targetBranch.trim()) return
     const target = targetBranch.trim()
     setBusy(action); onBusy(true); setError(''); setNotice(null)
     try {
-      await gitApi[action](status.id, status.branch, status.snapshot, { remote, targetBranch: target, setUpstream })
-      setNotice({ kind: 'success', title: action === 'push' ? t('git.pushSuccess') : t('git.pullSuccess'), detail: action === 'push' ? `${status.branch} → ${remote}/${target}` : `${remote}/${target} → ${status.branch}` })
-      setMode(null)
+      await writes.run(async () => {
+        try {
+          await gitApi[action](status.id, status.branch!, status.snapshot, { remote, targetBranch: target, setUpstream })
+          setNotice({ kind: 'success', title: action === 'push' ? t('git.pushSuccess') : t('git.pullSuccess'), detail: action === 'push' ? `${status.branch} → ${remote}/${target}` : `${remote}/${target} → ${status.branch}` })
+          setMode(null)
+        } finally { useGitStore.getState().referencesChanged(); await onRefresh() }
+      })
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       setError(message); setNotice({ kind: 'error', title: action === 'push' ? t('git.pushFailure') : t('git.pullFailure'), detail: message })
     }
-    finally {
-      useGitStore.getState().referencesChanged()
-      try { await onRefresh() } finally { setBusy(null); onBusy(false) }
-    }
+    finally { setBusy(null); onBusy(false) }
   }
   const selected = inventory?.remotes.find(item => item.name === remote)
   const route = mode === 'push' ? `${status.branch} → ${remote || '—'}/${targetBranch || '—'}` : `${remote || '—'}/${targetBranch || '—'} → ${status.branch}`
   return <span className="git-remote-actions" ref={root}>
-    <Button size="sm" title={blocked || t('git.pullHint')} disabled={!!blocked || !!busy} loading={busy === 'pull'} aria-expanded={mode === 'pull'} onClick={() => void open('pull')}>{busy === 'pull' ? t('git.pulling') : t('git.pullButton')}<Icon name="chevron-down" size={12} /></Button>
-    <Button size="sm" title={blocked || t('git.pushButton')} disabled={!!blocked || !!busy} loading={busy === 'push'} aria-expanded={mode === 'push'} onClick={() => void open('push')}>{busy === 'push' ? t('git.pushing') : t('git.pushButton')}<Icon name="chevron-down" size={12} /></Button>
+    <Button size="sm" title={blocked || t('git.pullHint')} disabled={!!blocked || !!busy || writes.busy} loading={busy === 'pull'} aria-expanded={mode === 'pull'} onClick={() => void open('pull')}>{busy === 'pull' ? t('git.pulling') : t('git.pullButton')}<Icon name="chevron-down" size={12} /></Button>
+    <Button size="sm" title={blocked || t('git.pushButton')} disabled={!!blocked || !!busy || writes.busy} loading={busy === 'push'} aria-expanded={mode === 'push'} onClick={() => void open('push')}>{busy === 'push' ? t('git.pushing') : t('git.pushButton')}<Icon name="chevron-down" size={12} /></Button>
     {mode && <span className="git-remote-panel" role="dialog" aria-label={mode === 'push' ? t('git.pushTitle') : t('git.pullTitle')}>
       <span className="git-remote-panel__heading"><span><strong>{mode === 'push' ? t('git.pushTitle') : t('git.pullTitle')}</strong><small>{mode === 'push' ? t('git.pushDescription') : t('git.pullDescription')}</small></span><Button variant="icon" aria-label={t('git.close')} onClick={() => setMode(null)}><Icon name="x" size={14} /></Button></span>
       {loading && !inventory ? <span className="git-remote-loading"><Icon name="loader-circle" className="git-spin" size={14} />{t('git.remoteLoading')}</span> : <>
@@ -98,7 +105,7 @@ export default function GitRemoteActions({ status, readOnly, onRefresh, onBusy }
         <span className="git-remote-route"><small>{t('git.syncRoute')}</small><strong>{route}</strong>{inventory?.upstream && <small>{t('git.currentUpstream', { upstream: `${inventory.upstream.remote}/${inventory.upstream.branch}` })}</small>}</span>
         <label className="git-remote-track"><input type="checkbox" checked={setUpstream} onChange={event => setSetUpstream(event.target.checked)} /> <span>{t('git.setUpstream')}<small>{t('git.setUpstreamHint')}</small></span></label>
         {error && <span className="git-remote-error" role="alert">{error}</span>}
-        <span className="git-remote-panel__actions"><Button size="sm" loading={loading} disabled={!remote || !!busy} onClick={() => void refreshRemote()}><Icon name="refresh" size={13} />{t('git.fetchRemote')}</Button><Button size="sm" variant="primary" loading={!!busy} disabled={!remote || !targetBranch.trim() || !!loading} onClick={() => void run(mode)}>{mode === 'push' ? t('git.pushConfirm') : t('git.pullConfirm')}</Button></span>
+        <span className="git-remote-panel__actions"><Button size="sm" loading={loading} disabled={!remote || !!busy || writes.busy} onClick={() => void refreshRemote()}><Icon name="refresh" size={13} />{t('git.fetchRemote')}</Button><Button size="sm" variant="primary" loading={!!busy} disabled={!remote || !targetBranch.trim() || !!loading || writes.busy} onClick={() => void run(mode)}>{mode === 'push' ? t('git.pushConfirm') : t('git.pullConfirm')}</Button></span>
       </>}
     </span>}
     {notice && <span className={`git-remote-toast git-remote-toast--${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'}><span className="git-remote-toast__icon"><Icon name={notice.kind === 'success' ? 'check' : 'x'} size={14} /></span><span><strong>{notice.title}</strong><small>{notice.detail}</small></span><Button variant="icon" aria-label={t('git.close')} onClick={() => setNotice(null)}><Icon name="x" size={13} /></Button></span>}

@@ -55,7 +55,6 @@ class RecoveryRequest(BaseModel):
 async def task_workspace(project_id: str, task_id: str):
     project = _task_project(project_id)
     task = await _task_exists(project_id, task_id)
-    await project_repositories(project_id)
     return await result(TaskGitWorkspace(git_service, task['workflow_id']).list(project.path, task_id))
 
 
@@ -63,7 +62,6 @@ async def task_workspace(project_id: str, task_id: str):
 async def open_task_workspace(project_id: str, task_id: str):
     project = _task_project(project_id)
     task = await _task_exists(project_id, task_id)
-    await project_repositories(project_id)
     return await result(TaskGitWorkspace(git_service, task['workflow_id']).ensure(project.path, task_id, creator_name=task['creator_name']))
 
 
@@ -71,7 +69,6 @@ async def open_task_workspace(project_id: str, task_id: str):
 async def delete_task_workspace(project_id: str, task_id: str, force: bool = False):
     project = _task_project(project_id)
     task = await _task_exists(project_id, task_id, editable=True)
-    await project_repositories(project_id)
     return await result(TaskGitWorkspace(git_service, task['workflow_id']).delete(project.path, task_id, force=force))
 
 
@@ -79,7 +76,6 @@ async def delete_task_workspace(project_id: str, task_id: str, force: bool = Fal
 async def add_task_worktree(project_id: str, task_id: str, body: AddTaskWorktreeRequest):
     project = _task_project(project_id)
     task = await _task_exists(project_id, task_id)
-    await project_repositories(project_id)
     return await result(TaskGitWorkspace(git_service, task['workflow_id']).add(
         project.path, task_id, body.repository_id, body.alias, body.base_ref, body.branch_name,
         creator_name=task['creator_name'],
@@ -90,7 +86,6 @@ async def add_task_worktree(project_id: str, task_id: str, body: AddTaskWorktree
 async def remove_task_worktree(project_id: str, task_id: str, alias: str):
     project = _task_project(project_id)
     task = await _task_exists(project_id, task_id, editable=True)
-    await project_repositories(project_id)
     return await result(TaskGitWorkspace(git_service, task['workflow_id']).remove(project.path, task_id, alias))
 
 
