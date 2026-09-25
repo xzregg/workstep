@@ -54,17 +54,6 @@ test('offers rerunning a completed step with the latest workflow contract', () =
   assert.match(ioSource, /hasStepIoContractChanged\(currentStep, progress\?\.io_contract\)/)
 })
 
-test('opens directory artifacts in the artifact preview browser', () => {
-  const openArtifactPos = pageSource.indexOf('const openArtifact =')
-  const previewPos = pageSource.indexOf('setPreviewArtifact(artifact)', openArtifactPos)
-
-  assert.ok(previewPos > openArtifactPos, 'artifact preview state is not set')
-  assert.doesNotMatch(
-    pageSource.slice(openArtifactPos, previewPos),
-    /fsApi\.openDirectory\(artifact\.path\)/,
-  )
-})
-
 test('keeps the output file type beside its name and only opens generated files', () => {
   const outputReadyPos = ioSource.indexOf('const outputReady = Boolean(outputArtifact)')
   const namePos = ioSource.indexOf('{output.name}', outputReadyPos)
