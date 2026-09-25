@@ -11,7 +11,6 @@ import {
   useCallback,
   type PointerEvent as ReactPointerEvent,
   type KeyboardEvent as ReactKeyboardEvent,
-  type CSSProperties,
 } from 'react'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 import type { LiveMessage } from '../stores/taskStore'
@@ -55,6 +54,7 @@ import TaskStepIoPanel from './TaskStepIoPanel'
 import TaskDetailHeader from './TaskDetailHeader'
 import TaskDetailDescription from './TaskDetailDescription'
 import TaskDetailTabs from './TaskDetailTabs'
+import TaskChatTargetTabs from './TaskChatTargetTabs'
 import TaskReviewConfigPanel from './TaskReviewConfigPanel'
 import TaskReviewResult from './TaskReviewResult'
 import TaskExecutionAnalysis from './TaskExecutionAnalysis'
@@ -537,13 +537,6 @@ export default function TaskDetailView({
       && isStepResumableWithMessage(progress.status, progress.has_history)
     ))
   ))
-  const resumableStatusOf = (stepKey: string): string | null => {
-    const progress = stepProgress.find((item) => item.step_key === stepKey)
-    const status = progress?.status
-    return isStepResumableWithMessage(status, progress?.has_history)
-      ? (status ?? null)
-      : null
-  }
   const resumableTarget = chatTarget !== 'coordinator'
     ? resumableSteps.find((step) => step.key === chatTarget) ?? null
     : null
@@ -1789,138 +1782,9 @@ export default function TaskDetailView({
               />
               </ComposerOverlayHostContext.Provider>
             )}
-            {/* Chat target tabs */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                flexWrap: 'wrap',
-                width: '100%',
-                maxWidth: 900,
-                marginInline: 'auto',
-              }}
-            >
-              <div
-                className="step-target-tabs"
-                style={{
-                  display: 'flex',
-                  gap: 2,
-                  padding: 2,
-                  borderRadius: 8,
-                  background:
-                    'var(--bg-soft, rgba(128,128,128,0.08))',
-                  border:
-                    '1px solid var(--border-soft)',
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() =>
-                    onChatTargetChange?.(
-                      'coordinator',
-                    )
-                  }
-                  aria-pressed={
-                    chatTarget === 'coordinator'
-                  }
-                  title={t(
-                    'taskDetail.coordinatorTabTitle',
-                  )}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: 6,
-                    fontSize: 'calc(11px * var(--font-scale))',
-                    fontWeight: 600,
-                    border: 'none',
-                    cursor: 'pointer',
-                    background:
-                      chatTarget !==
-                        'coordinator'
-                        ? 'transparent'
-                        : 'var(--accent)',
-                    color:
-                      chatTarget !==
-                        'coordinator'
-                        ? 'var(--meta)'
-                        : 'var(--accent-fg)',
-                  }}
-                >
-                  {t('aiFlow.agent')}
-                </button>
-                {targetSteps.map((step) => (
-                  <button
-                    key={step.key}
-                    type="button"
-                    onClick={() =>
-                      onChatTargetChange?.(
-                        step.key,
-                      )
-                    }
-                    aria-pressed={
-                      chatTarget === step.key
-                    }
-                    title={t(
-                      runningSteps.some((runningStep) => runningStep.key === step.key)
-                        ? 'taskDetail.stepTabTitle'
-                        : resumableStatusOf(step.key) === 'pending'
-                        ? 'taskDetail.pendingStepTabTitle'
-                        : resumableStatusOf(step.key) === 'passed'
-                          || resumableStatusOf(step.key) === 'skipped'
-                          ? 'taskDetail.stepTabTitle'
-                          : resumableStatusOf(step.key) === 'failed'
-                            || resumableStatusOf(step.key) === 'rejected'
-                            ? 'taskDetail.failedStepTabTitle'
-                            : resumableStatusOf(step.key) === 'awaiting_review'
-                              ? 'taskDetail.reviewWaitingStepTabTitle'
-                              : 'taskDetail.stoppedStepTabTitle',
-                      {
-                        step: step.label,
-                      },
-                    )}
-                    className="task-chat-step-tab"
-                    style={{ '--step-color': step.color || 'var(--accent)' } as CSSProperties}
-                  >
-                    {step.label}
-                  </button>
-                ))}
-              </div>
-              {resumableTarget
-                && resumableStatusOf(resumableTarget.key) !== 'passed'
-                && resumableStatusOf(resumableTarget.key) !== 'skipped' && (
-                <span
-                  style={{
-                    fontSize: 'calc(11px * var(--font-scale))',
-                    color: 'var(--warn)',
-                  }}
-                >
-                  {t(resumableStatusOf(resumableTarget.key) === 'failed'
-                    || resumableStatusOf(resumableTarget.key) === 'rejected'
-                    ? 'taskDetail.failedStepHint'
-                    : resumableStatusOf(resumableTarget.key) === 'awaiting_review'
-                      ? 'taskDetail.reviewWaitingStepHint'
-                      : resumableStatusOf(resumableTarget.key) === 'pending'
-                        ? 'taskDetail.pendingStepHint'
-                        : 'taskDetail.stoppedStepHint', {
-                    step: resumableTarget.label,
-                  })}
-                </span>
-              )}
-              {!resumableTarget &&
-                chatTarget !== 'coordinator' &&
-                runningSteps.length === 0 && (
-                  <span
-                    style={{
-                      fontSize: 'calc(11px * var(--font-scale))',
-                      color: 'var(--warn)',
-                    }}
-                  >
-                    {t(
-                      'taskDetail.stepNotRunningHint',
-                    )}
-                  </span>
-                )}
-            </div>
+            <TaskChatTargetTabs target={chatTarget} steps={targetSteps}
+              stepProgress={stepProgress} runningStepKeys={runningSteps.map((step) => step.key)}
+              resumableTarget={resumableTarget} onSelect={onChatTargetChange} />
 
             {(chatError || stepEngineConfigError) && (
               <div
