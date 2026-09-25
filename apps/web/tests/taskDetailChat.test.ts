@@ -2,15 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
-  artifactsForMessage,
-  artifactsForStepRoundOutputs,
   findActiveStepIndex,
-  findPreferredArtifact,
-  findStepRoundInputArtifact,
-  findStepRoundInputPort,
-  groupStepOutputsByInput,
-  downstreamInputsForOutput,
-  hasStepIoContractChanged,
   findActionablePendingReview,
   findLatestDispatchedTask,
   resolveStepRestartImpact,
@@ -25,6 +17,9 @@ import {
   canCompleteStoppedReview,
   runningTaskMessageIds,
 } from '../src/pages/taskDetailChat.ts'
+import { artifactsForMessage, artifactsForStepRoundOutputs, findPreferredArtifact,
+  findStepRoundInputArtifact, findStepRoundInputPort, groupStepOutputsByInput,
+  downstreamInputsForOutput, hasStepIoContractChanged } from '../src/pages/taskArtifactRules.ts'
 import { loadTaskHistoryWithRetry, mergeLoadedTaskMessageEvents,
   mergeRefreshedTaskHistory } from '../src/pages/taskHistoryModel.ts'
 

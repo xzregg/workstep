@@ -92,3 +92,4 @@
 - 阶段一进行中：分享页的实时事件到消息状态的转换移入纯领域模块 `sharedTaskMessages.ts`，`SharedTaskView.tsx` 从 1016 行降至 909 行，保留连接、鉴权与任务/审核刷新。测试覆盖文本、工具、结束状态及 2000 事件上限。
 - 阶段一进行中：步骤进度图的依赖布局、连线几何与轮次计算移入 `taskStepProgressLayout.ts`，渲染与拖拽缩放保留在 `TaskStepProgressGraph.tsx`，从 869 行降至 702 行。布局测试覆盖并行步骤、返工虚线和连线端点，既有交互测试继续覆盖选中、拖拽与缩放。
 - 阶段一进行中：历史刷新合并、分页事件归并与失败重试从 `taskDetailChat.ts` 移入 `taskHistoryModel.ts`，由 `useTaskHistory`、本地详情和分享页共用；原文件从 1268 行降至 1164 行。既有测试直接导入新的职责所有者，覆盖合并顺序、已加载事件保留及中止重试。
+- 阶段一进行中：产物轮次选择、步骤输入输出映射、下游连接与接口变更判断移入同一个 `taskArtifactRules.ts`，由任务详情、分享页和 `TaskStepIoPanel` 复用；`taskDetailChat.ts` 从 1164 行降至 920 行。相关既有测试直接导入新模块。

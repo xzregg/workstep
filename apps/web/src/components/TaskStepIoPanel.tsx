@@ -6,7 +6,7 @@ import {
   artifactsForStepRoundOutputs, downstreamInputsForOutput, findPreferredArtifact,
   findStepRoundInputArtifact, findStepRoundInputPort, groupStepOutputsByInput,
   hasStepIoContractChanged,
-} from '../pages/taskDetailChat'
+} from '../pages/taskArtifactRules'
 import type { StepData, StepProgress, TaskDetailViewProps } from './TaskDetailView'
 import ArtifactUnchangedBadge from './ArtifactUnchangedBadge'
 import Button from './Button'
