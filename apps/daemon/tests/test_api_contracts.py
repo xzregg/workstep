@@ -4423,9 +4423,11 @@ async def test_set_failed_step_complete_api_does_not_block_health(api_context, m
     (round_dir / "成品.md").write_text("已完成", encoding="utf-8")
     original_execute_sql = project.db.execute_sql
     query_started = threading.Event()
+    query_started_at = [0.0]
 
     def slow_step_query(sql, params=None, commit=None):
         if 'FROM "message"' in sql and not query_started.is_set():
+            query_started_at[0] = time.perf_counter()
             query_started.set()
             time.sleep(0.35)
         return original_execute_sql(sql, params)
@@ -4436,6 +4438,8 @@ async def test_set_failed_step_complete_api_does_not_block_health(api_context, m
         json={"artifact_round": 1, "schedule_downstream": False},
     ))
     assert await asyncio.to_thread(query_started.wait, 1)
+    assert time.perf_counter() - query_started_at[0] < 0.2
+    assert not completion.done()
     health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
     response = await completion
 
