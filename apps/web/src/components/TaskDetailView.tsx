@@ -3,11 +3,9 @@ import { buildTaskConversationTimeline, lastEventTimestamp } from './taskConvers
 import { useTaskConversationScroll } from '../hooks/useTaskConversationScroll'
 import { ComposerOverlayHostContext } from '../hooks/useComposerOverlayClearance'
 import {
-  useEffect,
   useRef,
   useState,
   useMemo,
-  useCallback,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -50,6 +48,7 @@ import TaskDetailHeader from './TaskDetailHeader'
 import TaskDetailDescription from './TaskDetailDescription'
 import TaskStepPrompt from './TaskStepPrompt'
 import TaskDetailTabs from './TaskDetailTabs'
+import TaskDetailSplitLayout from './TaskDetailSplitLayout'
 import TaskChatTargetTabs from './TaskChatTargetTabs'
 import TaskConversationMessage from './TaskConversationMessage'
 import TaskReviewConfigPanel from './TaskReviewConfigPanel'
@@ -504,64 +503,6 @@ export default function TaskDetailView({
   const mobileReviewRef = useRef<HTMLDivElement>(null)
   const [mobileTab, setMobileTab] = useState<'conversation' | 'steps' | 'artifacts'>('conversation')
   const [detailMode, setDetailMode] = useState<'detail' | 'artifacts' | 'analysis' | 'git'>('detail')
-  const SPLIT_RATIO_KEY = 'workstep:task-detail-split-ratio'
-  const SPLIT_HANDLE_WIDTH = 8
-  const contentSplitRef = useRef<HTMLDivElement>(null)
-  const interactionCleanupRef = useRef<(() => void) | null>(null)
-  const [splitRatio, setSplitRatio] = useState(() => {
-    try {
-      const stored = Number(sessionStorage.getItem(SPLIT_RATIO_KEY))
-      if (Number.isFinite(stored) && stored > 0 && stored < 1) return stored
-    } catch {
-      /* ignore */
-    }
-    return 1 / 3
-  })
-
-  const beginSplitResize = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      event.preventDefault()
-      event.stopPropagation()
-      const container = contentSplitRef.current
-      if (!container) return
-      const previousCursor = document.body.style.cursor
-      const previousUserSelect = document.body.style.userSelect
-      document.body.style.cursor = 'col-resize'
-      document.body.style.userSelect = ''
-
-      const handleMove = (moveEvent: PointerEvent) => {
-        const rect = container.getBoundingClientRect()
-        const usableWidth = Math.max(1, rect.width - SPLIT_HANDLE_WIDTH)
-        const ratio = (
-          moveEvent.clientX - rect.left
-        ) / usableWidth
-        const clamped = Math.min(0.85, Math.max(0.15, ratio))
-        setSplitRatio(clamped)
-        try {
-          sessionStorage.setItem(SPLIT_RATIO_KEY, String(clamped))
-        } catch {
-          /* ignore */
-        }
-      }
-      const cleanup = () => {
-        window.removeEventListener('pointermove', handleMove)
-        window.removeEventListener('pointerup', cleanup)
-        window.removeEventListener('pointercancel', cleanup)
-        document.body.style.cursor = previousCursor
-        document.body.style.userSelect = previousUserSelect
-        interactionCleanupRef.current = null
-      }
-      interactionCleanupRef.current?.()
-      interactionCleanupRef.current = cleanup
-      window.addEventListener('pointermove', handleMove)
-      window.addEventListener('pointerup', cleanup)
-      window.addEventListener('pointercancel', cleanup)
-    },
-    [],
-  )
-
-  useEffect(() => () => interactionCleanupRef.current?.(), [])
-
   const {
     scrollRef, endRef, contentRef, stepLastRef, pendingScrollRef,
     scrolledToBottom, unreadMessages, registerOverlay, overlayPaddingBottom,
@@ -1188,25 +1129,8 @@ export default function TaskDetailView({
         requestAnimationFrame(() => mobileReviewRef.current?.scrollIntoView({ block: 'center' }))
       }}><Icon name="shield" size={18} />{t('status.awaiting_review')}<Icon name="chevron-right" size={16} /></button>}
       {/* Content split */}
-      <div
-        className="task-detail-content" data-mobile-tab={mobileTab}
-        ref={contentSplitRef}
-        style={{ gridTemplateColumns: `${splitRatio}fr ${SPLIT_HANDLE_WIDTH}px ${1 - splitRatio}fr` }}
-      >
-        {/* Left panel */}
-        <div className="task-detail-steps">{renderLeftPanel()}</div>
-
-        {/* Split handle */}
-        <div className="task-detail-split-handle" onPointerDown={beginSplitResize}>
-          <span className="task-detail-split-grip" aria-hidden="true">
-            ⋮
-          </span>
-        </div>
-
-        {/* Right panel (conversation) */}
-        <div className="task-detail-conversation">{renderConversation()}</div>
-        {compact && renderArtifactPanel()}
-      </div>
+      <TaskDetailSplitLayout mobileTab={mobileTab} left={renderLeftPanel()}
+        right={renderConversation()} artifacts={compact ? renderArtifactPanel() : undefined} />
       </>}
     </>
   )

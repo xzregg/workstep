@@ -84,6 +84,7 @@
 
 ## 阶段执行记录
 
+- 阶段一进行中：详情双栏比例、拖动、边界限制、会话持久化及事件清理移入 `TaskDetailSplitLayout.tsx`，`TaskDetailView.tsx` 从 1213 行降至 1137 行，只装配步骤、对话和移动端产物区。行为测试覆盖比例恢复、拖动边界和事件清理；Web 全量测试 982/982、构建与 lint 通过。
 - 阶段一进行中：任务产物列表加载、输入快照、生成后刷新、预览和本地目录反馈移入 `useTaskArtifacts.ts`；`TaskDetail.tsx` 从 1479 行降至 1396 行。远端项目目录操作仍受限；行为测试覆盖加载、刷新、预览和目录打开。Web 全量 981 项测试、构建与 lint 通过。
 - 阶段一进行中：任务详情的历史首屏、向上分页、消息事件详情和远端/审核刷新已收口到 `apps/web/src/hooks/useTaskHistory.ts`；同一轮远端与审核信号合并为一次刷新，打开面板时已有信号不重复请求。`TaskDetail.tsx` 当前为 2251 行。组件回归 `taskHistory.test.tsx` 覆盖首屏、分页和刷新去重；Web 构建、lint 与全量测试通过。页面仍有发送消息时对历史列表的直接写入，后续处理对话行为时须继续收口。
 - 阶段一进行中：任务列表的归档经验流程由 `ArchiveExperienceDialog.tsx` 自主管理，`TaskList.tsx` 从 1871 行降至 1570 行。恢复草稿、生成/停止、保存、直接归档和错误状态集中在此模块，列表只持有当前归档目标与归档后卡片更新。对应行为测试在 `archiveExperienceDialog.test.tsx`。
