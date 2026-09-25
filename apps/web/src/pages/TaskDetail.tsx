@@ -22,7 +22,6 @@ import {
   fsApi,
   taskApi,
   type ActionProposal,
-  type ReviewRun,
   type TaskStepState,
 } from '../api/client'
 import { copyMessageText } from '../components/MessageResponseFooter'
@@ -51,6 +50,7 @@ import {
 } from './taskDetailChat'
 import { mergeRefreshedTaskHistory } from './taskHistoryModel'
 import { useTaskArtifacts } from '../hooks/useTaskArtifacts'
+import { useTaskReviewActions } from '../hooks/useTaskReviewActions'
 import { CUSTOM } from '../utils/agui'
 import {
   pendingInsertQueueKey,
@@ -275,14 +275,14 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     previewArtifact, closePreview: closeArtifactPreview, notice: artifactNotice,
     openArtifact, openArtifactDirectory,
   } = useTaskArtifacts({ taskId, projectId, steps: task?.steps, remote: detailProject?.type === 'remote' })
-  const [reviews, setReviews] = useState<ReviewRun[]>([])
-  const [reviewActionPending, setReviewActionPending] = useState(false)
-  const [pendingReviewCompletion, setPendingReviewCompletion] = useState<
-    | { kind: 'review'; review: ReviewRun; stepKey: string }
-    | { kind: 'execution'; messageId: string; artifactRound: number }
-    | null
-  >(null)
-  const [reviewComment, setReviewComment] = useState('')
+  const {
+    reviews, pending: reviewActionPending, pendingCompletion: pendingReviewCompletion,
+    reviewComment, setReviewComment, decideReview,
+    requestFailedExecutionComplete, confirmCompletion, cancelCompletion,
+  } = useTaskReviewActions({
+    taskId, projectId, updatedAt: task?.updated_at, reviewEventSignal,
+    fetchTasks, refreshTask, onError: setChatError,
+  })
   const [showPromptEditor, setShowPromptEditor] = useState(false)
   const persistedMessageIds = useMemo(
     () => new Set(historyMessages.map((message) => String(message.id))),
@@ -324,16 +324,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       cancelled = true
     }
   }, [missingLivePromptIds.join('|'), projectId, taskId])
-
-  useEffect(() => {
-    if (!taskId || !projectId) {
-      setReviews([])
-      return
-    }
-    taskApi.reviews(taskId, projectId)
-      .then((res) => setReviews(res.reviews || []))
-      .catch(() => setReviews([]))
-  }, [taskId, projectId, task?.updated_at, reviewEventSignal])
 
   // Fetch tasks if not already loaded
   useEffect(() => {
@@ -1054,61 +1044,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     })
   }
 
-  const decideReview = async (
-    decision: 'approve' | 'reject' | 'force-approve' | 'terminate' | 'complete-task' | 'set-complete',
-    review = selectedReview,
-    stepKey = currentStep.key,
-    scheduleDownstream?: boolean,
-  ) => {
-    if (!review || !projectId) return
-    if (decision === 'set-complete' && scheduleDownstream === undefined) {
-      setPendingReviewCompletion({ kind: 'review', review, stepKey })
-      return
-    }
-    setReviewActionPending(true)
-    try {
-      await taskApi.decideReview(
-        task.id,
-        stepKey,
-        review.id,
-        decision,
-        projectId,
-        reviewComment.trim() || undefined,
-        scheduleDownstream,
-      )
-      setReviewComment('')
-      const [reviewResult] = await Promise.all([
-        taskApi.reviews(task.id, projectId),
-        fetchTasks(projectId),
-        refreshTask(task.id, projectId),
-      ])
-      setReviews(reviewResult.reviews || [])
-    } catch (reason) {
-      setChatError(reason instanceof Error ? reason.message : t('taskDetail.reviewActionFailed'))
-    } finally {
-      setReviewActionPending(false)
-      setPendingReviewCompletion(null)
-    }
-  }
-
-  const completeFailedExecution = async (
-    messageId: string, artifactRound: number, scheduleDownstream: boolean,
-  ) => {
-    if (!projectId) return
-    setReviewActionPending(true)
-    try {
-      await taskApi.completeFailedMessage(
-        task.id, messageId, artifactRound, scheduleDownstream, projectId,
-      )
-      await Promise.all([fetchTasks(projectId), refreshTask(task.id, projectId)])
-    } catch (reason) {
-      setChatError(reason instanceof Error ? reason.message : t('taskDetail.reviewActionFailed'))
-    } finally {
-      setReviewActionPending(false)
-      setPendingReviewCompletion(null)
-    }
-  }
-
   return (
     <TaskDetailWindow title={task.title} onClose={onClose}>
       {(headerHandlers) => <TaskStepConfigController
@@ -1145,7 +1080,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         reviewActionPending={reviewActionPending}
         reviewComment={reviewComment}
         onReviewCommentChange={setReviewComment}
-        onReviewAction={decideReview}
+        onReviewAction={(decision, review, stepKey) => {
+          void decideReview(decision, review ?? selectedReview, stepKey ?? currentStep.key)
+        }}
         artifacts={artifacts}
         artifactInputSnapshots={artifactInputSnapshots}
         chatTarget={chatTarget}
@@ -1178,9 +1115,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onRestartStepWithFreshSession={handleRestartStepWithFreshSession}
         restartingStepKeys={restartingStepKeys}
         onRetryFailedMessage={handleRetryFailedMessage}
-        onSetFailedExecutionComplete={(messageId, artifactRound) => {
-          setPendingReviewCompletion({ kind: 'execution', messageId, artifactRound })
-        }}
+        onSetFailedExecutionComplete={requestFailedExecutionComplete}
         retryingFailedMessageIds={retryingFailedMessageIds}
         chatInputRef={chatInputRef}
         stepInserts={stepInserts}
@@ -1304,35 +1239,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             secondaryText={t('taskDetail.setStepCompleteOnly')}
             loading={reviewActionPending}
             secondaryDisabled={reviewActionPending}
-            onCancel={() => {
-              if (!reviewActionPending) setPendingReviewCompletion(null)
-            }}
-            onConfirm={() => {
-              if (pendingReviewCompletion?.kind === 'review') {
-                void decideReview(
-                  'set-complete', pendingReviewCompletion.review,
-                  pendingReviewCompletion.stepKey, true,
-                )
-              } else if (pendingReviewCompletion?.kind === 'execution') {
-                void completeFailedExecution(
-                  pendingReviewCompletion.messageId,
-                  pendingReviewCompletion.artifactRound, true,
-                )
-              }
-            }}
-            onSecondary={() => {
-              if (pendingReviewCompletion?.kind === 'review') {
-                void decideReview(
-                  'set-complete', pendingReviewCompletion.review,
-                  pendingReviewCompletion.stepKey, false,
-                )
-              } else if (pendingReviewCompletion?.kind === 'execution') {
-                void completeFailedExecution(
-                  pendingReviewCompletion.messageId,
-                  pendingReviewCompletion.artifactRound, false,
-                )
-              }
-            }}
+            onCancel={cancelCompletion}
+            onConfirm={() => { void confirmCompletion(true) }}
+            onSecondary={() => { void confirmCompletion(false) }}
           />
           <ConfirmDialog
             open={pendingStepRestart !== null}
