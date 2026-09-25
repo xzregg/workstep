@@ -27,8 +27,7 @@ from services.step_interaction_messages import StepInteractionMessages
 from services.step_rework import StepRework
 from services.step_artifact_routes import StepArtifactRoutes
 from services.step_live_messages import StepLiveMessages
-from services.review_messages import AutomaticReviewMessages
-from services.review_gate import ReviewGate
+from services.review_messages import StepReviewMessages, resolve_review_config
 from services.config import config_store
 from agent_assistants.context_handoff import (
     mark_handoff_consumed,
@@ -42,13 +41,6 @@ from streaming.bus import EventBus
 
 logger = logging.getLogger(__name__)
 ResultT = TypeVar("ResultT")
-def _effective_review_mode(config: dict) -> str:
-    """Resolve skip/auto/manual, honouring explicit mode or legacy auto flag."""
-    if config.get("mode") in ("skip", "auto", "manual"):
-        return str(config["mode"])
-    return "auto" if config.get("auto", False) else "manual"
-
-
 async def _with_engine_idle_timeout(
     engine: AcpEngineBase,
     spawn_iter: AsyncIterator[InternalEvent],
@@ -145,8 +137,8 @@ class TaskRunner:
             self._publish,
             self._ajournal_snapshot,
         )
-        self._review_messages = AutomaticReviewMessages(
-            self._event_journal, self._run_db, self._publish
+        self._review_messages = StepReviewMessages(
+            self._event_journal, self._run_db, self._publish, self._live,
         )
         self._step_rework = StepRework(self._run_db, self._publish)
         self._artifact_routes = StepArtifactRoutes(
@@ -480,21 +472,7 @@ class TaskRunner:
         run_key = f"{task.id}:{step_key}"
         running.add(step_key)
         retry_feedback: str | None = None
-        review_message_id = None
-        review_journal_ref = None
-        review_config = dict(step.review or {})
-        if task.review_overrides_json:
-            try:
-                overrides = json.loads(task.review_overrides_json)
-                step_override = overrides.get(step_key, {})
-                if isinstance(step_override, dict):
-                    review_config.update(step_override)
-            except (TypeError, json.JSONDecodeError):
-                pass
-        review_mode = (
-            _effective_review_mode(review_config)
-            if step.review is not None else "skip"
-        )
+        review_config, review_mode = resolve_review_config(task, step)
         try:
             if latest_review_status == "passed" or review_mode == "skip":
                 ts = await self._persist_step_status(
@@ -502,74 +480,16 @@ class TaskRunner:
                 )
                 completed.add(step_key)
             else:
-                assembled_prompt = saved_review_prompt
-                review_segment = None
-                review_queue = None
-                review_event_handler = None
-                review_live_handler = None
-                if review_mode == "auto":
-                    if not assembled_prompt:
-                        assembled_prompt = await asyncio.to_thread(
-                            ReviewGate._assemble_prompt,
-                            task, step, artifacts_dir, execution_output,
-                            str(review_config.get("prompt", "")),
-                            execution_prompt, step_run.artifact_round,
-                        )
-                    review_message_id, review_journal_ref = (
-                        await self._review_messages.start(
-                            task, step, step_run, artifacts_dir,
-                            review_config, assembled_prompt,
-                        )
-                    )
-                    (review_segment, review_queue, review_event_handler,
-                     review_live_handler) = await self._live.prepare_review(
-                        task, step, step_run, artifacts_dir, run_key,
-                        review_message_id, review_journal_ref,
-                    )
-
-                gate = ReviewGate(
-                    lambda event: self._publish(task.id, step_key, event),
-                    self._run_db,
-                    review_event_handler,
-                    set_active_engine=lambda engine: self._live.set_engine(run_key, engine),
-                    live_message_queue=review_queue,
-                    on_live_message=review_live_handler,
-                )
-                outcome = await gate.evaluate(
-                    task=task,
-                    step=step,
-                    workflow_run=workflow_run,
-                    step_run=step_run,
-                    artifacts_dir=artifacts_dir,
+                review = await self._review_messages.evaluate(
+                    task=task, step=step, step_run=step_run,
+                    workflow_run=workflow_run, artifacts_dir=artifacts_dir,
                     execution_output=execution_output,
                     execution_prompt=execution_prompt,
-                    review_config=review_config,
-                    mode=review_mode,
-                    message_id=review_message_id,
-                    artifact_round=step_run.artifact_round,
-                    assembled_prompt=assembled_prompt if review_mode == "auto" else None,
+                    review_config=review_config, mode=review_mode,
+                    run_key=run_key, saved_prompt=saved_review_prompt,
+                    should_interrupt=lambda: self._graceful_shutdown,
                 )
-                if review_segment is not None:
-                    review_message_id = review_segment["message_id"]
-                    review_journal_ref = review_segment["journal_ref"]
-                    await self._live.finish_review(run_key)
-                if self._graceful_shutdown:
-                    raise asyncio.CancelledError
-                cancelled = self._live.is_cancelled(run_key)
-                if cancelled:
-                    def mark_review_cancelled():
-                        review = ReviewRun.get_by_id(outcome.review_run.id)
-                        review.status = "failed"
-                        review.error = "手动停止"
-                        review.ended_at = review.ended_at or utc_now()
-                        review.save()
-
-                    await self._run_db(mark_review_cancelled)
-                if review_message_id is not None and review_journal_ref is not None:
-                    await self._review_messages.finish(
-                        task, step_key, review_message_id, review_journal_ref,
-                        outcome, cancelled=cancelled,
-                    )
+                outcome, gate, cancelled, _message_persisted = review
                 if cancelled:
                     ts = await self._persist_step_status(
                         task.id, step_key, "cancelled", "手动停止", utc_now()
@@ -1096,17 +1016,7 @@ class TaskRunner:
                     # Execution and review are separate checkpoints. Close the
                     # execution message before the reviewer starts running.
                     await finish_execution_message()
-                    # Merge task-level review overrides with step config
-                    review_config = dict(step.review or {})
-                    if task.review_overrides_json:
-                        try:
-                            overrides = json.loads(task.review_overrides_json)
-                            step_ov = overrides.get(step_key, {}) if isinstance(overrides, dict) else {}
-                            if isinstance(step_ov, dict):
-                                review_config.update(step_ov)
-                        except (json.JSONDecodeError, TypeError):
-                            pass
-                    review_mode = _effective_review_mode(review_config)
+                    review_config, review_mode = resolve_review_config(task, step)
                     if review_mode == "skip":
                         # 跳过审核：步骤执行完成后直接通过，不创建审核记录。
                         ts = await self._persist_step_status(
@@ -1131,88 +1041,16 @@ class TaskRunner:
                                 "task_id": task.id,
                             },
                         })
-                        review_message_id = None
-                        review_journal_ref = None
-                        assembled_review_prompt = None
-                        review_segment = None
-                        review_queue = None
-                        review_event_handler = None
-                        review_live_handler = None
-                        if review_mode == "auto":
-                            assembled_review_prompt = await asyncio.to_thread(
-                                ReviewGate._assemble_prompt,
-                                task,
-                                step,
-                                artifacts_dir,
-                                "".join(content_parts),
-                                str(review_config.get("prompt", "")),
-                                prompt,
-                                artifact_round,
-                            )
-                            review_message_id, review_journal_ref = (
-                                await self._review_messages.start(
-                                    task,
-                                    step,
-                                    step_run,
-                                    artifacts_dir,
-                                    review_config,
-                                    assembled_review_prompt,
-                                )
-                            )
-                            (review_segment, review_queue, review_event_handler,
-                             review_live_handler) = await self._live.prepare_review(
-                                task, step, step_run, artifacts_dir, run_key,
-                                review_message_id, review_journal_ref,
-                            )
-
-                        gate = ReviewGate(
-                            lambda event: self._publish(task.id, step_key, event),
-                            self._run_db,
-                            review_event_handler,
-                            set_active_engine=lambda active_engine: self._live.set_engine(
-                                run_key, active_engine
-                            ),
-                            live_message_queue=review_queue,
-                            on_live_message=review_live_handler,
-                        )
-                        outcome = await gate.evaluate(
-                            task=task,
-                            step=step,
-                            workflow_run=workflow_run,
-                            step_run=step_run,
-                            artifacts_dir=artifacts_dir,
+                        review = await self._review_messages.evaluate(
+                            task=task, step=step, step_run=step_run,
+                            workflow_run=workflow_run, artifacts_dir=artifacts_dir,
                             execution_output="".join(content_parts),
                             execution_prompt=prompt,
-                            review_config=review_config,
-                            mode=review_mode,
-                            message_id=review_message_id,
-                            artifact_round=artifact_round,
-                            assembled_prompt=assembled_review_prompt,
+                            review_config=review_config, mode=review_mode,
+                            run_key=run_key,
                         )
-                        if review_segment is not None:
-                            review_message_id = review_segment["message_id"]
-                            review_journal_ref = review_segment["journal_ref"]
-                            await self._live.finish_review(run_key)
-                        cancelled_during_review = self._live.is_cancelled(run_key)
-                        if cancelled_during_review:
-                            def fail_cancelled_review():
-                                review = ReviewRun.get_by_id(outcome.review_run.id)
-                                review.status = "failed"
-                                review.error = "手动停止"
-                                review.ended_at = review.ended_at or utc_now()
-                                review.save()
-
-                            await self._run_db(fail_cancelled_review)
-                        if review_message_id is not None and review_journal_ref is not None:
-                            await self._review_messages.finish(
-                                task,
-                                step_key,
-                                review_message_id,
-                                review_journal_ref,
-                                outcome,
-                                cancelled=cancelled_during_review,
-                            )
-                            review_message_persisted = True
+                        (outcome, gate, cancelled_during_review,
+                         review_message_persisted) = review
                         # 重新加载最新 ts：gate 在审核期间写入了 review_session_id，
                         # 用旧实例整行 save 会把它覆盖回 None。
                         if cancelled_during_review:
