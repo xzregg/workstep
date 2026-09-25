@@ -54,7 +54,7 @@ from services.pending_message_inserts import (
     pending_insert_batch,
 )
 from services.intervention import intervention_manager
-from services.task_runner import extract_usage_json
+from services.messages import extract_usage_json
 from services.remote_project import current_actor_event_fields
 from services.workflow_definition import WorkflowDefinition
 from services.artifact_rounds import artifact_id_for, iter_artifact_rounds

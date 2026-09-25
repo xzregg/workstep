@@ -20,12 +20,12 @@ from engines.codex_visualize import convert_visualize_markers
 from engines.core.registry import create_engine
 from engines.core.events import InternalEvent, is_commentary
 from services.workflow_definition import WorkflowDefinition, WorkflowValidationError
-from services.task_runner import extract_usage_json
 from services.task_read_model import task_to_dict
 from services.config import DEFAULT_EXECUTION_ENGINE
 from services.messages import (
     create_task_message,
     current_actor_task_fields,
+    extract_usage_json,
     new_message_id,
 )
 from services.history import (

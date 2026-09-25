@@ -33,6 +33,7 @@ from services.artifact_routing import (
 )
 from services.pipeline import DAGScheduler, Step
 from services.task_step_start import start_step_state
+from services.review_messages import AutomaticReviewMessages
 from services.prompt import (
     assemble_followup_prompt,
     assemble_prompt,
@@ -42,7 +43,7 @@ from services.prompt import (
 )
 from services.review_gate import ReviewGate
 from services.config import config_store
-from services.messages import create_task_message, new_message_id
+from services.messages import create_task_message, extract_usage_json, new_message_id
 from agent_assistants.context_handoff import (
     mark_handoff_consumed,
     render_handoff_reference,
@@ -71,17 +72,6 @@ async def _stop_engine_safely(engine: object, run_key: str) -> None:
         logger.error("Engine stop timed out for %s", run_key)
     except Exception:
         logger.exception("Engine stop raised for %s", run_key)
-
-
-def extract_usage_json(events_collected: list[dict]) -> str | None:
-    """Extract the last usage event's data as JSON for message.usage_json.
-
-    Returns None when no usage event was collected.
-    """
-    for event in reversed(events_collected):
-        if event.get("type") in {"usage", "usage_update"}:
-            return json.dumps(event.get("data", {}))
-    return None
 
 
 def _effective_review_mode(config: dict) -> str:
@@ -180,6 +170,9 @@ class TaskRunner:
         self._cancelled_steps: set[str] = set()
         self._graceful_shutdown = False
         self._event_journal = TurnEventJournal()
+        self._review_messages = AutomaticReviewMessages(
+            self._event_journal, self._run_db, self._publish
+        )
         self._routing_state = empty_routing_state()
         self._routing_lock = asyncio.Lock()
 
@@ -214,158 +207,6 @@ class TaskRunner:
 
     async def close(self) -> None:
         await self._event_journal.aclose()
-
-    async def _start_automatic_review_message(
-        self,
-        task: Task,
-        step: Step,
-        step_run: StepRun,
-        artifacts_dir: Path,
-        review_config: dict,
-        review_prompt: str,
-    ) -> tuple[str, JournalRef]:
-        """Persist and publish the review bubble before the reviewer starts."""
-        message_id = new_message_id()
-        now = utc_now()
-        journal_ref = await self._event_journal.astart(
-            artifacts_dir.parent,
-            f"task-{task.id}",
-            message_id,
-        )
-        engine = str(review_config.get("engine") or step.engine)
-        default_model = await asyncio.to_thread(
-            config_store.get_engine_default_model, engine
-        )
-        model = str(
-            review_config.get("model")
-            or step.model
-            or default_model
-            or ""
-        )
-        await self._run_db(
-            lambda: create_task_message(
-                id=message_id,
-                task=task,
-                channel="review",
-                step_key=step.key,
-                role="assistant",
-                content="审核中",
-                engine=engine,
-                model=model,
-                run_id=message_id,
-                step_run_id=step_run.id,
-                artifact_round=step_run.artifact_round,
-                run_status="running",
-                prompt_json=json.dumps({"prompt": review_prompt}, ensure_ascii=False),
-                event_log_path=journal_ref.relative_path,
-                position=0,
-                started_at=now,
-                created_at=now,
-            )
-        )
-        await self._publish(task.id, step.key, {
-            "channel": "review",
-            "message_id": message_id,
-            "engine": engine,
-            "model": model,
-            "event_sequence": 0,
-            "type": "message_started",
-            "data": {
-                "role": "assistant",
-                "status": "running",
-                "content": "审核中",
-                "prompt": review_prompt,
-                "artifact_round": step_run.artifact_round,
-            },
-            "created_at": now.isoformat(),
-        })
-        return message_id, journal_ref
-
-    async def _finish_automatic_review_message(
-        self,
-        task: Task,
-        step_key: str,
-        message_id: str,
-        journal_ref: JournalRef,
-        outcome,
-        *,
-        cancelled: bool = False,
-    ) -> None:
-        """Finalize the same review bubble with its report and event trace."""
-        await self._event_journal.afinish(journal_ref)
-        snapshot = await self._ajournal_snapshot(journal_ref)
-        summary = outcome.report.get("summary", "")
-        issues = outcome.report.get("issues", [])
-        items = "".join(
-            f"- {issue.get('description', '')}"
-            + (
-                f" → {issue.get('suggestion', '')}"
-                if issue.get("suggestion") else ""
-            )
-            + "\n"
-            for issue in (issues or [])
-        )
-        if cancelled:
-            content = "自动审核已手动停止"
-        else:
-            if outcome.status == "failed":
-                content = f"**审核失败**\n{summary}\n{items}"
-            else:
-                verdict = "通过" if outcome.status == "passed" else "未通过"
-                content = f"**审核结果：{verdict}**\n{summary}\n{items}"
-
-        def finalize_review_message():
-            message = Message.get_by_id(message_id)
-            message.content = content
-            message.engine = outcome.review_run.engine
-            message.model = outcome.review_run.model
-            message.run_status = "cancelled" if cancelled else (
-                "failed" if outcome.status == "failed" else "completed"
-            )
-            message.prompt_json = outcome.review_run.prompt_json
-            message.events_json = json.dumps(
-                [{
-                    "type": "review_context",
-                    "data": {"review_run_id": outcome.review_run.id},
-                }, *snapshot["events"]],
-                ensure_ascii=False,
-            )
-            message.event_summary_json = snapshot["event_summary_json"]
-            message.event_count = snapshot["event_count"]
-            message.last_event_seq = snapshot["last_event_seq"]
-            message.usage_json = extract_usage_json(list(outcome.events))
-            message.started_at = message.started_at or outcome.review_run.started_at
-            message.ended_at = outcome.review_run.ended_at
-            message.save()
-            return message.started_at
-
-        message_started_at = await self._run_db(finalize_review_message)
-        common = {
-            "channel": "review",
-            "message_id": message_id,
-            "engine": outcome.review_run.engine,
-            "model": outcome.review_run.model,
-            "created_at": message_started_at.isoformat(),
-        }
-        await self._publish(task.id, step_key, {
-            **common,
-            "type": "message_snapshot",
-            "data": {"content": content},
-        })
-        await self._publish(task.id, step_key, {
-            **common,
-            "type": "message_completed",
-            "data": {
-                "status": "cancelled" if cancelled else (
-                    "failed" if outcome.status == "failed" else "completed"
-                ),
-                "content": content,
-                "ended_at": (
-                    outcome.review_run.ended_at.isoformat()
-                    if outcome.review_run.ended_at else None
-                ),
-            },
-        })
 
     async def _prepare_review_live_messages(
         self,
@@ -916,7 +757,7 @@ class TaskRunner:
                             execution_prompt, step_run.artifact_round,
                         )
                     review_message_id, review_journal_ref = (
-                        await self._start_automatic_review_message(
+                        await self._review_messages.start(
                             task, step, step_run, artifacts_dir,
                             review_config, assembled_prompt,
                         )
@@ -968,7 +809,7 @@ class TaskRunner:
 
                     await self._run_db(mark_review_cancelled)
                 if review_message_id is not None and review_journal_ref is not None:
-                    await self._finish_automatic_review_message(
+                    await self._review_messages.finish(
                         task, step_key, review_message_id, review_journal_ref,
                         outcome, cancelled=cancelled,
                     )
@@ -1943,7 +1784,7 @@ class TaskRunner:
                                 artifact_round,
                             )
                             review_message_id, review_journal_ref = (
-                                await self._start_automatic_review_message(
+                                await self._review_messages.start(
                                     task,
                                     step,
                                     step_run,
@@ -1999,7 +1840,7 @@ class TaskRunner:
 
                             await self._run_db(fail_cancelled_review)
                         if review_message_id is not None and review_journal_ref is not None:
-                            await self._finish_automatic_review_message(
+                            await self._review_messages.finish(
                                 task,
                                 step_key,
                                 review_message_id,

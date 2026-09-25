@@ -1,5 +1,6 @@
-"""Persistent task message creation and ordering."""
+"""Persistent task message creation, ordering, and usage projection."""
 
+import json
 import secrets
 import threading
 import time
@@ -7,6 +8,14 @@ import uuid
 
 from models import Message, Task
 from models.base import db_proxy
+
+
+def extract_usage_json(events_collected: list[dict]) -> str | None:
+    """Extract the last usage event's data as JSON for message.usage_json."""
+    for event in reversed(events_collected):
+        if event.get("type") in {"usage", "usage_update"}:
+            return json.dumps(event.get("data", {}))
+    return None
 
 
 def current_actor_message_fields() -> dict[str, str]:

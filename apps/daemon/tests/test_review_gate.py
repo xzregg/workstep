@@ -3,6 +3,7 @@
 import asyncio
 import json
 import re
+import threading
 import time
 from types import SimpleNamespace
 
@@ -437,7 +438,9 @@ async def test_automatic_review_accepts_live_message_and_splits_output(tmp_path)
 
 
 @pytest.mark.anyio
-async def test_automatic_review_message_is_visible_while_review_is_running(tmp_path):
+async def test_automatic_review_message_is_visible_while_review_is_running(
+    tmp_path, monkeypatch
+):
     """自动审核开始后，刷新历史和实时事件都应立即得到同一条审核消息。"""
     db = init_db(str(tmp_path / "workstep.db"))
     task = Task.create(
@@ -463,6 +466,21 @@ async def test_automatic_review_message_is_visible_while_review_is_running(tmp_p
     ENGINE_REGISTRY["review-test"] = lambda: engine
     bus = EventBus()
     event_queue = bus.subscribe()
+    original_execute_sql = db.execute_sql
+    review_insert_started = threading.Event()
+
+    def slow_review_insert(sql, params=None, commit=None):
+        if (
+            'INSERT INTO "message"' in sql
+            and params is not None
+            and "review" in params
+            and not review_insert_started.is_set()
+        ):
+            review_insert_started.set()
+            time.sleep(0.35)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(db, "execute_sql", slow_review_insert)
     pipeline_task = asyncio.create_task(TaskRunner(bus).run_pipeline(
         task,
         {
@@ -482,6 +500,11 @@ async def test_automatic_review_message_is_visible_while_review_is_running(tmp_p
         workflow_run=workflow_run,
     ))
     try:
+        assert await asyncio.to_thread(review_insert_started.wait, 1)
+        assert not pipeline_task.done()
+        heartbeat_started = time.perf_counter()
+        await asyncio.wait_for(asyncio.sleep(0), timeout=0.2)
+        assert time.perf_counter() - heartbeat_started < 0.2
         await asyncio.wait_for(review_started.wait(), timeout=2)
         published = []
         while not event_queue.empty():
