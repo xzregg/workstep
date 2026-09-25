@@ -56,7 +56,7 @@
 | 文件（当前行数） | 候选业务边界与交付 |
 |---|---|
 | `agent_assistants/coordinator.py`（2679） | 将归档经验、上下文组装、提案确认/取消、会话持久化与运行调度分清所有权，继续复用通用 AssistantRuntime。 |
-| `agent_assistants/base.py`（2311） | 围绕 turn 生命周期、引擎调用、事件日志与发布、会话状态建立边界；助手专有规则不得进入通用层。 |
+| `agent_assistants/base.py`（当前 2128） | 引擎调用已归 `engine_invocation.py`；继续核对 turn 生命周期、事件日志与发布、会话状态的所有权；助手专有规则不得进入通用层。 |
 | `agent_assistants/chat_session.py`（1644） | 区分持久化适配器、会话增删/交接/分叉、消息提交与系统提示词。 |
 | `agent_assistants/workflow_gen.py`（当前 729） | 流程选择界面已按业务投影拆出；模块保留流程提案解析、校验、修复与发布，以及助手配置。 |
 | `components/ChatInput.tsx`（当前 1275） | 草稿与附件已有独立所有者；分段编辑与工具栏仍共用光标和选择状态，保留统一协调，保持输入高度和按钮规格。 |
@@ -91,6 +91,7 @@
 
 ## 阶段执行记录
 
+- 阶段三进行中：通用助手的引擎能力判断、参数组装、流式事件和交互审批归入 `agent_assistants/engine_invocation.py`；`base.py` 从 2311 行降至 2128 行，保留原 `invoke_engine` 入口供既有助手调用与测试注入。新所有者的事件流测试、现有慢工厂与慢模型能力读取的事件循环 canary、daemon 全量 1678/1678 通过；Code Map 已更新。
 - 阶段三进行中：`ChatInput.tsx` 的外框、焦点/拖放状态、工具栏、配置菜单和发送/停止按钮固定样式迁入 CSS 类及属性选择器，只保留外部选项颜色和编辑器动态高度的运行时样式；从 1295 行降至 1275 行。富文本分段、快捷命令和工具栏依赖同一光标、选择、撤销状态，暂不按行数拆散。Web 全量 985/985、构建和 lint、差异检查通过。
 - 阶段三进行中：共用输入框的附件上传、粘贴、拖放、光标位置插入、部分失败继续与撤销快照归入 `useChatInputAttachments.ts`；`ChatInput.tsx` 从 1370 行降至 1295 行。附件按钮及菜单固定样式改用 CSS 类。真实输入测试补充多文件部分失败，Web 全量 985/985、构建和 lint、差异检查通过；Code Map 已更新。
 - 阶段三进行中：通用助手对话的待插入队列加载、草稿添加、编辑、逐条/全部发送、删除、清空、排序和失败恢复收口到 `useAssistantPendingInserts.tsx`，在同一模块内装配既有 `PendingMessageInserts`；`AssistantChatPanel.tsx` 从 834 行降至 712 行。共用队列面板的固定样式迁到 `pending-insert-*` CSS 类，发送/拖动状态用属性选择器，移动端小按钮采用统一紧凑高度；留白测试加载真实 CSS 验证计算后的面板间距。行为测试覆盖运行中消息绑定、发送失败保留与成功删除；Web 全量 984/984、构建和 lint、差异检查通过，Code Map 已更新。
