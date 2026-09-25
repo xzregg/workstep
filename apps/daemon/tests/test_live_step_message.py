@@ -721,7 +721,7 @@ def test_step_prompt_never_contains_coordinator_messages(tmp_path):
 
 
 def test_coordinator_context_only_uses_coordinator_messages(tmp_path):
-    from agent_assistants.coordinator import CoordinatorModule
+    from agent_assistants.coordinator_context import assemble_context
     from services.workflow_runtime import WorkflowRuntime
 
     db = init_db(str(tmp_path / "coordinator-context.db"))
@@ -761,9 +761,8 @@ def test_coordinator_context_only_uses_coordinator_messages(tmp_path):
         status="running",
         created_at=now,
     )
-    coordinator = CoordinatorModule(EventBus(), None, None)
     try:
-        prompt, _ = coordinator._assemble_context(_context_project(tmp_path), task, turn)
+        prompt, _ = assemble_context(_context_project(tmp_path), task, turn)
         assert "阶段注入消息" not in prompt
         assert "协调问题" in prompt
     finally:
