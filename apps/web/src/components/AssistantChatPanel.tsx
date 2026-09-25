@@ -1,4 +1,5 @@
 import { useCompactLayout } from '../hooks/useCompactLayout'
+import { useChatComposerResize } from '../hooks/useChatComposerResize'
 import {
   ComposerOverlayHostContext,
   useComposerOverlayClearance,
@@ -49,21 +50,7 @@ import {
   usePendingMessageInsertStore,
 } from '../stores/pendingMessageInsertStore'
 
-const COMPOSER_HEIGHT_KEY = 'workstep-chat-composer-height'
-const MIN_COMPOSER_HEIGHT = 220
-const MAX_COMPOSER_FRACTION = 0.85
 const EMPTY_PENDING_INSERTS: never[] = []
-
-function loadChatComposerHeight(): number | null {
-  try {
-    const raw = window.localStorage.getItem(COMPOSER_HEIGHT_KEY)
-    if (!raw) return null
-    const value = Number(raw)
-    return Number.isFinite(value) && value > 0 ? value : null
-  } catch {
-    return null
-  }
-}
 
 export interface AssistantChatCopy {
   emptyIntro: string
@@ -359,10 +346,11 @@ export default function AssistantChatPanel({
   const lastProgrammaticScrollTopRef = useRef(0)
   const lastScrollTopRef = useRef(0)
   const lastScrollHeightRef = useRef(0)
-  const rootRef = useRef<HTMLDivElement>(null)
-  const composerRef = useRef<HTMLDivElement>(null)
-  const composerInnerRef = useRef<HTMLDivElement>(null)
-  const [composerHeight, setComposerHeight] = useState<number | null>(loadChatComposerHeight)
+  const {
+    rootRef, composerRef, composerInnerRef, height: composerHeight,
+    startResize: startComposerResize, resetHeight: resetComposerHeight,
+    handleResizeKey: handleComposerResizeKey,
+  } = useChatComposerResize()
   const lastContent = messages.at(-1)?.content ?? ''
   const lastEventsCount = messages.at(-1)?.events?.length ?? 0
   // 输入区上方的悬浮面板（如「待插入消息」）会遮住会话底部：
@@ -472,64 +460,6 @@ export default function AssistantChatPanel({
     })
   }, [])
 
-  // 持久化输入区高度；双击重置（null）会清除存储值。
-  useEffect(() => {
-    try {
-      if (composerHeight === null) window.localStorage.removeItem(COMPOSER_HEIGHT_KEY)
-      else window.localStorage.setItem(COMPOSER_HEIGHT_KEY, String(Math.round(composerHeight)))
-    } catch { /* localStorage 不可用 */ }
-  }, [composerHeight])
-
-  const clampComposerHeight = (height: number) => {
-    const containerHeight = rootRef.current?.getBoundingClientRect().height
-    const max = containerHeight
-      ? Math.max(MIN_COMPOSER_HEIGHT, Math.round(containerHeight * MAX_COMPOSER_FRACTION))
-      : height
-    return Math.min(Math.max(MIN_COMPOSER_HEIGHT, height), max)
-  }
-
-  // 拖动中直接写 DOM 高度，避免每帧重渲染整个消息列表；松开时提交状态。
-  const startComposerResize = (event: React.MouseEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    const startY = event.clientY
-    const startHeight = composerRef.current?.getBoundingClientRect().height
-      ?? composerHeight ?? MIN_COMPOSER_HEIGHT
-    let latest = startHeight
-    const onMove = (moveEvent: MouseEvent) => {
-      latest = clampComposerHeight(startHeight + (startY - moveEvent.clientY))
-      if (composerRef.current) composerRef.current.style.height = `${latest}px`
-      if (composerInnerRef.current) {
-        composerInnerRef.current.style.height = '100%'
-        composerInnerRef.current.style.overflowY = 'auto'
-      }
-    }
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-      setComposerHeight(latest)
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    document.body.style.cursor = 'row-resize'
-    document.body.style.userSelect = ''
-  }
-
-  const resetComposerHeight = () => setComposerHeight(null)
-
-  const handleComposerResizeKey = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    const base = composerRef.current?.getBoundingClientRect().height
-      ?? composerHeight ?? MIN_COMPOSER_HEIGHT
-    let next: number | null
-    if (event.key === 'ArrowUp') next = base + 8
-    else if (event.key === 'ArrowDown') next = base - 8
-    else if (event.key === 'Escape' || event.key === 'Home') next = null
-    else return
-    event.preventDefault()
-    setComposerHeight(next === null ? null : clampComposerHeight(next))
-  }
-
   const conversationMessages = actionRuns
     ? mergeActionMessages(
       messages,
@@ -548,7 +478,7 @@ export default function AssistantChatPanel({
     : messages
 
   return (
-    <div className="assistant-chat-panel" ref={rootRef} style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+    <div className="assistant-chat-panel" ref={rootRef}>
       <div style={{
         height: 40, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8,
         padding: '0 12px', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)',
@@ -712,7 +642,7 @@ export default function AssistantChatPanel({
         />
       </div>
 
-      {(sendError || pendingError) && <div style={{ padding: '6px 12px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)', background: 'var(--bg)' }}>{sendError || pendingError}</div>}
+      {(sendError || pendingError) && <div className="assistant-chat-error">{sendError || pendingError}</div>}
       <div
         role="separator"
         aria-orientation="horizontal"
@@ -723,18 +653,12 @@ export default function AssistantChatPanel({
         onDoubleClick={resetComposerHeight}
         onKeyDown={handleComposerResizeKey}
         className="chat-composer-resize-handle"
-        style={{
-          height: 2, flexShrink: 0, cursor: 'row-resize',
-          background: 'var(--border-soft)',        }}
       />
 
       <div
         ref={composerRef}
-        style={{
-          position: 'relative', flexShrink: 0,
-          height: compactLayout ? 'auto' : composerHeight ?? 'auto',
-          background: 'var(--bg)',
-        }}
+        className="chat-composer-outer"
+        style={!compactLayout && composerHeight !== null ? { height: composerHeight } : undefined}
       >
         <ComposerOverlayHostContext.Provider value={registerOverlay}>
           {activeMessageId && pendingInserts.length > 0 && (
@@ -796,12 +720,7 @@ export default function AssistantChatPanel({
         </ComposerOverlayHostContext.Provider>
         <div
           ref={composerInnerRef}
-          style={{
-            height: compactLayout ? 'auto' : composerHeight ?? 'auto',
-            overflowY: 'visible',
-            display: 'flex', flexDirection: 'column',
-            padding: compactLayout ? '0' : '12px 12px',
-          }}
+          className={`chat-composer-inner${!compactLayout && composerHeight !== null ? ' is-resized' : ''}${compactLayout ? ' is-compact' : ''}`}
         >
           {(composerActions || (quickPrompts && quickPrompts.length > 0)) && !compactLayout && (
               <div
