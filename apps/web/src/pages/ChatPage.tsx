@@ -7,8 +7,6 @@ import AssistantChatPanel from '../components/AssistantChatPanel'
 import { ProjectActionMessages } from '../components/ProjectActionMessages'
 import { useProjectActions } from '../components/useActionRuns'
 import Button from '../components/Button'
-import ChatEngineHandoffDialog, { type HandoffEndpoint } from '../components/ChatEngineHandoffDialog'
-import ChatSessionForkDialog from '../components/ChatSessionForkDialog'
 import ChatSessionRenameDialog from '../components/ChatSessionRenameDialog'
 import EmptyState from '../components/EmptyState'
 import Icon from '../components/Icon'
@@ -23,9 +21,7 @@ import {
   chatSessionApi,
   providerApi,
   type AssistantConfigInfo,
-  type ChatSessionHandoffInput,
   type ProviderInfo,
-  type ChatSessionForkInput,
 } from '../api/client'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
 import {
@@ -35,6 +31,7 @@ import {
 import { useProjectStore } from '../stores/projectStore'
 import { usePromptEnhance } from '../hooks/usePromptEnhance'
 import { useEngineQuota } from '../hooks/useEngineQuota'
+import { useChatSessionTransitions } from '../hooks/useChatSessionTransitions'
 import { useThrottledMemo } from '../hooks/useThrottledMemo'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useI18n } from '../i18n'
@@ -49,7 +46,6 @@ import {
 } from '../utils/chatEngineConfig'
 import { applyAssistantQuickPrompt } from '../utils/taskQuickPrompts.js'
 import { contextUsageFromMessages } from '../utils/contextUsage.js'
-import { requiresEngineHandoff } from '../utils/chatSessionFork'
 
 /* ══════════════════════════════════════════
    ChatPage — Codex-style session chat.
@@ -91,16 +87,6 @@ export default function ChatPage() {
   const [stopping, setStopping] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
   const [creating, setCreating] = useState(false)
-  const [forkOpen, setForkOpen] = useState(false)
-  const [forking, setForking] = useState(false)
-  const [forkError, setForkError] = useState('')
-  const [forkTargetEngine, setForkTargetEngine] = useState('')
-  const [forkMessageId, setForkMessageId] = useState<string | null>(null)
-  const [handoffOpen, setHandoffOpen] = useState(false)
-  const [handingOff, setHandingOff] = useState(false)
-  const [handoffError, setHandoffError] = useState('')
-  const [handoffTarget, setHandoffTarget] = useState<HandoffEndpoint | null>(null)
-  const [confirmedHandoffMessageCount, setConfirmedHandoffMessageCount] = useState<number | null>(null)
   const [showSettingsPanel, setShowSettingsPanel] = useState(false)
   const [showArchive, setShowArchive] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -166,18 +152,32 @@ export default function ChatPage() {
   const { quota: visibleQuota, refreshing: quotaRefreshing, refresh: refreshQuota } = useEngineQuota(
     activeProject?.id, effectiveEngine, running,
   )
-  const providerLabel = useCallback((providerId: string) => (
-    providerId
-      ? providers.find((item) => item.id === providerId)?.name || providerId
-      : t('chatSession.providerDefaultLabel')
-  ), [providers, t])
-  const handoffSource: HandoffEndpoint = {
-    engine: selectedEngine || assistantConfig?.configured.engine || assistantConfig?.resolved?.engine || 'pydantic_ai',
-    providerId: selectedProvider,
-  }
-  const forkMessageIndex = forkMessageId
-    ? messages.findIndex((message) => message.id === forkMessageId)
-    : -1
+  const {
+    openFork, requestEngineHandoff, requestProviderHandoff, dialogs: transitionDialogs,
+  } = useChatSessionTransitions({
+    project: activeProject ? {
+      id: activeProject.id,
+      routeName: projectParam || activeProject.name,
+    } : null,
+    sessionId,
+    sessionTitle,
+    messageIds: messages.map((message) => message.id),
+    running,
+    current: engineConfigRef.current,
+    defaultEngine: assistantConfig?.configured.engine || assistantConfig?.resolved?.engine || 'pydantic_ai',
+    engines: sharedEngines,
+    providers,
+    permissionMode,
+    onHandoffApplied: (detail) => {
+      setSelectedEngine(detail.engine || '')
+      setSelectedProvider(detail.provider_id || '')
+      setSelectedModel(detail.model || '')
+      setSelectedFastModel(detail.fast_model || '')
+      setSelectedVisionModel(detail.vision_model || '')
+      setSelectedThinkingEffort('')
+    },
+    navigate,
+  })
   const quickButtons = useChatListStore((s) => s.quickButtons)
   const projectActions = useProjectActions(activeProject?.id, sessionId)
   // AssistantChatPanel 的消息行是 memo 化的：copy/quickPrompts/回调必须引用稳定，
@@ -368,7 +368,6 @@ export default function ChatPage() {
     if (!sessionId) setInput('')
     setSendError('')
     setStopping(false)
-    setConfirmedHandoffMessageCount(null)
   }, [sessionId, routeProjectId])
 
   // 引擎配置同样懒保存：切换会话 / 路由卸载时把当前会话的选择落盘。
@@ -590,59 +589,12 @@ export default function ChatPage() {
     }
   }, [activeProject, assistantConfig, creating, projectParam, navigate, t])
 
-  const openFork = useCallback((targetEngine = selectedEngine, messageId: string | null = null) => {
-    if (!sessionId || running) return
-    setForkTargetEngine(targetEngine || selectedEngine)
-    setForkMessageId(messageId)
-    setForkError('')
-    setForkOpen(true)
-  }, [sessionId, running, selectedEngine])
-
   const handleMessageEventsLoad = useCallback((messageId: string) => {
     void loadMessageEvents(messageId)
   }, [loadMessageEvents])
   const handleForkMessage = useCallback((messageId: string) => {
     openFork(selectedEngine, messageId)
   }, [openFork, selectedEngine])
-
-  const forkSession = useCallback(async (input: ChatSessionForkInput) => {
-    if (!sessionId || !activeProject?.id || forking) return
-    setForking(true)
-    setForkError('')
-    try {
-      const detail = await chatSessionApi.fork(sessionId, input)
-      useChatListStore.getState().addSession(detail)
-      useChatSessionStore.getState().newSession(detail.id)
-      setForkOpen(false)
-      navigate(`/chat?project=${encodeURIComponent(projectParam || activeProject.name || '')}&session=${encodeURIComponent(detail.id)}`)
-    } catch (reason) {
-      setForkError(reason instanceof Error ? reason.message : t('chatSession.forkFailed'))
-    } finally {
-      setForking(false)
-    }
-  }, [sessionId, activeProject, forking, navigate, projectParam, t])
-
-  const handoffSession = useCallback(async (input: ChatSessionHandoffInput) => {
-    if (!sessionId || !activeProject?.id || handingOff) return
-    setHandingOff(true)
-    setHandoffError('')
-    try {
-      const detail = await chatSessionApi.handoff(sessionId, input)
-      setSelectedEngine(detail.engine || '')
-      setSelectedProvider(detail.provider_id || '')
-      setSelectedModel(detail.model || '')
-      setSelectedFastModel(detail.fast_model || '')
-      setSelectedVisionModel(detail.vision_model || '')
-      setSelectedThinkingEffort('')
-      setConfirmedHandoffMessageCount(messages.length)
-      setHandoffOpen(false)
-      await useChatListStore.getState().fetchSessions(activeProject.id)
-    } catch (reason) {
-      setHandoffError(reason instanceof Error ? reason.message : t('chatSession.handoffFailed'))
-    } finally {
-      setHandingOff(false)
-    }
-  }, [sessionId, activeProject?.id, handingOff, messages.length, t])
 
   if (!activeProject) {
     return (
@@ -778,17 +730,8 @@ export default function ChatPage() {
           engineTitle: t('chatSession.engineTitle'),
           onEngineChange: (engineId) => {
             const defaultEngine = assistantConfig?.configured.engine || assistantConfig?.resolved?.engine || 'pydantic_ai'
-            const sourceEngine = selectedEngine || defaultEngine
             const targetEngine = engineId || defaultEngine
-            if (requiresEngineHandoff(
-              sourceEngine, targetEngine, messages.length,
-              selectedProvider, '',
-            )) {
-              setHandoffTarget({ engine: targetEngine, providerId: '' })
-              setHandoffError('')
-              setHandoffOpen(true)
-              return
-            }
+            if (requestEngineHandoff(targetEngine)) return
             setSelectedEngine(engineId)
             setSelectedProvider('')
             setSelectedModel('')
@@ -797,19 +740,7 @@ export default function ChatPage() {
             setSelectedThinkingEffort('')
           },
           onProviderChange: (providerId) => {
-            if (requiresEngineHandoff(
-              effectiveEngine, effectiveEngine,
-              messages.length, selectedProvider, providerId || '',
-              confirmedHandoffMessageCount === messages.length,
-            )) {
-              setHandoffTarget({
-                engine: effectiveEngine,
-                providerId: providerId || '',
-              })
-              setHandoffError('')
-              setHandoffOpen(true)
-              return
-            }
+            if (requestProviderHandoff(providerId || '')) return
             setSelectedProvider(providerId)
             setSelectedModel('')
             setSelectedFastModel('')
@@ -850,50 +781,7 @@ export default function ChatPage() {
         quotaRefreshing={quotaRefreshing}
       />
 
-      <ChatSessionForkDialog
-        open={forkOpen}
-        projectId={activeProject.id}
-        sourceTitle={sessionTitle || t('chatSession.title')}
-        sourceEngine={selectedEngine || assistantConfig?.configured.engine || assistantConfig?.resolved?.engine || 'pydantic_ai'}
-        sourceModel={selectedModel}
-        sourceFastModel={selectedFastModel}
-        sourceVisionModel={selectedVisionModel}
-        sourceProviderId={selectedProvider}
-        permissionMode={permissionMode}
-        messageCount={forkMessageIndex >= 0 ? forkMessageIndex + 1 : messages.length}
-        forkMessageId={forkMessageId}
-        forkAtTail={forkMessageIndex < 0 || forkMessageIndex === messages.length - 1}
-        engines={sharedEngines}
-        providers={providers}
-        defaultEngine={assistantConfig?.configured.engine || assistantConfig?.resolved?.engine || 'pydantic_ai'}
-        initialTargetEngine={forkTargetEngine}
-        loading={forking}
-        error={forkError}
-        onConfirm={(input) => void forkSession(input)}
-        onCancel={() => {
-          if (!forking) {
-            setForkOpen(false)
-            setForkMessageId(null)
-          }
-        }}
-      />
-
-      <ChatEngineHandoffDialog
-        open={handoffOpen}
-        projectId={activeProject.id}
-        source={handoffSource}
-        target={handoffTarget ?? { engine: selectedEngine, providerId: selectedProvider }}
-        messageCount={messages.length}
-        permissionMode={permissionMode}
-        sourceProviderLabel={providerLabel(selectedProvider)}
-        targetProviderLabel={providerLabel(handoffTarget?.providerId ?? '')}
-        loading={handingOff}
-        error={handoffError}
-        onConfirm={(input) => void handoffSession(input)}
-        onCancel={() => {
-          if (!handingOff) setHandoffOpen(false)
-        }}
-      />
+      {transitionDialogs}
 
       {renameOpen && <ChatSessionRenameDialog
         projectId={activeProject.id}
