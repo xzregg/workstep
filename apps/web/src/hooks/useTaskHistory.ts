@@ -35,6 +35,7 @@ export function useTaskHistory({ taskId, projectId, userMessageEvents,
   const olderLoadingRef = useRef(false)
   const prependScrollHeightRef = useRef<number | null>(null)
   const fetchedRef = useRef('')
+  const refreshSeenRef = useRef<{ key: string; user: number; review: string } | null>(null)
   const eventDetailInFlightRef = useRef(new Set<string>())
 
   useEffect(() => {
@@ -134,7 +135,16 @@ export function useTaskHistory({ taskId, projectId, userMessageEvents,
 
   // Remote user messages and review events both request the first page.
   useEffect(() => {
-    if (!taskId || !projectId || (!userMessageEvents && !reviewEventSignal)) return
+    if (!taskId || !projectId) {
+      refreshSeenRef.current = null
+      return
+    }
+    const key = `${taskId}-${projectId}`
+    const previous = refreshSeenRef.current
+    refreshSeenRef.current = { key, user: userMessageEvents, review: reviewEventSignal }
+    // The initial history request already includes signals present when the panel opens.
+    if (!previous || previous.key !== key
+      || (previous.user === userMessageEvents && previous.review === reviewEventSignal)) return
     let active = true
     const timer = window.setTimeout(() => {
       taskApi.history(taskId, projectId, PAGE_SIZE, 0)

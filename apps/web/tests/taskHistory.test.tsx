@@ -30,13 +30,14 @@ test('task history loads once, pages older messages, and coalesces refresh signa
     return <div ref={scrollRef}>{current.historyMessages.map(message => <span key={message.id}>{message.id}</span>)}</div>
   }
   try {
-    await act(async () => root.render(<Harness remote={0} review="" />))
+    await act(async () => root.render(<Harness remote={1} review="existing" />))
+    await act(async () => { await new Promise(resolve => window.setTimeout(resolve, 80)) })
     assert.deepEqual(requests, [0])
     assert.match(container.textContent!, /latest/)
     await act(async () => current!.loadOlderHistory())
     assert.deepEqual(requests, [0, 300])
     assert.match(container.textContent!, /older/)
-    await act(async () => root.render(<Harness remote={1} review="changed" />))
+    await act(async () => root.render(<Harness remote={2} review="changed" />))
     await act(async () => { await new Promise(resolve => window.setTimeout(resolve, 80)) })
     assert.deepEqual(requests, [0, 300, 0])
   } finally {
