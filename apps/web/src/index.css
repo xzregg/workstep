@@ -668,6 +668,7 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
   border-radius: 4px; background: var(--bg); color: var(--fg);
 }
 .task-review-config-hint { font-size: calc(11px * var(--font-scale)); color: var(--meta); }
+.task-review-config-error { color: var(--danger); font-size: calc(12px * var(--font-scale)); }
 .task-review-config-actions { display: flex; justify-content: flex-end; }
 .task-review-config-save { font-size: calc(11px * var(--font-scale)); padding: 3px 10px; }
 .task-review-result-heading {
