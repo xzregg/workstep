@@ -88,3 +88,4 @@
 - 阶段一进行中：任务列表的归档经验流程由 `ArchiveExperienceDialog.tsx` 自主管理，`TaskList.tsx` 从 1871 行降至 1570 行。恢复草稿、生成/停止、保存、直接归档和错误状态集中在此模块，列表只持有当前归档目标与归档后卡片更新。对应行为测试在 `archiveExperienceDialog.test.tsx`。
 - 阶段一进行中：任务创建表单、起始步骤、审核覆盖、AI 草稿及关闭确认移入 `TaskCreatePanel.tsx`，`TaskList.tsx` 从 1570 行降至 1125 行，只负责打开入口。面板的固定样式移至 `task-create-*` CSS 类，起始步骤颜色与可拖动聊天宽度保留运行时样式。行为测试覆盖空标题禁用、起始步骤与自动启动参数、改动后关闭确认，日期控件导入路径兼容 Node ESM 测试环境。
 - 阶段一进行中：项目记忆读取、编辑、保存与未保存改动确认移入 `ProjectMemoryPanel.tsx`，`TaskList.tsx` 从 1125 行降至 1006 行。测试覆盖项目 ID 读取、保存及改动后关闭确认；固定样式归入 `project-memory-*` CSS 类。
+- 阶段一进行中：任务详情输入区的发送目标选择、步骤状态标题与可恢复提示移入 `TaskChatTargetTabs.tsx`；`TaskDetailView.tsx` 从 2255 行降至 2119 行。测试覆盖目标切换及失败步骤提示，固定样式归入 CSS 类，步骤颜色作为运行时变量保留。

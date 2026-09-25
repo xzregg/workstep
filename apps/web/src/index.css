@@ -490,6 +490,22 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
   min-width: 0; overflow-y: auto; padding: 20px 24px;
   display: flex; flex-direction: column; gap: 24px;
 }
+.task-chat-target-picker {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  width: 100%; max-width: 900px; margin-inline: auto;
+}
+.step-target-tabs {
+  display: flex; gap: 2px; padding: 2px; border-radius: 8px;
+  background: var(--bg-soft, rgba(128,128,128,0.08));
+  border: 1px solid var(--border-soft);
+}
+.task-chat-coordinator-tab {
+  padding: 4px 10px; border-radius: 6px;
+  font-size: calc(11px * var(--font-scale)); font-weight: 600;
+  border: 0; cursor: pointer; background: transparent; color: var(--meta);
+}
+.task-chat-coordinator-tab[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
+.task-chat-target-hint { font-size: calc(11px * var(--font-scale)); color: var(--warn); }
 .task-chat-step-tab {
   padding: 4px 10px; border-radius: 6px;
   font-size: calc(11px * var(--font-scale)); font-weight: 600;
