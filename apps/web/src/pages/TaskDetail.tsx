@@ -9,7 +9,6 @@ import { randomUuid } from '../utils/uuid'
 import { useOverlay } from '../hooks/useOverlay'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import Button from '../components/Button'
-import DateTimePicker from '../components/DateTimePicker'
 import {
   useState,
   useEffect,
@@ -47,7 +46,6 @@ import {
   isVisibleLiveExecutionMessage,
   isUnpersistedLiveMessage,
   isTaskCompleted,
-  isTaskNotStarted,
   isStepResumableWithMessage,
   isStepActiveForStop,
   resolveStepDisplayStatus,
@@ -64,7 +62,6 @@ import {
   usePendingMessageInsertStore,
 } from '../stores/pendingMessageInsertStore'
 import { useI18n, type TKey } from '../i18n'
-import { formatScheduledStart, localDateTimeAfter, localDateTimeToIso, utcToLocalDateTime } from '../utils/scheduledStart'
 
 const EMPTY_EVENTS: any[] = []
 const EMPTY_LIVE_MESSAGES: Record<string, LiveMessage> = {}
@@ -285,8 +282,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const updateTaskDescription = useTaskStore((s) => s.updateTaskDescription)
   const fetchTasks = useTaskStore((s) => s.fetchTasks)
   const refreshTask = useTaskStore((s) => s.refreshTask)
-  const updateScheduledStart = useTaskStore((s) => s.updateScheduledStart)
-  const [scheduledDraft, setScheduledDraft] = useState('')
 
   const projectId = detailProject?.id || ''
   const ownerFilePreview = useMemo(() => ({
@@ -303,7 +298,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   )
   const task = tasks.find((t) => t.id === taskId)
   const taskStatus = task?.status
-  const taskNotStarted = isTaskNotStarted(task?.steps || [])
   const taskCompleted = isTaskCompleted(task?.steps || [])
   const sessionIdForStep = (stepKey?: string | null): string | null => {
     if (!stepKey) return null
@@ -427,10 +421,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [editReviewMode, setEditReviewMode] = useState<'skip' | 'auto' | 'manual'>('manual')
   const [editReviewRetries, setEditReviewRetries] = useState(1)
   const [editReviewPrompt, setEditReviewPrompt] = useState('')
-  const [editingDescription, setEditingDescription] = useState(false)
-  const [descriptionDraft, setDescriptionDraft] = useState('')
-  const [descriptionSaving, setDescriptionSaving] = useState(false)
-  const [descriptionError, setDescriptionError] = useState('')
   const compact = useCompactLayout()
   const mobileDialogRef = useRef<HTMLDivElement>(null)
   useOverlay(compact && Boolean(task), onClose, mobileDialogRef, false)
@@ -1328,7 +1318,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     await taskApi.respondInteraction(interactionId, response, projectId)
   }, [projectId])
 
-  const scheduleInputValue = scheduledDraft || utcToLocalDateTime(task?.scheduled_start_at)
   if (!task) {
     return (
       <div style={{ padding: 40, textAlign: 'center', color: 'var(--meta)' }}>
@@ -1342,36 +1331,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const currentStepColor = currentStep.color || 'var(--accent)'
   const activeStepColor = activeStep.color || 'var(--accent)'
   const selectedReview = reviews.find((review) => review.step_key === currentStep.key)
-
-  const openDescriptionEditor = () => {
-    setDescriptionDraft(task.description || '')
-    setScheduledDraft('')
-    setDescriptionError('')
-    setEditingDescription(true)
-  }
-
-  const saveDescription = async () => {
-    if (!projectId) return
-    setDescriptionSaving(true)
-    setDescriptionError('')
-    try {
-      await updateTaskDescription(task.id, descriptionDraft, projectId)
-      if (scheduledDraft) {
-        const scheduledStartAt = localDateTimeToIso(scheduledDraft)
-        if (scheduledStartAt) {
-          await updateScheduledStart(task.id, scheduledStartAt, projectId)
-        }
-      }
-      setScheduledDraft('')
-      setEditingDescription(false)
-    } catch (error) {
-      setDescriptionError(
-        error instanceof Error ? error.message : t('taskDetail.descriptionSaveFailed')
-      )
-    } finally {
-      setDescriptionSaving(false)
-    }
-  }
 
   const handleStepClick = async (stepIndex: number) => {
     const clickedStep = steps[stepIndex]
@@ -1670,47 +1629,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         coordinatorConfigError={coordinatorConfigError}
         coordinatorConfigNotice={coordinatorConfigNotice}
         coordinatorStopping={coordinatorStopping}
-        editingDescription={editingDescription}
-        descriptionDraft={descriptionDraft}
-        onDescriptionDraftChange={setDescriptionDraft}
-        descriptionSaving={descriptionSaving}
-        descriptionError={descriptionError}
-        onSaveDescription={saveDescription}
-        onCancelDescriptionEdit={() => {
-          setScheduledDraft('')
-          setEditingDescription(false)
-        }}
-        onOpenDescriptionEditor={openDescriptionEditor}
-        scheduledStartText={formatScheduledStart(task.scheduled_start_at)}
-        descriptionEditorLeadingActions={editingDescription && task.scheduled_start_state && taskNotStarted ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: 380, maxWidth: '100%' }}>
-            <span
-              style={{
-                fontSize: 'calc(12px * var(--font-scale))',
-                fontWeight: 600,
-                color: task.scheduled_start_state === 'pending'
-                  ? 'var(--accent)'
-                  : task.scheduled_start_state === 'failed'
-                    ? 'var(--danger)'
-                    : 'var(--warning)',
-              }}
-            >
-              {task.scheduled_start_state === 'pending'
-                ? '定时启动'
-                : task.scheduled_start_state === 'failed'
-                  ? '启动失败'
-                  : '已错过'}
-            </span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <DateTimePicker
-                value={scheduleInputValue}
-                min={localDateTimeAfter(1)}
-                onChange={setScheduledDraft}
-                disabled={descriptionSaving}
-              />
-            </div>
-          </div>
-        ) : undefined}
+        descriptionEditable
         onOpenPromptEditor={() => setShowPromptEditor(true)}
         editReviewMode={editReviewMode}
         onEditReviewModeChange={(value) => setEditReviewMode(value as 'skip' | 'auto' | 'manual')}

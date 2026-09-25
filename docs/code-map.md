@@ -23,7 +23,7 @@
 | 功能 | 代码入口 | 行为测试 |
 |---|---|---|
 | 页头、创建者、关闭操作 | `TaskDetailHeader.tsx` | `actorVisibility.test.mjs`、`taskDetailPageReuse.test.mjs` |
-| 描述展示与编辑 | `TaskDetailDescription.tsx` | `taskDetailProgressLayout.test.mjs` |
+| 任务描述展示、编辑保存及定时启动时间调整 | `TaskDetailDescription.tsx`；任务页启用编辑，分享页只读 | `taskDescriptionEditing.test.tsx`、`taskDetailProgressLayout.test.mjs` |
 | 步骤提示词快速编辑、保存和错误恢复 | `StepPromptEditor.tsx`；`TaskDetail.tsx` 只选择步骤并在保存后更新项目状态 | `stepPromptEditor.test.tsx` |
 | 桌面、移动及产物轮次页签 | `TaskDetailTabs.tsx` | `taskDetailTabs.test.tsx` |
 | 任务消息发送目标、步骤可恢复状态提示 | `TaskChatTargetTabs.tsx`；任务详情 View 仅提供目标与步骤状态 | `taskChatTargetTabs.test.tsx`、`mobileTaskTargetTabs.test.mjs` |
