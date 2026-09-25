@@ -21,6 +21,7 @@
 
 ## 提案
 
+- [业务域代码优化路线图](codebase-optimization-roadmap.md) — 按任务、流程、助手、引擎和平台业务边界治理仍较大的源码文件。
 - [快捷按钮与 Action 执行方案](action-shortcuts.md) — 项目/流程快捷按钮、任务工作区、脚本执行与停止机制。
 - [平台模式](platform-mode.md) — 尚未实现，不属于当前产品能力。
 
