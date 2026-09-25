@@ -10,6 +10,10 @@ const pageSource = await readFile(
   new URL('../src/pages/ChatPage.tsx', import.meta.url),
   'utf8',
 )
+const actionsSource = await readFile(
+  new URL('../src/hooks/useChatSessionActions.ts', import.meta.url),
+  'utf8',
+)
 const clientSource = await readFile(
   new URL('../src/api/conversations.ts', import.meta.url),
   'utf8',
@@ -38,7 +42,7 @@ const taskDetailChatSource = await readFile(
 test('session chat queues drafts against the running assistant message', () => {
   assert.match(panelSource, /useAssistantPendingInserts\(\{/)
   assert.match(panelSource, /running && queueEnabled/)
-  assert.match(pageSource, /chatSessionApi\.sendLiveMessage\(/)
+  assert.match(actionsSource, /chatSessionApi\.sendLiveMessage\(/)
   assert.match(pageSource, /onSendContent=\{sendPendingContent\}/)
   assert.doesNotMatch(pageSource, /chatInsertQueue|loadInsertQueue|saveInsertQueue/)
 })
