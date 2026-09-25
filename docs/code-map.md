@@ -33,6 +33,7 @@
 | 任务历史、向上分页与消息事件详情 | `src/hooks/useTaskHistory.ts` | `taskHistory.test.tsx`、`remoteChatSync.test.mjs` |
 | 任务归档经验草稿、生成和确认 | `ArchiveExperienceDialog.tsx`；任务列表只负责打开和归档后移除卡片 | `archiveExperienceDialog.test.tsx`、`archiveExperienceControls.test.mjs` |
 | 新建任务、起始步骤与启动方式、审核覆盖、AI 草稿和关闭保护 | `TaskCreatePanel.tsx`；`TaskList.tsx` 只负责入口和当前项目/流程选择；样式在 `src/index.css` 的 `task-create-*` 类 | `taskCreatePanel.test.tsx`、`assistantPanelToggle.test.mjs` |
+| 项目记忆 `.workstep/MEMORY.md` 读取、编辑、保存与放弃确认 | `ProjectMemoryPanel.tsx`；任务列表只负责打开入口；样式在 `src/index.css` 的 `project-memory-*` 类 | `projectMemoryPanel.test.tsx` |
 
 ## 修改路径
 
