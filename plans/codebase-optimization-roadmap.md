@@ -85,3 +85,4 @@
 ## 阶段执行记录
 
 - 阶段一进行中：任务详情的历史首屏、向上分页、消息事件详情和远端/审核刷新已收口到 `apps/web/src/hooks/useTaskHistory.ts`；同一轮远端与审核信号合并为一次刷新，打开面板时已有信号不重复请求。`TaskDetail.tsx` 当前为 2251 行。组件回归 `taskHistory.test.tsx` 覆盖首屏、分页和刷新去重；Web 构建、lint 与全量测试通过。页面仍有发送消息时对历史列表的直接写入，后续处理对话行为时须继续收口。
+- 阶段一进行中：任务列表的归档经验流程由 `ArchiveExperienceDialog.tsx` 自主管理，`TaskList.tsx` 从 1871 行降至 1570 行。恢复草稿、生成/停止、保存、直接归档和错误状态集中在此模块，列表只持有当前归档目标与归档后卡片更新。对应行为测试在 `archiveExperienceDialog.test.tsx`。
