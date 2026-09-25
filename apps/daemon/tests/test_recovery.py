@@ -7,6 +7,8 @@ over, and a graceful shutdown leaves runs recoverable for the next start.
 
 import asyncio
 import json
+import threading
+import time
 from datetime import timedelta
 from types import SimpleNamespace
 
@@ -179,6 +181,70 @@ async def _wait_until(condition, timeout=5.0):
             return
         await asyncio.sleep(0.02)
     raise AssertionError("condition not met in time")
+
+
+@pytest.mark.anyio
+async def test_slow_recovery_database_work_does_not_block_event_loop(tmp_path, monkeypatch):
+    import services.workflow_runtime as runtime_module
+    from engines.core.registry import ENGINE_REGISTRY
+
+    original, pm, _project, _run_id = _project_with_run(tmp_path)
+    entered = threading.Event()
+    entered_at = [0.0]
+    prepare = runtime_module.prepare_project_recovery
+
+    def slow_prepare(*args, **kwargs):
+        entered_at[0] = time.monotonic()
+        entered.set()
+        time.sleep(0.2)
+        return prepare(*args, **kwargs)
+
+    monkeypatch.setattr(runtime_module, "prepare_project_recovery", slow_prepare)
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, pm)
+    try:
+        recovery = asyncio.create_task(runtime.recover_running_workflows())
+        assert await asyncio.to_thread(entered.wait, 2)
+        await asyncio.sleep(0.02)
+        assert time.monotonic() - entered_at[0] < 0.17
+        assert await recovery == 1
+    finally:
+        await runtime.shutdown()
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+
+
+@pytest.mark.anyio
+async def test_slow_resume_path_check_does_not_block_event_loop(tmp_path, monkeypatch):
+    import services.workflow_runtime as runtime_module
+    from engines.core.registry import ENGINE_REGISTRY
+
+    original, pm, _project, _run_id = _project_with_run(tmp_path)
+    entered = threading.Event()
+    entered_at = [0.0]
+    heal = runtime_module.heal_task_cwd
+
+    def slow_heal(*args, **kwargs):
+        entered_at[0] = time.monotonic()
+        entered.set()
+        time.sleep(0.2)
+        return heal(*args, **kwargs)
+
+    monkeypatch.setattr(runtime_module, "heal_task_cwd", slow_heal)
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, pm)
+    try:
+        recovery = asyncio.create_task(runtime.recover_running_workflows())
+        assert await asyncio.to_thread(entered.wait, 2)
+        await asyncio.sleep(0.02)
+        assert time.monotonic() - entered_at[0] < 0.17
+        assert await recovery == 1
+    finally:
+        await runtime.shutdown()
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
 
 
 @pytest.mark.anyio

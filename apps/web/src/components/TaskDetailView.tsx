@@ -1,9 +1,8 @@
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { CoordinatorProposalCard } from './CoordinatorProposalCard'
-import {
-  ComposerOverlayHostContext,
-  useComposerOverlayClearance,
-} from '../hooks/useComposerOverlayClearance'
+import { buildTaskConversationTimeline, lastEventTimestamp } from './taskConversationFeed'
+import { useTaskConversationScroll } from '../hooks/useTaskConversationScroll'
+import { ComposerOverlayHostContext } from '../hooks/useComposerOverlayClearance'
 import {
   useEffect,
   useRef,
@@ -60,15 +59,10 @@ import ArtifactUnchangedBadge from './ArtifactUnchangedBadge'
 import TaskGitWorkspace from './git/TaskGitWorkspace'
 import { displayUserDetail, displayUserSender } from '../utils/actorDisplay'
 import {
-  isVisibleHistoryMessage,
-  isVisibleLiveExecutionMessage,
   canRetryFailedExecutionMessage,
   canRestartStoppedExecutionMessage,
-  latestExecutionMessageIdsByStep,
   failedExecutionCompletionRound,
-  latestMessageIdsByStep,
   canCompleteStoppedReview,
-  isUnpersistedLiveMessage,
   isManualReviewMessage,
   isMessageReviewActionable,
   isReviewActionable,
@@ -84,16 +78,8 @@ import {
   downstreamInputsForOutput,
   artifactsForMessage,
   findActionablePendingReview,
-  isNearConversationBottom,
-  hasActiveSelectionWithin,
-  shouldPauseConversationFollow,
-  conversationBottomScrollTop,
-  isAutoShrinkClamp,
   liveExecutionStatus,
-  mergeHistoryMessageWithLive,
   messageSessionId,
-  observeContentResize,
-  orderConversationMessages,
   resolveTaskComposerState,
   resolveMessageError,
   resolveMessageReview,
@@ -107,11 +93,9 @@ import {
   toMilliseconds,
 } from '../utils/datetime'
 import { useI18n, type TKey } from '../i18n'
-import { shouldShowAssistantThinking } from '../utils/assistantThinking'
 import TaskRecoveredBadge from './TaskRecoveredBadge'
 import { ActionConversationMessage, TaskActionButtons } from './TaskActionShortcuts'
 import { useTaskActions } from './useActionRuns'
-import { mergeActionMessages } from '../utils/actionConversation'
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -183,17 +167,6 @@ function terminalMessageStatus(status?: string) {
   return status === 'cancelled' || status === 'stopped' || status === 'failed'
     ? status
     : undefined
-}
-
-function lastEventTimestamp(events: any[]): number | null {
-  let latest: number | null = null
-  for (const event of events || []) {
-    const timestamp = toMilliseconds(event?.created_at ?? event?.timestamp)
-    if (timestamp !== null && (latest === null || timestamp > latest)) {
-      latest = timestamp
-    }
-  }
-  return latest
 }
 
 // ─── Props ───────────────────────────────────────────────────────────────
@@ -625,15 +598,6 @@ export default function TaskDetailView({
     whiteSpace: 'nowrap',
   })
 
-  // Local refs for conversation scroll when not provided by parent
-  const localChatScrollRef = useRef<HTMLDivElement>(null)
-  const localChatEndRef = useRef<HTMLDivElement>(null)
-  const localShouldFollowRef = useRef(true)
-  const localLastProgrammaticRef = useRef(0)
-  const localStepLastMessageRefs = useRef<Record<string, HTMLDivElement | null>>({})
-  const localPendingStepScrollRef = useRef<string | null>(null)
-  const [localHasUnread, setLocalHasUnread] = useState(false)
-
   // ── Split ratio (draggable divider between left panel & conversation) ──
   const compact = useCompactLayout()
   const mobileReviewRef = useRef<HTMLDivElement>(null)
@@ -697,166 +661,32 @@ export default function TaskDetailView({
 
   useEffect(() => () => interactionCleanupRef.current?.(), [])
 
-  const scrollRef = chatScrollRef ?? localChatScrollRef
-  const endRef = chatEndRef ?? localChatEndRef
-  const followRef = shouldFollowMessagesRef ?? localShouldFollowRef
-  const programmaticRef = lastProgrammaticScrollTopRef ?? localLastProgrammaticRef
-  const lastScrollTopRef = useRef(0)
-  const lastScrollHeightRef = useRef(0)
-  const contentRef = useRef<HTMLDivElement>(null)
-  const [scrolledToBottom, setScrolledToBottom] = useState(true)
-
-  // 待插入消息面板悬浮在输入框上方，会遮住会话区底部内容：
-  // 面板高度测量、底部留白与跟随钉底由共用 hook 处理，
-  // 面板通过 Context 自行注册，无需在这里跟踪它的数据。
-  const { registerOverlay, overlayPaddingBottom } = useComposerOverlayClearance({
-    scrollRef,
-    followRef,
-    programmaticRef,
-    scrollHeightRef: lastScrollHeightRef,
+  const {
+    scrollRef, endRef, contentRef, stepLastRef, pendingScrollRef,
+    scrolledToBottom, unreadMessages, registerOverlay, overlayPaddingBottom,
+    onWheelCapture, onKeyDownCapture, onScroll, jumpToLatest,
+  } = useTaskConversationScroll({
+    historyMessages, liveMessages, events, content,
+    chatScrollRef, chatEndRef, shouldFollowMessagesRef, lastProgrammaticScrollTopRef,
+    stepLastMessageRefs, pendingStepScrollRef, hasUnreadMessages,
+    onUnreadMessagesChange, onLoadOlderHistory,
   })
-
-  const stepLastRef = stepLastMessageRefs ?? localStepLastMessageRefs
-  const pendingScrollRef = pendingStepScrollRef ?? localPendingStepScrollRef
-  const unreadMessages = hasUnreadMessages ?? localHasUnread
-  const setUnreadMessages = useCallback((value: boolean) => {
-    if (hasUnreadMessages === undefined) setLocalHasUnread(value)
-    onUnreadMessagesChange?.(value)
-  }, [hasUnreadMessages, onUnreadMessagesChange])
-
-  // Auto-scroll to bottom when new messages arrive.
-  // 依赖仅含消息内容：durationNowMs 每秒 tick 触发的重渲染不应强制钉底，
-  // 否则 LLM 输出期间用户无法滚动查看历史。
-  useEffect(() => {
-    const container = scrollRef.current
-    if (container && hasActiveSelectionWithin(
-      container,
-      container.ownerDocument.getSelection(),
-    )) {
-      followRef.current = false
-      lastScrollHeightRef.current = container.scrollHeight
-      setScrolledToBottom(false)
-      setUnreadMessages(true)
-      return
-    }
-    if (followRef.current) {
-      if (container) {
-        const target = conversationBottomScrollTop(
-          container.scrollHeight,
-          container.clientHeight,
-        )
-        programmaticRef.current = target
-        lastScrollHeightRef.current = container.scrollHeight
-        container.scrollTop = target
-        setScrolledToBottom(isNearConversationBottom(
-          container.scrollHeight,
-          target,
-          container.clientHeight,
-        ))
-      }
-      setUnreadMessages(false)
-    } else {
-      if (container) lastScrollHeightRef.current = container.scrollHeight
-      setScrolledToBottom(false)
-      setUnreadMessages(true)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historyMessages, liveMessages, events, content])
-
-  // Media load re-scroll
-  useEffect(() => {
-    const container = scrollRef.current
-    if (!container) return
-    const onMediaLoad = () => {
-      if (!followRef.current) return
-      const target = conversationBottomScrollTop(
-        container.scrollHeight,
-        container.clientHeight,
-      )
-      programmaticRef.current = target
-      lastScrollHeightRef.current = container.scrollHeight
-      container.scrollTop = target
-      setScrolledToBottom(isNearConversationBottom(
-        container.scrollHeight,
-        target,
-        container.clientHeight,
-      ))
-    }
-    container.addEventListener('load', onMediaLoad, true)
-    return () => container.removeEventListener('load', onMediaLoad, true)
-  }, [scrollRef, followRef, programmaticRef])
-
-  // 展开、折叠思考块 / 过程追踪等只改变内容高度，不会触发上面的消息数据
-  // effect；用 ResizeObserver 监测内容高度变化，跟随中时重新钉底，
-  // 避免运行中展开块后用户被顶出底部且无法滚回。
-  useEffect(() => {
-    return observeContentResize({
-      containerRef: scrollRef,
-      contentRef,
-      onResize: ({ height }) => {
-        const container = scrollRef.current
-        if (!container || !followRef.current) return
-        lastScrollHeightRef.current = height
-        const target = conversationBottomScrollTop(
-          container.scrollHeight,
-          container.clientHeight,
-        )
-        programmaticRef.current = target
-        container.scrollTop = target
-        setScrolledToBottom(isNearConversationBottom(
-          container.scrollHeight,
-          target,
-          container.clientHeight,
-        ))
-      },
-    })
-  }, [scrollRef, followRef, programmaticRef])
-
   // ── Helpers ──
 
-  const persistedMessageIds = useMemo(
-    () => new Set(historyMessages.map((message) => String(message.id))),
-    [historyMessages],
+  const {
+    liveCoordinatorMessages,
+    hasStructuredExecutionMessage,
+    orderedMessages,
+    latestStepMessageIds,
+    latestExecutionMessageIds,
+  } = useMemo(
+    () => buildTaskConversationTimeline({
+      historyMessages, liveMessages, actionRuns: taskActions.runs,
+      coordinatorRunning: coordinatorRunning ?? false,
+      actionTitle: (title) => t('actionShortcuts.runTitle', { title }),
+    }),
+    [historyMessages, liveMessages, taskActions.runs, coordinatorRunning, t],
   )
-
-  const liveCoordinatorMessages = useMemo(
-    () =>
-      Object.values(liveMessages).filter(
-        (message) =>
-          message.channel === 'coordinator' &&
-          isUnpersistedLiveMessage(message, persistedMessageIds),
-      ),
-    [liveMessages, persistedMessageIds],
-  )
-
-  const liveExecutionMessages = useMemo(
-    () =>
-      Object.values(liveMessages).filter(
-        (message) =>
-          isVisibleLiveExecutionMessage(message) &&
-          isUnpersistedLiveMessage(message, persistedMessageIds),
-      ),
-    [liveMessages, persistedMessageIds],
-  )
-
-  const showCoordinatorThinking = shouldShowAssistantThinking(
-    coordinatorRunning ?? false,
-    [...historyMessages, ...liveCoordinatorMessages],
-    'coordinator',
-  )
-  const latestCoordinatorUser = [...historyMessages, ...liveCoordinatorMessages]
-    .filter((message) => message.channel === 'coordinator' && message.role === 'user')
-    .at(-1)
-
-  const hasStructuredExecutionMessage = useMemo(
-    () =>
-      Object.values(liveMessages).some(
-        (message) => message.channel === 'execution',
-      ) ||
-      historyMessages.some((message) => message.channel === 'execution'),
-    [historyMessages, liveMessages],
-  )
-
 
   const selectedReview = reviews.find(
     (review) => review.step_key === currentStep.key,
@@ -2291,74 +2121,9 @@ export default function TaskDetailView({
           <div
             className="chat-history-scroll task-chat-history-scroll"
             ref={scrollRef}
-            onWheelCapture={(event) => {
-              if (shouldPauseConversationFollow({ type: 'wheel', deltaY: event.deltaY })) {
-                followRef.current = false
-              }
-            }}
-            onKeyDownCapture={(event) => {
-              if (shouldPauseConversationFollow({ type: 'key', key: event.key })) {
-                followRef.current = false
-              }
-            }}
-            onScroll={(event) => {
-              const container = event.currentTarget
-              if (container.scrollTop <= 40) onLoadOlderHistory?.()
-              const nearBottom = isNearConversationBottom(
-                container.scrollHeight,
-                container.scrollTop,
-                container.clientHeight,
-              )
-              const programmaticEcho =
-                Math.abs(
-                  container.scrollTop -
-                    programmaticRef.current,
-                ) <= 1
-              // 内容变矮（思考块折叠等）时浏览器自动把 scrollTop 钳制到新的底部，
-              // 同样触发 scroll 事件；不能把它误判为用户上滚而取消跟随。
-              const autoShrinkClamp = isAutoShrinkClamp({
-                scrollTop: container.scrollTop,
-                prevScrollTop: lastScrollTopRef.current,
-                scrollHeight: container.scrollHeight,
-                prevScrollHeight: lastScrollHeightRef.current,
-                clientHeight: container.clientHeight,
-              })
-              if (!programmaticEcho) {
-                // 用户向上滚动（scrollTop 减小）立即取消跟随，
-                // 不能等滚出阈值再取消：流式输出期间内容持续增长，
-                // 幅度不够时永远滚不出阈值。
-                if (container.scrollTop < lastScrollTopRef.current) {
-                  if (autoShrinkClamp) {
-                    // 自动钳制落底：同步基准值，后续回显仍按程序滚动识别。
-                    programmaticRef.current = container.scrollTop
-                  } else if (
-                    // 内容变高（展开折叠项 / 思考块等）时浏览器的 scroll anchoring
-                    // 可能做微小的向上锚定调整，不应误判为用户主动上滚而取消跟随。
-                    // 用户主动滚轮上滚在 capture 步骤已先行取消跟随；此处仅保护
-                    // 拖动滚动条等未走 capture 路径时的微小浏览器自动调整。
-                    container.scrollHeight > lastScrollHeightRef.current &&
-                    lastScrollTopRef.current - container.scrollTop <= 2
-                  ) {
-                    // 忽略内容变高时的微小锚定调整，保持跟随状态。
-                  } else {
-                    followRef.current = false
-                  }
-                }
-              }
-              // 接近底部时恢复跟随：必须放在 programmaticEcho 判断之外。
-              // 展开折叠项导致内容高度变化后，用户向下滚回底部时，scrollTop
-              // 可能恰好等于上一次程序钉底的位置（programmaticEcho=true），
-              // 若在此分支内判断会被跳过，导致跟随永远无法恢复、自动滚动失效。
-              if (container.scrollTop >= lastScrollTopRef.current && nearBottom) {
-                if (!followRef.current) {
-                  followRef.current = true
-                  setUnreadMessages(false)
-                }
-              }
-              setScrolledToBottom(nearBottom)
-              lastScrollTopRef.current = container.scrollTop
-              lastScrollHeightRef.current = container.scrollHeight
-            }}
+            onWheelCapture={onWheelCapture}
+            onKeyDownCapture={onKeyDownCapture}
+            onScroll={onScroll}
             style={{
               height: '100%',
               minWidth: 0,
@@ -2393,64 +2158,6 @@ export default function TaskDetailView({
               )}
 
             {(() => {
-              const orderedMessagesRaw = [
-                ...historyMessages
-                  .filter((message: any) => isVisibleHistoryMessage(message))
-                  .map((message: any) =>
-                    mergeHistoryMessageWithLive(
-                      message,
-                      liveMessages[String(message.id)],
-                    ),
-                  ),
-                ...liveExecutionMessages.map((message: any) => ({
-                  ...message,
-                  run_status: message.status,
-                  ended_at:
-                    message.status === 'running'
-                      ? undefined
-                      : lastEventTimestamp(
-                            message.events,
-                          ),
-                })),
-                ...liveCoordinatorMessages.map((message) => ({
-                  ...message,
-                  run_status: message.status,
-                })),
-                ...(showCoordinatorThinking ? [{
-                  id: 'pending-coordinator-thinking',
-                  channel: 'coordinator',
-                  role: 'assistant',
-                  content: '',
-                  run_status: 'running',
-                  created_at: latestCoordinatorUser?.created_at || new Date().toISOString(),
-                  started_at: latestCoordinatorUser?.started_at || latestCoordinatorUser?.created_at,
-                  reply_to_message_id: latestCoordinatorUser?.id,
-                  thinkingPlaceholder: true,
-                }] : []),
-              ]
-              const orderedMessages = orderConversationMessages(mergeActionMessages(
-                orderedMessagesRaw,
-                taskActions.runs,
-                (message: any) => message.channel === 'action',
-                (run, role) => ({
-                  id: role === 'user' ? run.user_message_id : run.reply_message_id,
-                  channel: 'action', role,
-                  content: role === 'user' ? t('actionShortcuts.runTitle', { title: run.title }) : run.output,
-                  created_at: run.started_at,
-                  started_at: run.started_at,
-                  ended_at: role === 'assistant' ? run.ended_at : run.started_at,
-                  run_status: role === 'assistant' ? run.status : 'succeeded',
-                  reply_to_message_id: role === 'assistant' ? run.user_message_id : undefined,
-                }),
-              ))
-              const orderedStepMessages = orderConversationMessages([
-                ...historyMessages,
-                ...Object.values(liveMessages)
-                  .filter((item) => isUnpersistedLiveMessage(item, persistedMessageIds))
-                  .map((item) => ({ ...item, run_status: item.status })),
-              ])
-              const latestStepMessageIds = latestMessageIdsByStep(orderedStepMessages)
-              const latestExecutionMessageIds = latestExecutionMessageIdsByStep(orderedStepMessages)
               return orderedMessages.map((message: any) => {
                 if (message.thinkingPlaceholder) {
                   return <AssistantThinkingMessage
@@ -3222,19 +2929,7 @@ export default function TaskDetailView({
             hasNewMessages={unreadMessages}
             label={t('taskDetail.newMessages')}
             ariaLabel={t('taskDetail.viewNewMessagesAria')}
-            onClick={() => {
-              followRef.current = true
-              setUnreadMessages(false)
-              const container = scrollRef.current
-              if (container) {
-                const target = conversationBottomScrollTop(
-                  container.scrollHeight,
-                  container.clientHeight,
-                )
-                programmaticRef.current = target
-                container.scrollTo({ top: target, behavior: 'smooth' })
-              }
-            }}
+            onClick={jumpToLatest}
           />
         </div>
 
