@@ -27,7 +27,11 @@ from services.step_interaction_messages import StepInteractionMessages
 from services.step_rework import StepRework
 from services.step_artifact_routes import StepArtifactRoutes
 from services.step_live_messages import StepLiveMessages
-from services.review_messages import StepReviewMessages, resolve_review_config
+from services.review_messages import (
+    ReviewEvaluation,
+    StepReviewMessages,
+    resolve_review_config,
+)
 from services.config import config_store
 from agent_assistants.context_handoff import (
     mark_handoff_consumed,
@@ -450,6 +454,94 @@ class TaskRunner:
             workflow_run,
         )
 
+    async def _apply_review_result(
+        self,
+        task: Task,
+        step: Step,
+        scheduler: DAGScheduler,
+        workflow_run: WorkflowRun,
+        step_run: StepRun,
+        artifacts_dir: Path,
+        execution_output: str,
+        execution_prompt: str,
+        review_config: dict,
+        review: ReviewEvaluation,
+        completed: set[str],
+        failed: set[str],
+        previous_error: str | None,
+        previous_ended_at,
+    ) -> tuple[TaskStep, str | None]:
+        """Apply the same review decision after execution or recovery."""
+        outcome, gate, cancelled, message_persisted = review
+        step_key = step.key
+        retry_feedback = None
+        if cancelled:
+            ts = await self._persist_step_status(
+                task.id, step_key, "cancelled", "手动停止", utc_now()
+            )
+            failed.add(step_key)
+        elif outcome.status == "passed":
+            ts = await self._persist_step_status(
+                task.id, step_key, "passed", None, utc_now()
+            )
+            completed.add(step_key)
+        elif outcome.status == "awaiting_review":
+            ts = await self._persist_step_status(
+                task.id, step_key, "awaiting_review", previous_error, None
+            )
+            failed.add(step_key)
+        elif (outcome.status == "rejected"
+              and step_run.attempt <= int(review_config.get("maxRetries", 1))):
+            has_feedback_route = any(
+                connection.get("kind", "solid") == "dashed"
+                for connection in step.outgoing_connections
+            )
+            if step.rework_upstream and not has_feedback_route:
+                await self._step_rework.from_review(
+                    task, step, scheduler, completed,
+                    outcome.retry_context, step_run.attempt,
+                )
+                ts = await self._persist_step_status(
+                    task.id, step_key, "rework_waiting", outcome.feedback, None
+                )
+            else:
+                retry_feedback = outcome.retry_context
+                ts = await self._persist_step_status(
+                    task.id, step_key, "retrying",
+                    outcome.feedback, previous_ended_at,
+                )
+                await self._publish(task.id, step_key, {
+                    "type": "step_retrying",
+                    "data": {
+                        "task_id": task.id,
+                        "step_key": step_key,
+                        "attempt": step_run.attempt + 1,
+                        "max_retries": review_config.get("maxRetries", 1),
+                    },
+                })
+        else:
+            # 审核失败或驳回次数耗尽：转人工，不重跑执行步骤。
+            outcome = await gate.evaluate(
+                task=task, step=step, workflow_run=workflow_run,
+                step_run=step_run, artifacts_dir=artifacts_dir,
+                execution_output=execution_output,
+                execution_prompt=execution_prompt,
+                review_config=review_config, mode="manual",
+                artifact_round=step_run.artifact_round,
+            )
+            message_persisted = False
+            ts = await self._persist_step_status(
+                task.id, step_key, "awaiting_review", outcome.feedback, None
+            )
+            failed.add(step_key)
+
+        if not message_persisted:
+            await self._review_messages.persist_result(
+                task, step_key, step_run, artifacts_dir,
+                step_run.artifact_round, outcome,
+            )
+        return ts, retry_feedback
+
     async def _resume_review_only(
         self,
         task: Task,
@@ -489,66 +581,11 @@ class TaskRunner:
                     run_key=run_key, saved_prompt=saved_review_prompt,
                     should_interrupt=lambda: self._graceful_shutdown,
                 )
-                outcome, gate, cancelled, _message_persisted = review
-                if cancelled:
-                    ts = await self._persist_step_status(
-                        task.id, step_key, "cancelled", "手动停止", utc_now()
-                    )
-                    failed.add(step_key)
-                elif outcome.status == "passed":
-                    ts = await self._persist_step_status(
-                        task.id, step_key, "passed", None, utc_now()
-                    )
-                    completed.add(step_key)
-                elif outcome.status == "awaiting_review":
-                    ts = await self._persist_step_status(
-                        task.id, step_key, "awaiting_review", None, None
-                    )
-                    failed.add(step_key)
-                elif (outcome.status == "rejected"
-                      and step_run.attempt <= int(review_config.get("maxRetries", 1))):
-                    has_feedback_route = any(
-                        connection.get("kind", "solid") == "dashed"
-                        for connection in step.outgoing_connections
-                    )
-                    if step.rework_upstream and not has_feedback_route:
-                        await self._step_rework.from_review(
-                            task, step, scheduler, completed,
-                            outcome.retry_context, step_run.attempt,
-                        )
-                        ts = await self._persist_step_status(
-                            task.id, step_key, "rework_waiting",
-                            outcome.feedback, None,
-                        )
-                    else:
-                        retry_feedback = outcome.retry_context
-                        ts = await self._persist_step_status(
-                            task.id, step_key, "retrying",
-                            outcome.feedback, None,
-                        )
-                        await self._publish(task.id, step_key, {
-                            "type": "step_retrying",
-                            "data": {
-                                "task_id": task.id,
-                                "step_key": step_key,
-                                "attempt": step_run.attempt + 1,
-                                "max_retries": review_config.get("maxRetries", 1),
-                            },
-                        })
-                else:
-                    manual = await gate.evaluate(
-                        task=task, step=step, workflow_run=workflow_run,
-                        step_run=step_run, artifacts_dir=artifacts_dir,
-                        execution_output=execution_output,
-                        execution_prompt=execution_prompt,
-                        review_config=review_config, mode="manual",
-                        artifact_round=step_run.artifact_round,
-                    )
-                    ts = await self._persist_step_status(
-                        task.id, step_key, "awaiting_review",
-                        manual.feedback, None,
-                    )
-                    failed.add(step_key)
+                ts, retry_feedback = await self._apply_review_result(
+                    task, step, scheduler, workflow_run, step_run,
+                    artifacts_dir, execution_output, execution_prompt,
+                    review_config, review, completed, failed, None, None,
+                )
 
             await self._publish(task.id, step_key, {
                 "type": "status",
@@ -970,13 +1007,11 @@ class TaskRunner:
                             task.id, step_key, "passed", None, utc_now()
                         )
                         completed.add(step_key)
-                        outcome = None
                     else:
                         review_status = (
                             "reviewing" if review_mode == "auto"
                             else "awaiting_review"
                         )
-                        review_message_persisted = False
                         ts = await self._persist_step_status(
                             task.id, step_key, review_status, ts.error, ts.ended_at
                         )
@@ -996,107 +1031,14 @@ class TaskRunner:
                             review_config=review_config, mode=review_mode,
                             run_key=run_key,
                         )
-                        (outcome, gate, cancelled_during_review,
-                         review_message_persisted) = review
                         # 重新加载最新 ts：gate 在审核期间写入了 review_session_id，
                         # 用旧实例整行 save 会把它覆盖回 None。
-                        if cancelled_during_review:
-                            ts = await self._persist_step_status(
-                                task.id,
-                                step_key,
-                                "cancelled",
-                                "手动停止",
-                                utc_now(),
-                            )
-                            failed.add(step_key)
-                        elif outcome.status == "passed":
-                            ts = await self._persist_step_status(
-                                task.id, step_key, "passed", None, utc_now()
-                            )
-                            completed.add(step_key)
-                        elif outcome.status == "awaiting_review":
-                            ts = await self._persist_step_status(
-                                task.id, step_key, "awaiting_review", ts.error, None
-                            )
-                            failed.add(step_key)
-                        elif (outcome.status == "rejected"
-                              and step_run.attempt <= int(review_config.get("maxRetries", 1))):
-                            has_artifact_feedback_route = any(
-                                connection.get("kind", "solid") == "dashed"
-                                for connection in step.outgoing_connections
-                            )
-                            if (
-                                step.rework_upstream
-                                and not has_artifact_feedback_route
-                            ):
-                                await self._step_rework.from_review(
-                                    task,
-                                    step,
-                                    scheduler,
-                                    completed,
-                                    outcome.retry_context,
-                                    step_run.attempt,
-                                )
-                                ts = await self._persist_step_status(
-                                    task.id,
-                                    step_key,
-                                    "rework_waiting",
-                                    outcome.feedback,
-                                    None,
-                                )
-                            else:
-                                retry_feedback = outcome.retry_context
-                                ts = await self._persist_step_status(
-                                    task.id,
-                                    step_key,
-                                    "retrying",
-                                    outcome.feedback,
-                                    ts.ended_at,
-                                )
-                                await self._publish(task.id, step_key, {
-                                    "type": "step_retrying",
-                                    "data": {
-                                        "task_id": task.id,
-                                        "step_key": step_key,
-                                        "attempt": step_run.attempt + 1,
-                                        "max_retries": review_config.get("maxRetries", 1),
-                                    },
-                                })
-                        else:
-                            # 审核执行失败或有效驳回次数耗尽：转人工，不重跑执行步骤。
-                            outcome = await gate.evaluate(
-                                task=task,
-                                step=step,
-                                workflow_run=workflow_run,
-                                step_run=step_run,
-                                artifacts_dir=artifacts_dir,
-                                execution_output="".join(content_parts),
-                                execution_prompt=prompt,
-                                review_config=review_config,
-                                mode="manual",
-                                artifact_round=artifact_round,
-                            )
-                            review_message_persisted = False
-                            ts = await self._persist_step_status(
-                                task.id,
-                                step_key,
-                                "awaiting_review",
-                                outcome.feedback,
-                                None,
-                            )
-                            failed.add(step_key)
-
-                if (
-                    step.review is not None
-                    and workflow_run is not None
-                    and step_run is not None
-                    and outcome is not None
-                    and not review_message_persisted
-                ):
-                    await self._review_messages.persist_result(
-                        task, step_key, step_run, artifacts_dir,
-                        artifact_round, outcome,
-                    )
+                        ts, retry_feedback = await self._apply_review_result(
+                            task, step, scheduler, workflow_run, step_run,
+                            artifacts_dir, "".join(content_parts), prompt,
+                            review_config, review, completed, failed,
+                            ts.error, ts.ended_at,
+                        )
 
                 await self._publish(task.id, step_key, {
                     "type": "status",
