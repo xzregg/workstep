@@ -178,10 +178,7 @@ def assemble_prompt(
 
     # Step prompt
     if step.prompt:
-        worktrees_path = _relative_prompt_path(
-            _task_git_workspace_path(task, artifacts_dir),
-            task.cwd or artifacts_dir.parent.parent,
-        )
+        worktrees_path = step_worktrees_prompt_path(task, artifacts_dir)
         parts.append(
             "## Step requirements\n"
             + render_step_prompt(step.prompt, task, step, worktrees_path, trigger_name)
@@ -488,6 +485,14 @@ def _task_git_workspace_path(task: Task, artifacts_dir: Path) -> Path:
         task.cwd or artifacts_dir.parent.parent,
         task.id,
         task.workflow_id or "default",
+    )
+
+
+def step_worktrees_prompt_path(task: Task, artifacts_dir: Path) -> str:
+    """Return the task workspace path as seen from the engine cwd."""
+    return _relative_prompt_path(
+        _task_git_workspace_path(task, artifacts_dir),
+        task.cwd or artifacts_dir.parent.parent,
     )
 
 

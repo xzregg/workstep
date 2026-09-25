@@ -38,6 +38,7 @@ from services.prompt import (
     assemble_prompt,
     assemble_retry_prompt,
     render_step_prompt,
+    step_worktrees_prompt_path,
 )
 from services.review_gate import ReviewGate
 from services.config import config_store
@@ -1515,10 +1516,13 @@ class TaskRunner:
             if handoff_reference:
                 prompt = f"{handoff_reference}\n\n{prompt}"
         if review_results:
+            worktrees_path = await asyncio.to_thread(
+                step_worktrees_prompt_path, task, artifacts_dir
+            )
             prompt += (
                 "\n\n## Previous review feedback\n"
                 + "\n\n".join(
-                    render_step_prompt(value, task, step, trigger_name)
+                    render_step_prompt(value, task, step, worktrees_path, trigger_name)
                     for value in review_results
                 )
             )

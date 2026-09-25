@@ -1563,7 +1563,7 @@ async def test_claude_spawn_passes_compaction_override_only_to_child(monkeypatch
 
 
 @pytest.mark.anyio
-async def test_claude_spawn_injects_custom_settings_env_and_flags(monkeypatch):
+async def test_claude_spawn_injects_custom_settings_env_and_flags(monkeypatch, tmp_path):
     """custom_settings: env 注入子进程环境，其余键合并进 --settings 传给 CLI。"""
     import json as _json
 
@@ -1595,7 +1595,7 @@ async def test_claude_spawn_injects_custom_settings_env_and_flags(monkeypatch):
         lambda: {"model_map": "", "custom_settings": custom},
     )
 
-    async for _event in ClaudeCodeEngine().spawn(prompt="hello", cwd="/tmp"):
+    async for _event in ClaudeCodeEngine().spawn(prompt="hello", cwd=str(tmp_path)):
         pass
 
     cmd = captured["cmd"]
@@ -2785,7 +2785,7 @@ async def test_claude_agent_sdk_spawn_uses_modern_query_api(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_claude_agent_sdk_spawn_injects_custom_settings_env_and_options(monkeypatch):
+async def test_claude_agent_sdk_spawn_injects_custom_settings_env_and_options(monkeypatch, tmp_path):
     """custom_settings: env 进子进程环境，其余键合并进 SDK settings。"""
     import claude_agent_sdk as sdk_module
     import json as _json
@@ -2834,7 +2834,7 @@ async def test_claude_agent_sdk_spawn_injects_custom_settings_env_and_options(mo
 
     events = [
         event
-        async for event in ClaudeAgentSDKEngine().spawn(prompt="hi", cwd="/tmp")
+        async for event in ClaudeAgentSDKEngine().spawn(prompt="hi", cwd=str(tmp_path))
     ]
     assert [event.type for event in events] == ["status"]
     options = captured["client"].options

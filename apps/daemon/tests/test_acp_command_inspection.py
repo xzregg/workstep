@@ -103,7 +103,6 @@ async def test_hermes_inspection_timeout_returns_shared_skills(monkeypatch, tmp_
     result = await HermesEngine().inspect_capabilities(str(tmp_path))
 
     assert [item["name"] for item in result["input_items"]] == [
-        "goal",
         "plan",
         "reasoning",
         "status",
