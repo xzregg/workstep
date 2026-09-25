@@ -286,7 +286,7 @@
 | P0 | `SettingsPage.tsx` | 设置导航、引擎安装、助手配置和多个设置分区 | 由 section registry 组装独立设置分区，页面仅维护当前分区和跨分区刷新 |
 | P1 | `TaskDetail.tsx` | 项目解析、历史同步、实时事件、面板几何和会话控制 | 数据/实时协调 hook 与面板外壳分离，视图交给 `TaskDetailView` 的后续子模块 |
 | P1 | `TaskList.tsx` | 看板、拖拽、筛选、新建任务和 AI 创建 | 看板控制器与任务创建面板分离，新建流程自行拥有草稿、校验和关闭保护 |
-| P2 | `ProviderSettings.tsx`、`ChatInput.tsx`、`ChatPage.tsx` | 表单状态或会话副作用集中，接口持续扩张 | 分别按供应商编辑、输入附件/配置、会话加载/发送队列建立 seam |
+| P2 | `ProviderSettings.tsx`、`ChatInput.tsx` | 供应商编辑仍集中；聊天编辑器的光标、选择和撤销状态需保持一致 | 供应商设置按完整编辑流程检查边界；`ChatInput` 的附件、草稿和用量已由独立模块负责，编辑核心保持内聚。会话页的发送、历史、引擎选择、分叉交接已按业务归属收口，见 Code Map。 |
 
 `Layout.tsx` 已先移出流程创建、项目连接和侧栏活动同步；剩余侧栏树与菜单仍是后续拆分对象，新功能不得重新放回 `Layout`。
 
