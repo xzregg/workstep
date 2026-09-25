@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { getAssistantLabel } from '../src/pages/SettingsPage.tsx'
+import { getAssistantLabel } from '../src/pages/AgentAssistantSettings.tsx'
 import { zhCNT } from '../src/i18n/index.tsx'
 
 test('assistant settings translates channel chat and keeps unknown names readable', () => {

@@ -9,7 +9,7 @@ const component = fs.readFileSync(path.join(root, 'src/pages/SkillCenterSettings
 const settings = fs.readFileSync(path.join(root, 'src/pages/SettingsPage.tsx'), 'utf8')
 const projectSettings = fs.readFileSync(path.join(root, 'src/components/ProjectSettingsPanel.tsx'), 'utf8')
 const mobileCss = fs.readFileSync(path.join(root, 'src/mobile.css'), 'utf8')
-const api = fs.readFileSync(path.join(root, 'src/api/client.ts'), 'utf8')
+const api = fs.readFileSync(path.join(root, 'src/api/project.ts'), 'utf8')
 
 test('skill center is project-scoped with search, source filtering and rollback', () => {
   assert.match(component, /project\?\.id/)

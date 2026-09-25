@@ -6,8 +6,12 @@ const coordinatorSource = await readFile(
   new URL('../src/components/CoordinatorConfigBar.tsx', import.meta.url),
   'utf8',
 )
-const settingsSource = await readFile(
-  new URL('../src/pages/SettingsPage.tsx', import.meta.url),
+const assistantSettingsSource = await readFile(
+  new URL('../src/pages/AgentAssistantSettings.tsx', import.meta.url),
+  'utf8',
+)
+const promptEnhanceSource = await readFile(
+  new URL('../src/pages/PromptEnhanceSettings.tsx', import.meta.url),
   'utf8',
 )
 const providerSource = await readFile(
@@ -31,13 +35,17 @@ const taskCreateAssistantSource = await readFile(
   'utf8',
 )
 const apiClientSource = await readFile(
+  new URL('../src/api/conversations.ts', import.meta.url),
+  'utf8',
+)
+const assistantApiSource = await readFile(
   new URL('../src/api/client.ts', import.meta.url),
   'utf8',
 )
 
 test('assistant provider switching clears every selected model', () => {
   assert.match(
-    settingsSource,
+    assistantSettingsSource,
     /setProviderId\(event\.target\.value\)[\s\S]*?setModel\(''\)[\s\S]*?setFastModel\(''\)[\s\S]*?setVisionModel\(''\)/,
   )
 })
@@ -111,8 +119,8 @@ test('provider settings can copy an existing provider into a new configuration',
 })
 
 test('prompt enhancement selects and persists a provider protocol', () => {
-  assert.match(settingsSource, /setProtocol\(result\.protocol \|\| configuredProvider\?\.protocols\?\.\[0\] \|\| ''\)/)
-  assert.match(settingsSource, /providerApi\.models\(providerId, false, protocol\)/)
-  assert.match(settingsSource, /setEnhanceConfig\(\{ providerId, model, protocol \}\)/)
-  assert.match(apiClientSource, /protocol: config\.protocol/)
+  assert.match(promptEnhanceSource, /setProtocol\(result\.protocol \|\| configuredProvider\?\.protocols\?\.\[0\] \|\| ''\)/)
+  assert.match(promptEnhanceSource, /providerApi\.models\(providerId, false, protocol\)/)
+  assert.match(promptEnhanceSource, /setEnhanceConfig\(\{ providerId, model, protocol \}\)/)
+  assert.match(assistantApiSource, /protocol: config\.protocol/)
 })

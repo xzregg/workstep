@@ -3,7 +3,7 @@ import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { taskApi, type ActionProposal } from '../src/api/client'
-import { CoordinatorProposalCard } from '../src/components/TaskDetailView'
+import { CoordinatorProposalCard } from '../src/components/CoordinatorProposalCard'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { installDomEnvironment } from './helpers/domEnv'
 
