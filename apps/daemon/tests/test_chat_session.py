@@ -421,6 +421,10 @@ async def test_same_engine_uses_native_session_fork(chat_module, monkeypatch):
         "agent_assistants.chat_session.create_engine",
         lambda engine_id: NativeForkEngine(),
     )
+    monkeypatch.setattr(
+        "agent_assistants.chat_session_transitions.create_engine",
+        lambda engine_id: NativeForkEngine(),
+    )
     source = module.create_session(project.id, title="原会话", engine="claude")
     with module._project_ctx(project.id):
         ChatSession.update(engine_session_id="engine-source").where(
@@ -437,6 +441,97 @@ async def test_same_engine_uses_native_session_fork(chat_module, monkeypatch):
 
     assert forked["engine_session_id"] == "engine-fork"
     assert forked["parent_session_id"] == source["id"]
+
+
+@pytest.mark.anyio
+async def test_native_fork_engine_factory_does_not_block_event_loop(chat_module, monkeypatch):
+    module, _bus, _manager, project, _ = chat_module
+
+    class NativeForkEngine(FakeEngine):
+        supports_resume = True
+        supports_session_fork = True
+
+        async def fork_session(self, session_id, cwd, **kwargs):
+            return "engine-fork"
+
+    def slow_factory(_engine_id):
+        time.sleep(0.15)
+        return NativeForkEngine()
+
+    monkeypatch.setattr("agent_assistants.chat_session.create_engine", slow_factory)
+    monkeypatch.setattr("agent_assistants.chat_session_transitions.create_engine", slow_factory)
+    source = module.create_session(project.id, title="原会话", engine="claude")
+    with module._project_ctx(project.id):
+        ChatSession.update(engine_session_id="engine-source").where(
+            ChatSession.id == source["id"]
+        ).execute()
+
+    started = time.monotonic()
+    work = asyncio.create_task(module.fork_session(
+        project.id, source["id"], title="原生分支", engine="claude",
+        context_mode="native",
+    ))
+    try:
+        await asyncio.sleep(0.01)
+        assert time.monotonic() - started < 0.1
+        forked = await work
+        assert forked["engine_session_id"] == "engine-fork"
+    finally:
+        if not work.done():
+            work.cancel()
+            await asyncio.gather(work, return_exceptions=True)
+
+
+@pytest.mark.anyio
+async def test_native_fork_api_slow_factory_keeps_health_responsive(chat_module, monkeypatch):
+    import main
+
+    module, _bus, manager, project, _ = chat_module
+
+    class NativeForkEngine(FakeEngine):
+        supports_resume = True
+        supports_session_fork = True
+
+        async def fork_session(self, session_id, cwd, **kwargs):
+            return "engine-fork"
+
+    source = module.create_session(project.id, title="原会话", engine="claude")
+    with module._project_ctx(project.id):
+        ChatSession.update(engine_session_id="engine-source").where(
+            ChatSession.id == source["id"]
+        ).execute()
+    entered = threading.Event()
+    release = threading.Event()
+
+    def slow_factory(_engine_id):
+        entered.set()
+        release.wait(timeout=2)
+        return NativeForkEngine()
+
+    monkeypatch.setattr("agent_assistants.chat_session.create_engine", slow_factory)
+    monkeypatch.setattr("agent_assistants.chat_session_transitions.create_engine", slow_factory)
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    transport = ASGITransport(app=main.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        request = asyncio.create_task(client.post(
+            f"/api/chat-sessions/{source['id']}/fork",
+            json={
+                "project_id": project.id,
+                "title": "原生分支",
+                "engine": "claude",
+                "context_mode": "native",
+            },
+        ))
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+            assert health.status_code == 200
+        finally:
+            release.set()
+        forked = await request
+        assert forked.status_code == 200
+        assert forked.json()["engine_session_id"] == "engine-fork"
 
 
 @pytest.mark.anyio
