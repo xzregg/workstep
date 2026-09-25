@@ -1645,6 +1645,7 @@ async def test_task_runner_persists_usage_json(tmp_path):
     ENGINE_REGISTRY["claude"] = lambda: CapturingUsageEngine("output")
     try:
         bus = EventBus()
+        events = bus.subscribe()
         runner = TaskRunner(bus)
 
         steps_config = {
@@ -1660,6 +1661,13 @@ async def test_task_runner_persists_usage_json(tmp_path):
 
         msg = Message.select().where(Message.task == task).get()
         persisted_prompt = _json.loads(msg.prompt_json)["prompt"]
+        started = [
+            event for event in list(events._queue)
+            if event.get("type") == "TEXT_MESSAGE_START"
+        ]
+        assert len(started) == 1
+        assert started[0]["messageId"] == msg.id
+        assert started[0]["prompt"] == persisted_prompt
         assert received_prompts == [persisted_prompt]
         assert persisted_prompt.startswith("You are executing one step")
         assert "## Project memory\n统一使用公开消息边界" in persisted_prompt
@@ -1677,6 +1685,59 @@ async def test_task_runner_persists_usage_json(tmp_path):
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_execution_message_start_slow_insert_keeps_loop_responsive(
+    tmp_path, monkeypatch,
+):
+    """A slow execution-message insert must not stall the event loop."""
+    import threading
+    import time
+    import uuid
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import Task, init_db
+
+    db = init_db(str(tmp_path / "slow-start.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Slow start", cwd=str(tmp_path),
+        engine="claude", created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    insert_started = threading.Event()
+    original_execute_sql = db.execute_sql
+
+    def slow_execution_insert(sql, params=None, commit=None):
+        if (
+            'INSERT INTO "message"' in sql
+            and params is not None
+            and "execution" in params
+            and not insert_started.is_set()
+        ):
+            insert_started.set()
+            time.sleep(0.35)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(db, "execute_sql", slow_execution_insert)
+    original_engines = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = lambda: PipelineUsageEngine("output")
+    pipeline_task = asyncio.create_task(TaskRunner(EventBus()).run_pipeline(
+        task,
+        {"steps": [{
+            "key": "a", "label": "A", "engine": "claude", "prompt": "Do A",
+        }]},
+        tmp_path / "artifacts",
+    ))
+    try:
+        assert await asyncio.to_thread(insert_started.wait, 2)
+        assert not pipeline_task.done()
+        started = time.perf_counter()
+        await asyncio.wait_for(asyncio.sleep(0), timeout=0.2)
+        assert time.perf_counter() - started < 0.2
+        await pipeline_task
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original_engines)
         db.close()
 
 

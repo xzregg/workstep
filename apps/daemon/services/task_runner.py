@@ -18,28 +18,20 @@ from models import (
 from models.fields import utc_now
 from services.artifact_rounds import (
     discard_artifact_round,
-    step_round_dir,
     write_round_manifest,
 )
 from services.pipeline import DAGScheduler, Step
 from services.task_step_start import start_step_state
+from services.step_execution_start import StepExecutionStart
 from services.step_rework import StepRework
 from services.step_artifact_routes import StepArtifactRoutes
 from services.step_live_messages import StepLiveMessages
 from services.review_messages import AutomaticReviewMessages
-from services.prompt import (
-    assemble_followup_prompt,
-    assemble_prompt,
-    assemble_retry_prompt,
-    render_step_prompt,
-    step_worktrees_prompt_path,
-)
 from services.review_gate import ReviewGate
 from services.config import config_store
 from services.messages import create_task_message, extract_usage_json, new_message_id
 from agent_assistants.context_handoff import (
     mark_handoff_consumed,
-    render_handoff_reference,
 )
 from services.intervention import intervention_manager, seal_unanswered_interactions
 from agent_assistants.event_journal import JournalRef, TurnEventJournal
@@ -138,6 +130,11 @@ class TaskRunner:
         self._retry_message_ids = dict(retry_message_ids or {})
         self._graceful_shutdown = False
         self._event_journal = TurnEventJournal()
+        self._execution_start = StepExecutionStart(
+            self._event_journal, self._run_db, self._publish,
+            self._step_followups, self._step_trigger_names,
+            self._initial_user_input_step_key, self._retry_message_ids,
+        )
         self._live = StepLiveMessages(
             self._event_journal,
             self._run_db,
@@ -783,23 +780,17 @@ class TaskRunner:
             task, step, scheduler, artifacts_dir,
         )
 
-        (
-            ts,
-            step_run,
-            rework_feedback,
-            manual_review_feedback,
-            pending_handoff,
-            artifact_round,
-            input_rounds,
-            previous_execution_prompt,
-        ) = (
-            await self._run_db(lambda: start_step_state(
-                task=task, step=step, workflow_run=workflow_run,
-                artifacts_dir=artifacts_dir, effective_provider_id=effective_provider_id,
-                resolved_model=resolved_model, input_rounds=input_rounds,
-                input_snapshot=input_snapshot,
-            ))
-        )
+        started_state = await self._run_db(lambda: start_step_state(
+            task=task, step=step, workflow_run=workflow_run,
+            artifacts_dir=artifacts_dir, effective_provider_id=effective_provider_id,
+            resolved_model=resolved_model, input_rounds=input_rounds,
+            input_snapshot=input_snapshot,
+        ))
+        ts = started_state.task_step
+        step_run = started_state.step_run
+        pending_handoff = started_state.pending_handoff
+        artifact_round = started_state.artifact_round
+        input_rounds = started_state.input_rounds
 
         running.add(step_key)
 
@@ -861,181 +852,13 @@ class TaskRunner:
                 })
             return
 
-        # Assemble prompt
-        review_results = list(dict.fromkeys(
-            value
-            for value in (
-                review_feedback,
-                manual_review_feedback,
-                rework_feedback,
-            )
-            if value
-        ))
-        followup = self._step_followups.get(step_key, "").strip()
-        trigger_name = self._step_trigger_names.get(step_key, "").strip()
-        if followup and ts.session_id and engine is not None and engine.supports_resume:
-            prompt = await asyncio.to_thread(
-                assemble_followup_prompt,
-                task,
-                step,
-                artifacts_dir,
-                followup,
-                artifact_round,
-                trigger_name,
-                input_snapshot,
-            )
-        elif (
-            ts.session_id
-            and engine is not None
-            and engine.supports_resume
-            and (
-                review_results
-                or input_snapshot.get("execution_type") == "feedback"
-            )
-        ):
-            prompt = await asyncio.to_thread(
-                assemble_retry_prompt,
-                task,
-                step,
-                artifacts_dir,
-                input_snapshot,
-                artifact_round,
-                previous_execution_prompt,
-            )
-        else:
-            step_user_input = (
-                followup
-                or (
-                    user_input
-                    if self._initial_user_input_step_key in (None, step_key)
-                    else ""
-                )
-            )
-            prompt = await self._run_db(
-                lambda: assemble_prompt(
-                    task,
-                    step,
-                    artifacts_dir,
-                    step_user_input,
-                    artifact_round,
-                    input_rounds,
-                    input_snapshot,
-                    trigger_name,
-                )
-            )
-        if pending_handoff:
-            handoff_reference = await asyncio.to_thread(
-                render_handoff_reference, pending_handoff, artifacts_dir.parent
-            )
-            if handoff_reference:
-                prompt = f"{handoff_reference}\n\n{prompt}"
-        if review_results:
-            worktrees_path = await asyncio.to_thread(
-                step_worktrees_prompt_path, task, artifacts_dir
-            )
-            prompt += (
-                "\n\n## Previous review feedback\n"
-                + "\n\n".join(
-                    render_step_prompt(value, task, step, worktrees_path, trigger_name)
-                    for value in review_results
-                )
-            )
-            prompt += (
-                "\n\n请根据以上反馈修复问题，保留已有正确结果。\n"
-                "**注意：修复时必须严格遵守「输出规范」中声明的产物类型、名称和写入路径，"
-                "不要改变输出格式、文件扩展名或目录结构。**"
-            )
-
-        # Ensure artifact output directory (workflow / task / step / round)
-        out_dir = (
-            step_round_dir(
-                artifacts_dir,
-                task.workflow_id,
-                task.id,
-                step_key,
-                artifact_round,
-            )
-            if artifact_round is not None
-            else artifacts_dir / (task.workflow_id or "default") / task.id / step_key
+        execution = await self._execution_start.start(
+            task=task, step=step, artifacts_dir=artifacts_dir,
+            user_input=user_input, input_snapshot=input_snapshot,
+            state=started_state, review_feedback=review_feedback,
+            engine=engine, resolved_model=resolved_model,
         )
-        retry_message_id = self._retry_message_ids.pop(step_key, None)
-        msg_id = retry_message_id or new_message_id()
-        message_started_at = utc_now()
-        engine_session_id = (
-            ts.session_id
-            if engine is not None and engine.supports_resume
-            else None
-        )
-        if (
-            engine is not None
-            and engine.supports_resume
-            and engine_session_id is None
-            and step.engine == "pydantic_ai"
-        ):
-            engine_session_id = new_message_id() if retry_message_id else msg_id
-        journal_ref = await self._event_journal.astart(
-            artifacts_dir.parent,
-            f"task-{task.id}",
-            msg_id,
-            step_run.id if retry_message_id and step_run is not None else engine_session_id,
-        )
-
-        def create_message():
-            out_dir.mkdir(parents=True, exist_ok=True)
-            if retry_message_id:
-                message = Message.get_by_id(retry_message_id)
-                message.engine = step.engine
-                message.model = resolved_model
-                message.step_run_id = step_run.id if step_run is not None else None
-                message.artifact_round = artifact_round
-                message.run_status = "running"
-                message.content = ""
-                message.events_json = None
-                message.event_log_path = journal_ref.relative_path
-                message.event_summary_json = None
-                message.event_count = 0
-                message.last_event_seq = 0
-                message.prompt_json = json.dumps({"prompt": prompt}, ensure_ascii=False)
-                message.usage_json = None
-                message.started_at = message_started_at
-                message.ended_at = None
-                message.save()
-                return message.created_at
-            create_task_message(
-                id=msg_id,
-                task=task,
-                channel="execution",
-                step_key=step_key,
-                role="assistant",
-                engine=step.engine,
-                model=resolved_model,
-                run_id=msg_id,
-                step_run_id=step_run.id if step_run is not None else None,
-                artifact_round=artifact_round,
-                run_status="running",
-                event_log_path=journal_ref.relative_path,
-                prompt_json=json.dumps({"prompt": prompt}, ensure_ascii=False),
-                position=1,
-                started_at=message_started_at,
-                created_at=message_started_at,
-            )
-            return message_started_at
-
-        message_created_at = await self._run_db(create_message)
-        await self._publish(task.id, step_key, {
-            "channel": "execution",
-            "message_id": msg_id,
-            "engine": step.engine,
-            "model": resolved_model,
-            "event_sequence": 0,
-            "type": "message_started",
-            "data": {
-                "prompt": prompt, "artifact_round": artifact_round,
-                "started_at": message_started_at.isoformat(),
-                **({"retry": True} if retry_message_id else {}),
-            },
-            "created_at": message_created_at.isoformat(),
-        })
+        prompt, msg_id, engine_session_id, journal_ref = execution
 
         # Select engine
         if not engine:
