@@ -402,7 +402,7 @@ WorkStep 因此定义一个 SDK 可独立启动的 `standard` preset，基于官
 | `live_message` | `message_id`、`status` | 执行中补充消息的送达状态（`delivered` / `error`）。 |
 | `interaction_request` | `interaction_id`、`method` | 暂停执行并请求用户确认或输入；载荷采用 ACP `session/request_permission` 或 `elicitation/create` 形状。 |
 | `interaction_response` | `interaction_id`、`method`、`response` | 用户响应已送回引擎；与请求一起持久化，供消息历史恢复交互状态。 |
-| `subagent` | `task_id`、`status`、`stage` | 子代理 / 后台任务生命周期（Claude/Qoder SDK `task_started`/`task_progress`/`task_updated`/`task_notification`）；`status` 为语义状态（`running`/`paused`/`completed`/`failed`/`stopped`/`killed`），`stage` 保留原始帧类型，可选 `description`、`summary`、`usage`、`tool_use_id`。同时并入 `plan` 快照条目。 |
+| `subagent` | `task_id`、`status`、`stage` | 子代理 / 后台任务生命周期（Claude/Qoder SDK `task_started`/`task_progress`/`task_updated`/`task_notification`）；`status` 为语义状态（`running`/`paused`/`completed`/`failed`/`stopped`/`killed`），`stage` 保留原始帧类型，可选 `description`、`summary`、`usage`、`tool_use_id`。独立于 `plan` 展示。 |
 | `compacted` | `summary`（可选） | 引擎上下文已自动压缩（Claude `compacted`/`compact_boundary`、Codex `thread/compacted`、Qoder `compact_boundary`、Pydantic AI harness `TieredCompaction` 接收）；`summary` 为压缩摘要。 |
 | `engine_state` | `state` | 进程内引擎可序列化的恢复状态；仅支持该能力的引擎产出（Pydantic AI `report_engine_state`）。 |
 | `error` | `message` | 可展示的错误；可附加 `detail`、`stderr`。 |
@@ -415,8 +415,8 @@ WorkStep 因此定义一个 SDK 可独立启动的 `standard` preset，基于官
 - 下游发起工具调用时，必须在工具开始执行前映射为 `tool_call`；参数分片可额外映射为 `tool_call_update(status=in_progress, raw_input=...)`。
 - 适配器或 Agent 实际执行工具时，必须在执行结束后映射为 `tool_call_update`（`completed` / `failed`），并保持相同的 `tool_call_id`。
 - 引擎发布执行计划时必须映射为 `plan`；这是当前 LLM run 的展示状态，不得修改 WorkStep 工作流 DAG。
-- 引擎产生子代理 / 后台任务生命周期事件（如 Claude/Qoder 的 `task_started` / `task_progress` / `task_updated` / `task_notification`）时必须映射为 `subagent`，并同步进 `plan` 快照（`NativePlanTracker` 自动消费，适配器无需自建快照逻辑）。
-- 协议没有独立子代理事件（ACP、Codex）时，委托类工具调用（`Task` / `spawnAgent` / input 含 `prompt` 且非命令类）由 `NativePlanTracker` 统一兜底并入 `plan`：`tool_call` 时置 `pending`，对应 `tool_call_update` 时置 `completed`；适配器只需如实映射 `tool_call` / `tool_call_update`，不要伪造 `subagent` 事件。
+- 引擎产生子代理 / 后台任务生命周期事件（如 Claude/Qoder 的 `task_started` / `task_progress` / `task_updated` / `task_notification`）时必须映射为 `subagent`，不得因子代理状态生成 `plan`。
+- 协议没有独立子代理事件时，委托类工具调用（`Task` / `spawnAgent` 等）保持为 `tool_call` / `tool_call_update`；适配器只需如实映射工具事件，不要将委托提示词当作计划条目，也不要伪造 `subagent` 事件。Codex 的原生协作快照可以映射为 `subagent`。
 - Provider 没有返回思考内容，或当前模式没有工具能力时，可以不产生对应事件，但不得伪造思考、工具调用或工具结果。
 - 只提供最终完整消息的协议也必须完成相同映射，只是无法承诺增量实时性；引擎说明和测试中必须明确该降级（如 OpenClaw 一次性信封只产出单个 `agent_message_chunk`）。
 

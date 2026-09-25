@@ -1642,11 +1642,6 @@ class AcpEngineBase(BaseLLMEngine):
         if tracker is None:
             tracker = NativePlanTracker()
             setattr(self, "_native_plan_tracker", tracker)
-        if event.type == "subagent":
-            # 子代理生命周期事件透传给前端；同时把状态并入 plan 快照，
-            # 供后续 plan 工具事件（TaskCreate/TaskUpdate/TaskList）携带。
-            tracker.observe(event)
-            return event
         return tracker.observe(event) or event
 
     def normalize_interaction_event(self, event: InternalEvent) -> InternalEvent:
