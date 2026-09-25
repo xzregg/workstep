@@ -202,7 +202,7 @@ async def invoke_engine(
     ``config_overrides`` merges into the engine's dynamic config (e.g. the
     built-in Pydantic AI engine's per-assistant provider).
     """
-    engine = create_engine(engine_id)
+    engine = await asyncio.to_thread(create_engine, engine_id)
     if engine is None:
         raise RuntimeError(f"{error_prefix} is unavailable: {engine_id}")
     if permission_mode:
@@ -219,7 +219,9 @@ async def invoke_engine(
         )
         provider_id = str((config_overrides or {}).get("provider_id") or "")
         model_accepts_images = (
-            supports_multimodal(engine_id, model or "", provider_id)
+            await asyncio.to_thread(
+                supports_multimodal, engine_id, model or "", provider_id
+            )
             if callable(supports_multimodal)
             else engine_accepts_images
         )
@@ -923,7 +925,7 @@ class AssistantRuntime:
             raise ValueError("Chat session not found")
         if project_id is not None and session.project_id != project_id:
             raise ValueError("Chat session not found")
-        engine = create_engine(session.engine)
+        engine = await asyncio.to_thread(create_engine, session.engine)
         capabilities = getattr(engine, "capabilities", None)
         if not getattr(capabilities, "supports_live_step_message", False):
             raise ValueError("该引擎不支持执行中消息注入")
