@@ -18,7 +18,7 @@ import {
   conversationBottomScrollTop,
   observeContentResize,
   shouldPauseConversationFollow,
-} from '../pages/taskDetailChat'
+} from '../utils/conversationScroll'
 import Button from './Button'
 import ChatInput, {
   type ChatContextUsage,

@@ -23,7 +23,7 @@ import {
   conversationBottomScrollTop,
   isNearConversationBottom,
   shouldPauseConversationFollow,
-} from '../pages/taskDetailChat'
+} from '../utils/conversationScroll'
 
 type ProcessEvent = {
   type: string
