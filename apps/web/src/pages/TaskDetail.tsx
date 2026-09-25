@@ -1,5 +1,6 @@
 import ResizablePanel from '../components/ResizablePanel'
 import { useTaskHistory } from '../hooks/useTaskHistory'
+import { useTaskCoordinatorConfig } from '../hooks/useTaskCoordinatorConfig'
 import { gitApi } from '../api/git'
 import { useSearchParams } from 'react-router-dom'
 import { useTaskRoute } from '../hooks/useTaskRoute'
@@ -21,15 +22,11 @@ import {
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 import { useTaskStore, type LiveMessage } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
-import { publishEngineCatalog } from '../stores/engineAvailabilityStore'
 import {
   fsApi,
   projectApi,
-  providerApi,
   taskApi,
   type ActionProposal,
-  type CoordinatorConfig,
-  type ProviderInfo,
   type ReviewRun,
   type TaskArtifact,
   type TaskArtifactInputSnapshot,
@@ -371,11 +368,19 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   useEffect(() => {
     setResetStep(false)
   }, [chatTarget, taskId])
-  const [coordinatorConfig, setCoordinatorConfig] = useState<CoordinatorConfig | null>(null)
-  const [coordinatorConfigSaving, setCoordinatorConfigSaving] = useState(false)
-  const [coordinatorConfigError, setCoordinatorConfigError] = useState('')
-  const [coordinatorConfigNotice, setCoordinatorConfigNotice] = useState('')
-  const [providers, setProviders] = useState<ProviderInfo[]>([])
+  const {
+    config: coordinatorConfig,
+    providers,
+    saving: coordinatorConfigSaving,
+    error: coordinatorConfigError,
+    notice: coordinatorConfigNotice,
+    onEngineChange: handleCoordinatorEngineChange,
+    onProviderChange: handleCoordinatorProviderChange,
+    onModelChange: handleCoordinatorModelChange,
+    onFastModelChange: handleCoordinatorFastModelChange,
+    onVisionModelChange: handleCoordinatorVisionModelChange,
+    onThinkingEffortChange: handleCoordinatorThinkingEffortChange,
+  } = useTaskCoordinatorConfig(taskId, projectId)
   const [proposalOverrides, setProposalOverrides] = useState<Record<string, ActionProposal>>({})
   const [viewingPrompt, setViewingPrompt] = useState<string | null>(null)
   const [livePromptOverrides, setLivePromptOverrides] = useState<Record<string, string>>({})
@@ -606,34 +611,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       cancelled = true
     }
   }, [missingLivePromptIds.join('|'), projectId, taskId])
-
-  useEffect(() => {
-    if (!taskId || !projectId) {
-      setCoordinatorConfig(null)
-      return
-    }
-    taskApi.coordinatorConfig(taskId, projectId)
-      .then((config) => {
-        setCoordinatorConfig(config)
-        // 协调引擎下拉的可用性改用共享状态：设置页改动后即时跟随。
-        publishEngineCatalog(config.available_engines)
-        setCoordinatorConfigError('')
-      })
-      .catch((reason) => setCoordinatorConfigError(
-        reason instanceof Error ? reason.message : t('taskDetail.coordinatorEngineLoadFailed'),
-      ))
-  }, [taskId, projectId, t])
-
-  useEffect(() => {
-    let active = true
-    if (!projectId) return
-    providerApi.list(projectId)
-      .then((result) => {
-        if (active) setProviders(result.providers.filter((item) => item.enabled))
-      })
-      .catch(() => { /* provider list is optional for the engine picker */ })
-    return () => { active = false }
-  }, [projectId])
 
   useEffect(() => {
     if (!taskId || !projectId) {
@@ -1396,188 +1373,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   ) => {
     await taskApi.respondInteraction(interactionId, response, projectId)
   }, [projectId])
-
-  const handleCoordinatorEngineChange = async (engineId: string) => {
-    if (!taskId || !projectId) return
-    setCoordinatorConfigSaving(true)
-    setCoordinatorConfigError('')
-    setCoordinatorConfigNotice('')
-    try {
-      const selection = await taskApi.updateCoordinatorConfig(
-        taskId,
-        projectId,
-        engineId || null,
-        null,
-        null,
-        null,
-        coordinatorConfig?.configured.thinking_effort || null,
-        engineId === 'pydantic_ai'
-          ? coordinatorConfig?.configured.provider_id || null
-          : null,
-      )
-      setCoordinatorConfig((current) => current
-        ? { ...current, ...selection }
-        : current
-      )
-      setCoordinatorConfigNotice(t('taskDetail.coordinatorSaved'))
-    } catch (reason) {
-      setCoordinatorConfigError(
-        reason instanceof Error ? reason.message : t('taskDetail.engineSwitchFailed'),
-      )
-    } finally {
-      setCoordinatorConfigSaving(false)
-    }
-  }
-
-  const handleCoordinatorProviderChange = async (providerId: string) => {
-    if (!taskId || !projectId || !coordinatorConfig) return
-    setCoordinatorConfigSaving(true)
-    setCoordinatorConfigError('')
-    setCoordinatorConfigNotice('')
-    try {
-      const selection = await taskApi.updateCoordinatorConfig(
-        taskId,
-        projectId,
-        coordinatorConfig.configured.engine || coordinatorConfig.resolved.engine,
-        null,
-        null,
-        null,
-        coordinatorConfig.configured.thinking_effort,
-        providerId || null,
-      )
-      setCoordinatorConfig((current) => current
-        ? { ...current, ...selection }
-        : current
-      )
-      setCoordinatorConfigNotice(t('taskDetail.coordinatorSaved'))
-    } catch (reason) {
-      setCoordinatorConfigError(
-        reason instanceof Error ? reason.message : t('taskDetail.engineSwitchFailed'),
-      )
-    } finally {
-      setCoordinatorConfigSaving(false)
-    }
-  }
-
-  const handleCoordinatorModelChange = async (model: string) => {
-    if (!taskId || !projectId || !coordinatorConfig) return
-    setCoordinatorConfigSaving(true)
-    setCoordinatorConfigError('')
-    setCoordinatorConfigNotice('')
-    try {
-      const selection = await taskApi.updateCoordinatorConfig(
-        taskId,
-        projectId,
-        coordinatorConfig.configured.engine || coordinatorConfig.resolved.engine,
-        model || null,
-        coordinatorConfig.configured.fast_model,
-        coordinatorConfig.configured.vision_model,
-        coordinatorConfig.configured.thinking_effort,
-        coordinatorConfig.configured.provider_id || null,
-      )
-      setCoordinatorConfig((current) => current
-        ? { ...current, ...selection }
-        : current
-      )
-      setCoordinatorConfigNotice(t('taskDetail.coordinatorSaved'))
-    } catch (reason) {
-      setCoordinatorConfigError(
-        reason instanceof Error ? reason.message : t('taskDetail.modelSwitchFailed'),
-      )
-    } finally {
-      setCoordinatorConfigSaving(false)
-    }
-  }
-
-  const handleCoordinatorFastModelChange = async (fastModel: string) => {
-    if (!taskId || !projectId || !coordinatorConfig) return
-    setCoordinatorConfigSaving(true)
-    setCoordinatorConfigError('')
-    setCoordinatorConfigNotice('')
-    try {
-      const selection = await taskApi.updateCoordinatorConfig(
-        taskId,
-        projectId,
-        coordinatorConfig.configured.engine || coordinatorConfig.resolved.engine,
-        coordinatorConfig.configured.model,
-        fastModel || null,
-        coordinatorConfig.configured.vision_model,
-        coordinatorConfig.configured.thinking_effort,
-        coordinatorConfig.configured.provider_id || null,
-      )
-      setCoordinatorConfig((current) => current
-        ? { ...current, ...selection }
-        : current
-      )
-      setCoordinatorConfigNotice(t('taskDetail.coordinatorSaved'))
-    } catch (reason) {
-      setCoordinatorConfigError(
-        reason instanceof Error ? reason.message : t('taskDetail.fastModelSwitchFailed'),
-      )
-    } finally {
-      setCoordinatorConfigSaving(false)
-    }
-  }
-
-  const handleCoordinatorVisionModelChange = async (visionModel: string) => {
-    if (!taskId || !projectId || !coordinatorConfig) return
-    setCoordinatorConfigSaving(true)
-    setCoordinatorConfigError('')
-    setCoordinatorConfigNotice('')
-    try {
-      const selection = await taskApi.updateCoordinatorConfig(
-        taskId,
-        projectId,
-        coordinatorConfig.configured.engine || coordinatorConfig.resolved.engine,
-        coordinatorConfig.configured.model,
-        coordinatorConfig.configured.fast_model,
-        visionModel || null,
-        coordinatorConfig.configured.thinking_effort,
-        coordinatorConfig.configured.provider_id || null,
-      )
-      setCoordinatorConfig((current) => current
-        ? { ...current, ...selection }
-        : current
-      )
-      setCoordinatorConfigNotice(t('taskDetail.coordinatorSaved'))
-    } catch (reason) {
-      setCoordinatorConfigError(
-        reason instanceof Error ? reason.message : t('taskDetail.visionModelSwitchFailed'),
-      )
-    } finally {
-      setCoordinatorConfigSaving(false)
-    }
-  }
-
-  const handleCoordinatorThinkingEffortChange = async (thinkingEffort: string) => {
-    if (!taskId || !projectId || !coordinatorConfig) return
-    setCoordinatorConfigSaving(true)
-    setCoordinatorConfigError('')
-    setCoordinatorConfigNotice('')
-    try {
-      const selection = await taskApi.updateCoordinatorConfig(
-        taskId,
-        projectId,
-        coordinatorConfig.configured.engine || coordinatorConfig.resolved.engine,
-        coordinatorConfig.configured.model,
-        coordinatorConfig.configured.fast_model,
-        coordinatorConfig.configured.vision_model,
-        thinkingEffort || null,
-        coordinatorConfig.configured.provider_id || null,
-      )
-      setCoordinatorConfig((current) => current
-        ? { ...current, ...selection }
-        : current
-      )
-      setCoordinatorConfigNotice(t('taskDetail.coordinatorSaved'))
-    } catch (reason) {
-      setCoordinatorConfigError(
-        reason instanceof Error ? reason.message : t('taskDetail.effortSwitchFailed'),
-      )
-    } finally {
-      setCoordinatorConfigSaving(false)
-    }
-  }
 
   const scheduleInputValue = scheduledDraft || utcToLocalDateTime(task?.scheduled_start_at)
   if (!task) {
