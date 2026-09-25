@@ -8,11 +8,12 @@ const descriptionSource = await readFile(new URL('../src/components/TaskDetailDe
 const tabsSource = await readFile(new URL('../src/components/TaskDetailTabs.tsx', import.meta.url), 'utf8')
 const ioSource = await readFile(new URL('../src/components/TaskStepIoPanel.tsx', import.meta.url), 'utf8')
 const pageSource = await readFile(new URL('../src/pages/TaskDetail.tsx', import.meta.url), 'utf8')
+const windowSource = await readFile(new URL('../src/components/TaskDetailWindow.tsx', import.meta.url), 'utf8')
 const css = await readFile(new URL('../src/index.css', import.meta.url), 'utf8')
 
 test('lets users select the task title while keeping the header draggable', () => {
   assert.match(headerSource, /className="task-detail-title"/)
-  assert.match(pageSource, /closest\([^)]*\.task-detail-title/)
+  assert.match(windowSource, /closest\([^)]*\.task-detail-title/)
   assert.match(css, /\.task-detail-header\s*\{[^}]*user-select:\s*none/s)
   assert.match(css, /\.task-detail-title\s*\{[^}]*user-select:\s*text/s)
 })

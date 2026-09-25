@@ -23,6 +23,7 @@
 | 功能 | 代码入口 | 行为测试 |
 |---|---|---|
 | 页头、创建者、关闭操作 | `TaskDetailHeader.tsx` | `actorVisibility.test.mjs`、`taskDetailPageReuse.test.mjs` |
+| 任务弹窗位置、尺寸、四边四角缩放与键盘移动 | `TaskDetailWindow.tsx`；`TaskDetail.tsx` 只装配内容 | `taskDetailWindow.test.tsx` |
 | 任务描述展示、编辑保存及定时启动时间调整 | `TaskDetailDescription.tsx`；任务页启用编辑，分享页只读 | `taskDescriptionEditing.test.tsx`、`taskDetailProgressLayout.test.mjs` |
 | 步骤提示词快速编辑、保存和错误恢复 | `StepPromptEditor.tsx`；`TaskDetail.tsx` 只选择步骤并在保存后更新项目状态 | `stepPromptEditor.test.tsx` |
 | 当前步骤提示词展示与快捷编辑入口 | `TaskStepPrompt.tsx`；任务页可编辑，分享页只读；固定样式在 `src/index.css` 的 `task-step-prompt-*` 类 | `taskStepPrompt.test.tsx`、`taskDetailProgressLayout.test.mjs` |

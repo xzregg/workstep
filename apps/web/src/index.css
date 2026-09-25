@@ -517,6 +517,16 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .task-step-prompt-empty { font-size: calc(13px * var(--font-scale)); color: var(--meta); }
 .task-detail-not-found { padding: 40px; text-align: center; color: var(--meta); }
 .task-detail-back { margin-top: 12px; }
+.task-detail-share-button {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 22px;
+  padding: 0 7px; font-size: calc(11px * var(--font-scale)); color: var(--meta);
+  margin-left: auto; order: 98;
+}
+.task-detail-id-button {
+  font-family: var(--font-mono); font-size: calc(11px * var(--font-scale));
+  color: var(--meta); min-height: 22px; padding: 0 5px; order: 99;
+}
+.task-detail-id-button[data-copied="true"] { color: var(--success); }
 .shared-task-page {
   height: 100vh; overflow: hidden; display: flex; flex-direction: column;
   background: var(--bg-app, var(--bg)); color: var(--fg);
@@ -921,6 +931,12 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .ws-row:focus-within .ws-more-btn { opacity: 1; pointer-events: auto; }
 
 /* ── Resizable task detail dialog ── */
+
+.task-detail-window {
+  position: fixed; background: var(--bg); box-shadow: -4px 0 24px rgba(0,0,0,0.12);
+  display: flex; flex-direction: column; z-index: 1000;
+  animation: slideInRight 0.3s ease;
+}
 
 .task-detail-resize-handle {
   position: absolute;
