@@ -14,6 +14,10 @@ const taskDetailPage = await readFile(
   new URL('../src/pages/TaskDetail.tsx', import.meta.url),
   'utf8',
 )
+const taskConversationScroll = await readFile(
+  new URL('../src/hooks/useTaskConversationScroll.ts', import.meta.url),
+  'utf8',
+)
 const indicator = await readFile(
   new URL('../src/components/ConversationNewMessagesButton.tsx', import.meta.url),
   'utf8',
@@ -28,8 +32,9 @@ test('every streaming conversation offers the shared new-message action', () => 
   assert.match(indicator, /Icon name="chevron-down"/)
 })
 
-test('the rendered conversation is the only owner of its scroll position', () => {
-  assert.match(taskDetail, /container\.scrollTop = target/)
+test('the conversation scroll module owns its scroll position', () => {
+  assert.match(taskDetail, /useTaskConversationScroll\(/)
+  assert.match(taskConversationScroll, /container\.scrollTop = target/)
   assert.doesNotMatch(taskDetailPage, /container\.scrollTop = target/)
   assert.doesNotMatch(taskDetailPage, /addEventListener\('load', onMediaLoad/)
 })

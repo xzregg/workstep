@@ -588,8 +588,6 @@ import {
   isSelectedStepRunning,
   liveExecutionStatus,
   mergeLoadedTaskMessageEvents,
-  mergeRefreshedTaskHistory,
-  mergeHistoryMessageWithLive,
   orderConversationMessages,
   resolveMessageReview,
   resolveTaskChatTarget,
