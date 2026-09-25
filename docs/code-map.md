@@ -11,6 +11,7 @@
 | 项目与远程项目 | `src/api/project.ts`、`src/pages/SettingsPage.tsx` | `api/project.py`、`remote_project.py`、`services/project.py`、`remote_project.py` | `docs/architecture.md` |
 | Git 与任务工作区 | `src/components/git/`、`src/api/git.ts` | `api/git.py`、`services/git/` | `services/git/task_workspace.py` 负责任务工作区 |
 | 分享、定时、统计 | `src/api/share.ts`、`schedule.ts`、`statistics.ts` | `api/share.py`、`schedule.py`、`statistics.py`；对应 `services/` | 各模块测试 |
+| 用量与费用计算 | `src/api/statistics.ts` | `services/usage_accounting.py`，由 `statistics.py` 与 `task_execution_report.py` 共用 | `tests/test_usage_accounting.py` |
 | 通用控件与移动样式 | `src/components/Button.tsx`、`Input.tsx`、`Select.tsx`、`Textarea.tsx`、`src/index.css`、`src/mobile.css` | — | `docs/frontend-design.md`、`tests/mobileButtonSizing.test.mjs` |
 
 表中的前端路径均相对于 `apps/web/`，后端路径均相对于 `apps/daemon/`。后端请求模型在 `schemas/`，持久化模型在 `models/`；服务里的同步数据库工作单元通过 `services/project_database.py` 的项目执行器运行。实时事件从 `engines/core/events.py` 经 `engines/core/agui.py` 到前端 `src/utils/agui.ts`。
