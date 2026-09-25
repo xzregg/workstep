@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import test from 'node:test'
 
 const viewSource = fs.readFileSync(
-  new URL('../src/components/TaskDetailView.tsx', import.meta.url),
+  new URL('../src/components/TaskConversationMessage.tsx', import.meta.url),
   'utf8',
 )
 const detailSource = fs.readFileSync(

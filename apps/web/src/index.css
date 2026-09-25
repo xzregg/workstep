@@ -521,6 +521,16 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .task-message-artifact-name { flex: 1; font-weight: 500; }
 .task-message-artifact-round { margin-left: 6px; color: var(--muted); }
 .task-message-artifact-open { font-size: calc(11px * var(--font-scale)); color: var(--accent); }
+.task-conversation-message { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.task-message-lost-session { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.task-message-lost-session-hint { color: var(--muted); font-size: calc(12px * var(--font-scale)); }
+.task-message-target-tag {
+  padding: 1px 6px; border-radius: 999px; font-size: calc(11px * var(--font-scale));
+  border: 1px solid var(--border-soft); background: rgba(0,113,227,0.08); color: var(--accent);
+}
+.task-message-target-tag--coordinator { background: rgba(124,58,237,0.08); color: var(--ai-assistant); }
+.task-message-target-tag--insert { border: 0; background: var(--accent); color: var(--accent-fg); }
+.task-message-review-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 2px; }
 .task-chat-step-tab {
   padding: 4px 10px; border-radius: 6px;
   font-size: calc(11px * var(--font-scale)); font-weight: 600;
