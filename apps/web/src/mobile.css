@@ -542,6 +542,7 @@
   /* 需要紧凑的小按钮：图标按钮、消息操作、预览内按钮等 */
   .btn-icon, .btn-sm,
   .chat-message-action,
+  .ws-session-time-button,
   .chat-input-quota-refresh,
   .chat-input-image-remove,
   .conversation-new-messages-button,
