@@ -31,6 +31,7 @@
 | 聊天引擎额度 | `src/hooks/useEngineQuota.ts` 按项目、引擎与运行状态请求额度，丢弃过期响应并提供手动刷新；`src/components/ChatInputUsage.tsx` 展示详情和刷新状态 | `api/engine.py` 提供额度接口 | `apps/web/tests/useEngineQuota.test.tsx`、`apps/web/tests/chatInputQuotaRefresh.test.tsx` |
 | AI 流程助手方案选择 | `src/components/AiFlowChat.tsx` 展示提案并触发应用 | `agent_assistants/workflow_gen.py` 解析、合并、校验和发布流程方案；`workflow_choice_ui.py` 将已验证方案投影为 A2UI 选择事件，或为模型提供的选择界面补齐步骤数据 | `tests/test_workflow_choice_ui.py`、`tests/test_workflow_gen.py` |
 | 协调助手任务上下文、历史裁剪与产物索引 | `src/components/TaskConversationMessage.tsx` 展示协调消息 | `agent_assistants/coordinator_context.py` 在项目数据库工作单元中组装提示词、审核与步骤快照、近期消息及安全的产物索引；`coordinator.py` 负责回合调度与调用 | `tests/test_coordinator.py`、`tests/test_live_step_message.py`、`tests/test_workstep_tools_injection.py` |
+| 协调助手提案、确认与执行 | `src/components/TaskConversationMessage.tsx` 展示提案与确认入口 | `agent_assistants/coordinator_actions.py` 持有提案校验、幂等确认、取消、步骤补充、审核决定、步骤重跑和流程 Action 创建；同步数据库工作单元经项目执行器运行，`coordinator.py` 仅保留 API 入口和回合交接 | `tests/test_coordinator.py`（含慢确认健康检查 canary） |
 | 引擎与安装 | `src/api/engine.ts`、`src/pages/SettingsPage.tsx` | `api/engine.py`、`engines/core/`、`services/engine_runtime.py` | `docs/multi-engine-architecture.md`、`docs/engine-runtime-management.md` |
 | 项目与远程项目 | `src/api/project.ts`、`src/pages/SettingsPage.tsx` | `api/project.py`、`remote_project.py`、`services/project.py`、`remote_project.py` | `docs/architecture.md` |
 | Git 与任务工作区 | `src/components/git/`、`src/api/git.ts` | `api/git.py`、`services/git/` | `services/git/task_workspace.py` 负责任务工作区 |

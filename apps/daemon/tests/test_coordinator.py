@@ -24,8 +24,10 @@ from streaming.bus import EventBus
 
 @pytest.mark.parametrize("script_path", ["../outside.sh", "nested/start.sh", "action.json"])
 def test_coordinator_action_proposal_rejects_unsafe_script_paths(script_path):
+    from agent_assistants.coordinator_actions import CoordinatorActionService
+
     with pytest.raises(ValueError):
-        CoordinatorModule._normalize_workflow_action_payload({
+        CoordinatorActionService._normalize_workflow_action_payload({
             "action_id": "start-services",
             "title": "启动服务",
             "script_path": script_path,
@@ -1439,14 +1441,16 @@ def test_coordinator_root_uses_project_root_without_workflow(tmp_path):
 
 
 def test_normalize_input_rounds_rejects_invalid_and_ignores_target():
-    assert CoordinatorModule._normalize_input_rounds(
+    from agent_assistants.coordinator_actions import CoordinatorActionService
+
+    assert CoordinatorActionService._normalize_input_rounds(
         {"req": "2", "ui": 1, "build": 3},
         "build",
     ) == {"req": 2, "ui": 1}
     with pytest.raises(ValueError, match="非法产物轮次"):
-        CoordinatorModule._normalize_input_rounds({"req": "bad"}, "build")
+        CoordinatorActionService._normalize_input_rounds({"req": "bad"}, "build")
     with pytest.raises(ValueError, match="非法产物轮次"):
-        CoordinatorModule._normalize_input_rounds({"req": 0}, "build")
+        CoordinatorActionService._normalize_input_rounds({"req": 0}, "build")
 
 
 def test_artifact_index_marks_only_latest_eligible_round_selected(tmp_path):
@@ -2662,6 +2666,70 @@ async def test_confirmed_step_supplement_is_persisted(
             supplement = StepSupplement.get()
             assert supplement.step_key == "req"
             assert supplement.content == "必须覆盖异常路径"
+    finally:
+        CoordinatorFakeEngine.reply = {
+            "version": 1,
+            "reply": "协调回复",
+            "intent": "answer",
+            "target_step_key": None,
+            "artifact_requests": [],
+            "proposal": None,
+        }
+
+
+@pytest.mark.anyio
+async def test_slow_action_confirmation_keeps_health_responsive(api_context, monkeypatch):
+    import threading
+    from engines.core.registry import ENGINE_REGISTRY
+    import main
+
+    client, tmp_path = api_context
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", CoordinatorFakeEngine)
+    project_id, task_id = await _create_task(client, tmp_path)
+    CoordinatorFakeEngine.reply = {
+        "version": 1,
+        "reply": "可以补充执行说明。",
+        "intent": "propose_action",
+        "target_step_key": "req",
+        "artifact_requests": [],
+        "proposal": {
+            "type": "supplement_step",
+            "target_step_key": "req",
+            "payload": {"content": "慢数据库确认"},
+        },
+    }
+    try:
+        await client.post(
+            f"/api/task/{task_id}/chat?project_id={project_id}",
+            headers={"Idempotency-Key": "slow-action-proposal"},
+            json={"content": "补充执行说明"},
+        )
+        assistant = await _wait_for_reply(client, project_id, task_id)
+        proposal_id = assistant["proposals"][0]["id"]
+        actions = main.coordinator_module._actions
+        original = actions._begin_action_sync
+        entered = threading.Event()
+        release = threading.Event()
+
+        def slow_begin(*args, **kwargs):
+            entered.set()
+            release.wait(timeout=2)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(actions, "_begin_action_sync", slow_begin)
+        confirming = asyncio.create_task(client.post(
+            f"/api/task/{task_id}/actions/{proposal_id}/confirm?project_id={project_id}",
+            headers={"Idempotency-Key": "slow-action-confirm"},
+        ))
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+            assert health.status_code == 200
+        finally:
+            release.set()
+        confirmed = await confirming
+        assert confirmed.status_code == 200
+        assert confirmed.json()["status"] == "succeeded"
     finally:
         CoordinatorFakeEngine.reply = {
             "version": 1,
