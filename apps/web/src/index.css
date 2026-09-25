@@ -495,6 +495,60 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
   min-width: 0; overflow-y: auto; padding: 20px 24px;
   display: flex; flex-direction: column; gap: 24px;
 }
+.task-step-prompt-step {
+  display: flex; flex-direction: column; gap: 8px;
+  color: var(--task-step-prompt-color);
+}
+.task-step-prompt-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
+}
+.task-step-prompt-heading {
+  font-size: calc(11px * var(--font-scale)); font-weight: 600; color: var(--muted);
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em;
+}
+.task-step-prompt-edit {
+  height: 28px; padding: 0 9px; font-size: calc(13px * var(--font-scale)); gap: 4px;
+}
+.task-step-prompt-preview {
+  padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-soft);
+  font-size: calc(13px * var(--font-scale)); line-height: 1.6; overflow-wrap: anywhere;
+  max-height: 33vh; overflow-y: auto;
+}
+.task-step-prompt-empty { font-size: calc(13px * var(--font-scale)); color: var(--meta); }
+.task-detail-not-found { padding: 40px; text-align: center; color: var(--meta); }
+.task-detail-back { margin-top: 12px; }
+.task-conversation-body {
+  flex: 1; min-width: 0; overflow: hidden; display: flex;
+  flex-direction: column; background: var(--bg);
+}
+.task-conversation-header {
+  padding: 14px 20px; border-bottom: 1px solid var(--border-soft);
+  background: var(--bg); display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+}
+.task-conversation-heading { font-size: calc(13px * var(--font-scale)); font-weight: 600; color: var(--fg); }
+.task-conversation-step-badge {
+  font-size: calc(11px * var(--font-scale)); font-weight: 600;
+  color: var(--task-conversation-step-color);
+  background: color-mix(in oklab, var(--task-conversation-step-color), transparent 88%);
+  padding: 2px 8px; border-radius: 4px;
+}
+.task-conversation-content {
+  display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 100%;
+}
+.task-conversation-empty {
+  text-align: center; color: var(--meta); padding: 40px;
+  font-size: calc(13px * var(--font-scale));
+}
+.task-detail-composer {
+  position: relative; padding: 4px 20px; border-top: 1px solid var(--border-soft);
+  background: var(--bg); display: flex; flex-direction: column; gap: 10px; flex-shrink: 0;
+}
+.task-conversation-action-error { color: var(--danger); }
+.task-conversation-chat-error {
+  font-size: calc(13px * var(--font-scale)); color: var(--danger);
+  padding: 6px 10px; border-radius: 6px;
+  border: 1px solid rgba(217,45,32,0.25); background: rgba(217,45,32,0.06);
+}
 .task-chat-target-picker {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   width: 100%; max-width: 900px; margin-inline: auto;
@@ -3827,8 +3881,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
 .task-chat-history-scroll {
   padding-inline: max(20px, calc((100% - 900px) / 2));
+  height: 100%; min-width: 0; overflow-y: auto; overflow-x: hidden;
+  padding-block: 20px; display: flex; flex-direction: column;
 }
 
+.task-chat-history-wrapper { flex: 1; min-width: 0; min-height: 0; position: relative; }
 .task-chat-history-wrapper::after {
   content: '';
   position: absolute;
