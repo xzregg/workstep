@@ -1451,6 +1451,9 @@ async def test_task_runner_pauses_and_persists_interaction_round_trip(
         ))
         assert await asyncio.wait_for(asyncio.to_thread(saving_pending.wait), 2)
         assert "ask-pipeline" not in intervention_manager.list_pending()
+        heartbeat_started = time.perf_counter()
+        await asyncio.wait_for(asyncio.sleep(0), 0.1)
+        assert time.perf_counter() - heartbeat_started < 0.1
         await asyncio.wait_for(asyncio.sleep(0.01), 0.1)
         for _ in range(100):
             if "ask-pipeline" in intervention_manager.list_pending():
