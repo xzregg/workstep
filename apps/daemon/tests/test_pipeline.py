@@ -1404,10 +1404,13 @@ async def test_task_runner_persists_detailed_step_events_to_jsonl(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_task_runner_pauses_and_persists_interaction_round_trip(tmp_path):
+async def test_task_runner_pauses_and_persists_interaction_round_trip(
+    tmp_path, monkeypatch,
+):
     from models import init_db, Message, Task
     from engines.core.registry import ENGINE_REGISTRY
     from services.intervention import intervention_manager
+    import threading
     import time
     import uuid
 
@@ -1421,6 +1424,16 @@ async def test_task_runner_pauses_and_persists_interaction_round_trip(tmp_path):
         updated_at=int(time.time()),
     )
     engine = PipelineInteractionEngine()
+    saving_pending = threading.Event()
+    original_save = Message.save
+
+    def slow_pending_save(message, *args, **kwargs):
+        if message.run_status == "running" and message.events_json and "interaction_request" in message.events_json:
+            saving_pending.set()
+            time.sleep(0.2)
+        return original_save(message, *args, **kwargs)
+
+    monkeypatch.setattr(Message, "save", slow_pending_save)
     original = ENGINE_REGISTRY.copy()
     ENGINE_REGISTRY["interaction"] = lambda: engine
     try:
@@ -1436,6 +1449,9 @@ async def test_task_runner_pauses_and_persists_interaction_round_trip(tmp_path):
             }]},
             tmp_path / "artifacts",
         ))
+        assert await asyncio.wait_for(asyncio.to_thread(saving_pending.wait), 2)
+        assert "ask-pipeline" not in intervention_manager.list_pending()
+        await asyncio.wait_for(asyncio.sleep(0.01), 0.1)
         for _ in range(100):
             if "ask-pipeline" in intervention_manager.list_pending():
                 break
