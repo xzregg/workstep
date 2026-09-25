@@ -8,6 +8,7 @@ from pathlib import Path
 from models import StepSupplement
 from models.task import Task
 from services.artifact_rounds import select_upstream_round, step_round_dir
+from services.git.task_workspace import TaskGitWorkspace
 from services.pipeline import Step
 
 # Config path relative to this file
@@ -30,6 +31,7 @@ def render_step_prompt(
     template: str,
     task: Task,
     step: Step,
+    worktrees_path: str,
     trigger_name: str = "",
 ) -> str:
     """Render supported task and step variables in a step prompt template."""
@@ -43,9 +45,7 @@ def render_step_prompt(
         "task_description": task.description or "",
         "step_name": step.label or "",
         "step_key": step.key or "",
-        "worktrees": (
-            f".workstep/artifacts/{task.workflow_id or 'default'}/{task.id}/.worktrees"
-        ),
+        "worktrees": worktrees_path,
     }
 
     def replace(match: re.Match[str]) -> str:
@@ -178,9 +178,13 @@ def assemble_prompt(
 
     # Step prompt
     if step.prompt:
+        worktrees_path = _relative_prompt_path(
+            _task_git_workspace_path(task, artifacts_dir),
+            task.cwd or artifacts_dir.parent.parent,
+        )
         parts.append(
             "## Step requirements\n"
-            + render_step_prompt(step.prompt, task, step, trigger_name)
+            + render_step_prompt(step.prompt, task, step, worktrees_path, trigger_name)
         )
 
     supplements = [
@@ -479,12 +483,17 @@ def _format_changed_context(heading: str, value: str) -> str:
     return f"## Updated {heading}\nThe {heading.lower()} was cleared."
 
 
+def _task_git_workspace_path(task: Task, artifacts_dir: Path) -> Path:
+    return TaskGitWorkspace.root(
+        task.cwd or artifacts_dir.parent.parent,
+        task.id,
+        task.workflow_id or "default",
+    )
+
+
 def _task_git_workspace_context(task: Task, artifacts_dir: Path) -> str:
     """Describe attached task worktrees using paths relative to engine cwd."""
-    workspace = artifacts_dir / (task.workflow_id or "default") / task.id / ".worktrees"
-    legacy_workspace = artifacts_dir.parent / "worktrees" / task.id
-    if legacy_workspace.is_dir() and any(legacy_workspace.iterdir()):
-        workspace = legacy_workspace
+    workspace = _task_git_workspace_path(task, artifacts_dir)
     if not workspace.is_dir():
         return ""
     aliases = sorted(

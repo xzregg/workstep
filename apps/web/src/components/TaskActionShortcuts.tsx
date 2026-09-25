@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { taskActionApi, type ActionRun, type TaskQuickButton } from '../api/client'
+import { useState } from 'react'
+import { type ActionRun, type TaskQuickButton } from '../api/client'
+import { useTaskActions } from './useActionRuns'
 import { useI18n } from '../i18n'
 import Button from './Button'
 import ActionConfirmDialog from './ActionConfirmDialog'
@@ -10,96 +11,6 @@ import MobileSheet from './MobileSheet'
 import { formatConversationDateTime } from '../utils/datetime'
 
 const isActive = (status: string) => ['preparing', 'running', 'stopping'].includes(status)
-
-export function useTaskActions(projectId: string | undefined, taskId: string | undefined, stepKey: string | undefined, onChanged?: () => void) {
-  const { t } = useI18n()
-  const [buttons, setButtons] = useState<TaskQuickButton[]>([])
-  const [runs, setRuns] = useState<ActionRun[]>([])
-  const [pending, setPending] = useState<TaskQuickButton | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const inFlightScope = useRef('')
-  const scopeRef = useRef('')
-  scopeRef.current = `${projectId || ''}:${taskId || ''}:${stepKey || ''}`
-  const refresh = useCallback(async () => {
-    if (!projectId || !taskId) return
-    const scope = scopeRef.current
-    if (inFlightScope.current === scope) return
-    inFlightScope.current = scope
-    try {
-      const result = await taskActionApi.list(taskId, projectId, stepKey)
-      if (scope === scopeRef.current) {
-        setButtons(result.buttons)
-        setRuns(result.runs)
-      }
-    } catch (reason) {
-      if (scope === scopeRef.current) setError(reason instanceof Error ? reason.message : t('actionShortcuts.loadFailed'))
-    } finally {
-      if (inFlightScope.current === scope) inFlightScope.current = ''
-    }
-  }, [projectId, taskId, stepKey, t])
-
-  useEffect(() => {
-    setButtons([])
-    setRuns([])
-    setPending(null)
-    setError('')
-  }, [projectId, taskId, stepKey])
-
-  useEffect(() => {
-    void refresh()
-  }, [refresh])
-  useEffect(() => {
-    if (!projectId || !taskId) return
-    const refreshOnFocus = () => { void refresh() }
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === 'visible') void refresh()
-    }
-    window.addEventListener('focus', refreshOnFocus)
-    document.addEventListener('visibilitychange', refreshWhenVisible)
-    return () => {
-      window.removeEventListener('focus', refreshOnFocus)
-      document.removeEventListener('visibilitychange', refreshWhenVisible)
-    }
-  }, [projectId, taskId, refresh])
-  const hasActiveAction = runs.some((run) => isActive(run.status))
-  useEffect(() => {
-    if (!hasActiveAction) return
-    const timer = window.setInterval(() => void refresh(), 1200)
-    return () => window.clearInterval(timer)
-  }, [hasActiveAction, refresh])
-
-  const run = async (button: TaskQuickButton, confirmed = false, actionInput = '') => {
-    if (!projectId || !taskId || busy) return
-    if (runs.some((item) => item.action_id === button.action_id && isActive(item.status))) return
-    if (button.require_confirmation !== false && !confirmed) { setPending(button); return }
-    setBusy(true)
-    setError('')
-    try {
-      const result = await taskActionApi.run(taskId, projectId, button, confirmed, actionInput)
-      setRuns((current) => [result, ...current.filter((item) => item.run_id !== result.run_id)])
-      setPending(null)
-      onChanged?.()
-      void refresh()
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t('actionShortcuts.startFailed'))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const stop = async (runId: string) => {
-    if (!projectId) return
-    setError('')
-    try {
-      const result = await taskActionApi.stop(runId, projectId)
-      setRuns((current) => current.map((item) => item.run_id === runId ? result : item))
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t('actionShortcuts.stopFailed'))
-    }
-  }
-  return { buttons, runs, pending, busy, error, setPending, run, stop }
-}
 
 type State = ReturnType<typeof useTaskActions>
 

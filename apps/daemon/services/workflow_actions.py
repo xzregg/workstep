@@ -3,6 +3,7 @@
 import json
 import os
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 from models import ProjectSetting, Workflow
@@ -33,6 +34,62 @@ def normalize_action_payload(payload: dict) -> dict:
     return {**button, "script_content": script_content, "overwrite": payload.get("overwrite") is True}
 
 
+@contextmanager
+def _published_action_files(project_root: Path, action_root: Path, payload: dict, *, replacing: bool = False):
+    """Publish Action files and restore them if button persistence fails."""
+    if not action_root.resolve().is_relative_to(project_root):
+        raise ValueError("Action 目录超出项目根目录")
+    if replacing:
+        if not action_root.is_dir() or action_root.is_symlink():
+            raise ValueError("现有 Action 目录无效")
+    else:
+        action_root.mkdir(parents=True, exist_ok=False)
+    script = action_root / payload["script_path"]
+    metadata = action_root / "action.json"
+    original_script = None
+    original_metadata = None
+    write_started = False
+    try:
+        if script.is_symlink() or metadata.is_symlink():
+            raise ValueError("Action 文件不能是符号链接")
+        if replacing:
+            original_script = script.read_bytes() if script.exists() else None
+            original_metadata = metadata.read_bytes() if metadata.exists() else None
+        contents = (
+            (script, payload["script_content"].encode("utf-8")),
+            (metadata, json.dumps({
+                "id": payload["action_id"],
+                "interpreter": "python" if script.suffix == ".py" else "bash",
+                "timeout_seconds": 0,
+                "managed_service": True,
+            }, ensure_ascii=False).encode("utf-8")),
+        )
+        write_started = True
+        for target, data in contents:
+            if replacing:
+                staged = action_root / f".{target.name}.{uuid.uuid4().hex}.tmp"
+                try:
+                    staged.write_bytes(data)
+                    os.replace(staged, target)
+                finally:
+                    staged.unlink(missing_ok=True)
+            else:
+                target.write_bytes(data)
+        yield script
+    except Exception:
+        if replacing and write_started:
+            for target, original in ((script, original_script), (metadata, original_metadata)):
+                if original is None:
+                    target.unlink(missing_ok=True)
+                else:
+                    target.write_bytes(original)
+        elif not replacing:
+            script.unlink(missing_ok=True)
+            metadata.unlink(missing_ok=True)
+            action_root.rmdir()
+        raise
+
+
 def create_workflow_action(project, workflow_id: str, payload: dict) -> dict:
     """Run inside the project's database executor; replace only an explicitly matched Action."""
     workflow = Workflow.get_or_none(
@@ -60,38 +117,7 @@ def create_workflow_action(project, workflow_id: str, payload: dict) -> dict:
         raise ValueError("流程快捷按钮已满或配置无效")
     project_root = Path(project.path).resolve()
     action_root = project_root / ".workstep" / "artifacts" / workflow.id / "actions" / payload["action_id"]
-    if not action_root.resolve().is_relative_to(project_root):
-        raise ValueError("Action 目录超出项目根目录")
-    if replacing:
-        if not action_root.is_dir() or action_root.is_symlink():
-            raise ValueError("现有 Action 目录无效")
-    else:
-        action_root.mkdir(parents=True, exist_ok=False)
-    script = action_root / payload["script_path"]
-    metadata = action_root / "action.json"
-    if script.is_symlink() or metadata.is_symlink():
-        raise ValueError("Action 文件不能是符号链接")
-    original_script = script.read_bytes() if replacing and script.exists() else None
-    original_metadata = metadata.read_bytes() if replacing and metadata.exists() else None
-    try:
-        script_data = payload["script_content"].encode("utf-8")
-        metadata_data = json.dumps({
-                "id": payload["action_id"],
-                "interpreter": "python" if script.suffix == ".py" else "bash",
-                "timeout_seconds": 0,
-                "managed_service": True,
-            }, ensure_ascii=False).encode("utf-8")
-        if replacing:
-            for target, data in ((script, script_data), (metadata, metadata_data)):
-                staged = action_root / f".{target.name}.{uuid.uuid4().hex}.tmp"
-                try:
-                    staged.write_bytes(data)
-                    os.replace(staged, target)
-                finally:
-                    staged.unlink(missing_ok=True)
-        else:
-            script.write_bytes(script_data)
-            metadata.write_bytes(metadata_data)
+    with _published_action_files(project_root, action_root, payload, replacing=replacing) as script:
         button = {key: value for key, value in payload.items() if key not in {"script_content", "workflow_id", "overwrite"}}
         updated_buttons = list(buttons)
         if replacing:
@@ -108,19 +134,6 @@ def create_workflow_action(project, workflow_id: str, payload: dict) -> dict:
                 if cached.get("is_default"):
                     project.steps = steps
                 break
-    except Exception:
-        if replacing:
-            for target, original in ((script, original_script), (metadata, original_metadata)):
-                if original is None:
-                    target.unlink(missing_ok=True)
-                else:
-                    target.write_bytes(original)
-        else:
-            # The directory was created exclusively by this call.
-            for child in (script, metadata):
-                child.unlink(missing_ok=True)
-            action_root.rmdir()
-        raise
     return {
         "workflow_id": workflow.id,
         "action_id": payload["action_id"],
@@ -147,21 +160,7 @@ def create_project_action(project, project_id: str, payload: dict) -> dict:
         raise FileExistsError("项目中已存在同名 Action")
     project_root = Path(project.path).resolve()
     action_root = project_root / ".workstep" / "actions" / payload["action_id"]
-    if not action_root.resolve().is_relative_to(project_root):
-        raise ValueError("Action 目录超出项目根目录")
-    action_root.mkdir(parents=True, exist_ok=False)
-    script = action_root / payload["script_path"]
-    try:
-        script.write_text(payload["script_content"], encoding="utf-8")
-        (action_root / "action.json").write_text(
-            json.dumps({
-                "id": payload["action_id"],
-                "interpreter": "python" if script.suffix == ".py" else "bash",
-                "timeout_seconds": 0,
-                "managed_service": True,
-            }, ensure_ascii=False),
-            encoding="utf-8",
-        )
+    with _published_action_files(project_root, action_root, payload) as script:
         button = {key: value for key, value in payload.items() if key not in {"script_content", "overwrite"}}
         cleaned = normalize_quick_buttons([*buttons, button])
         now = utc_now()
@@ -175,13 +174,6 @@ def create_project_action(project, project_id: str, payload: dict) -> dict:
             row.value_json = json.dumps(cleaned, ensure_ascii=False)
             row.updated_at = now
             row.save(only=[ProjectSetting.value_json, ProjectSetting.updated_at])
-    except Exception:
-        for filename in (payload["script_path"], "action.json"):
-            child = action_root / filename
-            if child.exists():
-                child.unlink()
-        action_root.rmdir()
-        raise
     return {
         "project_id": project_id,
         "action_id": payload["action_id"],
