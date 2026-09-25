@@ -533,6 +533,7 @@
 @media (pointer: coarse), (max-width: 1023px) {
   /* 可见按钮默认 32px；菜单项与少数触控目标使用 44px。 */
   button, [role="button"], .ws-row { min-height: var(--mobile-button-height); }
+  .pending-insert-panel .pending-insert-button { min-height: var(--mobile-control-compact); }
   .mobile-sheet-body > button, .mobile-sheet-body > select { min-height: var(--mobile-button-height); }
   .chat-input-menu-item { min-height: var(--mobile-control-menu); }
   .chat-input-toolbar > *, .chat-input-toolbar-scroll > * { min-height: var(--mobile-control-composer) !important; }
