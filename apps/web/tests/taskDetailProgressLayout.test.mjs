@@ -101,5 +101,5 @@ test('reuses the mobile artifact panel from a desktop artifact tab', () => {
   assert.match(source, /useState<'detail' \| 'artifacts' \| 'analysis' \| 'git'>\('detail'\)/)
   assert.match(source, /!compact \? \[\{ id: 'artifacts', label: t\('mobile\.artifacts'\) \}\]/)
   assert.match(source, /detailMode === 'artifacts' && !compact[\s\S]*renderArtifactPanel\(\)/)
-  assert.match(source, /compact && renderArtifactPanel\(\)/)
+  assert.match(source, /artifacts=\{compact \? renderArtifactPanel\(\) : undefined\}/)
 })
