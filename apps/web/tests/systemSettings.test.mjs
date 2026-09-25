@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 
 const appSource = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8')
 const settingsSource = await readFile(new URL('../src/pages/SettingsPage.tsx', import.meta.url), 'utf8')
+const promptEnhanceSource = await readFile(new URL('../src/pages/PromptEnhanceSettings.tsx', import.meta.url), 'utf8')
 const firstUseSource = await readFile(new URL('../src/components/FirstUseDialog.tsx', import.meta.url), 'utf8')
 
 test('the app presents first-use user-name setup', () => {
@@ -33,5 +34,5 @@ test('execution engine settings show the saved model and only refresh from the r
   assert.doesNotMatch(modelSelect, /loadEngineModels/)
   assert.match(settingsSource, /onClick=\{\(\) => void loadEngineModels\(engine\.id, true\)\}/)
   assert.match(settingsSource, /if \(!isExpanded\) void loadEngineModels\(engineId, false\)/)
-  assert.match(settingsSource, /providerApi\.models\(providerId, true, protocol\)/)
+  assert.match(promptEnhanceSource, /providerApi\.models\(providerId, true, protocol\)/)
 })

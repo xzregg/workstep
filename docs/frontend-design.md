@@ -290,6 +290,8 @@
 
 `Layout.tsx` 已先移出流程创建、项目连接和侧栏活动同步；剩余侧栏树与菜单仍是后续拆分对象，新功能不得重新放回 `Layout`。
 
+2026-09-25 进展：`src/api/client.ts` 已按传输、项目、会话、任务、引擎、分享、统计和定时任务拆成领域模块，原入口只保留其余 API 与兼容导出（约 499 行）。`SettingsPage` 的助手配置和提示词增强已成为自管理组件；`TaskDetailView` 的协调提案卡片也已独立。`SettingsPage`（约 1355 行）和 `TaskDetailView`（约 3771 行）仍触发拆分信号，后续按上表的业务边界继续抽离，避免用大量 state/setter 透传制造浅模块。
+
 ### 5.2 基础层组件规范
 
 - `Button`：变体 `primary`（accent 底 + `--accent-fg` 文字，hover `brightness(1.06)`）、`ghost`（`--border` 描边）、`danger`、`icon`（圆形图标钮）；尺寸 `sm`/默认；loading 态内置 `Spinner`。

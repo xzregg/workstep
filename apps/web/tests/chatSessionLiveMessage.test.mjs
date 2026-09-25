@@ -11,7 +11,7 @@ const pageSource = await readFile(
   'utf8',
 )
 const clientSource = await readFile(
-  new URL('../src/api/client.ts', import.meta.url),
+  new URL('../src/api/conversations.ts', import.meta.url),
   'utf8',
 )
 const pendingSource = await readFile(
