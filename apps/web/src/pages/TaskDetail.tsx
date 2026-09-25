@@ -4,7 +4,6 @@ import { useTaskStepControls } from '../hooks/useTaskStepControls'
 import { gitApi } from '../api/git'
 import { useSearchParams } from 'react-router-dom'
 import { useTaskRoute } from '../hooks/useTaskRoute'
-import { useShallow } from 'zustand/react/shallow'
 import { randomUuid } from '../utils/uuid'
 import Button from '../components/Button'
 import TaskDetailWindow from '../components/TaskDetailWindow'
@@ -51,16 +50,12 @@ import {
 import { mergeRefreshedTaskHistory } from './taskHistoryModel'
 import { useTaskArtifacts } from '../hooks/useTaskArtifacts'
 import { useTaskReviewActions } from '../hooks/useTaskReviewActions'
+import { useTaskPendingInserts } from '../hooks/useTaskPendingInserts'
 import { CUSTOM } from '../utils/agui'
-import {
-  pendingInsertQueueKey,
-  usePendingMessageInsertStore,
-} from '../stores/pendingMessageInsertStore'
 import { useI18n } from '../i18n'
 
 const EMPTY_EVENTS: any[] = []
 const EMPTY_LIVE_MESSAGES: Record<string, LiveMessage> = {}
-const EMPTY_PENDING_INSERTS: never[] = []
 
 type StepVisualState =
   | 'completed'
@@ -216,9 +211,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     restartedSteps: StepData[]
     cancelledSteps: StepData[]
   } | null>(null)
-  const [editingInsertId, setEditingInsertId] = useState<string | null>(null)
-  const [editingInsertContent, setEditingInsertContent] = useState('')
-  const [stepInsertSendingIds, setStepInsertSendingIds] = useState<string[]>([])
   const [activeCoordinatorMessageId, setActiveCoordinatorMessageId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -569,33 +561,19 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           ? runningMessageByChannel.review
           : runningMessageByChannel.execution) || null
       : null)
-  const pendingQueueKey = projectId && pendingTargetMessageId
-    ? pendingInsertQueueKey(projectId, pendingTargetMessageId)
-    : ''
-  const stepInserts = usePendingMessageInsertStore(
-    (state) => state.queues[pendingQueueKey] || EMPTY_PENDING_INSERTS,
-  )
-  const pendingInsertActions = usePendingMessageInsertStore(useShallow((state) => ({
-    load: state.load,
-    add: state.add,
-    update: state.update,
-    remove: state.remove,
-    clear: state.clear,
-    reorder: state.reorder,
-    discard: state.discard,
-  })))
-
-  useEffect(() => {
-    if (!projectId || !pendingTargetMessageId) return
-    void pendingInsertActions.load(projectId, pendingTargetMessageId).catch((reason) => {
-      setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
-    })
-  }, [pendingInsertActions, pendingTargetMessageId, projectId, t])
-
-  useEffect(() => {
-    setEditingInsertId(null)
-    setEditingInsertContent('')
-  }, [pendingTargetMessageId])
+  const pendingInserts = useTaskPendingInserts({
+    taskId, projectId, targetMessageId: pendingTargetMessageId,
+    channel: chatTarget === 'coordinator' ? 'coordinator' : 'step',
+    targetStepKey: targetStep?.key ?? null, activeStepKey: activeStep.key,
+    stepRunning: activeStepRunning, setHistoryMessages,
+    onCoordinatorRunning: setCoordinatorRunning,
+    onCoordinatorAccepted: setActiveCoordinatorMessageId,
+    onFollow: () => {
+      shouldFollowMessagesRef.current = true
+      setHasUnreadMessages(false)
+    },
+    onError: setChatError,
+  })
 
   // When a step engine starts, the input switches to the matching step tab
   // for direct insert-into-execution messages; when no step is running the
@@ -683,12 +661,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     if ((chatTargetStep && activeStepRunning) || (!chatTargetStep && coordinatorIsRunning)) {
       if (!pendingTargetMessageId) return
       setChatError('')
-      try {
-        await pendingInsertActions.add(projectId, pendingTargetMessageId, submittedPrompt)
-        setPrompt('')
-      } catch (reason) {
-        setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
-      }
+      if (await pendingInserts.add(submittedPrompt)) setPrompt('')
       return
     }
     // Step mode (Codex-like): while the step runs, sends land in the
@@ -794,146 +767,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       setChatError(reason instanceof Error ? reason.message : t('taskDetail.stopFailed'))
     } finally {
       setCoordinatorStopping(false)
-    }
-  }
-
-  const handleStepInsertRemove = async (insertId: string) => {
-    if (!projectId || !pendingTargetMessageId) return
-    try {
-      await pendingInsertActions.remove(projectId, pendingTargetMessageId, insertId)
-    } catch (reason) {
-      setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
-    }
-  }
-
-  const handleStepInsertEditStart = (insert: { id: string; content: string }) => {
-    setEditingInsertId(insert.id)
-    setEditingInsertContent(insert.content)
-  }
-
-  const handleStepInsertEditSave = async (insertId: string) => {
-    const nextContent = editingInsertContent.trim()
-    if (!nextContent || !projectId || !pendingTargetMessageId) return
-    try {
-      await pendingInsertActions.update(
-        projectId,
-        pendingTargetMessageId,
-        insertId,
-        nextContent,
-      )
-      setEditingInsertId(null)
-      setEditingInsertContent('')
-    } catch (reason) {
-      setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
-    }
-  }
-
-  const handleStepInsertEditCancel = () => {
-    setEditingInsertId(null)
-    setEditingInsertContent('')
-  }
-
-  const sendStepInserts = async (items: Array<{ id: string; content: string }>) => {
-    if (!taskId || !projectId || !targetStep || !pendingTargetMessageId) return
-    if (!activeStepRunning || items.length === 0) return
-    const submitted = items.map((item) => item.content.trim()).filter(Boolean).join('\n\n')
-    if (!submitted) return
-
-    const sendingIds = items.map((item) => item.id)
-    const optimisticId = `pending-${randomUuid()}`
-    const optimisticMessage = createOptimisticUserMessage(
-      optimisticId,
-      submitted,
-      targetStep.key,
-      new Date().toISOString(),
-    )
-    setChatError('')
-    setStepInsertSendingIds((current) => [...new Set([...current, ...sendingIds])])
-    setHistoryMessages((current) => [...current, optimisticMessage])
-    let accepted
-    try {
-      accepted = await taskApi.sendStepMessage(
-        taskId,
-        targetStep.key,
-        submitted,
-        projectId,
-        false,
-      )
-    } catch (reason) {
-      setHistoryMessages((current) => current.filter((message) => message.id !== optimisticId))
-      setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
-      setStepInsertSendingIds((current) => current.filter((id) => !sendingIds.includes(id)))
-      return
-    }
-
-    setHistoryMessages((current) => current.map((message) => (
-      message.id === optimisticId
-        ? {
-            ...message,
-            id: accepted.message_id,
-            run_id: accepted.message_id,
-            channel: accepted.channel || 'execution',
-            run_status: 'running',
-            sequence: accepted.sequence,
-            created_at: accepted.created_at || message.created_at,
-          }
-        : message
-    )))
-    try {
-      await Promise.all(items.map((item) => (
-        pendingInsertActions.remove(projectId, pendingTargetMessageId, item.id)
-      )))
-    } catch (reason) {
-      setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
-    } finally {
-      setStepInsertSendingIds((current) => current.filter((id) => !sendingIds.includes(id)))
-    }
-  }
-
-  const sendCoordinatorInserts = async (items: Array<{ id: string; content: string }>) => {
-    if (!taskId || !projectId || !pendingTargetMessageId || items.length === 0) return
-    const submitted = items.map((item) => item.content.trim()).filter(Boolean).join('\n\n')
-    if (!submitted) return
-
-    const sendingIds = items.map((item) => item.id)
-    const optimisticId = `pending-${randomUuid()}`
-    const optimisticMessage = createOptimisticCoordinatorMessage(
-      optimisticId,
-      submitted,
-      activeStep.key,
-      new Date().toISOString(),
-    )
-    shouldFollowMessagesRef.current = true
-    setHasUnreadMessages(false)
-    setChatError('')
-    setStepInsertSendingIds((current) => [...new Set([...current, ...sendingIds])])
-    setHistoryMessages((current) => [...current, optimisticMessage])
-    try {
-      const accepted = await taskApi.chat(
-        taskId,
-        submitted,
-        projectId,
-        randomUuid(),
-        sendingIds,
-      )
-      pendingInsertActions.discard(projectId, pendingTargetMessageId, sendingIds)
-      setHistoryMessages((current) => current.map((message) => (
-        message.id === optimisticId
-          ? {
-              ...message,
-              id: accepted.user_message_id,
-              channel: 'coordinator',
-              run_status: 'completed',
-            }
-          : message
-      )))
-      setCoordinatorRunning(true)
-      setActiveCoordinatorMessageId(accepted.assistant_message_id)
-    } catch (reason) {
-      setHistoryMessages((current) => current.filter((message) => message.id !== optimisticId))
-      setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
-    } finally {
-      setStepInsertSendingIds((current) => current.filter((id) => !sendingIds.includes(id)))
     }
   }
 
@@ -1118,40 +951,19 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onSetFailedExecutionComplete={requestFailedExecutionComplete}
         retryingFailedMessageIds={retryingFailedMessageIds}
         chatInputRef={chatInputRef}
-        stepInserts={stepInserts}
-        stepInsertSendingIds={stepInsertSendingIds}
-        onStepInsertSend={(insert) => {
-          if (chatTarget === 'coordinator') void sendCoordinatorInserts([insert])
-          else void sendStepInserts([insert])
-        }}
-        onSendAllInserts={() => {
-          if (chatTarget === 'coordinator') void sendCoordinatorInserts(stepInserts)
-          else void sendStepInserts(stepInserts)
-        }}
-        onStepInsertRemove={(insertId) => void handleStepInsertRemove(insertId)}
-        onStepInsertEditStart={handleStepInsertEditStart}
-        onStepInsertEditSave={(insertId) => void handleStepInsertEditSave(insertId)}
-        onStepInsertEditCancel={handleStepInsertEditCancel}
-        editingInsertId={editingInsertId}
-        editingInsertContent={editingInsertContent}
-        onEditingInsertContentChange={setEditingInsertContent}
-        onClearInserts={() => {
-          if (!projectId || !pendingTargetMessageId) return
-          void pendingInsertActions.clear(projectId, pendingTargetMessageId).catch((reason) => {
-            setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
-          })
-        }}
-        onStepInsertReorder={(fromIndex, toIndex) => {
-          if (!projectId || !pendingTargetMessageId) return
-          void pendingInsertActions.reorder(
-            projectId,
-            pendingTargetMessageId,
-            fromIndex,
-            toIndex,
-          ).catch((reason) => {
-            setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
-          })
-        }}
+        stepInserts={pendingInserts.items}
+        stepInsertSendingIds={pendingInserts.sendingIds}
+        onStepInsertSend={(insert) => { void pendingInserts.send([insert]) }}
+        onSendAllInserts={() => { void pendingInserts.send(pendingInserts.items) }}
+        onStepInsertRemove={(insertId) => { void pendingInserts.remove(insertId) }}
+        onStepInsertEditStart={pendingInserts.startEdit}
+        onStepInsertEditSave={(insertId) => { void pendingInserts.saveEdit(insertId) }}
+        onStepInsertEditCancel={pendingInserts.cancelEdit}
+        editingInsertId={pendingInserts.editingId}
+        editingInsertContent={pendingInserts.editingContent}
+        onEditingInsertContentChange={pendingInserts.setEditingContent}
+        onClearInserts={() => { void pendingInserts.clear() }}
+        onStepInsertReorder={(fromIndex, toIndex) => { void pendingInserts.reorder(fromIndex, toIndex) }}
         onCoordinatorEngineChange={handleCoordinatorEngineChange}
         onCoordinatorProviderChange={handleCoordinatorProviderChange}
         providers={providers}
