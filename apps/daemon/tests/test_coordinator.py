@@ -13,6 +13,9 @@ from httpx import ASGITransport, AsyncClient
 from engines.core.acp_base import AcpEngineBase
 from engines.core.events import InternalEvent
 from agent_assistants.coordinator import CoordinatorModule
+from agent_assistants.coordinator_context import (
+    artifact_index, assemble_context, coordinator_root,
+)
 from services.project import ProjectManager
 from services.task import TaskService
 from services.workflow_runtime import WorkflowRuntime
@@ -1369,8 +1372,7 @@ def test_assemble_context_includes_review_mode(tmp_path):
         def workflow_by_id(self, workflow_id):
             return None
 
-    module = CoordinatorModule(EventBus(), None, None)
-    prompt, _ = module._assemble_context(StubProject(), task, turn)
+    prompt, _ = assemble_context(StubProject(), task, turn)
     try:
         context_json = prompt.split("Context:\n", 1)[1]
         context = json.loads(context_json)
@@ -1389,7 +1391,7 @@ def test_coordinator_root_uses_project_root_with_workflow(tmp_path):
     workstep_dir = tmp_path / ".workstep"
     project = SimpleNamespace(path=tmp_path, workstep_dir=workstep_dir)
     task = SimpleNamespace(workflow_id="f0e8bc06", cwd=str(tmp_path / "other"))
-    root = CoordinatorModule._coordinator_root(project, task)
+    root = coordinator_root(project, task)
     assert root == str(tmp_path)
     assert not (workstep_dir / "artifacts" / "f0e8bc06").exists()
 
@@ -1398,7 +1400,7 @@ def test_coordinator_root_uses_project_root_without_workflow(tmp_path):
     """无工作流时也不把任意任务 cwd 当作项目根。"""
     project = SimpleNamespace(path=tmp_path, workstep_dir=tmp_path / ".workstep")
     task = SimpleNamespace(workflow_id=None, cwd=str(tmp_path / "other"))
-    root = CoordinatorModule._coordinator_root(project, task)
+    root = coordinator_root(project, task)
     assert root == str(tmp_path)
 
 
@@ -1448,7 +1450,7 @@ def test_artifact_index_marks_only_latest_eligible_round_selected(tmp_path):
             workstep_dir=str(tmp_path / ".workstep"),
             id="project-artifact-rounds",
         )
-        index = CoordinatorModule._artifact_index(None, project, task)
+        index = artifact_index(project, task)
         selected = [
             metadata
             for metadata, _path in index.values()
@@ -1521,8 +1523,7 @@ def test_assemble_context_includes_coordinator_root_dir(tmp_path):
         def workflow_by_id(self, workflow_id):
             return None
 
-    module = CoordinatorModule(EventBus(), None, None)
-    prompt, _ = module._assemble_context(StubProject(), task, turn)
+    prompt, _ = assemble_context(StubProject(), task, turn)
     try:
         context = json.loads(prompt.split("Context:\n", 1)[1])
         assert context["coordinator_root_dir"] == str(tmp_path)
@@ -1545,7 +1546,7 @@ def test_assemble_context_history_handling_depends_on_engine_resume(tmp_path, mo
         init_db,
     )
     from agent_assistants.coordinator import CoordinatorModule
-    import agent_assistants.coordinator as coordinator_service
+    import agent_assistants.coordinator_context as coordinator_service
     from streaming.bus import EventBus
 
     class StubProject:
@@ -1624,13 +1625,12 @@ def test_assemble_context_history_handling_depends_on_engine_resume(tmp_path, mo
             updated_at=1,
         )
 
-        module = CoordinatorModule(EventBus(), None, None)
         monkeypatch.setattr(
             coordinator_service,
             "create_engine",
             lambda engine_id: ResumeEngine(),
         )
-        prompt, _ = module._assemble_context(StubProject(), task, turn)
+        prompt, _ = assemble_context(StubProject(), task, turn)
         context = json.loads(prompt.split("Context:\n", 1)[1])
         assert [
             m["content"] for m in context["recent_coordinator_messages"]
@@ -1648,7 +1648,7 @@ def test_assemble_context_history_handling_depends_on_engine_resume(tmp_path, mo
             run_id="ctx-next-user", run_status="completed", position=5,
             sequence=5, created_at=1,
         )
-        queued_prompt, _ = module._assemble_context(StubProject(), task, turn)
+        queued_prompt, _ = assemble_context(StubProject(), task, turn)
         queued_context = json.loads(queued_prompt.split("Context:\n", 1)[1])
         assert queued_context["recent_coordinator_messages"] == [
             {"role": "user", "content": "现在呢"}
@@ -1660,7 +1660,7 @@ def test_assemble_context_history_handling_depends_on_engine_resume(tmp_path, mo
             "create_engine",
             lambda engine_id: StatelessEngine(),
         )
-        prompt, _ = module._assemble_context(StubProject(), task, turn)
+        prompt, _ = assemble_context(StubProject(), task, turn)
         context = json.loads(prompt.split("Context:\n", 1)[1])
         assert [
             m["content"] for m in context["recent_coordinator_messages"]
@@ -1672,6 +1672,43 @@ def test_assemble_context_history_handling_depends_on_engine_resume(tmp_path, mo
         assert len(context["task"]["description"]) == 10000
     finally:
         db.close()
+
+
+@pytest.mark.anyio
+async def test_slow_coordinator_artifact_discovery_keeps_health_responsive(
+    api_context, monkeypatch,
+):
+    import threading
+    from agent_assistants import coordinator_context
+    from engines.core.registry import ENGINE_REGISTRY
+
+    client, tmp_path = api_context
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", CoordinatorFakeEngine)
+    project_id, task_id = await _create_task(client, tmp_path)
+    entered = threading.Event()
+    release = threading.Event()
+    original = coordinator_context.artifact_index
+
+    def slow_artifact_index(project, task):
+        entered.set()
+        release.wait(timeout=2)
+        return original(project, task)
+
+    monkeypatch.setattr(coordinator_context, "artifact_index", slow_artifact_index)
+    request = asyncio.create_task(client.post(
+        f"/api/task/{task_id}/chat?project_id={project_id}",
+        headers={"Idempotency-Key": "slow-artifact-context"},
+        json={"content": "查看任务产物"},
+    ))
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+        assert health.status_code == 200
+    finally:
+        release.set()
+    accepted = await request
+    assert accepted.status_code == 200
+    await _wait_for_reply(client, project_id, task_id)
 
 
 @pytest.mark.anyio
