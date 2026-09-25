@@ -30,12 +30,12 @@ from services.step_message_restart import (
     persist_step_followup,
 )
 from services.workflow_restart import create_restart_run
+from services.workflow_lease import WorkflowLeaseManager
 from services.step_execution_config import (
     ACTIVE_STEP_CONFIG_STATUSES as _ACTIVE_STEP_CONFIG_STATUSES,
     StepExecutionConfigService,
 )
 from services.workflow_recovery import (
-    RUN_LEASE_STALE_SECONDS,
     heal_task_cwd,
     prepare_project_recovery,
 )
@@ -55,12 +55,6 @@ from streaming.bus import EventBus
 logger = logging.getLogger(__name__)
 
 _VALID_TASK_SOURCES = {"manual", "schedule", "scheduled_start"}
-
-# WorkflowRun 租约：一个 run 同时只能被一个 daemon 实例执行。心跳按固定周期续约，
-# 启动恢复只接管租约已失效（或来自无租约旧库）的 run，避免重复派发把任务状态写脏。
-RUN_LEASE_HEARTBEAT_SECONDS = 5.0
-ORPHAN_RECONCILE_SECONDS = 15.0
-
 
 def resolve_message_step_key(
     steps_config: dict,
@@ -123,12 +117,11 @@ class WorkflowRuntime:
             self._run_db, self._current_workflow_steps, self._operation_locks
         )
         self._graceful_shutdown = False
-        # 每个 runtime 实例拥有独立身份，用于 WorkflowRun 租约归属判定与心跳续约。
-        self._instance_id = uuid.uuid4().hex
-        self._leased_runs: dict[str, str] = {}
-        self._lease_task: asyncio.Task | None = None
-        self._lease_retry_tasks: set[asyncio.Task] = set()
-        self._last_orphan_reconcile = 0.0
+        self._leases = WorkflowLeaseManager(
+            self._run_db,
+            self.reconcile_orphaned_workflows,
+            self._recover_project_runs,
+        )
         self._dispatch_service = TaskDispatchService(
             project_manager, event_bus, self
         )
@@ -313,7 +306,7 @@ class WorkflowRuntime:
             workflow_snapshot_json="{}",
             routing_state_json=json.dumps(routing_state, ensure_ascii=False),
             restart_from_step_key=entry_step_key,
-            owner_id=self._instance_id,
+            owner_id=self._leases.instance_id,
             heartbeat_at=now,
             started_at=now,
         )
@@ -442,7 +435,7 @@ class WorkflowRuntime:
             ),
         )
         self._runners[task.id] = runner
-        self._register_lease(workflow_run.id, prepared.project_id)
+        self._leases.register(workflow_run.id, prepared.project_id)
 
         completion = asyncio.create_task(
             self._execute(
@@ -545,11 +538,11 @@ class WorkflowRuntime:
             run_id, message_id, already_stopped = await self._run_db(
                 project_id,
                 lambda _project: persist_orphan_stop(
-                    task_id, step_key, now, self._instance_id
+                    task_id, step_key, now, self._leases.instance_id
                 ),
             )
             if run_id:
-                self._release_lease(run_id)
+                self._leases.release(run_id)
 
             from services.concurrency import concurrency_gate
 
@@ -773,7 +766,7 @@ class WorkflowRuntime:
                     project, task_id, message_id, artifact_round,
                     schedule_downstream=schedule_downstream,
                     active_runner=active_runner,
-                    instance_id=self._instance_id,
+                    instance_id=self._leases.instance_id,
                     current_workflow_steps=self._current_workflow_steps,
                 ),
             )
@@ -883,7 +876,7 @@ class WorkflowRuntime:
                 actor_fields,
                 schedule_downstream,
                 active_runners=self._runners,
-                instance_id=self._instance_id,
+                instance_id=self._leases.instance_id,
                 current_workflow_steps=self._current_workflow_steps,
             ),
         )
@@ -974,7 +967,7 @@ class WorkflowRuntime:
             entry_step_key=entry_step_key,
         )
         self._runners[task.id] = runner
-        self._register_lease(workflow_run.id, project.id)
+        self._leases.register(workflow_run.id, project.id)
         completion = asyncio.create_task(
             self._execute(
                 project_id=project.id,
@@ -1108,13 +1101,13 @@ class WorkflowRuntime:
             lambda _project: prepare_project_recovery(
                 project,
                 active_task_ids=active_task_ids,
-                owner_id=self._instance_id,
+                owner_id=self._leases.instance_id,
                 current_workflow_steps=self._current_workflow_steps,
             ),
         )
         if schedule_contended:
             for run_id in decision.contended_run_ids:
-                self._schedule_recovery_retry(project, run_id)
+                self._leases.schedule_recovery_retry(project, run_id)
         recovered = 0
         for candidate in decision.runs:
             task, workflow_run = await self._run_db(
@@ -1327,7 +1320,7 @@ class WorkflowRuntime:
                     compiled.schema_version,
                     step_key,
                     execution_keys,
-                    instance_id=self._instance_id,
+                    instance_id=self._leases.instance_id,
                     reset_session_step_key=(step_key if reset_session else None),
                     feedback_inputs=inspected["feedback_inputs"],
                 )
@@ -1566,83 +1559,6 @@ class WorkflowRuntime:
             )
         return prepared
 
-    def _register_lease(self, run_id: str, project_id: str) -> None:
-        """Record that this instance owns a run and start the heartbeat loop."""
-        self._leased_runs[run_id] = project_id
-        self._ensure_lease_task()
-
-    def _release_lease(self, run_id: str) -> None:
-        self._leased_runs.pop(run_id, None)
-
-    def _ensure_lease_task(self) -> None:
-        if self._lease_task is None or self._lease_task.done():
-            self._lease_task = asyncio.create_task(self._lease_heartbeat_loop())
-
-    def _schedule_recovery_retry(self, project, run_id: str) -> None:
-        """Retry a run skipped by a live lease after the lease should expire.
-
-        Without this, a daemon that restarts within the stale window of a
-        genuinely crashed predecessor would orphan the run forever, since
-        startup recovery only sweeps once.
-        """
-
-        async def _retry():
-            try:
-                await asyncio.sleep(RUN_LEASE_STALE_SECONDS)
-                current = await self._run_db(
-                    project.id, lambda _project: project
-                )
-                await self._recover_project_runs(current)
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.exception(
-                    "Deferred recovery retry failed for run %s", run_id
-                )
-
-        task = asyncio.create_task(
-            _retry(), name=f"workflow-lease-retry:{run_id}"
-        )
-        self._lease_retry_tasks.add(task)
-        task.add_done_callback(self._lease_retry_tasks.discard)
-
-    async def _lease_heartbeat_loop(self) -> None:
-        """Periodically renew this instance's run leases via the project DB."""
-        while True:
-            try:
-                await asyncio.sleep(RUN_LEASE_HEARTBEAT_SECONDS)
-            except asyncio.CancelledError:
-                raise
-            loop_now = asyncio.get_running_loop().time()
-            if (
-                loop_now - self._last_orphan_reconcile
-                >= ORPHAN_RECONCILE_SECONDS
-            ):
-                self._last_orphan_reconcile = loop_now
-                try:
-                    await self.reconcile_orphaned_workflows()
-                except Exception:
-                    logger.exception("Failed to run workflow orphan reconciliation")
-            leased = dict(self._leased_runs)
-            if not leased:
-                continue
-            by_project: dict[str, list[str]] = {}
-            for run_id, project_id in leased.items():
-                by_project.setdefault(project_id, []).append(run_id)
-            for project_id, run_ids in by_project.items():
-                def refresh(_project, run_ids=tuple(run_ids)):
-                    WorkflowRun.update(heartbeat_at=utc_now()).where(
-                        (WorkflowRun.id.in_(run_ids))
-                        & (WorkflowRun.owner_id == self._instance_id)
-                    ).execute()
-
-                try:
-                    await self._run_db(project_id, refresh)
-                except Exception:
-                    logger.exception(
-                        "Failed to renew run leases for project %s", project_id
-                    )
-
     async def shutdown(self) -> None:
         """Stop every workflow owned by this runtime.
 
@@ -1665,19 +1581,7 @@ class WorkflowRuntime:
             completion.cancel()
         if active:
             await asyncio.gather(*active, return_exceptions=True)
-        # Stop the heartbeat loop and release any leases that outlived the runs
-        # so a restarting daemon can recover them immediately.
-        if self._lease_task is not None:
-            self._lease_task.cancel()
-            try:
-                await self._lease_task
-            except asyncio.CancelledError:
-                pass
-            self._lease_task = None
-        for retry_task in tuple(self._lease_retry_tasks):
-            retry_task.cancel()
-        self._lease_retry_tasks.clear()
-        self._leased_runs.clear()
+        await self._leases.shutdown()
 
     def _consume_completion(
         self,
@@ -1750,7 +1654,7 @@ class WorkflowRuntime:
                 workflow_run.save()
 
             await runner._run_db(finalize_run)
-            self._release_lease(workflow_run.id)
+            self._leases.release(workflow_run.id)
             try:
                 await runner.close()
             except Exception:
