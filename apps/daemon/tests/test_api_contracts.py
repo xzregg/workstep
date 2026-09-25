@@ -4369,6 +4369,77 @@ async def test_retry_failed_message_api_targets_message_without_blocking_health(
 
 
 @pytest.mark.anyio
+async def test_cancel_orphaned_step_slow_sql_does_not_block_health(
+    api_context, monkeypatch
+):
+    """Cancelling a persisted step without a runner stays off the event loop."""
+    import main
+    from models import Task, TaskStep, WorkflowRun
+    from models.fields import utc_now
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "orphan-step-cancel"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)}
+    )).json()["id"]
+    workflow = await _create_test_workflow(client, project_id)
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "Orphan step", "cwd": str(project_dir),
+            "workflow_id": workflow["id"], "auto_start": False,
+        },
+    )
+    task_id = created.json()["id"]
+    step_key = created.json()["steps"][0]["step_key"]
+
+    def make_orphan(_project):
+        task = Task.get_by_id(task_id)
+        task.status = "running"
+        run = WorkflowRun.create(
+            id=str(uuid.uuid4()), task=task, status="running",
+            workflow_schema_version=1, workflow_snapshot_json="{}",
+            owner_id="stale-peer", heartbeat_at=1, started_at=utc_now(),
+        )
+        task.active_workflow_run_id = run.id
+        task.save()
+        TaskStep.update(status="running").where(
+            (TaskStep.task == task) & (TaskStep.step_key == step_key)
+        ).execute()
+
+    await main.project_manager.run_db(project_id, make_orphan)
+    project = main.project_manager.get_project_by_id(project_id)
+    original_execute_sql = project.db.execute_sql
+    query_started = threading.Event()
+    query_started_at = [0.0]
+
+    def slow_task_query(sql, params=None, commit=None):
+        if 'FROM "tasks"' in sql and not query_started.is_set():
+            query_started_at[0] = time.perf_counter()
+            query_started.set()
+            time.sleep(0.35)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_task_query)
+    cancellation = asyncio.create_task(client.post(
+        f"/api/task/{task_id}/step/{step_key}/cancel?project_id={project_id}"
+    ))
+    assert await asyncio.to_thread(query_started.wait, 1)
+    assert time.perf_counter() - query_started_at[0] < 0.2
+    assert not cancellation.done()
+    health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+    cancelled = await cancellation
+
+    assert health.status_code == 200
+    assert cancelled.status_code == 200
+    assert cancelled.json() == {"cancelled": True}
+    task = await client.get(f"/api/task/{task_id}?project_id={project_id}")
+    assert task.json()["status"] == "paused"
+    assert task.json()["steps"][0]["status"] == "cancelled"
+
+
+@pytest.mark.anyio
 async def test_set_failed_step_complete_api_does_not_block_health(api_context, monkeypatch):
     import main
     from models import Message, StepRun, Task, TaskStep, WorkflowRun
