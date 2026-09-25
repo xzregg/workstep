@@ -5242,6 +5242,25 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .task-create-divider { width: 8px; flex-shrink: 0; cursor: col-resize; position: relative; background: transparent; }
 .task-create-divider-line { position: absolute; inset-block: 0; left: 50%; width: 1px; transform: translateX(-50%); background: var(--border-soft); }
 .task-create-assistant { width: 40%; max-width: 45vw; min-width: 280px; flex-shrink: 0; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
+.project-memory-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.2); z-index: 999; }
+.project-memory-panel {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: 50vw;
+  min-width: 420px;
+  background: var(--bg);
+  border-left: 1px solid var(--border-soft);
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  z-index: 1000;
+}
+.project-memory-heading { font-weight: 600; font-size: calc(13px * var(--font-scale)); display: flex; align-items: center; gap: 8px; }
+.project-memory-path { font-family: var(--font-mono); font-size: calc(11px * var(--font-scale)); color: var(--meta); font-weight: 400; }
+.project-memory-error { padding: 8px 16px; font-size: calc(13px * var(--font-scale)); color: var(--danger); background: color-mix(in oklab, var(--danger), transparent 90%); }
+.project-memory-body { flex: 1; padding: 16px; overflow-y: auto; display: flex; flex-direction: column; }
+.project-memory-loading { color: var(--meta); font-size: calc(13px * var(--font-scale)); }
+.project-memory-footer { align-items: center; }
 .task-create-footer {
   padding: 14px 16px 16px;
   border-top: 1px solid var(--border-soft);

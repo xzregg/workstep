@@ -13,13 +13,12 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTaskStore, selectWorkflowTasks } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
 import { setDetailTaskIds } from '../hooks/useWebSocket'
-import { fsApi, scheduleApi } from '../api/client'
+import { scheduleApi } from '../api/client'
 import TaskDetail from './TaskDetail'
 import { isTaskCompleted, isTaskNotStarted } from './taskDetailChat'
 import Button from '../components/Button'
 import ConfirmDialog from '../components/ConfirmDialog'
 import EmptyState from '../components/EmptyState'
-import MarkdownEditor from '../components/MarkdownEditor'
 import MarqueeText from '../components/MarqueeText'
 import OpenLocationButton from '../components/OpenLocationButton'
 import MobileOpenLocationButton from '../components/MobileOpenLocationButton'
@@ -29,6 +28,7 @@ import ProjectSettingsPanel from '../components/ProjectSettingsPanel'
 import WorkflowShortcutSettingsDialog from '../components/WorkflowShortcutSettingsDialog'
 import ArchiveExperienceDialog from '../components/ArchiveExperienceDialog'
 import TaskCreatePanel from '../components/TaskCreatePanel'
+import ProjectMemoryPanel from '../components/ProjectMemoryPanel'
 import { formatScheduledStart } from '../utils/scheduledStart'
 import TaskTableView from '../components/TaskTableView'
 import { useI18n, type TFunction, type TKey } from '../i18n'
@@ -152,6 +152,7 @@ export default function TaskList() {
   const activeWorkflowId = useProjectStore((s) => s.activeWorkflowId)
   const saveSteps = useProjectStore((s) => s.saveSteps)
   const activeWorkflowName = activeProject?.workflows?.find((w) => w.id === activeWorkflowId)?.name
+  const [memoryOpen, setMemoryOpen] = useState(false)
   const [createRequest, setCreateRequest] = useState<{ stepKey?: string; id: number } | null>(null)
   const createRequestId = useRef(0)
   const openNewPanel = (stepKey?: string) => {
@@ -186,14 +187,6 @@ export default function TaskList() {
   const [dragId, setDragId] = useState<string | null>(null)
   const [copiedWorkflowId, setCopiedWorkflowId] = useState(false)
   const [showSettingsPanel, setShowSettingsPanel] = useState(false)
-  const [showMemoryPanel, setShowMemoryPanel] = useState(false)
-  const [memoryContent, setMemoryContent] = useState('')
-  const [memoryLoading, setMemoryLoading] = useState(false)
-  const [memorySaving, setMemorySaving] = useState(false)
-  const [memoryError, setMemoryError] = useState('')
-  const [memoryNotice, setMemoryNotice] = useState('')
-  const [confirmCloseMemory, setConfirmCloseMemory] = useState(false)
-  const memorySavedRef = useRef('')
   const [directoryNotice, setDirectoryNotice] = useState('')
   // Local lane override for unstarted cards moved manually in the board.
   const [cardLanes, setCardLanes] = useState<Record<string, string>>({})
@@ -246,6 +239,7 @@ export default function TaskList() {
   useEffect(() => {
     setCardLanes({})
     setCreateRequest(null)
+    setMemoryOpen(false)
     setShowScheduleDialog(false)
     setShortcutSettingsOpen(false)
     setShowShareDialog(false)
@@ -318,47 +312,6 @@ export default function TaskList() {
     if (ok) {
       setCopiedWorkflowId(true)
       setTimeout(() => setCopiedWorkflowId(false), 1500)
-    }
-  }
-
-  const openMemoryPanel = async () => {
-    setShowMemoryPanel(true)
-    setMemoryError('')
-    setMemoryNotice('')
-    if (!activeProject) return
-    setMemoryLoading(true)
-    try {
-      const result = await fsApi.readMemory(activeProject.id)
-      setMemoryContent(result.content)
-      memorySavedRef.current = result.content
-    } catch (error) {
-      setMemoryError(error instanceof Error ? error.message : t('taskList.readMemoryFailed'))
-    } finally {
-      setMemoryLoading(false)
-    }
-  }
-
-  const handleSaveMemory = async () => {
-    if (!activeProject || memorySaving) return
-    setMemorySaving(true)
-    setMemoryError('')
-    setMemoryNotice('')
-    try {
-      await fsApi.saveMemory(activeProject.id, memoryContent)
-      memorySavedRef.current = memoryContent
-      setShowMemoryPanel(false)
-    } catch (error) {
-      setMemoryError(error instanceof Error ? error.message : t('taskList.saveMemoryFailed'))
-    } finally {
-      setMemorySaving(false)
-    }
-  }
-
-  const closeMemoryPanel = () => {
-    if (memoryContent !== memorySavedRef.current) {
-      setConfirmCloseMemory(true)
-    } else {
-      setShowMemoryPanel(false)
     }
   }
 
@@ -591,7 +544,7 @@ export default function TaskList() {
         </Button>
         <Button
           variant="ghost"
-          onClick={() => void openMemoryPanel()}
+          onClick={() => setMemoryOpen(true)}
           disabled={!activeProject}
           title={t('taskList.memoryButtonTitle')}
           style={{ fontSize: 'calc(13px * var(--font-scale))', gap: 5 }}
@@ -1044,82 +997,10 @@ export default function TaskList() {
           setArchiveTarget(null)
         }} />}
 
-      <ConfirmDialog
-        open={confirmCloseMemory}
-        title={t('taskList.discardMemoryTitle')}
-        message={t('taskList.discardMemoryMessage')}
-        confirmText={t('layout.discardChanges')}
-        danger
-        onConfirm={() => {
-          setConfirmCloseMemory(false)
-          setShowMemoryPanel(false)
-        }}
-        onCancel={() => setConfirmCloseMemory(false)}
-      />
-
-      {/* Backdrop: click outside closes the memory panel when unchanged */}
-      {showMemoryPanel && (
-        <div
-          onClick={closeMemoryPanel}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.2)', zIndex: 999 }}
-        />
+      {memoryOpen && activeProject && (
+        <ProjectMemoryPanel key={activeProject.id} projectId={activeProject.id}
+          onClose={() => setMemoryOpen(false)} />
       )}
-
-      {/* ── Memory editor panel (slide-in from right) ── */}
-      <div inert={!showMemoryPanel} className="mobile-auxiliary-panel" style={{
-        position: 'fixed', right: 0, top: 0, bottom: 0,
-        width: '50vw', minWidth: 420, background: 'var(--bg)',
-        borderLeft: '1px solid var(--border-soft)',
-        boxShadow: '-4px 0 16px rgba(0,0,0,0.12)',
-        display: 'flex', flexDirection: 'column',
-        zIndex: 1000,
-        transform: showMemoryPanel ? 'translateX(0)' : 'translateX(100%)',
-        transition: 'transform 0.3s ease',
-      }}>
-        <div className="panel-header">
-          <span style={{ fontWeight: 600, fontSize: 'calc(13px * var(--font-scale))', display: 'flex', alignItems: 'center', gap: 8 }}>
-            {t('taskList.editMemory')}
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', fontWeight: 400 }}>.workstep/MEMORY.md</span>
-          </span>
-          <Button variant="icon" onClick={closeMemoryPanel} aria-label={t('common.close')}>✕</Button>
-        </div>
-        {memoryError && (
-          <div style={{
-            padding: '8px 16px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)',
-            background: 'color-mix(in oklab, var(--danger), transparent 90%)',
-          }}>
-            {memoryError}
-          </div>
-        )}
-        <div style={{ flex: 1, padding: 16, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-          {memoryLoading ? (
-            <div style={{ color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))' }}>{t('common.loading')}</div>
-          ) : (
-            <MarkdownEditor
-              value={memoryContent}
-              onChange={setMemoryContent}
-              projectId={activeProject?.id}
-              ariaLabel={t('taskList.projectMemory')}
-            />
-          )}
-        </div>
-        <div className="panel-footer" style={{ alignItems: 'center' }}>
-          {memoryNotice && (
-            <span style={{ color: 'var(--success)', fontSize: 'calc(13px * var(--font-scale))', marginRight: 'auto' }} role="status">
-              {memoryNotice}
-            </span>
-          )}
-          <Button variant="ghost" onClick={closeMemoryPanel}>{t('common.cancel')}</Button>
-          <Button
-            variant="primary"
-            onClick={() => void handleSaveMemory()}
-            disabled={memoryLoading || memorySaving}
-            loading={memorySaving}
-          >
-            {t('taskList.saveMemory')}
-          </Button>
-        </div>
-      </div>
     </>
   )
 }
