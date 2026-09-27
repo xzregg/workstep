@@ -33,11 +33,11 @@ from engines.core.plans import codex_subagent_events
 from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
 from engines.core.stream_lines import ChunkedLineReader
 from services import providers as provider_service
-from services.config import (
+from services.config import config_store
+from services.engine_config_rules import (
     CODEX_APPROVAL_POLICIES,
     CODEX_REASONING_EFFORTS,
     CODEX_SANDBOX_MODES,
-    config_store,
     normalize_codex_custom_config,
     parse_codex_custom_config,
 )

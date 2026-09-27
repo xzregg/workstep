@@ -25,12 +25,11 @@ import httpx
 from engines.core.base import EngineModel, EngineTestResult
 from engines.core.schema import validate_api_base_url
 from services.config import (
-    CLAUDE_MODEL_MAP_ALIASES,
-    PROVIDER_PROTOCOLS,
     config_store,
     default_provider_protocol,
     default_provider_protocols,
 )
+from services.engine_config_rules import CLAUDE_MODEL_MAP_ALIASES, PROVIDER_PROTOCOLS
 
 logger = logging.getLogger(__name__)
 

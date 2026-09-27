@@ -33,11 +33,11 @@ from engines.core.input_items import workstep_input_commands
 from engines.core.packages import RuntimePackage
 from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
 from services import providers as provider_service
-from services.config import (
+from services.config import config_store
+from services.engine_config_rules import (
     CODEX_REASONING_EFFORTS,
     CODEX_SANDBOX_MODES,
     CODEX_SDK_APPROVAL_MODES,
-    config_store,
     normalize_codex_custom_config,
     parse_codex_custom_config,
 )
