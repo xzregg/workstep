@@ -27,6 +27,7 @@ import SidebarStatusIndicator from './SidebarStatusIndicator'
 import { loadSidebarSectionState, saveSidebarSectionState } from '../utils/sidebarSectionState'
 import LayoutOnboardingActions from './LayoutOnboardingActions'
 import SidebarRenameField from './SidebarRenameField'
+import { SidebarActionItem, SidebarActionMenu } from './SidebarActionMenu'
 import { useOnboardingStore } from '../stores/onboardingStore'
 import { filterSidebarProject } from '../utils/sidebarSearch'
 import { useSidebarSessionActions } from '../hooks/useSidebarSessionActions'
@@ -354,8 +355,8 @@ export default function Layout({ onSelectProject, children }: Props) {
     setMoreMenu({
       kind,
       id,
-      x: Math.min(x, window.innerWidth - 176),
-      y: Math.min(y, window.innerHeight - 128),
+      x: Math.max(8, Math.min(x, window.innerWidth - 176)),
+      y: Math.max(8, Math.min(y, window.innerHeight - (kind === 'project' ? 236 : 104))),
     })
   }
 
@@ -416,8 +417,8 @@ export default function Layout({ onSelectProject, children }: Props) {
   const openSessionMenuAt = (projectId: string, sessionId: string, title: string, x: number, y: number) => {
     setMoreMenu(null)
     setSessionMenu({
-      x: Math.min(x, window.innerWidth - 176),
-      y: Math.min(y, window.innerHeight - 128),
+      x: Math.max(8, Math.min(x, window.innerWidth - 176)),
+      y: Math.max(8, Math.min(y, window.innerHeight - 148)),
       sessionId,
       projectId,
       title,
@@ -1108,172 +1109,122 @@ export default function Layout({ onSelectProject, children }: Props) {
       />
 
       {moreMenu && (
-        <div
-          ref={moreMenuRef}
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            position: 'fixed', left: moreMenu.x, top: moreMenu.y,
-            minWidth: 148, padding: '4px 0', zIndex: 1302,
-            background: 'var(--bg)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-sm)', boxShadow: 'var(--elev-raised)',
-          }}
-        >
+        <SidebarActionMenu ref={moreMenuRef} x={moreMenu.x} y={moreMenu.y}>
           {moreMenu.kind === 'project' && menuTarget && 'path' in menuTarget && (
             <>
               {menuTarget.type !== 'remote' && (
-                <div
+                <SidebarActionItem
+                  icon="pencil"
                   onClick={() => { setRenameId(menuTarget.path); setMoreMenu(null) }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                  style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
                 >
-                  <Icon name="pencil" size={14} />
                   {t('common.rename')}
-                </div>
+                </SidebarActionItem>
               )}
-              <div
+              <SidebarActionItem
+                icon="plus"
                 onClick={() => { openAddWorkflow(menuTarget.id); setMoreMenu(null) }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
               >
-                <Icon name="plus" size={14} />
                 {t('layout.addWorkflowTitle')}
-              </div>
-              <div
+              </SidebarActionItem>
+              <SidebarActionItem
+                icon="bot"
                 onClick={() => {
                   setMoreMenu(null)
                   void createSession(menuTarget)
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
               >
-                <Icon name="bot" size={14} />
                 {t('chatSession.addSessionTitle')}
-              </div>
+              </SidebarActionItem>
               {menuTarget.type !== 'remote' && (
-                <div
+                <SidebarActionItem
+                  icon="share"
                   onClick={() => { setShareProject(menuTarget); setMoreMenu(null) }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                  style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
                 >
-                  <Icon name="share" size={14} />
                   {t('layout.remoteShareTitle')}
-                </div>
+                </SidebarActionItem>
               )}
-              <div
+              <SidebarActionItem
+                icon="trash"
+                danger
                 onClick={() => { setDeleteProjectError(''); setDeleteProjectTarget(menuTarget); setMoreMenu(null) }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer', color: 'var(--danger)' }}
               >
-                <Icon name="trash" size={14} />
                 {t('layout.deleteProjectTitle')}
-              </div>
+              </SidebarActionItem>
             </>
           )}
           {moreMenu.kind === 'workflow' && menuTarget && 'workflow' in menuTarget && (
             menuTarget.workflow.deleted ? (
               <>
-                <div
-                  onClick={() => { restoreWorkflow(menuTarget.workflow.id, menuTarget.project.id); setMoreMenu(null) }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                  style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
+                <SidebarActionItem
+                  icon="rotate-ccw"
+                  onClick={() => { void restoreWorkflow(menuTarget.workflow.id, menuTarget.project.id); setMoreMenu(null) }}
                 >
-                  <Icon name="rotate-ccw" size={14} />
                   {t('layout.restoreFlow')}
-                </div>
+                </SidebarActionItem>
                 {!menuTarget.workflow.is_default && (
-                  <div
+                  <SidebarActionItem
+                    icon="trash"
+                    danger
                     onClick={() => { setDeleteWf({ id: menuTarget.workflow.id, projectId: menuTarget.project.id, name: menuTarget.workflow.name, soft: true }); setMoreMenu(null) }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                    style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer', color: 'var(--danger)' }}
                   >
-                    <Icon name="trash" size={14} />
                     {t('nav.deletePermanent')}
-                  </div>
+                  </SidebarActionItem>
                 )}
               </>
             ) : (
               <>
-                <div
+                <SidebarActionItem
+                  icon="pencil"
                   onClick={() => { setRenameWfId(menuTarget.workflow.id); setMoreMenu(null) }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                  style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
                 >
-                  <Icon name="pencil" size={14} />
                   {t('common.rename')}
-                </div>
+                </SidebarActionItem>
                 {!menuTarget.workflow.is_default && menuTarget.project.workflows.filter((w) => !w.deleted).length > 1 && (
-                  <div
+                  <SidebarActionItem
+                    icon="trash"
+                    danger
                     onClick={() => { setDeleteWf({ id: menuTarget.workflow.id, projectId: menuTarget.project.id, name: menuTarget.workflow.name, soft: false }); setMoreMenu(null) }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                    style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer', color: 'var(--danger)' }}
                   >
-                    <Icon name="trash" size={14} />
                     {t('common.delete')}
-                  </div>
+                  </SidebarActionItem>
                 )}
               </>
             )
           )}
-        </div>
+        </SidebarActionMenu>
       )}
 
       {sessionMenu && (
-        <div
-          ref={sessionMenuRef}
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            position: 'fixed', left: sessionMenu.x, top: sessionMenu.y,
-            minWidth: 148, padding: '4px 0', zIndex: 1302,
-            background: 'var(--bg)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-sm)', boxShadow: 'var(--elev-raised)',
-          }}
-        >
-          <div
+        <SidebarActionMenu ref={sessionMenuRef} x={sessionMenu.x} y={sessionMenu.y}>
+          <SidebarActionItem
+            icon="archive"
             onClick={() => { void handleArchiveSession(sessionMenu.sessionId, sessionMenu.projectId) }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-            style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
           >
-            <Icon name="archive" size={14} />
             {t('chatSession.archive')}
-          </div>
-          <div
+          </SidebarActionItem>
+          <SidebarActionItem
+            icon="pencil"
             onClick={() => {
               setRenameSessionId(sessionMenu.sessionId)
               setRenameSessionProjectId(sessionMenu.projectId)
               setRenameSessionValue(sessionMenu.title)
               setSessionMenu(null)
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-            style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
           >
-            <Icon name="pencil" size={14} />
             {t('common.rename')}
-          </div>
-          <div
+          </SidebarActionItem>
+          <SidebarActionItem
+            icon="trash"
+            danger
             onClick={() => {
               clearSessionError()
               setDeleteSessionTarget(sessionMenu)
               setSessionMenu(null)
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-            style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer', color: 'var(--danger)' }}
           >
-            <Icon name="trash" size={14} />
             {t('common.delete')}
-          </div>
-        </div>
+          </SidebarActionItem>
+        </SidebarActionMenu>
       )}
 
 

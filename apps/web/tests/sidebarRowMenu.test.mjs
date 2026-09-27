@@ -5,6 +5,7 @@ import test from 'node:test'
 const source = await readFile(new URL('../src/components/Layout.tsx', import.meta.url), 'utf8')
 const css = await readFile(new URL('../src/index.css', import.meta.url), 'utf8')
 const mobileCss = await readFile(new URL('../src/mobile.css', import.meta.url), 'utf8')
+const menuCss = await readFile(new URL('../src/components/SidebarActionMenu.css', import.meta.url), 'utf8')
 
 test('project and workflow rows reveal a "..." more button only on hover', () => {
   assert.match(css, /\.ws-row \.ws-more-btn/)
@@ -44,6 +45,7 @@ test('touch long press opens the existing project and session more menus', () =>
 
 test('sidebar row menus render above the mobile navigation drawer', () => {
   assert.match(mobileCss, /\.responsive-navigation\s*\{[^}]*z-index:\s*1201/s)
-  const menuLayers = source.match(/zIndex:\s*1302/g) ?? []
-  assert.equal(menuLayers.length, 2, 'project/workflow and session menus should both clear the drawer layer')
+  const menus = source.match(/<SidebarActionMenu /g) ?? []
+  assert.equal(menus.length, 2, 'project/workflow and session menus should use the shared layer')
+  assert.match(menuCss, /\.sidebar-action-menu\s*\{[^}]*z-index:\s*1302/s)
 })
