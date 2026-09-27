@@ -1072,6 +1072,7 @@ export const enUS: Messages = {
     loadTemplateFailed: 'Failed to load template',
     createWorkflowFailed: 'Failed to create workflow',
     nameWhitespace: 'Name cannot contain whitespace (spaces, tabs, etc.)',
+    renameFailed: 'Rename failed. Please try again.',
     projects: 'Projects',
     searchSidebar: 'Search sidebar',
     searchSidebarPlaceholder: 'Search projects, workflows, and conversations',

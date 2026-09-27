@@ -1056,6 +1056,7 @@ export const jaJP: Messages = {
     loadTemplateFailed: 'テンプレートの読み込みに失敗しました',
     createWorkflowFailed: 'フローの作成に失敗しました',
     nameWhitespace: '名前に空白文字（スペース、タブなど）は使用できません',
+    renameFailed: '名前の変更に失敗しました。もう一度お試しください。',
     projects: 'プロジェクト',
     searchSidebar: 'サイドバーを検索',
     searchSidebarPlaceholder: 'プロジェクト、フロー、会話を検索',
