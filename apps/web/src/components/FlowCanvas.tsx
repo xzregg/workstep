@@ -6,7 +6,6 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import { createPortal } from 'react-dom'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
-import Input from './Input'
 import Textarea from './Textarea'
 import {
   ReactFlow, Controls, Background, addEdge,
@@ -17,11 +16,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import {
   engineApi,
-  fetchTemplates,
-  invalidateTemplates,
-  templateApi,
   type EngineInfo,
-  type TemplateInfo,
 } from '../api/client'
 import { DEFAULT_OUTPUT_TYPE } from '../config/outputTypes'
 import { DEFAULT_EXECUTION_ENGINE } from '../engineMeta'
@@ -33,6 +28,7 @@ import WorkflowExecutionWarningDialog from './WorkflowExecutionWarningDialog'
 import { STEP_TYPE_PATTERN, randomStepColor, DEFAULT_MAX_RETURN_ROUNDS, emptyReview, normalizeMaxReturnRounds, canvasToFlowNodes, canvasToFlowEdges, loadCanvasData, type StepNodeData } from './flowCanvasData'
 import NodeConfigPanel from './NodeConfigPanel'
 import FlowNodeCopyDialog from './FlowNodeCopyDialog'
+import FlowTemplateDialog from './FlowTemplateDialog'
 
 /* ══════════════════════════════════════════
    Reusable flow canvas editor — shared by the
@@ -282,13 +278,7 @@ function FlowCanvasInner({
   const [showImport, setShowImport] = useState(false)
   const [importText, setImportText] = useState('')
   const [importError, setImportError] = useState('')
-  const [templates, setTemplates] = useState<TemplateInfo[]>([])
-  const [pendingTemplate, setPendingTemplate] = useState<TemplateInfo | null>(null)
   const [showTemplateModal, setShowTemplateModal] = useState(false)
-  const [showTemplateSave, setShowTemplateSave] = useState(false)
-  const [templateSearch, setTemplateSearch] = useState('')
-  const [templateName, setTemplateName] = useState('')
-  const [templateDesc, setTemplateDesc] = useState('')
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [copyOpen, setCopyOpen] = useState(false)
@@ -326,12 +316,6 @@ function FlowCanvasInner({
     engineApi.executionConfig()
       .then((config) => setDefaultExecutionEngine(config.resolved_engine || DEFAULT_EXECUTION_ENGINE))
       .catch(() => setDefaultExecutionEngine(DEFAULT_EXECUTION_ENGINE))
-  }, [])
-
-  useEffect(() => {
-    fetchTemplates()
-      .then(({ templates: list }) => setTemplates(list))
-      .catch(() => setTemplates([]))
   }, [])
 
   // Reload canvas when the source steps change (workflow/template switch)
@@ -589,55 +573,20 @@ function FlowCanvasInner({
     },
   }), [nodes, edges, nodeConfigError, ref, readOnly]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const applyTemplate = async (template: TemplateInfo) => {
-    try {
-      const full = await templateApi.get(template.id)
-      const { nodes: tNodes, connections: tConns } = loadCanvasData(full.steps ?? full)
-      setNodes([...canvasToFlowNodes(tNodes), ...loadBookmarks(full.steps ?? full)])
-      setEdges(canvasToFlowEdges(tConns, tNodes))
-      setSelectedNode(null)
-      setNodeConfigError('')
-      setDirty(true)
-      setTimeout(() => fitView({ padding: 0.2 }), 100)
-    } catch (e) {
-      setSaveMsg(t('flow.templateLoadFailed', { error: e instanceof Error ? e.message : t('flow.networkError') }))
-      setSaveMsgKind('error')
-      setTimeout(() => setSaveMsg(''), 5000)
-    }
+  const applyTemplateSteps = (steps: unknown) => {
+    const { nodes: templateNodes, connections } = loadCanvasData(steps)
+    setNodes([...canvasToFlowNodes(templateNodes), ...loadBookmarks(steps as Parameters<typeof loadBookmarks>[0])])
+    setEdges(canvasToFlowEdges(connections, templateNodes))
+    setSelectedNode(null)
+    setNodeConfigError('')
+    setDirty(true)
+    setTimeout(() => fitView({ padding: 0.2 }), 100)
   }
 
-  const saveCurrentAsTemplate = async () => {
-    const name = templateName.trim()
-    if (!name) {
-      setSaveMsg(t('flow.saveTemplateNameRequired'))
-      setSaveMsgKind('error')
-      setTimeout(() => setSaveMsg(''), 5000)
-      return
-    }
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-    const id = slug || `custom-${Date.now()}`
-    try {
-      await templateApi.save({
-        id,
-        name,
-        description: templateDesc.trim(),
-        steps: buildCanvasJson(),
-      })
-      invalidateTemplates()
-      const { templates: list } = await fetchTemplates(true)
-      setTemplates(list)
-      setShowTemplateSave(false)
-      setTemplateName('')
-      setTemplateDesc('')
-      setShowTemplateModal(false)
-      setSaveMsg(t('flow.templateSaved', { name }))
-      setSaveMsgKind('success')
-      setTimeout(() => setSaveMsg(''), 5000)
-    } catch (e) {
-      setSaveMsg(t('flow.saveFailed', { error: e instanceof Error ? e.message : t('flow.networkError') }))
-      setSaveMsgKind('error')
-      setTimeout(() => setSaveMsg(''), 5000)
-    }
+  const templateFeedback = (message: string, kind: 'success' | 'error') => {
+    setSaveMsg(message)
+    setSaveMsgKind(kind)
+    setTimeout(() => setSaveMsg(''), 5000)
   }
 
   const onConnect = useCallback((params: Connection) => {
@@ -809,7 +758,7 @@ function FlowCanvasInner({
         {dirty && <span style={{ color: 'var(--warn-text)', fontSize: 'calc(11px * var(--font-scale))', marginLeft: 12 }}>{t('flow.dirtyHint')}</span>}
          {hint !== undefined && <span style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)', marginRight: 10 }}>{hint ?? t('flow.hint')}</span>}
         {!readOnly && <>
-        {showTemplatePicker && <Button variant="ghost" onClick={() => { setShowTemplateModal(true); setTemplateSearch('') }}>{t('flow.templates')}</Button>}
+        {showTemplatePicker && <Button variant="ghost" onClick={() => { setShowTemplateModal(true) }}>{t('flow.templates')}</Button>}
         <DropdownMenu label="JSON ▾">
           {(close) => (
             <>
@@ -921,81 +870,9 @@ function FlowCanvasInner({
         </div>
       )}
 
-      {/* Template list modal */}
-      {!readOnly && showTemplatePicker && showTemplateModal && (
-        <div className="modal-overlay" onClick={() => setShowTemplateModal(false)} style={{ zIndex: 400 }}>
-          <ResizablePanel className="modal" style={{ width: 520, maxHeight: '80vh' }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">{t('flow.templates')}</span>
-              <Button variant="icon" onClick={() => setShowTemplateModal(false)}>✕</Button>
-            </div>
-            <div className="modal-body" style={{ padding: '8px 16px 16px', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-              <Input
-                value={templateSearch}
-                onChange={(e) => setTemplateSearch(e.target.value)}
-                placeholder={t('flow.searchTemplates')}
-                spellCheck={false}
-                style={{ marginBottom: 10 }}
-              />
-              {showTemplateSave && (
-                <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 12, marginBottom: 10, background: 'var(--surface)' }}>
-                  <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, marginBottom: 8 }}>{t('flow.saveCanvasAsTemplate')}</div>
-                  <Input
-                    value={templateName}
-                    onChange={(e) => setTemplateName(e.target.value)}
-                    placeholder={t('flow.templateNameRequired')}
-                    spellCheck={false}
-                  />
-                  <Input
-                    value={templateDesc}
-                    onChange={(e) => setTemplateDesc(e.target.value)}
-                    placeholder={t('flow.templateDescOptional')}
-                    spellCheck={false}
-                    style={{ marginTop: 8 }}
-                  />
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                    <Button variant="primary" onClick={() => void saveCurrentAsTemplate()} disabled={!templateName.trim()}>{t('flow.saveTemplate')}</Button>
-                    <Button variant="ghost" onClick={() => setShowTemplateSave(false)}>{t('common.cancel')}</Button>
-                  </div>
-                </div>
-              )}
-              {templates.length === 0 && (
-                <div style={{ padding: '12px 4px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)' }}>{t('flow.noTemplates')}</div>
-              )}
-              {(() => {
-                const query = templateSearch.trim().toLowerCase()
-                const filtered = templates.filter((t) =>
-                  !query ||
-                  t.name.toLowerCase().includes(query) ||
-                  (t.description || '').toLowerCase().includes(query) ||
-                  t.id.toLowerCase().includes(query),
-                )
-                if (templates.length > 0 && filtered.length === 0) {
-                  return <div style={{ padding: '12px 4px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)' }}>{t('flow.noMatchingTemplates')}</div>
-                }
-                return filtered.map((template) => (
-                <button
-                  key={template.id}
-                  onClick={() => { setShowTemplateModal(false); setPendingTemplate(template) }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '10px 12px', marginBottom: 6, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--surface)', color: 'var(--fg)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 'calc(13px * var(--font-scale))' }}
-                >
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ fontWeight: 500 }}>{template.name}</span>
-                    {template.description && (
-                      <span style={{ display: 'block', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{template.description}</span>
-                    )}
-                  </span>
-                  <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', flexShrink: 0 }}>{t('flow.nodeCount', { count: template.nodeCount })}</span>
-                </button>
-                ))
-              })()}
-            </div>
-            <div className="modal-footer">
-              <Button variant="primary" onClick={() => setShowTemplateSave(true)}>{t('flow.saveAsTemplate')}</Button>
-              <Button variant="ghost" onClick={() => setShowTemplateModal(false)}>{t('common.cancel')}</Button>
-            </div>
-          </ResizablePanel>
-        </div>
+      {!readOnly && showTemplatePicker && (
+        <FlowTemplateDialog open={showTemplateModal} onClose={() => setShowTemplateModal(false)}
+          getSteps={buildCanvasJson} onApply={applyTemplateSteps} onFeedback={templateFeedback} />
       )}
 
       {!readOnly && copyOpen && (
@@ -1065,18 +942,6 @@ function FlowCanvasInner({
         onCancel={() => setConfirmDeleteId(null)}
       />
 
-      {/* Apply template confirm dialog */}
-      {showTemplatePicker && (
-        <ConfirmDialog
-          open={!readOnly && pendingTemplate !== null}
-          title={t('flow.applyTemplateTitle')}
-          message={pendingTemplate ? t('flow.applyTemplateMessage', { name: pendingTemplate.name }) : undefined}
-          confirmText={t('flow.applyTemplate')}
-          danger
-          onConfirm={() => { const t = pendingTemplate; setPendingTemplate(null); if (t) void applyTemplate(t) }}
-          onCancel={() => setPendingTemplate(null)}
-        />
-      )}
     </div>
   )
 }
