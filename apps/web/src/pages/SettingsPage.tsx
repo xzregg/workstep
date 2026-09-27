@@ -26,6 +26,7 @@ import {
   saveFontSizePreference,
   type FontSizePreference,
 } from '../utils/fontSizePreference'
+import './SettingsPage.css'
 
 
 export type { SettingsSection } from '../components/SettingsNavigation'
@@ -101,36 +102,30 @@ export default function SettingsPage({
   return (
     <div
       ref={settingsDialogRef}
-      className="modal-overlay"
+      className="modal-overlay settings-dialog-overlay"
       role="dialog"
       aria-modal="true"
       aria-label={t('nav.settings')}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose()
       }}
-      style={{ padding: 24 }}
     >
       <ResizablePanel
-        className="modal"
+        className="modal settings-dialog-panel"
         onMouseDown={(event) => event.stopPropagation()}
-        style={{
-          width: 'min(1080px, calc(100vw - 48px))',
-          height: 'min(860px, calc(100vh - 48px))',
-          maxHeight: 'calc(100vh - 48px)',
-        }}
       >
-        <div className="modal-header" style={{ padding: '16px 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+        <div className="modal-header settings-dialog-header">
+          <div className="settings-dialog-title">
             <Icon name="sliders-horizontal" size={18} strokeWidth={2} />
             <span className="modal-title">{t('nav.settings')}</span>
           </div>
           <Button variant="icon" aria-label={t('settings.closeSettings')} onClick={onClose}>✕</Button>
         </div>
 
-      <div className="settings-layout" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+      <div className="settings-layout">
       <SettingsNavigation activeSection={activeSection} onSelect={setActiveSection} />
 
-      <section className="settings-content" style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto', padding: '24px 28px 40px' }}>
+      <section className="settings-content">
         <EngineSettingsPanel hidden={activeSection !== 'engines'} refreshRevision={engineRefreshRevision}
           preferredProviderProtocol={preferredProviderProtocol} focusTarget={focusTarget}
           onConfigurationChanged={onConfigurationChanged} />
@@ -156,17 +151,17 @@ export default function SettingsPage({
         ) : activeSection === 'git' ? (
           <GitScanSettings />
         ) : activeSection === 'system' ? (
-          <div style={{ maxWidth: 640, margin: '0 auto' }}>
-            <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 6 }}>{t('settings.systemTitle')}</h1>
-            <p style={{ color: 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', marginBottom: 22 }}>
+          <div className="settings-system-page">
+            <h1 className="settings-system-title">{t('settings.systemTitle')}</h1>
+            <p className="settings-system-intro">
               {t('settings.systemIntro')}
             </p>
-            <div style={{ paddingBottom: 22, marginBottom: 22, borderBottom: '1px solid var(--border-soft)' }}>
-              <h2 style={{ fontSize: 'calc(14px * var(--font-scale))', fontWeight: 650, marginBottom: 5 }}>{t('settings.userName')}</h2>
-              <p style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))', marginBottom: 10 }}>
+            <div className="settings-system-group">
+              <h2 className="settings-system-heading">{t('settings.userName')}</h2>
+              <p className="settings-system-description settings-system-description--name">
                 {t('settings.userNameIntro')}
               </p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 420 }}>
+              <div className="settings-system-name-form">
                 <Input
                   value={userNameDraft}
                   onChange={(event) => {
@@ -179,7 +174,7 @@ export default function SettingsPage({
                   placeholder={t('settings.userNamePlaceholder')}
                   aria-label={t('settings.userName')}
                   maxLength={80}
-                  style={{ flex: 1 }}
+                  className="settings-system-name-input"
                 />
                 <Button
                   variant="primary"
@@ -191,19 +186,19 @@ export default function SettingsPage({
                 </Button>
               </div>
               {userNameSaved && (
-                <div role="status" style={{ marginTop: 7, color: 'var(--success)', fontSize: 'calc(11px * var(--font-scale))' }}>
+                <div role="status" className="settings-system-feedback settings-system-feedback--success">
                   {t('settings.userNameSaved')}
                 </div>
               )}
               {userSettingsError && (
-                <div role="status" style={{ marginTop: 7, color: 'var(--danger)', fontSize: 'calc(11px * var(--font-scale))' }}>
+                <div role="status" className="settings-system-feedback settings-system-feedback--error">
                   {userSettingsError}
                 </div>
               )}
             </div>
             <ProjectDirectorySetting />
-            <div style={{ paddingBottom: 22, marginBottom: 22, borderBottom: '1px solid var(--border-soft)' }}>
-              <h2 style={{ fontSize: 'calc(14px * var(--font-scale))', fontWeight: 650, marginBottom: 5 }}>{t('settings.openMode')}</h2>
+            <div className="settings-system-group">
+              <h2 className="settings-system-heading">{t('settings.openMode')}</h2>
               <button
                 type="button"
                 className="settings-switch"
@@ -212,14 +207,13 @@ export default function SettingsPage({
                 aria-label={t('settings.openMode')}
                 disabled={userSettingsLoading}
                 onClick={() => void saveOpenMode(!openMode)}
-                style={{ background: openMode ? 'var(--accent)' : 'var(--border)' }}
               >
                 <span className="settings-switch-thumb" />
               </button>
             </div>
-            <div style={{ paddingBottom: 22, marginBottom: 22, borderBottom: '1px solid var(--border-soft)' }}>
-              <h2 style={{ fontSize: 'calc(14px * var(--font-scale))', fontWeight: 650, marginBottom: 5 }}>{t('settings.fontSize')}</h2>
-              <p style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))', marginBottom: 12 }}>
+            <div className="settings-system-group settings-system-font-size">
+              <h2 className="settings-system-heading">{t('settings.fontSize')}</h2>
+              <p className="settings-system-description">
                 {t('settings.fontSizeIntro')}
               </p>
               <SegmentedControl
@@ -232,12 +226,11 @@ export default function SettingsPage({
                   { value: 'large', label: t('settings.fontSizeLarge') },
                   { value: 'extraLarge', label: t('settings.fontSizeExtraLarge') },
                 ]}
-                style={{ maxWidth: 360 }}
               />
             </div>
-            <div style={{ paddingBottom: 22, marginBottom: 22, borderBottom: '1px solid var(--border-soft)' }}>
-              <h2 style={{ fontSize: 'calc(14px * var(--font-scale))', fontWeight: 650, marginBottom: 5 }}>{t('settings.onboardingTitle')}</h2>
-              <p style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))', marginBottom: 12 }}>
+            <div className="settings-system-group">
+              <h2 className="settings-system-heading">{t('settings.onboardingTitle')}</h2>
+              <p className="settings-system-description">
                 {t('settings.onboardingIntro')}
               </p>
               <Button
@@ -251,11 +244,11 @@ export default function SettingsPage({
                 {t('onboarding.reopen')}
               </Button>
             </div>
-            <h2 style={{ fontSize: 'calc(14px * var(--font-scale))', fontWeight: 650, marginBottom: 5 }}>{t('nav.language')}</h2>
-            <p style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))', marginBottom: 12 }}>
+            <h2 className="settings-system-heading">{t('nav.language')}</h2>
+            <p className="settings-system-description">
               {t('settings.languageIntro')}
             </p>
-            <SegmentedControl
+            <div className="settings-system-language-options"><SegmentedControl
               ariaLabel={t('nav.language')}
               value={locale}
               onChange={setLocale}
@@ -265,8 +258,7 @@ export default function SettingsPage({
                 { value: 'en-US', label: 'English' },
                 { value: 'ja-JP', label: '日本語' },
               ]}
-              style={{ maxWidth: 320 }}
-            />
+            /></div>
           </div>
         ) : (
           <AgentAssistantSettings />
