@@ -1070,6 +1070,7 @@ export const zhCN = {
     loadTemplateFailed: '加载模板失败',
     createWorkflowFailed: '创建流程失败',
     nameWhitespace: '名称不能包含空白字符（空格、Tab 等）',
+    renameFailed: '重命名失败，请重试',
     projects: '项目',
     searchSidebar: '搜索侧边栏',
     searchSidebarPlaceholder: '搜索项目、流程和对话',

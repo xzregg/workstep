@@ -26,6 +26,7 @@ import WorkflowCreateDialog from './WorkflowCreateDialog'
 import SidebarStatusIndicator from './SidebarStatusIndicator'
 import { loadSidebarSectionState, saveSidebarSectionState } from '../utils/sidebarSectionState'
 import LayoutOnboardingActions from './LayoutOnboardingActions'
+import SidebarRenameField from './SidebarRenameField'
 import { useOnboardingStore } from '../stores/onboardingStore'
 import { filterSidebarProject } from '../utils/sidebarSearch'
 import { useSidebarSessionActions } from '../hooks/useSidebarSessionActions'
@@ -43,7 +44,6 @@ function SidebarAddButton(props: ButtonProps) {
   )
 }
 
-const hasWhitespace = (s: string) => /\s/.test(s)
 const SIDEBAR_LONG_PRESS_MS = 500
 const SIDEBAR_LONG_PRESS_MOVE_PX = 10
 
@@ -70,15 +70,12 @@ export default function Layout({ onSelectProject, children }: Props) {
   const { projects, activeProject, activeWorkflowId, fetchProjects, setActiveProject, renameProject, deleteProject, renameWorkflow, deleteWorkflow, restoreWorkflow, reorderProjects, reorderWorkflows, setActiveWorkflow } = useProjectStore()
   const [showInitModal, setShowInitModal] = useState(false)
   const [renameId, setRenameId] = useState<string | null>(null)
-  const [renameName, setRenameName] = useState('')
-  const [renameError, setRenameError] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('providers')
   const [settingsFocus, setSettingsFocus] = useState<SettingsFocusTarget | undefined>()
   const [addWfProjectId, setAddWfProjectId] = useState<string | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(280)
   const [renameWfId, setRenameWfId] = useState<string | null>(null)
-  const [renameWfName, setRenameWfName] = useState('')
   const [deleteWf, setDeleteWf] = useState<{ id: string; projectId: string; name: string; soft: boolean } | null>(null)
   const [deleteProjectTarget, setDeleteProjectTarget] = useState<Project | null>(null)
   const [deleteProjectError, setDeleteProjectError] = useState('')
@@ -116,8 +113,6 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [dragSessionId, setDragSessionId] = useState<string | null>(null)
   const [dropSessionId, setDropSessionId] = useState<string | null>(null)
   const [pendingWfSwitch, setPendingWfSwitch] = useState<{ project: Project; workflowId: string } | null>(null)
-  const renameInputRef = useRef<HTMLInputElement>(null)
-  const renameWfInputRef = useRef<HTMLInputElement>(null)
   const renameSessionInputRef = useRef<HTMLInputElement>(null)
   const moreMenuRef = useRef<HTMLDivElement>(null)
   const sessionMenuRef = useRef<HTMLDivElement>(null)
@@ -198,21 +193,6 @@ export default function Layout({ onSelectProject, children }: Props) {
       conversationsByProject: sessionSectionOpen,
     })
   }, [expandedProjectIds, flowSectionOpen, sessionSectionOpen])
-
-  // Re-focus inputs each time they open (autoFocus only fires on first mount)
-  useEffect(() => {
-    if (renameId) {
-      const t = setTimeout(() => renameInputRef.current?.focus(), 0)
-      return () => clearTimeout(t)
-    }
-  }, [renameId])
-
-  useEffect(() => {
-    if (renameWfId) {
-      const t = setTimeout(() => renameWfInputRef.current?.focus(), 0)
-      return () => clearTimeout(t)
-    }
-  }, [renameWfId])
 
   useEffect(() => {
     if (renameSessionId) {
@@ -634,35 +614,11 @@ export default function Layout({ onSelectProject, children }: Props) {
                   />
                 </Button>
                 {renameId === p.path ? (
-                  <Input
-                    ref={renameInputRef}
-                    value={renameName}
-                    onChange={(e) => setRenameName(e.target.value)}
-                    onKeyDown={async (e) => {
-                      if (e.key === 'Enter' && renameName.trim()) {
-                        if (hasWhitespace(renameName)) {
-                          setRenameError(t('layout.nameWhitespace'))
-                          return
-                        }
-                        await renameProject(p.path, renameName.trim())
-                        setRenameId(null)
-                      }
-                      if (e.key === 'Escape') { setRenameId(null); setRenameError('') }
-                    }}
-                    onBlur={async () => {
-                      if (renameName.trim() && renameName !== p.name) {
-                        if (hasWhitespace(renameName)) {
-                          setRenameError(t('layout.nameWhitespace'))
-                          setRenameId(null)
-                          return
-                        }
-                        await renameProject(p.path, renameName.trim())
-                      }
-                      setRenameId(null)
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    onDoubleClick={(e) => e.stopPropagation()}
-                    style={{ flex: 1, height: 30, fontSize: 'calc(14px * var(--font-scale))', padding: '0 4px', border: '1px solid var(--accent)', borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
+                  <SidebarRenameField
+                    kind="project"
+                    initialName={p.name}
+                    onSave={(name) => renameProject(p.path, name)}
+                    onClose={() => setRenameId(null)}
                   />
                 ) : (
                   <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -740,10 +696,6 @@ export default function Layout({ onSelectProject, children }: Props) {
                   style={{ width: 20, height: 20, borderRadius: 4, background: 'transparent', color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))', lineHeight: '18px', padding: 0, flexShrink: 0 }}
                 >⋯</Button>
               </div>
-
-              {renameId === p.path && renameError && (
-                <div style={{ marginLeft: 38, marginBottom: 4, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}>{renameError}</div>
-              )}
 
               {/* Workflow list + sessions under the selected project */}
               {isProjectExpanded(p.id) && (
@@ -857,30 +809,16 @@ export default function Layout({ onSelectProject, children }: Props) {
                     >
                       <Icon name="workflow" size={12.8} strokeWidth={2} />
                       {renameWfId === wf.id ? (
-                        <Input
-                          ref={renameWfInputRef}
-                          value={renameWfName}
-                          onChange={(e) => setRenameWfName(e.target.value)}
-                          onKeyDown={async (e) => {
-                            if (e.key === 'Enter' && renameWfName.trim() && !hasWhitespace(renameWfName)) {
-                              try { await renameWorkflow(wf.id, p.id, renameWfName.trim()) } catch {}
-                              setRenameWfId(null)
-                            }
-                            if (e.key === 'Escape') setRenameWfId(null)
-                          }}
-                          onBlur={async () => {
-                            if (renameWfName.trim() && renameWfName !== wf.name && !hasWhitespace(renameWfName)) {
-                              try { await renameWorkflow(wf.id, p.id, renameWfName.trim()) } catch {}
-                            }
-                            setRenameWfId(null)
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          style={{ flex: 1, height: 28, fontSize: 'calc(14px * var(--font-scale))', padding: '0 4px', border: `1px solid ${hasWhitespace(renameWfName) ? 'var(--danger)' : 'var(--accent)'}`, borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
+                        <SidebarRenameField
+                          kind="workflow"
+                          initialName={wf.name}
+                          onSave={(name) => renameWorkflow(wf.id, p.id, name)}
+                          onClose={() => setRenameWfId(null)}
                         />
                       ) : (
                         <MarqueeText
                           text={wf.name}
-                          onDoubleClick={(e) => { e.stopPropagation(); if (!deleted) { setRenameWfId(wf.id); setRenameWfName(wf.name) } }}
+                          onDoubleClick={(e) => { e.stopPropagation(); if (!deleted) setRenameWfId(wf.id) }}
                           style={{ textDecoration: deleted ? 'line-through' : 'none', opacity: deleted ? 0.6 : 1, cursor: deleted ? 'default' : 'pointer' }}
                         />
                       )}
@@ -1184,7 +1122,7 @@ export default function Layout({ onSelectProject, children }: Props) {
             <>
               {menuTarget.type !== 'remote' && (
                 <div
-                  onClick={() => { setRenameId(menuTarget.path); setRenameName(menuTarget.name); setRenameError(''); setMoreMenu(null) }}
+                  onClick={() => { setRenameId(menuTarget.path); setMoreMenu(null) }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
                   style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
@@ -1263,7 +1201,7 @@ export default function Layout({ onSelectProject, children }: Props) {
             ) : (
               <>
                 <div
-                  onClick={() => { setRenameWfId(menuTarget.workflow.id); setRenameWfName(menuTarget.workflow.name); setMoreMenu(null) }}
+                  onClick={() => { setRenameWfId(menuTarget.workflow.id); setMoreMenu(null) }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
                   style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}

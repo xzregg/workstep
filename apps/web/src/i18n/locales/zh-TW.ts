@@ -1056,6 +1056,7 @@ export const zhTW: Messages = {
     loadTemplateFailed: '載入範本失敗',
     createWorkflowFailed: '建立流程失敗',
     nameWhitespace: '名稱不能包含空白字元（空格、Tab 等）',
+    renameFailed: '重新命名失敗，請重試',
     projects: '專案',
     searchSidebar: '搜尋側邊欄',
     searchSidebarPlaceholder: '搜尋專案、流程和對話',
