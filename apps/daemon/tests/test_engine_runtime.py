@@ -16,6 +16,7 @@ from httpx import ASGITransport, AsyncClient
 from api.engine import router
 from engines.core.base import EngineInstallResult
 from services import engine_runtime
+from engines.core.packages import RuntimePackage
 
 
 async def test_slow_download_file_open_keeps_event_loop_responsive(tmp_path, monkeypatch):
@@ -94,6 +95,36 @@ async def test_versions_expose_compatible_package_size_and_minimum(runtime_clien
     assert [v["version"] for v in data["versions"]] == ["0.150.0"]
     assert data["versions"][0]["size_bytes"] == 15
     assert data["size_scope"] == "primary_package"
+
+
+async def test_version_install_uses_uv_for_user_runtime_without_pip(tmp_path, monkeypatch):
+    package_dir = tmp_path / "python-packages"
+    monkeypatch.setenv("WORKSTEP_ENGINE_PACKAGE_DIR", str(package_dir))
+    monkeypatch.setattr(engine_runtime, "_has_pip", lambda: False)
+    monkeypatch.setattr(engine_runtime.shutil, "which", lambda name: "/usr/bin/uv" if name == "uv" else None)
+    commands = []
+
+    async def fake_install(command, **kwargs):
+        commands.append(command)
+        stage = Path(command[command.index("--target") + 1])
+        (stage / "openai_codex-0.157.1.dist-info").mkdir()
+        (stage / "openai_codex-0.157.1.dist-info" / "METADATA").write_text(
+            "Name: openai-codex\nVersion: 0.157.1\n"
+        )
+        return EngineInstallResult(success=True, message="installed")
+
+    monkeypatch.setattr(engine_runtime, "install_with_command", fake_install)
+    manager = engine_runtime.EngineRuntimeManager(tmp_path / "records")
+    archive = tmp_path / "openai_codex-0.157.1-py3-none-any.whl"
+    archive.write_bytes(b"wheel")
+
+    result = await manager._install_python_archive(
+        RuntimePackage("openai-codex", "pypi", "0.147.0"), archive, "0.157.1"
+    )
+
+    assert result.success
+    assert commands[0][:5] == ["uv", "pip", "install", "--upgrade", "--target"]
+    assert (package_dir / "openai_codex-0.157.1.dist-info").is_dir()
 
 
 async def wait_finished(client, engine_id="codex_sdk"):
@@ -247,6 +278,7 @@ async def test_desktop_target_switch_is_staged_and_removes_old_metadata(runtime_
     (old_info / 'METADATA').write_text('Name: openai-codex\nVersion: 0.149.0\n')
     (target / 'unrelated.txt').write_text('keep')
     monkeypatch.setenv('WORKSTEP_ENGINE_PACKAGE_DIR', str(target))
+    monkeypatch.setattr(engine_runtime, '_has_pip', lambda: True)
     # Read actual on-disk metadata so stale dist-info is observable via the API.
     monkeypatch.setattr(service, 'installed_version', lambda spec: next(
         (d.version for d in importlib.metadata.distributions(path=[str(target)]) if d.metadata['Name'] == spec.name), None))

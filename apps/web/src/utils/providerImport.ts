@@ -18,6 +18,7 @@ const SOURCE_TYPE_LABELS: Record<string, string> = {
   hermes: 'Hermes',
   openclaw: 'OpenClaw',
   opencode: 'OpenCode',
+  cursor: 'Cursor',
 }
 
 const SOURCE_TYPE_ORDER = Object.keys(SOURCE_TYPE_LABELS)

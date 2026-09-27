@@ -35,6 +35,8 @@ corepack yarn test
 corepack yarn build
 ```
 
-官网在 `apps/landing`，也使用 Yarn。仓库检查可运行 `python scripts/check_repository_health.py`。行为变更先写失败回归，再实现和验证；跨层变更还需运行相关 API、组件和端到端检查。不要提交构建产物、数据库、日志、密钥或个人配置。可选引擎 SDK 在设置中安装后，重启 daemon 用 `uv run --no-sync` 保留环境；只有需要恢复锁定依赖时运行 `uv sync --dev`。
+官网在 `apps/landing`，也使用 Yarn。仓库检查可运行 `python scripts/check_repository_health.py`。行为变更先写失败回归，再实现和验证；跨层变更还需运行相关 API、组件和端到端检查。不要提交构建产物、数据库、日志、密钥或个人配置。
+
+从设置页安装的可选引擎 SDK 位于 `~/.workstep/runtime/python-packages`（或 `WORKSTEP_ENGINE_PACKAGE_DIR`），不在 uv 管理的环境和 `uv.lock` 中；daemon 启动时将该目录加入导入路径。重新同步锁定依赖可运行 `uv sync --dev`，所选 SDK 版本不会因此被覆盖。
 
 外部贡献流程见 [`CONTRIBUTING.md`](../CONTRIBUTING.md)。

@@ -454,12 +454,35 @@ def test_python_sdk_install_targets_desktop_user_runtime(monkeypatch, tmp_path):
 
     package_dir = tmp_path / "python-packages"
     monkeypatch.setenv("WORKSTEP_ENGINE_PACKAGE_DIR", str(package_dir))
+    monkeypatch.setattr(engine_base, "_has_pip", lambda: True)
     monkeypatch.setattr(engine_base, "run_install_command", fake_run)
 
     result = asyncio.run(engine_base.install_python_package("openai-codex"))
 
     assert captured == [[
         sys.executable, "-m", "pip", "install", "--target", str(package_dir),
+        "openai-codex",
+    ]]
+    assert result.success is True
+
+
+def test_python_sdk_install_targets_user_runtime_without_pip(monkeypatch, tmp_path):
+    captured = []
+
+    async def fake_run(cmd, *, timeout=600):
+        captured.append(cmd)
+        return 0, "installed"
+
+    package_dir = tmp_path / "python-packages"
+    monkeypatch.setenv("WORKSTEP_ENGINE_PACKAGE_DIR", str(package_dir))
+    monkeypatch.setattr(engine_base, "_has_pip", lambda: False)
+    monkeypatch.setattr(engine_base.shutil, "which", lambda name: "/usr/bin/uv" if name == "uv" else None)
+    monkeypatch.setattr(engine_base, "run_install_command", fake_run)
+
+    result = asyncio.run(engine_base.install_python_package("openai-codex", upgrade=True))
+
+    assert captured == [[
+        "uv", "pip", "install", "--upgrade", "--target", str(package_dir),
         "openai-codex",
     ]]
     assert result.success is True
