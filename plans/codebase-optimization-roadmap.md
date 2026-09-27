@@ -84,7 +84,7 @@
 | 远程项目 | `services/remote_project.py`（461） | 访问认证、项目登记及主机侧路由已拆到独立模块；客户端连接和请求代理保留原入口。 |
 | 配置与项目 | `services/config.py`（1197）、`services/project.py`（677）、`services/project_workflows.py`（278）、`services/providers.py`（359） | 引擎纯规则、供应商协议目录及 cc-switch 导入已拆；项目流程生命周期与项目登记已分离。配置存储和供应商模型网络调用继续按职责审查。 |
 | 定时、文件与统计 | `services/schedule.py`（765）、`api/fs.py`（568）、`services/statistics.py`（845） | 规则编译与文件浏览已拆；调度执行、文件预览/上传、统计聚合继续按功能审查。 |
-| 全局导航与设置 | `components/Layout.tsx`（1642）、`pages/SettingsPage.tsx`（280）、`components/EngineSettingsPanel.tsx`（728）、`pages/ProviderSettings.tsx`（466） | 供应商编辑/导入、设置导航、默认执行引擎、引擎目录及配置、新手引导动作已拆；能力详情弹窗独立管理请求和状态。项目与会话侧栏仍需审查。引擎面板剩余目录、模型和安装配置属于同一操作流程。 |
+| 全局导航与设置 | `components/Layout.tsx`（1485）、`pages/SettingsPage.tsx`（280）、`components/EngineSettingsPanel.tsx`（728）、`pages/ProviderSettings.tsx`（466） | 供应商编辑/导入、设置导航、默认执行引擎、引擎目录及配置、新手引导动作已拆；能力详情弹窗独立管理请求和状态。侧栏会话操作与固定外观已分离，项目/流程菜单和侧栏装配仍需审查。引擎面板剩余目录、模型和安装配置属于同一操作流程。 |
 | 流程画布 | `components/FlowCanvas.tsx`（882） | 跨流程复制节点、模板选择/保存及 JSON 导入导出已拆；剩余图状态、节点交互与画布呈现关系紧密，审查是否保留原位；保持空画布及模板主动选择行为。 |
 
 **验证重点：** 远程鉴权与分享、项目切换/删除、定时任务、文件安全边界、设置保存与恢复、流程画布导入导出；涉及同步 I/O 的真实路径均做事件循环 canary。
@@ -95,6 +95,7 @@
 
 ## 阶段执行记录
 
+- 阶段五进行中：侧栏会话的新建、改名、归档、删除、列表更新、失败反馈与当前会话移除后的导航归入 `useSidebarSessionActions.ts`；`Layout.tsx` 从 1555 行降至 1485 行，保留菜单、内联输入和确认弹框装配。行为测试先因模块缺失失败，迁移后覆盖删除失败与重试、移动抽屉导航状态、重复创建防护、新建、改名和归档；原页面源码位置断言改为实际行为验证。Web 全量 1008 项、构建、lint、仓库健康、密钥及差异检查通过；Code Map 已更新。
 - 阶段五进行中：工作区侧栏的外框、品牌区、导航按钮、栏目标题与项目行固定样式归入 `Layout.css`；项目选中、拖拽和放置反馈用属性选择器，只有拖动后的侧栏宽度继续运行时计算。`ResponsiveNavigation` 增加可选 class 接口，页面源码中的旧样式断言改查实际 CSS。侧栏结构与移动菜单专项 7 项、Web 全量、构建、lint、仓库健康、密钥及差异检查通过；Code Map 已更新。
 - 阶段五进行中：引擎能力详情弹窗的项目上下文、请求、加载、错误和技能/MCP 展示归入 `EngineCapabilitiesDialog.tsx`，固定样式归入相邻 CSS；`EngineSettingsPanel.tsx` 从 877 行降至 728 行，只持有打开弹窗的引擎标识。组件行为测试先因模块缺失失败，迁移后通过；Web 全量 1006 项、构建、lint、daemon 全量 1734 项、仓库健康、密钥及差异检查通过。Code Map 已更新。
 - 阶段五进行中：`SettingsPage.tsx` 的窗口尺寸、系统偏好排版、字段反馈与开关背景全部转成 `SettingsPage.css` 的语义类；运行时窗口拖动仍由 `ResizablePanel` 动态计算。固定样式约束测试先因缺失 CSS 失败，迁移后设置和移动端专项 8 项、Web 全量 1005 项、构建、lint、仓库健康、密钥及差异检查通过；Code Map 已更新。
