@@ -227,4 +227,3 @@ class PydanticAIHarnessRuntime:
                 )))
         except Exception:
             logger.exception("Failed to drain compaction receipts")
-

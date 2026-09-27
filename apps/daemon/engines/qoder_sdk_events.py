@@ -287,4 +287,3 @@ class QoderSDKEventMapper:
             return events
 
         return events
-

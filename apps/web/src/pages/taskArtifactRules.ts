@@ -242,4 +242,3 @@ export function artifactsForMessage<
     artifact.step_key === stepKey && artifact.round === artifactRound
   )))
 }
-

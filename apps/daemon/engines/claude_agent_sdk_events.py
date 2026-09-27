@@ -348,4 +348,3 @@ class ClaudeAgentSDKEventMapper:
             return events
 
         return events
-

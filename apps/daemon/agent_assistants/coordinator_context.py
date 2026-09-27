@@ -304,5 +304,3 @@ def artifact_index(project, task: Task):
                         resolved,
                     )
     return result
-
-

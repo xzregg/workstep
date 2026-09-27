@@ -54,4 +54,3 @@ def _project_relative_path(path: Path, project_id: str | None) -> str | None:
         return path.relative_to(project.path.resolve()).as_posix()
     except ValueError:
         return None
-

@@ -173,4 +173,3 @@ export function deriveStepRounds(
     return stepArtifactRound > 0 ? stepArtifactRound : runRoundForStep
   })
 }
-

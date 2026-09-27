@@ -260,5 +260,3 @@ class ACPStreamingClient:
 
     def on_connect(self, conn) -> None:
         return None
-
-

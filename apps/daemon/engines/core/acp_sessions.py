@@ -289,4 +289,3 @@ class ACPSessionProtocol:
             "ACP reset_options: not supported natively (start a new session instead)"
         )
         return None
-
