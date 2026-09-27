@@ -56,6 +56,7 @@
 | 用量与费用计算 | `src/api/statistics.ts` | `services/usage_accounting.py`，由 `statistics.py` 与 `task_execution_report.py` 共用 | `tests/test_usage_accounting.py` |
 | 通用控件与移动样式 | `src/components/Button.tsx`、`Input.tsx`、`Select.tsx`、`Textarea.tsx`、`src/index.css`、`src/mobile.css` | — | `docs/frontend-design.md`、`tests/mobileButtonSizing.test.mjs` |
 | 供应商导入来源、候选选择及导入结果 | `src/components/ProviderImportDialog.tsx` 持有导入弹窗的加载、选择、提交和反馈；`src/pages/ProviderSettings.tsx` 只打开弹窗并刷新供应商列表；固定样式在 `ProviderImportDialog.css` | `api/providers.py`、`services/providers.py` | `apps/web/tests/providerImportDialog.test.tsx` |
+| 供应商新建、编辑、复制与协议/密钥配置 | `src/components/ProviderEditorDialog.tsx` 持有草稿、密钥读取、校验、保存及未保存关闭确认；`src/pages/ProviderSettings.tsx` 负责列表操作与刷新；固定样式在 `ProviderEditorDialog.css`、`ProviderSettings.css` | `api/providers.py`、`services/providers.py` | `apps/web/tests/providerEditorDialog.test.tsx`、`providerEngineCompatibility.test.mjs` |
 
 表中的前端路径均相对于 `apps/web/`，后端路径均相对于 `apps/daemon/`。后端请求模型在 `schemas/`，持久化模型在 `models/`；服务里的同步数据库工作单元通过 `services/project_database.py` 的项目执行器运行。实时事件从 `engines/core/events.py` 经 `engines/core/agui.py` 到前端 `src/utils/agui.ts`。
 

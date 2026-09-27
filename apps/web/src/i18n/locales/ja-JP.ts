@@ -1425,6 +1425,8 @@ export const jaJP: Messages = {
     inspectMcpEmpty: '未配置 MCP 服务器',
   },
   providerSettings: {
+    unsavedTitle: 'プロバイダーの変更を破棄しますか？',
+    unsavedMessage: 'プロバイダー設定は保存されていません。破棄して閉じますか？',
     title: '供应商',
     intro: '统一管理 LLM API 供应商（API 地址与密钥）。API 驱动的引擎（如 Pydantic AI）可复用所选供应商的凭据。',
     nav: '供应商',

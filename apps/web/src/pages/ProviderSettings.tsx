@@ -1,12 +1,9 @@
-import ResizablePanel from '../components/ResizablePanel'
 import ProviderImportDialog from '../components/ProviderImportDialog'
+import ProviderEditorDialog, { type ProviderEditorTarget } from '../components/ProviderEditorDialog'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Button from '../components/Button'
 import ConfirmDialog from '../components/ConfirmDialog'
-import Field from '../components/Field'
 import Icon from '../components/Icon'
-import Input from '../components/Input'
-import Select from '../components/Select'
 import {
   providerApi,
   type ProviderInfo,
@@ -14,6 +11,7 @@ import {
   type ProviderTypeMeta,
 } from '../api/client'
 import { useI18n, type TKey } from '../i18n'
+import './ProviderSettings.css'
 import {
   summarizeProviderProtocolModels,
   type ProviderProtocolModels,
@@ -23,24 +21,6 @@ interface Props {
   /** 供应商变更后回调（设置页据此刷新引擎列表，同步 Pydantic AI 的供应商下拉） */
   onChanged?: () => void
   autoCreate?: boolean
-}
-
-interface ProviderForm {
-  name: string
-  type: string
-  protocols: string[]
-  protocol_base_urls: Record<string, string>
-  api_key: string
-  clear_key: boolean
-}
-
-const EMPTY_FORM: ProviderForm = {
-  name: '',
-  type: 'custom',
-  protocols: ['openai_chat_completions'],
-  protocol_base_urls: { openai_chat_completions: '' },
-  api_key: '',
-  clear_key: false,
 }
 
 const ALL_PROTOCOLS: { value: string; labelKey: TKey }[] = [
@@ -53,22 +33,13 @@ function ProviderBadge({ verified, enabled }: { verified: boolean; enabled: bool
   const { t } = useI18n()
   if (!enabled) {
     return (
-      <span style={{
-        padding: '2px 8px', borderRadius: 999, fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600,
-        background: 'var(--surface)', color: 'var(--meta)',
-      }}>
+      <span className="provider-settings-badge provider-settings-badge--disabled">
         {t('providerSettings.disabledBadge')}
       </span>
     )
   }
   return (
-    <span style={{
-      padding: '2px 8px', borderRadius: 999, fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600,
-      color: verified ? 'var(--success)' : 'var(--warn)',
-      background: verified
-        ? 'color-mix(in oklab, var(--success), transparent 88%)'
-        : 'color-mix(in oklab, var(--warn), transparent 88%)',
-    }}>
+    <span className={`provider-settings-badge provider-settings-badge--${verified ? 'verified' : 'unverified'}`}>
       {verified ? t('providerSettings.verified') : t('providerSettings.notVerified')}
     </span>
   )
@@ -80,14 +51,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
   const [types, setTypes] = useState<ProviderTypeMeta[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [formOpen, setFormOpen] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState<ProviderForm>(EMPTY_FORM)
-  const [formError, setFormError] = useState('')
-  const [formSaving, setFormSaving] = useState(false)
-  const [keyRevealed, setKeyRevealed] = useState(false)
-  const [copySourceName, setCopySourceName] = useState('')
-  const [copyingId, setCopyingId] = useState<string | null>(null)
+  const [editorTarget, setEditorTarget] = useState<ProviderEditorTarget | null>(null)
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const [testingId, setTestingId] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string }>>({})
@@ -146,7 +110,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     if (initialized.current) return
@@ -155,204 +119,13 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
   }, [refresh])
 
   const typeLabel = (id: string) => types.find((item) => item.id === id)?.label ?? id
-  const typeDefaultBaseUrl = (id: string) => types.find((item) => item.id === id)?.default_base_url ?? ''
-  const typeDefaultProtocols = (id: string) =>
-    types.find((item) => item.id === id)?.default_protocols?.length
-      ? types.find((item) => item.id === id)!.default_protocols
-      : [types.find((item) => item.id === id)?.default_protocol ?? 'openai_chat_completions']
-
-  const toggleProtocol = (value: string) => {
-    setForm((current) => {
-      const present = current.protocols.includes(value)
-      return {
-        ...current,
-        protocols: present
-          ? current.protocols.filter((item) => item !== value)
-          : [...current.protocols, value],
-        protocol_base_urls: present
-          ? current.protocol_base_urls
-          : {
-              ...current.protocol_base_urls,
-              [value]: current.protocol_base_urls[value] || typeDefaultBaseUrl(current.type),
-            },
-      }
-    })
-  }
-
-  const openCreate = () => {
-    setEditingId(null)
-    setCopySourceName('')
-    const typeId = types[0]?.id ?? 'custom'
-    setForm({
-      ...EMPTY_FORM,
-      type: typeId,
-      protocols: typeDefaultProtocols(typeId),
-      protocol_base_urls: Object.fromEntries(
-        typeDefaultProtocols(typeId).map((protocol) => [protocol, typeDefaultBaseUrl(typeId)]),
-      ),
-    })
-    setFormError('')
-    setKeyRevealed(false)
-    setFormOpen(true)
-  }
+  const openCreate = () => setEditorTarget({ mode: 'create' })
 
   useEffect(() => {
-    if (!autoCreate || loading || autoCreateHandled.current || formOpen) return
+    if (!autoCreate || loading || autoCreateHandled.current || editorTarget) return
     autoCreateHandled.current = true
     openCreate()
-  }, [autoCreate, loading, formOpen, types]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const openEdit = (provider: ProviderInfo) => {
-    const protocols = provider.protocols?.length ? provider.protocols : [provider.protocol]
-    setEditingId(provider.id)
-    setCopySourceName('')
-    setForm({
-      name: provider.name,
-      type: provider.type,
-      protocols,
-      protocol_base_urls: Object.fromEntries(
-        protocols.map((protocol) => [
-          protocol,
-          provider.protocol_base_urls?.[protocol] || provider.base_url,
-        ]),
-      ),
-      api_key: '',
-      clear_key: false,
-    })
-    setFormError('')
-    setKeyRevealed(false)
-    setFormOpen(true)
-  }
-
-  const openCopy = async (provider: ProviderInfo) => {
-    setCopyingId(provider.id)
-    setError('')
-    try {
-      const apiKey = provider.has_key
-        ? (await providerApi.reveal(provider.id)).value || ''
-        : ''
-      const protocols = provider.protocols?.length ? provider.protocols : [provider.protocol]
-      setEditingId(null)
-      setCopySourceName(provider.name)
-      setForm({
-        name: t('providerSettings.copyName', { name: provider.name }),
-        type: provider.type,
-        protocols,
-        protocol_base_urls: Object.fromEntries(
-          protocols.map((protocol) => [
-            protocol,
-            provider.protocol_base_urls?.[protocol] || provider.base_url,
-          ]),
-        ),
-        api_key: apiKey,
-        clear_key: false,
-      })
-      setFormError('')
-      setKeyRevealed(false)
-      setFormOpen(true)
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t('providerSettings.copyFailed'))
-    } finally {
-      setCopyingId(null)
-    }
-  }
-
-  const closeForm = () => {
-    setFormOpen(false)
-    setEditingId(null)
-    setCopySourceName('')
-    setForm(EMPTY_FORM)
-    setFormError('')
-    setKeyRevealed(false)
-  }
-
-  const changeType = (typeId: string) => {
-    setForm((current) => {
-      const defaultUrl = typeDefaultBaseUrl(typeId)
-      const protocols = typeDefaultProtocols(typeId)
-      return {
-        ...current,
-        type: typeId,
-        protocols,
-        protocol_base_urls: Object.fromEntries(
-          protocols.map((protocol) => [protocol, defaultUrl]),
-        ),
-      }
-    })
-    setFormError('')
-  }
-
-  const toggleReveal = async () => {
-    if (keyRevealed) {
-      setKeyRevealed(false)
-      return
-    }
-    if (!editingId) {
-      setKeyRevealed(true)
-      return
-    }
-    const provider = providers.find((item) => item.id === editingId)
-    if (!provider?.has_key) {
-      setKeyRevealed(true)
-      return
-    }
-    try {
-      const result = await providerApi.reveal(editingId)
-      setForm((current) => ({ ...current, api_key: result.value || '' }))
-      setKeyRevealed(true)
-    } catch {
-      setFormError(t('providerSettings.saveFailed'))
-    }
-  }
-
-  const save = async () => {
-    const name = form.name.trim()
-    if (!name) {
-      setFormError(t('providerSettings.needsName'))
-      return
-    }
-    if (!form.protocols.length) {
-      setFormError(t('providerSettings.protocolsRequired'))
-      return
-    }
-    const protocolBaseUrls = Object.fromEntries(
-      form.protocols.map((protocol) => [
-        protocol,
-        (form.protocol_base_urls[protocol] || '').trim(),
-      ]),
-    )
-    if (Object.values(protocolBaseUrls).some((value) => !value)) {
-      setFormError(t('providerSettings.needsBaseUrl'))
-      return
-    }
-    setFormSaving(true)
-    setFormError('')
-    try {
-      const result = await providerApi.save({
-        id: editingId || undefined,
-        name,
-        type: form.type,
-        protocols: form.protocols,
-        protocol: form.protocols[0],
-        base_url: protocolBaseUrls[form.protocols[0]],
-        protocol_base_urls: protocolBaseUrls,
-        api_key: form.api_key,
-        clear: form.clear_key ? { api_key: true } : undefined,
-      })
-      if (!result.saved || !result.provider) {
-        setFormError(result.message || t('providerSettings.saveFailed'))
-        return
-      }
-      setFormError('')
-      closeForm()
-      await refresh()
-      onChanged?.()
-    } catch (reason) {
-      setFormError(reason instanceof Error ? reason.message : t('providerSettings.saveFailed'))
-    } finally {
-      setFormSaving(false)
-    }
-  }
+  }, [autoCreate, loading, editorTarget]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleEnabled = async (provider: ProviderInfo) => {
     setTogglingId(provider.id)
@@ -473,17 +246,12 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
     }
   }
 
-  const saveDisabled = !form.name.trim()
-    || !form.protocols.length
-    || form.protocols.some((protocol) => !form.protocol_base_urls[protocol]?.trim())
-    || formSaving
-
   return (
-    <div className="provider-settings-page" style={{ maxWidth: 960, margin: '0 auto' }}>
-      <div className="provider-settings-header" style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 18 }}>
-        <div className="provider-settings-heading" style={{ flex: 1 }}>
-          <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 6 }}>{t('providerSettings.title')}</h1>
-          <p style={{ color: 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))' }}>{t('providerSettings.intro')}</p>
+    <div className="provider-settings-page">
+      <div className="provider-settings-header">
+        <div className="provider-settings-heading">
+          <h1 className="provider-settings-title">{t('providerSettings.title')}</h1>
+          <p className="provider-settings-intro">{t('providerSettings.intro')}</p>
         </div>
         <div className="provider-settings-header-actions">
           <Button variant="ghost" onClick={() => void refresh()} disabled={loading}>
@@ -501,31 +269,21 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
       </div>
 
       {error && (
-        <div role="alert" style={{
-          padding: '10px 12px', marginBottom: 12, borderRadius: 8,
-          background: 'color-mix(in oklab, var(--danger), transparent 90%)',
-          color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))',
-        }}>
+        <div role="alert" className="provider-settings-alert">
           {error}
         </div>
       )}
 
       {loading && providers.length === 0 ? (
-        <div style={{
-          padding: 32, textAlign: 'center', color: 'var(--meta)',
-          background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 12,
-        }}>
+        <div className="provider-settings-empty provider-settings-empty--loading">
           {t('settings.readingEngines')}
         </div>
       ) : providers.length === 0 ? (
-        <div style={{
-          padding: 32, textAlign: 'center', color: 'var(--meta)',
-          background: 'var(--bg)', border: '1px dashed var(--border)', borderRadius: 12,
-        }}>
+        <div className="provider-settings-empty">
           {t('providerSettings.empty')}
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="provider-settings-list">
           {providers.map((provider) => {
             const testResult = testResults[provider.id]
             const modelCount = modelCounts[provider.id]
@@ -534,35 +292,20 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
               <div
                 key={provider.id}
                 data-provider-id={provider.id}
-                style={{
-                  borderRadius: 12,
-                  border: '1px solid var(--border)',
-                  background: 'var(--bg)',
-                  opacity: provider.enabled ? 1 : 0.72,
-                }}
+                className={`provider-settings-card${provider.enabled ? '' : ' provider-settings-card--disabled'}`}
               >
-                <div className="provider-settings-card-row" style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-                  <span style={{
-                    width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    background: 'color-mix(in oklab, var(--accent), transparent 86%)',
-                    border: '1px solid color-mix(in oklab, var(--accent), transparent 72%)',
-                    color: 'var(--accent)', fontSize: 'calc(12px * var(--font-scale))', fontWeight: 700,
-                  }}>
+                <div className="provider-settings-card-row">
+                  <span className="provider-settings-avatar">
                     {provider.name.slice(0, 2).toUpperCase()}
                   </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                      <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>{provider.name}</span>
-                      <span style={{
-                        padding: '1px 6px', borderRadius: 999,
-                        background: 'var(--surface)', color: 'var(--muted)',
-                        fontSize: 'calc(11px * var(--font-scale))', textTransform: 'uppercase',
-                      }}>
+                  <div className="provider-settings-card-content">
+                    <div className="provider-settings-card-heading">
+                      <span className="provider-settings-card-name">{provider.name}</span>
+                      <span className="provider-settings-type-badge">
                         {typeLabel(provider.type)}
                       </span>
                     </div>
-                    <div style={{ color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))', overflowWrap: 'anywhere' }}>
+                    <div className="provider-settings-card-detail">
                       {(provider.protocols?.length ? provider.protocols : [provider.protocol]).map((protocol) => {
                         const option = ALL_PROTOCOLS.find((item) => item.value === protocol)
                         return (
@@ -575,63 +318,44 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                       <div>{provider.has_key ? t('providerSettings.hasKey') : t('providerSettings.noKey')}</div>
                     </div>
                     {testResult && (
-                      <div
-                        role="status"
-                        style={{
-                          marginTop: 7, fontSize: 'calc(11px * var(--font-scale))',
-                          color: testResult.success ? 'var(--success)' : 'var(--danger)',
-                        }}
-                      >
+                      <div role="status" className={`provider-settings-test-status provider-settings-test-status--${testResult.success ? 'success' : 'failure'}`}>
                         {testResult.success ? '✓' : '×'} {testResult.message}
                       </div>
                     )}
                     {modelErrors[provider.id] && (
-                      <div role="status" style={{ marginTop: 4, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}>
+                      <div role="status" className="provider-settings-model-status provider-settings-model-status--error">
                         × {t('providerSettings.modelsFailed')}: {modelErrors[provider.id]}
                       </div>
                     )}
                     {modelFetchedAt[provider.id] ? (
-                      <div role="status" style={{ marginTop: 4, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--success)' }}>
+                      <div role="status" className="provider-settings-model-status provider-settings-model-status--success">
                         ✓ {t('providerSettings.modelsFetched', { count: modelCounts[provider.id] ?? 0 })}
                         {' · '}
                         {t('providerSettings.modelsFetchedAt', { time: modelFetchedAt[provider.id] ?? '' })}
                       </div>
                     ) : (
-                      <div role="status" style={{ marginTop: 4, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>
+                      <div role="status" className="provider-settings-model-status provider-settings-model-status--empty">
                         {t('providerSettings.modelsNotFetched')}
                       </div>
                     )}
                     {providerModelGroups.some((group) => group.models.length > 0) && (
-                      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 7 }}>
+                      <div className="provider-settings-model-groups">
                         {providerModelGroups.filter((group) => group.models.length > 0).map((group) => {
                           const option = ALL_PROTOCOLS.find((item) => item.value === group.protocol)
                           return (
                             <div key={group.protocol} data-model-protocol={group.protocol}>
-                              <div style={{
-                                marginBottom: 4,
-                                color: 'var(--muted)',
-                                fontSize: 'calc(10px * var(--font-scale))',
-                                fontWeight: 650,
-                              }}>
+                              <div className="provider-settings-model-group-title">
                                 {option ? t(option.labelKey) : group.protocol}
                                 {' · '}
                                 {t('providerSettings.modelsCount', { count: group.models.length })}
                               </div>
-                              <div role="list" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                              <div role="list" className="provider-settings-model-list">
                                 {group.models.map((model) => (
                                   <span
                                     key={model.id}
                                     role="listitem"
                                     title={model.description || model.label || model.id}
-                                    style={{
-                                      padding: '2px 8px',
-                                      borderRadius: 999,
-                                      fontSize: 'calc(11px * var(--font-scale))',
-                                      background: 'var(--surface)',
-                                      color: 'var(--text)',
-                                      border: '1px solid var(--border)',
-                                      overflowWrap: 'anywhere',
-                                    }}
+                                    className="provider-settings-model-chip"
                                   >
                                     {model.label || model.id}
                                   </span>
@@ -643,10 +367,10 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                       </div>
                     )}
                   </div>
-                  <div className="provider-settings-card-actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 6 }}>
+                  <div className="provider-settings-card-actions">
                     <Button
                       variant="ghost"
-                      style={{ minWidth: 62, height: 30, justifyContent: 'center' }}
+                      className="provider-settings-action provider-settings-action--wide"
                       disabled={testingId !== null}
                       loading={testingId === provider.id}
                       onClick={() => void testProvider(provider)}
@@ -655,19 +379,19 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                     </Button>
                     <Button
                       variant="ghost"
-                      style={{ minWidth: 62, height: 30, justifyContent: 'center' }}
+                      className="provider-settings-action provider-settings-action--wide"
                       disabled={modelsLoadingId !== null}
                       loading={modelsLoadingId === provider.id}
                       onClick={() => void loadModels(provider)}
                     >
                       {t('providerSettings.models')}
                       {modelCount !== undefined && !modelsLoadingId && (
-                        <span style={{ marginLeft: 4, color: 'var(--meta)' }}>{modelCount}</span>
+                        <span className="provider-settings-model-count">{modelCount}</span>
                       )}
                     </Button>
                     <Button
                       variant="ghost"
-                      style={{ minWidth: 54, height: 30, justifyContent: 'center' }}
+                      className="provider-settings-action"
                       disabled={togglingId !== null}
                       loading={togglingId === provider.id}
                       title={t('providerSettings.enabledHint')}
@@ -677,23 +401,21 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                     </Button>
                     <Button
                       variant="ghost"
-                      style={{ minWidth: 54, height: 30, justifyContent: 'center' }}
-                      onClick={() => openEdit(provider)}
+                      className="provider-settings-action"
+                      onClick={() => setEditorTarget({ mode: 'edit', provider })}
                     >
                       {t('common.edit')}
                     </Button>
                     <Button
                       variant="ghost"
-                      style={{ minWidth: 76, height: 30, justifyContent: 'center' }}
-                      disabled={copyingId !== null}
-                      loading={copyingId === provider.id}
-                      onClick={() => void openCopy(provider)}
+                      className="provider-settings-action provider-settings-action--copy"
+                      onClick={() => setEditorTarget({ mode: 'copy', provider })}
                     >
                       {t('providerSettings.copy')}
                     </Button>
                     <Button
                       variant="ghost"
-                      style={{ minWidth: 30, width: 30, height: 30, padding: 0, justifyContent: 'center' }}
+                      className="provider-settings-action provider-settings-action--delete"
                       aria-label={t('providerSettings.deleteTitle')}
                       onClick={() => {
                         setDeleteError('')
@@ -717,182 +439,12 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
         onImported={async () => { await refresh(); onChanged?.() }}
       />}
 
-      {formOpen && (
-        <div
-          className="modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label={editingId
-            ? t('providerSettings.editTitle')
-            : copySourceName
-              ? t('providerSettings.copyTitle')
-              : t('providerSettings.newTitle')}
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) closeForm()
-          }}
-          style={{ padding: 24 }}
-        >
-          <ResizablePanel
-            className="modal"
-            onMouseDown={(event) => event.stopPropagation()}
-            style={{ width: 560, maxWidth: 'calc(100vw - 48px)' }}
-          >
-            <div className="modal-header" style={{ padding: '16px 20px' }}>
-              <span className="modal-title">
-                {editingId
-                  ? t('providerSettings.editTitle')
-                  : copySourceName
-                    ? t('providerSettings.copyTitle')
-                    : t('providerSettings.newTitle')}
-              </span>
-              <Button variant="icon" aria-label={t('settings.closeSettings')} onClick={closeForm}>✕</Button>
-            </div>
-            <div className="modal-body" style={{ padding: '18px 20px 20px' }}>
-              <Field label={t('providerSettings.name')} htmlFor="provider-name" required>
-                <Input
-                  id="provider-name"
-                  value={form.name}
-                  placeholder={t('providerSettings.namePlaceholder')}
-                  autoFocus
-                  onChange={(event) => {
-                    setForm((current) => ({ ...current, name: event.target.value }))
-                    setFormError('')
-                  }}
-                  style={{ width: '100%', height: 32 }}
-                />
-              </Field>
-              <Field label={t('providerSettings.type')} htmlFor="provider-type" required>
-                <Select
-                  id="provider-type"
-                  value={form.type}
-                  onChange={(event) => changeType(event.target.value)}
-                  style={{ width: '100%', height: 32 }}
-                >
-                  {types.map((type) => (
-                    <option key={type.id} value={type.id}>{type.label}</option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label={t('providerSettings.protocols')} required>
-                <div className="provider-protocol-options">
-                  {ALL_PROTOCOLS.map((option) => {
-                    const enabled = form.protocols.includes(option.value)
-                    return (
-                      <div className="provider-protocol-setting" key={option.value}>
-                        <label className="provider-protocol-toggle">
-                          <span>{t(option.labelKey)}</span>
-                          <input
-                            type="checkbox"
-                            role="switch"
-                            checked={enabled}
-                            onChange={() => toggleProtocol(option.value)}
-                          />
-                          <span className="provider-protocol-switch" aria-hidden="true" />
-                        </label>
-                        {form.protocols.includes(option.value) && (
-                          <Field
-                            className="provider-protocol-address"
-                            label={t('providerSettings.baseUrl')}
-                            htmlFor={`provider-base-url-${option.value}`}
-                            required
-                          >
-                            <Input
-                              id={`provider-base-url-${option.value}`}
-                              value={form.protocol_base_urls[option.value] || ''}
-                              placeholder={t('providerSettings.baseUrlPlaceholder')}
-                              onChange={(event) => {
-                                const value = event.target.value
-                                setForm((current) => ({
-                                  ...current,
-                                  protocol_base_urls: {
-                                    ...current.protocol_base_urls,
-                                    [option.value]: value,
-                                  },
-                                }))
-                                setFormError('')
-                              }}
-                              style={{ width: '100%', height: 32 }}
-                            />
-                          </Field>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-                <div style={{ fontSize: 12, opacity: 0.65, marginTop: 6 }}>
-                  {t('providerSettings.protocolsHint')}
-                </div>
-              </Field>
-              <Field
-                label={t('providerSettings.apiKey')}
-                htmlFor="provider-api-key"
-                help={editingId && !form.clear_key && providers.find((item) => item.id === editingId)?.has_key
-                  ? t('providerSettings.apiKeyKept')
-                  : undefined}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Input
-                    id="provider-api-key"
-                    type={keyRevealed ? 'text' : 'password'}
-                    value={form.api_key}
-                    placeholder={t('providerSettings.apiKeyPlaceholder')}
-                    onChange={(event) => {
-                      setForm((current) => ({ ...current, api_key: event.target.value }))
-                      setFormError('')
-                    }}
-                    style={{ flex: 1, minWidth: 0, height: 32 }}
-                  />
-                  <Button
-                    variant="ghost"
-                    style={{ height: 30, flexShrink: 0 }}
-                    onClick={() => void toggleReveal()}
-                  >
-                    {keyRevealed ? t('providerSettings.hide') : t('providerSettings.reveal')}
-                  </Button>
-                  {editingId && providers.find((item) => item.id === editingId)?.has_key && (
-                    <label
-                      title={t('providerSettings.clearKey')}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 5,
-                        flexShrink: 0, cursor: 'pointer', fontSize: 'calc(11px * var(--font-scale))',
-                        color: 'var(--muted)', whiteSpace: 'nowrap',
-                      }}
-                    >
-                      <input
-                        id="provider-clear-key"
-                        type="checkbox"
-                        checked={form.clear_key}
-                        onChange={(event) => {
-                          setForm((current) => ({ ...current, clear_key: event.target.checked }))
-                          setFormError('')
-                        }}
-                        style={{
-                          width: 14, height: 14, padding: 0, margin: 0,
-                          flexShrink: 0, accentColor: 'var(--accent)',
-                        }}
-                      />
-                      {t('providerSettings.clearKey')}
-                    </label>
-                  )}
-                </div>
-              </Field>
-              <div className="field-hint" style={{ minHeight: 18, marginBottom: 12 }} aria-live="polite">
-                {formError ? (
-                  <span style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{formError}</span>
-                ) : null}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                <Button variant="ghost" disabled={formSaving} onClick={closeForm}>
-                  {t('common.cancel')}
-                </Button>
-                <Button variant="primary" disabled={saveDisabled} loading={formSaving} onClick={() => void save()}>
-                  {t('providerSettings.save')}
-                </Button>
-              </div>
-            </div>
-          </ResizablePanel>
-        </div>
-      )}
+      {editorTarget && <ProviderEditorDialog
+        target={editorTarget}
+        types={types}
+        onClose={() => setEditorTarget(null)}
+        onSaved={async () => { await refresh(); onChanged?.() }}
+      />}
 
       <ConfirmDialog
         open={deleting !== null}
@@ -905,11 +457,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
         onCancel={() => setDeleting(null)}
       />
       {deleteError && (
-        <div role="alert" style={{
-          marginTop: 10, padding: '9px 12px', borderRadius: 8, fontSize: 'calc(12px * var(--font-scale))',
-          background: 'color-mix(in oklab, var(--danger), transparent 90%)',
-          color: 'var(--danger)',
-        }}>
+        <div role="alert" className="provider-settings-alert provider-settings-alert--delete">
           {deleteError}
         </div>
       )}
