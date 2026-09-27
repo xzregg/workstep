@@ -39,6 +39,7 @@
 | 协调助手提案、确认与执行 | `src/components/TaskConversationMessage.tsx` 展示提案与确认入口 | `agent_assistants/coordinator_actions.py` 持有提案校验、幂等确认、取消、步骤补充、审核决定、步骤重跑和流程 Action 创建；同步数据库工作单元经项目执行器运行，`coordinator.py` 仅保留 API 入口和回合交接 | `tests/test_coordinator.py`（含慢确认健康检查 canary） |
 | 引擎与安装 | `src/api/engine.ts`、`src/pages/SettingsPage.tsx` | `api/engine.py`、`engines/core/`、`services/engine_runtime.py` | `docs/multi-engine-architecture.md`、`docs/engine-runtime-management.md` |
 | ACP 流式通知队列、工具审批选项与 elicitation 回复 | 前端接收 AG-UI 的交互请求并提交结果 | `engines/core/acp_streaming_client.py` 持有 ACP 客户端回调与等待中的交互；`engines/core/acp_base.py` 负责协议会话和执行 | `tests/test_acp_full_events.py`、`tests/test_p2_engines.py` |
+| ACP 原生会话创建、加载、恢复、分叉、配置和扩展命令 | 前端通过会话与引擎设置接口调用 | `engines/core/acp_sessions.py` 持有协议会话命令；`engines/core/acp_base.py` 负责连接建立、流式执行与审批调度 | `tests/test_acp_full_events.py`、`tests/test_p2_engines.py`、`tests/test_engine_base_hierarchy.py` |
 | ACP 会话更新到内部事件、工具调用、计划和用量的映射 | 前端通过 AG-UI 消费事件 | `engines/core/acp_event_mapper.py` 持有 ACP 通知映射；`engines/core/acp_base.py` 继承映射器并处理协议执行 | `tests/test_acp_full_events.py`、`tests/test_engine_base_hierarchy.py` |
 | Codex SDK 通知到内部事件的映射、消息阶段、工具调用、用量与目标状态 | 前端通过 AG-UI 消费事件 | `engines/codex_sdk_events.py` 持有通知映射；`engines/codex_sdk.py` 持有 SDK 会话与执行循环并继承映射器 | `tests/test_p2_engines.py`、`tests/test_engine_base_hierarchy.py` |
 | Codex CLI JSONL 事件、工具调用及沙箱拒绝交互 | 前端通过 AG-UI 消费事件与交互请求 | `engines/codex_cli_events.py` 持有 CLI 事件翻译；`engines/codex.py` 持有子进程、会话与审批后的重试 | `tests/test_p2_engines.py`、`tests/test_engine_base_hierarchy.py` |
