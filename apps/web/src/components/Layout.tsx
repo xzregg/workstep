@@ -8,7 +8,7 @@ import { useProjectStore } from '../stores/projectStore'
 import { useI18n } from '../i18n'
 import SessionRowActions from './SessionRowActions'
 import { useTaskStore } from '../stores/taskStore'
-import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
+import { useChatListStore } from '../stores/chatSessionStore'
 import { useSidebarActivityStore } from '../stores/sidebarActivityStore'
 import { useSidebarActivity } from '../hooks/useSidebarActivity'
 import { useWebSocket } from '../hooks/useWebSocket'
@@ -28,9 +28,9 @@ import { loadSidebarSectionState, saveSidebarSectionState } from '../utils/sideb
 import LayoutOnboardingActions from './LayoutOnboardingActions'
 import { useOnboardingStore } from '../stores/onboardingStore'
 import { filterSidebarProject } from '../utils/sidebarSearch'
+import { useSidebarSessionActions } from '../hooks/useSidebarSessionActions'
 import {
   engineApi,
-  chatSessionApi,
   type Project,
 } from '../api/client'
 import './Layout.css'
@@ -133,12 +133,15 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [renameSessionProjectId, setRenameSessionProjectId] = useState<string | null>(null)
   const [renameSessionValue, setRenameSessionValue] = useState('')
   const [deleteSessionTarget, setDeleteSessionTarget] = useState<{ sessionId: string; projectId: string; title: string } | null>(null)
-  const [sessionDeleteError, setSessionDeleteError] = useState('')
-  useEffect(() => {
-    if (!sessionDeleteError) return
-    const timer = window.setTimeout(() => setSessionDeleteError(''), 5000)
-    return () => window.clearTimeout(timer)
-  }, [sessionDeleteError])
+  const {
+    creatingSession,
+    sessionError: sessionDeleteError,
+    clearSessionError,
+    createSession,
+    renameSession,
+    deleteSession,
+    archiveSession,
+  } = useSidebarSessionActions()
   const [storedSidebarSections] = useState(loadSidebarSectionState)
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>(
     storedSidebarSections.expandedProjectIds,
@@ -149,7 +152,6 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [flowSectionOpen, setFlowSectionOpen] = useState<Record<string, boolean>>(
     storedSidebarSections.flowsByProject,
   )
-  const [creatingSession, setCreatingSession] = useState(false)
   const sidebarSearchResults = useMemo(() => new Map(projects.map((project) => [
     project.id,
     filterSidebarProject(project, sessionsByProject[project.id] || [], sidebarSearchQuery),
@@ -456,94 +458,22 @@ export default function Layout({ onSelectProject, children }: Props) {
     )
   }
 
-  const handleCreateSession = async (project: Project) => {
-    if (creatingSession) return
-    setCreatingSession(true)
-    try {
-      const detail = await chatSessionApi.create({
-        project_id: project.id,
-      })
-      useChatListStore.getState().addSession({
-        id: detail.id,
-        project_id: detail.project_id,
-        workflow_id: detail.workflow_id,
-        title: detail.title,
-        engine: detail.engine,
-        model: detail.model,
-        message_count: detail.message_count,
-        created_at: detail.created_at,
-        updated_at: detail.updated_at,
-      })
-      navigate(`/chat?project=${encodeURIComponent(project.name)}&session=${encodeURIComponent(detail.id)}`)
-    } catch {
-      // Errors surface on the chat page itself.
-    } finally {
-      setCreatingSession(false)
-    }
-  }
-
   const handleRenameSession = async (sessionId: string, title: string, projectId?: string) => {
-    const trimmed = title.trim()
-    if (!trimmed) { setRenameSessionId(null); return }
     const ownerProjectId = projectId || renameSessionProjectId || activeProject?.id
-    if (!ownerProjectId) { setRenameSessionId(null); return }
-    try {
-      const updated = await chatSessionApi.rename(sessionId, ownerProjectId, trimmed)
-      useChatListStore.getState().renameSession(sessionId, updated.title)
-    } catch {
-      // Keep the old title on failure.
-    }
+    if (ownerProjectId) await renameSession(sessionId, ownerProjectId, title)
     setRenameSessionId(null)
     setRenameSessionProjectId(null)
   }
 
   const handleDeleteSession = async () => {
     if (!deleteSessionTarget) return
-    setSessionDeleteError('')
-    try {
-      await chatSessionApi.remove(deleteSessionTarget.sessionId, deleteSessionTarget.projectId)
-      useChatListStore.getState().removeSession(deleteSessionTarget.sessionId)
-      useChatSessionStore.getState().resetSession(deleteSessionTarget.sessionId)
-      if (activeSessionId === deleteSessionTarget.sessionId) {
-        const remaining = useChatListStore.getState().sessionsByProject[deleteSessionTarget.projectId] || []
-        const next = remaining[0]
-        const owner = projects.find((project) => project.id === deleteSessionTarget.projectId)
-        const ownerName = owner?.name || activeProject?.name || ''
-        if (next) {
-          navigate(`/chat?project=${encodeURIComponent(ownerName)}&session=${encodeURIComponent(next.id)}`, {
-            replace: true,
-            state: { preserveNavigationDrawer: true },
-          })
-        } else {
-          navigate(`/chat?project=${encodeURIComponent(ownerName)}`, {
-            replace: true,
-            state: { preserveNavigationDrawer: true },
-          })
-        }
-      }
-      setDeleteSessionTarget(null)
-    } catch (reason) {
-      setSessionDeleteError(reason instanceof Error ? reason.message : t('chatSession.deleteFailed'))
-    }
+    const { sessionId, projectId } = deleteSessionTarget
+    if (await deleteSession(sessionId, projectId)) setDeleteSessionTarget(null)
   }
 
-  const handleArchiveSession = async (sessionId: string, projectId: string) => {
+  const handleArchiveSession = (sessionId: string, projectId: string) => {
     setSessionMenu(null)
-    setSessionDeleteError('')
-    try {
-      await chatSessionApi.setArchived(sessionId, projectId, true)
-      useChatListStore.getState().removeSession(sessionId)
-      if (activeSessionId === sessionId) {
-        const next = useChatListStore.getState().sessionsByProject[projectId]?.[0]
-        const ownerName = projects.find((project) => project.id === projectId)?.name || activeProject?.name || ''
-        navigate(`/chat?project=${encodeURIComponent(ownerName)}${next ? `&session=${encodeURIComponent(next.id)}` : ''}`, {
-          replace: true,
-          state: { preserveNavigationDrawer: true },
-        })
-      }
-    } catch (reason) {
-      setSessionDeleteError(reason instanceof Error ? reason.message : t('chatSession.archiveFailed'))
-    }
+    void archiveSession(sessionId, projectId)
   }
 
   return (
@@ -1011,7 +941,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                         <SidebarAddButton
                           loading={creatingSession}
                           disabled={creatingSession}
-                          onClick={(e) => { e.stopPropagation(); void handleCreateSession(p) }}
+                          onClick={(e) => { e.stopPropagation(); void createSession(p) }}
                           title={t('chatSession.newSession')}
                           aria-label={t('chatSession.newSession')}
                             />
@@ -1275,7 +1205,7 @@ export default function Layout({ onSelectProject, children }: Props) {
               <div
                 onClick={() => {
                   setMoreMenu(null)
-                  void handleCreateSession(menuTarget)
+                  void createSession(menuTarget)
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
@@ -1394,7 +1324,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           </div>
           <div
             onClick={() => {
-              setSessionDeleteError('')
+              clearSessionError()
               setDeleteSessionTarget(sessionMenu)
               setSessionMenu(null)
             }}
@@ -1418,7 +1348,7 @@ export default function Layout({ onSelectProject, children }: Props) {
         onConfirm={() => void handleDeleteSession()}
         onCancel={() => {
           setDeleteSessionTarget(null)
-          setSessionDeleteError('')
+          clearSessionError()
         }}
       />
       {sessionDeleteError && (
@@ -1433,7 +1363,7 @@ export default function Layout({ onSelectProject, children }: Props) {
             variant="icon"
             size="sm"
             aria-label={t('common.close')}
-            onClick={() => setSessionDeleteError('')}
+            onClick={clearSessionError}
             style={{ padding: 0, color: 'var(--danger)' }}
           >
             <Icon name="x" size={13} />
