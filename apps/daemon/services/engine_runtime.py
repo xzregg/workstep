@@ -27,7 +27,7 @@ from packaging.utils import canonicalize_name, parse_wheel_filename
 from packaging.version import InvalidVersion, Version
 
 from engines.core.packages import RuntimePackage
-from engines.core.base import install_python_package, install_with_command
+from engines.core.base import _has_pip, install_python_package, install_with_command
 from engines.core.registry import list_all_engines
 from services.config import CONFIG_DIR, config_store
 
@@ -258,18 +258,27 @@ class EngineRuntimeManager:
                 await asyncio.to_thread(shutil.copytree, target, stage)
             else:
                 await asyncio.to_thread(stage.mkdir)
-            result = await install_with_command([
-                sys.executable, "-m", "pip", "install", "--upgrade", "--target", str(stage),
-                "--report", str(report), str(archive),
-            ], display=spec.name)
+            if await asyncio.to_thread(_has_pip):
+                command = [
+                    sys.executable, "-m", "pip", "install", "--upgrade", "--target", str(stage),
+                    "--report", str(report), str(archive),
+                ]
+            elif await asyncio.to_thread(shutil.which, "uv"):
+                command = ["uv", "pip", "install", "--upgrade", "--target", str(stage), str(archive)]
+            else:
+                raise ValueError("未找到 uv 或 pip，无法安装 Python SDK 包")
+            result = await install_with_command(command, display=spec.name)
             if not result.success:
                 return result
 
             def validate_and_switch():
-                installed = {
-                    canonicalize_name(item["metadata"]["name"]): item["metadata"]["version"]
-                    for item in json.loads(report.read_text())["install"]
-                }
+                installed = (
+                    {
+                        canonicalize_name(item["metadata"]["name"]): item["metadata"]["version"]
+                        for item in json.loads(report.read_text())["install"]
+                    }
+                    if report.exists() else {canonicalize_name(spec.name): version}
+                )
                 for info in stage.glob("*.dist-info"):
                     distribution = importlib.metadata.PathDistribution(info)
                     name = canonicalize_name(distribution.metadata.get("Name", ""))
