@@ -19,13 +19,9 @@ import {
   engineApi,
   fetchTemplates,
   invalidateTemplates,
-  projectApi,
   templateApi,
-  workflowApi,
   type EngineInfo,
-  type Project,
   type TemplateInfo,
-  type WorkflowSummary,
 } from '../api/client'
 import { DEFAULT_OUTPUT_TYPE } from '../config/outputTypes'
 import { DEFAULT_EXECUTION_ENGINE } from '../engineMeta'
@@ -36,6 +32,7 @@ import { findWorkflowExecutionWarnings, type WorkflowExecutionWarning } from '..
 import WorkflowExecutionWarningDialog from './WorkflowExecutionWarningDialog'
 import { STEP_TYPE_PATTERN, randomStepColor, DEFAULT_MAX_RETURN_ROUNDS, emptyReview, normalizeMaxReturnRounds, canvasToFlowNodes, canvasToFlowEdges, loadCanvasData, type StepNodeData } from './flowCanvasData'
 import NodeConfigPanel from './NodeConfigPanel'
+import FlowNodeCopyDialog from './FlowNodeCopyDialog'
 
 /* ══════════════════════════════════════════
    Reusable flow canvas editor — shared by the
@@ -295,16 +292,6 @@ function FlowCanvasInner({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [copyOpen, setCopyOpen] = useState(false)
-  const [copyProjects, setCopyProjects] = useState<Project[]>([])
-  const [copyProjectsLoading, setCopyProjectsLoading] = useState(false)
-  const [copyProjectsError, setCopyProjectsError] = useState('')
-  const [copyActiveProjectId, setCopyActiveProjectId] = useState<string | null>(null)
-  const [copyActiveWorkflowKey, setCopyActiveWorkflowKey] = useState<string | null>(null)
-  const [copyNodesByWf, setCopyNodesByWf] = useState<Record<string, StepNodeData[]>>({})
-  const [copyWfLoading, setCopyWfLoading] = useState<string | null>(null)
-  const [copyWfErrors, setCopyWfErrors] = useState<Record<string, string>>({})
-  const [copySelected, setCopySelected] = useState<{ data: StepNodeData; srcKey: string } | null>(null)
-  const copyStepsCache = useRef<Record<string, StepNodeData[]>>({})
   const [availableEngines, setAvailableEngines] = useState<EngineInfo[]>([])
   const engineRevision = useEngineRevision()
   const [defaultExecutionEngine, setDefaultExecutionEngine] = useState(DEFAULT_EXECUTION_ENGINE)
@@ -456,81 +443,6 @@ function FlowCanvasInner({
     setDirty(true)
   }
 
-  const loadCopyWorkflow = async (srcProjectId: string, workflowId: string) => {
-    const cacheKey = `${srcProjectId}/${workflowId}`
-    if (copyStepsCache.current[cacheKey]) {
-      setCopyNodesByWf((prev) => ({ ...prev, [cacheKey]: copyStepsCache.current[cacheKey] }))
-      setCopyWfErrors((prev) => { const next = { ...prev }; delete next[cacheKey]; return next })
-      return
-    }
-    setCopyWfLoading(cacheKey)
-    setCopyWfErrors((prev) => { const next = { ...prev }; delete next[cacheKey]; return next })
-    try {
-      const wf = await workflowApi.get(workflowId, srcProjectId)
-      const list = loadCanvasData(wf.steps).nodes
-      copyStepsCache.current[cacheKey] = list
-      setCopyNodesByWf((prev) => ({ ...prev, [cacheKey]: list }))
-    } catch (error) {
-      setCopyWfErrors((prev) => ({
-        ...prev,
-        [cacheKey]: t('flow.copyNodeFailed', { error: error instanceof Error ? error.message : t('flow.networkError') }),
-      }))
-    } finally {
-      setCopyWfLoading((prev) => (prev === cacheKey ? null : prev))
-    }
-  }
-
-  const openCopyModal = async () => {
-    setCopyOpen(true)
-    setCopySelected(null)
-    setCopyProjectsLoading(true)
-    setCopyProjectsError('')
-    try {
-      const { projects } = await projectApi.list()
-      setCopyProjects(projects)
-      const first = projects[0]
-      if (first) {
-        setCopyActiveProjectId(first.id)
-        const firstWf = (first.workflows || []).find((w) => !w.deleted)
-        if (firstWf) {
-          const firstKey = `${first.id}/${firstWf.id}`
-          setCopyActiveWorkflowKey(firstKey)
-          void loadCopyWorkflow(first.id, firstWf.id)
-        } else {
-          setCopyActiveWorkflowKey(null)
-        }
-      } else {
-        setCopyActiveProjectId(null)
-        setCopyActiveWorkflowKey(null)
-      }
-    } catch (error) {
-      setCopyProjects([])
-      setCopyProjectsError(t('flow.copyNodeFailed', { error: error instanceof Error ? error.message : t('flow.networkError') }))
-    } finally {
-      setCopyProjectsLoading(false)
-    }
-  }
-
-  const selectCopyProject = (proj: Project) => {
-    setCopyActiveProjectId(proj.id)
-    setCopySelected(null)
-    const firstWf = (proj.workflows || []).find((w) => !w.deleted)
-    if (firstWf) {
-      const key = `${proj.id}/${firstWf.id}`
-      setCopyActiveWorkflowKey(key)
-      void loadCopyWorkflow(proj.id, firstWf.id)
-    } else {
-      setCopyActiveWorkflowKey(null)
-    }
-  }
-
-  const selectCopyWorkflow = (proj: Project, wf: WorkflowSummary) => {
-    const key = `${proj.id}/${wf.id}`
-    setCopyActiveWorkflowKey(key)
-    setCopySelected(null)
-    if (!copyStepsCache.current[key]) void loadCopyWorkflow(proj.id, wf.id)
-  }
-
   const handleCopyNode = (source: StepNodeData) => {
     const id = Date.now()
     const maxId = Math.max(0, ...nodes.map((n) => (n.data as StepNodeData).nodeId))
@@ -551,7 +463,6 @@ function FlowCanvasInner({
     setNodes((nds) => [...nds, newNode])
     setDirty(true)
     setCopyOpen(false)
-    setCopySelected(null)
     setSaveMsg(t('flow.copyNodeDone'))
     setSaveMsgKind('success')
     setTimeout(() => setSaveMsg(''), 5000)
@@ -920,7 +831,7 @@ function FlowCanvasInner({
                 setDirty(true)
                 setTimeout(() => fitView({ padding: 0.2 }), 100)
               }}>{t('flow.bookmark')}</MenuItem>
-              <MenuItem onClick={() => { close(); void openCopyModal() }}>{t('flow.copyNodeFromWorkflow')}</MenuItem>
+              <MenuItem onClick={() => { close(); setCopyOpen(true) }}>{t('flow.copyNodeFromWorkflow')}</MenuItem>
             </>
           )}
         </DropdownMenu>
@@ -1087,135 +998,8 @@ function FlowCanvasInner({
         </div>
       )}
 
-      {/* Copy node from existing workflow — 3-lane swimlane picker: project → workflow → step */}
       {!readOnly && copyOpen && (
-        <div className="modal-overlay" onClick={() => setCopyOpen(false)} style={{ zIndex: 400 }}>
-          <ResizablePanel className="modal" style={{ width: 780, height: 'min(66vh, 620px)' }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">{t('flow.copyNodeTitle')}</span>
-              <Button variant="icon" onClick={() => setCopyOpen(false)}>✕</Button>
-            </div>
-            <div className="modal-body" style={{ padding: '8px 16px 16px', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-              {copyProjectsLoading ? (
-                <div style={{ padding: '12px 4px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span className="task-status-spinner" aria-hidden="true" />{t('flow.copyNodeLoading')}
-                </div>
-              ) : copyProjectsError ? (
-                <div style={{ padding: '12px 4px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)' }}>{copyProjectsError}</div>
-              ) : copyProjects.length === 0 ? (
-                <div style={{ padding: '12px 4px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)' }}>{t('flow.copyNodeEmpty')}</div>
-              ) : (
-                <>
-                  <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)', marginBottom: 6 }}>{t('flow.copyNodeSelectHint')}</div>
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'stretch', flex: 1, minHeight: 0 }}>
-                    {/* Lane 1: projects */}
-                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--surface)', overflow: 'hidden' }}>
-                      <div style={{ padding: '7px 10px', fontSize: 'calc(12px * var(--font-scale))', fontWeight: 600, color: 'var(--meta)', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)' }}>{t('flow.copyNodeColumnProjects')}</div>
-                      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-                        {copyProjects.map((proj) => {
-                          const active = copyActiveProjectId === proj.id
-                          const wfs = (proj.workflows || []).filter((w) => !w.deleted)
-                          return (
-                            <button
-                              key={proj.id}
-                              onClick={() => selectCopyProject(proj)}
-                              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '9px 10px', border: 'none', borderBottom: '1px solid var(--border-soft)', background: active ? 'color-mix(in oklab, var(--accent), transparent 92%)' : 'transparent', color: 'var(--fg)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 'calc(13px * var(--font-scale))' }}
-                            >
-                              <span style={{ flexShrink: 0 }}>📁</span>
-                              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{proj.name}</span>
-                              <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', flexShrink: 0 }}>{t('flow.workflowCount', { count: wfs.length })}</span>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                    {/* Lane 2: workflows */}
-                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--surface)', overflow: 'hidden' }}>
-                      <div style={{ padding: '7px 10px', fontSize: 'calc(12px * var(--font-scale))', fontWeight: 600, color: 'var(--meta)', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)' }}>{t('flow.copyNodeColumnWorkflows')}</div>
-                      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-                        {(() => {
-                          const proj = copyProjects.find((p) => p.id === copyActiveProjectId)
-                          if (!proj) return <div style={{ padding: '10px', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)' }}>{t('flow.copyNodePickProjectHint')}</div>
-                          const wfs = (proj.workflows || []).filter((w) => !w.deleted)
-                          if (wfs.length === 0) return <div style={{ padding: '10px', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)' }}>{t('flow.copyNodeEmpty')}</div>
-                          return wfs.map((wf) => {
-                            const key = `${proj.id}/${wf.id}`
-                            const active = copyActiveWorkflowKey === key
-                            return (
-                              <button
-                                key={wf.id}
-                                onClick={() => selectCopyWorkflow(proj, wf)}
-                                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '9px 10px', border: 'none', borderBottom: '1px solid var(--border-soft)', background: active ? 'color-mix(in oklab, var(--accent), transparent 92%)' : 'transparent', color: 'var(--fg)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 'calc(13px * var(--font-scale))' }}
-                              >
-                                <span style={{ flexShrink: 0 }}>📂</span>
-                                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{wf.name}{wf.is_default ? ` ${t('canvas.defaultSuffix')}` : ''}</span>
-                                <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', flexShrink: 0 }}>{t('flow.nodeCount', { count: wf.nodeCount })}</span>
-                              </button>
-                            )
-                          })
-                        })()}
-                      </div>
-                    </div>
-                    {/* Lane 3: steps */}
-                    <div style={{ flex: 1.2, minWidth: 0, display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--surface)', overflow: 'hidden' }}>
-                      <div style={{ padding: '7px 10px', fontSize: 'calc(12px * var(--font-scale))', fontWeight: 600, color: 'var(--meta)', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)' }}>{t('flow.copyNodeColumnSteps')}</div>
-                      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-                        {(() => {
-                          const proj = copyProjects.find((p) => p.id === copyActiveProjectId)
-                          if (!proj) return <div style={{ padding: '10px', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)' }}>{t('flow.copyNodePickProjectHint')}</div>
-                          const activeWfKey = copyActiveWorkflowKey
-                          const activeWf = (proj.workflows || []).find((w) => !w.deleted && `${proj.id}/${w.id}` === activeWfKey)
-                          if (!activeWf || !activeWfKey) return <div style={{ padding: '10px', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)' }}>{t('flow.copyNodePickWorkflowHint')}</div>
-                          const loading = copyWfLoading === activeWfKey
-                          const err = copyWfErrors[activeWfKey]
-                          const nodesList = copyNodesByWf[activeWfKey]
-                          if (loading) return (
-                            <div style={{ padding: '10px', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <span className="task-status-spinner" aria-hidden="true" />{t('flow.copyNodeLoading')}
-                            </div>
-                          )
-                          if (err) return <div style={{ padding: '10px', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--danger)' }}>{err}</div>
-                          if (!nodesList || nodesList.length === 0) return <div style={{ padding: '10px', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)' }}>{t('flow.copyNodeEmpty')}</div>
-                          return nodesList.map((node) => {
-                            const srcKey = `${proj.id}/${activeWf.id}/${node.nodeId}`
-                            const selected = copySelected && copySelected.srcKey === srcKey
-                            const ports = node.inputs.reduce((sum, inp) => sum + (inp.outputs?.length || 0), 0)
-                            return (
-                              <button
-                                key={`${node.nodeId}`}
-                                onClick={() => setCopySelected({ data: node, srcKey })}
-                                onDoubleClick={() => handleCopyNode(node)}
-                                style={{
-                                  display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
-                                  padding: '7px 10px', border: 'none', borderBottom: '1px solid var(--border-soft)',
-                                  background: selected ? 'color-mix(in oklab, var(--accent), transparent 92%)' : 'transparent',
-                                  color: 'var(--fg)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 'calc(13px * var(--font-scale))',
-                                }}
-                              >
-                                <span style={{ width: 10, height: 10, borderRadius: '50%', background: node.color, flexShrink: 0 }} />
-                                <span style={{ flex: 1, minWidth: 0 }}>
-                                  <span style={{ fontWeight: 500 }}>{node.label}</span>
-                                  <span style={{ display: 'block', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {node.key}{node.engine ? ` · ${node.engine}${node.model ? ` / ${node.model}` : ''}` : ''}
-                                  </span>
-                                </span>
-                                <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', flexShrink: 0 }}>{t('flow.portCount', { in: node.inputs.length, out: ports })}</span>
-                              </button>
-                            )
-                          })
-                        })()}
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-            <div className="modal-footer">
-              <Button variant="ghost" onClick={() => setCopyOpen(false)}>{t('common.cancel')}</Button>
-              <Button variant="primary" disabled={!copySelected} onClick={() => copySelected && handleCopyNode(copySelected.data)}>{t('flow.copyNodeConfirm')}</Button>
-            </div>
-          </ResizablePanel>
-        </div>
+        <FlowNodeCopyDialog onClose={() => setCopyOpen(false)} onCopy={handleCopyNode} />
       )}
 
       {/* Export workflow JSON preview */}
