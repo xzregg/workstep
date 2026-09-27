@@ -21,7 +21,7 @@ import {
   type EngineTestResult,
 } from '../api/client'
 import EngineConfigForm, { type EngineConfigFormHandle } from '../components/EngineConfigForm'
-import EngineSelect from '../components/EngineSelect'
+import ExecutionDefaultSettings from '../components/ExecutionDefaultSettings'
 import EngineRuntimeControl from '../components/EngineRuntimeControl'
 import TemplateSettings from './TemplateSettings'
 import ProviderSettings from './ProviderSettings'
@@ -64,89 +64,6 @@ function EngineIcon({ engine }: { engine: EngineInfo }) {
     }}>
       {initials}
     </span>
-  )
-}
-
-function ExecutionDefaultSettings({
-  engines,
-  loading,
-  onChanged,
-}: {
-  engines: EngineInfo[]
-  loading: boolean
-  onChanged?: () => void
-}) {
-  const { t } = useI18n()
-  const [engine, setEngine] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
-  const [loadingConfig, setLoadingConfig] = useState(false)
-  const initialized = useRef(false)
-
-  const loadExecutionConfig = async () => {
-    setLoadingConfig(true)
-    setError('')
-    setNotice('')
-    try {
-      const config = await engineApi.executionConfig()
-      setEngine(config.engine)
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t('settings.readDefaultFailed'))
-    } finally {
-      setLoadingConfig(false)
-    }
-  }
-
-  useEffect(() => {
-    if (initialized.current) return
-    initialized.current = true
-    void loadExecutionConfig()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const save = async () => {
-    setSaving(true)
-    setError('')
-    setNotice('')
-    try {
-      const result = await engineApi.setExecutionConfig(engine)
-      setEngine(result.engine)
-      setNotice(t('settings.saveDefaultSuccess'))
-      onChanged?.()
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t('settings.saveFailed'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div id="settings-default-execution-engine" style={{ padding: 14, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg)', marginBottom: 14 }}>
-      <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 650, marginBottom: 4 }}>{t('settings.defaultExecutionEngine')}</div>
-      <div style={{ color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))', marginBottom: 10 }}>
-        {t('settings.defaultEngineHint')}
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <EngineSelect
-          engines={engines}
-          value={engine}
-          onChange={setEngine}
-          disabled={loading || saving}
-          defaultOption={{ value: '', label: t('settings.systemDefault') }}
-          ariaLabel={t('settings.defaultEngineAria')}
-          style={{ width: 300, height: 30 }}
-        />
-        <Button variant="primary" style={{ height: 30 }} disabled={saving || loading || loadingConfig} loading={saving} onClick={() => void save()}>
-          {t('settings.saveDefault')}
-        </Button>
-      </div>
-      {(error || notice) && (
-        <div style={{ marginTop: 6, fontSize: 'calc(11px * var(--font-scale))', color: error ? 'var(--danger)' : 'var(--success)' }}>
-          {error || notice}
-        </div>
-      )}
-    </div>
   )
 }
 
