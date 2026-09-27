@@ -95,6 +95,7 @@
 
 ## 阶段执行记录
 
+- 阶段五进行中：远程项目分享导入、本地标识、凭据与状态持久化归入 `services/remote_registry.py`；原先放在 `remote_project.py` 尾部的访问授权与登记簿方法锁包装移到各自业务模块，直接导入新模块也保留线程安全。`remote_project.py` 从 1184 行降至 977 行，远程项目专项 42 项、daemon 全量 1694 项、仓库健康、密钥及差异检查通过；Code Map 已更新。
 - 阶段五进行中：远程访问身份上下文、浏览器密码与 Token、分享邀请及设备授权归入 `services/remote_access.py`，`remote_project.py` 从 1922 行降至 1184 行，继续持有远程项目登记、连接与路由转发并兼容既有导入。HTTP 访问中间件与主 WebSocket 的同步配置读取改在工作线程；真实 HTTP 和注册 WebSocket 路由的慢配置 canary 先复现阻塞再通过，远程项目专项 41 项、daemon 全量 1693 项、仓库健康、密钥及差异检查通过。Code Map 已更新。
 - 阶段四进行中：ACP 原生会话新建、加载、恢复、分叉、关闭/取消、配置切换与扩展命令归入 `engines/core/acp_sessions.py`，`acp_base.py` 从 1543 行降至 1263 行，保留连接、执行和交互调度。`engines/core/base.py` 清理同一类尾部重复的能力属性与 `capabilities` 定义，保留相同的运行时行为。ACP/引擎契约 231 项、daemon 全量 1690 项、仓库健康、密钥及差异检查通过；Code Map 已更新。
 - 阶段四进行中：Claude Agent SDK、Qoder SDK、Claude CLI、Codex CLI 的消息/工具/用量/权限拒绝事件分别归入对应 `*_events.py`；适配器主体分别由 1068→731、989→712、1049→782、1079→809 行。CLI 子进程读取、会话和执行中审批重试仍由原引擎负责，SDK 会话/运行仍由原引擎负责。事件归属测试先失败，迁移后引擎契约 214 项、daemon 全量 1689 项、仓库健康、密钥及差异检查通过。当前超 800 行业务文件 24 个（Web 7、daemon 17）；Code Map 已更新。

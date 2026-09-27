@@ -49,6 +49,7 @@
 | Pydantic AI Harness 能力装配、压缩、会话持久化与历史续接 | 前端通过 AG-UI 消费压缩事件 | `engines/pydantic_ai/harness_runtime.py` 持有 Harness 生命周期；`engines/pydantic_ai/engine.py` 持有代理运行和流式事件 | `tests/test_pydantic_ai_harness.py`、`tests/test_engine_base_hierarchy.py` |
 | 项目与远程项目 | `src/api/project.ts`、`src/pages/SettingsPage.tsx` | `api/project.py`、`remote_project.py`、`services/project.py`、`remote_project.py` | `docs/architecture.md` |
 | 远程访问身份、浏览器访问密钥、分享邀请和设备授权 | `src/api/project.ts::remoteProjectApi`、远程项目设置与分享入口 | `services/remote_access.py` 持有身份上下文、HTTP/WebSocket 访问判断与授权生命周期；`api/remote_project.py` 在工作线程执行同步配置操作，`streaming/ws.py` 在工作线程执行 WebSocket 授权判断 | `tests/test_remote_project.py`（含慢配置健康协程 canary） |
+| 远程项目分享导入、本地标识、凭据保存与连接状态 | `src/api/project.ts::remoteProjectApi`、远程项目列表 | `services/remote_registry.py` 持有带锁的远程项目登记簿；`services/remote_project.py` 持有连接与请求转发，保留旧导入入口 | `tests/test_remote_project.py` |
 | Git 与任务工作区 | `src/components/git/`、`src/api/git.ts` | `api/git.py`、`services/git/` | `services/git/task_workspace.py` 负责任务工作区 |
 | 分享、定时、统计 | `src/api/share.ts`、`schedule.ts`、`statistics.ts` | `api/share.py`、`schedule.py`、`statistics.py`；对应 `services/` | 各模块测试 |
 | 用量与费用计算 | `src/api/statistics.ts` | `services/usage_accounting.py`，由 `statistics.py` 与 `task_execution_report.py` 共用 | `tests/test_usage_accounting.py` |
