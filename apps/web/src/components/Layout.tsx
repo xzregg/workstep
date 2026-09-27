@@ -25,13 +25,11 @@ import ProjectShareDialog from './ProjectShareDialog'
 import WorkflowCreateDialog from './WorkflowCreateDialog'
 import SidebarStatusIndicator from './SidebarStatusIndicator'
 import { loadSidebarSectionState, saveSidebarSectionState } from '../utils/sidebarSectionState'
-import OnboardingChecklist from './OnboardingChecklist'
+import LayoutOnboardingActions from './LayoutOnboardingActions'
 import { useOnboardingStore } from '../stores/onboardingStore'
-import { buildStarterWorkflow } from '../utils/onboarding'
 import { filterSidebarProject } from '../utils/sidebarSearch'
 import {
   engineApi,
-  fetchEngineModels,
   chatSessionApi,
   type Project,
 } from '../api/client'
@@ -117,7 +115,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   }, [])
   // 鼠标悬停显示行操作；触屏点按时间只显示归档按钮。
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null)
-  const { projects, activeProject, activeWorkflowId, fetchProjects, setActiveProject, renameProject, deleteProject, renameWorkflow, createWorkflow, deleteWorkflow, restoreWorkflow, reorderProjects, reorderWorkflows, setActiveWorkflow } = useProjectStore()
+  const { projects, activeProject, activeWorkflowId, fetchProjects, setActiveProject, renameProject, deleteProject, renameWorkflow, deleteWorkflow, restoreWorkflow, reorderProjects, reorderWorkflows, setActiveWorkflow } = useProjectStore()
   const [showInitModal, setShowInitModal] = useState(false)
   const [renameId, setRenameId] = useState<string | null>(null)
   const [renameName, setRenameName] = useState('')
@@ -125,8 +123,6 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [showSettings, setShowSettings] = useState(false)
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('providers')
   const [settingsFocus, setSettingsFocus] = useState<SettingsFocusTarget | undefined>()
-  const [onboardingWorkflowBusy, setOnboardingWorkflowBusy] = useState(false)
-  const [onboardingError, setOnboardingError] = useState('')
   const [addWfProjectId, setAddWfProjectId] = useState<string | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(280)
   const [renameWfId, setRenameWfId] = useState<string | null>(null)
@@ -464,69 +460,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   const openOnboardingSettings = (section: SettingsSection, focus: SettingsFocusTarget) => {
     setSettingsSection(section)
     setSettingsFocus(focus)
-    setOnboardingError('')
     setShowSettings(true)
-  }
-
-  const openOnboardingProject = () => {
-    setOnboardingError('')
-    openLocalProjectModal()
-  }
-
-  const createOnboardingWorkflow = async () => {
-    const onboarding = useOnboardingStore.getState()
-    const project = projects.find((item) => item.id === onboarding.projectId && item.type !== 'remote')
-      ?? (activeProject?.type !== 'remote' ? activeProject : undefined)
-    if (onboardingWorkflowBusy) return
-    if (!project) {
-      setOnboardingError(t('onboarding.projectRequired'))
-      return
-    }
-    setOnboardingWorkflowBusy(true)
-    setOnboardingError('')
-    try {
-      const execution = await engineApi.executionConfig()
-      const engineId = onboarding.engineId || execution.engine
-      if (!engineId) throw new Error(t('onboarding.engineRequired'))
-      if (onboarding.engineId !== engineId) onboarding.recordEngine(engineId)
-      let model = ''
-      try {
-        const result = await fetchEngineModels(engineId, false, onboarding.providerId || '', project.id)
-        model = result.default_model || ''
-      } catch {
-        // The engine may validly use its own implicit default model.
-      }
-      setActiveProject(project)
-      const workflow = await createWorkflow(
-        project.id,
-        '分析与执行',
-        undefined,
-        buildStarterWorkflow(engineId, model),
-      )
-      onboarding.recordWorkflow(workflow.id)
-      await fetchProjects()
-      const refreshedProject = useProjectStore.getState().projects.find((item) => item.id === project.id)
-      if (refreshedProject) setActiveProject(refreshedProject)
-      await setActiveWorkflow(workflow.id)
-      navigate(`/canvas?project=${encodeURIComponent(project.name)}&workflow=${encodeURIComponent(workflow.id)}&onboarding=1`)
-    } catch (reason) {
-      setOnboardingError(reason instanceof Error ? reason.message : t('onboarding.createWorkflowFailed'))
-    } finally {
-      setOnboardingWorkflowBusy(false)
-    }
-  }
-
-  const openOnboardingTask = () => {
-    const onboarding = useOnboardingStore.getState()
-    const project = projects.find((item) => item.id === onboarding.projectId) ?? activeProject
-    const workflowId = onboarding.workflowId || activeWorkflowId
-    if (!project || !workflowId) {
-      setOnboardingError(t('onboarding.workflowRequired'))
-      return
-    }
-    setActiveProject(project)
-    void setActiveWorkflow(workflowId)
-    navigate(`/tasks?project=${encodeURIComponent(project.name)}&onboarding=create-task`)
   }
 
   const handleDeleteProject = async () => {
@@ -1616,21 +1550,9 @@ export default function Layout({ onSelectProject, children }: Props) {
         />
       )}
 
-      <OnboardingChecklist
-        creatingWorkflow={onboardingWorkflowBusy}
-        error={onboardingError}
-        onOpenProvider={() => {
-          useOnboardingStore.getState().chooseSetupMode('provider')
-          openOnboardingSettings('providers', 'provider-create')
-        }}
-        onOpenLocalAgent={() => {
-          useOnboardingStore.getState().chooseSetupMode('local')
-          openOnboardingSettings('engines', 'execution-engine')
-        }}
-        onOpenEngine={() => openOnboardingSettings('engines', 'execution-engine')}
-        onOpenProject={openOnboardingProject}
-        onCreateWorkflow={() => void createOnboardingWorkflow()}
-        onCreateTask={openOnboardingTask}
+      <LayoutOnboardingActions
+        onOpenSettings={openOnboardingSettings}
+        onOpenProject={openLocalProjectModal}
       />
 
       <ProjectConnectionDialog

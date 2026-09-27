@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 
 const checklistSource = await readFile(new URL('../src/components/OnboardingChecklist.tsx', import.meta.url), 'utf8')
 const layoutSource = await readFile(new URL('../src/components/Layout.tsx', import.meta.url), 'utf8')
+const actionsSource = await readFile(new URL('../src/components/LayoutOnboardingActions.tsx', import.meta.url), 'utf8')
 const settingsSource = await readFile(new URL('../src/pages/SettingsPage.tsx', import.meta.url), 'utf8')
 const mobileCss = await readFile(new URL('../src/mobile.css', import.meta.url), 'utf8')
 const taskListSource = await readFile(new URL('../src/pages/TaskList.tsx', import.meta.url), 'utf8')
@@ -31,10 +32,11 @@ test('each onboarding step exposes its navigation path', () => {
 })
 
 test('onboarding actions reuse the real settings, project, workflow, and task paths', () => {
-  assert.match(layoutSource, /openOnboardingSettings\('providers', 'provider-create'\)/)
-  assert.match(layoutSource, /chooseSetupMode\('local'\)/)
-  assert.match(layoutSource, /buildStarterWorkflow\(engineId, model\)/)
-  assert.match(layoutSource, /onboarding=create-task/)
+  assert.match(layoutSource, /<LayoutOnboardingActions/)
+  assert.match(actionsSource, /openSettings\('providers', 'provider-create'\)/)
+  assert.match(actionsSource, /chooseSetupMode\('local'\)/)
+  assert.match(actionsSource, /buildStarterWorkflow\(engineId, model\)/)
+  assert.match(actionsSource, /onboarding=create-task/)
   assert.match(taskListSource, /<TaskCreatePanel/)
   assert.match(taskCreateSource, /onboarding\.recordTask\(task\.id\)/)
 })
