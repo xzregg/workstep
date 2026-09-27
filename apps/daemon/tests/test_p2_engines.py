@@ -3127,12 +3127,10 @@ def test_codex_sdk_maps_started_and_text_delta():
 
 
 def test_codex_sdk_preserves_async_questions_on_completed_message():
-    from openai_codex.generated.v2_all import AgentMessageDelivery
-
     engine = CodexSDKEngine()
     root = _SdkFake(
         type="agentMessage", id="call-question", text="请选择处理方式",
-        phase="final_answer", delivery=AgentMessageDelivery(root="async"),
+        phase="final_answer", delivery="async",
         questions=[_SdkFake(title="处理方式？", options=["复制差异块", "逐行复制"])],
     )
     events = engine._map_notification(

@@ -51,6 +51,14 @@ def test_remote_project_registry_has_one_owner():
     assert RemoteProjectRegistry is Registry
 
 
+def test_remote_host_dispatch_and_protocol_have_owners():
+    from services.remote_host import RemoteRouteDispatcher as HostDispatcher
+    from services.remote_protocol import RemoteHttpRequest as ProtocolRequest
+
+    assert RemoteRouteDispatcher is HostDispatcher
+    assert RemoteHttpRequest is ProtocolRequest
+
+
 async def test_remote_model_selection_read_routes_are_project_scoped():
     import api.engine as engine_api
     import api.provider as provider_api

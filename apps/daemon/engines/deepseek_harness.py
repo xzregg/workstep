@@ -239,13 +239,13 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         max_tokens: int | None,
         preset: str,
     ):
-        from deepseek_harness import DeepSeekHarness
-
         composition = self.PRESET_COMPOSITIONS.get(preset)
         if composition is None:
             raise ValueError(f"Unsupported DeepSeek Harness preset: {preset}")
         if not composition.is_file():
             raise FileNotFoundError(f"DeepSeek Harness composition not found: {composition}")
+
+        from deepseek_harness import DeepSeekHarness
 
         project_root = Path(cwd).expanduser().resolve()
         from services.skill_runtime import prepare_deepseek_composition
