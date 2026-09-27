@@ -84,7 +84,7 @@
 | 远程项目 | `services/remote_project.py`（461） | 访问认证、项目登记及主机侧路由已拆到独立模块；客户端连接和请求代理保留原入口。 |
 | 配置与项目 | `services/config.py`（1197）、`services/project.py`（677）、`services/project_workflows.py`（278）、`services/providers.py`（359） | 引擎纯规则、供应商协议目录及 cc-switch 导入已拆；项目流程生命周期与项目登记已分离。配置存储和供应商模型网络调用继续按职责审查。 |
 | 定时、文件与统计 | `services/schedule.py`（765）、`api/fs.py`（568）、`services/statistics.py`（845） | 规则编译与文件浏览已拆；调度执行、文件预览/上传、统计聚合继续按功能审查。 |
-| 全局导航与设置 | `components/Layout.tsx`（1642）、`pages/SettingsPage.tsx`（280）、`components/EngineSettingsPanel.tsx`（877）、`pages/ProviderSettings.tsx`（466） | 供应商编辑/导入、设置导航、默认执行引擎、引擎目录及配置、新手引导动作已拆；项目与会话侧栏仍需审查。引擎面板的目录、模型和安装配置属于同一操作流程，后续仅在出现独立职责时再拆。 |
+| 全局导航与设置 | `components/Layout.tsx`（1642）、`pages/SettingsPage.tsx`（280）、`components/EngineSettingsPanel.tsx`（728）、`pages/ProviderSettings.tsx`（466） | 供应商编辑/导入、设置导航、默认执行引擎、引擎目录及配置、新手引导动作已拆；能力详情弹窗独立管理请求和状态。项目与会话侧栏仍需审查。引擎面板剩余目录、模型和安装配置属于同一操作流程。 |
 | 流程画布 | `components/FlowCanvas.tsx`（882） | 跨流程复制节点、模板选择/保存及 JSON 导入导出已拆；剩余图状态、节点交互与画布呈现关系紧密，审查是否保留原位；保持空画布及模板主动选择行为。 |
 
 **验证重点：** 远程鉴权与分享、项目切换/删除、定时任务、文件安全边界、设置保存与恢复、流程画布导入导出；涉及同步 I/O 的真实路径均做事件循环 canary。
@@ -95,6 +95,7 @@
 
 ## 阶段执行记录
 
+- 阶段五进行中：引擎能力详情弹窗的项目上下文、请求、加载、错误和技能/MCP 展示归入 `EngineCapabilitiesDialog.tsx`，固定样式归入相邻 CSS；`EngineSettingsPanel.tsx` 从 877 行降至 728 行，只持有打开弹窗的引擎标识。组件行为测试先因模块缺失失败，迁移后通过；Web 全量 1006 项、构建、lint、daemon 全量 1734 项、仓库健康、密钥及差异检查通过。Code Map 已更新。
 - 阶段五进行中：`SettingsPage.tsx` 的窗口尺寸、系统偏好排版、字段反馈与开关背景全部转成 `SettingsPage.css` 的语义类；运行时窗口拖动仍由 `ResizablePanel` 动态计算。固定样式约束测试先因缺失 CSS 失败，迁移后设置和移动端专项 8 项、Web 全量 1005 项、构建、lint、仓库健康、密钥及差异检查通过；Code Map 已更新。
 - 阶段五进行中：流程创建、排序、更新、回收站、永久删除、关联记录及定时任务失效处理归入 `services/project_workflows.py`；`services/project.py` 从 904 行降至 677 行，保留项目登记、身份恢复、数据库执行器和公共委托。新模块直接生命周期测试先因模块缺失失败，迁移后项目与定时专项 56 项通过；新增真实流程创建 API 的慢数据库工作单元健康检查 canary，并与供应商慢扫描 canary 一起检查请求在健康响应时仍未完成。后端全量 1734 项、强化后的 canary 专项、仓库健康、密钥和差异检查通过。Code Map 已更新。
 - 阶段五进行中：供应商类型、协议选择、地址和表单校验归入 `services/provider_catalog.py`，cc-switch SQLite 扫描与配置候选转换归入 `services/provider_cc_switch.py`；`services/providers.py` 从 859 行降至 359 行，保留模型列表、单轮网络调用、连接测试及原公共导入入口。新增直接模块测试先因模块缺失失败，迁移后验证协议去重和候选模型。独立接口专项曾因协议目录初始化时导入引擎包、打断引擎自动发现而失败；延后 URL 校验依赖后，独立进程发现全部引擎，141 项供应商及接口测试通过，并新增导入顺序回归。导入 API 的 SQLite 读取仍通过 `asyncio.to_thread` 隔离，慢扫描期间健康检查 canary 通过；daemon 全量 1732 项、仓库健康、密钥和差异检查通过。Code Map 已更新。
