@@ -141,11 +141,13 @@ async def _run_open_command(command: list[str], directory: Path) -> None:
 
 async def _open_directory(directory: Path) -> None:
     """Open a directory in the host operating system's file manager."""
-    await _run_open_command(_open_command(directory, "file_manager"), directory)
+    command = await asyncio.to_thread(_open_command, directory, "file_manager")
+    await _run_open_command(command, directory)
 
 
 async def _open_with(directory: Path, opener_id: str) -> None:
-    await _run_open_command(_open_command(directory, opener_id), directory)
+    command = await asyncio.to_thread(_open_command, directory, opener_id)
+    await _run_open_command(command, directory)
 
 
 class UploadImageRequest(BaseModel):
