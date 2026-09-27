@@ -3,7 +3,9 @@
 import asyncio
 import base64
 import json
+import time
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from fastapi import APIRouter, FastAPI, WebSocket
 from fastapi.testclient import TestClient
@@ -33,6 +35,14 @@ from services.remote_project import (
 from services.messages import current_actor_message_fields
 from streaming.bus import EventBus
 import api.remote_project as remote_project_api
+
+
+def test_remote_access_identity_has_one_owner():
+    from services.remote_access import ActorSnapshot as AccessActorSnapshot
+    from services.remote_access import RemoteAccessService as AccessService
+
+    assert ActorSnapshot is AccessActorSnapshot
+    assert RemoteAccessService is AccessService
 
 
 async def test_remote_model_selection_read_routes_are_project_scoped():
@@ -198,6 +208,66 @@ async def test_remote_access_guard_blocks_non_local_api_until_unlocked(monkeypat
     ) as local_client:
         local = await local_client.get("/api/secret")
         assert local.status_code == 200
+
+
+async def test_remote_access_guard_slow_config_keeps_event_loop_responsive(monkeypatch):
+    access = RemoteAccessService(MemoryConfig())
+
+    def slow_required():
+        time.sleep(0.25)
+        return False
+
+    monkeypatch.setattr(access, "access_password_required", slow_required)
+    app = FastAPI()
+    app.add_middleware(RemoteAccessGuardMiddleware, access_service=access)
+
+    @app.get("/api/secret")
+    async def secret():
+        return {"ok": True}
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app, client=("203.0.113.9", 5000)),
+        base_url="http://test",
+    ) as client:
+        started = time.perf_counter()
+        request_task = asyncio.create_task(client.get("/api/secret"))
+        await asyncio.sleep(0.02)
+        elapsed = time.perf_counter() - started
+        response = await request_task
+
+    assert response.status_code == 200
+    assert elapsed < 0.15
+
+
+async def test_main_websocket_slow_access_check_keeps_event_loop_responsive(monkeypatch):
+    from streaming import ws as websocket_routes
+
+    access = RemoteAccessService(MemoryConfig())
+
+    def slow_required():
+        time.sleep(0.25)
+        return True
+
+    monkeypatch.setattr(access, "access_password_required", slow_required)
+    monkeypatch.setattr(websocket_routes, "_main", lambda: SimpleNamespace(remote_access_service=access))
+    monkeypatch.setattr(websocket_routes, "desktop_websocket_allowed", lambda _ws: True)
+    app = FastAPI()
+    websocket_routes.register_websocket_routes(app)
+    endpoint = next(route.endpoint for route in app.routes if route.path == "/ws")
+    ws = SimpleNamespace(
+        headers={}, cookies={}, query_params={},
+        client=SimpleNamespace(host="203.0.113.9"),
+        close=AsyncMock(),
+    )
+
+    started = time.perf_counter()
+    request_task = asyncio.create_task(endpoint(ws))
+    await asyncio.sleep(0.02)
+    elapsed = time.perf_counter() - started
+    await request_task
+
+    ws.close.assert_awaited_once_with(code=4401, reason="remote access locked")
+    assert elapsed < 0.15
 
 
 async def test_remote_access_guard_is_open_when_no_password_is_set():

@@ -227,7 +227,9 @@ def register_websocket_routes(app: FastAPI) -> None:
         if not desktop_websocket_allowed(ws):
             await ws.close(code=4401, reason="desktop authentication required")
             return
-        if not websocket_access_allowed(ws, main.remote_access_service):
+        if not await asyncio.to_thread(
+            websocket_access_allowed, ws, main.remote_access_service
+        ):
             await ws.close(code=4401, reason="remote access locked")
             return
         await ws.accept()
