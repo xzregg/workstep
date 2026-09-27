@@ -502,19 +502,19 @@ export default function Layout({ onSelectProject, children }: Props) {
                 return !open
               })
             }}
-            style={{ width: 24, height: 24, padding: 0, color: sidebarSearchOpen ? 'var(--accent)' : 'var(--meta)' }}
+            className="layout-sidebar-search-button"
           >
             <Icon name="search" size={14} strokeWidth={2} />
           </Button>
         </div>
 
         {sidebarSearchOpen && (
-          <div style={{ position: 'relative', margin: '2px 12px 6px' }}>
+          <div className="layout-sidebar-search">
             <Icon
               name="search"
               size={14}
               strokeWidth={2}
-              style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--meta)', pointerEvents: 'none' }}
+              className="layout-sidebar-search-icon"
             />
             <Input
               ref={sidebarSearchInputRef}
@@ -529,12 +529,12 @@ export default function Layout({ onSelectProject, children }: Props) {
                   setSidebarSearchOpen(false)
                 }
               }}
-              style={{ width: '100%', height: 32, paddingLeft: 30, fontSize: 'calc(12px * var(--font-scale))' }}
+              className="layout-sidebar-search-input"
             />
           </div>
         )}
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px 8px' }}>
+        <div className="layout-sidebar-projects">
           {visibleProjects.map((p) => {
             const searchResult = sidebarSearchResults.get(p.id)!
             return (
@@ -608,7 +608,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                   aria-controls={`sidebar-project-${p.id}`}
                   aria-label={t(isProjectExpanded(p.id) ? 'layout.collapseProject' : 'layout.expandProject', { name: p.name })}
                   title={t(isProjectExpanded(p.id) ? 'layout.collapseProject' : 'layout.expandProject', { name: p.name })}
-                  style={{ width: 20, height: 20, padding: 0, flexShrink: 0, color: isProjectExpanded(p.id) ? 'var(--accent)' : 'var(--meta)' }}
+                  className="layout-project-expand-button"
                 >
                   <Icon
                     name={p.type === 'remote' ? 'external-link' : isProjectExpanded(p.id) ? 'folder-open' : 'folder'} size={16.4} strokeWidth={2}
@@ -622,7 +622,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                     onClose={() => setRenameId(null)}
                   />
                 ) : (
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span className="layout-project-name">
                     {p.name}
                     {p.type === 'remote' && (
                       <span
@@ -631,21 +631,8 @@ export default function Layout({ onSelectProject, children }: Props) {
                           : p.access_status === 'expired'
                             ? t('layout.remoteAccessExpired')
                             : p.endpoint}
-                        style={{
-                          display: 'inline-block',
-                          marginLeft: 6,
-                          padding: '0 4px',
-                          borderRadius: 3,
-                          background: 'var(--surface)',
-                          color: p.access_status === 'revoked'
-                            ? 'var(--danger)'
-                            : p.access_status === 'expired'
-                              ? 'var(--status-paused)'
-                              : 'var(--meta)',
-                          fontSize: 'calc(10px * var(--font-scale))',
-                          lineHeight: '16px',
-                          verticalAlign: 1,
-                        }}
+                        className="layout-project-remote-badge"
+                        data-access-status={p.access_status}
                       >
                         {p.access_status === 'revoked'
                           ? t('layout.remoteAccessRevoked')
@@ -694,7 +681,6 @@ export default function Layout({ onSelectProject, children }: Props) {
                   onClick={(e) => openMoreMenu(e, 'project', p.id)}
                   title={t('layout.moreActions')}
                   aria-label={t('layout.moreActions')}
-                  style={{ width: 20, height: 20, borderRadius: 4, background: 'transparent', color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))', lineHeight: '18px', padding: 0, flexShrink: 0 }}
                 >⋯</Button>
               </div>
 
@@ -709,15 +695,16 @@ export default function Layout({ onSelectProject, children }: Props) {
                       <>
                         <div
                           className="layout-sidebar-nested-label"
+                          data-open={flowOpen}
                           onClick={(e) => {
                             e.stopPropagation()
                             setFlowSectionOpen((prev) => ({ ...prev, [p.id]: !flowOpen }))
                           }}
                         >
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span className="layout-sidebar-section-name">
                             <Icon
                               name={flowOpen ? 'folder-open' : 'folder'} size={14} strokeWidth={2}
-                              style={{ flexShrink: 0, color: flowOpen ? 'var(--accent)' : 'var(--meta)' }}
+                              className="layout-sidebar-section-icon"
                             />
                             {t('chatSession.flowSection')}
                           </span>
@@ -757,7 +744,11 @@ export default function Layout({ onSelectProject, children }: Props) {
                         e.preventDefault()
                         openMoreMenu(e, 'workflow', wf.id)
                       }}
-                      className="ws-row"
+                      className="layout-workflow-row ws-row"
+                      data-deleted={deleted}
+                      data-active={workflowSelected}
+                      data-dragging={isDragSource}
+                      data-drop-target={isDropTarget}
                       draggable={renameWfId !== wf.id}
                       onDragStart={(e) => {
                         e.stopPropagation()
@@ -795,18 +786,6 @@ export default function Layout({ onSelectProject, children }: Props) {
                       }}
                       onDragEnd={() => { setDragWfId(null); setDropWfId(null) }}
                       title={t('layout.dragToReorder')}
-                      style={{
-                        marginLeft: 28, padding: '4px 10px', borderRadius: 6,
-                        cursor: deleted ? 'default' : 'pointer',
-                        fontSize: 'calc(14px * var(--font-scale))',
-                        color: deleted ? 'var(--meta)' : workflowSelected ? 'var(--accent)' : 'var(--meta)',
-                        background: isDropTarget
-                          ? 'var(--accent-light)'
-                          : workflowSelected ? 'var(--accent-light)' : 'transparent',
-                        opacity: isDragSource ? 0.4 : 1,
-                        outline: isDropTarget ? '1px solid var(--accent)' : 'none',
-                        display: 'flex', alignItems: 'center', gap: 6, marginBottom: 1,
-                      }}
                     >
                       <Icon name="workflow" size={12.8} strokeWidth={2} />
                       {renameWfId === wf.id ? (
@@ -820,7 +799,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                         <MarqueeText
                           text={wf.name}
                           onDoubleClick={(e) => { e.stopPropagation(); if (!deleted) setRenameWfId(wf.id) }}
-                          style={{ textDecoration: deleted ? 'line-through' : 'none', opacity: deleted ? 0.6 : 1, cursor: deleted ? 'default' : 'pointer' }}
+                          className="layout-workflow-name"
                         />
                       )}
                       {!deleted && (
@@ -836,16 +815,15 @@ export default function Layout({ onSelectProject, children }: Props) {
                           completedTitle={t('layout.completedUnread')}
                         />
                       )}
-                      {deleted && <span style={{ fontSize: 'calc(11.6px * var(--font-scale))', color: 'var(--danger)', opacity: 0.8 }}>{t('layout.trash')}</span>}
-                      {wf.is_default ? <span style={{ fontSize: 'calc(11.6px * var(--font-scale))', opacity: 0.6 }}>{t('layout.default')}</span> : null}
-                      <span style={{ fontSize: 'calc(11.6px * var(--font-scale))', opacity: 0.5 }}>{t('flow.nodeCount', { count: wf.nodeCount })}</span>
+                      {deleted && <span className="layout-workflow-trash">{t('layout.trash')}</span>}
+                      {wf.is_default ? <span className="layout-workflow-default">{t('layout.default')}</span> : null}
+                      <span className="layout-workflow-node-count">{t('flow.nodeCount', { count: wf.nodeCount })}</span>
                       <Button
                         variant="icon"
                         className="ws-more-btn"
                         onClick={(e) => openMoreMenu(e, 'workflow', wf.id)}
                         title={t('layout.moreActions')}
                         aria-label={t('layout.moreActions')}
-                        style={{ width: 28, height: 28, borderRadius: 4, border: 'none', background: 'transparent', color: 'var(--meta)', fontSize: 'calc(14px * var(--font-scale))', lineHeight: '26px', padding: 0, flexShrink: 0 }}
                       >⋯</Button>
                     </div>
                     </div>
@@ -864,15 +842,16 @@ export default function Layout({ onSelectProject, children }: Props) {
                   <>
                     <div
                       className="layout-sidebar-nested-label layout-sidebar-session-label"
+                      data-open={open}
                       onClick={(e) => {
                         e.stopPropagation()
                         setSessionSectionOpen((prev) => ({ ...prev, [p.id]: !open }))
                       }}
                     >
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span className="layout-sidebar-section-name">
                         <Icon
                           name={open ? 'folder-open' : 'folder'} size={14} strokeWidth={2}
-                          style={{ flexShrink: 0, color: open ? 'var(--accent)' : 'var(--meta)' }}
+                          className="layout-sidebar-section-icon"
                         />
                         {t('chatSession.navSection')}
                       </span>
@@ -887,18 +866,11 @@ export default function Layout({ onSelectProject, children }: Props) {
                       )}
                     </div>
                     {open && (
-                    <div style={{ margin: '0 12px 6px 28px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <div className="layout-session-list">
                       {/* Bulk action bar (visible when 2+ sessions selected) */}
                       {selectionProjectId === p.id && selectedIds.size >= 2 && (
-                        <div
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 6,
-                            padding: '4px 8px', marginBottom: 2,
-                            background: 'var(--accent-light)', borderRadius: 6,
-                            fontSize: 'calc(11.6px * var(--font-scale))', color: 'var(--accent)',
-                          }}
-                        >
-                          <span style={{ flex: 1 }}>{t('chatSession.selectedCount', { count: selectedIds.size })}</span>
+                        <div className="layout-session-bulk-actions">
+                          <span className="layout-session-bulk-count">{t('chatSession.selectedCount', { count: selectedIds.size })}</span>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -906,7 +878,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             disabled={bulkDeleting}
                             onClick={(e) => { e.stopPropagation(); setBulkDeleteError(''); setBulkDeleteConfirm(true) }}
                             title={t('chatSession.bulkDelete')}
-                            style={{ width: 20, height: 20, padding: '4px', borderRadius: 4, background: 'transparent', color: 'var(--danger)', flexShrink: 0 }}
+                            className="layout-session-bulk-button layout-session-bulk-delete"
                           >
                             <Icon name="trash" size={10} strokeWidth={2} />
                           </Button>
@@ -915,7 +887,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             size="sm"
                             onClick={(e) => { e.stopPropagation(); clearSelection() }}
                             title={t('chatSession.deselectAll')}
-                            style={{ width: 20, height: 20, padding: '4px', borderRadius: 4, background: 'transparent', color: 'var(--meta)', flexShrink: 0 }}
+                            className="layout-session-bulk-button"
                           >
                             <Icon name="x" size={10} strokeWidth={2} />
                           </Button>
@@ -958,7 +930,11 @@ export default function Layout({ onSelectProject, children }: Props) {
                           }}
                           onContextMenu={(e) => openSessionMenu(e, p.id, session.id, session.title)}
                           onPointerEnter={(e) => { if (e.pointerType === 'mouse') setHoveredSessionId(session.id) }}
-                          className="ws-row"
+                          className="layout-session-row ws-row"
+                          data-selected={isSelected}
+                          data-active={location.pathname === '/chat' && activeSessionId === session.id}
+                          data-dragging={isDragSource}
+                          data-drop-target={isDropTarget}
                           draggable={renameSessionId !== session.id && !isMultiSelect}
                           onDragStart={(e) => {
                             e.stopPropagation()
@@ -998,36 +974,14 @@ export default function Layout({ onSelectProject, children }: Props) {
                           }}
                           onDragEnd={() => { setDragSessionId(null); setDropSessionId(null) }}
                           title={isMultiSelect ? t('chatSession.multiSelectHint') : t('layout.dragToReorder')}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 6,
-                            padding: '3px 8px', borderRadius: 6,
-                            cursor: 'pointer', fontSize: 'calc(12.8px * var(--font-scale))',
-                            color: isSelected
-                              ? 'var(--accent)'
-                              : location.pathname === '/chat' && activeSessionId === session.id ? 'var(--accent)' : 'var(--meta)',
-                            background: isDropTarget
-                              ? 'var(--accent-light)'
-                              : isSelected ? 'var(--accent-light)'
-                              : location.pathname === '/chat' && activeSessionId === session.id ? 'var(--accent-light)' : 'transparent',
-                            opacity: isDragSource ? 0.4 : 1,
-                            outline: isDropTarget || isSelected ? '1px solid var(--accent)' : 'none',
-                            overflow: 'hidden',
-                          }}
                         >
                           {/* Checkbox indicator (always shown in multi-select mode) */}
                           {isMultiSelect && (
-                            <span
-                              style={{
-                                width: 14, height: 14, borderRadius: 3, flexShrink: 0,
-                                border: isSelected ? '1.5px solid var(--accent)' : '1px solid var(--border)',
-                                background: isSelected ? 'var(--accent)' : 'transparent',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              }}
-                            >
-                              {isSelected && <Icon name="check" size={9} strokeWidth={3} style={{ color: 'var(--bg)' }} />}
+                            <span className="layout-session-checkbox" data-selected={isSelected}>
+                              {isSelected && <Icon name="check" size={9} strokeWidth={3} className="layout-session-check" />}
                             </span>
                           )}
-                          <Icon name="bot" size={11.6} strokeWidth={2} style={{ flexShrink: 0 }} />
+                          <Icon name="bot" size={11.6} strokeWidth={2} className="layout-session-bot" />
                           {renameSessionId === session.id ? (
                             <Input
                               ref={renameSessionInputRef}
@@ -1039,7 +993,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                               }}
                               onBlur={() => { if (renameSessionId === session.id) void handleRenameSession(session.id, renameSessionValue, p.id) }}
                               onClick={(e) => e.stopPropagation()}
-                              style={{ flex: 1, height: 25, fontSize: 'calc(12.8px * var(--font-scale))', padding: '0 4px', border: '1px solid var(--accent)', borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)', minWidth: 0 }}
+                              className="layout-session-rename-input"
                             />
                           ) : (
                             <MarqueeText text={session.title} />
@@ -1073,12 +1027,12 @@ export default function Layout({ onSelectProject, children }: Props) {
             )
           })}
           {projects.length === 0 && (
-            <div style={{ padding: '12px 14px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)', fontStyle: 'italic' }}>
+            <div className="layout-sidebar-empty">
               {t('nav.noProjects')}
             </div>
           )}
           {projects.length > 0 && visibleProjects.length === 0 && (
-            <div style={{ padding: '12px 14px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)', fontStyle: 'italic' }}>
+            <div className="layout-sidebar-empty">
               {t('layout.noSidebarMatches')}
             </div>
           )}
@@ -1241,19 +1195,14 @@ export default function Layout({ onSelectProject, children }: Props) {
         }}
       />
       {sessionDeleteError && (
-        <div role="alert" style={{
-          position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 2200,
-          padding: '8px 8px 8px 14px', borderRadius: 8, fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)',
-          background: 'var(--bg)', border: '1px solid var(--danger)', boxShadow: 'var(--elev-raised)',
-          display: 'flex', alignItems: 'center', gap: 8,
-        }}>
+        <div role="alert" className="layout-session-delete-error">
           <span>{sessionDeleteError}</span>
           <Button
             variant="icon"
             size="sm"
             aria-label={t('common.close')}
             onClick={clearSessionError}
-            style={{ padding: 0, color: 'var(--danger)' }}
+            className="layout-session-delete-error-close"
           >
             <Icon name="x" size={13} />
           </Button>
@@ -1261,7 +1210,7 @@ export default function Layout({ onSelectProject, children }: Props) {
       )}
 
       {/* Main content */}
-      <main className="app-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <main className="app-main layout-main">
         {children}
       </main>
 
@@ -1364,7 +1313,7 @@ export default function Layout({ onSelectProject, children }: Props) {
         onCancel={() => { setBulkDeleteConfirm(false); setBulkDeleteError('') }}
       >
         {bulkDeleteError && (
-          <div style={{ padding: '8px 0', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--danger)' }}>
+          <div className="layout-bulk-delete-error">
             {bulkDeleteError}
           </div>
         )}

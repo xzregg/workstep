@@ -11,6 +11,6 @@ test('project sidebar text and icons are scaled down by 20 percent', () => {
   assert.match(source, /name=\{p\.type[\s\S]*?size=\{16\.4\}/)
   assert.match(source, /<Icon name="workflow" size=\{12\.8\}/)
   assert.match(source, /name=\{open \? 'folder-open' : 'folder'\} size=\{14\}/)
-  assert.match(source, /cursor: 'pointer', fontSize: 'calc\(12\.8px \* var\(--font-scale\)\)',/)
+  assert.match(css, /\.layout-session-row\s*\{[^}]*cursor: pointer; font-size: calc\(12\.8px \* var\(--font-scale\)\)/)
   assert.match(source, /<Icon name="bot" size=\{11\.6\}/)
 })

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const layoutSource = readFileSync(new URL('../src/components/Layout.tsx', import.meta.url), 'utf8')
+const layoutCss = readFileSync(new URL('../src/components/Layout.css', import.meta.url), 'utf8')
 
 test('sidebar restores all expanded projects and their nested sections', () => {
   assert.match(layoutSource, /expandedProjectIds,/)
@@ -14,6 +15,6 @@ test('sidebar restores all expanded projects and their nested sections', () => {
 
 test('workflow rows only show selected state outside chat context', () => {
   assert.match(layoutSource, /const workflowSelected = location\.pathname !== '\/chat'[\s\S]*activeWorkflowId === wf\.id/)
-  assert.match(layoutSource, /workflowSelected \? 'var\(--accent\)' : 'var\(--meta\)'/)
-  assert.match(layoutSource, /workflowSelected \? 'var\(--accent-light\)' : 'transparent'/)
+  assert.match(layoutSource, /data-active=\{workflowSelected\}/)
+  assert.match(layoutCss, /\.layout-workflow-row\[data-active="true"\][^{]*\{[^}]*color: var\(--accent\); background: var\(--accent-light\)/)
 })
