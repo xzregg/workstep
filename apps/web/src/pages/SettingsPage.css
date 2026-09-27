@@ -1,0 +1,112 @@
+.modal-overlay.settings-dialog-overlay {
+  padding: 24px;
+}
+
+.modal.settings-dialog-panel {
+  width: min(1080px, calc(100vw - 48px));
+  height: min(860px, calc(100vh - 48px));
+  max-height: calc(100vh - 48px);
+}
+
+.settings-dialog-header {
+  padding: 16px 20px;
+}
+
+.settings-dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.settings-dialog-panel .settings-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.settings-dialog-panel .settings-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 28px 40px;
+}
+
+.settings-system-page {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.settings-system-title {
+  font-size: calc(20px * var(--font-scale));
+  font-weight: 650;
+  margin-bottom: 6px;
+}
+
+.settings-system-intro {
+  color: var(--muted);
+  font-size: calc(13px * var(--font-scale));
+  margin-bottom: 22px;
+}
+
+.settings-system-group {
+  padding-bottom: 22px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.settings-system-heading {
+  font-size: calc(14px * var(--font-scale));
+  font-weight: 650;
+  margin-bottom: 5px;
+}
+
+.settings-system-description {
+  color: var(--muted);
+  font-size: calc(12px * var(--font-scale));
+  margin-bottom: 12px;
+}
+
+.settings-system-description--name {
+  margin-bottom: 10px;
+}
+
+.settings-system-name-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 420px;
+}
+
+.settings-system-name-input {
+  flex: 1;
+}
+
+.settings-system-feedback {
+  margin-top: 7px;
+  font-size: calc(11px * var(--font-scale));
+}
+
+.settings-system-feedback--success {
+  color: var(--success);
+}
+
+.settings-system-feedback--error {
+  color: var(--danger);
+}
+
+.settings-system-page .settings-switch {
+  background: var(--border);
+}
+
+.settings-system-page .settings-switch[aria-checked="true"] {
+  background: var(--accent);
+}
+
+.settings-system-font-size .segmented-control {
+  max-width: 360px;
+}
+
+.settings-system-language-options .segmented-control {
+  max-width: 320px;
+}
