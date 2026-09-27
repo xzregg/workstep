@@ -3193,6 +3193,40 @@ async def test_open_directory_supports_a_selected_application(
 
 
 @pytest.mark.anyio
+async def test_slow_directory_opener_detection_keeps_health_responsive(
+    api_context,
+    monkeypatch,
+):
+    client, tmp_path = api_context
+    import api.fs as fs_api
+
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_open_command(directory, opener_id):
+        started.set()
+        assert release.wait(timeout=2)
+        return ["fake-opener", str(directory)]
+
+    runner = AsyncMock()
+    monkeypatch.setattr(fs_api, "_open_command", slow_open_command)
+    monkeypatch.setattr(fs_api, "_run_open_command", runner)
+    request = asyncio.create_task(client.post(
+        "/api/fs/open-directory",
+        json={"path": str(tmp_path), "opener": "vscode"},
+    ))
+    try:
+        assert await asyncio.to_thread(started.wait, 1)
+        health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+        assert health.status_code == 200
+        assert not request.done()
+    finally:
+        release.set()
+        await request
+    runner.assert_awaited_once_with(["fake-opener", str(tmp_path.resolve())], tmp_path.resolve())
+
+
+@pytest.mark.anyio
 async def test_directory_openers_expose_the_platform_file_manager(
     api_context,
 ):
