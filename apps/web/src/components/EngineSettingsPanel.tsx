@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import EngineCapabilitiesDialog from './EngineCapabilitiesDialog'
 import Button from './Button'
 import Input from './Input'
@@ -21,13 +21,7 @@ function EngineIcon({ engine }: { engine: EngineInfo }) {
       ? '⌘'
       : engine.id.slice(0, 2).toUpperCase()
   return (
-    <span style={{
-      width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      background: `color-mix(in oklab, ${color}, transparent 86%)`,
-      border: `1px solid color-mix(in oklab, ${color}, transparent 72%)`,
-      color, fontSize: 'calc(13px * var(--font-scale))', fontWeight: 700,
-    }}>
+    <span className="engine-settings-icon" style={{ '--engine-color': color } as CSSProperties}>
       {initials}
     </span>
   )
@@ -294,10 +288,10 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
   return (
     <>
         <div className="engine-settings-page" hidden={hidden}>
-          <div className="engine-settings-header" style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 18 }}>
-            <div style={{ flex: 1 }}>
-              <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 6 }}>{t('settings.enginesTitle')}</h1>
-              <p style={{ color: 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))' }}>
+          <div className="engine-settings-header">
+            <div className="engine-settings-header-copy">
+              <h1 className="engine-settings-title">{t('settings.enginesTitle')}</h1>
+              <p className="engine-settings-intro">
                 {t('settings.enginesIntro')}
               </p>
             </div>
@@ -313,39 +307,28 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
           </div>
 
           <ExecutionDefaultSettings engines={sortedEngines} loading={loading} onChanged={onConfigurationChanged} />
-          <div className="engine-settings-section-heading" style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            marginBottom: 8,
-          }}>
-            <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
+          <div className="engine-settings-section-heading">
+            <span className="engine-settings-section-title">
               {t('settings.enginesConfig')}
-              {!loading && <span style={{ marginLeft: 6, color: 'var(--meta)', fontWeight: 400 }}>({installedCount}/{sortedEngines.length})</span>}
+              {!loading && <span className="engine-settings-count">({installedCount}/{sortedEngines.length})</span>}
             </span>
-            <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>
+            <span className="engine-settings-section-hint">
               {t('settings.configFormHint')}
             </span>
           </div>
 
           {error && (
-            <div role="alert" style={{
-              padding: '10px 12px', marginBottom: 12, borderRadius: 8,
-              background: 'color-mix(in oklab, var(--danger), transparent 90%)',
-              color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))',
-            }}>
+            <div role="alert" className="engine-settings-error">
               {t('settings.scanFailed', { error })}
             </div>
           )}
 
           {loading && engines.length === 0 ? (
-            <div style={{
-              padding: 32, textAlign: 'center', color: 'var(--meta)',
-              background: 'var(--bg)', border: '1px solid var(--border)',
-              borderRadius: 12,
-            }}>
+            <div className="engine-settings-loading">
               {t('settings.readingEngines')}
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="engine-settings-list">
               {sortedEngines.map((engine) => {
                 const testResult = testResults[engine.id]
                 const isTesting = testingEngine === engine.id
@@ -361,12 +344,7 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                 )
                 const modelSelectRow = (
                   <>
-                    <span
-                      style={{
-                        flexShrink: 0, fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600,
-                        color: 'var(--muted)',
-                      }}
-                    >
+                    <span className="engine-settings-model-label">
                       {t('chatInput.model')}
                     </span>
                     <Select
@@ -376,9 +354,7 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                       value={usesCustomModel ? '__custom__' : savedDefaultModel}
                       disabled={Boolean(modelsLoading[engine.id]) || savingModel === engine.id}
                       onChange={(event) => selectDefaultModel(engine.id, event.target.value)}
-                      style={{
-                        flex: '0 1 auto', minWidth: 0, maxWidth: 240, width: 'auto', height: 28,
-                      }}
+                      className="engine-settings-model-select"
                     >
                       <option value="">
                         {modelsLoading[engine.id] ? t('settings.readingModels') : t('settings.followEngineDefault')}
@@ -392,18 +368,13 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                       <option value="__custom__">{t('settings.customModelOption')}</option>
                     </Select>
                     {savingModel === engine.id && (
-                      <span style={{ flexShrink: 0, color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))' }}>
+                      <span className="engine-settings-saving">
                         {t('settings.saving')}
                       </span>
                     )}
                     {usesCustomModel && (
                       <>
-                        <span
-                          style={{
-                            flexShrink: 0, fontSize: 'calc(11px * var(--font-scale))',
-                            color: 'var(--muted)',
-                          }}
-                        >
+                        <span className="engine-settings-model-label engine-settings-custom-label">
                           {t('settings.customModel')}
                         </span>
                         <Input
@@ -421,16 +392,14 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                               event.currentTarget.blur()
                             }
                           }}
-                          style={{
-                            flex: '0 1 auto', minWidth: 0, maxWidth: 200, width: 'auto', height: 28,
-                          }}
+                          className="engine-settings-custom-input"
                         />
                       </>
                     )}
                     {!modelsLoading[engine.id] && (
                       <Button
                         variant="ghost"
-                        style={{ flexShrink: 0, height: 24, padding: '0 8px', fontSize: 'calc(11px * var(--font-scale))' }}
+                        className="engine-settings-small-action"
                         onClick={() => void loadEngineModels(engine.id, true)}
                       >
                         {t('settings.refresh')}
@@ -448,29 +417,19 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                 return (
                 <div
                   key={engine.id}
+                  className="engine-settings-card"
                   data-engine-id={engine.id}
                   data-installed={engine.installed}
+                  data-available={engine.installed || engine.runtime_manageable}
                   data-onboarding-compatible={onboardingCompatible || undefined}
-                  style={{
-                    borderRadius: 12,
-                    border: `1px solid ${onboardingCompatible ? 'var(--accent)' : engine.installed ? 'var(--border)' : 'var(--border-soft)'}`,
-                    background: 'var(--bg)',
-                    opacity: engine.installed || engine.runtime_manageable ? 1 : 0.62,
-                  }}
                 >
-                  <div className="engine-settings-card-row" style={{
-                    padding: '12px 14px', display: 'flex',
-                    alignItems: 'center', gap: 12, flexWrap: 'wrap', rowGap: 8,
-                  }}>
+                  <div className="engine-settings-card-row">
                   <Button
                     variant="ghost"
                     aria-label={isExpanded ? t('settings.collapseConfig') : t('settings.expandConfig')}
                     title={isExpanded ? t('settings.collapseConfig') : t('settings.expandConfig')}
                     onClick={() => toggleConfig(engine.id)}
-                    style={{
-                      flexShrink: 0, width: 28, height: 28, padding: 0,
-                      justifyContent: 'center',
-                    }}
+                    className="engine-settings-expand-button"
                   >
                     <Icon name={isExpanded ? 'chevron-down' : 'chevron-right'} size={14} />
                   </Button>
@@ -488,37 +447,26 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                       }
                     }}
                     title={isExpanded ? t('settings.collapseConfig') : t('settings.expandConfig')}
-                    style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                      <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>{engineLabel(engine.id, t)}</span>
+                    <div className="engine-settings-card-name-row">
+                      <span className="engine-settings-card-name">{engineLabel(engine.id, t)}</span>
                       {onboardingCompatible && (
-                        <span style={{ padding: '1px 6px', borderRadius: 999, background: 'var(--accent-light)', color: 'var(--accent)', fontSize: 'calc(11px * var(--font-scale))' }}>
+                        <span className="engine-settings-compatible-badge">
                           {t('onboarding.compatibleEngine')}
                         </span>
                       )}
                       {engine.mode && (
-                        <span style={{
-                          padding: '1px 6px', borderRadius: 999,
-                          background: 'var(--surface)', color: 'var(--muted)',
-                          fontSize: 'calc(11px * var(--font-scale))', textTransform: 'uppercase',
-                        }}>
+                        <span className="engine-settings-mode-badge">
                           {engine.mode}
                         </span>
                       )}
                     </div>
-                    <div style={{ color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))', overflowWrap: 'anywhere' }}>
+                    <div className="engine-settings-card-description">
                       {engineDescription(engine.id, t)}
                       {engine.version && <span> · {versionSummary(engine.version)}</span>}
                     </div>
                     {testResult && (
-                      <div
-                        role="status"
-                        style={{
-                          marginTop: 7, fontSize: 'calc(11px * var(--font-scale))',
-                          color: testResult.success ? 'var(--success)' : 'var(--danger)',
-                        }}
-                      >
+                      <div role="status" className="engine-settings-test-result" data-success={testResult.success}>
                         {testResult.success ? '✓' : '×'} {testResult.message}
                         {testResult.duration_ms > 0 && ` · ${testResult.duration_ms}ms`}
                       </div>
@@ -532,7 +480,7 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                   {engine.installed && (
                     <Button
                       variant="ghost"
-                      style={{ minWidth: 62, height: 30, justifyContent: 'center' }}
+                      className="engine-settings-test-button"
                       disabled={testingEngine !== null}
                       loading={isTesting}
                       onClick={() => void testEngine(engine.id)}
@@ -544,7 +492,7 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                   {engine.id === 'pydantic_ai' && engine.installed && (
                     <Button
                       variant="ghost"
-                      style={{ minWidth: 62, height: 30, justifyContent: 'center' }}
+                      className="engine-settings-test-button"
                       disabled={inspectEngineId !== null}
                       onClick={() => setInspectEngineId(engine.id)}
                     >
@@ -553,24 +501,13 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                   )}
 
 
-                  <span style={{
-                    minWidth: 60, textAlign: 'center', padding: '3px 8px',
-                    borderRadius: 999, fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600,
-                    color: engine.verified
-                      ? 'var(--success)'
-                      : engine.installed ? 'var(--warn)' : 'var(--meta)',
-                    background: engine.verified
-                      ? 'color-mix(in oklab, var(--success), transparent 88%)'
-                      : engine.installed
-                        ? 'color-mix(in oklab, var(--warn), transparent 88%)'
-                      : 'var(--surface)',
-                  }}>
+                  <span className="engine-settings-status" data-state={engine.verified ? 'verified' : engine.installed ? 'needs-test' : 'not-installed'}>
                     {engine.verified ? t('settings.verified') : engine.installed ? t('engine.needsTest') : t('engine.notInstalled')}
                   </span>
                   {engine.config && (
                     <Button
                       variant="primary"
-                      style={{ minWidth: 84, height: 30, justifyContent: 'center' }}
+                      className="engine-settings-save-button"
                       disabled={!engineFormState[engine.id]?.canSave}
                       loading={engineFormState[engine.id]?.saving}
                       onClick={() => {
@@ -585,7 +522,7 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                   )}
                   </div>
                   </div>
-                  <div style={{ display: isExpanded ? undefined : 'none' }}>
+                  <div className="engine-settings-card-details" hidden={!isExpanded}>
                   {engine.config && (
                     <EngineConfigForm
                       ref={(el) => { engineFormRefs.current[engine.id] = el }}
@@ -601,7 +538,7 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                           {engine.id !== 'pydantic_ai' && (
                             <Button
                               variant="ghost"
-                              style={{ flexShrink: 0, height: 24, padding: '0 8px', fontSize: 'calc(11px * var(--font-scale))' }}
+                              className="engine-settings-small-action"
                               onClick={() => openPathEditor(engine)}
                             >
                               {t('settings.editPath')}
@@ -625,21 +562,14 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                     />
                   )}
                   {engine.installed && (!engine.config || modelErrors[engine.id]) && (
-                    <div style={{
-                      padding: '9px 14px',
-                      borderTop: '1px solid var(--border-soft)',
-                      background: 'var(--surface)',
-                    }}>
+                    <div className="engine-settings-model-footer">
                       {!engine.config && (
-                        <div style={{
-                          display: 'flex', alignItems: 'center', gap: 8,
-                          flexWrap: 'wrap', rowGap: 8,
-                        }}>
+                        <div className="engine-settings-model-row">
                           {modelSelectRow}
                           {engine.id !== 'pydantic_ai' && (
                             <Button
                               variant="ghost"
-                              style={{ flexShrink: 0, height: 24, padding: '0 8px', fontSize: 'calc(11px * var(--font-scale))' }}
+                              className="engine-settings-small-action"
                               onClick={() => openPathEditor(engine)}
                             >
                               {t('settings.editPath')}
@@ -648,22 +578,17 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                         </div>
                       )}
                       {modelErrors[engine.id] && (
-                        <div style={{
-                          marginTop: 4, color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))',
-                        }}>
+                        <div className="engine-settings-model-error">
                           {t('settings.modelErrorHint2', { error: modelErrors[engine.id] })}
                         </div>
                       )}
                     </div>
                   )}
                   {!engine.installed && engine.id !== 'pydantic_ai' && (
-                    <div style={{
-                      padding: '9px 14px', borderTop: '1px solid var(--border-soft)',
-                      background: 'var(--surface)', borderRadius: '0 0 12px 12px',
-                    }}>
+                    <div className="engine-settings-model-footer engine-settings-footer-rounded">
                       <Button
                         variant="ghost"
-                        style={{ height: 28, padding: '0 10px', fontSize: 'calc(12px * var(--font-scale))' }}
+                        className="engine-settings-path-button"
                         onClick={() => openPathEditor(engine)}
                       >
                         {t('settings.editPath')}
@@ -671,23 +596,18 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                     </div>
                   )}
                   {editingEngine === engine.id && (
-                    <div style={{
-                      padding: '10px 14px 12px', borderTop: '1px solid var(--border-soft)',
-                      background: 'var(--surface)', borderRadius: '0 0 12px 12px',
-                    }}>
-                      <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, marginBottom: 7 }}>
+                    <div className="engine-settings-path-editor">
+                      <div className="engine-settings-path-title">
                         {t('settings.binaryPath')}
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div className="engine-settings-path-row">
                         <Input
                           value={pathDraft}
                           onChange={(event) => setPathDraft(event.target.value)}
                           placeholder={t('settings.binaryPathPlaceholder')}
                           autoFocus
-                          style={{
-                            flex: 1, minWidth: 0, height: 30,
-                            border: `1px solid ${pathError ? 'var(--danger)' : 'var(--border)'}`,
-                          }}
+                          className="engine-settings-path-input"
+                          aria-invalid={Boolean(pathError)}
                         />
                         <Button
                           variant="ghost"
@@ -705,10 +625,7 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                           {t('settings.saveAndScan')}
                         </Button>
                       </div>
-                      <div style={{
-                        marginTop: 6, fontSize: 'calc(11px * var(--font-scale))',
-                        color: pathError ? 'var(--danger)' : 'var(--meta)',
-                      }}>
+                      <div className="engine-settings-path-hint" data-error={Boolean(pathError)}>
                         {pathError || t('settings.pathHint')}
                       </div>
                     </div>
