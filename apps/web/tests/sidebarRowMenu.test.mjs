@@ -10,7 +10,7 @@ const menuCss = await readFile(new URL('../src/components/SidebarActionMenu.css'
 test('project and workflow rows reveal a "..." more button only on hover', () => {
   assert.match(css, /\.ws-row \.ws-more-btn/)
   assert.match(css, /\.ws-row:hover \.ws-more-btn/)
-  const rows = source.match(/className="ws-row"/g) ?? []
+  const rows = source.match(/className="[^"]*\bws-row\b[^"]*"/g) ?? []
   const moreButtons = source.match(/className="ws-more-btn"/g) ?? []
   assert.ok(rows.length >= 2, 'project row and workflow row should both carry the ws-row hover class')
   assert.ok(moreButtons.length >= 2, 'project row and workflow row should both render a ws-more-btn button')
