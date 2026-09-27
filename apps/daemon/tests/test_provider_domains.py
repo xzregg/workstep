@@ -5,6 +5,7 @@ import asyncio
 import subprocess
 import sys
 import threading
+import time
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -69,9 +70,12 @@ async def test_slow_cc_switch_scan_does_not_block_health_check(monkeypatch):
 
     monkeypatch.setattr(provider_api.provider_service, "scan_cc_switch_providers", slow_scan)
     async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        started_at = time.perf_counter()
         request = asyncio.create_task(client.get("/api/provider/import/sources"))
         try:
             assert await asyncio.to_thread(started.wait, 1)
+            assert not request.done()
+            assert time.perf_counter() - started_at < 0.5
             health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
             assert health.status_code == 200
         finally:

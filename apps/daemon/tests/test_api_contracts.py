@@ -142,6 +142,48 @@ async def _create_test_workflow(client, project_id):
 
 
 @pytest.mark.anyio
+async def test_slow_workflow_create_does_not_block_health(api_context, monkeypatch):
+    """The workflow repository runs inside the project's database executor."""
+    import main
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "slow-workflow-create"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init", json={"path": str(project_dir)}
+    )
+    assert initialized.status_code == 200
+    project_id = initialized.json()["id"]
+
+    service = main.project_manager._workflow_service
+    original_create = service.create_workflow
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_create(*args, **kwargs):
+        started.set()
+        release.wait(timeout=1)
+        return original_create(*args, **kwargs)
+
+    monkeypatch.setattr(service, "create_workflow", slow_create)
+    started_at = time.perf_counter()
+    create = asyncio.create_task(client.post(
+        f"/api/workflow/create?project_id={project_id}",
+        json={"name": "慢盘流程", "steps": {"nodes": [], "connections": []}},
+    ))
+    try:
+        assert await asyncio.to_thread(started.wait, 1)
+        assert not create.done()
+        assert time.perf_counter() - started_at < 0.5
+        health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+        assert health.status_code == 200
+    finally:
+        release.set()
+        response = await create
+    assert response.status_code == 200, response.text
+
+
+@pytest.mark.anyio
 async def test_task_detail_does_not_filter_steps_by_legacy_run_snapshot(api_context):
     """Task completion is based on the active run snapshot, not stale stages."""
     import main
