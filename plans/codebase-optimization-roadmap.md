@@ -81,10 +81,10 @@
 
 | 领域 | 文件（当前行数） | 候选业务边界 |
 |---|---|---|
-| 远程项目 | `services/remote_project.py`（1922） | 访问认证、设备/分享、项目登记、HTTP/路由转发分别审查；保护鉴权与连接状态。 |
+| 远程项目 | `services/remote_project.py`（461） | 访问认证、项目登记及主机侧路由已拆到独立模块；客户端连接和请求代理保留原入口。 |
 | 配置与项目 | `services/config.py`（1400）、`services/project.py`（904）、`services/providers.py`（860） | 配置存储、项目生命周期、供应商协议与模型配置按各自领域归属。 |
-| 定时、文件与统计 | `services/schedule.py`（943）、`api/fs.py`（932）、`services/statistics.py`（845） | 调度执行与记录、文件预览/上传、统计聚合；共用费用计算维持既有服务入口。 |
-| 全局导航与设置 | `components/Layout.tsx`（1720）、`pages/SettingsPage.tsx`（1355）、`pages/ProviderSettings.tsx`（1312） | 项目与会话侧栏操作、引擎安装/默认配置、供应商编辑/导入各自拥有交互。 |
+| 定时、文件与统计 | `services/schedule.py`（765）、`api/fs.py`（932）、`services/statistics.py`（845） | 规则编译已拆；调度执行与记录、文件预览/上传、统计聚合仍需按功能审查。 |
+| 全局导航与设置 | `components/Layout.tsx`（1720）、`pages/SettingsPage.tsx`（1272）、`pages/ProviderSettings.tsx`（466） | 供应商编辑/导入和默认执行引擎已拆；项目与会话侧栏、引擎卡片和安装配置仍需审查。 |
 | 流程画布 | `components/FlowCanvas.tsx`（1308） | 图数据转换、节点操作、模板/导入导出和画布呈现；保持空画布及模板主动选择行为。 |
 
 **验证重点：** 远程鉴权与分享、项目切换/删除、定时任务、文件安全边界、设置保存与恢复、流程画布导入导出；涉及同步 I/O 的真实路径均做事件循环 canary。
@@ -95,8 +95,9 @@
 
 ## 阶段执行记录
 
+- 阶段五当前盘点：排除测试文件与 i18n 词典后，业务源码超过 800 行的文件为 21 个（Web 6、daemon 15）。行数只作为审查信号；职责集中的文件记录保留理由，混合职责的文件继续按功能域拆分。
 - 阶段五进行中：默认执行引擎的配置读取、保存和反馈归入 `ExecutionDefaultSettings.tsx`，固定样式归入同名 CSS；`EngineSelect` 增加可复用的 `className` 接口，`SettingsPage.tsx` 从 1355 行降至 1272 行。真实组件测试先因模块不存在失败，迁移后覆盖单次加载及保存回调；Web 全量 996 项、构建和 lint 通过，Code Map 已更新。设置页其余引擎卡片和路径编辑仍待按领域审查。
-- 阶段五进行中：定时规则的时区、日期范围、cron/间隔编译、描述和预览整体归入 `services/schedule_rules.py`；`services/schedule.py` 保留原公共导入、数据持久化和调度执行，从 943 行降至 768 行。先用新模块归属测试复现缺失，再通过定时模块专项 26 项、daemon 全量 1696 项；Code Map 已更新。
+- 阶段五进行中：定时规则的时区、日期范围、cron/间隔编译、描述和预览整体归入 `services/schedule_rules.py`；`services/schedule.py` 保留原公共导入、数据持久化和调度执行，从 943 行降至 765 行。先用新模块归属测试复现缺失，再通过定时模块专项 26 项、daemon 全量 1696 项；Code Map 已更新。
 - 阶段五进行中：供应商新建、编辑、复制及协议/密钥表单归入 `ProviderEditorDialog.tsx`，复制密钥在组件内异步读取并阻止未完成草稿提交，关闭未保存草稿需确认；`ProviderSettings.tsx` 从 918 行降至 466 行，保留列表和状态操作。页面与新组件的固定内联样式全部迁入相邻 CSS，移动端继续使用全局触控高度。真实组件测试覆盖复制保存、必填禁用和关闭保护，旧页面源码断言指向实际业务所有者。Web 全量 995 项、构建和 lint 通过；Code Map 已更新。
 - 阶段五进行中：供应商导入来源、候选选择、结果反馈与刷新流程归入 `ProviderImportDialog.tsx`，固定样式归入同名 CSS；`ProviderSettings.tsx` 从 1312 行降至 918 行，仅负责打开弹窗及导入后的列表刷新。真实组件测试覆盖来源加载、候选选择、提交及刷新回调，Web 全量 992 项通过；Code Map 已更新。供应商编辑及列表固定样式继续治理。
 - 阶段五进行中：主机侧 FastAPI 路由目录、远程 WebSocket 授权与请求/事件处理归入 `services/remote_host.py`，HTTP 形状的传输值归入 `services/remote_protocol.py`；`remote_project.py` 从 977 行降至 461 行，仅保留客户端连接、请求代理和旧导入入口。远程项目专项 43 项及 Git 路由隔离测试通过。为排除主工作区虚拟环境的可选 SDK 缺失，优化 worktree 按锁文件安装 dev、Qoder、SDK 引擎依赖；DeepSeek 的非法预设先校验再导入可选 SDK，Codex SDK 异步提问测试按锁定版实际可用的字符串载荷构造。daemon 全量 1695 项、仓库健康、密钥及差异检查通过；当前超过 800 行业务文件 23 个（Web 7、daemon 16），Code Map 已更新。
