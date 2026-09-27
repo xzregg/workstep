@@ -9,6 +9,12 @@ from engines.core.acp_base import AcpEngineBase, _StreamingClient
 from engines.core.events import InternalEvent
 
 
+def test_streaming_client_has_protocol_owner():
+    from engines.core.acp_streaming_client import ACPStreamingClient
+
+    assert _StreamingClient is ACPStreamingClient
+
+
 class _ProbeEngine(AcpEngineBase):
     ENGINE_ID = "probe"
     COMMAND = ["probe"]
