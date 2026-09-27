@@ -26,5 +26,3 @@ class RemoteHttpResponse:
 
     def json(self) -> Any:
         return json.loads(self.body)
-
-

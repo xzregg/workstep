@@ -275,4 +275,3 @@ class ProjectWorkflowService:
         Message.delete().where(Message.task.in_(task_ids)).execute()
         TaskStep.delete().where(TaskStep.task.in_(task_ids)).execute()
         Task.delete().where(tasks).execute()
-

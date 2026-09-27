@@ -204,4 +204,3 @@ class ACPEventMapper:
         if usage.thought_tokens is not None:
             data["thought_tokens"] = usage.thought_tokens
         return usage_update_event(data)
-

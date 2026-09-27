@@ -671,4 +671,3 @@ export function createOptimisticCoordinatorMessage(
     context_step_key: contextStepKey,
   }
 }
-

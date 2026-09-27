@@ -272,4 +272,3 @@ class ChatRowPersistence(PersistenceAdapter):
         ChatMessage.delete().where(ChatMessage.session == row).execute()
         row.delete_instance()
         return True
-

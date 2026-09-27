@@ -276,4 +276,3 @@ class ClaudeCodeEventMapper:
             return events
 
         return events
-

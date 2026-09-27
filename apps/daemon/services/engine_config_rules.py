@@ -227,5 +227,3 @@ def parse_codex_custom_config(raw: Any) -> list[tuple[str, str]]:
         key, value = stripped.split("=", 1)
         entries.append((key.strip(), value.strip()))
     return entries
-
-

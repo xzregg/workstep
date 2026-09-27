@@ -314,5 +314,3 @@ async def write_browser_content(req: BrowserContentWriteRequest):
         return {"saved": True}
 
     return await asyncio.to_thread(save)
-
-
