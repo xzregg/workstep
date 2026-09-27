@@ -1,4 +1,5 @@
 import ResizablePanel from '../components/ResizablePanel'
+import ProviderImportDialog from '../components/ProviderImportDialog'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Button from '../components/Button'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -9,18 +10,10 @@ import Select from '../components/Select'
 import {
   providerApi,
   type ProviderInfo,
-  type ProviderImportResult,
-  type ProviderImportSource,
   type ProviderTestResult,
   type ProviderTypeMeta,
 } from '../api/client'
 import { useI18n, type TKey } from '../i18n'
-import {
-  filterProviderImportCandidates,
-  providerImportTabs,
-  selectableProviderImportIds,
-  toggleProviderImportSelection,
-} from '../utils/providerImport'
 import {
   summarizeProviderProtocolModels,
   type ProviderProtocolModels,
@@ -81,24 +74,6 @@ function ProviderBadge({ verified, enabled }: { verified: boolean; enabled: bool
   )
 }
 
-function ImportCheckboxMark({ checked }: { checked: boolean }) {
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        width: 16, height: 16, flexShrink: 0,
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        borderRadius: 4, fontSize: 'calc(12px * var(--font-scale))', fontWeight: 800, lineHeight: 1,
-        color: '#fff',
-        background: checked ? 'var(--accent)' : 'var(--bg)',
-        border: checked ? '1px solid var(--accent)' : '1px solid var(--border)',
-      }}
-    >
-      {checked ? '✓' : ''}
-    </span>
-  )
-}
-
 export default function ProviderSettings({ onChanged, autoCreate = false }: Props) {
   const { t } = useI18n()
   const [providers, setProviders] = useState<ProviderInfo[]>([])
@@ -124,14 +99,6 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
   const [deleting, setDeleting] = useState<ProviderInfo | null>(null)
   const [deleteError, setDeleteError] = useState('')
   const [importOpen, setImportOpen] = useState(false)
-  const [importSources, setImportSources] = useState<ProviderImportSource[]>([])
-  const [importLoading, setImportLoading] = useState(false)
-  const [importError, setImportError] = useState('')
-  const [importSourceId, setImportSourceId] = useState('')
-  const [importSourceType, setImportSourceType] = useState('all')
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
-  const [importSaving, setImportSaving] = useState(false)
-  const [importResult, setImportResult] = useState<ProviderImportResult | null>(null)
   const initialized = useRef(false)
   const autoCreateHandled = useRef(false)
 
@@ -506,76 +473,6 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
     }
   }
 
-  const loadImportSources = async () => {
-    setImportLoading(true)
-    setImportError('')
-    try {
-      const result = await providerApi.importSources()
-      setImportSources(result.sources)
-    } catch (reason) {
-      setImportError(reason instanceof Error ? reason.message : t('providerSettings.importLoadFailed'))
-    } finally {
-      setImportLoading(false)
-    }
-  }
-
-  const openImport = () => {
-    setImportOpen(true)
-    setImportSourceId('')
-    setImportSourceType('all')
-    setSelectedIds([])
-    setImportResult(null)
-    setImportError('')
-    void loadImportSources()
-  }
-
-  const closeImport = () => {
-    if (importSaving) return
-    setImportOpen(false)
-    setImportSourceId('')
-    setImportSourceType('all')
-    setSelectedIds([])
-    setImportResult(null)
-    setImportError('')
-  }
-
-  const toggleCandidate = (id: string) => {
-    setSelectedIds((current) => toggleProviderImportSelection(current, id))
-  }
-
-  const importSelected = async () => {
-    if (selectedIds.length === 0 || !importSourceId) return
-    setImportSaving(true)
-    setImportResult(null)
-    setImportError('')
-    try {
-      const result = await providerApi.importFromCcSwitch(selectedIds)
-      setImportResult(result)
-      setSelectedIds([])
-      if (result.imported.length > 0) {
-        await refresh()
-        onChanged?.()
-      }
-      await loadImportSources()
-    } catch (reason) {
-      setImportError(reason instanceof Error ? reason.message : t('providerSettings.importLoadFailed'))
-    } finally {
-      setImportSaving(false)
-    }
-  }
-
-  const activeImportSource = importSources.find((source) => source.id === importSourceId) ?? null
-  const importTabs = providerImportTabs(
-    activeImportSource?.providers ?? [],
-    t('providerSettings.importAllTypes'),
-  )
-  const visibleImportCandidates = filterProviderImportCandidates(
-    activeImportSource?.providers ?? [],
-    importSourceType,
-  )
-  const selectableImportIds = selectableProviderImportIds(visibleImportCandidates)
-  const allSelectableImportsSelected = selectableImportIds.length > 0
-    && selectableImportIds.every((id) => selectedIds.includes(id))
   const saveDisabled = !form.name.trim()
     || !form.protocols.length
     || form.protocols.some((protocol) => !form.protocol_base_urls[protocol]?.trim())
@@ -592,7 +489,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
           <Button variant="ghost" onClick={() => void refresh()} disabled={loading}>
             {t('settings.refresh')}
           </Button>
-          <Button variant="ghost" onClick={openImport}>
+          <Button variant="ghost" onClick={() => setImportOpen(true)}>
             <Icon name="download" size={14} strokeWidth={2} />
             {t('providerSettings.import')}
           </Button>
@@ -814,302 +711,11 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
         </div>
       )}
 
-      {importOpen && (
-        <div
-          className="modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label={t('providerSettings.importTitle')}
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) closeImport()
-          }}
-          style={{ padding: 24 }}
-        >
-          <ResizablePanel
-            className="modal"
-            onMouseDown={(event) => event.stopPropagation()}
-            style={{ width: 560, maxWidth: 'calc(100vw - 48px)' }}
-          >
-            <div className="modal-header" style={{ padding: '16px 20px' }}>
-              <span className="modal-title">{t('providerSettings.importTitle')}</span>
-              <Button variant="icon" aria-label={t('settings.closeSettings')} onClick={closeImport}>✕</Button>
-            </div>
-            <div className="modal-body" style={{ padding: '18px 20px 20px' }}>
-              <p style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))', margin: '0 0 14px' }}>
-                {t('providerSettings.importIntro')}
-              </p>
-              {!importSourceId ? (
-                <>
-                  {importLoading && importSources.length === 0 ? (
-                    <div style={{
-                      padding: 28, textAlign: 'center', color: 'var(--meta)',
-                      background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 12,
-                    }}>
-                      {t('settings.readingEngines')}
-                    </div>
-                  ) : importSources.length === 0 ? (
-                    <div style={{
-                      padding: 28, textAlign: 'center', color: 'var(--meta)',
-                      background: 'var(--bg)', border: '1px dashed var(--border)', borderRadius: 12,
-                    }}>
-                      {t('providerSettings.importSourcesEmpty')}
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {importSources.map((source) => (
-                        <button
-                          key={source.id}
-                          type="button"
-                          onClick={() => {
-                            setImportSourceId(source.id)
-                            setImportSourceType('all')
-                            setSelectedIds([])
-                            setImportResult(null)
-                          }}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 12,
-                            padding: '10px 14px', borderRadius: 12, cursor: 'pointer',
-                            border: '1px solid var(--border)', background: 'var(--bg)',
-                            textAlign: 'left', font: 'inherit', color: 'inherit',
-                          }}
-                        >
-                          <span style={{
-                            width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                            background: 'color-mix(in oklab, var(--accent), transparent 86%)',
-                            border: '1px solid color-mix(in oklab, var(--accent), transparent 72%)',
-                            color: 'var(--accent)', fontSize: 'calc(12px * var(--font-scale))', fontWeight: 700,
-                          }}>
-                            {source.name.slice(0, 2).toUpperCase()}
-                          </span>
-                          <span style={{ flex: 1, minWidth: 0 }}>
-                            <span style={{ display: 'block', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
-                              {source.name}
-                            </span>
-                            <span style={{ display: 'block', color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))', marginTop: 2 }}>
-                              {source.description}
-                            </span>
-                          </span>
-                          <span style={{
-                            padding: '2px 8px', borderRadius: 999, fontSize: 'calc(11px * var(--font-scale))',
-                            background: 'var(--surface)', color: 'var(--meta)',
-                          }}>
-                            {source.provider_count}
-                          </span>
-                          <Icon name="chevron-right" size={16} strokeWidth={2} />
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
-                    <Button
-                      variant="ghost"
-                      disabled={importLoading}
-                      loading={importLoading}
-                      onClick={() => void loadImportSources()}
-                    >
-                      {t('providerSettings.importRefresh')}
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  {activeImportSource && activeImportSource.providers.length === 0 ? (
-                    <div style={{
-                      padding: 28, textAlign: 'center', color: 'var(--meta)',
-                      background: 'var(--bg)', border: '1px dashed var(--border)', borderRadius: 12,
-                    }}>
-                      {t('providerSettings.importProvidersEmpty')}
-                    </div>
-                  ) : (
-                    <>
-                      <div
-                        role="tablist"
-                        aria-label={t('providerSettings.importTypeTabs')}
-                        style={{
-                          display: 'flex', gap: 6, marginBottom: 12,
-                          paddingBottom: 2, overflowX: 'auto',
-                        }}
-                      >
-                        {importTabs.map((tab) => {
-                          const active = importSourceType === tab.id
-                          return (
-                            <button
-                              key={tab.id}
-                              type="button"
-                              role="tab"
-                              aria-selected={active}
-                              onClick={() => setImportSourceType(tab.id)}
-                              style={{
-                                flexShrink: 0, height: 30, padding: '0 10px',
-                                borderRadius: 8, cursor: 'pointer', font: 'inherit',
-                                fontSize: 'calc(12px * var(--font-scale))', fontWeight: active ? 650 : 500,
-                                color: active ? 'var(--accent)' : 'var(--muted)',
-                                background: active
-                                  ? 'color-mix(in oklab, var(--accent), transparent 88%)'
-                                  : 'var(--surface)',
-                                border: active
-                                  ? '1px solid color-mix(in oklab, var(--accent), transparent 55%)'
-                                  : '1px solid var(--border-soft)',
-                              }}
-                            >
-                              {tab.label}
-                              <span style={{ marginLeft: 5, opacity: 0.72 }}>{tab.count}</span>
-                            </button>
-                          )
-                        })}
-                      </div>
-                      <button
-                        type="button"
-                        role="checkbox"
-                        aria-checked={allSelectableImportsSelected}
-                        disabled={selectableImportIds.length === 0}
-                        onClick={() => setSelectedIds((current) => (
-                          allSelectableImportsSelected
-                            ? current.filter((id) => !selectableImportIds.includes(id))
-                            : [...new Set([...current, ...selectableImportIds])]
-                        ))}
-                        style={{
-                        display: 'flex', alignItems: 'center', gap: 8,
-                        marginBottom: 8, color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))',
-                          width: 'auto', height: 'auto', padding: 0,
-                          border: 0, background: 'transparent',
-                          cursor: selectableImportIds.length === 0 ? 'not-allowed' : 'pointer',
-                          font: 'inherit',
-                        }}
-                      >
-                        <ImportCheckboxMark checked={allSelectableImportsSelected} />
-                        {t('providerSettings.importSelectAll')}
-                      </button>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 320, overflowY: 'auto' }}>
-                        {visibleImportCandidates.map((candidate) => {
-                          const checked = selectedIds.includes(candidate.id)
-                          const disabled = Boolean(candidate.error) || candidate.already_exists
-                          return (
-                            <button
-                              type="button"
-                              role="checkbox"
-                              aria-checked={checked}
-                              disabled={disabled}
-                              onClick={() => toggleCandidate(candidate.id)}
-                              key={candidate.id}
-                              style={{
-                                display: 'flex', alignItems: 'center', gap: 10,
-                                width: '100%', textAlign: 'left', font: 'inherit', color: 'inherit',
-                                padding: '9px 12px', borderRadius: 10, cursor: disabled ? 'not-allowed' : 'pointer',
-                                border: '1px solid var(--border-soft)', background: 'var(--bg)',
-                                opacity: disabled ? 0.6 : 1,
-                              }}
-                            >
-                            <ImportCheckboxMark checked={checked} />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                                <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>{candidate.name}</span>
-                                <span style={{
-                                  padding: '1px 6px', borderRadius: 999,
-                                  background: 'var(--surface)', color: 'var(--muted)',
-                                  fontSize: 'calc(11px * var(--font-scale))', textTransform: 'uppercase',
-                                }}>
-                                  {typeLabel(candidate.type)}
-                                </span>
-                                <span style={{
-                                  padding: '1px 6px', borderRadius: 999,
-                                  background: 'color-mix(in oklab, var(--accent), transparent 90%)',
-                                  color: 'var(--accent)', fontSize: 'calc(11px * var(--font-scale))',
-                                }}>
-                                  {candidate.source_type}
-                                </span>
-                                {candidate.already_exists && (
-                                  <span style={{
-                                    padding: '1px 6px', borderRadius: 999,
-                                    background: 'var(--surface)', color: 'var(--meta)',
-                                    fontSize: 'calc(11px * var(--font-scale))',
-                                  }}>
-                                    {t('providerSettings.importAlready')}
-                                  </span>
-                                )}
-                              </div>
-                              <div style={{ color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))', overflowWrap: 'anywhere' }}>
-                                {candidate.base_url}
-                                <span style={{ marginLeft: 8 }}>
-                                  {candidate.has_key ? t('providerSettings.hasKey') : t('providerSettings.noKey')}
-                                </span>
-                              </div>
-                              {candidate.error && (
-                                <div style={{ marginTop: 4, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}>
-                                  {candidate.error}
-                                </div>
-                              )}
-                            </div>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </>
-                  )}
-                  <div className="field-hint" style={{ minHeight: 18, marginTop: 10 }} aria-live="polite">
-                    {importResult && (
-                      <span style={{ fontSize: 'calc(12px * var(--font-scale))' }}>
-                        {importResult.imported.length > 0 && (
-                          <span style={{ color: 'var(--success)' }}>
-                            {t('providerSettings.importImported', { count: importResult.imported.length })}
-                          </span>
-                        )}
-                        {importResult.skipped.length > 0 && (
-                          <span style={{ color: 'var(--warn)', marginLeft: 8 }}>
-                            {t('providerSettings.importSkipped', { count: importResult.skipped.length })}
-                          </span>
-                        )}
-                        {importResult.errors.length > 0 && (
-                          <span style={{ color: 'var(--danger)', marginLeft: 8 }}>
-                            {t('providerSettings.importErrors', { count: importResult.errors.length })}
-                          </span>
-                        )}
-                      </span>
-                    )}
-                    {importError && (
-                      <span style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{importError}</span>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', marginTop: 4 }}>
-                    <Button
-                      variant="ghost"
-                      disabled={importSaving}
-                      onClick={() => {
-                        setImportSourceId('')
-                        setImportSourceType('all')
-                        setSelectedIds([])
-                        setImportResult(null)
-                        setImportError('')
-                      }}
-                    >
-                      {t('providerSettings.importBack')}
-                    </Button>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <Button
-                        variant="ghost"
-                        disabled={importLoading || importSaving}
-                        loading={importLoading}
-                        onClick={() => void loadImportSources()}
-                      >
-                        {t('providerSettings.importRefresh')}
-                      </Button>
-                      <Button
-                        variant="primary"
-                        disabled={selectedIds.length === 0 || importLoading || importSaving}
-                        loading={importSaving}
-                        onClick={() => void importSelected()}
-                      >
-                        {t('providerSettings.importSelected', { count: selectedIds.length })}
-                      </Button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </ResizablePanel>
-        </div>
-      )}
+      {importOpen && <ProviderImportDialog
+        types={types}
+        onClose={() => setImportOpen(false)}
+        onImported={async () => { await refresh(); onChanged?.() }}
+      />}
 
       {formOpen && (
         <div
