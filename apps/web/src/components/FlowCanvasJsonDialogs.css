@@ -1,0 +1,11 @@
+.flow-json-overlay { z-index: 400; }
+.flow-json-export { width: min(600px, calc(100vw - 32px)); max-height: 80vh; }
+.flow-json-import { width: min(640px, calc(100vw - 32px)); }
+.flow-json-export-body { padding: 0; }
+.flow-json-preview { margin: 0; padding: 16px; font-family: var(--font-mono); font-size: calc(13px * var(--font-scale)); line-height: 1.6; background: var(--surface); color: var(--fg); overflow: auto; max-height: 60vh; white-space: pre-wrap; word-break: break-word; }
+.flow-json-editor { height: 320px; font-family: var(--font-mono); font-size: calc(13px * var(--font-scale)); line-height: 1.6; background: var(--surface); resize: vertical; }
+.flow-json-error { color: var(--danger); font-size: calc(13px * var(--font-scale)); margin-top: 8px; }
+
+@media (max-width: 760px) {
+  .flow-json-editor { height: min(320px, 50vh); }
+}
