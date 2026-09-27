@@ -10,6 +10,13 @@ from engines.pydantic_ai import PydanticAIEngine
 from engines.pydantic_ai.coder import WorkStepFileSystem, WorkStepShell
 
 
+def test_harness_lifecycle_has_one_owner():
+    from engines.pydantic_ai.harness_runtime import PydanticAIHarnessRuntime
+
+    assert isinstance(PydanticAIEngine(), PydanticAIHarnessRuntime)
+    assert "_harness_capabilities" not in PydanticAIEngine.__dict__
+
+
 @pytest.mark.asyncio
 async def test_coder_file_reads_do_not_block_the_event_loop(tmp_path, monkeypatch):
     target = tmp_path / "large.txt"
