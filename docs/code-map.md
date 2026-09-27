@@ -38,6 +38,7 @@
 | 协调助手任务上下文、历史裁剪与产物索引 | `src/components/TaskConversationMessage.tsx` 展示协调消息 | `agent_assistants/coordinator_context.py` 在项目数据库工作单元中组装提示词、审核与步骤快照、近期消息及安全的产物索引；`coordinator.py` 负责回合调度与调用 | `tests/test_coordinator.py`、`tests/test_live_step_message.py`、`tests/test_workstep_tools_injection.py` |
 | 协调助手提案、确认与执行 | `src/components/TaskConversationMessage.tsx` 展示提案与确认入口 | `agent_assistants/coordinator_actions.py` 持有提案校验、幂等确认、取消、步骤补充、审核决定、步骤重跑和流程 Action 创建；同步数据库工作单元经项目执行器运行，`coordinator.py` 仅保留 API 入口和回合交接 | `tests/test_coordinator.py`（含慢确认健康检查 canary） |
 | 引擎与安装 | `src/api/engine.ts`、`src/pages/SettingsPage.tsx` | `api/engine.py`、`engines/core/`、`services/engine_runtime.py` | `docs/multi-engine-architecture.md`、`docs/engine-runtime-management.md` |
+| Codex SDK 通知到内部事件的映射、消息阶段、工具调用、用量与目标状态 | 前端通过 AG-UI 消费事件 | `engines/codex_sdk_events.py` 持有通知映射；`engines/codex_sdk.py` 持有 SDK 会话与执行循环并继承映射器 | `tests/test_p2_engines.py`、`tests/test_engine_base_hierarchy.py` |
 | 项目与远程项目 | `src/api/project.ts`、`src/pages/SettingsPage.tsx` | `api/project.py`、`remote_project.py`、`services/project.py`、`remote_project.py` | `docs/architecture.md` |
 | Git 与任务工作区 | `src/components/git/`、`src/api/git.ts` | `api/git.py`、`services/git/` | `services/git/task_workspace.py` 负责任务工作区 |
 | 分享、定时、统计 | `src/api/share.ts`、`schedule.ts`、`statistics.ts` | `api/share.py`、`schedule.py`、`statistics.py`；对应 `services/` | 各模块测试 |
