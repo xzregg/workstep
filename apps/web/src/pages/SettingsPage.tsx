@@ -22,6 +22,7 @@ import {
 } from '../api/client'
 import EngineConfigForm, { type EngineConfigFormHandle } from '../components/EngineConfigForm'
 import ExecutionDefaultSettings from '../components/ExecutionDefaultSettings'
+import SettingsNavigation, { type SettingsSection } from '../components/SettingsNavigation'
 import EngineRuntimeControl from '../components/EngineRuntimeControl'
 import TemplateSettings from './TemplateSettings'
 import ProviderSettings from './ProviderSettings'
@@ -67,7 +68,7 @@ function EngineIcon({ engine }: { engine: EngineInfo }) {
   )
 }
 
-export type SettingsSection = 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'channels' | 'remote' | 'concurrency' | 'git' | 'system'
+export type { SettingsSection } from '../components/SettingsNavigation'
 export type SettingsFocusTarget = 'provider-create' | 'execution-engine'
 
 interface SettingsPageProps {
@@ -431,145 +432,7 @@ export default function SettingsPage({
         </div>
 
       <div className="settings-layout" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-      <aside className="settings-nav" style={{
-        width: 184, flexShrink: 0, padding: '18px 12px',
-        background: 'var(--surface)', borderRight: '1px solid var(--border-soft)',
-      }}>
-        <div style={{
-          padding: '0 10px 8px', color: 'var(--meta)',
-          fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600, letterSpacing: '0.4px',
-        }}>
-          {t('nav.settings')}
-        </div>
-        <button
-          aria-current={activeSection === 'providers' ? 'page' : undefined}
-          onClick={() => setActiveSection('providers')}
-          style={{
-            width: '100%', height: 38, padding: '0 11px',
-            display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
-            gap: 9, borderRadius: 8, background: activeSection === 'providers' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'providers' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600,
-          }}
-        >
-          <Icon name="sliders-horizontal" size={16} strokeWidth={2} />
-          {t('providerSettings.nav')}
-        </button>
-        <button
-          aria-current={activeSection === 'engines' ? 'page' : undefined}
-          onClick={() => setActiveSection('engines')}
-          style={{
-            width: '100%', height: 38, padding: '0 11px', marginTop: 5,
-            display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
-            gap: 9, borderRadius: 8, background: activeSection === 'engines' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'engines' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600,
-          }}
-        >
-          <Icon name="sliders-horizontal" size={16} strokeWidth={2} />
-          {t('settings.enginesNav')}
-        </button>
-        <button
-          aria-current={activeSection === 'pricing' ? 'page' : undefined}
-          onClick={() => setActiveSection('pricing')}
-          style={{
-            width: '100%', height: 38, padding: '0 11px', marginTop: 5,
-            display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
-            gap: 9, borderRadius: 8, background: activeSection === 'pricing' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'pricing' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600,
-          }}
-        >
-          <Icon name="layers" size={16} strokeWidth={2} />
-          {t('settings.pricingNav')}
-        </button>
-        <button
-          aria-current={activeSection === 'assistants' ? 'page' : undefined}
-          onClick={() => setActiveSection('assistants')}
-          style={{
-            width: '100%', height: 38, padding: '0 11px', marginTop: 5,
-            display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
-            gap: 9, borderRadius: 8, background: activeSection === 'assistants' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'assistants' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600,
-          }}
-        >
-          <span aria-hidden="true" style={{ fontSize: 'calc(16px * var(--font-scale))' }}>✦</span>
-          {t('settings.assistantNav')}
-        </button>
-        <button
-          aria-current={activeSection === 'templates' ? 'page' : undefined}
-          onClick={() => setActiveSection('templates')}
-          style={{
-            width: '100%', height: 38, padding: '0 11px', marginTop: 5,
-            display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
-            gap: 9, borderRadius: 8, background: activeSection === 'templates' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'templates' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600,
-          }}
-        >
-          <Icon name="layout-grid" size={16} strokeWidth={2} />
-          {t('settings.templatesNav')}
-        </button>
-        <button
-          aria-current={activeSection === 'channels' ? 'page' : undefined}
-          onClick={() => setActiveSection('channels')}
-          style={{
-            width: '100%', height: 38, padding: '0 11px', marginTop: 5,
-            display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
-            gap: 9, borderRadius: 8, background: activeSection === 'channels' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'channels' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600,
-          }}
-        >
-          <Icon name="radio" size={16} strokeWidth={2} />
-          {t('nav.channels')}
-        </button>
-        <button
-          aria-current={activeSection === 'remote' ? 'page' : undefined}
-          onClick={() => setActiveSection('remote')}
-          style={{
-            width: '100%', height: 38, padding: '0 11px', marginTop: 5,
-            display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
-            gap: 9, borderRadius: 8, background: activeSection === 'remote' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'remote' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600,
-          }}
-        >
-          <Icon name="share" size={16} strokeWidth={2} />
-          {t('nav.remoteProjects')}
-        </button>
-        <button
-          aria-current={activeSection === 'concurrency' ? 'page' : undefined}
-          onClick={() => setActiveSection('concurrency')}
-          style={{
-            width: '100%', height: 38, padding: '0 11px', marginTop: 5,
-            display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
-            gap: 9, borderRadius: 8, background: activeSection === 'concurrency' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'concurrency' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600,
-          }}
-        >
-          <Icon name="layers" size={16} strokeWidth={2} />
-          {t('projectSettings.tabs.concurrency')}
-        </button>
-        <button
-          aria-current={activeSection === 'git' ? 'page' : undefined}
-          onClick={() => setActiveSection('git')}
-          style={{ width: '100%', height: 38, padding: '0 11px', marginTop: 5,
-            display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 9, borderRadius: 8,
-            background: activeSection === 'git' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'git' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}
-        >
-          <Icon name="git-fork" size={16} />
-          {t('gitSettings.title')}
-        </button>
-        <button
-          aria-current={activeSection === 'system' ? 'page' : undefined}
-          onClick={() => setActiveSection('system')}
-          style={{
-            width: '100%', height: 38, padding: '0 11px', marginTop: 5,
-            display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
-            gap: 9, borderRadius: 8, background: activeSection === 'system' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'system' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600,
-          }}
-        >
-          <span aria-hidden="true" style={{ fontSize: 'calc(15px * var(--font-scale))' }}>文</span>
-          {t('settings.systemNav')}
-        </button>
-      </aside>
+      <SettingsNavigation activeSection={activeSection} onSelect={setActiveSection} />
 
       <section className="settings-content" style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto', padding: '24px 28px 40px' }}>
         {activeSection === 'engines' ? (

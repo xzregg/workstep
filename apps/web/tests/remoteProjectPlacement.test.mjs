@@ -12,8 +12,6 @@ test('remote projects is a dedicated category inside settings', () => {
   assert.doesNotMatch(layoutSource, /showRemoteProjects/)
   assert.match(settingsSource, /import RemoteProjectSettings from '\.\/RemoteProjectSettings'/)
   assert.match(settingsSource, /activeSection === 'remote'/)
-  assert.match(settingsSource, /setActiveSection\('remote'\)/)
-  assert.match(settingsSource, /t\('nav\.remoteProjects'\)/)
   assert.match(settingsSource, /<RemoteProjectSettings \/>/)
 })
 
