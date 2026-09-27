@@ -184,6 +184,13 @@ def test_codex_map_agent_message_text_field():
     assert event.data["content"]["text"] == "你好！我是 Codex"
 
 
+def test_codex_cli_event_mapping_has_one_owner():
+    from engines.codex_cli_events import CodexCLIEventMapper
+
+    assert isinstance(CodexEngine(), CodexCLIEventMapper)
+    assert "_map_event" not in CodexEngine.__dict__
+
+
 @pytest.mark.parametrize(
     "marker",
     [
@@ -722,6 +729,13 @@ async def test_codex_denial_reject_for_session_auto_denies(monkeypatch):
     assert len(decisions) == 2
     assert all("user rejected" in content for content in decisions)
     assert all("rejected" in content for content in decisions)
+
+
+def test_claude_code_event_mapping_has_one_owner():
+    from engines.claude_code_events import ClaudeCodeEventMapper
+
+    assert isinstance(ClaudeCodeEngine(), ClaudeCodeEventMapper)
+    assert "_map_events_content" not in ClaudeCodeEngine.__dict__
 
 
 def test_claude_code_maps_subagent_task_frames():
@@ -2169,6 +2183,13 @@ class _SdkFake:
 
 def test_claude_agent_sdk_engine_id():
     assert ClaudeAgentSDKEngine.ENGINE_ID == "claude_agent_sdk"
+
+
+def test_claude_agent_sdk_message_mapping_has_one_owner():
+    from engines.claude_agent_sdk_events import ClaudeAgentSDKEventMapper
+
+    assert isinstance(ClaudeAgentSDKEngine(), ClaudeAgentSDKEventMapper)
+    assert "_map_message_content" not in ClaudeAgentSDKEngine.__dict__
 
 
 @pytest.mark.anyio
@@ -4532,6 +4553,13 @@ class _QoderResultMessage(_QoderFake):
 
 def test_qoder_sdk_engine_id():
     assert QoderSDKEngine.ENGINE_ID == "qoder_sdk"
+
+
+def test_qoder_sdk_message_mapping_has_one_owner():
+    from engines.qoder_sdk_events import QoderSDKEventMapper
+
+    assert isinstance(QoderSDKEngine(), QoderSDKEventMapper)
+    assert "_map_message_content" not in QoderSDKEngine.__dict__
 
 
 def test_qoder_sdk_version_and_binary():

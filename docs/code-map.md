@@ -41,6 +41,10 @@
 | ACP 流式通知队列、工具审批选项与 elicitation 回复 | 前端接收 AG-UI 的交互请求并提交结果 | `engines/core/acp_streaming_client.py` 持有 ACP 客户端回调与等待中的交互；`engines/core/acp_base.py` 负责协议会话和执行 | `tests/test_acp_full_events.py`、`tests/test_p2_engines.py` |
 | ACP 会话更新到内部事件、工具调用、计划和用量的映射 | 前端通过 AG-UI 消费事件 | `engines/core/acp_event_mapper.py` 持有 ACP 通知映射；`engines/core/acp_base.py` 继承映射器并处理协议执行 | `tests/test_acp_full_events.py`、`tests/test_engine_base_hierarchy.py` |
 | Codex SDK 通知到内部事件的映射、消息阶段、工具调用、用量与目标状态 | 前端通过 AG-UI 消费事件 | `engines/codex_sdk_events.py` 持有通知映射；`engines/codex_sdk.py` 持有 SDK 会话与执行循环并继承映射器 | `tests/test_p2_engines.py`、`tests/test_engine_base_hierarchy.py` |
+| Codex CLI JSONL 事件、工具调用及沙箱拒绝交互 | 前端通过 AG-UI 消费事件与交互请求 | `engines/codex_cli_events.py` 持有 CLI 事件翻译；`engines/codex.py` 持有子进程、会话与审批后的重试 | `tests/test_p2_engines.py`、`tests/test_engine_base_hierarchy.py` |
+| Claude CLI JSONL 事件、工具调用及权限拒绝交互 | 前端通过 AG-UI 消费事件与交互请求 | `engines/claude_code_events.py` 持有事件翻译；`engines/claude_code.py` 持有子进程、会话及项目权限规则写入 | `tests/test_p2_engines.py` |
+| Claude Agent SDK 消息、工具、用量与结果事件 | 前端通过 AG-UI 消费事件 | `engines/claude_agent_sdk_events.py` 持有 SDK 消息翻译；`engines/claude_agent_sdk.py` 持有 SDK 执行与会话 | `tests/test_p2_engines.py` |
+| Qoder SDK 消息、工具、用量与结果事件 | 前端通过 AG-UI 消费事件 | `engines/qoder_sdk_events.py` 持有 SDK 消息翻译；`engines/qoder_sdk.py` 持有 SDK 执行与会话 | `tests/test_p2_engines.py` |
 | Pydantic AI Harness 能力装配、压缩、会话持久化与历史续接 | 前端通过 AG-UI 消费压缩事件 | `engines/pydantic_ai/harness_runtime.py` 持有 Harness 生命周期；`engines/pydantic_ai/engine.py` 持有代理运行和流式事件 | `tests/test_pydantic_ai_harness.py`、`tests/test_engine_base_hierarchy.py` |
 | 项目与远程项目 | `src/api/project.ts`、`src/pages/SettingsPage.tsx` | `api/project.py`、`remote_project.py`、`services/project.py`、`remote_project.py` | `docs/architecture.md` |
 | Git 与任务工作区 | `src/components/git/`、`src/api/git.ts` | `api/git.py`、`services/git/` | `services/git/task_workspace.py` 负责任务工作区 |
