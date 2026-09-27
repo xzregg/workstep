@@ -1,0 +1,21 @@
+.provider-editor-overlay { padding: 24px; }
+.provider-editor-panel { width: 560px; max-width: calc(100vw - 48px); }
+.provider-editor-header { padding: 16px 20px; }
+.provider-editor-body { padding: 18px 20px 20px; }
+.provider-editor-control { width: 100%; height: 32px; }
+.provider-editor-hint { margin-top: 6px; font-size: 12px; opacity: .65; }
+.provider-editor-key-row { display: flex; align-items: center; gap: 8px; }
+.provider-editor-key-input { flex: 1; min-width: 0; height: 32px; }
+.provider-editor-reveal { flex-shrink: 0; height: 30px; }
+.provider-editor-clear-key { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; color: var(--muted); font-size: calc(11px * var(--font-scale)); white-space: nowrap; cursor: pointer; }
+.provider-editor-clear-key input { width: 16px; height: 16px; padding: 0; margin: 0; flex-shrink: 0; accent-color: var(--accent); }
+.provider-editor-feedback { min-height: 18px; margin-bottom: 12px; }
+.provider-editor-error { color: var(--danger); font-size: calc(12px * var(--font-scale)); }
+.provider-editor-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+@media (max-width: 1023px) {
+  .provider-editor-overlay { padding: 12px; }
+  .provider-editor-panel { width: 100%; max-width: 100%; }
+  .provider-editor-control, .provider-editor-key-input { min-height: 44px; }
+  .provider-editor-key-row { flex-wrap: wrap; }
+}

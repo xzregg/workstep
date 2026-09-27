@@ -1441,6 +1441,8 @@ export const enUS: Messages = {
     inspectMcpEmpty: 'No MCP servers configured',
   },
   providerSettings: {
+    unsavedTitle: 'Discard provider changes?',
+    unsavedMessage: 'The provider configuration has not been saved. Discard it and close?',
     title: '供应商',
     intro: '统一管理 LLM API 供应商（API 地址与密钥）。API 驱动的引擎（如 Pydantic AI）可复用所选供应商的凭据。',
     nav: '供应商',

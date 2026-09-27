@@ -1439,6 +1439,8 @@ export const zhCN = {
     inspectMcpEmpty: '未配置 MCP 服务器',
   },
   providerSettings: {
+    unsavedTitle: '放弃供应商修改？',
+    unsavedMessage: '当前供应商配置尚未保存，确定放弃并关闭？',
     title: '供应商',
     intro: '统一管理 LLM API 供应商（API 地址与密钥）。API 驱动的引擎（如 Pydantic AI）可复用所选供应商的凭据。',
     nav: '供应商',
