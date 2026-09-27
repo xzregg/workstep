@@ -816,3 +816,14 @@ async def test_schedule_cli_create_agent_mode_maps_candidates_and_instruction():
         "candidate_workflow_ids": ["w1", "w2"],
         "retry_count": 3,
     }
+def test_schedule_rule_module_owns_compilation_and_keeps_public_aliases():
+    from services.schedule import ScheduleValidationError as PublicError
+    from services.schedule import compile_rule as public_compile_rule
+    from services.schedule_rules import ScheduleValidationError, compile_rule
+
+    assert PublicError is ScheduleValidationError
+    assert public_compile_rule is compile_rule
+    expression, zone, run_at = compile_rule({
+        "kind": "daily", "time": "09:30", "timezone": "UTC",
+    })
+    assert (expression, zone, run_at) == ("30 9 * * *", "UTC", None)

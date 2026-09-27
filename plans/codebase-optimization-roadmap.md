@@ -95,6 +95,7 @@
 
 ## 阶段执行记录
 
+- 阶段五进行中：定时规则的时区、日期范围、cron/间隔编译、描述和预览整体归入 `services/schedule_rules.py`；`services/schedule.py` 保留原公共导入、数据持久化和调度执行，从 943 行降至 768 行。先用新模块归属测试复现缺失，再通过定时模块专项 26 项、daemon 全量 1696 项；Code Map 已更新。
 - 阶段五进行中：供应商新建、编辑、复制及协议/密钥表单归入 `ProviderEditorDialog.tsx`，复制密钥在组件内异步读取并阻止未完成草稿提交，关闭未保存草稿需确认；`ProviderSettings.tsx` 从 918 行降至 466 行，保留列表和状态操作。页面与新组件的固定内联样式全部迁入相邻 CSS，移动端继续使用全局触控高度。真实组件测试覆盖复制保存、必填禁用和关闭保护，旧页面源码断言指向实际业务所有者。Web 全量 995 项、构建和 lint 通过；Code Map 已更新。
 - 阶段五进行中：供应商导入来源、候选选择、结果反馈与刷新流程归入 `ProviderImportDialog.tsx`，固定样式归入同名 CSS；`ProviderSettings.tsx` 从 1312 行降至 918 行，仅负责打开弹窗及导入后的列表刷新。真实组件测试覆盖来源加载、候选选择、提交及刷新回调，Web 全量 992 项通过；Code Map 已更新。供应商编辑及列表固定样式继续治理。
 - 阶段五进行中：主机侧 FastAPI 路由目录、远程 WebSocket 授权与请求/事件处理归入 `services/remote_host.py`，HTTP 形状的传输值归入 `services/remote_protocol.py`；`remote_project.py` 从 977 行降至 461 行，仅保留客户端连接、请求代理和旧导入入口。远程项目专项 43 项及 Git 路由隔离测试通过。为排除主工作区虚拟环境的可选 SDK 缺失，优化 worktree 按锁文件安装 dev、Qoder、SDK 引擎依赖；DeepSeek 的非法预设先校验再导入可选 SDK，Codex SDK 异步提问测试按锁定版实际可用的字符串载荷构造。daemon 全量 1695 项、仓库健康、密钥及差异检查通过；当前超过 800 行业务文件 23 个（Web 7、daemon 16），Code Map 已更新。
