@@ -1,0 +1,8 @@
+.engine-settings-page {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.engine-settings-page[hidden] {
+  display: none;
+}

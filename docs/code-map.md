@@ -37,7 +37,7 @@
 | AI 流程助手方案选择 | `src/components/AiFlowChat.tsx` 展示提案并触发应用 | `agent_assistants/workflow_gen.py` 解析、合并、校验和发布流程方案；`workflow_choice_ui.py` 将已验证方案投影为 A2UI 选择事件，或为模型提供的选择界面补齐步骤数据 | `tests/test_workflow_choice_ui.py`、`tests/test_workflow_gen.py` |
 | 协调助手任务上下文、历史裁剪与产物索引 | `src/components/TaskConversationMessage.tsx` 展示协调消息 | `agent_assistants/coordinator_context.py` 在项目数据库工作单元中组装提示词、审核与步骤快照、近期消息及安全的产物索引；`coordinator.py` 负责回合调度与调用 | `tests/test_coordinator.py`、`tests/test_live_step_message.py`、`tests/test_workstep_tools_injection.py` |
 | 协调助手提案、确认与执行 | `src/components/TaskConversationMessage.tsx` 展示提案与确认入口 | `agent_assistants/coordinator_actions.py` 持有提案校验、幂等确认、取消、步骤补充、审核决定、步骤重跑和流程 Action 创建；同步数据库工作单元经项目执行器运行，`coordinator.py` 仅保留 API 入口和回合交接 | `tests/test_coordinator.py`（含慢确认健康检查 canary） |
-| 引擎与安装 | `src/api/engine.ts`、`src/pages/SettingsPage.tsx` | `api/engine.py`、`engines/core/`、`services/engine_runtime.py` | `docs/multi-engine-architecture.md`、`docs/engine-runtime-management.md` |
+| 引擎与安装 | `src/api/engine.ts`、`src/components/EngineSettingsPanel.tsx` 持有目录、安装配置、模型与检测；`src/pages/SettingsPage.tsx` 负责栏目装配和供应商变更通知 | `api/engine.py`、`engines/core/`、`services/engine_runtime.py` | `apps/web/tests/engineSettingsPanel.test.tsx`、`docs/multi-engine-architecture.md`、`docs/engine-runtime-management.md` |
 | 全局设置栏目导航 | `src/components/SettingsNavigation.tsx` 持有栏目、图标和当前项标记；`SettingsNavigation.css` 统一尺寸与移动端布局；`src/pages/SettingsPage.tsx` 只选择当前栏目 | — | `apps/web/tests/settingsNavigation.test.tsx` |
 | 流程画布跨流程复制节点 | `src/components/FlowNodeCopyDialog.tsx` 管理项目与流程加载、步骤缓存、选择及错误反馈；`FlowNodeCopyDialog.css` 管理三列布局和移动端触控尺寸；`FlowCanvas.tsx` 只将选中的节点加入画布 | `api/project.py`、`api/workflow.py` 提供来源目录与流程数据 | `apps/web/tests/flowNodeCopyDialog.test.tsx` |
 | 流程模板选择、应用确认与保存 | `src/components/FlowTemplateDialog.tsx` 持有模板目录、搜索、保存与应用确认；`FlowCanvas.tsx` 只传当前图快照并应用选中的模板数据 | `api/templates.py` 提供模板接口 | `apps/web/tests/flowTemplateDialog.test.tsx` |
@@ -66,7 +66,7 @@
 | 供应商导入来源、候选选择及导入结果 | `src/components/ProviderImportDialog.tsx` 持有导入弹窗的加载、选择、提交和反馈；`src/pages/ProviderSettings.tsx` 只打开弹窗并刷新供应商列表；固定样式在 `ProviderImportDialog.css` | `api/providers.py`、`services/providers.py` | `apps/web/tests/providerImportDialog.test.tsx` |
 | 供应商新建、编辑、复制与协议/密钥配置 | `src/components/ProviderEditorDialog.tsx` 持有草稿、密钥读取、校验、保存及未保存关闭确认；`src/pages/ProviderSettings.tsx` 负责列表操作与刷新；固定样式在 `ProviderEditorDialog.css`、`ProviderSettings.css` | `api/providers.py`、`services/providers.py` | `apps/web/tests/providerEditorDialog.test.tsx`、`providerEngineCompatibility.test.mjs` |
 | 定时规则编译、时区校验与下次运行预览 | `src/pages/SchedulePage.tsx` 提供规则编辑入口 | `services/schedule_rules.py` 持有纯规则计算，`services/schedule.py` 保留兼容导入并负责持久化与调度 | `apps/daemon/tests/test_schedule.py` |
-| 默认执行引擎的读取、选择和保存 | `src/components/ExecutionDefaultSettings.tsx` 持有请求、保存和反馈；`src/pages/SettingsPage.tsx` 只提供引擎目录和变更回调；固定样式在 `ExecutionDefaultSettings.css` | `api/engine.py`、`services/config.py` | `apps/web/tests/executionDefaultSettings.test.tsx` |
+| 默认执行引擎的读取、选择和保存 | `src/components/ExecutionDefaultSettings.tsx` 持有请求、保存和反馈；`src/components/EngineSettingsPanel.tsx` 提供引擎目录和变更回调；固定样式在 `ExecutionDefaultSettings.css` | `api/engine.py`、`services/config.py` | `apps/web/tests/executionDefaultSettings.test.tsx` |
 
 表中的前端路径均相对于 `apps/web/`，后端路径均相对于 `apps/daemon/`。后端请求模型在 `schemas/`，持久化模型在 `models/`；服务里的同步数据库工作单元通过 `services/project_database.py` 的项目执行器运行。实时事件从 `engines/core/events.py` 经 `engines/core/agui.py` 到前端 `src/utils/agui.ts`。
 

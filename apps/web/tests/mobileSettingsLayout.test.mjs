@@ -4,6 +4,7 @@ import test from 'node:test'
 
 const mobileCss = await readFile(new URL('../src/mobile.css', import.meta.url), 'utf8')
 const settingsSource = await readFile(new URL('../src/pages/SettingsPage.tsx', import.meta.url), 'utf8')
+const engineSettingsSource = await readFile(new URL('../src/components/EngineSettingsPanel.tsx', import.meta.url), 'utf8')
 const providerSource = await readFile(new URL('../src/pages/ProviderSettings.tsx', import.meta.url), 'utf8')
 const pricingSource = await readFile(new URL('../src/pages/ModelPricingSettings.tsx', import.meta.url), 'utf8')
 
@@ -32,12 +33,13 @@ test('provider settings stack heading, actions and card controls on mobile', () 
 })
 
 test('engine settings keep descriptions readable and actions on their own row', () => {
-  assert.match(settingsSource, /className="engine-settings-page"/)
-  assert.match(settingsSource, /className="engine-settings-header"/)
-  assert.match(settingsSource, /className="engine-settings-section-heading"/)
-  assert.match(settingsSource, /className="engine-settings-card-row"/)
-  assert.match(settingsSource, /className="engine-settings-card-summary"/)
-  assert.match(settingsSource, /className="engine-settings-card-actions"/)
+  assert.match(settingsSource, /<EngineSettingsPanel/)
+  assert.match(engineSettingsSource, /className="engine-settings-page"/)
+  assert.match(engineSettingsSource, /className="engine-settings-header"/)
+  assert.match(engineSettingsSource, /className="engine-settings-section-heading"/)
+  assert.match(engineSettingsSource, /className="engine-settings-card-row"/)
+  assert.match(engineSettingsSource, /className="engine-settings-card-summary"/)
+  assert.match(engineSettingsSource, /className="engine-settings-card-actions"/)
   assert.match(mobileCss, /\.engine-settings-header\s*\{[^}]*flex-direction:\s*column/s)
   assert.match(mobileCss, /\.engine-settings-card-row\s*\{[^}]*grid-template-columns:\s*32px 34px minmax\(0, 1fr\)/s)
   assert.match(mobileCss, /\.engine-settings-card-actions\s*\{[^}]*grid-column:\s*1 \/ -1/s)
