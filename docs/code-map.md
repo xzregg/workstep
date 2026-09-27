@@ -39,6 +39,7 @@
 | 协调助手提案、确认与执行 | `src/components/TaskConversationMessage.tsx` 展示提案与确认入口 | `agent_assistants/coordinator_actions.py` 持有提案校验、幂等确认、取消、步骤补充、审核决定、步骤重跑和流程 Action 创建；同步数据库工作单元经项目执行器运行，`coordinator.py` 仅保留 API 入口和回合交接 | `tests/test_coordinator.py`（含慢确认健康检查 canary） |
 | 引擎与安装 | `src/api/engine.ts`、`src/pages/SettingsPage.tsx` | `api/engine.py`、`engines/core/`、`services/engine_runtime.py` | `docs/multi-engine-architecture.md`、`docs/engine-runtime-management.md` |
 | ACP 流式通知队列、工具审批选项与 elicitation 回复 | 前端接收 AG-UI 的交互请求并提交结果 | `engines/core/acp_streaming_client.py` 持有 ACP 客户端回调与等待中的交互；`engines/core/acp_base.py` 负责协议会话和执行 | `tests/test_acp_full_events.py`、`tests/test_p2_engines.py` |
+| ACP 会话更新到内部事件、工具调用、计划和用量的映射 | 前端通过 AG-UI 消费事件 | `engines/core/acp_event_mapper.py` 持有 ACP 通知映射；`engines/core/acp_base.py` 继承映射器并处理协议执行 | `tests/test_acp_full_events.py`、`tests/test_engine_base_hierarchy.py` |
 | Codex SDK 通知到内部事件的映射、消息阶段、工具调用、用量与目标状态 | 前端通过 AG-UI 消费事件 | `engines/codex_sdk_events.py` 持有通知映射；`engines/codex_sdk.py` 持有 SDK 会话与执行循环并继承映射器 | `tests/test_p2_engines.py`、`tests/test_engine_base_hierarchy.py` |
 | Pydantic AI Harness 能力装配、压缩、会话持久化与历史续接 | 前端通过 AG-UI 消费压缩事件 | `engines/pydantic_ai/harness_runtime.py` 持有 Harness 生命周期；`engines/pydantic_ai/engine.py` 持有代理运行和流式事件 | `tests/test_pydantic_ai_harness.py`、`tests/test_engine_base_hierarchy.py` |
 | 项目与远程项目 | `src/api/project.ts`、`src/pages/SettingsPage.tsx` | `api/project.py`、`remote_project.py`、`services/project.py`、`remote_project.py` | `docs/architecture.md` |
