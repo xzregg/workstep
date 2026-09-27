@@ -15,6 +15,13 @@ def test_streaming_client_has_protocol_owner():
     assert _StreamingClient is ACPStreamingClient
 
 
+def test_acp_notification_mapping_has_one_owner():
+    from engines.core.acp_event_mapper import ACPEventMapper
+
+    assert isinstance(_ProbeEngine(), ACPEventMapper)
+    assert "_map_notification" not in AcpEngineBase.__dict__
+
+
 class _ProbeEngine(AcpEngineBase):
     ENGINE_ID = "probe"
     COMMAND = ["probe"]

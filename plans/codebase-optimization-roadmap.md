@@ -93,6 +93,7 @@
 
 ## 阶段执行记录
 
+- 阶段四进行中：ACP 会话更新的消息、工具、计划、用量及未知事件透传统一归入 `engines/core/acp_event_mapper.py`；`acp_base.py` 从 1734 行降至 1543 行，继承映射器并保留协议执行与会话能力。ACP 事件/引擎契约 226 项、daemon 全量 1685 项、仓库健康、密钥及差异检查通过；Code Map 已更新。
 - 阶段四进行中：ACP 通知队列、工具审批选项策略与 elicitation 回复归入 `engines/core/acp_streaming_client.py`；`acp_base.py` 保留 `_StreamingClient` 导入别名供既有引擎和测试调用，主体从 1987 行降至 1734 行。ACP 事件/审批和引擎层级 225 项、daemon 全量 1684 项、仓库健康、密钥及差异检查通过；Code Map 已更新。
 - 阶段四进行中：Pydantic AI 的 Harness 能力装配、上下文压缩、会话 SQLite 持久化、历史续接及压缩回执归入 `engines/pydantic_ai/harness_runtime.py`；`engine.py` 从 1577 行降至 1362 行，保留代理执行与事件流。Harness 专属测试 31 项、daemon 全量 1683 项通过；引擎相关测试中慢健康检查首次以 0.164 秒略超 0.15 秒门槛，单独重跑及全量重跑通过；仓库健康、密钥和差异检查通过。Code Map 已更新。
 - 阶段四进行中：Codex SDK 的通知识别、消息阶段、工具调用、用量、目标状态和原始事件透传统一归入 `engines/codex_sdk_events.py`；`codex_sdk.py` 从 1742 行降至 1105 行，保留 SDK 会话与执行。引擎通过映射器继承原有调用入口，事件类型与发送顺序保持一致；归属测试、引擎契约 244 项、daemon 全量 1682 项、仓库健康、密钥及差异检查通过，Code Map 已更新。其余适配器和基类仍待逐项审查。
