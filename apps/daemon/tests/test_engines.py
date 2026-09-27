@@ -423,7 +423,7 @@ def test_engine_install_base_defaults():
     assert result.already_installed is True
 
 
-def test_python_sdk_update_upgrades_in_daemon_environment(monkeypatch):
+def test_python_sdk_update_upgrades_in_user_runtime(monkeypatch, tmp_path):
     captured = []
 
     async def fake_run(cmd, *, timeout=600):
@@ -431,6 +431,9 @@ def test_python_sdk_update_upgrades_in_daemon_environment(monkeypatch):
         return 0, "updated"
 
     monkeypatch.setattr(engine_base.shutil, "which", lambda _name: "/usr/bin/uv")
+    package_dir = tmp_path / "python-packages"
+    monkeypatch.setenv("WORKSTEP_ENGINE_PACKAGE_DIR", str(package_dir))
+    monkeypatch.setattr(engine_base, "_has_pip", lambda: False)
     monkeypatch.setattr(engine_base, "run_install_command", fake_run)
 
     result = asyncio.run(
@@ -438,11 +441,43 @@ def test_python_sdk_update_upgrades_in_daemon_environment(monkeypatch):
     )
 
     assert captured == [[
-        "uv", "pip", "install", "--upgrade", "--python", sys.executable,
+        "uv", "pip", "install", "--upgrade", "--target", str(package_dir),
         "openai-codex",
     ]]
     assert result.success is True
     assert "重启 daemon" in result.message
+
+
+@pytest.mark.anyio
+async def test_python_sdk_install_slow_directory_keeps_event_loop_responsive(monkeypatch, tmp_path):
+    import threading
+    import time
+
+    package_dir = tmp_path / "python-packages"
+    monkeypatch.setenv("WORKSTEP_ENGINE_PACKAGE_DIR", str(package_dir))
+    main_thread = threading.get_ident()
+    worker_threads = []
+    original_makedirs = engine_base.os.makedirs
+
+    def slow_makedirs(*args, **kwargs):
+        worker_threads.append(threading.get_ident())
+        time.sleep(0.2)
+        return original_makedirs(*args, **kwargs)
+
+    async def fake_run(cmd, *, timeout=600):
+        return 0, "installed"
+
+    monkeypatch.setattr(engine_base.os, "makedirs", slow_makedirs)
+    monkeypatch.setattr(engine_base, "_has_pip", lambda: False)
+    monkeypatch.setattr(engine_base.shutil, "which", lambda _name: "/usr/bin/uv")
+    monkeypatch.setattr(engine_base, "run_install_command", fake_run)
+
+    started = asyncio.get_running_loop().time()
+    task = asyncio.create_task(engine_base.install_python_package("openai-codex"))
+    await asyncio.sleep(0.02)
+    assert asyncio.get_running_loop().time() - started < 0.1
+    assert (await task).success
+    assert worker_threads and all(thread != main_thread for thread in worker_threads)
 
 
 def test_python_sdk_install_targets_desktop_user_runtime(monkeypatch, tmp_path):

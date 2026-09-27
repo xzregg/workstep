@@ -280,10 +280,10 @@ async def install_python_package(
     success_hint = "请重启 daemon 后重新扫描引擎" if upgrade else "请重新扫描引擎"
     package_dir = os.environ.get("WORKSTEP_ENGINE_PACKAGE_DIR", "").strip()
     if package_dir:
-        os.makedirs(package_dir, exist_ok=True)
-        if _has_pip():
+        await asyncio.to_thread(os.makedirs, package_dir, exist_ok=True)
+        if await asyncio.to_thread(_has_pip):
             cmd = [sys.executable, "-m", "pip", "install"]
-        elif shutil.which("uv"):
+        elif await asyncio.to_thread(shutil.which, "uv"):
             cmd = ["uv", "pip", "install"]
         else:
             return EngineInstallResult(
@@ -299,7 +299,7 @@ async def install_python_package(
             action=action,
             success_hint=success_hint,
         )
-    if shutil.which("uv"):
+    if await asyncio.to_thread(shutil.which, "uv"):
         cmd = ["uv", "pip", "install"]
         if upgrade:
             cmd.append("--upgrade")
@@ -310,7 +310,7 @@ async def install_python_package(
             action=action,
             success_hint=success_hint,
         )
-    if _has_pip():
+    if await asyncio.to_thread(_has_pip):
         cmd = [sys.executable, "-m", "pip", "install"]
         if upgrade:
             cmd.append("--upgrade")

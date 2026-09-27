@@ -4462,7 +4462,7 @@ async def test_claude_permission_mode_save_requires_confirmation(monkeypatch):
 
 def test_all_engines_registered():
     """All engines are in the full list."""
-    assert len(_ALL_ENGINES) == 9
+    assert len(_ALL_ENGINES) == 11
     assert "claude" in _ALL_ENGINES
     assert "codex" in _ALL_ENGINES
     assert "hermes" in _ALL_ENGINES
@@ -4471,6 +4471,8 @@ def test_all_engines_registered():
     assert "pydantic_ai" in _ALL_ENGINES
     assert "claude_agent_sdk" in _ALL_ENGINES
     assert "codex_sdk" in _ALL_ENGINES
+    assert "cursor" in _ALL_ENGINES
+    assert "opencode" in _ALL_ENGINES
 
 
 def test_registered_engines_declare_resume_capability_accurately():

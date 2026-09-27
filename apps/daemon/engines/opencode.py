@@ -25,11 +25,11 @@ import subprocess
 from typing import AsyncIterator, ClassVar
 
 from engines.core.acp_base import AcpEngineBase
-from engines.core.base import ProviderRuntimeConfig
+from engines.core.base import EngineModel, ProviderRuntimeConfig
 from engines.core.events import InternalEvent
 from engines.core.packages import RuntimePackage
-from engines.core.base import EngineModel, ProviderRuntimeConfig
 from engines.core.schema import EngineImage
+from engines.core.stream_lines import ChunkedLineReader
 from services import providers as provider_service
 
 logger = logging.getLogger(__name__)
@@ -44,11 +44,11 @@ def _managed_config_path() -> str:
     return os.path.expanduser("~/.workstep/engines/opencode/opencode.json")
 
 
-def _ensure_permission_config() -> str | None:
+def _ensure_permission_config() -> str:
     """生成 WorkStep 管理的 opencode 配置（全局配置 + permission=ask 覆盖）。
 
-    合并用户全局配置以保留其 provider / auth 设置；失败时返回 ``None``
-    （降级为 opencode 默认行为并记录日志，不阻断 spawn）。
+    合并用户全局配置以保留其 provider / auth 设置；无法写入权限配置时
+    阻止启动，避免回退到未受控的默认权限。
     """
     merged: dict = {}
     try:
@@ -67,8 +67,7 @@ def _ensure_permission_config() -> str | None:
             json.dump(merged, fh, ensure_ascii=False, indent=2)
         return path
     except OSError as exc:
-        logger.warning("写入 opencode 权限配置失败（降级默认行为）: %s", exc)
-        return None
+        raise RuntimeError("无法写入 OpenCode 权限配置，已阻止启动") from exc
 
 
 class OpencodeEngine(AcpEngineBase):
@@ -139,8 +138,6 @@ class OpencodeEngine(AcpEngineBase):
 
     def project_skill_env(self, cwd: str) -> dict[str, str]:
         path = _ensure_permission_config()
-        if path is None:
-            return {}
         return {"OPENCODE_CONFIG": path}
 
     # ---------------------------------------------------------------- 能力
@@ -209,24 +206,33 @@ class OpencodeEngine(AcpEngineBase):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
             )
+            assert proc.stdin is not None and proc.stdout is not None
+            reader = ChunkedLineReader(proc.stdout)
 
             def rpc(req_id: int, method: str, params: dict) -> bytes:
                 return (json.dumps({"jsonrpc": "2.0", "id": req_id,
                                     "method": method, "params": params}) + "\n").encode()
 
-            await proc.stdin.write(rpc(1, "initialize", {
+            async def request(req_id: int, method: str, params: dict) -> dict:
+                proc.stdin.write(rpc(req_id, method, params))
+                await proc.stdin.drain()
+                async with asyncio.timeout(15):
+                    while line := await reader.readline():
+                        response = json.loads(line.decode(errors="replace"))
+                        if response.get("id") == req_id:
+                            return response
+                return {}
+
+            init_resp = await request(1, "initialize", {
                 "protocolVersion": 1, "clientCapabilities": {},
                 "clientInfo": {"name": "workstep", "version": "0"},
-            }))
-            line = await asyncio.wait_for(proc.stdout.readline(), timeout=15)
-            init_resp = json.loads(line.decode(errors="replace")) if line else {}
+            })
             if "result" not in init_resp:
                 return []
-            await proc.stdin.write(rpc(2, "session/new", {
+            session_resp = await request(2, "session/new", {
                 "cwd": workdir, "mcpServers": [],
-            }))
-            line = await asyncio.wait_for(proc.stdout.readline(), timeout=15)
-            result = (json.loads(line.decode(errors="replace")) or {}).get("result") or {}
+            })
+            result = session_resp.get("result") or {}
             models: list[EngineModel] = []
             for option in result.get("configOptions") or []:
                 if option.get("id") != "model":
