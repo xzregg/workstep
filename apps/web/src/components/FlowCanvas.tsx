@@ -1,4 +1,3 @@
-import ResizablePanel from './ResizablePanel'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import MobileSheet from './MobileSheet'
 import FlowBookmark, { BookmarkContext, loadBookmarks, saveBookmarks } from './FlowBookmark'
@@ -6,7 +5,6 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import { createPortal } from 'react-dom'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
-import Textarea from './Textarea'
 import {
   ReactFlow, Controls, Background, addEdge,
   useNodesState, useEdgesState,
@@ -29,6 +27,7 @@ import { STEP_TYPE_PATTERN, randomStepColor, DEFAULT_MAX_RETURN_ROUNDS, emptyRev
 import NodeConfigPanel from './NodeConfigPanel'
 import FlowNodeCopyDialog from './FlowNodeCopyDialog'
 import FlowTemplateDialog from './FlowTemplateDialog'
+import FlowCanvasJsonDialogs from './FlowCanvasJsonDialogs'
 
 /* ══════════════════════════════════════════
    Reusable flow canvas editor — shared by the
@@ -276,8 +275,6 @@ function FlowCanvasInner({
   const [nodeConfigDirty, setNodeConfigDirty] = useState(false)
   const [showJson, setShowJson] = useState(false)
   const [showImport, setShowImport] = useState(false)
-  const [importText, setImportText] = useState('')
-  const [importError, setImportError] = useState('')
   const [showTemplateModal, setShowTemplateModal] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
@@ -583,10 +580,10 @@ function FlowCanvasInner({
     setTimeout(() => fitView({ padding: 0.2 }), 100)
   }
 
-  const templateFeedback = (message: string, kind: 'success' | 'error') => {
+  const templateFeedback = (message: string, kind: 'success' | 'error', duration = 5000) => {
     setSaveMsg(message)
     setSaveMsgKind(kind)
-    setTimeout(() => setSaveMsg(''), 5000)
+    setTimeout(() => setSaveMsg(''), duration)
   }
 
   const onConnect = useCallback((params: Connection) => {
@@ -681,35 +678,6 @@ function FlowCanvasInner({
     setTimeout(() => setSaveMsg(''), 3000)
   }
 
-  const handleCopyJson = () => {
-    void copyText(JSON.stringify(buildCanvasJson(), null, 2)).then((ok) => {
-      setSaveMsg(ok ? t('flow.copyJsonSuccess') : t('flow.copyFailed'))
-      setSaveMsgKind(ok ? 'success' : 'error')
-    })
-    setTimeout(() => setSaveMsg(''), 3000)
-  }
-
-  const handleImport = () => {
-    try {
-      const parsed = JSON.parse(importText)
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        throw new Error(t('flow.jsonShapeError'))
-      }
-      const { nodes: impNodes, connections: impConns } = loadCanvasData(parsed)
-      setNodes([...canvasToFlowNodes(impNodes), ...loadBookmarks(parsed)])
-      setEdges(canvasToFlowEdges(impConns, impNodes))
-      setSelectedNode(null)
-      setNodeConfigError('')
-      setDirty(true)
-      setShowImport(false)
-      setImportText('')
-      setImportError('')
-      setTimeout(() => fitView({ padding: 0.2 }), 100)
-    } catch (e) {
-      setImportError(e instanceof Error ? e.message : t('flow.jsonParseError'))
-    }
-  }
-
   useEffect(() => {
     if (!contextMenu) return
     const handler = () => setContextMenu(null)
@@ -763,7 +731,7 @@ function FlowCanvasInner({
           {(close) => (
             <>
               <MenuItem onClick={() => { close(); handleExportJson() }}>{t('flow.exportJson')}</MenuItem>
-              <MenuItem onClick={() => { close(); setImportText(''); setImportError(''); setShowImport(true) }}>{t('flow.importJson')}</MenuItem>
+              <MenuItem onClick={() => { close(); setShowImport(true) }}>{t('flow.importJson')}</MenuItem>
             </>
           )}
         </DropdownMenu>
@@ -879,52 +847,9 @@ function FlowCanvasInner({
         <FlowNodeCopyDialog onClose={() => setCopyOpen(false)} onCopy={handleCopyNode} />
       )}
 
-      {/* Export workflow JSON preview */}
-      {showJson && (
-        <div className="modal-overlay" onClick={() => setShowJson(false)} style={{ zIndex: 400 }}>
-          <ResizablePanel className="modal" style={{ width: 600, maxHeight: '80vh' }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">{t('flow.jsonConfigTitle')}</span>
-              <Button variant="icon" onClick={() => setShowJson(false)}>✕</Button>
-            </div>
-            <div className="modal-body" style={{ padding: 0 }}>
-              <pre style={{ margin: 0, padding: 16, fontFamily: 'var(--font-mono)', fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.6, background: 'var(--surface)', color: 'var(--fg)', overflow: 'auto', maxHeight: '60vh', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                {JSON.stringify(buildCanvasJson(), null, 2)}
-              </pre>
-            </div>
-            <div className="modal-footer">
-              <Button variant="ghost" onClick={handleCopyJson}>{t('common.copy')}</Button>
-              <Button variant="primary" onClick={() => setShowJson(false)}>{t('common.close')}</Button>
-            </div>
-          </ResizablePanel>
-        </div>
-      )}
-
-      {/* Import workflow JSON */}
-      {!readOnly && showImport && (
-        <div className="modal-overlay" onClick={() => setShowImport(false)} style={{ zIndex: 400 }}>
-          <ResizablePanel className="modal" style={{ width: 640 }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">{t('flow.importJsonTitle')}</span>
-              <Button variant="icon" onClick={() => setShowImport(false)}>✕</Button>
-            </div>
-            <div className="modal-body">
-              <Textarea
-                value={importText}
-                onChange={(e) => { setImportText(e.target.value); setImportError('') }}
-                placeholder={t('flow.importPlaceholder')}
-                spellCheck={false}
-                style={{ height: 320, fontFamily: 'var(--font-mono)', fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.6, background: 'var(--surface)', resize: 'vertical' }}
-              />
-              {importError && <p style={{ color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))', marginTop: 8 }}>{importError}</p>}
-            </div>
-            <div className="modal-footer">
-              <Button variant="ghost" onClick={() => setShowImport(false)}>{t('common.cancel')}</Button>
-              <Button variant="primary" onClick={handleImport} disabled={!importText.trim()}>{t('flow.confirmImport')}</Button>
-            </div>
-          </ResizablePanel>
-        </div>
-      )}
+      <FlowCanvasJsonDialogs exportOpen={showJson} importOpen={!readOnly && showImport}
+        onCloseExport={() => setShowJson(false)} onCloseImport={() => setShowImport(false)}
+        getSteps={buildCanvasJson} onImport={applyTemplateSteps} onFeedback={templateFeedback} />
 
       {/* Delete confirm dialog */}
       <WorkflowExecutionWarningDialog
