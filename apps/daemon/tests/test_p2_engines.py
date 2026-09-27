@@ -3054,6 +3054,18 @@ def test_codex_sdk_maps_compacted_notification():
     assert events[0].data == {}
 
 
+def test_codex_sdk_notification_mapping_has_one_owner():
+    from engines.codex_sdk_events import CodexSDKNotificationMapper
+
+    engine = CodexSDKEngine()
+    assert isinstance(engine, CodexSDKNotificationMapper)
+    events = engine._map_notification(
+        _SdkFake(method="thread/compacted", payload=_SdkFake()),
+        {"emitted_text": False, "tool_emitted": set()},
+    )
+    assert [event.type for event in events] == ["compacted"]
+
+
 def test_codex_sdk_maps_turn_plan_updated_to_acp_snapshot():
     engine = CodexSDKEngine()
     events = engine._map_notification(
