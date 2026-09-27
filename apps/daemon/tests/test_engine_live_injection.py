@@ -223,10 +223,10 @@ async def test_codex_send_live_step_message_not_supported(monkeypatch):
 
 
 def test_registered_engines_advertise_live_support_honestly():
-    """OpenClaw 与 DeepSeek Harness 无运行中注入入口，其余引擎支持。"""
+    """没有运行中注入入口的引擎应如实声明，其余引擎支持。"""
     for engine_id, engine_cls in _ALL_ENGINES.items():
         engine = engine_cls()
-        if engine_id in {"openclaw", "deepseek_harness"}:
+        if engine_id in {"openclaw", "deepseek_harness", "cursor"}:
             assert engine.supports_live_step_message is False, engine_id
         else:
             assert engine.supports_live_step_message is True, engine_id

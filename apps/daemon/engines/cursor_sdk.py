@@ -1,17 +1,13 @@
 """CursorSdkEngine — Cursor 官方 Python SDK 引擎（``cursor-sdk`` + 内置 bridge）。
 
-Cursor SDK（PyPI ``cursor-sdk``，2026-06 公开 beta）脚本化 Cursor IDE/CLI 同款
-agent（Composer 系列模型）。SDK 通过 HTTP 与本地 ``cursor-sdk-bridge`` 子进程
-通信；**pip 包在 ``_vendor/bridge/`` 内自带 bridge 与 node 运行时**，无需
-额外安装。鉴权使用 Cursor 账号 API key（``CURSOR_API_KEY`` 或配置项）。
+Cursor SDK 通过本地 bridge 运行 agent。鉴权使用 Cursor 账号 API key
+（``CURSOR_API_KEY`` 或配置项）。
 
-非 ACP 原生传输适配器：事件来自 SDK 的 ``RunStreamEvent``
-（TextDelta / ThinkingDelta / ToolCallStarted / ToolCallCompleted /
-TokenUsage / TurnEnded 等），按声明映射为 ACP 对齐事件。
+非 ACP 原生传输适配器：将 SDK ``run.messages()`` 的消息映射为 ACP 对齐事件。
 """
 
 import asyncio
-import importlib
+import importlib.metadata
 import importlib.util
 import logging
 import os
@@ -22,6 +18,7 @@ from engines.core.base import ProviderRuntimeConfig
 from engines.core.events import InternalEvent
 from engines.core.packages import RuntimePackage
 from engines.core.schema import EngineConfigField, EngineImage
+from services.config import config_store
 
 logger = logging.getLogger(__name__)
 
@@ -86,24 +83,37 @@ class CursorSdkEngine(AcpEngineBase):
             EngineConfigField(
                 key="api_key",
                 label="Cursor API Key",
-                type="text",
+                type="password",
                 placeholder="crsr-...",
                 required=True,
                 help="Cursor 账号 API Key（Settings → API Keys），留空时回退 CURSOR_API_KEY 环境变量",
+                sensitive=True,
             ),
         ]
 
     def _api_key(self) -> str:
-        try:
-            from services import config_store
+        return str(config_store.get("cursor_sdk_api_key", "") or os.environ.get("CURSOR_API_KEY", ""))
 
-            cfg = config_store.load()
-            value = (cfg.get("engines", {}).get("cursor", {}) or {}).get("api_key")
-            if value:
-                return str(value)
-        except Exception:
-            pass
-        return os.environ.get("CURSOR_API_KEY", "")
+    def get_config_values(self) -> dict:
+        return {"api_key": ""}
+
+    def get_config_secrets(self) -> dict[str, bool]:
+        return {"api_key": bool(config_store.get("cursor_sdk_api_key", ""))}
+
+    def reveal_config_value(self, key: str) -> str | None:
+        return str(config_store.get("cursor_sdk_api_key", "") or "") if key == "api_key" else None
+
+    async def save_config_values(
+        self,
+        values: dict,
+        clear: dict[str, bool] | None = None,
+        confirmed: dict[str, bool] | None = None,
+    ) -> None:
+        key = str(values.get("api_key") or "").strip()
+        if key:
+            await asyncio.to_thread(config_store.set, "cursor_sdk_api_key", key)
+        elif (clear or {}).get("api_key"):
+            await asyncio.to_thread(config_store.delete, "cursor_sdk_api_key")
 
     def is_configured(self) -> bool:
         return self.is_installed() and bool(self._api_key())
@@ -116,7 +126,7 @@ class CursorSdkEngine(AcpEngineBase):
 
     @property
     def supports_resume(self) -> bool:
-        # SDK 提供 resume_agent / agent.resume（按 agent id 恢复）。
+        # SDK 提供 client.agents.resume（按 agent id 恢复）。
         return self.is_installed()
 
     @property
@@ -175,6 +185,13 @@ class CursorSdkEngine(AcpEngineBase):
         config_overrides: dict | None = None,
         thinking_effort: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
+        api_key = await asyncio.to_thread(self._api_key)
+        if not api_key:
+            yield InternalEvent(
+                "done",
+                {"stop_reason": "error", "error": "未配置 Cursor API Key（设置页填写或 CURSOR_API_KEY 环境变量）"},
+            )
+            return
         try:
             from cursor_sdk import (
                 AsyncClient,
@@ -186,34 +203,25 @@ class CursorSdkEngine(AcpEngineBase):
             yield InternalEvent("done", {"stop_reason": "error", "error": f"cursor_sdk 未安装: {exc}"})
             return
 
-        api_key = self._api_key()
-        if not api_key:
-            yield InternalEvent(
-                "done",
-                {"stop_reason": "error", "error": "未配置 Cursor API Key（设置页填写或 CURSOR_API_KEY 环境变量）"},
-            )
-            return
-
         client = None
+        agent = None
         run = None
         agent_id = session_id
         try:
-            client = await AsyncClient.launch_bridge(
-                local={
-                    "cwd": cwd,
-                    **({"dirs": add_dirs} if add_dirs else {}),
-                },
-                allow_api_key_env_fallback=False,
-            )
+            client = await AsyncClient.launch_bridge(workspace=cwd)
             options = AgentOptions(
                 api_key=api_key,
                 local=LocalAgentOptions(cwd=cwd, **({"dirs": add_dirs} if add_dirs else {})),
                 **({"model": model} if model else {}),
             )
             if session_id:
-                agent = await client.resume_agent(session_id) if self._agent_exists(client, session_id) else await client.create_agent(options)
+                agent = await client.agents.resume(session_id, options)
             else:
-                agent = await client.create_agent(options)
+                agent = await client.agents.create(
+                    model=model or "auto",
+                    api_key=api_key,
+                    local=LocalAgentOptions(cwd=cwd),
+                )
             agent_id = getattr(agent, "agent_id", None) or session_id
             if agent_id:
                 yield InternalEvent("session_started", {"session_id": agent_id})
@@ -224,7 +232,7 @@ class CursorSdkEngine(AcpEngineBase):
             )
             self._active_runs[agent_id or f"cwd:{cwd}"] = (client, agent, run)
             try:
-                async for event in run.events():
+                async for event in run.messages():
                     mapped = self._map_sdk_event(event)
                     if mapped is not None:
                         yield mapped
@@ -241,52 +249,53 @@ class CursorSdkEngine(AcpEngineBase):
             logger.warning("cursor_sdk spawn 失败: %s", exc)
             yield InternalEvent("done", {"stop_reason": "error", "error": str(exc)})
         finally:
+            if agent is not None:
+                try:
+                    await agent.close()
+                except Exception:
+                    pass
             if client is not None:
                 try:
                     await client.aclose()
                 except Exception:
                     pass
 
-    @staticmethod
-    def _agent_exists(client, agent_id: str) -> bool:
-        try:
-            return bool(agent_id)
-        except Exception:
-            return False
-
     def _map_sdk_event(self, event) -> InternalEvent | None:
-        """SDK RunStreamEvent → ACP 对齐事件；未知类型降级 acp_raw。"""
-        name = type(event).__name__
-        try:
-            data = event.model_dump(by_alias=True, exclude_none=True)
-        except Exception:
-            data = {"repr": repr(event)[:300]}
-        if name in ("TextDeltaUpdate", "AssistantMessage"):
-            text = data.get("text") or data.get("delta") or data.get("content") or ""
-            return InternalEvent("agent_message_chunk", {"text": text, "raw": data})
-        if name in ("ThinkingDeltaUpdate", "ThinkingConversationStep"):
-            text = data.get("text") or data.get("delta") or data.get("content") or ""
-            return InternalEvent("agent_thought_chunk", {"text": text, "raw": data})
-        if name in ("ToolCallStartedUpdate", "ToolCallConversationStep"):
-            return InternalEvent("tool_call", {
-                "tool_call_id": str(data.get("tool_call_id") or data.get("id") or ""),
-                "title": str(data.get("title") or data.get("tool") or name),
-                "raw_input": data.get("input") or data.get("raw_input") or {},
-                "raw": data,
-            })
-        if name in ("ToolCallCompletedUpdate",):
+        """Map the documented SDKMessage stream to ACP content events."""
+        kind = getattr(event, "type", None)
+        if kind == "assistant":
+            message = getattr(event, "message", None)
+            blocks = getattr(message, "content", ()) or ()
+            text = "".join(
+                str(getattr(block, "text", ""))
+                for block in blocks if getattr(block, "type", None) == "text"
+            )
+            return InternalEvent("agent_message_chunk", {"text": text}) if text else None
+        if kind == "thinking":
+            return InternalEvent("agent_thought_chunk", {"text": str(getattr(event, "text", ""))})
+        if kind == "tool_call":
+            call_id = str(getattr(event, "call_id", ""))
+            status = str(getattr(event, "status", ""))
+            if status == "running":
+                return InternalEvent("tool_call", {
+                    "tool_call_id": call_id,
+                    "title": str(getattr(event, "name", "")),
+                    "raw_input": getattr(event, "args", None) or {},
+                })
             return InternalEvent("tool_call_update", {
-                "tool_call_id": str(data.get("tool_call_id") or data.get("id") or ""),
-                "status": "completed" if not data.get("error") else "failed",
-                "raw_output": data.get("output") or {},
-                "raw": data,
+                "tool_call_id": call_id,
+                "status": "failed" if status == "error" else status,
+                "raw_output": getattr(event, "result", None) or {},
             })
-        if name in ("TokenUsage", "TokenDeltaUpdate", "TurnEndedUpdate"):
-            usage = self._usage_payload(getattr(event, "usage", None) or data)
+        if kind == "usage":
+            usage = self._usage_payload(getattr(event, "usage", None))
             if usage:
                 return InternalEvent("usage_update", usage)
             return None
-        return InternalEvent("acp_raw", {"update_type": name, "data": data})
+        return InternalEvent("acp_raw", {
+            "update_type": str(kind or type(event).__name__),
+            "data": {"repr": repr(event)[:300]},
+        })
 
     @staticmethod
     def _usage_payload(usage) -> dict:
@@ -294,6 +303,8 @@ class CursorSdkEngine(AcpEngineBase):
             return {}
         if hasattr(usage, "model_dump"):
             usage = usage.model_dump(by_alias=True, exclude_none=True)
+        elif not isinstance(usage, dict):
+            usage = vars(usage) if hasattr(usage, "__dict__") else {}
         if not isinstance(usage, dict) or not usage:
             return {}
         total = usage.get("total_tokens") or usage.get("total")
@@ -315,39 +326,41 @@ class CursorSdkEngine(AcpEngineBase):
                 self._active_runs.pop(k, None)
 
     async def test_connection(self) -> dict:
-        if not self.is_installed():
+        if not await asyncio.to_thread(self.is_installed):
             return {"ok": False, "message": "cursor-sdk 未安装"}
-        api_key = self._api_key()
+        api_key = await asyncio.to_thread(self._api_key)
         if not api_key:
             return {"ok": False, "message": "未配置 Cursor API Key"}
         try:
             from cursor_sdk import AsyncClient
 
-            os.environ["CURSOR_API_KEY"] = api_key
-            client = await AsyncClient.launch_bridge(allow_api_key_env_fallback=True)
+            client = await AsyncClient.launch_bridge(workspace=os.getcwd())
             try:
-                me = await client.me()
-                return {"ok": True, "message": f"Connected as {getattr(me, 'email', '') or getattr(me, 'name', '') or 'Cursor account'}"}
+                me = await client.me(api_key=api_key)
+                return {"ok": True, "message": f"Connected as {getattr(me, 'user_email', '') or getattr(me, 'user_first_name', '') or 'Cursor account'}"}
             finally:
                 await client.aclose()
         except Exception as exc:
             return {"ok": False, "message": str(exc)[:300]}
 
     async def list_models(self, cwd: str | None = None) -> list:
-        if not self.is_installed():
+        if not await asyncio.to_thread(self.is_installed):
+            return []
+        api_key = await asyncio.to_thread(self._api_key)
+        if not api_key:
             return []
         try:
             from cursor_sdk import AsyncClient
 
             from engines.core.base import EngineModel
 
-            client = await AsyncClient.launch_bridge(allow_api_key_env_fallback=False)
+            client = await AsyncClient.launch_bridge(workspace=cwd or os.getcwd())
             try:
-                raw = await client.list_models()
+                raw = await client.models.list(api_key=api_key)
                 items = raw if isinstance(raw, list) else getattr(raw, "models", None) or []
                 models = []
                 for m in items:
-                    d = m.model_dump(by_alias=True, exclude_none=True) if hasattr(m, "model_dump") else (m if isinstance(m, dict) else {"id": str(m)})
+                    d = m.model_dump(by_alias=True, exclude_none=True) if hasattr(m, "model_dump") else (m if isinstance(m, dict) else {"id": getattr(m, "id", str(m)), "name": getattr(m, "name", None)})
                     models.append(EngineModel(id=str(d.get("id") or d.get("name") or ""), label=str(d.get("name") or d.get("id") or "")))
                 return models
             finally:
@@ -355,7 +368,3 @@ class CursorSdkEngine(AcpEngineBase):
         except Exception as exc:
             logger.warning("cursor list_models 失败: %s", exc)
             return []
-
-
-def _sig_params_removed():
-    pass

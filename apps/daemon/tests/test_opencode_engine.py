@@ -1,5 +1,6 @@
 """OpencodeEngine（ACP 原生）单元测试。"""
 
+import asyncio
 import json
 import os
 from unittest import mock
@@ -103,3 +104,58 @@ def test_build_provider_runtime_env():
     rt = OpencodeEngine().build_provider_runtime(provider, "model-x", "openai_chat_completions")
     assert rt.env["OPENAI_BASE_URL"] == "http://127.0.0.1:9/v1"
     assert rt.env["OPENAI_API_KEY"] == "sk-test"
+
+
+@pytest.mark.anyio
+async def test_model_catalog_reads_large_acp_response_after_notification(monkeypatch):
+    class Stdin:
+        def __init__(self):
+            self.writes = []
+
+        def write(self, payload):
+            self.writes.append(json.loads(payload))
+
+        async def drain(self):
+            pass
+
+    class Process:
+        def __init__(self):
+            self.stdin = Stdin()
+            self.stdout = asyncio.StreamReader(limit=65536)
+            for payload in (
+                {"jsonrpc": "2.0", "id": 1, "result": {"protocolVersion": 1}},
+                {"jsonrpc": "2.0", "method": "session/update", "params": {}},
+                {"jsonrpc": "2.0", "id": 2, "result": {"configOptions": [{
+                    "id": "model", "name": "Models", "options": [
+                        {"value": "large", "name": "Large", "extra": "x" * 70000},
+                    ],
+                }]}},
+            ):
+                self.stdout.feed_data((json.dumps(payload) + "\n").encode())
+            self.stdout.feed_eof()
+
+        def kill(self):
+            pass
+
+        async def wait(self):
+            pass
+
+    process = Process()
+
+    async def spawn(*args, **kwargs):
+        return process
+
+    monkeypatch.setattr("engines.opencode.asyncio.create_subprocess_exec", spawn)
+    monkeypatch.setattr(OpencodeEngine, "resolve_binary", staticmethod(lambda: "/bin/opencode"))
+    models = await OpencodeEngine().list_models("/tmp")
+    assert [(model.id, model.label) for model in models] == [("large", "Large")]
+    assert [item["method"] for item in process.stdin.writes] == ["initialize", "session/new"]
+
+
+def test_permission_config_write_failure_stops_spawn(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "engines.opencode._managed_config_path", lambda: str(tmp_path / "missing" / "config.json")
+    )
+    monkeypatch.setattr("engines.opencode.os.makedirs", mock.Mock(side_effect=OSError("readonly")))
+    with pytest.raises(RuntimeError, match="权限配置"):
+        OpencodeEngine().project_skill_env("/tmp")
