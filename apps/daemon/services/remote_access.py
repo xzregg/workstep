@@ -15,6 +15,7 @@ import time
 import uuid
 from contextvars import ContextVar
 from dataclasses import dataclass
+from functools import wraps
 from typing import Any, Callable, Literal
 from urllib.parse import unquote, urlparse, urlunparse
 
@@ -777,3 +778,23 @@ class RemoteAccessService:
             for item in list(self._load().get("devices") or [])
         )
 
+
+def _serialize_remote_state(method):
+    @wraps(method)
+    def synchronized(self, *args, **kwargs):
+        with self._state_lock:
+            return method(self, *args, **kwargs)
+
+    return synchronized
+
+
+for _method_name in (
+    "set_runtime_port", "settings", "update_settings", "create_share",
+    "authenticate", "list_devices", "revoke_device", "update_device_expiry",
+    "touch_device_activity", "is_principal_authorized",
+):
+    setattr(
+        RemoteAccessService,
+        _method_name,
+        _serialize_remote_state(getattr(RemoteAccessService, _method_name)),
+    )

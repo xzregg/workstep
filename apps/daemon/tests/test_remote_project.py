@@ -45,6 +45,12 @@ def test_remote_access_identity_has_one_owner():
     assert RemoteAccessService is AccessService
 
 
+def test_remote_project_registry_has_one_owner():
+    from services.remote_registry import RemoteProjectRegistry as Registry
+
+    assert RemoteProjectRegistry is Registry
+
+
 async def test_remote_model_selection_read_routes_are_project_scoped():
     import api.engine as engine_api
     import api.provider as provider_api
