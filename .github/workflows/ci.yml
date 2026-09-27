@@ -31,10 +31,12 @@ jobs:
           python scripts/check_secrets.py
       - name: Daemon tests
         working-directory: apps/daemon
-        # Install the public Codex/Claude SDK contracts only in CI. They remain
-        # excluded from desktop packages; Qoder-specific tests stay deselected.
+        # Optional SDKs are installed only for CI contracts, outside uv.lock.
+        # Qoder-specific tests stay deselected.
         run: |
-          uv run --frozen --group dev --group sdk-engines pytest -k 'not does_not_block_health' \
+          uv sync --frozen --group dev
+          uv pip install --python .venv/bin/python 'claude-agent-sdk>=0.1.0' 'openai-codex>=0.147.0'
+          uv run --no-sync pytest -k 'not does_not_block_health' \
             --deselect='tests/test_acp_command_inspection.py::test_hermes_inspection_discovers_and_caches_acp_commands[asyncio]' \
             --deselect=tests/test_assistant_api.py::test_assistant_set_and_read_config \
             --deselect=tests/test_assistant_api.py::test_chat_session_config_stores_full_defaults \
@@ -66,8 +68,8 @@ jobs:
       - name: Isolation-sensitive daemon contracts
         working-directory: apps/daemon
         run: |
-          uv run --frozen --group dev --group sdk-engines pytest -k does_not_block_health
-          uv run --frozen --group dev --group sdk-engines pytest \
+          uv run --no-sync pytest -k does_not_block_health
+          uv run --no-sync pytest \
             tests/test_chat_session.py::test_chat_history_converts_legacy_visualize_markers \
             tests/test_chat_session.py::test_chat_history_converts_bare_visualize_marker \
             tests/test_chat_session.py::test_chat_history_converts_visualize_marker_in_events \

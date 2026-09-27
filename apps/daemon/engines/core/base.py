@@ -281,7 +281,15 @@ async def install_python_package(
     package_dir = os.environ.get("WORKSTEP_ENGINE_PACKAGE_DIR", "").strip()
     if package_dir:
         os.makedirs(package_dir, exist_ok=True)
-        cmd = [sys.executable, "-m", "pip", "install"]
+        if _has_pip():
+            cmd = [sys.executable, "-m", "pip", "install"]
+        elif shutil.which("uv"):
+            cmd = ["uv", "pip", "install"]
+        else:
+            return EngineInstallResult(
+                success=False,
+                message="未找到 uv 或 pip，无法安装 Python SDK 包",
+            )
         if upgrade:
             cmd.append("--upgrade")
         cmd.extend(["--target", package_dir, package])

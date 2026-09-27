@@ -15,7 +15,7 @@ corepack yarn dev
 ```
 
 The public landing page is in `apps/landing` and uses Yarn. Do not commit generated builds, local databases, logs, secrets, or personal configuration.
-After installing an optional engine SDK in Settings, use `uv run --no-sync` to preserve it when restarting the daemon. Run `uv sync --dev` when you intentionally want to reset the project environment to the locked dependencies.
+Optional engine SDKs installed from Settings live in `~/.workstep/runtime/python-packages` (or `WORKSTEP_ENGINE_PACKAGE_DIR`), outside the uv-managed environment. They are intentionally absent from `uv.lock`; `uv sync` cannot replace those user-selected versions. The daemon adds this directory to its import path at startup.
 
 ## Verification
 

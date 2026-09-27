@@ -22,7 +22,7 @@
 
 ## 安装与恢复
 
-安装使用下载后的本地 wheel/tarball，确保主包版本固定。Python SDK 安装进入运行 daemon 的环境；桌面版设置 `WORKSTEP_ENGINE_PACKAGE_DIR` 时，先复制共享包目录到临时目录，在临时目录执行 pip，再按安装报告清理被替换的旧版本元数据。临时目录版本校验通过后才切换正式目录，安装失败保留原目录。
+安装使用下载后的本地 wheel/tarball，确保主包版本固定。Python SDK 按需安装到 `~/.workstep/runtime/python-packages`（可用 `WORKSTEP_ENGINE_PACKAGE_DIR` 覆盖），不进入 uv 管理的虚拟环境，也不写入 `uv.lock`。安装时先复制共享包目录到临时目录，通过 pip 或 uv 安装并清理被替换的旧版本元数据；临时目录版本校验通过后才切换正式目录，安装失败保留原目录。
 
 安装结束会检查实际包版本/CLI 版本与目标是否一致，并清除引擎测试通过状态。SDK 已导入的模块不会热重载：需要重启后台服务、重新扫描和测试后使用新版本。
 
