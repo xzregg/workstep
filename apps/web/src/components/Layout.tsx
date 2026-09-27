@@ -33,6 +33,7 @@ import {
   chatSessionApi,
   type Project,
 } from '../api/client'
+import './Layout.css'
 
 function SidebarAddButton(props: ButtonProps) {
   return (
@@ -40,55 +41,6 @@ function SidebarAddButton(props: ButtonProps) {
       <Icon name="plus" size={9.6} strokeWidth={2} />
     </Button>
   )
-}
-
-const sidebarStyle: React.CSSProperties = {
-  width: 280, minWidth: 280,
-  background: 'var(--bg)',
-  borderRight: '1px solid var(--border-soft)',
-  display: 'flex', flexDirection: 'column',
-  overflow: 'hidden',
-}
-
-const sectionLabel: React.CSSProperties = {
-  padding: '14px 14px 6px',
-  fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600,
-  color: 'var(--muted)',
-  fontFamily: 'var(--font-mono)',
-  textTransform: 'uppercase' as const,
-  letterSpacing: '0.08em',
-  display: 'flex', alignItems: 'center',
-  justifyContent: 'space-between',
-}
-
-const nestedSectionLabel: React.CSSProperties = {
-  margin: '10px 12px 2px 28px',
-  fontSize: 'calc(14px * var(--font-scale))', fontWeight: 600,
-  color: 'var(--muted)',
-  fontFamily: 'var(--font-mono)',
-  textTransform: 'uppercase' as const,
-  letterSpacing: '0.08em',
-  display: 'flex', alignItems: 'center',
-  justifyContent: 'space-between',
-  paddingRight: 6,
-}
-
-const projectItemStyle = (active: boolean): React.CSSProperties => ({
-  display: 'flex', alignItems: 'center', gap: 10,
-  padding: '9px 12px', borderRadius: 10,
-  cursor: 'pointer', fontSize: 'calc(14px * var(--font-scale))',
-  color: active ? 'var(--fg)' : 'var(--fg-2)',
-  background: active ? 'var(--surface)' : 'transparent',
-  fontWeight: active ? 500 : 400,
-  marginBottom: 2,
-  transition: 'all var(--motion-fast)',
-})
-
-const addButtonStyle: React.CSSProperties = {
-  margin: '10px 12px 0', width: 'calc(100% - 24px)', height: 36,
-  padding: '0 10px', justifyContent: 'flex-start', gap: 9,
-  borderRadius: 9, fontSize: 'calc(13px * var(--font-scale))',
-  color: 'var(--fg-2)', background: 'transparent',
 }
 
 const hasWhitespace = (s: string) => /\s/.test(s)
@@ -597,32 +549,14 @@ export default function Layout({ onSelectProject, children }: Props) {
   return (
     <div className="app-shell">
       {/* Sidebar */}
-      <ResponsiveNavigation newDisabled={!activeProject} dismissSignal={`${showSettings}:${showInitModal}:${addWfProjectId}`} title={activeProject?.name || "WorkStep"} onNew={() => navigate(`/chat?project=${encodeURIComponent(activeProject?.name || "")}`)} style={{ ...sidebarStyle, width: sidebarWidth, minWidth: 180 }}>
-        <div style={{ padding: '12px 14px 8px', borderBottom: '1px solid var(--border-soft)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', fontWeight: 600, fontSize: 'calc(13px * var(--font-scale))', fontFamily: 'var(--font-display)' }}>
+      <ResponsiveNavigation className="layout-sidebar" newDisabled={!activeProject} dismissSignal={`${showSettings}:${showInitModal}:${addWfProjectId}`} title={activeProject?.name || "WorkStep"} onNew={() => navigate(`/chat?project=${encodeURIComponent(activeProject?.name || "")}`)} style={{ width: sidebarWidth }}>
+        <div className="layout-sidebar-header">
+          <div className="layout-sidebar-brand">
             <BrandIcon size={18} />
             WorkStep
             <a
               href="/landing"
-              style={{
-                marginLeft: 'auto',
-                padding: '2px 8px',
-                fontSize: 'calc(11px * var(--font-scale))',
-                fontWeight: 500,
-                borderRadius: 6,
-                color: 'var(--fg-2)',
-                textDecoration: 'none',
-                fontFamily: 'var(--font-body)',
-                whiteSpace: 'nowrap',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = 'var(--accent)'
-                e.currentTarget.style.background = 'var(--surface)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = 'var(--fg-2)'
-                e.currentTarget.style.background = 'transparent'
-              }}
+              className="layout-sidebar-intro"
             >
               {t('layout.intro')}
             </a>
@@ -633,24 +567,18 @@ export default function Layout({ onSelectProject, children }: Props) {
           variant="ghost"
           onClick={() => navigate('/statistics')}
           aria-current={location.pathname === '/statistics' ? 'page' : undefined}
-          style={{
-            margin: '10px 12px 0', width: 'calc(100% - 24px)', height: 36,
-            padding: '0 10px', justifyContent: 'flex-start', gap: 9,
-            borderRadius: 9, fontSize: 'calc(13px * var(--font-scale))',
-            color: location.pathname === '/statistics' ? 'var(--fg)' : 'var(--fg-2)',
-            background: location.pathname === '/statistics' ? 'var(--surface)' : 'transparent',
-          }}
+          className="layout-sidebar-nav-button"
         >
           <Icon name="bar-chart" size={17} strokeWidth={2} />
           {t('nav.statistics')}
         </Button>
 
-        <Button variant="ghost" style={addButtonStyle} onClick={openLocalProjectModal}>
+        <Button variant="ghost" className="layout-sidebar-nav-button" onClick={openLocalProjectModal}>
           <Icon name="plus" size={17} strokeWidth={2} />
           {t('nav.addProject')}
         </Button>
 
-        <div style={sectionLabel}>
+        <div className="layout-sidebar-section-label">
           <span>{t('layout.projects')}</span>
           <Button
             variant="icon"
@@ -751,14 +679,10 @@ export default function Layout({ onSelectProject, children }: Props) {
                 }}
                 onDragEnd={() => { setDragProjectId(null); setDropProjectId(null) }}
                 onContextMenu={(e) => openMoreMenu(e, 'project', p.id)}
-                className="ws-row"
-                style={{
-                  ...projectItemStyle(activeProject?.id === p.id),
-                  position: 'relative',
-                  opacity: dragProjectId === p.id ? 0.4 : 1,
-                  outline: dropProjectId === p.id ? '1px solid var(--accent)' : 'none',
-                  ...(dropProjectId === p.id ? { background: 'var(--accent-light)' } : {}),
-                }}
+                className="layout-project-row ws-row"
+                data-active={activeProject?.id === p.id}
+                data-dragging={dragProjectId === p.id}
+                data-drop-target={dropProjectId === p.id}
               >
 
                 <Button
@@ -901,7 +825,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                     return (
                       <>
                         <div
-                          style={{ ...nestedSectionLabel, cursor: 'pointer' }}
+                          className="layout-sidebar-nested-label"
                           onClick={(e) => {
                             e.stopPropagation()
                             setFlowSectionOpen((prev) => ({ ...prev, [p.id]: !flowOpen }))
@@ -1070,12 +994,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                 return (
                   <>
                     <div
-                      style={{
-                        ...nestedSectionLabel,
-                        cursor: 'pointer',                        margin: '14px 12px 2px 28px',
-                        padding: '10px 6px 0 0',
-                        borderTop: '1px solid var(--border-soft)',
-                      }}
+                      className="layout-sidebar-nested-label layout-sidebar-session-label"
                       onClick={(e) => {
                         e.stopPropagation()
                         setSessionSectionOpen((prev) => ({ ...prev, [p.id]: !open }))
@@ -1300,13 +1219,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           variant="ghost"
           onClick={() => { setSettingsSection('providers'); setSettingsFocus(undefined); setShowSettings(true) }}
           aria-current={showSettings ? 'page' : undefined}
-          style={{
-            margin: '0 12px 12px', width: 'calc(100% - 24px)', height: 36,
-            padding: '0 10px', justifyContent: 'flex-start', gap: 9,
-            borderRadius: 9, fontSize: 'calc(13px * var(--font-scale))',
-            color: showSettings ? 'var(--fg)' : 'var(--fg-2)',
-            background: showSettings ? 'var(--surface)' : 'transparent',
-          }}
+          className="layout-sidebar-nav-button layout-sidebar-settings-button"
         >
           <Icon name="settings" size={17} strokeWidth={2} />
           {t('nav.settings')}
