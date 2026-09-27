@@ -84,7 +84,7 @@
 | 远程项目 | `services/remote_project.py`（461） | 访问认证、项目登记及主机侧路由已拆到独立模块；客户端连接和请求代理保留原入口。 |
 | 配置与项目 | `services/config.py`（1197）、`services/project.py`（904）、`services/providers.py`（859） | 引擎纯规则已拆；配置存储、项目生命周期、供应商协议与模型配置继续按各自领域审查。 |
 | 定时、文件与统计 | `services/schedule.py`（765）、`api/fs.py`（568）、`services/statistics.py`（845） | 规则编译与文件浏览已拆；调度执行、文件预览/上传、统计聚合继续按功能审查。 |
-| 全局导航与设置 | `components/Layout.tsx`（1720）、`pages/SettingsPage.tsx`（280）、`components/EngineSettingsPanel.tsx`（877）、`pages/ProviderSettings.tsx`（466） | 供应商编辑/导入、设置导航、默认执行引擎、引擎目录及配置已拆；项目与会话侧栏仍需审查。引擎面板的目录、模型和安装配置属于同一操作流程，后续仅在出现独立职责时再拆。 |
+| 全局导航与设置 | `components/Layout.tsx`（1642）、`pages/SettingsPage.tsx`（280）、`components/EngineSettingsPanel.tsx`（877）、`pages/ProviderSettings.tsx`（466） | 供应商编辑/导入、设置导航、默认执行引擎、引擎目录及配置、新手引导动作已拆；项目与会话侧栏仍需审查。引擎面板的目录、模型和安装配置属于同一操作流程，后续仅在出现独立职责时再拆。 |
 | 流程画布 | `components/FlowCanvas.tsx`（882） | 跨流程复制节点、模板选择/保存及 JSON 导入导出已拆；剩余图状态、节点交互与画布呈现关系紧密，审查是否保留原位；保持空画布及模板主动选择行为。 |
 
 **验证重点：** 远程鉴权与分享、项目切换/删除、定时任务、文件安全边界、设置保存与恢复、流程画布导入导出；涉及同步 I/O 的真实路径均做事件循环 canary。
@@ -95,6 +95,7 @@
 
 ## 阶段执行记录
 
+- 阶段五进行中：工作区新手引导的入口跳转、示例流程创建和错误状态归入 `LayoutOnboardingActions.tsx`；`Layout.tsx` 从 1720 行降至 1642 行，只提供设置及项目弹框入口。真实组件测试覆盖缺少项目的错误反馈和成功创建后打开画布；原页面源码断言迁到业务所有者。构建和 lint 通过，Code Map 已更新。侧栏项目与会话交互仍需单独审查。
 - 阶段五进行中：引擎目录、配置表单、模型选择、路径保存、安装检测和能力详情迁入 `EngineSettingsPanel.tsx`；`SettingsPage.tsx` 从 1135 行降至 280 行，只负责栏目装配与供应商变更通知。引擎目录在面板隐藏时仍只加载一次，供应商变更后刷新；组件行为测试先因模块缺失失败，迁移后通过，构建和 lint 通过。页面源码测试改为定位实际业务模块；引擎面板围绕同一引擎列表状态组织，暂保留为单模块。
 - 阶段五进行中：JSON 预览、复制、导入文本和格式校验归入 `FlowCanvasJsonDialogs.tsx`，固定样式归入同名 CSS；`FlowCanvas.tsx` 从 958 行降至 882 行，仅负责导出快照与导入后的图更新。真实组件测试覆盖非法 JSON 与有效图导入，画布交互专项、Web 全量 1001 项、构建和 lint 通过。剩余内容围绕 React Flow 图状态、节点交互与渲染，继续拆只会拆散紧耦合状态，故保留原位。
 - 阶段五进行中：画布模板目录加载、搜索、保存及应用前确认归入 `FlowTemplateDialog.tsx`，固定样式归入同名 CSS；`FlowCanvas.tsx` 从 1092 行降至 958 行，保留将模板数据转成当前画布状态。真实组件测试覆盖应用前确认与保存后的目录刷新；Web 全量 1000 项、构建和 lint 通过，Code Map 已更新。
