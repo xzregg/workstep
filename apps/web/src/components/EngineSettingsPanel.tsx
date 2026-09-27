@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import ResizablePanel from './ResizablePanel'
+import EngineCapabilitiesDialog from './EngineCapabilitiesDialog'
 import Button from './Button'
 import Input from './Input'
 import Select from './Select'
@@ -7,10 +7,9 @@ import Icon from './Icon'
 import EngineConfigForm, { type EngineConfigFormHandle } from './EngineConfigForm'
 import ExecutionDefaultSettings from './ExecutionDefaultSettings'
 import EngineRuntimeControl from './EngineRuntimeControl'
-import { engineApi, fetchEngineModels, invalidateEngineModels, type EngineInfo, type EngineInspectResult, type EngineModel, type EngineTestResult } from '../api/client'
+import { engineApi, fetchEngineModels, invalidateEngineModels, type EngineInfo, type EngineModel, type EngineTestResult } from '../api/client'
 import { ENGINE_COLORS, engineLabel, engineDescription, sortExecutionEngines } from '../engineMeta'
 import { useI18n } from '../i18n'
-import { useProjectStore } from '../stores/projectStore'
 import { publishEngineCatalog } from '../stores/engineAvailabilityStore'
 import './EngineSettingsPanel.css'
 
@@ -64,9 +63,7 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
   const [pathDraft, setPathDraft] = useState('')
   const [pathSaving, setPathSaving] = useState(false)
   const [pathError, setPathError] = useState('')
-  const [inspecting, setInspecting] = useState(false)
-  const [inspectResult, setInspectResult] = useState<EngineInspectResult | null>(null)
-  const [inspectError, setInspectError] = useState('')
+  const [inspectEngineId, setInspectEngineId] = useState<string | null>(null)
   // 引擎的安装 / 配置 / 测试状态每次变化都同步给共享可用性，聊天框和步骤引擎下拉
   // 才能立即跟随禁用状态（设置弹框是浮层，不会卸载底下的聊天页）。
   useEffect(() => {
@@ -201,29 +198,6 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
       }))
     } finally {
       setTestingEngine(null)
-    }
-  }
-
-  const viewCapabilities = async (engineId: string) => {
-    setInspecting(true)
-    setInspectResult(null)
-    setInspectError('')
-    const project = useProjectStore.getState().activeProject
-    try {
-      const result = await engineApi.inspect(
-        engineId,
-        project?.id,
-        project?.path || undefined,
-      )
-      setInspectResult(result)
-    } catch (inspectError) {
-      setInspectError(
-        inspectError instanceof Error
-          ? inspectError.message
-          : t('settings.inspectFailed', { error: '' }),
-      )
-    } finally {
-      setInspecting(false)
     }
   }
 
@@ -571,9 +545,8 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                     <Button
                       variant="ghost"
                       style={{ minWidth: 62, height: 30, justifyContent: 'center' }}
-                      disabled={inspecting}
-                      loading={inspecting}
-                      onClick={() => void viewCapabilities(engine.id)}
+                      disabled={inspectEngineId !== null}
+                      onClick={() => setInspectEngineId(engine.id)}
                     >
                       {t('settings.viewCapabilities')}
                     </Button>
@@ -747,131 +720,8 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
             </div>
           )}
         </div>
-      {(inspecting || inspectResult || inspectError) && (
-        <div
-          className="modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label={t('settings.viewCapabilitiesTitle')}
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setInspectResult(null)
-              setInspectError('')
-            }
-          }}
-          style={{ padding: 24, zIndex: 60 }}
-        >
-          <ResizablePanel
-            className="modal"
-            onMouseDown={(event) => event.stopPropagation()}
-            style={{ width: 640, maxWidth: 'calc(100vw - 48px)', maxHeight: 'calc(100vh - 48px)' }}
-          >
-            <div className="modal-header" style={{ padding: '16px 20px' }}>
-              <span className="modal-title">{t('settings.viewCapabilitiesTitle')}</span>
-              <Button
-                variant="icon"
-                aria-label={t('settings.closeSettings')}
-                onClick={() => {
-                  setInspectResult(null)
-                  setInspectError('')
-                }}
-              >✕</Button>
-            </div>
-            <div className="modal-body" style={{ padding: '18px 20px 20px', overflowY: 'auto' }}>
-              {inspecting ? (
-                <div style={{ padding: 24, textAlign: 'center', color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))' }}>
-                  {t('settings.inspectLoading')}
-                </div>
-              ) : inspectError ? (
-                <div role="status" style={{ color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))', overflowWrap: 'anywhere' }}>
-                  × {inspectError}
-                </div>
-              ) : inspectResult ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)', overflowWrap: 'anywhere' }}>
-                    {inspectResult.project_root
-                      ? t('settings.inspectProject', { path: inspectResult.project_root })
-                      : t('settings.inspectProjectNone')}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, marginBottom: 7 }}>
-                      {t('settings.inspectSkills')}
-                      <span style={{ color: 'var(--meta)', fontWeight: 400 }}>
-                        {' '}· {inspectResult.skills.length}
-                      </span>
-                    </div>
-                    {inspectResult.skills.length === 0 ? (
-                      <div style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>
-                        {t('settings.inspectSkillsEmpty')}
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {inspectResult.skills.map((skill) => (
-                          <div
-                            key={`${skill.source_dir}:${skill.name}`}
-                            style={{
-                              border: '1px solid var(--border-soft)', borderRadius: 8,
-                              padding: '8px 10px', background: 'var(--surface)',
-                            }}
-                          >
-                            <div style={{ fontSize: 'calc(12px * var(--font-scale))', fontWeight: 600 }}>{skill.name}</div>
-                            {skill.description && (
-                              <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--muted)', marginTop: 2 }}>
-                                {skill.description}
-                              </div>
-                            )}
-                            <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', marginTop: 4, overflowWrap: 'anywhere' }}>
-                              {skill.source_dir}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, marginBottom: 7 }}>
-                      {t('settings.inspectMcp')}
-                      <span style={{ color: 'var(--meta)', fontWeight: 400 }}>
-                        {' '}· {inspectResult.mcp_servers.length}
-                      </span>
-                    </div>
-                    {inspectResult.mcp_supported ? (
-                      <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--success)', marginBottom: 6 }}>
-                        ✓ {t('settings.inspectMcpSupported')}
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--warn)', marginBottom: 6, overflowWrap: 'anywhere' }}>
-                        {inspectResult.mcp_error || t('settings.inspectMcpUnsupported')}
-                      </div>
-                    )}
-                    {inspectResult.mcp_servers.length === 0 ? (
-                      <div style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>
-                        {t('settings.inspectMcpEmpty')}
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {inspectResult.mcp_servers.map((server) => (
-                          <div
-                            key={server.name}
-                            style={{
-                              border: '1px solid var(--border-soft)', borderRadius: 8,
-                              padding: '8px 10px', background: 'var(--surface)',
-                            }}
-                          >
-                            <div style={{ fontSize: 'calc(12px * var(--font-scale))', fontWeight: 600 }}>{server.name}</div>
-                            <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--muted)', marginTop: 2, overflowWrap: 'anywhere' }}>
-                              {server.command} {server.args.join(' ')}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </ResizablePanel>
-        </div>
+      {inspectEngineId && (
+        <EngineCapabilitiesDialog engineId={inspectEngineId} onClose={() => setInspectEngineId(null)} />
       )}
     </>
   )
