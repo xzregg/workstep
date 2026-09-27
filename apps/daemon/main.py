@@ -11,6 +11,9 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from settings import settings
+from services.engine_packages import prepare_engine_package_dir
+
+prepare_engine_package_dir()
 
 os.environ.setdefault("WORKSTEP_DAEMON_DIR", str(Path(__file__).resolve().parent))
 os.environ.setdefault("WORKSTEP_CLI_PYTHON", sys.executable)
