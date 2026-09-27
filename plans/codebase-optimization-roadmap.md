@@ -82,10 +82,10 @@
 | 领域 | 文件（当前行数） | 候选业务边界 |
 |---|---|---|
 | 远程项目 | `services/remote_project.py`（461） | 访问认证、项目登记及主机侧路由已拆到独立模块；客户端连接和请求代理保留原入口。 |
-| 配置与项目 | `services/config.py`（1400）、`services/project.py`（904）、`services/providers.py`（860） | 配置存储、项目生命周期、供应商协议与模型配置按各自领域归属。 |
-| 定时、文件与统计 | `services/schedule.py`（765）、`api/fs.py`（932）、`services/statistics.py`（845） | 规则编译已拆；调度执行与记录、文件预览/上传、统计聚合仍需按功能审查。 |
-| 全局导航与设置 | `components/Layout.tsx`（1720）、`pages/SettingsPage.tsx`（1272）、`pages/ProviderSettings.tsx`（466） | 供应商编辑/导入和默认执行引擎已拆；项目与会话侧栏、引擎卡片和安装配置仍需审查。 |
-| 流程画布 | `components/FlowCanvas.tsx`（1092） | 跨流程复制节点已拆；图数据转换、节点操作、模板/导入导出和画布呈现继续审查；保持空画布及模板主动选择行为。 |
+| 配置与项目 | `services/config.py`（1197）、`services/project.py`（904）、`services/providers.py`（859） | 引擎纯规则已拆；配置存储、项目生命周期、供应商协议与模型配置继续按各自领域审查。 |
+| 定时、文件与统计 | `services/schedule.py`（765）、`api/fs.py`（568）、`services/statistics.py`（845） | 规则编译与文件浏览已拆；调度执行、文件预览/上传、统计聚合继续按功能审查。 |
+| 全局导航与设置 | `components/Layout.tsx`（1720）、`pages/SettingsPage.tsx`（1135）、`pages/ProviderSettings.tsx`（466） | 供应商编辑/导入、设置导航和默认执行引擎已拆；项目与会话侧栏、引擎卡片和安装配置仍需审查。 |
+| 流程画布 | `components/FlowCanvas.tsx`（958） | 跨流程复制节点、模板选择/保存已拆；图数据转换、节点操作、JSON 导入导出和画布呈现继续审查；保持空画布及模板主动选择行为。 |
 
 **验证重点：** 远程鉴权与分享、项目切换/删除、定时任务、文件安全边界、设置保存与恢复、流程画布导入导出；涉及同步 I/O 的真实路径均做事件循环 canary。
 
@@ -95,6 +95,7 @@
 
 ## 阶段执行记录
 
+- 阶段五进行中：画布模板目录加载、搜索、保存及应用前确认归入 `FlowTemplateDialog.tsx`，固定样式归入同名 CSS；`FlowCanvas.tsx` 从 1092 行降至 958 行，保留将模板数据转成当前画布状态。真实组件测试覆盖应用前确认与保存后的目录刷新；Web 全量 1000 项、构建和 lint 通过，Code Map 已更新。
 - 阶段五进行中：跨项目/流程复制节点的目录加载、流程缓存、步骤选择和错误反馈整体移入 `FlowNodeCopyDialog.tsx`，固定样式归入同名 CSS，节点颜色仍是运行时样式；`FlowCanvas.tsx` 从 1308 行降至 1092 行，保留将选中步骤加入当前图的回调。真实组件测试先因模块缺失失败，迁移后覆盖加载和复制；Web 全量 998 项、构建和 lint 通过。
 - 阶段五进行中：项目路径边界与文件解析归入 `api/fs_paths.py`，目录浏览、搜索和受限条目编辑归入 `api/fs_browser.py`；`api/fs.py` 从 932 行降至 568 行，保留上传、预览与本地目录打开。原 HTTP 路径通过子路由继续注册，文件 API 专项 109 项（含慢写入健康检查 canary）通过；Code Map 已更新。
 - 阶段五进行中：全局设置的十个栏目按钮和当前项标记统一由 `SettingsNavigation.tsx` 管理，固定尺寸与移动端布局归入相邻 CSS；`SettingsPage.tsx` 从 1272 行降至 1135 行，只选择栏目并装配内容。真实组件测试覆盖当前项和引擎/远程栏目切换；旧页面源码断言改由行为测试负责。Web 全量 997 项、构建和 lint 通过，Code Map 已更新。引擎卡片、模型和安装配置仍在设置页，后续按完整流程审查。

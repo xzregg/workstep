@@ -40,6 +40,7 @@
 | 引擎与安装 | `src/api/engine.ts`、`src/pages/SettingsPage.tsx` | `api/engine.py`、`engines/core/`、`services/engine_runtime.py` | `docs/multi-engine-architecture.md`、`docs/engine-runtime-management.md` |
 | 全局设置栏目导航 | `src/components/SettingsNavigation.tsx` 持有栏目、图标和当前项标记；`SettingsNavigation.css` 统一尺寸与移动端布局；`src/pages/SettingsPage.tsx` 只选择当前栏目 | — | `apps/web/tests/settingsNavigation.test.tsx` |
 | 流程画布跨流程复制节点 | `src/components/FlowNodeCopyDialog.tsx` 管理项目与流程加载、步骤缓存、选择及错误反馈；`FlowNodeCopyDialog.css` 管理三列布局和移动端触控尺寸；`FlowCanvas.tsx` 只将选中的节点加入画布 | `api/project.py`、`api/workflow.py` 提供来源目录与流程数据 | `apps/web/tests/flowNodeCopyDialog.test.tsx` |
+| 流程模板选择、应用确认与保存 | `src/components/FlowTemplateDialog.tsx` 持有模板目录、搜索、保存与应用确认；`FlowCanvas.tsx` 只传当前图快照并应用选中的模板数据 | `api/templates.py` 提供模板接口 | `apps/web/tests/flowTemplateDialog.test.tsx` |
 | Claude、Codex 引擎配置校验与序列化 | 设置页的引擎配置表单 | `services/engine_config_rules.py` 持有模型映射、自定义设置、权限/沙箱选项的纯规则；`services/config.py::ConfigStore` 持有持久化与旧导入兼容 | `tests/test_claude_model_map.py`、`tests/test_api_engine_config.py`、`tests/test_p2_engines.py` |
 | Cursor SDK 会话、消息流与模型目录 | 设置页配置 Cursor API Key；任务页消费 AG-UI | `engines/cursor_sdk.py` 负责 SDK bridge、创建/恢复会话、消息映射、模型目录及密钥配置；`engines/core/base.py` 隔离可选包安装的同步文件探测 | `tests/test_cursor_sdk_engine.py`、`tests/test_engines.py` |
 | OpenCode ACP 模型目录与权限配置 | 设置页选择 OpenCode 模型 | `engines/opencode.py` 负责 ACP 模型查询及权限配置写入；`engines/core/stream_lines.py` 负责超长 JSONL 分块读取 | `tests/test_opencode_engine.py`、`tests/test_stream_lines.py` |
