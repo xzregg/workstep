@@ -2,16 +2,18 @@
 
 import hashlib
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Literal
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from sqlalchemy import case, func, select
 
-from .identity_api import _super_admin_read
-from .models import UsageEvent, UsageEventReceipt
+from .identity import COOKIE_NAME
+from .identity_api import _super_admin_read, _super_admin_request
+from .models import AuditEvent, UsageEvent, UsageEventReceipt
 
 router = APIRouter(prefix="/api/admin/usage")
 UsageSource = Literal["reported_by_device", "provider_reconciled"]
@@ -75,6 +77,101 @@ class UsageEventInput(BaseModel):
         )):
             raise ValueError("Unmetered usage cannot report zero or estimated cost")
         return self
+
+
+class ProviderBillLine(BaseModel):
+    line_id: str = Field(min_length=1, max_length=128)
+    provider_id: str = Field(min_length=1, max_length=64)
+    model: str = Field(min_length=1, max_length=128)
+    day: date
+    input_tokens: int = Field(ge=0, le=2**63 - 1, strict=True)
+    output_tokens: int = Field(ge=0, le=2**63 - 1, strict=True)
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
+    billed_cost: Decimal = Field(ge=0, le=Decimal("999999999999"))
+
+    @model_validator(mode="after")
+    def valid_bill_line(self):
+        if (self.day > datetime.now(timezone.utc).date()
+                or self.input_tokens + self.output_tokens > 2**63 - 1
+                or not self.billed_cost.is_finite()
+                or self.billed_cost.as_tuple().exponent < -6):
+            raise ValueError("Invalid provider bill line")
+        return self
+
+
+class ProviderBillBatch(BaseModel):
+    batch_id: str = Field(min_length=1, max_length=128)
+    lines: list[ProviderBillLine] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def unique_lines(self):
+        ids = [(line.provider_id, line.line_id) for line in self.lines]
+        if len(set(ids)) != len(ids):
+            raise ValueError("Duplicate provider bill line")
+        return self
+
+
+@router.post("/provider-bills")
+async def import_provider_bills(request: Request, body: ProviderBillBatch):
+    identity, actor = await _super_admin_request(request)
+    _, session_user = await identity.session_user(request.cookies.get(COOKIE_NAME))
+    await identity.require_step_up(session_user)
+    if len(body.model_dump_json()) > 512 * 1024:
+        raise HTTPException(status_code=413, detail="Provider bill batch too large")
+    accepted, duplicates = [], []
+    prepared = []
+    for line in body.lines:
+        event_id = hashlib.sha256(
+            ("provider-bill-v1:" + json.dumps(
+                [line.provider_id, line.line_id], separators=(",", ":"),
+            )).encode()
+        ).hexdigest()
+        digest = hashlib.sha256(json.dumps(
+            line.model_dump(mode="json"), sort_keys=True,
+            separators=(",", ":"),
+        ).encode()).hexdigest()
+        prepared.append((line, event_id, digest))
+    async with request.app.state.database.session() as session:
+        async with session.begin():
+            receipts = (await session.scalars(select(UsageEventReceipt).where(
+                UsageEventReceipt.usage_event_id.in_(
+                    [event_id for _, event_id, _ in prepared],
+                ),
+            ))).all()
+            existing = {receipt.usage_event_id: receipt for receipt in receipts}
+            for line, event_id, digest in prepared:
+                receipt = existing.get(event_id)
+                if receipt:
+                    if receipt.device_id != "provider-bill" or receipt.payload_sha256 != digest:
+                        raise HTTPException(status_code=409, detail="Provider bill line changed")
+                    duplicates.append(line.line_id)
+                    continue
+                session.add(UsageEventReceipt(
+                    usage_event_id=event_id, device_id="provider-bill",
+                    batch_id=body.batch_id, payload_sha256=digest,
+                ))
+                session.add(UsageEvent(
+                    id=event_id, device_id="provider-bill", source="provider_reconciled",
+                    request_id=line.line_id, provider_id=line.provider_id,
+                    model=line.model, input_tokens=line.input_tokens,
+                    output_tokens=line.output_tokens,
+                    total_tokens=line.input_tokens + line.output_tokens,
+                    currency=line.currency, billed_cost=line.billed_cost,
+                    metering_status="metered",
+                    occurred_at=datetime.combine(line.day, time.min, timezone.utc),
+                ))
+                accepted.append(line.line_id)
+            if accepted:
+                session.add(AuditEvent(
+                    id=str(uuid4()), user_id=actor.id,
+                    action="admin.provider_bill_imported", result="success",
+                    metadata_json=json.dumps({
+                        "accepted_count": len(accepted),
+                        "provider_count": len({line.provider_id for line in body.lines}),
+                    }),
+                ))
+    return {"batch_id": body.batch_id, "accepted": accepted,
+            "duplicates": duplicates}
 
 
 async def record_usage_batch(database, device_id: str, batch_id: str,
@@ -149,7 +246,7 @@ async def usage_summary(request: Request,
                         project_id: str | None = Query(default=None, max_length=64),
                         provider_id: str | None = Query(default=None, max_length=64),
                         model: str | None = Query(default=None, max_length=128),
-                        source: UsageSource | None = None,
+                        source: UsageSource | None = "reported_by_device",
                         metering_status: MeteringStatus | None = None,
                         from_time: datetime | None = None,
                         to_time: datetime | None = None,
@@ -167,10 +264,14 @@ async def usage_summary(request: Request,
         func.sum(UsageEvent.input_tokens), func.sum(UsageEvent.output_tokens),
         func.sum(UsageEvent.cache_read_tokens), func.sum(UsageEvent.cache_write_tokens),
         func.sum(UsageEvent.total_tokens), func.sum(UsageEvent.estimated_cost),
-        func.min(case((UsageEvent.estimated_cost.is_not(None), UsageEvent.currency))),
-        func.max(case((UsageEvent.estimated_cost.is_not(None), UsageEvent.currency))),
-        func.sum(case(((UsageEvent.estimated_cost.is_not(None)) &
+        func.min(case(((UsageEvent.estimated_cost.is_not(None)) |
+                       (UsageEvent.billed_cost.is_not(None)), UsageEvent.currency))),
+        func.max(case(((UsageEvent.estimated_cost.is_not(None)) |
+                       (UsageEvent.billed_cost.is_not(None)), UsageEvent.currency))),
+        func.sum(case((((UsageEvent.estimated_cost.is_not(None)) |
+                        (UsageEvent.billed_cost.is_not(None))) &
                        (UsageEvent.currency.is_(None)), 1), else_=0)),
+        func.sum(UsageEvent.billed_cost),
     )
     query = select(*totals).where(*conditions)
     async with request.app.state.database.session() as session:
@@ -204,6 +305,8 @@ def _usage_totals(row) -> dict:
             "total_tokens": row[6],
             "estimated_cost": (f"{row[7]:.6f}" if row[7] is not None and currency
                                and currency != "mixed" else None),
+            "billed_cost": (f"{row[11]:.6f}" if row[11] is not None and currency
+                            and currency != "mixed" else None),
             "currency": currency}
 
 
@@ -227,6 +330,88 @@ def _usage_conditions(*, device_id: str | None, user_id: str | None,
     if to_time:
         conditions.append(UsageEvent.occurred_at < to_time)
     return conditions
+
+
+@router.get("/reconciliation")
+async def usage_reconciliation(request: Request,
+                               provider_id: str = Query(min_length=1, max_length=64),
+                               from_day: date = Query(), to_day: date = Query()):
+    await _super_admin_read(request)
+    if from_day > to_day or (to_day - from_day).days > 30 or to_day == date.max:
+        raise HTTPException(status_code=422, detail="Invalid reconciliation range")
+    day = func.date(UsageEvent.occurred_at)
+    query = (select(
+        day, UsageEvent.model, UsageEvent.source,
+        func.count(UsageEvent.id), func.sum(UsageEvent.input_tokens),
+        func.sum(UsageEvent.output_tokens), func.sum(UsageEvent.estimated_cost),
+        func.sum(UsageEvent.billed_cost),
+        func.sum(case((UsageEvent.metering_status == "unmetered", 1), else_=0)),
+        func.sum(case(((UsageEvent.source == "reported_by_device") &
+                       (UsageEvent.estimated_cost.is_(None)), 1), else_=0)),
+        func.min(UsageEvent.currency), func.max(UsageEvent.currency),
+    ).where(
+        UsageEvent.provider_id == provider_id,
+        UsageEvent.occurred_at >= datetime.combine(from_day, time.min, timezone.utc),
+        UsageEvent.occurred_at < datetime.combine(
+            to_day + timedelta(days=1), time.min, timezone.utc,
+        ),
+        UsageEvent.source.in_(("reported_by_device", "provider_reconciled")),
+    ).group_by(day, UsageEvent.model, UsageEvent.source).limit(4000))
+    async with request.app.state.database.session() as session:
+        values = (await session.execute(query)).all()
+    if len(values) == 4000:
+        raise HTTPException(status_code=413, detail="Reconciliation range too large")
+    groups: dict[tuple[str, str | None], dict[str, tuple]] = {}
+    for row in values:
+        groups.setdefault((row[0], row[1]), {})[row[2]] = row
+    result = []
+    for (event_day, model), sources in sorted(
+        groups.items(), key=lambda item: (item[0][0], item[0][1] or ""),
+    ):
+        device = sources.get("reported_by_device")
+        provider = sources.get("provider_reconciled")
+        device_tokens = (device[4], device[5]) if device else (None, None)
+        billed_tokens = (provider[4], provider[5]) if provider else (None, None)
+        device_cost = device[6] if device else None
+        billed_cost = provider[7] if provider else None
+        currencies = {value for source in (device, provider) if source
+                      for value in (source[10], source[11]) if value}
+        comparable = (device is not None and provider is not None
+                      and not device[8] and not device[9]
+                      and device_cost is not None and billed_cost is not None
+                      and len(currencies) == 1)
+        if provider is None:
+            status = "awaiting_provider"
+        elif device is None:
+            status = "missing_device"
+        elif device[8] or device[9] or device_cost is None or billed_cost is None:
+            status = "incomplete"
+        elif len(currencies) != 1:
+            status = "incomparable"
+        else:
+            status = ("matched" if device_tokens == billed_tokens
+                      and device_cost == billed_cost else "different")
+        result.append({
+            "day": event_day, "provider_id": provider_id, "model": model,
+            "status": status,
+            "device_event_count": device[3] if device else 0,
+            "provider_line_count": provider[3] if provider else 0,
+            "unmetered_count": device[8] if device else 0,
+            "device_input_tokens": device_tokens[0],
+            "device_output_tokens": device_tokens[1],
+            "provider_input_tokens": billed_tokens[0],
+            "provider_output_tokens": billed_tokens[1],
+            "input_tokens_difference": (billed_tokens[0] - device_tokens[0]
+                                        if comparable else None),
+            "output_tokens_difference": (billed_tokens[1] - device_tokens[1]
+                                         if comparable else None),
+            "estimated_cost": f"{device_cost:.6f}" if device_cost is not None else None,
+            "billed_cost": f"{billed_cost:.6f}" if billed_cost is not None else None,
+            "cost_difference": (f"{billed_cost - device_cost:.6f}"
+                                if comparable else None),
+            "currency": next(iter(currencies)) if len(currencies) == 1 else None,
+        })
+    return {"rows": result}
 
 
 @router.get("/events")
@@ -269,4 +454,6 @@ async def usage_events(request: Request,
         "currency": item.currency,
         "estimated_cost": (f"{item.estimated_cost:.6f}"
                            if item.estimated_cost is not None else None),
+        "billed_cost": (f"{item.billed_cost:.6f}"
+                        if item.billed_cost is not None else None),
     } for item in rows], "total": total, "page": page, "page_size": page_size}

@@ -21,8 +21,30 @@ test('usage page filters summaries and locates unmetered and metered events', as
   globalThis.fetch = async input => {
     const url = String(input)
     urls.push(url)
+    if (url.startsWith('/api/admin/usage/reconciliation?')) return Response.json({ rows: [{
+      day: '2026-09-29', provider_id: 'provider-1', model: 'model-a', status: 'different',
+      device_event_count: 1, provider_line_count: 1, unmetered_count: 0,
+      device_input_tokens: 10, device_output_tokens: 5,
+      provider_input_tokens: 12, provider_output_tokens: 5,
+      input_tokens_difference: 2, output_tokens_difference: 0,
+      estimated_cost: '0.000030', billed_cost: '0.000040',
+      cost_difference: '0.000010', currency: 'USD',
+    }] })
     if (url.startsWith('/api/admin/usage/events?')) {
       if (detailFailures > 0) { detailFailures--; return new Response(null, { status: 503 }) }
+      if (new URLSearchParams(url.split('?')[1]).get('source') === 'provider_reconciled') {
+        return Response.json({ total: 1, events: [{
+          id: 'bill-1', request_id: 'provider-line-1', source: 'provider_reconciled',
+          metering_status: 'metered', occurred_at: '2026-09-29T00:00:00Z',
+          user_id: null, initiated_by_user_id: null, device_id: 'provider-bill',
+          project_id: null, task_id: null, run_id: null, message_id: null,
+          session_id: null, provider_id: 'provider-1', provider_revision: null,
+          model: 'model-a', input_tokens: 12, output_tokens: 5,
+          cache_read_tokens: null, cache_write_tokens: null, total_tokens: 17,
+          pricing_version: null, currency: 'USD', estimated_cost: null,
+          billed_cost: '0.000040',
+        }] })
+      }
       const page = new URLSearchParams(url.split('?')[1]).get('page')
       return Response.json({ total: 26, events: [page === '2' ? {
         id: 'usage-2', request_id: 'request-2', source: 'reported_by_device',
@@ -47,7 +69,7 @@ test('usage page filters summaries and locates unmetered and metered events', as
     if (url.startsWith('/api/admin/usage?')) return Response.json({
       event_count: 26, unmetered_count: 2, input_tokens: 10, output_tokens: 5,
       cache_read_tokens: 0, cache_write_tokens: 0, total_tokens: 15,
-      estimated_cost: '0.000030', currency: 'USD', group_total: 1,
+      estimated_cost: '0.000030', billed_cost: '0.000040', currency: 'USD', group_total: 1,
       groups: [{ value: 'model-a', event_count: 26, unmetered_count: 2,
         input_tokens: 10, output_tokens: 5, cache_read_tokens: 0, cache_write_tokens: 0,
         total_tokens: 15, estimated_cost: '0.000030', currency: 'USD' }],
@@ -76,4 +98,55 @@ test('usage page filters summaries and locates unmetered and metered events', as
   await screen.findByText(/用量事件 usage-2/)
   assert.match(document.body.textContent ?? '', /请求 request-2/)
   assert.ok(urls.some(url => url.includes('/events?') && url.includes('page=2')))
+  fireEvent.change(screen.getByLabelText('对账供应商 ID'), { target: { value: 'provider-1' } })
+  fireEvent.change(screen.getByLabelText('对账开始日期'), { target: { value: '2026-09-29' } })
+  fireEvent.change(screen.getByLabelText('对账结束日期'), { target: { value: '2026-09-29' } })
+  fireEvent.click(screen.getByRole('button', { name: '查看账单差异' }))
+  await screen.findByText(/model-a · 差异/)
+  assert.match(document.body.textContent ?? '', /账单 0.000040 USD/)
+  fireEvent.change(screen.getByLabelText('计量来源'), { target: { value: 'provider_reconciled' } })
+  fireEvent.click(screen.getByRole('button', { name: '查询用量' }))
+  assert.ok((await screen.findAllByText(/账单金额 0.000040 USD/)).length >= 1)
+  await screen.findByText(/供应商账单 · 供应商 provider-1/)
+})
+
+test('provider bill import requires step-up and submits only bounded billing fields', async () => {
+  const requests: Array<{ url: string; body?: Record<string, unknown> }> = []
+  globalThis.fetch = async (input, init) => {
+    const url = String(input)
+    requests.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined })
+    if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf-1' })
+    if (url === '/api/auth/step-up') return Response.json({ expires_in_seconds: 300 })
+    if (url === '/api/admin/usage/provider-bills') return Response.json({
+      accepted: ['line-1'], duplicates: [],
+    })
+    if (url.startsWith('/api/admin/usage/events?')) return Response.json({ events: [], total: 0 })
+    if (url.startsWith('/api/admin/usage?')) return Response.json({
+      event_count: 0, unmetered_count: 0, input_tokens: null, output_tokens: null,
+      cache_read_tokens: null, cache_write_tokens: null, total_tokens: null,
+      estimated_cost: null, billed_cost: null, currency: null,
+    })
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+  render(<MemoryRouter><AdminUsagePage /></MemoryRouter>)
+  fireEvent.click(screen.getByRole('button', { name: '导入供应商账单' }))
+  const dialog = await screen.findByRole('dialog', { name: '导入供应商账单' })
+  const { getByLabelText, getByRole } = await import('@testing-library/dom')
+  fireEvent.change(getByLabelText(dialog, '供应商 ID'), { target: { value: 'provider-1' } })
+  fireEvent.change(getByLabelText(dialog, '账单行 ID'), { target: { value: 'line-1' } })
+  fireEvent.change(getByLabelText(dialog, '模型'), { target: { value: 'model-a' } })
+  fireEvent.change(getByLabelText(dialog, 'UTC 日期'), { target: { value: '2026-09-29' } })
+  fireEvent.change(getByLabelText(dialog, '输入 Token'), { target: { value: '12' } })
+  fireEvent.change(getByLabelText(dialog, '输出 Token'), { target: { value: '5' } })
+  fireEvent.change(getByLabelText(dialog, '账单金额'), { target: { value: '0.000040' } })
+  fireEvent.change(getByLabelText(dialog, '管理员密码'), { target: { value: 'secret' } })
+  fireEvent.click(getByRole(dialog, 'button', { name: '导入账单行' }))
+  await screen.findByText(/已导入 1 条账单行/)
+  assert.deepEqual(requests.filter(item => item.url === '/api/admin/usage/provider-bills')[0].body, {
+    batch_id: 'line-1', lines: [{ line_id: 'line-1', provider_id: 'provider-1',
+      model: 'model-a', day: '2026-09-29', input_tokens: 12, output_tokens: 5,
+      currency: 'USD', billed_cost: '0.000040' }],
+  })
+  assert.ok(requests.findIndex(item => item.url === '/api/auth/step-up') <
+    requests.findIndex(item => item.url === '/api/admin/usage/provider-bills'))
 })

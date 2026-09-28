@@ -3,13 +3,14 @@ import { useEffect, useState } from 'react'
 type Totals = { event_count: number; unmetered_count: number; input_tokens: number | null;
   output_tokens: number | null; cache_read_tokens: number | null;
   cache_write_tokens: number | null; total_tokens: number | null;
-  estimated_cost: string | null; currency: string | null }
+  estimated_cost: string | null; billed_cost: string | null; currency: string | null }
 type Summary = Totals & { group_by?: string; groups?: Array<Totals & { value: string | null }>;
   group_total?: number }
 
 function count(value: number | null) { return value === null ? '未上报' : value.toLocaleString() }
 
 export function AdminUsageSummary({ filters }: { filters: string }) {
+  const providerSource = new URLSearchParams(filters).get('source') === 'provider_reconciled'
   const [groupBy, setGroupBy] = useState('')
   const [page, setPage] = useState(1)
   const [summary, setSummary] = useState<Summary | null>(null)
@@ -36,7 +37,7 @@ export function AdminUsageSummary({ filters }: { filters: string }) {
   }, [filters, groupBy, page, revision])
 
   return <section className="gateway-project-grants">
-    <h3>Token 与估算成本</h3>
+    <h3>Token 与{providerSource ? '账单金额' : '估算成本'}</h3>
     {loading && <p role="status">正在加载用量汇总…</p>}
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
@@ -45,8 +46,8 @@ export function AdminUsageSummary({ filters }: { filters: string }) {
       <div className="gateway-usage-totals">
         <p>输入 {count(summary.input_tokens)} · 输出 {count(summary.output_tokens)} · 缓存读取 {
           count(summary.cache_read_tokens)} · 缓存写入 {count(summary.cache_write_tokens)}</p>
-        <p>总 Token {count(summary.total_tokens)} · 估算成本 {
-          summary.estimated_cost ?? '暂不可汇总'} {summary.currency && summary.currency !== 'mixed'
+        <p>总 Token {count(summary.total_tokens)} · {providerSource ? '账单金额' : '估算成本'} {
+          (providerSource ? summary.billed_cost : summary.estimated_cost) ?? '暂不可汇总'} {summary.currency && summary.currency !== 'mixed'
           ? summary.currency : ''}{summary.currency === 'mixed' ? '（存在多种币种）' : ''}</p>
       </div>
       <p>计量来源见明细；PC 回传用量与供应商账单对账是不同来源。</p>
@@ -62,7 +63,8 @@ export function AdminUsageSummary({ filters }: { filters: string }) {
       <ul className="gateway-device-list">{(summary.groups ?? []).map((group, index) =>
         <li key={`${group.value ?? 'unknown'}-${index}`}><div><strong>{group.value ?? '未标记'}</strong>
           <p>{group.event_count} 条 · {group.unmetered_count} 条未完成计量 · 总 Token {
-            count(group.total_tokens)} · 估算成本 {group.estimated_cost ?? '暂不可汇总'} {
+            count(group.total_tokens)} · {providerSource ? '账单金额' : '估算成本'} {
+            (providerSource ? group.billed_cost : group.estimated_cost) ?? '暂不可汇总'} {
             group.currency && group.currency !== 'mixed' ? group.currency : ''}</p></div></li>)}</ul>
       <div className="gateway-admin-pagination"><span>共 {summary.group_total ?? 0} 组 · 第 {page}/{
         Math.max(1, Math.ceil((summary.group_total ?? 0) / 25))} 页</span>
