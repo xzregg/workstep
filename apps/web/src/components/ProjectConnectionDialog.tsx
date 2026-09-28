@@ -8,6 +8,7 @@ import Button from './Button'
 import DirectoryBrowser from './DirectoryBrowser'
 import Field from './Field'
 import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
+import { useManagedMode } from '../hooks/useManagedMode'
 
 interface ProjectConnectionDialogProps {
   open: boolean
@@ -21,6 +22,7 @@ export default function ProjectConnectionDialog({
   onConnected,
 }: ProjectConnectionDialogProps) {
   const { t } = useI18n()
+  const managedMode = useManagedMode()
   const initProject = useProjectStore((state) => state.initProject)
   const addRemoteProject = useProjectStore((state) => state.addRemoteProject)
   const [mode, setMode] = useState<'local' | 'remote'>('local')
@@ -35,6 +37,10 @@ export default function ProjectConnectionDialog({
   useEffect(() => {
     if (open && !isGatewayRemoteBrowser()) void loadSettings()
   }, [open, loadSettings])
+
+  useEffect(() => {
+    if (managedMode === true) setMode('local')
+  }, [managedMode])
 
   if (!open) return null
 
@@ -101,12 +107,12 @@ export default function ProjectConnectionDialog({
             >
               {t('layout.localProject')}
             </Button>
-            <Button
+            {managedMode !== true && <Button
               variant={mode === 'remote' ? 'primary' : 'ghost'}
               onClick={() => { setMode('remote'); setPath(''); setError('') }}
             >
               {t('layout.remoteProject')}
-            </Button>
+            </Button>}
           </div>
           {mode === 'local' ? (
             <>

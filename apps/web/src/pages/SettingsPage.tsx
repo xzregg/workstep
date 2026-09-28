@@ -5,6 +5,7 @@ import GitScanSettings from './GitScanSettings'
 import ProjectDirectorySetting from '../components/ProjectDirectorySetting'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useOverlay } from '../hooks/useOverlay'
+import { useManagedMode } from '../hooks/useManagedMode'
 import Icon from '../components/Icon'
 import { useEffect, useRef, useState } from 'react'
 import Button from '../components/Button'
@@ -48,6 +49,7 @@ export default function SettingsPage({
   onConfigurationChanged,
 }: SettingsPageProps) {
   const { t, locale, setLocale } = useI18n()
+  const managedMode = useManagedMode()
   const compactLayout = useCompactLayout()
   const settingsDialogRef = useRef<HTMLDivElement>(null)
   useOverlay(true, onClose, settingsDialogRef, compactLayout)
@@ -66,6 +68,10 @@ export default function SettingsPage({
   useEffect(() => {
     setActiveSection(initialSection)
   }, [initialSection])
+
+  useEffect(() => {
+    if (managedMode === true && activeSection === 'remote') setActiveSection('providers')
+  }, [managedMode, activeSection])
 
   useEffect(() => {
     if (activeSection !== 'engines' || focusTarget !== 'execution-engine') return
@@ -144,7 +150,7 @@ export default function SettingsPage({
           <TemplateSettings />
         ) : activeSection === 'channels' ? (
           <BotSettings />
-        ) : activeSection === 'remote' ? (
+        ) : activeSection === 'remote' && managedMode !== true ? (
           <RemoteProjectSettings />
         ) : activeSection === 'concurrency' ? (
           <GlobalConcurrencySettings />

@@ -8,6 +8,7 @@ import { I18nProvider, useLocaleStore } from '../src/i18n'
 import ProjectDirectorySetting from '../src/components/ProjectDirectorySetting'
 import ProjectConnectionDialog from '../src/components/ProjectConnectionDialog'
 import { useUserSettingsStore } from '../src/stores/userSettingsStore'
+import { useManagedModeStore } from '../src/stores/managedModeStore'
 
 test('saving the default directory opens project browsing there; clearing restores home', async () => {
   const { document, window } = installDomEnvironment()
@@ -17,6 +18,7 @@ test('saving the default directory opens project browsing there; clearing restor
   const browsed: (string | null)[] = []
   globalThis.fetch = async (input, init) => {
     const url = new URL(String(input), 'http://localhost')
+    if (url.pathname === '/api/managed/mode') return Response.json({ managed: false })
     if (url.pathname === '/api/system-settings') {
       if (init?.method === 'PUT') savedDirectory = JSON.parse(String(init.body)).default_project_directory
       return Response.json({ user_name: '测试', open_mode: false, default_project_directory: savedDirectory })
@@ -57,12 +59,40 @@ test('saving the default directory opens project browsing there; clearing restor
   }
 })
 
+test('managed project connection omits the legacy share-string mode', async () => {
+  const { document, window } = installDomEnvironment()
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async input => {
+    const path = new URL(String(input), 'http://localhost').pathname
+    if (path === '/api/fs/browse') return Response.json({ path: '/home', parent: '/', entries: [] })
+    if (path === '/api/system-settings') return Response.json({
+      user_name: 'alice', open_mode: false, default_project_directory: '',
+    })
+    throw new Error(`Unexpected request ${path}`)
+  }
+  useManagedModeStore.setState({ managed: true, loading: false })
+  useUserSettingsStore.setState({ loaded: true, loading: false, defaultProjectDirectory: '' })
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  try {
+    await act(async () => root.render(<I18nProvider><ProjectConnectionDialog open
+      onClose={() => {}} onConnected={() => {}} /></I18nProvider>))
+    assert.doesNotMatch(document.body.textContent ?? '', /远程项目/)
+    assert.equal(document.querySelector('#remote-share-string'), null)
+  } finally {
+    await act(async () => root.unmount())
+    useManagedModeStore.setState({ managed: null, loading: false })
+    globalThis.fetch = originalFetch
+    await window.happyDOM.close()
+  }
+})
+
 test('an unavailable default directory falls back to home and reports the problem', async () => {
   const { document, window } = installDomEnvironment()
   const originalFetch = globalThis.fetch
   const browsed: (string | null)[] = []
   globalThis.fetch = async (input) => {
     const url = new URL(String(input), 'http://localhost')
+    if (url.pathname === '/api/managed/mode') return Response.json({ managed: false })
     browsed.push(url.searchParams.get('path'))
     if (url.searchParams.has('path')) return Response.json({ detail: 'Directory not found' }, { status: 404 })
     return Response.json({ path: '/home/test', parent: '/home', entries: [{ name: 'Projects', path: '/home/test/Projects', type: 'directory' }] })

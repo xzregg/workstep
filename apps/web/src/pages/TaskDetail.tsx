@@ -51,6 +51,7 @@ import {
 import { mergeRefreshedTaskHistory } from './taskHistoryModel'
 import { useTaskArtifacts } from '../hooks/useTaskArtifacts'
 import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
+import { useManagedMode } from '../hooks/useManagedMode'
 import { useTaskReviewActions } from '../hooks/useTaskReviewActions'
 import { useTaskPendingInserts } from '../hooks/useTaskPendingInserts'
 import { CUSTOM } from '../utils/agui'
@@ -240,6 +241,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [livePromptOverrides, setLivePromptOverrides] = useState<Record<string, string>>({})
   const [taskIdCopied, setTaskIdCopied] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+  const managedMode = useManagedMode()
   const [discussionGroupsOpen, setDiscussionGroupsOpen] = useState(false)
   const [durationNowMs, setDurationNowMs] = useState(() => Date.now())
   const [selectedStep, setSelectedStep] = useState(0)
@@ -1003,7 +1005,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               onClick={(event) => { event.stopPropagation(); setDiscussionGroupsOpen(true) }}>
               {t('channelBot.discussionGroups')}
             </Button>
-            <Button
+            {managedMode !== true && <Button
               className="task-detail-share-button"
               variant="ghost"
               title={t('taskDetail.shareButtonTitle')}
@@ -1016,7 +1018,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             >
               <Icon name="share" size={13} strokeWidth={1.75} />
               <span className="task-detail-share-label">{t('share.dialogTitle')}</span>
-            </Button>
+            </Button>}
             <Button
               className="task-detail-id-button"
               data-copied={taskIdCopied}
@@ -1114,7 +1116,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             onClose={() => setShowPromptEditor(false)}
           />}
           <ShareDialog
-            open={shareOpen && !!task}
+            open={managedMode !== true && shareOpen && !!task}
             taskId={taskId}
             projectId={projectId}
             onClose={() => setShareOpen(false)}
