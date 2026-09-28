@@ -8,7 +8,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from .desktop_authorization import DesktopAuthorizationService
 from .identity import COOKIE_NAME, IdentityService, public_user
-from .identity_api import _check_csrf, _super_admin_request
+from .identity_api import _check_csrf, _super_admin_read, _super_admin_request
+from typing import Literal
 
 router = APIRouter(prefix="/api")
 
@@ -91,6 +92,15 @@ async def approve_device(request: Request, device_id: str):
     _, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
     await identity.require_step_up(auth_session)
     await _service(request).approve_device(device_id, actor.id)
+
+
+@router.get("/admin/devices")
+async def list_devices(request: Request, status: Literal["pending", "active", "disabled", "revoked"] | None = None):
+    await _super_admin_read(request)
+    devices = await _service(request).list_devices(status)
+    return {"devices": [{"id": device.id, "name": device.name, "status": device.status,
+                         "version": device.version, "app_instance_id": device.app_instance_id}
+                        for device in devices]}
 
 
 async def _device_admin(request: Request):

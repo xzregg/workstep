@@ -164,3 +164,16 @@ def test_device_rotation_requires_old_key_proof_and_reapproval(tmp_path):
         assert rotated.json()["device"] == {"id": device_id, "status": "pending"}
         assert client.post(f"/api/admin/devices/{device_id}/approve", headers={"X-CSRF-Token": csrf}).status_code == 204
         assert _redeem(client, _authorize(client, csrf), new_public).json()["device_authorization"]
+
+
+def test_admin_can_list_pending_devices_for_approval(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        csrf = _setup(client)
+        device_id = _redeem(client, _authorize(client, csrf), _public_key()).json()["device"]["id"]
+        pending = client.get("/api/admin/devices?status=pending")
+        assert pending.status_code == 200
+        assert [device["id"] for device in pending.json()["devices"]] == [device_id]
+        assert pending.json()["devices"][0]["name"] == "Alice PC"
+        client.cookies.clear()
+        assert client.get("/api/admin/devices").status_code == 401
