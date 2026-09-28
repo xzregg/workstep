@@ -161,6 +161,52 @@ async def test_local_user_name_is_required_for_manual_run_and_task_chat(
     ) == "ready"
 
 
+@pytest.mark.anyio
+async def test_workflow_start_and_audit_roll_back_together(api_context, monkeypatch):
+    import main
+    from models import ProjectAuditEvent, Task, WorkflowRun
+    from services import workflow_start
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "audit-start-rollback"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)},
+    )).json()["id"]
+    workflow = await _create_test_workflow(client, project_id)
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        headers=TEST_ACTOR_HEADERS,
+        json={
+            "title": "Audit rollback", "cwd": str(project_dir),
+            "workflow_id": workflow["id"], "auto_start": False,
+        },
+    )
+    assert created.status_code == 200, created.text
+    task_id = created.json()["id"]
+
+    def fail_audit(**_kwargs):
+        raise ValueError("audit write failed")
+
+    monkeypatch.setattr(workflow_start, "record_project_audit", fail_audit)
+    started = await client.post(
+        f"/api/task/run?project_id={project_id}",
+        headers=TEST_ACTOR_HEADERS,
+        json={"task_id": task_id, "prompt": "执行"},
+    )
+    assert started.status_code >= 400, started.text
+    assert "audit write failed" in started.json()["detail"]
+
+    def inspect(_project):
+        return (
+            Task.get_by_id(task_id).status,
+            WorkflowRun.select().where(WorkflowRun.task == task_id).count(),
+            ProjectAuditEvent.select().where(ProjectAuditEvent.task_id == task_id).count(),
+        )
+
+    assert await main.project_manager.run_db(project_id, inspect) == ("ready", 0, 0)
+
+
 class MemoryConfigStore:
     """In-memory project registry used at the filesystem boundary."""
 

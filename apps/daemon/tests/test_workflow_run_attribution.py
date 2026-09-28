@@ -2,7 +2,7 @@
 
 import json
 
-from models import Task, WorkflowRun
+from models import ProjectAuditEvent, Task, WorkflowRun
 from models.fields import utc_now
 from services.project import ProjectManager
 from services.remote_access import ActorSnapshot, actor_context
@@ -57,6 +57,11 @@ def test_workflow_run_snapshots_initiator_without_user_message(tmp_path, monkeyp
                 run.initiated_by_name, run.initiated_by_device_id,
                 run.initiated_by_device_name) == (
                     "user-1", "alice", "Alice Display", "device-1", "Office PC",
+                )
+        audit = ProjectAuditEvent.get(ProjectAuditEvent.task_id == task.id)
+        assert (audit.action, audit.result, audit.actor_username,
+                audit.initiated_by_username) == (
+                    "task.start", "succeeded", "alice", "alice",
                 )
     project.db.close()
 

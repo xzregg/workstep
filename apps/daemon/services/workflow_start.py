@@ -16,6 +16,8 @@ from services.messages import (
 from services.pipeline import DAGScheduler, Step
 from services.workflow_definition import WorkflowDefinition
 from services.workflow_recovery import heal_task_cwd
+from services.project_audit import record_project_audit
+from services.remote_access import get_effective_actor
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,6 +227,20 @@ def prepare_start_in_project(
             snapshot_current_actor=False,
             **message_actor_fields,
         )
+
+    actor = get_effective_actor()
+    record_project_audit(
+        project_id=project.id,
+        task_id=task.id,
+        action="task.start",
+        result="succeeded",
+        mode="managed" if actor is not None and actor.source == "managed" else "local",
+        actor_type="scheduler" if source in {"schedule", "scheduled_start"} else None,
+        initiated_by_user_id=workflow_run.initiated_by_user_id,
+        initiated_by_username=workflow_run.initiated_by_username,
+        metadata={"source": source, "workflow_run_id": workflow_run.id},
+        event_id=f"workflow-start:{workflow_run.id}",
+    )
 
     return PreparedWorkflowRun(
         project_id=project.id,

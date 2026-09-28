@@ -52,6 +52,7 @@ from services.git import git_service
 from api.skills import router as skills_router
 from api.project_settings import router as project_settings_router
 from api.pending_message_inserts import router as pending_message_inserts_router
+from api.project_audit import router as project_audit_router
 from api.channel_bots import router as channel_bots_router, task_group_router
 import api.remote_project as remote_project_api
 from api.remote_project import router as remote_project_router
@@ -268,6 +269,7 @@ app.include_router(task_dispatch_router)
 app.include_router(schedule_router)
 app.include_router(chat_session_router)
 app.include_router(pending_message_inserts_router)
+app.include_router(project_audit_router)
 app.include_router(channel_bots_router)
 app.include_router(task_group_router)
 app.include_router(statistics_router)
