@@ -121,6 +121,11 @@ _ADDITIVE_COLUMNS = {
         "owner_id": "TEXT",
         "heartbeat_at": "DATETIME",
         "routing_state_json": "TEXT",
+        "initiated_by_user_id": "TEXT",
+        "initiated_by_username": "TEXT",
+        "initiated_by_name": "TEXT",
+        "initiated_by_device_id": "TEXT",
+        "initiated_by_device_name": "TEXT",
     },
     "step_runs": {
         "artifact_round": "INTEGER",

@@ -6,7 +6,7 @@ import threading
 import time
 import uuid
 
-from models import Message, Task
+from models import Message, Task, WorkflowRun
 from models.base import db_proxy
 
 
@@ -85,6 +85,7 @@ def attributed_actor_message_fields(
     source = None
     if reply_to_message_id:
         source = Message.get_or_none(Message.id == reply_to_message_id)
+    explicit_source = source is not None
     if source is None:
         base_predicate = (
             (Message.task == task)
@@ -114,6 +115,24 @@ def attributed_actor_message_fields(
                 .order_by(Message.sequence.desc(), Message.created_at.desc())
                 .first()
             )
+    run = (
+        WorkflowRun.get_or_none(WorkflowRun.id == task.active_workflow_run_id)
+        if task.active_workflow_run_id else None
+    )
+    if run is not None and not explicit_source and (
+        source is None or (
+            run.started_at is not None and source.created_at is not None
+            and source.created_at < run.started_at
+        )
+    ):
+        run_fields = {key: value for key, value in {
+            "initiated_by_user_id": run.initiated_by_user_id,
+            "initiated_by_username": run.initiated_by_username,
+            "author_device_id": run.initiated_by_device_id,
+            "author_device_name": run.initiated_by_device_name,
+        }.items() if value}
+        if run_fields.get("initiated_by_user_id") or run_fields.get("initiated_by_username"):
+            return run_fields
     fields = _message_author_fields(source)
     if fields.get("initiated_by_user_id") or fields.get("initiated_by_username"):
         return fields
