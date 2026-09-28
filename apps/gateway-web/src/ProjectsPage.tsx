@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { GatewayLoginForm } from './GatewayLoginForm'
 import { openRemoteAccess } from './openRemoteAccess'
 
@@ -22,6 +22,7 @@ export function ProjectCard({ project, opening, blocked = false, onOpen }: {
 
 export function ProjectsPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [status, setStatus] = useState<'checking' | 'login' | 'ready'>('checking')
   const [projects, setProjects] = useState<Project[]>([])
   const [busy, setBusy] = useState(false)
@@ -59,6 +60,7 @@ export function ProjectsPage() {
       })
       if (!response.ok) throw new Error('登录失败，请检查账号和密码。')
       setStatus('ready')
+      window.dispatchEvent(new Event('gateway-auth-changed'))
     } catch (reason) { setError(reason instanceof Error ? reason.message : '登录失败。') }
     finally { setBusy(false) }
   }
@@ -81,6 +83,8 @@ export function ProjectsPage() {
   return <section className="gateway-admin-page">
     <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY</span>
     <h2>我的项目</h2>
+    {(location.state as { adminDenied?: boolean } | null)?.adminDenied &&
+      <p role="alert">当前账号没有访问该管理页面的权限。</p>}
     {status === 'checking' && <p role="status">正在检查登录状态…</p>}
     {status === 'login' && <div className="gateway-admin-login">
       <p>登录后查看获授权的远程项目。</p>

@@ -9,6 +9,7 @@ import { AdminGrantRoleDialog, AdminRevokeRoleDialog } from '../src/AdminRoleDia
 import { AdminRolesPage } from '../src/AdminRolesPage'
 import type { AdminRole } from '../src/AdminRolesPage'
 import { AdminOverviewPage } from '../src/AdminOverviewPage'
+import { App } from '../src/App'
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://gateway.test/admin/users' })
 Object.assign(globalThis, {
@@ -16,6 +17,7 @@ Object.assign(globalThis, {
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
   MutationObserver: dom.window.MutationObserver,
+  Event: dom.window.Event,
 })
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator })
 const { cleanup, fireEvent, render, screen, waitFor, within } = await import('@testing-library/react')
@@ -220,5 +222,80 @@ test('overview distinguishes control connectivity from daemon health and recover
   assert.match(document.body.textContent ?? '', /1 台控制连接在线/)
   assert.match(document.body.textContent ?? '', /1 台异常/)
   assert.match(document.body.textContent ?? '', /运行状态尚未上报/)
+  assert.equal(calls, 2)
+})
+
+test('normal users cannot see or directly enter management routes', async () => {
+  globalThis.fetch = async input => {
+    const url = String(input)
+    if (url === '/api/auth/admin-access') return Response.json({ roles: [], must_change_password: false })
+    if (url === '/api/auth/session') return Response.json({ user: { username: 'alice' }, csrf_token: 'csrf' })
+    if (url === '/api/projects') return Response.json({ projects: [] })
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+  render(<MemoryRouter initialEntries={['/admin/users']}><App /></MemoryRouter>)
+  await screen.findByText('当前账号没有访问该管理页面的权限。')
+  assert.equal(screen.queryByRole('link', { name: '管理后台' }), null)
+  assert.equal(screen.queryByRole('heading', { name: '用户管理' }), null)
+})
+
+test('management navigation and module routes respect current roles', async () => {
+  globalThis.fetch = async input => {
+    const url = String(input)
+    if (url === '/api/auth/admin-access') return Response.json({ roles: ['identity_admin'], must_change_password: false })
+    if (url === '/api/auth/session') return Response.json({ user: { username: 'alice' }, csrf_token: 'csrf' })
+    if (url.startsWith('/api/admin/users?')) return Response.json({ users: [], total: 0 })
+    if (url === '/api/projects') return Response.json({ projects: [] })
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+  render(<MemoryRouter initialEntries={['/admin/users']}><App /></MemoryRouter>)
+  await screen.findByRole('heading', { name: '用户管理' })
+  assert.ok(screen.getByRole('link', { name: '管理后台' }))
+  cleanup()
+  render(<MemoryRouter initialEntries={['/admin/admins']}><App /></MemoryRouter>)
+  await screen.findByText('当前账号没有访问该管理页面的权限。')
+  assert.equal(screen.queryByRole('heading', { name: '管理员权限' }), null)
+})
+
+test('management tab appears after signing in on the workbench', async () => {
+  let signedIn = false
+  globalThis.fetch = async input => {
+    const url = String(input)
+    if (url === '/api/auth/admin-access') return signedIn
+      ? Response.json({ roles: ['super_admin'], must_change_password: false })
+      : new Response(null, { status: 401 })
+    if (url === '/api/auth/session') return signedIn
+      ? Response.json({ user: { username: 'owner' }, csrf_token: 'csrf' })
+      : new Response(null, { status: 401 })
+    if (url === '/api/auth/login') { signedIn = true; return Response.json({ csrf_token: 'csrf' }) }
+    if (url === '/api/projects') return Response.json({ projects: [] })
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+  render(<MemoryRouter initialEntries={['/']}><App /></MemoryRouter>)
+  await screen.findByRole('button', { name: '登录' })
+  assert.equal(screen.queryByRole('link', { name: '管理后台' }), null)
+  fireEvent.change(screen.getByLabelText('用户名'), { target: { value: 'owner' } })
+  fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'password' } })
+  fireEvent.click(screen.getByRole('button', { name: '登录' }))
+  await screen.findByRole('link', { name: '管理后台' })
+})
+
+test('management access check can be retried after a transient failure', async () => {
+  let calls = 0
+  globalThis.fetch = async input => {
+    const url = String(input)
+    if (url === '/api/auth/admin-access') {
+      calls++
+      return calls === 1 ? new Response(null, { status: 503 })
+        : Response.json({ roles: ['super_admin'], must_change_password: false })
+    }
+    if (url === '/api/admin/overview') return Response.json({ roles: ['super_admin'], users: null,
+      devices: null, projects: null, tasks: { running: null }, recent_actions: [] })
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+  render(<MemoryRouter initialEntries={['/admin']}><App /></MemoryRouter>)
+  await screen.findByRole('alert')
+  fireEvent.click(screen.getByRole('button', { name: '重试' }))
+  await screen.findByRole('heading', { name: '管理概览' })
   assert.equal(calls, 2)
 })

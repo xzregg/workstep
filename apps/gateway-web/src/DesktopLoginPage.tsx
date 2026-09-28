@@ -96,6 +96,7 @@ export function DesktopLoginPage() {
       if (!response.ok) throw new Error('用户名或密码不正确，或账号尚未获准登录。')
       const result = await response.json()
       setCsrf(result.csrf_token)
+      window.dispatchEvent(new Event('gateway-auth-changed'))
       await authorize(result.csrf_token)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '登录失败，请重试。')

@@ -7,14 +7,12 @@ import { buildUserListQuery } from '../src/AdminUsersPage'
 
 test('admin users route is part of the management area', () => {
   const html = renderToString(<MemoryRouter initialEntries={['/admin/users']}><App /></MemoryRouter>)
-  assert.match(html, /用户管理/)
-  assert.match(html, /正在检查登录状态/)
+  assert.match(html, /正在检查管理权限/)
 })
 
 test('administrator permissions have a dedicated management route', () => {
   const html = renderToString(<MemoryRouter initialEntries={['/admin/admins']}><App /></MemoryRouter>)
-  assert.match(html, /管理员权限/)
-  assert.match(html, /正在检查登录状态/)
+  assert.match(html, /正在检查管理权限/)
 })
 
 test('user search and pagination are sent to the server', () => {

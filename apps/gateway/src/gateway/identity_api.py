@@ -153,7 +153,24 @@ async def login(request: Request, response: Response, body: LoginInput):
 async def session(request: Request):
     token = request.cookies.get(COOKIE_NAME)
     user, _ = await _identity(request).session_user(token)
-    return {"user": public_user(user), "csrf_token": csrf_token(token)}
+    return {"user": public_user(user), "csrf_token": csrf_token(token),
+            "admin_roles": await _active_admin_roles(request, user.id)}
+
+
+async def _active_admin_roles(request: Request, user_id: str) -> list[str]:
+    async with request.app.state.database.session() as database_session:
+        roles = (await database_session.scalars(select(AdminAssignment.role).where(
+            AdminAssignment.user_id == user_id,
+            AdminAssignment.revoked_at.is_(None),
+        ))).all()
+    return sorted(set(roles))
+
+
+@router.get("/auth/admin-access")
+async def admin_access(request: Request):
+    user, _ = await _identity(request).session_user(request.cookies.get(COOKIE_NAME))
+    return {"roles": await _active_admin_roles(request, user.id),
+            "must_change_password": bool(user.must_change_password)}
 
 
 @router.post("/auth/logout", status_code=204)
