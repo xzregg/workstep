@@ -18,6 +18,7 @@ import logging
 import re
 import time
 import uuid
+from datetime import datetime
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -1691,6 +1692,10 @@ class AssistantRuntime:
                 # message_completed / status=completed 之后、最终 save 之前
                 # 读历史，拿到缺 engine_session_id 或旧消息的快照。
                 turn_persisted[0] = await self._persist_session(session)
+                if turn_persisted[0]:
+                    await self._record_message_usage(
+                        session, turn_id, active_message[0], turn_model,
+                    )
                 seq_holder[0] = await self._publish(
                     session,
                     active_message_id[0],
@@ -1861,6 +1866,34 @@ class AssistantRuntime:
             )
             return False
 
+    async def _record_message_usage(self, session: "AssistantSession", turn_id: str,
+                                    message: dict, model: str | None) -> None:
+        from main import gateway_client
+        from services.messages import extract_usage_json
+
+        selected = str(self._turn_states.get(turn_id, {}).get("resolved_provider_id") or "")
+        engine = await asyncio.to_thread(create_engine, session.engine)
+        resolve_provider_id = getattr(engine, "resolve_provider_id", None)
+        if callable(resolve_provider_id):
+            selected = await asyncio.to_thread(resolve_provider_id, selected)
+        provider_snapshot = None
+        if selected:
+            def load_provider():
+                provider = config_store.get_provider(selected)
+                return ({key: provider.get(key) for key in
+                         ("id", "prices", "managed_revision")}
+                        if provider else None)
+            provider_snapshot = await asyncio.to_thread(load_provider)
+        await gateway_client.record_message_usage(
+            project_id=session.project_id or None,
+            task_id=session.scope_key if self._config.scope == SCOPE_TASK else None,
+            message_id=str(message["id"]), run_id=turn_id, model=model,
+            occurred_at=datetime.fromisoformat(str(message["ended_at"])),
+            provider=provider_snapshot, provider_id=selected or None,
+            usage_json=extract_usage_json(message.get("events") or []),
+            user_id=message.get("initiated_by_user_id"), session_id=session.session_id,
+        )
+
     async def _record_journal_event(
         self,
         ref: JournalRef | None,
@@ -2019,6 +2052,8 @@ class AssistantRuntime:
         config_overrides = (
             {"provider_id": provider_id} if provider_id else None
         )
+        if run_key:
+            turn_state["resolved_provider_id"] = provider_id
         return await invoke_engine(
             engine_id,
             model,
