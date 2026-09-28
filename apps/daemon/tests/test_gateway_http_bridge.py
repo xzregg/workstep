@@ -91,6 +91,10 @@ async def test_project_scoped_bridge_denies_unknown_and_cross_project_api():
     async def task_list(request: Request):
         return {"project_id": request.query_params.get("project_id")}
 
+    @app.get("/api/project/{project_id}/summary")
+    async def project_summary(project_id: str):
+        return {"project_id": project_id}
+
     @app.get("/api/health")
     async def health():
         return {"status": "ok"}
@@ -109,6 +113,8 @@ async def test_project_scoped_bridge_denies_unknown_and_cross_project_api():
         return frames[0].payload["status"]
 
     assert await response_status("GET", "/api/task/list", "project_id=host-1") == 200
+    assert await response_status("GET", "/api/project/host-1/summary", "") == 200
+    assert await response_status("GET", "/api/project/host-2/summary", "") == 403
     assert await response_status("GET", "/api/task/list", "project_id=host-2") == 403
     assert await response_status("GET", "/api/task/list", "project_id=host-1&project_id=host-2") == 403
     assert await response_status("POST", "/api/task/list", "project_id=host-1") == 403

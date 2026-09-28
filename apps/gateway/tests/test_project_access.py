@@ -104,6 +104,10 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         assert client.get(f"{host}/api/task/list?project_id=host-1").json() == {
             "project_id": "host-1",
         }
+        assert client.get(f"{host}/api/project/host-1/summary").json() == {
+            "project_id": "host-1",
+        }
+        assert client.get(f"{host}/api/project/host-2/summary").status_code == 403
         assert client.get(f"{host}/api/task/list?project_id=host-2").status_code == 403
         remote_cookie = client.cookies.get("workstep_gateway_session", domain="d-device-1.gateway.test")
         client.cookies.clear()

@@ -341,7 +341,10 @@ class DataConnection:
                 if remaining <= 0:
                     raise asyncio.TimeoutError()
                 try:
-                    return await asyncio.wait_for(queue.get(), timeout=min(1, remaining))
+                    frame = await asyncio.wait_for(queue.get(), timeout=min(1, remaining))
+                    if authorization_check is not None:
+                        await authorization_check()
+                    return frame
                 except asyncio.TimeoutError:
                     continue
 

@@ -165,8 +165,11 @@ async def proxy_remote_request(request: Request):
     user, device_id, auth_session, host_project_id = await _remote_identity(request)
     if auth_session.project_id:
         project_ids = request.query_params.getlist("project_id")
-        if (request.method != "GET" or request.url.path != "/api/task/list"
-                or project_ids != [host_project_id]):
+        task_list = (request.url.path == "/api/task/list"
+                     and project_ids == [host_project_id])
+        summary = (request.url.path == f"/api/project/{host_project_id}/summary"
+                   and not request.query_params)
+        if request.method != "GET" or not (task_list or summary):
             raise HTTPException(status_code=403, detail="Project proxy scope unavailable")
     try:
         connection = await request.app.state.control_connections.request_data(device_id)

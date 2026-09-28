@@ -489,6 +489,37 @@ async def test_managed_task_creation_uses_live_signed_policy(api_context, monkey
 
 
 @pytest.mark.anyio
+async def test_single_project_summary_hides_host_path_and_keeps_health_responsive(
+        api_context, monkeypatch):
+    from main import project_manager
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "published-summary"
+    project_dir.mkdir()
+    project_id = (await client.post("/api/project/init", json={
+        "path": str(project_dir),
+    })).json()["id"]
+    original = project_manager.project_summary
+    entered = threading.Event()
+
+    def slow_summary(project):
+        entered.set()
+        time.sleep(0.25)
+        return original(project)
+
+    monkeypatch.setattr(project_manager, "project_summary", slow_summary)
+    pending = asyncio.create_task(client.get(f"/api/project/{project_id}/summary"))
+    assert await asyncio.to_thread(entered.wait, 1)
+    health = await asyncio.wait_for(client.get("/api/health"), timeout=0.15)
+    assert health.status_code == 200
+    summary = await pending
+    assert summary.status_code == 200
+    assert summary.json()["id"] == project_id
+    assert "path" not in summary.json()
+    assert (await client.get("/api/project/unknown/summary")).status_code == 404
+
+
+@pytest.mark.anyio
 async def test_sqlite_write_lock_does_not_block_health_check(api_context):
     """A busy project writer must not stall unrelated FastAPI requests."""
     client, tmp_path = api_context
