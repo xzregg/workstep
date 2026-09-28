@@ -216,6 +216,60 @@ async def test_slow_recovery_database_work_does_not_block_event_loop(tmp_path, m
 
 
 @pytest.mark.anyio
+async def test_recovered_execution_message_keeps_persisted_run_initiator(tmp_path):
+    from engines.core.registry import ENGINE_REGISTRY
+
+    original, manager, project, run_id = _project_with_run(tmp_path)
+
+    def attribute_run(_project):
+        run = WorkflowRun.get_by_id(run_id)
+        run.initiated_by_user_id = "user-1"
+        run.initiated_by_username = "alice"
+        run.initiated_by_name = "Alice Display"
+        run.initiated_by_device_id = "device-1"
+        run.initiated_by_device_name = "Office PC"
+        run.save()
+
+    await manager.run_db(project.id, attribute_run)
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, manager)
+    try:
+        assert await runtime.recover_running_workflows() == 1
+
+        async def finished():
+            return await manager.run_db(
+                project.id, lambda _project: Task.get_by_id("task-rec").status == "ready",
+            )
+
+        for _ in range(250):
+            if await finished():
+                break
+            await asyncio.sleep(0.02)
+        else:
+            raise AssertionError("Recovered workflow did not finish")
+
+        def read_messages(_project):
+            return [
+                (row.initiated_by_user_id, row.initiated_by_username,
+                 row.author_device_id)
+                for row in Message.select().where(
+                    (Message.task == "task-rec")
+                    & (Message.role == "assistant")
+                    & (Message.channel == "execution")
+                )
+            ]
+
+        assert ("user-1", "alice", "device-1") in await manager.run_db(
+            project.id, read_messages,
+        )
+    finally:
+        await runtime.shutdown()
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+
+
+@pytest.mark.anyio
 async def test_slow_resume_path_check_does_not_block_event_loop(tmp_path, monkeypatch):
     import services.workflow_runtime as runtime_module
     from engines.core.registry import ENGINE_REGISTRY

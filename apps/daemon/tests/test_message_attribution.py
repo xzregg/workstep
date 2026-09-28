@@ -1,11 +1,12 @@
 """Assistant messages inherit the person whose action caused the model call."""
 
-from models import Message, Task, init_db
+from models import Message, Task, WorkflowRun, init_db
 from models.fields import utc_now
 from services.messages import create_task_message, current_actor_task_fields
 from services.remote_access import ActorSnapshot, actor_context
 from services.task import TaskService
 from streaming.bus import EventBus
+from datetime import timedelta
 
 
 def test_user_task_message_snapshots_current_actor_and_initiator(tmp_path):
@@ -122,5 +123,41 @@ def test_task_creator_username_is_preserved_for_automatic_reply(tmp_path):
         )
         assert reply.initiated_by_user_id == "user-3"
         assert reply.initiated_by_username == "bob"
+    finally:
+        db.close()
+
+
+def test_recovered_run_initiator_outweighs_previous_run_message(tmp_path):
+    db = init_db(str(tmp_path / "workstep.db"))
+    try:
+        now = utc_now()
+        task = Task.create(
+            id="task-recovered", title="续跑", cwd=str(tmp_path),
+            created_at=now, updated_at=now,
+        )
+        create_task_message(
+            task=task, channel="execution", step_key="build", role="user",
+            content="旧运行", author_id="old-user", author_username="old",
+            author_name="Old Display", position=0,
+            created_at=now - timedelta(minutes=1),
+        )
+        run = WorkflowRun.create(
+            id="run-recovered", task=task, workflow_schema_version=1,
+            status="running", started_at=now,
+            initiated_by_user_id="new-user", initiated_by_username="new",
+            initiated_by_name="New Display", initiated_by_device_id="device-new",
+            initiated_by_device_name="New Device",
+        )
+        task.active_workflow_run_id = run.id
+        task.save()
+        reply = create_task_message(
+            task=task, channel="execution", step_key="build",
+            role="assistant", content="续跑完成", position=1,
+            created_at=now + timedelta(seconds=1),
+        )
+        assert (reply.initiated_by_user_id, reply.initiated_by_username,
+                reply.author_device_id) == (
+                    "new-user", "new", "device-new",
+                )
     finally:
         db.close()

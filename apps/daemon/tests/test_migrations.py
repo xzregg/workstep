@@ -53,6 +53,10 @@ def test_init_db_creates_latest_schema_for_fresh_projects(tmp_path):
             column.name for column in db.get_columns("workflow_runs")
         }
         assert "routing_state_json" in workflow_runs
+        assert {
+            "initiated_by_user_id", "initiated_by_username", "initiated_by_name",
+            "initiated_by_device_id", "initiated_by_device_name",
+        }.issubset(workflow_runs)
         step_runs = {column.name for column in db.get_columns("step_runs")}
         assert "input_snapshot_json" in step_runs
         assert "io_contract_json" in step_runs
@@ -412,6 +416,7 @@ def test_migrate_database_adds_hot_query_indexes_to_existing_tables(tmp_path):
                    ' "project_id" TEXT, "sort_order" INTEGER)')
     db.execute_sql('CREATE TABLE "workflow_runs" ("id" TEXT PRIMARY KEY,'
                    ' "status" TEXT, "started_at" DATETIME)')
+    db.execute_sql('INSERT INTO "workflow_runs" ("id") VALUES ("legacy-run")')
     db.execute_sql('CREATE TABLE "schedules" ("id" TEXT PRIMARY KEY,'
                    ' "status" TEXT, "next_run_at" DATETIME)')
     db.execute_sql('CREATE TABLE "schedule_runs" ("id" TEXT PRIMARY KEY,'
@@ -419,6 +424,11 @@ def test_migrate_database_adds_hot_query_indexes_to_existing_tables(tmp_path):
 
     migrate_database(db)
     migrate_database(db)  # second pass must stay idempotent
+
+    assert db.execute_sql(
+        'SELECT initiated_by_username FROM "workflow_runs" WHERE id = ?',
+        ("legacy-run",),
+    ).fetchone()[0] is None
 
     for table, expected in _HOT_QUERY_INDEXES.items():
         names = {index.name for index in db.get_indexes(table)}

@@ -10,7 +10,9 @@ from models import Message, StepRun, Task, TaskStep, WorkflowRun
 from models.base import db_proxy
 from models.fields import utc_now
 from services.artifact_routing import empty_routing_state, normalize_routing_state
-from services.messages import create_task_message, new_message_id
+from services.messages import (
+    create_task_message, current_actor_message_fields, new_message_id,
+)
 from services.pipeline import DAGScheduler, Step
 from services.workflow_definition import WorkflowDefinition
 from services.workflow_recovery import heal_task_cwd
@@ -116,6 +118,7 @@ def prepare_start_in_project(
         sorted(execution_scope) if execution_scope is not None else None
     )
     now = utc_now()
+    actor_fields = current_actor_message_fields()
     workflow_run = WorkflowRun.create(
         id=str(uuid.uuid4()),
         task=task,
@@ -126,6 +129,20 @@ def prepare_start_in_project(
         restart_from_step_key=entry_step_key,
         owner_id=instance_id,
         heartbeat_at=now,
+        initiated_by_user_id=(
+            actor_fields.get("initiated_by_user_id") or task.creator_id
+        ),
+        initiated_by_username=(
+            actor_fields.get("initiated_by_username")
+            or task.creator_username or task.creator_name
+        ),
+        initiated_by_name=actor_fields.get("author_name") or task.creator_name,
+        initiated_by_device_id=(
+            actor_fields.get("author_device_id") or task.creator_device_id
+        ),
+        initiated_by_device_name=(
+            actor_fields.get("author_device_name") or task.creator_device_name
+        ),
         started_at=now,
     )
 
