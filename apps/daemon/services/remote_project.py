@@ -437,6 +437,13 @@ class RemoteProjectProxyMiddleware(BaseHTTPMiddleware):
             self._registry.get, project_id
         ) is None:
             return await call_next(request)
+        gateway_client = getattr(request.app.state, "gateway_client", None)
+        if (gateway_client is not None
+                and getattr(gateway_client, "managed_config", None) is not None):
+            return JSONResponse(
+                {"detail": "legacy remote projects are unavailable in managed mode"},
+                status_code=403,
+            )
 
         forwarded = RemoteHttpRequest(
             request_id=str(uuid.uuid4()),
