@@ -13,7 +13,8 @@ export function validPortalAccount(username: string, displayName: string, passwo
 }
 
 export function safeNextPath(value: string | null): string {
-  return value && value.startsWith('/') && !value.startsWith('//') && !/[\\\r\n]/.test(value) ? value : '/'
+  return value && value.startsWith('/') && !value.startsWith('//')
+    && !/[\\\r\n]/.test(value) && !/^\/auth(?:$|[?#])/.test(value) ? value : '/'
 }
 
 export function PortalAuthPage() {
@@ -29,6 +30,7 @@ export function PortalAuthPage() {
   const [registrationMode, setRegistrationMode] = useState<RegistrationMode>('closed')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [retry, setRetry] = useState(0)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -55,7 +57,7 @@ export function PortalAuthPage() {
     }
     void check()
     return () => controller.abort()
-  }, [navigate, next])
+  }, [navigate, next, retry])
 
   async function post(url: string, body: object) {
     const response = await fetch(url, { method: 'POST', credentials: 'same-origin',
@@ -114,6 +116,7 @@ export function PortalAuthPage() {
     <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY</span>
     <h2>{stage === 'setup' ? '初始化平台' : stage === 'register' ? '注册账号' : '登录工作台'}</h2>
     {stage === 'checking' && <p role="status">正在检查平台状态…</p>}
+    {stage === 'checking' && error && <button type="button" onClick={() => { setError(''); setRetry(value => value + 1) }}>重试</button>}
     {stage === 'login' && <>
       <p className="gateway-auth-description">登录后查看你的电脑和项目。</p>
       <GatewayLoginForm busy={busy} onSubmit={signIn} />

@@ -17,6 +17,8 @@ test('login return path stays on this Gateway', () => {
   assert.equal(safeNextPath('//evil.example'), '/')
   assert.equal(safeNextPath('https://evil.example'), '/')
   assert.equal(safeNextPath('/desktop/login?state=x'), '/desktop/login?state=x')
+  assert.equal(safeNextPath('/auth?next=%2Fauth'), '/')
+  assert.equal(safeNextPath('/auth'), '/')
 })
 
 test('portal auth page starts with a loading state', () => {
