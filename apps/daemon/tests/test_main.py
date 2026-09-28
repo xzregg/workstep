@@ -360,5 +360,10 @@ async def test_task_runner_events_carry_executor_project_into_agui_feed():
         })
         assert not q.empty()
         assert (await q.get())["project_id"] == "project-1"
+        await runner._publish("task-1", "do", {
+            "type": "status", "project_id": "project-2",
+            "data": {"status": "ready", "task_id": "task-1"},
+        })
+        assert (await q.get())["project_id"] == "project-1"
     finally:
         event_bus.unsubscribe(q)
