@@ -143,6 +143,11 @@ async def fetch_and_save_models(
     return models
 
 
+def _require_managed_model(provider: dict, model: str) -> None:
+    if provider.get("managed") and model not in provider.get("models", []):
+        raise ValueError("所选模型未获平台供应商授权")
+
+
 async def chat_completion(
     provider: dict,
     model: str,
@@ -162,6 +167,7 @@ async def chat_completion(
     (e.g. DeepSeek); providers that reject the field fall back to a plain call.
     """
     model = (model or "").strip()
+    _require_managed_model(provider, model)
     has_base_url = bool(
         provider.get("base_url") or provider.get("protocol_base_urls")
     )
@@ -242,6 +248,7 @@ async def text_completion(
 ) -> str:
     """Run a one-shot text request through any configured provider protocol."""
     model = (model or "").strip()
+    _require_managed_model(provider, model)
     has_base_url = bool(
         provider.get("base_url") or provider.get("protocol_base_urls")
     )

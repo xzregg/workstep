@@ -584,6 +584,31 @@ async def test_chat_completion_direct_call():
 
 
 @pytest.mark.anyio
+async def test_managed_provider_rejects_unassigned_model_before_network():
+    calls = []
+
+    async def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    provider = {
+        "type": "custom", "managed": True, "models": ["allowed-model"],
+        "protocols": ["openai_chat_completions"],
+        "protocol_base_urls": {"openai_chat_completions": "https://api.example.test/v1"},
+        "api_key": "managed-secret",
+    }
+    transport = httpx.MockTransport(handler)
+    with pytest.raises(ValueError, match="模型未获平台供应商授权"):
+        await provider_service.text_completion(provider, "other-model", [], transport=transport)
+    with pytest.raises(ValueError, match="模型未获平台供应商授权"):
+        await provider_service.chat_completion(provider, "other-model", [], transport=transport)
+    assert calls == []
+    assert await provider_service.text_completion(provider, "allowed-model", [],
+                                                  transport=transport) == "ok"
+    assert len(calls) == 1
+
+
+@pytest.mark.anyio
 async def test_text_completion_supports_anthropic_messages():
     captured = {}
 
