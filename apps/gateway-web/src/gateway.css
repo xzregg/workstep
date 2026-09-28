@@ -206,6 +206,12 @@ a {
 .gateway-admin-pagination span { margin-right: auto; }
 .gateway-admin-user-list li > div:first-child { flex: 1; }
 .gateway-admin-user-list p { margin: 4px 0; }
+.gateway-role-dialog { max-height: min(90vh, 760px); overflow-y: auto; }
+.gateway-role-dialog .gateway-admin-search { margin-bottom: 12px; }
+.gateway-role-dialog .gateway-admin-search input { flex: 1; min-width: 0; }
+.gateway-role-dialog .gateway-admin-search button { white-space: nowrap; }
+.gateway-role-dialog .gateway-role-checkbox { display: flex; align-items: center; gap: 8px; }
+.gateway-role-dialog .gateway-role-checkbox input { width: 16px; height: 16px; margin: 0; }
 .gateway-dialog-backdrop {
   position: fixed;
   inset: 0;

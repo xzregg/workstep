@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func, or_, select
 
 from .identity import COOKIE_NAME, SESSION_SECONDS, IdentityService, csrf_token, public_user
-from .models import AdminAssignment, User
+from .models import AdminAssignment, DirectoryDepartment, IdentitySource, User
 
 router = APIRouter(prefix="/api")
 USERNAME = re.compile(r"^[a-z][a-z0-9_-]{2,63}$")
@@ -307,7 +307,9 @@ async def admin_list_roles(request: Request, q: str = Query("", max_length=128),
               "role": AdminAssignment.role}[sort]
     ordered = column.asc() if direction == "asc" else column.desc()
     async with request.app.state.database.session() as session:
-        joined = select(AdminAssignment, User).join(User).where(*conditions)
+        joined = (select(AdminAssignment, User, DirectoryDepartment.display_name)
+                  .join(User).outerjoin(DirectoryDepartment,
+                                        DirectoryDepartment.id == AdminAssignment.scope_id).where(*conditions))
         total = await session.scalar(select(func.count()).select_from(AdminAssignment).join(User).where(*conditions))
         rows = (await session.execute(joined.order_by(ordered, AdminAssignment.id)
             .offset((page - 1) * page_size).limit(page_size))).all()
@@ -315,10 +317,10 @@ async def admin_list_roles(request: Request, q: str = Query("", max_length=128),
                   "username": user.username, "display_name": user.display_name,
                   "user_status": user.status, "registration_source": user.registration_source,
                   "role": assignment.role, "scope_type": assignment.scope_type,
-                  "scope_id": assignment.scope_id,
+                  "scope_id": assignment.scope_id, "scope_name": scope_name,
                   "include_subdepartments": bool(assignment.include_subdepartments),
                   "granted_by_user_id": assignment.granted_by_user_id,
-                  "created_at": assignment.created_at.isoformat()} for assignment, user in rows]
+                  "created_at": assignment.created_at.isoformat()} for assignment, user, scope_name in rows]
     return {"roles": roles, "total": total, "page": page, "page_size": page_size}
 
 
@@ -328,6 +330,34 @@ async def admin_revoke_role(request: Request, assignment_id: str):
     _, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
     await identity.require_step_up(auth_session)
     await identity.revoke_role(actor.id, assignment_id)
+
+
+@router.get("/admin/departments")
+async def admin_list_departments(request: Request, q: str = Query("", max_length=128),
+                                 sort: Literal["display_name", "external_id"] = "display_name",
+                                 direction: Literal["asc", "desc"] = "asc",
+                                 page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100)):
+    await _super_admin_read(request)
+    conditions = [DirectoryDepartment.active == 1]
+    if q.strip():
+        escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        conditions.append(or_(DirectoryDepartment.display_name.ilike(pattern, escape="\\"),
+                              DirectoryDepartment.external_id.ilike(pattern, escape="\\")))
+    column = {"display_name": DirectoryDepartment.display_name,
+              "external_id": DirectoryDepartment.external_id}[sort]
+    ordered = column.asc() if direction == "asc" else column.desc()
+    async with request.app.state.database.session() as session:
+        total = await session.scalar(select(func.count()).select_from(DirectoryDepartment).where(*conditions))
+        rows = (await session.execute(select(DirectoryDepartment, IdentitySource.provider)
+            .join(IdentitySource, IdentitySource.id == DirectoryDepartment.source_id)
+            .where(*conditions).order_by(ordered, DirectoryDepartment.id)
+            .offset((page - 1) * page_size).limit(page_size))).all()
+        departments = [{"id": department.id, "display_name": department.display_name,
+                        "external_id": department.external_id, "source_id": department.source_id,
+                        "provider": provider, "parent_external_id": department.parent_external_id}
+                       for department, provider in rows]
+    return {"departments": departments, "total": total, "page": page, "page_size": page_size}
 
 
 @router.put("/admin/registration-policy")
