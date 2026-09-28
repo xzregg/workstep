@@ -9,6 +9,8 @@ import httpx
 from fastapi import FastAPI
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from websockets.exceptions import ConnectionClosedError
+from websockets.frames import Close
 
 from api.managed import router as managed_router
 from services.desktop_security import DesktopSecurityMiddleware
@@ -178,3 +180,44 @@ async def test_slow_control_handshake_keeps_daemon_health_responsive(monkeypatch
     finally:
         release.set()
         await service.close()
+
+
+@pytest.mark.asyncio
+async def test_control_revocation_discards_cached_policy():
+    policy, gateway_key, fingerprint = _gateway_policy()
+    cache = ManagedPolicyCache()
+
+    class Socket:
+        def __init__(self):
+            self.stage = 0
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return None
+
+        async def send(self, _value):
+            return None
+
+        async def recv(self):
+            self.stage += 1
+            if self.stage == 1:
+                return json.dumps({"kind": "challenge", "nonce": "nonce-0123456789ABCDEFGHIJKLMNOP"})
+            if self.stage == 2:
+                return json.dumps({"kind": "hello", "version": 1, "device_id": "device-1",
+                                   "gateway_public_key_pem": gateway_key, "policy_snapshot": policy})
+            if self.stage == 3:
+                return json.dumps({"kind": "policy_applied_ack", "version": 1,
+                                   "device_id": "device-1", "revision": 0})
+            raise ConnectionClosedError(Close(4003, "revoked"), None)
+
+    client = GatewayControlClient("https://gateway.example", gateway_id="gateway-test",
+                                  public_key_fingerprint=fingerprint, user_id="user-1",
+                                  policy_cache=cache, connector=lambda *_args, **_kwargs: Socket())
+    private_pem, public_pem = _control_keys()
+    client.start("authorization", "device-1", private_pem, public_pem, "delegation")
+    await asyncio.wait_for(client._task, timeout=1)
+    assert client.authorization_required is True
+    assert cache.current is None
+    await client.stop()

@@ -19,6 +19,7 @@ from .signing import GatewaySigner
 from .desktop_authorization_api import router as desktop_authorization_router
 from .client_releases import router as client_releases_router
 from .control_connection import ControlConnections, router as control_router
+from .capabilities import router as capabilities_router
 
 
 def create_app(settings: GatewaySettings | None = None) -> FastAPI:
@@ -80,6 +81,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(desktop_authorization_router)
     app.include_router(client_releases_router)
     app.include_router(control_router)
+    app.include_router(capabilities_router)
 
     if settings.web_dist and settings.web_dist.is_dir():
         assets = settings.web_dist / "assets"

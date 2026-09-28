@@ -164,6 +164,7 @@ class Device(Base):
     app_instance_id: Mapped[str | None] = mapped_column(String(128))
     version: Mapped[str | None] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(16), server_default="pending")
+    policy_revision: Mapped[int] = mapped_column(Integer, server_default="0")
     created_at: Mapped[datetime] = timestamp()
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -222,6 +223,21 @@ class UserDevice(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"))
     access_level: Mapped[str] = mapped_column(String(16), server_default="edit")
+    created_at: Mapped[datetime] = timestamp()
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CapabilityAssignment(Base):
+    __tablename__ = "capability_assignments"
+    __table_args__ = (UniqueConstraint("user_id", "capability", "scope_type", "scope_id"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    capability: Mapped[str] = mapped_column(String(64))
+    scope_type: Mapped[str] = mapped_column(String(16))
+    scope_id: Mapped[str] = mapped_column(String(64), server_default="")
+    effect: Mapped[str] = mapped_column(String(16))
+    assigned_by_user_id: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = timestamp()
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

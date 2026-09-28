@@ -18,6 +18,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 
 from .models import Device, DeviceConnection, User, UserDevice
+from .capabilities import compiled_device_policy
 
 router = APIRouter()
 
@@ -168,14 +169,17 @@ async def control_socket(ws: WebSocket):
                 session.add(DeviceConnection(id=connection_id, device_id=device_id))
         await ws.app.state.control_connections.claim(device_id, connection_id, ws)
         signer = ws.app.state.gateway_signer
+        policy_revision, task_create = await compiled_device_policy(
+            ws.app.state.database, device_id, user_id,
+        )
         policy = signer.sign_policy_snapshot(
             gateway_id=ws.app.state.settings.gateway_id,
-            device_id=device_id, user_id=user_id,
+            device_id=device_id, user_id=user_id, revision=policy_revision,
+            task_create=task_create,
         )
         await ws.send_json({"kind": "hello", "version": 1, "device_id": device_id,
                             "gateway_public_key_pem": signer.public_key_pem,
                             "policy_snapshot": policy})
-        policy_revision = 0
         while True:
             try:
                 message = await asyncio.wait_for(ws.receive_json(), timeout=90)
@@ -204,9 +208,13 @@ async def control_socket(ws: WebSocket):
             if not await binding_active(ws, device_id, user_id):
                 await ws.close(code=4003, reason="Device access revoked")
                 return
+            policy_revision, task_create = await compiled_device_policy(
+                ws.app.state.database, device_id, user_id,
+            )
             policy = signer.sign_policy_snapshot(
                 gateway_id=ws.app.state.settings.gateway_id,
-                device_id=device_id, user_id=user_id,
+                device_id=device_id, user_id=user_id, revision=policy_revision,
+                task_create=task_create,
             )
             await ws.send_json({"kind": "heartbeat_ack", "version": 1,
                                 "device_id": device_id, "policy_snapshot": policy})

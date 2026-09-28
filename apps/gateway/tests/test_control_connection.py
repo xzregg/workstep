@@ -165,3 +165,44 @@ def test_disabled_account_stops_policy_renewal(tmp_path):
                 assert False, "Disabled account must not renew policy"
             except WebSocketDisconnect as exc:
                 assert exc.code == 4003
+
+
+def test_capability_assignment_changes_signed_policy_revision(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        device_id, token, device_key, csrf = _active_device(client)
+        user_id = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))["user_id"]
+        with client.websocket_connect("/api/control/ws") as ws:
+            _handshake(ws, token, device_key)
+            initial = ws.receive_json()
+            initial_policy = json.loads(base64.urlsafe_b64decode(initial["policy_snapshot"].split(".")[1] + "=="))
+            assert initial_policy["task_create"] is False
+            grant = client.post(f"/api/admin/capabilities/{user_id}", headers={"X-CSRF-Token": csrf}, json={
+                "capability": "task.create", "scope_type": "global", "effect": "allow",
+            })
+            assert grant.status_code == 200, grant.text
+            ws.send_json({"kind": "heartbeat"})
+            allowed = ws.receive_json()
+            allowed_policy = json.loads(base64.urlsafe_b64decode(allowed["policy_snapshot"].split(".")[1] + "=="))
+            assert allowed_policy["task_create"] is True
+            assert allowed_policy["policy_revision"] > initial_policy["policy_revision"]
+            deny = client.post(f"/api/admin/capabilities/{user_id}", headers={"X-CSRF-Token": csrf}, json={
+                "capability": "task.create", "scope_type": "device", "scope_id": device_id,
+                "effect": "deny",
+            })
+            assert deny.status_code == 200, deny.text
+            ws.send_json({"kind": "heartbeat"})
+            denied = ws.receive_json()
+            denied_policy = json.loads(base64.urlsafe_b64decode(denied["policy_snapshot"].split(".")[1] + "=="))
+            assert denied_policy["task_create"] is False
+            assert denied_policy["policy_revision"] > allowed_policy["policy_revision"]
+            revoked = client.post(f"/api/admin/capabilities/{user_id}/revoke",
+                                  headers={"X-CSRF-Token": csrf}, json={
+                "capability": "task.create", "scope_type": "device", "scope_id": device_id,
+            })
+            assert revoked.status_code == 204
+            ws.send_json({"kind": "heartbeat"})
+            restored = ws.receive_json()
+            restored_policy = json.loads(base64.urlsafe_b64decode(restored["policy_snapshot"].split(".")[1] + "=="))
+            assert restored_policy["task_create"] is True
+            assert restored_policy["policy_revision"] > denied_policy["policy_revision"]
