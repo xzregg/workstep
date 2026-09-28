@@ -1,22 +1,18 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { GatewayLoginForm } from './GatewayLoginForm'
 import { openRemoteAccess } from './openRemoteAccess'
 
 type Device = { id: string; name: string; status: string; online: boolean; version: string }
 
 export function DeviceListPage() {
+  const navigate = useNavigate()
   const [status, setStatus] = useState<'checking' | 'login' | 'ready'>('checking')
   const [devices, setDevices] = useState<Device[]>([])
+  const [loadingDevices, setLoadingDevices] = useState(true)
   const [busy, setBusy] = useState(false)
   const [openingDevice, setOpeningDevice] = useState<string | null>(null)
   const [error, setError] = useState('')
-
-  async function loadDevices() {
-    const response = await fetch('/api/devices', { credentials: 'same-origin' })
-    if (!response.ok) throw new Error('电脑列表加载失败。')
-    setDevices((await response.json()).devices ?? [])
-  }
 
   useEffect(() => {
     const controller = new AbortController()
@@ -28,8 +24,21 @@ export function DeviceListPage() {
 
   useEffect(() => {
     if (status !== 'ready') return
-    void loadDevices().catch((reason) => setError(reason.message))
-  }, [status])
+    const controller = new AbortController()
+    void fetch('/api/devices', { credentials: 'same-origin', signal: controller.signal })
+      .then(async response => {
+        if (response.status === 401) { navigate('/auth?next=%2Fdevices', { replace: true }); return }
+        if (!response.ok) throw new Error('电脑列表加载失败。')
+        const result = await response.json()
+        if (controller.signal.aborted) return
+        const assigned: Device[] = result.devices ?? []
+        setDevices(assigned)
+        if (assigned.length === 0) navigate('/devices/empty', { replace: true })
+      })
+      .catch(reason => { if (reason?.name !== 'AbortError') setError(reason.message) })
+      .finally(() => { if (!controller.signal.aborted) setLoadingDevices(false) })
+    return () => controller.abort()
+  }, [status, navigate])
 
   async function signIn(username: string, password: string) {
     setBusy(true); setError('')
@@ -51,6 +60,7 @@ export function DeviceListPage() {
       const response = await fetch(`/api/devices/${encodeURIComponent(deviceId)}/access`, {
         credentials: 'same-origin',
       })
+      if (response.status === 401) { navigate('/auth?next=%2Fdevices'); return }
       if (!response.ok) throw new Error(response.status === 409 ? '电脑当前离线。' : '无法打开这台电脑。')
       const access: { url: string; ticket: string } = await response.json()
       openRemoteAccess(access)
@@ -70,10 +80,7 @@ export function DeviceListPage() {
       <p><Link to="/auth?next=%2Fdevices">注册账号或使用企业身份登录</Link></p>
     </div>}
     {status === 'ready' && <>
-      {devices.length === 0 && <div className="gateway-empty-devices">
-        <p>你还没有获分配的电脑。</p>
-        <Link to="/devices/empty">下载受管安装包</Link>
-      </div>}
+      {loadingDevices && <p role="status">正在加载我的电脑…</p>}
       <ul className="gateway-device-list">{devices.map((device) => <li key={device.id}>
         <div><strong>{device.name}</strong><p>{device.id} · {device.version}</p></div>
         <span className={device.online ? 'gateway-online' : 'gateway-offline'}>
