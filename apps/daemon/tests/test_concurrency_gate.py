@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from models import Task, TaskStep, init_db
+from models import ProjectAuditEvent, Task, TaskStep, init_db
 from streaming.bus import EventBus
 
 
@@ -249,7 +249,11 @@ async def test_runtime_queues_task_when_channel_full(tmp_path):
         created_at=1, updated_at=1,
     )
     try:
-        handle_a = await runtime.start(project.id, "task-a")
+        with actor_context(ActorSnapshot(
+            actor_id="user-a", user_name="Alice Display", username="alice",
+            device_id="device-a", device_name="Laptop", source="managed",
+        )):
+            handle_a = await runtime.start(project.id, "task-a")
         assert Task.get_by_id("task-a").status == "running"
         # Second task must queue while the channel is full. start() blocks
         # until the slot is granted, so drive it in a task and observe the
@@ -268,6 +272,13 @@ async def test_runtime_queues_task_when_channel_full(tmp_path):
                 queued["actor"]["author_username"]) == (
                     "manual", "排队输入", "bob",
                 )
+        audit = ProjectAuditEvent.get(
+            (ProjectAuditEvent.task_id == "task-b")
+            & (ProjectAuditEvent.action == "task.queue")
+        )
+        assert (audit.actor_username, audit.initiated_by_username) == (
+            "bob", "bob",
+        )
         assert concurrency_gate.task_queue_position(project.id, "task-b") == 1
         handle_b = await handle_b_task
         # Task A finishes -> B is woken and runs to completion.
@@ -285,6 +296,7 @@ async def test_runtime_queues_task_when_channel_full(tmp_path):
 @pytest.mark.anyio
 async def test_cancel_queued_task_returns_to_ready(tmp_path):
     from services.concurrency import concurrency_gate
+    from services.remote_access import ActorSnapshot, actor_context
 
     runtime, project, db, original, _bus = _make_runtime(tmp_path, {})
     concurrency_gate.configure(max_tasks=1, max_chats=1, schedule_exempt=False)
@@ -297,8 +309,12 @@ async def test_cancel_queued_task_returns_to_ready(tmp_path):
         created_at=1, updated_at=1,
     )
     try:
-        handle_a = await runtime.start(project.id, "task-a")
-        handle_b_task = asyncio.create_task(runtime.start(project.id, "task-b"))
+        with actor_context(ActorSnapshot(
+            actor_id="user-a", user_name="Alice Display", username="alice",
+            device_id="device-a", device_name="Laptop", source="managed",
+        )):
+            handle_a = await runtime.start(project.id, "task-a")
+            handle_b_task = asyncio.create_task(runtime.start(project.id, "task-b"))
         await asyncio.sleep(0.1)
         assert Task.get_by_id("task-b").status == "queued"
         assert Task.get_by_id("task-b").queued_run_json
