@@ -107,7 +107,7 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
                 await authorization_check()
                 assert user_id == worker_id
                 assert project_id == "host-1"
-                if request.method == "POST":
+                if request.method not in ("GET", "HEAD"):
                     assert access_level == "edit"
                     assert task_create is (request.url.path == "/api/task/create")
                 else:
@@ -141,6 +141,8 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         assert client.get(f"{host}/api/fs/preview?project_id=host-1&path=README.md&absolute=true").status_code == 403
         assert client.post(f"{host}/api/fs/upload/image?project_id=host-1",
                            headers={"Origin": host}, json={"data_url": "data:image/png;base64,aA=="}).status_code == 403
+        assert client.put(f"{host}/api/fs/content?project_id=host-1",
+                          headers={"Origin": host}, json={"project_id": "host-1"}).status_code == 403
         remote_cookie = client.cookies.get("workstep_gateway_session", domain="d-device-1.gateway.test")
         client.cookies.clear()
         owner_login = client.post("/api/auth/login", json={
@@ -177,6 +179,8 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         assert client.post(f"{host}/api/fs/upload/image?project_id=host-1",
                            headers=edit_headers,
                            json={"data_url": "data:image/png;base64,aA=="}).status_code == 200
+        assert client.put(f"{host}/api/fs/content?project_id=host-1",
+                          headers=edit_headers, json={"project_id": "host-1"}).status_code == 200
         client.cookies.clear()
         owner_login = client.post("/api/auth/login", json={
             "username": "owner", "password": "OwnerPassphrase-2026!",

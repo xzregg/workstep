@@ -28,12 +28,18 @@ def project_http_route_allowed(method: str, path: str,
                                task_create: bool = False) -> bool:
     if not project_id or access_level not in ("read", "edit"):
         return False
-    if method == "POST":
+    if method in ("POST", "PUT", "PATCH", "DELETE"):
         if access_level != "edit" or query_pairs != [("project_id", project_id)]:
             return False
+        if method == "PUT":
+            return path == "/api/fs/content"
+        if method == "PATCH":
+            return path == "/api/fs/entry"
+        if method == "DELETE":
+            return path == "/api/fs/entry"
         if path == "/api/task/create":
             return task_create
-        if path in ("/api/fs/upload/file", "/api/fs/upload/image"):
+        if path in ("/api/fs/upload/file", "/api/fs/upload/image", "/api/fs/entry"):
             return True
         return path in ("/api/task/run", "/api/task/pause", "/api/task/cancel")
     if method != "GET":

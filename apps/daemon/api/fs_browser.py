@@ -10,8 +10,15 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from api.fs_paths import _assert_project_path, _project
+from services.remote_access import get_current_actor
 
 router = APIRouter()
+
+
+def _require_scoped_project(project_id: str) -> None:
+    actor = get_current_actor()
+    if actor is not None and actor.project_id is not None and actor.project_id != project_id:
+        raise HTTPException(status_code=403, detail="Project scope mismatch")
 
 class MkdirRequest(BaseModel):
     parent: str
@@ -229,6 +236,7 @@ async def mkdir_directory(req: MkdirRequest):
 @router.post("/entry")
 async def create_browser_entry(req: BrowserEntryCreateRequest):
     """Create a file or directory inside the open browser root."""
+    _require_scoped_project(req.project_id)
     def create() -> dict:
         name = _browser_entry_name(req.name)
         parent, _ = _browser_edit_target(req.parent, req.project_id, req.root)
@@ -252,6 +260,7 @@ async def create_browser_entry(req: BrowserEntryCreateRequest):
 @router.patch("/entry")
 async def rename_browser_entry(req: BrowserEntryRenameRequest):
     """Rename a file or directory without moving it outside the open root."""
+    _require_scoped_project(req.project_id)
     def rename() -> dict:
         name = _browser_entry_name(req.name)
         target, root = _browser_edit_target(req.path, req.project_id, req.root)
@@ -274,6 +283,7 @@ async def rename_browser_entry(req: BrowserEntryRenameRequest):
 @router.delete("/entry")
 async def delete_browser_entry(req: BrowserEntryDeleteRequest):
     """Delete an entry inside the open browser root."""
+    _require_scoped_project(req.project_id)
     def delete() -> dict:
         target, root = _browser_edit_target(req.path, req.project_id, req.root)
         if target == root:
@@ -295,6 +305,7 @@ async def delete_browser_entry(req: BrowserEntryDeleteRequest):
 @router.put("/content")
 async def write_browser_content(req: BrowserContentWriteRequest):
     """Save UTF-8 text only when it still matches the version opened in the editor."""
+    _require_scoped_project(req.project_id)
     def save() -> dict:
         target, root = _browser_edit_target(req.path, req.project_id, req.root)
         if target == root or not target.is_file():
