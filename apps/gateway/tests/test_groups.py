@@ -44,6 +44,14 @@ def test_group_leader_can_manage_only_own_skill_projects(tmp_path):
                                                 access_mode="policy_only"))
 
         client.portal.call(seed_projects)
+        linkable = client.get("/api/groups/linkable-projects", params={
+            "q": "Project", "page_size": 10,
+        })
+        assert linkable.status_code == 200
+        assert linkable.json()["projects"] == [{
+            "id": "project-1", "name": "Project", "device_id": "device-1",
+            "device_name": "PC", "access_mode": "policy_only",
+        }]
         group = client.post("/api/groups", json={"name": "Backend", "slug": "backend"},
                             headers={"X-CSRF-Token": owner_csrf})
         assert group.status_code == 201, group.text
@@ -90,6 +98,7 @@ def test_group_leader_can_manage_only_own_skill_projects(tmp_path):
         assert client.post(f"/api/groups/{group_id}/projects", json={
             "project_id": "project-2",
         }, headers={"X-CSRF-Token": leader_csrf}).status_code == 403
+        assert client.get("/api/groups/linkable-projects").status_code == 403
         assert client.post("/api/groups", json={"name": "Other", "slug": "other"},
                            headers={"X-CSRF-Token": leader_csrf}).status_code == 403
         client.cookies.clear()

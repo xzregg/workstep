@@ -330,6 +330,17 @@ def test_same_skill_from_two_groups_survives_one_source_revocation(tmp_path):
             "skill_version_id": other_version,
         }, headers=headers).status_code == 409
         assert len(manifest_skills()) == 1
+        assert client.delete(f"/api/groups/{groups[0]}/projects/project-1",
+                             headers=headers).status_code == 204
+        assert len(manifest_skills()) == 1
+        assert manifest_skills()[0]["source_group_id"] == groups[1]
+        assert client.post(f"/api/groups/{groups[0]}/projects", json={
+            "project_id": "project-1",
+        }, headers=headers).status_code == 200
+        assert manifest_skills()[0]["source_group_id"] == groups[1]
+        assert client.post(f"/api/groups/{groups[0]}/projects/project-1/skills",
+                           json={"skill_version_id": version_id},
+                           headers=headers).status_code == 200
         assert client.delete(
             f"/api/groups/{groups[0]}/projects/project-1/skills/{skill_id}",
             headers=headers,
