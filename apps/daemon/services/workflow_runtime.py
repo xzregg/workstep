@@ -194,6 +194,7 @@ class WorkflowRuntime:
         *,
         queue_source: str = "manual",
         queued_input: str = "",
+        audit_action: str | None = None,
     ) -> None:
         """Persist a task status change and broadcast it as a status event."""
         from engines.core.agui import AGUIContext, to_agui_events
@@ -237,6 +238,17 @@ class WorkflowRuntime:
                     ),
                     metadata={"source": queue_source},
                 )
+            elif audit_action is not None:
+                from services.project_audit import record_project_audit
+                from services.remote_access import get_effective_actor
+
+                actor = get_effective_actor()
+                record_project_audit(
+                    project_id=project_id, task_id=task_id,
+                    action=audit_action, result="succeeded",
+                    mode="managed" if actor is not None and actor.source == "managed" else "local",
+                    metadata={"status": status},
+                )
 
         def persist_atomically(_project):
             with db_proxy.atomic("IMMEDIATE"):
@@ -261,14 +273,18 @@ class WorkflowRuntime:
         for agui_event in to_agui_events(payload, ctx):
             await self._event_bus.publish(agui_event)
 
-    async def cancel_queued(self, project_id: str, task_id: str) -> bool:
+    async def cancel_queued(
+        self, project_id: str, task_id: str, *, action: str = "task.cancel",
+    ) -> bool:
         """Cancel a queued (waiting for a slot) task and return it to ready."""
         from services.concurrency import concurrency_gate
 
         if concurrency_gate.task_queue_position(project_id, task_id) == 0:
             return False
         concurrency_gate.cancel_queued_task(project_id, task_id)
-        await self._mark_task_status(project_id, task_id, "ready")
+        await self._mark_task_status(
+            project_id, task_id, "ready", audit_action=action,
+        )
         return True
 
     async def _run_db(self, project_id: str, operation):
@@ -1410,7 +1426,7 @@ class WorkflowRuntime:
                 )
             )
             if project is not None:
-                if await self.cancel_queued(project.id, task_id):
+                if await self.cancel_queued(project.id, task_id, action=action):
                     return True
 
                 active_step_keys = await self._run_db(

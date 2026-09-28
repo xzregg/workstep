@@ -4,8 +4,11 @@ from contextlib import nullcontext
 from types import SimpleNamespace
 import asyncio
 import json
+import threading
+import time
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 
 from models import ProjectAuditEvent, Task, TaskStep, init_db
 from streaming.bus import EventBus
@@ -294,9 +297,10 @@ async def test_runtime_queues_task_when_channel_full(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_cancel_queued_task_returns_to_ready(tmp_path):
+async def test_cancel_queued_task_returns_to_ready(tmp_path, monkeypatch):
     from services.concurrency import concurrency_gate
     from services.remote_access import ActorSnapshot, actor_context
+    from models import ProjectAuditEvent
 
     runtime, project, db, original, _bus = _make_runtime(tmp_path, {})
     concurrency_gate.configure(max_tasks=1, max_chats=1, schedule_exempt=False)
@@ -318,10 +322,40 @@ async def test_cancel_queued_task_returns_to_ready(tmp_path):
         await asyncio.sleep(0.1)
         assert Task.get_by_id("task-b").status == "queued"
         assert Task.get_by_id("task-b").queued_run_json
-        assert await runtime.cancel("task-b") is True
+        write_started = threading.Event()
+        original_execute_sql = db.execute_sql
+
+        def slow_cancel_write(sql, *args, **kwargs):
+            if "UPDATE" in sql and "tasks" in sql and not write_started.is_set():
+                write_started.set()
+                time.sleep(0.35)
+            return original_execute_sql(sql, *args, **kwargs)
+
+        monkeypatch.setattr(db, "execute_sql", slow_cancel_write)
+        with actor_context(ActorSnapshot(
+            actor_id="user-b", user_name="Bob Display", username="bob",
+            device_id="device-b", device_name="Desktop", source="managed",
+        )):
+            cancellation = asyncio.create_task(runtime.cancel("task-b"))
+        assert await asyncio.to_thread(write_started.wait, 1)
+        import main
+
+        async with AsyncClient(
+            transport=ASGITransport(app=main.app), base_url="http://test",
+        ) as client:
+            health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+        assert health.status_code == 200
+        assert await cancellation is True
         await asyncio.sleep(0.1)
         assert Task.get_by_id("task-b").status == "ready"
         assert Task.get_by_id("task-b").queued_run_json is None
+        cancelled = ProjectAuditEvent.get(
+            (ProjectAuditEvent.task_id == "task-b")
+            & (ProjectAuditEvent.action == "task.cancel")
+        )
+        assert cancelled.actor_username == "bob"
+        assert cancelled.mode == "managed"
+        assert cancelled.metadata_json == '{"status": "ready"}'
         with pytest.raises(asyncio.CancelledError):
             await handle_b_task
         await runtime.wait(handle_a)
