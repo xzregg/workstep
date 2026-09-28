@@ -570,7 +570,7 @@ async def get_task_artifacts(
 @router.post("/run")
 async def run_task(req: RunTaskRequest, pid: str = Query(..., alias="project_id")):
     """Run a task (fire-and-forget, events come via WebSocket)."""
-    from main import workflow_runtime, task_service, event_bus
+    from main import workflow_runtime, task_service, event_bus, project_manager
     from services.remote_access import UserIdentityRequired
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Service not initialized")
@@ -594,6 +594,17 @@ async def run_task(req: RunTaskRequest, pid: str = Query(..., alias="project_id"
                 "task_id": req.task_id,
             })
     except UserIdentityRequired as exc:
+        if project_manager.get_project_by_id(pid) is not None:
+            from services.project_audit import record_project_audit
+
+            await project_manager.run_db(
+                pid,
+                lambda _project: record_project_audit(
+                    project_id=pid, task_id=req.task_id,
+                    action="task.start", result="denied",
+                    actor_type="system", metadata={"reason_code": "identity_required"},
+                ),
+            )
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except WorkflowValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
