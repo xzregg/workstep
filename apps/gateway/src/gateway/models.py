@@ -211,6 +211,7 @@ class DeviceConnection(Base):
     connected_at: Mapped[datetime] = timestamp()
     disconnected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     close_reason: Mapped[str | None] = mapped_column(String(64))
+    applied_policy_revision: Mapped[int | None] = mapped_column(Integer)
 
 
 class UserDevice(Base):

@@ -39,5 +39,9 @@ async def control_status(request: Request):
     if service.managed_config is None:
         raise HTTPException(status_code=404, detail="Managed Gateway unavailable")
     client = service.control_client
+    policy = service.policy_cache.current
     return {"online": bool(client and client.online),
-            "authorization_required": bool(client and client.authorization_required)}
+            "authorization_required": bool(client and client.authorization_required),
+            "policy_revision": policy.revision if policy else None,
+            "policy_expires_at": policy.expires_at if policy else None,
+            "controlled_actions_available": bool(policy and policy.valid)}

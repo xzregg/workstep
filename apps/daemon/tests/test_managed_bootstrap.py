@@ -21,8 +21,9 @@ def test_bootstrap_uses_desktop_secret_once_then_local_session(monkeypatch):
     starts = []
 
     class FakeControl:
-        def __init__(self, origin):
+        def __init__(self, origin, **kwargs):
             assert origin == "https://gateway.test"
+            assert kwargs["user_id"] == "user-1"
             self.online = False
             self.authorization_required = False
 
@@ -33,7 +34,9 @@ def test_bootstrap_uses_desktop_secret_once_then_local_session(monkeypatch):
             pass
 
     service = GatewayClientService(control_client_factory=FakeControl)
-    service.managed_config = SimpleNamespace(gateway_origin="https://gateway.test")
+    service.managed_config = SimpleNamespace(gateway_origin="https://gateway.test",
+                                             gateway_id="gateway-test",
+                                             gateway_public_key_fingerprint="0" * 64)
 
     class Verifier:
         async def verify(self, authorization, proof):
@@ -70,7 +73,9 @@ def test_bootstrap_uses_desktop_secret_once_then_local_session(monkeypatch):
         assert client.get("/api/managed/control-status", headers={
             "X-WorkStep-Desktop-Token": "desktop-secret",
             "X-WorkStep-Local-Session": session_token,
-        }).json() == {"online": False, "authorization_required": False}
+        }).json() == {"online": False, "authorization_required": False,
+                     "policy_revision": None, "policy_expires_at": None,
+                     "controlled_actions_available": False}
 
 
 @pytest.mark.asyncio

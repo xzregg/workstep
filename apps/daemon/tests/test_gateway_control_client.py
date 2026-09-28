@@ -1,6 +1,8 @@
 import asyncio
 import json
 import base64
+import hashlib
+import time
 
 import pytest
 import httpx
@@ -12,6 +14,7 @@ from api.managed import router as managed_router
 from services.desktop_security import DesktopSecurityMiddleware
 from services.gateway_client import GatewayClientService
 from services.gateway_client.identity import ManagedActor
+from services.gateway_client.policy import ManagedPolicyCache
 from types import SimpleNamespace
 
 
@@ -25,6 +28,27 @@ def _control_keys():
                                               serialization.PublicFormat.SubjectPublicKeyInfo).decode(),
     )
 
+
+def _gateway_policy():
+    key = Ed25519PrivateKey.generate()
+    public = key.public_key()
+    pem = public.public_bytes(serialization.Encoding.PEM,
+                              serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+    fingerprint = hashlib.sha256(public.public_bytes(
+        serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo,
+    )).hexdigest()
+    now = int(time.time())
+    claims = {"iss": "gateway-test", "kind": "policy.snapshot", "gateway_id": "gateway-test",
+              "device_id": "device-1", "user_id": "user-1", "policy_revision": 0,
+              "iat": now, "exp": now + 600, "allowed_provider_ids": [], "allowed_models": [],
+              "allow_local_providers": False, "task_create": False,
+              "project_publish": False, "task_share": False, "engine_install": False}
+    header = base64.urlsafe_b64encode(b'{"alg":"EdDSA","typ":"JWT"}').rstrip(b"=").decode()
+    payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).rstrip(b"=").decode()
+    data = f"{header}.{payload}"
+    signature = base64.urlsafe_b64encode(key.sign(data.encode())).rstrip(b"=").decode()
+    return f"{data}.{signature}", pem, fingerprint
+
 from services.gateway_client.control import GatewayControlClient, control_url
 
 
@@ -36,6 +60,7 @@ def test_control_url_is_fixed_to_managed_gateway():
 async def test_control_client_handshake_heartbeat_and_shutdown():
     sent = []
     heartbeat = asyncio.Event()
+    policy, gateway_key, gateway_fingerprint = _gateway_policy()
 
     class Socket:
         def __init__(self):
@@ -51,11 +76,18 @@ async def test_control_client_handshake_heartbeat_and_shutdown():
                 public_key.verify(base64.urlsafe_b64decode(message["control_challenge_proof"] + "=="),
                                   b"workstep-control-challenge-v1:fresh-nonce-0123456789ABCDEFGHIJKLMN:authorization")
                 self.messages.put_nowait(json.dumps({"kind": "hello", "version": 1,
-                                                     "device_id": "device-1"}))
+                                                     "device_id": "device-1",
+                                                     "gateway_public_key_pem": gateway_key,
+                                                     "policy_snapshot": policy}))
+            if message.get("kind") == "policy_applied":
+                self.messages.put_nowait(json.dumps({"kind": "policy_applied_ack", "version": 1,
+                                                     "device_id": "device-1",
+                                                     "revision": message["revision"]}))
             if message.get("kind") == "heartbeat":
                 heartbeat.set()
                 self.messages.put_nowait(json.dumps({"kind": "heartbeat_ack", "version": 1,
-                                                    "device_id": "device-1"}))
+                                                    "device_id": "device-1",
+                                                    "policy_snapshot": policy}))
 
         async def recv(self):
             return await self.messages.get()
@@ -72,12 +104,16 @@ async def test_control_client_handshake_heartbeat_and_shutdown():
         urls.append((url, kwargs))
         return Socket()
 
-    client = GatewayControlClient("https://gateway.example", connector=connect,
+    cache = ManagedPolicyCache()
+    client = GatewayControlClient("https://gateway.example", gateway_id="gateway-test",
+                                  public_key_fingerprint=gateway_fingerprint,
+                                  user_id="user-1", policy_cache=cache, connector=connect,
                                   heartbeat_seconds=0.01)
     private_pem, public_pem = _control_keys()
     client.start("authorization", "device-1", private_pem, public_pem, "delegation")
     await asyncio.wait_for(heartbeat.wait(), timeout=1)
     assert client.online is True
+    assert cache.current and cache.current.device_id == "device-1"
     assert sent[0]["authorization"] == "authorization"
     assert sent[0]["control_delegation_signature"] == "delegation"
     assert urls[0][0] == "wss://gateway.example/api/control/ws"
@@ -101,11 +137,14 @@ async def test_slow_control_handshake_keeps_daemon_health_responsive(monkeypatch
         async def __aexit__(self, *_):
             return None
 
-    def factory(origin):
-        return GatewayControlClient(origin, connector=lambda *_args, **_kwargs: SlowConnection())
+    def factory(origin, **kwargs):
+        return GatewayControlClient(origin, connector=lambda *_args, **_kwargs: SlowConnection(),
+                                    **kwargs)
 
     service = GatewayClientService(control_client_factory=factory)
-    service.managed_config = SimpleNamespace(gateway_origin="https://gateway.test")
+    service.managed_config = SimpleNamespace(gateway_origin="https://gateway.test",
+                                             gateway_id="gateway-test",
+                                             gateway_public_key_fingerprint="0" * 64)
 
     class Verifier:
         async def verify(self, *_):

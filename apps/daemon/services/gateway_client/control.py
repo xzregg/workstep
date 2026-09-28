@@ -11,6 +11,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
 
+from .policy import ManagedPolicyCache, verify_policy_snapshot
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,9 +24,15 @@ def control_url(origin: str) -> str:
 
 
 class GatewayControlClient:
-    def __init__(self, origin: str, *, connector=connect, heartbeat_seconds: float = 20):
+    def __init__(self, origin: str, *, gateway_id: str, public_key_fingerprint: str,
+                 user_id: str, policy_cache: ManagedPolicyCache,
+                 connector=connect, heartbeat_seconds: float = 20):
         self.url = control_url(origin)
         self.origin = origin
+        self.gateway_id = gateway_id
+        self.public_key_fingerprint = public_key_fingerprint
+        self.user_id = user_id
+        self.policy_cache = policy_cache
         self.connector = connector
         self.heartbeat_seconds = heartbeat_seconds
         self.online = False
@@ -88,17 +96,32 @@ class GatewayControlClient:
                     }))
                     raw = await asyncio.wait_for(socket.recv(), timeout=10)
                     hello = json.loads(raw)
-                    if hello != {"kind": "hello", "version": 1, "device_id": device_id}:
+                    if (not isinstance(hello, dict) or hello.get("kind") != "hello"
+                            or hello.get("version") != 1 or hello.get("device_id") != device_id):
                         raise ValueError("Invalid Gateway control handshake")
+                    gateway_key = hello.get("gateway_public_key_pem")
+                    if not isinstance(gateway_key, str) or not isinstance(hello.get("policy_snapshot"), str):
+                        raise ValueError("Missing Gateway policy snapshot")
+                    self.policy_cache.apply(verify_policy_snapshot(
+                        hello["policy_snapshot"], gateway_key, self.public_key_fingerprint,
+                        self.gateway_id, device_id, self.user_id,
+                    ))
+                    await self._ack_policy(socket, device_id)
                     self.online = True
                     delay = 1.0
                     while not self._stop.is_set():
                         await socket.send(json.dumps({"kind": "heartbeat"}))
                         raw = await asyncio.wait_for(socket.recv(), timeout=10)
                         ack = json.loads(raw)
-                        if ack != {"kind": "heartbeat_ack", "version": 1,
-                                   "device_id": device_id}:
+                        if (not isinstance(ack, dict) or ack.get("kind") != "heartbeat_ack"
+                                or ack.get("version") != 1 or ack.get("device_id") != device_id
+                                or not isinstance(ack.get("policy_snapshot"), str)):
                             raise ValueError("Invalid Gateway heartbeat acknowledgment")
+                        self.policy_cache.apply(verify_policy_snapshot(
+                            ack["policy_snapshot"], gateway_key, self.public_key_fingerprint,
+                            self.gateway_id, device_id, self.user_id,
+                        ))
+                        await self._ack_policy(socket, device_id)
                         try:
                             await asyncio.wait_for(self._stop.wait(), timeout=self.heartbeat_seconds)
                         except asyncio.TimeoutError:
@@ -118,3 +141,13 @@ class GatewayControlClient:
                 await asyncio.wait_for(self._stop.wait(), timeout=delay)
             except asyncio.TimeoutError:
                 delay = min(delay * 2, 60)
+
+    async def _ack_policy(self, socket, device_id: str) -> None:
+        revision = self.policy_cache.current.revision
+        await socket.send(json.dumps({"kind": "policy_applied", "revision": revision}))
+        raw = await asyncio.wait_for(socket.recv(), timeout=10)
+        ack = json.loads(raw)
+        if (not isinstance(ack, dict) or ack.get("kind") != "policy_applied_ack"
+                or ack.get("version") != 1 or ack.get("device_id") != device_id
+                or ack.get("revision") != revision):
+            raise ValueError("Invalid policy application acknowledgment")
