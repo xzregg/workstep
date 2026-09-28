@@ -27,6 +27,7 @@ async def test_data_connection_multiplexes_large_http_body_and_streamed_response
             if phase == "start":
                 stream["headers"] = frame.payload["headers"]
                 stream["user_id"] = frame.payload["user_id"]
+                stream["display_name"] = frame.payload.get("display_name")
                 stream["project_id"] = frame.payload.get("project_id")
                 stream["access_level"] = frame.payload.get("access_level")
                 stream["task_create"] = frame.payload.get("task_create")
@@ -59,6 +60,7 @@ async def test_data_connection_multiplexes_large_http_body_and_streamed_response
     @app.post("/echo")
     async def echo(request: Request):
         return await connection.proxy_http(request, user_id="user-1", username="alice",
+                                           display_name="Alice Display",
                                            project_id="host-1", access_level="edit",
                                            task_create=True)
 
@@ -74,6 +76,7 @@ async def test_data_connection_multiplexes_large_http_body_and_streamed_response
     assert len(received) == 1
     stream = next(iter(received.values()))
     assert stream["user_id"] == "user-1"
+    assert stream["display_name"] == "Alice Display"
     assert stream["project_id"] == "host-1"
     assert stream["access_level"] == "edit"
     assert stream["task_create"] is True
@@ -114,6 +117,7 @@ async def test_data_connection_forwards_bidirectional_websocket_frames():
             frame = ProxyFrame.model_validate(message)
             if frame.type == FrameType.websocket_open:
                 assert frame.payload["user_id"] == "user-1"
+                assert frame.payload["display_name"] == "Alice Display"
                 assert frame.payload["project_id"] == "host-1"
                 assert frame.payload["access_level"] == "edit"
                 assert all(name.lower() != "cookie" for name, _ in frame.payload["headers"])
@@ -136,6 +140,7 @@ async def test_data_connection_forwards_bidirectional_websocket_frames():
     connection = DataConnection("device-1", Socket())
     await asyncio.wait_for(connection.proxy_websocket(
         browser, user_id="user-1", username="alice",
+        display_name="Alice Display",
         project_id="host-1", access_level="edit",
     ), timeout=2)
     assert browser.accepted

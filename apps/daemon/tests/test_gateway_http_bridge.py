@@ -11,6 +11,7 @@ from services.desktop_security import DesktopSecurityMiddleware
 from services.gateway_client.bridge import ManagedHttpBridge, ManagedWebSocketBridge
 from services.desktop_security import desktop_websocket_allowed
 from services.remote_access import get_current_actor
+from services.messages import current_actor_message_fields
 
 
 @pytest.mark.asyncio
@@ -25,7 +26,8 @@ async def test_gateway_bridge_streams_body_and_attaches_remote_actor_without_blo
     async def echo(request: Request):
         actor = get_current_actor()
         return {"body": (await request.body()).decode(), "user_id": actor.actor_id,
-                "source": actor.source, "device_id": request.state.managed_actor.device_id}
+                "source": actor.source, "device_id": request.state.managed_actor.device_id,
+                "message_author": current_actor_message_fields()}
 
     @app.get("/api/health")
     async def health():
@@ -47,6 +49,7 @@ async def test_gateway_bridge_streams_body_and_attaches_remote_actor_without_blo
         "method": "POST", "path": "/api/echo", "query": "",
         "headers": [["content-type", "text/plain"], ["x-workstep-actor-name", "spoof"]],
         "user_id": "user-remote", "username": "alice",
+        "display_name": "Alice Display",
     }, send_frame, "device-1")
     bridge.start_task()
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
@@ -66,6 +69,8 @@ async def test_gateway_bridge_streams_body_and_attaches_remote_actor_without_blo
     assert b'"user_id":"user-remote"' in body
     assert b'"body":"hello"' in body
     assert b'"source":"managed"' in body
+    assert b'"author_username":"alice"' in body
+    assert b'"author_name":"Alice Display"' in body
     assert frames[-1].payload == {"phase": "end"}
 
     for blocked_path in ("/api/fs/open-directory", "/api/fs/browse"):
@@ -187,7 +192,10 @@ async def test_gateway_websocket_bridge_carries_bidirectional_messages_with_mana
             return
         await ws.accept()
         message = await ws.receive_text()
-        await ws.send_text(f"{ws.scope['managed_actor'].user_id}:{message}")
+        await ws.send_text(
+            f"{ws.scope['managed_actor'].user_id}:"
+            f"{ws.scope['managed_actor'].display_name}:{message}"
+        )
         await ws.close()
 
     frames = []
@@ -199,6 +207,7 @@ async def test_gateway_websocket_bridge_carries_bidirectional_messages_with_mana
     bridge = ManagedWebSocketBridge(app, "socket-1", {
         "path": "/ws", "query": "", "headers": [],
         "user_id": "remote-user", "username": "alice",
+        "display_name": "Alice Display",
     }, send_frame, "device-1")
     bridge.start_task()
     await asyncio.wait_for(emitted.wait(), timeout=1)
@@ -213,7 +222,9 @@ async def test_gateway_websocket_bridge_carries_bidirectional_messages_with_mana
     for frame in frames:
         if frame.type == FrameType.websocket_data:
             assembled = assembler.add(frame.payload)
-    assert assembled == ("text", ("remote-user:" + "hello" * 20000).encode())
+    assert assembled == (
+        "text", ("remote-user:Alice Display:" + "hello" * 20000).encode(),
+    )
     assert frames[-1].type == FrameType.websocket_close
 
 

@@ -42,6 +42,7 @@ class ActorSnapshot:
     project_id: str | None = None
     access_level: str | None = None
     remote_task_create: bool = False
+    username: str | None = None
 
 
 @dataclass(frozen=True)

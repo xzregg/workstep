@@ -29,6 +29,7 @@ class ManagedActor:
     project_id: str | None = None
     project_access_level: str | None = None
     remote_task_create: bool = False
+    display_name: str | None = None
 
 
 class ManagedAuthorizationVerifier:
@@ -76,6 +77,11 @@ class ManagedAuthorizationVerifier:
             for key in ("user_id", "username", "device_id", "app_instance_id"):
                 if not isinstance(claims.get(key), str) or not claims[key]:
                     raise ValueError("Incomplete authorization identity")
+            display_name = claims.get("display_name")
+            if display_name is not None and (
+                    not isinstance(display_name, str) or not display_name.strip()
+                    or len(display_name) > 256):
+                raise ValueError("Invalid authorization display name")
             if not isinstance(claims.get("policy_revision"), int):
                 raise ValueError("Invalid policy revision")
         except (InvalidSignature, KeyError, TypeError, json.JSONDecodeError, UnicodeDecodeError) as exc:
@@ -88,6 +94,7 @@ class ManagedAuthorizationVerifier:
             user_id=claims["user_id"], username=claims["username"],
             device_id=claims["device_id"], app_instance_id=claims["app_instance_id"],
             policy_revision=claims["policy_revision"],
+            display_name=claims.get("display_name") or claims["username"],
         )
 
 

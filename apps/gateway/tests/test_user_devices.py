@@ -88,11 +88,13 @@ def test_user_sees_only_assigned_pc_and_admin_can_revoke(tmp_path, monkeypatch):
                            data={"ticket": issued["ticket"]}).status_code == 409
         assert client.get(f"{remote_url}/api/remote/session").json()["device_id"] == "device-1"
         class FakeData:
-            async def proxy_http(self, request, *, user_id, username):
+            async def proxy_http(self, request, *, user_id, username, display_name):
+                assert display_name == "Alice"
                 assert user_id == claims["user_id"]
                 assert username == "alice"
                 return JSONResponse({"proxied": request.url.path})
-            async def proxy_websocket(self, ws, *, user_id, username):
+            async def proxy_websocket(self, ws, *, user_id, username, display_name):
+                assert display_name == "Alice"
                 assert user_id == claims["user_id"]
                 assert username == "alice"
                 await ws.accept()
