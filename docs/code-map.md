@@ -47,6 +47,8 @@ Web 的作者展示由 `src/utils/actorDisplay.ts` 统一计算：缺失作者�
 
 流程运行发起人快照在 daemon `services/workflow_start.py::prepare_start_in_project` 写入 `models/run.py::WorkflowRun`，`services/workflow_restart.py::create_restart_run` 在无人操作的续跑中继承、在人工重启时更新。`services/messages.py::attributed_actor_message_fields` 在旧消息早于当前运行时读取该快照；恢复入口见 `services/workflow_recovery.py` 和 `services/workflow_runtime.py`。测试见 `tests/test_workflow_run_attribution.py`、`tests/test_recovery.py`、`tests/test_message_attribution.py`，慢数据库 canary 见 `tests/test_api_contracts.py::test_workflow_start_write_lock_does_not_block_health_check` 与 `tests/test_recovery.py::test_slow_recovery_database_work_does_not_block_event_loop`。
 
+定时计划的创建人快照在 daemon `services/schedule.py` 的 `_creator` 模板字段中保留用户名与显示名，触发时传给 `services/task_creation.py`；旧模板缺用户名时保持空值。企业微信／钉钉输入由 `services/channels/bots.py::_sender_actor` 投影为来源明确的 `ActorSnapshot`，调用任务协调器或独立聊天时通过 `actor_context` 传递。验证见 `tests/test_schedule.py`、`tests/test_channel_bots.py`；慢数据库 canary 见 `tests/test_api_contracts.py::test_schedule_write_does_not_block_health_check`。
+
 修改功能时先找所属模块，再沿前端页面或组件 → API → 服务 → 数据模型追踪。行为测试放在实际拥有该行为的模块附近；不要把页面、`src/api/client.ts` 或通用服务文件作为新功能的默认落点。
 
 | 功能 | Web 入口 | Daemon 入口 | 深入阅读 |

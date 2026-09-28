@@ -208,7 +208,8 @@ async def test_due_manual_schedule_creates_a_task_and_execution_log(tmp_path):
     workflow_id = project.default_workflow()["id"]
     actor_token = _current_actor.set(
         ActorSnapshot(
-            "browser-1", "浏览器用户", "browser-device-1", "Chrome", "browser"
+            "browser-1", "浏览器用户", "browser-device-1", "Chrome", "browser",
+            username="browser-user",
         )
     )
     try:
@@ -238,10 +239,13 @@ async def test_due_manual_schedule_creates_a_task_and_execution_log(tmp_path):
         assert task.status == "ready"
         assert (
             task.creator_id,
+            task.creator_username,
             task.creator_name,
             task.creator_device_id,
             task.creator_device_name,
-        ) == ("browser-1", "浏览器用户", "browser-device-1", "Chrome")
+        ) == (
+            "browser-1", "browser-user", "浏览器用户", "browser-device-1", "Chrome",
+        )
 
     public = module.get(project.id, created["id"])
     assert "_creator" not in public["task_template"]

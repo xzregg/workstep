@@ -11,6 +11,7 @@ import main
 from models.task import Task
 from services.channels.bots import BotManager, IncomingMessage
 from services.project import ProjectManager
+from services.remote_access import get_current_actor
 from streaming.bus import EventBus
 
 
@@ -143,6 +144,51 @@ async def test_unbound_chat_uses_default_project_and_duplicate_is_ignored(bots):
     await adapters[bot["id"]].on_message(message)
     assert project_chats == [(first.id, None, "你好")]
     assert adapters[bot["id"]].sent == [("user-1", "项目回复：你好")]
+
+
+async def test_channel_messages_snapshot_sender_in_task_and_project_chat(bots):
+    manager, first, _second, _submissions, _project_chats, adapters = bots
+    observed = []
+    original_submit = manager._coordinator.submit_message
+    original_respond = manager._responder
+
+    async def submit(*args, **kwargs):
+        observed.append(("task", get_current_actor(), kwargs.get("author_name")))
+        return await original_submit(*args, **kwargs)
+
+    async def respond(*args, **kwargs):
+        observed.append(("chat", get_current_actor(), None))
+        return await original_respond(*args, **kwargs)
+
+    manager._coordinator.submit_message = submit
+    manager._responder = respond
+    task_bot = await manager.create_bot({
+        "platform": "dingtalk", "name": "任务机器人", "app_id": "task-bot",
+        "secret": "secret", "enabled": True,
+        "default_target_type": "task", "default_project_id": first.id,
+        "default_task_id": "task-1",
+    })
+    chat_bot = await manager.create_bot({
+        "platform": "wecom", "name": "项目机器人", "app_id": "chat-bot",
+        "secret": "secret", "enabled": True,
+        "default_target_type": "project", "default_project_id": first.id,
+    })
+    await adapters[task_bot["id"]].on_message(IncomingMessage(
+        bot_id=task_bot["id"], message_id="task-msg", conversation_type="single",
+        conversation_id="staff-1", sender_id="staff-1", sender_name="小王",
+        text="任务进度",
+    ))
+    await adapters[chat_bot["id"]].on_message(IncomingMessage(
+        bot_id=chat_bot["id"], message_id="chat-msg", conversation_type="single",
+        conversation_id="staff-2", sender_id="staff-2", sender_name="小李",
+        text="项目进度",
+    ))
+    assert [(kind, actor.actor_id, actor.username, actor.user_name)
+            for kind, actor, _ in observed] == [
+        ("task", "channel:dingtalk:staff-1", "staff-1", "钉钉 · 小王"),
+        ("chat", "channel:wecom:staff-2", "staff-2", "企业微信 · 小李"),
+    ]
+    assert observed[0][2] == observed[0][1].user_name
 
 
 async def test_one_bot_routes_two_groups_across_projects_and_clears_deleted_task(bots):
