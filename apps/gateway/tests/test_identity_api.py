@@ -18,8 +18,10 @@ def _setup(client: TestClient, *, mode: str = "open"):
 def test_setup_is_single_use_and_creates_recovery_admin(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path))
     with TestClient(app, base_url="https://gateway.test") as client:
+        assert client.get("/api/platform/status").json() == {"initialized": False}
         response = _setup(client)
         assert response.status_code == 201
+        assert client.get("/api/platform/status").json() == {"initialized": True}
         assert response.json()["user"]["username"] == "owner"
         assert response.json()["csrf_token"]
         assert "Secure" in response.headers["set-cookie"]

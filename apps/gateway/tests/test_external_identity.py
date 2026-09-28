@@ -256,6 +256,21 @@ def test_external_scan_returns_to_desktop_login_without_open_redirect(tmp_path):
         assert client.post(f"/api/auth/external/{source_id}/start", json={
             "return_to": "//evil.test/steal",
         }).status_code == 422
+        assert client.post(f"/api/auth/external/{source_id}/start", json={
+            "return_to": "/auth?next=%2F%2Fevil.test",
+        }).status_code == 422
+        portal_return = "/auth?next=%2Fdevices"
+        portal_start = client.post(f"/api/auth/external/{source_id}/start", json={
+            "return_to": portal_return,
+        })
+        assert portal_start.status_code == 200
+        portal_state = parse_qs(urlparse(portal_start.json()["authorization_url"]).query)["state"][0]
+        portal_callback = client.get(
+            f"/api/auth/external/{source_id}/callback?state={portal_state}&code=valid-code",
+            follow_redirects=False,
+        )
+        assert portal_callback.headers["location"] == portal_return
+        client.cookies.clear()
         start = client.post(f"/api/auth/external/{source_id}/start", json={
             "return_to": return_to,
         })
