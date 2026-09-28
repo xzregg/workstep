@@ -407,6 +407,7 @@ export const chatSessionApi = {
     request<ChatSessionDetail>('/chat-sessions', {
       method: 'POST',
       body: JSON.stringify(input),
+      signal: AbortSignal.timeout(20_000),
     }),
   get: (sessionId: string, projectId: string) =>
     request<ChatSessionDetail>(

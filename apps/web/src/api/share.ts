@@ -1,5 +1,5 @@
 import { BASE, FULL_PAGE_LIMIT, fileDataUrl, request, shareRequest } from './transport'
-import type { TaskStepState, TaskExecutionReport, TaskArtifact, FilePreview, ReviewRun } from './client'
+import type { TaskStepState, TaskExecutionReport, TaskArtifact, FilePreview, ReviewRun, DirectoryBrowseResult } from './client'
 
 // --- Public share API (no project context, session-token gated) ---
 
@@ -105,6 +105,11 @@ export const shareApi = {
   previewFile: (token: string, sessionToken: string, path: string) =>
     shareRequest<FilePreview>(
       `/task-share/public/${encodeURIComponent(token)}/file-preview?path=${encodeURIComponent(path)}`,
+      sessionToken,
+    ),
+  browseGitWorkspace: (token: string, sessionToken: string, path: string, includeHidden = false) =>
+    shareRequest<DirectoryBrowseResult>(
+      `/task-share/public/${encodeURIComponent(token)}/workspace/browse?${new URLSearchParams({ path, ...(includeHidden ? { include_hidden: 'true' } : {}) })}`,
       sessionToken,
     ),
   fileUrl: (token: string, sessionToken: string, path: string) =>

@@ -174,7 +174,7 @@ async def _require_share_session_token(session_token: str) -> dict:
 
 
 def _shared_file_path(path: str, ctx: dict) -> Path:
-    """Limit public file access to this task's outputs and message uploads."""
+    """Limit public file access to this task's outputs, uploads, and legacy worktrees."""
     from main import project_manager
 
     project = project_manager.get_project_by_id(ctx["project_id"])
@@ -190,7 +190,60 @@ def _shared_file_path(path: str, ctx: dict) -> Path:
         parts = target.relative_to(artifacts).parts
         if len(parts) >= 3 and parts[1] == ctx["task_id"]:
             return target
+    legacy_worktrees = workstep / "worktrees" / ctx["task_id"]
+    if target.is_relative_to(legacy_worktrees):
+        return target
     raise HTTPException(status_code=403, detail="File is not part of the shared task")
+
+
+@router.get("/public/{token}/workspace/browse")
+async def public_share_workspace_browse(
+    token: str,
+    request: Request,
+    path: str | None = None,
+    include_hidden: bool = False,
+):
+    """Browse only the shared task's Git workspace, including legacy layouts."""
+    from api import git as git_api
+
+    ctx = await _require_share_session(request)
+    if ctx["token"] != token:
+        raise HTTPException(status_code=403, detail="Session does not match share")
+    project = git_api._task_project(ctx["project_id"])
+    task = await git_api._task_exists(ctx["project_id"], ctx["task_id"])
+
+    def browse() -> dict:
+        root = git_api.TaskGitWorkspace.root(project.path, ctx["task_id"], task["workflow_id"]).resolve()
+        candidate = Path(path).expanduser() if path else root
+        target = (candidate if candidate.is_absolute() else project.path / candidate).resolve()
+        if not target.is_relative_to(root):
+            raise HTTPException(status_code=403, detail="Directory is outside the shared task workspace")
+        if not target.is_dir():
+            raise HTTPException(status_code=404, detail="Directory not found")
+        entries = []
+        try:
+            for item in sorted(target.iterdir(), key=lambda entry: (not entry.is_dir(), entry.name.lower())):
+                if not include_hidden and item.name.startswith("."):
+                    continue
+                entries.append({
+                    "name": item.name,
+                    "type": "directory" if item.is_dir() else "file",
+                    "path": str(item),
+                    "relative_path": item.relative_to(project.path).as_posix(),
+                })
+        except PermissionError:
+            raise HTTPException(status_code=403, detail="Directory access denied")
+        parent = target.parent if target != root else None
+        return {
+            "path": str(target),
+            "name": target.name,
+            "relative_path": target.relative_to(project.path).as_posix(),
+            "parent": str(parent) if parent else None,
+            "parent_relative_path": parent.relative_to(project.path).as_posix() if parent else None,
+            "entries": entries,
+        }
+
+    return await asyncio.to_thread(browse)
 
 
 @router.api_route("/public/{token}/git/{git_path:path}", methods=["GET", "POST", "PUT", "DELETE"])

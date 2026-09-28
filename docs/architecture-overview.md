@@ -10,7 +10,7 @@ WorkStep 是本地优先的工作流编排工具：项目与执行数据全部�
 - **web**（`apps/web`，React + TypeScript + Vite + Zustand）：任务列表、流程画布、聊天、设置与实时状态 UI；生产环境由 daemon 托管静态资源。
 - **desktop**（`apps/desktop`，Electron）：打包内置 Python 运行时与 daemon 源码；sidecar 只监听 127.0.0.1，随机令牌由主进程注入，渲染进程不可读取。
 
-daemon 默认监听 8765 端口提供 API 与 WebSocket；开发模式下 web 通过 Vite 开发服务器（5173）连接本地 daemon。仓库中另有 landing 等辅助子应用，不属于核心编排链路。
+daemon 默认监听 8765 端口提供 API 与 WebSocket；开发模式下 web 通过 Vite 开发服务器（5173）连接本地 daemon。仓库中另有 landing、android 等辅助子应用，不属于核心编排链路。
 
 事件流有一条清晰的协议边界：**引擎 → 编排层是 ACP 词汇**（`InternalEvent`，定义于 `engines/core/events.py`），**编排层 → 前端是 AG-UI**（`engines/core/agui.py` 是唯一翻译层，实时推送与历史回放共用同一路径）。前端 store 只消费 AG-UI，不直接解释引擎私有事件。
 

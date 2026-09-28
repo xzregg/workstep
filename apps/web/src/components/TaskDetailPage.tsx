@@ -1,5 +1,6 @@
 import { useI18n } from '../i18n'
 import type { Project, TaskArtifact } from '../api/client'
+import type { GitWorkspaceBrowser } from './git/GitApiContext'
 import Button from './Button'
 import PromptViewerDialog from './PromptViewerDialog'
 import TaskDetailView, { type TaskDetailViewProps } from './TaskDetailView'
@@ -24,6 +25,7 @@ export interface TaskDetailReadCapabilities {
   loadMessageEvents: NonNullable<TaskDetailViewProps['onLoadMessageEvents']>
   openArtifact: TaskDetailViewProps['onOpenArtifact']
   loadExecutionReport: NonNullable<TaskDetailViewProps['executionReportLoader']>
+  browseGitWorkspace: GitWorkspaceBrowser
 }
 
 export interface TaskDetailGitCapability {
@@ -70,7 +72,7 @@ export default function TaskDetailPage({
   const { t } = useI18n()
 
   return (
-    <GitApiContext.Provider value={{ api: gitCapability?.api || gitApi, shared: !!gitCapability?.shared, readOnly: !!gitCapability?.readOnly }}>
+    <GitApiContext.Provider value={{ api: gitCapability?.api || gitApi, shared: !!gitCapability?.shared, readOnly: !!gitCapability?.readOnly, browseWorkspace: readCapabilities.browseGitWorkspace }}>
     <MarkdownAssetUrlProvider resolver={readCapabilities.resolveAssetUrl} filePreview={readCapabilities.filePreview}>
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <TaskDetailView

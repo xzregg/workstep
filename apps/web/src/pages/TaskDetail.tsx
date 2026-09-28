@@ -151,6 +151,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     load: (path: string) => fsApi.preview(path, projectId),
     rawUrl: (path: string) => fsApi.projectFileUrl(path, projectId),
   }), [projectId])
+  const browseGitWorkspace = useCallback(
+    (path: string, includeHidden: boolean) => fsApi.browse(path, projectId || undefined, includeHidden),
+    [projectId],
+  )
   const ownerAssetUrl = useCallback(
     (src: string) => resolveMarkdownImageSrc(src, projectId),
     [projectId],
@@ -905,6 +909,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           loadMessageEvents,
           openArtifact,
           loadExecutionReport: ownerExecutionReport,
+          browseGitWorkspace,
         } satisfies TaskDetailReadCapabilities}
         liveMessages={liveMessages}
         livePromptOverrides={livePromptOverrides}

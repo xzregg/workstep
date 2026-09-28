@@ -7,12 +7,15 @@ import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
 import Icon from './Icon'
 import ProjectDirectoryBrowser from './ProjectDirectoryBrowser'
+import type { DirectoryBrowseResult } from '../api/client'
 
 interface ProjectDirectoryBrowserDialogProps {
   projectId: string
   title: string
   rootPath?: string
   displayPath?: string
+  browseDirectory?: (path: string, includeHidden: boolean) => Promise<DirectoryBrowseResult>
+  readOnly?: boolean
   initialFilePath?: string
   onSelectFile?: (path: string) => void
   headerActions?: ReactNode
@@ -66,6 +69,8 @@ export default function ProjectDirectoryBrowserDialog({
   title,
   rootPath,
   displayPath,
+  browseDirectory,
+  readOnly = false,
   initialFilePath,
   onSelectFile,
   headerActions,
@@ -233,6 +238,7 @@ export default function ProjectDirectoryBrowserDialog({
         <div className="project-directory-dialog-body">
           <ProjectDirectoryBrowser
             projectId={projectId} rootPath={rootPath} initialFilePath={initialFilePath}
+            browseDirectory={browseDirectory} readOnly={readOnly}
             onSelectedFileChange={setSelectedFile} onDirtyChange={setDirty}
           />
         </div>

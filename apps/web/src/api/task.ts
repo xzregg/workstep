@@ -561,10 +561,10 @@ export const taskApi = {
       method: 'POST',
       body: JSON.stringify({ task_id: taskId }),
     }),
-  delete: (taskId: string, projectId: string) =>
+  delete: (taskId: string, projectId: string, deleteWorkspace?: boolean) =>
     request<{ deleted: boolean }>(`/task/delete?project_id=${encodeURIComponent(projectId)}`, {
       method: 'DELETE',
-      body: JSON.stringify({ task_id: taskId }),
+      body: JSON.stringify({ task_id: taskId, delete_workspace: deleteWorkspace }),
     }),
   archive: (taskId: string, projectId: string) =>
     request<{ archived: boolean }>(`/task/archive?project_id=${encodeURIComponent(projectId)}`, {

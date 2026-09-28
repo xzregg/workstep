@@ -35,6 +35,10 @@ public final class ServerAddress {
         return origin;
     }
 
+    public String pageOrRoot(String page) {
+        return page != null && contains(page) ? page : origin + "/";
+    }
+
     public boolean contains(String value) {
         try {
             URI uri = new URI(value);

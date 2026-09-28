@@ -639,6 +639,7 @@ async def pause_task(req: PauseTaskRequest, pid: str = Query(..., alias="project
 
 class DeleteTaskRequest(BaseSchema):
     task_id: str
+    delete_workspace: bool | None = None
 
 
 @router.delete("/delete")
@@ -649,12 +650,35 @@ async def delete_task(req: DeleteTaskRequest, pid: str = Query(..., alias="proje
         raise HTTPException(status_code=503, detail="Service not initialized")
     project = _project(pid)
     from models import Task
-    workflow_id = await _run_db(pid, lambda: getattr(Task.get_or_none(Task.id == req.task_id), "workflow_id", None))
+    task = await _run_db(pid, lambda: (
+        {"workflow_id": found.workflow_id, "status": found.status}
+        if (found := Task.get_or_none(Task.id == req.task_id)) else None
+    ))
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task["status"] == "running":
+        raise HTTPException(status_code=409, detail="Running tasks cannot be deleted")
+    workflow_id = task["workflow_id"]
     workspace_roots = [project.workstep_dir / "worktrees" / req.task_id]
     if workflow_id:
         workspace_roots.append(project.workstep_dir / "artifacts" / workflow_id / req.task_id / ".worktrees")
-    if await asyncio.to_thread(lambda: any(root.is_dir() and any(root.iterdir()) for root in workspace_roots)):
+    has_workspace = await asyncio.to_thread(lambda: any(root.is_dir() and any(root.iterdir()) for root in workspace_roots))
+    if has_workspace and req.delete_workspace is None:
         raise HTTPException(status_code=409, detail="请先在任务 Git 标签中移除 Worktree，再删除任务。")
+    if has_workspace and req.delete_workspace:
+        from api.git import git_service
+        from services.git.command import GitError
+        from services.git.task_workspace import TaskGitWorkspace
+
+        workspace = TaskGitWorkspace(git_service, workflow_id)
+        try:
+            for _ in workspace_roots:
+                if await asyncio.to_thread(lambda: any(root.is_dir() and any(root.iterdir()) for root in workspace_roots)):
+                    result = await workspace.delete(project.path, req.task_id, force=True)
+                    if result["outcome"] == "partial":
+                        raise GitError("Git 工作区仅部分删除：" + result["failure"], 409)
+        except GitError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
     try:
         deleted = await _run_db(
             pid,
@@ -667,12 +691,13 @@ async def delete_task(req: DeleteTaskRequest, pid: str = Query(..., alias="proje
     from main import channel_bot_manager
     if channel_bot_manager is not None:
         await channel_bot_manager.remove_task_bindings(pid, req.task_id)
-    for workspace_root in workspace_roots:
-        if await asyncio.to_thread(workspace_root.is_dir):
-            try:
-                await asyncio.to_thread(workspace_root.rmdir)
-            except OSError:
-                pass
+    if req.delete_workspace is not False:
+        for workspace_root in workspace_roots:
+            if await asyncio.to_thread(workspace_root.is_dir):
+                try:
+                    await asyncio.to_thread(workspace_root.rmdir)
+                except OSError:
+                    pass
     return {"deleted": deleted}
 
 

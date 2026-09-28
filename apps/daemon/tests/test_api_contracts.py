@@ -4,6 +4,7 @@ from contextlib import AsyncExitStack
 import asyncio
 from datetime import datetime
 import sqlite3
+import subprocess
 import threading
 import time
 import json
@@ -1293,6 +1294,95 @@ async def test_task_http_crud_lifecycle(api_context):
         f"/api/task/{copied_id}?project_id={project_id}"
     )
     assert missing.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_task_delete_workspace_choice_preserves_or_removes_worktrees(api_context, monkeypatch):
+    import api.git as git_api
+    import main
+    import services.project as project_service
+    from services.git import GitService
+    from services.git.task_workspace import TaskGitWorkspace
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / 'git-task-deletion'
+    project_dir.mkdir()
+    subprocess.run(['git', '-C', str(project_dir), 'init', '-b', 'main'], check=True, capture_output=True)
+    (project_dir / '.gitignore').write_text('.workstep/\n')
+    subprocess.run(['git', '-C', str(project_dir), 'add', '.gitignore'], check=True, capture_output=True)
+    subprocess.run(['git', '-C', str(project_dir), '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+                    'commit', '-m', 'initial'], check=True, capture_output=True)
+    initialized = await client.post('/api/project/init', json={'path': str(project_dir)})
+    project_id = initialized.json()['id']
+    await _create_test_workflow(client, project_id)
+    service = GitService(lambda: [{'id': project_id, 'name': 'Project', 'path': str(project_dir)}], lambda: 2)
+    monkeypatch.setattr(git_api, 'git_service', service)
+    monkeypatch.setattr(project_service, 'project_manager', main.project_manager)
+    try:
+        job = await service.start_scan()
+        while job['state'] == 'running':
+            await asyncio.sleep(.01)
+        repo_id = service.snapshot['repositories'][0]['id']
+
+        async def create_with_worktree():
+            response = await client.post(f'/api/task/create?project_id={project_id}', json={
+                'title': 'Disposable task', 'description': '', 'cwd': str(project_dir), 'engine': 'claude',
+            })
+            assert response.status_code == 200, response.text
+            task = response.json()
+            workspace = TaskGitWorkspace(service, task['workflow_id'])
+            created = await workspace.add(project_dir, task['id'], repo_id, 'source', 'main')
+            return task['id'], created['worktrees'][0]
+
+        kept_id, kept_tree = await create_with_worktree()
+        route = f'/api/task/delete?project_id={project_id}'
+        blocked = await client.request('DELETE', route, json={'task_id': kept_id})
+        assert blocked.status_code == 409
+        kept = await client.request('DELETE', route, json={'task_id': kept_id, 'delete_workspace': False})
+        assert kept.status_code == 200, kept.text
+        assert Path(kept_tree['path']).is_dir()
+
+        removed_id, removed_tree = await create_with_worktree()
+        workspace_root = Path(removed_tree['path']).parent
+        original_is_dir = Path.is_dir
+        checking_workspace = threading.Event()
+
+        def slow_workspace_check(path):
+            if path == workspace_root and not checking_workspace.is_set():
+                checking_workspace.set()
+                time.sleep(.2)
+            return original_is_dir(path)
+
+        monkeypatch.setattr(Path, 'is_dir', slow_workspace_check)
+        pending = asyncio.create_task(client.request('DELETE', route, json={'task_id': removed_id, 'delete_workspace': True}))
+        assert await asyncio.to_thread(checking_workspace.wait, 2)
+        health = await asyncio.wait_for(client.get('/api/health'), timeout=.15)
+        assert health.status_code == 200
+        removed = await pending
+        assert removed.status_code == 200, removed.text
+        assert not Path(removed_tree['path']).exists()
+        assert subprocess.run(['git', '-C', str(project_dir), 'branch', '--list', removed_tree['branch']],
+                              check=True, capture_output=True, text=True).stdout == ''
+        assert (await client.get(f'/api/task/{removed_id}?project_id={project_id}')).status_code == 404
+
+        blocked_id, blocked_tree = await create_with_worktree()
+        (Path(blocked_tree['path']).parent / 'unrecognized.txt').write_text('keep')
+        blocked = await client.request('DELETE', route, json={'task_id': blocked_id, 'delete_workspace': True})
+        assert blocked.status_code == 409
+        assert (await client.get(f'/api/task/{blocked_id}?project_id={project_id}')).status_code == 200
+        assert Path(blocked_tree['path']).is_dir()
+
+        forced_id, forced_tree = await create_with_worktree()
+        (Path(forced_tree['path']) / '.dirty').write_text('discard')
+        forced = await client.delete(
+            f'/api/git/projects/{project_id}/tasks/{forced_id}/worktrees/source?force=true'
+        )
+        assert forced.status_code == 200, forced.text
+        assert not Path(forced_tree['path']).exists()
+        assert subprocess.run(['git', '-C', str(project_dir), 'branch', '--list', forced_tree['branch']],
+                              check=True, capture_output=True, text=True).stdout == ''
+    finally:
+        await service.close()
 
 
 @pytest.mark.anyio
@@ -4073,7 +4163,10 @@ async def test_set_complete_review_endpoint_forwards_downstream_choice(
 
 
 @pytest.mark.anyio
-async def test_complete_task_review_api_keeps_health_responsive_during_slow_db(api_context, monkeypatch):
+@pytest.mark.parametrize("decision", ["complete-task", "set-complete"])
+async def test_review_completion_api_keeps_health_responsive_during_slow_db(
+    api_context, monkeypatch, decision,
+):
     import main
     from models import ReviewRun, StepRun, Task, TaskStep, WorkflowRun
     from models.fields import utc_now
@@ -4084,7 +4177,18 @@ async def test_complete_task_review_api_keeps_health_responsive_during_slow_db(a
     project_id = (await client.post(
         "/api/project/init", json={"path": str(project_dir)},
     )).json()["id"]
-    workflow = await _create_test_workflow(client, project_id)
+    workflow_response = await client.post(
+        f"/api/workflow/create?project_id={project_id}",
+        json={"name": "审核完成健康检查", "steps": {
+            "nodes": [
+                {"id": "do", "key": "do", "type": "do", "title": "执行", "engine": "claude"},
+                {"id": "later", "key": "later", "type": "later", "title": "后续", "engine": "claude"},
+            ],
+            "connections": [{"from": "do", "to": "later"}],
+        }},
+    )
+    assert workflow_response.status_code == 200, workflow_response.text
+    workflow = workflow_response.json()
     task_id = (await client.post(
         f"/api/task/create?project_id={project_id}",
         json={"title": "Complete", "cwd": str(project_dir), "workflow_id": workflow["id"]},
@@ -4095,8 +4199,9 @@ async def test_complete_task_review_api_keeps_health_responsive_during_slow_db(a
         task = Task.get_by_id(task_id)
         task.status = "paused"
         task.save()
-        TaskStep.create(task=task, step_key="do", status="awaiting_review", engine="claude")
-        TaskStep.create(task=task, step_key="later", status="pending", engine="claude")
+        current_step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
+        current_step.status = "awaiting_review"
+        current_step.save()
         run = WorkflowRun.create(
             id=str(uuid.uuid4()), task=task, status="paused",
             workflow_schema_version=1, workflow_snapshot_json="{}", started_at=now,
@@ -4124,8 +4229,8 @@ async def test_complete_task_review_api_keeps_health_responsive_during_slow_db(a
 
     monkeypatch.setattr(project.db, "execute_sql", slow_review_query)
     decision_request = asyncio.create_task(client.post(
-        f"/api/task/{task_id}/steps/do/review/complete-task?project_id={project_id}",
-        json={"review_run_id": review.id},
+        f"/api/task/{task_id}/steps/do/review/{decision}?project_id={project_id}",
+        json={"review_run_id": review.id, "schedule_downstream": False},
     ))
     assert await asyncio.to_thread(query_started.wait, 1)
     health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
@@ -4134,9 +4239,16 @@ async def test_complete_task_review_api_keeps_health_responsive_during_slow_db(a
     assert health.status_code == 200
     assert response.status_code == 200, response.text
     with main.project_manager.activate_project_by_id(project_id):
-        assert Task.get_by_id(task_id).status == "ready"
-        assert WorkflowRun.get_by_id(run.id).status == "succeeded"
-        assert TaskStep.get((TaskStep.task == task_id) & (TaskStep.step_key == "later")).status == "skipped"
+        assert TaskStep.get((TaskStep.task == task_id) & (TaskStep.step_key == "do")).status == "passed"
+        assert TaskStep.get((TaskStep.task == task_id) & (TaskStep.step_key == "later")).status == (
+            "skipped" if decision == "complete-task" else "pending"
+        )
+        assert Task.get_by_id(task_id).status == (
+            "ready" if decision == "complete-task" else "paused"
+        )
+        assert WorkflowRun.get_by_id(run.id).status == (
+            "succeeded" if decision == "complete-task" else "paused"
+        )
 
 
 async def _create_workflow(client, project_id: str, name: str):

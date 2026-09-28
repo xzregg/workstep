@@ -1,0 +1,3 @@
+.delete-task-workspace-choice { display:flex; align-items:flex-start; gap:8px; margin-top:12px; color:var(--fg-2); cursor:pointer; }
+.delete-task-workspace-choice input { flex:none; margin:2px 0 0; }
+.delete-task-workspace-hint { margin:8px 0 0; color:var(--muted); }
