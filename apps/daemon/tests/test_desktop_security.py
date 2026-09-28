@@ -11,14 +11,26 @@ from services.desktop_security import (
 )
 from services.gateway_client.identity import ManagedActor, ManagedLocalSessions
 from services.remote_access import get_effective_actor
+from api.managed import router as managed_router
 
 
 def _app() -> FastAPI:
     app = FastAPI()
     app.add_middleware(DesktopSecurityMiddleware)
+    app.include_router(managed_router)
 
     @app.get('/api/private')
     async def private():
+        return {'ok': True}
+
+    @app.post('/api/remote-project/share')
+    @app.post('/api/remote-project/add')
+    @app.post('/api/task-share/task-1/create')
+    async def legacy_share():
+        return {'ok': True}
+
+    @app.get('/api/task-share/public/old-token/meta')
+    async def legacy_public_share():
         return {'ok': True}
 
     @app.get('/api/actor')
@@ -39,6 +51,14 @@ def _app() -> FastAPI:
     async def websocket_endpoint(ws: WebSocket):
         if not desktop_websocket_allowed(ws):
             await ws.close(code=4401)
+            return
+        await ws.accept()
+        await ws.send_text('ok')
+
+    @app.websocket('/ws/remote-project')
+    async def legacy_remote_project(ws: WebSocket):
+        if not desktop_websocket_allowed(ws):
+            await ws.close(code=4403)
             return
         await ws.accept()
         await ws.send_text('ok')
@@ -155,3 +175,35 @@ def test_managed_runtime_requires_gateway_derived_local_session(monkeypatch):
             }):
                 pass
         assert denied.value.code == 4401
+
+
+def test_managed_runtime_rejects_legacy_share_credentials(monkeypatch):
+    monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
+    monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')
+    app = _app()
+    sessions = ManagedLocalSessions()
+    local_token = sessions.create(ManagedActor(
+        'user-1', 'alice', 'device-1', 'instance-1', 1,
+    ))
+    app.state.gateway_client = type('GatewayClient', (), {
+        'managed_config': object(), 'local_sessions': sessions,
+    })()
+    headers = {'X-WorkStep-Desktop-Token': 'runtime-secret',
+               'X-WorkStep-Local-Session': local_token}
+    with TestClient(app) as client:
+        assert client.get('/api/managed/mode', headers=headers).json() == {'managed': True}
+        for path in ('/api/remote-project/share', '/api/remote-project/add',
+                     '/api/task-share/task-1/create'):
+            assert client.post(path, headers=headers).status_code == 403
+        assert client.get('/api/task-share/public/old-token/meta',
+                          headers=headers).status_code == 403
+        with pytest.raises(WebSocketDisconnect) as denied:
+            with client.websocket_connect('/ws/remote-project', headers=headers):
+                pass
+        assert denied.value.code == 4403
+
+    with TestClient(_app()) as local_client:
+        assert local_client.get('/api/managed/mode', headers=headers).json() == {'managed': False}
+        assert local_client.post('/api/remote-project/share', headers=headers).status_code == 200
+        assert local_client.get('/api/task-share/public/old-token/meta',
+                                headers=headers).status_code == 200

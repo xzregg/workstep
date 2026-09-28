@@ -7,6 +7,12 @@ from pydantic import BaseModel, Field
 router = APIRouter(prefix="/api/managed")
 
 
+@router.get("/mode")
+async def managed_mode(request: Request):
+    service = getattr(request.app.state, "gateway_client", None)
+    return {"managed": bool(service is not None and service.managed_config is not None)}
+
+
 class BootstrapInput(BaseModel):
     device_authorization: str = Field(min_length=1, max_length=8192)
     device_proof: str = Field(min_length=1, max_length=512)
