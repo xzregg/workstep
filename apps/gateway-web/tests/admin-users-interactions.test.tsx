@@ -213,7 +213,8 @@ test('overview distinguishes control connectivity from daemon health and recover
     return Response.json({ roles: ['super_admin'], users: { total: 4, pending: 1 },
       devices: { total: 2, online: 1, offline: 1, pending: 0,
         daemon_healthy: 0, daemon_unhealthy: 1, daemon_unknown: 0 },
-      projects: { published: 2, shared: 1, host_offline: 1 }, tasks: { running: null },
+      projects: { published: 2, shared: 1, host_offline: 1 },
+      tasks: { running: null, unknown_projects: 1 },
       recent_actions: [] })
   }
   render(<MemoryRouter><AdminOverviewPage /></MemoryRouter>)
@@ -222,7 +223,8 @@ test('overview distinguishes control connectivity from daemon health and recover
   await screen.findByText(/daemon 健康：0 台正常/)
   assert.match(document.body.textContent ?? '', /1 台控制连接在线/)
   assert.match(document.body.textContent ?? '', /1 台异常/)
-  assert.match(document.body.textContent ?? '', /运行状态尚未上报/)
+  assert.match(document.body.textContent ?? '', /运行状态尚未全部上报/)
+  assert.match(document.body.textContent ?? '', /1 个项目状态未知/)
   assert.equal(calls, 2)
 })
 

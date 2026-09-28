@@ -7,7 +7,7 @@ type Overview = {
   devices: { total: number; online: number; offline: number; pending: number;
     daemon_healthy: number; daemon_unhealthy: number; daemon_unknown: number } | null
   projects: { published: number; shared: number; host_offline: number } | null
-  tasks: { running: number | null }
+  tasks: { running: number | null; unknown_projects: number | null }
   recent_actions: Array<{ action: string; result: string; created_at: string }> | null
 }
 
@@ -62,7 +62,9 @@ export function AdminOverviewPage() {
           <p><strong>{overview.projects.published}</strong> 个已发布 · {overview.projects.shared} 个已共享</p>
           <p>{overview.projects.host_offline} 个项目的宿主电脑离线</p></section>}
         <section className="gateway-overview-card"><h3>运行中任务</h3>
-          <p>{overview.tasks.running === null ? '运行状态尚未上报' : `${overview.tasks.running} 项`}</p></section>
+          <p>{overview.tasks.running === null ? '运行状态尚未全部上报' : `${overview.tasks.running} 项`}</p>
+          {overview.tasks.unknown_projects !== null && overview.tasks.unknown_projects > 0 &&
+            <p>{overview.tasks.unknown_projects} 个项目状态未知</p>}</section>
       </div>
       {overview.recent_actions && <section className="gateway-overview-activity"><h3>最近关键操作</h3>
         {overview.recent_actions.length === 0 ? <p>暂无操作记录。</p> : <ul>{overview.recent_actions.map((action, index) =>

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+from datetime import datetime, timezone
 
 import pytest
 from fastapi import FastAPI
@@ -80,6 +81,53 @@ async def test_slow_project_catalog_does_not_block_control_loop(monkeypatch):
     await asyncio.wait_for(asyncio.sleep(0.02), timeout=0.1)
     assert not pending.done()
     await pending
+
+
+@pytest.mark.asyncio
+async def test_project_runtime_counts_running_tasks_without_blocking_loop(tmp_path, monkeypatch):
+    from models import Task
+    from services.project import ProjectManager
+    import services.project as project_module
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / "project")
+    now = datetime.now(timezone.utc)
+    await manager.run_db(project.id, lambda _project: [Task.create(
+        id=f"task-{status}", title=status, cwd=str(project.path),
+        status=status, created_at=now, updated_at=now,
+    ) for status in ("running", "queued")])
+    monkeypatch.setattr(project_module, "project_manager", manager)
+    original_run_db = manager.run_db
+
+    async def slow_run_db(project_id, operation):
+        def slow_operation(project):
+            time.sleep(0.2)
+            return operation(project)
+        return await original_run_db(project_id, slow_operation)
+
+    monkeypatch.setattr(manager, "run_db", slow_run_db)
+
+    class Socket:
+        sent = None
+
+        async def send(self, raw):
+            self.sent = json.loads(raw)
+
+    socket = Socket()
+    client = GatewayControlClient("https://gateway.test", gateway_id="gateway-test",
+                                  public_key_fingerprint="pin", user_id="user-1",
+                                  policy_cache=ManagedPolicyCache())
+    try:
+        pending = asyncio.create_task(client._send_project_runtime(socket, "device-1"))
+        await asyncio.wait_for(asyncio.sleep(0.02), timeout=0.1)
+        assert not pending.done()
+        await pending
+        assert socket.sent == {"kind": "project_runtime", "version": 1,
+                               "device_id": "device-1", "projects": [
+                                   {"id": project.id, "running_tasks": 1},
+                               ]}
+    finally:
+        manager.close_all()
 
 
 @pytest.mark.asyncio

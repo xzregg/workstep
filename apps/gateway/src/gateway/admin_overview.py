@@ -50,7 +50,9 @@ async def admin_overview(request: Request):
                 "daemon_unhealthy": sum(control.daemon_health(device_id) is False for device_id in online_ids),
                 "daemon_unknown": sum(control.daemon_health(device_id) is None for device_id in online_ids),
             }
-            published = (await session.execute(select(PlatformProject.id, PlatformProject.device_id).where(
+            published = (await session.execute(select(
+                PlatformProject.id, PlatformProject.device_id, PlatformProject.host_project_id,
+            ).where(
                 PlatformProject.status == "active",
                 PlatformProject.access_mode == "remote_published",
             ))).all()
@@ -62,12 +64,19 @@ async def admin_overview(request: Request):
                 )) or 0
             projects = {
                 "published": len(published), "shared": shared,
-                "host_offline": sum(not control.is_online(device_id) for _, device_id in published),
+                "host_offline": sum(not control.is_online(device_id) for _, device_id, _ in published),
             }
+            running_counts = [control.running_tasks(device_id, host_project_id)
+                              for _, device_id, host_project_id in published]
+            unknown_projects = sum(count is None for count in running_counts)
+            tasks = {"running": (sum(count for count in running_counts if count is not None)
+                                  if unknown_projects == 0 else None),
+                     "unknown_projects": unknown_projects}
             recent = (await session.scalars(select(AuditEvent).order_by(
                 AuditEvent.created_at.desc(), AuditEvent.id.desc()).limit(5))).all()
             recent_actions = [{"action": event.action, "result": event.result,
                                "created_at": event.created_at.isoformat()} for event in recent]
 
     return {"roles": sorted(roles), "users": users, "devices": devices, "projects": projects,
-            "tasks": {"running": None}, "recent_actions": recent_actions}
+            "tasks": tasks if super_admin else {"running": None, "unknown_projects": None},
+            "recent_actions": recent_actions}

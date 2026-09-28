@@ -148,6 +148,7 @@ class ControlConnections:
         self._device_pending: dict[str, str] = {}
         self._config_keys: dict[str, str] = {}
         self._daemon_health: dict[str, bool] = {}
+        self._project_runtime: dict[str, tuple[float, dict[str, int]]] = {}
         self._pending_project_catalog: dict[str, tuple[str, asyncio.Future]] = {}
         self._control_senders: dict[str, Callable[[dict], Awaitable[None]]] = {}
         self._lock = asyncio.Lock()
@@ -168,6 +169,22 @@ class ControlConnections:
         else:
             self._daemon_health[device_id] = healthy
 
+    def running_tasks(self, device_id: str, host_project_id: str) -> int | None:
+        if not self.is_online(device_id):
+            return None
+        snapshot = self._project_runtime.get(device_id)
+        if snapshot is None or time.monotonic() - snapshot[0] > 60:
+            return None
+        return snapshot[1].get(host_project_id)
+
+    def update_project_runtime(self, device_id: str, connection_id: str,
+                               projects: list[dict]) -> None:
+        if self._active.get(device_id, (None,))[0] != connection_id:
+            return
+        self._project_runtime[device_id] = (
+            time.monotonic(), {item["id"]: item["running_tasks"] for item in projects},
+        )
+
     async def claim(self, device_id: str, connection_id: str, ws: WebSocket,
                     config_public_key_pem: str,
                     send_json: Callable[[dict], Awaitable[None]]) -> None:
@@ -177,6 +194,7 @@ class ControlConnections:
             self._config_keys[device_id] = config_public_key_pem
             self._control_senders[device_id] = send_json
             self._daemon_health.pop(device_id, None)
+            self._project_runtime.pop(device_id, None)
             if previous:
                 for request_id, (pending_device, future) in list(self._pending_project_catalog.items()):
                     if pending_device == device_id:
@@ -196,6 +214,7 @@ class ControlConnections:
                 self._config_keys.pop(device_id, None)
                 self._control_senders.pop(device_id, None)
                 self._daemon_health.pop(device_id, None)
+                self._project_runtime.pop(device_id, None)
                 for request_id, (pending_device, future) in list(self._pending_project_catalog.items()):
                     if pending_device == device_id:
                         self._pending_project_catalog.pop(request_id)
@@ -978,6 +997,25 @@ async def control_socket(ws: WebSocket):
                 task.add_done_callback(audit_tasks.discard)
                 continue
             if message.get("kind") != "heartbeat":
+                if message.get("kind") == "project_runtime":
+                    projects = message.get("projects")
+                    if (message.get("version") != 1 or message.get("device_id") != device_id
+                            or not isinstance(projects, list) or len(projects) > 1000
+                            or any(not isinstance(item, dict)
+                                   or set(item) != {"id", "running_tasks"}
+                                   or not isinstance(item["id"], str)
+                                   or not 1 <= len(item["id"]) <= 128
+                                   or any(char in item["id"] for char in ("/", "\\", " "))
+                                   or type(item["running_tasks"]) is not int
+                                   or not 0 <= item["running_tasks"] <= 1_000_000_000
+                                   for item in projects)
+                            or len({item["id"] for item in projects}) != len(projects)):
+                        await ws.close(code=4400, reason="Invalid project runtime")
+                        return
+                    ws.app.state.control_connections.update_project_runtime(
+                        device_id, connection_id, projects,
+                    )
+                    continue
                 await ws.close(code=4400, reason="Invalid control message")
                 return
             daemon_health = message.get("daemon_health")

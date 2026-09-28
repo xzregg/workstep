@@ -164,6 +164,61 @@ def test_control_delivers_signed_device_command_and_records_result(tmp_path):
         assert status.json()["commands"][0]["status"] == "succeeded"
 
 
+def test_project_runtime_snapshot_is_scoped_to_live_device_and_published_projects(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        device_id, token, device_key, _ = _active_device(client)
+        with sqlite3.connect(tmp_path / "workstep_platform.db") as database:
+            database.execute("""INSERT INTO platform_projects
+                (id,device_id,host_project_id,name,access_mode,status)
+                VALUES ('published-1',?,'host-1','Published','remote_published','active')""", (device_id,))
+            database.execute("""INSERT INTO platform_projects
+                (id,device_id,host_project_id,name,access_mode,status)
+                VALUES ('private-1',?,'host-2','Private','policy_only','active')""", (device_id,))
+        assert client.get("/api/admin/projects").json()["projects"][0]["running_tasks"] is None
+        with client.websocket_connect("/api/control/ws") as ws:
+            _handshake(ws, token, device_key)
+            assert ws.receive_json()["kind"] == "hello"
+            ws.send_json({"kind": "project_runtime", "version": 1, "device_id": device_id,
+                          "projects": [{"id": "host-1", "running_tasks": 3},
+                                       {"id": "host-2", "running_tasks": 99}]})
+            ws.send_json({"kind": "heartbeat", "daemon_health": True})
+            assert ws.receive_json()["kind"] == "heartbeat_ack"
+            listed = client.get("/api/admin/projects").json()["projects"]
+            assert len(listed) == 1
+            assert listed[0]["running_tasks"] == 3
+            assert client.get("/api/admin/overview").json()["tasks"] == {
+                "running": 3, "unknown_projects": 0,
+            }
+            app.state.control_connections._project_runtime[device_id] = (
+                time.monotonic() - 61, {"host-1": 3},
+            )
+            assert client.get("/api/admin/projects").json()["projects"][0]["running_tasks"] is None
+            ws.send_json({"kind": "project_runtime", "version": 1, "device_id": device_id,
+                          "projects": [{"id": "host-2", "running_tasks": 99}]})
+            ws.send_json({"kind": "heartbeat", "daemon_health": True})
+            assert ws.receive_json()["kind"] == "heartbeat_ack"
+            assert client.get("/api/admin/projects").json()["projects"][0]["running_tasks"] is None
+            assert client.get("/api/admin/overview").json()["tasks"] == {
+                "running": None, "unknown_projects": 1,
+            }
+        assert client.get("/api/admin/projects").json()["projects"][0]["running_tasks"] is None
+
+
+def test_project_runtime_rejects_invalid_counts(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        device_id, token, device_key, _ = _active_device(client)
+        with client.websocket_connect("/api/control/ws") as ws:
+            _handshake(ws, token, device_key)
+            assert ws.receive_json()["kind"] == "hello"
+            ws.send_json({"kind": "project_runtime", "version": 1, "device_id": device_id,
+                          "projects": [{"id": "host-1", "running_tasks": -1}]})
+            with pytest.raises(WebSocketDisconnect) as error:
+                ws.receive_json()
+            assert error.value.code == 4400
+
+
 def test_control_accepts_usage_batch_and_acks_after_commit(tmp_path):
     from datetime import datetime, timezone
 
