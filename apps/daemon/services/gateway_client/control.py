@@ -61,6 +61,7 @@ class GatewayControlClient:
         self._task: asyncio.Task | None = None
         self._data_tasks: set[asyncio.Task] = set()
         self._command_tasks: set[asyncio.Task] = set()
+        self._catalog_tasks: set[asyncio.Task] = set()
         self._stop = asyncio.Event()
         self.config_private_key: X25519PrivateKey | None = None
         self._active_socket = None
@@ -102,6 +103,10 @@ class GatewayControlClient:
 
     async def stop(self) -> None:
         self._stop.set()
+        for task in self._catalog_tasks:
+            task.cancel()
+        if self._catalog_tasks:
+            await asyncio.gather(*self._catalog_tasks, return_exceptions=True)
         for task in self._command_tasks:
             task.cancel()
         if self._command_tasks:
@@ -294,6 +299,10 @@ class GatewayControlClient:
                     task.cancel()
                 if self._command_tasks:
                     await asyncio.gather(*self._command_tasks, return_exceptions=True)
+                for task in self._catalog_tasks:
+                    task.cancel()
+                if self._catalog_tasks:
+                    await asyncio.gather(*self._catalog_tasks, return_exceptions=True)
                 if reader_task:
                     reader_task.cancel()
                     await asyncio.gather(reader_task, return_exceptions=True)
@@ -342,6 +351,15 @@ class GatewayControlClient:
                     task = asyncio.create_task(self._run_data(device_id, token))
                     self._data_tasks.add(task)
                     task.add_done_callback(self._data_tasks.discard)
+                elif message.get("kind") == "project_catalog_request":
+                    request_id = message.get("request_id")
+                    if (message.get("version") != 1 or message.get("device_id") != device_id
+                            or not isinstance(request_id, str) or len(request_id) != 32
+                            or any(char not in "0123456789abcdef" for char in request_id)):
+                        raise ValueError("Invalid project catalog request")
+                    task = asyncio.create_task(self._send_project_catalog(socket, device_id, request_id))
+                    self._catalog_tasks.add(task)
+                    task.add_done_callback(self._catalog_tasks.discard)
                 elif message.get("kind") == "command_status_ack":
                     if (message.get("version") != 1 or message.get("device_id") != device_id
                             or not isinstance(message.get("command_id"), str)
@@ -361,6 +379,28 @@ class GatewayControlClient:
             raise
         except Exception as exc:
             messages.put_nowait(exc)
+
+    async def _send_project_catalog(self, socket, device_id: str, request_id: str) -> None:
+        from services.project import project_manager
+
+        try:
+            raw_projects = await asyncio.to_thread(project_manager.list_project_catalog)
+            projects = [{"id": item["id"], "name": item["name"]}
+                        for item in raw_projects]
+            if (len(projects) > 1000 or any(
+                    not isinstance(item.get("id"), str) or not 1 <= len(item["id"]) <= 128
+                    or any(char in item["id"] for char in ("/", "\\", " "))
+                    or not isinstance(item.get("name"), str) or not 1 <= len(item["name"]) <= 256
+                    or item["name"] != item["name"].strip()
+                    or any(char in item["name"] for char in ("/", "\\"))
+                    for item in projects)):
+                raise ValueError("Invalid local project catalog")
+            status = "ok"
+        except Exception:
+            projects, status = [], "failed"
+        await socket.send(json.dumps({"kind": "project_catalog_response", "version": 1,
+                                      "device_id": device_id, "request_id": request_id,
+                                      "status": status, "projects": projects}))
 
     async def _run_data(self, device_id: str, token: str) -> None:
         streams: dict[str, ManagedHttpBridge | ManagedWebSocketBridge] = {}

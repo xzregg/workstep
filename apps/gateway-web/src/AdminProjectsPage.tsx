@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { AdminProjectGrantDialog, AdminProjectRevokeDialog } from './AdminProjectGrantDialog'
 import type { ProjectGrant } from './AdminProjectGrantDialog'
 import { AdminProjectTaskCreatePanel } from './AdminProjectTaskCreatePanel'
+import { AdminPublishProjectPanel, AdminUnpublishProjectDialog } from './AdminProjectPublication'
 
 type Project = { id: string; name: string; device_id: string; device_name: string;
   device_online: boolean; publisher: string | null; published_at: string | null;
@@ -64,6 +65,8 @@ export function AdminProjectsPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
+  const [showPublish, setShowPublish] = useState(false)
+  const [unpublish, setUnpublish] = useState<Project | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -101,6 +104,9 @@ export function AdminProjectsPage() {
     {!csrf && !error && <p role="status">正在检查登录状态…</p>}
     {csrf && <>
       <p>仅展示已发布项目的元数据。管理权限不会自动授予项目内容访问。</p>
+      <button type="button" onClick={() => setShowPublish(value => !value)}>{showPublish ? '收起发布入口' : '从 PC 发布项目'}</button>
+      {showPublish && <AdminPublishProjectPanel csrf={csrf} revision={revision}
+        onPublished={() => setRevision(value => value + 1)} />}
       <form className="gateway-admin-search" onSubmit={event => {
         event.preventDefault(); setFilters(current => ({ ...current, q: query.trim(), page: 1 }))
       }}><label htmlFor="admin-project-search">搜索项目或宿主电脑</label>
@@ -121,7 +127,8 @@ export function AdminProjectsPage() {
           <p>用户授权 {project.grant_users} · 用户组授权 {project.grant_groups} · 只读 {
             project.grant_levels.read} · 可编辑 {project.grant_levels.edit}</p>
           <p>运行状态：{project.running_tasks === null ? '尚未上报' : `${project.running_tasks} 项任务`}</p></div>
-        <button type="button" onClick={() => setSelected(project)}>管理授权</button>
+        <div className="gateway-device-actions"><button type="button" onClick={() => setSelected(project)}>管理授权</button>
+          <button type="button" onClick={() => setUnpublish(project)}>取消发布</button></div>
       </li>)}</ul>
       <div className="gateway-admin-pagination"><span>共 {total} 个已发布项目 · 第 {filters.page}/{
         Math.max(1, Math.ceil(total / 25))} 页</span>
@@ -133,6 +140,11 @@ export function AdminProjectsPage() {
         onChanged={() => setRevision(value => value + 1)} />}
       {selected && <AdminProjectTaskCreatePanel key={`capabilities-${selected.id}`}
         projectId={selected.id} csrf={csrf} />}
+      {unpublish && <AdminUnpublishProjectDialog project={unpublish} csrf={csrf}
+        onClose={() => setUnpublish(null)} onComplete={() => {
+          if (selected?.id === unpublish.id) setSelected(null)
+          setUnpublish(null); setRevision(value => value + 1)
+        }} />}
     </>}
     {error && <p role="alert" className="gateway-auth-error">{error} {csrf && <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button>}</p>}

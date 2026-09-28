@@ -540,6 +540,11 @@ class ProjectManager:
                 result.append(self.project_summary(proj))
         return result
 
+    def list_project_catalog(self) -> list[dict[str, str]]:
+        """Return registered project identifiers and names without opening databases or paths."""
+        return [{"id": project.id, "name": project.name}
+                for project in list(self._projects.values())]
+
     def provider_references(self, provider_id: str) -> list[dict]:
         """Find every project row that still points at a provider ID.
 

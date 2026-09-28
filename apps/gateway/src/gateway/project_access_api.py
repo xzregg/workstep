@@ -5,7 +5,7 @@ from typing import Literal
 from uuid import uuid4
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 
@@ -14,6 +14,7 @@ from .identity import IdentityService
 from .identity_api import _identity, _super_admin_read, _super_admin_request
 from .models import (AuditEvent, Device, GroupMembership, PlatformProject,
                      ProjectAccessGrant, User, UserGroup)
+from .project_publication import record_project_publication
 
 router = APIRouter(prefix="/api")
 
@@ -249,6 +250,76 @@ async def list_project_grant_subjects(request: Request,
             .offset((page - 1) * page_size).limit(page_size))).all()
     return {'subjects': [{'id': row.id, 'name': getattr(row, 'username', None) or row.name}
                          for row in rows], 'total': total, 'page': page, 'page_size': page_size}
+
+
+@router.get('/admin/devices/{device_id}/publishable-projects')
+async def list_publishable_projects(request: Request, device_id: str,
+                                    q: str = Query('', max_length=128),
+                                    page: int = Query(1, ge=1),
+                                    page_size: int = Query(25, ge=1, le=100)):
+    await _super_admin_read(request)
+    async with request.app.state.database.session() as session:
+        device = await session.get(Device, device_id)
+    if device is None or device.status != 'active':
+        raise HTTPException(status_code=404, detail='Device unavailable')
+    try:
+        catalog = await request.app.state.control_connections.request_project_catalog(device_id)
+    except (ConnectionError, TimeoutError) as exc:
+        raise HTTPException(status_code=503, detail='Device project catalog unavailable') from exc
+    filtered = [item for item in catalog if q.casefold() in item['name'].casefold()]
+    total = len(filtered)
+    selected = filtered[(page - 1) * page_size:page * page_size]
+    async with request.app.state.database.session() as session:
+        rows = (await session.scalars(select(PlatformProject).where(
+            PlatformProject.device_id == device_id,
+            PlatformProject.host_project_id.in_([item['id'] for item in selected]),
+        ))).all() if selected else []
+    published = {row.host_project_id for row in rows if row.status == 'active'
+                 and row.access_mode == 'remote_published'}
+    return {'projects': [{'host_project_id': item['id'], 'name': item['name'],
+                          'published': item['id'] in published} for item in selected],
+            'total': total, 'page': page, 'page_size': page_size}
+
+
+@router.post('/admin/devices/{device_id}/projects/{host_project_id}/publish')
+async def admin_publish_project(request: Request, device_id: str,
+                                host_project_id: str = Path(min_length=1, max_length=128)):
+    actor = await _admin(request)
+    async with request.app.state.database.session() as session:
+        device = await session.get(Device, device_id)
+    if device is None or device.status != 'active':
+        raise HTTPException(status_code=404, detail='Device unavailable')
+    try:
+        catalog = await request.app.state.control_connections.request_project_catalog(device_id)
+    except (ConnectionError, TimeoutError) as exc:
+        raise HTTPException(status_code=503, detail='Device project catalog unavailable') from exc
+    project = next((item for item in catalog if item['id'] == host_project_id), None)
+    if project is None:
+        raise HTTPException(status_code=404, detail='Host project unavailable')
+    async with request.app.state.database.session() as session:
+        current_device = await session.get(Device, device_id)
+    if (current_device is None or current_device.status != 'active'
+            or not request.app.state.control_connections.is_online(device_id)):
+        raise HTTPException(status_code=409, detail='Device is no longer available')
+    return await record_project_publication(
+        request.app.state.database, device_id=device_id, user_id=actor.id,
+        host_project_id=project['id'], name=project['name'], action='publish',
+    )
+
+
+@router.post('/admin/projects/{project_id}/unpublish')
+async def admin_unpublish_project(request: Request, project_id: str):
+    actor = await _admin(request)
+    async with request.app.state.database.session() as session:
+        project = await session.get(PlatformProject, project_id)
+        if (project is None or project.status != 'active'
+                or project.access_mode != 'remote_published'):
+            raise HTTPException(status_code=404, detail='Published project unavailable')
+        device_id, host_project_id, name = project.device_id, project.host_project_id, project.name
+    return await record_project_publication(
+        request.app.state.database, device_id=device_id, user_id=actor.id,
+        host_project_id=host_project_id, name=name, action='unpublish',
+    )
 
 
 @router.get("/admin/projects/{project_id}/grants")

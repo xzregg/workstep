@@ -7,6 +7,7 @@ import hashlib
 import json
 import secrets
 import time
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
@@ -147,6 +148,8 @@ class ControlConnections:
         self._device_pending: dict[str, str] = {}
         self._config_keys: dict[str, str] = {}
         self._daemon_health: dict[str, bool] = {}
+        self._pending_project_catalog: dict[str, tuple[str, asyncio.Future]] = {}
+        self._control_senders: dict[str, Callable[[dict], Awaitable[None]]] = {}
         self._lock = asyncio.Lock()
 
     def is_online(self, device_id: str) -> bool:
@@ -166,12 +169,20 @@ class ControlConnections:
             self._daemon_health[device_id] = healthy
 
     async def claim(self, device_id: str, connection_id: str, ws: WebSocket,
-                    config_public_key_pem: str) -> None:
+                    config_public_key_pem: str,
+                    send_json: Callable[[dict], Awaitable[None]]) -> None:
         async with self._lock:
             previous = self._active.get(device_id)
             self._active[device_id] = (connection_id, ws, asyncio.current_task())
             self._config_keys[device_id] = config_public_key_pem
+            self._control_senders[device_id] = send_json
             self._daemon_health.pop(device_id, None)
+            if previous:
+                for request_id, (pending_device, future) in list(self._pending_project_catalog.items()):
+                    if pending_device == device_id:
+                        self._pending_project_catalog.pop(request_id)
+                        if not future.done():
+                            future.set_exception(ConnectionError("Control connection replaced"))
         if previous:
             try:
                 await previous[1].close(code=4000, reason="Replaced by new connection")
@@ -183,7 +194,13 @@ class ControlConnections:
             if self._active.get(device_id, (None,))[0] == connection_id:
                 self._active.pop(device_id, None)
                 self._config_keys.pop(device_id, None)
+                self._control_senders.pop(device_id, None)
                 self._daemon_health.pop(device_id, None)
+                for request_id, (pending_device, future) in list(self._pending_project_catalog.items()):
+                    if pending_device == device_id:
+                        self._pending_project_catalog.pop(request_id)
+                        if not future.done():
+                            future.set_exception(ConnectionError("Control connection closed"))
                 pending_token = self._device_pending.pop(device_id, None)
                 if pending_token:
                     pending = self._pending_data.pop(pending_token, None)
@@ -216,10 +233,10 @@ class ControlConnections:
                 self._device_pending[device_id] = pending_token
                 command = {"kind": "open_data", "version": 1, "device_id": device_id,
                            "token": pending_token}
-            control = self._active[device_id][1]
+            control = self._control_senders[device_id]
         if command:
             try:
-                await control.send_json(command)
+                await control(command)
             except Exception:
                 async with self._lock:
                     self._pending_data.pop(pending_token, None)
@@ -235,6 +252,38 @@ class ControlConnections:
                     self._pending_data.pop(pending_token, None)
                     self._device_pending.pop(device_id, None)
                 future.cancel()
+
+    async def request_project_catalog(self, device_id: str) -> list[dict]:
+        request_id = uuid4().hex
+        future = asyncio.get_running_loop().create_future()
+        async with self._lock:
+            active = self._active.get(device_id)
+            if active is None:
+                raise ConnectionError("Device is offline")
+            if any(pending_device == device_id for pending_device, _ in self._pending_project_catalog.values()):
+                raise ConnectionError("Project catalog request already pending")
+            self._pending_project_catalog[request_id] = (device_id, future)
+            send_json = self._control_senders[device_id]
+        try:
+            await send_json({"kind": "project_catalog_request", "version": 1,
+                             "device_id": device_id, "request_id": request_id})
+            return await asyncio.wait_for(future, timeout=10)
+        finally:
+            async with self._lock:
+                self._pending_project_catalog.pop(request_id, None)
+            if not future.done():
+                future.cancel()
+
+    async def complete_project_catalog(self, device_id: str, request_id: str,
+                                       projects: list[dict] | None) -> None:
+        async with self._lock:
+            pending = self._pending_project_catalog.get(request_id)
+            if pending is None or pending[0] != device_id or pending[1].done():
+                return
+            if projects is None:
+                pending[1].set_exception(ConnectionError("Project catalog unavailable"))
+            else:
+                pending[1].set_result(projects)
 
     async def attach_data(self, token: str, socket: WebSocket) -> "DataConnection | None":
         async with self._lock:
@@ -688,7 +737,7 @@ async def control_socket(ws: WebSocket):
             async with session.begin():
                 session.add(DeviceConnection(id=connection_id, device_id=device_id))
         await ws.app.state.control_connections.claim(
-            device_id, connection_id, ws, config_public_key_pem,
+            device_id, connection_id, ws, config_public_key_pem, send_json,
         )
         signer = ws.app.state.gateway_signer
         (policy_revision, task_create, project_publish,
@@ -824,6 +873,31 @@ async def control_socket(ws: WebSocket):
                 await send_json({"kind": "skill_applied_ack", "version": 1,
                                  "device_id": device_id,
                                  "projects": [item["project_id"] for item in projects]})
+                continue
+            if message.get("kind") == "project_catalog_response":
+                request_id = message.get("request_id")
+                projects = message.get("projects")
+                if (message.get("version") != 1 or message.get("device_id") != device_id
+                        or not isinstance(request_id, str) or len(request_id) != 32
+                        or any(char not in "0123456789abcdef" for char in request_id)
+                        or message.get("status") not in ("ok", "failed")
+                        or not isinstance(projects, list) or len(projects) > 1000
+                        or (message["status"] == "failed" and projects)
+                        or any(not isinstance(item, dict) or set(item) != {"id", "name"}
+                               or not isinstance(item["id"], str)
+                               or not 1 <= len(item["id"]) <= 128
+                               or any(char in item["id"] for char in ("/", "\\", " "))
+                               or not isinstance(item["name"], str)
+                               or not 1 <= len(item["name"]) <= 256
+                               or item["name"] != item["name"].strip()
+                               or any(char in item["name"] for char in ("/", "\\"))
+                               for item in projects)
+                        or len({item["id"] for item in projects}) != len(projects)):
+                    await ws.close(code=4400, reason="Invalid project catalog")
+                    return
+                await ws.app.state.control_connections.complete_project_catalog(
+                    device_id, request_id, projects if message["status"] == "ok" else None,
+                )
                 continue
             if message.get("kind") == "project_publish":
                 if (message.get("version") != 1
