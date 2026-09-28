@@ -25,6 +25,22 @@ def test_project_http_allowlist_matches_only_the_bound_project():
     assert not allowed("GET", "/api/project/host-2/summary", [], "host-1")
     assert allowed("GET", "/api/task/list", [("project_id", "host-1")], "host-1")
     assert allowed("GET", "/api/task/task-1", [("project_id", "host-1")], "host-1")
+    assert allowed("GET", "/api/workflow/list", [("project_id", "host-1")], "host-1")
+    assert allowed("GET", "/api/workflow/flow-1", [("project_id", "host-1")], "host-1")
+    assert allowed("GET", "/api/chat-sessions", [("project_id", "host-1")], "host-1")
+    assert allowed("GET", "/api/chat-sessions/session-1", [
+        ("project_id", "host-1")], "host-1")
+    assert allowed("GET", "/api/search/tasks", [
+        ("projectId", "host-1"), ("query", "bug")], "host-1")
+    assert allowed("GET", "/api/task/task-1/history", [
+        ("project_id", "host-1")], "host-1")
+    assert allowed("GET", "/api/task/task-1/messages/message-1/events", [
+        ("project_id", "host-1"), ("cursor", "10")], "host-1")
+    assert allowed("GET", "/api/chat-sessions/session-1/messages/message-1/events", [
+        ("project_id", "host-1"), ("limit", "100")], "host-1")
+    assert not allowed("GET", "/api/task/task-1/messages/message-1/events", [
+        ("project_id", "host-2")], "host-1")
+    assert not allowed("GET", "/api/search/tasks", [("query", "bug")], "host-1")
     assert not allowed("GET", "/api/task/task-1", [("project_id", "host-2")], "host-1")
     assert not allowed("GET", "/api/task/task-1", [
         ("project_id", "host-1"), ("project_id", "host-2")], "host-1")

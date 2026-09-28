@@ -119,6 +119,12 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
             "project_id": "host-1",
         }
         assert client.get(f"{host}/api/task/task-1?project_id=host-2").status_code == 403
+        assert client.get(f"{host}/api/workflow/list?project_id=host-1").status_code == 200
+        assert client.get(f"{host}/api/chat-sessions?project_id=host-1").status_code == 200
+        assert client.get(f"{host}/api/search/tasks?projectId=host-1").status_code == 200
+        assert client.get(f"{host}/api/search/tasks").status_code == 403
+        assert client.get(f"{host}/api/task/task-1/history?project_id=host-1").status_code == 200
+        assert client.get(f"{host}/api/task/task-1/messages/msg-1/events?project_id=host-2").status_code == 403
         assert client.get(f"{host}/api/project/host-1/summary").json() == {
             "project_id": "host-1",
         }
