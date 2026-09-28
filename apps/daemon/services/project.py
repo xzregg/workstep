@@ -1,5 +1,6 @@
 """Project service — init, register, and manage project workspaces."""
 
+import asyncio
 import json
 import logging
 import uuid
@@ -544,6 +545,23 @@ class ProjectManager:
         """Return registered project identifiers and names without opening databases or paths."""
         return [{"id": project.id, "name": project.name}
                 for project in list(self._projects.values())]
+
+    async def running_task_snapshot(self) -> list[dict[str, int | str]]:
+        """Count active tasks in each project's database executor."""
+        projects = self.list_project_catalog()
+
+        def count_running(_project: Project) -> int:
+            return Task.select().where(Task.status == "running").count()
+
+        counts = await asyncio.gather(*(
+            self.run_db(project["id"], count_running) for project in projects
+        ), return_exceptions=True)
+        for count in counts:
+            if isinstance(count, BaseException):
+                logger.warning("Project runtime count failed: %s", type(count).__name__)
+        return [{"id": project["id"], "running_tasks": count}
+                for project, count in zip(projects, counts)
+                if type(count) is int]
 
     def provider_references(self, provider_id: str) -> list[dict]:
         """Find every project row that still points at a provider ID.

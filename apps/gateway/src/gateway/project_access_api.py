@@ -226,7 +226,9 @@ async def list_admin_projects(request: Request, q: str = Query('', max_length=12
                 'grant_groups': sum(grant.subject_type == 'group' for grant in own_grants),
                 'grant_levels': {'read': sum(grant.access_level == 'read' for grant in own_grants),
                                  'edit': sum(grant.access_level == 'edit' for grant in own_grants)},
-                'running_tasks': None,
+                'running_tasks': request.app.state.control_connections.running_tasks(
+                    device.id, project.host_project_id,
+                ),
             })
     return {'projects': projects, 'total': total, 'page': page, 'page_size': page_size}
 

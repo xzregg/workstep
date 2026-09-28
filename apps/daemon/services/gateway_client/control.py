@@ -161,6 +161,7 @@ class GatewayControlClient:
             usage_task = None
             audit_task = None
             skill_task = None
+            runtime_task = None
             try:
                 async with self.connector(self.url, origin=self.origin, open_timeout=10,
                                           max_size=1024 * 1024) as socket:
@@ -235,6 +236,10 @@ class GatewayControlClient:
                     self.online = True
                     delay = 1.0
                     while not self._stop.is_set():
+                        if runtime_task is None or runtime_task.done():
+                            runtime_task = asyncio.create_task(
+                                self._send_project_runtime(socket, device_id),
+                            )
                         if skill_task is not None and skill_task.done():
                             await skill_task
                         if usage_task is not None and usage_task.done():
@@ -286,6 +291,9 @@ class GatewayControlClient:
                     )
                 self._project_ack_messages = None
                 self.config_private_key = None
+                if runtime_task:
+                    runtime_task.cancel()
+                    await asyncio.gather(runtime_task, return_exceptions=True)
                 if usage_task:
                     usage_task.cancel()
                     await asyncio.gather(usage_task, return_exceptions=True)
@@ -401,6 +409,23 @@ class GatewayControlClient:
         await socket.send(json.dumps({"kind": "project_catalog_response", "version": 1,
                                       "device_id": device_id, "request_id": request_id,
                                       "status": status, "projects": projects}))
+
+    async def _send_project_runtime(self, socket, device_id: str) -> None:
+        from services.project import project_manager
+
+        try:
+            projects = await project_manager.running_task_snapshot()
+            if (len(projects) > 1000 or any(
+                    not isinstance(item.get("id"), str) or not 1 <= len(item["id"]) <= 128
+                    or any(char in item["id"] for char in ("/", "\\", " "))
+                    or type(item.get("running_tasks")) is not int
+                    or not 0 <= item["running_tasks"] <= 1_000_000_000
+                    for item in projects)):
+                raise ValueError("Invalid local project runtime")
+            await socket.send(json.dumps({"kind": "project_runtime", "version": 1,
+                                          "device_id": device_id, "projects": projects}))
+        except Exception as exc:
+            logger.warning("Project runtime snapshot unavailable: %s", type(exc).__name__)
 
     async def _run_data(self, device_id: str, token: str) -> None:
         streams: dict[str, ManagedHttpBridge | ManagedWebSocketBridge] = {}
