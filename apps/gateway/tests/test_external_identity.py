@@ -180,6 +180,22 @@ def test_disabling_identity_source_preserves_password_login(tmp_path):
         }).status_code == 200
 
 
+def test_callback_secrets_are_configured_by_environment_reference(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        csrf = _setup(client)
+        body = {"provider": "dingtalk", "tenant_id": "tenant-a", "client_id": "app-key",
+                "secret_env": "OAUTH_SECRET", "callback_token_env": "CALLBACK_TOKEN",
+                "callback_aes_key_env": "CALLBACK_AES_KEY"}
+        one_key = client.post("/api/admin/identity-sources", headers={"X-CSRF-Token": csrf},
+                              json={**body, "callback_aes_key_env": None})
+        assert one_key.status_code == 422
+        source = client.post("/api/admin/identity-sources", headers={"X-CSRF-Token": csrf}, json=body)
+        assert source.status_code == 201, source.text
+        assert source.json()["callback_configured"] is True
+        assert "CALLBACK_TOKEN" not in source.text
+
+
 def test_external_registration_waits_for_approval(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path))
     app.state.identity_connectors = {"dingtalk": FakeConnector()}

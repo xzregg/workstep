@@ -93,6 +93,8 @@ class IdentitySource(Base):
     tenant_id: Mapped[str] = mapped_column(String(128))
     client_id: Mapped[str] = mapped_column(String(256))
     secret_env: Mapped[str] = mapped_column(String(128))
+    callback_token_env: Mapped[str | None] = mapped_column(String(128))
+    callback_aes_key_env: Mapped[str | None] = mapped_column(String(128))
     agent_id: Mapped[str | None] = mapped_column(String(128))
     enabled: Mapped[int] = mapped_column(Integer, server_default="1")
     created_at: Mapped[datetime] = timestamp()
