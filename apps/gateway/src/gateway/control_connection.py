@@ -755,8 +755,9 @@ async def control_socket(ws: WebSocket):
     async def apply_usage_batch(batch_id: str, events: list[dict]) -> None:
         try:
             async with ws.app.state.usage_ledger_lock:
-                result = await record_usage_batch(
-                    ws.app.state.database, device_id, batch_id, events,
+                result = await asyncio.wait_for(
+                    record_usage_batch(ws.app.state.database, device_id, batch_id, events),
+                    timeout=ws.app.state.usage_batch_timeout_seconds,
                 )
             await send_json({"kind": "usage_ack", "version": 1,
                              "device_id": device_id, **result})
@@ -770,6 +771,8 @@ async def control_socket(ws: WebSocket):
             await send_json({"kind": "usage_retry", "version": 1,
                              "device_id": device_id, "batch_id": batch_id,
                              "retry_after": 5})
+        finally:
+            ws.app.state.usage_batch_slots.release()
 
     async def apply_audit_batch(batch_id: str, events: list[dict]) -> None:
         try:
@@ -1052,6 +1055,12 @@ async def control_socket(ws: WebSocket):
                                      "device_id": device_id, "batch_id": batch_id,
                                      "retry_after": 5})
                     continue
+                if ws.app.state.usage_batch_slots.locked():
+                    await send_json({"kind": "usage_retry", "version": 1,
+                                     "device_id": device_id, "batch_id": batch_id,
+                                     "retry_after": 5})
+                    continue
+                await ws.app.state.usage_batch_slots.acquire()
                 task = asyncio.create_task(apply_usage_batch(batch_id, events))
                 usage_tasks.add(task)
                 task.add_done_callback(usage_tasks.discard)
