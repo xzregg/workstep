@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api")
 
 
 class CapabilityTargetInput(BaseModel):
-    capability: Literal["task.create", "project.publish"]
+    capability: Literal["task.create", "project.publish", "share.create"]
     scope_type: Literal["global", "device", "project"]
     scope_id: str | None = Field(default=None, max_length=64)
 
