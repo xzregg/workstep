@@ -122,7 +122,8 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
         if managed and (share_scope is not None or request.url.path.startswith("/api/platform-share/")):
             if (not remote_bridge or not isinstance(share_scope, dict)
                     or request.method != "GET"
-                    or request.url.path != "/api/platform-share/task"
+                    or request.url.path not in (
+                        "/api/platform-share/task", "/api/platform-share/history")
                     or request.url.query):
                 response = JSONResponse({"detail": "share scope denied"}, status_code=403)
                 response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)

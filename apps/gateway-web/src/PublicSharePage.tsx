@@ -11,6 +11,8 @@ type SharedTask = {
   updated_at?: string | null
   creator_name?: string | null
 }
+type SharedMessage = { id: string; role: string; content: string; step_key: string;
+  created_at: string; truncated?: boolean }
 type Phase = 'loading' | 'password' | 'task' | 'offline' | 'unavailable'
 
 export function PublicSharePage() {
@@ -18,6 +20,8 @@ export function PublicSharePage() {
   const [phase, setPhase] = useState<Phase>('loading')
   const [meta, setMeta] = useState<ShareMeta | null>(null)
   const [task, setTask] = useState<SharedTask | null>(null)
+  const [messages, setMessages] = useState<SharedMessage[]>([])
+  const [historyError, setHistoryError] = useState(false)
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -31,7 +35,17 @@ export function PublicSharePage() {
     if (response.status === 401) { setPhase('password'); return }
     if (!response.ok) { setPhase('unavailable'); return }
     setTask(await response.json() as SharedTask)
-    if (!signal?.aborted) setPhase('task')
+    if (signal?.aborted) return
+    setPhase('task')
+    try {
+      const history = await fetch(`${base}/history`, { signal })
+      if (signal?.aborted) return
+      if (!history.ok) { setHistoryError(true); return }
+      const result: { messages: SharedMessage[] } = await history.json()
+      if (!signal?.aborted) setMessages(result.messages)
+    } catch (reason) {
+      if (!(reason instanceof DOMException && reason.name === 'AbortError')) setHistoryError(true)
+    }
   }
 
   useEffect(() => {
@@ -39,6 +53,8 @@ export function PublicSharePage() {
     setPhase('loading')
     setMeta(null)
     setTask(null)
+    setMessages([])
+    setHistoryError(false)
     setError('')
     async function openShare() {
       try {
@@ -119,6 +135,20 @@ export function PublicSharePage() {
           {task.created_at && <div><dt>创建时间</dt><dd>{new Date(task.created_at).toLocaleString()}</dd></div>}
         </dl>
         {task.description && <div className="gateway-share-description">{task.description}</div>}
+        <section className="gateway-share-messages">
+          <h3>任务消息</h3>
+          {historyError && <p>消息暂时不可用，请稍后重试。</p>}
+          {!historyError && messages.length === 0 && <p>暂无执行消息。</p>}
+          {messages.map(message => <article key={message.id} className="gateway-share-message">
+            <div className="gateway-share-message-meta">
+              <strong>{message.role === 'assistant' ? '助手' : '用户'}</strong>
+              {message.step_key && <span>{message.step_key}</span>}
+              {message.created_at && <time>{new Date(message.created_at).toLocaleString()}</time>}
+            </div>
+            <div className="gateway-share-message-content">{message.content}</div>
+            {message.truncated && <p>消息过长，仅显示前一部分。</p>}
+          </article>)}
+        </section>
       </>}
       {phase === 'offline' && <>
         <h2>暂时无法打开分享</h2>

@@ -33,6 +33,10 @@ test('public share route works without portal authentication and unlocks task', 
       id: 'task-1', title: 'Visible task', description: 'Visible description',
       status: 'running', created_at: '2026-09-29T10:00:00Z',
     })
+    if (url.endsWith('/history')) return Response.json({ messages: [{
+      id: 'message-1', role: 'assistant', content: 'Visible execution reply',
+      step_key: 'build', created_at: '2026-09-29T10:05:00Z',
+    }] })
     throw new Error(`Unexpected fetch: ${url}`)
   }
   render(<MemoryRouter initialEntries={['/share/sample-token']}><App /></MemoryRouter>)
@@ -44,6 +48,7 @@ test('public share route works without portal authentication and unlocks task', 
   await screen.findByText('Visible task')
   assert.match(document.body.textContent ?? '', /Visible description/)
   assert.match(document.body.textContent ?? '', /只读分享/)
+  await screen.findByText('Visible execution reply')
   assert.equal(calls.find(call => call.url.endsWith('/unlock'))?.body,
     JSON.stringify({ password: 'secret' }))
 })
@@ -60,6 +65,7 @@ test('public share reports offline host and allows retry', async () => {
     if (url.endsWith('/task')) return offline
       ? new Response(null, { status: 503 })
       : Response.json({ id: 'task-1', title: 'Recovered', status: 'ready' })
+    if (url.endsWith('/history')) return Response.json({ messages: [] })
     throw new Error(`Unexpected fetch: ${url}`)
   }
   render(<MemoryRouter initialEntries={['/share/sample-token']}><Routes>
@@ -83,6 +89,7 @@ test('public share retries metadata after a temporarily unavailable host', async
       mode: 'read_only', task_id: 'task-1' })
     if (url.endsWith('/task')) return Response.json({ id: 'task-1', title: 'Available',
       status: 'ready' })
+    if (url.endsWith('/history')) return Response.json({ messages: [] })
     throw new Error(`Unexpected fetch: ${url}`)
   }
   render(<MemoryRouter initialEntries={['/share/sample-token']}><Routes>

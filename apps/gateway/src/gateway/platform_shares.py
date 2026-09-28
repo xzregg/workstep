@@ -264,6 +264,15 @@ async def public_share_session(request: Request, token: str):
 
 @router.get("/public/shares/{token}/task")
 async def public_share_task(request: Request, token: str):
+    return await _proxy_share_read(request, token, "/api/platform-share/task")
+
+
+@router.get("/public/shares/{token}/history")
+async def public_share_history(request: Request, token: str):
+    return await _proxy_share_read(request, token, "/api/platform-share/history")
+
+
+async def _proxy_share_read(request: Request, token: str, target_path: str):
     share, project = await _authorized_visitor(request, token, touch=True)
     connections = request.app.state.control_connections
     if not connections.is_online(share.device_id):
@@ -285,7 +294,7 @@ async def public_share_task(request: Request, token: str):
         connection = await connections.request_data(share.device_id)
         response = await connection.proxy_http(
             request, share_ticket=ticket,
-            target_path="/api/platform-share/task",
+            target_path=target_path,
             authorization_check=authorize_stream,
         )
         response.headers["Cache-Control"] = "no-store"

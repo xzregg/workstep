@@ -43,16 +43,25 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
             target_path="/api/platform-share/task",
         )
 
+    @app.get("/api/public/shares/token/history")
+    async def guest_history(request: Request):
+        return await connection.proxy_http(
+            request, share_ticket="signed-ticket",
+            target_path="/api/platform-share/history",
+        )
+
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
                                  base_url="https://gateway.test") as client:
         response = await client.get("/api/public/shares/token/task",
                                     headers={"Cookie": "guest=private"})
         assert response.status_code == 200
+        assert (await client.get("/api/public/shares/token/history")).status_code == 200
     assert starts[0]["path"] == "/api/platform-share/task"
     assert starts[0]["share_ticket"] == "signed-ticket"
     assert "user_id" not in starts[0]
     assert "username" not in starts[0]
     assert all(name.lower() != "cookie" for name, _ in starts[0]["headers"])
+    assert starts[1]["path"] == "/api/platform-share/history"
 
 
 @pytest.mark.asyncio

@@ -462,7 +462,8 @@ class DataConnection:
                          authorization_check=None):
         if share_ticket is not None:
             if (not isinstance(share_ticket, str) or not share_ticket
-                    or target_path != "/api/platform-share/task"
+                    or target_path not in ("/api/platform-share/task",
+                                           "/api/platform-share/history")
                     or request.method != "GET"
                     or user_id is not None or username is not None
                     or project_id is not None or access_level is not None
