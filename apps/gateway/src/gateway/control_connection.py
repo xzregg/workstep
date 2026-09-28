@@ -317,12 +317,33 @@ class DataConnection:
                 queue.get_nowait()
                 queue.put_nowait(error)
 
-    async def proxy_http(self, request, *, user_id: str, username: str):
+    async def proxy_http(self, request, *, user_id: str, username: str,
+                         project_id: str | None = None,
+                         access_level: str | None = None,
+                         authorization_check=None):
+        if (project_id is None) != (access_level is None) or (
+                access_level is not None and access_level not in ("read", "edit")):
+            raise ValueError("Invalid project proxy scope")
         if len(self._streams) >= 32:
             raise ConnectionError("Too many managed data streams")
+        if authorization_check is not None:
+            await authorization_check()
         stream_id = uuid4().hex
         queue: asyncio.Queue = asyncio.Queue(maxsize=32)
         self._streams[stream_id] = queue
+
+        async def checked_get(timeout: float):
+            deadline = asyncio.get_running_loop().time() + timeout
+            while True:
+                if authorization_check is not None:
+                    await authorization_check()
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0:
+                    raise asyncio.TimeoutError()
+                try:
+                    return await asyncio.wait_for(queue.get(), timeout=min(1, remaining))
+                except asyncio.TimeoutError:
+                    continue
 
         async def upload():
             headers = [[key.decode("latin1"), value.decode("latin1")]
@@ -334,10 +355,13 @@ class DataConnection:
                 stream_id=stream_id, type=FrameType.http_request,
                 payload={"phase": "start", "method": request.method,
                          "path": request.url.path, "query": request.url.query,
-                         "headers": headers, "user_id": user_id, "username": username},
+                         "headers": headers, "user_id": user_id, "username": username,
+                         "project_id": project_id, "access_level": access_level},
             ))
             async for chunk in request.stream():
                 for offset in range(0, len(chunk), 16384):
+                    if authorization_check is not None:
+                        await authorization_check()
                     await self.send_frame(ProxyFrame(
                         stream_id=stream_id, type=FrameType.http_request,
                         payload={"phase": "body", "data": base64.b64encode(
@@ -350,7 +374,7 @@ class DataConnection:
 
         upload_task = asyncio.create_task(upload())
         try:
-            first = await asyncio.wait_for(queue.get(), timeout=30)
+            first = await checked_get(30)
             if isinstance(first, Exception):
                 raise first
             if first.type != FrameType.http_response or first.payload.get("phase") != "start":
@@ -365,7 +389,7 @@ class DataConnection:
             async def body():
                 try:
                     while True:
-                        frame = await asyncio.wait_for(queue.get(), timeout=60)
+                        frame = await checked_get(60)
                         if isinstance(frame, Exception):
                             raise frame
                         if frame.type != FrameType.http_response:
@@ -416,7 +440,11 @@ class DataConnection:
             raise
 
     async def proxy_websocket(self, browser: WebSocket, *, user_id: str,
-                              username: str) -> None:
+                              username: str, project_id: str | None = None,
+                              access_level: str | None = None) -> None:
+        if (project_id is None) != (access_level is None) or (
+                access_level is not None and access_level not in ("read", "edit")):
+            raise ValueError("Invalid project proxy scope")
         if len(self._streams) >= 32:
             await browser.close(code=1013)
             return
@@ -434,7 +462,8 @@ class DataConnection:
                 stream_id=stream_id, type=FrameType.websocket_open,
                 payload={"phase": "start", "path": browser.url.path,
                          "query": browser.url.query, "headers": headers,
-                         "user_id": user_id, "username": username},
+                         "user_id": user_id, "username": username,
+                         "project_id": project_id, "access_level": access_level},
             ))
             opened = await asyncio.wait_for(queue.get(), timeout=15)
             if (isinstance(opened, Exception) or opened.type != FrameType.websocket_open
