@@ -50,18 +50,25 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         )
         app.state.ready = True
         stop_reconciliation = asyncio.Event()
+        callback_wake = asyncio.Event()
+        app.state.directory_callback_wake = callback_wake
         reconciler = DirectoryReconciler(database, app.state.identity_connectors)
         app.state.directory_reconciler = reconciler
         reconciliation_task = asyncio.create_task(reconciler.run_periodic(
             stop_reconciliation, interval_seconds=settings.directory_reconcile_seconds,
+        ))
+        callback_task = asyncio.create_task(reconciler.run_callback_periodic(
+            stop_reconciliation, callback_wake,
         ))
         try:
             yield
         finally:
             app.state.ready = False
             stop_reconciliation.set()
+            callback_wake.set()
             await app.state.control_connections.shutdown()
             await reconciliation_task
+            await callback_task
             await database.close()
 
     app = FastAPI(title="WorkStep Gateway", lifespan=lifespan)

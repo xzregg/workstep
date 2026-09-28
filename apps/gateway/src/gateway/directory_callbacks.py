@@ -102,10 +102,8 @@ async def receive_directory_callback(request: Request, source_id: str):
         if event.get("CorpId") not in (None, source.tenant_id):
             raise HTTPException(status_code=403, detail="Callback tenant mismatch")
         if event["EventType"] in DINGTALK_DIRECTORY_EVENTS:
-            connector = request.app.state.identity_connectors.get(source.provider)
-            if connector is None:
-                raise HTTPException(status_code=503, detail="Identity connector unavailable")
-            await ExternalIdentityService(request.app.state.database).reconcile_callback(source, plain, connector)
+            await ExternalIdentityService(request.app.state.database).enqueue_callback(source, plain)
+            request.app.state.directory_callback_wake.set()
         return crypto.encrypt(b"success", timestamp=str(int(time.time())),
                               nonce=secrets.token_urlsafe(12))
 
@@ -116,8 +114,6 @@ async def receive_directory_callback(request: Request, source_id: str):
     plain = _decrypt(request, crypto, encrypted)
     event = _xml(plain)
     if event.findtext("Event") == "change_contact":
-        connector = request.app.state.identity_connectors.get(source.provider)
-        if connector is None:
-            raise HTTPException(status_code=503, detail="Identity connector unavailable")
-        await ExternalIdentityService(request.app.state.database).reconcile_callback(source, plain, connector)
+        await ExternalIdentityService(request.app.state.database).enqueue_callback(source, plain)
+        request.app.state.directory_callback_wake.set()
     return Response(status_code=200)
