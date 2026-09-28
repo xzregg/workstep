@@ -10,6 +10,8 @@ from services.config import config_store
 from services import config as config_module
 from .usage_outbox import UsageOutbox
 from .usage import build_usage_event
+from .skill_sync_client import ManagedSkillSyncService
+from services.project import project_manager
 
 
 class GatewayClientService:
@@ -26,6 +28,8 @@ class GatewayClientService:
         self.usage_outbox = None
         self.device_id = None
         self.current_user_id = None
+        self.skill_sync = None
+        self.workflow_runtime = None
 
     async def start(self) -> None:
         bundle_dir = os.environ.get("WORKSTEP_MANAGED_BUNDLE_DIR")
@@ -54,6 +58,14 @@ class GatewayClientService:
                 self.managed_config.gateway_origin,
                 self.managed_config.gateway_public_key_fingerprint,
             )
+            self.skill_sync = ManagedSkillSyncService(
+                self.managed_config.gateway_origin,
+                project_lookup=project_manager.get_project_by_id,
+                is_project_busy=lambda project_id: bool(
+                    self.workflow_runtime and
+                    self.workflow_runtime.project_has_active_runs(project_id)
+                ),
+            )
 
     async def bootstrap(self, authorization: str, proof: str, control_private_key_pem: str,
                         control_public_key_pem: str, delegation_signature: str):
@@ -76,6 +88,7 @@ class GatewayClientService:
             asgi_app=self.asgi_app,
             provider_store=config_store,
             usage_outbox=self.usage_outbox,
+            skill_sync=self.skill_sync,
         )
         self.control_client.start(
             authorization, actor.device_id, control_private_key_pem,

@@ -80,6 +80,8 @@ async def set_project_skill(project_id: str, request: ProjectSkillToggleRequest)
         raise HTTPException(status_code=404, detail=str(exc).strip("'")) from None
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from None
     return _payload(project, skills)
 
 
@@ -99,4 +101,6 @@ async def set_project_skills_batch(
         raise HTTPException(status_code=404, detail=str(exc).strip("'")) from None
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from None
     return _payload(project, skills)

@@ -149,6 +149,7 @@ async def lifespan(app: FastAPI):
     await sync_all_project_configs(project_manager)
     task_service = TaskService(event_bus)
     workflow_runtime = WorkflowRuntime(event_bus, project_manager)
+    gateway_client.workflow_runtime = workflow_runtime
     recovered = await workflow_runtime.recover_running_workflows()
     if recovered:
         logger.info(

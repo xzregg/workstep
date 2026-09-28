@@ -38,7 +38,7 @@ class GatewayControlClient:
     def __init__(self, origin: str, *, gateway_id: str, public_key_fingerprint: str,
                  user_id: str, policy_cache: ManagedPolicyCache,
                  connector=connect, heartbeat_seconds: float = 20, asgi_app=None,
-                 provider_store=None, usage_outbox=None):
+                 provider_store=None, usage_outbox=None, skill_sync=None):
         self.url = control_url(origin)
         self.origin = origin
         self.gateway_id = gateway_id
@@ -50,6 +50,7 @@ class GatewayControlClient:
         self.asgi_app = asgi_app
         self.provider_store = provider_store
         self.usage_outbox = usage_outbox
+        self.skill_sync = skill_sync
         self.command_executor = (ManagedCommandExecutor(provider_store, execute_engine_command)
                                  if provider_store is not None else None)
         self.online = False
@@ -106,6 +107,7 @@ class GatewayControlClient:
         while not self._stop.is_set():
             reader_task = None
             usage_task = None
+            skill_task = None
             try:
                 async with self.connector(self.url, origin=self.origin, open_timeout=10,
                                           max_size=1024 * 1024) as socket:
@@ -140,9 +142,10 @@ class GatewayControlClient:
                     }))
                     messages = asyncio.Queue()
                     usage_messages = asyncio.Queue()
+                    skill_messages = asyncio.Queue()
                     reader_task = asyncio.create_task(
                         self._read_control_messages(socket, device_id, messages,
-                                                    usage_messages),
+                                                    usage_messages, skill_messages),
                     )
                     hello = await self._receive_kind(messages, "hello")
                     if (not isinstance(hello, dict) or hello.get("kind") != "hello"
@@ -159,6 +162,10 @@ class GatewayControlClient:
                     await self._apply_provider_bundle(socket, messages, hello,
                                                       gateway_key, device_id)
                     self._accept_command(socket, hello, gateway_key, device_id)
+                    if self.skill_sync is not None:
+                        skill_task = asyncio.create_task(self._apply_skill_manifest(
+                            socket, skill_messages, hello, gateway_key, device_id,
+                        ))
                     if self.usage_outbox is not None:
                         usage_task = asyncio.create_task(
                             self._usage_loop(socket, device_id, usage_messages),
@@ -166,6 +173,10 @@ class GatewayControlClient:
                     self.online = True
                     delay = 1.0
                     while not self._stop.is_set():
+                        if skill_task is not None and skill_task.done():
+                            await skill_task
+                        if usage_task is not None and usage_task.done():
+                            await usage_task
                         await socket.send(json.dumps({"kind": "heartbeat"}))
                         ack = await self._receive_kind(messages, "heartbeat_ack")
                         if (not isinstance(ack, dict) or ack.get("kind") != "heartbeat_ack"
@@ -180,6 +191,13 @@ class GatewayControlClient:
                         await self._apply_provider_bundle(socket, messages, ack,
                                                           gateway_key, device_id)
                         self._accept_command(socket, ack, gateway_key, device_id)
+                        if skill_task is not None and skill_task.done():
+                            await skill_task
+                        if self.skill_sync is not None and (
+                                skill_task is None or skill_task.done()):
+                            skill_task = asyncio.create_task(self._apply_skill_manifest(
+                                socket, skill_messages, ack, gateway_key, device_id,
+                            ))
                         try:
                             await asyncio.wait_for(self._stop.wait(), timeout=self.heartbeat_seconds)
                         except asyncio.TimeoutError:
@@ -200,6 +218,9 @@ class GatewayControlClient:
                 if usage_task:
                     usage_task.cancel()
                     await asyncio.gather(usage_task, return_exceptions=True)
+                if skill_task:
+                    skill_task.cancel()
+                    await asyncio.gather(skill_task, return_exceptions=True)
                 for task in self._command_tasks:
                     task.cancel()
                 if self._command_tasks:
@@ -235,7 +256,8 @@ class GatewayControlClient:
 
     async def _read_control_messages(self, socket, device_id: str,
                                      messages: asyncio.Queue,
-                                     usage_messages: asyncio.Queue) -> None:
+                                     usage_messages: asyncio.Queue,
+                                     skill_messages: asyncio.Queue) -> None:
         try:
             while not self._stop.is_set():
                 message = json.loads(await socket.recv())
@@ -256,6 +278,8 @@ class GatewayControlClient:
                         raise ValueError("Invalid command status acknowledgment")
                 elif message.get("kind") in ("usage_ack", "usage_retry"):
                     usage_messages.put_nowait(message)
+                elif message.get("kind") == "skill_applied_ack":
+                    skill_messages.put_nowait(message)
                 else:
                     messages.put_nowait(message)
         except asyncio.CancelledError:
@@ -424,3 +448,22 @@ class GatewayControlClient:
             )
             if not (response["accepted"] or response["duplicates"] or response["rejected"]):
                 await asyncio.sleep(5)
+
+    async def _apply_skill_manifest(self, socket, messages: asyncio.Queue,
+                                    envelope: dict, gateway_key: str,
+                                    device_id: str) -> None:
+        token = envelope.get("skill_manifest")
+        if not isinstance(token, str):
+            raise ValueError("Missing Gateway Skill manifest")
+        results = await self.skill_sync.apply_manifest(
+            token, gateway_key, self.public_key_fingerprint,
+            self.gateway_id, device_id, self.user_id,
+        )
+        await socket.send(json.dumps({"kind": "skill_applied", "version": 1,
+                                      "projects": results}))
+        ack = await asyncio.wait_for(messages.get(), timeout=30)
+        expected = [item["project_id"] for item in results]
+        if (not isinstance(ack, dict) or ack.get("kind") != "skill_applied_ack"
+                or ack.get("version") != 1 or ack.get("device_id") != device_id
+                or ack.get("projects") != expected):
+            raise ValueError("Invalid Skill application acknowledgment")

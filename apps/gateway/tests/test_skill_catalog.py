@@ -10,7 +10,8 @@ from fastapi.testclient import TestClient
 from gateway.app import create_app
 from gateway.config import GatewaySettings
 from gateway.database import GatewayDatabase
-from gateway.models import Device, PlatformProject
+from gateway.models import Device, PlatformProject, UserDevice
+from gateway.skills_api import compile_skill_manifest
 from gateway.skill_packages import validate_archive
 from gateway import skills_api
 import pytest
@@ -92,6 +93,7 @@ def test_group_skill_catalog_only_allows_reviewed_version_on_linked_project(tmp_
             "registration_mode": "open",
         })
         headers = {"X-CSRF-Token": setup.json()["csrf_token"]}
+        owner_id = setup.json()["user"]["id"]
         client.post("/api/auth/step-up", json={"password": "OwnerPassphrase-2026!"},
                     headers=headers)
         skill_id = client.post("/api/admin/skills", json={
@@ -119,6 +121,8 @@ def test_group_skill_catalog_only_allows_reviewed_version_on_linked_project(tmp_
                     session.add(PlatformProject(id="project-1", device_id="device-1",
                                                 host_project_id="host-1", name="Project",
                                                 access_mode="policy_only"))
+                    session.add(UserDevice(id="access-1", user_id=owner_id,
+                                           device_id="device-1", access_level="edit"))
 
         client.portal.call(seed_project)
         client.post(f"/api/groups/{group_id}/projects", json={
@@ -154,9 +158,48 @@ def test_group_skill_catalog_only_allows_reviewed_version_on_linked_project(tmp_
         }, headers=headers)
         assert again.status_code == 200
         assert again.json()["desired_revision"] == 1
+        manifest = client.portal.call(
+            compile_skill_manifest, app.state.database, app.state.gateway_signer,
+            app.state.settings.gateway_id, "device-1", owner_id,
+        )
+        claims = app.state.gateway_signer.verify_skill_manifest(
+            manifest, gateway_id=app.state.settings.gateway_id,
+            device_id="device-1", user_id=owner_id,
+        )
+        assert claims["projects"][0]["skills"][0]["skill_version_id"] == version_id
+        download = client.get(f"/api/device/skills/{version_id}", headers={
+            "Authorization": f"Bearer {manifest}",
+        })
+        assert download.status_code == 200, download.text
+        assert download.content == base64.b64decode(_archive({"SKILL.md": "# Review"}))
         assert client.post(f"/api/groups/{group_id}/projects/other/skills", json={
             "skill_version_id": version_id,
         }, headers=headers).status_code == 403
+        client.cookies.clear()
+        owner_login = client.post("/api/auth/login", json={
+            "username": "owner", "password": "OwnerPassphrase-2026!",
+        })
+        owner_headers = {"X-CSRF-Token": owner_login.json()["csrf_token"]}
+        client.post("/api/auth/step-up", json={"password": "OwnerPassphrase-2026!"},
+                    headers=owner_headers)
+        revoked = client.post(
+            f"/api/admin/skills/{skill_id}/versions/{version_id}/revoke",
+            json={"reason": "Unsafe instructions"}, headers=owner_headers,
+        )
+        assert revoked.status_code == 200, revoked.text
+        assert client.get(f"/api/device/skills/{version_id}", headers={
+            "Authorization": f"Bearer {manifest}",
+        }).status_code == 403
+        later = client.portal.call(
+            compile_skill_manifest, app.state.database, app.state.gateway_signer,
+            app.state.settings.gateway_id, "device-1", owner_id,
+        )
+        later_claims = app.state.gateway_signer.verify_skill_manifest(
+            later, gateway_id=app.state.settings.gateway_id,
+            device_id="device-1", user_id=owner_id,
+        )
+        assert later_claims["projects"][0]["revision"] == 2
+        assert later_claims["projects"][0]["skills"] == []
 
 
 def test_skill_admin_role_is_separate_from_user_administration(tmp_path):

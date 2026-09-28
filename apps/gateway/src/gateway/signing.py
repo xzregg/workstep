@@ -214,3 +214,55 @@ class GatewaySigner:
         }, separators=(",", ":"), sort_keys=True).encode())
         signing_input = f"{header}.{payload}"
         return f"{signing_input}.{_b64(self.private_key.sign(signing_input.encode()))}"
+
+    def sign_skill_manifest(self, *, gateway_id: str, device_id: str,
+                            user_id: str, projects: list[dict]) -> str:
+        now = int(time.time())
+        header = _b64(b'{"alg":"EdDSA","typ":"JWT"}')
+        payload_raw = json.dumps({
+            "iss": gateway_id, "gateway_id": gateway_id,
+            "kind": "skill.manifest", "device_id": device_id,
+            "user_id": user_id, "projects": projects,
+            "iat": now, "exp": now + 600,
+        }, separators=(",", ":"), sort_keys=True).encode()
+        if len(payload_raw) > 512 * 1024:
+            raise ValueError("Skill manifest too large")
+        payload = _b64(payload_raw)
+        signing_input = f"{header}.{payload}"
+        return f"{signing_input}.{_b64(self.private_key.sign(signing_input.encode()))}"
+
+    def verify_skill_manifest(self, token: str, *, gateway_id: str,
+                              device_id: str | None = None,
+                              user_id: str | None = None) -> dict:
+        if not isinstance(token, str) or len(token) > 750 * 1024:
+            raise ValueError("Invalid Skill manifest")
+        try:
+            header, payload, signature = token.split(".")
+            if json.loads(base64.urlsafe_b64decode(header + "===")) != {
+                "alg": "EdDSA", "typ": "JWT",
+            }:
+                raise ValueError("Invalid Skill manifest header")
+            self.private_key.public_key().verify(
+                base64.urlsafe_b64decode(signature + "==="),
+                f"{header}.{payload}".encode(),
+            )
+            claims = json.loads(base64.urlsafe_b64decode(payload + "==="))
+            now = int(time.time())
+            if (not isinstance(claims, dict)
+                    or claims.get("kind") != "skill.manifest"
+                    or claims.get("iss") != gateway_id
+                    or claims.get("gateway_id") != gateway_id
+                    or (device_id is not None and claims.get("device_id") != device_id)
+                    or (user_id is not None and claims.get("user_id") != user_id)
+                    or not isinstance(claims.get("device_id"), str)
+                    or not isinstance(claims.get("user_id"), str)
+                    or not isinstance(claims.get("projects"), list)
+                    or not isinstance(claims.get("iat"), int)
+                    or not isinstance(claims.get("exp"), int)
+                    or claims["iat"] > now + 5 or claims["exp"] <= now
+                    or claims["exp"] - claims["iat"] > 600):
+                raise ValueError("Invalid Skill manifest claims")
+            return claims
+        except (ValueError, TypeError, KeyError, UnicodeDecodeError,
+                binascii.Error, json.JSONDecodeError, InvalidSignature) as exc:
+            raise ValueError("Invalid Skill manifest") from exc

@@ -22,11 +22,13 @@ from fastapi.responses import StreamingResponse
 from workstep_gateway_protocol import (FrameType, ProxyFrame,
                                        WebSocketMessageAssembler, websocket_payloads)
 
-from .models import Device, DeviceConnection, DeviceProviderApplication, User, UserDevice
+from .models import (Device, DeviceConnection, DeviceProjectSkillState,
+                     DeviceProviderApplication, PlatformProject, User, UserDevice)
 from .capabilities import compiled_device_policy
 from .providers_api import compile_provider_bundle, compiled_provider_access
 from .device_commands import next_command_for_device, record_command_result
 from .usage_ledger import record_usage_batch
+from .skills_api import compile_skill_manifest
 
 router = APIRouter()
 
@@ -611,10 +613,15 @@ async def control_socket(ws: WebSocket):
             ws.app.state.database, signer, ws.app.state.settings.gateway_id,
             device_id, user_id, config_public_key_pem,
         )
+        skill_manifest = await compile_skill_manifest(
+            ws.app.state.database, signer, ws.app.state.settings.gateway_id,
+            device_id, user_id,
+        )
         await send_json({"kind": "hello", "version": 1, "device_id": device_id,
                             "gateway_public_key_pem": signer.public_key_pem,
                             "policy_snapshot": policy,
                             "provider_bundle": provider_bundle,
+                            "skill_manifest": skill_manifest,
                             "command": await _signed_command(ws, device_id)})
         while True:
             try:
@@ -665,6 +672,60 @@ async def control_socket(ws: WebSocket):
                             applied.last_error = error or "Provider application failed"
                 await send_json({"kind": "provider_applied_ack", "version": 1,
                                     "device_id": device_id, "revision": revision})
+                continue
+            if message.get("kind") == "skill_applied":
+                projects = message.get("projects")
+                if (message.get("version") != 1 or not isinstance(projects, list)
+                        or len(projects) > 1000 or any(
+                            not isinstance(item, dict)
+                            or not isinstance(item.get("project_id"), str)
+                            or len(item["project_id"]) > 64
+                            or type(item.get("revision")) is not int
+                            or item["revision"] < 0
+                            or item.get("status") not in ("applied", "failed", "deferred")
+                            or item.get("error_code") not in (
+                                None, "name_conflict", "project_missing", "apply_failed",
+                                "busy")
+                            for item in projects)
+                        or len({item["project_id"] for item in projects}) != len(projects)):
+                    await ws.close(code=4400, reason="Invalid Skill application")
+                    return
+                async with ws.app.state.database.session() as session:
+                    async with session.begin():
+                        rows = {row.id: row for row in (await session.scalars(
+                            select(PlatformProject).where(
+                                PlatformProject.id.in_([item["project_id"]
+                                                        for item in projects]),
+                            ),
+                        )).all()}
+                        if any(item["project_id"] not in rows
+                               or rows[item["project_id"]].device_id != device_id
+                               or item["revision"] > rows[item["project_id"]].skill_revision
+                               for item in projects):
+                            await ws.close(code=4400, reason="Invalid Skill project scope")
+                            return
+                        for item in projects:
+                            project = rows[item["project_id"]]
+                            state = await session.get(DeviceProjectSkillState,
+                                                      (device_id, project.host_project_id))
+                            if state is None:
+                                state = DeviceProjectSkillState(
+                                    device_id=device_id, host_project_id=project.host_project_id,
+                                    platform_project_id=project.id,
+                                    desired_revision=project.skill_revision,
+                                    status="pending",
+                                )
+                                session.add(state)
+                            state.desired_revision = project.skill_revision
+                            state.status = ("pending" if item["status"] == "deferred"
+                                            else item["status"])
+                            state.last_error_code = item["error_code"]
+                            state.acknowledged_at = datetime.now(timezone.utc)
+                            if item["status"] == "applied":
+                                state.applied_revision = item["revision"]
+                await send_json({"kind": "skill_applied_ack", "version": 1,
+                                 "device_id": device_id,
+                                 "projects": [item["project_id"] for item in projects]})
                 continue
             if message.get("kind") == "command_status":
                 command_id = message.get("command_id")
@@ -721,9 +782,14 @@ async def control_socket(ws: WebSocket):
                 ws.app.state.database, signer, ws.app.state.settings.gateway_id,
                 device_id, user_id, config_public_key_pem,
             )
+            skill_manifest = await compile_skill_manifest(
+                ws.app.state.database, signer, ws.app.state.settings.gateway_id,
+                device_id, user_id,
+            )
             await send_json({"kind": "heartbeat_ack", "version": 1,
                                 "device_id": device_id, "policy_snapshot": policy,
                                 "provider_bundle": provider_bundle,
+                                "skill_manifest": skill_manifest,
                                 "command": await _signed_command(ws, device_id)})
     except WebSocketDisconnect:
         pass

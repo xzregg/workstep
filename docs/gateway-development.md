@@ -19,7 +19,7 @@ Gateway 是独立 FastAPI 服务，`apps/gateway-web` 是独立门户。阶段 0
 超级管理员短时二次认证后可调用 `POST /api/admin/capabilities/{user_id}` 授予全局或设备范围的 `task.create`，`effect=deny` 优先于 allow；`POST /api/admin/capabilities/{user_id}/revoke` 撤销相应分配。变更提高目标设备 policy revision，下次控制心跳重签并回传应用版本。设备停用、撤销或账号停用关闭控制连接时，daemon 清空受控策略。项目范围能力和其余受控动作仍待后续阶段。
 桌面登录页支持本地密码及已启用的钉钉/企业微信身份源；扫码回调持久化一次性 state 与经过白名单约束的回跳路径，成功后返回原桌面登录页继续签发 code。待审核账号进入等待页。第三方事件回调仍未验签接入，目录变更由定时对账或管理员导入处理。
 
-阶段 4D 的 Gateway 组 API 在 `/api/groups`；外部部门映射组跟随目录同步，组项目关系仅授予 Skills 管理范围。`/api/admin/skills` 接收限额 ZIP 包并保存不可变版本，具有平台范围 `skill_admin` 或超级管理员角色且完成短时密码二次认证后才能上传、审核和授权版本；组长只能给本组已关联项目分配获授权的固定版本。受管 PC 的 Skill 下发尚未接入。
+阶段 4D 的 Gateway 组 API 在 `/api/groups`；外部部门映射组跟随目录同步，组项目关系仅授予 Skills 管理范围。`/api/admin/skills` 接收限额 ZIP 包并保存不可变版本，具有平台范围 `skill_admin` 或超级管理员角色且完成短时密码二次认证后才能上传、审核和授权版本；组长只能给本组已关联项目分配获授权的固定版本。设备控制心跳携带签名清单，PC 从固定网关按需下载并验签、校验包摘要和路径后落盘；`/api/admin/skills/applications` 可看项目应用状态。组授权和项目分配的独立撤销接口及管理页面仍待完成。
 
 本地开发使用 `uv run --project apps/gateway --group dev uvicorn gateway.app:app --host 127.0.0.1 --port 8766`。门户在 `apps/gateway-web` 执行 `yarn dev`，开发服务器将 `/api` 代理到 8766。构建后可设置 `WORKSTEP_GATEWAY_WEB_DIST` 为门户 `dist` 的绝对路径，让 Gateway 托管静态文件。默认 SQLite 位于 `~/.workstep-gateway/workstep_platform.db`，可用 `WORKSTEP_GATEWAY_DATA_DIR` 指定数据目录，或用 `WORKSTEP_GATEWAY_DATABASE_URL` 指定 `sqlite+aiosqlite` / `postgresql+asyncpg` 地址。启动执行 Alembic 迁移，未知版本拒绝启动，不会自动退回别的数据库。
 
