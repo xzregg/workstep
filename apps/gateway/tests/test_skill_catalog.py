@@ -1,8 +1,11 @@
 import base64
 import asyncio
 import io
+import json
 import threading
 import zipfile
+from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 from fastapi.testclient import TestClient
@@ -88,7 +91,7 @@ def test_skill_version_requires_review_and_is_immutable(tmp_path):
         }]
 
 
-def test_group_skill_catalog_only_allows_reviewed_version_on_linked_project(tmp_path):
+def test_group_skill_catalog_only_allows_reviewed_version_on_linked_project(tmp_path, monkeypatch):
     app = create_app(GatewaySettings(data_dir=tmp_path))
     with TestClient(app, base_url="https://gateway.test") as client:
         setup = client.post("/api/platform/setup", json={
@@ -186,6 +189,39 @@ def test_group_skill_catalog_only_allows_reviewed_version_on_linked_project(tmp_
         })
         assert download.status_code == 200, download.text
         assert download.content == base64.b64decode(archive)
+        monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[2] / "daemon"))
+        from services.gateway_client.skill_sync_client import ManagedSkillSyncService
+
+        local_project = tmp_path / "local-project"
+        downloads = []
+
+        async def fetch_archive(requested_version_id, signed_manifest):
+            response = await asyncio.to_thread(
+                client.get, f"/api/device/skills/{requested_version_id}",
+                headers={"Authorization": f"Bearer {signed_manifest}"},
+            )
+            assert response.status_code == 200, response.text
+            downloads.append(requested_version_id)
+            return response.content
+
+        sync = ManagedSkillSyncService(
+            "https://gateway.test",
+            project_lookup=lambda project_id: (
+                SimpleNamespace(path=local_project) if project_id == "host-1" else None
+            ),
+            fetcher=fetch_archive,
+        )
+        signer = app.state.gateway_signer
+        scope = (signer.public_key_pem, signer.fingerprint,
+                 app.state.settings.gateway_id, "device-1", owner_id)
+        assert client.portal.call(sync.apply_manifest, manifest, *scope) == [{
+            "project_id": "project-1", "revision": 1,
+            "status": "applied", "error_code": None,
+        }]
+        assert (local_project / ".workstep/skills/review/SKILL.md").read_text() == "# Review"
+        assert downloads == [version_id]
+        assert client.portal.call(sync.apply_manifest, manifest, *scope)[0]["status"] == "applied"
+        assert downloads == [version_id]
         assert client.delete(
             f"/api/groups/{group_id}/projects/project-1/skills/{skill_id}",
             headers=headers,
@@ -193,6 +229,17 @@ def test_group_skill_catalog_only_allows_reviewed_version_on_linked_project(tmp_
         assert client.get(f"/api/device/skills/{version_id}", headers={
             "Authorization": f"Bearer {manifest}",
         }).status_code == 403
+        removed_manifest = client.portal.call(
+            compile_skill_manifest, app.state.database, signer,
+            app.state.settings.gateway_id, "device-1", owner_id,
+        )
+        assert client.portal.call(sync.apply_manifest, removed_manifest, *scope) == [{
+            "project_id": "project-1", "revision": 2,
+            "status": "applied", "error_code": None,
+        }]
+        assert not (local_project / ".workstep/skills/review").exists()
+        assert json.loads((local_project / ".workstep/skills/.workstep-manifest.json")
+                          .read_text())["entries"] == {}
         restored = client.post(f"/api/groups/{group_id}/projects/project-1/skills", json={
             "skill_version_id": version_id,
         }, headers=headers)
