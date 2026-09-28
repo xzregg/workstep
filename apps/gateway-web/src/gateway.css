@@ -224,6 +224,14 @@ a {
 .gateway-admin-page .gateway-org-department-list button { width: 100%; padding: 12px; text-align: left; background: #fff; color: #1d1d1f; border: 1px solid #e5e5ea; }
 .gateway-org-department-list button span { display: block; margin-top: 4px; color: #65656b; font-size: 0.85rem; }
 .gateway-admin-page .gateway-org-department-list button.gateway-org-selected { border-color: #4678d5; background: #f2f6ff; }
+.gateway-operation-create, .gateway-operation-history { margin: 20px 0; }
+.gateway-operation-create .gateway-admin-filters { margin-top: 16px; }
+.gateway-operation-create #operation-concurrency { width: 72px; }
+.gateway-operation-checkbox { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.gateway-operation-checkbox input { width: 16px; height: 16px; margin: 0; }
+.gateway-operation-list { padding: 0; list-style: none; }
+.gateway-operation-list > li { padding: 16px 0; border-top: 1px solid #e5e5ea; }
+.gateway-operation-list ul { margin: 8px 0; padding-left: 24px; }
 .gateway-role-dialog { max-height: min(90vh, 760px); overflow-y: auto; }
 .gateway-role-dialog .gateway-admin-search { margin-bottom: 12px; }
 .gateway-role-dialog .gateway-admin-search input { flex: 1; min-width: 0; }

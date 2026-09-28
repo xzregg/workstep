@@ -41,6 +41,8 @@ class BatchInput(BaseModel):
 def _validate_parameters(body: BatchInput) -> None:
     if body.action in ("install", "update") and not body.version:
         raise HTTPException(status_code=422, detail="Exact engine version required")
+    if body.action in ("install", "update") and not body.accept_third_party_terms:
+        raise HTTPException(status_code=422, detail="Third-party terms acknowledgement required")
     if body.action in ("rollback", "refresh", "test") and body.version:
         raise HTTPException(status_code=422, detail="Version not accepted for this action")
 
@@ -143,12 +145,14 @@ async def list_device_operations(request: Request,
                                  offset: int = Query(default=0, ge=0)):
     await _super_admin_read(request)
     async with request.app.state.database.session() as session:
-        total = await session.scalar(select(func.count()).select_from(DeviceOperationBatch))
-        batches = (await session.scalars(select(DeviceOperationBatch).order_by(
-            DeviceOperationBatch.created_at.desc(), DeviceOperationBatch.id.desc(),
-        ).limit(limit).offset(offset))).all()
-        return {"total": total, "limit": limit, "offset": offset,
-                "batches": [await _batch_view(session, batch) for batch in batches]}
+        async with session.begin():
+            await _expire_waiting(session)
+            total = await session.scalar(select(func.count()).select_from(DeviceOperationBatch))
+            batches = (await session.scalars(select(DeviceOperationBatch).order_by(
+                DeviceOperationBatch.created_at.desc(), DeviceOperationBatch.id.desc(),
+            ).limit(limit).offset(offset))).all()
+            return {"total": total, "limit": limit, "offset": offset,
+                    "batches": [await _batch_view(session, batch) for batch in batches]}
 
 
 @router.get("/{batch_id}")

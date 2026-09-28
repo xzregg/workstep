@@ -256,6 +256,10 @@ test('management navigation and module routes respect current roles', async () =
   render(<MemoryRouter initialEntries={['/admin/admins']}><App /></MemoryRouter>)
   await screen.findByText('当前账号没有访问该管理页面的权限。')
   assert.equal(screen.queryByRole('heading', { name: '管理员权限' }), null)
+  cleanup()
+  render(<MemoryRouter initialEntries={['/admin/device-operations']}><App /></MemoryRouter>)
+  await screen.findByText('当前账号没有访问该管理页面的权限。')
+  assert.equal(screen.queryByRole('heading', { name: '设备批量作业' }), null)
 })
 
 test('management tab appears after signing in on the workbench', async () => {

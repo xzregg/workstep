@@ -43,6 +43,9 @@ def test_batch_freezes_targets_and_dispatches_with_one_slot(tmp_path):
         assert [item["device_id"] for item in created.json()["commands"]] == body["device_ids"]
         assert client.post("/api/admin/device-operations", json={
             **body, "action": "shell"}, headers={"X-CSRF-Token": csrf}).status_code == 422
+        assert client.post("/api/admin/device-operations", json={
+            **body, "action": "install", "version": "1.2.3",
+        }, headers={"X-CSRF-Token": csrf}).status_code == 422
         first = client.portal.call(next_command_for_device, app.state.database,
                                    app.state.command_scheduler_lock, "device-1")
         assert first and first["action"] == "refresh"
@@ -80,8 +83,10 @@ def test_batch_freezes_targets_and_dispatches_with_one_slot(tmp_path):
                     command.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
 
         client.portal.call(expire_retry)
-        expired = client.get(f"/api/admin/device-operations/{retried.json()['id']}")
-        assert expired.json()["commands"][0]["status"] == "expired"
+        expired = client.get('/api/admin/device-operations')
+        retry_batch = next(batch for batch in expired.json()['batches'] if batch['id'] == retried.json()['id'])
+        assert retry_batch['commands'][0]['status'] == 'expired'
+        assert retry_batch['status'] == 'finished'
         assert client.portal.call(next_command_for_device, app.state.database,
                                   app.state.command_scheduler_lock, "device-2") is None
 
