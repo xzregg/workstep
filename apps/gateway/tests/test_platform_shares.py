@@ -61,6 +61,14 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         assert token_hash == hashlib.sha256(token.encode()).hexdigest()
         assert token not in password_hash
         assert "correct horse battery staple" not in password_hash
+        own = client.get("/api/platform-shares?project_id=project-1&task_id=task-1")
+        assert own.status_code == 200, own.text
+        assert len(own.json()["shares"]) == 1
+        assert {key: own.json()["shares"][0][key] for key in (
+            "id", "title", "mode", "status",
+        )} == {"id": share["id"], "title": "Demo",
+               "mode": "read_only", "status": "active"}
+        assert token not in own.text and "token_hash" not in own.text
 
         client.cookies.clear()
         meta = client.get(f"/api/public/shares/{token}/meta")
@@ -80,6 +88,9 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         assert client.get(f"/api/public/shares/{token}/session").json() == {
             "share_id": share["id"], "mode": "read_only", "task_id": "task-1",
         }
+        with sqlite3.connect(tmp_path / "workstep_platform.db") as db:
+            assert db.execute("SELECT last_seen_at FROM platform_share_sessions WHERE share_id=?",
+                              (share["id"],)).fetchone()[0] is not None
         from fastapi.responses import JSONResponse
         captured = {}
 
@@ -300,3 +311,92 @@ def test_slow_share_password_hash_keeps_health_responsive(tmp_path, monkeypatch)
             finish.set()
             worker.join(timeout=3)
         assert result["response"].status_code == 201
+
+
+def test_admin_lists_pauses_resumes_and_revokes_platform_shares(tmp_path):
+    app = create_app(GatewaySettings(
+        data_dir=tmp_path, public_origin="https://gateway.test",
+    ))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        setup = client.post("/api/platform/setup", json={
+            "username": "owner", "display_name": "Owner",
+            "password": "OwnerPassphrase-2026!",
+            "recovery_username": "recovery",
+            "recovery_password": "RecoveryPassphrase-2026!",
+            "registration_mode": "closed",
+        })
+        headers = {"X-CSRF-Token": setup.json()["csrf_token"]}
+        assert client.post("/api/auth/step-up", json={
+            "password": "OwnerPassphrase-2026!",
+        }, headers=headers).status_code == 200
+        assert client.post("/api/admin/users", json={
+            "username": "viewer", "display_name": "Viewer",
+            "password": "ViewerPassphrase-2026!",
+        }, headers=headers).status_code == 201
+
+        async def seed_project():
+            async with app.state.database.session() as session:
+                async with session.begin():
+                    session.add(Device(id="device-1", name="PC", public_key="test",
+                                       status="active", app_instance_id="app", version="1.0"))
+                    session.add(PlatformProject(
+                        id="project-1", device_id="device-1", host_project_id="host-1",
+                        name="Project", status="active", access_mode="remote_published",
+                    ))
+
+        client.portal.call(seed_project)
+        created = client.post("/api/platform-shares", json={
+            "project_id": "project-1", "task_id": "task-1",
+            "title": "Review link", "mode": "read_only",
+        }, headers=headers)
+        assert created.status_code == 201, created.text
+        share = created.json()
+        token = share["url"].rsplit("/", 1)[1]
+        client.cookies.clear()
+        assert client.post(f"/api/public/shares/{token}/unlock", json={
+            "password": "",
+        }).status_code == 200
+        client.cookies.clear()
+        viewer = client.post("/api/auth/login", json={
+            "username": "viewer", "password": "ViewerPassphrase-2026!",
+        })
+        assert viewer.status_code == 200
+        assert client.post("/api/auth/password", json={
+            "current_password": "ViewerPassphrase-2026!",
+            "new_password": "ViewerNewPassphrase-2026!",
+        }, headers={"X-CSRF-Token": viewer.json()["csrf_token"]}).status_code == 204
+        assert client.get("/api/admin/shares").status_code == 403
+        assert client.get("/api/platform-shares?project_id=project-1&task_id=task-1").json() == {
+            "shares": [],
+        }
+        assert client.post(f"/api/admin/shares/{share['id']}/pause", headers={
+            "X-CSRF-Token": viewer.json()["csrf_token"],
+        }).status_code == 403
+        client.cookies.clear()
+        login = client.post("/api/auth/login", json={
+            "username": "owner", "password": "OwnerPassphrase-2026!",
+        })
+        headers = {"X-CSRF-Token": login.json()["csrf_token"]}
+        listing = client.get("/api/admin/shares?project_id=project-1&limit=10")
+        assert listing.status_code == 200, listing.text
+        assert listing.json()["total"] == 1
+        row = listing.json()["shares"][0]
+        assert row["id"] == share["id"]
+        assert row["created_by"] == "owner"
+        assert row["device_name"] == "PC"
+        assert row["project_name"] == "Project"
+        assert row["visit_count"] == 1
+        assert row["status"] == "active"
+        assert "token_hash" not in row and "password_hash" not in row
+        assert token not in listing.text
+        assert client.post(f"/api/admin/shares/{share['id']}/pause").status_code == 403
+        assert client.post(f"/api/admin/shares/{share['id']}/pause",
+                           headers=headers).status_code == 204
+        assert client.get(f"/api/public/shares/{token}/meta").status_code == 503
+        assert client.get("/api/admin/shares?status=paused").json()["total"] == 1
+        assert client.post(f"/api/admin/shares/{share['id']}/resume",
+                           headers=headers).status_code == 204
+        assert client.get(f"/api/public/shares/{token}/meta").status_code == 200
+        assert client.post(f"/api/admin/shares/{share['id']}/revoke",
+                           headers=headers).status_code == 204
+        assert client.get(f"/api/public/shares/{token}/meta").status_code == 404
