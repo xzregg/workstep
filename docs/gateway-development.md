@@ -1,13 +1,13 @@
 # Gateway 开发与部署
 
-Gateway 是独立 FastAPI 服务，`apps/gateway-web` 是独立门户。阶段 0、1 已完成；阶段 2 的本地账号、企业扫码及目录对账 API 已实现，第三方事件回调验签、设备连接与平台授权尚未完成。部署验收以 `plans/platform-gateway-development.md` 为准。
+Gateway 是独立 FastAPI 服务，`apps/gateway-web` 是独立门户。阶段 0、1 已完成，后续阶段仍在开发与验收。部署验收以 `plans/platform-gateway-development.md` 为准。
 
-空平台使用 `POST /api/platform/setup` 一次性创建超级管理员及独立恢复管理员，并设置注册模式。`POST /api/auth/register` 遵循 `open`、`open_with_approval` 或 `closed` 策略；`POST /api/auth/login` 返回 CSRF token 并写入安全、HttpOnly Cookie。修改类请求在 `X-CSRF-Token` 传入该 token。登录后的 `POST /api/auth/password`、`POST /api/auth/logout` 管理自身会话；管理员可建号、审核与禁用用户。禁用管理员和重置密码需要先调用 `POST /api/auth/step-up` 以密码确认，确认有效五分钟。重置或禁用会撤销目标用户已有会话。生产访问须用 HTTPS，当前登录 API 尚未与门户页面集成。
+空平台使用 `POST /api/platform/setup` 一次性创建超级管理员及独立恢复管理员，并设置注册模式。`POST /api/auth/register` 遵循 `open`、`open_with_approval` 或 `closed` 策略；`POST /api/auth/login` 返回 CSRF token 并写入安全、HttpOnly Cookie。修改类请求在 `X-CSRF-Token` 传入该 token。登录后的 `POST /api/auth/password`、`POST /api/auth/logout` 管理自身会话；管理员可建号、审核与禁用用户。禁用管理员和重置密码需要先调用 `POST /api/auth/step-up` 以密码确认，确认有效五分钟。重置或禁用会撤销目标用户已有会话。生产访问须用 HTTPS；门户 `/auth` 和 `/account` 已接入初始化、注册、登录、改密与注销。
 
 超级管理员可在短时二次认证后调用 `POST /api/admin/users/{user_id}/roles` 授予平台或部门范围的 `identity_admin`，也可授予平台范围的 `super_admin`。平台范围的身份管理员可建号和管理用户；部门范围只可管理当前目录中属于指定部门的用户。管理员建号及密码重置后的账号须先修改密码，才能执行管理操作。恢复管理员的创建和登录写入 Gateway 审计表。
 
 超级管理员通过 `POST /api/admin/identity-sources` 登记钉钉或企业微信身份源，凭据只引用服务进程的环境变量名 `secret_env`。钉钉的 `tenant_id` 填企业 CorpId，`client_id` 填应用 AppKey；企业微信的 `tenant_id` 填 CorpID，`agent_id` 填应用 AgentId。`POST /api/auth/external/{source_id}/start` 返回扫码授权 URL；已有 Gateway 会话可调用 `POST /api/auth/external/{source_id}/bind/start` 显式绑定。回调使用一次性 state，并按身份源、企业、稳定 subject 匹配。关闭注册时须先使用管理员目录导入 `POST /api/admin/identity-sources/{source_id}/sync` 预置人员，或由已登录用户显式绑定。`POST /api/admin/identity-sources/{source_id}/events` 幂等应用管理员导入的人员变更，`POST /api/admin/identity-sources/{source_id}/disable` 关闭扫码入口。当前目录导入及事件入口仅供管理员调用。
-管理员可调用 `POST /api/admin/identity-sources/{source_id}/reconcile` 从身份源主动拉取部门和人员快照；服务每六小时自动对账，可通过 `WORKSTEP_GATEWAY_DIRECTORY_RECONCILE_SECONDS` 调整。对账失败保留原投影。钉钉主动拉取使用企业内部应用凭据及通讯录读取权限；企业微信应用须能读取可见范围内的部门与人员。第三方事件回调验签尚未接入，不能把第三方事件直接转发到管理员导入入口。
+管理员可调用 `POST /api/admin/identity-sources/{source_id}/reconcile` 从身份源主动拉取部门和人员快照；服务每六小时自动对账，可通过 `WORKSTEP_GATEWAY_DIRECTORY_RECONCILE_SECONDS` 调整。对账失败保留原投影。钉钉主动拉取使用企业内部应用凭据及通讯录读取权限；企业微信应用须能读取可见范围内的部门与人员。启用厂商事件回调时，同时在创建身份源请求中填写 `callback_token_env` 和 `callback_aes_key_env`，其值为服务进程中的环境变量名；不把 Token 或 AES Key 写入数据库。将厂商回调地址设为 `/api/auth/external/{source_id}/events`。钉钉使用加密 JSON POST，企业微信使用 GET URL 验证及加密 XML POST。入口验签、解密和校验身份源后同步完整目录，成功才回应；重复事件依据解密正文去重，失败保持可重试。当前钉钉回调在目录对账完成后才应答，真实厂商响应时限与联调尚未验收，生产启用前需改为持久化快速应答。
 
 阶段 3A 的 Gateway 授权 API 已开始实现。服务首次启动会在数据目录生成仅服务进程可读的 `gateway-signing-key.pem`，`GET /api/platform/gateway-key` 提供公钥和 SHA-256 指纹；构建受管包时应把对应公钥文件用于固定指纹。设置 `WORKSTEP_GATEWAY_GATEWAY_ID`，与包内的 `gateway_id` 一致。浏览器已登录后调用 `POST /api/desktop/authorize` 获取仅含 code/state 的 `workstep://auth/callback`，Desktop 调用 `POST /api/desktop/token` 用 PKCE 兑换并登记 Ed25519 设备公钥。首次设备为待审批；超级管理员二次认证后调用 `POST /api/admin/devices/{device_id}/approve`，下次授权兑换返回 15 分钟的签名设备授权。
 受管 Desktop 使用系统浏览器打开 `/desktop/login`，在主进程内校验回调和固定 Gateway 公钥指纹；设备私钥使用 Electron 系统安全存储加密。审批后，Desktop 把签名设备授权及私钥证明提交给本机 daemon 的 `POST /api/managed/bootstrap`，daemon 校验 Gateway 签名和设备证明，再生成内存中的本机会话。受管模式的业务 HTTP 和 WebSocket 同时要求 Desktop 启动令牌与本机会话，仍在本机 loopback 处理；错误 Origin 被拒绝。本机会话失效时 daemon 返回专用 401 标记，Desktop 单飞重走网关登录与本机交接。超级管理员可在 `/admin/devices` 查看待审批设备，通过密码二次认证批准、停用或撤销。备份与迁移 Gateway 时须连同数据库保存 `gateway-signing-key.pem`；丢失密钥会使既有受管包公钥指纹不匹配。
@@ -17,7 +17,7 @@ Gateway 是独立 FastAPI 服务，`apps/gateway-web` 是独立门户。阶段 0
 阶段 3B 的控制 WebSocket 已建立 `/api/control/ws` 骨架：Desktop 用设备密钥签署短期控制密钥委托，只把临时控制私钥交给本机 daemon；Gateway 发出一次性随机挑战，由 daemon 的临时密钥应答，并核对签名授权、设备/用户状态和用户设备关系。Gateway 维护单设备在线连接和历史；心跳超时、停用或撤销关闭连接。daemon 主动连接、心跳并退避重连；授权被拒后，本机控制状态通知 Desktop 重新登录。Gateway 在握手和心跳下发十分钟签名策略快照，daemon 校验固定网关公钥、用户/设备、期限和 revision 后缓存并回执；本机状态接口展示期限。完整策略编译、其余受控业务入口门禁和命令传输仍待实现，因此此端点暂不用于生产受管设备。
 受管请求的操作者会进入 daemon 的当前身份上下文；共享任务创建服务根据本机签名策略检查 `task.create`，过期、未下发、用户不匹配或能力缺失时返回 403。未分配的受控能力默认拒绝；其余受控入口门禁留待后续阶段，此控制通道尚不适合生产部署。
 超级管理员短时二次认证后可调用 `POST /api/admin/capabilities/{user_id}` 授予全局或设备范围的 `task.create`，`effect=deny` 优先于 allow；`POST /api/admin/capabilities/{user_id}/revoke` 撤销相应分配。变更提高目标设备 policy revision，下次控制心跳重签并回传应用版本。设备停用、撤销或账号停用关闭控制连接时，daemon 清空受控策略。项目范围能力和其余受控动作仍待后续阶段。
-桌面登录页支持本地密码及已启用的钉钉/企业微信身份源；扫码回调持久化一次性 state 与经过白名单约束的回跳路径，成功后返回原桌面登录页继续签发 code。待审核账号进入等待页。第三方事件回调仍未验签接入，目录变更由定时对账或管理员导入处理。
+桌面登录页支持本地密码及已启用的钉钉/企业微信身份源；扫码回调持久化一次性 state 与经过白名单约束的回跳路径，成功后返回原桌面登录页继续签发 code，失败后携带有限错误状态返回重试。待审核账号进入等待页。
 
 阶段 4D 的 Gateway 组 API 在 `/api/groups`；外部部门映射组跟随目录同步，组项目关系仅授予 Skills 管理范围。`/api/admin/skills` 接收限额 ZIP 包并保存不可变版本，具有平台范围 `skill_admin` 或超级管理员角色且完成短时密码二次认证后才能上传、审核和授权版本；组长只能给本组已关联项目分配获授权的固定版本。设备控制心跳携带签名清单，PC 从固定网关按需下载并验签、校验包摘要和路径后落盘；`/api/admin/skills/applications` 可看项目应用状态。管理页面仍待完成。
 

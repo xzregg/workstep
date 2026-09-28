@@ -40,10 +40,14 @@ class ExternalIdentityService:
         self.database = database
 
     async def create_source(self, provider: str, tenant_id: str, client_id: str,
-                            secret_env: str, agent_id: str | None = None) -> IdentitySource:
+                            secret_env: str, agent_id: str | None = None,
+                            callback_token_env: str | None = None,
+                            callback_aes_key_env: str | None = None) -> IdentitySource:
         source = IdentitySource(
             id=str(uuid4()), provider=provider, tenant_id=tenant_id,
             client_id=client_id, secret_env=secret_env, agent_id=agent_id,
+            callback_token_env=callback_token_env,
+            callback_aes_key_env=callback_aes_key_env,
         )
         try:
             async with self.database.session() as session:
@@ -67,6 +71,31 @@ class ExternalIdentityService:
             return (await session.scalars(select(IdentitySource).where(
                 IdentitySource.enabled == 1,
             ).order_by(IdentitySource.provider, IdentitySource.tenant_id))).all()
+
+    async def reconcile_callback(self, source: IdentitySource, payload: bytes, connector) -> bool:
+        """Reconcile a verified vendor event, then record its replay receipt."""
+        event_id = "callback:" + hashlib.sha256(payload).hexdigest()
+        async with self.database.session() as session:
+            known = await session.scalar(select(DirectoryEventReceipt.id).where(
+                DirectoryEventReceipt.source_id == source.id,
+                DirectoryEventReceipt.event_id == event_id,
+            ))
+            if known:
+                return False
+        try:
+            snapshot = await connector.fetch_directory(source)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="Directory provider unavailable") from exc
+        await self.full_sync(source.id, snapshot["departments"], snapshot["people"])
+        try:
+            async with self.database.session() as session:
+                async with session.begin():
+                    session.add(DirectoryEventReceipt(
+                        id=str(uuid4()), source_id=source.id, event_id=event_id,
+                    ))
+        except IntegrityError:
+            return False
+        return True
 
     async def begin(self, source_id: str, binding_user_id: str | None = None,
                     binding_session_id: str | None = None,

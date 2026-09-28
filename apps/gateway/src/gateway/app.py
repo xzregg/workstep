@@ -13,6 +13,7 @@ from .config import GatewaySettings
 from .database import GatewayDatabase
 from .identity_api import router as identity_router
 from .external_identity_api import router as external_identity_router
+from .directory_callbacks import router as directory_callbacks_router
 from .identity_connectors import DingTalkConnector, WeComConnector
 from .rate_limit import IdentityRateLimiter
 from .reconciliation import DirectoryReconciler
@@ -111,6 +112,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
 
     app.include_router(identity_router)
     app.include_router(external_identity_router)
+    app.include_router(directory_callbacks_router)
     app.include_router(desktop_authorization_router)
     app.include_router(client_releases_router)
     app.include_router(control_router)

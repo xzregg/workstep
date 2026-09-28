@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .external_identity import ExternalIdentityService
 from .identity import COOKIE_NAME, IdentityService, csrf_token, public_user
@@ -21,6 +21,17 @@ class SourceInput(BaseModel):
     client_id: str = Field(min_length=1, max_length=256)
     secret_env: str = Field(min_length=1, max_length=128)
     agent_id: str | None = Field(default=None, max_length=128)
+    callback_token_env: str | None = Field(default=None, max_length=128)
+    callback_aes_key_env: str | None = Field(default=None, max_length=128)
+
+    @model_validator(mode="after")
+    def valid_callback_configuration(self):
+        if bool(self.callback_token_env) != bool(self.callback_aes_key_env):
+            raise ValueError("Both callback environment references are required")
+        for reference in (self.callback_token_env, self.callback_aes_key_env):
+            if reference and not re.fullmatch(r"[A-Z][A-Z0-9_]*", reference):
+                raise ValueError("Invalid callback secret environment variable")
+        return self
 
 
 class DepartmentInput(BaseModel):
@@ -91,9 +102,11 @@ async def create_source(request: Request, body: SourceInput):
         raise HTTPException(status_code=422, detail="WeCom agent ID required")
     source = await _service(request).create_source(
         body.provider, body.tenant_id, body.client_id, body.secret_env, body.agent_id,
+        body.callback_token_env, body.callback_aes_key_env,
     )
     return {"id": source.id, "provider": source.provider, "tenant_id": source.tenant_id,
-            "client_id": source.client_id, "enabled": bool(source.enabled)}
+            "client_id": source.client_id, "enabled": bool(source.enabled),
+            "callback_configured": bool(source.callback_token_env)}
 
 
 @router.post("/admin/identity-sources/{source_id}/sync")
