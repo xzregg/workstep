@@ -13,7 +13,8 @@ from sqlalchemy import case, func, select
 
 from .identity import COOKIE_NAME
 from .identity_api import _super_admin_read, _super_admin_request
-from .models import AuditEvent, UsageEvent, UsageEventReceipt
+from .models import (AuditEvent, UsageDailyRollup, UsageEvent,
+                     UsageEventReceipt, UsageRollupQueue)
 
 router = APIRouter(prefix="/api/admin/usage")
 UsageSource = Literal["reported_by_device", "provider_reconciled"]
@@ -160,6 +161,7 @@ async def import_provider_bills(request: Request, body: ProviderBillBatch):
                     metering_status="metered",
                     occurred_at=datetime.combine(line.day, time.min, timezone.utc),
                 ))
+                session.add(UsageRollupQueue(usage_event_id=event_id))
                 accepted.append(line.line_id)
             if accepted:
                 session.add(AuditEvent(
@@ -231,8 +233,9 @@ async def record_usage_batch(database, device_id: str, batch_id: str,
                                               if event.unit_price_snapshot else None),
                     currency=event.currency, estimated_cost=event.estimated_cost,
                     metering_status=event.metering_status,
-                    occurred_at=event.occurred_at,
+                    occurred_at=event.occurred_at.astimezone(timezone.utc),
                 ))
+                session.add(UsageRollupQueue(usage_event_id=event.usage_event_id))
                 await session.flush()
                 accepted.append(event.usage_event_id)
     return {"batch_id": batch_id, "accepted": accepted,
@@ -258,31 +261,32 @@ async def usage_summary(request: Request,
                                    provider_id=provider_id, model=model, source=source,
                                    metering_status=metering_status, from_time=from_time,
                                    to_time=to_time)
-    totals = (
-        func.count(UsageEvent.id),
-        func.sum(case((UsageEvent.metering_status == "unmetered", 1), else_=0)),
-        func.sum(UsageEvent.input_tokens), func.sum(UsageEvent.output_tokens),
-        func.sum(UsageEvent.cache_read_tokens), func.sum(UsageEvent.cache_write_tokens),
-        func.sum(UsageEvent.total_tokens), func.sum(UsageEvent.estimated_cost),
-        func.min(case(((UsageEvent.estimated_cost.is_not(None)) |
-                       (UsageEvent.billed_cost.is_not(None)), UsageEvent.currency))),
-        func.max(case(((UsageEvent.estimated_cost.is_not(None)) |
-                       (UsageEvent.billed_cost.is_not(None)), UsageEvent.currency))),
-        func.sum(case((((UsageEvent.estimated_cost.is_not(None)) |
-                        (UsageEvent.billed_cost.is_not(None))) &
-                       (UsageEvent.currency.is_(None)), 1), else_=0)),
-        func.sum(UsageEvent.billed_cost),
-    )
-    query = select(*totals).where(*conditions)
     async with request.app.state.database.session() as session:
+        pending = await session.scalar(select(UsageRollupQueue.id).limit(1))
+        def aligned(value):
+            return value is None or (value.astimezone(timezone.utc).time() == time.min)
+        use_rollups = pending is None and aligned(from_time) and aligned(to_time)
+        if use_rollups:
+            entity = UsageDailyRollup
+            conditions = _usage_conditions(
+                device_id=device_id, user_id=user_id, project_id=project_id,
+                provider_id=provider_id, model=model, source=source,
+                metering_status=metering_status, from_time=from_time,
+                to_time=to_time, entity=entity,
+            )
+        else:
+            entity = UsageEvent
+        totals = _usage_select_totals(entity)
+        query = select(*totals).where(*conditions)
         row = (await session.execute(query)).one()
         result = _usage_totals(row)
+        result["summary_source"] = "rollup" if use_rollups else "events"
         if group_by:
             dimension = {
-                "user": UsageEvent.user_id, "device": UsageEvent.device_id,
-                "project": UsageEvent.project_id,
-                "provider": UsageEvent.provider_id, "model": UsageEvent.model,
-                "day": func.date(UsageEvent.occurred_at),
+                "user": entity.user_id, "device": entity.device_id,
+                "project": entity.project_id,
+                "provider": entity.provider_id, "model": entity.model,
+                "day": entity.day if use_rollups else func.date(entity.occurred_at),
             }[group_by]
             group_keys = select(dimension).where(*conditions).group_by(dimension).subquery()
             result["group_total"] = await session.scalar(select(func.count()).select_from(group_keys))
@@ -296,10 +300,28 @@ async def usage_summary(request: Request,
         return result
 
 
+def _usage_select_totals(entity):
+    rollup = entity is UsageDailyRollup
+    has_cost = (entity.estimated_cost.is_not(None)) | (entity.billed_cost.is_not(None))
+    return (
+        func.sum(entity.event_count) if rollup else func.count(entity.id),
+        func.sum(entity.unmetered_count) if rollup else
+            func.sum(case((entity.metering_status == "unmetered", 1), else_=0)),
+        func.sum(entity.input_tokens), func.sum(entity.output_tokens),
+        func.sum(entity.cache_read_tokens), func.sum(entity.cache_write_tokens),
+        func.sum(entity.total_tokens), func.sum(entity.estimated_cost),
+        func.min(case((has_cost, entity.currency))),
+        func.max(case((has_cost, entity.currency))),
+        func.sum(entity.cost_missing_count) if rollup else
+            func.sum(case((has_cost & entity.currency.is_(None), 1), else_=0)),
+        func.sum(entity.billed_cost),
+    )
+
+
 def _usage_totals(row) -> dict:
     currency = (row[8] if row[8] == row[9] and row[8] is not None and not row[10]
                 else "mixed" if row[8] != row[9] else None)
-    return {"event_count": row[0], "unmetered_count": row[1] or 0,
+    return {"event_count": row[0] or 0, "unmetered_count": row[1] or 0,
             "input_tokens": row[2], "output_tokens": row[3],
             "cache_read_tokens": row[4], "cache_write_tokens": row[5],
             "total_tokens": row[6],
@@ -313,22 +335,25 @@ def _usage_totals(row) -> dict:
 def _usage_conditions(*, device_id: str | None, user_id: str | None,
                       project_id: str | None, provider_id: str | None, model: str | None,
                       source: UsageSource | None, metering_status: MeteringStatus | None,
-                      from_time: datetime | None, to_time: datetime | None) -> list:
+                      from_time: datetime | None, to_time: datetime | None,
+                      entity=UsageEvent) -> list:
     if ((from_time and from_time.tzinfo is None) or (to_time and to_time.tzinfo is None)
             or (from_time and to_time and from_time >= to_time)):
         raise HTTPException(status_code=422, detail="Invalid usage time range")
     conditions = []
-    for column, value in ((UsageEvent.device_id, device_id), (UsageEvent.user_id, user_id),
-                          (UsageEvent.project_id, project_id),
-                          (UsageEvent.provider_id, provider_id), (UsageEvent.model, model),
-                          (UsageEvent.source, source),
-                          (UsageEvent.metering_status, metering_status)):
+    for column, value in ((entity.device_id, device_id), (entity.user_id, user_id),
+                          (entity.project_id, project_id),
+                          (entity.provider_id, provider_id), (entity.model, model),
+                          (entity.source, source),
+                          (entity.metering_status, metering_status)):
         if value:
             conditions.append(column == value)
     if from_time:
-        conditions.append(UsageEvent.occurred_at >= from_time)
+        conditions.append(entity.day >= from_time.astimezone(timezone.utc).date().isoformat()
+                          if entity is UsageDailyRollup else entity.occurred_at >= from_time)
     if to_time:
-        conditions.append(UsageEvent.occurred_at < to_time)
+        conditions.append(entity.day < to_time.astimezone(timezone.utc).date().isoformat()
+                          if entity is UsageDailyRollup else entity.occurred_at < to_time)
     return conditions
 
 

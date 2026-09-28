@@ -523,6 +523,49 @@ class UsageEventReceipt(Base):
     received_at: Mapped[datetime] = timestamp()
 
 
+class UsageRollupQueue(Base):
+    __tablename__ = "usage_rollup_queue"
+    __table_args__ = {"sqlite_autoincrement": True}
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    usage_event_id: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = timestamp()
+
+
+class UsageRollupState(Base):
+    __tablename__ = "usage_rollup_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    last_queue_id: Mapped[int] = mapped_column(Integer, server_default="0")
+
+
+class UsageDailyRollup(Base):
+    __tablename__ = "usage_daily_rollups"
+    __table_args__ = (Index("ix_usage_rollup_source_day", "source", "day",
+                            "provider_id", "model"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    day: Mapped[str] = mapped_column(String(10))
+    source: Mapped[str] = mapped_column(String(32))
+    metering_status: Mapped[str] = mapped_column(String(16))
+    user_id: Mapped[str | None] = mapped_column(String(64))
+    device_id: Mapped[str] = mapped_column(String(64))
+    project_id: Mapped[str | None] = mapped_column(String(64))
+    provider_id: Mapped[str | None] = mapped_column(String(64))
+    model: Mapped[str | None] = mapped_column(String(128))
+    currency: Mapped[str | None] = mapped_column(String(3))
+    event_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    unmetered_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    cost_missing_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    cache_read_tokens: Mapped[int | None] = mapped_column(Integer)
+    cache_write_tokens: Mapped[int | None] = mapped_column(Integer)
+    total_tokens: Mapped[int | None] = mapped_column(Integer)
+    estimated_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
+    billed_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
     __table_args__ = (

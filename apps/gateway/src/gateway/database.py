@@ -18,7 +18,7 @@ from .config import GatewaySettings
 from .models import PlatformSetting
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
-HEAD_REVISION = "0030_usage_reconciliation"
+HEAD_REVISION = "0031_usage_rollups"
 
 
 def safe_database_location(url: str) -> tuple[str, str]:
@@ -58,6 +58,7 @@ class GatewayDatabase:
         self.session = None
         self._lock_file = None
         self._instance_connection = None
+        self.usage_rollup_lock = asyncio.Lock()
 
     def _acquire_sqlite_lock(self, url: str) -> None:
         path = make_url(url).database
