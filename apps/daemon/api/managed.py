@@ -10,6 +10,9 @@ router = APIRouter(prefix="/api/managed")
 class BootstrapInput(BaseModel):
     device_authorization: str = Field(min_length=1, max_length=8192)
     device_proof: str = Field(min_length=1, max_length=512)
+    control_private_key_pem: str = Field(min_length=1, max_length=4096)
+    control_public_key_pem: str = Field(min_length=1, max_length=4096)
+    control_delegation_signature: str = Field(min_length=1, max_length=512)
 
 
 @router.post("/bootstrap")
@@ -18,7 +21,11 @@ async def bootstrap(request: Request, body: BootstrapInput):
     if service.managed_config is None:
         raise HTTPException(status_code=404, detail="Managed Gateway unavailable")
     try:
-        token, actor = await service.bootstrap(body.device_authorization, body.device_proof)
+        token, actor = await service.bootstrap(
+            body.device_authorization, body.device_proof,
+            body.control_private_key_pem, body.control_public_key_pem,
+            body.control_delegation_signature,
+        )
     except (OSError, httpx.HTTPError) as exc:
         raise HTTPException(status_code=502, detail="Gateway unavailable") from exc
     except ValueError as exc:

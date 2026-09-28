@@ -1,15 +1,29 @@
 import asyncio
 import json
+import base64
 
 import pytest
 import httpx
 from fastapi import FastAPI
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from api.managed import router as managed_router
 from services.desktop_security import DesktopSecurityMiddleware
 from services.gateway_client import GatewayClientService
 from services.gateway_client.identity import ManagedActor
 from types import SimpleNamespace
+
+
+def _control_keys():
+    private_key = Ed25519PrivateKey.generate()
+    return (
+        private_key.private_bytes(serialization.Encoding.PEM,
+                                  serialization.PrivateFormat.PKCS8,
+                                  serialization.NoEncryption()).decode(),
+        private_key.public_key().public_bytes(serialization.Encoding.PEM,
+                                              serialization.PublicFormat.SubjectPublicKeyInfo).decode(),
+    )
 
 from services.gateway_client.control import GatewayControlClient, control_url
 
@@ -26,11 +40,18 @@ async def test_control_client_handshake_heartbeat_and_shutdown():
     class Socket:
         def __init__(self):
             self.messages = asyncio.Queue()
-            self.messages.put_nowait(json.dumps({"kind": "hello", "version": 1, "device_id": "device-1"}))
+            self.messages.put_nowait(json.dumps({"kind": "challenge", "version": 1,
+                                                 "nonce": "fresh-nonce-0123456789ABCDEFGHIJKLMN"}))
 
         async def send(self, value):
             message = json.loads(value)
             sent.append(message)
+            if message.get("authorization"):
+                public_key = serialization.load_pem_public_key(message["control_public_key_pem"].encode())
+                public_key.verify(base64.urlsafe_b64decode(message["control_challenge_proof"] + "=="),
+                                  b"workstep-control-challenge-v1:fresh-nonce-0123456789ABCDEFGHIJKLMN:authorization")
+                self.messages.put_nowait(json.dumps({"kind": "hello", "version": 1,
+                                                     "device_id": "device-1"}))
             if message.get("kind") == "heartbeat":
                 heartbeat.set()
                 self.messages.put_nowait(json.dumps({"kind": "heartbeat_ack", "version": 1,
@@ -53,10 +74,12 @@ async def test_control_client_handshake_heartbeat_and_shutdown():
 
     client = GatewayControlClient("https://gateway.example", connector=connect,
                                   heartbeat_seconds=0.01)
-    client.start("authorization", "proof", "device-1")
+    private_pem, public_pem = _control_keys()
+    client.start("authorization", "device-1", private_pem, public_pem, "delegation")
     await asyncio.wait_for(heartbeat.wait(), timeout=1)
     assert client.online is True
-    assert sent[0] == {"authorization": "authorization", "device_proof": "proof"}
+    assert sent[0]["authorization"] == "authorization"
+    assert sent[0]["control_delegation_signature"] == "delegation"
     assert urls[0][0] == "wss://gateway.example/api/control/ws"
     await client.stop()
     assert client.online is False
@@ -101,8 +124,12 @@ async def test_slow_control_handshake_keeps_daemon_health_responsive(monkeypatch
     try:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
                                      base_url="http://127.0.0.1") as http:
+            private_pem, public_pem = _control_keys()
             bootstrap = await http.post("/api/managed/bootstrap", json={
                 "device_authorization": "signed", "device_proof": "proof",
+                "control_private_key_pem": private_pem,
+                "control_public_key_pem": public_pem,
+                "control_delegation_signature": "delegation",
             }, headers={"X-WorkStep-Desktop-Token": "desktop-secret"})
             assert bootstrap.status_code == 200
             await asyncio.wait_for(started.wait(), timeout=1)

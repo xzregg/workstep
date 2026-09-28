@@ -2,8 +2,10 @@
 
 import asyncio
 import base64
+import binascii
 import hashlib
 import json
+import secrets
 import time
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -15,7 +17,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 
-from .models import Device, DeviceConnection, User
+from .models import Device, DeviceConnection, User, UserDevice
 
 router = APIRouter()
 
@@ -26,10 +28,14 @@ def _decode(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + "===")
 
 
-async def authenticate_device(ws: WebSocket, message: dict) -> str:
+async def authenticate_device(ws: WebSocket, message: dict, nonce: str) -> str:
     token = message.get("authorization")
-    proof = message.get("device_proof")
-    if not isinstance(token, str) or not isinstance(proof, str) or len(token) > 16384:
+    delegation = message.get("control_delegation_signature")
+    challenge_proof = message.get("control_challenge_proof")
+    control_public_key_pem = message.get("control_public_key_pem")
+    if (not isinstance(token, str) or not isinstance(delegation, str)
+            or not isinstance(challenge_proof, str) or not isinstance(control_public_key_pem, str)
+            or len(token) > 16384 or len(control_public_key_pem) > 4096):
         raise ValueError("Missing control credential")
     try:
         header, payload, signature = token.split(".")
@@ -51,18 +57,33 @@ async def authenticate_device(ws: WebSocket, message: dict) -> str:
         device_key = serialization.load_pem_public_key(public_key_pem.encode())
         if not isinstance(device_key, Ed25519PublicKey):
             raise ValueError("Invalid device key")
-        device_key.verify(_decode(proof), token.encode())
+        control_key = serialization.load_pem_public_key(control_public_key_pem.encode())
+        if not isinstance(control_key, Ed25519PublicKey):
+            raise ValueError("Invalid delegated control key")
+        control_fingerprint = hashlib.sha256(control_key.public_bytes(
+            serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo,
+        )).hexdigest()
+        device_key.verify(_decode(delegation),
+                          f"workstep-control-delegate-v1:{token}:{control_fingerprint}".encode())
+        control_key.verify(_decode(challenge_proof),
+                           f"workstep-control-challenge-v1:{nonce}:{token}".encode())
         fingerprint = hashlib.sha256(device_key.public_bytes(
             serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo,
         )).hexdigest()
-    except (KeyError, TypeError, ValueError, InvalidSignature, UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (KeyError, TypeError, ValueError, binascii.Error, InvalidSignature,
+            UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("Invalid control credential") from exc
     async with ws.app.state.database.session() as session:
         device = await session.get(Device, device_id)
         user = await session.get(User, claims.get("user_id"))
+        assignment = await session.scalar(select(UserDevice).where(
+            UserDevice.device_id == device_id,
+            UserDevice.user_id == claims.get("user_id"),
+            UserDevice.revoked_at.is_(None),
+        ))
     if (not device or device.status != "active" or device.public_key_fingerprint != fingerprint
             or device.app_instance_id != claims.get("app_instance_id")
-            or not user or user.status != "active"):
+            or not user or user.status != "active" or not assignment):
         raise ValueError("Device or user unavailable")
     return device_id
 
@@ -118,10 +139,12 @@ async def control_socket(ws: WebSocket):
     connection_id = None
     try:
         try:
+            nonce = secrets.token_urlsafe(32)
+            await ws.send_json({"kind": "challenge", "version": 1, "nonce": nonce})
             hello = await asyncio.wait_for(ws.receive_json(), timeout=5)
             if not isinstance(hello, dict):
                 raise ValueError("Invalid handshake")
-            device_id = await authenticate_device(ws, hello)
+            device_id = await authenticate_device(ws, hello, nonce)
         except (ValueError, asyncio.TimeoutError):
             await ws.close(code=4401)
             return

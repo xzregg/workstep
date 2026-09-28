@@ -1,11 +1,12 @@
 const assert = require('node:assert/strict')
-const { createHash, generateKeyPairSync, sign } = require('node:crypto')
+const { createHash, generateKeyPairSync, sign, verify, createPublicKey } = require('node:crypto')
 const test = require('node:test')
 const {
   createAuthorizationRequest,
   claimAuthCallback,
   verifyDeviceAuthorization,
   exchangeDesktopCode,
+  createControlDelegation,
 } = require('../src/desktop-auth.cjs')
 
 const managed = {
@@ -23,6 +24,18 @@ test('Desktop request pins Gateway and generates PKCE, state, nonce', () => {
     .update(pending.verifier).digest('base64url'))
   assert.ok(pending.state.length >= 32)
   assert.ok(pending.nonce.length >= 32)
+})
+
+test('Desktop delegates control challenge signing without exporting the device key', () => {
+  const { privateKey } = generateKeyPairSync('ed25519')
+  const token = 'signed-device-authorization'
+  const delegation = createControlDelegation(token,
+    privateKey.export({ type: 'pkcs8', format: 'pem' }).toString())
+  const publicKey = createPublicKey(delegation.controlPrivateKeyPem)
+  assert.equal(publicKey.export({ type: 'spki', format: 'pem' }).toString(), delegation.controlPublicKeyPem)
+  const fingerprint = createHash('sha256').update(publicKey.export({ type: 'spki', format: 'der' })).digest('hex')
+  assert.equal(verify(null, Buffer.from(`workstep-control-delegate-v1:${token}:${fingerprint}`),
+    createPublicKey(privateKey), Buffer.from(delegation.delegationSignature, 'base64url')), true)
 })
 
 test('callback accepts only matching one-time code and state', () => {

@@ -10,7 +10,7 @@ Gateway 阶段 3A 的桌面授权及设备管理 API 在 `apps/gateway/src/gatew
 Gateway 安装包目录由 `apps/gateway/src/gateway/client_releases.py` 持有，迁移 `0009_client_releases.py` 保存发布元数据，`apps/gateway-web/src/ClientDownloadPage.tsx` 显示 `/devices/empty` 下载页；行为测试见 `apps/gateway/tests/test_client_releases.py` 与 `apps/gateway-web/tests/client-releases.test.tsx`。
 受管本机会话失效标记与 Origin 检查在 daemon 的 `services/desktop_security.py`；Desktop 的 `src/managed-session.cjs` 识别专用 401 标记，`src/main.cjs` 单飞重新登录并重新交接 daemon，测试见 `apps/daemon/tests/test_desktop_security.py` 与 `apps/desktop/tests/managed-session.test.cjs`。
 Gateway 阶段 3B 的控制 WebSocket 骨架在 `apps/gateway/src/gateway/control_connection.py`：验证设备授权、维护单设备在线连接和连接历史、处理心跳、在停用/撤销时断开；`desktop_authorization_api.py` 的管理员设备列表投影在线状态，Gateway Web 的 `DeviceAdminPage.tsx` 展示；行为测试见 `apps/gateway/tests/test_control_connection.py`。
-daemon 的 `services/gateway_client/control.py` 在受管启动授权后维护出站 WSS、心跳和退避重连，`service.py` 持有生命周期；`api/managed.py` 提供本机控制状态供 Desktop `src/main.cjs` 在授权失效时重新登录。行为测试见 `apps/daemon/tests/test_gateway_control_client.py` 和 `test_managed_bootstrap.py`。
+Desktop 的 `src/desktop-auth.cjs` 在设备密钥下签署临时控制密钥委托，`src/main.cjs` 只把临时私钥交给本机 daemon。daemon 的 `services/gateway_client/control.py` 用该密钥响应 Gateway 新鲜挑战，维护出站 WSS、心跳和退避重连，`service.py` 持有生命周期；`api/managed.py` 提供本机控制状态供 Desktop 在授权失效时重新登录。行为测试见 `apps/desktop/tests/desktop-auth.test.cjs`、`apps/daemon/tests/test_gateway_control_client.py` 和 `test_managed_bootstrap.py`。
 
 修改功能时先找所属模块，再沿前端页面或组件 → API → 服务 → 数据模型追踪。行为测试放在实际拥有该行为的模块附近；不要把页面、`src/api/client.ts` 或通用服务文件作为新功能的默认落点。
 

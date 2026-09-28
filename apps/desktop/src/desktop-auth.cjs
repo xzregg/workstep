@@ -1,4 +1,18 @@
-const { createHash, createPublicKey, randomBytes, timingSafeEqual, verify } = require('node:crypto')
+const { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, sign,
+  timingSafeEqual, verify } = require('node:crypto')
+
+function createControlDelegation(authorization, devicePrivateKeyPem) {
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519')
+  const fingerprint = createHash('sha256').update(publicKey.export({ type: 'spki', format: 'der' })).digest('hex')
+  const delegationSignature = sign(null,
+    Buffer.from(`workstep-control-delegate-v1:${authorization}:${fingerprint}`),
+    createPrivateKey(devicePrivateKeyPem)).toString('base64url')
+  return {
+    controlPrivateKeyPem: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+    controlPublicKeyPem: publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+    delegationSignature,
+  }
+}
 
 function createAuthorizationRequest(managed, appInstanceId) {
   const origin = new URL(managed.gateway_origin)
@@ -111,4 +125,5 @@ async function exchangeDesktopCode({ pending, code, managed, devicePublicKey, de
 
 module.exports = {
   createAuthorizationRequest, claimAuthCallback, verifyDeviceAuthorization, exchangeDesktopCode,
+  createControlDelegation,
 }
