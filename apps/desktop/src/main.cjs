@@ -33,6 +33,7 @@ let managedPending = null
 let managedCallbackResolve = null
 let managedCallbackTimeout = null
 let reauthenticating = null
+let controlStatusTimer = null
 let pendingProtocolUrl = process.argv.find((value) => value.startsWith('workstep://')) ?? null
 
 function openProtocolUrl(value) {
@@ -193,31 +194,48 @@ function configureAuthenticatedRequests(url) {
   })
 }
 
+function beginManagedReauthentication(managed) {
+  if (reauthenticating) return
+  localSession = null
+  reauthenticating = (async () => {
+    for (;;) {
+      try {
+        const authorization = await authorizeManagedDesktop(managed)
+        if (!authorization) { app.quit(); return }
+        await bootstrapManagedBackend(rootUrl, authorization)
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.reload()
+        return
+      } catch (error) {
+        const result = await dialog.showMessageBox(mainWindow, {
+          type: 'error', title: 'WorkStep 需要重新登录',
+          message: '本机会话或网关控制授权已失效，重新登录后继续使用。',
+          detail: error instanceof Error ? error.message : String(error),
+          buttons: ['重试', '退出'], defaultId: 0, cancelId: 1,
+        })
+        if (result.response === 1) { app.quit(); return }
+      }
+    }
+  })().finally(() => { reauthenticating = null })
+}
+
 function configureManagedSessionRecovery(managed) {
   const parsed = new URL(rootUrl)
   session.defaultSession.webRequest.onCompleted({ urls: [`${parsed.origin}/*`] }, (details) => {
-    if (!managedSessionExpired(details, rootUrl) || reauthenticating) return
-    localSession = null
-    reauthenticating = (async () => {
-      for (;;) {
-        try {
-          const authorization = await authorizeManagedDesktop(managed)
-          if (!authorization) { app.quit(); return }
-          await bootstrapManagedBackend(rootUrl, authorization)
-          if (mainWindow && !mainWindow.isDestroyed()) await mainWindow.reload()
-          return
-        } catch (error) {
-          const result = await dialog.showMessageBox(mainWindow, {
-            type: 'error', title: 'WorkStep 需要重新登录',
-            message: '本机会话已失效，重新登录后继续使用。',
-            detail: error instanceof Error ? error.message : String(error),
-            buttons: ['重试', '退出'], defaultId: 0, cancelId: 1,
-          })
-          if (result.response === 1) { app.quit(); return }
-        }
-      }
-    })().finally(() => { reauthenticating = null })
+    if (managedSessionExpired(details, rootUrl)) beginManagedReauthentication(managed)
   })
+  controlStatusTimer = setInterval(() => {
+    if (reauthenticating || !localSession) return
+    void fetch(`${rootUrl}/api/managed/control-status`, {
+      headers: { 'X-WorkStep-Desktop-Token': desktopToken,
+        'X-WorkStep-Local-Session': localSession },
+      signal: AbortSignal.timeout(5000),
+    }).then(async (response) => {
+      if (response.status === 401 || (response.ok && (await response.json()).authorization_required)) {
+        beginManagedReauthentication(managed)
+      }
+    }).catch(() => {})
+  }, 30000)
+  controlStatusTimer.unref()
 }
 
 async function hasActiveWork() {
@@ -284,6 +302,7 @@ function configureUpdater() {
 }
 
 app.on('before-quit', (event) => {
+  if (controlStatusTimer) clearInterval(controlStatusTimer)
   if (installingUpdate || !backendProcess) return
   event.preventDefault()
   void stopBackend().then(() => app.quit())

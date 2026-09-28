@@ -24,3 +24,13 @@ async def bootstrap(request: Request, body: BootstrapInput):
     except ValueError as exc:
         raise HTTPException(status_code=403, detail="Invalid managed authorization") from exc
     return {"local_session": token, "user_id": actor.user_id, "device_id": actor.device_id}
+
+
+@router.get("/control-status")
+async def control_status(request: Request):
+    service = request.app.state.gateway_client
+    if service.managed_config is None:
+        raise HTTPException(status_code=404, detail="Managed Gateway unavailable")
+    client = service.control_client
+    return {"online": bool(client and client.online),
+            "authorization_required": bool(client and client.authorization_required)}
