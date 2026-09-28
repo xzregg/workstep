@@ -1,4 +1,4 @@
-import { Link, Route, Routes } from 'react-router-dom'
+import { Link, Route, Routes, useLocation } from 'react-router-dom'
 import { DesktopLoginPage } from './DesktopLoginPage'
 import { DeviceAdminPage } from './DeviceAdminPage'
 import { ClientDownloadPage } from './ClientDownloadPage'
@@ -21,9 +21,12 @@ import { AdminPlatformSettingsPage } from './AdminPlatformSettingsPage'
 import { GroupSkillsPage } from './GroupSkillsPage'
 import { AdminSkillsPage } from './AdminSkillsPage'
 import { AdminGroupsPage } from './AdminGroupsPage'
+import { PublicSharePage } from './PublicSharePage'
 
 export function App({ deviceHost = typeof window !== 'undefined' && window.location.hostname.startsWith('d-') }: { deviceHost?: boolean }) {
+  const location = useLocation()
   if (deviceHost) return <main><header><h1>WorkStep 远程项目</h1></header><ProjectWorkspacePage /></main>
+  if (location.pathname.startsWith('/share/')) return <Routes><Route path="/share/:token" element={<PublicSharePage />} /></Routes>
   return <GatewayPortalApp />
 }
 

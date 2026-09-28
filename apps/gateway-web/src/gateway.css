@@ -8,6 +8,88 @@ body {
   margin: 0;
 }
 
+.gateway-share-page {
+  min-height: 100vh;
+  background: #f5f5f7;
+}
+
+.gateway-share-header {
+  padding: 20px clamp(20px, 5vw, 64px);
+  border-bottom: 1px solid #e8e8ed;
+  background: #fff;
+}
+
+.gateway-share-header h1 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.gateway-share-card {
+  box-sizing: border-box;
+  width: min(100% - 32px, 680px);
+  margin: clamp(32px, 8vh, 88px) auto;
+  padding: clamp(24px, 5vw, 48px);
+  border: 1px solid #e8e8ed;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 18px 50px rgb(29 29 31 / 7%);
+}
+
+.gateway-share-card h2 {
+  margin: 10px 0 18px;
+  font-size: clamp(28px, 4vw, 40px);
+  overflow-wrap: anywhere;
+}
+
+.gateway-share-card p { line-height: 1.55; }
+.gateway-share-eyebrow { color: #7c3aed; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; }
+.gateway-share-caption { color: #6e6e73; }
+.gateway-share-pending { color: #6e6e73; }
+.gateway-share-error { color: #b42318; }
+.gateway-share-form { display: grid; gap: 12px; }
+.gateway-share-form label { font-weight: 600; }
+.gateway-share-form input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid #d2d2d7;
+  border-radius: 12px;
+  font: inherit;
+}
+.gateway-share-card button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 12px;
+  background: #0071e3;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+.gateway-share-card button:disabled { opacity: 0.5; cursor: default; }
+.gateway-share-facts { display: flex; flex-wrap: wrap; gap: 18px; margin: 20px 0; }
+.gateway-share-facts div { min-width: 120px; }
+.gateway-share-facts dt { color: #6e6e73; font-size: 12px; }
+.gateway-share-facts dd { margin: 4px 0 0; }
+.gateway-share-description { white-space: pre-wrap; line-height: 1.6; overflow-wrap: anywhere; }
+.gateway-share-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgb(255 255 255 / 45%);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: gateway-share-spin 0.8s linear infinite;
+}
+@keyframes gateway-share-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .gateway-share-spinner { animation-duration: 1.8s; }
+}
+
 main {
   min-height: 100vh;
 }

@@ -1,0 +1,134 @@
+import { useEffect, useState, type FormEvent } from 'react'
+import { useParams } from 'react-router-dom'
+
+type ShareMeta = { title: string; mode: 'read_only' | 'interactive'; has_password: boolean }
+type SharedTask = {
+  id: string
+  title: string
+  description?: string | null
+  status: string
+  created_at?: string | null
+  updated_at?: string | null
+  creator_name?: string | null
+}
+type Phase = 'loading' | 'password' | 'task' | 'offline' | 'unavailable'
+
+export function PublicSharePage() {
+  const { token } = useParams()
+  const [phase, setPhase] = useState<Phase>('loading')
+  const [meta, setMeta] = useState<ShareMeta | null>(null)
+  const [task, setTask] = useState<SharedTask | null>(null)
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [revision, setRevision] = useState(0)
+  const base = `/api/public/shares/${encodeURIComponent(token ?? '')}`
+
+  async function loadTask(signal?: AbortSignal) {
+    const response = await fetch(`${base}/task`, { signal })
+    if (signal?.aborted) return
+    if (response.status === 503) { setPhase('offline'); return }
+    if (response.status === 401) { setPhase('password'); return }
+    if (!response.ok) { setPhase('unavailable'); return }
+    setTask(await response.json() as SharedTask)
+    if (!signal?.aborted) setPhase('task')
+  }
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setPhase('loading')
+    setMeta(null)
+    setTask(null)
+    setError('')
+    async function openShare() {
+      try {
+        if (!token) { setPhase('unavailable'); return }
+        const response = await fetch(`${base}/meta`, { signal: controller.signal })
+        if (controller.signal.aborted) return
+        if (response.status === 503) { setPhase('offline'); return }
+        if (!response.ok) { setPhase('unavailable'); return }
+        const currentMeta = await response.json() as ShareMeta
+        if (controller.signal.aborted) return
+        setMeta(currentMeta)
+        const session = await fetch(`${base}/session`, { signal: controller.signal })
+        if (controller.signal.aborted) return
+        if (session.ok) { await loadTask(controller.signal); return }
+        if (session.status !== 401) { setPhase('unavailable'); return }
+        if (currentMeta.has_password) { setPhase('password'); return }
+        const unlocked = await fetch(`${base}/unlock`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: '' }), signal: controller.signal,
+        })
+        if (controller.signal.aborted) return
+        if (!unlocked.ok) { setPhase('unavailable'); return }
+        await loadTask(controller.signal)
+      } catch (reason) {
+        if (!(reason instanceof DOMException && reason.name === 'AbortError')) setPhase('offline')
+      }
+    }
+    void openShare()
+    return () => controller.abort()
+  }, [token, revision])
+
+  async function unlock(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!password.trim() || busy) return
+    setBusy(true)
+    setError('')
+    try {
+      const response = await fetch(`${base}/unlock`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      })
+      if (response.status === 403) { setError('密码错误，请重试。'); return }
+      if (response.status === 503) { setPhase('offline'); return }
+      if (!response.ok) { setPhase('unavailable'); return }
+      await loadTask()
+    } catch {
+      setPhase('offline')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return <main className="gateway-share-page">
+    <header className="gateway-share-header"><h1>WorkStep 分享</h1></header>
+    <section className="gateway-share-card" aria-live="polite">
+      {phase === 'loading' && <p className="gateway-share-pending">正在打开分享…</p>}
+      {phase === 'password' && <>
+        <p className="gateway-share-eyebrow">受保护的任务分享</p>
+        <h2>{meta?.title || '查看任务'}</h2>
+        <p>输入分享密码后查看任务。</p>
+        <form className="gateway-share-form" onSubmit={unlock}>
+          <label htmlFor="gateway-share-password">分享密码</label>
+          <input id="gateway-share-password" type="password" autoComplete="off"
+            value={password} onChange={event => setPassword(event.target.value)} />
+          {error && <p className="gateway-share-error" role="alert">{error}</p>}
+          <button type="submit" disabled={!password.trim() || busy}>
+            {busy && <span className="gateway-share-spinner" aria-hidden="true" />}
+            {busy ? '正在验证…' : '查看任务'}
+          </button>
+        </form>
+      </>}
+      {phase === 'task' && task && <>
+        <p className="gateway-share-eyebrow">{meta?.mode === 'interactive' ? '互动分享' : '只读分享'}</p>
+        <h2>{task.title}</h2>
+        {meta?.title && <p className="gateway-share-caption">{meta.title}</p>}
+        <dl className="gateway-share-facts"><div><dt>状态</dt><dd>{task.status}</dd></div>
+          {task.creator_name && <div><dt>创建者</dt><dd>{task.creator_name}</dd></div>}
+          {task.created_at && <div><dt>创建时间</dt><dd>{new Date(task.created_at).toLocaleString()}</dd></div>}
+        </dl>
+        {task.description && <div className="gateway-share-description">{task.description}</div>}
+      </>}
+      {phase === 'offline' && <>
+        <h2>暂时无法打开分享</h2>
+        <p>宿主电脑暂时不可用，请稍后重试。</p>
+        <button type="button" onClick={() => setRevision(value => value + 1)}>重试</button>
+      </>}
+      {phase === 'unavailable' && <>
+        <h2>分享不可用</h2>
+        <p>链接可能已过期或被撤销。</p>
+      </>}
+    </section>
+  </main>
+}
