@@ -19,6 +19,7 @@ test('group leader assigns approved version and revokes only own project source'
   const writes: Array<{ url: string; method: string; csrf: string; body?: unknown }> = []
   let assigned = false
   let conflict = true
+  let member = false
   globalThis.fetch = async (input, init) => {
     const url = String(input)
     if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf-leader' })
@@ -32,6 +33,25 @@ test('group leader assigns approved version and revokes only own project source'
       { skill_id: 'skill-1', name: '审核 Skill', slug: 'review',
         skill_version_id: 'version-1', version: '1.0.0', digest: 'abc' },
     ] })
+    if (url === '/api/groups/group-1/members' && !init?.method) return Response.json({ members: [
+      { user_id: 'leader-1', username: 'leader', display_name: 'Leader',
+        role: 'leader', source: 'manual' },
+      { user_id: 'directory-1', username: 'directory', display_name: 'Directory',
+        role: 'member', source: 'directory_sync' },
+      ...(member ? [{ user_id: 'member-1', username: 'alice', display_name: 'Alice',
+        role: 'member', source: 'manual' }] : []),
+    ] })
+    if (url === '/api/groups/group-1/members' && init?.method === 'POST') {
+      writes.push({ url, method: 'POST', csrf: String((init.headers as Record<string, string>)['X-CSRF-Token']),
+        body: JSON.parse(String(init.body)) })
+      member = true
+      return Response.json({ user_id: 'member-1', role: 'member' })
+    }
+    if (url === '/api/groups/group-1/members/member-1' && init?.method === 'DELETE') {
+      writes.push({ url, method: 'DELETE', csrf: String((init.headers as Record<string, string>)['X-CSRF-Token']) })
+      member = false
+      return new Response(null, { status: 204 })
+    }
     if (url === '/api/groups/group-1/projects/project-1/skills' && !init?.method) {
       return Response.json({ desired_revision: assigned ? 2 : 0, applied_revision: null,
         status: 'pending', last_error_code: null, skills: assigned ? [{
@@ -73,5 +93,18 @@ test('group leader assigns approved version and revokes only own project source'
   fireEvent.click((await import('@testing-library/dom')).getByRole(dialog, 'button', { name: '确认撤销' }))
   await waitFor(() => assert.equal(assigned, false))
   assert.deepEqual(writes.at(-1), { url: '/api/groups/group-1/projects/project-1/skills/skill-1',
+    method: 'DELETE', csrf: 'csrf-leader' })
+  assert.equal(screen.queryByRole('button', { name: '移除 leader' }), null)
+  assert.equal(screen.queryByRole('button', { name: '移除 directory' }), null)
+  fireEvent.change(screen.getByLabelText('成员用户名'), { target: { value: 'alice' } })
+  fireEvent.click(screen.getByRole('button', { name: '添加普通成员' }))
+  await screen.findByText(/alice · 普通成员/)
+  assert.deepEqual(writes.at(-1), { url: '/api/groups/group-1/members', method: 'POST',
+    csrf: 'csrf-leader', body: { username: 'alice', role: 'member' } })
+  fireEvent.click(screen.getByRole('button', { name: '移除 alice' }))
+  const removeDialog = await screen.findByRole('dialog', { name: '移除普通成员' })
+  fireEvent.click((await import('@testing-library/dom')).getByRole(removeDialog, 'button', { name: '确认移除' }))
+  await waitFor(() => assert.equal(member, false))
+  assert.deepEqual(writes.at(-1), { url: '/api/groups/group-1/members/member-1',
     method: 'DELETE', csrf: 'csrf-leader' })
 })

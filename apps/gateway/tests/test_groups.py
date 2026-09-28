@@ -93,8 +93,25 @@ def test_group_leader_can_manage_only_own_skill_projects(tmp_path):
         assert client.post(f"/api/groups/{group_id}/members", json={
             "user_id": member_id, "role": "leader",
         }, headers={"X-CSRF-Token": leader_csrf}).status_code == 403
+        assert client.post(f"/api/groups/{group_id}/members", json={
+            "user_id": leader_id, "role": "member",
+        }, headers={"X-CSRF-Token": leader_csrf}).status_code == 403
         assert client.delete(f"/api/groups/{group_id}/members/{member_id}",
                              headers={"X-CSRF-Token": leader_csrf}).status_code == 204
+        by_name = client.post(f"/api/groups/{group_id}/members", json={
+            "username": "member", "role": "member",
+        }, headers={"X-CSRF-Token": leader_csrf})
+        assert by_name.status_code == 200
+        assert by_name.json()["user_id"] == member_id
+        assert client.post(f"/api/groups/{group_id}/members", json={
+            "username": "member", "role": "leader",
+        }, headers={"X-CSRF-Token": leader_csrf}).status_code == 403
+        assert client.post(f"/api/groups/{group_id}/members", json={
+            "username": "missing", "role": "member",
+        }, headers={"X-CSRF-Token": leader_csrf}).status_code == 404
+        assert client.post(f"/api/groups/{group_id}/members", json={
+            "username": "member", "user_id": member_id,
+        }, headers={"X-CSRF-Token": leader_csrf}).status_code == 422
         assert client.post(f"/api/groups/{group_id}/projects", json={
             "project_id": "project-2",
         }, headers={"X-CSRF-Token": leader_csrf}).status_code == 403
@@ -171,6 +188,9 @@ def test_external_department_group_tracks_directory_members_without_replacing_gr
                 ))
 
         person_id = client.portal.call(seed_project_and_person)
+        assert client.post(f"/api/groups/{group_id}/members", json={
+            "user_id": person_id, "role": "member",
+        }, headers={"X-CSRF-Token": csrf}).status_code == 409
         assert client.post(f"/api/admin/projects/project-1/task-create-groups/{group_id}",
                            json={"effect": "allow"}, headers={"X-CSRF-Token": csrf}).status_code == 200
         before = client.portal.call(compiled_device_policy, app.state.database, "pc-1", person_id)

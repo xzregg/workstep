@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
+import { GroupMembersPanel } from './GroupMembersPanel'
 
 type Group = { id: string; name: string }
 type Project = { id: string; name: string }
@@ -126,6 +127,7 @@ export function GroupSkillsPage() {
             撤销{skill.name}</button>
         </li>)}</ul>}
     </section>}
+    {groupId && <GroupMembersPanel key={groupId} groupId={groupId} csrf={csrf} />}
     {revoke && <GatewayConfirmDialog title="撤销项目 Skill"
       message={`确认撤销本组对“${revoke.name}”的分配？其他有效用户组的分配仍会保留。`}
       confirmLabel="确认撤销" busy={busy} onCancel={() => setRevoke(null)}

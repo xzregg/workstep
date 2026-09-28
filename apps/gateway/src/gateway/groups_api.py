@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
@@ -29,8 +29,15 @@ class GroupInput(BaseModel):
 
 
 class MemberInput(BaseModel):
-    user_id: str = Field(min_length=1, max_length=64)
+    user_id: str | None = Field(default=None, min_length=1, max_length=64)
+    username: str | None = Field(default=None, min_length=1, max_length=128)
     role: str = Field(default="member", pattern=r"^(member|leader)$")
+
+    @model_validator(mode="after")
+    def exactly_one_identity(self):
+        if (self.user_id is None) == (self.username is None):
+            raise ValueError("Provide exactly one user identity")
+        return self
 
 
 class GroupProjectInput(BaseModel):
@@ -154,20 +161,25 @@ async def add_group_member(request: Request, group_id: str, body: MemberInput):
                 raise HTTPException(status_code=403, detail="Group management denied")
             if body.role == "leader":
                 await service.require_super_admin(actor.id)
-            user = await session.get(User, body.user_id)
+            user = (await session.get(User, body.user_id) if body.user_id else
+                    await session.scalar(select(User).where(User.username == body.username)))
             if user is None or user.status != "active":
                 raise HTTPException(status_code=404, detail="User unavailable")
             membership = await session.scalar(select(GroupMembership).where(
                 GroupMembership.group_id == group_id,
-                GroupMembership.user_id == body.user_id,
+                GroupMembership.user_id == user.id,
             ))
             if membership is None:
                 membership = GroupMembership(
-                    id=str(uuid4()), group_id=group_id, user_id=body.user_id,
+                    id=str(uuid4()), group_id=group_id, user_id=user.id,
                     role=body.role, source="manual", assigned_by_user_id=actor.id,
                 )
                 session.add(membership)
             else:
+                if membership.source != "manual":
+                    raise HTTPException(status_code=409, detail="Directory membership is read-only")
+                if membership.role == "leader":
+                    await service.require_super_admin(actor.id)
                 membership.role = body.role
                 membership.revoked_at = None
             await session.flush()
@@ -175,7 +187,7 @@ async def add_group_member(request: Request, group_id: str, body: MemberInput):
             session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,
                                    action="group.member_assigned", result="success",
                                    metadata_json=f'{{"group_id":"{group_id}"}}'))
-    return {"group_id": group_id, "user_id": body.user_id, "role": body.role}
+    return {"group_id": group_id, "user_id": user.id, "role": body.role}
 
 
 @router.get("/{group_id}/members")
