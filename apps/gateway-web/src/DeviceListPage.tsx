@@ -8,6 +8,7 @@ export function DeviceListPage() {
   const [status, setStatus] = useState<'checking' | 'login' | 'ready'>('checking')
   const [devices, setDevices] = useState<Device[]>([])
   const [busy, setBusy] = useState(false)
+  const [openingDevice, setOpeningDevice] = useState<string | null>(null)
   const [error, setError] = useState('')
 
   async function loadDevices() {
@@ -43,6 +44,29 @@ export function DeviceListPage() {
     finally { setBusy(false) }
   }
 
+  async function openDevice(deviceId: string) {
+    setOpeningDevice(deviceId); setError('')
+    try {
+      const response = await fetch(`/api/devices/${encodeURIComponent(deviceId)}/access`, {
+        credentials: 'same-origin',
+      })
+      if (!response.ok) throw new Error(response.status === 409 ? '电脑当前离线。' : '无法打开这台电脑。')
+      const access: { url: string; ticket: string } = await response.json()
+      const form = document.createElement('form')
+      form.method = 'POST'
+      form.action = new URL('api/remote/redeem', access.url).toString()
+      const ticket = document.createElement('input')
+      ticket.type = 'hidden'; ticket.name = 'ticket'; ticket.value = access.ticket
+      form.append(ticket)
+      document.body.append(form)
+      form.submit()
+      form.remove()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '无法打开这台电脑。')
+      setOpeningDevice(null)
+    }
+  }
+
   return <section className="gateway-admin-page">
     <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY</span>
     <h2>我的电脑</h2>
@@ -61,6 +85,10 @@ export function DeviceListPage() {
         <span className={device.online ? 'gateway-online' : 'gateway-offline'}>
           {device.online ? '在线' : '离线'}
         </span>
+        <button type="button" disabled={!device.online || openingDevice !== null}
+                onClick={() => void openDevice(device.id)}>
+          {openingDevice === device.id ? '正在打开…' : '打开电脑'}
+        </button>
       </li>)}</ul>
     </>}
     {error && <p className="gateway-auth-error" role="alert">{error}</p>}

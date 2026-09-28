@@ -113,3 +113,4 @@ async def revoke_device_user(request: Request, device_id: str, user_id: str):
             session.add(AuditEvent(id=str(uuid4()), user_id=actor.id, device_id=device_id,
                                    action="admin.device_user_revoked", result="success",
                                    metadata_json=None))
+    await request.app.state.control_connections.close_data(device_id)

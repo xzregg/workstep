@@ -27,6 +27,8 @@ SQLite 可在服务运行时执行 `uv run --project apps/gateway python apps/ga
 
 阶段 3C 已提供整机分配的基础接口：超级管理员二次认证后可用 `POST /api/admin/devices/{device_id}/users` 分配用户，或用 `POST /api/admin/devices/{device_id}/users/{user_id}/revoke` 撤销；用户在 `/devices` 查看自己的有效设备。配置 `WORKSTEP_GATEWAY_PUBLIC_ORIGIN=https://gateway.example.com` 后，在线设备的 `GET /api/devices/{device_id}/access` 返回独立子域 URL 与 60 秒 Ed25519 票据，票据绑定用户、设备和目标主机。浏览器向设备子域 `POST /api/remote/redeem` 提交表单票据，一次性兑换主机限定、HttpOnly、Secure 的设备会话；`GET /api/remote/session` 每次重新核对分配和在线状态。迁移 `0012_remote_access` 记录已用票据。数据代理尚未实现，设备子域目前只开放兑换和会话检查，不能据此开放远程工作台。
 
-控制 WSS 可按需发出 `open_data` 命令，PC 随即向 `/api/data/ws` 回连并一次性提交短期 token；控制断开时数据连接随之关闭。此数据通道当前只有握手和心跳，尚未转发业务帧。
+控制 WSS 可按需发出 `open_data` 命令，PC 随即向 `/api/data/ws` 回连并一次性提交短期 token；控制断开时数据连接随之关闭。
+
+设备子域的 HTTP 请求现在由 Gateway 校验设备会话、当前分配和在线状态后，按流 ID 经数据 WSS 转发给 PC。PC 在进程内调用已有 FastAPI 应用，注入经过 Gateway 核验的用户身份；请求和响应正文分块传输，Gateway 不转发浏览器 Cookie 或伪造的操作者头。门户“打开电脑”会提交一次性票据。业务 WebSocket、完整流控和远程上下文提示尚未接入，阶段 3C 仍不可用于生产。
 
 测试：`uv run --project apps/gateway --group dev pytest apps/gateway/tests packages/gateway-protocol/tests`；协议模型变更后运行 `uv run --project apps/gateway python packages/gateway-protocol/scripts/schema.py` 并提交 `schema.json`。门户在 `apps/gateway-web` 运行 `yarn test && yarn build`。

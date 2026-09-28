@@ -228,6 +228,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="WorkStep Daemon", lifespan=lifespan, favicon_url="/static/favicon.svg")
 app.state.gateway_client = gateway_client
+gateway_client.asgi_app = app
 app.include_router(managed_router)
 instrument_fastapi(app)
 app.mount("/static", StaticFiles(directory="static"), name="static")

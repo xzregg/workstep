@@ -1,6 +1,7 @@
 """One-time, host-bound entry into a managed PC's remote workspace."""
 
 import hashlib
+import asyncio
 from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlsplit
 
@@ -88,6 +89,11 @@ async def redeem_device_ticket(request: Request):
 
 @router.get("/session")
 async def remote_session(request: Request):
+    user, device_id = await _remote_identity(request)
+    return {"user_id": user.id, "device_id": device_id}
+
+
+async def _remote_identity(request: Request) -> tuple[User, str]:
     host = _device_host(request)
     user, auth_session = await IdentityService(request.app.state.database).session_user(
         request.cookies.get(COOKIE_NAME), allow_device_session=True,
@@ -96,4 +102,17 @@ async def remote_session(request: Request):
     if not device_id or host != f"d-{device_id}.{urlsplit(request.app.state.settings.public_origin).hostname}":
         raise HTTPException(status_code=403, detail="Device session mismatch")
     await _active_access(request, user.id, device_id)
-    return {"user_id": user.id, "device_id": device_id}
+    return user, device_id
+
+
+async def proxy_remote_request(request: Request):
+    host = _device_host(request)
+    origin = request.headers.get("origin")
+    if request.method not in ("GET", "HEAD", "OPTIONS") and origin and origin != f"https://{host}":
+        raise HTTPException(status_code=403, detail="Invalid remote origin")
+    user, device_id = await _remote_identity(request)
+    try:
+        connection = await request.app.state.control_connections.request_data(device_id)
+        return await connection.proxy_http(request, user_id=user.id, username=user.username)
+    except (ConnectionError, asyncio.TimeoutError) as exc:
+        raise HTTPException(status_code=502, detail="Device data connection unavailable") from exc

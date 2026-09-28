@@ -18,6 +18,7 @@ class GatewayClientService:
         self.control_client = None
         self.control_client_factory = control_client_factory
         self.policy_cache = ManagedPolicyCache()
+        self.asgi_app = None
 
     async def start(self) -> None:
         bundle_dir = os.environ.get("WORKSTEP_MANAGED_BUNDLE_DIR")
@@ -53,6 +54,7 @@ class GatewayClientService:
             gateway_id=self.managed_config.gateway_id,
             public_key_fingerprint=self.managed_config.gateway_public_key_fingerprint,
             user_id=actor.user_id, policy_cache=self.policy_cache,
+            asgi_app=self.asgi_app,
         )
         self.control_client.start(
             authorization, actor.device_id, control_private_key_pem,
