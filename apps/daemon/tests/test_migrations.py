@@ -236,6 +236,8 @@ def test_migrate_database_adds_remote_actor_columns_to_existing_message_tables(t
     db.connect()
     db.execute_sql('CREATE TABLE "message" ("id" TEXT PRIMARY KEY, "started_at" DATETIME)')
     db.execute_sql('CREATE TABLE "chat_messages" ("id" TEXT PRIMARY KEY)')
+    db.execute_sql('INSERT INTO "message" ("id") VALUES (?)', ("legacy-task",))
+    db.execute_sql('INSERT INTO "chat_messages" ("id") VALUES (?)', ("legacy-chat",))
 
     migrate_database(db)
 
@@ -244,6 +246,10 @@ def test_migrate_database_adds_remote_actor_columns_to_existing_message_tables(t
         "author_name",
         "author_device_id",
         "author_device_name",
+        "author_username",
+        "author_type",
+        "initiated_by_user_id",
+        "initiated_by_username",
     }
     assert expected.issubset({column.name for column in db.get_columns("message")})
     assert {
@@ -256,6 +262,12 @@ def test_migrate_database_adds_remote_actor_columns_to_existing_message_tables(t
     }.issubset({column.name for column in db.get_columns("message")})
     chat_columns = {column.name for column in db.get_columns("chat_messages")}
     assert expected.issubset(chat_columns)
+    for table_name in ("message", "chat_messages"):
+        legacy = db.execute_sql(
+            f'SELECT author_username, author_type, initiated_by_user_id, '
+            f'initiated_by_username FROM "{table_name}"'
+        ).fetchone()
+        assert legacy == (None, None, None, None)
     assert {
         "event_log_path",
         "event_summary_json",
