@@ -30,7 +30,8 @@ def _fixture():
     header = _b64(json.dumps({"alg": "EdDSA", "typ": "JWT"}).encode())
     payload = _b64(json.dumps({
         "gateway_id": "gateway-test", "iss": "gateway-test", "user_id": "user-1",
-        "username": "alice", "device_id": "device-1", "device_public_key": device_public,
+        "username": "alice", "display_name": "Alice Display",
+        "device_id": "device-1", "device_public_key": device_public,
         "app_instance_id": "app-instance-12345", "policy_revision": 2,
         "iat": int(time.time()), "exp": int(time.time()) + 900,
     }).encode())
@@ -57,6 +58,7 @@ async def test_pinned_gateway_and_device_proof_create_local_actor():
     assert (actor.user_id, actor.username, actor.device_id, actor.app_instance_id) == (
         "user-1", "alice", "device-1", "app-instance-12345",
     )
+    assert actor.display_name == "Alice Display"
     sessions = ManagedLocalSessions()
     token = sessions.create(actor)
     assert sessions.resolve(token).user_id == "user-1"

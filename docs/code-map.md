@@ -39,6 +39,8 @@ Gateway 整机访问关系由 `apps/gateway/src/gateway/user_devices_api.py` 管
 
 Web 的作者展示由 `src/utils/actorDisplay.ts` 统一计算：缺失作者显示“历史用户”，悬停详情显示保存时的名称、用户名和设备；任务消息在 `src/components/TaskConversationMessage.tsx`，独立聊天及助手消息在 `src/components/AssistantChatPanel.tsx`。聊天历史映射在 `src/hooks/useChatSessionHistory.ts` 与 `src/components/AiFlowChat.tsx` 保留作者字段，行为测试见 `tests/actorDisplay.test.ts`、`tests/actorVisibility.test.mjs`、`tests/remoteMessageIdentity.test.mjs`。
 
+平台账号名称快照从 Gateway `signing.py::sign_device_authorization` 与 `control_connection.py::DataConnection` 的签名授权／远程数据帧传入 daemon `services/gateway_client/identity.py`、`bridge.py`，由 `services/desktop_security.py` 投影为带独立用户名的 `ActorSnapshot`；`services/messages.py` 和 `agent_assistants/base.py` 分别用于任务与助手消息。旧授权无显示名时回退账号用户名。行为测试见 Gateway `test_desktop_authorization.py`、`test_data_http.py`、`test_user_devices.py` 和 daemon `test_gateway_local_identity.py`、`test_gateway_http_bridge.py`、`test_desktop_security.py`、`test_chat_session.py`。
+
 修改功能时先找所属模块，再沿前端页面或组件 → API → 服务 → 数据模型追踪。行为测试放在实际拥有该行为的模块附近；不要把页面、`src/api/client.ts` 或通用服务文件作为新功能的默认落点。
 
 | 功能 | Web 入口 | Daemon 入口 | 深入阅读 |

@@ -211,12 +211,16 @@ async def proxy_remote_request(request: Request):
 
             return await connection.proxy_http(
                 request, user_id=user.id, username=user.username,
+                display_name=user.display_name,
                 project_id=host_project_id,
                 access_level=auth_session.project_access_level,
                 task_create=task_create,
                 authorization_check=authorize_stream,
             )
-        return await connection.proxy_http(request, user_id=user.id, username=user.username)
+        return await connection.proxy_http(
+            request, user_id=user.id, username=user.username,
+            display_name=user.display_name,
+        )
     except (ConnectionError, asyncio.TimeoutError) as exc:
         raise HTTPException(status_code=502, detail="Device data connection unavailable") from exc
 
@@ -248,12 +252,16 @@ async def proxy_remote_websocket(ws: WebSocket, path: str):
             connection = await ws.app.state.control_connections.request_data(device_id)
             await connection.proxy_websocket(
                 ws, user_id=user.id, username=user.username,
+                display_name=user.display_name,
                 project_id=host_project_id, access_level=access_level,
                 authorization_check=authorize_stream,
             )
             return
         connection = await ws.app.state.control_connections.request_data(device_id)
-        await connection.proxy_websocket(ws, user_id=user.id, username=user.username)
+        await connection.proxy_websocket(
+            ws, user_id=user.id, username=user.username,
+            display_name=user.display_name,
+        )
     except HTTPException:
         await ws.close(code=4403)
     except (ConnectionError, asyncio.TimeoutError):

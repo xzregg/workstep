@@ -101,11 +101,12 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         assert client.get(f"{host}/admin").status_code == 403
         assert client.get(f"{host}/api/health").status_code == 403
         class ProjectData:
-            async def proxy_http(self, request, *, user_id, username,
+            async def proxy_http(self, request, *, user_id, username, display_name,
                                  project_id, access_level, task_create,
                                  authorization_check):
                 await authorization_check()
                 assert user_id == worker_id
+                assert display_name == "Worker"
                 assert project_id == "host-1"
                 if request.method not in ("GET", "HEAD"):
                     assert access_level == "edit"

@@ -103,6 +103,8 @@ def test_desktop_code_expiry_and_device_approval(tmp_path):
         claims = json.loads(base64.urlsafe_b64decode(signed.split(".")[1] + "=="))
         assert claims["gateway_id"] == "gateway-test"
         assert claims["device_id"] == device_id
+        assert claims["username"] == "owner"
+        assert claims["display_name"] == "Owner"
         assert claims["app_instance_id"] == APP_INSTANCE
         assert claims["device_public_key"] == key
         public_key = client.get("/api/platform/gateway-key").json()

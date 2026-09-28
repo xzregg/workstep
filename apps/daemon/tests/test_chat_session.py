@@ -2168,6 +2168,34 @@ async def test_submit_publishes_user_message_live_event_with_actor(chat_module, 
 
 
 @pytest.mark.anyio
+async def test_managed_chat_preserves_account_username_and_display_name(chat_module, monkeypatch):
+    from services.remote_access import ActorSnapshot, actor_context
+
+    module, _bus, _manager, project, _config = chat_module
+
+    async def fake_invoke(*_args, **_kwargs):
+        return "回复", [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    session = module.create_session(project.id, "wf-managed")
+    with actor_context(ActorSnapshot(
+        actor_id="user-1", user_name="Alice Display", username="alice",
+        device_id="device-1", device_name="Office PC", source="managed",
+    )):
+        accepted = module.submit_message(project.id, session["id"], "开始", "idem-managed")
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    user_message, assistant_message = module.get_session(project.id, session["id"])["messages"]
+    assert (user_message["author_name"], user_message["author_username"]) == (
+        "Alice Display", "alice",
+    )
+    assert (assistant_message["author_type"],
+            assistant_message["initiated_by_user_id"],
+            assistant_message["initiated_by_username"]) == (
+                "assistant", "user-1", "alice",
+            )
+
+
+@pytest.mark.anyio
 async def test_chat_compacted_event_is_live_and_persisted(chat_module, monkeypatch):
     module, bus, manager, project, _ = chat_module
     queue = bus.subscribe()

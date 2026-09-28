@@ -148,6 +148,7 @@ class DesktopAuthorizationService:
                 signed = self.signer.sign_device_authorization(
                     gateway_id=gateway_id, device_id=device.id, user_id=user.id,
                     username=user.username, app_instance_id=app_instance_id,
+                    display_name=user.display_name,
                     device_public_key=device.public_key,
                 ) if device.status == "active" else None
                 return user, device, signed

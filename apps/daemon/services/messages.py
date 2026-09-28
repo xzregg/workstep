@@ -27,11 +27,11 @@ def current_actor_message_fields() -> dict[str, str]:
         return {}
     return {
         "author_id": actor.actor_id,
-        "author_username": actor.user_name,
+        "author_username": actor.username or actor.user_name,
         "author_name": actor.user_name,
         "author_type": "user",
         "initiated_by_user_id": actor.actor_id,
-        "initiated_by_username": actor.user_name,
+        "initiated_by_username": actor.username or actor.user_name,
         "author_device_id": actor.device_id,
         "author_device_name": actor.device_name,
     }

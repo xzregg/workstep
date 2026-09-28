@@ -15,8 +15,8 @@ def test_user_task_message_snapshots_current_actor_and_initiator(tmp_path):
         task = Task.create(id="task-actor", title="署名", cwd=str(tmp_path),
                            created_at=now, updated_at=now)
         actor = ActorSnapshot(
-            actor_id="user-2", user_name="alice", device_id="device-2",
-            device_name="电脑二", source="managed",
+            actor_id="user-2", user_name="Alice Display", device_id="device-2",
+            device_name="电脑二", source="managed", username="alice",
         )
         with actor_context(actor):
             message = create_task_message(
@@ -26,7 +26,7 @@ def test_user_task_message_snapshots_current_actor_and_initiator(tmp_path):
         assert (message.author_id, message.author_username, message.author_name,
                 message.author_type, message.initiated_by_user_id,
                 message.initiated_by_username) == (
-                    "user-2", "alice", "alice", "user", "user-2", "alice",
+                    "user-2", "alice", "Alice Display", "user", "user-2", "alice",
                 )
         history = TaskService(EventBus()).get_task_history(task.id)
         assert history[0]["author_type"] == "user"

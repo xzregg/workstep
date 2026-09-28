@@ -318,6 +318,7 @@ class DataConnection:
                 queue.put_nowait(error)
 
     async def proxy_http(self, request, *, user_id: str, username: str,
+                         display_name: str | None = None,
                          project_id: str | None = None,
                          access_level: str | None = None,
                          task_create: bool = False,
@@ -361,6 +362,7 @@ class DataConnection:
                 payload={"phase": "start", "method": request.method,
                          "path": request.url.path, "query": request.url.query,
                          "headers": headers, "user_id": user_id, "username": username,
+                         "display_name": display_name or username,
                          "project_id": project_id, "access_level": access_level,
                          "task_create": task_create},
             ))
@@ -446,7 +448,8 @@ class DataConnection:
             raise
 
     async def proxy_websocket(self, browser: WebSocket, *, user_id: str,
-                              username: str, project_id: str | None = None,
+                              username: str, display_name: str | None = None,
+                              project_id: str | None = None,
                               access_level: str | None = None,
                               authorization_check=None) -> None:
         if (project_id is None) != (access_level is None) or (
@@ -476,6 +479,7 @@ class DataConnection:
                 payload={"phase": "start", "path": browser.url.path,
                          "query": browser.url.query, "headers": headers,
                          "user_id": user_id, "username": username,
+                         "display_name": display_name or username,
                          "project_id": project_id, "access_level": access_level},
             ))
             opened = await asyncio.wait_for(queue.get(), timeout=15)

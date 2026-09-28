@@ -41,6 +41,7 @@ class ManagedHttpBridge:
             path = self.start.get("path")
             query = self.start.get("query", "")
             username = self.start.get("username")
+            display_name = self.start.get("display_name", username)
             user_id = self.start.get("user_id")
             project_id = self.start.get("project_id")
             access_level = self.start.get("access_level")
@@ -51,6 +52,8 @@ class ManagedHttpBridge:
                     or path.startswith("//") or path.startswith("/api/managed")
                     or not isinstance(query, str) or not isinstance(username, str)
                     or not isinstance(user_id, str) or not user_id or not username
+                    or not isinstance(display_name, str) or not display_name.strip()
+                    or len(display_name) > 256
                     or (project_id is not None and (
                         not isinstance(project_id, str) or not project_id
                         or len(project_id) > 128 or access_level not in ("read", "edit")))
@@ -70,7 +73,7 @@ class ManagedHttpBridge:
                     continue
                 headers.append((name.encode("ascii"), pair[1].encode("latin1")))
             actor = ManagedActor(user_id, username, self.device_id, "gateway-remote", 0,
-                                 project_id, access_level, task_create)
+                                 project_id, access_level, task_create, display_name)
             scope = {
                 "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
                 "method": method.upper(), "scheme": "http", "path": unquote(path),
@@ -169,6 +172,7 @@ class ManagedWebSocketBridge:
             path = self.start.get("path")
             query = self.start.get("query", "")
             username = self.start.get("username")
+            display_name = self.start.get("display_name", username)
             user_id = self.start.get("user_id")
             project_id = self.start.get("project_id")
             access_level = self.start.get("access_level")
@@ -177,6 +181,8 @@ class ManagedWebSocketBridge:
             if (not isinstance(path, str) or not path.startswith("/") or path.startswith("//")
                     or not isinstance(query, str) or not isinstance(username, str)
                     or not isinstance(user_id, str) or not username or not user_id
+                    or not isinstance(display_name, str) or not display_name.strip()
+                    or len(display_name) > 256
                     or (project_id is not None and (
                         not isinstance(project_id, str) or not project_id
                         or len(project_id) > 128 or access_level not in ("read", "edit")))
@@ -196,7 +202,7 @@ class ManagedWebSocketBridge:
                     continue
                 headers.append((name.encode("ascii"), pair[1].encode("latin1")))
             actor = ManagedActor(user_id, username, self.device_id, "gateway-remote", 0,
-                                 project_id, access_level, task_create)
+                                 project_id, access_level, task_create, display_name)
             scope = {
                 "type": "websocket", "asgi": {"version": "3.0"}, "scheme": "ws",
                 "path": unquote(path), "raw_path": path.encode("utf-8"),

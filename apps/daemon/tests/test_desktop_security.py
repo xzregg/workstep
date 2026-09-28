@@ -24,7 +24,8 @@ def _app() -> FastAPI:
     @app.get('/api/actor')
     async def actor():
         current = get_effective_actor()
-        return {'id': current.actor_id, 'source': current.source}
+        return {'id': current.actor_id, 'source': current.source,
+                'name': current.user_name, 'username': current.username}
 
     @app.get('/')
     async def index():
@@ -115,7 +116,8 @@ def test_managed_runtime_requires_gateway_derived_local_session(monkeypatch):
     monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')
     app = _app()
     sessions = ManagedLocalSessions()
-    actor = ManagedActor('user-1', 'alice', 'device-1', 'instance-1', 1)
+    actor = ManagedActor('user-1', 'alice', 'device-1', 'instance-1', 1,
+                         display_name='Alice Display')
     local_token = sessions.create(actor)
     app.state.gateway_client = type('GatewayClient', (), {
         'managed_config': object(), 'local_sessions': sessions,
@@ -138,7 +140,8 @@ def test_managed_runtime_requires_gateway_derived_local_session(monkeypatch):
         assert client.get('/api/actor', headers={
             'X-WorkStep-Desktop-Token': 'runtime-secret',
             'X-WorkStep-Local-Session': local_token,
-        }).json() == {'id': 'user-1', 'source': 'managed'}
+        }).json() == {'id': 'user-1', 'source': 'managed',
+                      'name': 'Alice Display', 'username': 'alice'}
         with client.websocket_connect('/ws', headers={
             'X-WorkStep-Desktop-Token': 'runtime-secret',
             'X-WorkStep-Local-Session': local_token,

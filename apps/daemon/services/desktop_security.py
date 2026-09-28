@@ -146,12 +146,14 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                 if actor is not None:
                     request.state.managed_actor = actor
                 context = actor_context(ActorSnapshot(
-                    actor_id=actor.user_id, user_name=actor.username,
+                    actor_id=actor.user_id,
+                    user_name=actor.display_name or actor.username,
                     device_id=actor.device_id, device_name=actor.device_id,
                     source="managed",
                     project_id=actor.project_id,
                     access_level=actor.project_access_level,
                     remote_task_create=actor.remote_task_create,
+                    username=actor.username,
                 )) if actor is not None else nullcontext()
                 with context:
                     response = await call_next(request)
