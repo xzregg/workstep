@@ -32,6 +32,7 @@ class Task(BaseModel):
     coordinator_thinking_effort = pw.TextField(null=True)
     coordinator_provider_id = pw.TextField(null=True)
     active_workflow_run_id = pw.TextField(null=True)
+    queued_run_json = pw.TextField(null=True)
     state_version = pw.IntegerField(default=0)
     next_message_sequence = pw.IntegerField(default=1)
     pipeline_version = pw.TextField(null=True)

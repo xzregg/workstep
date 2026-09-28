@@ -30,6 +30,7 @@ def test_init_db_creates_latest_schema_for_fresh_projects(tmp_path):
         assert "coordinator_thinking_effort" in tasks
         assert "archived" in tasks
         assert "next_message_sequence" in tasks
+        assert "queued_run_json" in tasks
         assert {
             "creator_id",
             "creator_username",
@@ -53,6 +54,7 @@ def test_init_db_creates_latest_schema_for_fresh_projects(tmp_path):
             column.name for column in db.get_columns("workflow_runs")
         }
         assert "routing_state_json" in workflow_runs
+        assert "trigger_source" in workflow_runs
         assert {
             "initiated_by_user_id", "initiated_by_username", "initiated_by_name",
             "initiated_by_device_id", "initiated_by_device_name",
@@ -359,6 +361,7 @@ def test_migrate_database_adds_dispatch_columns_before_unique_index(tmp_path):
 
     columns = {column.name for column in db.get_columns("tasks")}
     assert "source_dispatch_id" in columns
+    assert "queued_run_json" in columns
     assert {
         "creator_id",
         "creator_username",
@@ -368,6 +371,9 @@ def test_migrate_database_adds_dispatch_columns_before_unique_index(tmp_path):
     }.issubset(columns)
     assert db.execute_sql(
         'SELECT creator_username FROM "tasks" WHERE id = ?', ("task-1",)
+    ).fetchone()[0] is None
+    assert db.execute_sql(
+        'SELECT queued_run_json FROM "tasks" WHERE id = ?', ("task-1",)
     ).fetchone()[0] is None
     indexes = {index.name for index in db.get_indexes("tasks")}
     assert "task_source_dispatch_id" in indexes
@@ -460,6 +466,10 @@ def test_migrate_database_adds_hot_query_indexes_to_existing_tables(tmp_path):
 
     assert db.execute_sql(
         'SELECT initiated_by_username FROM "workflow_runs" WHERE id = ?',
+        ("legacy-run",),
+    ).fetchone()[0] is None
+    assert db.execute_sql(
+        'SELECT trigger_source FROM "workflow_runs" WHERE id = ?',
         ("legacy-run",),
     ).fetchone()[0] is None
 

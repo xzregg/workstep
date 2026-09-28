@@ -30,6 +30,7 @@ class WorkflowRun(BaseModel):
     owner_id = pw.TextField(null=True)
     heartbeat_at = UTCDateTimeField(null=True)
     routing_state_json = pw.TextField(null=True)
+    trigger_source = pw.TextField(null=True)
     initiated_by_user_id = pw.TextField(null=True)
     initiated_by_username = pw.TextField(null=True)
     initiated_by_name = pw.TextField(null=True)

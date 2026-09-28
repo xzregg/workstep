@@ -130,20 +130,27 @@ class WorkflowRuntime:
         if acquired == ALREADY_ACTIVE:
             raise RuntimeError(f"Task is already queued or running: {task_id}")
         if acquired == QUEUED:
-            await self._mark_task_status(project_id, task_id, "queued")
+            await self._mark_task_status(
+                project_id, task_id, "queued",
+                queue_source=source, queued_input=user_input,
+            )
             try:
                 await concurrency_gate.wait_task_slot(project_id, task_id)
             except asyncio.CancelledError:
                 concurrency_gate.cancel_queued_task(project_id, task_id)
                 await self._mark_task_status(project_id, task_id, "ready")
                 raise
-        return await self._start_after_slot(project_id, task_id, user_input)
+        return await self._start_after_slot(
+            project_id, task_id, user_input, source=source,
+        )
 
     async def _start_after_slot(
         self,
         project_id: str,
         task_id: str,
         user_input: str = "",
+        *,
+        source: str = "manual",
     ) -> WorkflowRunHandle:
         """Launch a workflow when the caller already holds a concurrency slot."""
         lock = self._operation_locks.setdefault(task_id, asyncio.Lock())
@@ -158,10 +165,11 @@ class WorkflowRuntime:
                     user_input,
                     instance_id=self._leases.instance_id,
                     current_workflow_steps=self._current_workflow_steps,
+                    source=source,
                 ),
             )
-            handle = self._launch_prepared_run(prepared, user_input)
-            normalized_input = user_input.strip()
+            handle = self._launch_prepared_run(prepared, prepared.user_input)
+            normalized_input = prepared.user_input.strip()
             if normalized_input and prepared.user_message is not None:
                 await self._publish_user_message(
                     project_id,
@@ -177,6 +185,9 @@ class WorkflowRuntime:
         project_id: str,
         task_id: str,
         status: str,
+        *,
+        queue_source: str = "manual",
+        queued_input: str = "",
     ) -> None:
         """Persist a task status change and broadcast it as a status event."""
         from engines.core.agui import AGUIContext, to_agui_events
@@ -187,6 +198,20 @@ class WorkflowRuntime:
             if task is None:
                 return
             task.status = status
+            if status == "queued":
+                from services.messages import current_actor_message_fields
+
+                actor_fields = (
+                    current_actor_message_fields()
+                    if queue_source == "manual" else {}
+                )
+                task.queued_run_json = json.dumps({
+                    "source": queue_source,
+                    "input": queued_input,
+                    "actor": actor_fields,
+                }, ensure_ascii=False)
+            elif status == "ready":
+                task.queued_run_json = None
             task.updated_at = utc_now()
             task.save()
 
@@ -245,7 +270,7 @@ class WorkflowRuntime:
             instance_id=self._leases.instance_id,
             current_workflow_steps=self._current_workflow_steps,
         )
-        return self._launch_prepared_run(prepared, user_input)
+        return self._launch_prepared_run(prepared, prepared.user_input)
 
     def _launch_prepared_run(
         self,
@@ -900,13 +925,21 @@ class WorkflowRuntime:
             rows = await self._run_db(
                 project.id,
                 lambda _p: list(
-                    Task.select(Task.id).where(Task.status == "queued").dicts()
+                    Task.select(Task.id, Task.queued_run_json)
+                    .where(Task.status == "queued").dicts()
                 ),
             )
             for row in rows:
                 task_id = row["id"]
+                try:
+                    queued = json.loads(row["queued_run_json"] or "{}")
+                except (TypeError, ValueError):
+                    queued = {}
+                source = queued.get("source") if isinstance(queued, dict) else None
+                if source not in _VALID_TASK_SOURCES:
+                    source = "manual"
                 acquired = await concurrency_gate.acquire_task(
-                    project.id, task_id, "manual"
+                    project.id, task_id, source
                 )
                 if acquired == GRANTED:
                     completion = asyncio.create_task(

@@ -51,6 +51,8 @@ Web 的作者展示由 `src/utils/actorDisplay.ts` 统一计算：缺失作者�
 
 后台待插入消息由 `api/pending_message_inserts.py` 调用 `services/pending_message_inserts.py`，在 `models/pending_message_insert.py` 保存排队当时的作者身份；`agent_assistants/base.py`、`agent_assistants/coordinator.py` 与 `services/workflow_runtime.py` 消费时用 `services/remote_access.py::replayed_actor_context` 还原身份，旧队列明确保持未知作者。行为、迁移及慢身份读取 canary 见 `tests/test_pending_message_inserts.py`、`tests/test_chat_session.py`、`tests/test_coordinator.py`、`tests/test_migrations.py`、`tests/test_api_contracts.py`。
 
+并发任务队列在 `services/workflow_runtime.py::WorkflowRuntime.start` 与 `_mark_task_status` 把启动文本、来源及发起人写入 `models/task.py::Task.queued_run_json`；`requeue_queued_tasks` 按保存的来源重新入队，`services/workflow_start.py::prepare_start_in_project` 消费快照、写 `WorkflowRun.trigger_source` 与发起人并清除任务队列字段。旧排队任务回退创建人，取消排队清除快照。行为与慢 SQL canary 见 `tests/test_concurrency_gate.py`、`tests/test_workflow_run_attribution.py`、`tests/test_api_contracts.py`，迁移见 `tests/test_migrations.py`。
+
 修改功能时先找所属模块，再沿前端页面或组件 → API → 服务 → 数据模型追踪。行为测试放在实际拥有该行为的模块附近；不要把页面、`src/api/client.ts` 或通用服务文件作为新功能的默认落点。
 
 | 功能 | Web 入口 | Daemon 入口 | 深入阅读 |
