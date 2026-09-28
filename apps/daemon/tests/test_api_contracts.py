@@ -468,6 +468,20 @@ async def test_managed_task_creation_uses_live_signed_policy(api_context, monkey
     body = {"title": "Managed task", "cwd": str(project_dir), "workflow_id": workflow_id}
     denied = await client.post(f"/api/task/create?project_id={project_id}", json=body, headers=headers)
     assert denied.status_code == 403
+    main.gateway_client.policy_cache.apply(replace(
+        policy, task_create_project_ids=frozenset({project_id}),
+    ))
+    scoped = await client.post(f"/api/task/create?project_id={project_id}", json=body,
+                               headers=headers)
+    assert scoped.status_code == 200, scoped.text
+    main.gateway_client.policy_cache.apply(replace(
+        policy, task_create=True,
+        task_create_denied_project_ids=frozenset({project_id}),
+    ))
+    explicitly_denied = await client.post(
+        f"/api/task/create?project_id={project_id}", json=body, headers=headers,
+    )
+    assert explicitly_denied.status_code == 403
     main.gateway_client.policy_cache.apply(replace(policy, task_create=True))
     allowed = await client.post(f"/api/task/create?project_id={project_id}", json=body, headers=headers)
     assert allowed.status_code == 200, allowed.text
