@@ -396,6 +396,9 @@ class StepReviewMessages:
             channel="review",
             step_key=step_key,
             role="assistant",
+            author_type=(
+                "system" if outcome.status == "awaiting_review" else "assistant"
+            ),
             content=content,
             engine=outcome.review_run.engine,
             model=outcome.review_run.model,
