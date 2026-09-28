@@ -106,6 +106,33 @@ def test_control_socket_authenticates_device_and_tracks_connection(tmp_path):
         assert listed[0]["online"] is False
 
 
+def test_control_opens_one_time_data_connection_on_demand(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        device_id, token, device_key, _ = _active_device(client)
+        with client.websocket_connect("/api/control/ws") as control:
+            _handshake(control, token, device_key)
+            assert control.receive_json()["kind"] == "hello"
+            pending = client.portal.start_task_soon(
+                app.state.control_connections.request_data, device_id,
+            )
+            command = control.receive_json()
+            assert command["kind"] == "open_data"
+            assert command["device_id"] == device_id
+            with client.websocket_connect("/api/data/ws") as data:
+                data.send_json({"kind": "data_hello", "token": command["token"]})
+                assert data.receive_json() == {"kind": "data_ready", "version": 1,
+                                               "device_id": device_id}
+                assert pending.result(timeout=3).device_id == device_id
+                with client.websocket_connect("/api/data/ws") as replay:
+                    replay.send_json({"kind": "data_hello", "token": command["token"]})
+                    try:
+                        replay.receive_json()
+                        assert False, "Data token must be single-use"
+                    except WebSocketDisconnect as exc:
+                        assert exc.code == 4401
+
+
 def test_control_socket_rejects_wrong_proof(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:

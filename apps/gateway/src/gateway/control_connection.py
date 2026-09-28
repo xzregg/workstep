@@ -105,6 +105,9 @@ async def authenticate_device(ws: WebSocket, message: dict, nonce: str) -> tuple
 class ControlConnections:
     def __init__(self):
         self._active: dict[str, tuple[str, WebSocket, asyncio.Task]] = {}
+        self._data_active: dict[str, DataConnection] = {}
+        self._pending_data: dict[str, tuple[str, float, asyncio.Future]] = {}
+        self._device_pending: dict[str, str] = {}
         self._lock = asyncio.Lock()
 
     def is_online(self, device_id: str) -> bool:
@@ -124,10 +127,94 @@ class ControlConnections:
         async with self._lock:
             if self._active.get(device_id, (None,))[0] == connection_id:
                 self._active.pop(device_id, None)
+                pending_token = self._device_pending.pop(device_id, None)
+                if pending_token:
+                    pending = self._pending_data.pop(pending_token, None)
+                    if pending and not pending[2].done():
+                        pending[2].set_exception(ConnectionError("Control connection closed"))
+                data = self._data_active.pop(device_id, None)
+            else:
+                data = None
+        if data:
+            try:
+                await data.socket.close(code=4003, reason="Control connection closed")
+            except (RuntimeError, anyio.ClosedResourceError):
+                pass
+
+    async def request_data(self, device_id: str) -> "DataConnection":
+        async with self._lock:
+            if device_id not in self._active:
+                raise ConnectionError("Device is offline")
+            active = self._data_active.get(device_id)
+            if active:
+                return active
+            pending_token = self._device_pending.get(device_id)
+            if pending_token:
+                future = self._pending_data[pending_token][2]
+                command = None
+            else:
+                pending_token = secrets.token_urlsafe(32)
+                future = asyncio.get_running_loop().create_future()
+                self._pending_data[pending_token] = (device_id, time.monotonic() + 10, future)
+                self._device_pending[device_id] = pending_token
+                command = {"kind": "open_data", "version": 1, "device_id": device_id,
+                           "token": pending_token}
+            control = self._active[device_id][1]
+        if command:
+            try:
+                await control.send_json(command)
+            except Exception:
+                async with self._lock:
+                    self._pending_data.pop(pending_token, None)
+                    self._device_pending.pop(device_id, None)
+                if not future.done():
+                    future.cancel()
+                raise
+        try:
+            return await asyncio.wait_for(asyncio.shield(future), timeout=10)
+        finally:
+            if not future.done():
+                async with self._lock:
+                    self._pending_data.pop(pending_token, None)
+                    self._device_pending.pop(device_id, None)
+                future.cancel()
+
+    async def attach_data(self, token: str, socket: WebSocket) -> "DataConnection | None":
+        async with self._lock:
+            pending = self._pending_data.pop(token, None)
+            if not pending:
+                return None
+            device_id, expires_at, future = pending
+            self._device_pending.pop(device_id, None)
+            if time.monotonic() > expires_at or device_id not in self._active:
+                if not future.done():
+                    future.set_exception(ConnectionError("Data token expired"))
+                return None
+            connection = DataConnection(device_id, socket)
+            self._data_active[device_id] = connection
+            connection.ready_future = future
+            return connection
+
+    def data_ready(self, connection: "DataConnection") -> None:
+        if connection.ready_future is not None and not connection.ready_future.done():
+            connection.ready_future.set_result(connection)
+
+    async def release_data(self, connection: "DataConnection") -> None:
+        async with self._lock:
+            if self._data_active.get(connection.device_id) is connection:
+                self._data_active.pop(connection.device_id, None)
+        if connection.ready_future is not None and not connection.ready_future.done():
+            connection.ready_future.set_exception(ConnectionError("Data connection closed"))
 
     async def shutdown(self) -> None:
         async with self._lock:
             active = list(self._active.values())
+            data = list(self._data_active.values())
+        for connection in data:
+            try:
+                await connection.socket.close(code=1001, reason="Gateway shutting down")
+            except (RuntimeError, anyio.ClosedResourceError):
+                pass
         for _, ws, _ in active:
             try:
                 await ws.close(code=1001, reason="Gateway shutting down")
@@ -139,11 +226,54 @@ class ControlConnections:
     async def disconnect(self, device_id: str) -> None:
         async with self._lock:
             active = self._active.get(device_id)
+            data = self._data_active.get(device_id)
+        if data:
+            try:
+                await data.socket.close(code=4003, reason="Device disabled or revoked")
+            except (RuntimeError, anyio.ClosedResourceError):
+                pass
         if active:
             try:
                 await active[1].close(code=4003, reason="Device disabled or revoked")
             except (RuntimeError, anyio.ClosedResourceError):
                 pass
+
+
+class DataConnection:
+    def __init__(self, device_id: str, socket: WebSocket):
+        self.device_id = device_id
+        self.socket = socket
+        self.ready_future: asyncio.Future | None = None
+
+
+@router.websocket("/api/data/ws")
+async def data_socket(ws: WebSocket):
+    await ws.accept()
+    connection = None
+    try:
+        hello = await asyncio.wait_for(ws.receive_json(), timeout=5)
+        if (not isinstance(hello, dict) or hello.get("kind") != "data_hello"
+                or not isinstance(hello.get("token"), str)):
+            await ws.close(code=4401)
+            return
+        connection = await ws.app.state.control_connections.attach_data(hello["token"], ws)
+        if connection is None:
+            await ws.close(code=4401)
+            return
+        await ws.send_json({"kind": "data_ready", "version": 1,
+                            "device_id": connection.device_id})
+        ws.app.state.control_connections.data_ready(connection)
+        while True:
+            message = await ws.receive_json()
+            if not isinstance(message, dict) or message.get("kind") != "heartbeat":
+                await ws.close(code=4400)
+                return
+            await ws.send_json({"kind": "heartbeat_ack", "version": 1})
+    except (asyncio.TimeoutError, WebSocketDisconnect):
+        pass
+    finally:
+        if connection:
+            await ws.app.state.control_connections.release_data(connection)
 
 
 @router.websocket("/api/control/ws")

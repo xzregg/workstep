@@ -51,11 +51,12 @@ def _gateway_policy():
     signature = base64.urlsafe_b64encode(key.sign(data.encode())).rstrip(b"=").decode()
     return f"{data}.{signature}", pem, fingerprint
 
-from services.gateway_client.control import GatewayControlClient, control_url
+from services.gateway_client.control import GatewayControlClient, control_url, data_url
 
 
 def test_control_url_is_fixed_to_managed_gateway():
     assert control_url("https://gateway.example") == "wss://gateway.example/api/control/ws"
+    assert data_url("https://gateway.example") == "wss://gateway.example/api/data/ws"
 
 
 @pytest.mark.asyncio
@@ -101,16 +102,25 @@ async def test_control_client_handshake_heartbeat_and_shutdown():
             return None
 
     urls = []
+    sockets = []
 
     def connect(url, **kwargs):
         urls.append((url, kwargs))
-        return Socket()
+        socket = Socket()
+        sockets.append(socket)
+        return socket
 
     cache = ManagedPolicyCache()
     client = GatewayControlClient("https://gateway.example", gateway_id="gateway-test",
                                   public_key_fingerprint=gateway_fingerprint,
                                   user_id="user-1", policy_cache=cache, connector=connect,
                                   heartbeat_seconds=0.01)
+    data_opened = asyncio.Event()
+    async def observe_data(device_id, token):
+        assert device_id == "device-1"
+        assert token == "data-token-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        data_opened.set()
+    client._run_data = observe_data
     private_pem, public_pem = _control_keys()
     client.start("authorization", "device-1", private_pem, public_pem, "delegation")
     await asyncio.wait_for(heartbeat.wait(), timeout=1)
@@ -119,6 +129,11 @@ async def test_control_client_handshake_heartbeat_and_shutdown():
     assert sent[0]["authorization"] == "authorization"
     assert sent[0]["control_delegation_signature"] == "delegation"
     assert urls[0][0] == "wss://gateway.example/api/control/ws"
+    sockets[0].messages.put_nowait(json.dumps({
+        "kind": "open_data", "version": 1, "device_id": "device-1",
+        "token": "data-token-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    }))
+    await asyncio.wait_for(data_opened.wait(), timeout=1)
     await client.stop()
     assert client.online is False
 
