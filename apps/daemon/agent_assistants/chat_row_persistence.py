@@ -101,7 +101,11 @@ class ChatRowPersistence(PersistenceAdapter):
             if item.author_name:
                 message.update(
                     author_id=item.author_id,
+                    author_username=item.author_username,
                     author_name=item.author_name,
+                    author_type=item.author_type,
+                    initiated_by_user_id=item.initiated_by_user_id,
+                    initiated_by_username=item.initiated_by_username,
                     author_device_id=item.author_device_id,
                     author_device_name=item.author_device_name,
                 )
@@ -189,7 +193,11 @@ class ChatRowPersistence(PersistenceAdapter):
                 "role": item.get("role", "assistant"),
                 "content": item.get("content", ""),
                 "author_id": item.get("author_id"),
+                "author_username": item.get("author_username"),
                 "author_name": item.get("author_name"),
+                "author_type": item.get("author_type"),
+                "initiated_by_user_id": item.get("initiated_by_user_id"),
+                "initiated_by_username": item.get("initiated_by_username"),
                 "author_device_id": item.get("author_device_id"),
                 "author_device_name": item.get("author_device_name"),
                 "status": item.get("status") or (

@@ -211,8 +211,12 @@ def build_task_execution_report(
             bucket["sources"].add(source)
         bucket["cost"] += cost
         bucket["message_count"] += 1
-        author_name = str(message.author_name or "").strip() or "未知用户"
-        author_id = str(message.author_id or "").strip()
+        if message.author_type in {"assistant", "system", "scheduler"}:
+            author_id = str(message.initiated_by_user_id or "").strip()
+            author_name = str(message.initiated_by_username or "").strip() or "未知用户"
+        else:
+            author_id = str(message.author_id or "").strip()
+            author_name = str(message.author_name or "").strip() or "未知用户"
         user_key = author_id or f"name:{author_name}"
         user_bucket = usage_by_user.setdefault(user_key, {
             "author_id": author_id,

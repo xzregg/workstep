@@ -415,7 +415,10 @@ class AssistantRuntime:
                 **(
                     {
                         "author_id": stored_actor.actor_id,
+                        "author_username": stored_actor.user_name,
                         "author_name": stored_actor.user_name,
+                        "initiated_by_user_id": stored_actor.actor_id,
+                        "initiated_by_username": stored_actor.user_name,
                         "author_device_id": stored_actor.device_id,
                         "author_device_name": stored_actor.device_name,
                     }
@@ -427,6 +430,7 @@ class AssistantRuntime:
                     if stored_author_name
                     else {}
                 ),
+                "author_type": "user",
             }
         )
         started_at = utc_now().isoformat()
@@ -437,23 +441,21 @@ class AssistantRuntime:
                 "id": assistant_message_id,
                 "engine": session.engine,
                 "model": session.model,
+                "author_id": session.engine or "assistant",
+                "author_username": session.engine or "assistant",
+                "author_name": session.engine or "助手",
+                "author_type": "assistant",
+                "initiated_by_user_id": stored_actor.actor_id if stored_actor else None,
+                "initiated_by_username": (
+                    stored_actor.user_name if stored_actor else stored_author_name or None
+                ),
                 "status": "running",
                 "created_at": started_at,
                 "events": [],
-                **(
-                    {
-                        "author_id": stored_actor.actor_id,
-                        "author_name": stored_author_name,
-                        "author_device_id": stored_actor.device_id,
-                        "author_device_name": stored_actor.device_name,
-                    }
-                    if stored_actor is not None
-                    else (
-                        {"author_name": stored_author_name}
-                        if stored_author_name
-                        else {}
-                    )
-                ),
+                **({
+                    "author_device_id": stored_actor.device_id,
+                    "author_device_name": stored_actor.device_name,
+                } if stored_actor is not None else {}),
                 **(
                     {
                         "event_log_path": journal_ref.relative_path,
@@ -759,7 +761,11 @@ class AssistantRuntime:
             **(
                 {
                     "author_id": actor.actor_id,
+                    "author_username": actor.user_name,
                     "author_name": actor.user_name,
+                    "author_type": "user",
+                    "initiated_by_user_id": actor.actor_id,
+                    "initiated_by_username": actor.user_name,
                     "author_device_id": actor.device_id,
                     "author_device_name": actor.device_name,
                 }
@@ -1473,14 +1479,22 @@ class AssistantRuntime:
                                         "prompt": active_prompt[0],
                                         "engine": session.engine,
                                         "model": session.model,
+                                        "author_id": session.engine or "assistant",
+                                        "author_username": session.engine or "assistant",
+                                        "author_name": session.engine or "助手",
+                                        "author_type": "assistant",
+                                        "initiated_by_user_id": (
+                                            inserted.get("author_id") if inserted else None
+                                        ),
+                                        "initiated_by_username": (
+                                            inserted.get("author_username") if inserted else None
+                                        ),
                                         "status": "running",
                                         "created_at": next_started_at,
                                         "events": [],
                                         **{
                                             key: inserted[key]
                                             for key in (
-                                                "author_id",
-                                                "author_name",
                                                 "author_device_id",
                                                 "author_device_name",
                                             )

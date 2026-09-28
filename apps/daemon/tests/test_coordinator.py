@@ -1253,6 +1253,7 @@ async def test_browser_actor_is_persisted_on_task_and_coordinator_user_message(
     def load():
         task = Task.get_by_id(task_id)
         message = Message.get_by_id(response.json()["user_message_id"])
+        assistant = Message.get_by_id(response.json()["assistant_message_id"])
         return {
             "task_creator": (
                 task.creator_id,
@@ -1266,9 +1267,24 @@ async def test_browser_actor_is_persisted_on_task_and_coordinator_user_message(
                 message.author_device_id,
                 message.author_device_name,
             ),
+            "user_snapshot": (
+                message.author_username, message.author_type,
+                message.initiated_by_user_id, message.initiated_by_username,
+            ),
+            "assistant_snapshot": (
+                assistant.author_id, assistant.engine, assistant.author_type,
+                assistant.initiated_by_user_id, assistant.initiated_by_username,
+            ),
         }
 
     stored = await main.project_manager.run_db(project_id, lambda _project: load())
+    assistant_id, engine_id, author_type, initiated_id, initiated_username = (
+        stored.pop("assistant_snapshot")
+    )
+    assert assistant_id == engine_id
+    assert (author_type, initiated_id, initiated_username) == (
+        "assistant", "browser-1", "浏览器用户",
+    )
     assert stored == {
         "task_creator": (
             "browser-1",
@@ -1282,6 +1298,7 @@ async def test_browser_actor_is_persisted_on_task_and_coordinator_user_message(
             "browser-device-1",
             "Chrome",
         ),
+        "user_snapshot": ("浏览器用户", "user", "browser-1", "浏览器用户"),
     }
 
 

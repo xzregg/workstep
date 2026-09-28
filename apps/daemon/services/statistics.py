@@ -291,8 +291,10 @@ class StatisticsModule:
                     engine["cost"] += cost
                     _add_user_usage(
                         user_buckets,
-                        message.author_id,
-                        message.author_name,
+                        (message.initiated_by_user_id if message.author_type in
+                         {"assistant", "system", "scheduler"} else message.author_id),
+                        (message.initiated_by_username if message.author_type in
+                         {"assistant", "system", "scheduler"} else message.author_name),
                         usage,
                         cost,
                     )
@@ -354,8 +356,10 @@ class StatisticsModule:
                     engine["cost"] += cost
                     _add_user_usage(
                         user_buckets,
-                        message.author_id,
-                        message.author_name,
+                        (message.initiated_by_user_id if message.author_type in
+                         {"assistant", "system", "scheduler"} else message.author_id),
+                        (message.initiated_by_username if message.author_type in
+                         {"assistant", "system", "scheduler"} else message.author_name),
                         usage,
                         cost,
                     )

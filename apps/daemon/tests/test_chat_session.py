@@ -1824,8 +1824,10 @@ async def test_live_message_splits_chat_reply_around_inserted_user_message(
     assert detail["messages"][1]["status"] == "succeeded"
     assert detail["messages"][3]["status"] == "succeeded"
     assert detail["messages"][3]["prompt"] == "插入要求"
-    assert detail["messages"][3]["author_name"] == detail["messages"][2]["author_name"]
-    assert detail["messages"][3]["author_id"] == detail["messages"][2]["author_id"]
+    assert detail["messages"][3]["author_id"] == detail["messages"][3]["engine"]
+    assert detail["messages"][3]["author_type"] == "assistant"
+    assert (detail["messages"][3]["initiated_by_user_id"]
+            == detail["messages"][2]["author_id"])
 
 
 @pytest.mark.anyio
@@ -2138,12 +2140,31 @@ async def test_submit_publishes_user_message_live_event_with_actor(chat_module, 
     user_message = detail["messages"][0]
     assert user_message["role"] == "user"
     assert user_message["author_name"] == "本地用户"
+    assert user_message["author_username"] == "本地用户"
+    assert user_message["author_type"] == "user"
+    assert user_message["initiated_by_user_id"] == user_message["author_id"]
     assert user_message["author_device_id"] == "device-a"
     assistant_message = detail["messages"][1]
     assert assistant_message["role"] == "assistant"
-    assert assistant_message["author_id"] == user_message["author_id"]
-    assert assistant_message["author_name"] == "本地用户"
+    assert assistant_message["author_id"] == assistant_message["engine"]
+    assert assistant_message["author_type"] == "assistant"
+    assert assistant_message["initiated_by_user_id"] == user_message["author_id"]
+    assert assistant_message["initiated_by_username"] == "本地用户"
     assert assistant_message["author_device_id"] == "device-a"
+
+    def persisted_snapshot():
+        from models.chat_session import ChatMessage
+        user_row = ChatMessage.get_by_id(accepted.turn_id)
+        assistant_row = ChatMessage.get_by_id(assistant_message["id"])
+        return (
+            user_row.author_type, user_row.initiated_by_user_id,
+            assistant_row.author_type, assistant_row.initiated_by_user_id,
+        )
+
+    assert await manager.run_db(project.id, lambda _project: persisted_snapshot()) == (
+        "user", user_message["author_id"],
+        "assistant", user_message["author_id"],
+    )
 
 
 @pytest.mark.anyio
