@@ -111,6 +111,10 @@ async def test_project_scoped_bridge_denies_unknown_and_cross_project_api():
     async def create_task(request: Request):
         return {"task_create": request.state.managed_actor.remote_task_create}
 
+    @app.post("/api/task/run")
+    async def run_task():
+        return {"started": True}
+
     @app.get("/api/task/{task_id}/history")
     async def task_history(task_id: str):
         return {"task_id": task_id}
@@ -141,12 +145,13 @@ async def test_project_scoped_bridge_denies_unknown_and_cross_project_api():
     assert await response_status("GET", "/api/task/task-1/history", "project_id=host-1") == 200
     assert await response_status("GET", "/api/task/task-1/history", "project_id=host-2") == 403
 
-    async def creation_status(level: str, capability: bool) -> int:
+    async def creation_status(level: str, capability: bool,
+                              path: str = "/api/task/create") -> int:
         frames = []
         async def capture(frame):
             frames.append(frame)
         bridge = ManagedHttpBridge(app, "create-stream", {
-            "method": "POST", "path": "/api/task/create", "query": "project_id=host-1",
+            "method": "POST", "path": path, "query": "project_id=host-1",
             "headers": [], "user_id": "user-1", "username": "alice",
             "project_id": "host-1", "access_level": level,
             "task_create": capability,
@@ -160,6 +165,8 @@ async def test_project_scoped_bridge_denies_unknown_and_cross_project_api():
     assert await creation_status("read", True) == 403
     assert await creation_status("edit", False) == 403
     assert await creation_status("edit", True) == 200
+    assert await creation_status("edit", False, "/api/task/run") == 200
+    assert await creation_status("read", True, "/api/task/run") == 403
     assert await response_status("GET", "/api/project/host-1/summary", "") == 200
     assert await response_status("GET", "/api/project/host-2/summary", "") == 403
     assert await response_status("GET", "/api/task/list", "project_id=host-2") == 403

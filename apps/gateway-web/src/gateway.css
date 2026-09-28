@@ -181,6 +181,9 @@ a {
 .gateway-device-list p { color: #6e6e73; overflow-wrap: anywhere; }
 .gateway-project-task-detail { margin-top: 24px; padding: 20px; border-radius: 14px; background: #f5f5f7; }
 .gateway-project-task-detail h3 { margin-top: 0; overflow-wrap: anywhere; }
+.gateway-project-create { display: grid; gap: 10px; max-width: 440px; margin: 24px 0; }
+.gateway-project-create h3 { margin: 0; }
+.gateway-project-create label { font-weight: 600; }
 .gateway-device-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .gateway-device-actions button:first-child { background: #f5f5f7; color: #1d1d1f; }
 .gateway-admin-confirm {

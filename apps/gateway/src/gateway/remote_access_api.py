@@ -64,6 +64,14 @@ async def _active_project_access(request: Request, user_id: str, device_id: str,
     return level
 
 
+async def _project_task_create_allowed(request: Request, device_id: str,
+                                       user_id: str, host_project_id: str) -> bool:
+    _, broad, _, allowed, denied = await compiled_device_policy(
+        request.app.state.database, device_id, user_id,
+    )
+    return (broad or host_project_id in allowed) and host_project_id not in denied
+
+
 @router.post("/redeem")
 async def redeem_device_ticket(request: Request):
     host = _device_host(request)
@@ -123,6 +131,10 @@ async def redeem_device_ticket(request: Request):
 @router.get("/session")
 async def remote_session(request: Request):
     user, device_id, auth_session, host_project_id = await _remote_identity(request)
+    task_create = (auth_session.project_access_level == "edit"
+                   and host_project_id is not None
+                   and await _project_task_create_allowed(
+                       request, device_id, user.id, host_project_id))
     async with request.app.state.database.session() as session:
         device = await session.get(Device, device_id)
     if device is None:
@@ -132,6 +144,7 @@ async def remote_session(request: Request):
             "project_id": auth_session.project_id,
             "host_project_id": host_project_id,
             "access_level": auth_session.project_access_level,
+            "task_create": task_create,
             "online": True,
             "gateway_url": request.app.state.settings.public_origin + "/devices"}
 
@@ -171,11 +184,9 @@ async def proxy_remote_request(request: Request):
         if request.method not in ("GET", "HEAD", "OPTIONS") and origin != f"https://{host}":
             raise HTTPException(status_code=403, detail="Project request origin required")
         if request.method == "POST" and request.url.path == "/api/task/create":
-            _, broad, _, project_allowed, project_denied = await compiled_device_policy(
-                request.app.state.database, device_id, user.id,
+            task_create = await _project_task_create_allowed(
+                request, device_id, user.id, host_project_id,
             )
-            task_create = ((broad or host_project_id in project_allowed)
-                           and host_project_id not in project_denied)
         if not project_http_route_allowed(
                 request.method, request.url.path,
                 list(request.query_params.multi_items()), host_project_id,
@@ -193,11 +204,8 @@ async def proxy_remote_request(request: Request):
                 if auth_session.project_access_level == "edit" and current_level != "edit":
                     raise HTTPException(status_code=403, detail="Project edit access revoked")
                 if task_create:
-                    _, broad, _, allowed, denied = await compiled_device_policy(
-                        request.app.state.database, device_id, user.id,
-                    )
-                    if not ((broad or host_project_id in allowed)
-                            and host_project_id not in denied):
+                    if not await _project_task_create_allowed(
+                            request, device_id, user.id, host_project_id):
                         raise HTTPException(status_code=403,
                                             detail="Task creation capability revoked")
 

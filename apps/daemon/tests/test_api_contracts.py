@@ -502,6 +502,11 @@ async def test_project_only_remote_actor_creates_task_in_host_project(api_contex
         "path": str(project_dir),
     })).json()["id"]
     workflow_id = (await _create_test_workflow(client, project_id))["id"]
+    root_default = await client.post(f"/api/task/create?project_id={project_id}", json={
+        "title": "Root default", "workflow_id": workflow_id, "auto_start": False,
+    })
+    assert root_default.status_code == 200, root_default.text
+    assert root_default.json()["cwd"] == str(project_dir)
     monkeypatch.setattr(main.gateway_client, "managed_config", object())
     frames = []
 
@@ -528,6 +533,31 @@ async def test_project_only_remote_actor_creates_task_in_host_project(api_contex
                            for frame in frames if frame.payload.get("phase") == "body"))
     assert result["cwd"] == str(project_dir)
     assert result["creator_id"] == "worker"
+
+    from types import SimpleNamespace
+    start = AsyncMock(return_value=SimpleNamespace(id="run-1"))
+    monkeypatch.setattr(main.workflow_runtime, "start", start)
+    run_frames = []
+
+    async def capture_run(frame):
+        run_frames.append(frame)
+
+    run_bridge = ManagedHttpBridge(main.app, "remote-run", {
+        "method": "POST", "path": "/api/task/run",
+        "query": f"project_id={project_id}",
+        "headers": [["content-type", "application/json"]],
+        "user_id": "worker", "username": "Worker",
+        "project_id": project_id, "access_level": "edit", "task_create": False,
+    }, capture_run, "device-1")
+    run_bridge.start_task()
+    run_body = json.dumps({"task_id": result["id"], "prompt": ""}).encode()
+    await run_bridge.feed(ProxyFrame(stream_id="remote-run", type=FrameType.http_request,
+                                     payload={"phase": "body", "data": base64.b64encode(run_body).decode()}))
+    await run_bridge.feed(ProxyFrame(stream_id="remote-run", type=FrameType.http_request,
+                                     payload={"phase": "end"}))
+    await asyncio.wait_for(run_bridge._task, timeout=2)
+    assert run_frames[0].payload["status"] == 200
+    start.assert_awaited_once_with(project_id, result["id"], "")
 
 
 @pytest.mark.anyio

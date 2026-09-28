@@ -52,6 +52,12 @@ def test_project_http_allowlist_matches_only_the_bound_project():
                    "host-1", access_level="edit", task_create=True)
     assert not allowed("POST", "/api/task/create", [("project_id", "host-2")],
                        "host-1", access_level="edit", task_create=True)
+    assert allowed("POST", "/api/task/run", [("project_id", "host-1")],
+                   "host-1", access_level="edit")
+    assert allowed("POST", "/api/task/pause", [("project_id", "host-1")],
+                   "host-1", access_level="edit")
+    assert not allowed("POST", "/api/task/run", [("project_id", "host-1")],
+                       "host-1", access_level="read")
     assert not allowed("GET", "/api/project/list", [("project_id", "host-1")], "host-1")
 
 
