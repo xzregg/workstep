@@ -2,12 +2,13 @@
 
 import asyncio
 import json
+from typing import Literal
 from urllib.parse import urlsplit
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from .identity import COOKIE_NAME, IdentityService
@@ -49,6 +50,10 @@ class ProviderInput(BaseModel):
                     or parsed.password or parsed.fragment or len(url) > 2048):
                 raise ValueError("Provider endpoints must use HTTPS")
         return value
+
+
+class ProviderUpdateInput(ProviderInput):
+    api_key: str | None = Field(default=None, min_length=1, max_length=4096)
 
 
 def _validate_catalog(body: ProviderInput) -> None:
@@ -112,22 +117,101 @@ def _public_provider(provider: PlatformProvider) -> dict:
 
 
 @router.get("")
-async def list_platform_providers(request: Request):
+async def list_platform_providers(request: Request,
+                                  q: str = Query("", max_length=128),
+                                  enabled: bool | None = None,
+                                  sort: Literal["name", "created_at"] = "name",
+                                  direction: Literal["asc", "desc"] = "asc",
+                                  page: int = Query(1, ge=1),
+                                  page_size: int = Query(25, ge=1, le=100)):
     await _super_admin_read(request)
+    conditions = []
+    if q.strip():
+        escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        conditions.append(or_(PlatformProvider.name.ilike(f"%{escaped}%", escape="\\"),
+                              PlatformProvider.type.ilike(f"%{escaped}%", escape="\\")))
+    if enabled is not None:
+        conditions.append(PlatformProvider.enabled == int(enabled))
+    column = PlatformProvider.name if sort == "name" else PlatformProvider.created_at
+    ordered = column.asc() if direction == "asc" else column.desc()
     async with request.app.state.database.session() as session:
-        providers = (await session.scalars(select(PlatformProvider).order_by(
-            PlatformProvider.created_at.desc(), PlatformProvider.id,
-        ))).all()
-    return {"providers": [_public_provider(provider) for provider in providers]}
+        total = await session.scalar(select(func.count()).select_from(PlatformProvider).where(*conditions))
+        providers = (await session.scalars(select(PlatformProvider).where(*conditions).order_by(
+            ordered, PlatformProvider.id,
+        ).offset((page - 1) * page_size).limit(page_size))).all()
+        provider_ids = [provider.id for provider in providers]
+        assignments = (await session.scalars(select(ProviderAssignment).where(
+            ProviderAssignment.provider_id.in_(provider_ids),
+            ProviderAssignment.revoked_at.is_(None),
+        ))).all() if provider_ids else []
+        user_ids = {item.subject_id for item in assignments if item.subject_type == "user"}
+        device_ids = {item.subject_id for item in assignments if item.subject_type == "device"}
+        users = {user.id for user in (await session.scalars(select(User).where(
+            User.id.in_(user_ids), User.status == "active",
+        ))).all()} if user_ids else set()
+        user_devices = (await session.execute(select(UserDevice.user_id, UserDevice.device_id).where(
+            UserDevice.user_id.in_(users), UserDevice.revoked_at.is_(None),
+        ))).all() if users else []
+        candidate_device_ids = device_ids | {device_id for _, device_id in user_devices}
+        devices = (await session.scalars(select(Device).where(
+            Device.id.in_(candidate_device_ids), Device.status == "active",
+        ))).all() if candidate_device_ids else []
+        active_devices = {device.id: device for device in devices}
+        device_ids &= active_devices.keys()
+        applied = {item.device_id: item for item in (await session.scalars(select(
+            DeviceProviderApplication).where(
+                DeviceProviderApplication.device_id.in_(active_devices),
+            ))).all()} if active_devices else {}
+    targets_by_user: dict[str, set[str]] = {}
+    for user_id, device_id in user_devices:
+        if device_id in active_devices:
+            targets_by_user.setdefault(user_id, set()).add(device_id)
+    result = []
+    for provider in providers:
+        own = [item for item in assignments if item.provider_id == provider.id]
+        assigned_users = {item.subject_id for item in own
+                          if item.subject_type == "user" and item.subject_id in users}
+        assigned_devices = {item.subject_id for item in own
+                            if item.subject_type == "device" and item.subject_id in device_ids}
+        targets = set(assigned_devices)
+        for user_id in assigned_users:
+            targets.update(targets_by_user.get(user_id, ()))
+        status = {"applied": 0, "pending": 0, "failed": 0, "offline": 0}
+        for device_id in targets:
+            if not request.app.state.control_connections.is_online(device_id):
+                status["offline"] += 1
+            elif applied.get(device_id) and applied[device_id].last_error:
+                status["failed"] += 1
+            elif applied.get(device_id) and applied[device_id].applied_revision == active_devices[device_id].provider_revision:
+                status["applied"] += 1
+            else:
+                status["pending"] += 1
+        item = _public_provider(provider)
+        item.update({"model_count": len(item["models"]),
+                     "price_version": item["prices"].get("version"),
+                     "assignment_users": len(assigned_users),
+                     "assignment_devices": len(assigned_devices),
+                     "target_devices": len(targets), "application": status})
+        result.append(item)
+    return {"providers": result, "total": total, "page": page, "page_size": page_size}
 
 
 @router.get("/applications")
-async def list_provider_applications(request: Request):
+async def list_provider_applications(request: Request,
+                                     q: str = Query("", max_length=128),
+                                     page: int = Query(1, ge=1),
+                                     page_size: int = Query(25, ge=1, le=100)):
     await _super_admin_read(request)
+    conditions = []
+    if q.strip():
+        escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        conditions.append(Device.name.ilike(f"%{escaped}%", escape="\\"))
     async with request.app.state.database.session() as session:
+        total = await session.scalar(select(func.count()).select_from(Device).where(*conditions))
         rows = (await session.execute(select(Device, DeviceProviderApplication).outerjoin(
             DeviceProviderApplication, DeviceProviderApplication.device_id == Device.id,
-        ).order_by(Device.name, Device.id))).all()
+        ).where(*conditions).order_by(Device.name, Device.id)
+            .offset((page - 1) * page_size).limit(page_size))).all()
     return {"devices": [{
         "device_id": device.id, "device_name": device.name,
         "device_status": device.status,
@@ -135,7 +219,7 @@ async def list_provider_applications(request: Request):
         "desired_revision": device.provider_revision,
         "applied_revision": applied.applied_revision if applied else None,
         "last_error": applied.last_error if applied else None,
-    } for device, applied in rows]}
+    } for device, applied in rows], "total": total, "page": page, "page_size": page_size}
 
 
 @router.post("")
@@ -169,13 +253,13 @@ async def create_platform_provider(request: Request, body: ProviderInput):
 
 
 @router.put("/{provider_id}")
-async def update_platform_provider(request: Request, provider_id: str, body: ProviderInput):
+async def update_platform_provider(request: Request, provider_id: str, body: ProviderUpdateInput):
     actor = await _admin(request)
     _validate_catalog(body)
-    encrypted = await asyncio.to_thread(
+    encrypted = (await asyncio.to_thread(
         request.app.state.gateway_signer.encrypt_provider_secret,
         provider_id, body.api_key,
-    )
+    ) if body.api_key is not None else None)
     try:
         async with request.app.state.database.session() as session:
             async with session.begin():
@@ -188,7 +272,8 @@ async def update_platform_provider(request: Request, provider_id: str, body: Pro
                 provider.config_json = json.dumps({
                     "protocols": body.protocols, "protocol_base_urls": body.protocol_base_urls,
                 })
-                provider.secret_ciphertext = encrypted
+                if encrypted is not None:
+                    provider.secret_ciphertext = encrypted
                 provider.models_json = json.dumps(body.models)
                 provider.prices_json = json.dumps({
                     "version": body.price_version, "models": body.prices,
@@ -208,19 +293,37 @@ async def update_platform_provider(request: Request, provider_id: str, body: Pro
 
 
 @router.get("/{provider_id}/assignments")
-async def list_platform_provider_assignments(request: Request, provider_id: str):
+async def list_platform_provider_assignments(request: Request, provider_id: str,
+                                             q: str = Query("", max_length=128),
+                                             page: int = Query(1, ge=1),
+                                             page_size: int = Query(25, ge=1, le=100)):
     await _super_admin_read(request)
+    base = select(ProviderAssignment, User.username, Device.name).outerjoin(
+        User, and_(ProviderAssignment.subject_type == "user",
+                   ProviderAssignment.subject_id == User.id),
+    ).outerjoin(Device, and_(ProviderAssignment.subject_type == "device",
+                             ProviderAssignment.subject_id == Device.id))
+    conditions = [ProviderAssignment.provider_id == provider_id,
+                  ProviderAssignment.revoked_at.is_(None)]
+    if q.strip():
+        escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        conditions.append(or_(User.username.ilike(pattern, escape="\\"),
+                              Device.name.ilike(pattern, escape="\\"),
+                              ProviderAssignment.subject_id.ilike(pattern, escape="\\")))
     async with request.app.state.database.session() as session:
         if not await session.get(PlatformProvider, provider_id):
             raise HTTPException(status_code=404, detail="Provider unavailable")
-        assignments = (await session.scalars(select(ProviderAssignment).where(
-            ProviderAssignment.provider_id == provider_id,
-            ProviderAssignment.revoked_at.is_(None),
-        ).order_by(ProviderAssignment.created_at, ProviderAssignment.id))).all()
+        total = await session.scalar(select(func.count()).select_from(base.where(*conditions).subquery()))
+        assignments = (await session.execute(base.where(*conditions).order_by(
+            ProviderAssignment.created_at, ProviderAssignment.id,
+        ).offset((page - 1) * page_size).limit(page_size))).all()
     return {"assignments": [{
         "id": assignment.id, "subject_type": assignment.subject_type,
         "subject_id": assignment.subject_id,
-    } for assignment in assignments]}
+        "subject_name": username if assignment.subject_type == "user" else device_name,
+    } for assignment, username, device_name in assignments],
+        "total": total, "page": page, "page_size": page_size}
 
 
 @router.post("/{provider_id}/assign")

@@ -835,7 +835,12 @@ async def control_socket(ws: WebSocket):
                             applied.applied_revision = revision
                             applied.last_error = None
                         else:
-                            applied.last_error = error or "Provider application failed"
+                            safe_errors = {"ValueError", "RuntimeError", "OSError",
+                                           "PermissionError", "FileNotFoundError",
+                                           "InvalidSignature", "InvalidTag", "TimeoutError"}
+                            error_type = error.split(":", 1)[0] if error else ""
+                            applied.last_error = (error_type if error_type in safe_errors
+                                                  else "application_failed")
                 await send_json({"kind": "provider_applied_ack", "version": 1,
                                     "device_id": device_id, "revision": revision})
                 continue
