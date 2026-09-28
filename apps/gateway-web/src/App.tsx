@@ -19,6 +19,7 @@ import { AdminUsagePage } from './AdminUsagePage'
 import { AdminAuditPage } from './AdminAuditPage'
 import { AdminPlatformSettingsPage } from './AdminPlatformSettingsPage'
 import { GroupSkillsPage } from './GroupSkillsPage'
+import { AdminSkillsPage } from './AdminSkillsPage'
 
 export function App({ deviceHost = typeof window !== 'undefined' && window.location.hostname.startsWith('d-') }: { deviceHost?: boolean }) {
   if (deviceHost) return <main><header><h1>WorkStep 远程项目</h1></header><ProjectWorkspacePage /></main>
@@ -50,6 +51,8 @@ function GatewayPortalApp() {
           allow={['super_admin']}><AdminProjectsPage /></AdminAccessGate>} />
         <Route path="/admin/providers" element={<AdminAccessGate state={adminAccess}
           allow={['super_admin']}><AdminProvidersPage /></AdminAccessGate>} />
+        <Route path="/admin/skills" element={<AdminAccessGate state={adminAccess}
+          allow={['super_admin', 'skill_admin']}><AdminSkillsPage /></AdminAccessGate>} />
         <Route path="/admin/usage" element={<AdminAccessGate state={adminAccess}
           allow={['super_admin']}><AdminUsagePage /></AdminAccessGate>} />
         <Route path="/admin/audit" element={<AdminAccessGate state={adminAccess}

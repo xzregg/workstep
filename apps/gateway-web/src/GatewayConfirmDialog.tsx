@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react'
 
-export function GatewayConfirmDialog({ title, message, confirmLabel = '确认', busy = false,
+export function GatewayConfirmDialog({ title, message, confirmLabel = '确认', cancelLabel = '取消', busy = false,
   disabled = false, children, onConfirm, onCancel, className = '' }: {
-  title: string; message: string; confirmLabel?: string; busy?: boolean; disabled?: boolean
+  title: string; message: string; confirmLabel?: string; cancelLabel?: string; busy?: boolean; disabled?: boolean
   children?: ReactNode; onConfirm: () => void; onCancel: () => void; className?: string
 }) {
   return <div className="gateway-dialog-backdrop">
@@ -11,7 +11,7 @@ export function GatewayConfirmDialog({ title, message, confirmLabel = '确认', 
       <p>{message}</p>
       {children}
       <div className="gateway-dialog-actions">
-        <button type="button" className="gateway-dialog-cancel" disabled={busy} onClick={onCancel}>取消</button>
+        <button type="button" className="gateway-dialog-cancel" disabled={busy} onClick={onCancel}>{cancelLabel}</button>
         <button type="button" disabled={busy || disabled} onClick={onConfirm}>{busy ? '处理中…' : confirmLabel}</button>
       </div>
     </div>
