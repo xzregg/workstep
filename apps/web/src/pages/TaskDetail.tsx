@@ -50,6 +50,7 @@ import {
 } from './taskDetailChat'
 import { mergeRefreshedTaskHistory } from './taskHistoryModel'
 import { useTaskArtifacts } from '../hooks/useTaskArtifacts'
+import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
 import { useTaskReviewActions } from '../hooks/useTaskReviewActions'
 import { useTaskPendingInserts } from '../hooks/useTaskPendingInserts'
 import { CUSTOM } from '../utils/agui'
@@ -1053,7 +1054,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         previewArtifact={previewArtifact}
         onCloseArtifactPreview={closeArtifactPreview}
         onOpenArtifactDirectory={openArtifactDirectory}
-        canOpenArtifactDirectory={detailProject?.type !== 'remote'}
+        canOpenArtifactDirectory={detailProject?.type !== 'remote' && !isGatewayRemoteBrowser()}
         projectType={detailProject?.type}
         viewingPrompt={viewingPrompt}
         onCloseViewingPrompt={() => setViewingPrompt(null)}

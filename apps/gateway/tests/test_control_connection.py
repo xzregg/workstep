@@ -131,6 +131,12 @@ def test_control_opens_one_time_data_connection_on_demand(tmp_path):
                         assert False, "Data token must be single-use"
                     except WebSocketDisconnect as exc:
                         assert exc.code == 4401
+                client.portal.call(app.state.control_connections.close_data, device_id)
+                try:
+                    data.receive_json()
+                    assert False, "Permission changes must close active data connection"
+                except WebSocketDisconnect as exc:
+                    assert exc.code == 4003
 
 
 def test_control_socket_rejects_wrong_proof(tmp_path):

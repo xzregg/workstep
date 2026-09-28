@@ -1,7 +1,7 @@
 import { zhCN, type Messages } from './zh-CN'
 
 export const jaJP: Messages = {
-  gatewayRemote: { loading: 'リモート PC', disconnected: '切断しました', online: 'オンライン', back: 'マイ PC に戻る' },
+  gatewayRemote: { loading: 'リモート PC', disconnected: '切断しました', online: 'オンライン', back: 'マイ PC に戻る', localOnly: 'ローカルフォルダーとデスクトップアプリの操作は PC 本体でのみ利用できます。' },
   channelBot: zhCN.channelBot,
   git: {
     recoveryButton: '取り消し・復元',

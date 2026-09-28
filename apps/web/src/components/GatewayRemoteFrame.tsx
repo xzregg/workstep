@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useI18n } from '../i18n'
 import './GatewayRemoteFrame.css'
+import { gatewayRemotePortalUrl } from '../utils/gatewayRemote'
 
 type RemoteContext = {
   device_id: string
@@ -9,17 +10,9 @@ type RemoteContext = {
   gateway_url: string
 }
 
-function remoteGatewayUrl(): string | null {
-  if (typeof window === 'undefined') return null
-  const hostname = window.location.hostname
-  const dot = hostname.indexOf('.')
-  if (window.location.protocol !== 'https:' || dot < 3 || !hostname.startsWith('d-')) return null
-  return `https://${hostname.slice(dot + 1)}/devices`
-}
-
 export default function GatewayRemoteFrame({ children }: { children: ReactNode }) {
   const { t } = useI18n()
-  const gatewayUrl = remoteGatewayUrl()
+  const gatewayUrl = gatewayRemotePortalUrl()
   const [context, setContext] = useState<RemoteContext | null>(null)
   const [error, setError] = useState(false)
 

@@ -1,5 +1,5 @@
 export const zhCN = {
-  gatewayRemote: { loading: '远程电脑', disconnected: '连接已断开', online: '在线', back: '返回我的电脑' },
+  gatewayRemote: { loading: '远程电脑', disconnected: '连接已断开', online: '在线', back: '返回我的电脑', localOnly: '本机目录与桌面应用操作仅在电脑本机可用。' },
   channelBot: {
     title: '渠道机器人', intro: '通过官方长连接接入企业微信智能机器人或钉钉 Stream 机器人。群可绑定任务，消息会进入该任务的协调助手。',
     wecom: '企业微信', dingtalk: '钉钉', platform: '平台', name: '机器人名称',

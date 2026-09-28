@@ -4,7 +4,8 @@ import asyncio
 import base64
 from urllib.parse import unquote
 
-from workstep_gateway_protocol import FrameType, ProxyFrame
+from workstep_gateway_protocol import (FrameType, ProxyFrame,
+                                       WebSocketMessageAssembler, websocket_payloads)
 
 from .identity import ManagedActor
 
@@ -153,6 +154,7 @@ class ManagedWebSocketBridge:
         accepted = False
         closed = False
         first_receive = True
+        assembler = WebSocketMessageAssembler()
         try:
             path = self.start.get("path")
             query = self.start.get("query", "")
@@ -189,18 +191,19 @@ class ManagedWebSocketBridge:
                 if first_receive:
                     first_receive = False
                     return {"type": "websocket.connect"}
-                frame = await self._inbound.get()
-                if frame.type in (FrameType.websocket_close, FrameType.cancel):
-                    return {"type": "websocket.disconnect", "code": frame.payload.get("code", 1000)}
-                if frame.type != FrameType.websocket_data:
-                    raise ValueError("Invalid managed WebSocket data")
-                if frame.payload.get("kind") == "text":
-                    return {"type": "websocket.receive", "text": frame.payload["data"]}
-                if frame.payload.get("kind") == "bytes":
-                    return {"type": "websocket.receive", "bytes": base64.b64decode(
-                        frame.payload["data"], validate=True,
-                    )}
-                raise ValueError("Invalid managed WebSocket data")
+                while True:
+                    frame = await self._inbound.get()
+                    if frame.type in (FrameType.websocket_close, FrameType.cancel):
+                        return {"type": "websocket.disconnect", "code": frame.payload.get("code", 1000)}
+                    if frame.type != FrameType.websocket_data:
+                        raise ValueError("Invalid managed WebSocket data")
+                    message = assembler.add(frame.payload)
+                    if message is None:
+                        continue
+                    kind, data = message
+                    if kind == "text":
+                        return {"type": "websocket.receive", "text": data.decode("utf-8")}
+                    return {"type": "websocket.receive", "bytes": data}
 
             async def send(message):
                 nonlocal accepted, closed
@@ -213,15 +216,14 @@ class ManagedWebSocketBridge:
                     ))
                 elif message["type"] == "websocket.send":
                     if message.get("text") is not None:
-                        payload = {"kind": "text", "data": message["text"]}
+                        kind, data = "text", message["text"].encode("utf-8")
                     else:
-                        payload = {"kind": "bytes", "data": base64.b64encode(
-                            message.get("bytes") or b"",
-                        ).decode()}
-                    await self.send_frame(ProxyFrame(
-                        stream_id=self.stream_id, type=FrameType.websocket_data,
-                        payload=payload,
-                    ))
+                        kind, data = "bytes", message.get("bytes") or b""
+                    for payload in websocket_payloads(kind, data):
+                        await self.send_frame(ProxyFrame(
+                            stream_id=self.stream_id, type=FrameType.websocket_data,
+                            payload=payload,
+                        ))
                 elif message["type"] == "websocket.close":
                     closed = True
                     await self.send_frame(ProxyFrame(

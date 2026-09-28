@@ -5,7 +5,8 @@ import httpx
 import pytest
 from fastapi import FastAPI, Request
 from types import SimpleNamespace
-from workstep_gateway_protocol import FrameType, ProxyFrame
+from workstep_gateway_protocol import (FrameType, ProxyFrame,
+                                       WebSocketMessageAssembler, websocket_payloads)
 
 from gateway.control_connection import DataConnection
 
@@ -79,7 +80,7 @@ async def test_data_connection_forwards_bidirectional_websocket_frames():
                                        (b"cookie", b"secret=private")]}
             self.url = SimpleNamespace(path="/ws", query="")
             self.incoming = asyncio.Queue()
-            self.incoming.put_nowait({"type": "websocket.receive", "text": "hello"})
+            self.incoming.put_nowait({"type": "websocket.receive", "text": "hello" * 20000})
             self.accepted = False
             self.sent = []
 
@@ -97,6 +98,9 @@ async def test_data_connection_forwards_bidirectional_websocket_frames():
             self.incoming.put_nowait({"type": "websocket.disconnect", "code": code})
 
     class Socket:
+        def __init__(self):
+            self.assembler = WebSocketMessageAssembler()
+
         async def send_json(self, message):
             frame = ProxyFrame.model_validate(message)
             if frame.type == FrameType.websocket_open:
@@ -107,10 +111,15 @@ async def test_data_connection_forwards_bidirectional_websocket_frames():
                     payload={"accepted": True},
                 ))
             elif frame.type == FrameType.websocket_data:
-                await connection.deliver(ProxyFrame(
-                    stream_id=frame.stream_id, type=FrameType.websocket_data,
-                    payload={"kind": "text", "data": "echo:" + frame.payload["data"]},
-                ))
+                assembled = self.assembler.add(frame.payload)
+                if assembled is not None:
+                    kind, data = assembled
+                    assert kind == "text"
+                    for payload in websocket_payloads("text", b"echo:" + data):
+                        await connection.deliver(ProxyFrame(
+                            stream_id=frame.stream_id, type=FrameType.websocket_data,
+                            payload=payload,
+                        ))
 
     browser = Browser()
     connection = DataConnection("device-1", Socket())
@@ -118,4 +127,4 @@ async def test_data_connection_forwards_bidirectional_websocket_frames():
         browser, user_id="user-1", username="alice",
     ), timeout=2)
     assert browser.accepted
-    assert browser.sent == ["echo:hello"]
+    assert browser.sent == ["echo:" + "hello" * 20000]
