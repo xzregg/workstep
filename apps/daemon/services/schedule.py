@@ -8,6 +8,7 @@ import json
 import uuid
 
 from models import Schedule, ScheduleRun, Task
+from models.base import db_proxy
 from models.fields import utc_now
 from services.config import DEFAULT_EXECUTION_ENGINE, config_store
 from services.messages import current_actor_task_fields
@@ -737,14 +738,16 @@ class ScheduleModule:
 
     def pause(self, project_id: str, schedule_id: str) -> dict:
         with self._projects.activate_project_by_id(project_id):
-            row = Schedule.get_or_none(Schedule.id == schedule_id)
-            if row is None:
-                raise ValueError(f"Schedule not found: {schedule_id}")
-            row.status = "paused"
-            row.next_run_at = None
-            row.updated_at = utc_now()
-            row.save()
-            return self._to_dict(row)
+            with db_proxy.atomic("IMMEDIATE"):
+                row = Schedule.get_or_none(Schedule.id == schedule_id)
+                if row is None:
+                    raise ValueError(f"Schedule not found: {schedule_id}")
+                row.status = "paused"
+                row.next_run_at = None
+                row.updated_at = utc_now()
+                row.save()
+                self._record_schedule_audit(project_id, row, "schedule.pause")
+                return self._to_dict(row)
 
     def resume(self, project_id: str, schedule_id: str) -> dict:
         with self._projects.activate_project_by_id(project_id) as project:
@@ -765,6 +768,22 @@ class ScheduleModule:
                 row.status = "active"
                 row.invalid_reason = None
                 row.next_run_at = next_run
-            row.updated_at = utc_now()
-            row.save()
-            return self._to_dict(row)
+            with db_proxy.atomic("IMMEDIATE"):
+                row.updated_at = utc_now()
+                row.save()
+                self._record_schedule_audit(project_id, row, "schedule.resume")
+                return self._to_dict(row)
+
+    @staticmethod
+    def _record_schedule_audit(project_id: str, row: Schedule, action: str) -> None:
+        from services.project_audit import record_project_audit
+        from services.remote_access import get_effective_actor
+
+        actor = get_effective_actor()
+        record_project_audit(
+            project_id=project_id,
+            action=action,
+            result="succeeded",
+            mode="managed" if actor is not None and actor.source == "managed" else "local",
+            metadata={"schedule_id": row.id, "status": row.status},
+        )

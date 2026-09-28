@@ -2,6 +2,8 @@
 
 import asyncio
 from datetime import datetime, timezone
+import threading
+import time
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -93,9 +95,11 @@ def test_schedule_models_are_created_by_project_migration(tmp_path):
         db.close()
 
 
-def test_user_can_create_pause_and_resume_a_project_schedule(tmp_path):
+def test_user_can_create_pause_and_resume_a_project_schedule(tmp_path, monkeypatch):
     from services.project import ProjectManager
     from services.schedule import ScheduleModule
+    from models import ProjectAuditEvent, Schedule
+    from services import project_audit
 
     manager = ProjectManager()
     project = manager.init_project(tmp_path / "project")
@@ -120,10 +124,74 @@ def test_user_can_create_pause_and_resume_a_project_schedule(tmp_path):
     assert created["status"] == "active"
     assert created["cron_expression"] == "0 9 * * 1"
     assert created["next_run_at"] is not None
+    with monkeypatch.context() as patcher:
+        patcher.setattr(
+            project_audit, "record_project_audit",
+            lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("audit unavailable")),
+        )
+        with pytest.raises(RuntimeError, match="audit unavailable"):
+            module.pause(project.id, created["id"])
+    with manager.activate_project_by_id(project.id):
+        assert Schedule.get_by_id(created["id"]).status == "active"
     assert module.pause(project.id, created["id"])["status"] == "paused"
     resumed = module.resume(project.id, created["id"])
     assert resumed["status"] == "active"
     assert resumed["next_run_at"] is not None
+    with manager.activate_project_by_id(project.id):
+        events = list(ProjectAuditEvent.select().where(
+            ProjectAuditEvent.metadata_json.contains(created["id"]),
+        ).order_by(ProjectAuditEvent.created_at))
+    assert [event.action for event in events] == [
+        "schedule.pause", "schedule.resume",
+    ]
+
+
+@pytest.mark.anyio
+async def test_schedule_pause_slow_sql_keeps_health_responsive(tmp_path, monkeypatch):
+    import main
+    from services.project import ProjectManager, DEFAULT_STEPS
+    from services.schedule import ScheduleModule
+
+    manager = ProjectManager()
+
+    def prepare():
+        project = manager.init_project(tmp_path / "project")
+        manager.create_workflow(project, "Test flow", DEFAULT_STEPS)
+        module = ScheduleModule(manager, task_service=None, workflow_runtime=None)
+        created = module.create(
+            project.id,
+            name="Daily",
+            workflow_id=project.default_workflow()["id"],
+            task_template={"title": "Daily task"},
+            rule={"kind": "daily", "time": "09:00", "timezone": "UTC"},
+        )
+        return project, module, created
+
+    project, module, created = await asyncio.to_thread(prepare)
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "schedule_module", module)
+    write_started = threading.Event()
+    original_execute_sql = project.db.execute_sql
+
+    def slow_schedule_write(sql, *args, **kwargs):
+        if sql.upper().startswith("UPDATE") and "schedule" in sql and not write_started.is_set():
+            write_started.set()
+            time.sleep(0.35)
+        return original_execute_sql(sql, *args, **kwargs)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_schedule_write)
+    async with AsyncClient(
+        transport=ASGITransport(app=main.app), base_url="http://test",
+    ) as client:
+        pause_request = asyncio.create_task(client.post(
+            f"/api/schedule/{created['id']}/pause?project_id={project.id}",
+        ))
+        assert await asyncio.to_thread(write_started.wait, 1)
+        health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+        paused = await pause_request
+    assert health.status_code == 200
+    assert paused.status_code == 200
+    assert paused.json()["status"] == "paused"
 
 
 def test_user_can_create_schedule_without_a_task_title(tmp_path):
