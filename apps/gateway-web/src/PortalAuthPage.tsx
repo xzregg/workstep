@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { GatewayLoginForm } from './GatewayLoginForm'
+import { scanFailureMessage } from './scanFailure'
 
 type RegistrationMode = 'open' | 'open_with_approval' | 'closed'
 type IdentitySource = { id: string; provider: 'dingtalk' | 'wecom'; tenant_id: string }
@@ -30,6 +31,7 @@ export function PortalAuthPage() {
   const [registrationMode, setRegistrationMode] = useState<RegistrationMode>('closed')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [scanNotice, setScanNotice] = useState(scanFailureMessage(params.get('scan_error')))
   const [retry, setRetry] = useState(0)
 
   useEffect(() => {
@@ -71,7 +73,7 @@ export function PortalAuthPage() {
   }
 
   async function signIn(username: string, password: string) {
-    setBusy(true); setError('')
+    setBusy(true); setError(''); setScanNotice('')
     try { await post('/api/auth/login', { username, password }); navigate(next, { replace: true }) }
     catch (reason) { setError(reason instanceof Error ? reason.message : '登录失败。') }
     finally { setBusy(false) }
@@ -95,7 +97,7 @@ export function PortalAuthPage() {
   }
 
   async function scan(sourceId: string) {
-    setBusy(true); setError('')
+    setBusy(true); setError(''); setScanNotice('')
     try {
       const response = await post(`/api/auth/external/${encodeURIComponent(sourceId)}/start`,
         { return_to: `/auth?next=${encodeURIComponent(next)}` })
@@ -119,6 +121,7 @@ export function PortalAuthPage() {
     {stage === 'checking' && error && <button type="button" onClick={() => { setError(''); setRetry(value => value + 1) }}>重试</button>}
     {stage === 'login' && <>
       <p className="gateway-auth-description">登录后查看你的电脑和项目。</p>
+      {scanNotice && <p className="gateway-auth-error" role="alert">{scanNotice}</p>}
       <GatewayLoginForm busy={busy} onSubmit={signIn} />
       {mode !== 'closed' && <p><button className="gateway-auth-text-button" type="button" onClick={() => setStage('register')}>注册账号</button></p>}
       {sources.length > 0 && <div className="gateway-auth-external"><p>或使用企业身份登录</p>
