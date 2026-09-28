@@ -571,9 +571,27 @@ async def get_task_artifacts(
 async def run_task(req: RunTaskRequest, pid: str = Query(..., alias="project_id")):
     """Run a task (fire-and-forget, events come via WebSocket)."""
     from main import workflow_runtime, task_service, event_bus, project_manager
-    from services.remote_access import UserIdentityRequired
+    from services.remote_access import UserIdentityRequired, get_effective_actor
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Service not initialized")
+
+    async def audit_denial(reason_code: str, *, system_actor: bool = False) -> None:
+        if await asyncio.to_thread(project_manager.get_project_by_id, pid) is None:
+            return
+        from services.project_audit import record_project_audit
+
+        actor = get_effective_actor()
+        await project_manager.run_db(
+            pid,
+            lambda _project: record_project_audit(
+                project_id=pid, task_id=req.task_id,
+                action="task.start", result="denied",
+                mode="managed" if actor is not None and actor.source == "managed" else "local",
+                actor_type="system" if system_actor else None,
+                metadata={"reason_code": reason_code},
+            ),
+        )
+
     try:
         handle = await workflow_runtime.start(pid, req.task_id, req.prompt)
         if task_service and hasattr(task_service, "clear_scheduled_start"):
@@ -594,19 +612,10 @@ async def run_task(req: RunTaskRequest, pid: str = Query(..., alias="project_id"
                 "task_id": req.task_id,
             })
     except UserIdentityRequired as exc:
-        if project_manager.get_project_by_id(pid) is not None:
-            from services.project_audit import record_project_audit
-
-            await project_manager.run_db(
-                pid,
-                lambda _project: record_project_audit(
-                    project_id=pid, task_id=req.task_id,
-                    action="task.start", result="denied",
-                    actor_type="system", metadata={"reason_code": "identity_required"},
-                ),
-            )
+        await audit_denial("identity_required", system_actor=True)
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except WorkflowValidationError as exc:
+        await audit_denial("workflow_invalid")
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
