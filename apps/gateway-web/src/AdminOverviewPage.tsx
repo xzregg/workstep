@@ -49,6 +49,7 @@ export function AdminOverviewPage() {
         {overview.devices && <Link to="/admin/devices">设备管理</Link>}
         {overview.roles.includes('super_admin') && <Link to="/admin/projects">项目管理</Link>}
         {overview.roles.includes('super_admin') && <Link to="/admin/providers">供应商管理</Link>}
+        {overview.roles.includes('super_admin') && <Link to="/admin/usage">Token 用量</Link>}
       </nav>
       <div className="gateway-overview-grid">
         {overview.users && <section className="gateway-overview-card"><h3>用户</h3>
