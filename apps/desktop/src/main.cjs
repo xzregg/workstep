@@ -83,6 +83,8 @@ async function authorizeManagedDesktop(managed) {
     pending, code: callback.code, managed,
     devicePublicKey: identity.publicKeyPem,
     deviceName: require('node:os').hostname(), version: app.getVersion(),
+    os: { darwin: 'macos', win32: 'windows', linux: 'linux' }[process.platform],
+    arch: ['arm64', 'x64'].includes(process.arch) ? process.arch : undefined,
   })
   if (!result.device_authorization) {
     await dialog.showMessageBox({

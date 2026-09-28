@@ -10,6 +10,7 @@ from gateway.app import create_app
 from gateway.config import GatewaySettings
 from gateway.database import GatewayDatabase
 from gateway.signing import GatewaySigner
+from gateway.models import Device
 from gateway import client_releases
 
 
@@ -68,6 +69,54 @@ def test_release_rejects_path_traversal_and_changed_artifact(tmp_path):
         release = client.post("/api/admin/client-releases", json=body, headers=headers).json()
         artifact.write_bytes(b"modified")
         assert client.get(release["download_url"]).content == b"original"
+
+
+def test_device_admin_projects_latest_compatible_release_per_platform(tmp_path):
+    releases = tmp_path / "releases"
+    releases.mkdir()
+    (releases / "installer.dmg").write_bytes(b"installer")
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        setup = client.post("/api/platform/setup", json={
+            "username": "owner", "display_name": "Owner", "password": "OwnerPassphrase-2026!",
+            "recovery_username": "recovery", "recovery_password": "RecoveryPassphrase-2026!",
+            "registration_mode": "closed",
+        })
+        headers = {"X-CSRF-Token": setup.json()["csrf_token"]}
+        assert client.post("/api/auth/step-up", json={
+            "password": "OwnerPassphrase-2026!",
+        }, headers=headers).status_code == 200
+        for version in ("1.10.0", "1.2.0"):
+            response = client.post("/api/admin/client-releases", json={
+                "os": "macos", "arch": "arm64", "version": version,
+                "filename": "installer.dmg", "minimum_protocol_version": 1,
+            }, headers=headers)
+            assert response.status_code == 201, response.text
+
+        async def seed_devices():
+            async with app.state.database.session() as session:
+                async with session.begin():
+                    session.add_all([
+                        Device(id="old", name="Old", public_key="test", status="active",
+                               app_instance_id="old", version="1.2.0", os="macos", arch="arm64"),
+                        Device(id="current", name="Current", public_key="test", status="active",
+                               app_instance_id="current", version="1.10.0", os="macos", arch="arm64"),
+                        Device(id="legacy", name="Legacy", public_key="test", status="active",
+                               app_instance_id="legacy", version="1.0.0"),
+                        Device(id="other", name="Other", public_key="test", status="active",
+                               app_instance_id="other", version="1.0.0", os="windows", arch="x64"),
+                    ])
+
+        client.portal.call(seed_devices)
+        response = client.get("/api/admin/devices?status=active")
+        assert response.status_code == 200, response.text
+        devices = {device["id"]: device for device in response.json()["devices"]}
+        assert devices["old"]["latest_version"] == "1.10.0"
+        assert devices["old"]["update_available"] is True
+        assert devices["current"]["update_available"] is False
+        assert devices["legacy"]["update_available"] is None
+        assert devices["other"]["update_available"] is None
+        assert devices["other"]["latest_version"] is None
 
 
 @pytest.mark.asyncio

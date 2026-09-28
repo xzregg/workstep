@@ -118,6 +118,26 @@ test('device page retries load errors and pages server results', async () => {
   await waitFor(() => assert.ok(requests.some(url => url.includes('page=2'))))
 })
 
+test('device page distinguishes outdated and unknown client versions', async () => {
+  globalThis.fetch = async input => {
+    const url = String(input)
+    if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
+    if (url.startsWith('/api/admin/devices?')) return Response.json({ devices: [
+      { id: 'old', name: 'Old PC', version: '1.2.0', status: 'active', online: true,
+        daemon_health: true, latest_version: '1.10.0', update_available: true },
+      { id: 'legacy', name: 'Legacy PC', version: '1.0.0', status: 'active', online: false,
+        daemon_health: null, latest_version: null, update_available: null },
+    ], total: 2 })
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+  render(<DeviceAdminPage />)
+  fireEvent.change(await screen.findByLabelText('设备状态'), { target: { value: 'active' } })
+  const old = (await screen.findByText('Old PC')).closest('li')!
+  const legacy = screen.getByText('Legacy PC').closest('li')!
+  assert.match(old.textContent ?? '', /有新版本 1\.10\.0/)
+  assert.match(legacy.textContent ?? '', /版本状态未知/)
+})
+
 test('grant dialog searches users and departments, validates scope, and submits with step-up', async () => {
   const requests: Array<{ url: string; init?: RequestInit }> = []
   globalThis.fetch = async (input, init) => {

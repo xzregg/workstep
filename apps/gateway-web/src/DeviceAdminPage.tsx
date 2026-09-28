@@ -107,10 +107,12 @@ export function DeviceAdminPage() {
       </div>
       {loading && <p role="status">正在加载设备…</p>}
       <ul className="gateway-device-list">{devices.map((device) => <li key={device.id}>
-        <div><strong>{device.name}</strong><p>{device.id} · {device.version} · {device.status}</p>
+        <div><strong>{device.name}</strong><p>{device.id} · {device.version ?? '版本未知'} · {device.status}</p>
           <p>控制连接：{device.online ? '在线' : '离线'} · daemon 健康：{
             device.daemon_health === true ? '正常' : device.daemon_health === false ? '异常' : '未知'
-          }</p></div>
+          }</p><p>客户端版本：{device.update_available === true
+            ? `有新版本 ${device.latest_version}`
+            : device.update_available === false ? '已是最新' : '版本状态未知'}</p></div>
         <div className="gateway-device-actions">
           {device.status === 'pending' && <button type="button" onClick={() => setSelected({ device, action: 'approve' })}>批准</button>}
           {device.status === 'active' && <button type="button" onClick={() => setSelected({ device, action: 'disable' })}>停用</button>}

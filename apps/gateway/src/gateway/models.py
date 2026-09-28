@@ -306,6 +306,8 @@ class Device(Base):
     public_key_fingerprint: Mapped[str | None] = mapped_column(String(64))
     app_instance_id: Mapped[str | None] = mapped_column(String(128))
     version: Mapped[str | None] = mapped_column(String(64))
+    os: Mapped[str | None] = mapped_column(String(16))
+    arch: Mapped[str | None] = mapped_column(String(16))
     status: Mapped[str] = mapped_column(String(16), server_default="pending")
     policy_revision: Mapped[int] = mapped_column(Integer, server_default="0")
     provider_revision: Mapped[int] = mapped_column(Integer, server_default="0")

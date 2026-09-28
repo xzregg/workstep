@@ -83,13 +83,16 @@ test('exchange sends PKCE only to the pinned Gateway and rejects key substitutio
   }
   const result = await exchangeDesktopCode({ pending, code: 'one-time-code',
     managed: { ...managed, gateway_public_key_fingerprint: fingerprint },
-    devicePublicKey: 'device-public-key', deviceName: 'PC', version: '1.0', fetchImpl })
+    devicePublicKey: 'device-public-key', deviceName: 'PC', version: '1.0',
+    os: 'macos', arch: 'arm64', fetchImpl })
   assert.equal(result.device.status, 'pending')
   assert.equal(calls.length, 2)
   assert.equal(calls[1].url, 'https://gateway.test/api/desktop/token')
   const body = JSON.parse(calls[1].options.body)
   assert.equal(body.code_verifier, pending.verifier)
   assert.equal(body.app_instance_id, pending.appInstanceId)
+  assert.equal(body.os, 'macos')
+  assert.equal(body.arch, 'arm64')
   await assert.rejects(() => exchangeDesktopCode({ pending, code: 'one-time-code',
     managed: { ...managed, gateway_public_key_fingerprint: '0'.repeat(64) },
     devicePublicKey: 'device-public-key', deviceName: 'PC', version: '1.0', fetchImpl }), /fingerprint/i)
