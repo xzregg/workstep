@@ -19,7 +19,7 @@ Gateway 整机访问关系由 `apps/gateway/src/gateway/user_devices_api.py` 管
 
 阶段 3C 的按需数据握手在 Gateway `control_connection.py::ControlConnections.request_data` 和 `/api/data/ws`，一次性 token 只经已认证控制 WSS 下发；daemon `services/gateway_client/control.py` 的独立读取协程在心跳间隙也能处理 `open_data` 并建立数据 WSS。测试见 Gateway `test_control_connection.py` 与 daemon `test_gateway_control_client.py`。
 
-整机远程 HTTP 由 Gateway `app.py::device_host_boundary` 导入 `remote_access_api.py::proxy_remote_request`，再通过 `control_connection.py::DataConnection.proxy_http` 多路复用请求体和响应体；daemon `services/gateway_client/bridge.py::ManagedHttpBridge` 直接调用现有 ASGI 应用，`services/desktop_security.py` 仅对桥内注入的受管操作者放行。`apps/gateway-web/src/DeviceListPage.tsx` 通过表单提交一次性票据进入设备子域。行为测试在 Gateway `test_data_http.py`、`test_user_devices.py` 与 daemon `test_gateway_http_bridge.py`。业务 WebSocket 代理仍待接入。
+整机远程 HTTP 和业务 WebSocket 由 Gateway `app.py::device_host_boundary`、`remote_access_api.py` 和 `control_connection.py::DataConnection` 多路复用；daemon `services/gateway_client/bridge.py` 的 HTTP/WebSocket 桥直接调用现有 ASGI 应用，`services/desktop_security.py` 仅对桥内注入的受管操作者放行。`apps/gateway-web/src/DeviceListPage.tsx` 通过表单提交一次性票据进入设备子域；`apps/web/src/components/GatewayRemoteFrame.tsx` 显示设备、用户、状态和返回入口。行为测试在 Gateway `test_data_http.py`、`test_user_devices.py`，daemon `test_gateway_http_bridge.py` 和 Web `tests/gatewayRemoteFrame.test.tsx`。
 
 修改功能时先找所属模块，再沿前端页面或组件 → API → 服务 → 数据模型追踪。行为测试放在实际拥有该行为的模块附近；不要把页面、`src/api/client.ts` 或通用服务文件作为新功能的默认落点。
 

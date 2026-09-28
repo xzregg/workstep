@@ -123,3 +123,127 @@ class ManagedHttpBridge:
                 stream_id=self.stream_id, type=FrameType.http_response,
                 payload={"phase": "end"},
             ))
+
+
+class ManagedWebSocketBridge:
+    def __init__(self, app, stream_id: str, start: dict, send_frame, device_id: str):
+        self.app = app
+        self.stream_id = stream_id
+        self.start = start
+        self.send_frame = send_frame
+        self.device_id = device_id
+        self._inbound: asyncio.Queue = asyncio.Queue(maxsize=32)
+        self._task: asyncio.Task | None = None
+
+    def start_task(self) -> None:
+        self._task = asyncio.create_task(self._run())
+
+    async def feed(self, frame: ProxyFrame) -> None:
+        await self._inbound.put(frame)
+
+    def cancel(self) -> None:
+        if self._task:
+            self._task.cancel()
+
+    @property
+    def done(self) -> bool:
+        return self._task is not None and self._task.done()
+
+    async def _run(self) -> None:
+        accepted = False
+        closed = False
+        first_receive = True
+        try:
+            path = self.start.get("path")
+            query = self.start.get("query", "")
+            username = self.start.get("username")
+            user_id = self.start.get("user_id")
+            raw_headers = self.start.get("headers", [])
+            if (not isinstance(path, str) or not path.startswith("/") or path.startswith("//")
+                    or not isinstance(query, str) or not isinstance(username, str)
+                    or not isinstance(user_id, str) or not username or not user_id
+                    or not isinstance(raw_headers, list)):
+                raise ValueError("Invalid managed WebSocket request")
+            headers = [(b"host", b"127.0.0.1")]
+            for pair in raw_headers:
+                if not isinstance(pair, list) or len(pair) != 2 or not all(isinstance(v, str) for v in pair):
+                    raise ValueError("Invalid managed WebSocket headers")
+                name = pair[0].lower()
+                if (not name.isascii() or not name.replace("-", "").isalnum()
+                        or name in ("host", "cookie", "authorization", "origin")
+                        or name.startswith("x-workstep-")):
+                    continue
+                headers.append((name.encode("ascii"), pair[1].encode("latin1")))
+            actor = ManagedActor(user_id, username, self.device_id, "gateway-remote", 0)
+            scope = {
+                "type": "websocket", "asgi": {"version": "3.0"}, "scheme": "ws",
+                "path": unquote(path), "raw_path": path.encode("utf-8"),
+                "query_string": query.encode("utf-8"), "root_path": "",
+                "headers": headers, "client": ("127.0.0.1", 0),
+                "server": ("127.0.0.1", 80), "subprotocols": [],
+                "gateway_remote_actor": actor,
+            }
+
+            async def receive():
+                nonlocal first_receive
+                if first_receive:
+                    first_receive = False
+                    return {"type": "websocket.connect"}
+                frame = await self._inbound.get()
+                if frame.type in (FrameType.websocket_close, FrameType.cancel):
+                    return {"type": "websocket.disconnect", "code": frame.payload.get("code", 1000)}
+                if frame.type != FrameType.websocket_data:
+                    raise ValueError("Invalid managed WebSocket data")
+                if frame.payload.get("kind") == "text":
+                    return {"type": "websocket.receive", "text": frame.payload["data"]}
+                if frame.payload.get("kind") == "bytes":
+                    return {"type": "websocket.receive", "bytes": base64.b64decode(
+                        frame.payload["data"], validate=True,
+                    )}
+                raise ValueError("Invalid managed WebSocket data")
+
+            async def send(message):
+                nonlocal accepted, closed
+                if message["type"] == "websocket.accept":
+                    accepted = True
+                    await self.send_frame(ProxyFrame(
+                        stream_id=self.stream_id, type=FrameType.websocket_open,
+                        payload={"accepted": True,
+                                 "subprotocol": message.get("subprotocol")},
+                    ))
+                elif message["type"] == "websocket.send":
+                    if message.get("text") is not None:
+                        payload = {"kind": "text", "data": message["text"]}
+                    else:
+                        payload = {"kind": "bytes", "data": base64.b64encode(
+                            message.get("bytes") or b"",
+                        ).decode()}
+                    await self.send_frame(ProxyFrame(
+                        stream_id=self.stream_id, type=FrameType.websocket_data,
+                        payload=payload,
+                    ))
+                elif message["type"] == "websocket.close":
+                    closed = True
+                    await self.send_frame(ProxyFrame(
+                        stream_id=self.stream_id, type=FrameType.websocket_close,
+                        payload={"code": message.get("code", 1000)},
+                    ))
+
+            await self.app(scope, receive, send)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            if not accepted:
+                await self.send_frame(ProxyFrame(
+                    stream_id=self.stream_id, type=FrameType.websocket_open,
+                    payload={"accepted": False},
+                ))
+        finally:
+            if accepted and not closed:
+                try:
+                    await self.send_frame(ProxyFrame(
+                        stream_id=self.stream_id, type=FrameType.websocket_close,
+                        payload={"code": 1000},
+                    ))
+                except Exception:
+                    pass

@@ -4,6 +4,7 @@ import base64
 import httpx
 import pytest
 from fastapi import FastAPI, Request
+from types import SimpleNamespace
 from workstep_gateway_protocol import FrameType, ProxyFrame
 
 from gateway.control_connection import DataConnection
@@ -68,3 +69,53 @@ async def test_data_connection_multiplexes_large_http_body_and_streamed_response
     assert stream["user_id"] == "user-1"
     assert all(name.lower() not in ("cookie", "x-workstep-actor-name")
                for name, _ in stream["headers"])
+
+
+@pytest.mark.asyncio
+async def test_data_connection_forwards_bidirectional_websocket_frames():
+    class Browser:
+        def __init__(self):
+            self.scope = {"headers": [(b"host", b"d-device-1.gateway.test"),
+                                       (b"cookie", b"secret=private")]}
+            self.url = SimpleNamespace(path="/ws", query="")
+            self.incoming = asyncio.Queue()
+            self.incoming.put_nowait({"type": "websocket.receive", "text": "hello"})
+            self.accepted = False
+            self.sent = []
+
+        async def accept(self, *, subprotocol=None):
+            self.accepted = True
+
+        async def receive(self):
+            return await self.incoming.get()
+
+        async def send_text(self, value):
+            self.sent.append(value)
+            self.incoming.put_nowait({"type": "websocket.disconnect", "code": 1000})
+
+        async def close(self, *, code):
+            self.incoming.put_nowait({"type": "websocket.disconnect", "code": code})
+
+    class Socket:
+        async def send_json(self, message):
+            frame = ProxyFrame.model_validate(message)
+            if frame.type == FrameType.websocket_open:
+                assert frame.payload["user_id"] == "user-1"
+                assert all(name.lower() != "cookie" for name, _ in frame.payload["headers"])
+                await connection.deliver(ProxyFrame(
+                    stream_id=frame.stream_id, type=FrameType.websocket_open,
+                    payload={"accepted": True},
+                ))
+            elif frame.type == FrameType.websocket_data:
+                await connection.deliver(ProxyFrame(
+                    stream_id=frame.stream_id, type=FrameType.websocket_data,
+                    payload={"kind": "text", "data": "echo:" + frame.payload["data"]},
+                ))
+
+    browser = Browser()
+    connection = DataConnection("device-1", Socket())
+    await asyncio.wait_for(connection.proxy_websocket(
+        browser, user_id="user-1", username="alice",
+    ), timeout=2)
+    assert browser.accepted
+    assert browser.sent == ["echo:hello"]

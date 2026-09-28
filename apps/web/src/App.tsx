@@ -15,6 +15,7 @@ import type { Project } from './api/client'
 import { useI18n } from './i18n'
 import FirstUseDialog from './components/FirstUseDialog'
 import RemoteAccessGate from './components/RemoteAccessGate'
+import GatewayRemoteFrame from './components/GatewayRemoteFrame'
 import { projectSelectionPath } from './utils/projectSelectionPath'
 
 const GitPrototype = import.meta.env?.DEV
@@ -93,7 +94,7 @@ function WelcomeView() {
 function App() {
   return (
     <BrowserRouter>
-      <GatedApp />
+      <GatewayRemoteFrame><GatedApp /></GatewayRemoteFrame>
     </BrowserRouter>
   )
 }

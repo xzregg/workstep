@@ -1,6 +1,7 @@
 import { zhCN, type Messages } from './zh-CN'
 
 export const enUS: Messages = {
+  gatewayRemote: { loading: 'Remote PC', disconnected: 'Disconnected', online: 'Online', back: 'My PCs' },
   channelBot: zhCN.channelBot,
   git: {
     recoveryButton: 'Undo / restore',
