@@ -847,6 +847,7 @@ export const enUS: Messages = {
     thinking: 'Coordinator is thinking…',
     emptyIntro: 'Describe your goal (e.g. “build a content publishing flow”) and I will ask a few key questions, then generate an editable flow for you.',
     me: 'Me',
+    historicalUser: '历史用户',
     agent: 'Coordinator',
     meInitials: 'Me',
     agentInitials: 'CA',

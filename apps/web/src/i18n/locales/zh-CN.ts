@@ -861,6 +861,7 @@ export const zhCN = {
     thinking: '协调思考中…',
     emptyIntro: '描述你的目标（例如“做一个内容发布流程”），我会先追问几个关键问题，然后为你生成可直接编辑的流程编排。',
     me: '我',
+    historicalUser: '历史用户',
     agent: '协调',
     meInitials: '我',
     agentInitials: '协',

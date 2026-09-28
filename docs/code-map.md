@@ -37,6 +37,8 @@ Gateway 整机访问关系由 `apps/gateway/src/gateway/user_devices_api.py` 管
 
 阶段 7 的消息作者字段定义在 `models/message.py`、`models/chat_session.py`，旧项目数据库通过 `models/migrations.py` 加列且保留历史空值。`services/messages.py::create_task_message` 保存任务用户/助手作者及原始发起人，`agent_assistants/coordinator.py` 保存协调器消息，`agent_assistants/base.py` 生成助手会话快照，`chat_row_persistence.py` 和 `chat_session_transitions.py` 负责落库、回读和分叉复制，`history.py`、`services/task.py` 对外投影。`services/task_execution_report.py`、`services/statistics.py` 按原始发起人汇总新式助手用量。行为测试见 `test_migrations.py`、`test_message_attribution.py`、`test_coordinator.py`、`test_chat_session.py`、`test_task_execution_report.py` 和 `test_statistics.py`。
 
+Web 的作者展示由 `src/utils/actorDisplay.ts` 统一计算：缺失作者显示“历史用户”，悬停详情显示保存时的名称、用户名和设备；任务消息在 `src/components/TaskConversationMessage.tsx`，独立聊天及助手消息在 `src/components/AssistantChatPanel.tsx`。聊天历史映射在 `src/hooks/useChatSessionHistory.ts` 与 `src/components/AiFlowChat.tsx` 保留作者字段，行为测试见 `tests/actorDisplay.test.ts`、`tests/actorVisibility.test.mjs`、`tests/remoteMessageIdentity.test.mjs`。
+
 修改功能时先找所属模块，再沿前端页面或组件 → API → 服务 → 数据模型追踪。行为测试放在实际拥有该行为的模块附近；不要把页面、`src/api/client.ts` 或通用服务文件作为新功能的默认落点。
 
 | 功能 | Web 入口 | Daemon 入口 | 深入阅读 |

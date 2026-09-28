@@ -831,6 +831,7 @@ export const zhTW: Messages = {
     thinking: '協調思考中…',
     emptyIntro: '描述你的目標（例如“做一個內容釋出流程”），我會先追問幾個關鍵問題，然後為你生成可直接編輯的流程編排。',
     me: '我',
+    historicalUser: '历史用户',
     agent: '協調',
     meInitials: '我',
     agentInitials: '協',

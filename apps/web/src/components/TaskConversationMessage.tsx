@@ -239,6 +239,7 @@ export default function TaskConversationMessage({
                 msg.author_name,
                 localUserName,
                 t('aiFlow.me'),
+                t('aiFlow.historicalUser'),
               )
             : isSystem
               ? t(
@@ -330,7 +331,8 @@ export default function TaskConversationMessage({
                   ? displayUserDetail(
                       msg.author_name,
                       msg.author_device_name,
-                      t('aiFlow.me'),
+                      t('aiFlow.historicalUser'),
+                      msg.author_username,
                     )
                   : undefined
               }

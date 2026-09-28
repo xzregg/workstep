@@ -14,10 +14,10 @@ test('same actor names are normalized before comparison', () => {
 })
 
 test('the current user is displayed as me', () => {
-  assert.equal(displayUserSender('谢钊荣', '谢钊荣', '我'), '我')
-  assert.equal(displayUserSender('其他用户', '谢钊荣', '我'), '其他用户')
-  assert.equal(displayUserSender('', '谢钊荣', '我'), '我')
-  assert.equal(displayUserSender('谢钊荣', '', '我'), '谢钊荣')
+  assert.equal(displayUserSender('谢钊荣', '谢钊荣', '我', '历史用户'), '我')
+  assert.equal(displayUserSender('其他用户', '谢钊荣', '我', '历史用户'), '其他用户')
+  assert.equal(displayUserSender('', '谢钊荣', '我', '历史用户'), '历史用户')
+  assert.equal(displayUserSender('谢钊荣', '', '我', '历史用户'), '谢钊荣')
 })
 
 test('hover detail keeps the original author name instead of the me label', () => {
@@ -31,4 +31,8 @@ test('hover detail keeps the original author name instead of the me label', () =
   )
   assert.equal(displayUserDetail('', 'MacBook Pro', '我'), '我 · MacBook Pro')
   assert.equal(displayUserDetail('谢钊荣', '', '我'), '谢钊荣')
+  assert.equal(
+    displayUserDetail('张三', 'MacBook Pro', '历史用户', 'zhangsan'),
+    '张三 (@zhangsan) · MacBook Pro',
+  )
 })

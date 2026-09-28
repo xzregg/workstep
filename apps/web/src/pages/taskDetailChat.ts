@@ -70,7 +70,11 @@ interface ConversationMessage {
   review_run_id?: string | null
   engine?: string | null
   author_id?: string | null
+  author_username?: string | null
   author_name?: string | null
+  author_type?: 'user' | 'assistant' | 'system' | 'scheduler' | null
+  initiated_by_user_id?: string | null
+  initiated_by_username?: string | null
   author_device_id?: string | null
   author_device_name?: string | null
 }
