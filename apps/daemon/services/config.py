@@ -949,6 +949,46 @@ class ConfigStore:
             self._managed_gateway_id = gateway_id
             self._managed_provider_guard = provider_guard
 
+    def claim_managed_command(self, command_id: str, idempotency_key: str) -> tuple[dict, bool]:
+        with self._lock:
+            data = self._load()
+            receipts = data.get("managed_command_receipts", {})
+            if not isinstance(receipts, dict):
+                receipts = {}
+            current = receipts.get(command_id)
+            if current is not None:
+                if current.get("idempotency_key") != idempotency_key:
+                    raise ValueError("Managed command identity conflict")
+                return dict(current), False
+            receipts = dict(receipts)
+            for old_id, old_receipt in list(receipts.items()):
+                if len(receipts) < 1000:
+                    break
+                if old_receipt.get("status") in ("succeeded", "failed"):
+                    receipts.pop(old_id)
+            if len(receipts) >= 1000:
+                raise RuntimeError("Managed command receipt store is full")
+            receipt = {"idempotency_key": idempotency_key, "status": "running",
+                       "error": None}
+            receipts[command_id] = receipt
+            data["managed_command_receipts"] = receipts
+            self._save()
+            return dict(receipt), True
+
+    def finish_managed_command(self, command_id: str, idempotency_key: str,
+                               status: str, error: str | None) -> None:
+        if status not in ("succeeded", "failed"):
+            raise ValueError("Invalid managed command result")
+        with self._lock:
+            data = self._load()
+            receipts = data.get("managed_command_receipts", {})
+            current = receipts.get(command_id) if isinstance(receipts, dict) else None
+            if not current or current.get("idempotency_key") != idempotency_key:
+                raise ValueError("Managed command receipt missing")
+            current["status"] = status
+            current["error"] = error[:512] if error else None
+            self._save()
+
     def get_providers(self, *, include_unmanaged: bool = False) -> list[dict[str, Any]]:
         raw = self.get("providers", [])
         if not isinstance(raw, list):

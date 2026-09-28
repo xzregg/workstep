@@ -33,4 +33,6 @@ SQLite 可在服务运行时执行 `uv run --project apps/gateway python apps/ga
 
 阶段 4A 的供应商控制面 API 已接入：超级管理员先用 `/api/auth/step-up` 确认密码，再用 `POST /api/admin/providers` 创建供应商，`PUT /api/admin/providers/{id}` 更新配置及轮换密钥，`POST /api/admin/providers/{id}/assign` 给用户或设备分配，`POST /api/admin/providers/{id}/assign/revoke` 撤销，`POST /api/admin/providers/{id}/disable` 停用。`GET /api/admin/providers`、`/{id}/assignments`、`/applications` 只返回非敏感目录、分配和设备应用状态。供应商 Key 在 Gateway 数据库中加密，控制连接用设备临时 X25519 公钥封装配置包；PC 校验网关签名、设备、用户、版本与期限，写入本机 `config.json` 并回执。PC 本地文件系统权限持有人仍能读取已下发 Key。配置/策略失效时受管供应商不可用；配置落盘或引擎刷新失败保留上一版本。模型调用授权和管理页面尚未验收。
 
+阶段 4B 的超级管理员在密码二次认证后可用 `POST /api/admin/device-operations` 提交 `install/update/rollback/refresh/test`、引擎 ID、确切版本、设备列表与并发数；`GET /api/admin/device-operations` 分页查询，`GET /api/admin/device-operations/{id}` 查看逐台状态，`POST /api/admin/device-operations/{id}/retry-failed` 仅重试失败或过期设备。命令在控制 WSS 上用 Gateway 密钥签名并绑定设备、动作、参数、幂等键和到期时间；PC 在执行前持久化收据，重复命令返回已有结果。安装/更新/回退仍走本机版本化运行时管理器的官方包目录和互斥逻辑，普通受管本地 API 的引擎管理动作由签名策略门禁拒绝。长时间安装的断线恢复与真实受管包验收仍待完成。
+
 测试：`uv run --project apps/gateway --group dev pytest apps/gateway/tests packages/gateway-protocol/tests`；协议模型变更后运行 `uv run --project apps/gateway python packages/gateway-protocol/scripts/schema.py` 并提交 `schema.json`。门户在 `apps/gateway-web` 运行 `yarn test && yarn build`。
