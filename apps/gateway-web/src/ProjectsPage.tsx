@@ -3,7 +3,22 @@ import { Link } from 'react-router-dom'
 import { GatewayLoginForm } from './GatewayLoginForm'
 import { openRemoteAccess } from './openRemoteAccess'
 
-type Project = { id: string; name: string; device_id: string; access_level: 'read' | 'edit' }
+type Project = { id: string; name: string; device_id: string; device_name: string;
+  device_online: boolean; access_level: 'read' | 'edit'; grant_sources: string[] }
+
+export function ProjectCard({ project, opening, blocked = false, onOpen }: {
+  project: Project; opening: boolean; blocked?: boolean; onOpen: () => void
+}) {
+  return <li>
+    <div><strong>{project.name}</strong>
+      <p>宿主电脑：{project.device_name} · {project.device_online ? '在线' : '离线'}</p>
+      <p>{project.access_level === 'edit' ? '可编辑' : '只读'} · {project.grant_sources.join('、')}</p>
+    </div>
+    <button type="button" disabled={!project.device_online || blocked || opening} onClick={onOpen}>
+      {opening ? '正在打开…' : '打开项目'}
+    </button>
+  </li>
+}
 
 export function ProjectsPage() {
   const [status, setStatus] = useState<'checking' | 'login' | 'ready'>('checking')
@@ -72,13 +87,11 @@ export function ProjectsPage() {
     {status === 'ready' && <>
       {projects.length === 0 && <div className="gateway-empty-devices">
         <p>你还没有获授权的远程项目。</p><Link to="/devices">查看我的电脑</Link>
+        <p><Link to="/devices/empty">下载 WorkStep 安装包</Link></p>
       </div>}
-      <ul className="gateway-device-list">{projects.map(project => <li key={project.id}>
-        <div><strong>{project.name}</strong><p>{project.access_level === 'edit' ? '可编辑' : '只读'} · {project.device_id}</p></div>
-        <button type="button" disabled={opening !== null} onClick={() => void openProject(project.id)}>
-          {opening === project.id ? '正在打开…' : '打开项目'}
-        </button>
-      </li>)}</ul>
+      <ul className="gateway-device-list">{projects.map(project => <ProjectCard key={project.id}
+        project={project} opening={opening === project.id} blocked={opening !== null}
+        onOpen={() => void openProject(project.id)} />)}</ul>
     </>}
     {error && <p className="gateway-auth-error" role="alert">{error}</p>}
   </section>
