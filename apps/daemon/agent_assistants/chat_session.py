@@ -968,17 +968,22 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
             )
             return result
         enhance_input = f"{ENHANCE_SYSTEM_PROMPT}\n\n用户提示词：\n{prompt}"
+        usage_details: dict = {}
         try:
             from engines.pydantic_ai import PydanticAIEngine
 
-            raw = await PydanticAIEngine.run_simple(enhance_input)
+            raw = await PydanticAIEngine.run_simple(
+                enhance_input, usage_details=usage_details,
+            )
         except RuntimeError:
             from agent_assistants.base import invoke_engine
+            from services.messages import extract_usage_json
 
             engine_id, _model, fast_model = self._resolve_engine_models()
             with self._project_ctx(project_id) as project:
                 cwd = str(project.path)
-            raw, _events, _session_id = await invoke_engine(
+            _, provider_snapshot = await self._usage_provider_snapshot(engine_id, "")
+            raw, events, _session_id = await invoke_engine(
                 engine_id,
                 fast_model,
                 cwd,
@@ -989,9 +994,22 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
                 thinking_effort="minimal",
                 permission_mode="auto",
             )
+            usage_json = extract_usage_json(events)
+            usage_details = {
+                "provider": provider_snapshot,
+                "model": fast_model or "",
+                "usage": json.loads(usage_json) if usage_json else None,
+            }
         result = raw.strip()
         if not result:
             raise ValueError("提示词增强失败，请重试")
+        from main import gateway_client
+
+        await gateway_client.record_one_shot_usage(
+            project_id=project_id, model=usage_details.get("model") or "",
+            provider=usage_details.get("provider"),
+            usage=usage_details.get("usage"),
+        )
         return result
 
     # ── engine / model resolution ──────────────────────────────────────

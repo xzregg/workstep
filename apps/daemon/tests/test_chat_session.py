@@ -1174,10 +1174,18 @@ async def test_enhance_prompt_falls_back_to_default_engine(chat_module, monkeypa
     """Without Pydantic AI config, prompt enhancement falls back to the default chat engine."""
     module, bus, manager, project, config_store = chat_module
     calls: list[tuple] = []
+    recorded_usage: list[dict] = []
+    import main
 
     async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event, **kwargs):
         calls.append((engine_id, model, prompt, kwargs))
-        return "改写后的清晰提示词。", [], None
+        return "改写后的清晰提示词。", [{
+            "type": "usage_update",
+            "data": {"input_tokens": 15, "output_tokens": 4},
+        }], None
+
+    async def record_usage(**kwargs):
+        recorded_usage.append(kwargs)
 
     def kwargs_of(call):
         return call[3]
@@ -1185,6 +1193,7 @@ async def test_enhance_prompt_falls_back_to_default_engine(chat_module, monkeypa
     config_store.set("coordinator_default_model", "slow-model")
     config_store.set("coordinator_default_fast_model", "fast-model")
     monkeypatch.setattr("agent_assistants.base.invoke_engine", fake_invoke)
+    monkeypatch.setattr(main.gateway_client, "record_one_shot_usage", record_usage)
     result = await module.enhance_prompt(project.id, "帮我写个函数")
     assert result == "改写后的清晰提示词。"
     assert calls
@@ -1193,6 +1202,10 @@ async def test_enhance_prompt_falls_back_to_default_engine(chat_module, monkeypa
     assert "帮我写个函数" in calls[0][2]
     assert kwargs_of(calls[0])["thinking_effort"] == "minimal"
     assert kwargs_of(calls[0])["permission_mode"] == "auto"
+    assert recorded_usage == [{
+        "project_id": project.id, "model": "fast-model", "provider": None,
+        "usage": {"input_tokens": 15, "output_tokens": 4},
+    }]
 
     with pytest.raises(ValueError):
         await module.enhance_prompt(project.id, "   ")
@@ -1211,11 +1224,11 @@ async def test_enhance_prompt_uses_configured_provider_protocol(chat_module, mon
         {
             "id": "p-1",
             "base_url": "http://localhost:1/v1",
-                "api_key": "k",
-                "enabled": True,
-                "protocols": ["anthropic_messages"],
-                "prices": {"version": "v1"},
-                "managed_revision": 3,
+            "api_key": "k",
+            "enabled": True,
+            "protocols": ["anthropic_messages"],
+            "prices": {"version": "v1"},
+            "managed_revision": 3,
         }
     ]
     calls: list[dict] = []
@@ -1242,7 +1255,7 @@ async def test_enhance_prompt_uses_configured_provider_protocol(chat_module, mon
         provider["managed_revision"] = 4
         return "改写后的清晰提示词。"
 
-    async def fake_simple(prompt):
+    async def fake_simple(prompt, **kwargs):
         pydantic_calls.append(prompt)
         return "回退后的提示词。"
 
@@ -1294,9 +1307,16 @@ async def test_enhance_prompt_uses_pydantic_ai_without_context(chat_module, monk
     ]
     prompts: list[str] = []
     invoke_calls: list = []
+    recorded_usage: list[dict] = []
+    import main
 
-    async def fake_simple(prompt):
+    async def fake_simple(prompt, usage_details=None):
         prompts.append(prompt)
+        usage_details.update({
+            "provider": {"id": "p-1", "prices": {"version": "v1"}},
+            "model": "fast-model-x",
+            "usage": {"input_tokens": 7, "output_tokens": 2},
+        })
         return "改写后的清晰提示词。"
 
     async def fake_invoke(*args, **kwargs):
@@ -1308,11 +1328,20 @@ async def test_enhance_prompt_uses_pydantic_ai_without_context(chat_module, monk
         fake_simple,
     )
     monkeypatch.setattr("agent_assistants.base.invoke_engine", fake_invoke)
+    async def record_usage(**kwargs):
+        recorded_usage.append(kwargs)
+    monkeypatch.setattr(main.gateway_client, "record_one_shot_usage", record_usage)
 
     result = await module.enhance_prompt(project.id, "帮我写个函数")
     assert result == "改写后的清晰提示词。"
     assert prompts and "帮我写个函数" in prompts[0]
     assert not invoke_calls  # 不经过协调引擎
+    assert recorded_usage == [{
+        "project_id": project.id,
+        "model": "fast-model-x",
+        "provider": {"id": "p-1", "prices": {"version": "v1"}},
+        "usage": {"input_tokens": 7, "output_tokens": 2},
+    }]
 
 
 async def test_session_auto_titles_from_first_sentence(chat_module, monkeypatch):

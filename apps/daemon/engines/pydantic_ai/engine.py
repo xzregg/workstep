@@ -125,7 +125,8 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
         return message
 
     @classmethod
-    async def run_simple(cls, prompt: str) -> str:
+    async def run_simple(cls, prompt: str,
+                         usage_details: dict | None = None) -> str:
         """One-shot, context-free completion via the configured provider.
 
         无工具、无项目上下文、无会话记忆：仅用于轻量单轮改写等快速场景。
@@ -148,6 +149,13 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
         provider = await asyncio.to_thread(config_store.get_provider, runtime.provider_id)
         if provider is None or not provider.get("base_url") or not model_name:
             raise RuntimeError("Pydantic AI 尚未配置供应商和模型")
+        if usage_details is not None:
+            from services.gateway_client.usage import snapshot_usage_provider
+
+            usage_details.update({
+                "provider": snapshot_usage_provider(provider),
+                "model": model_name,
+            })
         loaded_model = cls.build_model(
             provider=provider,
             model_name=model_name,
@@ -157,6 +165,17 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
 
         agent = Agent(loaded_model)
         result = await agent.run(prompt)
+        if usage_details is not None:
+            usage_attr = getattr(result, "usage", None)
+            usage = usage_attr() if callable(usage_attr) else usage_attr
+            if usage is not None:
+                usage_details["usage"] = {
+                    "input_tokens": getattr(usage, "input_tokens", 0),
+                    "output_tokens": getattr(usage, "output_tokens", 0),
+                    "cache_read_input_tokens": getattr(usage, "cache_read_tokens", 0),
+                    "cache_creation_input_tokens": getattr(usage, "cache_write_tokens", 0),
+                    "cache_input_included": runtime.protocol != "anthropic_messages",
+                }
         return str(getattr(result, "output", "") or "").strip()
 
     @staticmethod
