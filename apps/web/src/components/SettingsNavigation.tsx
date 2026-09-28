@@ -1,5 +1,6 @@
 import Icon, { type IconName } from './Icon'
 import { useI18n } from '../i18n'
+import { useManagedMode } from '../hooks/useManagedMode'
 import './SettingsNavigation.css'
 
 export type SettingsSection = 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'channels' | 'remote' | 'concurrency' | 'git' | 'system'
@@ -25,10 +26,11 @@ export default function SettingsNavigation({
   onSelect: (section: SettingsSection) => void
 }) {
   const { t } = useI18n()
+  const managedMode = useManagedMode()
   return (
     <aside className="settings-nav">
       <div className="settings-nav-heading">{t('nav.settings')}</div>
-      {sections.map(({ id, label, icon, glyph }) => (
+      {sections.filter(({ id }) => id !== 'remote' || managedMode !== true).map(({ id, label, icon, glyph }) => (
         <button
           key={id}
           type="button"

@@ -4,6 +4,7 @@ import Select from '../components/Select'
 import { copyText } from '../utils/clipboard'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useTaskRoute } from '../hooks/useTaskRoute'
+import { useManagedMode } from '../hooks/useManagedMode'
 import MobileSheet from '../components/MobileSheet'
 import StatusBadge from '../components/StatusBadge'
 import Icon from '../components/Icon'
@@ -82,6 +83,7 @@ const viewToggleButtonStyle = (active: boolean, disabled: boolean): React.CSSPro
 })
 
 export default function TaskList() {
+  const managedMode = useManagedMode()
   const { t, locale } = useI18n()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -443,7 +445,7 @@ export default function TaskList() {
             {directoryNotice}
           </span>
         )}
-        {activeProject && activeProject.type !== 'remote' && (
+        {managedMode !== true && activeProject && activeProject.type !== 'remote' && (
           <Button
             variant="ghost"
             onClick={() => setShowShareDialog(true)}
@@ -703,7 +705,7 @@ export default function TaskList() {
       )}
 
       <ProjectShareDialog
-        project={showShareDialog ? activeProject : null}
+        project={managedMode !== true && showShareDialog ? activeProject : null}
         onClose={() => setShowShareDialog(false)}
       />
 

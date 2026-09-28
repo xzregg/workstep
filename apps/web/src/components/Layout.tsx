@@ -14,6 +14,7 @@ import { useSidebarActivity } from '../hooks/useSidebarActivity'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { taskListPath } from '../hooks/useTaskRoute'
 import { useProjectRouteSelection } from '../hooks/useProjectRouteSelection'
+import { useManagedMode } from '../hooks/useManagedMode'
 import Button, { type ButtonProps } from './Button'
 import MarqueeText from './MarqueeText'
 import Input from './Input'
@@ -55,6 +56,7 @@ interface Props {
 
 export default function Layout({ onSelectProject, children }: Props) {
   const { t } = useI18n()
+  const managedMode = useManagedMode()
   useWebSocket()
   useVisualViewport()
   const navigate = useNavigate()
@@ -1066,7 +1068,7 @@ export default function Layout({ onSelectProject, children }: Props) {
         <SidebarActionMenu ref={moreMenuRef} x={moreMenu.x} y={moreMenu.y}>
           {moreMenu.kind === 'project' && menuTarget && 'path' in menuTarget && (
             <>
-              {menuTarget.type !== 'remote' && (
+              {managedMode !== true && menuTarget.type !== 'remote' && (
                 <SidebarActionItem
                   icon="pencil"
                   onClick={() => { setRenameId(menuTarget.path); setMoreMenu(null) }}
@@ -1242,7 +1244,8 @@ export default function Layout({ onSelectProject, children }: Props) {
         onConnected={handleProjectConnected}
       />
 
-      <ProjectShareDialog project={shareProject} onClose={() => setShareProject(null)} />
+      <ProjectShareDialog project={managedMode !== true ? shareProject : null}
+        onClose={() => setShareProject(null)} />
 
       <WorkflowCreateDialog
         projectId={addWfProjectId}

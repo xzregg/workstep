@@ -12,6 +12,7 @@ import { useI18n } from '../i18n'
 import { copyText } from '../utils/clipboard'
 import { useChatListStore } from '../stores/chatSessionStore'
 import { resolveAccessExpiresAt, type AccessDurationPreset } from '../utils/remoteDeviceAccess'
+import { useManagedMode } from '../hooks/useManagedMode'
 import Button from './Button'
 import ConcurrencyLimitInput from './ConcurrencyLimitInput'
 import Field from './Field'
@@ -46,6 +47,7 @@ export default function ProjectSettingsPanel({
   onProjectRenamed,
 }: ProjectSettingsPanelProps) {
   const { t } = useI18n()
+  const managedMode = useManagedMode()
   const projectId = project?.id
   const [activeTab, setActiveTab] = useState<TabKey>('general')
 
@@ -97,8 +99,12 @@ export default function ProjectSettingsPanel({
     { key: 'quickButtons', label: t('projectSettings.tabs.quickButtons') },
     { key: 'skills', label: t('skillCenter.nav') },
     { key: 'concurrency', label: t('projectSettings.tabs.concurrency') },
-    { key: 'share', label: t('projectSettings.tabs.share') },
-  ], [t])
+    ...(managedMode === true ? [] : [{ key: 'share' as const, label: t('projectSettings.tabs.share') }]),
+  ], [t, managedMode])
+
+  useEffect(() => {
+    if (managedMode === true && activeTab === 'share') setActiveTab('general')
+  }, [managedMode, activeTab])
 
   const loadSettings = useCallback(async () => {
     if (!projectId) return
@@ -132,7 +138,7 @@ export default function ProjectSettingsPanel({
 
   // Share devices polling while the share tab is open.
   useEffect(() => {
-    if (!projectId || activeTab !== 'share') return
+    if (!projectId || activeTab !== 'share' || managedMode === true) return
     let active = true
     const refresh = () => {
       void remoteProjectApi.devices(projectId).then((result) => {
@@ -145,7 +151,7 @@ export default function ProjectSettingsPanel({
       active = false
       window.clearInterval(timer)
     }
-  }, [projectId, activeTab])
+  }, [projectId, activeTab, managedMode])
 
   if (!project) return null
 
