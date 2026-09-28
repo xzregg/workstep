@@ -918,6 +918,20 @@ class CoordinatorModule:
                     {"type": "status", "data": {"status": "succeeded"}},
                 )
                 journal_snapshot = await self._event_journal.asnapshot(journal_ref)
+                usage_provider_id = provider_id
+                usage_provider = None
+                if turn.engine:
+                    usage_engine = await asyncio.to_thread(create_engine, turn.engine)
+                    resolve_provider_id = getattr(usage_engine, "resolve_provider_id", None)
+                    if callable(resolve_provider_id):
+                        usage_provider_id = await asyncio.to_thread(resolve_provider_id, provider_id)
+                if usage_provider_id:
+                    def load_usage_provider():
+                        provider = config_store.get_provider(usage_provider_id)
+                        return ({key: provider.get(key) for key in
+                                 ("id", "prices", "managed_revision")}
+                                if provider else None)
+                    usage_provider = await asyncio.to_thread(load_usage_provider)
                 assistant, proposal = await self._run_db(
                     project_id,
                     lambda: self._finish_turn_sync(
@@ -930,6 +944,15 @@ class CoordinatorModule:
                         result,
                         journal_snapshot,
                     ),
+                )
+
+                from main import gateway_client
+                await gateway_client.record_message_usage(
+                    project_id=project_id, task_id=task_id, message_id=assistant.id,
+                    run_id=turn_id, model=turn_model, occurred_at=assistant.ended_at,
+                    provider=usage_provider, provider_id=usage_provider_id or None,
+                    usage_json=extract_usage_json(events),
+                    user_id=prepared["creator_id"], session_id=session_id,
                 )
 
                 await self._publish_message_event(
@@ -1098,6 +1121,7 @@ class CoordinatorModule:
         )
         return {
             "turn": turn,
+            "creator_id": task.creator_id,
             "assistant": assistant,
             "coordinator_root": coordinator_root,
             "session_id": session.session_id,
