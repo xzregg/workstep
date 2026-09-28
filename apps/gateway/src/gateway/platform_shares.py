@@ -46,6 +46,29 @@ class UnlockShareInput(BaseModel):
     password: str = Field(default="", max_length=200)
 
 
+async def can_create_platform_share(session, user_id: str, project: PlatformProject) -> bool:
+    admin = await session.scalar(select(AdminAssignment.id).where(
+        AdminAssignment.user_id == user_id,
+        AdminAssignment.role == "super_admin",
+        AdminAssignment.revoked_at.is_(None),
+    ))
+    if admin is not None:
+        return True
+    access = await effective_project_access(session, user_id, project.id)
+    if access != "edit":
+        return False
+    rules = (await session.scalars(select(CapabilityAssignment).where(
+        CapabilityAssignment.user_id == user_id,
+        CapabilityAssignment.capability == "share.create",
+        CapabilityAssignment.revoked_at.is_(None),
+    ))).all()
+    applicable = [rule for rule in rules if rule.scope_type == "global"
+                  or (rule.scope_type == "device" and rule.scope_id == project.device_id)
+                  or (rule.scope_type == "project" and rule.scope_id == project.id)]
+    return (any(rule.effect == "allow" for rule in applicable)
+            and not any(rule.effect == "deny" for rule in applicable))
+
+
 async def _live_share(request: Request, token: str) -> PlatformShare:
     if len(token) > 128:
         raise HTTPException(status_code=404, detail="Share unavailable")
@@ -113,24 +136,8 @@ async def create_platform_share(request: Request, body: CreateShareInput):
                     or project.access_mode != "remote_published"
                     or device is None or device.status != "active"):
                 raise HTTPException(status_code=404, detail="Published project unavailable")
-            admin = await session.scalar(select(AdminAssignment.id).where(
-                AdminAssignment.user_id == actor.id,
-                AdminAssignment.role == "super_admin",
-                AdminAssignment.revoked_at.is_(None),
-            ))
-            if admin is None:
-                access = await effective_project_access(session, actor.id, project.id)
-                rules = (await session.scalars(select(CapabilityAssignment).where(
-                    CapabilityAssignment.user_id == actor.id,
-                    CapabilityAssignment.capability == "share.create",
-                    CapabilityAssignment.revoked_at.is_(None),
-                ))).all()
-                applicable = [rule for rule in rules if rule.scope_type == "global"
-                              or (rule.scope_type == "device" and rule.scope_id == device.id)
-                              or (rule.scope_type == "project" and rule.scope_id == project.id)]
-                if (access != "edit" or not any(rule.effect == "allow" for rule in applicable)
-                        or any(rule.effect == "deny" for rule in applicable)):
-                    raise HTTPException(status_code=403, detail="Share creation unavailable")
+            if not await can_create_platform_share(session, actor.id, project):
+                raise HTTPException(status_code=403, detail="Share creation unavailable")
             share = PlatformShare(
                 id=str(uuid4()), token_hash=_digest(token), device_id=device.id,
                 project_id=project.id, task_id=body.task_id, mode=body.mode,

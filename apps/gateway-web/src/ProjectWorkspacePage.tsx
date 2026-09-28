@@ -5,6 +5,7 @@ type RemoteSession = {
   host_project_id: string | null
   access_level: 'read' | 'edit' | null
   task_create: boolean
+  share_create: boolean
   gateway_url: string
 }
 type ProjectSummary = {
@@ -140,6 +141,12 @@ export function ProjectWorkspacePage() {
           type="button" disabled={saving} onClick={() => void startTask(selectedTask.id)}>
           {saving ? '正在启动…' : '启动任务'}
         </button>}
+        {session?.share_create && session.project_id && session.gateway_url && <a
+          href={`${session.gateway_url.replace(/\/devices$/, '')}/shares/new?${new URLSearchParams({
+            project_id: session.project_id, task_id: selectedTask.id,
+          }).toString()}`}>
+          创建平台分享
+        </a>}
         <button type="button" onClick={() => setSelectedTask(null)}>关闭详情</button>
       </section>}
     </>}

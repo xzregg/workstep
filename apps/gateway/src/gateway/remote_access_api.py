@@ -15,6 +15,7 @@ from .capabilities import compiled_device_policy
 from .identity import COOKIE_NAME, IdentityService
 from .models import Device, PlatformProject, UsedDeviceAccessTicket, User, UserDevice
 from .project_access_api import effective_project_access
+from .platform_shares import can_create_platform_share
 
 router = APIRouter(prefix="/api/remote")
 websocket_router = APIRouter()
@@ -137,6 +138,9 @@ async def remote_session(request: Request):
                        request, device_id, user.id, host_project_id))
     async with request.app.state.database.session() as session:
         device = await session.get(Device, device_id)
+        project = await session.get(PlatformProject, auth_session.project_id) if auth_session.project_id else None
+        share_create = (await can_create_platform_share(session, user.id, project)
+                        if project is not None else False)
     if device is None:
         raise HTTPException(status_code=403, detail="Device access denied")
     return {"user_id": user.id, "username": user.display_name,
@@ -145,6 +149,7 @@ async def remote_session(request: Request):
             "host_project_id": host_project_id,
             "access_level": auth_session.project_access_level,
             "task_create": task_create,
+            "share_create": share_create,
             "online": True,
             "gateway_url": request.app.state.settings.public_origin + "/devices"}
 
