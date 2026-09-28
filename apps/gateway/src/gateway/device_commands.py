@@ -217,10 +217,17 @@ async def next_command_for_device(database, lock: asyncio.Lock, device_id: str) 
                         command.status = "sent"
                         batch.status = "running"
                     params = json.loads(batch.parameters_json)
+                    delivery_expiry = expires
+                    reconcile_only = command.status == "running" and expires <= datetime.now(timezone.utc)
+                    if reconcile_only:
+                        # The original TTL limits first execution. A running
+                        # command may need a fresh signed envelope to replay
+                        # its durable result after a long disconnect.
+                        delivery_expiry = datetime.now(timezone.utc) + timedelta(minutes=10)
                     return {"id": command.id, "batch_id": batch.id,
                             "device_id": device_id, "idempotency_key": command.idempotency_key,
-                            "action": batch.action, **params,
-                            "expires_at": int(expires.timestamp())}
+                            "action": batch.action, **params, "reconcile_only": reconcile_only,
+                            "expires_at": int(delivery_expiry.timestamp())}
     return None
 
 

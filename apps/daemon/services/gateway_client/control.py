@@ -591,8 +591,8 @@ class GatewayControlClient:
 
         try:
             await report("received")
-            await report("running")
-            status, error = await self.command_executor.execute(command)
+            status, error = await self.command_executor.execute(
+                command, on_started=lambda: report("running"))
             await report(status, error)
         except asyncio.CancelledError:
             raise

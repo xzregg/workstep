@@ -86,6 +86,65 @@ async def test_command_executor_persists_receipt_before_action_and_replays_resul
 
 
 @pytest.mark.asyncio
+async def test_command_survives_control_waiter_cancellation_and_replays_after_reconnect(tmp_path, monkeypatch):
+    monkeypatch.setattr(config_module, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(config_module, "CONFIG_FILE", tmp_path / "config.json")
+    store = config_module.ConfigStore()
+    key, pem, fingerprint, claims = _credential()
+    command = verify_device_command(_sign(key, claims), pem, fingerprint,
+                                    "gateway-test", "device-1")
+    started = asyncio.Event()
+    finish = asyncio.Event()
+    calls = []
+
+    async def action(_command):
+        calls.append(_command.command_id)
+        started.set()
+        await finish.wait()
+        return "succeeded", None
+
+    executor = ManagedCommandExecutor(store, action)
+    first_connection = asyncio.create_task(executor.execute(command))
+    await asyncio.wait_for(started.wait(), timeout=1)
+    first_connection.cancel()
+    await asyncio.gather(first_connection, return_exceptions=True)
+    assert store.get("managed_command_receipts", {})[command.command_id]["status"] == "running"
+    second_connection = asyncio.create_task(executor.execute(command))
+    finish.set()
+    assert await asyncio.wait_for(second_connection, timeout=1) == ("succeeded", None)
+    assert calls == [command.command_id]
+    assert await ManagedCommandExecutor(config_module.ConfigStore(), action).execute(command) == (
+        "succeeded", None)
+    assert calls == [command.command_id]
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_token_never_starts_an_expired_command_without_receipt(tmp_path, monkeypatch):
+    monkeypatch.setattr(config_module, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(config_module, "CONFIG_FILE", tmp_path / "config.json")
+    store = config_module.ConfigStore()
+    key, pem, fingerprint, claims = _credential()
+    token = _sign(key, {**claims, "kind": "device.command.reconcile"})
+    command = verify_device_command(token, pem, fingerprint, "gateway-test", "device-1")
+    calls = []
+
+    async def action(_command):
+        calls.append(_command.command_id)
+        return "succeeded", None
+
+    assert await ManagedCommandExecutor(store, action).execute(command) == (
+        "failed", "Previous execution not found")
+    assert calls == []
+    assert store.get("managed_command_receipts", {}) == {}
+    store.claim_managed_command(command.command_id, command.idempotency_key)
+    store.finish_managed_command(command.command_id, command.idempotency_key,
+                                 "succeeded", None)
+    assert await ManagedCommandExecutor(config_module.ConfigStore(), action).execute(command) == (
+        "succeeded", None)
+    assert calls == []
+
+
+@pytest.mark.asyncio
 async def test_versioned_engine_command_waits_for_existing_runtime_manager(monkeypatch):
     from services import engine_runtime
     key, pem, fingerprint, claims = _credential()
@@ -136,6 +195,90 @@ async def test_control_reports_verified_command_result_without_blocking_heartbea
     await asyncio.wait_for(asyncio.sleep(0.01), timeout=0.05)
     await asyncio.gather(*client._command_tasks)
     assert sent[-1]["status"] == "succeeded"
+
+
+@pytest.mark.asyncio
+async def test_control_reconnect_reports_one_continued_install(tmp_path, monkeypatch):
+    monkeypatch.setattr(config_module, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(config_module, "CONFIG_FILE", tmp_path / "config.json")
+    store = config_module.ConfigStore()
+    key, pem, fingerprint, claims = _credential()
+    envelope = {"command": {"kind": "device_command", "version": 1,
+                            "device_id": "device-1", "token": _sign(key, claims)}}
+    client = GatewayControlClient("https://gateway.test", gateway_id="gateway-test",
+                                  public_key_fingerprint=fingerprint, user_id="user-1",
+                                  policy_cache=ManagedPolicyCache(), provider_store=store)
+    started, finish = asyncio.Event(), asyncio.Event()
+    calls = []
+
+    async def action(command):
+        calls.append(command.command_id)
+        started.set()
+        await finish.wait()
+        return "succeeded", None
+
+    client.command_executor = ManagedCommandExecutor(store, action)
+    first, second = [], []
+
+    class Socket:
+        def __init__(self, messages):
+            self.messages = messages
+
+        async def send(self, raw):
+            self.messages.append(json.loads(raw))
+
+    client._accept_command(Socket(first), envelope, pem, "device-1")
+    await asyncio.wait_for(started.wait(), timeout=1)
+    first_task = next(iter(client._command_tasks))
+    first_task.cancel()
+    await asyncio.gather(first_task, return_exceptions=True)
+    assert store.get("managed_command_receipts", {})["command-1"]["status"] == "running"
+    client._accept_command(Socket(second), envelope, pem, "device-1")
+    finish.set()
+    await asyncio.gather(*client._command_tasks)
+    assert calls == ["command-1"]
+    assert second[-1]["status"] == "succeeded"
+    assert store.get("managed_command_receipts", {})["command-1"]["status"] == "succeeded"
+
+
+@pytest.mark.asyncio
+async def test_control_reports_running_only_after_receipt_is_durable(tmp_path, monkeypatch):
+    monkeypatch.setattr(config_module, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(config_module, "CONFIG_FILE", tmp_path / "config.json")
+    store = config_module.ConfigStore()
+    claim_started = asyncio.Event()
+    release_claim = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    original_claim = store.claim_managed_command
+
+    def slow_claim(*args):
+        loop.call_soon_threadsafe(claim_started.set)
+        while not release_claim.is_set():
+            time.sleep(0.005)
+        return original_claim(*args)
+
+    monkeypatch.setattr(store, "claim_managed_command", slow_claim)
+    key, pem, fingerprint, claims = _credential()
+    client = GatewayControlClient("https://gateway.test", gateway_id="gateway-test",
+                                  public_key_fingerprint=fingerprint, user_id="user-1",
+                                  policy_cache=ManagedPolicyCache(), provider_store=store)
+    client.command_executor = ManagedCommandExecutor(store, lambda _command: asyncio.sleep(
+        0, result=("succeeded", None)))
+    sent = []
+
+    class Socket:
+        async def send(self, raw):
+            sent.append(json.loads(raw))
+
+    client._accept_command(Socket(), {"command": {"kind": "device_command", "version": 1,
+        "device_id": "device-1", "token": _sign(key, claims)}}, pem, "device-1")
+    try:
+        await asyncio.wait_for(claim_started.wait(), timeout=1)
+        assert [item["status"] for item in sent] == ["received"]
+    finally:
+        release_claim.set()
+    await asyncio.gather(*client._command_tasks)
+    assert [item["status"] for item in sent] == ["received", "running", "succeeded"]
 
 
 @pytest.mark.asyncio
