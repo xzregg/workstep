@@ -458,11 +458,26 @@ class WorkflowRuntime:
                 return await runner.cancel_step(task_id, step_key)
 
             now = utc_now()
+            def persist_stop(_project):
+                with db_proxy.atomic("IMMEDIATE"):
+                    result = persist_orphan_stop(
+                        task_id, step_key, now, self._leases.instance_id,
+                    )
+                    if not result[2]:
+                        from services.project_audit import record_project_audit
+                        from services.remote_access import get_effective_actor
+
+                        actor = get_effective_actor()
+                        record_project_audit(
+                            project_id=project_id, task_id=task_id,
+                            action="step.cancel", result="succeeded",
+                            mode="managed" if actor is not None and actor.source == "managed" else "local",
+                            metadata={"step_key": step_key, "status": "paused"},
+                        )
+                    return result
+
             run_id, message_id, already_stopped = await self._run_db(
-                project_id,
-                lambda _project: persist_orphan_stop(
-                    task_id, step_key, now, self._leases.instance_id
-                ),
+                project_id, persist_stop,
             )
             if run_id:
                 self._leases.release(run_id)
