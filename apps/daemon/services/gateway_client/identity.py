@@ -26,6 +26,8 @@ class ManagedActor:
     device_id: str
     app_instance_id: str
     policy_revision: int
+    project_id: str | None = None
+    project_access_level: str | None = None
 
 
 class ManagedAuthorizationVerifier:

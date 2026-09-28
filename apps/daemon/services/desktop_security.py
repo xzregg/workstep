@@ -13,6 +13,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from services.remote_access import ActorSnapshot, actor_context
+from services.project_scope import project_http_allowed
 
 
 DESKTOP_TOKEN_HEADER = "x-workstep-desktop-token"
@@ -85,6 +86,8 @@ def desktop_websocket_allowed(ws: WebSocket) -> bool:
     remote_actor = ws.scope.get("gateway_remote_actor")
     if (remote_actor is not None and gateway_client is not None
             and getattr(gateway_client, "managed_config", None) is not None):
+        if remote_actor.project_id is not None:
+            return False
         ws.scope["managed_actor"] = remote_actor
         return True
 
@@ -111,6 +114,11 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
         managed = gateway_client is not None and getattr(gateway_client, "managed_config", None) is not None
         actor = request.scope.get("gateway_remote_actor")
         remote_bridge = actor is not None and managed
+        if remote_bridge and actor.project_id is not None and not project_http_allowed(
+                request, actor.project_id, actor.project_access_level):
+            response = JSONResponse({"detail": "project scope denied"}, status_code=403)
+            response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+            return response
         if remote_bridge and _remote_filesystem_denied(request):
             response = JSONResponse({"detail": "remote host filesystem access unavailable"}, status_code=403)
             response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
