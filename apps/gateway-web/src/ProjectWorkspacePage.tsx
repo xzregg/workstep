@@ -60,7 +60,7 @@ export function ProjectWorkspacePage() {
     {!summary && !error && <p role="status">正在加载项目…</p>}
     {error && <p className="gateway-auth-error" role="alert">{error}</p>}
     {summary && <>
-      <p>{session?.access_level === 'edit' ? '可编辑项目' : '只读项目'} · {summary.workflows?.length ?? 0} 个流程</p>
+      <p>{session?.access_level === 'edit' ? '编辑授权' : '只读授权'} · {summary.workflows?.length ?? 0} 个流程</p>
       <h3>任务</h3>
       {tasks.length === 0 && <p>暂无任务。</p>}
       <ul className="gateway-device-list">{tasks.map(task => <li key={task.id}>

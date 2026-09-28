@@ -99,6 +99,18 @@ async def test_project_scoped_bridge_denies_unknown_and_cross_project_api():
     async def project_summary(project_id: str):
         return {"project_id": project_id}
 
+    @app.get("/api/workflow/list")
+    async def workflows():
+        return {"workflows": []}
+
+    @app.get("/api/search/tasks")
+    async def search_tasks():
+        return {"tasks": []}
+
+    @app.get("/api/task/{task_id}/history")
+    async def task_history(task_id: str):
+        return {"task_id": task_id}
+
     @app.get("/api/health")
     async def health():
         return {"status": "ok"}
@@ -119,6 +131,11 @@ async def test_project_scoped_bridge_denies_unknown_and_cross_project_api():
     assert await response_status("GET", "/api/task/list", "project_id=host-1") == 200
     assert await response_status("GET", "/api/task/task-1", "project_id=host-1") == 200
     assert await response_status("GET", "/api/task/task-1", "project_id=host-2") == 403
+    assert await response_status("GET", "/api/workflow/list", "project_id=host-1") == 200
+    assert await response_status("GET", "/api/search/tasks", "projectId=host-1") == 200
+    assert await response_status("GET", "/api/search/tasks", "") == 403
+    assert await response_status("GET", "/api/task/task-1/history", "project_id=host-1") == 200
+    assert await response_status("GET", "/api/task/task-1/history", "project_id=host-2") == 403
     assert await response_status("GET", "/api/project/host-1/summary", "") == 200
     assert await response_status("GET", "/api/project/host-2/summary", "") == 403
     assert await response_status("GET", "/api/task/list", "project_id=host-2") == 403
