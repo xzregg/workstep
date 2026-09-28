@@ -108,18 +108,30 @@ def test_user_can_create_pause_and_resume_a_project_schedule(tmp_path, monkeypat
     workflow_id = project.default_workflow()["id"]
     module = ScheduleModule(manager, task_service=None, workflow_runtime=None)
 
-    created = module.create(
-        project.id,
-        name="Weekly report",
-        workflow_id=workflow_id,
-        task_template={"title": "Prepare report", "description": "Summarize changes"},
-        rule={
-            "kind": "weekly",
-            "weekdays": [1],
-            "time": "09:00",
-            "timezone": "Asia/Shanghai",
-        },
-    )
+    def create_schedule():
+        return module.create(
+            project.id,
+            name="Weekly report",
+            workflow_id=workflow_id,
+            task_template={"title": "Prepare report", "description": "Summarize changes"},
+            rule={
+                "kind": "weekly",
+                "weekdays": [1],
+                "time": "09:00",
+                "timezone": "Asia/Shanghai",
+            },
+        )
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(
+            project_audit, "record_project_audit",
+            lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("audit unavailable")),
+        )
+        with pytest.raises(RuntimeError, match="audit unavailable"):
+            create_schedule()
+    with manager.activate_project_by_id(project.id):
+        assert Schedule.select().count() == 0
+    created = create_schedule()
 
     assert created["status"] == "active"
     assert created["cron_expression"] == "0 9 * * 1"
@@ -137,12 +149,32 @@ def test_user_can_create_pause_and_resume_a_project_schedule(tmp_path, monkeypat
     resumed = module.resume(project.id, created["id"])
     assert resumed["status"] == "active"
     assert resumed["next_run_at"] is not None
+    with monkeypatch.context() as patcher:
+        patcher.setattr(
+            project_audit, "record_project_audit",
+            lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("audit unavailable")),
+        )
+        with pytest.raises(RuntimeError, match="audit unavailable"):
+            module.update(project.id, created["id"], name="Updated report")
+    assert module.get(project.id, created["id"])["name"] == "Weekly report"
+    assert module.update(project.id, created["id"], name="Updated report")["name"] == "Updated report"
+    with monkeypatch.context() as patcher:
+        patcher.setattr(
+            project_audit, "record_project_audit",
+            lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("audit unavailable")),
+        )
+        with pytest.raises(RuntimeError, match="audit unavailable"):
+            module.delete(project.id, created["id"])
+    assert module.get(project.id, created["id"])["name"] == "Updated report"
+    module.delete(project.id, created["id"])
     with manager.activate_project_by_id(project.id):
+        assert Schedule.select().count() == 0
         events = list(ProjectAuditEvent.select().where(
             ProjectAuditEvent.metadata_json.contains(created["id"]),
         ).order_by(ProjectAuditEvent.created_at))
     assert [event.action for event in events] == [
-        "schedule.pause", "schedule.resume",
+        "schedule.create", "schedule.pause", "schedule.resume",
+        "schedule.update", "schedule.delete",
     ]
 
 

@@ -230,22 +230,24 @@ class ScheduleModule:
                 workflow = self._workflow(project, workflow_id)
                 self._validate_template(project, task_template, workflow)
             now = utc_now()
-            row = Schedule.create(
-                id=str(uuid.uuid4()),
-                name=str(name).strip(),
-                workflow_id=workflow_id,
-                task_template_json=json.dumps(task_template, ensure_ascii=False),
-                rule_json=json.dumps(rule, ensure_ascii=False),
-                cron_expression=preview["cron_expression"],
-                timezone=preview["timezone"],
-                execution_mode=execution_mode,
-                overlap_policy=overlap_policy,
-                status="active",
-                next_run_at=next_run_at,
-                created_at=now,
-                updated_at=now,
-            )
-            return self._to_dict(row)
+            with db_proxy.atomic("IMMEDIATE"):
+                row = Schedule.create(
+                    id=str(uuid.uuid4()),
+                    name=str(name).strip(),
+                    workflow_id=workflow_id,
+                    task_template_json=json.dumps(task_template, ensure_ascii=False),
+                    rule_json=json.dumps(rule, ensure_ascii=False),
+                    cron_expression=preview["cron_expression"],
+                    timezone=preview["timezone"],
+                    execution_mode=execution_mode,
+                    overlap_policy=overlap_policy,
+                    status="active",
+                    next_run_at=next_run_at,
+                    created_at=now,
+                    updated_at=now,
+                )
+                self._record_schedule_audit(project_id, row, "schedule.create")
+                return self._to_dict(row)
 
     def list(self, project_id: str) -> list[dict]:
         with self._projects.activate_project_by_id(project_id):
@@ -313,17 +315,21 @@ class ScheduleModule:
                 row.status = "active"
                 row.invalid_reason = None
                 row.next_run_at = next_run
-            row.updated_at = utc_now()
-            row.save()
-            return self._to_dict(row)
+            with db_proxy.atomic("IMMEDIATE"):
+                row.updated_at = utc_now()
+                row.save()
+                self._record_schedule_audit(project_id, row, "schedule.update")
+                return self._to_dict(row)
 
     def delete(self, project_id: str, schedule_id: str) -> None:
         with self._projects.activate_project_by_id(project_id):
-            row = Schedule.get_or_none(Schedule.id == schedule_id)
-            if row is None:
-                raise ValueError(f"Schedule not found: {schedule_id}")
-            ScheduleRun.delete().where(ScheduleRun.schedule == row).execute()
-            row.delete_instance()
+            with db_proxy.atomic("IMMEDIATE"):
+                row = Schedule.get_or_none(Schedule.id == schedule_id)
+                if row is None:
+                    raise ValueError(f"Schedule not found: {schedule_id}")
+                ScheduleRun.delete().where(ScheduleRun.schedule == row).execute()
+                row.delete_instance()
+                self._record_schedule_audit(project_id, row, "schedule.delete")
 
     @staticmethod
     def _run_to_dict(row: ScheduleRun) -> dict:
