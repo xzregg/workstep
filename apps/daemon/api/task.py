@@ -112,6 +112,7 @@ async def update_scheduled_start(
         raise HTTPException(status_code=404, detail="Task not found")
     await event_bus.publish({
         "type": "CUSTOM",
+        "project_id": pid,
         "name": "workstep.scheduled_start",
         "value": {
             "task_id": task_id,
@@ -581,6 +582,7 @@ async def run_task(req: RunTaskRequest, pid: str = Query(..., alias="project_id"
             )
             await event_bus.publish({
                 "type": "CUSTOM",
+                "project_id": pid,
                 "name": "workstep.scheduled_start",
                 "value": {
                     "task_id": req.task_id,

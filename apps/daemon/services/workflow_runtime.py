@@ -161,6 +161,7 @@ class WorkflowRuntime:
             normalized_input = user_input.strip()
             if normalized_input and prepared.user_message is not None:
                 await self._publish_user_message(
+                    project_id,
                     task_id,
                     prepared.user_message,
                     "message_started",
@@ -190,6 +191,7 @@ class WorkflowRuntime:
         from services.concurrency import concurrency_gate
 
         payload = {
+            "project_id": project_id,
             "task_id": task_id,
             "step_key": "",
             "type": "status",
@@ -315,6 +317,7 @@ class WorkflowRuntime:
 
     async def _publish_user_message(
         self,
+        project_id: str,
         task_id: str,
         message: Message,
         event_type: str,
@@ -325,6 +328,7 @@ class WorkflowRuntime:
 
         data = {**data, "role": "user"}
         payload = {
+            "project_id": project_id,
             "task_id": task_id,
             "channel": message.channel,
             "message_id": message.id,
@@ -399,6 +403,7 @@ class WorkflowRuntime:
                 return True
 
             status_event = {
+                "project_id": project_id,
                 "task_id": task_id,
                 "step_key": step_key,
                 "type": "status",
@@ -413,6 +418,7 @@ class WorkflowRuntime:
                 await self._event_bus.publish(agui_event)
             if message_id:
                 message_event = {
+                    "project_id": project_id,
                     "task_id": task_id,
                     "step_key": step_key,
                     "channel": "execution",
@@ -462,6 +468,7 @@ class WorkflowRuntime:
             reset_session=reset_session,
         )
         await self._publish_user_message(
+            project_id,
             task_id,
             user_message,
             "message_started",
@@ -655,6 +662,7 @@ class WorkflowRuntime:
         await self._run_db(project_id, lambda _project: persist_skip())
 
         event = {
+            "project_id": project_id,
             "task_id": task_id,
             "step_key": step_key,
             "type": "review_status",
@@ -710,6 +718,7 @@ class WorkflowRuntime:
         )
         if decision in {"terminate", "complete_task", "set_complete"}:
             event = {
+                "project_id": project_id,
                 "task_id": task_id,
                 "step_key": step_key,
                 "type": "review_status",
@@ -727,6 +736,7 @@ class WorkflowRuntime:
                 from services.remote_project import current_actor_event_fields
 
                 status_event = {
+                    "project_id": project_id,
                     "task_id": task_id,
                     "step_key": "",
                     "type": "status",
@@ -960,6 +970,7 @@ class WorkflowRuntime:
                 )
                 continue
             recovered_event = {
+                "project_id": project.id,
                 "task_id": task.id,
                 "step_key": next(iter(candidate.step_keys), None),
                 "type": "run_recovered",

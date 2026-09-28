@@ -1309,6 +1309,7 @@ class TaskRunner:
             "step_key": step_key,
             **event,
             **current_actor_event_fields(),
+            "project_id": getattr(self._database_executor, "project_id", None),
         }
         ctx = AGUIContext.from_event(payload)
         for agui_event in to_agui_events(payload, ctx):
