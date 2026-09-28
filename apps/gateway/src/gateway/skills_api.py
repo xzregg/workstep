@@ -209,10 +209,13 @@ async def revoke_skill_version(request: Request, skill_id: str,
                 ProjectSkillAssignment.skill_version_id == version_id,
                 ProjectSkillAssignment.revoked_at.is_(None),
             ))).all()
+            project_revisions = {}
             for assignment in assignments:
-                project = await session.get(PlatformProject, assignment.platform_project_id)
-                project.skill_revision += 1
-                assignment.desired_revision = project.skill_revision
+                if assignment.platform_project_id not in project_revisions:
+                    project = await session.get(PlatformProject, assignment.platform_project_id)
+                    project.skill_revision += 1
+                    project_revisions[project.id] = project.skill_revision
+                assignment.desired_revision = project_revisions[assignment.platform_project_id]
                 assignment.status = "revoked"
                 assignment.revoked_at = row.revoked_at
             session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,
@@ -243,6 +246,15 @@ async def grant_group_skill(request: Request, group_id: str, body: SkillGrantInp
                                           granted_by_user_id=actor.id)
                 session.add(grant)
             else:
+                if grant.revoked_at is None and grant.skill_version_id != version.id:
+                    active_assignment = await session.scalar(select(ProjectSkillAssignment.id).where(
+                        ProjectSkillAssignment.source_group_id == group_id,
+                        ProjectSkillAssignment.skill_id == version.skill_id,
+                        ProjectSkillAssignment.revoked_at.is_(None),
+                    ).limit(1))
+                    if active_assignment is not None:
+                        raise HTTPException(status_code=409,
+                                            detail="Revoke active project Skills before changing group version")
                 grant.skill_version_id = version.id
                 grant.revoked_at = None
                 grant.granted_by_user_id = actor.id
@@ -312,18 +324,20 @@ async def assign_project_skill(request: Request, group_id: str,
             project = await session.get(PlatformProject, project_id)
             if project is None:
                 raise HTTPException(status_code=404, detail="Project unavailable")
-            assignment = await session.scalar(select(ProjectSkillAssignment).where(
+            existing = (await session.scalars(select(ProjectSkillAssignment).where(
                 ProjectSkillAssignment.platform_project_id == project_id,
                 ProjectSkillAssignment.skill_id == version.skill_id,
-            ))
+            ))).all()
+            assignment = next((item for item in existing
+                               if item.source_group_id == group_id), None)
+            if any(item.revoked_at is None and item.skill_version_id != version.id
+                   for item in existing):
+                raise HTTPException(status_code=409, detail="Skill version conflict across groups")
             if (assignment is not None and assignment.revoked_at is None
                     and assignment.skill_version_id == version.id):
                 return {"project_id": project_id, "skill_id": version.skill_id,
                         "skill_version_id": version.id,
                         "desired_revision": assignment.desired_revision}
-            if (assignment is not None and assignment.revoked_at is None
-                    and assignment.source_group_id != group_id):
-                raise HTTPException(status_code=409, detail="Skill version conflict across groups")
             project.skill_revision += 1
             if assignment is None:
                 assignment = ProjectSkillAssignment(
@@ -403,7 +417,10 @@ async def compile_skill_manifest(database, signer, gateway_id: str,
                        GroupSkillCatalog.revoked_at.is_(None),
                        SkillVersion.status == "approved",
                        SkillPackage.status == "active")
-                .order_by(SkillPackage.slug))).all()
+                .order_by(SkillPackage.slug, ProjectSkillAssignment.source_group_id))).all()
+            unique_rows = {}
+            for assignment, version, package in rows:
+                unique_rows.setdefault(package.id, (assignment, version, package))
             entries.append({
                 "platform_project_id": project.id,
                 "host_project_id": project.host_project_id,
@@ -414,7 +431,7 @@ async def compile_skill_manifest(database, signer, gateway_id: str,
                             "file_count": version.file_count,
                             "total_size": version.total_size,
                             "source_group_id": assignment.source_group_id}
-                           for assignment, version, package in rows],
+                           for assignment, version, package in unique_rows.values()],
             })
     return signer.sign_skill_manifest(gateway_id=gateway_id,
                                       device_id=device_id, user_id=user_id,

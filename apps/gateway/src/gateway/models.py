@@ -270,7 +270,7 @@ class GroupSkillCatalog(Base):
 
 class ProjectSkillAssignment(Base):
     __tablename__ = "project_skill_assignments"
-    __table_args__ = (UniqueConstraint("platform_project_id", "skill_id"),)
+    __table_args__ = (UniqueConstraint("platform_project_id", "skill_id", "source_group_id"),)
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     platform_project_id: Mapped[str] = mapped_column(ForeignKey("platform_projects.id"), index=True)

@@ -59,6 +59,19 @@ def test_managed_skill_sync_preserves_local_conflict_and_rescans(tmp_path):
     assert (project / ".workstep" / "skills" / "local-review" / "SKILL.md").read_text() == "# Local"
 
 
+def test_managed_skill_keeps_files_when_source_group_changes(tmp_path):
+    project = tmp_path / "project"
+    raw = _archive({"SKILL.md": "# Review"})
+    apply_project_skills(project, {"revision": 1, "skills": [_skill(raw)]},
+                         {"version-1": raw})
+    replacement = {**_skill(raw), "source_group_id": "group-2"}
+    apply_project_skills(project, {"revision": 2, "skills": [replacement]}, {})
+    root = project / ".workstep" / "skills"
+    assert (root / "review" / "SKILL.md").read_text() == "# Review"
+    manifest = json.loads((root / ".workstep-manifest.json").read_text())
+    assert manifest["entries"]["gateway:skill-1"]["source_group_id"] == "group-2"
+
+
 def test_managed_skill_sync_rejects_bad_digest_and_escape(tmp_path):
     project = tmp_path / "project"
     raw = _archive({"SKILL.md": "# Review"})

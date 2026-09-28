@@ -83,6 +83,45 @@ async def test_existing_database_upgrades_from_identity_revision(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_skill_source_migration_preserves_assignments(tmp_path):
+    from alembic import command
+
+    settings = GatewaySettings(data_dir=tmp_path)
+    database = GatewayDatabase(settings)
+    await database.start()
+    await database.close()
+    await asyncio.to_thread(command.downgrade,
+                            migration_config(settings.effective_database_url),
+                            "0031_usage_rollups")
+    path = tmp_path / "workstep_platform.db"
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "INSERT INTO project_skill_assignments "
+            "(id,platform_project_id,skill_id,skill_version_id,source_group_id,"
+            "assigned_by_user_id,desired_revision,status) VALUES (?,?,?,?,?,?,?,?)",
+            ("assignment-a", "project-1", "skill-1", "version-1", "group-a",
+             "owner-1", 1, "active"),
+        )
+    await database.start()
+    await database.close()
+    with sqlite3.connect(path) as connection:
+        original = connection.execute(
+            "SELECT id,source_group_id FROM project_skill_assignments"
+        ).fetchall()
+        assert original == [("assignment-a", "group-a")]
+        connection.execute(
+            "INSERT INTO project_skill_assignments "
+            "(id,platform_project_id,skill_id,skill_version_id,source_group_id,"
+            "assigned_by_user_id,desired_revision,status) VALUES (?,?,?,?,?,?,?,?)",
+            ("assignment-b", "project-1", "skill-1", "version-1", "group-b",
+             "owner-1", 2, "active"),
+        )
+        assert connection.execute(
+            "SELECT COUNT(*) FROM project_skill_assignments"
+        ).fetchone() == (2,)
+
+
+@pytest.mark.asyncio
 async def test_second_sqlite_gateway_instance_is_rejected(tmp_path):
     settings = GatewaySettings(data_dir=tmp_path)
     first = GatewayDatabase(settings)
