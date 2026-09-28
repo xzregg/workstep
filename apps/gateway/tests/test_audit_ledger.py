@@ -17,6 +17,7 @@ def _event(event_id="audit-1"):
         "action": "task.start", "result": "succeeded", "mode": "managed",
         "actor_id": "user-1", "actor_username": "alice",
         "actor_name": "Alice", "actor_type": "user",
+        "actor_device_id": "browser-1", "actor_device_name": "Chrome",
         "initiated_by_user_id": "user-1", "initiated_by_username": "alice",
         "metadata": {"source": "manual"},
         "occurred_at": datetime.now(timezone.utc).isoformat(),
@@ -66,8 +67,10 @@ def test_audit_batch_replay_and_conflicting_id(tmp_path):
 
         row = client.portal.call(read)
         assert (row.project_id, row.task_id, row.actor_username,
-                row.initiated_by_username, row.result) == (
-                    "project-1", "task-1", "alice", "alice", "succeeded",
+                row.initiated_by_username, row.actor_device_id,
+                row.actor_device_name, row.result) == (
+                    "project-1", "task-1", "alice", "alice",
+                    "browser-1", "Chrome", "succeeded",
                 )
 
 

@@ -30,6 +30,8 @@ class AuditEventInput(BaseModel):
     actor_username: str | None = Field(default=None, max_length=128)
     actor_name: str | None = Field(default=None, max_length=256)
     actor_type: Literal["user", "system", "scheduler"]
+    actor_device_id: str | None = Field(default=None, max_length=64)
+    actor_device_name: str | None = Field(default=None, max_length=256)
     initiated_by_user_id: str | None = Field(default=None, max_length=64)
     initiated_by_username: str | None = Field(default=None, max_length=128)
     metadata: dict = Field(default_factory=dict)
@@ -103,6 +105,8 @@ async def record_audit_batch(
                     project_id=event.project_id, task_id=event.task_id,
                     mode=event.mode, actor_username=event.actor_username,
                     actor_name=event.actor_name, actor_type=event.actor_type,
+                    actor_device_id=event.actor_device_id,
+                    actor_device_name=event.actor_device_name,
                     initiated_by_user_id=event.initiated_by_user_id,
                     initiated_by_username=event.initiated_by_username,
                     occurred_at=event.occurred_at,

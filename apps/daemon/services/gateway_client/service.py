@@ -9,6 +9,7 @@ from .policy import ManagedPolicyCache
 from services.config import config_store
 from services import config as config_module
 from .usage_outbox import UsageOutbox
+from .audit_outbox import ProjectAuditOutbox
 from .usage import build_usage_event
 from .skill_sync_client import ManagedSkillSyncService
 from services.project import project_manager
@@ -27,6 +28,7 @@ class GatewayClientService:
         self.policy_cache = ManagedPolicyCache()
         self.asgi_app = None
         self.usage_outbox = None
+        self.audit_outbox = ProjectAuditOutbox(project_manager)
         self.device_id = None
         self.current_user_id = None
         self.skill_sync = None
@@ -89,6 +91,7 @@ class GatewayClientService:
             asgi_app=self.asgi_app,
             provider_store=config_store,
             usage_outbox=self.usage_outbox,
+            audit_outbox=self.audit_outbox,
             skill_sync=self.skill_sync,
         )
         self.control_client.start(
