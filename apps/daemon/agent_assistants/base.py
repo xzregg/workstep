@@ -620,30 +620,34 @@ class AssistantRuntime:
         def prepare(_project):
             from services.pending_message_inserts import (
                 delete_pending_insert_batch,
+                pending_insert_actor,
                 pending_insert_batch,
             )
+            from services.remote_access import replayed_actor_context
 
             ids, content, username = pending_insert_batch(target_message_id)
             if not ids or not content:
                 return None
-            accepted = AssistantRuntime.submit_message(
-                self,
-                session.project_id,
-                content,
-                f"pending-insert:{target_message_id}:{','.join(ids)}",
-                session_id=session.session_id,
-                memory_key=memory_key,
-                scope_key=session.scope_key,
-                engine=session.engine,
-                model=session.model,
-                fast_model=session.fast_model,
-                vision_model=session.vision_model,
-                provider_id=state.get("provider_id"),
-                steps=session.steps,
-                extra=session.extra,
-                schedule=False,
-                author_name=username,
-            )
+            actor = pending_insert_actor(target_message_id)
+            with replayed_actor_context(actor):
+                accepted = AssistantRuntime.submit_message(
+                    self,
+                    session.project_id,
+                    content,
+                    f"pending-insert:{target_message_id}:{','.join(ids)}",
+                    session_id=session.session_id,
+                    memory_key=memory_key,
+                    scope_key=session.scope_key,
+                    engine=session.engine,
+                    model=session.model,
+                    fast_model=session.fast_model,
+                    vision_model=session.vision_model,
+                    provider_id=state.get("provider_id"),
+                    steps=session.steps,
+                    extra=session.extra,
+                    schedule=False,
+                    author_name=username,
+                )
             delete_pending_insert_batch(ids)
             return accepted
 

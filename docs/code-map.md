@@ -49,6 +49,8 @@ Web 的作者展示由 `src/utils/actorDisplay.ts` 统一计算：缺失作者�
 
 定时计划的创建人快照在 daemon `services/schedule.py` 的 `_creator` 模板字段中保留用户名与显示名，触发时传给 `services/task_creation.py`；旧模板缺用户名时保持空值。企业微信／钉钉输入由 `services/channels/bots.py::_sender_actor` 投影为来源明确的 `ActorSnapshot`，调用任务协调器或独立聊天时通过 `actor_context` 传递。验证见 `tests/test_schedule.py`、`tests/test_channel_bots.py`；慢数据库 canary 见 `tests/test_api_contracts.py::test_schedule_write_does_not_block_health_check`。
 
+后台待插入消息由 `api/pending_message_inserts.py` 调用 `services/pending_message_inserts.py`，在 `models/pending_message_insert.py` 保存排队当时的作者身份；`agent_assistants/base.py`、`agent_assistants/coordinator.py` 与 `services/workflow_runtime.py` 消费时用 `services/remote_access.py::replayed_actor_context` 还原身份，旧队列明确保持未知作者。行为、迁移及慢身份读取 canary 见 `tests/test_pending_message_inserts.py`、`tests/test_chat_session.py`、`tests/test_coordinator.py`、`tests/test_migrations.py`、`tests/test_api_contracts.py`。
+
 修改功能时先找所属模块，再沿前端页面或组件 → API → 服务 → 数据模型追踪。行为测试放在实际拥有该行为的模块附近；不要把页面、`src/api/client.ts` 或通用服务文件作为新功能的默认落点。
 
 | 功能 | Web 入口 | Daemon 入口 | 深入阅读 |

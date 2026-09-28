@@ -59,8 +59,10 @@ from services.messages import (
 )
 from services.pending_message_inserts import (
     delete_pending_insert_batch,
+    pending_insert_actor,
     pending_insert_batch,
 )
+from services.remote_access import replayed_actor_context
 from services.intervention import intervention_manager
 from services.messages import extract_usage_json
 from services.remote_project import current_actor_event_fields
@@ -1015,20 +1017,22 @@ class CoordinatorModule:
         task_id: str,
         target_message_id: str,
     ) -> None:
-        ids, content, username = await self._run_db(
-            project_id,
-            lambda: pending_insert_batch(target_message_id),
-        )
+        def load_batch():
+            ids, content, username = pending_insert_batch(target_message_id)
+            return ids, content, username, pending_insert_actor(target_message_id)
+
+        ids, content, username, actor = await self._run_db(project_id, load_batch)
         if not ids or not content:
             return
-        await self.submit_message(
-            project_id,
-            task_id,
-            content,
-            f"pending-inserts:{target_message_id}",
-            author_name=username,
-            pending_insert_ids=ids,
-        )
+        with replayed_actor_context(actor):
+            await self.submit_message(
+                project_id,
+                task_id,
+                content,
+                f"pending-inserts:{target_message_id}",
+                author_name=username,
+                pending_insert_ids=ids,
+            )
 
     def _record_unstreamed_journal_events(
         self,

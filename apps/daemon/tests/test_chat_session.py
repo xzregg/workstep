@@ -1640,14 +1640,19 @@ async def test_completed_chat_merges_persisted_pending_inserts_into_one_turn(
         create_pending_insert,
         list_pending_inserts,
     )
+    from services.remote_access import ActorSnapshot, actor_context
 
-    await manager.run_db(
-        project.id,
-        lambda _project: (
-            create_pending_insert(first.assistant_message_id, "补充一", "小王"),
-            create_pending_insert(first.assistant_message_id, "补充二", "小王"),
-        ),
-    )
+    with actor_context(ActorSnapshot(
+        actor_id="user-xw", user_name="小王", username="xiaowang",
+        device_id="device-xw", device_name="办公室电脑", source="managed",
+    )):
+        await manager.run_db(
+            project.id,
+            lambda _project: (
+                create_pending_insert(first.assistant_message_id, "补充一", "小王"),
+                create_pending_insert(first.assistant_message_id, "补充二", "小王"),
+            ),
+        )
     release_first.set()
 
     deadline = time.monotonic() + 2
@@ -1665,6 +1670,9 @@ async def test_completed_chat_merges_persisted_pending_inserts_into_one_turn(
         "补充一\n\n补充二",
     ]
     assert detail["messages"][2]["author_name"] == "小王"
+    assert detail["messages"][2]["author_id"] == "user-xw"
+    assert detail["messages"][2]["author_username"] == "xiaowang"
+    assert detail["messages"][3]["initiated_by_user_id"] == "user-xw"
     remaining = await manager.run_db(
         project.id,
         lambda _project: list_pending_inserts(first.assistant_message_id),

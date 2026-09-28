@@ -25,6 +25,43 @@ from agent_assistants.coordinator import CoordinatorModule
 from streaming.bus import EventBus
 
 
+@pytest.mark.anyio
+async def test_pending_insert_slow_actor_lookup_does_not_block_health(
+    api_context, monkeypatch,
+):
+    from services import pending_message_inserts as pending_module
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "pending-actor-canary"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)},
+    )).json()["id"]
+    entered = threading.Event()
+    original = pending_module.get_effective_actor
+
+    def slow_actor():
+        entered.set()
+        time.sleep(0.8)
+        return original()
+
+    monkeypatch.setattr(pending_module, "get_effective_actor", slow_actor)
+    request = asyncio.create_task(client.post(
+        "/api/pending-message-inserts",
+        json={
+            "project_id": project_id,
+            "target_message_id": "pending-reply",
+            "content": "稍后处理",
+        },
+    ))
+    assert await asyncio.to_thread(entered.wait, 2)
+    before = time.monotonic()
+    health = await client.get("/api/health")
+    assert health.status_code == 200
+    assert time.monotonic() - before < 0.5
+    assert (await request).status_code == 200
+
+
 class MemoryConfigStore:
     """In-memory project registry used at the filesystem boundary."""
 
