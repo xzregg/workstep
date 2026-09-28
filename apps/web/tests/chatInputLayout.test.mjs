@@ -41,10 +41,17 @@ test('mobile chat input controls scroll only within the space before the send bu
   assert.match(mobileCss, /\.chat-input-send\s*\{[^}]*flex:\s*0 0 var\(--mobile-control-composer\)/s)
   assert.doesNotMatch(mobileCss, /\.chat-input-send\s*\{[^}]*position:\s*sticky/s)
 })
-test('mobile task header keeps the compact id beside the share action', () => {
+test('mobile task header aligns discussion, share, and compact id controls', () => {
+  assert.match(taskDetailPage, /className="task-detail-discussion-button"/)
   assert.match(taskDetailPage, /className="task-detail-share-button"/)
   assert.match(taskDetailPage, /className="task-detail-id-button"/)
-  assert.match(mobileCss, /\.task-detail-id-button\s*\{[^}]*max-width:\s*180px[^}]*text-overflow:\s*ellipsis/s)
+  assert.match(taskDetailPage, /className="task-detail-share-label"/)
+  assert.match(taskDetailPage, /className="task-detail-id-marquee-track"/)
+  assert.match(mobileCss, /\.task-detail-discussion-button,\s*\.task-detail-share-button,\s*\.task-detail-id-button\s*\{[^}]*height:\s*var\(--mobile-control-regular\)/s)
+  assert.match(mobileCss, /\.task-detail-share-label\s*\{[^}]*display:\s*none/s)
+  assert.match(mobileCss, /\.task-detail-id-button\s*\{[^}]*width:\s*84px[^}]*max-width:\s*84px/s)
+  assert.match(mobileCss, /\.task-detail-id-marquee-track\s*\{[^}]*animation:\s*task-detail-id-scroll/s)
+  assert.match(mobileCss, /prefers-reduced-motion:\s*reduce[\s\S]*\.task-detail-id-marquee-track/s)
 })
 
 test('session chat composes engine quota with its shared input', () => {

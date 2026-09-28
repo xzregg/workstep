@@ -10,7 +10,7 @@ const sections: { id: SettingsSection; label: string; icon?: IconName; glyph?: s
   { id: 'pricing', label: 'settings.pricingNav', icon: 'layers' },
   { id: 'assistants', label: 'settings.assistantNav', glyph: '✦' },
   { id: 'templates', label: 'settings.templatesNav', icon: 'layout-grid' },
-  { id: 'channels', label: 'nav.channels', icon: 'radio' },
+  { id: 'channels', label: 'channelBot.title', icon: 'bot' },
   { id: 'remote', label: 'nav.remoteProjects', icon: 'share' },
   { id: 'concurrency', label: 'projectSettings.tabs.concurrency', icon: 'layers' },
   { id: 'git', label: 'gitSettings.title', icon: 'git-fork' },

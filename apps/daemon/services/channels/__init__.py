@@ -1,5 +1,1 @@
-"""Messaging channel integrations."""
-
-from services.channels.manager import ChannelManager
-
-__all__ = ["ChannelManager"]
+"""Enterprise messaging bot adapters and shared channel-chat helpers."""

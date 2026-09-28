@@ -1,6 +1,7 @@
-import type { Messages } from './zh-CN'
+import { zhCN, type Messages } from './zh-CN'
 
 export const jaJP: Messages = {
+  channelBot: zhCN.channelBot,
   git: {
     recoveryButton: '取り消し・復元',
     recoveryTitle: '履歴を復元',

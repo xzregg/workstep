@@ -1,4 +1,5 @@
 import AgentAssistantSettings from './AgentAssistantSettings'
+import BotSettings from './BotSettings'
 import ResizablePanel from '../components/ResizablePanel'
 import GitScanSettings from './GitScanSettings'
 import ProjectDirectorySetting from '../components/ProjectDirectorySetting'
@@ -16,7 +17,6 @@ import TemplateSettings from './TemplateSettings'
 import ProviderSettings from './ProviderSettings'
 import RemoteProjectSettings from './RemoteProjectSettings'
 import ModelPricingSettings from './ModelPricingSettings'
-import ChannelsPage from './ChannelsPage'
 import GlobalConcurrencySettings from './GlobalConcurrencySettings'
 import { useI18n } from '../i18n'
 import { useOnboardingStore } from '../stores/onboardingStore'
@@ -143,7 +143,7 @@ export default function SettingsPage({
         ) : activeSection === 'templates' ? (
           <TemplateSettings />
         ) : activeSection === 'channels' ? (
-          <ChannelsPage />
+          <BotSettings />
         ) : activeSection === 'remote' ? (
           <RemoteProjectSettings />
         ) : activeSection === 'concurrency' ? (

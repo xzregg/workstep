@@ -1,6 +1,7 @@
-import type { Messages } from './zh-CN'
+import { zhCN, type Messages } from './zh-CN'
 
 export const zhTW: Messages = {
+  channelBot: zhCN.channelBot,
   git: {
     recoveryButton: '撤銷與還原',
     recoveryTitle: '還原歷史',

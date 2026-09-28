@@ -28,6 +28,7 @@ import { a2uiActionMessageParams } from '../utils/a2ui'
 import StepPromptEditor from '../components/StepPromptEditor'
 import Icon from '../components/Icon'
 import ShareDialog from '../components/ShareDialog'
+import TaskDiscussionGroups from '../components/TaskDiscussionGroups'
 import ConfirmDialog from '../components/ConfirmDialog'
 import TaskDetailPage, { type TaskDetailReadCapabilities } from '../components/TaskDetailPage'
 import { resolveMarkdownImageSrc } from '../utils/markdownImages'
@@ -234,6 +235,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [livePromptOverrides, setLivePromptOverrides] = useState<Record<string, string>>({})
   const [taskIdCopied, setTaskIdCopied] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+  const [discussionGroupsOpen, setDiscussionGroupsOpen] = useState(false)
   const [durationNowMs, setDurationNowMs] = useState(() => Date.now())
   const [selectedStep, setSelectedStep] = useState(0)
   const selectedStepTaskRef = useRef<string | null>(null)
@@ -990,6 +992,11 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         }}
         headerActions={
           <>
+            <Button className="task-detail-discussion-button" variant="ghost"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => { event.stopPropagation(); setDiscussionGroupsOpen(true) }}>
+              {t('channelBot.discussionGroups')}
+            </Button>
             <Button
               className="task-detail-share-button"
               variant="ghost"
@@ -1002,14 +1009,14 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               }}
             >
               <Icon name="share" size={13} strokeWidth={1.75} />
-              {t('share.dialogTitle')}
+              <span className="task-detail-share-label">{t('share.dialogTitle')}</span>
             </Button>
             <Button
               className="task-detail-id-button"
               data-copied={taskIdCopied}
               variant="ghost"
-              title={t('taskDetail.copyTaskIdTitle')}
-              aria-label={t('taskDetail.copyTaskIdAria')}
+              title={`${t('taskDetail.copyTaskIdTitle')}：${task.id}`}
+              aria-label={`${t('taskDetail.copyTaskIdAria')}：${task.id}`}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={async () => {
                 await copyMessageText(task.id)
@@ -1017,7 +1024,11 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 window.setTimeout(() => setTaskIdCopied(false), 1500)
               }}
             >
-              {taskIdCopied ? t('common.copied') : `ID: ${task.id}`}
+              <span className="task-detail-id-marquee">
+                <span className="task-detail-id-marquee-track">
+                  {taskIdCopied ? t('common.copied') : `ID: ${task.id}`}
+                </span>
+              </span>
             </Button>
           </>
         }
@@ -1043,6 +1054,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onCloseViewingPrompt={() => setViewingPrompt(null)}
         artifactNotice={artifactNotice}
         overlays={<>
+          <TaskDiscussionGroups open={discussionGroupsOpen} projectId={projectId} taskId={taskId}
+            onClose={() => setDiscussionGroupsOpen(false)} />
           <ConfirmDialog
             open={pendingReviewCompletion !== null}
             title={t('taskDetail.setStepCompleteTitle')}

@@ -22,10 +22,9 @@ WorkStep 是一个本地优先（local-first）的工作流编排工具，将多
 | `apps/web` | 主界面：项目、工作流画布、任务、设置 | React 19、TypeScript、Vite、Zustand、Antd、@xyflow/react |
 | `apps/desktop` | 桌面壳：窗口、安装包、自动更新；内嵌独立 Python runtime 运行 daemon sidecar | Electron、electron-builder |
 | `apps/landing` | 产品介绍页，构建后由 daemon 托管在 `/landing` | Vite、React |
-| `apps/wechat-bridge` | 微信渠道侧车，daemon 以子进程启动，JSONL 单行协议通信 | Node.js、wechaty |
 | `apps/android` | Android 壳，经 HTTPS 加载 web 移动版页面 | Android (JDK 17 / SDK 35) |
 
-相互关系：`web` 是 `daemon` 的主界面；`desktop` 将 web 构建产物与 daemon 一起打包进 Electron；`android` 复用 web 移动端页面；`wechat-bridge` 由 daemon 按需拉起，为任务增加微信渠道。
+相互关系：`web` 是 `daemon` 的主界面；`desktop` 将 web 构建产物与 daemon 一起打包进 Electron；`android` 复用 web 移动端页面。
 
 每个项目在自己的目录下保存运行数据（`<project>/.workstep/`）：`project.json` 项目标识、`workstep.db` 项目数据库、`artifacts/` 步骤产物、`event_logs/` 消息 JSONL 事件日志、`skills/` 技能镜像、`MEMORY.md` 项目记忆。
 
