@@ -60,6 +60,9 @@ class GatewayControlClient:
         self._command_tasks: set[asyncio.Task] = set()
         self._stop = asyncio.Event()
         self.config_private_key: X25519PrivateKey | None = None
+        self._active_socket = None
+        self._project_ack_messages: asyncio.Queue | None = None
+        self._project_request_lock = asyncio.Lock()
 
     def start(self, authorization: str, device_id: str,
               control_private_key_pem: str, control_public_key_pem: str,
@@ -99,6 +102,34 @@ class GatewayControlClient:
                 pass
             self._task = None
         self.online = False
+
+    async def publish_project(self, device_id: str, host_project_id: str,
+                              name: str, action: str) -> dict:
+        async with self._project_request_lock:
+            socket = self._active_socket
+            messages = self._project_ack_messages
+            if not self.online or socket is None or messages is None:
+                raise ConnectionError("Gateway control connection is offline")
+            await socket.send(json.dumps({
+                "kind": "project_publish", "version": 1,
+                "action": action, "host_project_id": host_project_id, "name": name,
+            }))
+            response = await asyncio.wait_for(messages.get(), timeout=15)
+            if isinstance(response, Exception):
+                raise response
+            if (not isinstance(response, dict)
+                    or response.get("kind") != "project_publish_ack"
+                    or response.get("version") != 1
+                    or response.get("device_id") != device_id
+                    or response.get("host_project_id") != host_project_id
+                    or response.get("status") not in (
+                        "published", "unpublished", "denied", "failed")):
+                raise ValueError("Invalid Gateway project publication acknowledgment")
+            if response["status"] == "denied":
+                raise PermissionError("Project publication denied by Gateway")
+            if response["status"] == "failed":
+                raise ValueError("Gateway project publication failed")
+            return response
 
     async def _run(self, authorization: str, device_id: str,
                    private_key: Ed25519PrivateKey, public_key_pem: str,
@@ -143,9 +174,11 @@ class GatewayControlClient:
                     messages = asyncio.Queue()
                     usage_messages = asyncio.Queue()
                     skill_messages = asyncio.Queue()
+                    project_messages = asyncio.Queue()
                     reader_task = asyncio.create_task(
                         self._read_control_messages(socket, device_id, messages,
-                                                    usage_messages, skill_messages),
+                                                    usage_messages, skill_messages,
+                                                    project_messages),
                     )
                     hello = await self._receive_kind(messages, "hello")
                     if (not isinstance(hello, dict) or hello.get("kind") != "hello"
@@ -170,6 +203,8 @@ class GatewayControlClient:
                         usage_task = asyncio.create_task(
                             self._usage_loop(socket, device_id, usage_messages),
                         )
+                    self._active_socket = socket
+                    self._project_ack_messages = project_messages
                     self.online = True
                     delay = 1.0
                     while not self._stop.is_set():
@@ -214,6 +249,12 @@ class GatewayControlClient:
                 logger.warning("Gateway control connection failed: %s", type(exc).__name__)
             finally:
                 self.online = False
+                self._active_socket = None
+                if self._project_ack_messages is not None:
+                    self._project_ack_messages.put_nowait(
+                        ConnectionError("Gateway control connection closed"),
+                    )
+                self._project_ack_messages = None
                 self.config_private_key = None
                 if usage_task:
                     usage_task.cancel()
@@ -257,7 +298,8 @@ class GatewayControlClient:
     async def _read_control_messages(self, socket, device_id: str,
                                      messages: asyncio.Queue,
                                      usage_messages: asyncio.Queue,
-                                     skill_messages: asyncio.Queue) -> None:
+                                     skill_messages: asyncio.Queue,
+                                     project_messages: asyncio.Queue) -> None:
         try:
             while not self._stop.is_set():
                 message = json.loads(await socket.recv())
@@ -280,6 +322,8 @@ class GatewayControlClient:
                     usage_messages.put_nowait(message)
                 elif message.get("kind") == "skill_applied_ack":
                     skill_messages.put_nowait(message)
+                elif message.get("kind") == "project_publish_ack":
+                    project_messages.put_nowait(message)
                 else:
                     messages.put_nowait(message)
         except asyncio.CancelledError:

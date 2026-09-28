@@ -84,3 +84,40 @@ def test_managed_task_creation_requires_matching_live_capability(monkeypatch):
     with actor_context(ActorSnapshot("user-2", "bob", "device-1", "Alice PC", "managed")):
         with pytest.raises(PermissionError):
             require_managed_capability("task.create")
+
+
+def test_project_scoped_task_creation_and_explicit_denial(monkeypatch):
+    import main
+
+    token, pem, fingerprint = _signed_policy(
+        task_create_project_ids=["project-1"],
+        task_create_denied_project_ids=["project-2"],
+    )
+    cache = ManagedPolicyCache()
+    cache.apply(verify_policy_snapshot(token, pem, fingerprint,
+                                       "gateway-test", "device-1", "user-1"))
+    monkeypatch.setattr(main, "gateway_client", SimpleNamespace(
+        managed_config=object(), policy_cache=cache,
+    ))
+    actor = ActorSnapshot("user-1", "alice", "device-1", "Alice PC", "managed")
+    with actor_context(actor):
+        require_managed_capability("task.create", project_id="project-1")
+        with pytest.raises(PermissionError):
+            require_managed_capability("task.create", project_id="project-2")
+        with pytest.raises(PermissionError):
+            require_managed_capability("task.create", project_id="project-3")
+    assert cache.allows("task.create", project_id="project-1")
+    assert not cache.allows("task.create", project_id="project-2")
+
+    broad, pem, fingerprint = _signed_policy(
+        task_create=True, task_create_denied_project_ids=["project-2"],
+    )
+    policy = verify_policy_snapshot(broad, pem, fingerprint,
+                                    "gateway-test", "device-1", "user-1")
+    assert policy.allows("task.create", project_id="project-1")
+    assert not policy.allows("task.create", project_id="project-2")
+
+    invalid, pem, fingerprint = _signed_policy(task_create_project_ids=["", 4])
+    with pytest.raises(ValueError):
+        verify_policy_snapshot(invalid, pem, fingerprint,
+                               "gateway-test", "device-1", "user-1")

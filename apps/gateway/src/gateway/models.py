@@ -381,7 +381,11 @@ class PlatformProject(Base):
     access_mode: Mapped[str] = mapped_column(String(32), server_default="policy_only")
     status: Mapped[str] = mapped_column(String(16), server_default="active")
     skill_revision: Mapped[int] = mapped_column(Integer, server_default="0")
+    published_by_user_id: Mapped[str | None] = mapped_column(String(64))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_user_id: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = timestamp()
+    updated_at: Mapped[datetime] = timestamp()
 
 
 class ProjectAccessGrant(Base):
@@ -393,6 +397,7 @@ class ProjectAccessGrant(Base):
     subject_type: Mapped[str] = mapped_column(String(16))
     subject_id: Mapped[str] = mapped_column(String(64))
     access_level: Mapped[str] = mapped_column(String(16))
+    assigned_by_user_id: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = timestamp()
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

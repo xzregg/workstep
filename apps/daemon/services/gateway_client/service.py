@@ -12,6 +12,7 @@ from .usage_outbox import UsageOutbox
 from .usage import build_usage_event
 from .skill_sync_client import ManagedSkillSyncService
 from services.project import project_manager
+from .policy import require_managed_capability
 
 
 class GatewayClientService:
@@ -115,6 +116,18 @@ class GatewayClientService:
             initiated_by_user_id=user_id, session_id=session_id,
         )
         await asyncio.to_thread(self.usage_outbox.append, event)
+
+    async def publish_project(self, project_id: str, *, published: bool) -> dict:
+        if self.managed_config is None or self.control_client is None or not self.device_id:
+            raise ConnectionError("Managed Gateway is unavailable")
+        require_managed_capability("project.publish")
+        project = project_manager.get_project_by_id(project_id)
+        if project is None:
+            raise KeyError("Project not found")
+        return await self.control_client.publish_project(
+            self.device_id, project.id, project.name,
+            "publish" if published else "unpublish",
+        )
 
     async def close(self) -> None:
         if self.control_client is not None:

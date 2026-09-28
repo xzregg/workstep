@@ -42,7 +42,8 @@ async def create_project_task(
     """Create one task and optionally start it using a single policy interface."""
     if execution_mode not in {"workflow", "immediate", "manual"}:
         raise ValueError(f"Invalid execution mode: {execution_mode}")
-    require_managed_capability("task.create", creator_fields=creator_fields)
+    require_managed_capability("task.create", creator_fields=creator_fields,
+                               project_id=project_id)
 
     def persist(project):
         if workflow_id and hasattr(project, "workflow_by_id"):

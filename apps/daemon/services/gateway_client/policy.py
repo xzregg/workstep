@@ -35,17 +35,24 @@ class ManagedPolicy:
     project_publish: bool
     task_share: bool
     engine_install: bool
+    task_create_project_ids: frozenset[str] = frozenset()
+    task_create_denied_project_ids: frozenset[str] = frozenset()
 
     @property
     def valid(self) -> bool:
         return self.expires_at > int(time.time())
 
-    def allows(self, action: str) -> bool:
+    def allows(self, action: str, *, project_id: str | None = None) -> bool:
         if not self.valid:
             return False
+        if action == "task.create":
+            if project_id is None:
+                return self.task_create
+            if project_id in self.task_create_denied_project_ids:
+                return False
+            return self.task_create or project_id in self.task_create_project_ids
         return {
             "provider.local": self.allow_local_providers,
-            "task.create": self.task_create,
             "project.publish": self.project_publish,
             "task.share": self.task_share,
             "engine.install": self.engine_install,
@@ -82,6 +89,12 @@ def verify_policy_snapshot(token: str, public_key_pem: str, expected_fingerprint
             if not isinstance(values, list) or len(values) > 1000 or any(
                     not isinstance(value, str) or not value for value in values):
                 raise ValueError("Invalid policy catalog")
+        for name in ("task_create_project_ids", "task_create_denied_project_ids"):
+            values = claims.get(name, [])
+            if (not isinstance(values, list) or len(values) > 1000
+                    or any(not isinstance(value, str) or not value or len(value) > 128
+                           for value in values)):
+                raise ValueError("Invalid project capability scope")
         for name in ("allow_local_providers", "task_create", "project_publish",
                      "task_share", "engine_install"):
             if type(claims.get(name)) is not bool:
@@ -95,6 +108,9 @@ def verify_policy_snapshot(token: str, public_key_pem: str, expected_fingerprint
             allow_local_providers=claims["allow_local_providers"],
             task_create=claims["task_create"], project_publish=claims["project_publish"],
             task_share=claims["task_share"], engine_install=claims["engine_install"],
+            task_create_project_ids=frozenset(claims.get("task_create_project_ids", [])),
+            task_create_denied_project_ids=frozenset(
+                claims.get("task_create_denied_project_ids", [])),
         )
     except (InvalidSignature, KeyError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
         raise ValueError("Invalid Gateway policy snapshot") from exc
@@ -114,14 +130,15 @@ class ManagedPolicyCache:
             raise ValueError("Stale or mismatched managed policy")
         self.current = policy
 
-    def allows(self, action: str) -> bool:
-        return bool(self.current and self.current.allows(action))
+    def allows(self, action: str, *, project_id: str | None = None) -> bool:
+        return bool(self.current and self.current.allows(action, project_id=project_id))
 
     def clear(self) -> None:
         self.current = None
 
 
-def require_managed_capability(action: str, *, creator_fields: dict | None = None) -> None:
+def require_managed_capability(action: str, *, creator_fields: dict | None = None,
+                               project_id: str | None = None) -> None:
     """Fail closed at a shared service entry when this daemon is Gateway-managed."""
     from main import gateway_client
     from services.remote_access import get_current_actor
@@ -134,5 +151,5 @@ def require_managed_capability(action: str, *, creator_fields: dict | None = Non
         user_id = creator_fields.get("creator_id")
     policy = gateway_client.policy_cache.current
     if (not user_id or policy is None or policy.user_id != user_id
-            or not gateway_client.policy_cache.allows(action)):
+            or not gateway_client.policy_cache.allows(action, project_id=project_id)):
         raise PermissionError(f"Managed capability denied: {action}")
