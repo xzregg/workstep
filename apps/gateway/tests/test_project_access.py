@@ -143,6 +143,9 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
                            headers={"Origin": host}, json={"data_url": "data:image/png;base64,aA=="}).status_code == 403
         assert client.put(f"{host}/api/fs/content?project_id=host-1",
                           headers={"Origin": host}, json={"project_id": "host-1"}).status_code == 403
+        assert client.post(f"{host}/api/task/task-1/chat?project_id=host-1",
+                           headers={"Origin": host, "Idempotency-Key": "msg-1"},
+                           json={"content": "Hello"}).status_code == 403
         remote_cookie = client.cookies.get("workstep_gateway_session", domain="d-device-1.gateway.test")
         client.cookies.clear()
         owner_login = client.post("/api/auth/login", json={
@@ -181,6 +184,9 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
                            json={"data_url": "data:image/png;base64,aA=="}).status_code == 200
         assert client.put(f"{host}/api/fs/content?project_id=host-1",
                           headers=edit_headers, json={"project_id": "host-1"}).status_code == 200
+        assert client.post(f"{host}/api/task/task-1/chat?project_id=host-1",
+                           headers={**edit_headers, "Idempotency-Key": "msg-1"},
+                           json={"content": "Hello"}).status_code == 200
         client.cookies.clear()
         owner_login = client.post("/api/auth/login", json={
             "username": "owner", "password": "OwnerPassphrase-2026!",
