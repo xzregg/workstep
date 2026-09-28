@@ -1,5 +1,10 @@
-"""Managed Gateway client boundary; connection support is added in stage 3B."""
-
-from .service import GatewayClientService
+"""Managed Gateway client boundary."""
 
 __all__ = ["GatewayClientService"]
+
+
+def __getattr__(name: str):
+    if name != "GatewayClientService":
+        raise AttributeError(name)
+    from .service import GatewayClientService
+    return GatewayClientService
