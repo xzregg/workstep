@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import threading
 import uuid
 from contextlib import AsyncExitStack
 from pathlib import Path
@@ -1887,7 +1888,26 @@ async def test_chat_calls_selected_engine_without_starting_workflow(
     client, tmp_path = api_context
     CoordinatorFakeEngine.calls.clear()
     monkeypatch.setitem(ENGINE_REGISTRY, "claude", CoordinatorFakeEngine)
+    recorded_usage = []
+    async def record_usage(**kwargs):
+        recorded_usage.append(kwargs)
+    monkeypatch.setattr(main.gateway_client, "record_message_usage", record_usage)
     project_id, task_id = await _create_task(client, tmp_path)
+    import agent_assistants.coordinator as coordinator_service
+    monkeypatch.setattr(CoordinatorFakeEngine, "resolve_provider_id",
+                        lambda self, _provider_id=None: "managed-coordinator", raising=False)
+    loop = asyncio.get_running_loop()
+    read_started, read_finished = asyncio.Event(), asyncio.Event()
+    release_read = threading.Event()
+
+    def load_provider(provider_id):
+        loop.call_soon_threadsafe(read_started.set)
+        release_read.wait(timeout=1)
+        loop.call_soon_threadsafe(read_finished.set)
+        return {"id": provider_id, "managed_revision": 7,
+                "prices": {"version": "v7", "models": {}}}
+
+    monkeypatch.setattr(coordinator_service.config_store, "get_provider", load_provider)
     event_queue = main.coordinator_module._event_bus.subscribe()
 
     try:
@@ -1898,6 +1918,10 @@ async def test_chat_calls_selected_engine_without_starting_workflow(
         )
 
         assert accepted.status_code == 200
+        await asyncio.wait_for(read_started.wait(), timeout=2)
+        assert not read_finished.is_set()
+        await asyncio.wait_for(asyncio.sleep(0.01), timeout=0.05)
+        release_read.set()
         assistant = await _wait_for_reply(client, project_id, task_id)
         assert assistant["content"] == "协调回复"
         assert assistant["prompt"]
@@ -1906,6 +1930,15 @@ async def test_chat_calls_selected_engine_without_starting_workflow(
             "input_tokens": 120,
             "output_tokens": 30,
             "total_tokens": 150,
+        }
+        assert len(recorded_usage) == 1
+        assert recorded_usage[0]["message_id"] == accepted.json()["assistant_message_id"]
+        assert recorded_usage[0]["task_id"] == task_id
+        assert json.loads(recorded_usage[0]["usage_json"])["input_tokens"] == 120
+        assert recorded_usage[0]["provider_id"] == "managed-coordinator"
+        assert recorded_usage[0]["provider"] == {
+            "id": "managed-coordinator", "managed_revision": 7,
+            "prices": {"version": "v7", "models": {}},
         }
         published = []
         while not event_queue.empty():
@@ -1936,6 +1969,7 @@ async def test_chat_calls_selected_engine_without_starting_workflow(
         assert duplicate.json()["turn_id"] == accepted.json()["turn_id"]
         assert len(CoordinatorFakeEngine.calls) == 1
     finally:
+        release_read.set()
         main.coordinator_module._event_bus.unsubscribe(event_queue)
 
 
