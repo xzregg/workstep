@@ -315,10 +315,14 @@ test('organization page browses a source, its departments and direct members', a
           last_error_code: 'provider_unavailable', cursor: 'cursor-1',
           changes: { people_added: 1, departments_added: 1 },
         } }], total: 1 })
+    if (url.includes('parent_id=dept-1')) return Response.json({ departments: [
+      { id: 'dept-2', source_id: 'source-1', provider: 'wecom', tenant_id: 'tenant-a',
+        external_id: 'platform', display_name: 'Platform', parent_external_id: 'engineering',
+        active: true, direct_members: 0, child_count: 0 }], total: 1 })
     if (url.startsWith('/api/admin/org/departments?')) return Response.json({ departments: [
       { id: 'dept-1', source_id: 'source-1', provider: 'wecom', tenant_id: 'tenant-a',
         external_id: 'engineering', display_name: 'Engineering', parent_external_id: null,
-        active: true, direct_members: 1 }], total: 1 })
+        active: true, direct_members: 1, child_count: 1 }], total: 1 })
     if (url.startsWith('/api/admin/org/departments/dept-1/members?')) return Response.json({ members: [
       { id: 'person-1', user_id: 'user-1', subject: 'person-a', display_name: 'Alice',
         username: 'alice', user_status: 'active' }], total: 1 })
@@ -333,7 +337,11 @@ test('organization page browses a source, its departments and direct members', a
   assert.match(document.body.textContent ?? '', /新增成员：1/)
   fireEvent.click(screen.getByRole('button', { name: '查看目录' }))
   await waitFor(() => assert.ok(requests.some(url => url.includes('source_id=source-1'))))
-  fireEvent.click(screen.getByRole('button', { name: /Engineering/ }))
+  assert.ok(requests.some(url => url.includes('roots_only=true')))
+  fireEvent.click(screen.getByRole('button', { name: '展开 Engineering 子部门' }))
+  await screen.findByRole('button', { name: /Platform/ })
+  assert.ok(requests.some(url => url.includes('parent_id=dept-1')))
+  fireEvent.click(screen.getByText('Engineering').closest('button')!)
   await screen.findByText('Alice')
   fireEvent.click(screen.getByRole('button', { name: '手动对账' }))
   fireEvent.click(within(screen.getByRole('dialog', { name: '手动对账' })).getByRole('button', { name: '开始对账' }))

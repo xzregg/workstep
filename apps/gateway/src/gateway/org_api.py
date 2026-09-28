@@ -3,7 +3,8 @@
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, exists, func, or_, select, tuple_
+from sqlalchemy.orm import aliased
 
 from .identity import COOKIE_NAME, IdentityService
 from .models import DirectoryDepartment, DirectoryMembership, DirectoryPerson, IdentitySource, User
@@ -27,6 +28,7 @@ def _pattern(q: str) -> str:
 @router.get('/departments')
 async def list_departments(request: Request, source_id: str | None = None,
                            q: str = Query('', max_length=128),
+                           roots_only: bool = False, parent_id: str | None = None,
                            status: Literal['active', 'deleted', 'all'] = 'active',
                            sort: Literal['display_name', 'external_id'] = 'display_name',
                            direction: Literal['asc', 'desc'] = 'asc',
@@ -40,6 +42,25 @@ async def list_departments(request: Request, source_id: str | None = None,
             conditions.append(DirectoryDepartment.source_id == source_id)
         if status != 'all':
             conditions.append(DirectoryDepartment.active == int(status == 'active'))
+        if parent_id:
+            if allowed_ids is not None and parent_id not in allowed_ids:
+                raise HTTPException(status_code=403, detail='Department scope denied')
+            parent = await session.get(DirectoryDepartment, parent_id)
+            if parent is None:
+                raise HTTPException(status_code=404, detail='Department not found')
+            if source_id and source_id != parent.source_id:
+                raise HTTPException(status_code=400, detail='Source mismatch')
+            conditions.extend((DirectoryDepartment.source_id == parent.source_id,
+                               DirectoryDepartment.parent_external_id == parent.external_id))
+        elif roots_only and not q.strip():
+            parent = aliased(DirectoryDepartment)
+            visible_parent = [parent.source_id == DirectoryDepartment.source_id,
+                              parent.external_id == DirectoryDepartment.parent_external_id]
+            if status != 'all':
+                visible_parent.append(parent.active == int(status == 'active'))
+            if allowed_ids is not None:
+                visible_parent.append(parent.id.in_(allowed_ids))
+            conditions.append(~exists(select(parent.id).where(and_(*visible_parent))))
         if q.strip():
             pattern = _pattern(q)
             conditions.append(or_(DirectoryDepartment.display_name.ilike(pattern, escape='\\'),
@@ -61,10 +82,24 @@ async def list_departments(request: Request, source_id: str | None = None,
                 .where(DirectoryMembership.department_id.in_(ids), DirectoryPerson.active == 1)
                 .group_by(DirectoryMembership.department_id))).all()
             member_counts = dict(count_rows)
+        child_counts = {}
+        if ids:
+            child_conditions = [DirectoryDepartment.active == 1,
+                                tuple_(DirectoryDepartment.source_id,
+                                       DirectoryDepartment.parent_external_id).in_(
+                                           [(row.source_id, row.external_id) for row, _, _ in rows])]
+            if allowed_ids is not None:
+                child_conditions.append(DirectoryDepartment.id.in_(allowed_ids))
+            child_rows = (await session.execute(select(DirectoryDepartment.source_id,
+                                                       DirectoryDepartment.parent_external_id, func.count())
+                .where(*child_conditions, DirectoryDepartment.parent_external_id.is_not(None))
+                .group_by(DirectoryDepartment.source_id, DirectoryDepartment.parent_external_id))).all()
+            child_counts = {(source, external): count for source, external, count in child_rows}
         departments = [{'id': row.id, 'source_id': row.source_id, 'external_id': row.external_id,
                         'display_name': row.display_name, 'parent_external_id': row.parent_external_id,
                         'active': bool(row.active), 'provider': provider, 'tenant_id': tenant_id,
-                        'direct_members': member_counts.get(row.id, 0)}
+                        'direct_members': member_counts.get(row.id, 0),
+                        'child_count': child_counts.get((row.source_id, row.external_id), 0)}
                        for row, provider, tenant_id in rows]
     return {'departments': departments, 'total': total, 'page': page, 'page_size': page_size}
 
