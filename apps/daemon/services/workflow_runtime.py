@@ -83,6 +83,14 @@ class WorkflowRuntime:
             project_manager, event_bus, self
         )
 
+    def project_has_active_runs(self, project_id: str) -> bool:
+        return any(
+            runner._source_project_id == project_id
+            or getattr(getattr(runner, "_database_executor", None), "project_id", None)
+            == project_id
+            for runner in self._runners.values()
+        )
+
     async def run(
         self,
         project_id: str,

@@ -103,6 +103,11 @@ def test_control_socket_authenticates_device_and_tracks_connection(tmp_path):
             assert hello["kind"] == "hello"
             assert hello["device_id"] == device_id
             assert hello["policy_snapshot"]
+            assert app.state.gateway_signer.verify_skill_manifest(
+                hello["skill_manifest"], gateway_id="gateway-test",
+                device_id=device_id, user_id=json.loads(base64.urlsafe_b64decode(
+                    token.split(".")[1] + "==="))["user_id"],
+            )["projects"] == []
             signing_input = ".".join(hello["policy_snapshot"].split(".")[:2]).encode()
             signature = base64.urlsafe_b64decode(hello["policy_snapshot"].split(".")[2] + "==")
             serialization.load_pem_public_key(hello["gateway_public_key_pem"].encode()).verify(
@@ -119,7 +124,9 @@ def test_control_socket_authenticates_device_and_tracks_connection(tmp_path):
             listed = client.get("/api/admin/devices", headers={"X-CSRF-Token": csrf}).json()["devices"]
             assert listed[0]["online"] is True
             ws.send_json({"kind": "heartbeat"})
-            assert ws.receive_json()["kind"] == "heartbeat_ack"
+            heartbeat = ws.receive_json()
+            assert heartbeat["kind"] == "heartbeat_ack"
+            assert heartbeat["skill_manifest"]
         listed = client.get("/api/admin/devices").json()["devices"]
         assert listed[0]["online"] is False
 
@@ -172,6 +179,37 @@ def test_control_accepts_usage_batch_and_acks_after_commit(tmp_path):
             ws.send_json({"kind": "usage_batch", "version": 1,
                           "batch_id": "batch-1", "events": [usage]})
             assert ws.receive_json()["duplicates"] == ["usage-1"]
+
+
+def test_control_records_project_skill_application_for_own_device(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        device_id, token, device_key, _ = _active_device(client)
+        with sqlite3.connect(tmp_path / "workstep_platform.db") as database:
+            database.execute(
+                "INSERT INTO platform_projects (id,device_id,host_project_id,name,"
+                "access_mode,status,skill_revision) VALUES (?,?,?,?,?,?,?)",
+                ("platform-1", device_id, "host-1", "Project", "policy_only", "active", 1),
+            )
+        with client.websocket_connect("/api/control/ws") as ws:
+            _handshake(ws, token, device_key)
+            assert ws.receive_json()["kind"] == "hello"
+            ws.send_json({"kind": "skill_applied", "version": 1, "projects": [{
+                "project_id": "platform-1", "revision": 1,
+                "status": "applied", "error_code": None,
+            }]})
+            ack = ws.receive_json()
+            assert ack["kind"] == "skill_applied_ack"
+            assert ack["projects"] == ["platform-1"]
+        with sqlite3.connect(tmp_path / "workstep_platform.db") as database:
+            assert database.execute(
+                "SELECT desired_revision,applied_revision,status FROM "
+                "device_project_skill_state WHERE device_id=? AND host_project_id=?",
+                (device_id, "host-1"),
+            ).fetchone() == (1, 1, "applied")
+        applications = client.get("/api/admin/skills/applications")
+        assert applications.status_code == 200
+        assert applications.json()["projects"][0]["applied_revision"] == 1
 
 
 def test_locked_usage_ledger_does_not_delay_control_heartbeat(tmp_path):

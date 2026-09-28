@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -14,12 +15,14 @@ from .groups_api import _actor, _can_manage_group
 from .identity import COOKIE_NAME
 from .identity_api import _check_csrf, _identity
 from .models import (AuditEvent, GroupProject, GroupSkillCatalog, PlatformProject,
-                     ProjectSkillAssignment, SkillPackage, SkillVersion, UserGroup)
+                     ProjectSkillAssignment, SkillPackage, SkillVersion, UserGroup,
+                     Device, DeviceProjectSkillState, User, UserDevice)
 from .skill_packages import save_archive, validate_archive
 
 router = APIRouter(prefix="/api/admin/skills")
 admin_group_router = APIRouter(prefix="/api/admin/groups")
 project_skill_router = APIRouter(prefix="/api/groups")
+device_skill_router = APIRouter(prefix="/api/device/skills")
 
 
 class SkillInput(BaseModel):
@@ -35,6 +38,10 @@ class SkillVersionInput(BaseModel):
 
 class SkillGrantInput(BaseModel):
     skill_version_id: str = Field(min_length=1, max_length=64)
+
+
+class SkillRevokeInput(BaseModel):
+    reason: str = Field(min_length=1, max_length=512)
 
 
 async def _admin(request: Request):
@@ -62,6 +69,28 @@ def _public_version(row: SkillVersion) -> dict:
     return {"id": row.id, "skill_id": row.skill_id, "version": row.version,
             "digest": row.digest, "file_count": row.file_count,
             "total_size": row.total_size, "status": row.status}
+
+
+@router.get("/applications")
+async def list_skill_applications(request: Request):
+    await _admin_read(request)
+    async with request.app.state.database.session() as session:
+        rows = (await session.execute(select(
+            PlatformProject, Device, DeviceProjectSkillState,
+        ).join(Device, Device.id == PlatformProject.device_id)
+            .outerjoin(DeviceProjectSkillState,
+                       (DeviceProjectSkillState.device_id == PlatformProject.device_id)
+                       & (DeviceProjectSkillState.host_project_id == PlatformProject.host_project_id))
+            .where(PlatformProject.skill_revision > 0)
+            .order_by(Device.name, PlatformProject.name))).all()
+    return {"projects": [{
+        "project_id": project.id, "project_name": project.name,
+        "device_id": device.id, "device_name": device.name,
+        "desired_revision": project.skill_revision,
+        "applied_revision": state.applied_revision if state else None,
+        "status": state.status if state else "pending",
+        "last_error_code": state.last_error_code if state else None,
+    } for project, device, state in rows]}
 
 
 @router.post("", status_code=201)
@@ -152,6 +181,42 @@ async def approve_skill_version(request: Request, skill_id: str, version_id: str
             row.published_at = datetime.now(timezone.utc)
             session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,
                                    action="skill.version_approved", result="success",
+                                   metadata_json=f'{{"version_id":"{version_id}"}}'))
+    return _public_version(row)
+
+
+@router.post("/{skill_id}/versions/{version_id}/revoke")
+async def revoke_skill_version(request: Request, skill_id: str,
+                               version_id: str, body: SkillRevokeInput):
+    actor = await _admin(request)
+    async with request.app.state.database.session() as session:
+        async with session.begin():
+            row = await session.get(SkillVersion, version_id)
+            if row is None or row.skill_id != skill_id:
+                raise HTTPException(status_code=404, detail="Skill version unavailable")
+            if row.status != "approved":
+                raise HTTPException(status_code=409, detail="Skill version is not active")
+            row.status = "revoked"
+            row.revoked_at = datetime.now(timezone.utc)
+            row.revoke_reason = body.reason
+            catalogs = (await session.scalars(select(GroupSkillCatalog).where(
+                GroupSkillCatalog.skill_version_id == version_id,
+                GroupSkillCatalog.revoked_at.is_(None),
+            ))).all()
+            for catalog in catalogs:
+                catalog.revoked_at = row.revoked_at
+            assignments = (await session.scalars(select(ProjectSkillAssignment).where(
+                ProjectSkillAssignment.skill_version_id == version_id,
+                ProjectSkillAssignment.revoked_at.is_(None),
+            ))).all()
+            for assignment in assignments:
+                project = await session.get(PlatformProject, assignment.platform_project_id)
+                project.skill_revision += 1
+                assignment.desired_revision = project.skill_revision
+                assignment.status = "revoked"
+                assignment.revoked_at = row.revoked_at
+            session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,
+                                   action="skill.version_revoked", result="success",
                                    metadata_json=f'{{"version_id":"{version_id}"}}'))
     return _public_version(row)
 
@@ -251,3 +316,107 @@ async def assign_project_skill(request: Request, group_id: str,
     return {"project_id": project_id, "skill_id": version.skill_id,
             "skill_version_id": version.id,
             "desired_revision": assignment.desired_revision}
+
+
+async def compile_skill_manifest(database, signer, gateway_id: str,
+                                 device_id: str, user_id: str) -> str:
+    async with database.session() as session:
+        projects = (await session.scalars(select(PlatformProject).where(
+            PlatformProject.device_id == device_id,
+            PlatformProject.status == "active",
+            PlatformProject.skill_revision > 0,
+        ).order_by(PlatformProject.id).limit(1001))).all()
+        if len(projects) > 1000:
+            raise ValueError("Too many managed Skill projects")
+        entries = []
+        for project in projects:
+            rows = (await session.execute(select(
+                ProjectSkillAssignment, SkillVersion, SkillPackage,
+            ).join(SkillVersion, SkillVersion.id == ProjectSkillAssignment.skill_version_id)
+                .join(SkillPackage, SkillPackage.id == ProjectSkillAssignment.skill_id)
+                .join(GroupProject, (GroupProject.group_id == ProjectSkillAssignment.source_group_id)
+                      & (GroupProject.platform_project_id == project.id))
+                .join(GroupSkillCatalog,
+                      (GroupSkillCatalog.group_id == ProjectSkillAssignment.source_group_id)
+                      & (GroupSkillCatalog.skill_id == ProjectSkillAssignment.skill_id)
+                      & (GroupSkillCatalog.skill_version_id == SkillVersion.id))
+                .where(ProjectSkillAssignment.platform_project_id == project.id,
+                       ProjectSkillAssignment.revoked_at.is_(None),
+                       GroupProject.revoked_at.is_(None),
+                       GroupSkillCatalog.revoked_at.is_(None),
+                       SkillVersion.status == "approved",
+                       SkillPackage.status == "active")
+                .order_by(SkillPackage.slug))).all()
+            entries.append({
+                "platform_project_id": project.id,
+                "host_project_id": project.host_project_id,
+                "revision": project.skill_revision,
+                "skills": [{"skill_id": package.id, "slug": package.slug,
+                            "skill_version_id": version.id,
+                            "version": version.version, "digest": version.digest,
+                            "file_count": version.file_count,
+                            "total_size": version.total_size,
+                            "source_group_id": assignment.source_group_id}
+                           for assignment, version, package in rows],
+            })
+    return signer.sign_skill_manifest(gateway_id=gateway_id,
+                                      device_id=device_id, user_id=user_id,
+                                      projects=entries)
+
+
+@device_skill_router.get("/{version_id}")
+async def download_skill_version(request: Request, version_id: str):
+    authorization = request.headers.get("authorization", "")
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Skill manifest required")
+    try:
+        claims = request.app.state.gateway_signer.verify_skill_manifest(
+            authorization.removeprefix("Bearer "),
+            gateway_id=request.app.state.settings.gateway_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="Invalid Skill manifest") from exc
+    project_ids = [project.get("platform_project_id") for project in claims["projects"]
+                   if isinstance(project, dict) and isinstance(project.get("skills"), list)
+                   and any(isinstance(skill, dict)
+                           and skill.get("skill_version_id") == version_id
+                           for skill in project["skills"])]
+    if not project_ids:
+        raise HTTPException(status_code=403, detail="Skill version is out of scope")
+    async with request.app.state.database.session() as session:
+        device = await session.get(Device, claims["device_id"])
+        user = await session.get(User, claims["user_id"])
+        access = await session.scalar(select(UserDevice.id).where(
+            UserDevice.device_id == claims["device_id"],
+            UserDevice.user_id == claims["user_id"],
+            UserDevice.revoked_at.is_(None),
+        ))
+        if (device is None or device.status != "active"
+                or user is None or user.status != "active" or access is None):
+            raise HTTPException(status_code=403, detail="Device access revoked")
+        version = await session.scalar(select(SkillVersion).join(
+            ProjectSkillAssignment,
+            ProjectSkillAssignment.skill_version_id == SkillVersion.id,
+        ).join(PlatformProject,
+               PlatformProject.id == ProjectSkillAssignment.platform_project_id)
+            .join(GroupProject,
+                  (GroupProject.group_id == ProjectSkillAssignment.source_group_id)
+                  & (GroupProject.platform_project_id == PlatformProject.id))
+            .join(GroupSkillCatalog,
+                  (GroupSkillCatalog.group_id == ProjectSkillAssignment.source_group_id)
+                  & (GroupSkillCatalog.skill_version_id == SkillVersion.id))
+            .where(SkillVersion.id == version_id,
+                   SkillVersion.status == "approved",
+                   ProjectSkillAssignment.platform_project_id.in_(project_ids),
+                   ProjectSkillAssignment.revoked_at.is_(None),
+                   PlatformProject.device_id == claims["device_id"],
+                   PlatformProject.status == "active",
+                   GroupProject.revoked_at.is_(None),
+                   GroupSkillCatalog.revoked_at.is_(None)))
+    if version is None or not re.fullmatch(r"[0-9a-f-]{36}\.zip", version.storage_name):
+        raise HTTPException(status_code=403, detail="Skill version unavailable")
+    path = request.app.state.settings.data_dir / "skill-packages" / version.storage_name
+    if not await asyncio.to_thread(path.is_file):
+        raise HTTPException(status_code=503, detail="Skill package unavailable")
+    return FileResponse(path, media_type="application/zip",
+                        headers={"Cache-Control": "private, no-store"})

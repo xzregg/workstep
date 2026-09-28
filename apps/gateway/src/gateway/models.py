@@ -268,6 +268,19 @@ class ProjectSkillAssignment(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class DeviceProjectSkillState(Base):
+    __tablename__ = "device_project_skill_state"
+
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), primary_key=True)
+    host_project_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    platform_project_id: Mapped[str] = mapped_column(ForeignKey("platform_projects.id"))
+    desired_revision: Mapped[int] = mapped_column(Integer)
+    applied_revision: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16))
+    last_error_code: Mapped[str | None] = mapped_column(String(64))
+    acknowledged_at: Mapped[datetime] = timestamp()
+
+
 class Device(Base):
     __tablename__ = "devices"
 
