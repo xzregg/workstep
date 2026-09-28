@@ -216,8 +216,10 @@ async def test_slow_recovery_database_work_does_not_block_event_loop(tmp_path, m
 
 
 @pytest.mark.anyio
-async def test_recovered_execution_message_keeps_persisted_run_initiator(tmp_path):
+async def test_recovered_execution_message_keeps_persisted_run_initiator(tmp_path, monkeypatch):
     from engines.core.registry import ENGINE_REGISTRY
+    from models import ProjectAuditEvent
+    from services import project_audit
 
     original, manager, project, run_id = _project_with_run(tmp_path)
 
@@ -234,7 +236,33 @@ async def test_recovered_execution_message_keeps_persisted_run_initiator(tmp_pat
     bus = EventBus()
     runtime = WorkflowRuntime(bus, manager)
     try:
+        with monkeypatch.context() as patcher:
+            patcher.setattr(
+                project_audit, "record_project_audit",
+                lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("audit unavailable")),
+            )
+            assert await runtime.recover_running_workflows() == 0
+        def rollback_state(_project):
+            return (
+                WorkflowRun.get_by_id(run_id).recovered_count,
+                ProjectAuditEvent.select().where(
+                    ProjectAuditEvent.action == "task.recover",
+                ).count(),
+            )
+        assert await manager.run_db(project.id, rollback_state) == (0, 0)
         assert await runtime.recover_running_workflows() == 1
+
+        def recovery_audit(_project):
+            return ProjectAuditEvent.get(
+                (ProjectAuditEvent.task_id == "task-rec")
+                & (ProjectAuditEvent.action == "task.recover")
+            )
+
+        audit = await manager.run_db(project.id, recovery_audit)
+        assert audit.actor_type == "system"
+        assert audit.initiated_by_user_id == "user-1"
+        assert audit.initiated_by_username == "alice"
+        assert audit.metadata_json == '{"workflow_run_id": "' + run_id + '"}'
 
         async def finished():
             return await manager.run_db(
@@ -400,6 +428,8 @@ async def test_recovery_restarts_only_review_after_execution_succeeded(
         run = WorkflowRun.create(
             id="run-review-rec", task=task, status="running",
             workflow_schema_version=1, workflow_snapshot_json="{}",
+            initiated_by_user_id="review-user",
+            initiated_by_username="reviewer",
             started_at=now,
         )
         step_run = StepRun.create(
@@ -451,7 +481,8 @@ async def test_recovery_restarts_only_review_after_execution_succeeded(
             )
             assert Message.get_by_id("exec-a-1").run_status == "succeeded"
             if review_status == "running":
-                assert Message.get_by_id("review-message-a-1").run_status == "failed"
+                interrupted_message = Message.get_by_id("review-message-a-1")
+                assert interrupted_message.run_status == "failed"
                 interrupted = next(
                     item for item in get_task_history(task.id, project.workstep_dir)
                     if item["id"] == "review-message-a-1"
@@ -459,6 +490,11 @@ async def test_recovery_restarts_only_review_after_execution_succeeded(
                 assert interrupted["session_id"] == "interrupted-review-session"
             else:
                 assert Message.get_by_id("review-message-a-1").run_status == "completed"
+            system_message = Message.get_by_id("review-message-a-1")
+            assert system_message.author_type == "system"
+            assert system_message.author_username == "system"
+            assert system_message.initiated_by_user_id == "review-user"
+            assert system_message.initiated_by_username == "reviewer"
         assert len(RecoveryFakeEngine.prompts) == (1 if review_status == "running" else 0)
         if review_status == "running":
             assert "step review agent" in RecoveryFakeEngine.prompts[0]
@@ -893,7 +929,14 @@ async def test_e2e_three_step_run_resumes_after_crash(tmp_path):
     runtime2 = WorkflowRuntime(bus2, pm)
     recovered_queue = bus2.subscribe()
     try:
-        handle = await runtime1.start(project.id, task_id, "")
+        from services.remote_access import ActorSnapshot, actor_context
+
+        with actor_context(ActorSnapshot(
+            actor_id="recovery-user", user_name="Recovery User",
+            device_id="recovery-device", device_name="Test Device",
+            source="local", username="recovery-user",
+        )):
+            handle = await runtime1.start(project.id, task_id, "")
         await asyncio.wait_for(started.wait(), timeout=2)
         run_id = handle.id
 
@@ -1080,7 +1123,14 @@ async def test_run_lease_claimed_on_start_and_released_on_finish(tmp_path):
     bus = EventBus()
     runtime = WorkflowRuntime(bus, pm)
     try:
-        handle = await runtime.start(project.id, "task-lease", "")
+        from services.remote_access import ActorSnapshot, actor_context
+
+        with actor_context(ActorSnapshot(
+            actor_id="lease-user", user_name="Lease User",
+            device_id="lease-device", device_name="Test Device",
+            source="local", username="lease-user",
+        )):
+            handle = await runtime.start(project.id, "task-lease", "")
         with pm.activate_project(project.path):
             run = WorkflowRun.get_by_id(handle.id)
             assert run.owner_id == runtime._leases.instance_id
