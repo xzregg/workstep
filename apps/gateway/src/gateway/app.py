@@ -28,6 +28,7 @@ from .remote_access_api import (router as remote_access_router,
 from .providers_api import router as providers_router
 from .device_commands import router as device_commands_router
 from .usage_ledger import router as usage_router
+from .groups_api import router as groups_router
 
 
 def create_app(settings: GatewaySettings | None = None) -> FastAPI:
@@ -111,6 +112,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(providers_router)
     app.include_router(device_commands_router)
     app.include_router(usage_router)
+    app.include_router(groups_router)
 
     if settings.web_dist and settings.web_dist.is_dir():
         assets = settings.web_dist / "assets"

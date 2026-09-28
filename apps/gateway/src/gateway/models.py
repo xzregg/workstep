@@ -165,6 +165,48 @@ class DirectoryEventReceipt(Base):
     received_at: Mapped[datetime] = timestamp()
 
 
+class UserGroup(Base):
+    __tablename__ = "user_groups"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(256))
+    slug: Mapped[str] = mapped_column(String(128), unique=True)
+    description: Mapped[str] = mapped_column(Text, server_default="")
+    source_type: Mapped[str] = mapped_column(String(32), server_default="manual")
+    external_department_id: Mapped[str | None] = mapped_column(ForeignKey("directory_departments.id"))
+    status: Mapped[str] = mapped_column(String(16), server_default="active")
+    created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = timestamp()
+    updated_at: Mapped[datetime] = timestamp()
+
+
+class GroupMembership(Base):
+    __tablename__ = "group_memberships"
+    __table_args__ = (UniqueConstraint("group_id", "user_id"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    group_id: Mapped[str] = mapped_column(ForeignKey("user_groups.id"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    role: Mapped[str] = mapped_column(String(16), server_default="member")
+    source: Mapped[str] = mapped_column(String(32), server_default="manual")
+    assigned_by_user_id: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = timestamp()
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class GroupProject(Base):
+    __tablename__ = "group_projects"
+    __table_args__ = (UniqueConstraint("group_id", "platform_project_id"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    group_id: Mapped[str] = mapped_column(ForeignKey("user_groups.id"), index=True)
+    platform_project_id: Mapped[str] = mapped_column(ForeignKey("platform_projects.id"))
+    purpose: Mapped[str] = mapped_column(String(32), server_default="skill_management")
+    assigned_by_user_id: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = timestamp()
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class Device(Base):
     __tablename__ = "devices"
 
