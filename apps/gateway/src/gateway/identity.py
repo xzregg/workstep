@@ -267,29 +267,55 @@ class IdentityService:
     async def require_user_manager(self, actor_id: str, target_user_id: str | None = None,
                                    platform_only: bool = False) -> None:
         async with self.database.session() as session:
-            assignments = (await session.scalars(select(AdminAssignment).where(
-                AdminAssignment.user_id == actor_id,
-                AdminAssignment.revoked_at.is_(None),
-            ))).all()
-            if any(assignment.role == "super_admin" for assignment in assignments):
+            manageable = await self.manageable_user_ids(session, actor_id)
+            if manageable is None:
                 return
-            for assignment in assignments:
-                if assignment.role != "identity_admin":
-                    continue
-                if assignment.scope_type == "platform":
-                    return
-                if platform_only or target_user_id is None or assignment.scope_type != "department":
-                    continue
-                member = await session.scalar(select(DirectoryMembership.id).join(
-                    DirectoryPerson, DirectoryMembership.person_id == DirectoryPerson.id,
-                ).where(
-                    DirectoryPerson.user_id == target_user_id,
-                    DirectoryPerson.active == 1,
-                    DirectoryMembership.department_id == assignment.scope_id,
-                ))
-                if member is not None:
-                    return
+            if not platform_only and target_user_id in manageable:
+                return
         raise HTTPException(status_code=403, detail="Administrator scope does not cover this user")
+
+    async def manageable_user_ids(self, session, actor_id: str) -> set[str] | None:
+        """None means platform-wide; a set means department-scoped users."""
+        assignments = (await session.scalars(select(AdminAssignment).where(
+            AdminAssignment.user_id == actor_id,
+            AdminAssignment.revoked_at.is_(None),
+            AdminAssignment.role.in_(("super_admin", "identity_admin")),
+        ))).all()
+        if any(assignment.role == "super_admin" or (
+            assignment.role == "identity_admin" and assignment.scope_type == "platform"
+        ) for assignment in assignments):
+            return None
+        scoped = [assignment for assignment in assignments
+                  if assignment.role == "identity_admin" and assignment.scope_type == "department"]
+        if not scoped:
+            raise HTTPException(status_code=403, detail="User management denied")
+        departments = (await session.scalars(select(DirectoryDepartment).where(
+            DirectoryDepartment.active == 1,
+        ))).all()
+        by_id = {department.id: department for department in departments}
+        children: dict[tuple[str, str], list[DirectoryDepartment]] = {}
+        for department in departments:
+            if department.parent_external_id:
+                children.setdefault((department.source_id, department.parent_external_id), []).append(department)
+        allowed_departments: set[str] = set()
+        for assignment in scoped:
+            root = by_id.get(assignment.scope_id)
+            if root is None:
+                continue
+            pending = [root]
+            while pending:
+                current = pending.pop()
+                if current.id in allowed_departments:
+                    continue
+                allowed_departments.add(current.id)
+                if assignment.include_subdepartments:
+                    pending.extend(children.get((current.source_id, current.external_id), []))
+        if not allowed_departments:
+            return set()
+        return set((await session.scalars(select(DirectoryPerson.user_id).join(
+            DirectoryMembership, DirectoryMembership.person_id == DirectoryPerson.id,
+        ).where(DirectoryPerson.active == 1,
+                DirectoryMembership.department_id.in_(allowed_departments)))).all())
 
     async def grant_role(self, actor_id: str, user_id: str, role: str,
                          scope_type: str, scope_id: str | None,

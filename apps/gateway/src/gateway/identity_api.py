@@ -4,10 +4,12 @@ import hmac
 import re
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, field_validator, model_validator
+from sqlalchemy import func, or_, select
 
 from .identity import COOKIE_NAME, SESSION_SECONDS, IdentityService, csrf_token, public_user
+from .models import User
 
 router = APIRouter(prefix="/api")
 USERNAME = re.compile(r"^[a-z][a-z0-9_-]{2,63}$")
@@ -221,6 +223,39 @@ async def admin_create_user(request: Request, body: AdminCreateInput):
         body.username, body.display_name, body.password, body.status, actor.id,
     )
     return public_user(user)
+
+
+@router.get("/admin/users")
+async def admin_list_users(request: Request, q: str = Query("", max_length=128),
+                           status: Literal["active", "pending", "disabled"] | None = None,
+                           sort: Literal["username", "display_name", "created_at"] = "created_at",
+                           direction: Literal["asc", "desc"] = "desc",
+                           page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100)):
+    identity = _identity(request)
+    actor, _ = await identity.session_user(request.cookies.get(COOKIE_NAME))
+    if actor.must_change_password:
+        raise HTTPException(status_code=403, detail="Password change required")
+    async with request.app.state.database.session() as session:
+        scoped_ids = await identity.manageable_user_ids(session, actor.id)
+        conditions = []
+        if scoped_ids is not None:
+            conditions.append(User.id.in_(scoped_ids))
+        if status:
+            conditions.append(User.status == status)
+        if q.strip():
+            escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            pattern = f"%{escaped}%"
+            conditions.append(or_(User.username.ilike(pattern, escape="\\"),
+                                  User.display_name.ilike(pattern, escape="\\")))
+        total = await session.scalar(select(func.count()).select_from(User).where(*conditions))
+        column = {"username": User.username, "display_name": User.display_name,
+                  "created_at": User.created_at}[sort]
+        ordered = column.asc() if direction == "asc" else column.desc()
+        rows = (await session.scalars(select(User).where(*conditions)
+            .order_by(ordered, User.id).offset((page - 1) * page_size).limit(page_size))).all()
+        users = [{**public_user(user), "registration_source": user.registration_source,
+                  "created_at": user.created_at.isoformat()} for user in rows]
+    return {"users": users, "total": total, "page": page, "page_size": page_size}
 
 
 @router.post("/admin/users/{user_id}/approve", status_code=204)
