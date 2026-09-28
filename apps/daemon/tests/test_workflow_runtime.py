@@ -18,6 +18,18 @@ from models.fields import utc_now
 from streaming.bus import EventBus
 
 
+@pytest.fixture(autouse=True)
+def named_runtime_actor():
+    from services.remote_access import ActorSnapshot, actor_context
+
+    with actor_context(ActorSnapshot(
+        actor_id="runtime-test-user", user_name="Runtime Test User",
+        device_id="runtime-test-device", device_name="Test Device",
+        source="browser",
+    )):
+        yield
+
+
 class RuntimeFakeEngine(AcpEngineBase):
     @staticmethod
     def is_installed():

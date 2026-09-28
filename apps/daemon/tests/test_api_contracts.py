@@ -24,12 +24,19 @@ from services.workflow_runtime import WorkflowRuntime
 from agent_assistants.coordinator import CoordinatorModule
 from streaming.bus import EventBus
 
+TEST_ACTOR_HEADERS = {
+    "X-WorkStep-Actor-Id": "test-user",
+    "X-WorkStep-Actor-Name": "Test User",
+    "X-WorkStep-Actor-Device-Id": "test-device",
+    "X-WorkStep-Actor-Device-Name": "Test Device",
+}
+
 
 @pytest.mark.anyio
 async def test_pending_insert_slow_actor_lookup_does_not_block_health(
     api_context, monkeypatch,
 ):
-    from services import pending_message_inserts as pending_module
+    from services import remote_access
 
     client, tmp_path = api_context
     project_dir = tmp_path / "pending-actor-canary"
@@ -38,16 +45,17 @@ async def test_pending_insert_slow_actor_lookup_does_not_block_health(
         "/api/project/init", json={"path": str(project_dir)},
     )).json()["id"]
     entered = threading.Event()
-    original = pending_module.get_effective_actor
+    original = remote_access.get_effective_actor
 
     def slow_actor():
         entered.set()
         time.sleep(0.8)
         return original()
 
-    monkeypatch.setattr(pending_module, "get_effective_actor", slow_actor)
+    monkeypatch.setattr(remote_access, "get_effective_actor", slow_actor)
     request = asyncio.create_task(client.post(
         "/api/pending-message-inserts",
+        headers=TEST_ACTOR_HEADERS,
         json={
             "project_id": project_id,
             "target_message_id": "pending-reply",
@@ -106,6 +114,51 @@ async def test_queued_run_snapshot_slow_sql_does_not_block_health(
     assert health.status_code == 200
     assert time.monotonic() - before < 0.5
     await queued
+
+
+@pytest.mark.anyio
+async def test_local_user_name_is_required_for_manual_run_and_task_chat(
+    api_context, monkeypatch,
+):
+    import main
+    from models import Task
+    from models.fields import utc_now
+    from services.config import config_store
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "identity-required"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)},
+    )).json()["id"]
+    await main.project_manager.run_db(project_id, lambda _project: Task.create(
+        id="task-identity-required", title="Identity", cwd=str(project_dir),
+        created_at=utc_now(), updated_at=utc_now(),
+    ))
+    monkeypatch.setattr(config_store, "get_user_name", lambda: "")
+
+    run = await client.post(f"/api/task/run?project_id={project_id}", json={
+        "task_id": "task-identity-required", "prompt": "开始",
+    })
+    assert run.status_code == 409
+    assert "用户名" in run.json()["detail"]
+    chat = await client.post(
+        f"/api/task/task-identity-required/chat?project_id={project_id}",
+        headers={"Idempotency-Key": "identity-required"},
+        json={"content": "开始"},
+    )
+    assert chat.status_code == 400
+    assert "用户名" in chat.json()["detail"]
+    pending = await client.post("/api/pending-message-inserts", json={
+        "project_id": project_id,
+        "target_message_id": "pending-reply",
+        "content": "稍后处理",
+    })
+    assert pending.status_code == 400
+    assert "用户名" in pending.json()["detail"]
+    assert await main.project_manager.run_db(
+        project_id, lambda _project: Task.get_by_id("task-identity-required").status,
+    ) == "ready"
 
 
 class MemoryConfigStore:
@@ -983,6 +1036,7 @@ async def test_workflow_start_write_lock_does_not_block_health_check(api_context
     await asyncio.sleep(0)
     run_task = asyncio.create_task(client.post(
         f"/api/task/run?project_id={project_id}",
+        headers=TEST_ACTOR_HEADERS,
         json={"task_id": task_id, "prompt": "run"},
     ))
 
@@ -1055,6 +1109,7 @@ async def test_workflow_completion_write_lock_does_not_block_health_check(
         task_id = created.json()["id"]
         started = await client.post(
             f"/api/task/run?project_id={project_id}",
+            headers=TEST_ACTOR_HEADERS,
             json={"task_id": task_id, "prompt": "run"},
         )
         assert started.status_code == 200
@@ -4911,6 +4966,7 @@ async def test_resume_step_message_slow_sql_does_not_block_health(
     monkeypatch.setattr(project.db, "execute_sql", slow_task_query)
     followup = asyncio.create_task(client.post(
         f"/api/task/{task_id}/step/{step_key}/resume?project_id={project_id}",
+        headers=TEST_ACTOR_HEADERS,
         json={"content": "补充验收要求"},
     ))
     assert await asyncio.to_thread(query_started.wait, 1)

@@ -4,7 +4,9 @@ import uuid
 
 from models import Message, PendingMessageInsert
 from models.fields import utc_now
-from services.remote_access import ActorSnapshot, get_effective_actor
+from services.remote_access import (
+    ActorSnapshot, get_effective_actor, require_user_actor,
+)
 
 
 def serialize_pending_insert(row: PendingMessageInsert) -> dict:
@@ -47,7 +49,7 @@ def create_pending_insert(
         .first()
     )
     now = utc_now()
-    actor = get_effective_actor()
+    actor = require_user_actor() if username is None else get_effective_actor()
     display_name = (
         username if username is not None else actor.user_name if actor is not None else ""
     ).strip()

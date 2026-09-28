@@ -293,6 +293,7 @@ class AssistantRuntime:
         extra: dict | None = None,
         schedule: bool = True,
         author_name: str | None = None,
+        replay_pending: bool = False,
     ) -> AcceptedTurn:
         """Queue one turn; returns immediately with an accepted turn.
 
@@ -306,6 +307,10 @@ class AssistantRuntime:
             raise ValueError("Message content cannot be empty")
         if not (idempotency_key or "").strip():
             raise ValueError("Idempotency-Key is required")
+        if not replay_pending:
+            from services.remote_access import require_user_actor
+
+            require_user_actor()
         normalized_effort = (thinking_effort or "").strip()
         if not normalized_effort:
             # “默认”表示不覆盖，由引擎自己的配置决定；只有协调助手
@@ -647,6 +652,7 @@ class AssistantRuntime:
                     extra=session.extra,
                     schedule=False,
                     author_name=username,
+                    replay_pending=True,
                 )
             delete_pending_insert_batch(ids)
             return accepted

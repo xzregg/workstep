@@ -38,7 +38,15 @@ async def action_client(tmp_path, monkeypatch):
     action_dir = project.workstep_dir / "actions" / "restart"
     action_dir.mkdir(parents=True)
     (action_dir / "restart.sh").write_text("#!/bin/sh\necho started\nsleep 0.3\necho finished\n")
-    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=main.app), base_url="http://test",
+        headers={
+            "X-WorkStep-Actor-Id": "action-user",
+            "X-WorkStep-Actor-Name": "Action User",
+            "X-WorkStep-Actor-Device-Id": "action-device",
+            "X-WorkStep-Actor-Device-Name": "Test Device",
+        },
+    ) as client:
         yield client, manager, project
     from services.action_runtime import action_runtime
     if action_runtime.tasks:
@@ -67,6 +75,29 @@ async def test_action_confirm_deduplicate_and_stream(action_client):
     assert "finished" in current.json()["output"]
     history = await client.get(f"/api/task/task-action/history?project_id={project.id}")
     assert [item["channel"] for item in history.json()["messages"]] == ["action", "action"]
+
+
+@pytest.mark.anyio
+async def test_action_requires_named_user_before_creating_messages(action_client, monkeypatch):
+    from services.config import config_store
+    from services.action_runtime import action_runtime
+
+    client, manager, project = action_client
+    monkeypatch.setattr(config_store, "get_user_name", lambda: "")
+    response = await client.post(
+        f"/api/tasks/task-action/actions/run?project_id={project.id}",
+        headers={
+            "X-WorkStep-Actor-Id": "",
+            "X-WorkStep-Actor-Name": "",
+            "X-WorkStep-Actor-Device-Id": "",
+            "X-WorkStep-Actor-Device-Name": "",
+        },
+        json={"button_id": "restart", "source": "project", "confirmed": True},
+    )
+    assert response.status_code == 409
+    assert "用户名" in response.json()["detail"]
+    assert not action_runtime.tasks
+    assert await manager.run_db(project.id, lambda _project: Task.get_by_id("task-action").messages.count()) == 0
 
 
 @pytest.mark.anyio

@@ -63,6 +63,7 @@ from services.pending_message_inserts import (
     pending_insert_batch,
 )
 from services.remote_access import replayed_actor_context
+from services.remote_access import require_user_actor
 from services.intervention import intervention_manager
 from services.messages import extract_usage_json
 from services.remote_project import current_actor_event_fields
@@ -286,6 +287,7 @@ class CoordinatorModule:
         author_name: str = "",
         pending_insert_ids: list[str] | None = None,
         reset_session: bool = False,
+        replay_pending: bool = False,
     ) -> ChatAccepted:
         normalized = content.strip()
         if not normalized:
@@ -303,6 +305,7 @@ class CoordinatorModule:
                 author_name=author_name,
                 pending_insert_ids=pending_insert_ids,
                 reset_session=reset_session,
+                replay_pending=replay_pending,
             ),
         )
         accepted, user_message, created = persisted
@@ -329,7 +332,10 @@ class CoordinatorModule:
         author_name: str = "",
         pending_insert_ids: list[str] | None = None,
         reset_session: bool = False,
+        replay_pending: bool = False,
     ):
+        if not replay_pending:
+            require_user_actor()
         with self._project_manager.activate_project_by_id(project_id) as project:
             existing = CoordinatorTurn.get_or_none(
                 (CoordinatorTurn.task == task_id)
@@ -1032,6 +1038,7 @@ class CoordinatorModule:
                 f"pending-inserts:{target_message_id}",
                 author_name=username,
                 pending_insert_ids=ids,
+                replay_pending=True,
             )
 
     def _record_unstreamed_journal_events(

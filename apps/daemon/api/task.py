@@ -571,6 +571,7 @@ async def get_task_artifacts(
 async def run_task(req: RunTaskRequest, pid: str = Query(..., alias="project_id")):
     """Run a task (fire-and-forget, events come via WebSocket)."""
     from main import workflow_runtime, task_service, event_bus
+    from services.remote_access import UserIdentityRequired
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Service not initialized")
     try:
@@ -592,6 +593,8 @@ async def run_task(req: RunTaskRequest, pid: str = Query(..., alias="project_id"
                 },
                 "task_id": req.task_id,
             })
+    except UserIdentityRequired as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except WorkflowValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ValueError as exc:
