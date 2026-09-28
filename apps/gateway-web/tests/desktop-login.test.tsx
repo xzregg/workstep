@@ -11,6 +11,8 @@ const query = '?gateway_id=gateway-test&app_instance_id=app-instance-12345'
 
 test('desktop login route parses only complete PKCE request', () => {
   assert.equal(parseDesktopRequest(query)?.gateway_id, 'gateway-test')
+  assert.equal(parseDesktopRequest(query + '&scan_error=expired')?.gateway_id, 'gateway-test')
+  assert.equal(parseDesktopRequest(query + '&unexpected=value'), null)
   assert.equal(parseDesktopRequest('?gateway_id=gateway-test'), null)
   assert.equal(parseDesktopRequest(query.replace('A'.repeat(43), 'bad')), null)
   const html = renderToString(<MemoryRouter initialEntries={[`/desktop/login${query}`]}><App /></MemoryRouter>)

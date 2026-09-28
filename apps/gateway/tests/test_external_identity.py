@@ -281,3 +281,56 @@ def test_external_scan_returns_to_desktop_login_without_open_redirect(tmp_path):
         assert callback.status_code == 303
         assert callback.headers["location"] == return_to
         assert client.get("/api/auth/session").status_code == 200
+
+
+def test_portal_scan_failures_return_to_login_without_authenticating(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    app.state.identity_connectors = {"dingtalk": FakeConnector()}
+    with TestClient(app, base_url="https://gateway.test") as client:
+        csrf = _setup(client)
+        source_id = _source(client, csrf)
+        client.cookies.clear()
+
+        def begin():
+            started = client.post(f"/api/auth/external/{source_id}/start", json={
+                "return_to": "/auth?next=%2Fdevices",
+            })
+            assert started.status_code == 200
+            return parse_qs(urlparse(started.json()["authorization_url"]).query)["state"][0]
+
+        cancelled = begin()
+        cancel = client.get(
+            f"/api/auth/external/{source_id}/callback?state={cancelled}&error=access_denied",
+            follow_redirects=False,
+        )
+        assert cancel.status_code == 303
+        assert cancel.headers["location"] == "/auth?next=%2Fdevices&scan_error=cancelled"
+
+        failed = begin()
+        unavailable = client.get(
+            f"/api/auth/external/{source_id}/callback?state={failed}&code=invalid-code",
+            follow_redirects=False,
+        )
+        assert unavailable.headers["location"] == "/auth?next=%2Fdevices&scan_error=unavailable"
+
+        denied_state = begin()
+        denied = client.get(
+            f"/api/auth/external/{source_id}/callback?state={denied_state}&code=valid-code",
+            follow_redirects=False,
+        )
+        assert denied.headers["location"] == "/auth?next=%2Fdevices&scan_error=denied"
+
+        expired = begin()
+        with __import__("sqlite3").connect(tmp_path / "workstep_platform.db") as connection:
+            connection.execute("UPDATE external_login_attempts SET expires_at='2000-01-01 00:00:00' WHERE consumed_at IS NULL")
+        timeout = client.get(
+            f"/api/auth/external/{source_id}/callback?state={expired}&code=valid-code",
+            follow_redirects=False,
+        )
+        assert timeout.headers["location"] == "/auth?next=%2Fdevices&scan_error=expired"
+        unknown = client.get(
+            f"/api/auth/external/{source_id}/callback?state=unknown&error=access_denied",
+            follow_redirects=False,
+        )
+        assert unknown.status_code == 400
+        assert client.get("/api/auth/session").status_code == 401

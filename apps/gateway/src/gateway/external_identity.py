@@ -84,6 +84,17 @@ class ExternalIdentityService:
                 ))
         return source, state, nonce
 
+    async def failure_return_to(self, source_id: str, state: str) -> str | None:
+        """Consume a failed scan and recover only its prevalidated local target."""
+        async with self.database.session() as session:
+            async with session.begin():
+                attempt = await session.get(ExternalLoginAttempt, _state_digest(state))
+                if attempt is None or attempt.source_id != source_id:
+                    return None
+                if attempt.consumed_at is None:
+                    attempt.consumed_at = _now()
+                return attempt.return_to
+
     async def complete(self, source_id: str, state: str, code: str, connector,
                        browser_session_id: str | None = None) -> tuple[User, str | None, str | None]:
         source = await self.source(source_id)

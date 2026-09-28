@@ -172,9 +172,15 @@ async def external_bind_start(request: Request, source_id: str):
 
 @router.get("/auth/external/{source_id}/callback")
 async def external_callback(request: Request, response: Response, source_id: str,
-                            state: str, code: str | None = None, authCode: str | None = None):
+                            state: str, code: str | None = None, authCode: str | None = None,
+                            error: str | None = None):
     authorization_code = code or authCode
-    if not authorization_code:
+    if error or not authorization_code:
+        return_to = await _service(request).failure_return_to(source_id, state)
+        if return_to:
+            failure = "cancelled" if error in (None, "access_denied") else "unavailable"
+            separator = "&" if "?" in return_to else "?"
+            return RedirectResponse(f"{return_to}{separator}scan_error={failure}", status_code=303)
         raise HTTPException(status_code=400, detail="Authorization code missing")
     source = await _service(request).source(source_id)
     browser_session_id = None
@@ -185,9 +191,18 @@ async def external_callback(request: Request, response: Response, source_id: str
             browser_session_id = auth_session.id
         except HTTPException:
             pass
-    user, new_token, return_to = await _service(request).complete(
-        source_id, state, authorization_code, _connector(request, source.provider), browser_session_id,
-    )
+    try:
+        user, new_token, return_to = await _service(request).complete(
+            source_id, state, authorization_code, _connector(request, source.provider), browser_session_id,
+        )
+    except HTTPException as exc:
+        return_to = await _service(request).failure_return_to(source_id, state)
+        if return_to:
+            failure = ("expired" if exc.status_code in (400, 401, 409) else
+                       "denied" if exc.status_code == 403 else "unavailable")
+            separator = "&" if "?" in return_to else "?"
+            return RedirectResponse(f"{return_to}{separator}scan_error={failure}", status_code=303)
+        raise
     if return_to:
         redirect = RedirectResponse(return_to if user.status == "active" else "/auth/pending", status_code=303)
         if new_token:

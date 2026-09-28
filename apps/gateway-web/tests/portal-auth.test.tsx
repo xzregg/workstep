@@ -3,6 +3,7 @@ import test from 'node:test'
 import { renderToString } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 import { PortalAuthPage, validPortalAccount, safeNextPath } from '../src/PortalAuthPage'
+import { scanFailureMessage } from '../src/scanFailure'
 import { ProjectCard } from '../src/ProjectsPage'
 
 test('portal account validation follows the Gateway schema', () => {
@@ -24,6 +25,14 @@ test('login return path stays on this Gateway', () => {
 test('portal auth page starts with a loading state', () => {
   const html = renderToString(<MemoryRouter><PortalAuthPage /></MemoryRouter>)
   assert.match(html, /正在检查平台状态/)
+})
+
+test('scan error codes provide recovery without exposing provider details', () => {
+  assert.match(scanFailureMessage('expired'), /过期/)
+  assert.match(scanFailureMessage('cancelled'), /取消/)
+  assert.match(scanFailureMessage('unavailable'), /暂时不可用/)
+  assert.match(scanFailureMessage('denied'), /无法登录/)
+  assert.equal(scanFailureMessage('unknown'), '')
 })
 
 test('project card identifies host, grant origin, access level and offline state', () => {

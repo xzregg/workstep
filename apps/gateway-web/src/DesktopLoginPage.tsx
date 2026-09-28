@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { GatewayLoginForm } from './GatewayLoginForm'
+import { scanFailureMessage } from './scanFailure'
 
 type DesktopRequest = {
   gateway_id: string
@@ -14,6 +15,10 @@ type IdentitySource = { id: string; provider: 'dingtalk' | 'wecom'; tenant_id: s
 
 export function parseDesktopRequest(search: string): DesktopRequest | null {
   const params = new URLSearchParams(search)
+  if (params.has('scan_error')) {
+    if (params.getAll('scan_error').length !== 1 || !scanFailureMessage(params.get('scan_error'))) return null
+    params.delete('scan_error')
+  }
   const keys = ['gateway_id', 'app_instance_id', 'state', 'nonce', 'code_challenge'] as const
   if ([...params].length !== keys.length) return null
   if (keys.some((key) => params.get(key) === null)) return null
@@ -29,7 +34,7 @@ export function DesktopLoginPage() {
   const request = parseDesktopRequest(searchParams.toString())
   const [status, setStatus] = useState<'checking' | 'login' | 'ready' | 'submitting'>('checking')
   const [csrf, setCsrf] = useState<string | null>(null)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(scanFailureMessage(searchParams.get('scan_error')))
   const [sources, setSources] = useState<IdentitySource[]>([])
 
   useEffect(() => {
@@ -104,7 +109,7 @@ export function DesktopLoginPage() {
     try {
       const response = await fetch(`/api/auth/external/${encodeURIComponent(sourceId)}/start`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ return_to: window.location.pathname + window.location.search }),
+        body: JSON.stringify({ return_to: `/desktop/login?${new URLSearchParams(request!).toString()}` }),
       })
       if (!response.ok) throw new Error('扫码登录暂时不可用，请重试或使用用户名密码。')
       const result = await response.json()
