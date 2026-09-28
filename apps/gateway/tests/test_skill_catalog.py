@@ -141,6 +141,8 @@ def test_group_skill_catalog_only_allows_reviewed_version_on_linked_project(tmp_
         assert client.post(f"/api/admin/groups/{group_id}/skills", json={
             "skill_version_id": version_id,
         }, headers=headers).status_code == 200
+        assert client.get(f"/api/admin/groups/{group_id}/skills").json()[
+            "skills"][0]["skill_version_id"] == version_id
         client.cookies.clear()
         login = client.post("/api/auth/login", json={
             "username": "leader", "password": "LeaderPassphrase-2026!",
@@ -357,6 +359,9 @@ def test_skill_admin_role_is_separate_from_user_administration(tmp_path):
         owner_headers = {"X-CSRF-Token": setup.json()["csrf_token"]}
         client.post("/api/auth/step-up", json={"password": "OwnerPassphrase-2026!"},
                     headers=owner_headers)
+        group_id = client.post("/api/groups", json={
+            "name": "Backend", "slug": "backend",
+        }, headers=owner_headers).json()["id"]
         user_id = client.post("/api/admin/users", json={
             "username": "skillowner", "display_name": "Skill Owner",
             "password": "SkillOwnerPassphrase-2026!",
@@ -380,6 +385,12 @@ def test_skill_admin_role_is_separate_from_user_administration(tmp_path):
         assert client.post("/api/admin/skills", json={
             "name": "Review", "slug": "review",
         }, headers=headers).status_code == 201
+        assert client.get("/api/groups").json()["groups"] == []
+        assert client.get("/api/admin/groups").json()["groups"] == [{
+            "id": group_id, "name": "Backend", "slug": "backend",
+            "source_type": "manual",
+        }]
+        assert client.get(f"/api/admin/groups/{group_id}/skills").json() == {"skills": []}
         assert client.post("/api/admin/users", json={
             "username": "forbidden", "display_name": "Forbidden",
             "password": "ForbiddenPassphrase-2026!",

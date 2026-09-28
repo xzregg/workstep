@@ -277,6 +277,37 @@ async def grant_group_skill(request: Request, group_id: str, body: SkillGrantInp
             "skill_version_id": version.id}
 
 
+@admin_group_router.get("")
+async def list_skill_admin_groups(request: Request):
+    await _admin_read(request)
+    async with request.app.state.database.session() as session:
+        rows = (await session.scalars(select(UserGroup).where(
+            UserGroup.status == "active",
+        ).order_by(UserGroup.name, UserGroup.id))).all()
+    return {"groups": [{"id": row.id, "name": row.name, "slug": row.slug,
+                        "source_type": row.source_type} for row in rows]}
+
+
+@admin_group_router.get("/{group_id}/skills")
+async def list_skill_admin_group_grants(request: Request, group_id: str):
+    await _admin_read(request)
+    async with request.app.state.database.session() as session:
+        group = await session.get(UserGroup, group_id)
+        if group is None or group.status != "active":
+            raise HTTPException(status_code=404, detail="Group unavailable")
+        rows = (await session.execute(select(
+            GroupSkillCatalog, SkillVersion, SkillPackage,
+        ).join(SkillVersion, SkillVersion.id == GroupSkillCatalog.skill_version_id)
+            .join(SkillPackage, SkillPackage.id == GroupSkillCatalog.skill_id)
+            .where(GroupSkillCatalog.group_id == group_id,
+                   GroupSkillCatalog.revoked_at.is_(None))
+            .order_by(SkillPackage.name))).all()
+    return {"skills": [{"skill_id": package.id, "name": package.name,
+                        "slug": package.slug, "skill_version_id": version.id,
+                        "version": version.version, "status": version.status}
+                       for _, version, package in rows]}
+
+
 @admin_group_router.delete("/{group_id}/skills/{skill_id}", status_code=204)
 async def revoke_group_skill(request: Request, group_id: str, skill_id: str):
     actor = await _admin(request)

@@ -294,6 +294,32 @@ test('audit administrator can enter the audit workbench without broader admin mo
   assert.equal(screen.queryByRole('link', { name: '平台设置' }), null)
 })
 
+test('Skill administrator enters only the Skill management module', async () => {
+  globalThis.fetch = async input => {
+    const url = String(input)
+    if (url === '/api/auth/admin-access') return Response.json({
+      roles: ['skill_admin'], must_change_password: false,
+    })
+    if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
+    if (url === '/api/admin/skills') return Response.json({ skills: [] })
+    if (url === '/api/admin/groups') return Response.json({ groups: [] })
+    if (url === '/api/admin/skills/applications') return Response.json({ projects: [] })
+    if (url === '/api/admin/overview') return Response.json({ roles: ['skill_admin'],
+      users: null, devices: null, projects: null, tasks: { running: null }, recent_actions: [] })
+    if (url === '/api/projects') return Response.json({ projects: [] })
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+  render(<MemoryRouter initialEntries={['/admin/skills']}><App /></MemoryRouter>)
+  await screen.findByRole('heading', { name: '平台 Skill 管理' })
+  cleanup()
+  render(<MemoryRouter initialEntries={['/admin']}><App /></MemoryRouter>)
+  await screen.findByRole('link', { name: 'Skill 管理' })
+  assert.equal(screen.queryByRole('link', { name: '用户管理' }), null)
+  cleanup()
+  render(<MemoryRouter initialEntries={['/admin/users']}><App /></MemoryRouter>)
+  await screen.findByText('当前账号没有访问该管理页面的权限。')
+})
+
 test('management tab appears after signing in on the workbench', async () => {
   let signedIn = false
   globalThis.fetch = async input => {
