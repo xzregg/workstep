@@ -23,6 +23,8 @@ class ProjectAuditEvent(BaseModel):
     initiated_by_username = pw.TextField(null=True)
     metadata_json = pw.TextField(default="{}")
     created_at = UTCDateTimeField(default=utc_now)
+    upload_status = pw.TextField(default="pending")
+    upload_error = pw.TextField(null=True)
     uploaded_at = UTCDateTimeField(null=True)
 
     class Meta:
@@ -30,5 +32,5 @@ class ProjectAuditEvent(BaseModel):
         indexes = (
             (("project_id", "created_at"), False),
             (("task_id", "created_at"), False),
-            (("uploaded_at", "created_at"), False),
+            (("upload_status", "created_at"), False),
         )

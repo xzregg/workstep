@@ -4,6 +4,7 @@ import json
 import asyncio
 import threading
 import time
+import sqlite3
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -99,6 +100,34 @@ def test_project_audit_rejects_message_content_in_metadata(tmp_path):
                 project_id="project-1", action="task.start", result="denied",
                 metadata={"content": "secret prompt"},
             )
+    finally:
+        db.close()
+
+
+def test_existing_project_audit_table_gains_upload_state(tmp_path):
+    from models import ProjectAuditEvent
+
+    path = tmp_path / "workstep.db"
+    with sqlite3.connect(path) as connection:
+        connection.execute("""CREATE TABLE project_audit_events (
+            id TEXT PRIMARY KEY, project_id TEXT, task_id TEXT,
+            action TEXT, result TEXT, mode TEXT, actor_id TEXT,
+            actor_username TEXT, actor_name TEXT, actor_type TEXT,
+            device_id TEXT, device_name TEXT, initiated_by_user_id TEXT,
+            initiated_by_username TEXT, metadata_json TEXT,
+            created_at DATETIME, uploaded_at DATETIME
+        )""")
+        connection.execute(
+            "INSERT INTO project_audit_events "
+            "(id, project_id, action, result, mode, actor_type, metadata_json, created_at) "
+            "VALUES ('old-audit', 'project-1', 'task.start', 'succeeded', "
+            "'local', 'system', '{}', '2026-01-01T00:00:00Z')"
+        )
+    db = init_db(str(path))
+    try:
+        row = ProjectAuditEvent.get_by_id("old-audit")
+        assert row.upload_status == "pending"
+        assert row.upload_error is None
     finally:
         db.close()
 

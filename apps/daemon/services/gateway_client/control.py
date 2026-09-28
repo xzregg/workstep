@@ -38,7 +38,8 @@ class GatewayControlClient:
     def __init__(self, origin: str, *, gateway_id: str, public_key_fingerprint: str,
                  user_id: str, policy_cache: ManagedPolicyCache,
                  connector=connect, heartbeat_seconds: float = 20, asgi_app=None,
-                 provider_store=None, usage_outbox=None, skill_sync=None):
+                 provider_store=None, usage_outbox=None, audit_outbox=None,
+                 skill_sync=None):
         self.url = control_url(origin)
         self.origin = origin
         self.gateway_id = gateway_id
@@ -50,6 +51,7 @@ class GatewayControlClient:
         self.asgi_app = asgi_app
         self.provider_store = provider_store
         self.usage_outbox = usage_outbox
+        self.audit_outbox = audit_outbox
         self.skill_sync = skill_sync
         self.command_executor = (ManagedCommandExecutor(provider_store, execute_engine_command)
                                  if provider_store is not None else None)
@@ -138,6 +140,7 @@ class GatewayControlClient:
         while not self._stop.is_set():
             reader_task = None
             usage_task = None
+            audit_task = None
             skill_task = None
             try:
                 async with self.connector(self.url, origin=self.origin, open_timeout=10,
@@ -173,12 +176,13 @@ class GatewayControlClient:
                     }))
                     messages = asyncio.Queue()
                     usage_messages = asyncio.Queue()
+                    audit_messages = asyncio.Queue()
                     skill_messages = asyncio.Queue()
                     project_messages = asyncio.Queue()
                     reader_task = asyncio.create_task(
                         self._read_control_messages(socket, device_id, messages,
                                                     usage_messages, skill_messages,
-                                                    project_messages),
+                                                    project_messages, audit_messages),
                     )
                     hello = await self._receive_kind(messages, "hello")
                     if (not isinstance(hello, dict) or hello.get("kind") != "hello"
@@ -203,6 +207,10 @@ class GatewayControlClient:
                         usage_task = asyncio.create_task(
                             self._usage_loop(socket, device_id, usage_messages),
                         )
+                    if self.audit_outbox is not None:
+                        audit_task = asyncio.create_task(
+                            self._audit_loop(socket, device_id, audit_messages),
+                        )
                     self._active_socket = socket
                     self._project_ack_messages = project_messages
                     self.online = True
@@ -212,6 +220,8 @@ class GatewayControlClient:
                             await skill_task
                         if usage_task is not None and usage_task.done():
                             await usage_task
+                        if audit_task is not None and audit_task.done():
+                            await audit_task
                         await socket.send(json.dumps({"kind": "heartbeat"}))
                         ack = await self._receive_kind(messages, "heartbeat_ack")
                         if (not isinstance(ack, dict) or ack.get("kind") != "heartbeat_ack"
@@ -259,6 +269,9 @@ class GatewayControlClient:
                 if usage_task:
                     usage_task.cancel()
                     await asyncio.gather(usage_task, return_exceptions=True)
+                if audit_task:
+                    audit_task.cancel()
+                    await asyncio.gather(audit_task, return_exceptions=True)
                 if skill_task:
                     skill_task.cancel()
                     await asyncio.gather(skill_task, return_exceptions=True)
@@ -299,7 +312,8 @@ class GatewayControlClient:
                                      messages: asyncio.Queue,
                                      usage_messages: asyncio.Queue,
                                      skill_messages: asyncio.Queue,
-                                     project_messages: asyncio.Queue) -> None:
+                                     project_messages: asyncio.Queue,
+                                     audit_messages: asyncio.Queue) -> None:
         try:
             while not self._stop.is_set():
                 message = json.loads(await socket.recv())
@@ -320,6 +334,8 @@ class GatewayControlClient:
                         raise ValueError("Invalid command status acknowledgment")
                 elif message.get("kind") in ("usage_ack", "usage_retry"):
                     usage_messages.put_nowait(message)
+                elif message.get("kind") in ("audit_ack", "audit_retry"):
+                    audit_messages.put_nowait(message)
                 elif message.get("kind") == "skill_applied_ack":
                     skill_messages.put_nowait(message)
                 elif message.get("kind") == "project_publish_ack":
@@ -487,6 +503,48 @@ class GatewayControlClient:
                     raise ValueError("Invalid Gateway usage acknowledgment IDs")
             await asyncio.to_thread(
                 self.usage_outbox.ack, batch["batch_id"],
+                accepted=response["accepted"], duplicates=response["duplicates"],
+                rejected=response["rejected"],
+            )
+            if not (response["accepted"] or response["duplicates"] or response["rejected"]):
+                await asyncio.sleep(5)
+
+    async def _audit_loop(self, socket, device_id: str,
+                          audit_messages: asyncio.Queue) -> None:
+        while not self._stop.is_set():
+            batch = await self.audit_outbox.pending(device_id=device_id)
+            if batch is None:
+                await asyncio.sleep(5)
+                continue
+            await socket.send(json.dumps({
+                "kind": "audit_batch", "version": 1,
+                "batch_id": batch["batch_id"], "events": batch["events"],
+            }))
+            try:
+                response = await asyncio.wait_for(audit_messages.get(), timeout=30)
+            except asyncio.TimeoutError:
+                await asyncio.sleep(5)
+                continue
+            if (not isinstance(response, dict) or response.get("version") != 1
+                    or response.get("device_id") != device_id
+                    or response.get("batch_id") != batch["batch_id"]):
+                raise ValueError("Invalid Gateway audit acknowledgment")
+            if response.get("kind") == "audit_retry":
+                retry_after = response.get("retry_after")
+                if type(retry_after) is not int or not 1 <= retry_after <= 60:
+                    raise ValueError("Invalid Gateway audit retry")
+                await asyncio.sleep(retry_after)
+                continue
+            if response.get("kind") != "audit_ack":
+                raise ValueError("Invalid Gateway audit response")
+            for key in ("accepted", "duplicates", "rejected"):
+                values = response.get(key)
+                if (not isinstance(values, list) or len(values) > 100
+                        or any(not isinstance(value, str) or len(value) > 64
+                               for value in values)):
+                    raise ValueError("Invalid Gateway audit acknowledgment IDs")
+            await self.audit_outbox.ack(
+                batch["project_id"], batch,
                 accepted=response["accepted"], duplicates=response["duplicates"],
                 rejected=response["rejected"],
             )

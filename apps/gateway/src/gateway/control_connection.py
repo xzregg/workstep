@@ -28,6 +28,7 @@ from .capabilities import compiled_device_policy
 from .providers_api import compile_provider_bundle, compiled_provider_access
 from .device_commands import next_command_for_device, record_command_result
 from .usage_ledger import record_usage_batch
+from .audit_ledger import record_audit_batch
 from .skills_api import compile_skill_manifest
 from .project_publication import record_project_publication
 
@@ -611,6 +612,7 @@ async def control_socket(ws: WebSocket):
     connection_id = None
     config_public_key_pem = None
     usage_tasks: set[asyncio.Task] = set()
+    audit_tasks: set[asyncio.Task] = set()
     send_lock = asyncio.Lock()
 
     async def send_json(value: dict) -> None:
@@ -633,6 +635,24 @@ async def control_socket(ws: WebSocket):
                                           for item in events if isinstance(item, dict)]})
         except Exception:
             await send_json({"kind": "usage_retry", "version": 1,
+                             "device_id": device_id, "batch_id": batch_id,
+                             "retry_after": 5})
+
+    async def apply_audit_batch(batch_id: str, events: list[dict]) -> None:
+        try:
+            result = await record_audit_batch(
+                ws.app.state.database, device_id, batch_id, events,
+            )
+            await send_json({"kind": "audit_ack", "version": 1,
+                             "device_id": device_id, **result})
+        except ValueError:
+            await send_json({"kind": "audit_ack", "version": 1,
+                             "device_id": device_id, "batch_id": batch_id,
+                             "accepted": [], "duplicates": [],
+                             "rejected": [str(item.get("audit_event_id", ""))[:64]
+                                          for item in events if isinstance(item, dict)]})
+        except Exception:
+            await send_json({"kind": "audit_retry", "version": 1,
                              "device_id": device_id, "batch_id": batch_id,
                              "retry_after": 5})
 
@@ -850,6 +870,23 @@ async def control_socket(ws: WebSocket):
                 usage_tasks.add(task)
                 task.add_done_callback(usage_tasks.discard)
                 continue
+            if message.get("kind") == "audit_batch":
+                batch_id = message.get("batch_id")
+                events = message.get("events")
+                if (message.get("version") != 1 or not isinstance(batch_id, str)
+                        or not 1 <= len(batch_id) <= 128
+                        or not isinstance(events, list) or not 1 <= len(events) <= 100):
+                    await ws.close(code=4400, reason="Invalid audit batch")
+                    return
+                if len(audit_tasks) >= 4:
+                    await send_json({"kind": "audit_retry", "version": 1,
+                                     "device_id": device_id, "batch_id": batch_id,
+                                     "retry_after": 5})
+                    continue
+                task = asyncio.create_task(apply_audit_batch(batch_id, events))
+                audit_tasks.add(task)
+                task.add_done_callback(audit_tasks.discard)
+                continue
             if message.get("kind") != "heartbeat":
                 await ws.close(code=4400, reason="Invalid control message")
                 return
@@ -892,6 +929,10 @@ async def control_socket(ws: WebSocket):
             task.cancel()
         if usage_tasks:
             await asyncio.gather(*usage_tasks, return_exceptions=True)
+        for task in audit_tasks:
+            task.cancel()
+        if audit_tasks:
+            await asyncio.gather(*audit_tasks, return_exceptions=True)
         if device_id and connection_id:
             with anyio.CancelScope(shield=True):
                 async with ws.app.state.database.session() as session:

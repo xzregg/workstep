@@ -126,6 +126,8 @@ def list_project_audit(
             "initiated_by_username": row.initiated_by_username,
             "metadata": json.loads(row.metadata_json),
             "created_at": row.created_at.isoformat(),
+            "upload_status": row.upload_status,
+            "upload_error": row.upload_error,
         } for row in page],
         "next_before": page[-1].id if len(rows) > limit else None,
     }

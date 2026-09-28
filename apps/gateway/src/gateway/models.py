@@ -505,6 +505,8 @@ class AuditEvent(Base):
     actor_username: Mapped[str | None] = mapped_column(String(128))
     actor_name: Mapped[str | None] = mapped_column(String(256))
     actor_type: Mapped[str | None] = mapped_column(String(16))
+    actor_device_id: Mapped[str | None] = mapped_column(String(64))
+    actor_device_name: Mapped[str | None] = mapped_column(String(256))
     initiated_by_user_id: Mapped[str | None] = mapped_column(String(64))
     initiated_by_username: Mapped[str | None] = mapped_column(String(128))
     occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

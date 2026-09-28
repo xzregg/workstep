@@ -181,6 +181,33 @@ def test_control_accepts_usage_batch_and_acks_after_commit(tmp_path):
             assert ws.receive_json()["duplicates"] == ["usage-1"]
 
 
+def test_control_accepts_audit_batch_and_acks_after_commit(tmp_path):
+    from datetime import datetime, timezone
+
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        device_id, token, device_key, _ = _active_device(client)
+        audit = {
+            "audit_event_id": "audit-1", "device_id": device_id,
+            "project_id": "project-1", "task_id": "task-1",
+            "action": "task.start", "result": "succeeded", "mode": "managed",
+            "actor_id": "user-1", "actor_username": "alice",
+            "actor_type": "user", "metadata": {"source": "manual"},
+            "occurred_at": datetime.now(timezone.utc).isoformat(),
+        }
+        with client.websocket_connect("/api/control/ws") as ws:
+            _handshake(ws, token, device_key)
+            assert ws.receive_json()["kind"] == "hello"
+            ws.send_json({"kind": "audit_batch", "version": 1,
+                          "batch_id": "audit-batch-1", "events": [audit]})
+            ack = ws.receive_json()
+            assert ack["kind"] == "audit_ack"
+            assert ack["accepted"] == ["audit-1"]
+            ws.send_json({"kind": "audit_batch", "version": 1,
+                          "batch_id": "audit-batch-1", "events": [audit]})
+            assert ws.receive_json()["duplicates"] == ["audit-1"]
+
+
 def test_control_records_project_skill_application_for_own_device(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:

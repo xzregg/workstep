@@ -37,6 +37,8 @@ _EXTRA_INDEXES = (
     "CREATE INDEX IF NOT EXISTS schedule_status_next_run_at ON schedules(status, next_run_at)",
     "CREATE INDEX IF NOT EXISTS schedulerun_status ON schedule_runs(status)",
     "CREATE INDEX IF NOT EXISTS task_scheduled_start_state_at ON tasks(scheduled_start_state, scheduled_start_at)",
+    "CREATE INDEX IF NOT EXISTS projectauditevent_upload_status_created_at "
+    "ON project_audit_events(upload_status, created_at)",
 )
 
 # Older builds could create this quoted index before the scheduled-start
@@ -47,6 +49,10 @@ _LEGACY_MALFORMED_INDEXES = (
 )
 
 _ADDITIVE_COLUMNS = {
+    "project_audit_events": {
+        "upload_status": "TEXT NOT NULL DEFAULT 'pending'",
+        "upload_error": "TEXT",
+    },
     "pending_message_inserts": {
         "author_id": "TEXT",
         "author_username": "TEXT",
