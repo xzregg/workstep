@@ -1291,6 +1291,14 @@ async def test_proxy_middleware_forwards_existing_api_when_project_is_remote():
     assert forwarded.path == "/api/sessions"
     assert forwarded.query["project_id"] == "remote:abc"
 
+    app.state.gateway_client = type('ManagedGateway', (), {'managed_config': object()})()
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        managed_response = await client.get("/api/sessions?project_id=remote%3Aabc")
+    assert managed_response.status_code == 403
+    assert len(manager.requests) == 1
+
 
 async def test_proxy_middleware_keeps_remote_scope_for_html_relative_assets():
     config = MemoryConfig()
