@@ -8,6 +8,7 @@ Gateway 阶段 2 的本地账号 API 在 `apps/gateway/src/gateway/identity_api.
 
 Gateway 阶段 3A 的桌面授权及设备管理 API 在 `apps/gateway/src/gateway/desktop_authorization_api.py`，一次性 code、PKCE 与设备登记由 `desktop_authorization.py` 负责，设备授权签名密钥在 `signing.py` 管理，行为测试见 `apps/gateway/tests/test_desktop_authorization.py`。Gateway Web 的 `src/DeviceAdminPage.tsx` 持有管理员登录、设备列表与二次认证操作，`src/App.tsx` 装配 `/admin/devices`，行为入口见 `apps/gateway-web/tests/device-admin.test.tsx`。Desktop 的 PKCE/回调校验与受管凭据存储在 `apps/desktop/src/desktop-auth.cjs`、`credential-store.cjs`，主进程 `main.cjs` 按“网关登录 → 本机交接 → 工作台”启动；测试见 `apps/desktop/tests/desktop-auth.test.cjs`、`credential-store.test.cjs`。daemon 的本机会话交接在 `api/managed.py`、`services/gateway_client/identity.py`，`services/desktop_security.py` 守卫业务 HTTP/WebSocket；测试见 `apps/daemon/tests/test_managed_bootstrap.py`、`test_gateway_local_identity.py`、`test_desktop_security.py`。
 Gateway 安装包目录由 `apps/gateway/src/gateway/client_releases.py` 持有，迁移 `0009_client_releases.py` 保存发布元数据，`apps/gateway-web/src/ClientDownloadPage.tsx` 显示 `/devices/empty` 下载页；行为测试见 `apps/gateway/tests/test_client_releases.py` 与 `apps/gateway-web/tests/client-releases.test.tsx`。
+受管本机会话失效标记与 Origin 检查在 daemon 的 `services/desktop_security.py`；Desktop 的 `src/managed-session.cjs` 识别专用 401 标记，`src/main.cjs` 单飞重新登录并重新交接 daemon，测试见 `apps/daemon/tests/test_desktop_security.py` 与 `apps/desktop/tests/managed-session.test.cjs`。
 
 修改功能时先找所属模块，再沿前端页面或组件 → API → 服务 → 数据模型追踪。行为测试放在实际拥有该行为的模块附近；不要把页面、`src/api/client.ts` 或通用服务文件作为新功能的默认落点。
 

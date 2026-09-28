@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hmac
 import os
+from urllib.parse import urlsplit
 
 from fastapi import WebSocket
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -44,10 +45,25 @@ def _valid_token(value: str | None) -> bool:
     return hmac.compare_digest(value, expected)
 
 
+def _same_origin(origin: str | None, scheme: str, host: str) -> bool:
+    if origin is None:
+        return True
+    try:
+        parsed = urlsplit(origin)
+        return (parsed.scheme in ("http", "https") and parsed.netloc == host
+                and parsed.scheme == scheme and not parsed.path and not parsed.query
+                and not parsed.fragment)
+    except ValueError:
+        return False
+
+
 def desktop_websocket_allowed(ws: WebSocket) -> bool:
     """Require the Electron main-process header in packaged desktop mode."""
 
     if not _valid_token(ws.headers.get(DESKTOP_TOKEN_HEADER)):
+        return False
+    if not _same_origin(ws.headers.get("origin"),
+                        "https" if ws.url.scheme == "wss" else "http", ws.headers.get("host", "")):
         return False
     gateway_client = getattr(ws.app.state, "gateway_client", None)
     if gateway_client is None or getattr(gateway_client, "managed_config", None) is None:
@@ -67,21 +83,28 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
         gateway_client = getattr(request.app.state, "gateway_client", None)
         managed = gateway_client is not None and getattr(gateway_client, "managed_config", None) is not None
         actor = None
-        if managed and protected and request.url.path not in ("/api/managed/bootstrap", "/api/health"):
-            actor = gateway_client.local_sessions.resolve(request.headers.get(LOCAL_SESSION_HEADER))
-        denied = protected and (
-            not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER))
-            or (managed and request.url.path not in ("/api/managed/bootstrap", "/api/health") and actor is None)
+        invalid_origin = managed and protected and not _same_origin(
+            request.headers.get("origin"), request.url.scheme, request.headers.get("host", ""),
         )
-        if denied:
-            response = JSONResponse(
-                {"detail": "desktop authentication required"},
-                status_code=401,
-            )
+        if invalid_origin:
+            response = JSONResponse({"detail": "invalid desktop origin"}, status_code=403)
         else:
-            if actor is not None:
-                request.state.managed_actor = actor
-            response = await call_next(request)
+            if managed and protected and request.url.path not in ("/api/managed/bootstrap", "/api/health"):
+                actor = gateway_client.local_sessions.resolve(request.headers.get(LOCAL_SESSION_HEADER))
+            denied = protected and (
+                not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER))
+                or (managed and request.url.path not in ("/api/managed/bootstrap", "/api/health") and actor is None)
+            )
+            if denied:
+                response = JSONResponse(
+                    {"detail": "desktop authentication required"}, status_code=401,
+                )
+                if managed and protected and _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)):
+                    response.headers["X-WorkStep-Managed-Session-Expired"] = "1"
+            else:
+                if actor is not None:
+                    request.state.managed_actor = actor
+                response = await call_next(request)
 
         response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")

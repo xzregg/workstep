@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from fastapi import FastAPI, WebSocket
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
+import pytest
 
 from services.desktop_security import (
     DesktopSecurityMiddleware,
@@ -113,9 +115,16 @@ def test_managed_runtime_requires_gateway_derived_local_session(monkeypatch):
         'managed_config': object(), 'local_sessions': sessions,
     })()
     with TestClient(app) as client:
+        missing = client.get('/api/private', headers={
+            'X-WorkStep-Desktop-Token': 'runtime-secret',
+        })
+        assert missing.status_code == 401
+        assert missing.headers['x-workstep-managed-session-expired'] == '1'
         assert client.get('/api/private', headers={
             'X-WorkStep-Desktop-Token': 'runtime-secret',
-        }).status_code == 401
+            'X-WorkStep-Local-Session': local_token,
+            'Origin': 'https://attacker.example',
+        }).status_code == 403
         assert client.get('/api/private', headers={
             'X-WorkStep-Desktop-Token': 'runtime-secret',
             'X-WorkStep-Local-Session': local_token,
@@ -125,3 +134,11 @@ def test_managed_runtime_requires_gateway_derived_local_session(monkeypatch):
             'X-WorkStep-Local-Session': local_token,
         }) as websocket:
             assert websocket.receive_text() == 'ok'
+        with pytest.raises(WebSocketDisconnect) as denied:
+            with client.websocket_connect('/ws', headers={
+                'X-WorkStep-Desktop-Token': 'runtime-secret',
+                'X-WorkStep-Local-Session': local_token,
+                'Origin': 'https://attacker.example',
+            }):
+                pass
+        assert denied.value.code == 4401
