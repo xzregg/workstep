@@ -628,6 +628,23 @@ async def test_project_proxy_files_stay_inside_project_and_slow_upload_does_not_
     assert (await asyncio.wait_for(client.get("/api/health"), timeout=0.15)).status_code == 200
     assert (await pending)[0].payload["status"] == 200
 
+    entry = {"project_id": project_id, "parent": str(project_dir),
+             "name": "note.txt", "kind": "file"}
+    assert (await call_bridge("POST", "/api/fs/entry", upload_query, level="edit",
+                              body={**entry, "project_id": "other-project"}))[0].payload["status"] == 403
+    assert (await call_bridge("POST", "/api/fs/entry", upload_query, level="edit",
+                              body=entry))[0].payload["status"] == 200
+    content = {"project_id": project_id, "path": str(project_dir / "note.txt"),
+               "content": "project text", "expected_content": ""}
+    assert (await call_bridge("PUT", "/api/fs/content", upload_query,
+                              body=content))[0].payload["status"] == 403
+    assert (await call_bridge("PUT", "/api/fs/content", upload_query,
+                              level="edit", body=content))[0].payload["status"] == 200
+    assert (project_dir / "note.txt").read_text() == "project text"
+    assert (await call_bridge("PUT", "/api/fs/content", upload_query,
+                              level="edit", body={**content, "path": str(outside)}
+                              ))[0].payload["status"] == 403
+
 
 @pytest.mark.anyio
 async def test_single_project_summary_hides_host_path_and_keeps_health_responsive(
