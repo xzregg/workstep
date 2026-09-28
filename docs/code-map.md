@@ -13,6 +13,7 @@ Gateway 阶段 3B 的控制 WebSocket 骨架在 `apps/gateway/src/gateway/contro
 Desktop 的 `src/desktop-auth.cjs` 在设备密钥下签署临时控制密钥委托，`src/main.cjs` 只把临时私钥交给本机 daemon。daemon 的 `services/gateway_client/control.py` 用该密钥响应 Gateway 新鲜挑战，维护出站 WSS、心跳和退避重连，`service.py` 持有生命周期；`api/managed.py` 提供本机控制状态供 Desktop 在授权失效时重新登录。行为测试见 `apps/desktop/tests/desktop-auth.test.cjs`、`apps/daemon/tests/test_gateway_control_client.py` 和 `test_managed_bootstrap.py`。
 Gateway `signing.py` 签发短期用户×设备策略快照，`control_connection.py` 在握手及心跳下发并记录应用回执，迁移 `0010_connection_policy.py` 保存连接的已应用 revision。daemon 的 `services/gateway_client/policy.py` 验证固定公钥、身份、生命周期和版本，`control.py` 原子更新缓存并回执；测试见 `apps/gateway/tests/test_control_connection.py`、`apps/daemon/tests/test_gateway_policy.py`。
 daemon 受管请求通过 `services/desktop_security.py` 将 Gateway 用户投影为 `services/remote_access.py::ActorSnapshot(source="managed")`；`services/task_creation.py` 的共享创建入口调用 `services/gateway_client/policy.py::require_managed_capability` 检查 `task.create`，HTTP 入口在 `api/task.py` 与 `api/task_dispatch.py` 返回 403；测试见 `apps/daemon/tests/test_desktop_security.py`、`test_api_contracts.py`（含项目数据库写锁健康检查）。
+Gateway `apps/gateway/src/gateway/capabilities.py` 保存并编译全局/设备范围 `task.create` 的 allow/deny，显式 deny 优先；迁移 `0011_capabilities.py` 建表并给设备增加 policy revision，管理 API 支持授予和撤销。控制心跳根据当前分配重签快照；测试见 `apps/gateway/tests/test_control_connection.py`、`test_capabilities_canary.py`。
 
 修改功能时先找所属模块，再沿前端页面或组件 → API → 服务 → 数据模型追踪。行为测试放在实际拥有该行为的模块附近；不要把页面、`src/api/client.ts` 或通用服务文件作为新功能的默认落点。
 

@@ -15,7 +15,8 @@ Gateway 是独立 FastAPI 服务，`apps/gateway-web` 是独立门户。阶段 0
 受管安装包由部署者按网关固定配置构建后放入 Gateway 数据目录的 `releases/`。超级管理员密码二次认证后调用 `POST /api/admin/client-releases`，提交 `os`、`arch`、`version`、`filename`、`minimum_protocol_version`；Gateway 把文件复制为不可变发布副本，计算大小与 SHA-256，并用网关密钥签署规范化清单。`GET /api/client-releases` 和 `/devices/empty` 对所有用户提供同一网关的安装包及校验信息；下载链接不携带用户身份。发布前须核对安装包内的受管配置与本 Gateway ID、公钥 pin 及域名一致，安装包代码签名仍由 Desktop 发布流程负责。
 
 阶段 3B 的控制 WebSocket 已建立 `/api/control/ws` 骨架：Desktop 用设备密钥签署短期控制密钥委托，只把临时控制私钥交给本机 daemon；Gateway 发出一次性随机挑战，由 daemon 的临时密钥应答，并核对签名授权、设备/用户状态和用户设备关系。Gateway 维护单设备在线连接和历史；心跳超时、停用或撤销关闭连接。daemon 主动连接、心跳并退避重连；授权被拒后，本机控制状态通知 Desktop 重新登录。Gateway 在握手和心跳下发十分钟签名策略快照，daemon 校验固定网关公钥、用户/设备、期限和 revision 后缓存并回执；本机状态接口展示期限。完整策略编译、其余受控业务入口门禁和命令传输仍待实现，因此此端点暂不用于生产受管设备。
-受管请求的操作者会进入 daemon 的当前身份上下文；共享任务创建服务根据本机签名策略检查 `task.create`，过期、未下发、用户不匹配或能力缺失时返回 403。当前 Gateway 快照中的受控能力默认拒绝，管理员能力分配与其他受控入口门禁留待后续阶段；此控制通道尚不适合生产部署。
+受管请求的操作者会进入 daemon 的当前身份上下文；共享任务创建服务根据本机签名策略检查 `task.create`，过期、未下发、用户不匹配或能力缺失时返回 403。未分配的受控能力默认拒绝；其余受控入口门禁留待后续阶段，此控制通道尚不适合生产部署。
+超级管理员短时二次认证后可调用 `POST /api/admin/capabilities/{user_id}` 授予全局或设备范围的 `task.create`，`effect=deny` 优先于 allow；`POST /api/admin/capabilities/{user_id}/revoke` 撤销相应分配。变更提高目标设备 policy revision，下次控制心跳重签并回传应用版本。设备停用、撤销或账号停用关闭控制连接时，daemon 清空受控策略。项目范围能力和其余受控动作仍待后续阶段。
 桌面登录页支持本地密码及已启用的钉钉/企业微信身份源；扫码回调持久化一次性 state 与经过白名单约束的回跳路径，成功后返回原桌面登录页继续签发 code。待审核账号进入等待页。第三方事件回调仍未验签接入，目录变更由定时对账或管理员导入处理。
 
 本地开发使用 `uv run --project apps/gateway --group dev uvicorn gateway.app:app --host 127.0.0.1 --port 8766`。门户在 `apps/gateway-web` 执行 `yarn dev`，开发服务器将 `/api` 代理到 8766。构建后可设置 `WORKSTEP_GATEWAY_WEB_DIST` 为门户 `dist` 的绝对路径，让 Gateway 托管静态文件。默认 SQLite 位于 `~/.workstep-gateway/workstep_platform.db`，可用 `WORKSTEP_GATEWAY_DATA_DIR` 指定数据目录，或用 `WORKSTEP_GATEWAY_DATABASE_URL` 指定 `sqlite+aiosqlite` / `postgresql+asyncpg` 地址。启动执行 Alembic 迁移，未知版本拒绝启动，不会自动退回别的数据库。

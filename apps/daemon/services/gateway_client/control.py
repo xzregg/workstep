@@ -129,7 +129,8 @@ class GatewayControlClient:
             except asyncio.CancelledError:
                 raise
             except ConnectionClosed as exc:
-                if exc.rcvd and exc.rcvd.code == 4401:
+                if exc.rcvd and exc.rcvd.code in (4003, 4401):
+                    self.policy_cache.clear()
                     self.authorization_required = True
                     return
                 logger.warning("Gateway control connection closed: %s", type(exc).__name__)
