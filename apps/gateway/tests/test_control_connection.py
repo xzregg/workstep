@@ -3,6 +3,7 @@ import hashlib
 import json
 import sqlite3
 import time
+from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from cryptography.hazmat.primitives import serialization
@@ -243,6 +244,86 @@ def test_control_records_project_skill_application_for_own_device(tmp_path):
         applications = client.get("/api/admin/skills/applications")
         assert applications.status_code == 200
         assert applications.json()["projects"][0]["applied_revision"] == 1
+
+
+def test_admin_publishes_from_live_catalog_and_unpublishes_offline(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        device_id, token, device_key, csrf = _active_device(client)
+        headers = {"X-CSRF-Token": csrf}
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with client.websocket_connect("/api/control/ws") as ws:
+                _handshake(ws, token, device_key)
+                assert ws.receive_json()["kind"] == "hello"
+                listing = pool.submit(client.get,
+                    f"/api/admin/devices/{device_id}/publishable-projects")
+                requested = ws.receive_json()
+                assert requested["kind"] == "project_catalog_request"
+                ws.send_json({"kind": "project_catalog_response", "version": 1,
+                              "device_id": device_id, "request_id": requested["request_id"],
+                              "status": "ok", "projects": [{"id": "host-1", "name": "Backend"}]})
+                available = listing.result(timeout=5)
+                assert available.status_code == 200, available.text
+                assert available.json()["projects"] == [{
+                    "host_project_id": "host-1", "name": "Backend", "published": False,
+                }]
+                missing = pool.submit(client.post,
+                    f"/api/admin/devices/{device_id}/projects/host-2/publish", headers=headers)
+                requested = ws.receive_json()
+                ws.send_json({"kind": "project_catalog_response", "version": 1,
+                              "device_id": device_id, "request_id": requested["request_id"],
+                              "status": "ok", "projects": [{"id": "host-1", "name": "Backend"}]})
+                assert missing.result(timeout=5).status_code == 404
+                published = pool.submit(client.post,
+                    f"/api/admin/devices/{device_id}/projects/host-1/publish", headers=headers)
+                requested = ws.receive_json()
+                ws.send_json({"kind": "project_catalog_response", "version": 1,
+                              "device_id": device_id, "request_id": requested["request_id"],
+                              "status": "ok", "projects": [{"id": "host-1", "name": "Backend"}]})
+                result = published.result(timeout=5)
+                assert result.status_code == 200, result.text
+                project_id = result.json()["project_id"]
+                assert client.get("/api/admin/projects").json()["projects"][0]["id"] == project_id
+        assert client.get(f"/api/admin/devices/{device_id}/publishable-projects").status_code == 503
+        removed = client.post(f"/api/admin/projects/{project_id}/unpublish", headers=headers)
+        assert removed.status_code == 200, removed.text
+        assert removed.json()["status"] == "unpublished"
+        assert client.get("/api/admin/projects").json()["projects"] == []
+        worker = client.post("/api/admin/users", headers=headers, json={
+            "username": "worker", "display_name": "Worker",
+            "password": "WorkerPassphrase-2026!",
+        })
+        assert worker.status_code == 201, worker.text
+        client.cookies.clear()
+        login = client.post("/api/auth/login", json={
+            "username": "worker", "password": "WorkerPassphrase-2026!",
+        })
+        assert login.status_code == 200
+        assert client.get(f"/api/admin/devices/{device_id}/publishable-projects").status_code == 403
+        assert client.post(f"/api/admin/projects/{project_id}/unpublish", headers={
+            "X-CSRF-Token": login.json()["csrf_token"],
+        }).status_code == 403
+
+
+def test_project_catalog_rejects_host_paths(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        device_id, token, device_key, _ = _active_device(client)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with client.websocket_connect("/api/control/ws") as ws:
+                _handshake(ws, token, device_key)
+                assert ws.receive_json()["kind"] == "hello"
+                listing = pool.submit(client.get,
+                    f"/api/admin/devices/{device_id}/publishable-projects")
+                requested = ws.receive_json()
+                ws.send_json({"kind": "project_catalog_response", "version": 1,
+                              "device_id": device_id, "request_id": requested["request_id"],
+                              "status": "ok", "projects": [{"id": "host-1", "name": "Backend",
+                                                        "path": "/private/project"}]})
+                with pytest.raises(WebSocketDisconnect) as closed:
+                    ws.receive_json()
+                assert closed.value.code == 4400
+                assert listing.result(timeout=5).status_code == 503
 
 
 def test_device_explicitly_publishes_and_unpublishes_its_project(tmp_path):
