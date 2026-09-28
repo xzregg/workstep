@@ -232,6 +232,9 @@ a {
 .gateway-operation-list { padding: 0; list-style: none; }
 .gateway-operation-list > li { padding: 16px 0; border-top: 1px solid #e5e5ea; }
 .gateway-operation-list ul { margin: 8px 0; padding-left: 24px; }
+.gateway-project-grants { margin-top: 24px; padding: 20px; border: 1px solid #e5e5ea; border-radius: 12px; }
+.gateway-project-grants h3 { margin: 0; }
+.gateway-project-grants .gateway-device-list { margin-top: 12px; }
 .gateway-role-dialog { max-height: min(90vh, 760px); overflow-y: auto; }
 .gateway-role-dialog .gateway-admin-search { margin-bottom: 12px; }
 .gateway-role-dialog .gateway-admin-search input { flex: 1; min-width: 0; }

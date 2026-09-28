@@ -5,9 +5,9 @@ from typing import Literal
 from uuid import uuid4
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 
 from .identity import COOKIE_NAME
 from .identity import IdentityService
@@ -181,15 +181,97 @@ async def list_accessible_projects(request: Request):
     return {"projects": visible}
 
 
+@router.get('/admin/projects')
+async def list_admin_projects(request: Request, q: str = Query('', max_length=128),
+                              sort: Literal['name', 'published_at'] = 'name',
+                              direction: Literal['asc', 'desc'] = 'asc',
+                              page: int = Query(1, ge=1),
+                              page_size: int = Query(25, ge=1, le=100)):
+    await _super_admin_read(request)
+    conditions = [PlatformProject.access_mode == 'remote_published',
+                  PlatformProject.status == 'active']
+    if q.strip():
+        escaped = q.strip().replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+        pattern = f'%{escaped}%'
+        conditions.append(or_(PlatformProject.name.ilike(pattern, escape='\\'),
+                              Device.name.ilike(pattern, escape='\\')))
+    column = PlatformProject.name if sort == 'name' else PlatformProject.published_at
+    ordered = column.asc() if direction == 'asc' else column.desc()
+    async with request.app.state.database.session() as session:
+        base = select(PlatformProject).join(Device, Device.id == PlatformProject.device_id)
+        total = await session.scalar(select(func.count()).select_from(PlatformProject).join(
+            Device, Device.id == PlatformProject.device_id).where(*conditions))
+        rows = (await session.execute(base.add_columns(Device).where(*conditions)
+            .order_by(ordered, PlatformProject.id).offset((page - 1) * page_size)
+            .limit(page_size))).all()
+        project_ids = [project.id for project, _ in rows]
+        grants = (await session.scalars(select(ProjectAccessGrant).where(
+            ProjectAccessGrant.project_id.in_(project_ids),
+            ProjectAccessGrant.revoked_at.is_(None)))).all() if project_ids else []
+        publisher_ids = {project.published_by_user_id for project, _ in rows
+                         if project.published_by_user_id}
+        publisher_names = dict((await session.execute(select(User.id, User.username).where(
+            User.id.in_(publisher_ids)))).all()) if publisher_ids else {}
+        projects = []
+        for project, device in rows:
+            own_grants = [grant for grant in grants if grant.project_id == project.id]
+            projects.append({
+                'id': project.id, 'name': project.name,
+                'device_id': device.id, 'device_name': device.name,
+                'device_online': request.app.state.control_connections.is_online(device.id),
+                'publisher': publisher_names.get(project.published_by_user_id),
+                'published_at': project.published_at,
+                'grant_users': sum(grant.subject_type == 'user' for grant in own_grants),
+                'grant_groups': sum(grant.subject_type == 'group' for grant in own_grants),
+                'grant_levels': {'read': sum(grant.access_level == 'read' for grant in own_grants),
+                                 'edit': sum(grant.access_level == 'edit' for grant in own_grants)},
+                'running_tasks': None,
+            })
+    return {'projects': projects, 'total': total, 'page': page, 'page_size': page_size}
+
+
+@router.get('/admin/project-grant-subjects')
+async def list_project_grant_subjects(request: Request,
+                                      subject_type: Literal['user', 'group'],
+                                      q: str = Query('', max_length=128),
+                                      page: int = Query(1, ge=1),
+                                      page_size: int = Query(25, ge=1, le=100)):
+    await _super_admin_read(request)
+    model = User if subject_type == 'user' else UserGroup
+    name = User.username if subject_type == 'user' else UserGroup.name
+    conditions = [model.status == 'active']
+    if q.strip():
+        escaped = q.strip().replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+        conditions.append(name.ilike(f'%{escaped}%', escape='\\'))
+    async with request.app.state.database.session() as session:
+        total = await session.scalar(select(func.count()).select_from(model).where(*conditions))
+        rows = (await session.scalars(select(model).where(*conditions).order_by(name, model.id)
+            .offset((page - 1) * page_size).limit(page_size))).all()
+    return {'subjects': [{'id': row.id, 'name': getattr(row, 'username', None) or row.name}
+                         for row in rows], 'total': total, 'page': page, 'page_size': page_size}
+
+
 @router.get("/admin/projects/{project_id}/grants")
 async def list_project_grants(request: Request, project_id: str):
     await _super_admin_read(request)
     async with request.app.state.database.session() as session:
+        project = await session.get(PlatformProject, project_id)
+        if (project is None or project.access_mode != 'remote_published'
+                or project.status != 'active'):
+            raise HTTPException(status_code=404, detail='Published project unavailable')
         rows = (await session.scalars(select(ProjectAccessGrant).where(
             ProjectAccessGrant.project_id == project_id,
             ProjectAccessGrant.revoked_at.is_(None),
         ).order_by(ProjectAccessGrant.subject_type,
                    ProjectAccessGrant.subject_id))).all()
+        user_ids = [row.subject_id for row in rows if row.subject_type == 'user']
+        group_ids = [row.subject_id for row in rows if row.subject_type == 'group']
+        user_names = dict((await session.execute(select(User.id, User.username).where(
+            User.id.in_(user_ids)))).all()) if user_ids else {}
+        group_names = dict((await session.execute(select(UserGroup.id, UserGroup.name).where(
+            UserGroup.id.in_(group_ids)))).all()) if group_ids else {}
     return {"grants": [{"id": row.id, "subject_type": row.subject_type,
                         "subject_id": row.subject_id,
+                        "subject_name": (user_names if row.subject_type == 'user'
+                                         else group_names).get(row.subject_id, row.subject_id),
                         "access_level": row.access_level} for row in rows]}
