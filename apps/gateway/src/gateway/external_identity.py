@@ -1,6 +1,7 @@
 """Gateway-owned external identity mapping and directory projection."""
 
 import hashlib
+import json
 import secrets
 from dataclasses import dataclass
 from datetime import timedelta
@@ -16,6 +17,7 @@ from .group_membership_sync import reconcile_department_groups
 from .models import (
     DirectoryDepartment, DirectoryMembership, DirectoryPerson, ExternalIdentity,
     ExternalLoginAttempt, IdentitySource, PlatformSetting, User, DirectoryEventReceipt,
+    DirectorySyncState,
 )
 
 
@@ -194,8 +196,11 @@ class ExternalIdentityService:
         except IntegrityError as exc:
             raise HTTPException(status_code=409, detail="External identity already linked") from exc
 
-    async def full_sync(self, source_id: str, departments: list[dict], people: list[dict]) -> dict[str, int]:
+    async def full_sync(self, source_id: str, departments: list[dict], people: list[dict],
+                        cursor: str | None = None) -> dict[str, int]:
         await self.source(source_id)
+        if cursor is not None and (not isinstance(cursor, str) or len(cursor) > 256):
+            raise HTTPException(status_code=422, detail="Invalid directory cursor")
         department_ids = [item["external_id"] for item in departments]
         subjects = [item["subject"] for item in people]
         if len(set(department_ids)) != len(department_ids) or len(set(subjects)) != len(subjects):
@@ -213,12 +218,42 @@ class ExternalIdentityService:
                 identities = {row.subject: row for row in (await session.scalars(
                     select(ExternalIdentity).where(ExternalIdentity.source_id == source_id)
                 )).all()}
+                old_memberships: dict[str, set[str]] = {}
+                membership_rows = (await session.execute(select(
+                    DirectoryMembership.person_id, DirectoryDepartment.external_id,
+                ).join(DirectoryDepartment, DirectoryDepartment.id == DirectoryMembership.department_id)
+                    .where(DirectoryDepartment.source_id == source_id))).all()
+                for person_id, external_id in membership_rows:
+                    old_memberships.setdefault(person_id, set()).add(external_id)
+                changes = {key: 0 for key in (
+                    "departments_added", "departments_updated", "departments_moved", "departments_deleted",
+                    "people_added", "people_updated", "people_transferred", "people_departed",
+                )}
+                incoming_departments = {item["external_id"] for item in departments}
+                incoming_people = {item["subject"] for item in people}
+                old_department_active = {external_id: bool(row.active)
+                                         for external_id, row in existing_departments.items()}
+                old_person_active = {subject: bool(row.active)
+                                     for subject, row in existing_people.items()}
+                changes["departments_deleted"] = sum(
+                    active and external_id not in incoming_departments
+                    for external_id, active in old_department_active.items()
+                )
+                changes["people_departed"] = sum(
+                    active and subject not in incoming_people
+                    for subject, active in old_person_active.items()
+                )
                 for row in existing_departments.values():
                     row.active = 0
                 for row in existing_people.values():
                     row.active = 0
                 for item in departments:
                     row = existing_departments.get(item["external_id"])
+                    if row is None or not old_department_active[item["external_id"]]:
+                        changes["departments_added"] += 1
+                    else:
+                        changes["departments_updated"] += row.display_name != item["display_name"]
+                        changes["departments_moved"] += row.parent_external_id != item.get("parent_external_id")
                     if row is None:
                         row = DirectoryDepartment(id=str(uuid4()), source_id=source_id,
                                                  external_id=item["external_id"], display_name=item["display_name"])
@@ -230,6 +265,13 @@ class ExternalIdentityService:
                 await session.flush()
                 for item in people:
                     row = existing_people.get(item["subject"])
+                    if row is None or not old_person_active[item["subject"]]:
+                        changes["people_added"] += 1
+                    else:
+                        changes["people_updated"] += row.display_name != item["display_name"]
+                        changes["people_transferred"] += (
+                            old_memberships.get(row.id, set()) != set(item["department_ids"])
+                        )
                     if row is None:
                         identity = identities.get(item["subject"])
                         if identity:
@@ -265,7 +307,28 @@ class ExternalIdentityService:
                         ))
                 await session.flush()
                 await reconcile_department_groups(session, source_id=source_id)
+                state = await session.get(DirectorySyncState, source_id)
+                if state is None:
+                    state = DirectorySyncState(source_id=source_id)
+                    session.add(state)
+                now = _now()
+                state.last_attempt_at = now
+                state.last_success_at = now
+                state.last_error_code = None
+                if cursor is not None:
+                    state.cursor = cursor
+                state.changes_json = json.dumps(changes, sort_keys=True)
         return {"departments": len(departments), "people": len(people)}
+
+    async def record_sync_failure(self, source_id: str, code: str) -> None:
+        async with self.database.session() as session:
+            async with session.begin():
+                state = await session.get(DirectorySyncState, source_id)
+                if state is None:
+                    state = DirectorySyncState(source_id=source_id)
+                    session.add(state)
+                state.last_attempt_at = _now()
+                state.last_error_code = code
 
     async def disable_source(self, source_id: str) -> None:
         async with self.database.session() as session:

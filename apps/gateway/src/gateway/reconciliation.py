@@ -3,6 +3,7 @@
 import asyncio
 import logging
 
+from fastapi import HTTPException
 from sqlalchemy import select, update
 
 from .database import GatewayDatabase
@@ -17,6 +18,22 @@ class DirectoryReconciler:
         self.database = database
         self.connectors = connectors
 
+    async def _reconcile_source(self, source: IdentitySource, connector,
+                                service: ExternalIdentityService) -> None:
+        try:
+            snapshot = await connector.fetch_directory(source)
+        except Exception:
+            await service.record_sync_failure(source.id, "provider_unavailable")
+            raise
+        try:
+            await service.full_sync(source.id, snapshot["departments"], snapshot["people"],
+                                    snapshot.get("cursor"))
+        except Exception as exc:
+            await service.record_sync_failure(source.id,
+                                              "snapshot_invalid" if isinstance(exc, HTTPException)
+                                              and exc.status_code == 422 else "snapshot_apply_failed")
+            raise
+
     async def run_once(self) -> None:
         async with self.database.session() as session:
             sources = (await session.scalars(select(IdentitySource).where(
@@ -26,10 +43,10 @@ class DirectoryReconciler:
         for source in sources:
             connector = self.connectors.get(source.provider)
             if connector is None:
+                await service.record_sync_failure(source.id, "connector_unavailable")
                 continue
             try:
-                snapshot = await connector.fetch_directory(source)
-                await service.full_sync(source.id, snapshot["departments"], snapshot["people"])
+                await self._reconcile_source(source, connector, service)
             except Exception as exc:
                 logger.error("Directory reconciliation failed for source %s (%s)",
                              source.id, type(exc).__name__)
@@ -50,11 +67,11 @@ class DirectoryReconciler:
             source = sources.get(source_id)
             connector = self.connectors.get(source.provider) if source and source.enabled else None
             if source and source.enabled and connector is None:
+                await service.record_sync_failure(source_id, "connector_unavailable")
                 continue
             if connector is not None:
                 try:
-                    snapshot = await connector.fetch_directory(source)
-                    await service.full_sync(source_id, snapshot["departments"], snapshot["people"])
+                    await self._reconcile_source(source, connector, service)
                 except Exception as exc:
                     logger.error("Directory callback reconciliation failed for source %s (%s)",
                                  source_id, type(exc).__name__)

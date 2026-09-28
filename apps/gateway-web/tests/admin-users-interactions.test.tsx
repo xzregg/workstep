@@ -309,7 +309,12 @@ test('organization page browses a source, its departments and direct members', a
     if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
     if (url.startsWith('/api/admin/identity-sources?')) return Response.json({ sources: [
       { id: 'source-1', provider: 'wecom', tenant_id: 'tenant-a', client_id: 'app', enabled: true,
-        callback_configured: true, created_at: '2026-01-01' }], total: 1 })
+        callback_configured: true, created_at: '2026-01-01', pending_callbacks: 2,
+        oldest_pending_at: '2026-01-01T00:00:00Z', sync_state: {
+          last_attempt_at: '2026-01-02T00:00:00Z', last_success_at: '2026-01-01T00:00:00Z',
+          last_error_code: 'provider_unavailable', cursor: 'cursor-1',
+          changes: { people_added: 1, departments_added: 1 },
+        } }], total: 1 })
     if (url.startsWith('/api/admin/org/departments?')) return Response.json({ departments: [
       { id: 'dept-1', source_id: 'source-1', provider: 'wecom', tenant_id: 'tenant-a',
         external_id: 'engineering', display_name: 'Engineering', parent_external_id: null,
@@ -322,6 +327,10 @@ test('organization page browses a source, its departments and direct members', a
   }
   render(<MemoryRouter><AdminOrgPage roles={['super_admin']} /></MemoryRouter>)
   await screen.findByText(/企业微信 · tenant-a/)
+  assert.match(document.body.textContent ?? '', /最近错误：身份源不可用/)
+  assert.match(document.body.textContent ?? '', /同步游标：cursor-1 · 待处理回调：2/)
+  fireEvent.click(screen.getByText('最近同步变更'))
+  assert.match(document.body.textContent ?? '', /新增成员：1/)
   fireEvent.click(screen.getByRole('button', { name: '查看目录' }))
   await waitFor(() => assert.ok(requests.some(url => url.includes('source_id=source-1'))))
   fireEvent.click(screen.getByRole('button', { name: /Engineering/ }))

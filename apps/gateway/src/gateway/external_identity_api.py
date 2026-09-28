@@ -1,6 +1,8 @@
 """Enterprise identity setup, scan callbacks and directory import."""
 
+import json
 import re
+from datetime import datetime, timezone
 from typing import Literal
 from urllib.parse import parse_qs, urlsplit
 
@@ -12,7 +14,7 @@ from sqlalchemy import func, or_, select
 from .external_identity import ExternalIdentityService
 from .identity import COOKIE_NAME, IdentityService, csrf_token, public_user
 from .identity_api import _check_csrf, _set_session_cookie, _super_admin_read, _super_admin_request
-from .models import IdentitySource
+from .models import DirectoryEventReceipt, DirectorySyncState, IdentitySource
 
 router = APIRouter(prefix="/api")
 
@@ -51,6 +53,7 @@ class PersonInput(BaseModel):
 class DirectorySnapshot(BaseModel):
     departments: list[DepartmentInput]
     people: list[PersonInput]
+    cursor: str | None = Field(default=None, max_length=256)
 
 
 class PersonEvent(BaseModel):
@@ -135,22 +138,62 @@ async def list_sources(request: Request, q: str = Query('', max_length=128),
         total = await session.scalar(select(func.count()).select_from(IdentitySource).where(*conditions))
         rows = (await session.scalars(select(IdentitySource).where(*conditions)
             .order_by(ordered, IdentitySource.id).offset((page - 1) * page_size).limit(page_size))).all()
+        ids = [source.id for source in rows]
+        states = {}
+        pending = {}
+        if ids:
+            states = {state.source_id: state for state in (await session.scalars(select(DirectorySyncState)
+                .where(DirectorySyncState.source_id.in_(ids)))).all()}
+            pending = {source_id: (count, oldest) for source_id, count, oldest in (await session.execute(
+                select(DirectoryEventReceipt.source_id, func.count(), func.min(DirectoryEventReceipt.received_at))
+                .where(DirectoryEventReceipt.source_id.in_(ids), DirectoryEventReceipt.status == 'pending')
+                .group_by(DirectoryEventReceipt.source_id)
+            )).all()}
+        now = datetime.now(timezone.utc)
         sources = [{'id': source.id, 'provider': source.provider, 'tenant_id': source.tenant_id,
                     'client_id': source.client_id, 'agent_id': source.agent_id,
                     'enabled': bool(source.enabled),
                     'callback_configured': bool(source.callback_token_env),
-                    'created_at': source.created_at.isoformat()} for source in rows]
+                    'created_at': source.created_at.isoformat(),
+                    'sync_state': ({
+                        'last_attempt_at': states[source.id].last_attempt_at.isoformat()
+                            if states[source.id].last_attempt_at else None,
+                        'last_success_at': states[source.id].last_success_at.isoformat()
+                            if states[source.id].last_success_at else None,
+                        'last_error_code': states[source.id].last_error_code,
+                        'cursor': states[source.id].cursor,
+                        'changes': json.loads(states[source.id].changes_json)
+                            if states[source.id].changes_json else None,
+                    } if source.id in states else None),
+                    'pending_callbacks': pending.get(source.id, (0, None))[0],
+                    'oldest_pending_at': pending[source.id][1].isoformat()
+                        if source.id in pending and pending[source.id][1] else None,
+                    'pending_delay_seconds': max(0, int((now - pending[source.id][1].replace(
+                        tzinfo=pending[source.id][1].tzinfo or timezone.utc)).total_seconds()))
+                        if source.id in pending and pending[source.id][1] else None,
+                    } for source in rows]
     return {'sources': sources, 'total': total, 'page': page, 'page_size': page_size}
 
 
 @router.post("/admin/identity-sources/{source_id}/sync")
 async def sync_directory(request: Request, source_id: str, body: DirectorySnapshot):
     await _super_admin_request(request)
-    return await _service(request).full_sync(
-        source_id,
-        [item.model_dump() for item in body.departments],
-        [item.model_dump() for item in body.people],
-    )
+    service = _service(request)
+    await service.source(source_id)
+    try:
+        return await service.full_sync(
+            source_id,
+            [item.model_dump() for item in body.departments],
+            [item.model_dump() for item in body.people],
+            body.cursor,
+        )
+    except HTTPException as exc:
+        if exc.status_code == 422:
+            await service.record_sync_failure(source_id, 'snapshot_invalid')
+        raise
+    except Exception:
+        await service.record_sync_failure(source_id, 'snapshot_apply_failed')
+        raise
 
 
 @router.post("/admin/identity-sources/{source_id}/reconcile")
@@ -161,8 +204,16 @@ async def reconcile_directory(request: Request, source_id: str):
     try:
         snapshot = await _connector(request, source.provider).fetch_directory(source)
     except Exception as exc:
+        await service.record_sync_failure(source_id, 'provider_unavailable')
         raise HTTPException(status_code=502, detail="Directory provider unavailable") from exc
-    return await service.full_sync(source_id, snapshot["departments"], snapshot["people"])
+    try:
+        return await service.full_sync(source_id, snapshot["departments"], snapshot["people"],
+                                       snapshot.get('cursor'))
+    except Exception as exc:
+        await service.record_sync_failure(source_id,
+                                          'snapshot_invalid' if isinstance(exc, HTTPException)
+                                          and exc.status_code == 422 else 'snapshot_apply_failed')
+        raise
 
 
 @router.post("/admin/identity-sources/{source_id}/events")
