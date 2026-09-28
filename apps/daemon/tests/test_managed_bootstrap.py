@@ -9,6 +9,7 @@ from services.desktop_security import DesktopSecurityMiddleware
 from services.gateway_client import GatewayClientService
 from services.gateway_client.identity import ManagedActor
 from services.gateway_client.identity import ManagedAuthorizationVerifier
+from types import SimpleNamespace
 
 
 def test_bootstrap_uses_desktop_secret_once_then_local_session(monkeypatch):
@@ -17,8 +18,22 @@ def test_bootstrap_uses_desktop_secret_once_then_local_session(monkeypatch):
     app = FastAPI()
     app.add_middleware(DesktopSecurityMiddleware)
     app.include_router(managed_router)
-    service = GatewayClientService()
-    service.managed_config = object()
+    starts = []
+
+    class FakeControl:
+        def __init__(self, origin):
+            assert origin == "https://gateway.test"
+            self.online = False
+            self.authorization_required = False
+
+        def start(self, authorization, proof, device_id):
+            starts.append((authorization, proof, device_id))
+
+        async def stop(self):
+            pass
+
+    service = GatewayClientService(control_client_factory=FakeControl)
+    service.managed_config = SimpleNamespace(gateway_origin="https://gateway.test")
 
     class Verifier:
         async def verify(self, authorization, proof):
@@ -49,6 +64,11 @@ def test_bootstrap_uses_desktop_secret_once_then_local_session(monkeypatch):
         assert client.get("/api/private", headers={
             "X-WorkStep-Desktop-Token": "desktop-secret",
         }).status_code == 401
+        assert starts == [("signed-authorization", "device-proof", "device-1")]
+        assert client.get("/api/managed/control-status", headers={
+            "X-WorkStep-Desktop-Token": "desktop-secret",
+            "X-WorkStep-Local-Session": session_token,
+        }).json() == {"online": False, "authorization_required": False}
 
 
 @pytest.mark.asyncio

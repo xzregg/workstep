@@ -4,15 +4,18 @@ from pathlib import Path
 
 from .managed_config import InvalidManagedGatewayConfig, load_managed_config
 from .identity import ManagedAuthorizationVerifier, ManagedLocalSessions
+from .control import GatewayControlClient
 
 
 class GatewayClientService:
     """Lifecycle placeholder for a future, explicitly configured managed client."""
 
-    def __init__(self) -> None:
+    def __init__(self, control_client_factory=GatewayControlClient) -> None:
         self.managed_config = None
         self.verifier = None
         self.local_sessions = ManagedLocalSessions()
+        self.control_client = None
+        self.control_client_factory = control_client_factory
 
     async def start(self) -> None:
         bundle_dir = os.environ.get("WORKSTEP_MANAGED_BUNDLE_DIR")
@@ -36,7 +39,14 @@ class GatewayClientService:
         if self.managed_config is None or self.verifier is None:
             raise ValueError("Managed Gateway is unavailable")
         actor = await self.verifier.verify(authorization, proof)
+        if self.control_client is not None:
+            await self.control_client.stop()
+        self.control_client = self.control_client_factory(self.managed_config.gateway_origin)
+        self.control_client.start(authorization, proof, actor.device_id)
         return self.local_sessions.create(actor), actor
 
     async def close(self) -> None:
+        if self.control_client is not None:
+            await self.control_client.stop()
+            self.control_client = None
         self.local_sessions.clear()
