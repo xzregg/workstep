@@ -18,7 +18,7 @@ from .config import GatewaySettings
 from .models import PlatformSetting
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
-HEAD_REVISION = "0005_step_up"
+HEAD_REVISION = "0006_external_identity"
 
 
 def safe_database_location(url: str) -> tuple[str, str]:

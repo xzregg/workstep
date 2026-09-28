@@ -10,6 +10,8 @@ from workstep_gateway_protocol import PROTOCOL_VERSION
 from .config import GatewaySettings
 from .database import GatewayDatabase
 from .identity_api import router as identity_router
+from .external_identity_api import router as external_identity_router
+from .identity_connectors import DingTalkConnector, WeComConnector
 from .rate_limit import IdentityRateLimiter
 
 
@@ -33,6 +35,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.protocol_version = PROTOCOL_VERSION
     app.state.identity_rate_limiter = IdentityRateLimiter()
+    app.state.identity_connectors = {"dingtalk": DingTalkConnector(), "wecom": WeComConnector()}
 
     @app.exception_handler(HTTPException)
     async def http_error(_request: Request, exc: HTTPException) -> JSONResponse:
@@ -54,6 +57,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(identity_router)
+    app.include_router(external_identity_router)
 
     if settings.web_dist and settings.web_dist.is_dir():
         assets = settings.web_dist / "assets"
