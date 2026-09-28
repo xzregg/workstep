@@ -2,6 +2,7 @@ import base64
 import hashlib
 import json
 import sqlite3
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 import pytest
@@ -472,6 +473,89 @@ def test_locked_usage_ledger_does_not_delay_control_heartbeat(tmp_path):
                 assert time.monotonic() - started < 0.5
                 holder.rollback()
                 assert ws.receive_json()["kind"] == "usage_ack"
+
+
+def test_usage_backpressure_is_global_and_preserves_control_health(tmp_path, monkeypatch):
+    import asyncio
+    from datetime import datetime, timezone
+    from gateway import control_connection
+
+    started = threading.Event()
+    release = threading.Event()
+    original = control_connection.record_usage_batch
+
+    async def slow_record(*args):
+        started.set()
+        await asyncio.to_thread(release.wait)
+        return await original(*args)
+
+    monkeypatch.setattr(control_connection, "record_usage_batch", slow_record)
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        app.state.usage_batch_slots = asyncio.Semaphore(1)
+        device_id, token, device_key, _ = _active_device(client)
+        with client.websocket_connect("/api/control/ws") as ws:
+            _handshake(ws, token, device_key)
+            assert ws.receive_json()["kind"] == "hello"
+            def send(batch_id):
+                ws.send_json({"kind": "usage_batch", "version": 1, "batch_id": batch_id,
+                              "events": [{"usage_event_id": batch_id,
+                                          "input_tokens": 1, "output_tokens": 1,
+                                          "occurred_at": datetime.now(timezone.utc).isoformat()}]})
+            try:
+                send("first")
+                assert started.wait(2)
+                send("second")
+                response = ws.receive_json()
+                assert response["kind"] == "usage_retry"
+                assert response["batch_id"] == "second"
+                assert 1 <= response["retry_after"] <= 60
+                assert client.get("/api/health").status_code == 200
+                ws.send_json({"kind": "heartbeat"})
+                assert ws.receive_json()["kind"] == "heartbeat_ack"
+            finally:
+                release.set()
+            assert ws.receive_json()["kind"] == "usage_ack"
+            send("second")
+            assert ws.receive_json()["kind"] == "usage_ack"
+
+
+def test_slow_usage_write_times_out_and_can_be_retried(tmp_path, monkeypatch):
+    import asyncio
+    from datetime import datetime, timezone
+    from gateway import control_connection
+
+    original = control_connection.record_usage_batch
+    calls = 0
+
+    async def delayed_record(*args):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            await asyncio.sleep(0.1)
+        return await original(*args)
+
+    monkeypatch.setattr(control_connection, "record_usage_batch", delayed_record)
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        app.state.usage_batch_timeout_seconds = 0.02
+        device_id, token, device_key, _ = _active_device(client)
+        with client.websocket_connect("/api/control/ws") as ws:
+            _handshake(ws, token, device_key)
+            assert ws.receive_json()["kind"] == "hello"
+            batch = {"kind": "usage_batch", "version": 1, "batch_id": "timeout",
+                     "events": [{"usage_event_id": "timeout",
+                                 "input_tokens": 1, "output_tokens": 1,
+                                 "occurred_at": datetime.now(timezone.utc).isoformat()}]}
+            ws.send_json(batch)
+            retry = ws.receive_json()
+            assert retry["kind"] == "usage_retry"
+            assert retry["batch_id"] == "timeout"
+            assert client.get("/api/health").status_code == 200
+            ws.send_json(batch)
+            ack = ws.receive_json()
+            assert ack["kind"] == "usage_ack"
+            assert ack["accepted"] == ["timeout"]
 
 
 def test_control_opens_one_time_data_connection_on_demand(tmp_path):
