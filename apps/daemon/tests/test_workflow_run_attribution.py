@@ -1,5 +1,7 @@
 """Persist the initiating user on workflow runs before background execution."""
 
+import json
+
 from models import Task, WorkflowRun
 from models.fields import utc_now
 from services.project import ProjectManager
@@ -37,6 +39,10 @@ def test_workflow_run_snapshots_initiator_without_user_message(tmp_path, monkeyp
             id="task-attributed-run", title="Build", cwd=str(project.path),
             creator_id="creator-1", creator_username="creator",
             creator_name="Creator Display", created_at=now, updated_at=now,
+            queued_run_json=json.dumps({
+                "source": "schedule", "input": "stale",
+                "actor": {"author_id": "old-user"},
+            }),
         )
         with actor_context(actor):
             prepared = prepare_start_in_project(
@@ -45,6 +51,8 @@ def test_workflow_run_snapshots_initiator_without_user_message(tmp_path, monkeyp
             )
         run = prepared.workflow_run
         assert prepared.user_message is None
+        assert prepared.user_input == ""
+        assert run.trigger_source == "manual"
         assert (run.initiated_by_user_id, run.initiated_by_username,
                 run.initiated_by_name, run.initiated_by_device_id,
                 run.initiated_by_device_name) == (
@@ -77,7 +85,7 @@ def test_restart_run_inherits_initiator_or_snapshots_new_operator(tmp_path, monk
         )
         parent = WorkflowRun.create(
             id="run-parent", task=task, workflow_schema_version=1,
-            status="running", started_at=now,
+            status="running", started_at=now, trigger_source="schedule",
             initiated_by_user_id="user-1", initiated_by_username="alice",
             initiated_by_name="Alice Display",
             initiated_by_device_id="device-1",
@@ -87,8 +95,8 @@ def test_restart_run_inherits_initiator_or_snapshots_new_operator(tmp_path, monk
             task, parent, 1, "build", {"build"}, instance_id="daemon-2",
         )
         assert (resumed.initiated_by_user_id, resumed.initiated_by_username,
-                resumed.initiated_by_name) == (
-                    "user-1", "alice", "Alice Display",
+                resumed.initiated_by_name, resumed.trigger_source) == (
+                    "user-1", "alice", "Alice Display", "schedule",
                 )
         operator = ActorSnapshot(
             actor_id="user-2", user_name="Bob Display", username="bob",
@@ -99,7 +107,8 @@ def test_restart_run_inherits_initiator_or_snapshots_new_operator(tmp_path, monk
                 task, resumed, 1, "build", {"build"}, instance_id="daemon-2",
             )
         assert (restarted.initiated_by_user_id, restarted.initiated_by_username,
-                restarted.initiated_by_name, restarted.initiated_by_device_id) == (
-                    "user-2", "bob", "Bob Display", "device-2",
+                restarted.initiated_by_name, restarted.initiated_by_device_id,
+                restarted.trigger_source) == (
+                    "user-2", "bob", "Bob Display", "device-2", "manual",
                 )
     project.db.close()

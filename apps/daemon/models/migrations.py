@@ -104,6 +104,7 @@ _ADDITIVE_COLUMNS = {
         "vision_model": "TEXT",
     },
     "tasks": {
+        "queued_run_json": "TEXT",
         "creator_id": "TEXT",
         "creator_username": "TEXT",
         "creator_name": "TEXT",
@@ -129,6 +130,7 @@ _ADDITIVE_COLUMNS = {
         "owner_id": "TEXT",
         "heartbeat_at": "DATETIME",
         "routing_state_json": "TEXT",
+        "trigger_source": "TEXT",
         "initiated_by_user_id": "TEXT",
         "initiated_by_username": "TEXT",
         "initiated_by_name": "TEXT",

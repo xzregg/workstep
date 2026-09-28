@@ -203,14 +203,16 @@ def allocate_message_sequences(task_id: str, count: int = 1) -> int:
     return int(row[0]) - count
 
 
-def create_task_message(*, task: Task, channel: str, **fields) -> Message:
+def create_task_message(
+    *, task: Task, channel: str, snapshot_current_actor: bool = True, **fields,
+) -> Message:
     """Create a message with a task-local monotonic sequence."""
     sequence = allocate_message_sequences(task.id)
     task.next_message_sequence = sequence + 1
     if "id" not in fields:
         fields["id"] = new_message_id()
     if fields.get("role") == "user":
-        actor_fields = current_actor_message_fields()
+        actor_fields = current_actor_message_fields() if snapshot_current_actor else {}
         provided_name = str(fields.get("author_name") or "").strip()
         if not provided_name or provided_name == actor_fields.get("author_name"):
             for key, value in actor_fields.items():

@@ -27,6 +27,7 @@ class PreparedWorkflowRun:
     steps_config: dict
     artifacts_dir: Path
     user_message: Message | None
+    user_input: str = ""
     entry_step_key: str | None = None
     execution_scope: frozenset[str] | None = None
 
@@ -99,12 +100,28 @@ def prepare_start_in_project(
     *,
     instance_id: str,
     current_workflow_steps: Callable[[object, Task], dict],
+    source: str = "manual",
 ) -> PreparedWorkflowRun:
     """Persist a new run while executing on the project's DB thread."""
     try:
         task = Task.get_by_id(task_id)
     except Task.DoesNotExist as exc:
         raise ValueError(f"Task not found: {task_id}") from exc
+    was_queued = task.status == "queued"
+    queued = None
+    if was_queued and task.queued_run_json:
+        try:
+            value = json.loads(task.queued_run_json)
+            queued = value if isinstance(value, dict) else None
+        except (TypeError, ValueError):
+            queued = None
+    if queued is not None:
+        saved_source = queued.get("source")
+        if saved_source in {"manual", "schedule", "scheduled_start"}:
+            source = saved_source
+        saved_input = queued.get("input")
+        if isinstance(saved_input, str):
+            user_input = saved_input
     heal_task_cwd(task, project)
 
     workflow_data = current_workflow_steps(project, task)
@@ -118,7 +135,20 @@ def prepare_start_in_project(
         sorted(execution_scope) if execution_scope is not None else None
     )
     now = utc_now()
-    actor_fields = current_actor_message_fields()
+    if source in {"schedule", "scheduled_start"} or (was_queued and queued is None):
+        actor_fields = {}
+    elif queued is not None:
+        saved_actor = queued.get("actor")
+        actor_fields = {
+            key: value for key, value in saved_actor.items()
+            if key in {
+                "author_id", "author_username", "author_name", "author_type",
+                "initiated_by_user_id", "initiated_by_username",
+                "author_device_id", "author_device_name",
+            } and isinstance(value, str) and value
+        } if isinstance(saved_actor, dict) else {}
+    else:
+        actor_fields = current_actor_message_fields()
     workflow_run = WorkflowRun.create(
         id=str(uuid.uuid4()),
         task=task,
@@ -129,6 +159,7 @@ def prepare_start_in_project(
         restart_from_step_key=entry_step_key,
         owner_id=instance_id,
         heartbeat_at=now,
+        trigger_source=source,
         initiated_by_user_id=(
             actor_fields.get("initiated_by_user_id") or task.creator_id
         ),
@@ -150,6 +181,7 @@ def prepare_start_in_project(
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     task.status = "running"
     task.active_workflow_run_id = workflow_run.id
+    task.queued_run_json = None
     task.state_version += 1
     task.updated_at = now
     task.save()
@@ -178,6 +210,8 @@ def prepare_start_in_project(
             started_at=now,
             ended_at=now,
             created_at=now,
+            snapshot_current_actor=False,
+            **actor_fields,
         )
 
     return PreparedWorkflowRun(
@@ -188,6 +222,7 @@ def prepare_start_in_project(
         steps_config=steps_config,
         artifacts_dir=artifacts_dir,
         user_message=user_message,
+        user_input=user_input,
         entry_step_key=entry_step_key,
         execution_scope=(
             frozenset(execution_scope)
@@ -296,6 +331,7 @@ def prepare_start_from_step_without_parent(
         steps_config=prepared.steps_config,
         artifacts_dir=prepared.artifacts_dir,
         user_message=prepared.user_message,
+        user_input=prepared.user_input,
         entry_step_key=step_key,
         execution_scope=frozenset(execution_keys),
     )

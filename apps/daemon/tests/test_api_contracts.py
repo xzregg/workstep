@@ -62,6 +62,52 @@ async def test_pending_insert_slow_actor_lookup_does_not_block_health(
     assert (await request).status_code == 200
 
 
+@pytest.mark.anyio
+async def test_queued_run_snapshot_slow_sql_does_not_block_health(
+    api_context, monkeypatch,
+):
+    import main
+    from models import Task
+    from models.fields import utc_now
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "queued-run-canary"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)},
+    )).json()["id"]
+    project = main.project_manager.get_project_by_id(project_id)
+
+    def seed(_project):
+        now = utc_now()
+        Task.create(
+            id="task-queued-canary", title="Queued", cwd=str(project_dir),
+            created_at=now, updated_at=now,
+        )
+
+    await main.project_manager.run_db(project_id, seed)
+    entered = threading.Event()
+    original = project.db.execute_sql
+
+    def slow_write(sql, *args, **kwargs):
+        if sql.lstrip().upper().startswith('UPDATE "TASKS"'):
+            entered.set()
+            time.sleep(0.8)
+        return original(sql, *args, **kwargs)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_write)
+    queued = asyncio.create_task(main.workflow_runtime._mark_task_status(
+        project_id, "task-queued-canary", "queued",
+        queue_source="manual", queued_input="执行",
+    ))
+    assert await asyncio.to_thread(entered.wait, 2)
+    before = time.monotonic()
+    health = await client.get("/api/health")
+    assert health.status_code == 200
+    assert time.monotonic() - before < 0.5
+    await queued
+
+
 class MemoryConfigStore:
     """In-memory project registry used at the filesystem boundary."""
 

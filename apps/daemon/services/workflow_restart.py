@@ -195,6 +195,9 @@ def create_restart_run(
             routing_state_json=json.dumps(routing_state, ensure_ascii=False),
             owner_id=instance_id,
             heartbeat_at=now,
+            trigger_source=(
+                "manual" if actor_fields else parent.trigger_source or "manual"
+            ),
             initiated_by_user_id=(
                 actor_fields.get("initiated_by_user_id") or parent.initiated_by_user_id
             ),
