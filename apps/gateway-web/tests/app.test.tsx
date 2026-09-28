@@ -9,7 +9,8 @@ test('portal and admin route have separate entry points', () => {
   const admin = renderToString(<MemoryRouter initialEntries={['/admin']}><App /></MemoryRouter>)
   assert.match(portal, /我的项目/)
   assert.match(admin, /管理后台/)
-  assert.match(admin, /平台服务正在建设中/)
+  assert.match(admin, /用户管理/)
+  assert.match(admin, /设备管理/)
 })
 
 test('project host renders a project workspace instead of the whole PC portal', () => {

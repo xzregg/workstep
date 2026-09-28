@@ -1,18 +1,14 @@
 import { useEffect, useState } from 'react'
 import { GatewayLoginForm } from './GatewayLoginForm'
-
-type Device = { id: string; name: string; status: string; online: boolean; version: string; app_instance_id: string }
-type Action = 'approve' | 'disable' | 'revoke'
-
-const actionLabel: Record<Action, string> = { approve: '批准', disable: '停用', revoke: '撤销' }
+import { AdminDeviceActionDialog } from './AdminDeviceActionDialog'
+import type { AdminDevice, DeviceAction } from './AdminDeviceActionDialog'
 
 export function DeviceAdminPage() {
   const [status, setStatus] = useState<'checking' | 'login' | 'ready'>('checking')
   const [csrf, setCsrf] = useState('')
-  const [stepPassword, setStepPassword] = useState('')
-  const [devices, setDevices] = useState<Device[]>([])
+  const [devices, setDevices] = useState<AdminDevice[]>([])
   const [filter, setFilter] = useState('pending')
-  const [selected, setSelected] = useState<{ device: Device; action: Action } | null>(null)
+  const [selected, setSelected] = useState<{ device: AdminDevice; action: DeviceAction } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -57,26 +53,6 @@ export function DeviceAdminPage() {
     finally { setBusy(false) }
   }
 
-  async function applyAction() {
-    if (!selected || !stepPassword) return
-    setBusy(true); setError('')
-    try {
-      const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
-      const step = await fetch('/api/auth/step-up', {
-        method: 'POST', credentials: 'same-origin', headers,
-        body: JSON.stringify({ password: stepPassword }),
-      })
-      if (!step.ok) throw new Error('密码验证失败。')
-      const response = await fetch(`/api/admin/devices/${encodeURIComponent(selected.device.id)}/${selected.action}`, {
-        method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf },
-      })
-      if (!response.ok) throw new Error(`${actionLabel[selected.action]}设备失败。`)
-      setSelected(null); setStepPassword('')
-      await loadDevices(filter)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '操作失败。') }
-    finally { setBusy(false) }
-  }
-
   return <section className="gateway-admin-page">
     <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY</span>
     <h2>设备管理</h2>
@@ -101,18 +77,11 @@ export function DeviceAdminPage() {
       </li>)}</ul>
       {devices.length === 0 && <p>当前筛选下没有设备。</p>}
     </>}
-    {selected && <div className="gateway-admin-confirm" role="dialog" aria-modal="true" aria-label="确认设备操作">
-      <h3>{actionLabel[selected.action]}设备</h3>
-      <p>{selected.device.name}（{selected.device.id}）</p>
-      {selected.action === 'revoke' && <p>撤销后该设备必须重新注册并获批才能连接。</p>}
-      <label htmlFor="admin-step-password">输入管理员密码确认</label>
-      <input id="admin-step-password" type="password" autoComplete="current-password" value={stepPassword}
-        onChange={(event) => setStepPassword(event.target.value)} />
-      <div className="gateway-device-actions">
-        <button type="button" onClick={() => { setSelected(null); setStepPassword('') }} disabled={busy}>取消</button>
-        <button type="button" onClick={() => void applyAction()} disabled={busy || !stepPassword}>确认{actionLabel[selected.action]}</button>
-      </div>
-    </div>}
+    {selected && <AdminDeviceActionDialog device={selected.device} action={selected.action} csrf={csrf}
+      onClose={() => setSelected(null)} onComplete={() => {
+        setSelected(null)
+        void loadDevices(filter).catch(reason => setError(reason.message))
+      }} />}
     {error && <p className="gateway-auth-error" role="alert">{error}</p>}
   </section>
 }
