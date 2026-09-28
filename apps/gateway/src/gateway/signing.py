@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import os
+import secrets
 import time
 from pathlib import Path
 
@@ -78,6 +79,18 @@ class GatewaySigner:
             "allowed_provider_ids": [], "allowed_models": [],
             "allow_local_providers": False, "task_create": task_create,
             "project_publish": False, "task_share": False, "engine_install": False,
+        }, separators=(",", ":"), sort_keys=True).encode())
+        signing_input = f"{header}.{payload}"
+        return f"{signing_input}.{_b64(self.private_key.sign(signing_input.encode()))}"
+
+    def sign_device_access_ticket(self, *, gateway_id: str, device_id: str,
+                                  user_id: str, audience: str) -> str:
+        now = int(time.time())
+        header = _b64(json.dumps({"alg": "EdDSA", "typ": "JWT"}, separators=(",", ":")).encode())
+        payload = _b64(json.dumps({
+            "iss": gateway_id, "gateway_id": gateway_id, "kind": "device.access",
+            "device_id": device_id, "user_id": user_id, "aud": audience,
+            "jti": secrets.token_urlsafe(24), "iat": now, "exp": now + 60,
         }, separators=(",", ":"), sort_keys=True).encode())
         signing_input = f"{header}.{payload}"
         return f"{signing_input}.{_b64(self.private_key.sign(signing_input.encode()))}"

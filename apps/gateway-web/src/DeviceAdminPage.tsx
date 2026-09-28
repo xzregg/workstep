@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { FormEvent } from 'react'
+import { GatewayLoginForm } from './GatewayLoginForm'
 
 type Device = { id: string; name: string; status: string; online: boolean; version: string; app_instance_id: string }
 type Action = 'approve' | 'disable' | 'revoke'
@@ -9,8 +9,6 @@ const actionLabel: Record<Action, string> = { approve: '批准', disable: '停�
 export function DeviceAdminPage() {
   const [status, setStatus] = useState<'checking' | 'login' | 'ready'>('checking')
   const [csrf, setCsrf] = useState('')
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
   const [stepPassword, setStepPassword] = useState('')
   const [devices, setDevices] = useState<Device[]>([])
   const [filter, setFilter] = useState('pending')
@@ -45,18 +43,15 @@ export function DeviceAdminPage() {
     void loadDevices(filter).catch((reason) => setError(reason.message))
   }, [status, filter])
 
-  async function signIn(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!username.trim() || !password) return
+  async function signIn(username: string, password: string) {
     setBusy(true); setError('')
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim(), password }),
+        body: JSON.stringify({ username, password }),
       })
       if (!response.ok) throw new Error('登录失败，请检查账号和密码。')
       setCsrf((await response.json()).csrf_token)
-      setPassword('')
       setStatus('ready')
     } catch (reason) { setError(reason instanceof Error ? reason.message : '登录失败。') }
     finally { setBusy(false) }
@@ -86,14 +81,10 @@ export function DeviceAdminPage() {
     <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY</span>
     <h2>设备管理</h2>
     {status === 'checking' && <p role="status">正在检查登录状态…</p>}
-    {status === 'login' && <form className="gateway-auth-form gateway-admin-login" onSubmit={(event) => void signIn(event)}>
+    {status === 'login' && <div className="gateway-admin-login">
       <p>管理员登录后可审批和管理受管电脑。</p>
-      <label htmlFor="admin-username">用户名</label>
-      <input id="admin-username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} />
-      <label htmlFor="admin-password">密码</label>
-      <input id="admin-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />
-      <button type="submit" disabled={busy || !username.trim() || !password}>登录</button>
-    </form>}
+      <GatewayLoginForm busy={busy} onSubmit={signIn} />
+    </div>}
     {status === 'ready' && <>
       <label htmlFor="device-filter">设备状态</label>
       <select id="device-filter" value={filter} onChange={(event) => { setError(''); setFilter(event.target.value) }}>
