@@ -1,0 +1,86 @@
+from fastapi.testclient import TestClient
+
+from gateway.app import create_app
+from gateway.config import GatewaySettings
+from gateway.models import Device, PlatformProject
+
+
+def test_project_grants_require_publication_and_follow_current_group_membership(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        setup = client.post("/api/platform/setup", json={
+            "username": "owner", "display_name": "Owner", "password": "OwnerPassphrase-2026!",
+            "recovery_username": "recovery", "recovery_password": "RecoveryPassphrase-2026!",
+            "registration_mode": "open",
+        })
+        owner_headers = {"X-CSRF-Token": setup.json()["csrf_token"]}
+        client.post("/api/auth/step-up", json={"password": "OwnerPassphrase-2026!"},
+                    headers=owner_headers)
+        worker_id = client.post("/api/admin/users", json={
+            "username": "worker", "display_name": "Worker",
+            "password": "WorkerPassphrase-2026!",
+        }, headers=owner_headers).json()["id"]
+        group_id = client.post("/api/groups", json={
+            "name": "Backend", "slug": "backend",
+        }, headers=owner_headers).json()["id"]
+        client.post(f"/api/groups/{group_id}/members", json={
+            "user_id": worker_id,
+        }, headers=owner_headers)
+
+        async def seed_project():
+            async with app.state.database.session() as session:
+                async with session.begin():
+                    session.add(Device(id="device-1", name="PC", public_key="test",
+                                       status="active", app_instance_id="app", version="1.0"))
+                    session.add(PlatformProject(id="project-1", device_id="device-1",
+                                                host_project_id="host-1", name="Project",
+                                                access_mode="policy_only"))
+
+        client.portal.call(seed_project)
+        grant_url = "/api/admin/projects/project-1/grants"
+        assert client.post(grant_url, json={
+            "subject_type": "group", "subject_id": group_id, "access_level": "read",
+        }, headers=owner_headers).status_code == 409
+
+        async def publish():
+            async with app.state.database.session() as session:
+                async with session.begin():
+                    project = await session.get(PlatformProject, "project-1")
+                    project.access_mode = "remote_published"
+
+        client.portal.call(publish)
+        assert client.post(grant_url, json={
+            "subject_type": "group", "subject_id": group_id, "access_level": "read",
+        }, headers=owner_headers).status_code == 200
+        client.cookies.clear()
+        login = client.post("/api/auth/login", json={
+            "username": "worker", "password": "WorkerPassphrase-2026!",
+        })
+        worker_headers = {"X-CSRF-Token": login.json()["csrf_token"]}
+        client.post("/api/auth/password", json={
+            "current_password": "WorkerPassphrase-2026!",
+            "new_password": "WorkerNewPassphrase-2026!",
+        }, headers=worker_headers)
+        listing = client.get("/api/projects")
+        assert listing.status_code == 200, listing.text
+        assert listing.json()["projects"] == [{
+            "id": "project-1", "name": "Project", "device_id": "device-1",
+            "access_level": "read",
+        }]
+        client.cookies.clear()
+        owner_login = client.post("/api/auth/login", json={
+            "username": "owner", "password": "OwnerPassphrase-2026!",
+        })
+        owner_headers = {"X-CSRF-Token": owner_login.json()["csrf_token"]}
+        assert client.delete(f"/api/groups/{group_id}/members/{worker_id}",
+                             headers=owner_headers).status_code == 204
+        client.post("/api/auth/step-up", json={"password": "OwnerPassphrase-2026!"},
+                    headers=owner_headers)
+        assert client.post(grant_url, json={
+            "subject_type": "user", "subject_id": worker_id, "access_level": "edit",
+        }, headers=owner_headers).status_code == 200
+        client.cookies.clear()
+        client.post("/api/auth/login", json={
+            "username": "worker", "password": "WorkerNewPassphrase-2026!",
+        })
+        assert client.get("/api/projects").json()["projects"][0]["access_level"] == "edit"

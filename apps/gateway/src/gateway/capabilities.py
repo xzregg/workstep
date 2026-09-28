@@ -9,20 +9,22 @@ from sqlalchemy import select, update
 
 from .identity import COOKIE_NAME, _now
 from .identity_api import _super_admin_request
-from .models import AuditEvent, CapabilityAssignment, Device, User, UserDevice
+from .models import (AuditEvent, CapabilityAssignment, Device, PlatformProject,
+                     User, UserDevice)
 
 router = APIRouter(prefix="/api")
 
 
 class CapabilityTargetInput(BaseModel):
-    capability: Literal["task.create"]
-    scope_type: Literal["global", "device"]
+    capability: Literal["task.create", "project.publish"]
+    scope_type: Literal["global", "device", "project"]
     scope_id: str | None = Field(default=None, max_length=64)
 
     @model_validator(mode="after")
     def valid_scope(self):
         if (self.scope_type == "global" and self.scope_id is not None) or (
-                self.scope_type == "device" and not self.scope_id):
+                self.scope_type != "global" and not self.scope_id
+        ) or (self.capability == "project.publish" and self.scope_type == "project"):
             raise ValueError("Invalid capability scope")
         return self
 
@@ -32,6 +34,11 @@ class CapabilityInput(CapabilityTargetInput):
 
 
 async def _bump_revisions(session, user_id: str, scope_type: str, scope_id: str) -> None:
+    if scope_type == "project":
+        project = await session.get(PlatformProject, scope_id)
+        if project is None:
+            return
+        scope_type, scope_id = "device", project.device_id
     device_ids = (await session.scalars(select(UserDevice.device_id).where(
         UserDevice.user_id == user_id, UserDevice.revoked_at.is_(None),
         *([UserDevice.device_id == scope_id] if scope_type == "device" else []),
@@ -42,21 +49,46 @@ async def _bump_revisions(session, user_id: str, scope_type: str, scope_id: str)
         ))
 
 
-async def compiled_device_policy(database, device_id: str, user_id: str) -> tuple[int, bool]:
+async def compiled_device_policy(database, device_id: str, user_id: str
+                                 ) -> tuple[int, bool, bool, list[str], list[str]]:
     async with database.session() as session:
         device = await session.get(Device, device_id)
         if device is None:
             raise ValueError("Device not found")
         assignments = (await session.scalars(select(CapabilityAssignment).where(
             CapabilityAssignment.user_id == user_id,
-            CapabilityAssignment.capability == "task.create",
+            CapabilityAssignment.capability.in_(("task.create", "project.publish")),
             CapabilityAssignment.revoked_at.is_(None),
         ))).all()
-    relevant = [item for item in assignments if item.scope_type == "global"
-                or (item.scope_type == "device" and item.scope_id == device_id)]
-    allowed = any(item.effect == "allow" for item in relevant) and not any(
-        item.effect == "deny" for item in relevant)
-    return device.policy_revision, allowed
+        projects = {row.id: row.host_project_id for row in (await session.scalars(
+            select(PlatformProject).where(PlatformProject.device_id == device_id,
+                                          PlatformProject.status == "active"),
+        )).all()}
+    def allowed(capability: str) -> bool:
+        relevant = [item for item in assignments if item.capability == capability
+                    and (item.scope_type == "global"
+                         or (item.scope_type == "device" and item.scope_id == device_id))]
+        return any(item.effect == "allow" for item in relevant) and not any(
+            item.effect == "deny" for item in relevant)
+    broad = [item for item in assignments if item.capability == "task.create"
+             and (item.scope_type == "global"
+                  or (item.scope_type == "device" and item.scope_id == device_id))]
+    broad_denied = any(item.effect == "deny" for item in broad)
+    project_rules = {platform_id: [item for item in assignments
+                                   if item.capability == "task.create"
+                                   and item.scope_type == "project"
+                                   and item.scope_id == platform_id]
+                     for platform_id in projects}
+    allowed_projects = sorted(host_id for platform_id, host_id in projects.items()
+                              if not broad_denied and any(
+                                  item.effect == "allow" for item in project_rules[platform_id]
+                              ) and not any(item.effect == "deny"
+                                            for item in project_rules[platform_id]))
+    denied_projects = sorted(host_id for platform_id, host_id in projects.items()
+                             if any(item.effect == "deny"
+                                    for item in project_rules[platform_id]))
+    return (device.policy_revision, allowed("task.create"),
+            allowed("project.publish"), allowed_projects, denied_projects)
 
 
 @router.post("/admin/capabilities/{user_id}")
@@ -73,6 +105,8 @@ async def set_capability(request: Request, user_id: str, body: CapabilityInput):
                 raise HTTPException(status_code=404, detail="User not found")
             if body.scope_type == "device" and await session.get(Device, scope_id) is None:
                 raise HTTPException(status_code=404, detail="Device not found")
+            if body.scope_type == "project" and await session.get(PlatformProject, scope_id) is None:
+                raise HTTPException(status_code=404, detail="Project not found")
             assignment = await session.scalar(select(CapabilityAssignment).where(
                 CapabilityAssignment.user_id == user_id,
                 CapabilityAssignment.capability == body.capability,

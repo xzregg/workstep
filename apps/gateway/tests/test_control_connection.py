@@ -212,6 +212,75 @@ def test_control_records_project_skill_application_for_own_device(tmp_path):
         assert applications.json()["projects"][0]["applied_revision"] == 1
 
 
+def test_device_explicitly_publishes_and_unpublishes_its_project(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        device_id, token, device_key, csrf = _active_device(client)
+        owner_id = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "==="))["user_id"]
+        with client.websocket_connect("/api/control/ws") as ws:
+            _handshake(ws, token, device_key)
+            assert ws.receive_json()["kind"] == "hello"
+            ws.send_json({"kind": "project_publish", "version": 1,
+                          "action": "publish", "host_project_id": "host-1",
+                          "name": "Backend"})
+            assert ws.receive_json()["status"] == "denied"
+        denied = client.post(f"/api/admin/capabilities/{owner_id}", json={
+            "capability": "project.publish", "scope_type": "device",
+            "scope_id": device_id, "effect": "allow",
+        }, headers={"X-CSRF-Token": csrf})
+        assert denied.status_code == 200, denied.text
+        with client.websocket_connect("/api/control/ws") as ws:
+            _handshake(ws, token, device_key)
+            assert ws.receive_json()["kind"] == "hello"
+            ws.send_json({"kind": "project_publish", "version": 1,
+                          "action": "publish", "host_project_id": "host-1",
+                          "name": "Backend"})
+            published = ws.receive_json()
+            assert published["kind"] == "project_publish_ack"
+            assert published["status"] == "published"
+            platform_id = published["project_id"]
+            with sqlite3.connect(tmp_path / "workstep_platform.db") as database:
+                assert database.execute(
+                    "SELECT device_id,host_project_id,name,access_mode FROM platform_projects "
+                    "WHERE id=?", (platform_id,),
+                ).fetchone() == (device_id, "host-1", "Backend", "remote_published")
+            ws.send_json({"kind": "project_publish", "version": 1,
+                          "action": "unpublish", "host_project_id": "host-1",
+                          "name": "Backend"})
+            unpublished = ws.receive_json()
+            assert unpublished["status"] == "unpublished"
+            with sqlite3.connect(tmp_path / "workstep_platform.db") as database:
+                assert database.execute(
+                    "SELECT access_mode FROM platform_projects WHERE id=?", (platform_id,),
+                ).fetchone() == ("policy_only",)
+
+
+def test_project_scoped_task_create_is_compiled_for_the_host_project(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        device_id, token, device_key, csrf = _active_device(client)
+        user_id = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "==="))["user_id"]
+        with sqlite3.connect(tmp_path / "workstep_platform.db") as database:
+            database.execute(
+                "INSERT INTO platform_projects (id,device_id,host_project_id,name,"
+                "access_mode,status) VALUES (?,?,?,?,?,?)",
+                ("platform-1", device_id, "host-1", "Project", "remote_published", "active"),
+            )
+        grant = client.post(f"/api/admin/capabilities/{user_id}", json={
+            "capability": "task.create", "scope_type": "project",
+            "scope_id": "platform-1", "effect": "allow",
+        }, headers={"X-CSRF-Token": csrf})
+        assert grant.status_code == 200, grant.text
+        with client.websocket_connect("/api/control/ws") as ws:
+            _handshake(ws, token, device_key)
+            hello = ws.receive_json()
+            policy = json.loads(base64.urlsafe_b64decode(
+                hello["policy_snapshot"].split(".")[1] + "===",
+            ))
+            assert policy["task_create"] is False
+            assert policy["task_create_project_ids"] == ["host-1"]
+
+
 def test_locked_usage_ledger_does_not_delay_control_heartbeat(tmp_path):
     from datetime import datetime, timezone
 

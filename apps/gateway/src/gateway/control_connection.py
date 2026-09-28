@@ -29,6 +29,7 @@ from .providers_api import compile_provider_bundle, compiled_provider_access
 from .device_commands import next_command_for_device, record_command_result
 from .usage_ledger import record_usage_batch
 from .skills_api import compile_skill_manifest
+from .project_publication import record_project_publication
 
 router = APIRouter()
 
@@ -597,7 +598,8 @@ async def control_socket(ws: WebSocket):
             device_id, connection_id, ws, config_public_key_pem,
         )
         signer = ws.app.state.gateway_signer
-        policy_revision, task_create = await compiled_device_policy(
+        (policy_revision, task_create, project_publish,
+         task_create_projects, task_create_denied_projects) = await compiled_device_policy(
             ws.app.state.database, device_id, user_id,
         )
         provider_ids, models = await compiled_provider_access(
@@ -607,6 +609,9 @@ async def control_socket(ws: WebSocket):
             gateway_id=ws.app.state.settings.gateway_id,
             device_id=device_id, user_id=user_id, revision=policy_revision,
             task_create=task_create,
+            project_publish=project_publish,
+            task_create_project_ids=task_create_projects,
+            task_create_denied_project_ids=task_create_denied_projects,
             allowed_provider_ids=provider_ids, allowed_models=models,
         )
         provider_bundle = await compile_provider_bundle(
@@ -727,6 +732,34 @@ async def control_socket(ws: WebSocket):
                                  "device_id": device_id,
                                  "projects": [item["project_id"] for item in projects]})
                 continue
+            if message.get("kind") == "project_publish":
+                if (message.get("version") != 1
+                        or message.get("action") not in ("publish", "unpublish")
+                        or not isinstance(message.get("host_project_id"), str)
+                        or not isinstance(message.get("name"), str)):
+                    await ws.close(code=4400, reason="Invalid project publication")
+                    return
+                _, _, may_publish, _, _ = await compiled_device_policy(
+                    ws.app.state.database, device_id, user_id,
+                )
+                if not may_publish:
+                    await send_json({"kind": "project_publish_ack", "version": 1,
+                                     "device_id": device_id,
+                                     "host_project_id": message["host_project_id"],
+                                     "project_id": None, "status": "denied"})
+                    continue
+                try:
+                    result = await record_project_publication(
+                        ws.app.state.database, device_id=device_id, user_id=user_id,
+                        host_project_id=message["host_project_id"],
+                        name=message["name"], action=message["action"],
+                    )
+                except ValueError:
+                    result = {"host_project_id": message["host_project_id"],
+                              "project_id": None, "status": "failed"}
+                await send_json({"kind": "project_publish_ack", "version": 1,
+                                 "device_id": device_id, **result})
+                continue
             if message.get("kind") == "command_status":
                 command_id = message.get("command_id")
                 status = message.get("status")
@@ -766,7 +799,8 @@ async def control_socket(ws: WebSocket):
             if not await binding_active(ws, device_id, user_id):
                 await ws.close(code=4003, reason="Device access revoked")
                 return
-            policy_revision, task_create = await compiled_device_policy(
+            (policy_revision, task_create, project_publish,
+             task_create_projects, task_create_denied_projects) = await compiled_device_policy(
                 ws.app.state.database, device_id, user_id,
             )
             provider_ids, models = await compiled_provider_access(
@@ -776,6 +810,9 @@ async def control_socket(ws: WebSocket):
                 gateway_id=ws.app.state.settings.gateway_id,
                 device_id=device_id, user_id=user_id, revision=policy_revision,
                 task_create=task_create,
+                project_publish=project_publish,
+                task_create_project_ids=task_create_projects,
+                task_create_denied_project_ids=task_create_denied_projects,
                 allowed_provider_ids=provider_ids, allowed_models=models,
             )
             provider_bundle = await compile_provider_bundle(

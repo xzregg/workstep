@@ -3,6 +3,7 @@
 import asyncio
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from schemas.project import InitRequest, ReorderProjectsRequest, RegisterRequest, RenameRequest, SaveStepsRequest
 from services.project import DEFAULT_STEPS, project_manager
@@ -12,6 +13,10 @@ from services.workflow_definition import (
 )
 
 router = APIRouter(prefix="/api/project")
+
+
+class ProjectPublicationRequest(BaseModel):
+    published: bool
 
 
 async def _run_db(project_id, operation):
@@ -76,6 +81,22 @@ async def list_projects():
     ]
     remote = await asyncio.to_thread(remote_project_registry.list_public)
     return {"projects": [*local, *remote]}
+
+
+@router.post("/{project_id}/publication")
+async def set_project_publication(project_id: str, req: ProjectPublicationRequest):
+    from main import gateway_client
+
+    try:
+        return await gateway_client.publish_project(project_id, published=req.published)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc).strip("'")) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ConnectionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.delete("/{project_id}")
