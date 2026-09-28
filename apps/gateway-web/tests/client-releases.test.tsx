@@ -8,4 +8,5 @@ test('empty device portal offers the shared managed installer', () => {
   const html = renderToString(<MemoryRouter initialEntries={['/devices/empty']}><App /></MemoryRouter>)
   assert.match(html, /安装 WorkStep/)
   assert.match(html, /安装包/)
+  assert.match(html, /平台地址/)
 })

@@ -31,6 +31,7 @@ export function ClientDownloadPage() {
     <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY</span>
     <h2>安装 WorkStep</h2>
     <p>选择电脑的系统和架构，下载此网关统一提供的受管安装包。安装后在桌面端登录并登记这台电脑。</p>
+    <p>平台地址：<code>{typeof window === 'undefined' ? '当前网关地址' : window.location.origin}</code></p>
     <div className="gateway-download-filters">
       <label htmlFor="release-os">操作系统</label>
       <select id="release-os" value={os} onChange={(event) => setOs(event.target.value)}>
