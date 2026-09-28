@@ -41,6 +41,8 @@ Web 的作者展示由 `src/utils/actorDisplay.ts` 统一计算：缺失作者�
 
 平台账号名称快照从 Gateway `signing.py::sign_device_authorization` 与 `control_connection.py::DataConnection` 的签名授权／远程数据帧传入 daemon `services/gateway_client/identity.py`、`bridge.py`，由 `services/desktop_security.py` 投影为带独立用户名的 `ActorSnapshot`；`services/messages.py` 和 `agent_assistants/base.py` 分别用于任务与助手消息。旧授权无显示名时回退账号用户名。行为测试见 Gateway `test_desktop_authorization.py`、`test_data_http.py`、`test_user_devices.py` 和 daemon `test_gateway_local_identity.py`、`test_gateway_http_bridge.py`、`test_desktop_security.py`、`test_chat_session.py`。
 
+快捷 Action 的任务消息在 daemon `services/action_runtime.py::ActionRuntime.start` 经 `create_task_message` 保存，独立聊天消息在 `ActionRuntime.start_session` 保存用户与脚本回复作者及发起人快照；API 行为和慢数据库写入 canary 见 `tests/test_action_runtime.py`。
+
 修改功能时先找所属模块，再沿前端页面或组件 → API → 服务 → 数据模型追踪。行为测试放在实际拥有该行为的模块附近；不要把页面、`src/api/client.ts` 或通用服务文件作为新功能的默认落点。
 
 | 功能 | Web 入口 | Daemon 入口 | 深入阅读 |

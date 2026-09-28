@@ -651,3 +651,80 @@ async def test_project_chat_action_is_session_scoped(action_client):
     messages = await manager.run_db(project.id, load_messages)
     assert any(role == "assistant" and status.startswith("action_") and engine == "action"
                for role, status, engine in messages)
+
+
+@pytest.mark.anyio
+async def test_project_chat_action_snapshots_actor_and_initiator(action_client):
+    from services.remote_access import ActorSnapshot, actor_context
+
+    client, manager, project = action_client
+
+    def seed(_project):
+        ChatSession.create(
+            id="chat-attributed", project_id=project.id,
+            workflow_id=project.workflows[0]["id"], engine="claude",
+            created_at=utc_now(), updated_at=utc_now(),
+        )
+
+    await manager.run_db(project.id, seed)
+    actor = ActorSnapshot(
+        actor_id="user-1", user_name="Alice Display", username="alice",
+        device_id="device-1", device_name="Office PC", source="managed",
+    )
+    with actor_context(actor):
+        response = await client.post(
+            f"/api/project-actions/sessions/chat-attributed/run?project_id={project.id}",
+            json={"button_id": "restart", "confirmed": True},
+        )
+    assert response.status_code == 200, response.text
+
+    def load_messages(_project):
+        return list(ChatMessage.select().where(
+            ChatMessage.session == "chat-attributed"
+        ).order_by(ChatMessage.created_at, ChatMessage.role.desc()))
+
+    user, assistant = await manager.run_db(project.id, load_messages)
+    assert (user.author_id, user.author_username, user.author_name,
+            user.author_type, user.initiated_by_user_id,
+            user.initiated_by_username) == (
+                "user-1", "alice", "Alice Display", "user", "user-1", "alice",
+            )
+    assert (assistant.author_id, assistant.author_username, assistant.author_name,
+            assistant.author_type, assistant.initiated_by_user_id,
+            assistant.initiated_by_username) == (
+                "action", "action", "action", "assistant", "user-1", "alice",
+            )
+
+
+@pytest.mark.anyio
+async def test_slow_chat_action_message_write_does_not_block_health(action_client, monkeypatch):
+    client, manager, project = action_client
+
+    def seed(_project):
+        ChatSession.create(
+            id="chat-slow-write", project_id=project.id,
+            workflow_id=project.workflows[0]["id"], engine="claude",
+            created_at=utc_now(), updated_at=utc_now(),
+        )
+
+    await manager.run_db(project.id, seed)
+    entered = threading.Event()
+    original_create = ChatMessage.create
+
+    def slow_create(**values):
+        if values.get("role") == "user":
+            entered.set()
+            time.sleep(0.8)
+        return original_create(**values)
+
+    monkeypatch.setattr(ChatMessage, "create", slow_create)
+    request = asyncio.create_task(client.post(
+        f"/api/project-actions/sessions/chat-slow-write/run?project_id={project.id}",
+        json={"button_id": "restart", "confirmed": True},
+    ))
+    assert await asyncio.to_thread(entered.wait, 2)
+    before = time.monotonic()
+    health = await client.get("/api/health")
+    assert health.status_code == 200
+    assert time.monotonic() - before < 0.5
+    assert (await request).status_code == 200
