@@ -675,6 +675,15 @@ class TaskRunner:
         effective_config = dict(step.config or {})
         if effective_provider_id:
             effective_config["provider_id"] = effective_provider_id
+        provider_snapshot = None
+        if effective_provider_id:
+            def load_usage_provider():
+                provider = config_store.get_provider(effective_provider_id)
+                return ({key: provider.get(key) for key in
+                         ("id", "prices", "managed_revision")}
+                        if provider else None)
+
+            provider_snapshot = await asyncio.to_thread(load_usage_provider)
         default_model = await asyncio.to_thread(
             config_store.get_engine_default_model, step.engine
         )
@@ -810,6 +819,16 @@ class TaskRunner:
                 succeeded=execution_succeeded,
                 cancelled=self._live.is_cancelled(run_key),
                 ended_at=execution_ended_at,
+            )
+            from main import gateway_client
+            await gateway_client.record_message_usage(
+                project_id=getattr(self._database_executor, "project_id", None),
+                task_id=task.id, message_id=msg_id,
+                run_id=str(step_run.id) if step_run is not None else None,
+                model=resolved_model, occurred_at=execution_ended_at or utc_now(),
+                provider=provider_snapshot, provider_id=effective_provider_id or None,
+                usage_json=completion.usage_json,
+                user_id=task.creator_id, session_id=captured_session_id,
             )
             execution_message_finalized = True
             await self._execution_messages.publish_completion(

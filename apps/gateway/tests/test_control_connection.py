@@ -150,6 +150,54 @@ def test_control_delivers_signed_device_command_and_records_result(tmp_path):
         assert status.json()["commands"][0]["status"] == "succeeded"
 
 
+def test_control_accepts_usage_batch_and_acks_after_commit(tmp_path):
+    from datetime import datetime, timezone
+
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        device_id, token, device_key, _ = _active_device(client)
+        user_id = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "==="))["user_id"]
+        usage = {"usage_event_id": "usage-1", "request_id": "request-1",
+                 "device_id": device_id, "user_id": user_id, "model": "model-a",
+                 "input_tokens": 10, "output_tokens": 2, "total_tokens": 12,
+                 "occurred_at": datetime.now(timezone.utc).isoformat()}
+        with client.websocket_connect("/api/control/ws") as ws:
+            _handshake(ws, token, device_key)
+            assert ws.receive_json()["kind"] == "hello"
+            ws.send_json({"kind": "usage_batch", "version": 1,
+                          "batch_id": "batch-1", "events": [usage]})
+            ack = ws.receive_json()
+            assert ack["kind"] == "usage_ack"
+            assert ack["accepted"] == ["usage-1"]
+            ws.send_json({"kind": "usage_batch", "version": 1,
+                          "batch_id": "batch-1", "events": [usage]})
+            assert ws.receive_json()["duplicates"] == ["usage-1"]
+
+
+def test_locked_usage_ledger_does_not_delay_control_heartbeat(tmp_path):
+    from datetime import datetime, timezone
+
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        device_id, token, device_key, _ = _active_device(client)
+        with client.websocket_connect("/api/control/ws") as ws:
+            _handshake(ws, token, device_key)
+            assert ws.receive_json()["kind"] == "hello"
+            with sqlite3.connect(tmp_path / "workstep_platform.db", timeout=5) as holder:
+                holder.execute("BEGIN IMMEDIATE")
+                ws.send_json({"kind": "usage_batch", "version": 1, "batch_id": "slow-batch",
+                              "events": [{"usage_event_id": "slow-usage", "model": "model-a",
+                                          "input_tokens": 10, "output_tokens": 2,
+                                          "occurred_at": datetime.now(timezone.utc).isoformat()}]})
+                time.sleep(0.04)
+                started = time.monotonic()
+                ws.send_json({"kind": "heartbeat"})
+                assert ws.receive_json()["kind"] == "heartbeat_ack"
+                assert time.monotonic() - started < 0.5
+                holder.rollback()
+                assert ws.receive_json()["kind"] == "usage_ack"
+
+
 def test_control_opens_one_time_data_connection_on_demand(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:

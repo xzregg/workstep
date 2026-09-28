@@ -1,8 +1,9 @@
 """Gateway-owned relational schema. Project SQLite models stay in daemon."""
 
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -330,7 +331,33 @@ class UsageEvent(Base):
     model: Mapped[str | None] = mapped_column(String(128))
     input_tokens: Mapped[int | None] = mapped_column(Integer)
     output_tokens: Mapped[int | None] = mapped_column(Integer)
+    request_id: Mapped[str | None] = mapped_column(String(128))
+    source: Mapped[str] = mapped_column(String(32), server_default="reported_by_device")
+    initiated_by_user_id: Mapped[str | None] = mapped_column(String(64))
+    task_id: Mapped[str | None] = mapped_column(String(64))
+    run_id: Mapped[str | None] = mapped_column(String(64))
+    message_id: Mapped[str | None] = mapped_column(String(64))
+    session_id: Mapped[str | None] = mapped_column(String(128))
+    provider_revision: Mapped[int | None] = mapped_column(Integer)
+    cache_read_tokens: Mapped[int | None] = mapped_column(Integer)
+    cache_write_tokens: Mapped[int | None] = mapped_column(Integer)
+    total_tokens: Mapped[int | None] = mapped_column(Integer)
+    pricing_version: Mapped[str | None] = mapped_column(String(64))
+    unit_price_snapshot_json: Mapped[str | None] = mapped_column(Text)
+    currency: Mapped[str | None] = mapped_column(String(3))
+    estimated_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
+    metering_status: Mapped[str] = mapped_column(String(16), server_default="metered")
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    received_at: Mapped[datetime] = timestamp()
+
+
+class UsageEventReceipt(Base):
+    __tablename__ = "usage_event_receipts"
+
+    usage_event_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    device_id: Mapped[str] = mapped_column(String(64))
+    batch_id: Mapped[str] = mapped_column(String(128))
+    payload_sha256: Mapped[str] = mapped_column(String(64))
     received_at: Mapped[datetime] = timestamp()
 
 

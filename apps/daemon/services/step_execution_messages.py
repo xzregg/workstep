@@ -38,6 +38,7 @@ class CompletedExecution(NamedTuple):
     engine: str | None
     model: str | None
     status: str
+    usage_json: str | None
 
 
 class StepExecutionMessages:
@@ -234,7 +235,7 @@ class StepExecutionMessages:
             )
             message.ended_at = ended_at or utc_now()
             message.save()
-            return message.engine, message.model, message.run_status
+            return message.engine, message.model, message.run_status, message.usage_json
 
         return CompletedExecution(*await self._run_db(finalize_message))
 

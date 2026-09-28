@@ -2104,7 +2104,7 @@ async def test_engine_refresh_rescans_before_returning_results(
 @pytest.mark.anyio
 async def test_engine_test_runs_a_minimal_prompt(api_context, monkeypatch):
     client, _ = api_context
-    import api.engine as engine_api
+    import services.engine_actions as engine_actions
     from engines.core.base import EngineTestResult
 
     class FakeEngine:
@@ -2115,8 +2115,8 @@ async def test_engine_test_runs_a_minimal_prompt(api_context, monkeypatch):
             return EngineTestResult(True, "连接和对话测试通过", 12)
 
     fake = FakeEngine()
-    monkeypatch.setattr(engine_api, "refresh_registry", lambda **kwargs: None)
-    monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: fake)
+    monkeypatch.setattr(engine_actions, "refresh_registry", lambda **kwargs: None)
+    monkeypatch.setattr(engine_actions, "create_engine", lambda engine_id: fake)
 
     response = await client.post(
         "/api/engine/test",
@@ -2134,7 +2134,7 @@ async def test_engine_test_runs_a_minimal_prompt(api_context, monkeypatch):
 @pytest.mark.anyio
 async def test_engine_test_uses_unsaved_form_values(api_context, monkeypatch):
     client, _ = api_context
-    import api.engine as engine_api
+    import services.engine_actions as engine_actions
     from engines.core.base import EngineTestResult
 
     class FakeEngine:
@@ -2150,8 +2150,8 @@ async def test_engine_test_uses_unsaved_form_values(api_context, monkeypatch):
             return EngineTestResult(True, "连接和对话测试通过", 12)
 
     fake = FakeEngine()
-    monkeypatch.setattr(engine_api, "refresh_registry", lambda **kwargs: None)
-    monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: fake)
+    monkeypatch.setattr(engine_actions, "refresh_registry", lambda **kwargs: None)
+    monkeypatch.setattr(engine_actions, "create_engine", lambda engine_id: fake)
 
     response = await client.post(
         "/api/engine/test",
@@ -2178,7 +2178,7 @@ async def test_engine_test_uses_unsaved_form_values(api_context, monkeypatch):
 @pytest.mark.anyio
 async def test_engine_test_uses_selected_model(api_context, monkeypatch):
     client, _ = api_context
-    import api.engine as engine_api
+    import services.engine_actions as engine_actions
     from engines.core.base import EngineTestResult
 
     class FakeEngine:
@@ -2195,8 +2195,8 @@ async def test_engine_test_uses_selected_model(api_context, monkeypatch):
             return EngineTestResult(True, "连接和对话测试通过", 12)
 
     fake = FakeEngine()
-    monkeypatch.setattr(engine_api, "refresh_registry", lambda **kwargs: None)
-    monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: fake)
+    monkeypatch.setattr(engine_actions, "refresh_registry", lambda **kwargs: None)
+    monkeypatch.setattr(engine_actions, "create_engine", lambda engine_id: fake)
 
     response = await client.post(
         "/api/engine/test",
@@ -2220,7 +2220,7 @@ async def test_engine_test_uses_selected_model(api_context, monkeypatch):
             return EngineTestResult(True, "连接和对话测试通过", 12)
 
     bare = BareEngine()
-    monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: bare)
+    monkeypatch.setattr(engine_actions, "create_engine", lambda engine_id: bare)
     response = await client.post(
         "/api/engine/test",
         json={"engine_id": "claude", "timeout_seconds": 3},
@@ -2232,10 +2232,10 @@ async def test_engine_test_uses_selected_model(api_context, monkeypatch):
 @pytest.mark.anyio
 async def test_engine_test_reports_unavailable_engine(api_context, monkeypatch):
     client, _ = api_context
-    import api.engine as engine_api
+    import services.engine_actions as engine_actions
 
-    monkeypatch.setattr(engine_api, "refresh_registry", lambda **kwargs: None)
-    monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: None)
+    monkeypatch.setattr(engine_actions, "refresh_registry", lambda **kwargs: None)
+    monkeypatch.setattr(engine_actions, "create_engine", lambda engine_id: None)
 
     response = await client.post(
         "/api/engine/test",
