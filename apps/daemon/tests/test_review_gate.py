@@ -791,10 +791,29 @@ async def test_execution_message_ends_before_its_automatic_review(tmp_path, monk
         recorded_usage.append(kwargs)
 
     monkeypatch.setattr("main.gateway_client.record_message_usage", record_usage)
+    from services.config import config_store
+    monkeypatch.setattr(SequencedReviewEngine, "resolve_provider_id",
+                        lambda self, _provider_id=None: "managed-review", raising=False)
+    loop = asyncio.get_running_loop()
+    read_started, read_finished = asyncio.Event(), asyncio.Event()
+    release_read = threading.Event()
+    provider_reads = 0
+
+    def load_provider(provider_id):
+        nonlocal provider_reads
+        provider_reads += 1
+        if provider_reads == 2:
+            loop.call_soon_threadsafe(read_started.set)
+            release_read.wait(timeout=1)
+            loop.call_soon_threadsafe(read_finished.set)
+        return {"id": provider_id, "managed_revision": 4,
+                "prices": {"version": "v4", "models": {}}}
+
+    monkeypatch.setattr(config_store, "get_provider", load_provider)
     original = ENGINE_REGISTRY.copy()
     ENGINE_REGISTRY["review-test"] = lambda: SequencedReviewEngine(calls)
     try:
-        await TaskRunner(EventBus()).run_pipeline(
+        pipeline = asyncio.create_task(TaskRunner(EventBus()).run_pipeline(
             task,
             {
                 "steps": [{
@@ -811,7 +830,14 @@ async def test_execution_message_ends_before_its_automatic_review(tmp_path, monk
             },
             tmp_path / "artifacts",
             workflow_run=workflow_run,
-        )
+        ))
+        try:
+            await asyncio.wait_for(read_started.wait(), timeout=2)
+            assert not read_finished.is_set()
+            await asyncio.wait_for(asyncio.sleep(0.01), timeout=0.05)
+        finally:
+            release_read.set()
+            await pipeline
         messages = list(
             Message.select()
             .where((Message.task == task) & (Message.step_key == "req"))
@@ -823,9 +849,16 @@ async def test_execution_message_ends_before_its_automatic_review(tmp_path, monk
         assert execution.ended_at is not None
         assert review.ended_at is not None
         assert execution.ended_at <= review.ended_at
-        assert len(recorded_usage) == 1
-        assert recorded_usage[0]["message_id"] == execution.id
-        assert json.loads(recorded_usage[0]["usage_json"])["input_tokens"] == 101
+        assert len(recorded_usage) == 2
+        by_message = {item["message_id"]: item for item in recorded_usage}
+        assert json.loads(by_message[execution.id]["usage_json"])["input_tokens"] == 101
+        assert json.loads(by_message[review.id]["usage_json"])["input_tokens"] == 102
+        assert by_message[review.id]["run_id"] == review.step_run_id
+        assert by_message[review.id]["provider_id"] == "managed-review"
+        assert by_message[review.id]["provider"] == {
+            "id": "managed-review", "managed_revision": 4,
+            "prices": {"version": "v4", "models": {}},
+        }
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)

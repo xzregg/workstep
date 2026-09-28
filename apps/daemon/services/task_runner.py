@@ -146,6 +146,7 @@ class TaskRunner:
         )
         self._review_messages = StepReviewMessages(
             self._event_journal, self._run_db, self._publish, self._live,
+            project_id=getattr(database_executor, "project_id", None),
         )
         self._step_rework = StepRework(self._run_db, self._publish)
         self._artifact_routes = StepArtifactRoutes(
