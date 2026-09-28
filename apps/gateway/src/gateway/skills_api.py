@@ -253,6 +253,36 @@ async def grant_group_skill(request: Request, group_id: str, body: SkillGrantInp
             "skill_version_id": version.id}
 
 
+@admin_group_router.delete("/{group_id}/skills/{skill_id}", status_code=204)
+async def revoke_group_skill(request: Request, group_id: str, skill_id: str):
+    actor = await _admin(request)
+    async with request.app.state.database.session() as session:
+        async with session.begin():
+            grant = await session.scalar(select(GroupSkillCatalog).where(
+                GroupSkillCatalog.group_id == group_id,
+                GroupSkillCatalog.skill_id == skill_id,
+                GroupSkillCatalog.revoked_at.is_(None),
+            ))
+            if grant is None:
+                raise HTTPException(status_code=404, detail="Group Skill grant unavailable")
+            now = datetime.now(timezone.utc)
+            grant.revoked_at = now
+            assignments = (await session.scalars(select(ProjectSkillAssignment).where(
+                ProjectSkillAssignment.source_group_id == group_id,
+                ProjectSkillAssignment.skill_id == skill_id,
+                ProjectSkillAssignment.revoked_at.is_(None),
+            ))).all()
+            for assignment in assignments:
+                project = await session.get(PlatformProject, assignment.platform_project_id)
+                project.skill_revision += 1
+                assignment.desired_revision = project.skill_revision
+                assignment.status = "revoked"
+                assignment.revoked_at = now
+            session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,
+                                   action="skill.group_revoked", result="success",
+                                   metadata_json=f'{{"group_id":"{group_id}","skill_id":"{skill_id}"}}'))
+
+
 @project_skill_router.post("/{group_id}/projects/{project_id}/skills")
 async def assign_project_skill(request: Request, group_id: str,
                                project_id: str, body: SkillGrantInput):
@@ -316,6 +346,33 @@ async def assign_project_skill(request: Request, group_id: str,
     return {"project_id": project_id, "skill_id": version.skill_id,
             "skill_version_id": version.id,
             "desired_revision": assignment.desired_revision}
+
+
+@project_skill_router.delete("/{group_id}/projects/{project_id}/skills/{skill_id}",
+                             status_code=204)
+async def revoke_project_skill(request: Request, group_id: str,
+                               project_id: str, skill_id: str):
+    service, actor = await _actor(request, write=True)
+    async with request.app.state.database.session() as session:
+        async with session.begin():
+            if not await _can_manage_group(session, service, actor, group_id):
+                raise HTTPException(status_code=403, detail="Group management denied")
+            assignment = await session.scalar(select(ProjectSkillAssignment).where(
+                ProjectSkillAssignment.platform_project_id == project_id,
+                ProjectSkillAssignment.skill_id == skill_id,
+                ProjectSkillAssignment.source_group_id == group_id,
+                ProjectSkillAssignment.revoked_at.is_(None),
+            ))
+            if assignment is None:
+                raise HTTPException(status_code=404, detail="Project Skill assignment unavailable")
+            project = await session.get(PlatformProject, project_id)
+            project.skill_revision += 1
+            assignment.desired_revision = project.skill_revision
+            assignment.status = "revoked"
+            assignment.revoked_at = datetime.now(timezone.utc)
+            session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,
+                                   action="skill.project_revoked", result="success",
+                                   metadata_json=f'{{"project_id":"{project_id}","skill_id":"{skill_id}"}}'))
 
 
 async def compile_skill_manifest(database, signer, gateway_id: str,
