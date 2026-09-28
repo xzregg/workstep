@@ -4,13 +4,15 @@ import re
 from typing import Literal
 from urllib.parse import parse_qs, urlsplit
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
+from sqlalchemy import func, or_, select
 
 from .external_identity import ExternalIdentityService
 from .identity import COOKIE_NAME, IdentityService, csrf_token, public_user
-from .identity_api import _check_csrf, _set_session_cookie, _super_admin_request
+from .identity_api import _check_csrf, _set_session_cookie, _super_admin_read, _super_admin_request
+from .models import IdentitySource
 
 router = APIRouter(prefix="/api")
 
@@ -107,6 +109,38 @@ async def create_source(request: Request, body: SourceInput):
     return {"id": source.id, "provider": source.provider, "tenant_id": source.tenant_id,
             "client_id": source.client_id, "enabled": bool(source.enabled),
             "callback_configured": bool(source.callback_token_env)}
+
+
+@router.get("/admin/identity-sources")
+async def list_sources(request: Request, q: str = Query('', max_length=128),
+                       provider: Literal['dingtalk', 'wecom'] | None = None,
+                       status: Literal['enabled', 'disabled'] | None = None,
+                       sort: Literal['created_at', 'tenant_id'] = 'created_at',
+                       direction: Literal['asc', 'desc'] = 'desc',
+                       page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100)):
+    await _super_admin_read(request)
+    conditions = []
+    if provider:
+        conditions.append(IdentitySource.provider == provider)
+    if status:
+        conditions.append(IdentitySource.enabled == int(status == 'enabled'))
+    if q.strip():
+        escaped = q.strip().replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+        pattern = f'%{escaped}%'
+        conditions.append(or_(IdentitySource.tenant_id.ilike(pattern, escape='\\'),
+                              IdentitySource.client_id.ilike(pattern, escape='\\')))
+    column = {'created_at': IdentitySource.created_at, 'tenant_id': IdentitySource.tenant_id}[sort]
+    ordered = column.asc() if direction == 'asc' else column.desc()
+    async with request.app.state.database.session() as session:
+        total = await session.scalar(select(func.count()).select_from(IdentitySource).where(*conditions))
+        rows = (await session.scalars(select(IdentitySource).where(*conditions)
+            .order_by(ordered, IdentitySource.id).offset((page - 1) * page_size).limit(page_size))).all()
+        sources = [{'id': source.id, 'provider': source.provider, 'tenant_id': source.tenant_id,
+                    'client_id': source.client_id, 'agent_id': source.agent_id,
+                    'enabled': bool(source.enabled),
+                    'callback_configured': bool(source.callback_token_env),
+                    'created_at': source.created_at.isoformat()} for source in rows]
+    return {'sources': sources, 'total': total, 'page': page, 'page_size': page_size}
 
 
 @router.post("/admin/identity-sources/{source_id}/sync")

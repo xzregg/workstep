@@ -11,6 +11,7 @@ import { AdminUsersPage } from './AdminUsersPage'
 import { AdminRolesPage } from './AdminRolesPage'
 import { AdminOverviewPage } from './AdminOverviewPage'
 import { AdminAccessGate, useAdminAccess } from './AdminAccessGate'
+import { AdminOrgPage } from './AdminOrgPage'
 
 export function App({ deviceHost = typeof window !== 'undefined' && window.location.hostname.startsWith('d-') }: { deviceHost?: boolean }) {
   if (deviceHost) return <main><header><h1>WorkStep 远程项目</h1></header><ProjectWorkspacePage /></main>
@@ -29,6 +30,8 @@ function GatewayPortalApp() {
         <Route path="/admin" element={<AdminAccessGate state={adminAccess}><AdminOverviewPage /></AdminAccessGate>} />
         <Route path="/admin/users" element={<AdminAccessGate state={adminAccess}
           allow={['super_admin', 'identity_admin']}><AdminUsersPage /></AdminAccessGate>} />
+        <Route path="/admin/org" element={<AdminAccessGate state={adminAccess}
+          allow={['super_admin', 'identity_admin']}><AdminOrgPage roles={adminAccess.access?.roles ?? []} /></AdminAccessGate>} />
         <Route path="/admin/admins" element={<AdminAccessGate state={adminAccess}
           allow={['super_admin']}><AdminRolesPage /></AdminAccessGate>} />
         <Route path="/admin/devices" element={<AdminAccessGate state={adminAccess}
