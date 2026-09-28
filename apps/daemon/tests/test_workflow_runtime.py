@@ -2348,7 +2348,7 @@ async def test_run_endpoint_reports_an_invalid_saved_workflow(monkeypatch):
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("action", ["task.cancel", "task.pause"])
+@pytest.mark.parametrize("action", ["task.cancel", "task.pause", "step.cancel"])
 async def test_runtime_cancels_an_active_pipeline(tmp_path, monkeypatch, action):
     """Cancellation uses the same runtime that owns the active TaskRunner."""
     from engines.core.registry import ENGINE_REGISTRY
@@ -2418,7 +2418,34 @@ async def test_runtime_cancels_an_active_pipeline(tmp_path, monkeypatch, action)
         )
         await engine.started.wait()
 
-        assert await runtime.cancel(task.id, action=action) is True
+        if action == "step.cancel":
+            write_started = threading.Event()
+            original_execute_sql = db.execute_sql
+
+            def slow_step_write(sql, *args, **kwargs):
+                if (
+                    sql.upper().startswith("UPDATE")
+                    and "taskstep" in sql
+                    and not write_started.is_set()
+                ):
+                    write_started.set()
+                    time.sleep(0.35)
+                return original_execute_sql(sql, *args, **kwargs)
+
+            monkeypatch.setattr(db, "execute_sql", slow_step_write)
+            assert await runtime.cancel_step(project.id, task.id, "req") is True
+            assert await asyncio.to_thread(write_started.wait, 1)
+            import main
+
+            async with AsyncClient(
+                transport=ASGITransport(app=main.app), base_url="http://test",
+            ) as client:
+                health = await asyncio.wait_for(
+                    client.get("/api/health"), timeout=0.2,
+                )
+            assert health.status_code == 200
+        else:
+            assert await runtime.cancel(task.id, action=action) is True
         await asyncio.wait_for(active_run, timeout=1)
 
         assert Task.get_by_id(task.id).status == "paused"
@@ -2428,7 +2455,10 @@ async def test_runtime_cancels_an_active_pipeline(tmp_path, monkeypatch, action)
         ))
         assert len(events) == 1
         assert events[0].actor_username == "operator"
-        assert events[0].metadata_json == '{"status": "paused"}'
+        assert events[0].metadata_json == (
+            '{"status": "cancelled", "step_key": "req"}'
+            if action == "step.cancel" else '{"status": "paused"}'
+        )
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)

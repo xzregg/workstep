@@ -126,6 +126,7 @@ class TaskRunner:
         self._retry_message_ids = dict(retry_message_ids or {})
         self._graceful_shutdown = False
         self._cancel_audit = None
+        self._step_cancel_audits = {}
         self._event_journal = TurnEventJournal()
         self._execution_messages = StepExecutionMessages(
             self._event_journal, self._run_db, self._publish,
@@ -1195,16 +1196,42 @@ class TaskRunner:
         self, task_id, step_key, status, error, ended_at
     ):
         def persist():
-            row = TaskStep.get(
-                (TaskStep.task == task_id) & (TaskStep.step_key == step_key)
-            )
-            row.status = status
-            row.error = error
-            row.ended_at = ended_at
-            row.save()
-            return row
+            with db_proxy.atomic("IMMEDIATE"):
+                row = TaskStep.get(
+                    (TaskStep.task == task_id) & (TaskStep.step_key == step_key)
+                )
+                row.status = status
+                row.error = error
+                row.ended_at = ended_at
+                row.save()
+                actor = self._step_cancel_audits.get(step_key)
+                if (
+                    status == "cancelled"
+                    and step_key in self._step_cancel_audits
+                    and self._source_project_id is not None
+                ):
+                    from services.project_audit import record_project_audit
+                    from services.remote_access import replayed_actor_context
 
-        return await self._run_db(persist)
+                    with replayed_actor_context(actor):
+                        record_project_audit(
+                            project_id=self._source_project_id,
+                            task_id=task_id,
+                            action="step.cancel",
+                            result="succeeded",
+                            mode=(
+                                "managed"
+                                if actor is not None and actor.source == "managed"
+                                else "local"
+                            ),
+                            metadata={"step_key": step_key, "status": status},
+                        )
+                return row
+
+        result = await self._run_db(persist)
+        if status == "cancelled":
+            self._step_cancel_audits.pop(step_key, None)
+        return result
 
     async def _persist_step_run_status(self, step_run_id, status, error, ended_at):
         def persist():
@@ -1300,7 +1327,15 @@ class TaskRunner:
         })
 
     async def cancel_step(self, task_id: str, step_key: str) -> bool:
-        return await self._live.cancel_step(task_id, step_key)
+        from services.remote_access import get_effective_actor
+
+        if self._live.is_cancelled(f"{task_id}:{step_key}"):
+            return True
+        self._step_cancel_audits[step_key] = get_effective_actor()
+        cancelled = await self._live.cancel_step(task_id, step_key)
+        if not cancelled:
+            self._step_cancel_audits.pop(step_key, None)
+        return cancelled
 
     async def send_live_message(
         self,
