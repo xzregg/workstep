@@ -168,6 +168,33 @@ def test_admin_audit_query_only_exposes_published_project_events(tmp_path):
                       if item["id"] == "global-secret")
         assert legacy["metadata"] == {"user_id": "owner"}
 
+        filtered = client.get("/api/admin/audit", params={
+            "user_id": "user-1", "result": "succeeded", "q": "task-1",
+            "from_time": "2020-01-01T00:00:00Z",
+            "to_time": "2100-01-01T00:00:00Z", "limit": 1,
+        })
+        assert filtered.status_code == 200, filtered.text
+        assert filtered.json()["total"] == 1
+        assert [item["id"] for item in filtered.json()["items"]] == ["visible"]
+        assert filtered.json()["items"][0]["platform_project_id"] == "published-1"
+        assert filtered.json()["items"][0]["project_name"] == "Public"
+        assert client.get("/api/admin/audit", params={
+            "user_id": owner_id, "result": "succeeded",
+        }).json()["total"] == 0
+        assert client.get("/api/admin/audit", params={
+            "q": "secret",
+        }).json()["total"] == 0
+        assert client.get("/api/admin/audit", params={
+            "from_time": "2100-01-01T00:00:00Z",
+        }).json()["total"] == 0
+        assert client.get("/api/admin/audit", params={
+            "from_time": "2100-01-01T00:00:00Z",
+            "to_time": "2020-01-01T00:00:00Z",
+        }).status_code == 422
+        assert client.get("/api/admin/audit", params={
+            "from_time": "2020-01-01T00:00:00",
+        }).status_code == 422
+
     with TestClient(app, base_url="https://gateway.test") as anonymous:
         assert anonymous.get("/api/admin/audit").status_code == 401
 
