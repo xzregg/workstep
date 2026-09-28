@@ -81,6 +81,12 @@ def test_project_http_allowlist_matches_only_the_bound_project():
                    "host-1", access_level="edit")
     assert not allowed("PUT", "/api/fs/content", [("project_id", "host-1")],
                        "host-1", access_level="read")
+    assert allowed("POST", "/api/task/task-1/chat", [("project_id", "host-1")],
+                   "host-1", access_level="edit")
+    assert allowed("POST", "/api/task/task-1/step/plan/message", [
+        ("project_id", "host-1")], "host-1", access_level="edit")
+    assert not allowed("POST", "/api/task/task-1/chat", [("project_id", "host-1")],
+                       "host-1", access_level="read")
 
 
 def test_control_envelope_requires_known_version_and_target():

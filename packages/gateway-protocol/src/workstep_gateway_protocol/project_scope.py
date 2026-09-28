@@ -13,6 +13,9 @@ _TASK_STEP_HISTORY = re.compile(
     r"/api/task/[A-Za-z0-9_-]{1,128}/step/[A-Za-z0-9_-]{1,128}/history\Z")
 _TASK_MESSAGE_EVENTS = re.compile(
     r"/api/task/[A-Za-z0-9_-]{1,128}/messages/[A-Za-z0-9_-]{1,128}/events\Z")
+_TASK_CHAT = re.compile(r"/api/task/[A-Za-z0-9_-]{1,128}/chat\Z")
+_TASK_STEP_MESSAGE = re.compile(
+    r"/api/task/[A-Za-z0-9_-]{1,128}/step/[A-Za-z0-9_-]{1,128}/message\Z")
 _WORKFLOW_DETAIL = re.compile(r"/api/workflow/[A-Za-z0-9_-]{1,128}\Z")
 _CHAT_SESSION_DETAIL = re.compile(r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}\Z")
 _CHAT_MESSAGE_EVENTS = re.compile(
@@ -40,6 +43,8 @@ def project_http_route_allowed(method: str, path: str,
         if path == "/api/task/create":
             return task_create
         if path in ("/api/fs/upload/file", "/api/fs/upload/image", "/api/fs/entry"):
+            return True
+        if _TASK_CHAT.fullmatch(path) or _TASK_STEP_MESSAGE.fullmatch(path):
             return True
         return path in ("/api/task/run", "/api/task/pause", "/api/task/cancel")
     if method != "GET":

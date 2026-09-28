@@ -647,6 +647,61 @@ async def test_project_proxy_files_stay_inside_project_and_slow_upload_does_not_
 
 
 @pytest.mark.anyio
+async def test_project_proxy_messages_require_edit_and_bound_project(api_context, monkeypatch):
+    import base64
+    import main
+    from services.gateway_client.bridge import ManagedHttpBridge
+    from workstep_gateway_protocol import FrameType, ProxyFrame
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "remote-messages"
+    project_dir.mkdir()
+    project_id = (await client.post("/api/project/init", json={
+        "path": str(project_dir),
+    })).json()["id"]
+    monkeypatch.setattr(main.gateway_client, "managed_config", object())
+
+    class Accepted:
+        def to_dict(self):
+            return {"accepted": True}
+
+    submit = AsyncMock(return_value=Accepted())
+    step_message = AsyncMock(return_value={"accepted": True})
+    monkeypatch.setattr(main.coordinator_module, "submit_message", submit)
+    monkeypatch.setattr(main.workflow_runtime, "send_step_message", step_message)
+
+    async def call(path, *, level="edit", project_query=None):
+        frames = []
+        async def capture(frame):
+            frames.append(frame)
+        bridge = ManagedHttpBridge(main.app, "message-stream", {
+            "method": "POST", "path": path,
+            "query": f"project_id={project_query or project_id}",
+            "headers": [["content-type", "application/json"],
+                        ["idempotency-key", "remote-message-1"]],
+            "user_id": "worker", "username": "Worker",
+            "project_id": project_id, "access_level": level,
+        }, capture, "device-1")
+        bridge.start_task()
+        data = base64.b64encode(b'{"content":"Hello"}').decode()
+        await bridge.feed(ProxyFrame(stream_id="message-stream", type=FrameType.http_request,
+                                     payload={"phase": "body", "data": data}))
+        await bridge.feed(ProxyFrame(stream_id="message-stream", type=FrameType.http_request,
+                                     payload={"phase": "end"}))
+        await asyncio.wait_for(bridge._task, timeout=2)
+        return frames[0].payload["status"]
+
+    assert await call("/api/task/task-1/chat", level="read") == 403
+    assert await call("/api/task/task-1/chat", project_query="other-project") == 403
+    assert await call("/api/task/task-1/chat") == 200
+    submit.assert_awaited_once()
+    assert submit.await_args.args[:3] == (project_id, "task-1", "Hello")
+    assert await call("/api/task/task-1/step/plan/message") == 200
+    step_message.assert_awaited_once()
+    assert step_message.await_args.args[:4] == (project_id, "task-1", "plan", "Hello")
+
+
+@pytest.mark.anyio
 async def test_single_project_summary_hides_host_path_and_keeps_health_responsive(
         api_context, monkeypatch):
     from main import project_manager
