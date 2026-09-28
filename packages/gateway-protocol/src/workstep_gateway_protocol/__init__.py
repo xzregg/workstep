@@ -8,6 +8,8 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .project_scope import project_http_route_allowed
+
 PROTOCOL_VERSION = 1
 WEBSOCKET_CHUNK_BYTES = 16384
 MAX_WEBSOCKET_MESSAGE_BYTES = 16 * 1024 * 1024
@@ -144,4 +146,5 @@ __all__ = [
     "ManagedGatewayPayload", "SignedManagedGatewayConfig",
     "WEBSOCKET_CHUNK_BYTES", "MAX_WEBSOCKET_MESSAGE_BYTES",
     "websocket_payloads", "WebSocketMessageAssembler",
+    "project_http_route_allowed",
 ]

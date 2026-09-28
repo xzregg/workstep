@@ -9,6 +9,7 @@ from workstep_gateway_protocol import (
     assert_protocol_version,
     websocket_payloads,
     WebSocketMessageAssembler,
+    project_http_route_allowed,
 )
 
 
@@ -16,6 +17,19 @@ def test_unknown_required_protocol_version_is_rejected():
     assert_protocol_version(1)
     with pytest.raises(UnsupportedProtocolVersion):
         assert_protocol_version(2)
+
+
+def test_project_http_allowlist_matches_only_the_bound_project():
+    allowed = project_http_route_allowed
+    assert allowed("GET", "/api/project/host-1/summary", [], "host-1")
+    assert not allowed("GET", "/api/project/host-2/summary", [], "host-1")
+    assert allowed("GET", "/api/task/list", [("project_id", "host-1")], "host-1")
+    assert allowed("GET", "/api/task/task-1", [("project_id", "host-1")], "host-1")
+    assert not allowed("GET", "/api/task/task-1", [("project_id", "host-2")], "host-1")
+    assert not allowed("GET", "/api/task/task-1", [
+        ("project_id", "host-1"), ("project_id", "host-2")], "host-1")
+    assert not allowed("POST", "/api/task/task-1", [("project_id", "host-1")], "host-1")
+    assert not allowed("GET", "/api/project/list", [("project_id", "host-1")], "host-1")
 
 
 def test_control_envelope_requires_known_version_and_target():

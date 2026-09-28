@@ -7,12 +7,14 @@ type RemoteSession = {
   gateway_url: string
 }
 type ProjectSummary = { id: string; name: string; workflows: { id: string; name: string }[] }
-type Task = { id: string; title: string; status: string }
+type Task = { id: string; title: string; status: string; description?: string | null }
 
 export function ProjectWorkspacePage() {
   const [session, setSession] = useState<RemoteSession | null>(null)
   const [summary, setSummary] = useState<ProjectSummary | null>(null)
   const [tasks, setTasks] = useState<Task[]>([])
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [taskLoading, setTaskLoading] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -39,6 +41,19 @@ export function ProjectWorkspacePage() {
     return () => controller.abort()
   }, [])
 
+  async function openTask(taskId: string) {
+    if (!session?.host_project_id) return
+    setTaskLoading(true); setError('')
+    try {
+      const response = await fetch(
+        `/api/task/${encodeURIComponent(taskId)}?project_id=${encodeURIComponent(session.host_project_id)}`,
+      )
+      if (!response.ok) throw new Error('任务详情不可用。')
+      setSelectedTask(await response.json())
+    } catch (reason) { setError(reason instanceof Error ? reason.message : '任务详情不可用。') }
+    finally { setTaskLoading(false) }
+  }
+
   return <section className="gateway-admin-page">
     <span className="gateway-auth-eyebrow">WORKSTEP REMOTE PROJECT</span>
     <h2>{summary?.name ?? '远程项目'}</h2>
@@ -49,8 +64,17 @@ export function ProjectWorkspacePage() {
       <h3>任务</h3>
       {tasks.length === 0 && <p>暂无任务。</p>}
       <ul className="gateway-device-list">{tasks.map(task => <li key={task.id}>
-        <strong>{task.title}</strong><span>{task.status}</span>
+        <div><strong>{task.title}</strong><p>{task.status}</p></div>
+        <button type="button" disabled={taskLoading} onClick={() => void openTask(task.id)}>
+          查看任务
+        </button>
       </li>)}</ul>
+      {selectedTask && <section className="gateway-project-task-detail">
+        <h3>{selectedTask.title}</h3>
+        <p>{selectedTask.status}</p>
+        {selectedTask.description && <p>{selectedTask.description}</p>}
+        <button type="button" onClick={() => setSelectedTask(null)}>关闭详情</button>
+      </section>}
     </>}
     {session?.gateway_url && <a href={session.gateway_url.replace(/\/devices$/, '/')}>返回平台</a>}
   </section>
