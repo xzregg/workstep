@@ -4,16 +4,19 @@ import asyncio
 import base64
 import json
 import logging
+import hashlib
 from urllib.parse import urlsplit
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
 from workstep_gateway_protocol import FrameType, ProxyFrame
 
 from .policy import ManagedPolicyCache, verify_policy_snapshot
 from .bridge import ManagedHttpBridge, ManagedWebSocketBridge
+from .provider_config import verify_provider_bundle
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +35,8 @@ def data_url(origin: str) -> str:
 class GatewayControlClient:
     def __init__(self, origin: str, *, gateway_id: str, public_key_fingerprint: str,
                  user_id: str, policy_cache: ManagedPolicyCache,
-                 connector=connect, heartbeat_seconds: float = 20, asgi_app=None):
+                 connector=connect, heartbeat_seconds: float = 20, asgi_app=None,
+                 provider_store=None):
         self.url = control_url(origin)
         self.origin = origin
         self.gateway_id = gateway_id
@@ -42,11 +46,13 @@ class GatewayControlClient:
         self.connector = connector
         self.heartbeat_seconds = heartbeat_seconds
         self.asgi_app = asgi_app
+        self.provider_store = provider_store
         self.online = False
         self.authorization_required = False
         self._task: asyncio.Task | None = None
         self._data_tasks: set[asyncio.Task] = set()
         self._stop = asyncio.Event()
+        self.config_private_key: X25519PrivateKey | None = None
 
     def start(self, authorization: str, device_id: str,
               control_private_key_pem: str, control_public_key_pem: str,
@@ -101,11 +107,25 @@ class GatewayControlClient:
                     challenge_proof = base64.urlsafe_b64encode(private_key.sign(
                         f"workstep-control-challenge-v1:{nonce}:{authorization}".encode(),
                     )).rstrip(b"=").decode()
+                    config_private_key = X25519PrivateKey.generate()
+                    self.config_private_key = config_private_key
+                    config_public_key = config_private_key.public_key()
+                    config_public_key_pem = config_public_key.public_bytes(
+                        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
+                    ).decode()
+                    config_fingerprint = hashlib.sha256(config_public_key.public_bytes(
+                        serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo,
+                    )).hexdigest()
+                    config_key_proof = base64.urlsafe_b64encode(private_key.sign(
+                        f"workstep-config-key-v1:{nonce}:{authorization}:{config_fingerprint}".encode(),
+                    )).rstrip(b"=").decode()
                     await socket.send(json.dumps({
                         "authorization": authorization,
                         "control_public_key_pem": public_key_pem,
                         "control_delegation_signature": delegation_signature,
                         "control_challenge_proof": challenge_proof,
+                        "config_public_key_pem": config_public_key_pem,
+                        "config_key_proof": config_key_proof,
                     }))
                     messages = asyncio.Queue()
                     reader_task = asyncio.create_task(
@@ -123,6 +143,8 @@ class GatewayControlClient:
                         self.gateway_id, device_id, self.user_id,
                     ))
                     await self._ack_policy(socket, messages, device_id)
+                    await self._apply_provider_bundle(socket, messages, hello,
+                                                      gateway_key, device_id)
                     self.online = True
                     delay = 1.0
                     while not self._stop.is_set():
@@ -137,6 +159,8 @@ class GatewayControlClient:
                             self.gateway_id, device_id, self.user_id,
                         ))
                         await self._ack_policy(socket, messages, device_id)
+                        await self._apply_provider_bundle(socket, messages, ack,
+                                                          gateway_key, device_id)
                         try:
                             await asyncio.wait_for(self._stop.wait(), timeout=self.heartbeat_seconds)
                         except asyncio.TimeoutError:
@@ -153,6 +177,7 @@ class GatewayControlClient:
                 logger.warning("Gateway control connection failed: %s", type(exc).__name__)
             finally:
                 self.online = False
+                self.config_private_key = None
                 if reader_task:
                     reader_task.cancel()
                     await asyncio.gather(reader_task, return_exceptions=True)
@@ -252,3 +277,40 @@ class GatewayControlClient:
         finally:
             for bridge in streams.values():
                 bridge.cancel()
+
+    async def _apply_provider_bundle(self, socket, messages: asyncio.Queue,
+                                     envelope: dict, gateway_key: str,
+                                     device_id: str) -> None:
+        if self.provider_store is None:
+            return
+        token = envelope.get("provider_bundle")
+        if not isinstance(token, str) or self.config_private_key is None:
+            raise ValueError("Missing Gateway provider bundle")
+        state = await asyncio.to_thread(self.provider_store.get, "managed_provider_state", {})
+        current_revision = (state.get("revision", -1)
+                            if isinstance(state, dict) and state.get("gateway_id") == self.gateway_id
+                            else -1)
+        revision = max(current_revision, 0)
+        try:
+            bundle = verify_provider_bundle(
+                token, gateway_key, self.public_key_fingerprint,
+                self.gateway_id, device_id, self.user_id, self.config_private_key,
+                current_revision=current_revision,
+            )
+            revision = bundle.revision
+            from engines.core.registry import refresh_registry
+            await asyncio.to_thread(
+                self.provider_store.apply_managed_providers,
+                self.gateway_id, bundle.revision, bundle.providers, refresh_registry,
+                user_id=self.user_id,
+            )
+            result, error = "success", None
+        except Exception as exc:
+            result, error = "error", f"{type(exc).__name__}: application failed"
+            logger.warning("Gateway provider application failed: %s", type(exc).__name__)
+        await socket.send(json.dumps({"kind": "provider_applied", "revision": revision,
+                                      "result": result, "error": error}))
+        ack = await self._receive_kind(messages, "provider_applied_ack")
+        if (ack.get("version") != 1 or ack.get("device_id") != device_id
+                or ack.get("revision") != revision):
+            raise ValueError("Invalid provider application acknowledgment")

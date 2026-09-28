@@ -3,9 +3,11 @@ import hashlib
 import json
 import sqlite3
 import time
+import pytest
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
@@ -53,7 +55,8 @@ def _active_device(client):
     return device_id, token, private_key, csrf
 
 
-def _handshake(ws, token, device_key, *, wrong_challenge=False, wrong_delegation=False):
+def _handshake(ws, token, device_key, *, wrong_challenge=False, wrong_delegation=False,
+               wrong_config_proof=False):
     challenge = ws.receive_json()
     assert challenge["kind"] == "challenge"
     control_key = Ed25519PrivateKey.generate()
@@ -71,9 +74,23 @@ def _handshake(ws, token, device_key, *, wrong_challenge=False, wrong_delegation
     proof = base64.urlsafe_b64encode(control_key.sign(
         f"workstep-control-challenge-v1:{nonce}:{token}".encode(),
     )).rstrip(b"=").decode()
+    config_key = X25519PrivateKey.generate()
+    config_public_key = config_key.public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode()
+    config_fingerprint = hashlib.sha256(config_key.public_key().public_bytes(
+        serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo,
+    )).hexdigest()
+    config_signer = Ed25519PrivateKey.generate() if wrong_config_proof else control_key
+    config_proof = base64.urlsafe_b64encode(config_signer.sign(
+        f"workstep-config-key-v1:{nonce}:{token}:{config_fingerprint}".encode(),
+    )).rstrip(b"=").decode()
     ws.send_json({"authorization": token, "control_public_key_pem": public_key,
                   "control_delegation_signature": delegation,
-                  "control_challenge_proof": proof})
+                  "control_challenge_proof": proof,
+                  "config_public_key_pem": config_public_key,
+                  "config_key_proof": config_proof})
+    return config_key
 
 
 def test_control_socket_authenticates_device_and_tracks_connection(tmp_path):
@@ -177,6 +194,11 @@ def test_control_socket_rejects_wrong_proof(tmp_path):
                 assert False, "Undelegated control key must be rejected"
             except WebSocketDisconnect as exc:
                 assert exc.code == 4401
+        with client.websocket_connect("/api/control/ws") as ws:
+            _handshake(ws, token, device_key, wrong_config_proof=True)
+            with pytest.raises(WebSocketDisconnect) as exc:
+                ws.receive_json()
+            assert exc.value.code == 4401
 
 
 def test_device_revocation_closes_existing_control_socket(tmp_path):
@@ -259,3 +281,41 @@ def test_capability_assignment_changes_signed_policy_revision(tmp_path):
             restored_policy = json.loads(base64.urlsafe_b64decode(restored["policy_snapshot"].split(".")[1] + "=="))
             assert restored_policy["task_create"] is True
             assert restored_policy["policy_revision"] > denied_policy["policy_revision"]
+
+
+def test_control_delivers_encrypted_provider_bundle_and_records_application(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        device_id, token, device_key, csrf = _active_device(client)
+        user_id = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))["user_id"]
+        created = client.post("/api/admin/providers", headers={"X-CSRF-Token": csrf}, json={
+            "name": "Company API", "type": "custom", "protocols": ["openai_responses"],
+            "protocol_base_urls": {"openai_responses": "https://api.example.test"},
+            "api_key": "secret-api-key", "models": ["model-a"],
+        })
+        assert created.status_code == 200, created.text
+        provider_id = created.json()["id"]
+        assert client.post(f"/api/admin/providers/{provider_id}/assign",
+                           headers={"X-CSRF-Token": csrf}, json={
+                               "subject_type": "user", "subject_id": user_id,
+                           }).status_code == 200
+        with client.websocket_connect("/api/control/ws") as ws:
+            _handshake(ws, token, device_key)
+            hello = ws.receive_json()
+            assert "secret-api-key" not in json.dumps(hello)
+            policy = json.loads(base64.urlsafe_b64decode(
+                hello["policy_snapshot"].split(".")[1] + "==",
+            ))
+            assert provider_id in policy["allowed_provider_ids"]
+            assert "model-a" in policy["allowed_models"]
+            bundle = json.loads(base64.urlsafe_b64decode(
+                hello["provider_bundle"].split(".")[1] + "==",
+            ))
+            ws.send_json({"kind": "provider_applied", "revision": bundle["revision"],
+                          "result": "success"})
+            assert ws.receive_json()["kind"] == "provider_applied_ack"
+            with sqlite3.connect(tmp_path / "workstep_platform.db") as database:
+                assert database.execute(
+                    "SELECT applied_revision FROM device_provider_applications WHERE device_id=?",
+                    (device_id,),
+                ).fetchone() == (bundle["revision"],)

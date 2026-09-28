@@ -10,8 +10,12 @@ import time
 from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
-from cryptography.exceptions import InvalidSignature
+from cryptography.exceptions import InvalidSignature, InvalidTag
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives import hashes
 
 
 def _b64(data: bytes) -> str:
@@ -71,6 +75,8 @@ class GatewaySigner:
 
     def sign_policy_snapshot(self, *, gateway_id: str, device_id: str, user_id: str,
                              revision: int = 0, task_create: bool = False,
+                             allowed_provider_ids: list[str] | None = None,
+                             allowed_models: list[str] | None = None,
                              ttl_seconds: int = 600) -> str:
         now = int(time.time())
         header = _b64(json.dumps({"alg": "EdDSA", "typ": "JWT"}, separators=(",", ":")).encode())
@@ -78,7 +84,8 @@ class GatewaySigner:
             "iss": gateway_id, "kind": "policy.snapshot", "gateway_id": gateway_id,
             "device_id": device_id, "user_id": user_id,
             "policy_revision": revision, "iat": now, "exp": now + ttl_seconds,
-            "allowed_provider_ids": [], "allowed_models": [],
+            "allowed_provider_ids": allowed_provider_ids or [],
+            "allowed_models": allowed_models or [],
             "allow_local_providers": False, "task_create": task_create,
             "project_publish": False, "task_share": False, "engine_install": False,
         }, separators=(",", ":"), sort_keys=True).encode())
@@ -127,3 +134,63 @@ class GatewaySigner:
         except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError,
                 binascii.Error, InvalidSignature) as exc:
             raise ValueError("Invalid device access ticket") from exc
+
+    def _provider_vault_key(self) -> bytes:
+        raw = self.private_key.private_bytes(
+            serialization.Encoding.Raw, serialization.PrivateFormat.Raw,
+            serialization.NoEncryption(),
+        )
+        return HKDF(algorithm=hashes.SHA256(), length=32, salt=None,
+                    info=b"workstep-provider-vault-v1").derive(raw)
+
+    def encrypt_provider_secret(self, provider_id: str, secret: str) -> str:
+        nonce = os.urandom(12)
+        ciphertext = AESGCM(self._provider_vault_key()).encrypt(
+            nonce, secret.encode(), provider_id.encode(),
+        )
+        return _b64(nonce + ciphertext)
+
+    def decrypt_provider_secret(self, provider_id: str, encrypted: str) -> str:
+        try:
+            raw = base64.urlsafe_b64decode(encrypted + "===")
+            if len(raw) < 29:
+                raise ValueError("Invalid encrypted provider secret")
+            return AESGCM(self._provider_vault_key()).decrypt(
+                raw[:12], raw[12:], provider_id.encode(),
+            ).decode()
+        except (ValueError, UnicodeDecodeError, binascii.Error, InvalidTag) as exc:
+            raise ValueError("Invalid encrypted provider secret") from exc
+
+    def sign_provider_bundle(self, *, gateway_id: str, device_id: str, user_id: str,
+                             revision: int, config_public_key_pem: str,
+                             providers: list[dict]) -> str:
+        recipient = serialization.load_pem_public_key(config_public_key_pem.encode())
+        if not isinstance(recipient, X25519PublicKey):
+            raise ValueError("Device config key must be X25519")
+        if len(providers) > 100:
+            raise ValueError("Too many managed providers")
+        plaintext = json.dumps({"providers": providers}, separators=(",", ":"),
+                               sort_keys=True).encode()
+        if len(plaintext) > 512 * 1024:
+            raise ValueError("Managed provider bundle is too large")
+        ephemeral = X25519PrivateKey.generate()
+        shared = ephemeral.exchange(recipient)
+        key = HKDF(algorithm=hashes.SHA256(), length=32, salt=None,
+                   info=b"workstep-provider-device-v1").derive(shared)
+        nonce = os.urandom(12)
+        ciphertext = AESGCM(key).encrypt(
+            nonce, plaintext, f"{gateway_id}:{device_id}:{user_id}:{revision}".encode(),
+        )
+        now = int(time.time())
+        header = _b64(json.dumps({"alg": "EdDSA", "typ": "JWT"}, separators=(",", ":")).encode())
+        payload = _b64(json.dumps({
+            "iss": gateway_id, "kind": "provider.bundle", "gateway_id": gateway_id,
+            "device_id": device_id, "user_id": user_id, "revision": revision,
+            "iat": now, "exp": now + 600,
+            "ephemeral_public_key": _b64(ephemeral.public_key().public_bytes(
+                serialization.Encoding.Raw, serialization.PublicFormat.Raw,
+            )),
+            "nonce": _b64(nonce), "ciphertext": _b64(ciphertext),
+        }, separators=(",", ":"), sort_keys=True).encode())
+        signing_input = f"{header}.{payload}"
+        return f"{signing_input}.{_b64(self.private_key.sign(signing_input.encode()))}"

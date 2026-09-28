@@ -175,6 +175,7 @@ class Device(Base):
     version: Mapped[str | None] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(16), server_default="pending")
     policy_revision: Mapped[int] = mapped_column(Integer, server_default="0")
+    provider_revision: Mapped[int] = mapped_column(Integer, server_default="0")
     created_at: Mapped[datetime] = timestamp()
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -286,7 +287,35 @@ class PlatformProvider(Base):
     type: Mapped[str] = mapped_column(String(64))
     revision: Mapped[int] = mapped_column(Integer, server_default="1")
     enabled: Mapped[int] = mapped_column(Integer, server_default="1")
+    config_json: Mapped[str] = mapped_column(Text, server_default="{}")
+    secret_ciphertext: Mapped[str | None] = mapped_column(Text)
+    models_json: Mapped[str] = mapped_column(Text, server_default="[]")
+    prices_json: Mapped[str] = mapped_column(Text, server_default="{}")
+    created_by_user_id: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = timestamp()
+
+
+class ProviderAssignment(Base):
+    __tablename__ = "provider_assignments"
+    __table_args__ = (UniqueConstraint("provider_id", "subject_type", "subject_id"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    provider_id: Mapped[str] = mapped_column(ForeignKey("platform_providers.id"))
+    subject_type: Mapped[str] = mapped_column(String(16))
+    subject_id: Mapped[str] = mapped_column(String(64))
+    assigned_by_user_id: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = timestamp()
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DeviceProviderApplication(Base):
+    __tablename__ = "device_provider_applications"
+
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), primary_key=True)
+    desired_revision: Mapped[int] = mapped_column(Integer, server_default="0")
+    applied_revision: Mapped[int | None] = mapped_column(Integer)
+    last_error: Mapped[str | None] = mapped_column(String(512))
+    updated_at: Mapped[datetime] = timestamp()
 
 
 class UsageEvent(Base):

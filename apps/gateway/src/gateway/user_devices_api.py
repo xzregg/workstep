@@ -87,9 +87,11 @@ async def assign_device_user(request: Request, device_id: str, body: AssignUserI
                                         device_id=device_id, access_level="edit")
                 session.add(assignment)
                 device.policy_revision += 1
+                device.provider_revision += 1
             elif assignment.revoked_at is not None:
                 assignment.revoked_at = None
                 device.policy_revision += 1
+                device.provider_revision += 1
             session.add(AuditEvent(id=str(uuid4()), user_id=actor.id, device_id=device_id,
                                    action="admin.device_user_assigned", result="success",
                                    metadata_json=None))
@@ -110,6 +112,7 @@ async def revoke_device_user(request: Request, device_id: str, user_id: str):
             assignment.revoked_at = _now()
             device = await session.get(Device, device_id)
             device.policy_revision += 1
+            device.provider_revision += 1
             session.add(AuditEvent(id=str(uuid4()), user_id=actor.id, device_id=device_id,
                                    action="admin.device_user_revoked", result="success",
                                    metadata_json=None))

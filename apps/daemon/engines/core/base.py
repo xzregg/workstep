@@ -486,6 +486,10 @@ class BaseLLMEngine(ABC):
             raise ValueError("所选供应商已停用")
         if not self.supports_provider(provider):
             raise ValueError("所选供应商协议与该引擎不兼容")
+        if provider.get("managed") and (
+            not model or model not in provider.get("models", [])
+        ):
+            raise ValueError("所选模型未获平台供应商授权")
         protocol = self.pick_protocol(provider)
         return self.build_provider_runtime(provider, model, protocol)
 
