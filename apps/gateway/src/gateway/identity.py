@@ -223,6 +223,17 @@ class IdentityService:
             if assignment is None:
                 raise HTTPException(status_code=403, detail="Administrator access required")
 
+    async def require_skill_admin(self, user_id: str) -> None:
+        async with self.database.session() as session:
+            assignment = await session.scalar(select(AdminAssignment.id).where(
+                AdminAssignment.user_id == user_id,
+                AdminAssignment.role.in_(("super_admin", "skill_admin")),
+                AdminAssignment.scope_type == "platform",
+                AdminAssignment.revoked_at.is_(None),
+            ))
+            if assignment is None:
+                raise HTTPException(status_code=403, detail="Skill administrator access required")
+
     async def step_up(self, user: User, auth_session: AuthSession, password: str) -> None:
         if not user.password_hash or not await self._verify_password(user.password_hash, password):
             raise HTTPException(status_code=403, detail="Password is incorrect")

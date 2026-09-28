@@ -70,14 +70,14 @@ class AdminCreateInput(AccountInput):
 
 
 class GrantRoleInput(BaseModel):
-    role: Literal["identity_admin", "super_admin"]
+    role: Literal["identity_admin", "skill_admin", "super_admin"]
     scope_type: Literal["platform", "department"] = "platform"
     scope_id: str | None = None
 
     @model_validator(mode="after")
     def valid_scope(self):
-        if self.role == "super_admin" and self.scope_type != "platform":
-            raise ValueError("Super administrator must have platform scope")
+        if self.role in ("super_admin", "skill_admin") and self.scope_type != "platform":
+            raise ValueError("This administrator role requires platform scope")
         return self
 
 
