@@ -159,9 +159,27 @@ class Device(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(256))
     public_key: Mapped[str] = mapped_column(Text)
+    public_key_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    app_instance_id: Mapped[str | None] = mapped_column(String(128))
+    version: Mapped[str | None] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(16), server_default="pending")
     created_at: Mapped[datetime] = timestamp()
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DesktopAuthCode(Base):
+    __tablename__ = "desktop_auth_codes"
+
+    code_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    gateway_id: Mapped[str] = mapped_column(String(128))
+    app_instance_id: Mapped[str] = mapped_column(String(128))
+    state_hash: Mapped[str] = mapped_column(String(64))
+    nonce_hash: Mapped[str] = mapped_column(String(64))
+    pkce_challenge: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = timestamp()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class DeviceConnection(Base):

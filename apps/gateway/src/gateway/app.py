@@ -15,6 +15,8 @@ from .external_identity_api import router as external_identity_router
 from .identity_connectors import DingTalkConnector, WeComConnector
 from .rate_limit import IdentityRateLimiter
 from .reconciliation import DirectoryReconciler
+from .signing import GatewaySigner
+from .desktop_authorization_api import router as desktop_authorization_router
 
 
 def create_app(settings: GatewaySettings | None = None) -> FastAPI:
@@ -25,6 +27,9 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         database = GatewayDatabase(settings)
         await database.start()
         app.state.database = database
+        app.state.gateway_signer = await asyncio.to_thread(
+            GatewaySigner.load_or_create, settings.data_dir / "gateway-signing-key.pem",
+        )
         app.state.ready = True
         stop_reconciliation = asyncio.Event()
         reconciler = DirectoryReconciler(database, app.state.identity_connectors)
@@ -68,6 +73,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
 
     app.include_router(identity_router)
     app.include_router(external_identity_router)
+    app.include_router(desktop_authorization_router)
 
     if settings.web_dist and settings.web_dist.is_dir():
         assets = settings.web_dist / "assets"

@@ -13,6 +13,7 @@ class GatewaySettings(BaseSettings):
     web_dist: Path | None = None
     database_url: str | None = None
     directory_reconcile_seconds: int = Field(default=21600, ge=60)
+    gateway_id: str = Field(default="local-development", min_length=1)
 
     @property
     def effective_database_url(self) -> str:
