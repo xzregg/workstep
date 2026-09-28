@@ -65,6 +65,11 @@ jobs:
             --deselect='tests/test_recovery.py::test_e2e_three_step_run_resumes_after_crash[asyncio]' \
             --deselect=tests/test_recovery.py::test_graceful_shutdown_leaves_run_recoverable \
             --deselect=tests/test_recovery.py::test_recovery_takes_over_expired_lease
+      - name: Gateway and protocol tests
+        run: |
+          uv sync --project apps/gateway --frozen --group dev
+          uv run --project apps/gateway --no-sync pytest apps/gateway/tests packages/gateway-protocol/tests
+          uv run --project apps/gateway --no-sync python packages/gateway-protocol/scripts/schema.py --check
       - name: Isolation-sensitive daemon contracts
         working-directory: apps/daemon
         run: |
@@ -87,6 +92,9 @@ jobs:
           node --test apps/desktop/tests/sidecar.test.cjs
       - name: Web tests and build
         working-directory: apps/web
+        run: corepack enable && yarn install --frozen-lockfile && yarn test && yarn build
+      - name: Gateway Web tests and build
+        working-directory: apps/gateway-web
         run: corepack enable && yarn install --frozen-lockfile && yarn test && yarn build
       - name: Landing tests and build
         working-directory: apps/landing

@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from settings import settings
 from services.engine_packages import prepare_engine_package_dir
+from services.gateway_client import GatewayClientService
 
 prepare_engine_package_dir()
 
@@ -125,6 +126,7 @@ schedule_module: ScheduleModule | None = None
 chat_session_module: ChatSessionModule | None = None
 channel_chat_module: ChannelChatModule | None = None
 channel_bot_manager: BotManager | None = None
+gateway_client = GatewayClientService()
 
 
 @asynccontextmanager
@@ -190,9 +192,11 @@ async def lifespan(app: FastAPI):
             recovered_chats,
         )
     await schedule_module.start()
+    await gateway_client.start()
     try:
         yield
     finally:
+        await gateway_client.close()
         await git_service.close()
         from services.engine_runtime import runtime_manager
         await runtime_manager.shutdown()

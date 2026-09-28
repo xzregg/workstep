@@ -18,7 +18,11 @@ dependencies = [
     "pydantic-ai-harness[skills]==0.27.0",
     "wecom-aibot-python-sdk>=1.0.2",
     "dingtalk-stream>=0.24.3",
+    "workstep-gateway-protocol",
 ]
+
+[tool.uv.sources]
+workstep-gateway-protocol = { path = "../../packages/gateway-protocol", editable = true }
 
 [dependency-groups]
 dev = [

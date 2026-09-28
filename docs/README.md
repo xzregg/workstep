@@ -7,6 +7,7 @@
 - [Engine runtime management](engine-runtime-management.md) *(简体中文)* — version selection, measured package downloads, and rollback.
 - [Development](development.md) — setup, test commands, coding conventions, and pull-request checks.
 - [Code map](code-map.md) *(简体中文)* — find feature owners, API and service boundaries, tests, and change workflow.
+- [Gateway 开发与部署](gateway-development.md) *(简体中文)* — 独立 Gateway 骨架、端口、域名及阶段 0 测试。
 - [企业微信与钉钉渠道机器人](channel-bots.md) *(简体中文)* — 平台凭证、长连接配置、任务群绑定与路由限制。
 - [Codebase design](codebase-design.md) *(简体中文)* — proposed seams for task conversation and workflow recovery.
 - [Project skill center](skill-center.md) — discovery, project selection, mirroring, API, and engine isolation.
