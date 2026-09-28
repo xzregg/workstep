@@ -156,6 +156,69 @@ async def test_platform_share_history_excludes_private_channel_and_slow_sql(api_
 
 
 @pytest.mark.anyio
+async def test_platform_share_history_pages_execution_messages(api_context, monkeypatch):
+    import main
+    from models import Message
+    from models.fields import utc_now
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "paged-history"
+    project_dir.mkdir()
+    project_id = (await client.post("/api/project/init", json={
+        "path": str(project_dir),
+    })).json()["id"]
+    workflow_id = (await _create_test_workflow(client, project_id))["id"]
+    created = await client.post(f"/api/task/create?project_id={project_id}", json={
+        "title": "Paged history", "workflow_id": workflow_id, "auto_start": False,
+    })
+    task_id = created.json()["id"]
+
+    def seed(_project):
+        for index in range(105):
+            Message.create(id=f"page-{index}", task=task_id, step_key="build",
+                           channel="execution", sequence=index + 1, position=index + 1,
+                           role="assistant", content=f"message-{index}",
+                           created_at=utc_now())
+        Message.create(id="private-page", task=task_id, step_key="build",
+                       channel="coordinator", sequence=106, position=106,
+                       role="assistant", content="private", created_at=utc_now())
+
+    await main.project_manager.run_db(project_id, seed)
+    monkeypatch.setattr(main.gateway_client, "managed_config", object())
+    ticket, key, fingerprint = _ticket(task_id=task_id, host_project_id=project_id)
+
+    async def read(path):
+        frames = []
+        async def capture(frame):
+            frames.append(frame)
+        bridge = ManagedHttpBridge(main.app, "page-history", {
+            "method": "GET", "path": path, "query": "", "headers": [],
+            "share_ticket": ticket,
+        }, capture, "device-1", gateway_key=key,
+            gateway_fingerprint=fingerprint, gateway_id="gateway-1")
+        bridge.start_task()
+        await bridge.feed(ProxyFrame(stream_id="page-history", type=FrameType.http_request,
+                                     payload={"phase": "end"}))
+        await asyncio.wait_for(bridge._task, timeout=3)
+        body = b"".join(base64.b64decode(frame.payload["data"])
+                        for frame in frames if frame.payload.get("phase") == "body")
+        return frames[0].payload["status"], json.loads(body) if body else None
+
+    status, first = await read("/api/platform-share/history")
+    assert status == 200
+    assert len(first["messages"]) == 100
+    assert first["messages"][0]["content"] == "message-5"
+    assert first["next_offset"] == 100
+    status, older = await read("/api/platform-share/history/100")
+    assert status == 200
+    assert [item["content"] for item in older["messages"]] == [
+        f"message-{index}" for index in range(5)
+    ]
+    assert older["next_offset"] is None
+    assert (await read("/api/platform-share/history/1000000"))[0] == 403
+
+
+@pytest.mark.anyio
 async def test_platform_share_artifacts_are_task_scoped_and_hide_host_paths(api_context, monkeypatch):
     import main
 

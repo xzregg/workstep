@@ -109,3 +109,36 @@ test('public share retries metadata after a temporarily unavailable host', async
   await screen.findByText('Available')
   await screen.findByText('Demo')
 })
+
+test('public share loads older execution messages on demand', async () => {
+  const calls: string[] = []
+  globalThis.fetch = async input => {
+    const url = String(input)
+    calls.push(url)
+    if (url.endsWith('/meta')) return Response.json({
+      title: 'History', mode: 'read_only', has_password: false, status: 'active',
+    })
+    if (url.endsWith('/session')) return Response.json({ share_id: 'share-1',
+      mode: 'read_only', task_id: 'task-1' })
+    if (url.endsWith('/task')) return Response.json({ id: 'task-1', title: 'Task',
+      status: 'ready' })
+    if (url.endsWith('/history')) return Response.json({ messages: [{
+      id: 'new', role: 'assistant', content: 'Newest message', step_key: 'build',
+      created_at: '2026-09-29T10:00:00Z',
+    }], next_offset: 100 })
+    if (url.endsWith('/history/100')) return Response.json({ messages: [{
+      id: 'old', role: 'assistant', content: 'Older message', step_key: 'build',
+      created_at: '2026-09-29T09:00:00Z',
+    }], next_offset: null })
+    if (url.endsWith('/artifacts')) return Response.json({ artifacts: [] })
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+  render(<MemoryRouter initialEntries={['/share/sample-token']}><Routes>
+    <Route path="/share/:token" element={<PublicSharePage />} />
+  </Routes></MemoryRouter>)
+  await screen.findByText('Newest message')
+  fireEvent.click(screen.getByRole('button', { name: '加载更早消息' }))
+  await screen.findByText('Older message')
+  assert.equal(calls.filter(url => url.endsWith('/history/100')).length, 1)
+  assert.equal(screen.queryByRole('button', { name: '加载更早消息' }), null)
+})

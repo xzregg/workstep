@@ -22,6 +22,8 @@ export function PublicSharePage() {
   const [meta, setMeta] = useState<ShareMeta | null>(null)
   const [task, setTask] = useState<SharedTask | null>(null)
   const [messages, setMessages] = useState<SharedMessage[]>([])
+  const [nextOffset, setNextOffset] = useState<number | null>(null)
+  const [historyBusy, setHistoryBusy] = useState(false)
   const [artifacts, setArtifacts] = useState<SharedArtifact[]>([])
   const [historyError, setHistoryError] = useState(false)
   const [artifactError, setArtifactError] = useState(false)
@@ -45,8 +47,11 @@ export function PublicSharePage() {
       if (signal?.aborted) return
       if (!history.ok) setHistoryError(true)
       else {
-        const result: { messages: SharedMessage[] } = await history.json()
-        if (!signal?.aborted) setMessages(result.messages)
+        const result: { messages: SharedMessage[]; next_offset?: number | null } = await history.json()
+        if (!signal?.aborted) {
+          setMessages(result.messages)
+          setNextOffset(result.next_offset ?? null)
+        }
       }
     } catch (reason) {
       if (!(reason instanceof DOMException && reason.name === 'AbortError')) setHistoryError(true)
@@ -68,6 +73,7 @@ export function PublicSharePage() {
     setMeta(null)
     setTask(null)
     setMessages([])
+    setNextOffset(null)
     setArtifacts([])
     setHistoryError(false)
     setArtifactError(false)
@@ -123,6 +129,23 @@ export function PublicSharePage() {
     }
   }
 
+  async function loadOlder() {
+    if (nextOffset === null || historyBusy) return
+    setHistoryBusy(true)
+    setHistoryError(false)
+    try {
+      const response = await fetch(`${base}/history/${nextOffset}`)
+      if (!response.ok) { setHistoryError(true); return }
+      const result: { messages: SharedMessage[]; next_offset: number | null } = await response.json()
+      setMessages(current => [...result.messages, ...current])
+      setNextOffset(result.next_offset)
+    } catch {
+      setHistoryError(true)
+    } finally {
+      setHistoryBusy(false)
+    }
+  }
+
   return <main className="gateway-share-page">
     <header className="gateway-share-header"><h1>WorkStep 分享</h1></header>
     <section className="gateway-share-card" aria-live="polite">
@@ -155,6 +178,11 @@ export function PublicSharePage() {
           <h3>任务消息</h3>
           {historyError && <p>消息暂时不可用，请稍后重试。</p>}
           {!historyError && messages.length === 0 && <p>暂无执行消息。</p>}
+          {nextOffset !== null && <button type="button" disabled={historyBusy}
+            onClick={() => void loadOlder()}>
+            {historyBusy && <span className="gateway-share-spinner" aria-hidden="true" />}
+            {historyBusy ? '正在加载…' : '加载更早消息'}
+          </button>}
           {messages.map(message => <article key={message.id} className="gateway-share-message">
             <div className="gateway-share-message-meta">
               <strong>{message.role === 'assistant' ? '助手' : '用户'}</strong>
