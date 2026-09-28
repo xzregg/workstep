@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { GatewayLoginForm } from './GatewayLoginForm'
 import { openRemoteAccess } from './openRemoteAccess'
 
@@ -21,6 +21,7 @@ export function ProjectCard({ project, opening, blocked = false, onOpen }: {
 }
 
 export function ProjectsPage() {
+  const navigate = useNavigate()
   const [status, setStatus] = useState<'checking' | 'login' | 'ready'>('checking')
   const [projects, setProjects] = useState<Project[]>([])
   const [busy, setBusy] = useState(false)
@@ -40,12 +41,13 @@ export function ProjectsPage() {
     const controller = new AbortController()
     void fetch('/api/projects', { credentials: 'same-origin', signal: controller.signal })
       .then(async response => {
+        if (response.status === 401) { navigate('/auth?next=%2F', { replace: true }); return }
         if (!response.ok) throw new Error('项目列表加载失败。')
         if (!controller.signal.aborted) setProjects((await response.json()).projects ?? [])
       })
       .catch(reason => { if (reason?.name !== 'AbortError') setError(reason.message) })
     return () => controller.abort()
-  }, [status])
+  }, [status, navigate])
 
   async function signIn(username: string, password: string) {
     setBusy(true); setError('')
@@ -67,6 +69,7 @@ export function ProjectsPage() {
       const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/access`, {
         credentials: 'same-origin',
       })
+      if (response.status === 401) { navigate('/auth?next=%2F'); return }
       if (!response.ok) throw new Error(response.status === 409 ? '项目所在电脑当前离线。' : '无法打开这个项目。')
       openRemoteAccess(await response.json())
     } catch (reason) {

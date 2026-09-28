@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 
 type Release = {
   id: string; gateway_id: string; os: string; arch: string; version: string
@@ -7,7 +8,12 @@ type Release = {
   download_url: string
 }
 
+export function hasOnlineDevice(devices: { online: boolean }[]): boolean {
+  return devices.some(device => device.online)
+}
+
 export function ClientDownloadPage() {
+  const navigate = useNavigate()
   const [releases, setReleases] = useState<Release[]>([])
   const [os, setOs] = useState('macos')
   const [arch, setArch] = useState('arm64')
@@ -26,10 +32,30 @@ export function ClientDownloadPage() {
     return () => controller.abort()
   }, [])
 
+  useEffect(() => {
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout>
+    async function poll() {
+      try {
+        const response = await fetch('/api/devices', { credentials: 'same-origin', signal: controller.signal })
+        if (response.ok && hasOnlineDevice((await response.json()).devices ?? [])) {
+          navigate('/devices', { replace: true })
+          return
+        }
+      } catch (reason) {
+        if (reason instanceof Error && reason.name === 'AbortError') return
+      }
+      if (!controller.signal.aborted) timer = setTimeout(() => void poll(), 5000)
+    }
+    void poll()
+    return () => { controller.abort(); clearTimeout(timer) }
+  }, [navigate])
+
   const selected = releases.filter((release) => release.os === os && release.arch === arch)
   return <section className="gateway-admin-page gateway-download-page">
     <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY</span>
     <h2>安装 WorkStep</h2>
+    <p>你还没有获分配的在线电脑。设备上线后将自动进入“我的电脑”。<Link to="/devices">查看我的电脑</Link></p>
     <p>选择电脑的系统和架构，下载此网关统一提供的受管安装包。安装后在桌面端登录并登记这台电脑。</p>
     <p>平台地址：<code>{typeof window === 'undefined' ? '当前网关地址' : window.location.origin}</code></p>
     <div className="gateway-download-filters">
