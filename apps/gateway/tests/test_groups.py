@@ -1,9 +1,10 @@
 from fastapi.testclient import TestClient
 
 from gateway.app import create_app
+from gateway.capabilities import compiled_device_policy
 from gateway.config import GatewaySettings
 from gateway.external_identity import ExternalIdentityService
-from gateway.models import (Device, DirectoryDepartment, GroupMembership,
+from gateway.models import (Device, DirectoryDepartment, DirectoryPerson, GroupMembership,
                             PlatformProject, UserGroup)
 from sqlalchemy import select
 
@@ -137,10 +138,31 @@ def test_external_department_group_tracks_directory_members_without_replacing_gr
                 return row.source if row and row.revoked_at is None else None
 
         assert client.portal.call(membership) == "directory_sync"
+        async def seed_project_and_person():
+            async with app.state.database.session() as session:
+                async with session.begin():
+                    session.add(Device(id="pc-1", name="PC", public_key="test", status="active",
+                                       app_instance_id="app-1", version="1.0"))
+                    session.add(PlatformProject(id="project-1", device_id="pc-1",
+                                                host_project_id="host-1", name="Project",
+                                                access_mode="remote_published", status="active"))
+                return await session.scalar(select(DirectoryPerson.user_id).where(
+                    DirectoryPerson.source_id == source.id,
+                    DirectoryPerson.subject == "employee-1",
+                ))
+
+        person_id = client.portal.call(seed_project_and_person)
+        assert client.post(f"/api/admin/projects/project-1/task-create-groups/{group_id}",
+                           json={"effect": "allow"}, headers={"X-CSRF-Token": csrf}).status_code == 200
+        before = client.portal.call(compiled_device_policy, app.state.database, "pc-1", person_id)
+        assert before[3] == ["host-1"]
         client.portal.call(service.full_sync, source.id, [{
             "external_id": "dept-1", "display_name": "Backend Renamed",
         }], [])
         assert client.portal.call(membership) is None
+        after = client.portal.call(compiled_device_policy, app.state.database, "pc-1", person_id)
+        assert after[0] > before[0]
+        assert after[3] == []
 
         async def current_group():
             async with app.state.database.session() as session:

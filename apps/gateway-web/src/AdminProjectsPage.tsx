@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AdminProjectGrantDialog, AdminProjectRevokeDialog } from './AdminProjectGrantDialog'
 import type { ProjectGrant } from './AdminProjectGrantDialog'
+import { AdminProjectTaskCreatePanel } from './AdminProjectTaskCreatePanel'
 
 type Project = { id: string; name: string; device_id: string; device_name: string;
   device_online: boolean; publisher: string | null; published_at: string | null;
@@ -128,8 +129,10 @@ export function AdminProjectsPage() {
           onClick={() => setFilters(current => ({ ...current, page: current.page - 1 }))}>上一页</button>
         <button type="button" disabled={filters.page >= Math.ceil(total / 25) || loading}
           onClick={() => setFilters(current => ({ ...current, page: current.page + 1 }))}>下一页</button></div>
-      {selected && <ProjectGrants key={selected.id} project={selected} csrf={csrf}
+      {selected && <ProjectGrants key={`grants-${selected.id}`} project={selected} csrf={csrf}
         onChanged={() => setRevision(value => value + 1)} />}
+      {selected && <AdminProjectTaskCreatePanel key={`capabilities-${selected.id}`}
+        projectId={selected.id} csrf={csrf} />}
     </>}
     {error && <p role="alert" className="gateway-auth-error">{error} {csrf && <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button>}</p>}

@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from .identity import COOKIE_NAME
 from .identity_api import _check_csrf, _identity, _super_admin_request
 from .group_membership_sync import reconcile_department_groups
+from .capabilities import bump_group_capability_revisions
 from .models import (AuditEvent, DirectoryDepartment, GroupMembership,
                      GroupProject, PlatformProject, User, UserGroup)
 
@@ -141,6 +142,8 @@ async def add_group_member(request: Request, group_id: str, body: MemberInput):
             else:
                 membership.role = body.role
                 membership.revoked_at = None
+            await session.flush()
+            await bump_group_capability_revisions(session, group_id)
             session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,
                                    action="group.member_assigned", result="success",
                                    metadata_json=f'{{"group_id":"{group_id}"}}'))
@@ -166,6 +169,7 @@ async def remove_group_member(request: Request, group_id: str, user_id: str):
             if membership.source != "manual":
                 raise HTTPException(status_code=409, detail="Directory membership is read-only")
             membership.revoked_at = datetime.now(timezone.utc)
+            await bump_group_capability_revisions(session, group_id)
             session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,
                                    action="group.member_removed", result="success",
                                    metadata_json=f'{{"group_id":"{group_id}"}}'))

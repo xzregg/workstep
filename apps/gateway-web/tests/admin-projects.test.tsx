@@ -17,6 +17,7 @@ test('project management searches metadata and grants and revokes access', async
   const requests: Array<{ url: string; init?: RequestInit }> = []
   let grants: Array<{ id: string; subject_type: string; subject_id: string;
     subject_name: string; access_level: string }> = []
+  let groupRules: Array<{ id: string; group_id: string; group_name: string; effect: string }> = []
   globalThis.fetch = async (input, init) => {
     const url = String(input)
     requests.push({ url, init })
@@ -34,6 +35,19 @@ test('project management searches metadata and grants and revokes access', async
       return Response.json({ id: 'grant-1' })
     }
     if (url === '/api/admin/projects/project-1/grants') return Response.json({ grants })
+    if (url === '/api/admin/projects/project-1/task-create-users') return Response.json({ assignments: [] })
+    if (url === '/api/admin/projects/project-1/task-create-groups' && init?.method === 'GET') {
+      return Response.json({ assignments: groupRules })
+    }
+    if (url === '/api/admin/projects/project-1/task-create-groups') return Response.json({ assignments: groupRules })
+    if (url === '/api/admin/projects/project-1/task-create-groups/group-1' && init?.method === 'POST') {
+      groupRules = [{ id: 'rule-1', group_id: 'group-1', group_name: 'Engineering', effect: 'allow' }]
+      return Response.json({ id: 'rule-1' })
+    }
+    if (url === '/api/admin/projects/project-1/task-create-groups/group-1' && init?.method === 'DELETE') {
+      groupRules = []
+      return new Response(null, { status: 204 })
+    }
     if (url.startsWith('/api/admin/project-grant-subjects?')) return Response.json(url.includes('subject_type=group')
       ? { subjects: [{ id: 'group-1', name: 'Engineering' }], total: 1 }
       : { subjects: [{ id: 'user-1', name: 'alice' }], total: 1 })
@@ -76,4 +90,18 @@ test('project management searches metadata and grants and revokes access', async
   fireEvent.change(within(revoke).getByLabelText('输入管理员密码确认'), { target: { value: 'password' } })
   fireEvent.click(within(revoke).getByRole('button', { name: '撤销授权' }))
   await waitFor(() => assert.ok(requests.some(request => request.url.endsWith('/grants/user/user-1'))))
+  fireEvent.click(screen.getByRole('button', { name: '配置能力' }))
+  const capability = screen.getByRole('dialog', { name: '授予任务创建能力' })
+  fireEvent.change(within(capability).getByLabelText('对象类型'), { target: { value: 'group' } })
+  await within(capability).findByRole('option', { name: 'Engineering' })
+  fireEvent.change(within(capability).getByLabelText('能力对象'), { target: { value: 'group-1' } })
+  fireEvent.change(within(capability).getByLabelText('输入管理员密码确认'), { target: { value: 'password' } })
+  fireEvent.click(within(capability).getByRole('button', { name: '保存能力' }))
+  await screen.findByText(/用户组 · 允许创建/)
+  fireEvent.click(screen.getByRole('button', { name: '撤销规则' }))
+  const revokeRule = screen.getByRole('dialog', { name: '撤销任务创建能力' })
+  fireEvent.change(within(revokeRule).getByLabelText('输入管理员密码确认'), { target: { value: 'password' } })
+  fireEvent.click(within(revokeRule).getByRole('button', { name: '撤销规则' }))
+  await waitFor(() => assert.ok(requests.some(request => request.url.endsWith('/task-create-groups/group-1')
+    && request.init?.method === 'DELETE')))
 })
