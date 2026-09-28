@@ -29,6 +29,7 @@ from .remote_access_api import (router as remote_access_router,
 from .providers_api import router as providers_router
 from .device_commands import router as device_commands_router
 from .usage_ledger import router as usage_router
+from .usage_rollups import run_periodic as run_usage_rollups
 from .audit_ledger import router as audit_router
 from .groups_api import router as groups_router
 from .skills_api import (router as skills_router,
@@ -62,6 +63,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         callback_task = asyncio.create_task(reconciler.run_callback_periodic(
             stop_reconciliation, callback_wake,
         ))
+        rollup_task = asyncio.create_task(run_usage_rollups(database, stop_reconciliation))
         try:
             yield
         finally:
@@ -71,6 +73,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
             await app.state.control_connections.shutdown()
             await reconciliation_task
             await callback_task
+            await rollup_task
             await database.close()
 
     app = FastAPI(title="WorkStep Gateway", lifespan=lifespan)
