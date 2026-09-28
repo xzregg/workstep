@@ -18,7 +18,7 @@ from .config import GatewaySettings
 from .models import PlatformSetting
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
-HEAD_REVISION = "0022_project_sessions"
+HEAD_REVISION = "0023_audit_upload"
 
 
 def safe_database_location(url: str) -> tuple[str, str]:
