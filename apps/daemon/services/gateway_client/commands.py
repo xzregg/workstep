@@ -26,6 +26,7 @@ class ManagedDeviceCommand:
     version: str | None
     accept_third_party_terms: bool
     expires_at: int
+    reconcile_only: bool = False
 
 
 def _decode(value: str) -> bytes:
@@ -58,7 +59,7 @@ def verify_device_command(token: str, public_key_pem: str, expected_fingerprint:
         now = int(time.time())
         if (not isinstance(claims, dict) or claims.get("iss") != gateway_id
                 or claims.get("gateway_id") != gateway_id
-                or claims.get("kind") != "device.command"
+                or claims.get("kind") not in ("device.command", "device.command.reconcile")
                 or claims.get("device_id") != device_id
                 or claims.get("action") not in ("install", "update", "rollback", "refresh", "test")
                 or type(claims.get("iat")) is not int or type(claims.get("exp")) is not int
@@ -81,8 +82,9 @@ def verify_device_command(token: str, public_key_pem: str, expected_fingerprint:
             command_id=claims["command_id"], batch_id=claims["batch_id"],
             device_id=device_id, idempotency_key=claims["idempotency_key"],
             action=claims["action"], engine_id=engine_id, version=version,
-            accept_third_party_terms=claims["accept_third_party_terms"],
-            expires_at=claims["exp"],
+                accept_third_party_terms=claims["accept_third_party_terms"],
+                expires_at=claims["exp"],
+                reconcile_only=claims["kind"] == "device.command.reconcile",
         )
     except (InvalidSignature, KeyError, TypeError, ValueError, UnicodeError,
             binascii.Error, json.JSONDecodeError) as exc:
@@ -94,21 +96,46 @@ class ManagedCommandExecutor:
         self.store = store
         self.action = action
         self._inflight: dict[str, asyncio.Task] = {}
+        self._started: dict[str, asyncio.Future[bool]] = {}
         self._lock = asyncio.Lock()
 
-    async def execute(self, command: ManagedDeviceCommand) -> tuple[str, str | None]:
+    async def execute(self, command: ManagedDeviceCommand,
+                      on_started: Callable[[], Awaitable[None]] | None = None) -> tuple[str, str | None]:
         async with self._lock:
             task = self._inflight.get(command.command_id)
             if task is None:
-                task = asyncio.create_task(self._run(command))
+                started = asyncio.get_running_loop().create_future()
+                task = asyncio.create_task(self._run(command, started))
                 self._inflight[command.command_id] = task
-                task.add_done_callback(lambda _task: self._inflight.pop(command.command_id, None))
-        return await task
+                self._started[command.command_id] = started
+                def forget(_task):
+                    self._inflight.pop(command.command_id, None)
+                    self._started.pop(command.command_id, None)
+                task.add_done_callback(forget)
+            else:
+                started = self._started[command.command_id]
+        if on_started and await asyncio.shield(started):
+            try:
+                await on_started()
+            except Exception:
+                # Status delivery is retried through the durable receipt.
+                pass
+        # A control socket can disappear while a long install is still running.
+        # Keep the durable local action alive; a reconnect joins this task or
+        # replays its receipt instead of starting a second install.
+        return await asyncio.shield(task)
 
-    async def _run(self, command: ManagedDeviceCommand) -> tuple[str, str | None]:
-        receipt, claimed = await asyncio.to_thread(
-            self.store.claim_managed_command, command.command_id, command.idempotency_key,
-        )
+    async def _run(self, command: ManagedDeviceCommand,
+                   started: asyncio.Future[bool]) -> tuple[str, str | None]:
+        try:
+            receipt, claimed = await asyncio.to_thread(
+                self.store.claim_managed_command, command.command_id, command.idempotency_key,
+                command.reconcile_only,
+            )
+        except BaseException:
+            started.set_result(False)
+            raise
+        started.set_result(claimed)
         if not claimed:
             if receipt["status"] == "running":
                 result = ("failed", "Previous execution interrupted")

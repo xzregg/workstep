@@ -91,6 +91,35 @@ def test_batch_freezes_targets_and_dispatches_with_one_slot(tmp_path):
                                   app.state.command_scheduler_lock, "device-2") is None
 
 
+def test_running_command_can_reconcile_after_original_delivery_ttl(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        async def seed():
+            async with app.state.database.session() as session:
+                async with session.begin():
+                    session.add(Device(id="device-1", name="PC", public_key="test",
+                                       app_instance_id="app", version="1.0", status="active"))
+                    session.add(DeviceOperationBatch(id="batch-1", action="install", status="running",
+                        max_concurrency=1, parameters_json=json.dumps({"engine_id": "codex",
+                            "version": "1.2.3", "accept_third_party_terms": True})))
+                    session.add(DeviceCommand(id="command-1", batch_id="batch-1",
+                        device_id="device-1", idempotency_key="idempotent-1", status="running",
+                        target_order=0, expires_at=datetime.now(timezone.utc) - timedelta(minutes=1)))
+        client.portal.call(seed)
+        command = client.portal.call(next_command_for_device, app.state.database,
+                                     app.state.command_scheduler_lock, "device-1")
+        assert command is not None
+        assert command["id"] == "command-1"
+        assert command["expires_at"] > int(time.time())
+        token = app.state.gateway_signer.sign_device_command(gateway_id="gateway-test", **command)
+        claims = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "==="))
+        assert claims["kind"] == "device.command.reconcile"
+        assert client.portal.call(record_command_result, app.state.database, "command-1",
+                                  "device-1", "succeeded", None)
+        assert client.portal.call(next_command_for_device, app.state.database,
+                                  app.state.command_scheduler_lock, "device-1") is None
+
+
 def test_locked_command_database_does_not_block_gateway_health(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:

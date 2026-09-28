@@ -964,7 +964,8 @@ class ConfigStore:
         return provider_id if any(provider.get("id") == provider_id
                                   for provider in self.get_providers()) else ""
 
-    def claim_managed_command(self, command_id: str, idempotency_key: str) -> tuple[dict, bool]:
+    def claim_managed_command(self, command_id: str, idempotency_key: str,
+                              replay_only: bool = False) -> tuple[dict, bool]:
         with self._lock:
             data = self._load()
             receipts = data.get("managed_command_receipts", {})
@@ -975,6 +976,8 @@ class ConfigStore:
                 if current.get("idempotency_key") != idempotency_key:
                     raise ValueError("Managed command identity conflict")
                 return dict(current), False
+            if replay_only:
+                return {"status": "failed", "error": "Previous execution not found"}, False
             receipts = dict(receipts)
             for old_id, old_receipt in list(receipts.items()):
                 if len(receipts) < 1000:
