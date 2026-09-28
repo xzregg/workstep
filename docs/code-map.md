@@ -6,6 +6,8 @@ Gateway 阶段 1 数据层在 `apps/gateway/src/gateway/database.py`、`models.p
 
 Gateway 阶段 2 的本地账号 API 在 `apps/gateway/src/gateway/identity_api.py`，用户、管理员、会话、密码和注册策略由 `identity.py` 负责；`rate_limit.py` 限制公开注册与登录请求，行为测试见 `apps/gateway/tests/test_identity_api.py`。企业扫码入口、目录导入与手动对账在 `external_identity_api.py`，稳定身份映射、回调状态和目录投影由 `external_identity.py` 负责，钉钉/企微 HTTP 适配器在 `identity_connectors.py`，周期对账由 `reconciliation.py` 运行，表结构在 `models.py` 和 `migrations/`，测试见 `apps/gateway/tests/test_external_identity.py`、`test_identity_connectors.py`、`test_directory_reconciliation.py`。第三方事件回调验签尚未接入。
 
+Gateway 阶段 3A 的桌面授权 API 在 `apps/gateway/src/gateway/desktop_authorization_api.py`，一次性 code、PKCE 与设备登记由 `desktop_authorization.py` 负责，设备授权签名密钥在 `signing.py` 管理，行为测试见 `apps/gateway/tests/test_desktop_authorization.py`。Desktop 自定义协议和 daemon 本机会话尚未接入。
+
 修改功能时先找所属模块，再沿前端页面或组件 → API → 服务 → 数据模型追踪。行为测试放在实际拥有该行为的模块附近；不要把页面、`src/api/client.ts` 或通用服务文件作为新功能的默认落点。
 
 | 功能 | Web 入口 | Daemon 入口 | 深入阅读 |
