@@ -11,8 +11,9 @@ from sqlalchemy.exc import IntegrityError
 
 from .identity import COOKIE_NAME
 from .identity_api import _check_csrf, _identity, _super_admin_request
-from .models import (AuditEvent, GroupMembership, GroupProject, PlatformProject,
-                     User, UserGroup)
+from .group_membership_sync import reconcile_department_groups
+from .models import (AuditEvent, DirectoryDepartment, GroupMembership,
+                     GroupProject, PlatformProject, User, UserGroup)
 
 router = APIRouter(prefix="/api/groups")
 
@@ -21,6 +22,8 @@ class GroupInput(BaseModel):
     name: str = Field(min_length=1, max_length=256)
     slug: str = Field(min_length=1, max_length=128)
     description: str = Field(default="", max_length=2000)
+    source_type: str = Field(default="manual", pattern=r"^(manual|external_department)$")
+    external_department_id: str | None = Field(default=None, max_length=64)
 
 
 class MemberInput(BaseModel):
@@ -64,13 +67,24 @@ async def create_group(request: Request, body: GroupInput):
     await service.require_step_up(auth_session)
     if (body.name != body.name.strip() or not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", body.slug)):
         raise HTTPException(status_code=422, detail="Invalid group name or slug")
+    if (body.source_type == "external_department") != (body.external_department_id is not None):
+        raise HTTPException(status_code=422, detail="Department mapping required")
     group = UserGroup(id=str(uuid4()), name=body.name, slug=body.slug,
-                      description=body.description, source_type="manual",
+                      description=body.description, source_type=body.source_type,
+                      external_department_id=body.external_department_id,
                       created_by_user_id=actor.id)
     try:
         async with request.app.state.database.session() as session:
             async with session.begin():
+                if body.external_department_id:
+                    department = await session.get(DirectoryDepartment,
+                                                   body.external_department_id)
+                    if department is None or department.active != 1:
+                        raise HTTPException(status_code=404, detail="Department unavailable")
                 session.add(group)
+                await session.flush()
+                if body.external_department_id:
+                    await reconcile_department_groups(session, group_id=group.id)
                 session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,
                                        action="group.created", result="success",
                                        metadata_json=f'{{"group_id":"{group.id}"}}'))

@@ -2,7 +2,10 @@ from fastapi.testclient import TestClient
 
 from gateway.app import create_app
 from gateway.config import GatewaySettings
-from gateway.models import Device, PlatformProject
+from gateway.external_identity import ExternalIdentityService
+from gateway.models import (Device, DirectoryDepartment, GroupMembership,
+                            PlatformProject, UserGroup)
+from sqlalchemy import select
 
 
 def test_group_leader_can_manage_only_own_skill_projects(tmp_path):
@@ -91,3 +94,56 @@ def test_group_leader_can_manage_only_own_skill_projects(tmp_path):
             "username": "leader", "password": "LeaderNewPassphrase-2026!",
         })
         assert client.get(f"/api/groups/{group_id}/projects").status_code == 403
+
+
+def test_external_department_group_tracks_directory_members_without_replacing_group(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        setup = client.post("/api/platform/setup", json={
+            "username": "owner", "display_name": "Owner", "password": "OwnerPassphrase-2026!",
+            "recovery_username": "recovery", "recovery_password": "RecoveryPassphrase-2026!",
+            "registration_mode": "open",
+        })
+        csrf = setup.json()["csrf_token"]
+        client.post("/api/auth/step-up", json={"password": "OwnerPassphrase-2026!"},
+                    headers={"X-CSRF-Token": csrf})
+        service = ExternalIdentityService(app.state.database)
+        source = client.portal.call(service.create_source, "wecom", "corp-a", "app",
+                                    "SECRET_ENV", "1001")
+        client.portal.call(service.full_sync, source.id, [{
+            "external_id": "dept-1", "display_name": "Backend",
+        }], [{"subject": "employee-1", "display_name": "Alice",
+             "department_ids": ["dept-1"]}])
+
+        async def department_id():
+            async with app.state.database.session() as session:
+                return await session.scalar(select(DirectoryDepartment.id).where(
+                    DirectoryDepartment.source_id == source.id,
+                    DirectoryDepartment.external_id == "dept-1",
+                ))
+
+        group = client.post("/api/groups", json={
+            "name": "Backend", "slug": "backend", "source_type": "external_department",
+            "external_department_id": client.portal.call(department_id),
+        }, headers={"X-CSRF-Token": csrf})
+        assert group.status_code == 201, group.text
+        group_id = group.json()["id"]
+
+        async def membership():
+            async with app.state.database.session() as session:
+                row = await session.scalar(select(GroupMembership).where(
+                    GroupMembership.group_id == group_id,
+                ))
+                return row.source if row and row.revoked_at is None else None
+
+        assert client.portal.call(membership) == "directory_sync"
+        client.portal.call(service.full_sync, source.id, [{
+            "external_id": "dept-1", "display_name": "Backend Renamed",
+        }], [])
+        assert client.portal.call(membership) is None
+
+        async def current_group():
+            async with app.state.database.session() as session:
+                return await session.get(UserGroup, group_id)
+
+        assert client.portal.call(current_group).id == group_id

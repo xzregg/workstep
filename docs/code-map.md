@@ -29,7 +29,7 @@ Gateway 整机访问关系由 `apps/gateway/src/gateway/user_devices_api.py` 管
 
 阶段 4C 的 Gateway `apps/gateway/src/gateway/usage_ledger.py` 负责用量事件校验、收据幂等、账本入库与筛选汇总，`control_connection.py` 在独立任务中接收批次、提交后 ACK，迁移 `0015_usage_ledger.py` 扩展账本；daemon `services/gateway_client/usage_outbox.py` 持久化重发，`usage.py` 归一 Token 和价格快照，`control.py` 上传并在 ACK 后清理。`services/task_runner.py` 在 `step_execution_messages.py` 完成持久化后把步骤执行用量写入 outbox。行为测试见 Gateway `test_usage_ledger.py`、`test_control_connection.py` 和 daemon `test_gateway_usage_outbox.py`、`test_review_gate.py`。
 
-阶段 4D 的 Gateway 用户组、组长/成员与仅用于 Skills 策略的组项目关系由 `apps/gateway/src/gateway/groups_api.py` 持有，迁移 `0016_groups.py`；组长权限不授予项目内容读取。行为测试见 Gateway `test_groups.py`。Skill 包与设备同步仍待实现。
+阶段 4D 的 Gateway 用户组、组长/成员与仅用于 Skills 策略的组项目关系由 `apps/gateway/src/gateway/groups_api.py` 持有，目录投影在 `group_membership_sync.py` 由 `external_identity.py` 全量/增量同步调用，迁移 `0016_groups.py`；组长权限不授予项目内容读取。行为测试见 Gateway `test_groups.py`、`test_external_identity.py`。Skill 包与设备同步仍待实现。
 
 修改功能时先找所属模块，再沿前端页面或组件 → API → 服务 → 数据模型追踪。行为测试放在实际拥有该行为的模块附近；不要把页面、`src/api/client.ts` 或通用服务文件作为新功能的默认落点。
 

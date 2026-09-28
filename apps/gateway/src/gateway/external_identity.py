@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 
 from .database import GatewayDatabase
 from .identity import IdentityService, _as_utc, _now
+from .group_membership_sync import reconcile_department_groups
 from .models import (
     DirectoryDepartment, DirectoryMembership, DirectoryPerson, ExternalIdentity,
     ExternalLoginAttempt, IdentitySource, PlatformSetting, User, DirectoryEventReceipt,
@@ -233,6 +234,8 @@ class ExternalIdentityService:
                             id=str(uuid4()), person_id=row.id,
                             department_id=existing_departments[department_id].id,
                         ))
+                await session.flush()
+                await reconcile_department_groups(session, source_id=source_id)
         return {"departments": len(departments), "people": len(people)}
 
     async def disable_source(self, source_id: str) -> None:
@@ -261,6 +264,8 @@ class ExternalIdentityService:
                     if kind == "person_delete":
                         if person is not None:
                             person.active = 0
+                            await session.flush()
+                            await reconcile_department_groups(session, source_id=source_id)
                         return True
                     departments = {row.external_id: row for row in (await session.scalars(
                         select(DirectoryDepartment).where(
@@ -304,6 +309,8 @@ class ExternalIdentityService:
                             id=str(uuid4()), person_id=person.id,
                             department_id=department.id,
                         ))
+                    await session.flush()
+                    await reconcile_department_groups(session, source_id=source_id)
             return True
         except IntegrityError:
             async with self.database.session() as session:
