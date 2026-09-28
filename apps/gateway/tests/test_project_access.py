@@ -101,11 +101,17 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         assert client.get(f"{host}/api/health").status_code == 403
         class ProjectData:
             async def proxy_http(self, request, *, user_id, username,
-                                 project_id, access_level, authorization_check):
+                                 project_id, access_level, task_create,
+                                 authorization_check):
                 await authorization_check()
                 assert user_id == worker_id
                 assert project_id == "host-1"
-                assert access_level == "read"
+                if request.method == "POST":
+                    assert access_level == "edit"
+                    assert task_create is True
+                else:
+                    assert access_level == "read"
+                    assert task_create is False
                 return JSONResponse({"project_id": project_id})
 
         async def project_data(_device_id):
@@ -132,7 +138,6 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         assert client.get(f"{host}/api/task/list?project_id=host-2").status_code == 403
         remote_cookie = client.cookies.get("workstep_gateway_session", domain="d-device-1.gateway.test")
         client.cookies.clear()
-        client.cookies.clear()
         owner_login = client.post("/api/auth/login", json={
             "username": "owner", "password": "OwnerPassphrase-2026!",
         })
@@ -155,3 +160,26 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
             "username": "worker", "password": "WorkerNewPassphrase-2026!",
         })
         assert client.get("/api/projects").json()["projects"][0]["access_level"] == "edit"
+        edit_ticket = client.get("/api/projects/project-1/access").json()["ticket"]
+        assert client.post(f"{host}/api/remote/redeem", data={"ticket": edit_ticket},
+                           follow_redirects=False).status_code == 303
+        edit_cookie = client.cookies.get("workstep_gateway_session", domain="d-device-1.gateway.test")
+        create_url = f"{host}/api/task/create?project_id=host-1"
+        edit_headers = {"Cookie": f"workstep_gateway_session={edit_cookie}", "Origin": host}
+        assert client.post(create_url, headers=edit_headers, json={"title": "New task"}).status_code == 403
+        client.cookies.clear()
+        owner_login = client.post("/api/auth/login", json={
+            "username": "owner", "password": "OwnerPassphrase-2026!",
+        })
+        owner_headers = {"X-CSRF-Token": owner_login.json()["csrf_token"]}
+        client.post("/api/auth/step-up", json={"password": "OwnerPassphrase-2026!"},
+                    headers=owner_headers)
+        assert client.post(f"/api/admin/capabilities/{worker_id}", json={
+            "capability": "task.create", "scope_type": "project",
+            "scope_id": "project-1", "effect": "allow",
+        }, headers=owner_headers).status_code == 200
+        assert client.post(create_url, headers={
+            "Cookie": f"workstep_gateway_session={edit_cookie}",
+        }, json={"title": "New task"}).status_code == 403
+        assert client.post(create_url, headers=edit_headers,
+                           json={"title": "New task"}).status_code == 200

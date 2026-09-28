@@ -320,9 +320,11 @@ class DataConnection:
     async def proxy_http(self, request, *, user_id: str, username: str,
                          project_id: str | None = None,
                          access_level: str | None = None,
+                         task_create: bool = False,
                          authorization_check=None):
         if (project_id is None) != (access_level is None) or (
-                access_level is not None and access_level not in ("read", "edit")):
+                access_level is not None and access_level not in ("read", "edit")) or (
+                type(task_create) is not bool or (project_id is None and task_create)):
             raise ValueError("Invalid project proxy scope")
         if len(self._streams) >= 32:
             raise ConnectionError("Too many managed data streams")
@@ -359,7 +361,8 @@ class DataConnection:
                 payload={"phase": "start", "method": request.method,
                          "path": request.url.path, "query": request.url.query,
                          "headers": headers, "user_id": user_id, "username": username,
-                         "project_id": project_id, "access_level": access_level},
+                         "project_id": project_id, "access_level": access_level,
+                         "task_create": task_create},
             ))
             async for chunk in request.stream():
                 for offset in range(0, len(chunk), 16384):

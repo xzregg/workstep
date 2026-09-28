@@ -146,6 +146,11 @@ def require_managed_capability(action: str, *, creator_fields: dict | None = Non
     if gateway_client.managed_config is None:
         return
     actor = get_current_actor()
+    if actor is not None and actor.source == "managed" and actor.project_id is not None:
+        if (action == "task.create" and actor.project_id == project_id
+                and actor.access_level == "edit" and actor.remote_task_create):
+            return
+        raise PermissionError(f"Managed capability denied: {action}")
     user_id = actor.actor_id if actor is not None and actor.source == "managed" else None
     if user_id is None and actor is None and creator_fields:
         user_id = creator_fields.get("creator_id")

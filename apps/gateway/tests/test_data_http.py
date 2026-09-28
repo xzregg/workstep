@@ -29,6 +29,7 @@ async def test_data_connection_multiplexes_large_http_body_and_streamed_response
                 stream["user_id"] = frame.payload["user_id"]
                 stream["project_id"] = frame.payload.get("project_id")
                 stream["access_level"] = frame.payload.get("access_level")
+                stream["task_create"] = frame.payload.get("task_create")
             elif phase == "body":
                 stream["body"].extend(base64.b64decode(frame.payload["data"]))
             elif phase == "end":
@@ -58,7 +59,8 @@ async def test_data_connection_multiplexes_large_http_body_and_streamed_response
     @app.post("/echo")
     async def echo(request: Request):
         return await connection.proxy_http(request, user_id="user-1", username="alice",
-                                           project_id="host-1", access_level="read")
+                                           project_id="host-1", access_level="edit",
+                                           task_create=True)
 
     upload = b"x" * 70000
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
@@ -73,7 +75,8 @@ async def test_data_connection_multiplexes_large_http_body_and_streamed_response
     stream = next(iter(received.values()))
     assert stream["user_id"] == "user-1"
     assert stream["project_id"] == "host-1"
-    assert stream["access_level"] == "read"
+    assert stream["access_level"] == "edit"
+    assert stream["task_create"] is True
     assert all(name.lower() not in ("cookie", "x-workstep-actor-name")
                for name, _ in stream["headers"])
 

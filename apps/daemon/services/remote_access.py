@@ -39,6 +39,9 @@ class ActorSnapshot:
     device_id: str
     device_name: str
     source: Literal["local", "browser", "remote", "managed"]
+    project_id: str | None = None
+    access_level: str | None = None
+    remote_task_create: bool = False
 
 
 @dataclass(frozen=True)

@@ -489,6 +489,48 @@ async def test_managed_task_creation_uses_live_signed_policy(api_context, monkey
 
 
 @pytest.mark.anyio
+async def test_project_only_remote_actor_creates_task_in_host_project(api_context, monkeypatch):
+    import base64
+    import main
+    from services.gateway_client.bridge import ManagedHttpBridge
+    from workstep_gateway_protocol import FrameType, ProxyFrame
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "remote-task-project"
+    project_dir.mkdir()
+    project_id = (await client.post("/api/project/init", json={
+        "path": str(project_dir),
+    })).json()["id"]
+    workflow_id = (await _create_test_workflow(client, project_id))["id"]
+    monkeypatch.setattr(main.gateway_client, "managed_config", object())
+    frames = []
+
+    async def capture(frame):
+        frames.append(frame)
+
+    bridge = ManagedHttpBridge(main.app, "remote-create", {
+        "method": "POST", "path": "/api/task/create",
+        "query": f"project_id={project_id}",
+        "headers": [["content-type", "application/json"]],
+        "user_id": "worker", "username": "Worker",
+        "project_id": project_id, "access_level": "edit", "task_create": True,
+    }, capture, "device-1")
+    bridge.start_task()
+    body = json.dumps({"title": "Remote task", "workflow_id": workflow_id,
+                       "cwd": "/tmp/other-project", "auto_start": False}).encode()
+    await bridge.feed(ProxyFrame(stream_id="remote-create", type=FrameType.http_request,
+                                 payload={"phase": "body", "data": base64.b64encode(body).decode()}))
+    await bridge.feed(ProxyFrame(stream_id="remote-create", type=FrameType.http_request,
+                                 payload={"phase": "end"}))
+    await asyncio.wait_for(bridge._task, timeout=2)
+    assert frames[0].payload["status"] == 200
+    result = json.loads(b"".join(base64.b64decode(frame.payload["data"])
+                           for frame in frames if frame.payload.get("phase") == "body"))
+    assert result["cwd"] == str(project_dir)
+    assert result["creator_id"] == "worker"
+
+
+@pytest.mark.anyio
 async def test_single_project_summary_hides_host_path_and_keeps_health_responsive(
         api_context, monkeypatch):
     from main import project_manager

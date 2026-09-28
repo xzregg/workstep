@@ -44,6 +44,7 @@ class ManagedHttpBridge:
             user_id = self.start.get("user_id")
             project_id = self.start.get("project_id")
             access_level = self.start.get("access_level")
+            task_create = self.start.get("task_create", False)
             raw_headers = self.start.get("headers", [])
             if (not isinstance(method, str) or not method.isascii() or not method.isalpha()
                     or not isinstance(path, str) or not path.startswith("/")
@@ -54,6 +55,8 @@ class ManagedHttpBridge:
                         not isinstance(project_id, str) or not project_id
                         or len(project_id) > 128 or access_level not in ("read", "edit")))
                     or (project_id is None and access_level is not None)
+                    or type(task_create) is not bool
+                    or (project_id is None and task_create)
                     or not isinstance(raw_headers, list)):
                 raise ValueError("Invalid managed HTTP request")
             headers = [(b"host", b"127.0.0.1")]
@@ -67,7 +70,7 @@ class ManagedHttpBridge:
                     continue
                 headers.append((name.encode("ascii"), pair[1].encode("latin1")))
             actor = ManagedActor(user_id, username, self.device_id, "gateway-remote", 0,
-                                 project_id, access_level)
+                                 project_id, access_level, task_create)
             scope = {
                 "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
                 "method": method.upper(), "scheme": "http", "path": unquote(path),
@@ -169,6 +172,7 @@ class ManagedWebSocketBridge:
             user_id = self.start.get("user_id")
             project_id = self.start.get("project_id")
             access_level = self.start.get("access_level")
+            task_create = self.start.get("task_create", False)
             raw_headers = self.start.get("headers", [])
             if (not isinstance(path, str) or not path.startswith("/") or path.startswith("//")
                     or not isinstance(query, str) or not isinstance(username, str)
@@ -177,6 +181,8 @@ class ManagedWebSocketBridge:
                         not isinstance(project_id, str) or not project_id
                         or len(project_id) > 128 or access_level not in ("read", "edit")))
                     or (project_id is None and access_level is not None)
+                    or type(task_create) is not bool
+                    or (project_id is None and task_create)
                     or not isinstance(raw_headers, list)):
                 raise ValueError("Invalid managed WebSocket request")
             headers = [(b"host", b"127.0.0.1")]
@@ -190,7 +196,7 @@ class ManagedWebSocketBridge:
                     continue
                 headers.append((name.encode("ascii"), pair[1].encode("latin1")))
             actor = ManagedActor(user_id, username, self.device_id, "gateway-remote", 0,
-                                 project_id, access_level)
+                                 project_id, access_level, task_create)
             scope = {
                 "type": "websocket", "asgi": {"version": "3.0"}, "scheme": "ws",
                 "path": unquote(path), "raw_path": path.encode("utf-8"),

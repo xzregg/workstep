@@ -115,7 +115,8 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
         actor = request.scope.get("gateway_remote_actor")
         remote_bridge = actor is not None and managed
         if remote_bridge and actor.project_id is not None and not project_http_allowed(
-                request, actor.project_id, actor.project_access_level):
+                request, actor.project_id, actor.project_access_level,
+                actor.remote_task_create):
             response = JSONResponse({"detail": "project scope denied"}, status_code=403)
             response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
             return response
@@ -148,6 +149,9 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                     actor_id=actor.user_id, user_name=actor.username,
                     device_id=actor.device_id, device_name=actor.device_id,
                     source="managed",
+                    project_id=actor.project_id,
+                    access_level=actor.project_access_level,
+                    remote_task_create=actor.remote_task_create,
                 )) if actor is not None else nullcontext()
                 with context:
                     response = await call_next(request)

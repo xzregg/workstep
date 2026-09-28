@@ -22,8 +22,14 @@ _CHAT_MESSAGE_EVENTS = re.compile(
 
 def project_http_route_allowed(method: str, path: str,
                                query_pairs: list[tuple[str, str]],
-                               project_id: str) -> bool:
-    if method != "GET" or not project_id:
+                               project_id: str, *, access_level: str = "read",
+                               task_create: bool = False) -> bool:
+    if not project_id or access_level not in ("read", "edit"):
+        return False
+    if method == "POST":
+        return (path == "/api/task/create" and access_level == "edit"
+                and task_create and query_pairs == [("project_id", project_id)])
+    if method != "GET":
         return False
     if path == f"/api/project/{project_id}/summary":
         return not query_pairs

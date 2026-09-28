@@ -28,6 +28,7 @@ class ManagedActor:
     policy_revision: int
     project_id: str | None = None
     project_access_level: str | None = None
+    remote_task_create: bool = False
 
 
 class ManagedAuthorizationVerifier:
