@@ -89,10 +89,9 @@ def test_user_sees_only_assigned_pc_and_admin_can_revoke(tmp_path, monkeypatch):
         assert client.get(f"{remote_url}/api/remote/session").json()["device_id"] == "device-1"
         class FakeData:
             async def proxy_http(self, request, *, user_id, username):
-                assert request.url.path == "/api/health"
                 assert user_id == claims["user_id"]
                 assert username == "alice"
-                return JSONResponse({"proxied": True})
+                return JSONResponse({"proxied": request.url.path})
             async def proxy_websocket(self, ws, *, user_id, username):
                 assert user_id == claims["user_id"]
                 assert username == "alice"
@@ -103,7 +102,9 @@ def test_user_sees_only_assigned_pc_and_admin_can_revoke(tmp_path, monkeypatch):
             assert device_id == "device-1"
             return FakeData()
         monkeypatch.setattr(app.state.control_connections, "request_data", request_data)
-        assert client.get(f"{remote_url}/api/health").json() == {"proxied": True}
+        assert client.get(f"{remote_url}/api/health").json() == {"proxied": "/api/health"}
+        assert client.get(f"{remote_url}/").json() == {"proxied": "/"}
+        assert client.get(f"{remote_url}/assets/main.js").json() == {"proxied": "/assets/main.js"}
         with client.websocket_connect("wss://d-device-1.gateway.test/ws",
                                       headers={"origin": remote_url}) as socket:
             assert socket.receive_text() == "remote-ready"
