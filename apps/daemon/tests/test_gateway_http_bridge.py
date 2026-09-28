@@ -82,6 +82,40 @@ async def test_gateway_bridge_streams_body_and_attaches_remote_actor_without_blo
 
 
 @pytest.mark.asyncio
+async def test_project_scoped_bridge_denies_unknown_and_cross_project_api():
+    app = FastAPI()
+    app.state.gateway_client = type("Client", (), {"managed_config": object()})()
+    app.add_middleware(DesktopSecurityMiddleware)
+
+    @app.get("/api/task/list")
+    async def task_list(request: Request):
+        return {"project_id": request.query_params.get("project_id")}
+
+    @app.get("/api/health")
+    async def health():
+        return {"status": "ok"}
+
+    async def response_status(method: str, path: str, query: str) -> int:
+        frames = []
+        async def capture(frame):
+            frames.append(frame)
+        bridge = ManagedHttpBridge(app, "project-stream", {
+            "method": method, "path": path, "query": query, "headers": [],
+            "user_id": "user-1", "username": "alice",
+            "project_id": "host-1", "access_level": "read",
+        }, capture, "device-1")
+        bridge.start_task()
+        await asyncio.wait_for(bridge._task, timeout=1)
+        return frames[0].payload["status"]
+
+    assert await response_status("GET", "/api/task/list", "project_id=host-1") == 200
+    assert await response_status("GET", "/api/task/list", "project_id=host-2") == 403
+    assert await response_status("GET", "/api/task/list", "project_id=host-1&project_id=host-2") == 403
+    assert await response_status("POST", "/api/task/list", "project_id=host-1") == 403
+    assert await response_status("GET", "/api/health", "project_id=host-1") == 403
+
+
+@pytest.mark.asyncio
 async def test_gateway_websocket_bridge_carries_bidirectional_messages_with_managed_actor():
     app = FastAPI()
     app.state.gateway_client = type("Client", (), {"managed_config": object()})()
