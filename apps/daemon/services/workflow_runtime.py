@@ -1049,14 +1049,34 @@ class WorkflowRuntime:
         schedule_contended: bool = True,
     ) -> int:
         active_task_ids = frozenset(self._runners)
+        def persist_recovery(_project):
+            from services.project_audit import record_project_audit
+            from services.remote_access import replayed_actor_context
+
+            with db_proxy.atomic("IMMEDIATE"):
+                decision = prepare_project_recovery(
+                    project,
+                    active_task_ids=active_task_ids,
+                    owner_id=self._leases.instance_id,
+                    current_workflow_steps=self._current_workflow_steps,
+                )
+                for candidate in decision.runs:
+                    run = WorkflowRun.get_by_id(candidate.run_id)
+                    with replayed_actor_context(None):
+                        record_project_audit(
+                            project_id=project.id,
+                            task_id=candidate.task_id,
+                            action="task.recover",
+                            result="succeeded",
+                            actor_type="system",
+                            initiated_by_user_id=run.initiated_by_user_id,
+                            initiated_by_username=run.initiated_by_username,
+                            metadata={"workflow_run_id": run.id},
+                        )
+                return decision
+
         decision = await self._run_db(
-            project.id,
-            lambda _project: prepare_project_recovery(
-                project,
-                active_task_ids=active_task_ids,
-                owner_id=self._leases.instance_id,
-                current_workflow_steps=self._current_workflow_steps,
-            ),
+            project.id, persist_recovery,
         )
         if schedule_contended:
             for run_id in decision.contended_run_ids:

@@ -255,6 +255,14 @@ def prepare_project_recovery(
                 review_message.content = (
                     "审核已通过" if passed else "审核因服务重启中断，正在自动重试"
                 )
+                review_message.author_id = "system"
+                review_message.author_username = "system"
+                review_message.author_name = "系统"
+                review_message.author_type = "system"
+                review_message.initiated_by_user_id = workflow_run.initiated_by_user_id
+                review_message.initiated_by_username = workflow_run.initiated_by_username
+                review_message.author_device_id = None
+                review_message.author_device_name = None
                 review_message.ended_at = now
                 if review_message.event_log_path:
                     _seal_event_journal(project, review_message, restore_content=False)
