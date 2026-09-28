@@ -2348,11 +2348,21 @@ async def test_run_endpoint_reports_an_invalid_saved_workflow(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_runtime_cancels_an_active_pipeline(tmp_path):
+@pytest.mark.parametrize("action", ["task.cancel", "task.pause"])
+async def test_runtime_cancels_an_active_pipeline(tmp_path, monkeypatch, action):
     """Cancellation uses the same runtime that owns the active TaskRunner."""
     from engines.core.registry import ENGINE_REGISTRY
-    from models import WorkflowRun
+    from models import ProjectAuditEvent, WorkflowRun
     from services.workflow_runtime import WorkflowRuntime
+    from services.remote_access import ActorSnapshot
+
+    monkeypatch.setattr(
+        "services.remote_access.get_effective_actor",
+        lambda: ActorSnapshot(
+            actor_id="operator-1", user_name="Operator", device_id="device-1",
+            device_name="Test device", source="local", username="operator",
+        ),
+    )
 
     class BlockingEngine(RuntimeFakeEngine):
         def __init__(self):
@@ -2408,11 +2418,17 @@ async def test_runtime_cancels_an_active_pipeline(tmp_path):
         )
         await engine.started.wait()
 
-        assert await runtime.cancel(task.id) is True
+        assert await runtime.cancel(task.id, action=action) is True
         await asyncio.wait_for(active_run, timeout=1)
 
         assert Task.get_by_id(task.id).status == "paused"
         assert WorkflowRun.get(WorkflowRun.task == task).status == "failed"
+        events = list(ProjectAuditEvent.select().where(
+            ProjectAuditEvent.action == action,
+        ))
+        assert len(events) == 1
+        assert events[0].actor_username == "operator"
+        assert events[0].metadata_json == '{"status": "paused"}'
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
@@ -2448,8 +2464,8 @@ async def test_pause_endpoint_stops_an_active_pipeline(monkeypatch):
     calls = []
 
     class RuntimeStub:
-        async def cancel(self, task_id):
-            calls.append(task_id)
+        async def cancel(self, task_id, *, action):
+            calls.append((task_id, action))
             return True
 
     monkeypatch.setattr(main, "workflow_runtime", RuntimeStub(), raising=False)
@@ -2462,7 +2478,7 @@ async def test_pause_endpoint_stops_an_active_pipeline(monkeypatch):
 
     assert response.status_code == 200
     assert response.json() == {"paused": True}
-    assert calls == ["task-1"]
+    assert calls == [("task-1", "task.pause")]
 
 
 @pytest.mark.anyio

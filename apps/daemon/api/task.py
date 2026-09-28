@@ -643,7 +643,7 @@ class PauseTaskRequest(BaseSchema):
 async def pause_task(req: PauseTaskRequest, pid: str = Query(..., alias="project_id")):
     """Pause a running task."""
     from main import task_service, workflow_runtime
-    if workflow_runtime and await workflow_runtime.cancel(req.task_id):
+    if workflow_runtime and await workflow_runtime.cancel(req.task_id, action="task.pause"):
         return {"paused": True}
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
