@@ -305,3 +305,41 @@ async def test_handle_client_message_subscribe_updates_filter(monkeypatch):
             await asyncio.wait_for(q.get(), timeout=0.1)
     finally:
         event_bus.unsubscribe(q)
+
+
+@pytest.mark.anyio
+async def test_project_websocket_subscription_cannot_escape_project_or_send_commands(monkeypatch):
+    import json
+    import main
+    from streaming.ws import _make_subscription_predicate
+    from main import WsSubscription
+
+    sub = WsSubscription(project_id="project-1")
+    q = event_bus.subscribe(_make_subscription_predicate(sub))
+    try:
+        await event_bus.publish({"type": "RUN_STARTED", "project_id": "project-2", "task_id": "t"})
+        await event_bus.publish({"type": "RUN_STARTED", "task_id": "t"})
+        assert q.empty()
+        await event_bus.publish({"type": "RUN_STARTED", "project_id": "project-1", "task_id": "t"})
+        assert (await q.get())["project_id"] == "project-1"
+
+        await main._handle_client_message(json.dumps({
+            "type": "subscribe", "project_id": "project-2", "task_ids": ["t"],
+        }), sub, q)
+        assert sub.project_id == "project-1"
+        await event_bus.publish({"type": "RUN_STARTED", "project_id": "project-2", "task_id": "t"})
+        assert q.empty()
+        await event_bus.publish({"type": "RUN_STARTED", "project_id": "project-1", "task_id": "t"})
+        assert (await q.get())["project_id"] == "project-1"
+
+        class Runtime:
+            async def cancel(self, task_id):
+                raise AssertionError("project websocket cancelled a task")
+
+        monkeypatch.setattr(main, "workflow_runtime", Runtime())
+        await main._handle_client_message(json.dumps({"type": "cancel", "task_id": "t"}), sub, q)
+        await main._handle_client_message(json.dumps({
+            "type": "respond", "intervention_id": "other-project",
+        }), sub, q)
+    finally:
+        event_bus.unsubscribe(q)

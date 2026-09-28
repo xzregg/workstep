@@ -227,9 +227,27 @@ async def proxy_remote_websocket(ws: WebSocket, path: str):
         host = _device_host(ws)
         if ws.headers.get("origin") != f"https://{host}":
             raise HTTPException(status_code=403, detail="Invalid remote WebSocket origin")
-        user, device_id, auth_session, _ = await _remote_identity(ws)
+        user, device_id, auth_session, host_project_id = await _remote_identity(ws)
         if auth_session.project_id:
-            raise HTTPException(status_code=403, detail="Project proxy scope unavailable")
+            if ws.url.path != "/ws":
+                raise HTTPException(status_code=403, detail="Project proxy scope unavailable")
+            project_id = auth_session.project_id
+            access_level = auth_session.project_access_level
+
+            async def authorize_stream():
+                current_level = await _active_project_access(
+                    ws, user.id, device_id, project_id, host_project_id,
+                )
+                if access_level == "edit" and current_level != "edit":
+                    raise HTTPException(status_code=403, detail="Project edit access revoked")
+
+            connection = await ws.app.state.control_connections.request_data(device_id)
+            await connection.proxy_websocket(
+                ws, user_id=user.id, username=user.username,
+                project_id=host_project_id, access_level=access_level,
+                authorization_check=authorize_stream,
+            )
+            return
         connection = await ws.app.state.control_connections.request_data(device_id)
         await connection.proxy_websocket(ws, user_id=user.id, username=user.username)
     except HTTPException:

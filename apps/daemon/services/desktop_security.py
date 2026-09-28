@@ -86,7 +86,7 @@ def desktop_websocket_allowed(ws: WebSocket) -> bool:
     remote_actor = ws.scope.get("gateway_remote_actor")
     if (remote_actor is not None and gateway_client is not None
             and getattr(gateway_client, "managed_config", None) is not None):
-        if remote_actor.project_id is not None:
+        if remote_actor.project_id is not None and ws.url.path != "/ws":
             return False
         ws.scope["managed_actor"] = remote_actor
         return True

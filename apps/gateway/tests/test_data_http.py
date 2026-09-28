@@ -143,6 +143,57 @@ async def test_data_connection_forwards_bidirectional_websocket_frames():
 
 
 @pytest.mark.asyncio
+async def test_project_websocket_closes_after_access_revocation():
+    allowed = True
+
+    async def authorize():
+        if not allowed:
+            raise PermissionError("Project access revoked")
+
+    class Browser:
+        scope = {"headers": []}
+        url = SimpleNamespace(path="/ws", query="")
+
+        def __init__(self):
+            self.accepted = asyncio.Event()
+            self.closed = asyncio.Event()
+            self.close_code = None
+
+        async def accept(self, *, subprotocol=None):
+            self.accepted.set()
+
+        async def receive(self):
+            await asyncio.Event().wait()
+
+        async def close(self, *, code):
+            self.close_code = code
+            self.closed.set()
+
+    class Socket:
+        async def send_json(self, message):
+            frame = ProxyFrame.model_validate(message)
+            if frame.type == FrameType.websocket_open:
+                assert frame.payload["project_id"] == "host-1"
+                await connection.deliver(ProxyFrame(
+                    stream_id=frame.stream_id, type=FrameType.websocket_open,
+                    payload={"accepted": True},
+                ))
+
+    browser = Browser()
+    connection = DataConnection("device-1", Socket())
+    task = asyncio.create_task(connection.proxy_websocket(
+        browser, user_id="user-1", username="alice",
+        project_id="host-1", access_level="read",
+        authorization_check=authorize,
+    ))
+    await asyncio.wait_for(browser.accepted.wait(), timeout=1)
+    allowed = False
+    await asyncio.wait_for(browser.closed.wait(), timeout=2)
+    await asyncio.wait_for(task, timeout=1)
+    assert browser.close_code == 4403
+
+
+@pytest.mark.asyncio
 async def test_project_http_stream_stops_when_authorization_is_revoked():
     allowed = True
     frames = []

@@ -447,13 +447,20 @@ class DataConnection:
 
     async def proxy_websocket(self, browser: WebSocket, *, user_id: str,
                               username: str, project_id: str | None = None,
-                              access_level: str | None = None) -> None:
+                              access_level: str | None = None,
+                              authorization_check=None) -> None:
         if (project_id is None) != (access_level is None) or (
                 access_level is not None and access_level not in ("read", "edit")):
             raise ValueError("Invalid project proxy scope")
         if len(self._streams) >= 32:
             await browser.close(code=1013)
             return
+        if authorization_check is not None:
+            try:
+                await authorization_check()
+            except Exception:
+                await browser.close(code=4403)
+                return
         stream_id = uuid4().hex
         queue: asyncio.Queue = asyncio.Queue(maxsize=32)
         self._streams[stream_id] = queue
@@ -520,7 +527,18 @@ class DataConnection:
                     else:
                         await browser.send_bytes(data)
 
+            async def watch_authorization():
+                while True:
+                    await asyncio.sleep(1)
+                    try:
+                        await authorization_check()
+                    except Exception:
+                        await browser.close(code=4403)
+                        return
+
             tasks = [asyncio.create_task(browser_to_pc()), asyncio.create_task(pc_to_browser())]
+            if authorization_check is not None:
+                tasks.append(asyncio.create_task(watch_authorization()))
             done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             for task in pending:
                 task.cancel()
