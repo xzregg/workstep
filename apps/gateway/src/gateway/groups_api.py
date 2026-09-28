@@ -4,17 +4,18 @@ import re
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from .identity import COOKIE_NAME
-from .identity_api import _check_csrf, _identity, _super_admin_request
+from .identity_api import _check_csrf, _identity, _super_admin_read, _super_admin_request
 from .group_membership_sync import reconcile_department_groups
 from .capabilities import bump_group_capability_revisions
-from .models import (AuditEvent, DirectoryDepartment, GroupMembership,
-                     GroupProject, PlatformProject, User, UserGroup)
+from .models import (AuditEvent, Device, DirectoryDepartment, GroupMembership,
+                     GroupProject, PlatformProject, ProjectSkillAssignment,
+                     User, UserGroup)
 
 router = APIRouter(prefix="/api/groups")
 
@@ -112,6 +113,33 @@ async def list_groups(request: Request):
             ).order_by(UserGroup.name, UserGroup.id))).all()
     return {"groups": [{"id": row.id, "name": row.name, "slug": row.slug,
                         "source_type": row.source_type} for row in rows]}
+
+
+@router.get("/linkable-projects")
+async def list_linkable_group_projects(request: Request,
+                                       q: str = Query("", max_length=128),
+                                       page: int = Query(1, ge=1),
+                                       page_size: int = Query(25, ge=1, le=100)):
+    await _super_admin_read(request)
+    conditions = [PlatformProject.status == "active"]
+    if q.strip():
+        escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        conditions.append(or_(PlatformProject.name.ilike(pattern, escape="\\"),
+                              Device.name.ilike(pattern, escape="\\")))
+    async with request.app.state.database.session() as session:
+        base = select(PlatformProject, Device).join(Device, Device.id == PlatformProject.device_id)
+        total = await session.scalar(select(func.count()).select_from(PlatformProject).join(
+            Device, Device.id == PlatformProject.device_id,
+        ).where(*conditions))
+        rows = (await session.execute(base.where(*conditions).order_by(
+            PlatformProject.name, PlatformProject.id,
+        ).offset((page - 1) * page_size).limit(page_size))).all()
+    return {"projects": [{"id": project.id, "name": project.name,
+                          "device_id": device.id, "device_name": device.name,
+                          "access_mode": project.access_mode}
+                         for project, device in rows],
+            "total": total, "page": page, "page_size": page_size}
 
 
 @router.post("/{group_id}/members")
@@ -230,3 +258,34 @@ async def list_group_projects(request: Request, group_id: str):
                 GroupProject.revoked_at.is_(None)).order_by(PlatformProject.name))).all()
     return {"projects": [{"id": project.id, "name": project.name,
                           "purpose": "skill_management"} for project in rows]}
+
+
+@router.delete("/{group_id}/projects/{project_id}", status_code=204)
+async def unlink_group_project(request: Request, group_id: str, project_id: str):
+    _, actor = await _super_admin_request(request)
+    async with request.app.state.database.session() as session:
+        async with session.begin():
+            relation = await session.scalar(select(GroupProject).where(
+                GroupProject.group_id == group_id,
+                GroupProject.platform_project_id == project_id,
+                GroupProject.revoked_at.is_(None),
+            ))
+            if relation is None:
+                raise HTTPException(status_code=404, detail="Group project link unavailable")
+            now = datetime.now(timezone.utc)
+            relation.revoked_at = now
+            assignments = (await session.scalars(select(ProjectSkillAssignment).where(
+                ProjectSkillAssignment.platform_project_id == project_id,
+                ProjectSkillAssignment.source_group_id == group_id,
+                ProjectSkillAssignment.revoked_at.is_(None),
+            ))).all()
+            if assignments:
+                project = await session.get(PlatformProject, project_id)
+                project.skill_revision += 1
+                for assignment in assignments:
+                    assignment.desired_revision = project.skill_revision
+                    assignment.status = "revoked"
+                    assignment.revoked_at = now
+            session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,
+                                   action="group.project_unlinked", result="success",
+                                   metadata_json=f'{{"group_id":"{group_id}","project_id":"{project_id}"}}'))

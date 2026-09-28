@@ -318,6 +318,9 @@ test('Skill administrator enters only the Skill management module', async () => 
   cleanup()
   render(<MemoryRouter initialEntries={['/admin/users']}><App /></MemoryRouter>)
   await screen.findByText('当前账号没有访问该管理页面的权限。')
+  cleanup()
+  render(<MemoryRouter initialEntries={['/admin/groups']}><App /></MemoryRouter>)
+  await screen.findByText('当前账号没有访问该管理页面的权限。')
 })
 
 test('management tab appears after signing in on the workbench', async () => {
