@@ -1,6 +1,7 @@
 """Persistent Gateway Ed25519 key for device-scoped authorization."""
 
 import base64
+import binascii
 import hashlib
 import json
 import os
@@ -9,6 +10,7 @@ import time
 from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 
@@ -94,3 +96,34 @@ class GatewaySigner:
         }, separators=(",", ":"), sort_keys=True).encode())
         signing_input = f"{header}.{payload}"
         return f"{signing_input}.{_b64(self.private_key.sign(signing_input.encode()))}"
+
+    def verify_device_access_ticket(self, ticket: str, *, gateway_id: str,
+                                    audience: str) -> dict:
+        if len(ticket) > 8192:
+            raise ValueError("Invalid device access ticket")
+        try:
+            header, payload, signature = ticket.split(".")
+            def decode(part: str) -> bytes:
+                if not part or any(char not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-" for char in part):
+                    raise ValueError("Invalid ticket encoding")
+                return base64.urlsafe_b64decode(part + "===")
+            if json.loads(decode(header)) != {"alg": "EdDSA", "typ": "JWT"}:
+                raise ValueError("Invalid ticket header")
+            self.private_key.public_key().verify(decode(signature), f"{header}.{payload}".encode())
+            claims = json.loads(decode(payload))
+            now = int(time.time())
+            if (not isinstance(claims, dict) or claims.get("kind") != "device.access"
+                    or claims.get("iss") != gateway_id or claims.get("gateway_id") != gateway_id
+                    or claims.get("aud") != audience
+                    or not isinstance(claims.get("iat"), int)
+                    or not isinstance(claims.get("exp"), int)
+                    or claims["iat"] > now + 5 or claims["exp"] <= now
+                    or claims["exp"] - claims["iat"] > 60
+                    or not isinstance(claims.get("jti"), str) or len(claims["jti"]) < 20
+                    or not isinstance(claims.get("device_id"), str)
+                    or not isinstance(claims.get("user_id"), str)):
+                raise ValueError("Invalid ticket claims")
+            return claims
+        except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError,
+                binascii.Error, InvalidSignature) as exc:
+            raise ValueError("Invalid device access ticket") from exc

@@ -171,12 +171,14 @@ class IdentityService:
                     ))
         return user, token
 
-    async def session_user(self, token: str | None) -> tuple[User, AuthSession]:
+    async def session_user(self, token: str | None, *, allow_device_session: bool = False) -> tuple[User, AuthSession]:
         if not token:
             raise HTTPException(status_code=401, detail="Authentication required")
         async with self.database.session() as session:
             auth_session = await session.scalar(select(AuthSession).where(AuthSession.token_hash == _digest(token)))
-            if auth_session is None or auth_session.revoked_at or _as_utc(auth_session.expires_at) <= _now():
+            if (auth_session is None or auth_session.revoked_at
+                    or _as_utc(auth_session.expires_at) <= _now()
+                    or (auth_session.device_id and not allow_device_session)):
                 raise HTTPException(status_code=401, detail="Session expired")
             user = await session.get(User, auth_session.user_id)
             if user is None or user.status != "active":
