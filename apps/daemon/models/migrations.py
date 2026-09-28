@@ -47,6 +47,14 @@ _LEGACY_MALFORMED_INDEXES = (
 )
 
 _ADDITIVE_COLUMNS = {
+    "pending_message_inserts": {
+        "author_id": "TEXT",
+        "author_username": "TEXT",
+        "author_name": "TEXT",
+        "author_device_id": "TEXT",
+        "author_device_name": "TEXT",
+        "author_source": "TEXT",
+    },
     "message": {
         "author_id": "TEXT",
         "author_username": "TEXT",

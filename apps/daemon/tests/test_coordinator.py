@@ -2200,6 +2200,9 @@ async def test_coordinator_merges_pending_inserts_after_running_turn(
     else:
         raise AssertionError("pending coordinator inserts were not consumed")
     assert merged[0]["author_name"] == "待插入用户"
+    assert merged[0]["author_id"] == "browser-pending"
+    assert merged[0]["author_username"] == "待插入用户"
+    assert merged[0]["initiated_by_user_id"] == "browser-pending"
 
     pending = await client.get(
         "/api/pending-message-inserts",

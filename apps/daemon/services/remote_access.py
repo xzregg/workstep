@@ -57,6 +57,9 @@ _current_actor: ContextVar[ActorSnapshot | None] = ContextVar(
     "workstep_current_actor",
     default=None,
 )
+_suppress_default_actor: ContextVar[bool] = ContextVar(
+    "workstep_suppress_default_actor", default=False,
+)
 
 
 def get_current_actor() -> ActorSnapshot | None:
@@ -72,11 +75,25 @@ def actor_context(actor: ActorSnapshot):
         _current_actor.reset(token)
 
 
+@contextmanager
+def replayed_actor_context(actor: ActorSnapshot | None):
+    """Replay a saved actor, including an unknown legacy actor, without fallback."""
+    actor_token = _current_actor.set(actor)
+    fallback_token = _suppress_default_actor.set(True)
+    try:
+        yield
+    finally:
+        _suppress_default_actor.reset(fallback_token)
+        _current_actor.reset(actor_token)
+
+
 def get_effective_actor() -> ActorSnapshot | None:
     """Return the remote caller, or this installation's configured user."""
     actor = get_current_actor()
     if actor is not None:
         return actor
+    if _suppress_default_actor.get():
+        return None
 
     from services.config import config_store
 

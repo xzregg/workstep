@@ -74,9 +74,42 @@ def test_init_db_creates_latest_schema_for_fresh_projects(tmp_path):
             "content",
             "position",
             "username",
+            "author_id",
+            "author_username",
+            "author_name",
+            "author_device_id",
+            "author_device_name",
+            "author_source",
             "created_at",
             "updated_at",
         }
+    finally:
+        db.close()
+
+
+def test_legacy_pending_insert_keeps_unknown_author_after_migration(tmp_path):
+    import peewee
+    from models.migrations import migrate_database
+
+    db = peewee.SqliteDatabase(str(tmp_path / "legacy-pending.db"))
+    db.connect()
+    try:
+        db.execute_sql(
+            'CREATE TABLE "pending_message_inserts" ('
+            '"id" TEXT PRIMARY KEY, "target_message_id" TEXT, "content" TEXT, '
+            '"position" INTEGER, "username" TEXT, '
+            '"created_at" DATETIME, "updated_at" DATETIME)'
+        )
+        db.execute_sql(
+            'INSERT INTO "pending_message_inserts" '
+            '("id", "target_message_id", "content", "position", "username") '
+            'VALUES ("legacy", "reply", "old", 0, "Old Name")'
+        )
+        migrate_database(db)
+        assert db.execute_sql(
+            'SELECT username, author_id, author_username '
+            'FROM "pending_message_inserts" WHERE id = ?', ("legacy",),
+        ).fetchone() == ("Old Name", None, None)
     finally:
         db.close()
 

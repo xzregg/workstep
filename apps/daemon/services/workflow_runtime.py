@@ -22,7 +22,10 @@ from services.task_dispatch import TaskDispatchService
 from services.review_decision import persist_review_decision
 from services.failed_step_completion import persist_failed_step_completion
 from services.orphan_step_stop import persist_orphan_stop
-from services.pending_message_inserts import oldest_task_pending_batch
+from services.pending_message_inserts import (
+    oldest_task_pending_batch, pending_insert_actor,
+)
+from services.remote_access import replayed_actor_context
 from services.step_message_restart import (
     inspect_failed_message_retry,
     persist_step_followup,
@@ -496,21 +499,33 @@ class WorkflowRuntime:
         task_id: str,
     ) -> None:
         """Start one merged follow-up for the oldest completed step target."""
-        batch = await self._run_db(
-            project_id, lambda _project: oldest_task_pending_batch(task_id)
-        )
+        def load_batch(_project):
+            batch = oldest_task_pending_batch(task_id)
+            if batch is None:
+                return None
+            step_key, ids, content, username = batch
+            from models import PendingMessageInsert
+
+            first = PendingMessageInsert.get_by_id(ids[0])
+            return (
+                step_key, ids, content, username,
+                pending_insert_actor(first.target_message_id),
+            )
+
+        batch = await self._run_db(project_id, load_batch)
         if batch is None:
             return
-        step_key, ids, content, username = batch
+        step_key, ids, content, username, actor = batch
         try:
-            await self.resume_step_with_message(
-                project_id,
-                task_id,
-                step_key,
-                content,
-                author_name=username,
-                pending_insert_ids=ids,
-            )
+            with replayed_actor_context(actor):
+                await self.resume_step_with_message(
+                    project_id,
+                    task_id,
+                    step_key,
+                    content,
+                    author_name=username,
+                    pending_insert_ids=ids,
+                )
         except Exception:
             logger.exception(
                 "Failed to consume pending inserts for task %s step %s",

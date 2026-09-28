@@ -4,6 +4,7 @@ import uuid
 
 from models import Message, PendingMessageInsert
 from models.fields import utc_now
+from services.remote_access import ActorSnapshot, get_effective_actor
 
 
 def serialize_pending_insert(row: PendingMessageInsert) -> dict:
@@ -32,7 +33,7 @@ def list_pending_inserts(target_message_id: str) -> list[dict]:
 def create_pending_insert(
     target_message_id: str,
     content: str,
-    username: str,
+    username: str | None,
 ) -> dict:
     normalized = content.strip()
     if not target_message_id.strip():
@@ -46,14 +47,30 @@ def create_pending_insert(
         .first()
     )
     now = utc_now()
+    actor = get_effective_actor()
+    display_name = (
+        username if username is not None else actor.user_name if actor is not None else ""
+    ).strip()
+    actor_fields = (
+        {
+            "author_id": actor.actor_id,
+            "author_username": actor.username or actor.user_name,
+            "author_name": actor.user_name,
+            "author_device_id": actor.device_id,
+            "author_device_name": actor.device_name,
+            "author_source": actor.source,
+        }
+        if actor is not None and actor.user_name == display_name else {}
+    )
     row = PendingMessageInsert.create(
         id=str(uuid.uuid4()),
         target_message_id=target_message_id,
         content=normalized,
         position=(last.position + 1 if last is not None else 0),
-        username=username.strip(),
+        username=display_name,
         created_at=now,
         updated_at=now,
+        **actor_fields,
     )
     return serialize_pending_insert(row)
 
@@ -118,6 +135,29 @@ def pending_insert_batch(target_message_id: str) -> tuple[list[str], str, str]:
         "\n\n".join(row.content.strip() for row in rows if row.content.strip()),
         next((row.username for row in rows if row.username.strip()), ""),
     )
+
+
+def pending_insert_actor(target_message_id: str) -> ActorSnapshot | None:
+    """Restore the first named insert's persisted actor for its merged reply."""
+    rows = (
+        PendingMessageInsert.select()
+        .where(PendingMessageInsert.target_message_id == target_message_id)
+        .order_by(PendingMessageInsert.position, PendingMessageInsert.created_at)
+    )
+    for row in rows:
+        if not row.username.strip():
+            continue
+        if not row.author_id or not row.author_name:
+            return None
+        return ActorSnapshot(
+            actor_id=row.author_id,
+            user_name=row.author_name,
+            username=row.author_username or row.author_name,
+            device_id=row.author_device_id or "",
+            device_name=row.author_device_name or "",
+            source=row.author_source or "pending_insert",
+        )
+    return None
 
 
 def oldest_task_pending_batch(
