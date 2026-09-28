@@ -27,8 +27,11 @@ def project_http_route_allowed(method: str, path: str,
     if not project_id or access_level not in ("read", "edit"):
         return False
     if method == "POST":
-        return (path == "/api/task/create" and access_level == "edit"
-                and task_create and query_pairs == [("project_id", project_id)])
+        if access_level != "edit" or query_pairs != [("project_id", project_id)]:
+            return False
+        if path == "/api/task/create":
+            return task_create
+        return path in ("/api/task/run", "/api/task/pause", "/api/task/cancel")
     if method != "GET":
         return False
     if path == f"/api/project/{project_id}/summary":

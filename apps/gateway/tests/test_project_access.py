@@ -95,6 +95,7 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         assert client.post(f"{host}/api/remote/redeem", data={"ticket": ticket}).status_code == 409
         assert client.get(f"{host}/api/remote/session").json()["project_id"] == "project-1"
         assert client.get(f"{host}/api/remote/session").json()["host_project_id"] == "host-1"
+        assert client.get(f"{host}/api/remote/session").json()["task_create"] is False
         assert "Gateway project workspace" in client.get(f"{host}/").text
         assert client.get(f"{host}/assets/app.js").status_code == 200
         assert client.get(f"{host}/admin").status_code == 403
@@ -108,7 +109,7 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
                 assert project_id == "host-1"
                 if request.method == "POST":
                     assert access_level == "edit"
-                    assert task_create is True
+                    assert task_create is (request.url.path == "/api/task/create")
                 else:
                     assert access_level == "read"
                     assert task_create is False
@@ -167,6 +168,8 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         create_url = f"{host}/api/task/create?project_id=host-1"
         edit_headers = {"Cookie": f"workstep_gateway_session={edit_cookie}", "Origin": host}
         assert client.post(create_url, headers=edit_headers, json={"title": "New task"}).status_code == 403
+        assert client.post(f"{host}/api/task/run?project_id=host-1", headers=edit_headers,
+                           json={"task_id": "task-1", "prompt": ""}).status_code == 200
         client.cookies.clear()
         owner_login = client.post("/api/auth/login", json={
             "username": "owner", "password": "OwnerPassphrase-2026!",
@@ -183,3 +186,6 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         }, json={"title": "New task"}).status_code == 403
         assert client.post(create_url, headers=edit_headers,
                            json={"title": "New task"}).status_code == 200
+        assert client.get(f"{host}/api/remote/session", headers={
+            "Cookie": f"workstep_gateway_session={edit_cookie}",
+        }).json()["task_create"] is True

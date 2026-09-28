@@ -10,7 +10,7 @@ from schemas.base import BaseSchema
 
 class CreateTaskRequest(BaseSchema):
     title: str = ""
-    cwd: str
+    cwd: str | None = None
     description: str | None = None
     engine: str | None = None
     start_step_key: str | None = None
