@@ -24,7 +24,7 @@ from .capabilities import router as capabilities_router
 from .user_devices_api import router as user_devices_router
 from .remote_access_api import (router as remote_access_router,
                                 websocket_router as remote_websocket_router,
-                                proxy_remote_request)
+                                proxy_remote_request, _remote_identity)
 from .providers_api import router as providers_router
 from .device_commands import router as device_commands_router
 from .usage_ledger import router as usage_router
@@ -80,6 +80,10 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
             if host.startswith("d-") and host.endswith(suffix):
                 if request.url.path not in ("/api/remote/redeem", "/api/remote/session"):
                     try:
+                        if request.url.path == "/" or request.url.path.startswith("/assets/"):
+                            _, _, auth_session, _ = await _remote_identity(request)
+                            if auth_session.project_id:
+                                return await call_next(request)
                         return await proxy_remote_request(request)
                     except HTTPException as exc:
                         return await http_error(request, exc)
