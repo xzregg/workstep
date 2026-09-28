@@ -23,6 +23,10 @@ def control_url(origin: str) -> str:
     return f"wss://{parsed.netloc}/api/control/ws"
 
 
+def data_url(origin: str) -> str:
+    return control_url(origin).removesuffix("/control/ws") + "/data/ws"
+
+
 class GatewayControlClient:
     def __init__(self, origin: str, *, gateway_id: str, public_key_fingerprint: str,
                  user_id: str, policy_cache: ManagedPolicyCache,
@@ -38,6 +42,7 @@ class GatewayControlClient:
         self.online = False
         self.authorization_required = False
         self._task: asyncio.Task | None = None
+        self._data_tasks: set[asyncio.Task] = set()
         self._stop = asyncio.Event()
 
     def start(self, authorization: str, device_id: str,
@@ -62,6 +67,10 @@ class GatewayControlClient:
 
     async def stop(self) -> None:
         self._stop.set()
+        for task in self._data_tasks:
+            task.cancel()
+        if self._data_tasks:
+            await asyncio.gather(*self._data_tasks, return_exceptions=True)
         if self._task:
             self._task.cancel()
             try:
@@ -76,6 +85,7 @@ class GatewayControlClient:
                    delegation_signature: str) -> None:
         delay = 1.0
         while not self._stop.is_set():
+            reader_task = None
             try:
                 async with self.connector(self.url, origin=self.origin, open_timeout=10,
                                           max_size=1024 * 1024) as socket:
@@ -94,8 +104,11 @@ class GatewayControlClient:
                         "control_delegation_signature": delegation_signature,
                         "control_challenge_proof": challenge_proof,
                     }))
-                    raw = await asyncio.wait_for(socket.recv(), timeout=10)
-                    hello = json.loads(raw)
+                    messages = asyncio.Queue()
+                    reader_task = asyncio.create_task(
+                        self._read_control_messages(socket, device_id, messages),
+                    )
+                    hello = await self._receive_kind(messages, "hello")
                     if (not isinstance(hello, dict) or hello.get("kind") != "hello"
                             or hello.get("version") != 1 or hello.get("device_id") != device_id):
                         raise ValueError("Invalid Gateway control handshake")
@@ -106,13 +119,12 @@ class GatewayControlClient:
                         hello["policy_snapshot"], gateway_key, self.public_key_fingerprint,
                         self.gateway_id, device_id, self.user_id,
                     ))
-                    await self._ack_policy(socket, device_id)
+                    await self._ack_policy(socket, messages, device_id)
                     self.online = True
                     delay = 1.0
                     while not self._stop.is_set():
                         await socket.send(json.dumps({"kind": "heartbeat"}))
-                        raw = await asyncio.wait_for(socket.recv(), timeout=10)
-                        ack = json.loads(raw)
+                        ack = await self._receive_kind(messages, "heartbeat_ack")
                         if (not isinstance(ack, dict) or ack.get("kind") != "heartbeat_ack"
                                 or ack.get("version") != 1 or ack.get("device_id") != device_id
                                 or not isinstance(ack.get("policy_snapshot"), str)):
@@ -121,7 +133,7 @@ class GatewayControlClient:
                             ack["policy_snapshot"], gateway_key, self.public_key_fingerprint,
                             self.gateway_id, device_id, self.user_id,
                         ))
-                        await self._ack_policy(socket, device_id)
+                        await self._ack_policy(socket, messages, device_id)
                         try:
                             await asyncio.wait_for(self._stop.wait(), timeout=self.heartbeat_seconds)
                         except asyncio.TimeoutError:
@@ -138,17 +150,68 @@ class GatewayControlClient:
                 logger.warning("Gateway control connection failed: %s", type(exc).__name__)
             finally:
                 self.online = False
+                if reader_task:
+                    reader_task.cancel()
+                    await asyncio.gather(reader_task, return_exceptions=True)
+                for task in self._data_tasks:
+                    task.cancel()
+                if self._data_tasks:
+                    await asyncio.gather(*self._data_tasks, return_exceptions=True)
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=delay)
             except asyncio.TimeoutError:
                 delay = min(delay * 2, 60)
 
-    async def _ack_policy(self, socket, device_id: str) -> None:
+    async def _ack_policy(self, socket, messages: asyncio.Queue, device_id: str) -> None:
         revision = self.policy_cache.current.revision
         await socket.send(json.dumps({"kind": "policy_applied", "revision": revision}))
-        raw = await asyncio.wait_for(socket.recv(), timeout=10)
-        ack = json.loads(raw)
+        ack = await self._receive_kind(messages, "policy_applied_ack")
         if (not isinstance(ack, dict) or ack.get("kind") != "policy_applied_ack"
                 or ack.get("version") != 1 or ack.get("device_id") != device_id
                 or ack.get("revision") != revision):
             raise ValueError("Invalid policy application acknowledgment")
+
+    async def _receive_kind(self, messages: asyncio.Queue, kind: str) -> dict:
+        message = await asyncio.wait_for(messages.get(), timeout=10)
+        if isinstance(message, Exception):
+            raise message
+        if not isinstance(message, dict) or message.get("kind") != kind:
+            raise ValueError("Unexpected Gateway control message")
+        return message
+
+    async def _read_control_messages(self, socket, device_id: str,
+                                     messages: asyncio.Queue) -> None:
+        try:
+            while not self._stop.is_set():
+                message = json.loads(await socket.recv())
+                if not isinstance(message, dict):
+                    raise ValueError("Invalid Gateway control message")
+                if message.get("kind") == "open_data":
+                    token = message.get("token")
+                    if (message.get("version") != 1 or message.get("device_id") != device_id
+                            or not isinstance(token, str) or len(token) < 32 or len(token) > 256):
+                        raise ValueError("Invalid data connection command")
+                    task = asyncio.create_task(self._run_data(device_id, token))
+                    self._data_tasks.add(task)
+                    task.add_done_callback(self._data_tasks.discard)
+                else:
+                    messages.put_nowait(message)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            messages.put_nowait(exc)
+
+    async def _run_data(self, device_id: str, token: str) -> None:
+        try:
+            async with self.connector(data_url(self.origin), origin=self.origin,
+                                      open_timeout=10, max_size=1024 * 1024) as socket:
+                await socket.send(json.dumps({"kind": "data_hello", "token": token}))
+                ready = json.loads(await asyncio.wait_for(socket.recv(), timeout=10))
+                if ready != {"kind": "data_ready", "version": 1, "device_id": device_id}:
+                    raise ValueError("Invalid Gateway data connection acknowledgment")
+                while not self._stop.is_set():
+                    await socket.recv()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("Gateway data connection failed: %s", type(exc).__name__)

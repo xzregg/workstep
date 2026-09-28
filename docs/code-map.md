@@ -17,6 +17,8 @@ Gateway `apps/gateway/src/gateway/capabilities.py` 保存并编译全局/设备�
 
 Gateway 整机访问关系由 `apps/gateway/src/gateway/user_devices_api.py` 管理，普通用户的 `/api/devices` 仅投影有效分配，`/api/devices/{device_id}/access` 在设备在线时签发绑定用户、设备和子域的短期票据；签名位于 `signing.py`，公网 HTTPS 域名由 `config.py::public_origin` 校验。`remote_access_api.py` 在设备子域一次性兑换票据，生成绑定设备的短期会话；`identity.py::session_user` 默认拒绝将设备会话用于普通 Gateway API，迁移 `0012_remote_access.py` 记录已用票据。行为测试见 `apps/gateway/tests/test_user_devices.py`。门户 `apps/gateway-web/src/DeviceListPage.tsx` 展示“我的电脑”及登录/空列表状态，复用 `GatewayLoginForm.tsx`；`App.tsx` 装配 `/devices`，行为测试见 `apps/gateway-web/tests/device-list.test.tsx`。数据隧道尚未实现。
 
+阶段 3C 的按需数据握手在 Gateway `control_connection.py::ControlConnections.request_data` 和 `/api/data/ws`，一次性 token 只经已认证控制 WSS 下发；daemon `services/gateway_client/control.py` 的独立读取协程在心跳间隙也能处理 `open_data` 并建立数据 WSS。测试见 Gateway `test_control_connection.py` 与 daemon `test_gateway_control_client.py`。多路复用业务帧及代理尚未接入。
+
 修改功能时先找所属模块，再沿前端页面或组件 → API → 服务 → 数据模型追踪。行为测试放在实际拥有该行为的模块附近；不要把页面、`src/api/client.ts` 或通用服务文件作为新功能的默认落点。
 
 | 功能 | Web 入口 | Daemon 入口 | 深入阅读 |
