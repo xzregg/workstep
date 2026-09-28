@@ -192,6 +192,20 @@ a {
   box-shadow: 0 18px 50px rgb(29 29 31 / 18%);
 }
 .gateway-admin-confirm input { width: 100%; margin: 8px 0 20px; }
+.gateway-download-page > p { color: #6e6e73; line-height: 1.5; }
+.gateway-download-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+.gateway-download-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 12px;
+  background: #0071e3;
+  color: #fff;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.gateway-download-page code { overflow-wrap: anywhere; }
 
 @media (max-width: 600px) {
   main > header {

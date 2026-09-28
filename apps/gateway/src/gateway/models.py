@@ -183,6 +183,26 @@ class DesktopAuthCode(Base):
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class ClientRelease(Base):
+    __tablename__ = "client_releases"
+    __table_args__ = (UniqueConstraint("gateway_id", "os", "arch", "version"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    gateway_id: Mapped[str] = mapped_column(String(128))
+    os: Mapped[str] = mapped_column(String(16))
+    arch: Mapped[str] = mapped_column(String(16))
+    version: Mapped[str] = mapped_column(String(64))
+    filename: Mapped[str] = mapped_column(String(256))
+    storage_name: Mapped[str] = mapped_column(String(256))
+    file_size: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    signature: Mapped[str] = mapped_column(Text)
+    gateway_public_key_fingerprint: Mapped[str] = mapped_column(String(64))
+    minimum_protocol_version: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16), server_default="published")
+    created_at: Mapped[datetime] = timestamp()
+
+
 class DeviceConnection(Base):
     __tablename__ = "device_connections"
 
