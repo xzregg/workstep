@@ -81,6 +81,18 @@ async def sync_directory(request: Request, source_id: str, body: DirectorySnapsh
     )
 
 
+@router.post("/admin/identity-sources/{source_id}/reconcile")
+async def reconcile_directory(request: Request, source_id: str):
+    await _super_admin_request(request)
+    service = _service(request)
+    source = await service.source(source_id)
+    try:
+        snapshot = await _connector(request, source.provider).fetch_directory(source)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Directory provider unavailable") from exc
+    return await service.full_sync(source_id, snapshot["departments"], snapshot["people"])
+
+
 @router.post("/admin/identity-sources/{source_id}/events")
 async def apply_directory_event(request: Request, source_id: str, body: PersonEvent):
     await _super_admin_request(request)
