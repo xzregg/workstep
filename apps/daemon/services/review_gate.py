@@ -31,6 +31,8 @@ class ReviewOutcome:
     review_run: ReviewRun
     report: dict
     events: tuple[dict, ...] = ()
+    provider_id: str | None = None
+    provider: dict | None = None
 
     @property
     def feedback(self) -> str:
@@ -171,12 +173,28 @@ class ReviewGate:
         response_parts: list[str] = []
         events_collected: list[dict] = []
         error: str | None = None
+        provider_id: str | None = None
+        provider_snapshot: dict | None = None
         if not engine:
             error = f"Review engine '{engine_id}' not available"
         else:
             if self._set_active_engine is not None:
                 self._set_active_engine(engine)
             try:
+                config_overrides = config.get("config") or step.config or None
+                configured_provider = str((config_overrides or {}).get("provider_id") or "")
+                resolve_provider_id = getattr(engine, "resolve_provider_id", None)
+                if callable(resolve_provider_id):
+                    provider_id = await asyncio.to_thread(resolve_provider_id, configured_provider)
+                else:
+                    provider_id = configured_provider
+                if provider_id:
+                    def load_usage_provider():
+                        provider = config_store.get_provider(provider_id)
+                        return ({key: provider.get(key) for key in
+                                 ("id", "prices", "managed_revision")}
+                                if provider else None)
+                    provider_snapshot = await asyncio.to_thread(load_usage_provider)
                 spawn = getattr(engine, "spawn_with_retry", engine.spawn)
                 spawn_kwargs = dict(
                     prompt=prompt,
@@ -185,11 +203,7 @@ class ReviewGate:
                     session_id=(
                         review_session_id if engine.supports_resume else None
                     ),
-                    config_overrides=(
-                        config.get("config")
-                        or step.config
-                        or None
-                    ),
+                    config_overrides=config_overrides,
                 )
                 capabilities = getattr(engine, "capabilities", None)
                 if (
@@ -289,6 +303,8 @@ class ReviewGate:
             review_run,
             report,
             tuple(events_collected),
+            provider_id,
+            provider_snapshot,
         )
 
     @staticmethod

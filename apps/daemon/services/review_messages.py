@@ -65,12 +65,27 @@ class ReviewCheckpoint(NamedTuple):
 class StepReviewMessages:
     def __init__(
         self, journal: TurnEventJournal, run_db, publish,
-        live: StepLiveMessages,
+        live: StepLiveMessages, *, project_id: str | None = None,
     ):
         self._journal = journal
         self._run_db = run_db
         self._publish = publish
         self._live = live
+        self._project_id = project_id
+
+    async def _record_usage(self, task: Task, message_id: str,
+                            outcome: ReviewOutcome, usage_json: str | None) -> None:
+        if not outcome.review_run.engine:
+            return
+        from main import gateway_client
+
+        await gateway_client.record_message_usage(
+            project_id=self._project_id, task_id=task.id, message_id=message_id,
+            run_id=str(outcome.review_run.step_run_id), model=outcome.review_run.model,
+            occurred_at=outcome.review_run.ended_at or utc_now(),
+            provider=outcome.provider, provider_id=outcome.provider_id,
+            usage_json=usage_json, user_id=task.creator_id,
+        )
 
     async def load_checkpoint(
         self, task: Task, step: Step, workflow_run: WorkflowRun,
@@ -301,6 +316,7 @@ class StepReviewMessages:
         summary = outcome.report.get("summary", "")
         issues = outcome.report.get("issues", [])
         items = _format_issues(issues)
+        usage_json = extract_usage_json(list(outcome.events))
         if cancelled:
             content = "自动审核已手动停止"
         else:
@@ -329,13 +345,14 @@ class StepReviewMessages:
             message.event_summary_json = snapshot["event_summary_json"]
             message.event_count = snapshot["event_count"]
             message.last_event_seq = snapshot["last_event_seq"]
-            message.usage_json = extract_usage_json(list(outcome.events))
+            message.usage_json = usage_json
             message.started_at = message.started_at or outcome.review_run.started_at
             message.ended_at = outcome.review_run.ended_at
             message.save()
             return message.started_at
 
         message_started_at = await self._run_db(finalize_review_message)
+        await self._record_usage(task, message_id, outcome, usage_json)
         common = {
             "channel": "review",
             "message_id": message_id,
@@ -384,6 +401,7 @@ class StepReviewMessages:
         snapshot = await self._snapshot(journal_ref)
         summary = outcome.report.get("summary", "")
         items = _format_issues(outcome.report.get("issues", []))
+        usage_json = extract_usage_json(list(outcome.events))
         if outcome.status == "awaiting_review":
             content = "等待你审核"
         else:
@@ -418,12 +436,13 @@ class StepReviewMessages:
             event_summary_json=snapshot["event_summary_json"],
             event_count=snapshot["event_count"],
             last_event_seq=snapshot["last_event_seq"],
-            usage_json=extract_usage_json(list(outcome.events)),
+            usage_json=usage_json,
             position=0,
             started_at=outcome.review_run.started_at,
             ended_at=outcome.review_run.ended_at,
             created_at=now,
         ))
+        await self._record_usage(task, message_id, outcome, usage_json)
         common = {
             "channel": "review",
             "message_id": message_id,
