@@ -648,7 +648,7 @@ async def pause_task(req: PauseTaskRequest, pid: str = Query(..., alias="project
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
     paused = await _run_db(
-        pid, lambda: task_service._pause_task_sync(req.task_id)
+        pid, lambda: task_service._pause_task_sync(req.task_id, pid)
     )
     if not paused:
         raise HTTPException(status_code=404, detail="Task not found")

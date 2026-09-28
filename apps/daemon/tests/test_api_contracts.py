@@ -251,6 +251,80 @@ async def test_workflow_start_and_audit_roll_back_together(api_context, monkeypa
     assert await main.project_manager.run_db(project_id, inspect) == ("ready", 0, 0)
 
 
+@pytest.mark.anyio
+async def test_task_pause_rolls_back_when_audit_write_fails(api_context, monkeypatch):
+    import main
+    from models import Task
+    from models.fields import utc_now
+    from services import project_audit
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "audit-pause-rollback"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)},
+    )).json()["id"]
+    await main.project_manager.run_db(project_id, lambda _project: Task.create(
+        id="pause-rollback", title="Pause", cwd=str(project_dir),
+        status="ready", created_at=utc_now(), updated_at=utc_now(),
+    ))
+
+    def fail_audit(**_kwargs):
+        raise ValueError("audit write failed")
+
+    monkeypatch.setattr(project_audit, "record_project_audit", fail_audit)
+    with pytest.raises(ValueError, match="audit write failed"):
+        await client.post(
+            f"/api/task/pause?project_id={project_id}",
+            headers=TEST_ACTOR_HEADERS,
+            json={"task_id": "pause-rollback"},
+        )
+    status = await main.project_manager.run_db(
+        project_id, lambda _project: Task.get_by_id("pause-rollback").status,
+    )
+    assert status == "ready"
+
+
+@pytest.mark.anyio
+async def test_task_pause_slow_sql_does_not_block_health(api_context, monkeypatch):
+    import main
+    from models import Task
+    from models.fields import utc_now
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "audit-pause-canary"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)},
+    )).json()["id"]
+    await main.project_manager.run_db(project_id, lambda _project: Task.create(
+        id="pause-canary", title="Pause", cwd=str(project_dir),
+        status="ready", created_at=utc_now(), updated_at=utc_now(),
+    ))
+    project = main.project_manager.get_project_by_id(project_id)
+    original = project.db.execute_sql
+    entered = threading.Event()
+
+    def slow_write(sql, *args, **kwargs):
+        if sql.lstrip().upper().startswith('UPDATE "TASKS"') and not entered.is_set():
+            entered.set()
+            time.sleep(0.8)
+        return original(sql, *args, **kwargs)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_write)
+    paused = asyncio.create_task(client.post(
+        f"/api/task/pause?project_id={project_id}",
+        headers=TEST_ACTOR_HEADERS,
+        json={"task_id": "pause-canary"},
+    ))
+    assert await asyncio.to_thread(entered.wait, 2)
+    before = time.monotonic()
+    health = await client.get("/api/health")
+    assert health.status_code == 200
+    assert time.monotonic() - before < 0.5
+    assert (await paused).json() == {"paused": True}
+
+
 class MemoryConfigStore:
     """In-memory project registry used at the filesystem boundary."""
 
@@ -1747,6 +1821,8 @@ async def test_default_workflow_can_be_saved_and_reloaded(api_context):
 @pytest.mark.anyio
 async def test_task_http_crud_lifecycle(api_context):
     """Tasks can be created, retrieved, paused, copied and deleted over HTTP."""
+    import main
+
     client, tmp_path = api_context
     project_dir = tmp_path / "task-project"
     project_dir.mkdir()
@@ -1792,10 +1868,23 @@ async def test_task_http_crud_lifecycle(api_context):
 
     paused = await client.post(
         f"/api/task/pause?project_id={project_id}",
+        headers=TEST_ACTOR_HEADERS,
         json={"task_id": task_id},
     )
     assert paused.status_code == 200
     assert paused.json() == {"paused": True}
+    from models import ProjectAuditEvent
+
+    pause_audit = await main.project_manager.run_db(
+        project_id,
+        lambda _project: ProjectAuditEvent.get(
+            (ProjectAuditEvent.task_id == task_id)
+            & (ProjectAuditEvent.action == "task.pause")
+        ),
+    )
+    assert (pause_audit.result, pause_audit.actor_name) == (
+        "succeeded", "Test User",
+    )
 
     copied = await client.post(
         f"/api/task/copy?project_id={project_id}",
