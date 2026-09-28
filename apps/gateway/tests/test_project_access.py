@@ -210,3 +210,13 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         assert client.get(f"{host}/api/remote/session", headers={
             "Cookie": f"workstep_gateway_session={edit_cookie}",
         }).json()["task_create"] is True
+        assert client.get(f"{host}/api/remote/session", headers={
+            "Cookie": f"workstep_gateway_session={edit_cookie}",
+        }).json()["share_create"] is False
+        assert client.post(f"/api/admin/capabilities/{worker_id}", json={
+            "capability": "share.create", "scope_type": "project",
+            "scope_id": "project-1", "effect": "allow",
+        }, headers=owner_headers).status_code == 200
+        assert client.get(f"{host}/api/remote/session", headers={
+            "Cookie": f"workstep_gateway_session={edit_cookie}",
+        }).json()["share_create"] is True

@@ -90,6 +90,22 @@ body {
   .gateway-share-spinner { animation-duration: 1.8s; }
 }
 
+.gateway-share-create-page { width: min(100% - 32px, 560px); }
+.gateway-share-created { display: grid; gap: 12px; }
+.gateway-share-created label { font-weight: 600; }
+.gateway-share-created input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid #d2d2d7;
+  border-radius: 12px;
+  font: inherit;
+}
+.gateway-share-create-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.gateway-share-create-actions a { padding: 8px 0; }
+.gateway-share-create-actions button { width: auto; margin-top: 0; }
+
 main {
   min-height: 100vh;
 }
