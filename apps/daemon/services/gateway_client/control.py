@@ -7,6 +7,7 @@ import logging
 import hashlib
 from urllib.parse import urlsplit
 
+import httpx
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
@@ -65,6 +66,19 @@ class GatewayControlClient:
         self._active_socket = None
         self._project_ack_messages: asyncio.Queue | None = None
         self._project_request_lock = asyncio.Lock()
+
+    async def _probe_daemon_health(self) -> bool | None:
+        if self.asgi_app is None:
+            return None
+        try:
+            async def probe() -> bool:
+                async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.asgi_app),
+                                             base_url="http://127.0.0.1") as client:
+                    response = await client.get("/api/health")
+                    return response.status_code == 200 and response.json().get("status") == "ok"
+            return await asyncio.wait_for(probe(), timeout=2)
+        except Exception:
+            return False
 
     def start(self, authorization: str, device_id: str,
               control_private_key_pem: str, control_public_key_pem: str,
@@ -222,7 +236,8 @@ class GatewayControlClient:
                             await usage_task
                         if audit_task is not None and audit_task.done():
                             await audit_task
-                        await socket.send(json.dumps({"kind": "heartbeat"}))
+                        await socket.send(json.dumps({"kind": "heartbeat",
+                                                      "daemon_health": await self._probe_daemon_health()}))
                         ack = await self._receive_kind(messages, "heartbeat_ack")
                         if (not isinstance(ack, dict) or ack.get("kind") != "heartbeat_ack"
                                 or ack.get("version") != 1 or ack.get("device_id") != device_id

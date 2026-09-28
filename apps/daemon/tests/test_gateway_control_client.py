@@ -145,6 +145,22 @@ async def test_control_client_handshake_heartbeat_and_shutdown():
 
 
 @pytest.mark.asyncio
+async def test_control_heartbeat_probes_daemon_asgi_health():
+    app = FastAPI()
+
+    @app.get("/api/health")
+    async def health():
+        return {"status": "ok"}
+
+    client = GatewayControlClient("https://gateway.example", gateway_id="gateway-test",
+                                  public_key_fingerprint="0" * 64, user_id="user-1",
+                                  policy_cache=ManagedPolicyCache(), asgi_app=app)
+    assert await client._probe_daemon_health() is True
+    app.routes.pop()
+    assert await client._probe_daemon_health() is False
+
+
+@pytest.mark.asyncio
 async def test_slow_control_handshake_keeps_daemon_health_responsive(monkeypatch):
     monkeypatch.setenv("WORKSTEP_DESKTOP_RUNTIME", "1")
     monkeypatch.setenv("WORKSTEP_DESKTOP_TOKEN", "desktop-secret")
