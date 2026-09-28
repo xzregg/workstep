@@ -99,18 +99,45 @@ class GatewaySigner:
 
     def sign_device_access_ticket(self, *, gateway_id: str, device_id: str,
                                   user_id: str, audience: str) -> str:
+        return self._sign_access_ticket(gateway_id=gateway_id, device_id=device_id,
+                                        user_id=user_id, audience=audience,
+                                        kind="device.access")
+
+    def sign_project_access_ticket(self, *, gateway_id: str, device_id: str,
+                                   user_id: str, audience: str, project_id: str,
+                                   host_project_id: str, access_level: str) -> str:
+        if access_level not in ("read", "edit") or not project_id or not host_project_id:
+            raise ValueError("Invalid project access")
+        return self._sign_access_ticket(gateway_id=gateway_id, device_id=device_id,
+                                        user_id=user_id, audience=audience,
+                                        kind="project.access", project_id=project_id,
+                                        host_project_id=host_project_id,
+                                        access_level=access_level)
+
+    def _sign_access_ticket(self, *, gateway_id: str, device_id: str,
+                            user_id: str, audience: str, kind: str,
+                            **scope) -> str:
         now = int(time.time())
         header = _b64(json.dumps({"alg": "EdDSA", "typ": "JWT"}, separators=(",", ":")).encode())
         payload = _b64(json.dumps({
-            "iss": gateway_id, "gateway_id": gateway_id, "kind": "device.access",
+            "iss": gateway_id, "gateway_id": gateway_id, "kind": kind,
             "device_id": device_id, "user_id": user_id, "aud": audience,
             "jti": secrets.token_urlsafe(24), "iat": now, "exp": now + 60,
+            **scope,
         }, separators=(",", ":"), sort_keys=True).encode())
         signing_input = f"{header}.{payload}"
         return f"{signing_input}.{_b64(self.private_key.sign(signing_input.encode()))}"
 
     def verify_device_access_ticket(self, ticket: str, *, gateway_id: str,
                                     audience: str) -> dict:
+        claims = self.verify_access_ticket(ticket, gateway_id=gateway_id,
+                                           audience=audience)
+        if claims["kind"] != "device.access":
+            raise ValueError("Invalid device access ticket")
+        return claims
+
+    def verify_access_ticket(self, ticket: str, *, gateway_id: str,
+                             audience: str) -> dict:
         if len(ticket) > 8192:
             raise ValueError("Invalid device access ticket")
         try:
@@ -124,7 +151,8 @@ class GatewaySigner:
             self.private_key.public_key().verify(decode(signature), f"{header}.{payload}".encode())
             claims = json.loads(decode(payload))
             now = int(time.time())
-            if (not isinstance(claims, dict) or claims.get("kind") != "device.access"
+            if (not isinstance(claims, dict)
+                    or claims.get("kind") not in ("device.access", "project.access")
                     or claims.get("iss") != gateway_id or claims.get("gateway_id") != gateway_id
                     or claims.get("aud") != audience
                     or not isinstance(claims.get("iat"), int)
@@ -135,6 +163,13 @@ class GatewaySigner:
                     or not isinstance(claims.get("device_id"), str)
                     or not isinstance(claims.get("user_id"), str)):
                 raise ValueError("Invalid ticket claims")
+            if claims["kind"] == "project.access" and (
+                    not isinstance(claims.get("project_id"), str)
+                    or not claims["project_id"] or len(claims["project_id"]) > 64
+                    or not isinstance(claims.get("host_project_id"), str)
+                    or not claims["host_project_id"] or len(claims["host_project_id"]) > 128
+                    or claims.get("access_level") not in ("read", "edit")):
+                raise ValueError("Invalid project ticket scope")
             return claims
         except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError,
                 binascii.Error, InvalidSignature) as exc:

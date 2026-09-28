@@ -3,12 +3,14 @@
 from datetime import datetime, timezone
 from typing import Literal
 from uuid import uuid4
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from .identity import COOKIE_NAME
+from .identity import IdentityService
 from .identity_api import _identity, _super_admin_read, _super_admin_request
 from .models import (AuditEvent, Device, GroupMembership, PlatformProject,
                      ProjectAccessGrant, User, UserGroup)
@@ -105,6 +107,38 @@ async def effective_project_access(session, user_id: str, project_id: str) -> st
               if (grant.subject_type == "user" and grant.subject_id == user_id)
               or (grant.subject_type == "group" and grant.subject_id in group_ids)]
     return "edit" if "edit" in levels else "read" if "read" in levels else None
+
+
+@router.get("/projects/{project_id}/access")
+async def project_access(request: Request, project_id: str):
+    user, _ = await IdentityService(request.app.state.database).session_user(
+        request.cookies.get(COOKIE_NAME),
+    )
+    if user.must_change_password or user.status != "active":
+        raise HTTPException(status_code=403, detail="Account unavailable")
+    async with request.app.state.database.session() as session:
+        project = await session.get(PlatformProject, project_id)
+        if (project is None or project.status != "active"
+                or project.access_mode != "remote_published"):
+            raise HTTPException(status_code=404, detail="Project unavailable")
+        device = await session.get(Device, project.device_id)
+        level = await effective_project_access(session, user.id, project_id)
+        device_id, host_project_id = project.device_id, project.host_project_id
+    if level is None or device is None or device.status != "active":
+        raise HTTPException(status_code=403, detail="Project access denied")
+    if not request.app.state.control_connections.is_online(device_id):
+        raise HTTPException(status_code=409, detail="Device is offline")
+    origin = request.app.state.settings.public_origin
+    if origin is None:
+        raise HTTPException(status_code=503, detail="Public Gateway origin is not configured")
+    host = f"d-{device_id}.{urlsplit(origin).hostname}"
+    ticket = request.app.state.gateway_signer.sign_project_access_ticket(
+        gateway_id=request.app.state.settings.gateway_id, device_id=device_id,
+        user_id=user.id, audience=host, project_id=project_id,
+        host_project_id=host_project_id, access_level=level,
+    )
+    return {"url": f"https://{host}/", "ticket": ticket, "expires_in": 60,
+            "project_id": project_id, "access_level": level}
 
 
 @router.get("/projects")
