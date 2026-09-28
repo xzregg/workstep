@@ -77,6 +77,11 @@ body {
 .gateway-share-facts dt { color: #6e6e73; font-size: 12px; }
 .gateway-share-facts dd { margin: 4px 0 0; }
 .gateway-share-description { white-space: pre-wrap; line-height: 1.6; overflow-wrap: anywhere; }
+.gateway-share-messages { margin-top: 30px; padding-top: 16px; border-top: 1px solid #e8e8ed; }
+.gateway-share-message { margin: 14px 0; padding: 16px; border: 1px solid #e8e8ed; border-radius: 12px; }
+.gateway-share-message-meta { display: flex; flex-wrap: wrap; gap: 10px; color: #6e6e73; font-size: 13px; }
+.gateway-share-message-meta strong { color: #1d1d1f; }
+.gateway-share-message-content { margin-top: 12px; white-space: pre-wrap; line-height: 1.6; overflow-wrap: anywhere; }
 .gateway-share-spinner {
   width: 14px;
   height: 14px;

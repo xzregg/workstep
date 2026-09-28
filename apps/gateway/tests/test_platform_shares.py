@@ -100,6 +100,8 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
                 await authorization_check()
                 captured["ticket"] = share_ticket
                 captured["path"] = target_path
+                if target_path == "/api/platform-share/history":
+                    return JSONResponse({"messages": [{"id": "message-1", "content": "Visible"}]})
                 return JSONResponse({"id": "task-1", "title": "Shared task"})
 
         async def request_data(device_id):
@@ -112,6 +114,10 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         assert task.status_code == 200, task.text
         assert task.json()["id"] == "task-1"
         assert captured["path"] == "/api/platform-share/task"
+        history = client.get(f"/api/public/shares/{token}/history")
+        assert history.status_code == 200, history.text
+        assert history.json()["messages"][0]["content"] == "Visible"
+        assert captured["path"] == "/api/platform-share/history"
         import base64
         import json
         claims = json.loads(base64.urlsafe_b64decode(captured["ticket"].split(".")[1] + "==="))
@@ -122,6 +128,7 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         client.cookies.clear()
         assert client.get(f"/api/public/shares/{token}/session").status_code == 401
         assert client.get(f"/api/public/shares/{token}/task").status_code == 401
+        assert client.get(f"/api/public/shares/{token}/history").status_code == 401
 
         login = client.post("/api/auth/login", json={
             "username": "owner", "password": "OwnerPassphrase-2026!",
@@ -139,6 +146,7 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
                            domain="gateway.test", path="/")
         assert client.get(f"/api/public/shares/{token}/session").status_code == 404
         assert client.get(f"/api/public/shares/{token}/task").status_code == 404
+        assert client.get(f"/api/public/shares/{token}/history").status_code == 404
 
         client.cookies.clear()
         owner_login = client.post("/api/auth/login", json={
