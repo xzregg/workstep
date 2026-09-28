@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 
 export type AdminDevice = { id: string; name: string; status: string; online: boolean;
-  daemon_health?: boolean | null; version: string; app_instance_id: string }
+  daemon_health?: boolean | null; version: string | null; app_instance_id: string | null;
+  latest_version?: string | null; update_available?: boolean | null }
 export type DeviceAction = 'approve' | 'disable' | 'revoke'
 
 const actionLabel: Record<DeviceAction, string> = { approve: '批准', disable: '停用', revoke: '撤销' }

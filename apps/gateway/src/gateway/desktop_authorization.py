@@ -63,7 +63,8 @@ class DesktopAuthorizationService:
 
     async def redeem(self, *, code: str, state: str, nonce: str, verifier: str,
                      app_instance_id: str, gateway_id: str, device_public_key: str,
-                     device_name: str, version: str,
+                     device_name: str, version: str, os: str | None = None,
+                     arch: str | None = None,
                      rotation_signature: str | None = None) -> tuple[User, Device, str | None]:
         if gateway_id != self.gateway_id:
             raise HTTPException(status_code=403, detail="Wrong Gateway")
@@ -127,12 +128,15 @@ class DesktopAuthorizationService:
                     device = Device(
                         id=str(uuid4()), name=device_name, public_key=canonical_key,
                         public_key_fingerprint=fingerprint, app_instance_id=app_instance_id,
-                        version=version, status="pending",
+                        version=version, os=os, arch=arch, status="pending",
                     )
                     session.add(device)
                 else:
                     device.name = device_name
                     device.version = version
+                    if os is not None and arch is not None:
+                        device.os = os
+                        device.arch = arch
                 linkage = await session.scalar(select(UserDevice).where(
                     UserDevice.user_id == user.id,
                     UserDevice.device_id == device.id,

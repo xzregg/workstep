@@ -81,7 +81,7 @@ function verifyDeviceAuthorization(token, publicKeyPem, expectedFingerprint, gat
 }
 
 async function exchangeDesktopCode({ pending, code, managed, devicePublicKey, deviceName,
-  version, rotationSignature, fetchImpl = fetch }) {
+  version, os, arch, rotationSignature, fetchImpl = fetch }) {
   if (managed.gateway_origin !== pending.gatewayOrigin || managed.gateway_id !== pending.gatewayId) {
     throw new Error('Managed Gateway binding mismatch')
   }
@@ -105,6 +105,7 @@ async function exchangeDesktopCode({ pending, code, managed, devicePublicKey, de
       code, state: pending.state, nonce: pending.nonce, code_verifier: pending.verifier,
       app_instance_id: pending.appInstanceId, gateway_id: pending.gatewayId,
       device_public_key: devicePublicKey, device_name: deviceName, version,
+      ...(os && arch ? { os, arch } : {}),
       ...(rotationSignature ? { rotation_signature: rotationSignature } : {}),
     }),
   })

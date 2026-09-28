@@ -1,15 +1,18 @@
 """Browser authorization and native Desktop PKCE exchange."""
 
 import re
+from typing import Literal
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
+from packaging.version import InvalidVersion, Version
+from sqlalchemy import select, tuple_
 
 from .desktop_authorization import DesktopAuthorizationService
 from .identity import COOKIE_NAME, IdentityService, public_user
 from .identity_api import _check_csrf, _super_admin_read, _super_admin_request
-from typing import Literal
+from .models import ClientRelease
 
 router = APIRouter(prefix="/api")
 
@@ -39,6 +42,8 @@ class DesktopTokenInput(BaseModel):
     device_public_key: str = Field(min_length=32, max_length=4096)
     device_name: str = Field(min_length=1, max_length=256)
     version: str = Field(min_length=1, max_length=64)
+    os: Literal["macos", "windows", "linux"] | None = None
+    arch: Literal["arm64", "x64"] | None = None
     rotation_signature: str | None = Field(default=None, max_length=256)
 
 
@@ -79,6 +84,7 @@ async def redeem_desktop_code(request: Request, body: DesktopTokenInput):
         verifier=body.code_verifier, app_instance_id=body.app_instance_id,
         gateway_id=body.gateway_id, device_public_key=body.device_public_key,
         device_name=body.device_name, version=body.version,
+        os=body.os if body.arch else None, arch=body.arch if body.os else None,
         rotation_signature=body.rotation_signature,
     )
     return {"user": public_user(user),
@@ -103,11 +109,47 @@ async def list_devices(request: Request, status: Literal["pending", "active", "d
     await _super_admin_read(request)
     devices, total = await _service(request).list_devices(
         status=status, q=q, sort=sort, direction=direction, page=page, page_size=page_size)
-    return {"devices": [{"id": device.id, "name": device.name, "status": device.status,
-                         "online": request.app.state.control_connections.is_online(device.id),
-                         "daemon_health": request.app.state.control_connections.daemon_health(device.id),
-                         "version": device.version, "app_instance_id": device.app_instance_id}
-                        for device in devices], "total": total, "page": page, "page_size": page_size}
+    platforms = {(device.os, device.arch) for device in devices if device.os and device.arch}
+    latest: dict[tuple[str, str], tuple[Version, str]] = {}
+    if platforms:
+        async with request.app.state.database.session() as session:
+            releases = (await session.scalars(select(ClientRelease).where(
+                ClientRelease.gateway_id == request.app.state.settings.gateway_id,
+                ClientRelease.status == "published",
+                tuple_(ClientRelease.os, ClientRelease.arch).in_(platforms),
+            ))).all()
+        for release in releases:
+            platform = (release.os, release.arch)
+            if platform not in platforms:
+                continue
+            try:
+                parsed = Version(release.version)
+            except InvalidVersion:
+                continue
+            if platform not in latest or parsed > latest[platform][0]:
+                latest[platform] = (parsed, release.version)
+
+    def release_status(device):
+        current = latest.get((device.os, device.arch))
+        if current is None:
+            return None, None
+        try:
+            return current[1], Version(device.version) < current[0]
+        except (InvalidVersion, TypeError):
+            return current[1], None
+
+    result = []
+    for device in devices:
+        latest_version, update_available = release_status(device)
+        result.append({
+            "id": device.id, "name": device.name, "status": device.status,
+            "online": request.app.state.control_connections.is_online(device.id),
+            "daemon_health": request.app.state.control_connections.daemon_health(device.id),
+            "version": device.version, "os": device.os, "arch": device.arch,
+            "latest_version": latest_version, "update_available": update_available,
+            "app_instance_id": device.app_instance_id,
+        })
+    return {"devices": result, "total": total, "page": page, "page_size": page_size}
 
 
 async def _device_admin(request: Request):

@@ -68,11 +68,14 @@ def test_desktop_code_is_digest_only_single_use_and_binds_pkce_state_gateway(tmp
         assert _redeem(client, code, _public_key(), state="wrong-state-0123456789ABCDEFGHIJKLMNOP").status_code == 403
         assert _redeem(client, code, _public_key(), app_instance_id="other-instance").status_code == 403
         assert _redeem(client, code, _public_key(), gateway_id="wrong-gateway").status_code == 403
-        result = _redeem(client, code, _public_key())
+        assert _redeem(client, code, _public_key(), os="darwin", arch="arm64").status_code == 422
+        result = _redeem(client, code, _public_key(), os="macos", arch="arm64")
         assert result.status_code == 200, result.text
         assert result.json()["device"]["status"] == "pending"
         assert result.json()["user"]["username"] == "owner"
         assert result.json()["device_authorization"] is None
+        listed = client.get("/api/admin/devices?status=pending").json()["devices"][0]
+        assert (listed["os"], listed["arch"]) == ("macos", "arm64")
         assert _redeem(client, code, _public_key()).status_code == 409
 
 
