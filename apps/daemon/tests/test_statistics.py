@@ -296,8 +296,11 @@ def test_statistics_groups_task_and_chat_usage_by_user(statistics_fixture):
     assert workflow is not None
     with manager.activate_project_by_id(project.id):
         task_message = Message.get_by_id("message-execution")
-        task_message.author_id = "user-a"
-        task_message.author_name = "小王"
+        task_message.author_id = "codex"
+        task_message.author_name = "Codex"
+        task_message.author_type = "assistant"
+        task_message.initiated_by_user_id = "user-a"
+        task_message.initiated_by_username = "小王"
         task_message.save()
         Message.update(author_id="user-b", author_name="小李").where(
             Message.id.in_(["message-review", "message-coordinator"])
@@ -318,8 +321,11 @@ def test_statistics_groups_task_and_chat_usage_by_user(statistics_fixture):
             session=session,
             role="assistant",
             content="完成",
-            author_id="user-a",
-            author_name="小王",
+            author_id="codex",
+            author_name="Codex",
+            author_type="assistant",
+            initiated_by_user_id="user-a",
+            initiated_by_username="小王",
             status="succeeded",
             engine="codex",
             model="gpt-5",

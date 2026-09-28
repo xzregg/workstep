@@ -27,7 +27,11 @@ def current_actor_message_fields() -> dict[str, str]:
         return {}
     return {
         "author_id": actor.actor_id,
+        "author_username": actor.user_name,
         "author_name": actor.user_name,
+        "author_type": "user",
+        "initiated_by_user_id": actor.actor_id,
+        "initiated_by_username": actor.user_name,
         "author_device_id": actor.device_id,
         "author_device_name": actor.device_name,
     }
@@ -48,22 +52,19 @@ def current_actor_task_fields() -> dict[str, str]:
     }
 
 
-_AUTHOR_FIELDS = (
-    "author_id",
-    "author_name",
-    "author_device_id",
-    "author_device_name",
-)
-
-
 def _message_author_fields(message: Message | None) -> dict[str, str]:
     if message is None:
         return {}
-    return {
-        field: value
-        for field in _AUTHOR_FIELDS
-        if (value := getattr(message, field, None))
-    }
+    automated = message.author_type in {"assistant", "system", "scheduler"}
+    user_id = (message.initiated_by_user_id if automated else message.author_id)
+    username = (message.initiated_by_username if automated else
+                (message.author_username or message.author_name))
+    return {key: value for key, value in {
+        "initiated_by_user_id": user_id,
+        "initiated_by_username": username,
+        "author_device_id": message.author_device_id,
+        "author_device_name": message.author_device_name,
+    }.items() if value}
 
 
 def attributed_actor_message_fields(
@@ -113,11 +114,11 @@ def attributed_actor_message_fields(
                 .first()
             )
     fields = _message_author_fields(source)
-    if fields:
+    if fields.get("initiated_by_user_id") or fields.get("initiated_by_username"):
         return fields
     return {
-        "author_id": task.creator_id,
-        "author_name": task.creator_name,
+        "initiated_by_user_id": task.creator_id,
+        "initiated_by_username": task.creator_name,
         "author_device_id": task.creator_device_id,
         "author_device_name": task.creator_device_name,
     } if task.creator_name else {}
@@ -194,6 +195,9 @@ def create_task_message(*, task: Task, channel: str, **fields) -> Message:
         if not provided_name or provided_name == actor_fields.get("author_name"):
             for key, value in actor_fields.items():
                 fields.setdefault(key, value)
+        fields.setdefault("author_type", "user")
+        fields.setdefault("initiated_by_user_id", fields.get("author_id"))
+        fields.setdefault("initiated_by_username", fields.get("author_username"))
     elif fields.get("role") == "assistant":
         actor_fields = attributed_actor_message_fields(
             task,
@@ -203,6 +207,13 @@ def create_task_message(*, task: Task, channel: str, **fields) -> Message:
         )
         for key, value in actor_fields.items():
             fields.setdefault(key, value)
+        engine = str(fields.get("engine") or "assistant")
+        fields.update(
+            author_id=engine,
+            author_username=engine,
+            author_name=engine,
+            author_type="assistant",
+        )
     return Message.create(
         task=task,
         channel=channel,

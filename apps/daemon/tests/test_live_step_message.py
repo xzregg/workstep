@@ -504,8 +504,10 @@ async def test_runner_splits_step_message_on_live_insert(tmp_path, monkeypatch):
         assert pre_insert.run_status == "succeeded"
         assert post_insert.run_status == "succeeded"
         assert inserted.author_name == "阶段操作人"
-        assert post_insert.author_id == "user-live"
-        assert post_insert.author_name == "阶段操作人"
+        assert post_insert.author_id == "claude"
+        assert post_insert.author_type == "assistant"
+        assert post_insert.initiated_by_user_id == "user-live"
+        assert post_insert.initiated_by_username == "阶段操作人"
         assert json.loads(post_insert.prompt_json)["prompt"] == (
             "## Triggered by\n阶段操作人\n\n## User message\n插入内容"
         )

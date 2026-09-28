@@ -405,6 +405,16 @@ class CoordinatorModule:
                     created_at=now,
                     **actor_fields,
                 )
+                assistant_fields = {
+                    "author_id": engine,
+                    "author_username": engine,
+                    "author_name": engine,
+                    "author_type": "assistant",
+                    "initiated_by_user_id": actor_fields.get("author_id"),
+                    "initiated_by_username": actor_fields.get("author_username"),
+                    "author_device_id": actor_fields.get("author_device_id"),
+                    "author_device_name": actor_fields.get("author_device_name"),
+                }
                 assistant_message = Message.create(
                     id=assistant_message_id,
                     task=current,
@@ -422,7 +432,7 @@ class CoordinatorModule:
                     event_log_path=journal_ref.relative_path,
                     position=1,
                     created_at=now,
-                    **actor_fields,
+                    **assistant_fields,
                 )
                 CoordinatorTurn.create(
                     id=turn_id,
