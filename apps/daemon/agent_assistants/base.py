@@ -12,6 +12,7 @@ Adding a new assistant only requires registering an ``AssistantConfig``
 """
 
 import asyncio
+from copy import deepcopy
 import inspect
 import json
 import logging
@@ -1871,19 +1872,14 @@ class AssistantRuntime:
         from main import gateway_client
         from services.messages import extract_usage_json
 
-        selected = str(self._turn_states.get(turn_id, {}).get("resolved_provider_id") or "")
-        engine = await asyncio.to_thread(create_engine, session.engine)
-        resolve_provider_id = getattr(engine, "resolve_provider_id", None)
-        if callable(resolve_provider_id):
-            selected = await asyncio.to_thread(resolve_provider_id, selected)
-        provider_snapshot = None
-        if selected:
-            def load_provider():
-                provider = config_store.get_provider(selected)
-                return ({key: provider.get(key) for key in
-                         ("id", "prices", "managed_revision")}
-                        if provider else None)
-            provider_snapshot = await asyncio.to_thread(load_provider)
+        state = self._turn_states.get(turn_id, {})
+        if "usage_provider_id" in state:
+            selected = state["usage_provider_id"]
+            provider_snapshot = state["usage_provider_snapshot"]
+        else:
+            selected, provider_snapshot = await self._usage_provider_snapshot(
+                session.engine, str(state.get("resolved_provider_id") or ""),
+            )
         await gateway_client.record_message_usage(
             project_id=session.project_id or None,
             task_id=session.scope_key if self._config.scope == SCOPE_TASK else None,
@@ -1893,6 +1889,22 @@ class AssistantRuntime:
             usage_json=extract_usage_json(message.get("events") or []),
             user_id=message.get("initiated_by_user_id"), session_id=session.session_id,
         )
+
+    async def _usage_provider_snapshot(self, engine_id: str,
+                                       selected: str) -> tuple[str, dict | None]:
+        engine = await asyncio.to_thread(create_engine, engine_id)
+        resolve_provider_id = getattr(engine, "resolve_provider_id", None)
+        if callable(resolve_provider_id):
+            selected = await asyncio.to_thread(resolve_provider_id, selected)
+        provider_snapshot = None
+        if selected:
+            def load_provider():
+                provider = config_store.get_provider(selected)
+                return (deepcopy({key: provider.get(key) for key in
+                                  ("id", "prices", "managed_revision")})
+                        if provider else None)
+            provider_snapshot = await asyncio.to_thread(load_provider)
+        return selected, provider_snapshot
 
     async def _record_journal_event(
         self,
@@ -2054,6 +2066,11 @@ class AssistantRuntime:
         )
         if run_key:
             turn_state["resolved_provider_id"] = provider_id
+            selected, snapshot = await self._usage_provider_snapshot(
+                engine_id, provider_id,
+            )
+            turn_state["usage_provider_id"] = selected
+            turn_state["usage_provider_snapshot"] = snapshot
         return await invoke_engine(
             engine_id,
             model,
