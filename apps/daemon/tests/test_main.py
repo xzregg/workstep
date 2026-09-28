@@ -343,3 +343,22 @@ async def test_project_websocket_subscription_cannot_escape_project_or_send_comm
         }), sub, q)
     finally:
         event_bus.unsubscribe(q)
+
+
+@pytest.mark.anyio
+async def test_task_runner_events_carry_executor_project_into_agui_feed():
+    from services.task_runner import TaskRunner
+    from types import SimpleNamespace
+
+    runner = object.__new__(TaskRunner)
+    runner._event_bus = event_bus
+    runner._database_executor = SimpleNamespace(project_id="project-1")
+    q = event_bus.subscribe(lambda event: event.get("project_id") == "project-1")
+    try:
+        await runner._publish("task-1", "do", {
+            "type": "status", "data": {"status": "running", "task_id": "task-1"},
+        })
+        assert not q.empty()
+        assert (await q.get())["project_id"] == "project-1"
+    finally:
+        event_bus.unsubscribe(q)
