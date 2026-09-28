@@ -116,6 +116,31 @@ class GatewaySigner:
                                         host_project_id=host_project_id,
                                         access_level=access_level)
 
+    def sign_platform_share_ticket(self, *, gateway_id: str, device_id: str,
+                                   share_id: str, project_id: str,
+                                   host_project_id: str, task_id: str,
+                                   mode: str) -> str:
+        if mode not in ("read_only", "interactive"):
+            raise ValueError("Invalid platform share mode")
+        for value, limit in ((share_id, 128), (project_id, 64),
+                             (host_project_id, 128), (task_id, 128)):
+            if (not isinstance(value, str) or not value or len(value) > limit
+                    or not value[0].isalnum()
+                    or any(not (char.isascii() and (char.isalnum() or char in "_-"))
+                           for char in value)):
+                raise ValueError("Invalid platform share scope")
+        now = int(time.time())
+        header = _b64(json.dumps({"alg": "EdDSA", "typ": "JWT"}, separators=(",", ":")).encode())
+        payload = _b64(json.dumps({
+            "iss": gateway_id, "gateway_id": gateway_id, "kind": "platform.share",
+            "aud": device_id, "device_id": device_id, "share_id": share_id,
+            "project_id": project_id, "host_project_id": host_project_id,
+            "task_id": task_id, "mode": mode,
+            "jti": secrets.token_urlsafe(24), "iat": now, "exp": now + 60,
+        }, separators=(",", ":"), sort_keys=True).encode())
+        signing_input = f"{header}.{payload}"
+        return f"{signing_input}.{_b64(self.private_key.sign(signing_input.encode()))}"
+
     def _sign_access_ticket(self, *, gateway_id: str, device_id: str,
                             user_id: str, audience: str, kind: str,
                             **scope) -> str:

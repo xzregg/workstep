@@ -118,6 +118,16 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
         managed = gateway_client is not None and getattr(gateway_client, "managed_config", None) is not None
         actor = request.scope.get("gateway_remote_actor")
         remote_bridge = actor is not None and managed
+        share_scope = request.scope.get("gateway_share_scope")
+        if managed and (share_scope is not None or request.url.path.startswith("/api/platform-share/")):
+            if (not remote_bridge or not isinstance(share_scope, dict)
+                    or request.method != "GET"
+                    or request.url.path != "/api/platform-share/task"
+                    or request.url.query):
+                response = JSONResponse({"detail": "share scope denied"}, status_code=403)
+                response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+                return response
+            request.state.gateway_share_scope = share_scope
         if remote_bridge and actor.project_id is not None and not project_http_allowed(
                 request, actor.project_id, actor.project_access_level,
                 actor.remote_task_create):

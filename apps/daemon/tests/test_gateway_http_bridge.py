@@ -12,6 +12,55 @@ from services.gateway_client.bridge import ManagedHttpBridge, ManagedWebSocketBr
 from services.desktop_security import desktop_websocket_allowed
 from services.remote_access import get_current_actor
 from services.messages import current_actor_message_fields
+from tests.test_gateway_share_ticket import _ticket
+
+
+@pytest.mark.asyncio
+async def test_gateway_share_bridge_accepts_only_signed_task_scope():
+    app = FastAPI()
+    app.state.gateway_client = type("Client", (), {"managed_config": object()})()
+    app.add_middleware(DesktopSecurityMiddleware)
+
+    @app.get("/api/platform-share/task")
+    async def shared_task(request: Request):
+        return request.state.gateway_share_scope
+
+    @app.get("/api/project/private")
+    async def private_project():
+        return {"secret": True}
+
+    ticket, key, fingerprint = _ticket()
+
+    async def response(path: str, credential: str):
+        frames = []
+        async def capture(frame):
+            frames.append(frame)
+        bridge = ManagedHttpBridge(app, "share-stream", {
+            "method": "GET", "path": path, "query": "", "headers": [],
+            "share_ticket": credential,
+        }, capture, "device-1", gateway_key=key,
+            gateway_fingerprint=fingerprint, gateway_id="gateway-1")
+        bridge.start_task()
+        await asyncio.wait_for(bridge._task, timeout=1)
+        return frames
+
+    allowed = await response("/api/platform-share/task", ticket)
+    assert allowed[0].payload["status"] == 200
+    body = b"".join(base64.b64decode(frame.payload["data"])
+                    for frame in allowed if frame.payload.get("phase") == "body")
+    assert b'"task_id":"task-1"' in body
+    assert (await response("/api/project/private", ticket))[0].payload["status"] == 403
+    assert (await response("/api/platform-share/task", ticket + "x"))[0].payload["status"] == 502
+    ordinary_frames = []
+    async def capture(frame):
+        ordinary_frames.append(frame)
+    ordinary = ManagedHttpBridge(app, "ordinary", {
+        "method": "GET", "path": "/api/platform-share/task", "query": "",
+        "headers": [], "user_id": "user-1", "username": "alice",
+    }, capture, "device-1")
+    ordinary.start_task()
+    await asyncio.wait_for(ordinary._task, timeout=1)
+    assert ordinary_frames[0].payload["status"] == 403
 
 
 @pytest.mark.asyncio

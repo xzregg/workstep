@@ -68,6 +68,7 @@ class GatewayControlClient:
         self._active_socket = None
         self._project_ack_messages: asyncio.Queue | None = None
         self._project_request_lock = asyncio.Lock()
+        self._verified_gateway_key: str | None = None
 
     async def _probe_daemon_health(self) -> bool | None:
         if self.asgi_app is None:
@@ -220,6 +221,7 @@ class GatewayControlClient:
                         hello["policy_snapshot"], gateway_key, self.public_key_fingerprint,
                         self.gateway_id, device_id, self.user_id,
                     ))
+                    self._verified_gateway_key = gateway_key
                     await self._ack_policy(socket, messages, device_id)
                     await self._apply_provider_bundle(socket, messages, hello,
                                                       gateway_key, device_id)
@@ -499,7 +501,10 @@ class GatewayControlClient:
                         if self.asgi_app is None or bridge is not None or len(streams) >= 32:
                             raise ValueError("Invalid managed data stream")
                         bridge = ManagedHttpBridge(self.asgi_app, frame.stream_id,
-                                                   frame.payload, send_frame, device_id)
+                                                   frame.payload, send_frame, device_id,
+                                                   gateway_key=self._verified_gateway_key,
+                                                   gateway_fingerprint=self.public_key_fingerprint,
+                                                   gateway_id=self.gateway_id)
                         streams[frame.stream_id] = bridge
                         bridge.start_task()
                     elif frame.type == FrameType.websocket_open and frame.payload.get("phase") == "start":
