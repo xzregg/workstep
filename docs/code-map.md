@@ -2,6 +2,8 @@
 
 Gateway 平台模式阶段 0 入口：独立服务 `apps/gateway/src/gateway/app.py`、配置 `config.py`、门户路由 `apps/gateway-web/src/App.tsx`、共享协议 `packages/gateway-protocol/src/workstep_gateway_protocol/__init__.py`；daemon 仅在 `main.py` 生命周期调用 `services/gateway_client/service.py`。行为测试分别在 `apps/gateway/tests/test_app.py`、`apps/gateway-web/tests/app.test.tsx`、`packages/gateway-protocol/tests/test_protocol.py` 和 `apps/daemon/tests/test_gateway_client.py`。部署见 [Gateway 开发与部署](gateway-development.md)。
 
+Gateway 阶段 1 数据层在 `apps/gateway/src/gateway/database.py`、`models.py` 和 `migrations/`，测试见 `apps/gateway/tests/test_database.py`；受管包配置模型在共享协议包，daemon 验签在 `services/gateway_client/managed_config.py`，Desktop 验签及打包脚本在 `apps/desktop/src/managed-config.cjs` 与 `scripts/`，测试见 `apps/daemon/tests/test_gateway_managed_config.py`、`apps/desktop/tests/managed-config.test.cjs`。
+
 修改功能时先找所属模块，再沿前端页面或组件 → API → 服务 → 数据模型追踪。行为测试放在实际拥有该行为的模块附近；不要把页面、`src/api/client.ts` 或通用服务文件作为新功能的默认落点。
 
 | 功能 | Web 入口 | Daemon 入口 | 深入阅读 |

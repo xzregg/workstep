@@ -1,6 +1,7 @@
 const { randomBytes } = require('node:crypto')
 const { app, BrowserWindow, dialog, session, shell } = require('electron')
 const { autoUpdater } = require('electron-updater')
+const { managedEnvironment } = require('./managed-config.cjs')
 const {
   backendLaunch,
   protocolPath,
@@ -80,6 +81,9 @@ async function backendUrl() {
       ?? `http://127.0.0.1:${requestedPort || 8765}`
   }
   const launch = backendLaunch(process.resourcesPath)
+  const managedEnv = managedEnvironment(
+    process.resourcesPath, require('../package.json').managedGatewayRootFingerprint,
+  )
   desktopToken = randomBytes(32).toString('hex')
   const result = await startSidecar({
     ...launch,
@@ -89,6 +93,7 @@ async function backendUrl() {
       WORKSTEP_DESKTOP_RUNTIME: '1',
       WORKSTEP_DESKTOP_TOKEN: desktopToken,
       WORKSTEP_VERSION: app.getVersion(),
+      ...managedEnv,
     },
   })
   backendProcess = result.child

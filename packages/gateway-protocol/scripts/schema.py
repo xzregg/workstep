@@ -9,6 +9,8 @@ from workstep_gateway_protocol import (
     ControlEnvelope,
     Handshake,
     ProxyFrame,
+    ManagedGatewayPayload,
+    SignedManagedGatewayConfig,
 )
 
 SCHEMA = Path(__file__).resolve().parents[1] / "schema.json"
@@ -17,7 +19,7 @@ SCHEMA = Path(__file__).resolve().parents[1] / "schema.json"
 def render() -> str:
     schemas = {
         model.__name__: model.model_json_schema()
-        for model in (Handshake, ControlEnvelope, ProxyFrame)
+        for model in (Handshake, ControlEnvelope, ProxyFrame, ManagedGatewayPayload, SignedManagedGatewayConfig)
     }
     return json.dumps({"protocol_version": PROTOCOL_VERSION, "models": schemas}, indent=2, sort_keys=True) + "\n"
 

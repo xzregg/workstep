@@ -22,6 +22,7 @@ try {
   $Python = Join-Path $PythonRoot.FullName "python.exe"
   uv pip install --break-system-packages --require-hashes --python $Python `
     -r (Join-Path $DesktopDir "backend/requirements-prod.txt") `
+    -r (Join-Path $DesktopDir "backend/requirements-gateway.txt") `
     -r (Join-Path $DesktopDir "backend/requirements-bootstrap.txt")
 
   if (Test-Path $OutputDir) { Remove-Item $OutputDir -Recurse -Force }
@@ -32,6 +33,7 @@ try {
   foreach ($File in @("__init__.py", "cli.py", "main.py", "settings.py", "version.py")) {
     Copy-Item (Join-Path $DaemonDir $File) (Join-Path $OutputDir "app/daemon/$File")
   }
+  Copy-Item (Join-Path $RepoDir "packages/gateway-protocol/src/workstep_gateway_protocol") (Join-Path $OutputDir "app/daemon/workstep_gateway_protocol") -Recurse
   foreach ($RuntimeDir in @("agent_assistants", "api", "data", "engines", "models", "schemas", "services", "static", "streaming")) {
     Copy-Item (Join-Path $DaemonDir $RuntimeDir) (Join-Path $OutputDir "app/daemon/$RuntimeDir") -Recurse
   }

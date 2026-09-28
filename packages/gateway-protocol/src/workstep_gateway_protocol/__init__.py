@@ -2,8 +2,9 @@
 
 from enum import StrEnum
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 PROTOCOL_VERSION = 1
 
@@ -61,7 +62,37 @@ class ProxyFrame(BaseModel):
     payload: dict[str, Any]
 
 
+class ManagedGatewayPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    gateway_id: str = Field(min_length=1)
+    gateway_origin: str
+    gateway_public_key_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    deployment_channel: str = Field(min_length=1)
+    min_protocol_version: int = Field(ge=1)
+
+    @field_validator("gateway_origin")
+    @classmethod
+    def secure_origin(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
+            or parsed.path or parsed.query or parsed.fragment or not value.isascii()
+            or parsed.netloc != parsed.netloc.lower() or parsed.port == 443
+        ):
+            raise ValueError("gateway_origin must be an HTTPS origin")
+        return value
+
+
+class SignedManagedGatewayConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    payload: ManagedGatewayPayload
+    signature: str = Field(min_length=1)
+
+
 __all__ = [
     "PROTOCOL_VERSION", "UnsupportedProtocolVersion", "assert_protocol_version",
     "Capability", "ErrorCode", "FrameType", "Handshake", "ControlEnvelope", "ProxyFrame",
+    "ManagedGatewayPayload", "SignedManagedGatewayConfig",
 ]

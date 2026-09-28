@@ -8,6 +8,7 @@ from starlette.exceptions import HTTPException
 from workstep_gateway_protocol import PROTOCOL_VERSION
 
 from .config import GatewaySettings
+from .database import GatewayDatabase
 
 
 def create_app(settings: GatewaySettings | None = None) -> FastAPI:
@@ -15,11 +16,15 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        database = GatewayDatabase(settings)
+        await database.start()
+        app.state.database = database
         app.state.ready = True
         try:
             yield
         finally:
             app.state.ready = False
+            await database.close()
 
     app = FastAPI(title="WorkStep Gateway", lifespan=lifespan)
     app.state.ready = False
