@@ -22,7 +22,7 @@
   align-items: center;
   justify-content: flex-start;
   gap: 9px;
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--muted);
   font-size: calc(13px * var(--font-scale));

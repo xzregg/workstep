@@ -517,11 +517,13 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .task-step-prompt-empty { font-size: calc(13px * var(--font-scale)); color: var(--meta); }
 .task-detail-not-found { padding: 40px; text-align: center; color: var(--meta); }
 .task-detail-back { margin-top: 12px; }
+.task-detail-discussion-button,
 .task-detail-share-button {
   display: inline-flex; align-items: center; gap: 4px; min-height: 22px;
   padding: 0 7px; font-size: calc(11px * var(--font-scale)); color: var(--meta);
-  margin-left: auto; order: 98;
 }
+.task-detail-discussion-button { order: 97; }
+.task-detail-share-button { margin-left: auto; order: 98; }
 .task-detail-id-button {
   font-family: var(--font-mono); font-size: calc(11px * var(--font-scale));
   color: var(--meta); min-height: 22px; padding: 0 5px; order: 99;
@@ -5855,47 +5857,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
     animation: none;
   }
 }
-.channels-page {
-  flex: 1;
-  overflow: auto;
-  padding: 42px clamp(20px, 5vw, 72px);
-  background: var(--bg);
-}
-.channels-heading { max-width: 880px; margin: 0 auto 24px; }
-.channels-heading h1 { margin: 0 0 8px; font: 650 calc(26px * var(--font-scale))/1.2 var(--font-display); color: var(--fg); }
-.channels-heading p { margin: 0; color: var(--meta); font-size: calc(13px * var(--font-scale)); }
-.channels-error { max-width: 880px; margin: 0 auto 14px; padding: 10px 12px; border: 1px solid var(--danger); border-radius: 9px; color: var(--danger); }
-.channels-empty { flex: 1; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--meta); }
-.channel-card { max-width: 880px; margin: 0 auto; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); overflow: hidden; }
-.channel-card-header { min-height: 78px; display: flex; align-items: center; gap: 12px; padding: 14px 18px; }
-.channel-expand { padding: 0 !important; }
-.wechat-mark { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: #07c160; color: white; font-weight: 700; }
-.channel-card-title { flex: 1; display: flex; flex-direction: column; gap: 4px; }
-.channel-card-title strong { color: var(--fg); }
-.channel-card-title span { color: var(--meta); font-size: calc(12px * var(--font-scale)); }
-.channel-status { padding: 4px 8px; border-radius: 999px; font-size: calc(11px * var(--font-scale)); background: var(--bg); color: var(--meta); }
-.channel-status-logged_in { color: #07984d; background: color-mix(in oklab, #07c160, transparent 88%); }
-.channel-status-error { color: var(--danger); }
-.channel-toggle input { position: absolute; opacity: 0; pointer-events: none; }
-.channel-toggle span { display: block; width: 38px; height: 22px; border-radius: 999px; background: var(--border); position: relative; cursor: pointer; transition: background .15s; }
-.channel-toggle span::after { content: ''; position: absolute; width: 18px; height: 18px; left: 2px; top: 2px; border-radius: 50%; background: white; transition: transform .15s; box-shadow: 0 1px 3px #0004; }
-.channel-toggle input:checked + span { background: var(--accent); }
-.channel-toggle input:checked + span::after { transform: translateX(16px); }
-.channel-toggle input:disabled + span { cursor: not-allowed; opacity: .5; }
-.channel-card-body { border-top: 1px solid var(--border-soft); padding: 20px; display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 24px; }
-.channel-fields { display: grid; gap: 16px; }
-.channel-account-row { min-height: 36px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--fg-2); }
-.channel-qr-panel { min-height: 220px; border: 1px dashed var(--border); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--meta); text-align: center; font-size: calc(12px * var(--font-scale)); }
-.channel-qr-panel img { width: 176px; height: 176px; object-fit: contain; background: white; border-radius: 8px; }
-.channel-qr-failed-icon { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: color-mix(in oklab, var(--danger), transparent 88%); color: var(--danger); font-weight: 700; font-size: calc(20px * var(--font-scale)); }
-.channel-qr-error { color: var(--danger); max-width: 200px; word-break: break-word; }
-@media (max-width: 700px) {
-  .channels-page { padding: 22px 14px; }
-  .channel-card-header { padding: 12px; gap: 9px; }
-  .channel-card-body { grid-template-columns: 1fr; }
-  .channel-status { display: none; }
-}
-
 .chat-session-rename-form {
   display: flex;
   flex-direction: column;

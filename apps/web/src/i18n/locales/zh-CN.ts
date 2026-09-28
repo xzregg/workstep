@@ -1,4 +1,21 @@
 export const zhCN = {
+  channelBot: {
+    title: '渠道机器人', intro: '通过官方长连接接入企业微信智能机器人或钉钉 Stream 机器人。群可绑定任务，消息会进入该任务的协调助手。',
+    wecom: '企业微信', dingtalk: '钉钉', platform: '平台', name: '机器人名称',
+    add: '添加机器人', edit: '编辑机器人', empty: '尚未添加机器人',
+    keepSecret: '留空则保持原密钥', defaultTarget: '默认绑定', none: '不绑定', project: '项目', task: '任务',
+    selectProject: '选择项目', selectTask: '选择任务', enabled: '启用长连接',
+    wecomHint: '在企业微信智能机器人配置中选择长连接，复制 Bot ID 和 Secret；将机器人加入群后，在任务详情绑定群标识。',
+    dingtalkHint: '在钉钉开发者后台创建应用并启用 Stream 模式机器人，复制 Client ID 和 Client Secret；将机器人加入群后绑定群标识。',
+    deleteTitle: '删除机器人', deleteHint: '删除后，该机器人的群绑定也会移除。',
+    discussionGroups: '讨论群', discussionHint: '将群标识绑定到此任务。群内消息会交给此任务的协调助手。',
+    noGroups: '此任务尚未绑定讨论群', robot: '机器人', groupId: '群标识',
+    noBots: '请先在全局设置添加并启用机器人。',
+    groupIdHint: '机器人收到群消息后，最近的群标识会出现在输入建议中；也可以手动粘贴。',
+    bind: '绑定群', unbind: '解绑', unbindHint: '解绑后，此群不再进入此任务。',
+    discardTitle: '放弃未保存的群标识？', discardHint: '当前填写的群标识尚未绑定。',
+    status: { connected: '已连接', connecting: '连接中', reconnecting: '重连中', disabled: '未启用', error: '连接失败' },
+  },
   git: {
     recoveryButton: '撤销与还原',
     recoveryTitle: '恢复历史',

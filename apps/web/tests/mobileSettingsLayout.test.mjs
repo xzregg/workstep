@@ -18,7 +18,7 @@ test('mobile switches and checkbox rows align to the shared button height', () =
   assert.match(mobileCss, /input\[type="checkbox"\]:not\(\[role="switch"\]\)\s*\{[^}]*width:\s*16px[^}]*height:\s*16px/s)
   assert.match(mobileCss, /input\[type="checkbox"\]\[role="switch"\]\s*\{[^}]*appearance:\s*none[^}]*width:\s*52px[^}]*height:\s*var\(--mobile-button-height\)/s)
   assert.match(mobileCss, /label:has\(> input\[type="checkbox"\]\)\s*\{[^}]*min-height:\s*var\(--mobile-button-height\)/s)
-  assert.match(mobileCss, /\.provider-protocol-switch,[\s\S]*?\.channel-toggle span\s*\{[^}]*width:\s*52px[^}]*height:\s*var\(--mobile-button-height\)/s)
+  assert.match(mobileCss, /\.provider-protocol-switch\s*\{[^}]*width:\s*52px[^}]*height:\s*var\(--mobile-button-height\)/s)
 })
 
 test('provider settings stack heading, actions and card controls on mobile', () => {

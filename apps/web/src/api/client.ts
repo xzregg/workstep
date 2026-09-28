@@ -248,64 +248,6 @@ export const assistantApi = {
     ),
 }
 
-// --- Channels API ---
-
-export type ChannelStatus = 'logged_in' | 'not_logged_in' | 'connecting' | 'error' | 'stopped'
-
-export interface ChannelInfo {
-  id: string
-  channel_type: string
-  display_name: string
-  icon: string
-  enabled: boolean
-  status: ChannelStatus
-  account_id: string | null
-  assistant_id: string
-  model: string
-  config: Record<string, unknown>
-  error_message: string | null
-  qr_code?: string | null
-}
-
-export interface ChannelLoginResult {
-  status: 'pending' | 'success' | 'expired' | 'failed' | 'not_started'
-  qr_code: string | null
-  account_id: string | null
-  error: string | null
-}
-
-export const channelApi = {
-  list: (projectId: string) => request<ChannelInfo[]>(
-    `/channels?project_id=${encodeURIComponent(projectId)}`,
-  ),
-  update: (channelId: string, projectId: string, config: {
-    enabled: boolean
-    assistantId: string
-    model: string
-    extra?: Record<string, unknown>
-  }) => request<ChannelInfo>(`/channels/${encodeURIComponent(channelId)}/config`, {
-    method: 'PUT',
-    body: JSON.stringify({
-      project_id: projectId,
-      enabled: config.enabled,
-      assistant_id: config.assistantId,
-      model: config.model,
-      config: config.extra ?? {},
-    }),
-  }),
-  login: (projectId: string) => request<ChannelLoginResult>(
-    `/channels/wechat/login?project_id=${encodeURIComponent(projectId)}`,
-    { method: 'POST' },
-  ),
-  loginStatus: (projectId: string) => request<ChannelLoginResult>(
-    `/channels/wechat/login-status?project_id=${encodeURIComponent(projectId)}`,
-  ),
-  logout: (projectId: string) => request<{ status: 'success' }>(
-    `/channels/wechat/logout?project_id=${encodeURIComponent(projectId)}`,
-    { method: 'POST' },
-  ),
-}
-
 // --- File System API ---
 
 export interface FilePreview {

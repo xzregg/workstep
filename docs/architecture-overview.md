@@ -10,7 +10,7 @@ WorkStep 是本地优先的工作流编排工具：项目与执行数据全部�
 - **web**（`apps/web`，React + TypeScript + Vite + Zustand）：任务列表、流程画布、聊天、设置与实时状态 UI；生产环境由 daemon 托管静态资源。
 - **desktop**（`apps/desktop`，Electron）：打包内置 Python 运行时与 daemon 源码；sidecar 只监听 127.0.0.1，随机令牌由主进程注入，渲染进程不可读取。
 
-daemon 默认监听 8765 端口提供 API 与 WebSocket；开发模式下 web 通过 Vite 开发服务器（5173）连接本地 daemon。仓库中另有 landing、wechat-bridge 等辅助子应用，不属于核心编排链路。
+daemon 默认监听 8765 端口提供 API 与 WebSocket；开发模式下 web 通过 Vite 开发服务器（5173）连接本地 daemon。仓库中另有 landing 等辅助子应用，不属于核心编排链路。
 
 事件流有一条清晰的协议边界：**引擎 → 编排层是 ACP 词汇**（`InternalEvent`，定义于 `engines/core/events.py`），**编排层 → 前端是 AG-UI**（`engines/core/agui.py` 是唯一翻译层，实时推送与历史回放共用同一路径）。前端 store 只消费 AG-UI，不直接解释引擎私有事件。
 
@@ -64,7 +64,7 @@ flowchart TB
 - **消息**：`messages` 保存可见正文与摘要；完整事件日志落盘到 `.workstep/event_logs/` 的 JSONL 文件，表内只留 `event_log_path` 等摘要信息。
 - **产物**：步骤产物按工作流、任务、步骤、轮次的目录结构存放在 `.workstep/artifacts/`，每轮目录内含 `manifest.json` 与产物文件；没有独立的产物数据表。
 - **助手与会话**：`chat_sessions` / `chat_messages`（会话聊天）；`coordinator_sessions` / `coordinator_turns` / `action_proposals`（协调助手）。
-- **其他**：`schedules`（定时任务）、`task_shares` / `channels`（分享与渠道）、`project_settings`。
+- **其他**：`schedules`（定时任务）、`task_shares`（分享）、`project_settings`；`channels` 与 `channel_chat_mappings` 是旧个人微信渠道的历史兼容表。
 
 关系上：`Task` 1→N `WorkflowRun`（每次运行或局部重跑），`WorkflowRun` 1→N `StepRun`（步骤 attempt）与 `ReviewRun`（审核 attempt）。`TaskStep` 是可变的当前状态投影，`StepRun` / `ReviewRun` 是追加式不可变历史——局部重跑必须新建子 `WorkflowRun`，不改写父运行的历史。工作流状态由 Task、WorkflowRun、TaskStep、StepRun、ReviewRun 五层共同组成，任何非终态都有自动或人工的收敛路径。
 

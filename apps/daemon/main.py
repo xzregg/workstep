@@ -50,7 +50,7 @@ from services.git import git_service
 from api.skills import router as skills_router
 from api.project_settings import router as project_settings_router
 from api.pending_message_inserts import router as pending_message_inserts_router
-from api.channels import router as channels_router
+from api.channel_bots import router as channel_bots_router, task_group_router
 import api.remote_project as remote_project_api
 from api.remote_project import router as remote_project_router
 from services.project import project_manager
@@ -66,7 +66,8 @@ from services.schedule import ScheduleModule
 from services.observability import configure_observability, instrument_fastapi
 from agent_assistants.chat_session import ChatSessionModule
 from agent_assistants.channel_chat import ChannelChatModule
-from services.channels.manager import ChannelManager
+from services.channels.bots import BotManager
+from services.channels.responder import ChatSessionResponder
 from streaming.ws import (
     WsSubscription,
     _handle_client_message,
@@ -123,13 +124,13 @@ task_draft_module: TaskDraftModule | None = None
 schedule_module: ScheduleModule | None = None
 chat_session_module: ChatSessionModule | None = None
 channel_chat_module: ChannelChatModule | None = None
-channel_manager: ChannelManager | None = None
+channel_bot_manager: BotManager | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
-    global task_service, workflow_runtime, coordinator_module, workflow_gen_module, task_draft_module, schedule_module, chat_session_module, channel_chat_module, channel_manager
+    global task_service, workflow_runtime, coordinator_module, workflow_gen_module, task_draft_module, schedule_module, chat_session_module, channel_chat_module, channel_bot_manager
     logger.info("WorkStep Daemon starting on %s:%d", settings.host, settings.port)
     await asyncio.to_thread(config_store.migrate_legacy_config)
     await asyncio.to_thread(ensure_global_templates)
@@ -175,13 +176,11 @@ async def lifespan(app: FastAPI):
     )
     chat_session_module = ChatSessionModule(event_bus, project_manager)
     channel_chat_module = ChannelChatModule(event_bus, project_manager)
-    from services.channels.responder import ChatSessionResponder
-    channel_manager = ChannelManager(
-        event_bus,
-        project_manager,
+    channel_bot_manager = BotManager(
+        config_store, project_manager, event_bus, coordinator_module,
         ChatSessionResponder(event_bus, project_manager, channel_chat_module),
     )
-    await channel_manager.start()
+    await channel_bot_manager.start()
     recovered_chats = await asyncio.to_thread(
         chat_session_module.recover_interrupted_messages
     )
@@ -204,8 +203,8 @@ async def lifespan(app: FastAPI):
             await task_draft_module.shutdown()
         if schedule_module is not None:
             await schedule_module.shutdown()
-        if channel_manager is not None:
-            await channel_manager.shutdown()
+        if channel_bot_manager is not None:
+            await channel_bot_manager.shutdown()
         if channel_chat_module is not None:
             await channel_chat_module.shutdown()
         if chat_session_module is not None:
@@ -260,11 +259,12 @@ app.include_router(task_dispatch_router)
 app.include_router(schedule_router)
 app.include_router(chat_session_router)
 app.include_router(pending_message_inserts_router)
+app.include_router(channel_bots_router)
+app.include_router(task_group_router)
 app.include_router(statistics_router)
 app.include_router(share_router)
 app.include_router(assistant_router)
 app.include_router(project_settings_router)
-app.include_router(channels_router)
 app.include_router(system_settings_router)
 app.include_router(git_router)
 app.include_router(skills_router)
