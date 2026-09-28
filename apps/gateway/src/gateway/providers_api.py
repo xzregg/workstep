@@ -98,6 +98,10 @@ class ProviderAssignInput(BaseModel):
         return value
 
 
+class ProviderDefaultInput(ProviderAssignInput):
+    enabled: bool
+
+
 async def _admin(request: Request):
     identity, actor = await _super_admin_request(request)
     _, session = await identity.session_user(request.cookies.get(COOKIE_NAME))
@@ -322,6 +326,7 @@ async def list_platform_provider_assignments(request: Request, provider_id: str,
         "id": assignment.id, "subject_type": assignment.subject_type,
         "subject_id": assignment.subject_id,
         "subject_name": username if assignment.subject_type == "user" else device_name,
+        "is_default": bool(assignment.is_default),
     } for assignment, username, device_name in assignments],
         "total": total, "page": page, "page_size": page_size}
 
@@ -352,6 +357,7 @@ async def assign_platform_provider(request: Request, provider_id: str, body: Pro
                 session.add(assignment)
             elif assignment.revoked_at is not None:
                 assignment.revoked_at = None
+                assignment.is_default = 0
             else:
                 return {"id": assignment.id, "provider_id": provider_id}
             await _bump_assigned_devices(session, body.subject_type, body.subject_id)
@@ -361,6 +367,42 @@ async def assign_platform_provider(request: Request, provider_id: str, body: Pro
                                                              "subject_type": body.subject_type,
                                                              "subject_id": body.subject_id})))
     return {"id": assignment.id, "provider_id": provider_id}
+
+
+@router.put("/{provider_id}/assign/default")
+async def set_default_platform_provider(request: Request, provider_id: str,
+                                        body: ProviderDefaultInput):
+    actor = await _admin(request)
+    async with request.app.state.database.session() as session:
+        async with session.begin():
+            provider = await session.get(PlatformProvider, provider_id)
+            if not provider or (body.enabled and not provider.enabled):
+                raise HTTPException(status_code=404, detail="Provider unavailable")
+            assignment = await session.scalar(select(ProviderAssignment).where(
+                ProviderAssignment.provider_id == provider_id,
+                ProviderAssignment.subject_type == body.subject_type,
+                ProviderAssignment.subject_id == body.subject_id,
+                ProviderAssignment.revoked_at.is_(None),
+            ))
+            if assignment is None:
+                raise HTTPException(status_code=404, detail="Active assignment required")
+            if bool(assignment.is_default) == body.enabled:
+                return {"is_default": body.enabled}
+            if body.enabled:
+                await session.execute(update(ProviderAssignment).where(
+                    ProviderAssignment.subject_type == body.subject_type,
+                    ProviderAssignment.subject_id == body.subject_id,
+                    ProviderAssignment.revoked_at.is_(None),
+                    ProviderAssignment.is_default == 1,
+                ).values(is_default=0))
+            assignment.is_default = int(body.enabled)
+            await _bump_assigned_devices(session, body.subject_type, body.subject_id)
+            session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,
+                                   action="admin.provider_default_changed", result="success",
+                                   metadata_json=json.dumps({"provider_id": provider_id,
+                                                             "subject_type": body.subject_type,
+                                                             "subject_id": body.subject_id})))
+    return {"is_default": body.enabled}
 
 
 @router.post("/{provider_id}/assign/revoke", status_code=204)
@@ -379,6 +421,7 @@ async def revoke_platform_provider_assignment(request: Request, provider_id: str
                 return
             from datetime import datetime, timezone
             assignment.revoked_at = datetime.now(timezone.utc)
+            assignment.is_default = 0
             await _bump_assigned_devices(session, body.subject_type, body.subject_id)
             session.add(AuditEvent(
                 id=str(uuid4()), user_id=actor.id, action="admin.provider_assignment_revoked",
@@ -401,6 +444,10 @@ async def disable_platform_provider(request: Request, provider_id: str):
                 return
             provider.enabled = 0
             provider.revision += 1
+            await session.execute(update(ProviderAssignment).where(
+                ProviderAssignment.provider_id == provider_id,
+                ProviderAssignment.is_default == 1,
+            ).values(is_default=0))
             await session.execute(update(Device).where(Device.status == "active").values(
                 provider_revision=Device.provider_revision + 1,
                 policy_revision=Device.policy_revision + 1,
@@ -430,6 +477,19 @@ async def compile_provider_bundle(database, signer, gateway_id: str, device_id: 
                     (ProviderAssignment.subject_type == "user") & (ProviderAssignment.subject_id == user_id),
                     (ProviderAssignment.subject_type == "device") & (ProviderAssignment.subject_id == device_id),
                 )).distinct())).all()
+        default_assignments = (await session.scalars(select(ProviderAssignment).where(
+            ProviderAssignment.is_default == 1,
+            ProviderAssignment.revoked_at.is_(None),
+            or_(
+                (ProviderAssignment.subject_type == "user") & (ProviderAssignment.subject_id == user_id),
+                (ProviderAssignment.subject_type == "device") & (ProviderAssignment.subject_id == device_id),
+            ),
+        ))).all()
+        available_ids = {provider.id for provider in providers}
+        default_provider_id = next((assignment.provider_id for scope in ("user", "device")
+                                    for assignment in default_assignments
+                                    if assignment.subject_type == scope
+                                    and assignment.provider_id in available_ids), "")
         stored = [(provider.id, provider.name, provider.type, provider.config_json,
                    provider.secret_ciphertext, provider.models_json, provider.prices_json)
                   for provider in providers]
@@ -444,7 +504,7 @@ async def compile_provider_bundle(database, signer, gateway_id: str, device_id: 
     return await asyncio.to_thread(
         signer.sign_provider_bundle, gateway_id=gateway_id, device_id=device_id,
         user_id=user_id, revision=revision, config_public_key_pem=config_public_key_pem,
-        providers=desired,
+        providers=desired, default_provider_id=default_provider_id,
     )
 
 

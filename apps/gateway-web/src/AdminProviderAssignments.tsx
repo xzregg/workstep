@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 
 type Assignment = { id: string; subject_type: 'user' | 'device'; subject_id: string;
-  subject_name: string | null }
+  subject_name: string | null; is_default: boolean }
 type Target = { id: string; name?: string; display_name?: string; username?: string }
 
 function AssignmentActionDialog({ providerId, csrf, assignment, onClose, onSaved }: {
@@ -108,6 +108,45 @@ function AssignmentActionDialog({ providerId, csrf, assignment, onClose, onSaved
   </>
 }
 
+function DefaultProviderDialog({ providerId, csrf, assignment, onClose, onSaved }: {
+  providerId: string; csrf: string; assignment: Assignment; onClose: () => void; onSaved: () => void
+}) {
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const enable = !assignment.is_default
+
+  async function submit() {
+    setBusy(true); setError('')
+    try {
+      const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
+      const step = await fetch('/api/auth/step-up', { method: 'POST', credentials: 'same-origin', headers,
+        body: JSON.stringify({ password }) })
+      if (!step.ok) throw new Error('密码验证失败。')
+      const response = await fetch(`/api/admin/providers/${encodeURIComponent(providerId)}/assign/default`, {
+        method: 'PUT', credentials: 'same-origin', headers,
+        body: JSON.stringify({ subject_type: assignment.subject_type,
+          subject_id: assignment.subject_id, enabled: enable }),
+      })
+      if (!response.ok) throw new Error('默认供应商设置失败。')
+      onSaved()
+    } catch (reason) { setError(reason instanceof Error ? reason.message : '默认供应商设置失败。') }
+    finally { setBusy(false) }
+  }
+
+  return <GatewayConfirmDialog title={enable ? '设置默认供应商' : '取消默认供应商'}
+    message={`${assignment.subject_name ?? assignment.subject_id}（${
+      assignment.subject_type === 'user' ? '用户' : 'PC'}）${
+      enable ? '将优先使用此供应商。用户默认优先于 PC 默认。' : '将不再默认使用此供应商。'}`}
+    confirmLabel={enable ? '确认设置' : '确认取消'} busy={busy} disabled={!password}
+    onConfirm={() => void submit()} onCancel={onClose}>
+    <label htmlFor="provider-default-password">输入管理员密码确认</label>
+    <input id="provider-default-password" type="password" autoComplete="current-password"
+      value={password} onChange={event => setPassword(event.target.value)} />
+    {error && <p role="alert" className="gateway-auth-error">{error}</p>}
+  </GatewayConfirmDialog>
+}
+
 export function AdminProviderAssignments({ providerId, enabled, csrf, onChanged }: {
   providerId: string; enabled: boolean; csrf: string; onChanged: () => void
 }) {
@@ -120,6 +159,7 @@ export function AdminProviderAssignments({ providerId, enabled, csrf, onChanged 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [edit, setEdit] = useState<'new' | Assignment | null>(null)
+  const [defaultEdit, setDefaultEdit] = useState<Assignment | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -153,8 +193,12 @@ export function AdminProviderAssignments({ providerId, enabled, csrf, onChanged 
     {!loading && !error && assignments.length === 0 && <p>当前条件下没有授权。</p>}
     <ul className="gateway-device-list">{assignments.map(assignment => <li key={assignment.id}>
       <div><strong>{assignment.subject_name ?? assignment.subject_id}</strong><p>{
-        assignment.subject_type === 'user' ? '用户' : 'PC'}</p></div>
-      <button type="button" onClick={() => setEdit(assignment)}>撤销</button>
+        assignment.subject_type === 'user' ? '用户' : 'PC'}</p>
+        {assignment.is_default && <span>默认供应商</span>}</div>
+      <div className="gateway-device-actions"><button type="button"
+        disabled={!enabled && !assignment.is_default} onClick={() => setDefaultEdit(assignment)}>{
+          assignment.is_default ? '取消默认' : '设为默认'}</button>
+        <button type="button" onClick={() => setEdit(assignment)}>撤销</button></div>
     </li>)}</ul>
     <div className="gateway-admin-pagination"><span>共 {total} 项授权 · 第 {page}/{
       Math.max(1, Math.ceil(total / 25))} 页</span>
@@ -163,5 +207,9 @@ export function AdminProviderAssignments({ providerId, enabled, csrf, onChanged 
         onClick={() => setPage(value => value + 1)}>下一页</button></div>
     {edit && <AssignmentActionDialog providerId={providerId} csrf={csrf}
       assignment={edit === 'new' ? undefined : edit} onClose={() => setEdit(null)} onSaved={saved} />}
+    {defaultEdit && <DefaultProviderDialog providerId={providerId} csrf={csrf}
+      assignment={defaultEdit} onClose={() => setDefaultEdit(null)} onSaved={() => {
+        setDefaultEdit(null); setRevision(value => value + 1); onChanged()
+      }} />}
   </section>
 }

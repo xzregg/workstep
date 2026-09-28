@@ -3,7 +3,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -450,13 +450,19 @@ class PlatformProvider(Base):
 
 class ProviderAssignment(Base):
     __tablename__ = "provider_assignments"
-    __table_args__ = (UniqueConstraint("provider_id", "subject_type", "subject_id"),)
+    __table_args__ = (
+        UniqueConstraint("provider_id", "subject_type", "subject_id"),
+        Index("uq_provider_assignment_default", "subject_type", "subject_id",
+              unique=True, sqlite_where=text("is_default = 1 AND revoked_at IS NULL"),
+              postgresql_where=text("is_default = 1 AND revoked_at IS NULL")),
+    )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     provider_id: Mapped[str] = mapped_column(ForeignKey("platform_providers.id"))
     subject_type: Mapped[str] = mapped_column(String(16))
     subject_id: Mapped[str] = mapped_column(String(64))
     assigned_by_user_id: Mapped[str] = mapped_column(String(64))
+    is_default: Mapped[int] = mapped_column(Integer, server_default="0")
     created_at: Mapped[datetime] = timestamp()
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

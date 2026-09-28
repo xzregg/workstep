@@ -26,7 +26,8 @@ def _b64(data):
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
 
 
-def _signed_bundle(gateway_key, recipient, *, revision=3, device_id="device-1"):
+def _signed_bundle(gateway_key, recipient, *, revision=3, device_id="device-1",
+                   default_provider_id=""):
     ephemeral = X25519PrivateKey.generate()
     key = HKDF(algorithm=hashes.SHA256(), length=32, salt=None,
                info=b"workstep-provider-device-v1").derive(
@@ -37,7 +38,8 @@ def _signed_bundle(gateway_key, recipient, *, revision=3, device_id="device-1"):
                   "api_key": "secret-api-key", "protocols": ["openai_responses"],
                   "protocol_base_urls": {"openai_responses": "https://api.example.test"}}]
     ciphertext = AESGCM(key).encrypt(
-        nonce, json.dumps({"providers": providers}).encode(),
+        nonce, json.dumps({"providers": providers,
+                           "default_provider_id": default_provider_id}).encode(),
         f"gateway-test:{device_id}:user-1:{revision}".encode(),
     )
     now = int(time.time())
@@ -62,11 +64,17 @@ def test_provider_bundle_verifies_pin_scope_revision_and_encryption():
         serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo,
     )).hexdigest()
     recipient = X25519PrivateKey.generate()
-    token = _signed_bundle(gateway_key, recipient)
+    token = _signed_bundle(gateway_key, recipient, default_provider_id="provider-1")
     bundle = verify_provider_bundle(token, pem, fingerprint, "gateway-test", "device-1",
                                     "user-1", recipient, current_revision=2)
     assert bundle.revision == 3
     assert bundle.providers[0]["api_key"] == "secret-api-key"
+    assert bundle.default_provider_id == "provider-1"
+    with pytest.raises(ValueError):
+        verify_provider_bundle(_signed_bundle(gateway_key, recipient,
+                               default_provider_id="unassigned"), pem, fingerprint,
+                               "gateway-test", "device-1", "user-1", recipient,
+                               current_revision=2)
     with pytest.raises(ValueError):
         verify_provider_bundle(token, pem, fingerprint, "gateway-test", "device-2",
                                "user-1", recipient, current_revision=2)
@@ -92,14 +100,22 @@ def test_managed_provider_apply_is_atomic_scoped_and_idempotent(tmp_path, monkey
                 "protocols": ["openai_responses"], "protocol_base_urls": {
                     "openai_responses": "https://api.example.test",
                 }, "api_key": "managed-secret", "models": ["model-a"]}]
-    assert store.apply_managed_providers("gateway-test", 1, desired) is True
+    assert store.apply_managed_providers("gateway-test", 1, desired,
+                                         default_provider_id="managed-1") is True
+    assert store.get_managed_default_provider() == "managed-1"
     assert [item["id"] for item in store.get_providers()] == ["managed-1"]
     assert store.get_provider("local-1") is None
     assert store.get_provider("managed-1")["managed_gateway_id"] == "gateway-test"
-    assert store.apply_managed_providers("gateway-test", 1, desired) is False
+    with pytest.raises(ValueError):
+        store.apply_managed_providers("gateway-test", 2, desired,
+                                      default_provider_id="unassigned")
+    assert store.get_managed_default_provider() == "managed-1"
+    assert store.apply_managed_providers("gateway-test", 1, desired,
+                                         default_provider_id="managed-1") is False
     # A second signed-in user can have a different catalog at the same device revision.
     assert store.apply_managed_providers("gateway-test", 1, [], user_id="user-2") is True
     assert store.get_providers() == []
+    assert store.get_managed_default_provider() == ""
     assert store.apply_managed_providers("gateway-test", 1, desired, user_id="user-1") is True
     with pytest.raises(PermissionError):
         store.save_provider({"id": "managed-1", "name": "Hijack", "type": "custom"})
@@ -132,8 +148,18 @@ def test_managed_provider_runtime_requires_catalog_model(tmp_path, monkeypatch):
         "protocols": ["openai_responses"],
         "protocol_base_urls": {"openai_responses": "https://api.example.test"},
         "api_key": "secret", "models": ["model-a"],
-    }])
+    }, {
+        "id": "managed-2", "name": "Explicit", "type": "custom",
+        "protocols": ["openai_responses"],
+        "protocol_base_urls": {"openai_responses": "https://api.example.test"},
+        "api_key": "secret", "models": ["model-a"],
+    }], default_provider_id="managed-1")
     monkeypatch.setattr(CodexEngine, "provider_config_store", classmethod(lambda cls: store))
+    store.set_engine_provider("codex", "local-1")
+    assert CodexEngine().resolve_provider_id() == "managed-1"
+    assert CodexEngine().resolve_provider_id("managed-2") == "managed-2"
+    assert CodexEngine().get_full_config_values()["provider_id"] == "managed-1"
+    assert store.get_assistant_defaults("task_coordinator")["provider_id"] == "managed-1"
     assert CodexEngine().resolve_provider_runtime(provider_id="managed-1",
                                                    model="model-a").provider_id == "managed-1"
     with pytest.raises(ValueError, match="模型"):
@@ -171,7 +197,7 @@ async def test_control_applies_signed_provider_bundle_and_acknowledges(tmp_path,
         serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo,
     )).hexdigest()
     recipient = X25519PrivateKey.generate()
-    token = _signed_bundle(gateway_key, recipient)
+    token = _signed_bundle(gateway_key, recipient, default_provider_id="provider-1")
     client = GatewayControlClient("https://gateway.test", gateway_id="gateway-test",
                                   public_key_fingerprint=fingerprint, user_id="user-1",
                                   policy_cache=ManagedPolicyCache(), provider_store=store)
@@ -188,6 +214,7 @@ async def test_control_applies_signed_provider_bundle_and_acknowledges(tmp_path,
                                         pem, "device-1")
     assert sent[0]["result"] == "success"
     assert store.get_provider("provider-1")["api_key"] == "secret-api-key"
+    assert store.get_managed_default_provider() == "provider-1"
     await client._apply_provider_bundle(Socket(), messages, {"provider_bundle": token + "x"},
                                         pem, "device-1")
     assert sent[1]["result"] == "error"
