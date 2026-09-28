@@ -114,6 +114,17 @@ def get_effective_actor() -> ActorSnapshot | None:
     )
 
 
+class UserIdentityRequired(ValueError):
+    """A user action needs a named local, browser, or managed actor."""
+
+
+def require_user_actor() -> ActorSnapshot:
+    actor = get_effective_actor()
+    if actor is None or not actor.user_name.strip():
+        raise UserIdentityRequired("请先设置本地用户名")
+    return actor
+
+
 def actor_from_browser_headers(headers) -> ActorSnapshot | None:
     """Build a browser visitor identity from WorkStep request headers."""
     def decoded(name: str) -> str:

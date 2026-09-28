@@ -300,6 +300,12 @@ class ActionRuntime:
             existing = ActionRun.get_or_none(ActionRun.active_key == active_key)
             if existing is not None:
                 return _serialize(existing), None
+            from services.remote_access import UserIdentityRequired, require_user_actor
+
+            try:
+                require_user_actor()
+            except UserIdentityRequired as exc:
+                raise ActionError(str(exc), 409) from exc
             config = _script_config(Path(project.path), task, button, source)
             config["action_input"] = input_value
             run_id = str(uuid.uuid4())
@@ -362,6 +368,12 @@ class ActionRuntime:
             existing = ActionRun.get_or_none(ActionRun.active_key == active_key)
             if existing is not None:
                 return _serialize(existing), None
+            from services.remote_access import UserIdentityRequired, require_user_actor
+
+            try:
+                require_user_actor()
+            except UserIdentityRequired as exc:
+                raise ActionError(str(exc), 409) from exc
             config = _script_config(Path(project.path), None, button, "project")
             config["action_input"] = input_value
             run_id = str(uuid.uuid4())

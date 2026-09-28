@@ -288,7 +288,12 @@ async def api_context(tmp_path, monkeypatch):
     transport = ASGITransport(app=main.app)
     async with AsyncExitStack() as stack:
         client = await stack.enter_async_context(
-            AsyncClient(transport=transport, base_url="http://test")
+            AsyncClient(transport=transport, base_url="http://test", headers={
+                "X-WorkStep-Actor-Id": "coordinator-test-user",
+                "X-WorkStep-Actor-Name": "Coordinator Test User",
+                "X-WorkStep-Actor-Device-Id": "coordinator-test-device",
+                "X-WorkStep-Actor-Device-Name": "Test Device",
+            })
         )
         yield client, tmp_path
 

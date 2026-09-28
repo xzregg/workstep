@@ -126,6 +126,10 @@ class WorkflowRuntime:
 
         if source not in _VALID_TASK_SOURCES:
             raise ValueError(f"Invalid task source: {source}")
+        if source == "manual":
+            from services.remote_access import require_user_actor
+
+            await asyncio.to_thread(require_user_actor)
         acquired = await concurrency_gate.acquire_task(project_id, task_id, source)
         if acquired == ALREADY_ACTIVE:
             raise RuntimeError(f"Task is already queued or running: {task_id}")
@@ -469,6 +473,7 @@ class WorkflowRuntime:
         author_name: str | None = None,
         pending_insert_ids: list[str] | None = None,
         reset_session: bool = False,
+        replay_pending: bool = False,
     ) -> dict:
         """Persist a user message and re-run a stopped or completed step.
 
@@ -481,6 +486,10 @@ class WorkflowRuntime:
         normalized = content.strip()
         if not normalized:
             raise ValueError("消息内容不能为空")
+        if not replay_pending:
+            from services.remote_access import require_user_actor
+
+            await asyncio.to_thread(require_user_actor)
         user_message, pending_review_id, trigger_name = await self._run_db(
             project_id, lambda _project: persist_step_followup(
                 task_id, step_key, normalized, author_name, pending_insert_ids
@@ -550,6 +559,7 @@ class WorkflowRuntime:
                     content,
                     author_name=username,
                     pending_insert_ids=ids,
+                    replay_pending=True,
                 )
         except Exception:
             logger.exception(
