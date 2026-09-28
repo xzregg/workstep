@@ -77,7 +77,8 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         assert client.get("/api/devices/device-1/access").status_code == 403
         assert listing.json()["projects"] == [{
             "id": "project-1", "name": "Project", "device_id": "device-1",
-            "access_level": "read",
+            "device_name": "PC", "device_online": False,
+            "access_level": "read", "grant_sources": ["用户组：Backend"],
         }]
         assert client.get("/api/projects/project-1/access").status_code == 409
         monkeypatch.setattr(app.state.control_connections, "is_online", lambda _id: True)
@@ -170,7 +171,9 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         client.post("/api/auth/login", json={
             "username": "worker", "password": "WorkerNewPassphrase-2026!",
         })
-        assert client.get("/api/projects").json()["projects"][0]["access_level"] == "edit"
+        editable = client.get("/api/projects").json()["projects"][0]
+        assert editable["access_level"] == "edit"
+        assert editable["grant_sources"] == ["直接授权"]
         edit_ticket = client.get("/api/projects/project-1/access").json()["ticket"]
         assert client.post(f"{host}/api/remote/redeem", data={"ticket": edit_ticket},
                            follow_redirects=False).status_code == 303

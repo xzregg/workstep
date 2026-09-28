@@ -149,18 +149,35 @@ async def list_accessible_projects(request: Request):
     if actor.must_change_password:
         raise HTTPException(status_code=403, detail="Password change required")
     async with request.app.state.database.session() as session:
-        projects = (await session.scalars(select(PlatformProject).join(
+        rows = (await session.execute(select(PlatformProject, Device).join(
             Device, Device.id == PlatformProject.device_id,
         ).where(PlatformProject.access_mode == "remote_published",
                 PlatformProject.status == "active", Device.status == "active")
             .order_by(PlatformProject.name, PlatformProject.id))).all()
+        groups = dict((await session.execute(select(UserGroup.id, UserGroup.name).join(
+            GroupMembership, GroupMembership.group_id == UserGroup.id,
+        ).where(GroupMembership.user_id == actor.id,
+                GroupMembership.revoked_at.is_(None),
+                UserGroup.status == "active"))).all())
+        project_ids = [project.id for project, _ in rows]
+        grants = (await session.scalars(select(ProjectAccessGrant).where(
+            ProjectAccessGrant.project_id.in_(project_ids),
+            ProjectAccessGrant.revoked_at.is_(None),
+        ))).all() if project_ids else []
         visible = []
-        for project in projects:
-            level = await effective_project_access(session, actor.id, project.id)
-            if level:
+        for project, device in rows:
+            own_grants = [grant for grant in grants if grant.project_id == project.id
+                          and ((grant.subject_type == "user" and grant.subject_id == actor.id)
+                               or (grant.subject_type == "group" and grant.subject_id in groups))]
+            if own_grants:
+                level = "edit" if any(grant.access_level == "edit" for grant in own_grants) else "read"
+                sources = sorted({"直接授权" if grant.subject_type == "user"
+                                  else f"用户组：{groups[grant.subject_id]}" for grant in own_grants})
                 visible.append({"id": project.id, "name": project.name,
                                 "device_id": project.device_id,
-                                "access_level": level})
+                                "device_name": device.name,
+                                "device_online": request.app.state.control_connections.is_online(device.id),
+                                "access_level": level, "grant_sources": sources})
     return {"projects": visible}
 
 
