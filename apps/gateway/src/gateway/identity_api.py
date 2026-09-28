@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func, or_, select
 
 from .identity import COOKIE_NAME, SESSION_SECONDS, IdentityService, csrf_token, public_user
-from .models import User
+from .models import AdminAssignment, User
 
 router = APIRouter(prefix="/api")
 USERNAME = re.compile(r"^[a-z][a-z0-9_-]{2,63}$")
@@ -286,6 +286,48 @@ async def admin_grant_role(request: Request, user_id: str, body: GrantRoleInput)
     return {"id": assignment.id, "user_id": assignment.user_id, "role": assignment.role,
             "scope_type": assignment.scope_type, "scope_id": assignment.scope_id,
             "include_subdepartments": bool(assignment.include_subdepartments)}
+
+
+@router.get("/admin/roles")
+async def admin_list_roles(request: Request, q: str = Query("", max_length=128),
+                           role: Literal["identity_admin", "skill_admin", "audit_admin", "super_admin"] | None = None,
+                           sort: Literal["created_at", "username", "role"] = "created_at",
+                           direction: Literal["asc", "desc"] = "desc",
+                           page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100)):
+    await _super_admin_read(request)
+    conditions = [AdminAssignment.revoked_at.is_(None)]
+    if role:
+        conditions.append(AdminAssignment.role == role)
+    if q.strip():
+        escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        conditions.append(or_(User.username.ilike(pattern, escape="\\"),
+                              User.display_name.ilike(pattern, escape="\\")))
+    column = {"created_at": AdminAssignment.created_at, "username": User.username,
+              "role": AdminAssignment.role}[sort]
+    ordered = column.asc() if direction == "asc" else column.desc()
+    async with request.app.state.database.session() as session:
+        joined = select(AdminAssignment, User).join(User).where(*conditions)
+        total = await session.scalar(select(func.count()).select_from(AdminAssignment).join(User).where(*conditions))
+        rows = (await session.execute(joined.order_by(ordered, AdminAssignment.id)
+            .offset((page - 1) * page_size).limit(page_size))).all()
+        roles = [{"id": assignment.id, "user_id": user.id,
+                  "username": user.username, "display_name": user.display_name,
+                  "user_status": user.status, "registration_source": user.registration_source,
+                  "role": assignment.role, "scope_type": assignment.scope_type,
+                  "scope_id": assignment.scope_id,
+                  "include_subdepartments": bool(assignment.include_subdepartments),
+                  "granted_by_user_id": assignment.granted_by_user_id,
+                  "created_at": assignment.created_at.isoformat()} for assignment, user in rows]
+    return {"roles": roles, "total": total, "page": page, "page_size": page_size}
+
+
+@router.delete("/admin/roles/{assignment_id}", status_code=204)
+async def admin_revoke_role(request: Request, assignment_id: str):
+    identity, actor = await _super_admin_request(request)
+    _, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
+    await identity.require_step_up(auth_session)
+    await identity.revoke_role(actor.id, assignment_id)
 
 
 @router.put("/admin/registration-policy")
