@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 
-type Device = { id: string; name: string; status: string; version: string; app_instance_id: string }
+type Device = { id: string; name: string; status: string; online: boolean; version: string; app_instance_id: string }
 type Action = 'approve' | 'disable' | 'revoke'
 
 const actionLabel: Record<Action, string> = { approve: '批准', disable: '停用', revoke: '撤销' }
@@ -101,7 +101,7 @@ export function DeviceAdminPage() {
         <option value="disabled">已停用</option><option value="revoked">已撤销</option><option value="all">全部</option>
       </select>
       <ul className="gateway-device-list">{devices.map((device) => <li key={device.id}>
-        <div><strong>{device.name}</strong><p>{device.id} · {device.version} · {device.status}</p></div>
+        <div><strong>{device.name}</strong><p>{device.id} · {device.version} · {device.status} · {device.online ? '在线' : '离线'}</p></div>
         <div className="gateway-device-actions">
           {device.status === 'pending' && <button type="button" onClick={() => setSelected({ device, action: 'approve' })}>批准</button>}
           {device.status === 'active' && <button type="button" onClick={() => setSelected({ device, action: 'disable' })}>停用</button>}

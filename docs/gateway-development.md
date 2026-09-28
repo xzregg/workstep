@@ -13,6 +13,8 @@ Gateway 是独立 FastAPI 服务，`apps/gateway-web` 是独立门户。阶段 0
 受管 Desktop 使用系统浏览器打开 `/desktop/login`，在主进程内校验回调和固定 Gateway 公钥指纹；设备私钥使用 Electron 系统安全存储加密。审批后，Desktop 把签名设备授权及私钥证明提交给本机 daemon 的 `POST /api/managed/bootstrap`，daemon 校验 Gateway 签名和设备证明，再生成内存中的本机会话。受管模式的业务 HTTP 和 WebSocket 同时要求 Desktop 启动令牌与本机会话，仍在本机 loopback 处理；错误 Origin 被拒绝。本机会话失效时 daemon 返回专用 401 标记，Desktop 单飞重走网关登录与本机交接。超级管理员可在 `/admin/devices` 查看待审批设备，通过密码二次认证批准、停用或撤销。备份与迁移 Gateway 时须连同数据库保存 `gateway-signing-key.pem`；丢失密钥会使既有受管包公钥指纹不匹配。
 
 受管安装包由部署者按网关固定配置构建后放入 Gateway 数据目录的 `releases/`。超级管理员密码二次认证后调用 `POST /api/admin/client-releases`，提交 `os`、`arch`、`version`、`filename`、`minimum_protocol_version`；Gateway 把文件复制为不可变发布副本，计算大小与 SHA-256，并用网关密钥签署规范化清单。`GET /api/client-releases` 和 `/devices/empty` 对所有用户提供同一网关的安装包及校验信息；下载链接不携带用户身份。发布前须核对安装包内的受管配置与本 Gateway ID、公钥 pin 及域名一致，安装包代码签名仍由 Desktop 发布流程负责。
+
+阶段 3B 的 Gateway 端控制 WebSocket 已建立 `/api/control/ws` 骨架：设备需提交短期签名设备授权和密钥证明，服务器核对设备仍为 active、所属用户仍有效，维护单设备在线连接和历史；心跳超时、停用或撤销关闭连接。PC 常驻连接、凭据续期、签名策略及命令传输仍待实现，因此此端点暂不用于生产受管设备。
 桌面登录页支持本地密码及已启用的钉钉/企业微信身份源；扫码回调持久化一次性 state 与经过白名单约束的回跳路径，成功后返回原桌面登录页继续签发 code。待审核账号进入等待页。第三方事件回调仍未验签接入，目录变更由定时对账或管理员导入处理。
 
 本地开发使用 `uv run --project apps/gateway --group dev uvicorn gateway.app:app --host 127.0.0.1 --port 8766`。门户在 `apps/gateway-web` 执行 `yarn dev`，开发服务器将 `/api` 代理到 8766。构建后可设置 `WORKSTEP_GATEWAY_WEB_DIST` 为门户 `dist` 的绝对路径，让 Gateway 托管静态文件。默认 SQLite 位于 `~/.workstep-gateway/workstep_platform.db`，可用 `WORKSTEP_GATEWAY_DATA_DIR` 指定数据目录，或用 `WORKSTEP_GATEWAY_DATABASE_URL` 指定 `sqlite+aiosqlite` / `postgresql+asyncpg` 地址。启动执行 Alembic 迁移，未知版本拒绝启动，不会自动退回别的数据库。
