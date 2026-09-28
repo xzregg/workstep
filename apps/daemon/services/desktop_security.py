@@ -43,6 +43,7 @@ REMOTE_PROJECT_SCOPED_FS = frozenset({
     "/api/fs/serve", "/api/fs/upload/file", "/api/fs/upload/image",
 })
 SHARE_ARTIFACT_CONTENT = re.compile(r"/api/platform-share/artifacts/[0-9a-f]{64}/content\Z")
+SHARE_HISTORY_PAGE = re.compile(r"/api/platform-share/history/(?:0|[1-9][0-9]{0,5})\Z")
 
 
 def _remote_filesystem_denied(request: Request) -> bool:
@@ -127,7 +128,8 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                     or (request.url.path not in (
                         "/api/platform-share/task", "/api/platform-share/history",
                         "/api/platform-share/artifacts")
-                        and not SHARE_ARTIFACT_CONTENT.fullmatch(request.url.path))
+                        and not SHARE_ARTIFACT_CONTENT.fullmatch(request.url.path)
+                        and not SHARE_HISTORY_PAGE.fullmatch(request.url.path))
                     or request.url.query):
                 response = JSONResponse({"detail": "share scope denied"}, status_code=403)
                 response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)

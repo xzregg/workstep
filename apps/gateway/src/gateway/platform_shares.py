@@ -273,6 +273,13 @@ async def public_share_history(request: Request, token: str):
     return await _proxy_share_read(request, token, "/api/platform-share/history")
 
 
+@router.get("/public/shares/{token}/history/{offset}")
+async def public_share_history_page(request: Request, token: str, offset: int):
+    if not 0 <= offset <= 999999:
+        raise HTTPException(status_code=404, detail="History page unavailable")
+    return await _proxy_share_read(request, token, f"/api/platform-share/history/{offset}")
+
+
 @router.get("/public/shares/{token}/artifacts")
 async def public_share_artifacts(request: Request, token: str):
     return await _proxy_share_read(request, token, "/api/platform-share/artifacts")

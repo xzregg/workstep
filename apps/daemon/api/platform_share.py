@@ -105,6 +105,17 @@ async def read_platform_share_task(request: Request):
 
 @router.get("/history")
 async def read_platform_share_history(request: Request):
+    return await _history_page(request, 0)
+
+
+@router.get("/history/{offset}")
+async def read_platform_share_history_page(request: Request, offset: int):
+    if not 0 <= offset <= 999999:
+        raise HTTPException(status_code=404, detail="History page unavailable")
+    return await _history_page(request, offset)
+
+
+async def _history_page(request: Request, offset: int):
     scope = _share_scope(request)
     from models import Message
 
@@ -115,17 +126,18 @@ async def read_platform_share_history(request: Request):
         ).where(
             (Message.task == scope["task_id"])
             & (Message.channel == "execution")
-        ).order_by(Message.sequence.desc(), Message.created_at.desc()).limit(100))
-        return [{
+        ).order_by(Message.sequence.desc(), Message.created_at.desc()).limit(101).offset(offset))
+        has_more = len(rows) > 100
+        messages = [{
             "id": message.id, "role": message.role,
             "content": (message.content or "")[:65536],
             "truncated": len(message.content or "") > 65536,
             "step_key": message.step_key, "run_status": message.run_status,
             "created_at": message.created_at,
-        } for message in reversed(rows)]
+        } for message in reversed(rows[:100])]
+        return {"messages": messages, "next_offset": offset + 100 if has_more else None}
 
     from main import project_manager
     if project_manager is None:
         raise HTTPException(status_code=503, detail="Service not initialized")
-    messages = await project_manager.run_db(scope["host_project_id"], load)
-    return {"messages": messages}
+    return await project_manager.run_db(scope["host_project_id"], load)

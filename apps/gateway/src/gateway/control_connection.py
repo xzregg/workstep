@@ -468,6 +468,9 @@ class DataConnection:
                                             "/api/platform-share/artifacts")
                         and not re.fullmatch(
                             r"/api/platform-share/artifacts/[0-9a-f]{64}/content",
+                            target_path or "")
+                        and not re.fullmatch(
+                            r"/api/platform-share/history/(?:0|[1-9][0-9]{0,5})",
                             target_path or ""))
                     or request.method != "GET"
                     or user_id is not None or username is not None

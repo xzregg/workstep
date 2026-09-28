@@ -100,7 +100,7 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
                 await authorization_check()
                 captured["ticket"] = share_ticket
                 captured["path"] = target_path
-                if target_path == "/api/platform-share/history":
+                if target_path.startswith("/api/platform-share/history"):
                     return JSONResponse({"messages": [{"id": "message-1", "content": "Visible"}]})
                 if target_path == "/api/platform-share/artifacts":
                     return JSONResponse({"artifacts": [{"id": "a" * 64, "name": "result.txt"}]})
@@ -122,6 +122,10 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         assert history.status_code == 200, history.text
         assert history.json()["messages"][0]["content"] == "Visible"
         assert captured["path"] == "/api/platform-share/history"
+        older = client.get(f"/api/public/shares/{token}/history/100")
+        assert older.status_code == 200
+        assert captured["path"] == "/api/platform-share/history/100"
+        assert client.get(f"/api/public/shares/{token}/history/1000000").status_code == 404
         artifacts = client.get(f"/api/public/shares/{token}/artifacts")
         assert artifacts.status_code == 200
         assert artifacts.json()["artifacts"][0]["name"] == "result.txt"
