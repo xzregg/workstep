@@ -3,9 +3,9 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
-from .models import AuditEvent, PlatformProject
+from .models import AuditEvent, Device, PlatformProject
 
 
 async def record_project_publication(database, *, device_id: str, user_id: str,
@@ -44,6 +44,9 @@ async def record_project_publication(database, *, device_id: str, user_id: str,
                 if action == "publish":
                     project.published_by_user_id = user_id
                     project.published_at = now
+            await session.execute(update(Device).where(Device.id == device_id).values(
+                policy_revision=Device.policy_revision + 1,
+            ))
             session.add(AuditEvent(
                 id=str(uuid4()), user_id=user_id, device_id=device_id,
                 action=f"project.{action}", result="success",

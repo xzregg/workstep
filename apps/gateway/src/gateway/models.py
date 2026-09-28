@@ -386,6 +386,20 @@ class CapabilityAssignment(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class GroupCapabilityAssignment(Base):
+    __tablename__ = "group_capability_assignments"
+    __table_args__ = (UniqueConstraint("group_id", "project_id", "capability"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    group_id: Mapped[str] = mapped_column(ForeignKey("user_groups.id"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("platform_projects.id"), index=True)
+    capability: Mapped[str] = mapped_column(String(64))
+    effect: Mapped[str] = mapped_column(String(16))
+    assigned_by_user_id: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = timestamp()
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class PlatformProject(Base):
     __tablename__ = "platform_projects"
     __table_args__ = (UniqueConstraint("device_id", "host_project_id"),)
