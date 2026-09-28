@@ -3,6 +3,7 @@ const { app, BrowserWindow, dialog, safeStorage, session, shell } = require('ele
 const { autoUpdater } = require('electron-updater')
 const { managedEnvironment, readManagedConfig } = require('./managed-config.cjs')
 const { loadOrCreateDeviceIdentity } = require('./credential-store.cjs')
+const { managedSessionExpired } = require('./managed-session.cjs')
 const {
   createAuthorizationRequest, claimAuthCallback, exchangeDesktopCode,
 } = require('./desktop-auth.cjs')
@@ -31,6 +32,7 @@ let localSession = null
 let managedPending = null
 let managedCallbackResolve = null
 let managedCallbackTimeout = null
+let reauthenticating = null
 let pendingProtocolUrl = process.argv.find((value) => value.startsWith('workstep://')) ?? null
 
 function openProtocolUrl(value) {
@@ -191,6 +193,33 @@ function configureAuthenticatedRequests(url) {
   })
 }
 
+function configureManagedSessionRecovery(managed) {
+  const parsed = new URL(rootUrl)
+  session.defaultSession.webRequest.onCompleted({ urls: [`${parsed.origin}/*`] }, (details) => {
+    if (!managedSessionExpired(details, rootUrl) || reauthenticating) return
+    localSession = null
+    reauthenticating = (async () => {
+      for (;;) {
+        try {
+          const authorization = await authorizeManagedDesktop(managed)
+          if (!authorization) { app.quit(); return }
+          await bootstrapManagedBackend(rootUrl, authorization)
+          if (mainWindow && !mainWindow.isDestroyed()) await mainWindow.reload()
+          return
+        } catch (error) {
+          const result = await dialog.showMessageBox(mainWindow, {
+            type: 'error', title: 'WorkStep 需要重新登录',
+            message: '本机会话已失效，重新登录后继续使用。',
+            detail: error instanceof Error ? error.message : String(error),
+            buttons: ['重试', '退出'], defaultId: 0, cancelId: 1,
+          })
+          if (result.response === 1) { app.quit(); return }
+        }
+      }
+    })().finally(() => { reauthenticating = null })
+  })
+}
+
 async function hasActiveWork() {
   if (!rootUrl || !desktopToken) return true
   try {
@@ -300,6 +329,7 @@ app.whenReady().then(async () => {
     configureAuthenticatedRequests(rootUrl)
     const initialPath = pendingProtocolUrl ? protocolPath(pendingProtocolUrl) : '/'
     createWindow(`${rootUrl}${initialPath}`)
+    if (managed) configureManagedSessionRecovery(managed)
     configureUpdater()
   } catch (error) {
     await dialog.showMessageBox({
