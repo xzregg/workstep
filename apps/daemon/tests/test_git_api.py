@@ -131,9 +131,62 @@ async def test_task_workspace_selects_only_requested_repository(client, layout):
     after_remove = await workspace.remove(root, task_id, 'payment')
     assert [tree['alias'] for tree in after_remove['worktrees']] == ['fifth']
     assert not payment_tree.exists()
-    assert git(repo, 'show-ref', '--verify', 'refs/heads/workstep/task-123/payment')
+    assert not git(repo, 'branch', '--list', 'workstep/task-123/payment')
     restored = await workspace.add(root, task_id, payment['id'], 'payment', 'main')
     assert {tree['alias'] for tree in restored['worktrees']} == {'fifth', 'payment'}
+
+
+async def test_task_workspace_allows_multiple_worktrees_for_one_repository(client, layout):
+    http, service = client
+    root, repo, _ = layout
+    data = await scan(http)
+    payment = next(item for item in data['repositories'] if item['name'] == 'payment')
+    from services.git.task_workspace import TaskGitWorkspace
+
+    workspace = TaskGitWorkspace(service)
+    first = await workspace.add(root, 'task-duplicate', payment['id'], 'payment-one', 'main')
+    second = await workspace.add(root, 'task-duplicate', payment['id'], 'payment-two', 'main')
+    assert len(first['worktrees']) == 1
+    assert [tree['alias'] for tree in second['worktrees']] == ['payment-one', 'payment-two']
+    assert {tree['repository_id'] for tree in second['worktrees']} == {payment['id']}
+    assert {tree['branch'] for tree in second['worktrees']} == {
+        'workstep/task-duplicate/payment-one', 'workstep/task-duplicate/payment-two',
+    }
+    assert all(Path(tree['path']).is_dir() for tree in second['worktrees'])
+    with pytest.raises(GitError, match='同名工作目录'):
+        await workspace.add(root, 'task-duplicate', payment['id'], 'payment-two', 'main')
+    with pytest.raises(GitError, match='功能分支已存在'):
+        await workspace.add(
+            root, 'task-duplicate', payment['id'], 'payment-three', 'main',
+            'workstep/task-duplicate/payment-one',
+        )
+    deleted = await workspace.delete(root, 'task-duplicate')
+    assert deleted['outcome'] == 'deleted'
+    assert deleted['removed_aliases'] == ['payment-one', 'payment-two']
+    assert not Path(deleted['path']).exists()
+    assert not git(repo, 'branch', '--list', 'workstep/task-duplicate/payment-one')
+    assert not git(repo, 'branch', '--list', 'workstep/task-duplicate/payment-two')
+
+
+async def test_task_workspace_rejects_repository_from_another_registered_project(client, layout, tmp_path):
+    http, service = client
+    source_project, _, _ = layout
+    task_project = tmp_path / 'task-project'
+    task_project.mkdir()
+    service.projects_provider = lambda: [
+        {'id': 'source', 'name': 'Source', 'path': str(source_project)},
+        {'id': 'task', 'name': 'Task', 'path': str(task_project)},
+    ]
+    data = await scan(http)
+    payment = next(item for item in data['repositories'] if item['name'] == 'payment')
+    assert not any(member['id'] == 'task' for member in payment['projects'])
+
+    from services.git.task_workspace import TaskGitWorkspace
+
+    workspace = TaskGitWorkspace(service)
+    with pytest.raises(GitError, match='不属于当前项目'):
+        await workspace.add(task_project, 'cross-project', payment['id'], 'payment', 'main')
+    assert not (task_project / '.workstep' / 'worktrees' / 'cross-project' / 'payment').exists()
 
 
 async def test_slow_workspace_source_check_keeps_event_loop_responsive(client, layout, monkeypatch):
@@ -271,6 +324,46 @@ async def test_task_worktree_uses_selected_source_branch_and_custom_new_branch(c
     assert git(tree['path'], 'show', 'HEAD:one.txt') == 'release version'
     with pytest.raises(Exception):
         await workspace.add(root, 'task-other', payment['id'], 'other', 'main', 'taskfix/payment-fix')
+    await workspace.remove(root, 'task-123', 'payment')
+    assert not git(repo, 'branch', '--list', 'taskfix/payment-fix')
+    assert git(repo, 'branch', '--show-current') == 'main'
+
+
+async def test_removing_task_worktree_deletes_created_branch_after_switch(client, layout):
+    http, service = client
+    root, repo, _ = layout
+    data = await scan(http)
+    payment = next(item for item in data['repositories'] if item['name'] == 'payment')
+    from services.git.task_workspace import TaskGitWorkspace
+
+    workspace = TaskGitWorkspace(service)
+    created = await workspace.add(root, 'task-switched', payment['id'], 'payment', 'main', 'taskfix/owned')
+    tree = Path(created['worktrees'][0]['path'])
+    git(repo, 'branch', 'unrelated', 'main')
+    git(tree, 'switch', 'unrelated')
+    listed = await workspace.list(root, 'task-switched')
+    assert listed['worktrees'][0]['branch'] == 'unrelated'
+    assert listed['worktrees'][0]['created_branch'] == 'taskfix/owned'
+    await workspace.remove(root, 'task-switched', 'payment')
+    assert not git(repo, 'branch', '--list', 'taskfix/owned')
+    assert git(repo, 'branch', '--list', 'unrelated')
+
+
+async def test_forced_task_worktree_removal_discards_dirty_files_and_branch(client, layout):
+    http, service = client
+    root, repo, _ = layout
+    data = await scan(http)
+    payment = next(item for item in data['repositories'] if item['name'] == 'payment')
+    from services.git.task_workspace import TaskGitWorkspace
+
+    workspace = TaskGitWorkspace(service)
+    created = await workspace.add(root, 'task-disposable', payment['id'], 'payment', 'main')
+    tree = Path(created['worktrees'][0]['path'])
+    (tree / 'one.txt').write_text('discard me\n')
+    removed = await workspace.remove(root, 'task-disposable', 'payment', force=True)
+    assert removed['worktrees'] == []
+    assert not tree.exists()
+    assert not git(repo, 'branch', '--list', 'workstep/task-disposable/payment')
 
 
 async def test_task_worktree_inherits_git_identity_without_writing_overrides(client, layout):
@@ -323,7 +416,7 @@ async def test_task_workspace_can_select_nested_git_inside_git_project(tmp_path)
         await service.close()
 
 
-async def test_delete_task_workspace_preflights_all_worktrees_and_preserves_branches(client, layout):
+async def test_delete_task_workspace_preflights_all_worktrees_and_deletes_branches(client, layout):
     http, service = client
     root, payment, _ = layout
     data = await scan(http)
@@ -342,7 +435,7 @@ async def test_delete_task_workspace_preflights_all_worktrees_and_preserves_bran
     assert deleted_dirty['outcome'] == 'deleted'
     assert deleted_dirty['worktrees'] == []
     assert not folder.exists()
-    assert git(payment, 'show-ref', '--verify', 'refs/heads/workstep/task-123/payment')
+    assert not git(payment, 'branch', '--list', 'workstep/task-123/payment')
     await workspace.add(root, 'task-123', repos['payment']['id'], 'payment', 'main')
     await workspace.add(root, 'task-123', repos['fifth']['id'], 'fifth', 'main')
     (folder / 'fifth' / 'one.txt').write_text('original\n')
@@ -357,7 +450,7 @@ async def test_delete_task_workspace_preflights_all_worktrees_and_preserves_bran
     assert deleted['outcome'] == 'deleted'
     assert deleted['worktrees'] == []
     assert not folder.exists()
-    assert git(payment, 'show-ref', '--verify', 'refs/heads/workstep/task-123/payment')
+    assert not git(payment, 'branch', '--list', 'workstep/task-123/payment')
 
 
 async def test_delete_task_workspace_reports_partial_progress(client, layout, monkeypatch):
@@ -383,6 +476,26 @@ async def test_delete_task_workspace_reports_partial_progress(client, layout, mo
     assert result['removed_aliases'] == ['fifth']
     assert [tree['alias'] for tree in result['worktrees']] == ['payment']
     assert 'second removal failed' in result['failure']
+    fifth = root / 'a' / 'b' / 'c' / 'd' / 'fifth'
+    assert not git(fifth, 'branch', '--list', 'workstep/task-123/fifth')
+
+
+async def test_delete_workspace_preflights_missing_branch_before_removing_any_tree(client, layout):
+    http, service = client
+    root, _, _ = layout
+    data = await scan(http)
+    repos = {repo['name']: repo for repo in data['repositories']}
+    from services.git.task_workspace import TaskGitWorkspace
+
+    workspace = TaskGitWorkspace(service)
+    created = await workspace.add(root, 'task-branch-check', repos['payment']['id'], 'payment', 'main')
+    created = await workspace.add(root, 'task-branch-check', repos['fifth']['id'], 'fifth', 'main')
+    fifth_tree = next(tree for tree in created['worktrees'] if tree['alias'] == 'fifth')
+    git(fifth_tree['path'], 'config', '--worktree', '--unset', 'workstep.createdBranch')
+    git(fifth_tree['path'], 'switch', '--detach')
+    with pytest.raises(GitError, match='功能分支'):
+        await workspace.delete(root, 'task-branch-check')
+    assert all(Path(tree['path']).is_dir() for tree in created['worktrees'])
 
 
 async def test_task_workspace_list_discovers_repositories_with_cold_snapshot(client, layout):

@@ -535,6 +535,72 @@ async def test_native_fork_api_slow_factory_keeps_health_responsive(chat_module,
 
 
 @pytest.mark.anyio
+async def test_create_session_slow_engine_setup_keeps_health_responsive(chat_module, monkeypatch):
+    import main
+
+    module, _bus, manager, project, _ = chat_module
+    entered = threading.Event()
+    release = threading.Event()
+
+    def slow_factory(_engine_id):
+        entered.set()
+        release.wait(timeout=2)
+        return FakeEngine()
+
+    monkeypatch.setattr("agent_assistants.chat_session.create_engine", slow_factory)
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    transport = ASGITransport(app=main.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        create = asyncio.create_task(client.post(
+            "/api/chat-sessions", json={"project_id": project.id},
+        ))
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            assert not create.done()
+            health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+            assert health.status_code == 200
+        finally:
+            release.set()
+        response = await create
+        assert response.status_code == 200
+
+
+@pytest.mark.anyio
+async def test_create_session_slow_sql_keeps_health_responsive(chat_module, monkeypatch):
+    import main
+
+    module, _bus, manager, project, _ = chat_module
+    entered = threading.Event()
+    release = threading.Event()
+    original_execute_sql = project.db.execute_sql
+
+    def slow_insert(sql, *args, **kwargs):
+        if sql.startswith('INSERT INTO "chat_sessions"'):
+            entered.set()
+            release.wait(timeout=2)
+        return original_execute_sql(sql, *args, **kwargs)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_insert)
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    transport = ASGITransport(app=main.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        create = asyncio.create_task(client.post(
+            "/api/chat-sessions", json={"project_id": project.id},
+        ))
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            assert not create.done()
+            health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+            assert health.status_code == 200
+        finally:
+            release.set()
+        response = await create
+        assert response.status_code == 200
+
+
+@pytest.mark.anyio
 async def test_cross_engine_handoff_is_injected_once(chat_module, monkeypatch):
     module, _bus, _manager, project, _ = chat_module
     source = module.create_session(project.id, title="原会话", engine="claude")

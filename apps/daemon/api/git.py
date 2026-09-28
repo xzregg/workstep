@@ -83,10 +83,10 @@ async def add_task_worktree(project_id: str, task_id: str, body: AddTaskWorktree
 
 
 @router.delete('/projects/{project_id}/tasks/{task_id}/worktrees/{alias}')
-async def remove_task_worktree(project_id: str, task_id: str, alias: str):
+async def remove_task_worktree(project_id: str, task_id: str, alias: str, force: bool = False):
     project = _task_project(project_id)
     task = await _task_exists(project_id, task_id, editable=True)
-    return await result(TaskGitWorkspace(git_service, task['workflow_id']).remove(project.path, task_id, alias))
+    return await result(TaskGitWorkspace(git_service, task['workflow_id']).remove(project.path, task_id, alias, force=force))
 
 
 @router.post('/scans')

@@ -1,11 +1,13 @@
-import { useGitApi, useReadOnlyGit, useSharedGit } from './GitApiContext'
+import { useGitApi, useGitWorkspaceBrowser, useReadOnlyGit, useSharedGit } from './GitApiContext'
 import { useEffect, useMemo, useState } from 'react'
 import { type GitDiscovery, type TaskGitWorkspace as Workspace } from '../../api/git'
 import { useGitStore } from '../../stores/gitStore'
+import { useProjectStore } from '../../stores/projectStore'
 import { useI18n } from '../../i18n'
 import Button from '../Button'
 import ConfirmDialog from '../ConfirmDialog'
 import Icon from '../Icon'
+import OpenLocationButton from '../OpenLocationButton'
 import GitWorktreePanel from './GitWorktreePanel'
 import GitRepositorySettings from './GitRepositorySettings'
 import { clampGitTreeWidth, useGitTreeResize } from './useGitTreeResize'
@@ -15,8 +17,10 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
   const gitApi = useGitApi()
   const shared = useSharedGit()
   const readOnly = useReadOnlyGit()
+  const browseWorkspace = useGitWorkspaceBrowser()
   const { t } = useI18n()
   const { data, scan } = useGitStore()
+  const projects = useProjectStore(state => state.projects)
   const [sharedData, setSharedData] = useState<GitDiscovery | null>(null)
   const refreshRepositories = async () => {
     if (shared) setSharedData(await gitApi.repositories())
@@ -34,6 +38,8 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
   const [branchError, setBranchError] = useState('')
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
+  const [initializeOpen, setInitializeOpen] = useState(false)
+  const [initializing, setInitializing] = useState(false)
   const [error, setError] = useState('')
   const [removing, setRemoving] = useState('')
   const [removeBusy, setRemoveBusy] = useState(false)
@@ -43,13 +49,14 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
   const [deleteWorkspaceBusy, setDeleteWorkspaceBusy] = useState(false)
   const [deleteWorkspaceChecking, setDeleteWorkspaceChecking] = useState(false)
   const [deleteWorkspaceDirty, setDeleteWorkspaceDirty] = useState<string[]>([])
-  const [deleteWorkspaceUnpushed, setDeleteWorkspaceUnpushed] = useState<string[]>([])
+  const [deleteWorkspaceBranches, setDeleteWorkspaceBranches] = useState<string[]>([])
   const { treeWidth, startResize, resizeWithKeyboard, resetResize } = useGitTreeResize()
 
-  const repositories = useMemo(() => (shared ? sharedData : data)?.repositories.filter(repo =>
+  const discovery = shared ? sharedData : data
+  const repositories = useMemo(() => discovery?.repositories.filter(repo =>
     repo.projects.some(project => project.id === projectId),
-  ) ?? [], [data, sharedData, shared, projectId])
-  const available = repositories.filter(repo => !workspace?.worktrees.some(tree => tree.repository_id === repo.id))
+  ) ?? [], [discovery, projectId])
+  const hasRootRepository = repositories.some(repo => repo.projects.some(project => project.id === projectId && project.relative_path === '.'))
   const sourceTree = repositories.find(repo => repo.id === repositoryId)?.worktrees.find(tree => tree.main && tree.available)
     ?? repositories.find(repo => repo.id === repositoryId)?.worktrees.find(tree => tree.available)
   const sourceTreeId = sourceTree?.id
@@ -93,6 +100,9 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
 
   const selectedTree = workspace?.worktrees.find(tree => tree.id === selected) ?? workspace?.worktrees[0]
   const settingsId = selectedTree?.id ?? repositories.flatMap(repo => repo.worktrees).find(tree => tree.available)?.id
+  const discoveredProject = (shared ? sharedData : data)?.projects.find(item => item.id === projectId)
+  const project = projects.find(item => item.id === projectId)
+    ?? (discoveredProject ? { ...discoveredProject, steps: [], workflows: [] } : null)
 
   async function refresh() {
     await refreshRepositories()
@@ -100,16 +110,31 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
     setWorkspace(result)
   }
 
+  async function initializeProjectRoot() {
+    if (initializing) return
+    setInitializing(true)
+    setError('')
+    try {
+      await gitApi.initialize(projectId)
+      setInitializeOpen(false)
+      await scan(`initialize:${projectId}:${Date.now()}`)
+      const scanError = useGitStore.getState().error
+      if (scanError) setError(scanError)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    } finally { setInitializing(false) }
+  }
+
   async function add() {
     if (!repositoryId || adding) return
-    const repo = available.find(item => item.id === repositoryId)
+    const repo = repositories.find(item => item.id === repositoryId)
     if (!repo) return
     setAdding(true)
     setError('')
     try {
       const result = await gitApi.addTaskWorktree(projectId, taskId, repositoryId, alias, baseRef, branchName)
       setWorkspace(result)
-      setSelected(result.worktrees.find(tree => tree.repository_id === repositoryId)?.id || '')
+      setSelected(result.worktrees.find(tree => tree.alias === alias)?.id || '')
       setRepositoryId('')
       setAlias('')
       setSyncEmptyDirectory(false)
@@ -127,13 +152,14 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
     setRemoveBusy(true)
     setError('')
     try {
-      const result = await gitApi.removeTaskWorktree(projectId, taskId, removing)
+      const result = await gitApi.removeTaskWorktree(projectId, taskId, removing, true)
       setWorkspace(result)
       setSelected(result.worktrees[0]?.id || '')
       setRemoving('')
       await refreshRepositories()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
+      try { await refresh() } catch { /* Keep the original deletion error visible. */ }
     } finally { setRemoveBusy(false) }
   }
 
@@ -164,7 +190,7 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
     try {
       const statuses = await Promise.all(workspace.worktrees.map(tree => gitApi.status(tree.id)))
       setDeleteWorkspaceDirty(statuses.flatMap((status, index) => status.files.length ? [workspace.worktrees[index].alias] : []))
-      setDeleteWorkspaceUnpushed(statuses.flatMap((status, index) => status.branch && (!status.upstream || status.ahead === null || status.ahead > 0) ? [workspace.worktrees[index].alias] : []))
+      setDeleteWorkspaceBranches(workspace.worktrees.map(tree => tree.created_branch || tree.branch).filter((branch): branch is string => Boolean(branch)))
       setDeleteWorkspaceOpen(true)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
@@ -176,29 +202,41 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
       <h1>{t('git.taskWorkspace')}</h1>
       <small title={workspace?.relative_path || workspace?.path}>{workspace?.relative_path || workspace?.path}</small>
       <span className="git-grow" />
-      {!readOnly && available.length > 0 && <Button size="sm" onClick={() => setShowAdd(value => !value)}>{t('git.taskAddRepository')}</Button>}
+      {workspace?.path && project && <span className="git-open-location"><OpenLocationButton activeProject={project} directoryPath={workspace.path} buttonLabel={t('git.taskOpenWorkspaceDirectory')} browserProjectId={shared ? '' : projectId} forceWebBrowser={shared} browseDirectory={shared ? browseWorkspace : undefined} readOnlyBrowser={shared} t={t} /></span>}
+      {!readOnly && repositories.length > 0 && <Button size="sm" onClick={() => setShowAdd(value => !value)}>{t('git.taskAddRepository')}</Button>}
       {!readOnly && settingsId && <Button className="git-settings-toggle" size="sm" aria-label={t('git.settings')} aria-expanded={settings} onClick={() => setSettings(value => !value)}><Icon name="settings" size={14} /><span>{t('git.settings')}</span></Button>}
       <Button size="sm" loading={loading} onClick={() => void refresh()}>{t('git.refresh')}</Button>
       {!readOnly && <Button className="task-git-delete-workspace" size="sm" variant="danger" loading={deleteWorkspaceChecking} disabled={loading} onClick={() => void inspectWorkspaceBeforeDelete()}>{t('git.taskDeleteWorkspace')}</Button>}
     </header>
     {error && <div className="git-error" role="alert">{error}</div>}
+    {!loading && !shared && !readOnly && discovery && !hasRootRepository && <div className="task-git-initialize">
+      <span>{t('git.taskRootNotGit')}</span>
+      <Button size="sm" variant="primary" loading={initializing} onClick={() => setInitializeOpen(true)}>{t('git.initialize')}</Button>
+    </div>}
     {loading ? <div className="git-empty"><Icon name="loader-circle" className="git-spin" size={24} />{t('git.loading')}</div> : <>
-      {!readOnly && showAdd && available.length > 0 && <div className="task-git-add">
+      {!readOnly && showAdd && repositories.length > 0 && <div className="task-git-add">
         <label>{t('git.taskAddRepository')}
           <select value={repositoryId} onChange={event => {
             const id = event.target.value
-            const repo = available.find(item => item.id === id)
+            const repo = repositories.find(item => item.id === id)
             const suffix = (taskId.replace(/[^A-Za-z0-9]/g, '') || 'task').slice(0, 8)
             const stem = repo?.name.replace(/[^A-Za-z0-9._-]/g, '-').replace(/^[._-]+|[._-]+$/g, '')
               || `repo-${repo?.id.slice(0, 6) || 'git'}`
-            const nextAlias = repo ? `${stem.slice(0, 63 - suffix.length)}-${suffix}` : ''
+            const baseAlias = repo ? `${stem.slice(0, 63 - suffix.length)}-${suffix}` : ''
+            const takenAliases = new Set(workspace?.worktrees.map(tree => tree.alias))
+            const takenBranches = new Set(workspace?.worktrees.filter(tree => tree.repository_id === id).map(tree => tree.branch))
+            let nextAlias = baseAlias
+            for (let number = 2; nextAlias && (takenAliases.has(nextAlias) || takenBranches.has(nextAlias)); number++) {
+              const postfix = `-${number}`
+              nextAlias = `${baseAlias.slice(0, 64 - postfix.length)}${postfix}`
+            }
             setRepositoryId(id)
             setAlias(nextAlias)
             setSyncEmptyDirectory(false)
             setBranchName(nextAlias)
           }}>
             <option value="">{t('git.taskSelectRepository')}</option>
-            {available.map(repo => <option key={repo.id} value={repo.id}>{repo.projects.find(item => item.id === projectId)?.relative_path === '.' ? t('git.taskProjectRoot') : repo.projects.find(item => item.id === projectId)?.relative_path || repo.name}</option>)}
+            {repositories.map(repo => <option key={repo.id} value={repo.id}>{repo.projects.find(item => item.id === projectId)?.relative_path === '.' ? t('git.taskProjectRoot') : repo.projects.find(item => item.id === projectId)?.relative_path || repo.name}</option>)}
           </select>
         </label>
         {repositoryId && <>
@@ -236,12 +274,13 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
           </div>)}
         </aside>
         <div className="git-tree-resizer" role="separator" aria-orientation="vertical" aria-label={t('git.resizeTree')} aria-valuemin={230} aria-valuemax={clampGitTreeWidth(Number.MAX_SAFE_INTEGER)} aria-valuenow={treeWidth} tabIndex={0} onPointerDown={startResize} onDoubleClick={resetResize} onKeyDown={resizeWithKeyboard} />
-        {selectedTree && <GitWorktreePanel key={selectedTree.id} id={selectedTree.id} displayPath={selectedTree.relative_path} onLocate={id => {
+        {selectedTree && <GitWorktreePanel key={selectedTree.id} id={selectedTree.id} displayPath={selectedTree.relative_path} headerActions={project && <span className="git-open-location"><OpenLocationButton activeProject={project} directoryPath={selectedTree.path} buttonLabel={t('git.taskOpenRepositoryDirectory')} browserProjectId={shared ? '' : projectId} forceWebBrowser={shared} browseDirectory={shared ? browseWorkspace : undefined} readOnlyBrowser={shared} t={t} /></span>} onLocate={id => {
           if (workspace.worktrees.some(tree => tree.id === id)) setSelected(id)
         }} onChanged={refresh} />}
       </div> : <div className="git-empty"><Icon name="git-fork" size={28} /><h2>{t('git.taskEmpty')}</h2><p>{t('git.taskEmptyHint')}</p></div>}
     </>}
-    <ConfirmDialog open={!!removing} title={t('git.taskRemove')} message={t('git.taskRemoveHint', { name: removing })} confirmText={t('git.taskRemove')} danger loading={removeBusy} onConfirm={() => void remove()} onCancel={() => { if (!removeBusy) setRemoving('') }} />
-    <ConfirmDialog open={deleteWorkspaceOpen} title={t('git.taskDeleteWorkspace')} message={[t('git.taskDeleteWorkspaceHint', { count: workspace?.worktrees.length ?? 0 }), deleteWorkspaceDirty.length ? t('git.taskDeleteWorkspaceDirty', { names: deleteWorkspaceDirty.join('、') }) : '', deleteWorkspaceUnpushed.length ? t('git.taskDeleteWorkspaceUnpushed', { names: deleteWorkspaceUnpushed.join('、') }) : ''].filter(Boolean).join(' ')} confirmText={t('git.taskDeleteWorkspace')} danger loading={deleteWorkspaceBusy} onConfirm={() => void deleteWorkspace()} onCancel={() => { if (!deleteWorkspaceBusy) setDeleteWorkspaceOpen(false) }} />
+    <ConfirmDialog open={initializeOpen} title={t('git.initialize')} message={t('git.initializeHint')} confirmText={t('git.initialize')} loading={initializing} onConfirm={() => void initializeProjectRoot()} onCancel={() => { if (!initializing) setInitializeOpen(false) }} />
+    <ConfirmDialog open={!!removing} title={t('git.taskRemove')} message={t('git.taskRemoveHint', { name: removing, branch: workspace?.worktrees.find(tree => tree.alias === removing)?.created_branch || workspace?.worktrees.find(tree => tree.alias === removing)?.branch || '—' })} confirmText={t('git.taskRemove')} danger loading={removeBusy} onConfirm={() => void remove()} onCancel={() => { if (!removeBusy) setRemoving('') }} />
+    <ConfirmDialog open={deleteWorkspaceOpen} title={t('git.taskDeleteWorkspace')} message={[t('git.taskDeleteWorkspaceHint', { count: workspace?.worktrees.length ?? 0 }), deleteWorkspaceDirty.length ? t('git.taskDeleteWorkspaceDirty', { names: deleteWorkspaceDirty.join('、') }) : '', deleteWorkspaceBranches.length ? t('git.taskDeleteWorkspaceUnpushed', { names: deleteWorkspaceBranches.join('、') }) : ''].filter(Boolean).join(' ')} confirmText={t('git.taskDeleteWorkspace')} danger loading={deleteWorkspaceBusy} onConfirm={() => void deleteWorkspace()} onCancel={() => { if (!deleteWorkspaceBusy) setDeleteWorkspaceOpen(false) }} />
   </section>
 }

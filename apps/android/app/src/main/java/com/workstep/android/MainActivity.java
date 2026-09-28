@@ -8,6 +8,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Message;
+import android.os.SystemClock;
 import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.view.Gravity;
@@ -50,6 +51,7 @@ import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private static final String SERVER_KEY = "server_origin";
+    private static final String PAGE_KEY = "last_page_url";
     private static final String MENU_X_KEY = "connection_menu_x";
     private static final String MENU_Y_KEY = "connection_menu_y";
     private static final int FILE_REQUEST = 1001;
@@ -68,6 +70,7 @@ public final class MainActivity extends Activity {
     }
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ForegroundRefresh foregroundRefresh = new ForegroundRefresh();
     private FrameLayout root;
     private WebView webView;
     private ServerAddress server;
@@ -98,6 +101,7 @@ public final class MainActivity extends Activity {
     }
 
     private void clearPage() {
+        if (webView != null) rememberPage(webView.getUrl());
         root.removeAllViews();
         if (webView != null) {
             webView.stopLoading();
@@ -235,6 +239,11 @@ public final class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(view, false);
         view.setWebViewClient(new WebViewClient() {
             @Override
+            public void doUpdateVisitedHistory(WebView source, String url, boolean isReload) {
+                if (source == webView) rememberPage(url);
+            }
+
+            @Override
             public boolean shouldOverrideUrlLoading(WebView source, WebResourceRequest request) {
                 String url = request.getUrl().toString();
                 if (server.contains(url)) return false;
@@ -263,6 +272,7 @@ public final class MainActivity extends Activity {
                 try {
                     Intent picker = createFileChooserIntent(params);
                     startActivityForResult(picker, FILE_REQUEST);
+                    foregroundRefresh.externalPickerStarted();
                     return true;
                 } catch (Exception error) {
                     fileCallback = null;
@@ -305,8 +315,13 @@ public final class MainActivity extends Activity {
         });
         view.setDownloadListener(downloadListener);
         root.addView(view, new FrameLayout.LayoutParams(-1, -1));
-        view.loadUrl(server.origin() + "/");
+        view.loadUrl(server.pageOrRoot(getPreferences(MODE_PRIVATE).getString(PAGE_KEY, "")));
         addConnectionMenu();
+    }
+
+    private void rememberPage(String url) {
+        if (server != null && url != null && server.contains(url))
+            getPreferences(MODE_PRIVATE).edit().putString(PAGE_KEY, url).apply();
     }
 
     private Intent createFileChooserIntent(WebChromeClient.FileChooserParams params) {
@@ -477,6 +492,7 @@ public final class MainActivity extends Activity {
             save.putExtra(Intent.EXTRA_TITLE, filename);
             pendingDownload = new PendingDownload(server, url, userAgent);
             startActivityForResult(save, SAVE_REQUEST);
+            foregroundRefresh.externalPickerStarted();
         } catch (Exception error) {
             pendingDownload = null;
             Toast.makeText(this, "无法打开保存位置选择器", Toast.LENGTH_LONG).show();
@@ -577,6 +593,20 @@ public final class MainActivity extends Activity {
             fileCallback.onReceiveValue(selectedFiles(resultCode, data));
             fileCallback = null;
         }
+    }
+
+    @Override
+    protected void onStop() {
+        if (webView != null) rememberPage(webView.getUrl());
+        foregroundRefresh.onStop(SystemClock.elapsedRealtime());
+        super.onStop();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (foregroundRefresh.onResume(SystemClock.elapsedRealtime()) && webView != null)
+            webView.reload();
     }
 
     @Override

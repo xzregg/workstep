@@ -133,7 +133,7 @@ interface TaskState {
     reviewOverrides?: Record<string, any> | null,
   ) => Promise<Task>
   updateScheduledStart: (taskId: string, scheduledStartAt: string | null, projectId: string) => Promise<Task>
-  deleteTask: (taskId: string, projectId: string) => Promise<void>
+  deleteTask: (taskId: string, projectId: string, deleteWorkspace?: boolean) => Promise<void>
   archiveTask: (taskId: string, projectId: string) => Promise<void>
   getArchiveExperienceDraft: (taskId: string, projectId: string) => Promise<ArchiveExperienceDraft>
   prepareArchiveExperience: (taskId: string, projectId: string, messageId: string) => Promise<ArchiveExperienceDraft>
@@ -275,8 +275,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     return updated
   },
 
-  deleteTask: async (taskId, projectId) => {
-    await taskApi.delete(taskId, projectId)
+  deleteTask: async (taskId, projectId, deleteWorkspace) => {
+    await taskApi.delete(taskId, projectId, deleteWorkspace)
     set((s) => ({
       tasks: s.tasks.filter((t) => t.id !== taskId),
       activeTaskId: s.activeTaskId === taskId ? null : s.activeTaskId,

@@ -1807,6 +1807,76 @@ async def test_failed_execution_with_existing_artifact_can_be_set_complete(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("schedule_downstream", [True, False])
+async def test_pending_manual_review_set_complete_preserves_downstream(tmp_path, schedule_downstream):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="manual-step-complete", title="Complete reviewed step",
+        cwd=str(tmp_path), engine="claude", created_at=1, updated_at=1,
+    )
+    project = SimpleNamespace(
+        id="project-manual-step-complete", path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={"nodes": [
+            {"id": 1, "type": "build", "key": "build", "title": "构建",
+             "engine": "review-test", "prompt": "完成构建",
+             "review": {"mode": "manual", "auto": False, "maxRetries": 1}},
+            {"id": 2, "type": "publish", "key": "publish", "title": "发布",
+             "engine": "review-test", "prompt": "完成发布",
+             "review": {"mode": "skip", "auto": True, "maxRetries": 1}},
+        ], "connections": [{"from": 1, "to": 2}]},
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    calls: list[str] = []
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["review-test"] = lambda: SequencedReviewEngine(calls)
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, ProjectManagerStub())
+    try:
+        first = await runtime.start(project.id, task.id, "")
+        await runtime.wait(first)
+        review = ReviewRun.get(ReviewRun.task == task)
+        assert review.status == "pending"
+        assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "publish")).status == "pending"
+
+        resumed = await runtime.decide_review(
+            project.id, task.id, "build", review.id, "set_complete",
+            schedule_downstream=schedule_downstream,
+        )
+        assert (resumed is not None) is schedule_downstream
+        if resumed is not None:
+            await runtime.wait(resumed)
+        assert ReviewRun.get_by_id(review.id).decision == "set_complete"
+        assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "build")).status == "passed"
+        assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "publish")).status == (
+            "passed" if schedule_downstream else "pending"
+        )
+        assert WorkflowRun.get_by_id(first.id).status == (
+            "succeeded" if schedule_downstream else "paused"
+        )
+        assert Task.get_by_id(task.id).status == (
+            "ready" if schedule_downstream else "paused"
+        )
+        assert len(calls) == (2 if schedule_downstream else 1)
+    finally:
+        await runtime.shutdown()
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
 async def test_manual_review_can_complete_task_and_later_restart_skipped_step(tmp_path):
     from contextlib import nullcontext
     from types import SimpleNamespace

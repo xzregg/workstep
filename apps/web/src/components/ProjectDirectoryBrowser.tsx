@@ -13,6 +13,8 @@ import Spinner from './Spinner'
 interface ProjectDirectoryBrowserProps {
   projectId: string
   rootPath?: string
+  browseDirectory?: (path: string, includeHidden: boolean) => Promise<DirectoryBrowseResult>
+  readOnly?: boolean
   initialFilePath?: string
   onSelectedFileChange?: (path: string | null) => void
   onDirtyChange?: (dirty: boolean) => void
@@ -30,6 +32,8 @@ function requestPath(entry: DirectoryEntry) {
 export default function ProjectDirectoryBrowser({
   projectId,
   rootPath,
+  browseDirectory,
+  readOnly = false,
   initialFilePath,
   onSelectedFileChange,
   onDirtyChange,
@@ -106,7 +110,8 @@ export default function ProjectDirectoryBrowser({
     childrenRef.current = {}
     directoryPromisesRef.current.clear()
     generationRef.current += 1
-    fsApi.browse(rootPath, projectId, showHidden)
+    const request = browseDirectory ? browseDirectory(rootPath || '', showHidden) : fsApi.browse(rootPath, projectId, showHidden)
+    request
       .then((result) => {
         if (active) setRoot(result)
       })
@@ -117,7 +122,7 @@ export default function ProjectDirectoryBrowser({
         if (active) setRootLoading(false)
       })
     return () => { active = false }
-  }, [projectId, rootPath, showHidden, reloadRevision])
+  }, [projectId, rootPath, showHidden, reloadRevision, browseDirectory])
 
   useEffect(() => {
     if (!resizing) return
@@ -142,7 +147,7 @@ export default function ProjectDirectoryBrowser({
 
   useEffect(() => {
     const query = searchQuery.trim()
-    if (!query) {
+    if (!query || browseDirectory) {
       setSearchLoading(false)
       setSearchError('')
       setSearchResults([])
@@ -172,7 +177,7 @@ export default function ProjectDirectoryBrowser({
       active = false
       window.clearTimeout(timer)
     }
-  }, [projectId, rootPath, searchQuery, showHidden, reloadRevision])
+  }, [projectId, rootPath, searchQuery, showHidden, reloadRevision, browseDirectory])
 
   const loadDirectory = useCallback((entry: DirectoryEntry): Promise<DirectoryBrowseResult | null> => {
     const key = requestPath(entry)
@@ -187,7 +192,7 @@ export default function ProjectDirectoryBrowser({
       delete next[key]
       return next
     })
-    const promise = fsApi.browse(key, projectId, showHidden)
+    const promise = (browseDirectory ? browseDirectory(key, showHidden) : fsApi.browse(key, projectId, showHidden))
       .then((result) => {
         if (generation !== generationRef.current) return null
         childrenRef.current = { ...childrenRef.current, [key]: result }
@@ -217,7 +222,7 @@ export default function ProjectDirectoryBrowser({
       })
     directoryPromisesRef.current.set(key, promise)
     return promise
-  }, [projectId, showHidden])
+  }, [projectId, showHidden, browseDirectory])
 
   const toggleDirectory = useCallback((entry: DirectoryEntry) => {
     const key = requestPath(entry)
@@ -283,6 +288,7 @@ export default function ProjectDirectoryBrowser({
           style={{ paddingLeft: 8 + depth * 18 }}
           title={entry.path}
           onContextMenu={(event) => {
+            if (readOnly) return
             event.preventDefault()
             setContextTarget({ entry, parentPath, x: event.clientX, y: event.clientY })
           }}
@@ -377,7 +383,7 @@ export default function ProjectDirectoryBrowser({
             </Button>
           </div>
         </div>
-        <label className="project-directory-search">
+        {!browseDirectory && <label className="project-directory-search">
           <Icon name="search" size={14} />
           <input
             type="search"
@@ -387,12 +393,13 @@ export default function ProjectDirectoryBrowser({
             onChange={(event) => setSearchQuery(event.target.value)}
           />
           {searchLoading && <Spinner size={12} />}
-        </label>
+        </label>}
         <div
           className="project-directory-tree"
           role="tree"
           aria-label={t('browser.projectTree')}
           onContextMenu={(event) => {
+            if (readOnly) return
             if (!rootEntry || (event.target as Element).closest('[role="treeitem"]')) return
             event.preventDefault()
             setContextTarget({ entry: rootEntry, parentPath: rootEntry.path, x: event.clientX, y: event.clientY, isRoot: true })
@@ -425,6 +432,7 @@ export default function ProjectDirectoryBrowser({
               title={entry.path}
               onClick={() => selectFile(entry)}
               onContextMenu={(event) => {
+                if (readOnly) return
                 event.preventDefault()
                 setContextTarget({ entry, parentPath: entry.path.replace(/[\\/][^\\/]+$/, ''), x: event.clientX, y: event.clientY })
               }}
@@ -508,7 +516,7 @@ export default function ProjectDirectoryBrowser({
               onPreview={() => beforeLeave(() => setEditing(false))}
             />
           ) : (
-            <ArtifactPreview key={selectedFile.path} path={selectedFile.path} name={selectedFile.name} projectId={projectId} onEdit={() => setEditing(true)} />
+            <ArtifactPreview key={selectedFile.path} path={selectedFile.path} name={selectedFile.name} projectId={projectId} onEdit={readOnly ? undefined : () => setEditing(true)} />
           ) : (
             <div className="project-directory-preview-empty">
               <Icon name="file" size={28} strokeWidth={1.4} />
@@ -517,7 +525,7 @@ export default function ProjectDirectoryBrowser({
           )}
         </div>
       </section>
-      <ProjectDirectoryTreeActions
+      {!readOnly && <ProjectDirectoryTreeActions
         projectId={projectId}
         rootPath={rootPath}
         target={contextTarget}
@@ -533,7 +541,7 @@ export default function ProjectDirectoryBrowser({
           setSelectedFile(null)
           setReloadRevision((current) => current + 1)
         }}
-      />
+      />}
       {createPortal(<ConfirmDialog
         open={pendingLeave !== null}
         title={t('browser.unsavedTitle')}

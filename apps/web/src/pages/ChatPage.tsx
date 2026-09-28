@@ -360,7 +360,11 @@ export default function ChatPage() {
       setSessionTitle(detail.title || '')
       navigate(`/chat?project=${encodeURIComponent(projectParam || activeProject?.name || '')}&session=${encodeURIComponent(detail.id)}`)
     } catch (reason) {
-      setSendError(reason instanceof Error ? reason.message : t('chatSession.createFailed'))
+      setSendError(
+        reason instanceof Error && reason.name === 'TimeoutError'
+          ? t('chatSession.createTimeout')
+          : reason instanceof Error ? reason.message : t('chatSession.createFailed'),
+      )
     } finally {
       setCreating(false)
     }
@@ -394,13 +398,16 @@ export default function ChatPage() {
             icon={<Icon name="bot" size={40} strokeWidth={1.5} />}
             title={t('chatSession.title')}
             description={t('chatSession.noSession')}
-            action={<div className="chat-session-empty-actions">
-              <Button variant="primary" loading={creating} onClick={() => void createSession()}>
-                {t('chatSession.createFirst')}
-              </Button>
-              <Button variant="ghost" onClick={() => setShowArchive(true)}>
-                <Icon name="archive" size={13} />{t('chatSession.viewArchive')}
-              </Button>
+            action={<div className="chat-session-empty-action-group">
+              <div className="chat-session-empty-actions">
+                <Button variant="primary" loading={creating} onClick={() => void createSession()}>
+                  {t('chatSession.createFirst')}
+                </Button>
+                <Button variant="ghost" onClick={() => setShowArchive(true)}>
+                  <Icon name="archive" size={13} />{t('chatSession.viewArchive')}
+                </Button>
+              </div>
+              {sendError && <div className="chat-session-create-error" role="alert">{sendError}</div>}
             </div>}
           />
         </div>

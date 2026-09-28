@@ -560,6 +560,88 @@ async def test_shared_file_preview_uses_session_and_stays_in_project(manager, tm
 
 
 @pytest.mark.asyncio
+async def test_shared_task_workspace_directory_is_read_only_and_task_scoped(manager, tmp_path, monkeypatch):
+    import main
+
+    project, task = _create_task_in_project(manager, tmp_path / "proj-share-workspace")
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(project_service, "project_manager", manager)
+    workspace = project.workstep_dir / "worktrees" / task["id"]
+    tree = workspace / "branch"
+    tree.mkdir(parents=True)
+    (tree / "hello.txt").write_text("shared worktree", encoding="utf-8")
+    (project.path / "private.txt").write_text("private", encoding="utf-8")
+    ctx = _bind(project)
+    try:
+        share = share_service.create_share(task["id"])
+    finally:
+        db_proxy.reset(ctx)
+
+    base = f"/api/task-share/public/{share['token']}"
+    transport = ASGITransport(app=main.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        unlocked = await client.post(f"{base}/unlock", json={"password": ""})
+        headers = {"X-Share-Session": unlocked.json()["session_token"]}
+        missing = await client.get(f"{base}/workspace/browse", params={"path": str(workspace)})
+        listing = await client.get(f"{base}/workspace/browse", params={"path": str(workspace)}, headers=headers)
+        nested = await client.get(f"{base}/workspace/browse", params={"path": tree.relative_to(project.path).as_posix()}, headers=headers)
+        escaped = await client.get(f"{base}/workspace/browse", params={"path": str(project.path)}, headers=headers)
+        preview = await client.get(f"{base}/file-preview", params={"path": (tree / "hello.txt").relative_to(project.path).as_posix()}, headers=headers)
+
+    assert missing.status_code == 401
+    assert listing.status_code == 200
+    assert [entry["name"] for entry in listing.json()["entries"]] == ["branch"]
+    assert [entry["name"] for entry in nested.json()["entries"]] == ["hello.txt"]
+    assert escaped.status_code == 403
+    assert preview.status_code == 200
+    assert preview.json()["content"] == "shared worktree"
+
+
+@pytest.mark.asyncio
+async def test_slow_shared_workspace_browse_does_not_block_health(manager, tmp_path, monkeypatch):
+    import threading
+    import main
+
+    project, task = _create_task_in_project(manager, tmp_path / "proj-share-slow-workspace")
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(project_service, "project_manager", manager)
+    workspace = project.workstep_dir / "worktrees" / task["id"]
+    (workspace / "branch").mkdir(parents=True)
+    ctx = _bind(project)
+    try:
+        share = share_service.create_share(task["id"])
+    finally:
+        db_proxy.reset(ctx)
+    entered, release = threading.Event(), threading.Event()
+    original_iterdir = Path.iterdir
+
+    def slow_iterdir(path):
+        if path == workspace:
+            entered.set()
+            release.wait(timeout=1)
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", slow_iterdir)
+    base = f"/api/task-share/public/{share['token']}"
+    transport = ASGITransport(app=main.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        unlocked = await client.post(f"{base}/unlock", json={"password": ""})
+        browse = asyncio.create_task(client.get(
+            f"{base}/workspace/browse", params={"path": str(workspace)},
+            headers={"X-Share-Session": unlocked.json()["session_token"]},
+        ))
+        assert await asyncio.to_thread(entered.wait, 0.5)
+        try:
+            health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+        finally:
+            release.set()
+        result = await browse
+
+    assert health.status_code == 200
+    assert result.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_slow_shared_file_preview_does_not_block_event_loop(manager, tmp_path, monkeypatch):
     import main
     import time

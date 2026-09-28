@@ -16,6 +16,7 @@ import { scheduleApi } from '../api/client'
 import TaskDetail from './TaskDetail'
 import Button from '../components/Button'
 import ConfirmDialog from '../components/ConfirmDialog'
+import DeleteTaskConfirmation from '../components/DeleteTaskConfirmation'
 import EmptyState from '../components/EmptyState'
 import OpenLocationButton from '../components/OpenLocationButton'
 import MobileOpenLocationButton from '../components/MobileOpenLocationButton'
@@ -106,6 +107,7 @@ export default function TaskList() {
   const [mobileStep, setMobileStep] = useState('')
   useEffect(() => { setMobileStep('') }, [activeProject?.id, activeWorkflowId])
   const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<string | null>(null)
+  const [deletingTask, setDeletingTask] = useState(false)
   const [confirmStartTaskId, setConfirmStartTaskId] = useState<string | null>(null)
   const [archiveTarget, setArchiveTarget] = useState<{ id: string; title: string } | null>(null)
   const [startingTaskId, setStartingTaskId] = useState<string | null>(null)
@@ -274,12 +276,16 @@ export default function TaskList() {
     }
   }
 
-  const handleDeleteConfirm = async () => {
-    if (confirmDeleteTaskId && activeProject) {
-      await deleteTask(confirmDeleteTaskId, activeProject.id)
+  const handleDeleteConfirm = async (deleteWorkspace: boolean) => {
+    if (!confirmDeleteTaskId || !activeProject || deletingTask) return
+    setDeletingTask(true)
+    try {
+      await deleteTask(confirmDeleteTaskId, activeProject.id, deleteWorkspace)
       setCardLanes((prev) => { const next = { ...prev }; delete next[confirmDeleteTaskId]; return next })
       setConfirmDeleteTaskId(null)
-    }
+    } catch (error) {
+      setDirectoryNotice(t('taskList.bulkDeleteFailed', { error: error instanceof Error ? error.message : t('common.unknownError') }))
+    } finally { setDeletingTask(false) }
   }
 
   const handleUnarchive = async (taskId: string) => {
@@ -351,6 +357,7 @@ export default function TaskList() {
             {t('taskList.stepEdit')}
           </Button>
           <Button onClick={() => { setFiltersOpen(false); setShortcutSettingsOpen(true) }} disabled={!activeWorkflowId}>
+            <Icon name="zap" size={16} />
             {t('actionShortcuts.quickButtons')}
           </Button>
           <Button onClick={() => { setFiltersOpen(false); setShowScheduleDialog(true) }}>
@@ -640,7 +647,7 @@ export default function TaskList() {
             onOpenTask={handleSelectTask}
             onAddTask={openNewPanel}
             onArchiveTask={(taskId) => archiveTask(taskId, activeProject.id)}
-            onDeleteTask={(taskId) => deleteTask(taskId, activeProject.id)}
+            onDeleteTask={(taskId, deleteWorkspace) => deleteTask(taskId, activeProject.id, deleteWorkspace)}
             onError={(message) => {
               setDirectoryNotice(message)
               setTimeout(() => setDirectoryNotice(''), 3000)
@@ -735,12 +742,10 @@ export default function TaskList() {
         onCancel={() => setConfirmStartTaskId(null)}
       />
 
-      <ConfirmDialog
+      <DeleteTaskConfirmation
         open={confirmDeleteTaskId !== null}
-        title={t('taskList.deleteTask')}
-        message={t('taskList.deleteTaskMessage')}
-        confirmText={t('common.delete')}
-        danger
+        count={1}
+        busy={deletingTask}
         onConfirm={handleDeleteConfirm}
         onCancel={() => setConfirmDeleteTaskId(null)}
       />

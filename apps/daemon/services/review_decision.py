@@ -68,22 +68,39 @@ def persist_review_decision(
             and review.error == "手动停止"
             and review.step_run.status == "succeeded"
         )
+        pending_manual_review = (
+            review.mode == "manual" and review.status in {"pending", "rejected"}
+            and latest is not None and latest.id == review.id
+            and task.active_workflow_run_id == review.workflow_run_id
+            and current_step is not None
+            and current_step.status == "awaiting_review"
+        )
         if (
-            not (stopped_manual_review or stopped_auto_review)
+            not (stopped_manual_review or stopped_auto_review or pending_manual_review)
             or workflow_run is None or workflow_run.task_id != task_id
             or task.status not in {"stopped", "paused"}
             or workflow_run.status not in {"stopped", "failed", "paused"}
             or current_step is None
-            or current_step.status not in {"cancelled", "failed", "pending"}
+            or current_step.status not in {"cancelled", "failed", "pending", "awaiting_review"}
             or task_id in active_runners
         ):
-            raise RuntimeError("只有任务已停止、步骤未完成时，已停止的审核才能设置完成")
+            raise RuntimeError("只有待处理或已停止的审核，且任务已暂停、步骤未完成时才能设置完成")
+        if schedule_downstream and TaskStep.select().where(
+            (TaskStep.task == task)
+            & (TaskStep.step_key != step_key)
+            & (TaskStep.status.in_([
+                "running", "retrying", "rework", "reviewing", "awaiting_review",
+            ]))
+        ).exists():
+            raise RuntimeError("其他步骤正在执行或等待审核，暂不能调度下游；可选择只设置完成当前步骤")
         from services.artifacts import list_task_artifacts
 
-        if review.step_run.artifact_round is None or not any(
-            artifact["step_key"] == step_key
-            and artifact["round"] == review.step_run.artifact_round
-            for artifact in list_task_artifacts(project, task_id)
+        if not pending_manual_review and (
+            review.step_run.artifact_round is None or not any(
+                artifact["step_key"] == step_key
+                and artifact["round"] == review.step_run.artifact_round
+                for artifact in list_task_artifacts(project, task_id)
+            )
         ):
             raise RuntimeError("该审核轮次没有已产生的产物，不能设置完成")
     if completed_task:

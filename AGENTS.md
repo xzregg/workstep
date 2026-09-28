@@ -21,13 +21,12 @@
 - `apps/web` — React + TypeScript + Vite Web 前端
 - `apps/desktop` — Electron 桌面端与内置后端打包
 - `apps/landing` — 产品官网
-- `apps/wechat-bridge` — 微信渠道桥接服务
 - `docs/`、`plans/` — 产品、架构、开发与实施文档
 
 ## 目录结构
 
 ```
-apps/            # 可运行应用（daemon、web、desktop、landing、wechat-bridge）
+apps/            # 可运行应用（daemon、web、desktop、landing、android）
 ui/DESIGN/       # 设计系统静态参考页
 docs/            # 架构、开发与维护文档
 plans/           # 功能设计与实施方案
@@ -90,7 +89,7 @@ yarn build
 ### 其他应用
 
 - `apps/desktop` 的开发与打包命令以其 `README.md` 和 `package.json` 为准。
-- `apps/landing`、`apps/wechat-bridge` 的命令以各自 `package.json` 为准。
+- `apps/landing` 的命令以其 `package.json` 为准。
 - 静态设计参考页为 `ui/DESIGN/index.html`，不代表当前可运行前端功能。
 
 ## 前端开发规范（`apps/web`）
@@ -179,7 +178,7 @@ Pydantic AI 的关键不变量：固定挂载 harness `Coder` 与项目 Skills �
 - `messages` — 任务消息正文、事件摘要与 JSONL 日志索引
 - `chat_sessions`、`chat_messages` — 项目会话及消息；可恢复引擎会话标识保存在会话或步骤字段中
 - `coordinator_sessions`、`coordinator_turns`、`action_proposals`、`stage_supplements` — 协调助手状态
-- `schedules`、`schedule_runs`、`task_shares`、`channels` — 定时任务、分享与外部渠道
+- `schedules`、`schedule_runs`、`task_shares` — 定时任务与分享；`channels`、`channel_chat_mappings` 是已移除个人微信渠道的历史兼容表
 
 完整表集合以 `apps/daemon/models/__init__.py::ALL_MODELS` 为准。产物不是 `artifacts` 数据表，而是项目 `.workstep/artifacts/` 下的文件与 manifest。
 

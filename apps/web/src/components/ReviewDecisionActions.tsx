@@ -16,8 +16,8 @@ export default function ReviewDecisionActions({ status, pending, onAction }: Rev
       <Button variant="danger" disabled={pending} onClick={() => onAction('terminate')}>
         {t('taskDetail.terminate')}
       </Button>
-      <Button variant="ghost" disabled={pending} style={{ marginRight: 'auto' }} onClick={() => onAction('complete-task')}>
-        {t('taskDetail.completeTask')}
+      <Button variant="ghost" disabled={pending} style={{ marginRight: 'auto' }} onClick={() => onAction('set-complete')}>
+        {t('taskDetail.setStepComplete')}
       </Button>
       {status === 'pending' ? (
         <>

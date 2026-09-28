@@ -244,6 +244,12 @@ export default function SharedTaskView() {
       ? shareApi.fileUrl(token, shareSessionToken, path)
       : '',
   }), [token, shareSessionToken, t])
+  const browseGitWorkspace = useCallback(
+    (path: string, includeHidden: boolean) => token && shareSessionToken
+      ? shareApi.browseGitWorkspace(token, shareSessionToken, path, includeHidden)
+      : Promise.reject(new Error(t('share.sessionExpired'))),
+    [token, shareSessionToken, t],
+  )
   const executionReportLoader = useCallback(() => {
     if (!token || !shareSessionToken) {
       return Promise.reject(new Error(t('share.sessionExpired')))
@@ -495,6 +501,7 @@ export default function SharedTaskView() {
           loadMessageEvents,
           openArtifact,
           loadExecutionReport: executionReportLoader,
+          browseGitWorkspace,
         } satisfies TaskDetailReadCapabilities}
         liveMessages={{}}
         events={[]}
