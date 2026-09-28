@@ -220,8 +220,29 @@ class WorkflowRuntime:
                 task.queued_run_json = None
             task.updated_at = utc_now()
             task.save()
+            if status == "queued":
+                from services.project_audit import record_project_audit
+                from services.remote_access import get_effective_actor
 
-        await self._run_db(project_id, lambda _project: persist())
+                actor = get_effective_actor()
+                scheduled = queue_source in {"schedule", "scheduled_start"}
+                record_project_audit(
+                    project_id=project_id, task_id=task_id,
+                    action="task.queue", result="succeeded",
+                    mode="managed" if actor is not None and actor.source == "managed" else "local",
+                    actor_type="scheduler" if scheduled else None,
+                    initiated_by_user_id=task.creator_id if scheduled else None,
+                    initiated_by_username=(
+                        task.creator_username or task.creator_name if scheduled else None
+                    ),
+                    metadata={"source": queue_source},
+                )
+
+        def persist_atomically(_project):
+            with db_proxy.atomic("IMMEDIATE"):
+                persist()
+
+        await self._run_db(project_id, persist_atomically)
         from services.concurrency import concurrency_gate
 
         payload = {

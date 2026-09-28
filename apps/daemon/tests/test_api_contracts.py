@@ -102,7 +102,7 @@ async def test_queued_run_snapshot_slow_sql_does_not_block_health(
     api_context, monkeypatch,
 ):
     import main
-    from models import Task
+    from models import ProjectAuditEvent, Task
     from models.fields import utc_now
 
     client, tmp_path = api_context
@@ -141,6 +141,15 @@ async def test_queued_run_snapshot_slow_sql_does_not_block_health(
     assert health.status_code == 200
     assert time.monotonic() - before < 0.5
     await queued
+    audit = await main.project_manager.run_db(
+        project_id,
+        lambda _project: ProjectAuditEvent.get(
+            ProjectAuditEvent.task_id == "task-queued-canary"
+        ),
+    )
+    assert (audit.action, audit.result, json.loads(audit.metadata_json)) == (
+        "task.queue", "succeeded", {"source": "manual"},
+    )
 
 
 @pytest.mark.anyio
