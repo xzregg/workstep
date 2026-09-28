@@ -1739,9 +1739,15 @@ async def test_pydantic_ai_run_simple_does_not_print_provider_request_in_dev(
         ),
     )
 
-    result = await PydanticAIEngine.run_simple("单轮提示词\n第二行")
+    usage_details = {}
+    result = await PydanticAIEngine.run_simple(
+        "单轮提示词\n第二行", usage_details=usage_details,
+    )
 
     assert result == "增强结果"
+    assert usage_details["model"] == "agent-model"
+    assert usage_details["provider"]["id"] == provider["id"]
+    assert "usage" in usage_details
     assert capsys.readouterr().out == ""
 
 
