@@ -99,7 +99,8 @@ async function exchangeDesktopCode({ pending, code, managed, devicePublicKey, de
   if (result.device_authorization) {
     const claims = verifyDeviceAuthorization(result.device_authorization, key.public_key_pem,
       actualFingerprint, pending.gatewayId, pending.appInstanceId)
-    if (claims.device_id !== result.device?.id || claims.user_id !== result.user?.id) {
+    if (claims.device_id !== result.device?.id || claims.user_id !== result.user?.id
+        || claims.device_public_key !== devicePublicKey) {
       throw new Error('Device authorization identity mismatch')
     }
   } else if (result.device?.status !== 'pending') {

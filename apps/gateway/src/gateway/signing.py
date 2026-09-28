@@ -52,7 +52,7 @@ class GatewaySigner:
         return cls(private_key)
 
     def sign_device_authorization(self, *, gateway_id: str, device_id: str, user_id: str,
-                                  username: str, app_instance_id: str,
+                                  username: str, app_instance_id: str, device_public_key: str,
                                   policy_revision: int = 0) -> str:
         now = int(time.time())
         header = _b64(json.dumps({"alg": "EdDSA", "typ": "JWT"}, separators=(",", ":")).encode())
@@ -60,6 +60,7 @@ class GatewaySigner:
             "iss": gateway_id, "gateway_id": gateway_id, "device_id": device_id,
             "user_id": user_id, "username": username,
             "app_instance_id": app_instance_id, "policy_revision": policy_revision,
+            "device_public_key": device_public_key,
             "iat": now, "exp": now + 900,
         }, separators=(",", ":"), sort_keys=True).encode())
         signing_input = f"{header}.{payload}"

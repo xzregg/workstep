@@ -7,6 +7,7 @@ from services.desktop_security import (
     DesktopSecurityMiddleware,
     desktop_websocket_allowed,
 )
+from services.gateway_client.identity import ManagedActor, ManagedLocalSessions
 
 
 def _app() -> FastAPI:
@@ -98,4 +99,29 @@ def test_non_desktop_runtime_keeps_existing_access_behavior(monkeypatch):
     with TestClient(_app()) as client:
         assert client.get('/api/private').status_code == 200
         with client.websocket_connect('/ws') as websocket:
+            assert websocket.receive_text() == 'ok'
+
+
+def test_managed_runtime_requires_gateway_derived_local_session(monkeypatch):
+    monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
+    monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')
+    app = _app()
+    sessions = ManagedLocalSessions()
+    actor = ManagedActor('user-1', 'alice', 'device-1', 'instance-1', 1)
+    local_token = sessions.create(actor)
+    app.state.gateway_client = type('GatewayClient', (), {
+        'managed_config': object(), 'local_sessions': sessions,
+    })()
+    with TestClient(app) as client:
+        assert client.get('/api/private', headers={
+            'X-WorkStep-Desktop-Token': 'runtime-secret',
+        }).status_code == 401
+        assert client.get('/api/private', headers={
+            'X-WorkStep-Desktop-Token': 'runtime-secret',
+            'X-WorkStep-Local-Session': local_token,
+        }).status_code == 200
+        with client.websocket_connect('/ws', headers={
+            'X-WorkStep-Desktop-Token': 'runtime-secret',
+            'X-WorkStep-Local-Session': local_token,
+        }) as websocket:
             assert websocket.receive_text() == 'ok'

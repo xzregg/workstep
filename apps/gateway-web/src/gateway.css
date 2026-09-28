@@ -1,0 +1,124 @@
+:root {
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC', sans-serif;
+  color: #1d1d1f;
+  background: #f5f5f7;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  min-height: 100vh;
+}
+
+main > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px clamp(20px, 5vw, 64px);
+  background: #fff;
+  border-bottom: 1px solid #e8e8ed;
+}
+
+main > header h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+main > header nav {
+  display: flex;
+  gap: 24px;
+}
+
+a {
+  color: #0071e3;
+}
+
+.gateway-auth-card {
+  box-sizing: border-box;
+  width: min(100% - 32px, 440px);
+  margin: clamp(40px, 10vh, 120px) auto;
+  padding: 36px;
+  border: 1px solid #e8e8ed;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 18px 50px rgb(29 29 31 / 7%);
+}
+
+.gateway-auth-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #7c3aed;
+}
+
+.gateway-auth-card h2 {
+  margin: 12px 0;
+  font-size: clamp(30px, 4vw, 44px);
+}
+
+.gateway-auth-description {
+  margin-bottom: 28px;
+  color: #6e6e73;
+  line-height: 1.5;
+}
+
+.gateway-auth-form {
+  display: grid;
+  gap: 10px;
+}
+
+.gateway-auth-form label {
+  margin-top: 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.gateway-auth-form input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid #d2d2d7;
+  border-radius: 12px;
+  font: inherit;
+}
+
+.gateway-auth-card button {
+  min-height: 42px;
+  margin-top: 20px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 12px;
+  background: #0071e3;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.gateway-auth-card button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.gateway-auth-error {
+  color: #dc2626;
+  line-height: 1.4;
+}
+
+@media (max-width: 600px) {
+  main > header {
+    padding: 16px;
+  }
+
+  main > header nav {
+    gap: 12px;
+  }
+
+  .gateway-auth-card {
+    padding: 24px;
+  }
+}

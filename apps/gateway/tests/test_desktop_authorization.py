@@ -104,6 +104,7 @@ def test_desktop_code_expiry_and_device_approval(tmp_path):
         assert claims["gateway_id"] == "gateway-test"
         assert claims["device_id"] == device_id
         assert claims["app_instance_id"] == APP_INSTANCE
+        assert claims["device_public_key"] == key
         public_key = client.get("/api/platform/gateway-key").json()
         signature = base64.urlsafe_b64decode(signed.split(".")[2] + "==")
         serialization.load_pem_public_key(public_key["public_key_pem"].encode()).verify(

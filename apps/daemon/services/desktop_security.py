@@ -12,6 +12,7 @@ from starlette.responses import JSONResponse
 
 
 DESKTOP_TOKEN_HEADER = "x-workstep-desktop-token"
+LOCAL_SESSION_HEADER = "x-workstep-local-session"
 CONTENT_SECURITY_POLICY = "; ".join(
     (
         "default-src 'self'",
@@ -46,7 +47,16 @@ def _valid_token(value: str | None) -> bool:
 def desktop_websocket_allowed(ws: WebSocket) -> bool:
     """Require the Electron main-process header in packaged desktop mode."""
 
-    return _valid_token(ws.headers.get(DESKTOP_TOKEN_HEADER))
+    if not _valid_token(ws.headers.get(DESKTOP_TOKEN_HEADER)):
+        return False
+    gateway_client = getattr(ws.app.state, "gateway_client", None)
+    if gateway_client is None or getattr(gateway_client, "managed_config", None) is None:
+        return True
+    actor = gateway_client.local_sessions.resolve(ws.headers.get(LOCAL_SESSION_HEADER))
+    if actor is None:
+        return False
+    ws.scope["managed_actor"] = actor
+    return True
 
 
 class DesktopSecurityMiddleware(BaseHTTPMiddleware):
@@ -54,12 +64,23 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         protected = request.url.path.startswith(("/api/", "/docs", "/redoc", "/openapi.json"))
-        if protected and not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)):
+        gateway_client = getattr(request.app.state, "gateway_client", None)
+        managed = gateway_client is not None and getattr(gateway_client, "managed_config", None) is not None
+        actor = None
+        if managed and protected and request.url.path not in ("/api/managed/bootstrap", "/api/health"):
+            actor = gateway_client.local_sessions.resolve(request.headers.get(LOCAL_SESSION_HEADER))
+        denied = protected and (
+            not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER))
+            or (managed and request.url.path not in ("/api/managed/bootstrap", "/api/health") and actor is None)
+        )
+        if denied:
             response = JSONResponse(
                 {"detail": "desktop authentication required"},
                 status_code=401,
             )
         else:
+            if actor is not None:
+                request.state.managed_actor = actor
             response = await call_next(request)
 
         response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
