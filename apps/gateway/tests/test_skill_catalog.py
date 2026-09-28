@@ -82,6 +82,10 @@ def test_skill_version_requires_review_and_is_immutable(tmp_path):
         assert approved.json()["digest"] == upload.json()["digest"]
         assert client.get(f"/api/admin/skills/{skill_id}/versions").json()[
             "versions"][0]["status"] == "approved"
+        assert client.get("/api/admin/skills").json()["skills"] == [{
+            "id": skill_id, "name": "Code Review", "slug": "code-review",
+            "description": "Review source", "status": "active",
+        }]
 
 
 def test_group_skill_catalog_only_allows_reviewed_version_on_linked_project(tmp_path):
@@ -154,6 +158,13 @@ def test_group_skill_catalog_only_allows_reviewed_version_on_linked_project(tmp_
         }, headers=headers)
         assert assigned.status_code == 200, assigned.text
         assert assigned.json()["desired_revision"] == 1
+        available = client.get(f"/api/groups/{group_id}/skills")
+        assert available.status_code == 200
+        assert available.json()["skills"][0]["skill_version_id"] == version_id
+        project_skills = client.get(f"/api/groups/{group_id}/projects/project-1/skills")
+        assert project_skills.status_code == 200
+        assert project_skills.json()["skills"][0]["skill_version_id"] == version_id
+        assert project_skills.json()["desired_revision"] == 1
         again = client.post(f"/api/groups/{group_id}/projects/project-1/skills", json={
             "skill_version_id": version_id,
         }, headers=headers)
