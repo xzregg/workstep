@@ -146,10 +146,24 @@ class ControlConnections:
         self._pending_data: dict[str, tuple[str, float, asyncio.Future]] = {}
         self._device_pending: dict[str, str] = {}
         self._config_keys: dict[str, str] = {}
+        self._daemon_health: dict[str, bool] = {}
         self._lock = asyncio.Lock()
 
     def is_online(self, device_id: str) -> bool:
         return device_id in self._active
+
+    def daemon_health(self, device_id: str) -> bool | None:
+        if not self.is_online(device_id):
+            return None
+        return self._daemon_health.get(device_id)
+
+    def update_daemon_health(self, device_id: str, healthy: bool | None) -> None:
+        if device_id not in self._active:
+            return
+        if healthy is None:
+            self._daemon_health.pop(device_id, None)
+        else:
+            self._daemon_health[device_id] = healthy
 
     async def claim(self, device_id: str, connection_id: str, ws: WebSocket,
                     config_public_key_pem: str) -> None:
@@ -157,6 +171,7 @@ class ControlConnections:
             previous = self._active.get(device_id)
             self._active[device_id] = (connection_id, ws, asyncio.current_task())
             self._config_keys[device_id] = config_public_key_pem
+            self._daemon_health.pop(device_id, None)
         if previous:
             try:
                 await previous[1].close(code=4000, reason="Replaced by new connection")
@@ -168,6 +183,7 @@ class ControlConnections:
             if self._active.get(device_id, (None,))[0] == connection_id:
                 self._active.pop(device_id, None)
                 self._config_keys.pop(device_id, None)
+                self._daemon_health.pop(device_id, None)
                 pending_token = self._device_pending.pop(device_id, None)
                 if pending_token:
                     pending = self._pending_data.pop(pending_token, None)
@@ -890,6 +906,11 @@ async def control_socket(ws: WebSocket):
             if message.get("kind") != "heartbeat":
                 await ws.close(code=4400, reason="Invalid control message")
                 return
+            daemon_health = message.get("daemon_health")
+            if daemon_health is not None and type(daemon_health) is not bool:
+                await ws.close(code=4400, reason="Invalid daemon health")
+                return
+            ws.app.state.control_connections.update_daemon_health(device_id, daemon_health)
             if not await binding_active(ws, device_id, user_id):
                 await ws.close(code=4003, reason="Device access revoked")
                 return

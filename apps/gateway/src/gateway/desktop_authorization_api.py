@@ -105,6 +105,7 @@ async def list_devices(request: Request, status: Literal["pending", "active", "d
         status=status, q=q, sort=sort, direction=direction, page=page, page_size=page_size)
     return {"devices": [{"id": device.id, "name": device.name, "status": device.status,
                          "online": request.app.state.control_connections.is_online(device.id),
+                         "daemon_health": request.app.state.control_connections.daemon_health(device.id),
                          "version": device.version, "app_instance_id": device.app_instance_id}
                         for device in devices], "total": total, "page": page, "page_size": page_size}
 

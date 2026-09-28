@@ -8,6 +8,7 @@ import { DeviceAdminPage } from '../src/DeviceAdminPage'
 import { AdminGrantRoleDialog, AdminRevokeRoleDialog } from '../src/AdminRoleDialogs'
 import { AdminRolesPage } from '../src/AdminRolesPage'
 import type { AdminRole } from '../src/AdminRolesPage'
+import { AdminOverviewPage } from '../src/AdminOverviewPage'
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://gateway.test/admin/users' })
 Object.assign(globalThis, {
@@ -198,4 +199,26 @@ test('revoke role dialog keeps an error available for recovery', async () => {
   await screen.findByRole('alert')
   assert.match(screen.getByRole('alert').textContent ?? '', /最后一名本地超级管理员/)
   assert.equal(completed, 0)
+})
+
+test('overview distinguishes control connectivity from daemon health and recovers from load errors', async () => {
+  let calls = 0
+  globalThis.fetch = async input => {
+    assert.equal(String(input), '/api/admin/overview')
+    calls++
+    if (calls === 1) return new Response(null, { status: 503 })
+    return Response.json({ roles: ['super_admin'], users: { total: 4, pending: 1 },
+      devices: { total: 2, online: 1, offline: 1, pending: 0,
+        daemon_healthy: 0, daemon_unhealthy: 1, daemon_unknown: 0 },
+      projects: { published: 2, shared: 1, host_offline: 1 }, tasks: { running: null },
+      recent_actions: [] })
+  }
+  render(<MemoryRouter><AdminOverviewPage /></MemoryRouter>)
+  await screen.findByRole('alert')
+  fireEvent.click(screen.getByRole('button', { name: '重试' }))
+  await screen.findByText(/daemon 健康：0 台正常/)
+  assert.match(document.body.textContent ?? '', /1 台控制连接在线/)
+  assert.match(document.body.textContent ?? '', /1 台异常/)
+  assert.match(document.body.textContent ?? '', /运行状态尚未上报/)
+  assert.equal(calls, 2)
 })

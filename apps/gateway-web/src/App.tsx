@@ -9,6 +9,7 @@ import { PortalAuthPage } from './PortalAuthPage'
 import { AccountPage } from './AccountPage'
 import { AdminUsersPage } from './AdminUsersPage'
 import { AdminRolesPage } from './AdminRolesPage'
+import { AdminOverviewPage } from './AdminOverviewPage'
 
 export function App({ deviceHost = typeof window !== 'undefined' && window.location.hostname.startsWith('d-') }: { deviceHost?: boolean }) {
   if (deviceHost) return <main><header><h1>WorkStep 远程项目</h1></header><ProjectWorkspacePage /></main>
@@ -17,11 +18,7 @@ export function App({ deviceHost = typeof window !== 'undefined' && window.locat
       <header><h1>WorkStep Gateway</h1><nav><Link to="/">我的项目</Link> <Link to="/devices">我的电脑</Link> <Link to="/account">个人账户</Link> <Link to="/admin">管理后台</Link> <Link to="/auth">登录 / 注册</Link></nav></header>
       <Routes>
         <Route path="/" element={<ProjectsPage />} />
-        <Route path="/admin" element={<section className="gateway-admin-page"><h2>管理后台</h2>
-          <p>管理 Gateway 用户和受管设备。</p><nav className="gateway-admin-links">
-            <Link to="/">返回工作台</Link><Link to="/admin/users">用户管理</Link>
-            <Link to="/admin/admins">管理员权限</Link><Link to="/admin/devices">设备管理</Link>
-          </nav></section>} />
+        <Route path="/admin" element={<AdminOverviewPage />} />
         <Route path="/admin/users" element={<AdminUsersPage />} />
         <Route path="/admin/admins" element={<AdminRolesPage />} />
         <Route path="/admin/devices" element={<DeviceAdminPage />} />

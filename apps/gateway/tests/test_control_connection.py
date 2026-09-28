@@ -123,12 +123,18 @@ def test_control_socket_authenticates_device_and_tracks_connection(tmp_path):
                 assert database.execute("SELECT applied_policy_revision FROM device_connections").fetchone() == (0,)
             listed = client.get("/api/admin/devices", headers={"X-CSRF-Token": csrf}).json()["devices"]
             assert listed[0]["online"] is True
-            ws.send_json({"kind": "heartbeat"})
+            assert listed[0]["daemon_health"] is None
+            ws.send_json({"kind": "heartbeat", "daemon_health": True})
             heartbeat = ws.receive_json()
             assert heartbeat["kind"] == "heartbeat_ack"
             assert heartbeat["skill_manifest"]
+            assert client.get("/api/admin/devices").json()["devices"][0]["daemon_health"] is True
+            ws.send_json({"kind": "heartbeat", "daemon_health": False})
+            assert ws.receive_json()["kind"] == "heartbeat_ack"
+            assert client.get("/api/admin/devices").json()["devices"][0]["daemon_health"] is False
         listed = client.get("/api/admin/devices").json()["devices"]
         assert listed[0]["online"] is False
+        assert listed[0]["daemon_health"] is None
 
 
 def test_control_delivers_signed_device_command_and_records_result(tmp_path):
