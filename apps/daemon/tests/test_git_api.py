@@ -798,6 +798,7 @@ async def test_save_file_can_undo_an_applied_block_after_file_becomes_clean(clie
 
 async def test_generate_commit_message_uses_prompt_enhance_provider_and_selected_diff(client, layout, monkeypatch):
     from services.config import config_store
+    from main import gateway_client
 
     http, _ = client
     _, repo, _ = layout
@@ -807,6 +808,7 @@ async def test_generate_commit_message_uses_prompt_enhance_provider_and_selected
     url = f'/api/git/worktrees/{id}'
     state = (await http.get(url + '/status')).json()
     calls = []
+    recorded_usage = []
 
     monkeypatch.setattr(config_store, 'get_prompt_enhance_config', lambda: {
         'provider_id': 'enhance-provider',
@@ -817,9 +819,14 @@ async def test_generate_commit_message_uses_prompt_enhance_provider_and_selected
 
     async def fake_completion(provider, model, messages, **kwargs):
         calls.append((provider, model, messages, kwargs))
+        kwargs['usage_collector'].update({'input_tokens': 20, 'output_tokens': 8})
         return 'fix(git): 修正行为并补充新文件\n\n- 更新已选文件内容'
 
+    async def record_usage(**kwargs):
+        recorded_usage.append(kwargs)
+
     monkeypatch.setattr('services.providers.text_completion', fake_completion)
+    monkeypatch.setattr(gateway_client, 'record_one_shot_usage', record_usage)
     response = await http.post(url + '/commit-message', json={'paths': ['one.txt', 'new.txt'], 'snapshot': state['snapshot']})
     assert response.status_code == 200, response.text
     assert response.json()['message'].startswith('fix(git):')
@@ -830,6 +837,10 @@ async def test_generate_commit_message_uses_prompt_enhance_provider_and_selected
     assert calls[0][3]['thinking'] == 'disabled'
     assert calls[0][3]['protocol'] == 'openai_chat_completions'
     assert calls[0][3]['timeout'] == 180
+    assert len(recorded_usage) == 1
+    assert recorded_usage[0]['project_id'] == 'p'
+    assert recorded_usage[0]['model'] == 'fast-model'
+    assert recorded_usage[0]['usage'] == {'input_tokens': 20, 'output_tokens': 8}
 
     async def timeout_completion(*args, **kwargs):
         raise ReadTimeout('')
@@ -838,6 +849,7 @@ async def test_generate_commit_message_uses_prompt_enhance_provider_and_selected
     response = await http.post(url + '/commit-message', json={'paths': ['one.txt'], 'snapshot': state['snapshot']})
     assert response.status_code == 504
     assert '180 秒' in response.json()['detail']
+    assert len(recorded_usage) == 1
 
 
 async def test_switch_checks_dirty_active_and_worktree_occupation(client, layout):

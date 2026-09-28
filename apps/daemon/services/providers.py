@@ -158,6 +158,7 @@ async def chat_completion(
     transport: httpx.AsyncBaseTransport | None = None,
     thinking: str | None = None,
     protocol: str | None = None,
+    usage_collector: dict | None = None,
 ) -> str:
     """One-shot OpenAI-compatible ``/chat/completions`` call (no agent machinery).
 
@@ -212,6 +213,8 @@ async def chat_completion(
     content = str(content or "")
     if not content:
         raise RuntimeError("模型未返回内容，请重试")
+    if usage_collector is not None:
+        usage_collector.update(_response_usage(data, selected))
     return content
 
 
@@ -235,6 +238,38 @@ def _responses_text(data: Any) -> str:
     return "".join(parts)
 
 
+def _response_usage(data: Any, protocol: str) -> dict:
+    raw = data.get("usage") if isinstance(data, dict) else None
+    if not isinstance(raw, dict):
+        return {}
+
+    def tokens(value: Any) -> int:
+        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+    if protocol == "anthropic_messages":
+        return {
+            "input_tokens": tokens(raw.get("input_tokens")),
+            "output_tokens": tokens(raw.get("output_tokens")),
+            "cache_read_input_tokens": tokens(raw.get("cache_read_input_tokens")),
+            "cache_creation_input_tokens": tokens(raw.get("cache_creation_input_tokens")),
+            "cache_input_included": False,
+        }
+    if protocol == "openai_responses":
+        details = raw.get("input_tokens_details") or {}
+        input_key, output_key = "input_tokens", "output_tokens"
+    else:
+        details = raw.get("prompt_tokens_details") or {}
+        input_key, output_key = "prompt_tokens", "completion_tokens"
+    return {
+        "input_tokens": tokens(raw.get(input_key)),
+        "output_tokens": tokens(raw.get(output_key)),
+        "cache_read_input_tokens": tokens(
+            details.get("cached_tokens") if isinstance(details, dict) else None
+        ),
+        "cache_input_included": True,
+    }
+
+
 async def text_completion(
     provider: dict,
     model: str,
@@ -245,6 +280,7 @@ async def text_completion(
     transport: httpx.AsyncBaseTransport | None = None,
     thinking: str | None = None,
     protocol: str | None = None,
+    usage_collector: dict | None = None,
 ) -> str:
     """Run a one-shot text request through any configured provider protocol."""
     model = (model or "").strip()
@@ -265,6 +301,7 @@ async def text_completion(
             transport=transport,
             thinking=thinking,
             protocol=selected,
+            usage_collector=usage_collector,
         )
 
     if selected == "anthropic_messages":
@@ -318,6 +355,8 @@ async def text_completion(
         result = _responses_text(data)
     if not result:
         raise RuntimeError("模型未返回内容，请重试")
+    if usage_collector is not None:
+        usage_collector.update(_response_usage(data, selected))
     return result
 
 

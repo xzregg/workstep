@@ -545,6 +545,7 @@ async def test_fetch_models_skips_malformed_items():
 @pytest.mark.anyio
 async def test_chat_completion_direct_call():
     captured = {}
+    usage = {}
 
     async def handler(request):
         captured["url"] = str(request.url)
@@ -552,6 +553,8 @@ async def test_chat_completion_direct_call():
         captured["body"] = json.loads(request.content)
         return httpx.Response(200, json={
             "choices": [{"message": {"content": "改写后的提示词"}}],
+            "usage": {"prompt_tokens": 11, "completion_tokens": 4,
+                      "prompt_tokens_details": {"cached_tokens": 2}},
         })
 
     text = await provider_service.chat_completion(
@@ -567,8 +570,12 @@ async def test_chat_completion_direct_call():
         ],
         thinking="disabled",
         transport=httpx.MockTransport(handler),
+        usage_collector=usage,
     )
     assert text == "改写后的提示词"
+    assert usage == {"input_tokens": 11, "output_tokens": 4,
+                     "cache_read_input_tokens": 2,
+                     "cache_input_included": True}
     assert captured["url"].endswith("/chat/completions")
     assert captured["headers"]["authorization"] == "Bearer sk-test"
     assert captured["body"] == {
@@ -611,6 +618,7 @@ async def test_managed_provider_rejects_unassigned_model_before_network():
 @pytest.mark.anyio
 async def test_text_completion_supports_anthropic_messages():
     captured = {}
+    usage = {}
 
     async def handler(request):
         captured["url"] = str(request.url)
@@ -618,6 +626,9 @@ async def test_text_completion_supports_anthropic_messages():
         captured["body"] = json.loads(request.content)
         return httpx.Response(200, json={
             "content": [{"type": "text", "text": "Anthropic 改写结果"}],
+            "usage": {"input_tokens": 11, "output_tokens": 4,
+                      "cache_read_input_tokens": 2,
+                      "cache_creation_input_tokens": 3},
         })
 
     text = await provider_service.text_completion(
@@ -636,9 +647,14 @@ async def test_text_completion_supports_anthropic_messages():
         ],
         protocol="anthropic_messages",
         transport=httpx.MockTransport(handler),
+        usage_collector=usage,
     )
 
     assert text == "Anthropic 改写结果"
+    assert usage == {"input_tokens": 11, "output_tokens": 4,
+                     "cache_read_input_tokens": 2,
+                     "cache_creation_input_tokens": 3,
+                     "cache_input_included": False}
     assert captured["url"] == "https://gateway.example.com/v1/messages"
     assert captured["headers"]["x-api-key"] == "sk-ant"
     assert captured["body"] == {
@@ -653,6 +669,7 @@ async def test_text_completion_supports_anthropic_messages():
 @pytest.mark.anyio
 async def test_text_completion_supports_openai_responses():
     captured = {}
+    usage = {}
 
     async def handler(request):
         captured["url"] = str(request.url)
@@ -662,6 +679,8 @@ async def test_text_completion_supports_openai_responses():
                 "type": "message",
                 "content": [{"type": "output_text", "text": "Responses 改写结果"}],
             }],
+            "usage": {"input_tokens": 13, "output_tokens": 5,
+                      "input_tokens_details": {"cached_tokens": 3}},
         })
 
     messages = [
@@ -682,9 +701,13 @@ async def test_text_completion_supports_openai_responses():
         protocol="openai_responses",
         max_tokens=800,
         transport=httpx.MockTransport(handler),
+        usage_collector=usage,
     )
 
     assert text == "Responses 改写结果"
+    assert usage == {"input_tokens": 13, "output_tokens": 5,
+                     "cache_read_input_tokens": 3,
+                     "cache_input_included": True}
     assert captured["url"] == "https://gateway.example.com/v1/responses"
     assert captured["body"] == {
         "model": "gpt-model",

@@ -1,6 +1,9 @@
 import asyncio
+import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 from .managed_config import InvalidManagedGatewayConfig, load_managed_config
 from .identity import ManagedAuthorizationVerifier, ManagedLocalSessions
@@ -119,6 +122,24 @@ class GatewayClientService:
             initiated_by_user_id=user_id, session_id=session_id,
         )
         await asyncio.to_thread(self.usage_outbox.append, event)
+
+    async def record_one_shot_usage(self, *, project_id: str | None,
+                                    model: str, provider: dict | None,
+                                    usage: dict | None) -> None:
+        if self.managed_config is None:
+            return
+        from services.remote_project import get_effective_actor
+
+        actor = get_effective_actor()
+        request_id = uuid4().hex
+        await self.record_message_usage(
+            project_id=project_id, task_id=None, message_id=request_id,
+            run_id=None, model=model, occurred_at=datetime.now(timezone.utc),
+            provider=provider,
+            provider_id=provider.get("id") if provider else None,
+            usage_json=json.dumps(usage) if usage else None,
+            user_id=actor.actor_id if actor else None,
+        )
 
     async def publish_project(self, project_id: str, *, published: bool) -> dict:
         if self.managed_config is None or self.control_client is None or not self.device_id:

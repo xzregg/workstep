@@ -145,3 +145,41 @@ async def test_gateway_service_records_completed_message_to_durable_outbox(tmp_p
     assert event["device_id"] == "device-1"
     assert event["project_id"] == "project-1"
     assert event["input_tokens"] == 10
+
+
+@pytest.mark.asyncio
+async def test_gateway_service_records_one_shot_usage_without_saving_prompt(tmp_path):
+    from types import SimpleNamespace
+
+    service = GatewayClientService()
+    service.managed_config = SimpleNamespace(gateway_id="gateway-test")
+    service.usage_outbox = UsageOutbox(tmp_path / "usage-outbox.db")
+    service.device_id = "device-1"
+    service.current_user_id = "user-1"
+    provider = {"id": "provider-1", "managed_revision": 3,
+                "prices": {"version": "v1", "models": {"model-a": {
+                    "input_per_million": "1", "output_per_million": "2",
+                }}}}
+    await service.record_one_shot_usage(
+        project_id="project-1", model="model-a", provider=provider,
+        usage={"input_tokens": 10, "output_tokens": 5},
+    )
+    first = service.usage_outbox.pending()
+    event = first["events"][0]
+    assert event["metering_status"] == "metered"
+    assert event["pricing_version"] == "v1"
+    assert event["user_id"] == "user-1"
+    assert event["project_id"] == "project-1"
+    assert event["message_id"] == event["request_id"]
+    assert "prompt" not in event and "response" not in event
+    await service.record_one_shot_usage(
+        project_id="project-1", model="model-a", provider=provider,
+        usage=None,
+    )
+    assert service.usage_outbox.pending() == first
+    service.usage_outbox.ack(first["batch_id"], accepted=[event["usage_event_id"]],
+                             duplicates=[], rejected=[])
+    missing = service.usage_outbox.pending()["events"][0]
+    assert missing["metering_status"] == "unmetered"
+    assert missing["estimated_cost"] is None
+    assert missing["usage_event_id"] != event["usage_event_id"]

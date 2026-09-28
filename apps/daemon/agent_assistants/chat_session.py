@@ -938,12 +938,16 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
         )
         if enhance_config["provider_id"] and enhance_config["model"]:
             from services import providers as provider_service
+            from services.gateway_client.usage import snapshot_usage_provider
+            from main import gateway_client
 
             provider = await asyncio.to_thread(
                 config_store.get_provider, enhance_config["provider_id"]
             )
             if provider is None:
                 raise ValueError("提示词增强的供应商不存在，请在设置中重新配置")
+            provider_snapshot = snapshot_usage_provider(provider)
+            usage: dict = {}
             raw = await provider_service.text_completion(
                 provider,
                 enhance_config["model"],
@@ -953,10 +957,15 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
                 ],
                 thinking="disabled",
                 protocol=enhance_config.get("protocol") or None,
+                usage_collector=usage,
             )
             result = raw.strip()
             if not result:
                 raise ValueError("提示词增强失败，请重试")
+            await gateway_client.record_one_shot_usage(
+                project_id=project_id, model=enhance_config["model"],
+                provider=provider_snapshot, usage=usage or None,
+            )
             return result
         enhance_input = f"{ENHANCE_SYSTEM_PROMPT}\n\n用户提示词：\n{prompt}"
         try:
