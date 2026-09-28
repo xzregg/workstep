@@ -535,22 +535,31 @@ class TaskService:
             logger.exception("Engine stop raised during cancel for task %s", task_id)
         return True
 
-    async def pause_task(self, task_id: str) -> bool:
+    async def pause_task(self, task_id: str, project_id: str | None = None) -> bool:
         """Pause a running task."""
-        return await asyncio.to_thread(self._pause_task_sync, task_id)
+        return await asyncio.to_thread(self._pause_task_sync, task_id, project_id)
 
     @staticmethod
-    def _pause_task_sync(task_id: str) -> bool:
-        try:
-            task = Task.get_by_id(task_id)
-        except Task.DoesNotExist:
-            return False
+    def _pause_task_sync(task_id: str, project_id: str | None = None) -> bool:
+        with db_proxy.atomic("IMMEDIATE"):
+            task = Task.get_or_none(Task.id == task_id)
+            if task is None:
+                return False
+            task.status = "paused"
+            task.updated_at = utc_now()
+            task.save()
+            if project_id:
+                from services.project_audit import record_project_audit
+                from services.remote_access import get_effective_actor
 
-        # Update task status to paused
-        task.status = "paused"
-        task.updated_at = utc_now()
-        task.save()
-        return True
+                actor = get_effective_actor()
+                record_project_audit(
+                    project_id=project_id, task_id=task_id,
+                    action="task.pause", result="succeeded",
+                    mode="managed" if actor is not None and actor.source == "managed" else "local",
+                    metadata={"status": "paused"},
+                )
+            return True
 
     def delete_task(self, task_id: str, project_id: str) -> bool:
         """Delete a task."""
