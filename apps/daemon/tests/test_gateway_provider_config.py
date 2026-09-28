@@ -19,6 +19,7 @@ from services.gateway_client.policy import ManagedPolicyCache
 from services import config as config_module
 from api.provider import router as provider_router
 from engines.codex import CodexEngine
+from engines.pydantic_ai import PydanticAIEngine
 from engines.core.base import EngineTestResult
 from types import SimpleNamespace
 
@@ -167,6 +168,9 @@ def test_managed_provider_runtime_requires_catalog_model(tmp_path, monkeypatch):
         CodexEngine().resolve_provider_runtime(provider_id="managed-1", model="model-b")
     with pytest.raises(ValueError, match="模型"):
         CodexEngine().resolve_provider_runtime(provider_id="managed-1", model=None)
+    with pytest.raises(ValueError, match="模型未获平台供应商授权"):
+        PydanticAIEngine.build_model(provider=store.get_provider("managed-1"),
+                                     model_name="model-b")
 
 
 @pytest.mark.asyncio
