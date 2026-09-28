@@ -13,7 +13,7 @@ from websockets.exceptions import ConnectionClosed
 from workstep_gateway_protocol import FrameType, ProxyFrame
 
 from .policy import ManagedPolicyCache, verify_policy_snapshot
-from .bridge import ManagedHttpBridge
+from .bridge import ManagedHttpBridge, ManagedWebSocketBridge
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +205,7 @@ class GatewayControlClient:
             messages.put_nowait(exc)
 
     async def _run_data(self, device_id: str, token: str) -> None:
-        streams: dict[str, ManagedHttpBridge] = {}
+        streams: dict[str, ManagedHttpBridge | ManagedWebSocketBridge] = {}
         try:
             async with self.connector(data_url(self.origin), origin=self.origin,
                                       open_timeout=10, max_size=1024 * 1024) as socket:
@@ -227,11 +227,19 @@ class GatewayControlClient:
                                                    frame.payload, send_frame, device_id)
                         streams[frame.stream_id] = bridge
                         bridge.start_task()
+                    elif frame.type == FrameType.websocket_open and frame.payload.get("phase") == "start":
+                        if self.asgi_app is None or bridge is not None or len(streams) >= 32:
+                            raise ValueError("Invalid managed data stream")
+                        bridge = ManagedWebSocketBridge(self.asgi_app, frame.stream_id,
+                                                        frame.payload, send_frame, device_id)
+                        streams[frame.stream_id] = bridge
+                        bridge.start_task()
                     elif frame.type == FrameType.cancel:
                         if bridge:
                             bridge.cancel()
                             streams.pop(frame.stream_id, None)
-                    elif frame.type == FrameType.http_request and bridge:
+                    elif frame.type in (FrameType.http_request, FrameType.websocket_data,
+                                        FrameType.websocket_close) and bridge:
                         await bridge.feed(frame)
                         if bridge.done:
                             streams.pop(frame.stream_id, None)

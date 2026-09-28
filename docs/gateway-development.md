@@ -29,6 +29,6 @@ SQLite 可在服务运行时执行 `uv run --project apps/gateway python apps/ga
 
 控制 WSS 可按需发出 `open_data` 命令，PC 随即向 `/api/data/ws` 回连并一次性提交短期 token；控制断开时数据连接随之关闭。
 
-设备子域的 HTTP 请求现在由 Gateway 校验设备会话、当前分配和在线状态后，按流 ID 经数据 WSS 转发给 PC。PC 在进程内调用已有 FastAPI 应用，注入经过 Gateway 核验的用户身份；请求和响应正文分块传输，Gateway 不转发浏览器 Cookie 或伪造的操作者头。门户“打开电脑”会提交一次性票据。业务 WebSocket、完整流控和远程上下文提示尚未接入，阶段 3C 仍不可用于生产。
+设备子域的 HTTP 和业务 WebSocket 请求现在由 Gateway 校验设备会话、当前分配和在线状态后，按流 ID 经数据 WSS 转发给 PC。PC 在进程内调用已有 FastAPI 应用，注入经过 Gateway 核验的用户身份；HTTP 请求和响应正文分块传输，Gateway 不转发浏览器 Cookie 或伪造的操作者头。门户“打开电脑”会提交一次性票据，远程 Web 显示设备、用户、在线状态和返回入口。大 WebSocket 消息分块、完整流控、原生操作降级与受管包端到端验收仍待完成，阶段 3C 不可用于生产。
 
 测试：`uv run --project apps/gateway --group dev pytest apps/gateway/tests packages/gateway-protocol/tests`；协议模型变更后运行 `uv run --project apps/gateway python packages/gateway-protocol/scripts/schema.py` 并提交 `schema.json`。门户在 `apps/gateway-web` 运行 `yarn test && yarn build`。

@@ -1,6 +1,7 @@
 import { zhCN, type Messages } from './zh-CN'
 
 export const zhTW: Messages = {
+  gatewayRemote: { loading: '遠端電腦', disconnected: '連線已中斷', online: '在線', back: '返回我的電腦' },
   channelBot: zhCN.channelBot,
   git: {
     recoveryButton: '撤銷與還原',

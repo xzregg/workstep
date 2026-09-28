@@ -3,11 +3,12 @@ import base64
 
 import httpx
 import pytest
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket
 from workstep_gateway_protocol import FrameType, ProxyFrame
 
 from services.desktop_security import DesktopSecurityMiddleware
-from services.gateway_client.bridge import ManagedHttpBridge
+from services.gateway_client.bridge import ManagedHttpBridge, ManagedWebSocketBridge
+from services.desktop_security import desktop_websocket_allowed
 from services.remote_access import get_current_actor
 
 
@@ -57,3 +58,40 @@ async def test_gateway_bridge_streams_body_and_attaches_remote_actor_without_blo
     assert b'"body":"hello"' in body
     assert b'"source":"managed"' in body
     assert frames[-1].payload == {"phase": "end"}
+
+
+@pytest.mark.asyncio
+async def test_gateway_websocket_bridge_carries_bidirectional_messages_with_managed_actor():
+    app = FastAPI()
+    app.state.gateway_client = type("Client", (), {"managed_config": object()})()
+
+    @app.websocket("/ws")
+    async def echo(ws: WebSocket):
+        if not desktop_websocket_allowed(ws):
+            await ws.close(code=4401)
+            return
+        await ws.accept()
+        message = await ws.receive_text()
+        await ws.send_text(f"{ws.scope['managed_actor'].user_id}:{message}")
+        await ws.close()
+
+    frames = []
+    emitted = asyncio.Event()
+    async def send_frame(frame):
+        frames.append(frame)
+        emitted.set()
+
+    bridge = ManagedWebSocketBridge(app, "socket-1", {
+        "path": "/ws", "query": "", "headers": [],
+        "user_id": "remote-user", "username": "alice",
+    }, send_frame, "device-1")
+    bridge.start_task()
+    await asyncio.wait_for(emitted.wait(), timeout=1)
+    assert frames[0].type == FrameType.websocket_open
+    assert frames[0].payload["accepted"] is True
+    await bridge.feed(ProxyFrame(stream_id="socket-1", type=FrameType.websocket_data,
+                                 payload={"kind": "text", "data": "hello"}))
+    await asyncio.wait_for(bridge._task, timeout=1)
+    assert frames[1].type == FrameType.websocket_data
+    assert frames[1].payload == {"kind": "text", "data": "remote-user:hello"}
+    assert frames[-1].type == FrameType.websocket_close

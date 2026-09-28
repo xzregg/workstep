@@ -63,12 +63,18 @@ def _same_origin(origin: str | None, scheme: str, host: str) -> bool:
 def desktop_websocket_allowed(ws: WebSocket) -> bool:
     """Require the Electron main-process header in packaged desktop mode."""
 
+    gateway_client = getattr(ws.app.state, "gateway_client", None)
+    remote_actor = ws.scope.get("gateway_remote_actor")
+    if (remote_actor is not None and gateway_client is not None
+            and getattr(gateway_client, "managed_config", None) is not None):
+        ws.scope["managed_actor"] = remote_actor
+        return True
+
     if not _valid_token(ws.headers.get(DESKTOP_TOKEN_HEADER)):
         return False
     if not _same_origin(ws.headers.get("origin"),
                         "https" if ws.url.scheme == "wss" else "http", ws.headers.get("host", "")):
         return False
-    gateway_client = getattr(ws.app.state, "gateway_client", None)
     if gateway_client is None or getattr(gateway_client, "managed_config", None) is None:
         return True
     actor = gateway_client.local_sessions.resolve(ws.headers.get(LOCAL_SESSION_HEADER))

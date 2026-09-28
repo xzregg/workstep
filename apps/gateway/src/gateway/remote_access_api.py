@@ -5,7 +5,7 @@ import asyncio
 from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlsplit
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, WebSocket
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -14,6 +14,7 @@ from .identity import COOKIE_NAME, IdentityService
 from .models import Device, UsedDeviceAccessTicket, User, UserDevice
 
 router = APIRouter(prefix="/api/remote")
+websocket_router = APIRouter()
 
 
 def _device_host(request: Request) -> str:
@@ -90,7 +91,14 @@ async def redeem_device_ticket(request: Request):
 @router.get("/session")
 async def remote_session(request: Request):
     user, device_id = await _remote_identity(request)
-    return {"user_id": user.id, "device_id": device_id}
+    async with request.app.state.database.session() as session:
+        device = await session.get(Device, device_id)
+    if device is None:
+        raise HTTPException(status_code=403, detail="Device access denied")
+    return {"user_id": user.id, "username": user.display_name,
+            "device_id": device_id, "device_name": device.name,
+            "online": True,
+            "gateway_url": request.app.state.settings.public_origin + "/devices"}
 
 
 async def _remote_identity(request: Request) -> tuple[User, str]:
@@ -116,3 +124,18 @@ async def proxy_remote_request(request: Request):
         return await connection.proxy_http(request, user_id=user.id, username=user.username)
     except (ConnectionError, asyncio.TimeoutError) as exc:
         raise HTTPException(status_code=502, detail="Device data connection unavailable") from exc
+
+
+@websocket_router.websocket("/{path:path}")
+async def proxy_remote_websocket(ws: WebSocket, path: str):
+    try:
+        host = _device_host(ws)
+        if ws.headers.get("origin") != f"https://{host}":
+            raise HTTPException(status_code=403, detail="Invalid remote WebSocket origin")
+        user, device_id = await _remote_identity(ws)
+        connection = await ws.app.state.control_connections.request_data(device_id)
+        await connection.proxy_websocket(ws, user_id=user.id, username=user.username)
+    except HTTPException:
+        await ws.close(code=4403)
+    except (ConnectionError, asyncio.TimeoutError):
+        await ws.close(code=1013)

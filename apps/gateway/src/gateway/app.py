@@ -22,7 +22,9 @@ from .client_releases import router as client_releases_router
 from .control_connection import ControlConnections, router as control_router
 from .capabilities import router as capabilities_router
 from .user_devices_api import router as user_devices_router
-from .remote_access_api import router as remote_access_router, proxy_remote_request
+from .remote_access_api import (router as remote_access_router,
+                                websocket_router as remote_websocket_router,
+                                proxy_remote_request)
 
 
 def create_app(settings: GatewaySettings | None = None) -> FastAPI:
@@ -100,6 +102,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(capabilities_router)
     app.include_router(user_devices_router)
     app.include_router(remote_access_router)
+    app.include_router(remote_websocket_router)
 
     if settings.web_dist and settings.web_dist.is_dir():
         assets = settings.web_dist / "assets"

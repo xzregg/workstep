@@ -1,4 +1,6 @@
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
+import pytest
 import base64
 import json
 from cryptography.hazmat.primitives import serialization
@@ -91,11 +93,25 @@ def test_user_sees_only_assigned_pc_and_admin_can_revoke(tmp_path, monkeypatch):
                 assert user_id == claims["user_id"]
                 assert username == "alice"
                 return JSONResponse({"proxied": True})
+            async def proxy_websocket(self, ws, *, user_id, username):
+                assert user_id == claims["user_id"]
+                assert username == "alice"
+                await ws.accept()
+                await ws.send_text("remote-ready")
+                await ws.close(code=1000)
         async def request_data(device_id):
             assert device_id == "device-1"
             return FakeData()
         monkeypatch.setattr(app.state.control_connections, "request_data", request_data)
         assert client.get(f"{remote_url}/api/health").json() == {"proxied": True}
+        with client.websocket_connect("wss://d-device-1.gateway.test/ws",
+                                      headers={"origin": remote_url}) as socket:
+            assert socket.receive_text() == "remote-ready"
+        with pytest.raises(WebSocketDisconnect) as denied:
+            with client.websocket_connect("wss://d-device-1.gateway.test/ws",
+                                          headers={"origin": "https://evil.test"}):
+                pass
+        assert denied.value.code == 4403
         assert client.get("https://d-device-2.gateway.test/api/remote/session").status_code == 403
         assert client.get("/api/devices").status_code == 200
         client.post("/api/auth/logout", headers={"X-CSRF-Token": alice.json()["csrf_token"]})

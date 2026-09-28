@@ -274,9 +274,12 @@ class DataConnection:
             try:
                 queue.put_nowait(error)
             except asyncio.QueueFull:
-                pass
+                queue.get_nowait()
+                queue.put_nowait(error)
 
     async def proxy_http(self, request, *, user_id: str, username: str):
+        if len(self._streams) >= 32:
+            raise ConnectionError("Too many managed data streams")
         stream_id = uuid4().hex
         queue: asyncio.Queue = asyncio.Queue(maxsize=32)
         self._streams[stream_id] = queue
@@ -372,6 +375,94 @@ class DataConnection:
             self._streams.pop(stream_id, None)
             raise
 
+    async def proxy_websocket(self, browser: WebSocket, *, user_id: str,
+                              username: str) -> None:
+        if len(self._streams) >= 32:
+            await browser.close(code=1013)
+            return
+        stream_id = uuid4().hex
+        queue: asyncio.Queue = asyncio.Queue(maxsize=32)
+        self._streams[stream_id] = queue
+        tasks: list[asyncio.Task] = []
+        headers = [[key.decode("latin1"), value.decode("latin1")]
+                   for key, value in browser.scope["headers"]
+                   if key.lower() not in (b"host", b"cookie", b"connection",
+                                          b"sec-websocket-key", b"sec-websocket-version")
+                   and not key.lower().startswith(b"x-workstep-")]
+        try:
+            await self.send_frame(ProxyFrame(
+                stream_id=stream_id, type=FrameType.websocket_open,
+                payload={"phase": "start", "path": browser.url.path,
+                         "query": browser.url.query, "headers": headers,
+                         "user_id": user_id, "username": username},
+            ))
+            opened = await asyncio.wait_for(queue.get(), timeout=15)
+            if (isinstance(opened, Exception) or opened.type != FrameType.websocket_open
+                    or opened.payload.get("accepted") is not True):
+                await browser.close(code=4403)
+                return
+            subprotocol = opened.payload.get("subprotocol")
+            await browser.accept(subprotocol=subprotocol if isinstance(subprotocol, str) else None)
+
+            async def browser_to_pc():
+                while True:
+                    message = await browser.receive()
+                    if message["type"] == "websocket.disconnect":
+                        await self.send_frame(ProxyFrame(
+                            stream_id=stream_id, type=FrameType.websocket_close,
+                            payload={"code": message.get("code", 1000)},
+                        ))
+                        return
+                    if message["type"] != "websocket.receive":
+                        continue
+                    if message.get("text") is not None:
+                        payload = {"kind": "text", "data": message["text"]}
+                    else:
+                        payload = {"kind": "bytes", "data": base64.b64encode(
+                            message.get("bytes") or b"",
+                        ).decode()}
+                    await self.send_frame(ProxyFrame(
+                        stream_id=stream_id, type=FrameType.websocket_data, payload=payload,
+                    ))
+
+            async def pc_to_browser():
+                while True:
+                    frame = await queue.get()
+                    if isinstance(frame, Exception):
+                        raise frame
+                    if frame.type == FrameType.websocket_close:
+                        await browser.close(code=frame.payload.get("code", 1000))
+                        return
+                    if frame.type != FrameType.websocket_data:
+                        raise ValueError("Invalid managed WebSocket frame")
+                    if frame.payload.get("kind") == "text":
+                        await browser.send_text(frame.payload["data"])
+                    elif frame.payload.get("kind") == "bytes":
+                        await browser.send_bytes(base64.b64decode(frame.payload["data"], validate=True))
+                    else:
+                        raise ValueError("Invalid managed WebSocket data")
+
+            tasks = [asyncio.create_task(browser_to_pc()), asyncio.create_task(pc_to_browser())]
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            for task in done:
+                if task.exception():
+                    raise task.exception()
+        finally:
+            for task in tasks:
+                task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            self._streams.pop(stream_id, None)
+            try:
+                await self.send_frame(ProxyFrame(
+                    stream_id=stream_id, type=FrameType.cancel, payload={},
+                ))
+            except Exception:
+                pass
+
 
 @router.websocket("/api/data/ws")
 async def data_socket(ws: WebSocket):
@@ -400,7 +491,8 @@ async def data_socket(ws: WebSocket):
             except Exception:
                 await ws.close(code=4400)
                 return
-            if frame.type != FrameType.http_response:
+            if frame.type not in (FrameType.http_response, FrameType.websocket_open,
+                                  FrameType.websocket_data, FrameType.websocket_close):
                 await ws.close(code=4400)
                 return
             await connection.deliver(frame)
