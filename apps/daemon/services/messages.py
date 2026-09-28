@@ -220,6 +220,24 @@ def create_task_message(
         fields.setdefault("author_type", "user")
         fields.setdefault("initiated_by_user_id", fields.get("author_id"))
         fields.setdefault("initiated_by_username", fields.get("author_username"))
+    elif fields.get("author_type") == "system":
+        actor_fields = attributed_actor_message_fields(
+            task,
+            reply_to_message_id=fields.get("reply_to_message_id"),
+            channel=channel,
+            step_key=fields.get("step_key"),
+        )
+        for key in ("initiated_by_user_id", "initiated_by_username"):
+            if actor_fields.get(key):
+                fields.setdefault(key, actor_fields[key])
+        fields.update(
+            author_id="system",
+            author_username="system",
+            author_name="系统",
+            author_type="system",
+            author_device_id=None,
+            author_device_name=None,
+        )
     elif fields.get("role") == "assistant":
         actor_fields = attributed_actor_message_fields(
             task,

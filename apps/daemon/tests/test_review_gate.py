@@ -25,7 +25,7 @@ from services.task_runner import TaskRunner
 from services.pipeline import Step
 from services.review_gate import ReviewGate
 from services.review_messages import resolve_review_config
-from services.history import get_message_events, get_task_history
+from services.history import get_message_events, get_step_history, get_task_history
 from streaming.bus import EventBus
 
 
@@ -961,8 +961,12 @@ async def test_manual_review_waits_for_user(tmp_path):
         status="running",
         workflow_schema_version=1,
         workflow_snapshot_json="{}",
+        initiated_by_user_id="review-user",
+        initiated_by_username="reviewer",
         started_at=1,
     )
+    task.active_workflow_run_id = workflow_run.id
+    task.save()
     calls: list[str] = []
     original = ENGINE_REGISTRY.copy()
     ENGINE_REGISTRY["review-test"] = lambda: SequencedReviewEngine(calls)
@@ -999,6 +1003,21 @@ async def test_manual_review_waits_for_user(tmp_path):
         assert len(review_messages) == 1
         # 人工审核不展示「审核结果：未通过」，直接提示等待用户审核
         assert review_messages[0].content == "等待你审核"
+        assert review_messages[0].author_type == "system"
+        assert review_messages[0].author_username == "system"
+        assert review_messages[0].initiated_by_user_id == "review-user"
+        assert review_messages[0].initiated_by_username == "reviewer"
+        history = get_task_history(task.id, tmp_path / ".workstep")
+        visible_review = next(
+            item for item in history if item["id"] == review_messages[0].id
+        )
+        assert visible_review["author_type"] == "system"
+        assert visible_review["initiated_by_username"] == "reviewer"
+        step_review = next(
+            item for item in get_step_history(task.id, "build", tmp_path / ".workstep")
+            if item["id"] == review_messages[0].id
+        )
+        assert step_review["author_username"] == "system"
         # 人工审核没有运行引擎：无提示词、无 token、无引擎/模型
         assert review_messages[0].prompt_json is None
         assert review_messages[0].usage_json is None
