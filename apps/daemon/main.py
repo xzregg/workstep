@@ -14,6 +14,7 @@ from settings import settings
 from services.engine_packages import prepare_engine_package_dir
 from services.gateway_client import GatewayClientService
 from api.managed import router as managed_router
+from api.platform_share import router as platform_share_router
 
 prepare_engine_package_dir()
 
@@ -232,6 +233,7 @@ app = FastAPI(title="WorkStep Daemon", lifespan=lifespan, favicon_url="/static/f
 app.state.gateway_client = gateway_client
 gateway_client.asgi_app = app
 app.include_router(managed_router)
+app.include_router(platform_share_router)
 instrument_fastapi(app)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.add_middleware(DesktopSecurityMiddleware)

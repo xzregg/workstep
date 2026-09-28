@@ -13,7 +13,7 @@ from gateway.models import Device, PlatformProject
 from gateway import platform_shares
 
 
-def test_gateway_owns_public_share_credentials_and_revocation(tmp_path):
+def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypatch):
     app = create_app(GatewaySettings(
         data_dir=tmp_path, public_origin="https://gateway.test",
     ))
@@ -67,6 +67,7 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path):
         assert meta.status_code == 200, meta.text
         assert meta.json() == {"title": "Demo", "mode": "read_only",
                                "has_password": True, "status": "active"}
+        assert client.get(f"/api/public/shares/{token}/task").status_code == 401
         assert client.post(f"/api/public/shares/{token}/unlock", json={
             "password": "wrong",
         }).status_code == 403
@@ -79,8 +80,37 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path):
         assert client.get(f"/api/public/shares/{token}/session").json() == {
             "share_id": share["id"], "mode": "read_only", "task_id": "task-1",
         }
+        from fastapi.responses import JSONResponse
+        captured = {}
+
+        class ShareConnection:
+            async def proxy_http(self, request, *, share_ticket, target_path,
+                                 authorization_check):
+                await authorization_check()
+                captured["ticket"] = share_ticket
+                captured["path"] = target_path
+                return JSONResponse({"id": "task-1", "title": "Shared task"})
+
+        async def request_data(device_id):
+            assert device_id == "device-1"
+            return ShareConnection()
+
+        monkeypatch.setattr(app.state.control_connections, "is_online", lambda _id: True)
+        monkeypatch.setattr(app.state.control_connections, "request_data", request_data)
+        task = client.get(f"/api/public/shares/{token}/task")
+        assert task.status_code == 200, task.text
+        assert task.json()["id"] == "task-1"
+        assert captured["path"] == "/api/platform-share/task"
+        import base64
+        import json
+        claims = json.loads(base64.urlsafe_b64decode(captured["ticket"].split(".")[1] + "==="))
+        assert (claims["share_id"], claims["device_id"], claims["project_id"],
+                claims["host_project_id"], claims["task_id"], claims["mode"]) == (
+                    share["id"], "device-1", "project-1", "host-1", "task-1", "read_only",
+                )
         client.cookies.clear()
         assert client.get(f"/api/public/shares/{token}/session").status_code == 401
+        assert client.get(f"/api/public/shares/{token}/task").status_code == 401
 
         login = client.post("/api/auth/login", json={
             "username": "owner", "password": "OwnerPassphrase-2026!",
@@ -97,6 +127,7 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path):
         client.cookies.set("platform_share_session", visitor_cookie,
                            domain="gateway.test", path="/")
         assert client.get(f"/api/public/shares/{token}/session").status_code == 404
+        assert client.get(f"/api/public/shares/{token}/task").status_code == 404
 
         client.cookies.clear()
         owner_login = client.post("/api/auth/login", json={

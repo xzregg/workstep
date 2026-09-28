@@ -6,7 +6,8 @@ from cryptography.hazmat.primitives import serialization
 from services.gateway_client.share_ticket import verify_share_ticket
 
 
-def _ticket(*, device_id="device-1", mode="read_only", task_id="task-1"):
+def _ticket(*, device_id="device-1", mode="read_only", task_id="task-1",
+            host_project_id="host-1"):
     import base64
     import json
     import time
@@ -26,7 +27,7 @@ def _ticket(*, device_id="device-1", mode="read_only", task_id="task-1"):
     payload = encode({
         "iss": "gateway-1", "gateway_id": "gateway-1", "kind": "platform.share",
         "aud": "device-1", "device_id": device_id, "share_id": "share-1",
-        "project_id": "project-1", "host_project_id": "host-1",
+        "project_id": "project-1", "host_project_id": host_project_id,
         "task_id": task_id, "mode": mode, "jti": "a" * 24,
         "iat": now, "exp": now + 60,
     })

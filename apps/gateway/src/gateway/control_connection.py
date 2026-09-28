@@ -451,12 +451,25 @@ class DataConnection:
                 queue.get_nowait()
                 queue.put_nowait(error)
 
-    async def proxy_http(self, request, *, user_id: str, username: str,
+    async def proxy_http(self, request, *, user_id: str | None = None,
+                         username: str | None = None,
                          display_name: str | None = None,
                          project_id: str | None = None,
                          access_level: str | None = None,
                          task_create: bool = False,
+                         share_ticket: str | None = None,
+                         target_path: str | None = None,
                          authorization_check=None):
+        if share_ticket is not None:
+            if (not isinstance(share_ticket, str) or not share_ticket
+                    or target_path != "/api/platform-share/task"
+                    or request.method != "GET"
+                    or user_id is not None or username is not None
+                    or project_id is not None or access_level is not None
+                    or task_create):
+                raise ValueError("Invalid share proxy scope")
+        elif (not user_id or not username or target_path is not None):
+            raise ValueError("Invalid managed proxy identity")
         if (project_id is None) != (access_level is None) or (
                 access_level is not None and access_level not in ("read", "edit")) or (
                 type(task_create) is not bool or (project_id is None and task_create)):
@@ -491,14 +504,22 @@ class DataConnection:
                        if key.lower() not in (b"host", b"cookie", b"connection",
                                               b"x-workstep-actor-id", b"x-workstep-actor-name",
                                               b"x-workstep-actor-device-id", b"x-workstep-actor-device-name")]
+            start_payload = {"phase": "start", "method": request.method,
+                             "path": target_path or request.url.path,
+                             "query": "" if share_ticket else request.url.query,
+                             "headers": headers}
+            if share_ticket is not None:
+                start_payload["share_ticket"] = share_ticket
+            else:
+                start_payload.update({
+                    "user_id": user_id, "username": username,
+                    "display_name": display_name or username,
+                    "project_id": project_id, "access_level": access_level,
+                    "task_create": task_create,
+                })
             await self.send_frame(ProxyFrame(
                 stream_id=stream_id, type=FrameType.http_request,
-                payload={"phase": "start", "method": request.method,
-                         "path": request.url.path, "query": request.url.query,
-                         "headers": headers, "user_id": user_id, "username": username,
-                         "display_name": display_name or username,
-                         "project_id": project_id, "access_level": access_level,
-                         "task_create": task_create},
+                payload=start_payload,
             ))
             async for chunk in request.stream():
                 for offset in range(0, len(chunk), 16384):
