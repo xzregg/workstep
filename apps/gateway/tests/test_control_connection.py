@@ -675,3 +675,63 @@ def test_control_delivers_encrypted_provider_bundle_and_records_application(tmp_
             applications = client.get("/api/admin/providers/applications")
             assert applications.json()["devices"][0]["last_error"] == "application_failed"
             assert "sk-secret-api-key" not in applications.text
+
+
+def test_admin_provider_probe_runs_on_assigned_pc_and_returns_only_safe_result(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        device_id, token, device_key, csrf = _active_device(client)
+        user_id = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))["user_id"]
+        provider = client.post("/api/admin/providers", headers={"X-CSRF-Token": csrf}, json={
+            "name": "Company API", "type": "custom", "protocols": ["openai_responses"],
+            "protocol_base_urls": {"openai_responses": "https://api.example.test"},
+            "api_key": "secret-api-key", "models": ["model-a"],
+        }).json()
+        provider_id = provider["id"]
+        path = f"/api/admin/providers/{provider_id}/test"
+        assert client.post(path.replace(provider_id, "missing"),
+                           headers={"X-CSRF-Token": csrf}, json={
+                               "device_id": device_id,
+                           }).status_code == 404
+        assert client.post(f"/api/admin/providers/{provider_id}/assign",
+                           headers={"X-CSRF-Token": csrf}, json={
+                               "subject_type": "user", "subject_id": user_id,
+                           }).status_code == 200
+        assert client.post(path, headers={"X-CSRF-Token": csrf}, json={
+            "device_id": device_id,
+        }).status_code == 503
+        targets_path = f"/api/admin/providers/{provider_id}/test-targets"
+        assert client.get(targets_path).json()["devices"] == []
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with client.websocket_connect("/api/control/ws") as ws:
+                _handshake(ws, token, device_key)
+                assert ws.receive_json()["kind"] == "hello"
+                targets = client.get(targets_path, params={"q": "Alice"}).json()
+                assert targets["total"] == 1
+                assert targets["devices"] == [{"id": device_id, "name": "Alice PC"}]
+                assert client.get(targets_path, params={"q": "no match"}).json()["devices"] == []
+                unrelated = client.post("/api/admin/providers", headers={"X-CSRF-Token": csrf}, json={
+                    "name": "Unassigned API", "type": "custom", "protocols": ["openai_responses"],
+                    "protocol_base_urls": {"openai_responses": "https://api.example.test"},
+                    "api_key": "other-secret", "models": ["model-a"],
+                }).json()["id"]
+                assert client.get(f"/api/admin/providers/{unrelated}/test-targets").json()["devices"] == []
+                assert client.post(f"/api/admin/providers/{unrelated}/test",
+                                   headers={"X-CSRF-Token": csrf},
+                                   json={"device_id": device_id}).status_code == 403
+                future = pool.submit(client.post, path, headers={"X-CSRF-Token": csrf},
+                                     json={"device_id": device_id})
+                request = ws.receive_json()
+                assert request["kind"] == "provider_test_request"
+                assert request["provider_id"] == provider_id
+                assert request["device_id"] == device_id
+                assert "secret-api-key" not in json.dumps(request)
+                ws.send_json({"kind": "provider_test_result", "version": 1,
+                              "device_id": device_id, "request_id": request["request_id"],
+                              "status": "succeeded", "duration_ms": 27,
+                              "error_code": None})
+                result = future.result(timeout=5)
+                assert result.status_code == 200, result.text
+                assert result.json() == {"status": "succeeded", "duration_ms": 27,
+                                         "error_code": None}
+                assert "secret-api-key" not in result.text

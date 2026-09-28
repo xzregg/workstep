@@ -62,6 +62,7 @@ class GatewayControlClient:
         self._data_tasks: set[asyncio.Task] = set()
         self._command_tasks: set[asyncio.Task] = set()
         self._catalog_tasks: set[asyncio.Task] = set()
+        self._provider_test_tasks: set[asyncio.Task] = set()
         self._stop = asyncio.Event()
         self.config_private_key: X25519PrivateKey | None = None
         self._active_socket = None
@@ -107,6 +108,10 @@ class GatewayControlClient:
             task.cancel()
         if self._catalog_tasks:
             await asyncio.gather(*self._catalog_tasks, return_exceptions=True)
+        for task in self._provider_test_tasks:
+            task.cancel()
+        if self._provider_test_tasks:
+            await asyncio.gather(*self._provider_test_tasks, return_exceptions=True)
         for task in self._command_tasks:
             task.cancel()
         if self._command_tasks:
@@ -311,6 +316,10 @@ class GatewayControlClient:
                     task.cancel()
                 if self._catalog_tasks:
                     await asyncio.gather(*self._catalog_tasks, return_exceptions=True)
+                for task in self._provider_test_tasks:
+                    task.cancel()
+                if self._provider_test_tasks:
+                    await asyncio.gather(*self._provider_test_tasks, return_exceptions=True)
                 if reader_task:
                     reader_task.cancel()
                     await asyncio.gather(reader_task, return_exceptions=True)
@@ -368,6 +377,20 @@ class GatewayControlClient:
                     task = asyncio.create_task(self._send_project_catalog(socket, device_id, request_id))
                     self._catalog_tasks.add(task)
                     task.add_done_callback(self._catalog_tasks.discard)
+                elif message.get("kind") == "provider_test_request":
+                    request_id = message.get("request_id")
+                    provider_id = message.get("provider_id")
+                    if (set(message) != {"kind", "version", "device_id", "request_id", "provider_id"}
+                            or message.get("version") != 1 or message.get("device_id") != device_id
+                            or not isinstance(request_id, str) or len(request_id) != 32
+                            or any(char not in "0123456789abcdef" for char in request_id)
+                            or not isinstance(provider_id, str)
+                            or not 1 <= len(provider_id) <= 64):
+                        raise ValueError("Invalid provider test request")
+                    task = asyncio.create_task(self._send_provider_test(
+                        socket, device_id, request_id, provider_id))
+                    self._provider_test_tasks.add(task)
+                    task.add_done_callback(self._provider_test_tasks.discard)
                 elif message.get("kind") == "command_status_ack":
                     if (message.get("version") != 1 or message.get("device_id") != device_id
                             or not isinstance(message.get("command_id"), str)
@@ -409,6 +432,35 @@ class GatewayControlClient:
         await socket.send(json.dumps({"kind": "project_catalog_response", "version": 1,
                                       "device_id": device_id, "request_id": request_id,
                                       "status": status, "projects": projects}))
+
+    async def _send_provider_test(self, socket, device_id: str, request_id: str,
+                                  provider_id: str) -> None:
+        from services import providers as provider_service
+
+        duration_ms = 0
+        error_code = "provider_unavailable"
+        try:
+            provider = (await asyncio.to_thread(self.provider_store.get_provider, provider_id)
+                        if self.provider_store is not None else None)
+            if (provider is not None and provider.get("managed_gateway_id") == self.gateway_id
+                    and provider.get("enabled", True)):
+                policy = self.policy_cache.current
+                if (policy is not None and policy.valid
+                        and policy.gateway_id == self.gateway_id
+                        and policy.device_id == device_id
+                        and policy.user_id == self.user_id
+                        and provider_id in policy.allowed_provider_ids):
+                    result = await provider_service.test_connection(provider, timeout_seconds=10)
+                    duration_ms = max(0, min(int(result.duration_ms), 120000))
+                    error_code = None if result.success else "connection_failed"
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            error_code = "connection_failed"
+        await socket.send(json.dumps({"kind": "provider_test_result", "version": 1,
+                                      "device_id": device_id, "request_id": request_id,
+                                      "status": "succeeded" if error_code is None else "failed",
+                                      "duration_ms": duration_ms, "error_code": error_code}))
 
     async def _send_project_runtime(self, socket, device_id: str) -> None:
         from services.project import project_manager

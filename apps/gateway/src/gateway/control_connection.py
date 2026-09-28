@@ -150,11 +150,20 @@ class ControlConnections:
         self._daemon_health: dict[str, bool] = {}
         self._project_runtime: dict[str, tuple[float, dict[str, int]]] = {}
         self._pending_project_catalog: dict[str, tuple[str, asyncio.Future]] = {}
+        self._pending_provider_tests: dict[str, tuple[str, asyncio.Future]] = {}
+        self._control_users: dict[str, str] = {}
         self._control_senders: dict[str, Callable[[dict], Awaitable[None]]] = {}
         self._lock = asyncio.Lock()
 
     def is_online(self, device_id: str) -> bool:
         return device_id in self._active
+
+    def active_user(self, device_id: str) -> str | None:
+        return self._control_users.get(device_id) if self.is_online(device_id) else None
+
+    def connected_users(self) -> dict[str, str]:
+        return {device_id: user_id for device_id, user_id in self._control_users.items()
+                if self.is_online(device_id)}
 
     def daemon_health(self, device_id: str) -> bool | None:
         if not self.is_online(device_id):
@@ -185,12 +194,13 @@ class ControlConnections:
             time.monotonic(), {item["id"]: item["running_tasks"] for item in projects},
         )
 
-    async def claim(self, device_id: str, connection_id: str, ws: WebSocket,
+    async def claim(self, device_id: str, user_id: str, connection_id: str, ws: WebSocket,
                     config_public_key_pem: str,
                     send_json: Callable[[dict], Awaitable[None]]) -> None:
         async with self._lock:
             previous = self._active.get(device_id)
             self._active[device_id] = (connection_id, ws, asyncio.current_task())
+            self._control_users[device_id] = user_id
             self._config_keys[device_id] = config_public_key_pem
             self._control_senders[device_id] = send_json
             self._daemon_health.pop(device_id, None)
@@ -199,6 +209,11 @@ class ControlConnections:
                 for request_id, (pending_device, future) in list(self._pending_project_catalog.items()):
                     if pending_device == device_id:
                         self._pending_project_catalog.pop(request_id)
+                        if not future.done():
+                            future.set_exception(ConnectionError("Control connection replaced"))
+                for request_id, (pending_device, future) in list(self._pending_provider_tests.items()):
+                    if pending_device == device_id:
+                        self._pending_provider_tests.pop(request_id)
                         if not future.done():
                             future.set_exception(ConnectionError("Control connection replaced"))
         if previous:
@@ -211,6 +226,7 @@ class ControlConnections:
         async with self._lock:
             if self._active.get(device_id, (None,))[0] == connection_id:
                 self._active.pop(device_id, None)
+                self._control_users.pop(device_id, None)
                 self._config_keys.pop(device_id, None)
                 self._control_senders.pop(device_id, None)
                 self._daemon_health.pop(device_id, None)
@@ -218,6 +234,11 @@ class ControlConnections:
                 for request_id, (pending_device, future) in list(self._pending_project_catalog.items()):
                     if pending_device == device_id:
                         self._pending_project_catalog.pop(request_id)
+                        if not future.done():
+                            future.set_exception(ConnectionError("Control connection closed"))
+                for request_id, (pending_device, future) in list(self._pending_provider_tests.items()):
+                    if pending_device == device_id:
+                        self._pending_provider_tests.pop(request_id)
                         if not future.done():
                             future.set_exception(ConnectionError("Control connection closed"))
                 pending_token = self._device_pending.pop(device_id, None)
@@ -303,6 +324,34 @@ class ControlConnections:
                 pending[1].set_exception(ConnectionError("Project catalog unavailable"))
             else:
                 pending[1].set_result(projects)
+
+    async def request_provider_test(self, device_id: str, provider_id: str) -> dict:
+        request_id = uuid4().hex
+        future = asyncio.get_running_loop().create_future()
+        async with self._lock:
+            if device_id not in self._active:
+                raise ConnectionError("Device is offline")
+            if any(pending_device == device_id for pending_device, _ in self._pending_provider_tests.values()):
+                raise ConnectionError("Provider test already pending")
+            self._pending_provider_tests[request_id] = (device_id, future)
+            send_json = self._control_senders[device_id]
+        try:
+            await send_json({"kind": "provider_test_request", "version": 1,
+                             "device_id": device_id, "request_id": request_id,
+                             "provider_id": provider_id})
+            return await asyncio.wait_for(future, timeout=20)
+        finally:
+            async with self._lock:
+                self._pending_provider_tests.pop(request_id, None)
+            if not future.done():
+                future.cancel()
+
+    async def complete_provider_test(self, device_id: str, request_id: str,
+                                     result: dict) -> None:
+        async with self._lock:
+            pending = self._pending_provider_tests.get(request_id)
+            if pending and pending[0] == device_id and not pending[1].done():
+                pending[1].set_result(result)
 
     async def attach_data(self, token: str, socket: WebSocket) -> "DataConnection | None":
         async with self._lock:
@@ -756,7 +805,7 @@ async def control_socket(ws: WebSocket):
             async with session.begin():
                 session.add(DeviceConnection(id=connection_id, device_id=device_id))
         await ws.app.state.control_connections.claim(
-            device_id, connection_id, ws, config_public_key_pem, send_json,
+            device_id, user_id, connection_id, ws, config_public_key_pem, send_json,
         )
         signer = ws.app.state.gateway_signer
         (policy_revision, task_create, project_publish,
@@ -897,6 +946,29 @@ async def control_socket(ws: WebSocket):
                 await send_json({"kind": "skill_applied_ack", "version": 1,
                                  "device_id": device_id,
                                  "projects": [item["project_id"] for item in projects]})
+                continue
+            if message.get("kind") == "provider_test_result":
+                request_id = message.get("request_id")
+                status = message.get("status")
+                duration_ms = message.get("duration_ms")
+                error_code = message.get("error_code")
+                if (set(message) != {"kind", "version", "device_id", "request_id",
+                                     "status", "duration_ms", "error_code"}
+                        or message.get("version") != 1 or message.get("device_id") != device_id
+                        or not isinstance(request_id, str) or len(request_id) != 32
+                        or any(char not in "0123456789abcdef" for char in request_id)
+                        or status not in ("succeeded", "failed")
+                        or type(duration_ms) is not int or not 0 <= duration_ms <= 120000
+                        or (error_code is not None and error_code not in (
+                            "connection_failed", "provider_unavailable"))
+                        or (status == "succeeded" and error_code is not None)
+                        or (status == "failed" and error_code is None)):
+                    await ws.close(code=4400, reason="Invalid provider test result")
+                    return
+                await ws.app.state.control_connections.complete_provider_test(
+                    device_id, request_id, {"status": status,
+                                            "duration_ms": duration_ms,
+                                            "error_code": error_code})
                 continue
             if message.get("kind") == "project_catalog_response":
                 request_id = message.get("request_id")

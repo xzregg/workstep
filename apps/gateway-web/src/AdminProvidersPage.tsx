@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AdminProviderApplications } from './AdminProviderApplications'
 import { AdminProviderAssignments } from './AdminProviderAssignments'
+import { AdminProviderTestPanel } from './AdminProviderTestPanel'
 import { AdminProviderDisableDialog, AdminProviderEditorDialog } from './AdminProviderEditorDialog'
 import type { ManagedProvider } from './AdminProviderEditorDialog'
 
@@ -24,6 +25,7 @@ export function AdminProvidersPage() {
   const [edit, setEdit] = useState<Provider | 'new' | null>(null)
   const [disable, setDisable] = useState<Provider | null>(null)
   const [assignmentsFor, setAssignmentsFor] = useState<Provider | null>(null)
+  const [testFor, setTestFor] = useState<Provider | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -94,6 +96,7 @@ export function AdminProvidersPage() {
         {csrf && <div className="gateway-device-actions"><button type="button"
           onClick={() => setEdit(provider)}>编辑 / 轮换凭据</button>
           <button type="button" onClick={() => setAssignmentsFor(provider)}>管理分配</button>
+          {provider.enabled && <button type="button" onClick={() => setTestFor(provider)}>测试连接</button>}
           {provider.enabled && <button type="button" onClick={() => setDisable(provider)}>停用</button>}</div>}
     </li>)}</ul>
     <div className="gateway-admin-pagination"><span>共 {total} 个供应商 · 第 {filters.page}/{
@@ -108,6 +111,8 @@ export function AdminProvidersPage() {
     {assignmentsFor && csrf && <AdminProviderAssignments key={assignmentsFor.id}
       providerId={assignmentsFor.id} enabled={assignmentsFor.enabled} csrf={csrf}
       onChanged={() => setRevision(value => value + 1)} />}
+    {testFor && csrf && <AdminProviderTestPanel key={testFor.id} providerId={testFor.id}
+      providerName={testFor.name} csrf={csrf} onClose={() => setTestFor(null)} />}
     {edit && csrf && <AdminProviderEditorDialog key={edit === 'new' ? 'new' : edit.id}
       provider={edit === 'new' ? undefined : edit} csrf={csrf} onClose={() => setEdit(null)}
       onSaved={() => { setEdit(null); setRevision(value => value + 1) }} />}

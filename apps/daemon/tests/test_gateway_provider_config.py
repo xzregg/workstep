@@ -19,6 +19,7 @@ from services.gateway_client.policy import ManagedPolicyCache
 from services import config as config_module
 from api.provider import router as provider_router
 from engines.codex import CodexEngine
+from engines.core.base import EngineTestResult
 from types import SimpleNamespace
 
 
@@ -219,6 +220,83 @@ async def test_control_applies_signed_provider_bundle_and_acknowledges(tmp_path,
                                         pem, "device-1")
     assert sent[1]["result"] == "error"
     assert store.get_provider("provider-1")["api_key"] == "secret-api-key"
+
+
+@pytest.mark.asyncio
+async def test_provider_probe_uses_local_service_and_reports_only_bounded_status(tmp_path, monkeypatch):
+    monkeypatch.setattr(config_module, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(config_module, "CONFIG_FILE", tmp_path / "config.json")
+    store = config_module.ConfigStore()
+    store.set_managed_gateway_id("gateway-test", provider_guard=lambda _id: True)
+    store.apply_managed_providers("gateway-test", 1, [{
+        "id": "provider-1", "name": "Managed API", "type": "custom",
+        "api_key": "secret-api-key", "protocols": ["openai_responses"],
+        "protocol_base_urls": {"openai_responses": "https://api.example.test"},
+    }])
+    calls = []
+    async def fake_test(provider, *, timeout_seconds, protocol=None):
+        calls.append((provider["id"], timeout_seconds))
+        return EngineTestResult(success=False, message="secret-api-key", duration_ms=19)
+    monkeypatch.setattr("services.providers.test_connection", fake_test)
+    policy_cache = ManagedPolicyCache()
+    client = GatewayControlClient("https://gateway.test", gateway_id="gateway-test",
+                                  public_key_fingerprint="pin", user_id="user-1",
+                                  policy_cache=policy_cache, provider_store=store)
+    sent = []
+    class Socket:
+        async def send(self, value):
+            sent.append(json.loads(value))
+    await client._send_provider_test(Socket(), "device-1", "z" * 32, "provider-1")
+    assert sent[-1]["error_code"] == "provider_unavailable"
+    assert calls == []
+    policy_cache.current = SimpleNamespace(valid=True, gateway_id="gateway-test",
+                                           device_id="device-1", user_id="user-1",
+                                           allowed_provider_ids=frozenset({"provider-1"}))
+    await client._send_provider_test(Socket(), "device-1", "a" * 32, "provider-1")
+    assert calls == [("provider-1", 10)]
+    assert sent[-1] == {"kind": "provider_test_result", "version": 1,
+                     "device_id": "device-1", "request_id": "a" * 32,
+                     "status": "failed", "duration_ms": 19,
+                     "error_code": "connection_failed"}
+    await client._send_provider_test(Socket(), "device-1", "b" * 32, "missing")
+    assert sent[-1]["error_code"] == "provider_unavailable"
+    assert "secret-api-key" not in json.dumps(sent)
+    original_get = store.get_provider
+    def slow_get(provider_id):
+        time.sleep(0.15)
+        return original_get(provider_id)
+    monkeypatch.setattr(store, "get_provider", slow_get)
+    probe = asyncio.create_task(client._send_provider_test(
+        Socket(), "device-1", "c" * 32, "provider-1"))
+    await asyncio.wait_for(asyncio.sleep(0.01), timeout=0.05)
+    await probe
+
+
+@pytest.mark.asyncio
+async def test_control_reader_dispatches_bounded_provider_probe_request(monkeypatch):
+    client = GatewayControlClient("https://gateway.test", gateway_id="gateway-test",
+                                  public_key_fingerprint="pin", user_id="user-1",
+                                  policy_cache=ManagedPolicyCache())
+    wire = asyncio.Queue()
+    handled = asyncio.Event()
+    calls = []
+    async def probe(socket, device_id, request_id, provider_id):
+        calls.append((device_id, request_id, provider_id))
+        handled.set()
+    monkeypatch.setattr(client, "_send_provider_test", probe)
+    class Socket:
+        async def recv(self):
+            return await wire.get()
+    queues = [asyncio.Queue() for _ in range(5)]
+    reader = asyncio.create_task(client._read_control_messages(
+        Socket(), "device-1", *queues))
+    wire.put_nowait(json.dumps({"kind": "provider_test_request", "version": 1,
+                                "device_id": "device-1", "request_id": "a" * 32,
+                                "provider_id": "provider-1"}))
+    await asyncio.wait_for(handled.wait(), timeout=1)
+    assert calls == [("device-1", "a" * 32, "provider-1")]
+    reader.cancel()
+    await asyncio.gather(reader, return_exceptions=True)
 
 
 @pytest.mark.asyncio

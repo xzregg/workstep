@@ -102,6 +102,10 @@ class ProviderDefaultInput(ProviderAssignInput):
     enabled: bool
 
 
+class ProviderTestInput(BaseModel):
+    device_id: str = Field(min_length=1, max_length=64)
+
+
 async def _admin(request: Request):
     identity, actor = await _super_admin_request(request)
     _, session = await identity.session_user(request.cookies.get(COOKIE_NAME))
@@ -224,6 +228,67 @@ async def list_provider_applications(request: Request,
         "applied_revision": applied.applied_revision if applied else None,
         "last_error": applied.last_error if applied else None,
     } for device, applied in rows], "total": total, "page": page, "page_size": page_size}
+
+
+@router.post("/{provider_id}/test")
+async def test_platform_provider(request: Request, provider_id: str,
+                                 body: ProviderTestInput):
+    await _admin(request)
+    async with request.app.state.database.session() as session:
+        provider = await session.get(PlatformProvider, provider_id)
+        device = await session.get(Device, body.device_id)
+        if provider is None or not provider.enabled:
+            raise HTTPException(status_code=404, detail="Provider unavailable")
+        if device is None or device.status != "active":
+            raise HTTPException(status_code=404, detail="Device unavailable")
+    control = request.app.state.control_connections
+    user_id = control.active_user(body.device_id)
+    if user_id is None:
+        raise HTTPException(status_code=503, detail="Device is offline")
+    provider_ids, _ = await compiled_provider_access(
+        request.app.state.database, body.device_id, user_id,
+    )
+    if provider_id not in provider_ids:
+        raise HTTPException(status_code=403, detail="Provider unavailable on device")
+    try:
+        return await control.request_provider_test(body.device_id, provider_id)
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="Provider test timed out") from exc
+    except ConnectionError as exc:
+        raise HTTPException(status_code=503, detail="Device is unavailable") from exc
+
+
+@router.get("/{provider_id}/test-targets")
+async def list_provider_test_targets(request: Request, provider_id: str,
+                                     q: str = Query("", max_length=128),
+                                     page: int = Query(1, ge=1),
+                                     page_size: int = Query(25, ge=1, le=100)):
+    await _super_admin_read(request)
+    connected = request.app.state.control_connections.connected_users()
+    async with request.app.state.database.session() as session:
+        provider = await session.get(PlatformProvider, provider_id)
+        if provider is None or not provider.enabled:
+            raise HTTPException(status_code=404, detail="Provider unavailable")
+        assignments = (await session.scalars(select(ProviderAssignment).where(
+            ProviderAssignment.provider_id == provider_id,
+            ProviderAssignment.revoked_at.is_(None),
+        ))).all()
+        direct = {item.subject_id for item in assignments if item.subject_type == "device"}
+        users = {item.subject_id for item in assignments if item.subject_type == "user"}
+        eligible = {device_id for device_id, user_id in connected.items()
+                    if device_id in direct or user_id in users}
+        conditions = [Device.id.in_(eligible), Device.status == "active"]
+        if q.strip():
+            escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            pattern = f"%{escaped}%"
+            conditions.append(or_(Device.name.ilike(pattern, escape="\\"),
+                                  Device.id.ilike(pattern, escape="\\")))
+        total = await session.scalar(select(func.count()).select_from(Device).where(*conditions))
+        devices = (await session.scalars(select(Device).where(*conditions)
+                   .order_by(Device.name, Device.id)
+                   .offset((page - 1) * page_size).limit(page_size))).all()
+    return {"devices": [{"id": device.id, "name": device.name} for device in devices],
+            "total": total, "page": page, "page_size": page_size}
 
 
 @router.post("")
