@@ -112,3 +112,54 @@ def test_desktop_code_expiry_and_device_approval(tmp_path):
     with TestClient(create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test")),
                     base_url="https://gateway.test") as client:
         assert client.get("/api/platform/gateway-key").json()["fingerprint"] == public_key["fingerprint"]
+
+
+def test_device_disable_reenable_and_revoke(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    key = _public_key()
+    with TestClient(app, base_url="https://gateway.test") as client:
+        csrf = _setup(client)
+        device_id = _redeem(client, _authorize(client, csrf), key).json()["device"]["id"]
+        assert client.post("/api/auth/step-up", json={"password": "OwnerPassphrase-2026!"}, headers={
+            "X-CSRF-Token": csrf,
+        }).status_code == 200
+        assert client.post(f"/api/admin/devices/{device_id}/approve", headers={"X-CSRF-Token": csrf}).status_code == 204
+        assert client.post(f"/api/admin/devices/{device_id}/disable", headers={"X-CSRF-Token": csrf}).status_code == 204
+        assert _redeem(client, _authorize(client, csrf), key).status_code == 403
+        assert client.post(f"/api/admin/devices/{device_id}/approve", headers={"X-CSRF-Token": csrf}).status_code == 204
+        assert _redeem(client, _authorize(client, csrf), key).json()["device"]["status"] == "active"
+        assert client.post(f"/api/admin/devices/{device_id}/revoke", headers={"X-CSRF-Token": csrf}).status_code == 204
+        assert _redeem(client, _authorize(client, csrf), key).status_code == 403
+        assert client.post(f"/api/admin/devices/{device_id}/approve", headers={"X-CSRF-Token": csrf}).status_code == 409
+
+
+def test_device_rotation_requires_old_key_proof_and_reapproval(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    old_private = Ed25519PrivateKey.generate()
+    old_public = old_private.public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode()
+    new_private = Ed25519PrivateKey.generate()
+    new_public = new_private.public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode()
+    new_fingerprint = hashlib.sha256(new_private.public_key().public_bytes(
+        serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo,
+    )).hexdigest()
+    with TestClient(app, base_url="https://gateway.test") as client:
+        csrf = _setup(client)
+        device_id = _redeem(client, _authorize(client, csrf), old_public).json()["device"]["id"]
+        assert client.post("/api/auth/step-up", json={"password": "OwnerPassphrase-2026!"}, headers={
+            "X-CSRF-Token": csrf,
+        }).status_code == 200
+        assert client.post(f"/api/admin/devices/{device_id}/approve", headers={"X-CSRF-Token": csrf}).status_code == 204
+        code = _authorize(client, csrf)
+        assert _redeem(client, code, new_public).status_code == 403
+        signature = base64.urlsafe_b64encode(old_private.sign(
+            f"workstep-device-rotate-v1:{code}:{new_fingerprint}".encode(),
+        )).rstrip(b"=").decode()
+        rotated = _redeem(client, code, new_public, rotation_signature=signature)
+        assert rotated.status_code == 200, rotated.text
+        assert rotated.json()["device"] == {"id": device_id, "status": "pending"}
+        assert client.post(f"/api/admin/devices/{device_id}/approve", headers={"X-CSRF-Token": csrf}).status_code == 204
+        assert _redeem(client, _authorize(client, csrf), new_public).json()["device_authorization"]
