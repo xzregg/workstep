@@ -16,6 +16,7 @@ from models import (
     TaskStep,
     WorkflowRun,
 )
+from models.base import db_proxy
 from models.fields import utc_now
 from services.task_runner import TaskRunner
 from services.task_dispatch import TaskDispatchService
@@ -161,17 +162,18 @@ class WorkflowRuntime:
         async with lock:
             if task_id in self._runners:
                 raise RuntimeError(f"Task is already running: {task_id}")
-            prepared = await self._run_db(
-                project_id,
-                lambda project: prepare_start_in_project(
-                    project,
-                    task_id,
-                    user_input,
-                    instance_id=self._leases.instance_id,
-                    current_workflow_steps=self._current_workflow_steps,
-                    source=source,
-                ),
-            )
+            def persist_start(project):
+                with db_proxy.atomic("IMMEDIATE"):
+                    return prepare_start_in_project(
+                        project,
+                        task_id,
+                        user_input,
+                        instance_id=self._leases.instance_id,
+                        current_workflow_steps=self._current_workflow_steps,
+                        source=source,
+                    )
+
+            prepared = await self._run_db(project_id, persist_start)
             handle = self._launch_prepared_run(prepared, prepared.user_input)
             normalized_input = prepared.user_input.strip()
             if normalized_input and prepared.user_message is not None:

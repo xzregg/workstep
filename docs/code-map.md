@@ -46,6 +46,8 @@ Web 的作者展示由 `src/utils/actorDisplay.ts` 统一计算：缺失作者�
 
 快捷 Action 的任务消息在 daemon `services/action_runtime.py::ActionRuntime.start` 经 `create_task_message` 保存，独立聊天消息在 `ActionRuntime.start_session` 保存用户与脚本回复作者及发起人快照；API 行为和慢数据库写入 canary 见 `tests/test_action_runtime.py`。
 
+阶段 8 的项目操作审计表在 daemon `models/project_audit.py`，`services/project_audit.py` 只接受有限元数据键并提供幂等写入、项目内分页查询；`api/project_audit.py` 暴露本机只读查询，远程 Gateway 请求暂不开放此入口。`services/workflow_start.py` 写入任务启动事件，`services/workflow_runtime.py` 将运行记录与审计事件放在同一个项目数据库事务。测试见 `tests/test_project_audit.py`、`test_workflow_run_attribution.py` 和 `test_api_contracts.py`（慢查询健康检查、写入失败回滚）。其余任务动作与 Gateway 审计上传仍待接入。
+
 任务创建人快照由 `services/messages.py::current_actor_task_fields` 写入 `models/task.py`，`services/task_read_model.py` 返回用户名和显示名；没有直接回复来源的助手消息由 `services/messages.py::attributed_actor_message_fields` 使用任务创建人用户名。迁移与 API 回归见 `tests/test_migrations.py`、`tests/test_api_contracts.py`、`tests/test_message_attribution.py`。
 
 流程运行发起人快照在 daemon `services/workflow_start.py::prepare_start_in_project` 写入 `models/run.py::WorkflowRun`，`services/workflow_restart.py::create_restart_run` 在无人操作的续跑中继承、在人工重启时更新。`services/messages.py::attributed_actor_message_fields` 在旧消息早于当前运行时读取该快照；恢复入口见 `services/workflow_recovery.py` 和 `services/workflow_runtime.py`。测试见 `tests/test_workflow_run_attribution.py`、`tests/test_recovery.py`、`tests/test_message_attribution.py`，慢数据库 canary 见 `tests/test_api_contracts.py::test_workflow_start_write_lock_does_not_block_health_check` 与 `tests/test_recovery.py::test_slow_recovery_database_work_does_not_block_event_loop`。
