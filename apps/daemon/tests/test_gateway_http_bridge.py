@@ -215,3 +215,61 @@ async def test_gateway_websocket_bridge_carries_bidirectional_messages_with_mana
             assembled = assembler.add(frame.payload)
     assert assembled == ("text", ("remote-user:" + "hello" * 20000).encode())
     assert frames[-1].type == FrameType.websocket_close
+
+
+@pytest.mark.asyncio
+async def test_project_websocket_bridge_only_receives_explicit_project_events():
+    import main
+    from streaming.ws import register_websocket_routes
+
+    app = FastAPI()
+    app.state.gateway_client = type("Client", (), {"managed_config": object()})()
+    register_websocket_routes(app)
+    frames = []
+    opened = asyncio.Event()
+    sent = asyncio.Event()
+
+    async def capture(frame):
+        frames.append(frame)
+        if frame.type == FrameType.websocket_open:
+            opened.set()
+        if frame.type == FrameType.websocket_data:
+            sent.set()
+
+    bridge = ManagedWebSocketBridge(app, "project-ws", {
+        "path": "/ws", "query": "", "headers": [],
+        "user_id": "remote-user", "username": "alice",
+        "project_id": "project-1", "access_level": "read",
+    }, capture, "device-1")
+    bridge.start_task()
+    try:
+        await asyncio.wait_for(opened.wait(), timeout=1)
+        assert frames[0].payload["accepted"] is True
+        await main.event_bus.publish({"type": "RUN_STARTED", "project_id": "project-2"})
+        await main.event_bus.publish({"type": "RUN_STARTED", "task_id": "untagged"})
+        assert not sent.is_set()
+        await main.event_bus.publish({"type": "RUN_STARTED", "project_id": "project-1"})
+        await asyncio.wait_for(sent.wait(), timeout=1)
+        assembler = WebSocketMessageAssembler()
+        messages = [assembler.add(frame.payload) for frame in frames
+                    if frame.type == FrameType.websocket_data]
+        assert [message for message in messages if message is not None] == [
+            ("text", b'{"type":"RUN_STARTED","project_id":"project-1"}')
+        ]
+    finally:
+        await bridge.feed(ProxyFrame(stream_id="project-ws", type=FrameType.websocket_close,
+                                     payload={"code": 1000}))
+        await asyncio.wait_for(bridge._task, timeout=1)
+
+    blocked = []
+    async def capture_blocked(frame):
+        blocked.append(frame)
+    share_bridge = ManagedWebSocketBridge(app, "project-share", {
+        "path": "/ws/share", "query": "", "headers": [],
+        "user_id": "remote-user", "username": "alice",
+        "project_id": "project-1", "access_level": "read",
+    }, capture_blocked, "device-1")
+    share_bridge.start_task()
+    await asyncio.wait_for(share_bridge._task, timeout=1)
+    assert blocked[0].type == FrameType.websocket_close
+    assert blocked[0].payload["code"] == 4401

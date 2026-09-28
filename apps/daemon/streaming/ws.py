@@ -116,6 +116,8 @@ def _make_subscription_predicate(sub: WsSubscription):
     """返回基于当前订阅状态的过滤谓词（供 EventBus 使用）。"""
 
     def predicate(event: dict[str, Any]) -> bool:
+        if sub.project_id and event.get("project_id") != sub.project_id:
+            return False
         return matches_subscription(event, sub)
 
     return predicate
@@ -132,6 +134,13 @@ async def _handle_client_message(
         msg = json.loads(raw)
         msg_type = msg.get("type")
 
+        # Project sessions may narrow their feed, but never select another
+        # project or invoke global intervention/task controls.
+        scoped_project_id = subscription.project_id if subscription is not None else ""
+        if scoped_project_id and msg_type != "subscribe":
+            logger.warning("Project WebSocket command denied: %s", msg_type)
+            return
+
         if msg_type == "subscribe":
             if subscription is None or queue is None:
                 logger.warning("WS subscribe ignored (no connection context)")
@@ -141,11 +150,11 @@ async def _handle_client_message(
             subscription.status_only_task_ids = new_sub.status_only_task_ids
             subscription.session_ids = new_sub.session_ids
             subscription.channels = new_sub.channels
-            subscription.project_id = new_sub.project_id
+            subscription.project_id = scoped_project_id or new_sub.project_id
             subscription.active = new_sub.active
             main.event_bus.set_filter(queue, _make_subscription_predicate(subscription))
             project_id = str(msg.get("project_id") or "")
-            if main.remote_project_registry.get(project_id) is not None:
+            if not scoped_project_id and main.remote_project_registry.get(project_id) is not None:
                 try:
                     await main.remote_project_client.subscribe(project_id, msg)
                 except Exception as exc:
@@ -233,8 +242,12 @@ def register_websocket_routes(app: FastAPI) -> None:
             await ws.close(code=4401, reason="remote access locked")
             return
         await ws.accept()
-        queue = main.event_bus.subscribe()
-        subscription = WsSubscription()
+        actor = ws.scope.get("managed_actor")
+        project_id = actor.project_id if actor is not None else None
+        subscription = WsSubscription(project_id=project_id or "")
+        queue = main.event_bus.subscribe(
+            _make_subscription_predicate(subscription) if project_id else None
+        )
         try:
             while True:
                 bus_task = asyncio.create_task(queue.get())
