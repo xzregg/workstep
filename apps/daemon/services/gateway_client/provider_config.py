@@ -26,6 +26,7 @@ def _decode(value: str) -> bytes:
 class ManagedProviderBundle:
     revision: int
     providers: list[dict]
+    default_provider_id: str
 
 
 def verify_provider_bundle(token: str, public_key_pem: str, expected_fingerprint: str,
@@ -78,7 +79,14 @@ def verify_provider_bundle(token: str, public_key_pem: str, expected_fingerprint
         if (not isinstance(providers, list) or len(providers) > 100
                 or any(not isinstance(provider, dict) for provider in providers)):
             raise ValueError("Invalid managed provider catalog")
-        return ManagedProviderBundle(revision=claims["revision"], providers=providers)
+        default_provider_id = data.get("default_provider_id", "")
+        if (not isinstance(default_provider_id, str)
+                or default_provider_id and default_provider_id not in {
+                    provider.get("id") for provider in providers
+                }):
+            raise ValueError("Invalid managed default provider")
+        return ManagedProviderBundle(revision=claims["revision"], providers=providers,
+                                     default_provider_id=default_provider_id)
     except (InvalidSignature, InvalidTag, KeyError, TypeError, ValueError,
             UnicodeError, json.JSONDecodeError, binascii.Error) as exc:
         raise ValueError("Invalid Gateway provider bundle") from exc

@@ -31,7 +31,15 @@ def test_provider_secret_is_encrypted_at_rest_and_bundle_is_bound_to_device(tmp_
         gateway_id="gateway-test", device_id="device-1", user_id="user-1",
         revision=3, config_public_key_pem=public_pem,
         providers=[{"id": "provider-1", "api_key": "secret-api-key"}],
+        default_provider_id="provider-1",
     )
+    with pytest.raises(ValueError):
+        signer.sign_provider_bundle(
+            gateway_id="gateway-test", device_id="device-1", user_id="user-1",
+            revision=3, config_public_key_pem=public_pem,
+            providers=[{"id": "provider-1", "api_key": "secret-api-key"}],
+            default_provider_id="other-provider",
+        )
     assert "secret-api-key" not in bundle
     header, payload, signature = bundle.split(".")
     signer.private_key.public_key().verify(_decode(signature), f"{header}.{payload}".encode())
@@ -47,4 +55,6 @@ def test_provider_secret_is_encrypted_at_rest_and_bundle_is_bound_to_device(tmp_
     plaintext = AESGCM(key).decrypt(_decode(claims["nonce"]),
                                     _decode(claims["ciphertext"]),
                                     b"gateway-test:device-1:user-1:3")
-    assert json.loads(plaintext)["providers"][0]["api_key"] == "secret-api-key"
+    decoded = json.loads(plaintext)
+    assert decoded["providers"][0]["api_key"] == "secret-api-key"
+    assert decoded["default_provider_id"] == "provider-1"

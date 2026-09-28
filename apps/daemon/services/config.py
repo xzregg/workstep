@@ -390,13 +390,14 @@ class ConfigStore:
         The task coordinator keeps its legacy explicit coordinator settings,
         but an empty coordinator engine follows the same global default.
         """
+        managed_default = self.get_managed_default_provider()
         merged = {
             "engine": self.get_execution_default_engine() or DEFAULT_EXECUTION_ENGINE,
             "model": "",
             "fast_model": "",
             "vision_model": "",
             "thinking_effort": "",
-            "provider_id": "",
+            "provider_id": managed_default,
         }
         if name == "task_coordinator":
             coordinator = {
@@ -423,6 +424,8 @@ class ConfigStore:
             "thinking_effort",
             "provider_id",
         ):
+            if key == "provider_id" and managed_default:
+                continue
             value = overlay.get(key)
             if isinstance(value, str) and value.strip():
                 merged[key] = value.strip()
@@ -949,6 +952,18 @@ class ConfigStore:
             self._managed_gateway_id = gateway_id
             self._managed_provider_guard = provider_guard
 
+    def get_managed_default_provider(self) -> str:
+        if not self._managed_gateway_id:
+            return ""
+        state = self.get("managed_provider_state", {})
+        if not isinstance(state, dict) or state.get("gateway_id") != self._managed_gateway_id:
+            return ""
+        provider_id = state.get("default_provider_id", "")
+        if not isinstance(provider_id, str) or not provider_id:
+            return ""
+        return provider_id if any(provider.get("id") == provider_id
+                                  for provider in self.get_providers()) else ""
+
     def claim_managed_command(self, command_id: str, idempotency_key: str) -> tuple[dict, bool]:
         with self._lock:
             data = self._load()
@@ -1141,7 +1156,8 @@ class ConfigStore:
 
     def apply_managed_providers(self, gateway_id: str, revision: int,
                                 desired: list[dict[str, Any]],
-                                after_apply=None, *, user_id: str = "") -> bool:
+                                after_apply=None, *, user_id: str = "",
+                                default_provider_id: str = "") -> bool:
         """Replace only this Gateway's managed entries in one config-file write."""
         if (not gateway_id or self._managed_gateway_id != gateway_id
                 or type(revision) is not int or revision < 0
@@ -1181,7 +1197,12 @@ class ConfigStore:
             names.add(name)
             normalized.append({**item, "managed": True, "managed_gateway_id": gateway_id,
                                "managed_revision": revision, "enabled": True})
+        if (not isinstance(default_provider_id, str)
+                or default_provider_id and default_provider_id not in ids):
+            raise ValueError("Invalid managed default provider")
         canonical = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+        if default_provider_id:
+            canonical += ":" + default_provider_id
         digest = hashlib.sha256(canonical.encode()).hexdigest()
         with self._lock:
             data = self._load()
@@ -1212,7 +1233,8 @@ class ConfigStore:
             data["provider_models"] = cache
             data["managed_provider_state"] = {"gateway_id": gateway_id,
                                                "user_id": user_id,
-                                               "revision": revision, "digest": digest}
+                                               "revision": revision, "digest": digest,
+                                               "default_provider_id": default_provider_id}
             try:
                 self._save()
                 if after_apply is not None:

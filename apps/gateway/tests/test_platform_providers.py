@@ -2,7 +2,10 @@ import base64
 import json
 
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives import hashes
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -14,6 +17,19 @@ from gateway.providers_api import compile_provider_bundle
 
 def _claims(token):
     return json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "==="))
+
+
+def _bundle_data(token, device_key):
+    claims = _claims(token)
+    decode = lambda value: base64.urlsafe_b64decode(value + "===")
+    shared = device_key.exchange(X25519PublicKey.from_public_bytes(
+        decode(claims["ephemeral_public_key"])))
+    key = HKDF(algorithm=hashes.SHA256(), length=32, salt=None,
+               info=b"workstep-provider-device-v1").derive(shared)
+    return json.loads(AESGCM(key).decrypt(
+        decode(claims["nonce"]), decode(claims["ciphertext"]),
+        f"{claims['gateway_id']}:{claims['device_id']}:{claims['user_id']}:{claims['revision']}".encode(),
+    ))
 
 
 def test_admin_assigns_encrypted_provider_without_exposing_secret(tmp_path):
@@ -76,17 +92,78 @@ def test_admin_assigns_encrypted_provider_without_exposing_secret(tmp_path):
         assert "secret-api-key" not in bundle
         assert _claims(bundle)["revision"] >= 1
         assert _claims(bundle)["kind"] == "provider.bundle"
+        second = client.post("/api/admin/providers", json={**body, "name": "Backup API"},
+                             headers={"X-CSRF-Token": csrf})
+        assert second.status_code == 200, second.text
+        second_id = second.json()["id"]
+        assert client.post(f"/api/admin/providers/{second_id}/assign", json={
+            "subject_type": "device", "subject_id": "device-1",
+        }, headers={"X-CSRF-Token": csrf}).status_code == 200
+        default_url = f"/api/admin/providers/{second_id}/assign/default"
+        assert client.put(default_url, json={"subject_type": "device", "subject_id": "device-1",
+                                             "enabled": True}, headers={"X-CSRF-Token": csrf}).status_code == 200
+        user_default_url = f"/api/admin/providers/{provider_id}/assign/default"
+        assert client.put(user_default_url, json={"subject_type": "user", "subject_id": owner_id,
+                                                  "enabled": True}, headers={"X-CSRF-Token": csrf}).status_code == 200
+        default_revision = client.get("/api/admin/providers/applications").json()[
+            "devices"][0]["desired_revision"]
+        assert client.put(user_default_url, json={"subject_type": "user", "subject_id": owner_id,
+                                                  "enabled": True}, headers={"X-CSRF-Token": csrf}).status_code == 200
+        assert client.get("/api/admin/providers/applications").json()[
+            "devices"][0]["desired_revision"] == default_revision
+        preferred = client.portal.call(compile_provider_bundle, app.state.database,
+                                       app.state.gateway_signer, "gateway-test", "device-1",
+                                       owner_id, pem)
+        assert _bundle_data(preferred, device_key)["default_provider_id"] == provider_id
+        assert client.get(f"/api/admin/providers/{provider_id}/assignments").json()[
+            "assignments"][0]["is_default"] is True
+        assert client.put(user_default_url, json={"subject_type": "user", "subject_id": owner_id,
+                                                  "enabled": False}, headers={"X-CSRF-Token": csrf}).status_code == 200
+        fallback = client.portal.call(compile_provider_bundle, app.state.database,
+                                      app.state.gateway_signer, "gateway-test", "device-1",
+                                      owner_id, pem)
+        assert _bundle_data(fallback, device_key)["default_provider_id"] == second_id
+        assert client.put(f"/api/admin/providers/{provider_id}/assign/default", json={
+            "subject_type": "device", "subject_id": "device-1", "enabled": True,
+        }, headers={"X-CSRF-Token": csrf}).status_code == 404
+        assert client.post(f"/api/admin/providers/{second_id}/assign", json={
+            "subject_type": "user", "subject_id": owner_id,
+        }, headers={"X-CSRF-Token": csrf}).status_code == 200
+        assert client.put(f"/api/admin/providers/{second_id}/assign/default", json={
+            "subject_type": "user", "subject_id": owner_id, "enabled": True,
+        }, headers={"X-CSRF-Token": csrf}).status_code == 200
+        assert client.put(user_default_url, json={
+            "subject_type": "user", "subject_id": owner_id, "enabled": True,
+        }, headers={"X-CSRF-Token": csrf}).status_code == 200
+        assert next(item for item in client.get(
+            f"/api/admin/providers/{second_id}/assignments").json()["assignments"]
+            if item["subject_type"] == "user")["is_default"] is False
+        assert client.get(f"/api/admin/providers/{provider_id}/assignments").json()[
+            "assignments"][0]["is_default"] is True
+        assert client.post(f"/api/admin/providers/{provider_id}/assign/revoke", json={
+            "subject_type": "user", "subject_id": owner_id,
+        }, headers={"X-CSRF-Token": csrf}).status_code == 204
+        after_revoke = client.portal.call(compile_provider_bundle, app.state.database,
+                                          app.state.gateway_signer, "gateway-test", "device-1",
+                                          owner_id, pem)
+        assert _bundle_data(after_revoke, device_key)["default_provider_id"] == second_id
+        assert client.post(f"/api/admin/providers/{provider_id}/assign", json={
+            "subject_type": "user", "subject_id": owner_id,
+        }, headers={"X-CSRF-Token": csrf}).status_code == 200
+        latest_bundle = client.portal.call(compile_provider_bundle, app.state.database,
+                                           app.state.gateway_signer, "gateway-test", "device-1",
+                                           owner_id, pem)
         async def record_application():
             async with app.state.database.session() as session:
                 async with session.begin():
                     session.add(DeviceProviderApplication(
-                        device_id="device-1", desired_revision=_claims(bundle)["revision"],
-                        applied_revision=_claims(bundle)["revision"],
+                        device_id="device-1", desired_revision=_claims(latest_bundle)["revision"],
+                        applied_revision=_claims(latest_bundle)["revision"],
                     ))
         client.portal.call(record_application)
         status = client.get("/api/admin/providers/applications")
         assert status.status_code == 200, status.text
-        assert status.json()["devices"][0]["applied_revision"] == _claims(bundle)["revision"]
+        assert status.json()["devices"][0]["applied_revision"] == _claims(latest_bundle)["revision"]
         assert status.json()["total"] == 1
         assert client.get("/api/admin/providers/applications?q=missing").json()["total"] == 0
         assert client.get("/api/admin/providers/applications?page_size=101").status_code == 422
@@ -148,13 +225,19 @@ def test_admin_assigns_encrypted_provider_without_exposing_secret(tmp_path):
         assert client.post(f"/api/admin/providers/{provider_id}/assign", json={
             "subject_type": "user", "subject_id": owner_id,
         }, headers={"X-CSRF-Token": csrf}).status_code == 200
+        assert client.put(user_default_url, json={
+            "subject_type": "user", "subject_id": owner_id, "enabled": True,
+        }, headers={"X-CSRF-Token": csrf}).status_code == 200
         disabled = client.post(f"/api/admin/providers/{provider_id}/disable",
                                headers={"X-CSRF-Token": csrf})
         assert disabled.status_code == 204
+        assert client.get(f"/api/admin/providers/{provider_id}/assignments").json()[
+            "assignments"][0]["is_default"] is False
         later = client.portal.call(compile_provider_bundle, app.state.database,
                                    app.state.gateway_signer, "gateway-test", "device-1",
                                    owner_id, pem)
         assert _claims(later)["revision"] > _claims(bundle)["revision"]
+        assert _bundle_data(later, device_key)["default_provider_id"] == second_id
 
 
 def test_provider_directory_filters_and_pages_without_exposing_keys(tmp_path):

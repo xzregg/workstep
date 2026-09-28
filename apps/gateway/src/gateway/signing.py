@@ -205,13 +205,19 @@ class GatewaySigner:
 
     def sign_provider_bundle(self, *, gateway_id: str, device_id: str, user_id: str,
                              revision: int, config_public_key_pem: str,
-                             providers: list[dict]) -> str:
+                             providers: list[dict], default_provider_id: str = "") -> str:
         recipient = serialization.load_pem_public_key(config_public_key_pem.encode())
         if not isinstance(recipient, X25519PublicKey):
             raise ValueError("Device config key must be X25519")
         if len(providers) > 100:
             raise ValueError("Too many managed providers")
-        plaintext = json.dumps({"providers": providers}, separators=(",", ":"),
+        if (not isinstance(default_provider_id, str) or
+                default_provider_id and default_provider_id not in {
+                    provider.get("id") for provider in providers
+                }):
+            raise ValueError("Default provider is unavailable")
+        plaintext = json.dumps({"providers": providers,
+                                "default_provider_id": default_provider_id}, separators=(",", ":"),
                                sort_keys=True).encode()
         if len(plaintext) > 512 * 1024:
             raise ValueError("Managed provider bundle is too large")

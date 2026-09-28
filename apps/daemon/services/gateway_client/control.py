@@ -500,7 +500,7 @@ class GatewayControlClient:
             await asyncio.to_thread(
                 self.provider_store.apply_managed_providers,
                 self.gateway_id, bundle.revision, bundle.providers, refresh_registry,
-                user_id=self.user_id,
+                user_id=self.user_id, default_provider_id=bundle.default_provider_id,
             )
             result, error = "success", None
         except Exception as exc:

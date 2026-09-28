@@ -132,7 +132,7 @@ test('provider editor protects changes and submits configuration with step-up', 
 test('provider assignments select a user or PC and revoke with step-up', async () => {
   const requests: Array<{ url: string; init?: RequestInit }> = []
   let assignments: Array<{ id: string; subject_type: 'user' | 'device'; subject_id: string;
-    subject_name: string }> = []
+    subject_name: string; is_default: boolean }> = []
   globalThis.fetch = async (input, init) => {
     const url = String(input)
     requests.push({ url, init })
@@ -149,8 +149,13 @@ test('provider assignments select a user or PC and revoke with step-up', async (
     if (url.endsWith('/assign') && init?.method === 'POST') {
       const body = JSON.parse(String(init.body))
       assignments = [{ id: 'assignment-1', ...body,
-        subject_name: body.subject_type === 'user' ? 'alice' : 'Office PC' }]
+        subject_name: body.subject_type === 'user' ? 'alice' : 'Office PC', is_default: false }]
       return Response.json({ id: 'assignment-1' })
+    }
+    if (url.endsWith('/assign/default') && init?.method === 'PUT') {
+      assignments = assignments.map(item => ({ ...item,
+        is_default: JSON.parse(String(init.body)).enabled }))
+      return Response.json({ is_default: assignments[0].is_default })
     }
     if (url.endsWith('/assign/revoke') && init?.method === 'POST') {
       assignments = []
@@ -170,6 +175,18 @@ test('provider assignments select a user or PC and revoke with step-up', async (
   assert.deepEqual(JSON.parse(String(requests.find(request => request.url.endsWith('/assign'))?.init?.body)), {
     subject_type: 'user', subject_id: 'user-1',
   })
+  fireEvent.click(screen.getByRole('button', { name: '设为默认' }))
+  dialog = screen.getByRole('dialog', { name: '设置默认供应商' })
+  fireEvent.change(within(dialog).getByLabelText('输入管理员密码确认'), { target: { value: 'password' } })
+  fireEvent.click(within(dialog).getByRole('button', { name: '确认设置' }))
+  await screen.findByText('默认供应商')
+  assert.ok(requests.some(request => request.url.endsWith('/assign/default')
+    && request.init?.method === 'PUT'))
+  fireEvent.click(screen.getByRole('button', { name: '取消默认' }))
+  dialog = screen.getByRole('dialog', { name: '取消默认供应商' })
+  fireEvent.change(within(dialog).getByLabelText('输入管理员密码确认'), { target: { value: 'password' } })
+  fireEvent.click(within(dialog).getByRole('button', { name: '确认取消' }))
+  await screen.findByRole('button', { name: '设为默认' })
   fireEvent.click(screen.getByRole('button', { name: '撤销' }))
   dialog = screen.getByRole('dialog', { name: '撤销供应商授权' })
   fireEvent.change(within(dialog).getByLabelText('输入管理员密码确认'), { target: { value: 'password' } })
