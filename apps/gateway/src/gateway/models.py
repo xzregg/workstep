@@ -106,6 +106,7 @@ class ExternalLoginAttempt(Base):
     nonce: Mapped[str] = mapped_column(String(128))
     binding_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
     binding_session_id: Mapped[str | None] = mapped_column(ForeignKey("auth_sessions.id"))
+    return_to: Mapped[str | None] = mapped_column(String(2048))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

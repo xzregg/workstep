@@ -30,8 +30,9 @@ class DirectoryReconciler:
             try:
                 snapshot = await connector.fetch_directory(source)
                 await service.full_sync(source.id, snapshot["departments"], snapshot["people"])
-            except Exception:
-                logger.exception("Directory reconciliation failed for source %s", source.id)
+            except Exception as exc:
+                logger.error("Directory reconciliation failed for source %s (%s)",
+                             source.id, type(exc).__name__)
 
     async def run_periodic(self, stop: asyncio.Event, *, interval_seconds: float) -> None:
         while not stop.is_set():

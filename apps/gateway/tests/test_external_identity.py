@@ -235,3 +235,34 @@ def test_provider_reconciliation_is_atomic_and_provisions_closed_registration(tm
         state = _start(client, source_id)
         connector.failing = False
         assert client.get(f"/api/auth/external/{source_id}/callback?state={state}&code=valid-code").status_code == 200
+
+
+def test_external_scan_returns_to_desktop_login_without_open_redirect(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    app.state.identity_connectors = {"dingtalk": FakeConnector()}
+    with TestClient(app, base_url="https://gateway.test") as client:
+        csrf = _setup(client)
+        source_id = _source(client, csrf)
+        assert client.post(f"/api/admin/identity-sources/{source_id}/sync", headers={
+            "X-CSRF-Token": csrf,
+        }, json={"departments": [], "people": [{
+            "subject": "employee-1", "display_name": "张三", "department_ids": [],
+        }]}).status_code == 200
+        sources = client.get("/api/auth/identity-sources")
+        assert sources.status_code == 200
+        assert sources.json()["sources"][0]["id"] == source_id
+        client.cookies.clear()
+        return_to = "/desktop/login?gateway_id=gateway-test&state=state-value"
+        assert client.post(f"/api/auth/external/{source_id}/start", json={
+            "return_to": "//evil.test/steal",
+        }).status_code == 422
+        start = client.post(f"/api/auth/external/{source_id}/start", json={
+            "return_to": return_to,
+        })
+        assert start.status_code == 200
+        state = parse_qs(urlparse(start.json()["authorization_url"]).query)["state"][0]
+        callback = client.get(f"/api/auth/external/{source_id}/callback?state={state}&code=valid-code",
+                              follow_redirects=False)
+        assert callback.status_code == 303
+        assert callback.headers["location"] == return_to
+        assert client.get("/api/auth/session").status_code == 200

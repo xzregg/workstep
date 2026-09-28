@@ -109,6 +109,25 @@ a {
   line-height: 1.4;
 }
 
+.gateway-auth-external {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid #e8e8ed;
+}
+
+.gateway-auth-external p {
+  margin: 0 0 4px;
+  color: #6e6e73;
+}
+
+.gateway-auth-external button {
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid #d2d2d7;
+  background: #fff;
+  color: #1d1d1f;
+}
+
 @media (max-width: 600px) {
   main > header {
     padding: 16px;
