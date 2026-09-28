@@ -46,6 +46,7 @@ def current_actor_task_fields() -> dict[str, str]:
         return {}
     return {
         "creator_id": actor.actor_id,
+        "creator_username": actor.username or actor.user_name,
         "creator_name": actor.user_name,
         "creator_device_id": actor.device_id,
         "creator_device_name": actor.device_name,
@@ -118,7 +119,7 @@ def attributed_actor_message_fields(
         return fields
     return {
         "initiated_by_user_id": task.creator_id,
-        "initiated_by_username": task.creator_name,
+        "initiated_by_username": task.creator_username or task.creator_name,
         "author_device_id": task.creator_device_id,
         "author_device_name": task.creator_device_name,
     } if task.creator_name else {}

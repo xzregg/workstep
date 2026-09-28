@@ -234,6 +234,7 @@ def task_to_dict(task: Task) -> dict:
         "updated_at": task.updated_at,
         "review_overrides": json.loads(task.review_overrides_json) if task.review_overrides_json else None,
         "creator_id": task.creator_id,
+        "creator_username": task.creator_username,
         "creator_name": task.creator_name,
         "creator_device_id": task.creator_device_id,
         "creator_device_name": task.creator_device_name,

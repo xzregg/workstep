@@ -32,6 +32,7 @@ def test_init_db_creates_latest_schema_for_fresh_projects(tmp_path):
         assert "next_message_sequence" in tasks
         assert {
             "creator_id",
+            "creator_username",
             "creator_name",
             "creator_device_id",
             "creator_device_name",
@@ -323,10 +324,14 @@ def test_migrate_database_adds_dispatch_columns_before_unique_index(tmp_path):
     assert "source_dispatch_id" in columns
     assert {
         "creator_id",
+        "creator_username",
         "creator_name",
         "creator_device_id",
         "creator_device_name",
     }.issubset(columns)
+    assert db.execute_sql(
+        'SELECT creator_username FROM "tasks" WHERE id = ?', ("task-1",)
+    ).fetchone()[0] is None
     indexes = {index.name for index in db.get_indexes("tasks")}
     assert "task_source_dispatch_id" in indexes
     assert db.execute_sql('SELECT COUNT(*) FROM "tasks"').fetchone()[0] == 2

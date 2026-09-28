@@ -97,6 +97,7 @@ _ADDITIVE_COLUMNS = {
     },
     "tasks": {
         "creator_id": "TEXT",
+        "creator_username": "TEXT",
         "creator_name": "TEXT",
         "creator_device_id": "TEXT",
         "creator_device_name": "TEXT",

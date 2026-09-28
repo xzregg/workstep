@@ -517,7 +517,8 @@ async def test_project_only_remote_actor_creates_task_in_host_project(api_contex
         "method": "POST", "path": "/api/task/create",
         "query": f"project_id={project_id}",
         "headers": [["content-type", "application/json"]],
-        "user_id": "worker", "username": "Worker",
+        "user_id": "worker", "username": "worker",
+        "display_name": "Worker Display",
         "project_id": project_id, "access_level": "edit", "task_create": True,
     }, capture, "device-1")
     bridge.start_task()
@@ -533,6 +534,8 @@ async def test_project_only_remote_actor_creates_task_in_host_project(api_contex
                            for frame in frames if frame.payload.get("phase") == "body"))
     assert result["cwd"] == str(project_dir)
     assert result["creator_id"] == "worker"
+    assert result["creator_username"] == "worker"
+    assert result["creator_name"] == "Worker Display"
 
     from types import SimpleNamespace
     start = AsyncMock(return_value=SimpleNamespace(id="run-1"))
