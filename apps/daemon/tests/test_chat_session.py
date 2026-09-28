@@ -1211,14 +1211,24 @@ async def test_enhance_prompt_uses_configured_provider_protocol(chat_module, mon
         {
             "id": "p-1",
             "base_url": "http://localhost:1/v1",
-            "api_key": "k",
-            "enabled": True,
-            "protocols": ["anthropic_messages"],
+                "api_key": "k",
+                "enabled": True,
+                "protocols": ["anthropic_messages"],
+                "prices": {"version": "v1"},
+                "managed_revision": 3,
         }
     ]
     calls: list[dict] = []
     pydantic_calls: list = []
     invoke_calls: list = []
+    recorded_usage: list[dict] = []
+
+    import main
+
+    async def record_usage(**kwargs):
+        recorded_usage.append(kwargs)
+
+    monkeypatch.setattr(main.gateway_client, "record_one_shot_usage", record_usage)
 
     async def fake_text_completion(provider, model, messages, **kwargs):
         calls.append({
@@ -1227,6 +1237,9 @@ async def test_enhance_prompt_uses_configured_provider_protocol(chat_module, mon
             "messages": messages,
             "protocol": kwargs.get("protocol"),
         })
+        kwargs["usage_collector"].update({"input_tokens": 12, "output_tokens": 3})
+        provider["prices"]["version"] = "v2"
+        provider["managed_revision"] = 4
         return "改写后的清晰提示词。"
 
     async def fake_simple(prompt):
@@ -1254,6 +1267,13 @@ async def test_enhance_prompt_uses_configured_provider_protocol(chat_module, mon
     assert calls[0]["messages"][0]["role"] == "system"
     assert calls[0]["protocol"] == "anthropic_messages"
     assert not pydantic_calls and not invoke_calls
+    assert len(recorded_usage) == 1
+    assert recorded_usage[0]["project_id"] == project.id
+    assert recorded_usage[0]["model"] == "fast-model-x"
+    assert recorded_usage[0]["provider"]["id"] == "p-1"
+    assert recorded_usage[0]["provider"]["prices"]["version"] == "v1"
+    assert recorded_usage[0]["provider"]["managed_revision"] == 3
+    assert recorded_usage[0]["usage"] == {"input_tokens": 12, "output_tokens": 3}
 
     # 清空配置后回退 Pydantic AI 路径
     config_store.set_prompt_enhance_config(provider_id="", model="")

@@ -1,5 +1,6 @@
 """Normalize one completed model call into a stable managed usage event."""
 
+from copy import deepcopy
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from uuid import NAMESPACE_URL, uuid5
@@ -9,6 +10,11 @@ from services.usage_accounting import parse_usage
 
 PRICE_FIELDS = ("input_per_million", "output_per_million",
                 "cache_read_per_million", "cache_write_per_million")
+
+
+def snapshot_usage_provider(provider: dict) -> dict:
+    return deepcopy({key: provider.get(key) for key in
+                     ("id", "prices", "managed_revision")})
 
 
 def _price_snapshot(provider: dict | None, model: str) -> tuple[str | None, dict[str, str] | None]:

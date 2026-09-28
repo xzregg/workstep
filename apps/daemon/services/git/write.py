@@ -382,22 +382,32 @@ class GitWrites:
         context = context[:120000]
         from services.config import config_store
         from services import providers as provider_service
+        from services.gateway_client.usage import snapshot_usage_provider
+        from main import gateway_client
         config = await asyncio.to_thread(config_store.get_prompt_enhance_config)
         if not config.get('provider_id') or not config.get('model'):
             raise GitError('请先在设置中配置“提示词增强”的供应商和模型。', 409)
         provider = await asyncio.to_thread(config_store.get_provider, config['provider_id'])
         if provider is None:
             raise GitError('提示词增强的供应商不存在，请在设置中重新配置。', 409)
+        provider_snapshot = snapshot_usage_provider(provider)
+        usage: dict = {}
         try:
             result = await provider_service.text_completion(provider, config['model'], [
                 {'role': 'system', 'content': COMMIT_MESSAGE_SYSTEM_PROMPT},
                 {'role': 'user', 'content': context},
-            ], max_tokens=800, timeout=180, thinking='disabled', protocol=config.get('protocol') or None)
+            ], max_tokens=800, timeout=180, thinking='disabled',
+                protocol=config.get('protocol') or None, usage_collector=usage)
         except httpx.TimeoutException as exc:
             raise GitError('生成提交说明超时（180 秒），请检查供应商连接或稍后重试。', 504) from exc
         except Exception as exc:
             detail = str(exc).strip() or type(exc).__name__
             raise GitError(f'生成提交说明失败：{detail}', 502) from exc
+        project_ids = directory['project_ids']
+        await gateway_client.record_one_shot_usage(
+            project_id=project_ids[0] if len(project_ids) == 1 else None,
+            model=config['model'], provider=provider_snapshot, usage=usage or None,
+        )
         return {'message': normalize_commit_message(result)}
 
     async def switch(self, id, branch, snapshot, remote=None):
