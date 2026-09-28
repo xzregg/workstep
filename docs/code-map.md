@@ -38,6 +38,7 @@ Gateway 整机访问关系由 `apps/gateway/src/gateway/user_devices_api.py` 管
 阶段 7 的消息作者字段定义在 `models/message.py`、`models/chat_session.py`，旧项目数据库通过 `models/migrations.py` 加列且保留历史空值。`services/messages.py::create_task_message` 保存任务用户/助手作者及原始发起人，`agent_assistants/coordinator.py` 保存协调器消息，`agent_assistants/base.py` 生成助手会话快照，`chat_row_persistence.py` 和 `chat_session_transitions.py` 负责落库、回读和分叉复制，`history.py`、`services/task.py` 对外投影。`services/task_execution_report.py`、`services/statistics.py` 按原始发起人汇总新式助手用量。行为测试见 `test_migrations.py`、`test_message_attribution.py`、`test_coordinator.py`、`test_chat_session.py`、`test_task_execution_report.py` 和 `test_statistics.py`。
 
 用户主动启动与发送消息的身份门禁在 `services/remote_access.py::require_user_actor`，由 `services/workflow_runtime.py` 的手动启动和步骤续聊、`agent_assistants/base.py` 与 `coordinator.py` 的助手提交、`services/pending_message_inserts.py` 的队列创建和 `services/action_runtime.py` 的快捷动作调用。队列自动消费使用保存的作者快照，不重新要求当前用户；定时和恢复执行保留后台来源。API 和慢 I/O 健康检查见 `tests/test_api_contracts.py`、`test_action_runtime.py`。
+定时来源携带启动文本时，`services/workflow_start.py::prepare_start_in_project` 将可见执行消息署名为 `scheduler`，运行记录与消息的 `initiated_by` 仍保留任务创建人；验证见 `tests/test_message_attribution.py`。
 
 Web 的作者展示由 `src/utils/actorDisplay.ts` 统一计算：缺失作者显示“历史用户”，悬停详情显示保存时的名称、用户名和设备；任务消息在 `src/components/TaskConversationMessage.tsx`，独立聊天及助手消息在 `src/components/AssistantChatPanel.tsx`。聊天历史映射在 `src/hooks/useChatSessionHistory.ts` 与 `src/components/AiFlowChat.tsx` 保留作者字段，行为测试见 `tests/actorDisplay.test.ts`、`tests/actorVisibility.test.mjs`、`tests/remoteMessageIdentity.test.mjs`。
 

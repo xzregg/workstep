@@ -189,6 +189,18 @@ def prepare_start_in_project(
     normalized_input = user_input.strip()
     user_message = None
     if normalized_input:
+        message_actor_fields = actor_fields
+        if source in {"schedule", "scheduled_start"}:
+            message_actor_fields = {
+                "author_id": "scheduler",
+                "author_username": "scheduler",
+                "author_name": "定时任务",
+                "author_type": "scheduler",
+                "initiated_by_user_id": task.creator_id,
+                "initiated_by_username": task.creator_username or task.creator_name,
+                "author_device_id": task.creator_device_id,
+                "author_device_name": task.creator_device_name,
+            }
         step_statuses = {
             task_step.step_key: task_step.status
             for task_step in TaskStep.select().where(TaskStep.task == task)
@@ -211,7 +223,7 @@ def prepare_start_in_project(
             ended_at=now,
             created_at=now,
             snapshot_current_actor=False,
-            **actor_fields,
+            **message_actor_fields,
         )
 
     return PreparedWorkflowRun(
