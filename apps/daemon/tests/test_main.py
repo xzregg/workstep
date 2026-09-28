@@ -319,9 +319,17 @@ async def test_project_websocket_subscription_cannot_escape_project_or_send_comm
     try:
         await event_bus.publish({"type": "RUN_STARTED", "project_id": "project-2", "task_id": "t"})
         await event_bus.publish({"type": "RUN_STARTED", "task_id": "t"})
+        await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-1",
+                                 "channel": "session_chat", "session_id": "private"})
         assert q.empty()
         await event_bus.publish({"type": "RUN_STARTED", "project_id": "project-1", "task_id": "t"})
         assert (await q.get())["project_id"] == "project-1"
+        await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-1",
+                                 "channel": "execution", "task_id": "t"})
+        assert (await q.get())["channel"] == "execution"
+        await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-1",
+                                 "channel": "coordinator", "task_id": "t"})
+        assert (await q.get())["channel"] == "coordinator"
 
         await main._handle_client_message(json.dumps({
             "type": "subscribe", "project_id": "project-2", "task_ids": ["t"],

@@ -473,7 +473,7 @@ class ScheduleModule:
             )
         for task_id, scheduled_at in missed:
             await self._publish_scheduled_event(
-                task_id, "missed", scheduled_at, "应用未运行，错过了定时启动时间"
+                project_id, task_id, "missed", scheduled_at, "应用未运行，错过了定时启动时间"
             )
 
     async def _execute_scheduled_task(self, project_id: str, task_id: str) -> None:
@@ -495,28 +495,30 @@ class ScheduleModule:
             await self._run_db(
                 project_id, lambda: self._tasks.clear_scheduled_start(task_id)
             )
-            await self._publish_scheduled_event(task_id, None, scheduled_at, None)
+            await self._publish_scheduled_event(project_id, task_id, None, scheduled_at, None)
             return
         except Exception as exc:
             await self._run_db(
                 project_id,
                 lambda: self._tasks.mark_scheduled_start(task_id, "failed", str(exc)),
             )
-            await self._publish_scheduled_event(task_id, "failed", scheduled_at, str(exc))
+            await self._publish_scheduled_event(project_id, task_id, "failed", scheduled_at, str(exc))
             return
         await self._run_db(
             project_id, lambda: self._tasks.clear_scheduled_start(task_id)
         )
-        await self._publish_scheduled_event(task_id, None, scheduled_at, None)
+        await self._publish_scheduled_event(project_id, task_id, None, scheduled_at, None)
 
     async def _publish_scheduled_event(
-        self, task_id: str, state: str | None, scheduled_at, error: str | None,
+        self, project_id: str, task_id: str, state: str | None, scheduled_at,
+        error: str | None,
     ) -> None:
         event_bus = getattr(self._tasks, "_event_bus", None)
         if event_bus is None:
             return
         await event_bus.publish({
             "type": "CUSTOM",
+            "project_id": project_id,
             "name": "workstep.scheduled_start",
             "value": {
                 "task_id": task_id,

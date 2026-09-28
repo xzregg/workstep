@@ -22,6 +22,25 @@ from services.workflow_runtime import WorkflowRuntime
 from streaming.bus import EventBus
 
 
+@pytest.mark.anyio
+async def test_coordinator_live_event_carries_project_scope():
+    bus = EventBus()
+    module = object.__new__(CoordinatorModule)
+    module._event_bus = bus
+    queue = bus.subscribe(lambda event: event.get("project_id") == "project-1")
+    message = SimpleNamespace(
+        channel="coordinator", id="message-1", engine="test", model="test",
+        context_step_key="coordinator",
+    )
+    await module._publish_message_event(
+        "project-1", "task-1", message, "message_started",
+        {"content": "hello", "role": "assistant"}, 0,
+    )
+    assert not queue.empty()
+    assert (await queue.get())["project_id"] == "project-1"
+    await bus.close()
+
+
 @pytest.mark.parametrize("script_path", ["../outside.sh", "nested/start.sh", "action.json"])
 def test_coordinator_action_proposal_rejects_unsafe_script_paths(script_path):
     from agent_assistants.coordinator_actions import CoordinatorActionService

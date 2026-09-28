@@ -419,7 +419,9 @@ async def test_one_shot_task_timer_is_marked_missed_on_startup(tmp_path):
         async def start(self, *args):
             raise AssertionError("missed timer must not start")
     module = ScheduleModule(manager, tasks, Runtime())
+    project_events = bus.subscribe(lambda event: event.get("project_id") == project.id)
     await module.tick(datetime(2099, 1, 2, 3, 5, tzinfo=timezone.utc), startup=True)
+    assert (await asyncio.wait_for(project_events.get(), timeout=1))["name"] == "workstep.scheduled_start"
     with manager.activate_project_by_id(project.id):
         current = tasks.get_task(task["id"])
         assert current["scheduled_start_state"] == "missed"
