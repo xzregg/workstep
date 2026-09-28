@@ -333,6 +333,27 @@ def test_last_super_admin_role_cannot_be_revoked_and_normal_user_cannot_read_rol
         assert client.get("/api/admin/roles").status_code == 403
 
 
+def test_admin_department_choices_are_active_and_paged(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        csrf = _setup(client).json()["csrf_token"]
+        source = client.post("/api/admin/identity-sources", headers={"X-CSRF-Token": csrf}, json={
+            "provider": "wecom", "tenant_id": "tenant-a", "client_id": "app",
+            "agent_id": "10001", "secret_env": "WORKSTEP_TEST_WECOM_SECRET",
+        }).json()["id"]
+        assert client.post(f"/api/admin/identity-sources/{source}/sync", headers={"X-CSRF-Token": csrf}, json={
+            "departments": [{"external_id": f"dept-{index}", "display_name": f"Team {index}"}
+                            for index in range(3)], "people": [],
+        }).status_code == 200
+        listed = client.get("/api/admin/departments?q=Team&sort=display_name&direction=asc&page=2&page_size=1")
+        assert listed.status_code == 200, listed.text
+        assert listed.json()["total"] == 3
+        assert listed.json()["departments"][0]["display_name"] == "Team 1"
+        assert client.get("/api/admin/departments?page_size=101").status_code == 422
+        client.cookies.clear()
+        assert client.get("/api/admin/departments").status_code == 401
+
+
 def test_department_admin_only_manages_members_in_scope(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path))
     with TestClient(app, base_url="https://gateway.test") as client:
@@ -366,6 +387,8 @@ def test_department_admin_only_manages_members_in_scope(tmp_path):
             "include_subdepartments": False,
         }, headers={"X-CSRF-Token": csrf})
         assert assigned.status_code == 201
+        scoped_role = client.get("/api/admin/roles?role=identity_admin").json()["roles"][0]
+        assert scoped_role["scope_name"] == "A"
         client.cookies.clear()
         csrf = client.post("/api/auth/login", json={
             "username": "alice", "password": "AlicePassphrase-2026!",
