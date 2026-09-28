@@ -170,6 +170,17 @@ class DirectoryEventReceipt(Base):
     received_at: Mapped[datetime] = timestamp()
 
 
+class DirectorySyncState(Base):
+    __tablename__ = "directory_sync_states"
+
+    source_id: Mapped[str] = mapped_column(ForeignKey("identity_sources.id"), primary_key=True)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error_code: Mapped[str | None] = mapped_column(String(64))
+    cursor: Mapped[str | None] = mapped_column(String(256))
+    changes_json: Mapped[str | None] = mapped_column(Text)
+
+
 class UserGroup(Base):
     __tablename__ = "user_groups"
 

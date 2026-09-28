@@ -6,7 +6,7 @@ from sqlalchemy import select
 from gateway.config import GatewaySettings
 from gateway.database import GatewayDatabase
 from gateway.external_identity import ExternalIdentityService
-from gateway.models import DirectoryPerson
+from gateway.models import DirectoryEventReceipt, DirectoryPerson, DirectorySyncState
 from gateway.reconciliation import DirectoryReconciler
 
 
@@ -44,5 +44,54 @@ async def test_scheduled_reconciliation_reads_enabled_source(tmp_path):
         finally:
             stop.set()
             await asyncio.wait_for(task, timeout=1)
+    finally:
+        await database.close()
+
+
+@pytest.mark.asyncio
+async def test_failed_periodic_reconciliation_records_safe_error(tmp_path):
+    database = GatewayDatabase(GatewaySettings(data_dir=tmp_path))
+    await database.start()
+    try:
+        service = ExternalIdentityService(database)
+        source = await service.create_source("wecom", "corp-a", "app", "SECRET_ENV", "1001")
+
+        class BrokenConnector:
+            async def fetch_directory(self, _source):
+                raise RuntimeError("private vendor detail")
+
+        await DirectoryReconciler(database, {"wecom": BrokenConnector()}).run_once()
+        async with database.session() as session:
+            state = await session.get(DirectorySyncState, source.id)
+            assert state.last_attempt_at is not None
+            assert state.last_success_at is None
+            assert state.last_error_code == "provider_unavailable"
+            assert "private vendor detail" not in str(state)
+    finally:
+        await database.close()
+
+
+@pytest.mark.asyncio
+async def test_failed_callback_reconciliation_keeps_receipt_pending_and_records_error(tmp_path):
+    database = GatewayDatabase(GatewaySettings(data_dir=tmp_path))
+    await database.start()
+    try:
+        service = ExternalIdentityService(database)
+        source = await service.create_source("wecom", "corp-a", "app", "SECRET_ENV", "1001")
+        async with database.session() as session:
+            async with session.begin():
+                session.add(DirectoryEventReceipt(id="receipt-1", source_id=source.id,
+                                                  event_id="event-1", status="pending"))
+
+        class BrokenConnector:
+            async def fetch_directory(self, _source):
+                raise RuntimeError("private vendor detail")
+
+        await DirectoryReconciler(database, {"wecom": BrokenConnector()}).run_pending_callbacks()
+        async with database.session() as session:
+            receipt = await session.get(DirectoryEventReceipt, "receipt-1")
+            state = await session.get(DirectorySyncState, source.id)
+            assert receipt.status == "pending"
+            assert state.last_error_code == "provider_unavailable"
     finally:
         await database.close()

@@ -18,7 +18,7 @@ from .config import GatewaySettings
 from .models import PlatformSetting
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
-HEAD_REVISION = "0026_directory_callback_queue"
+HEAD_REVISION = "0027_directory_sync_state"
 
 
 def safe_database_location(url: str) -> tuple[str, str]:
