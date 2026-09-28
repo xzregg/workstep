@@ -69,6 +69,37 @@ class UsedDeviceAccessTicket(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
 
+class PlatformShare(Base):
+    __tablename__ = "platform_shares"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("platform_projects.id"), index=True)
+    task_id: Mapped[str] = mapped_column(String(128))
+    mode: Mapped[str] = mapped_column(String(16))
+    title: Mapped[str] = mapped_column(String(256))
+    password_hash: Mapped[str | None] = mapped_column(Text)
+    created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    status: Mapped[str] = mapped_column(String(16), server_default="active")
+    created_at: Mapped[datetime] = timestamp()
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PlatformShareSession(Base):
+    __tablename__ = "platform_share_sessions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    share_id: Mapped[str] = mapped_column(ForeignKey("platform_shares.id"), index=True)
+    session_token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = timestamp()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    client_fingerprint_hash: Mapped[str | None] = mapped_column(String(64))
+
+
 class AdminAssignment(Base):
     __tablename__ = "admin_assignments"
     __table_args__ = (Index("ix_admin_user_role", "user_id", "role"),)
