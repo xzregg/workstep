@@ -92,6 +92,24 @@ def test_audit_batch_rejects_cross_device_and_sensitive_metadata(tmp_path):
         assert result["rejected"] == ["bad-device", "bad-secret"]
 
 
+def test_audit_batch_rejects_collision_with_gateway_event(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        async def seed():
+            async with app.state.database.session() as session:
+                async with session.begin():
+                    session.add(AuditEvent(
+                        id="gateway-event", action="auth.login", result="success",
+                    ))
+
+        client.portal.call(seed)
+        result = client.portal.call(
+            record_audit_batch, app.state.database, "device-1", "batch-1",
+            [_event("gateway-event")],
+        )
+        assert result["rejected"] == ["gateway-event"]
+
+
 def test_admin_audit_query_only_exposes_published_project_events(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:

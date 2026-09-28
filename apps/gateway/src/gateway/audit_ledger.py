@@ -98,6 +98,9 @@ async def record_audit_batch(
                     else:
                         rejected.append(event.audit_event_id)
                     continue
+                if await session.get(AuditEvent, event.audit_event_id) is not None:
+                    rejected.append(event.audit_event_id)
+                    continue
                 session.add(AuditEventReceipt(
                     audit_event_id=event.audit_event_id, device_id=device_id,
                     payload_sha256=digest,
