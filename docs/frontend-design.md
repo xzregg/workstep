@@ -299,6 +299,7 @@
 - `Button`：变体 `primary`（accent 底 + `--accent-fg` 文字，hover `brightness(1.06)`）、`ghost`（`--border` 描边）、`danger`、`icon`（圆形图标钮）；尺寸 `sm`/默认；loading 态内置 `Spinner`。
 - `Input`/`Select`/`Textarea`：统一高度 32px（多行除外）、`--radius-xs`、`--border` 描边、focus `--accent` 边框 + `--focus-ring`、disabled 置灰、placeholder `--text-tertiary`。
 - 移动端普通按钮、输入和工具栏控件复用 `mobile.css` 的 32px 高度变量；菜单项与需要较大点击区域的控件复用 44px 变量。不要在页面样式中另写 36px、48px 等高度。消息操作小按钮保留紧凑规格。
+- 任务详情头部增加操作或信息时，需在 320px、390px 和 1023px 宽度检查整行布局，优先让信息在两行内显示，避免长任务 ID 被按钮挤到第三行。ID 可限宽滚动展示，但完整值应可查看、复制；滚动效果需适配减少动态效果的系统设置。核对实际渲染中的换行与按钮点击区域。
 - `Field`：label + 帮助文本 + 错误提示组合；label `--text-body` 加粗，帮助/错误提示在**固定高度区域**（`minHeight` 占位）避免布局跳动。
 - `Spinner`：统一旋转加载图标（沿用手写 CSS 圆环，`currentColor`）。
 - `StatusBadge`：封装现有 `.status-badge`（`data-s` 语义 + token 色），统一「进行中」附旋转加载图标。

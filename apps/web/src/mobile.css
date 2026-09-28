@@ -328,8 +328,25 @@
   .task-detail-window, .task-create-panel { inset: 0 !important; width: 100% !important; min-width: 0 !important; height: var(--app-viewport-height, 100dvh) !important; max-height: var(--app-viewport-height, 100dvh); padding-top: env(safe-area-inset-top); box-shadow: none !important; border: 0 !important; }
   .task-detail-header { padding: 8px 12px !important; gap: 8px !important; }
   .task-detail-header > div { min-width: 0; }
-  .task-detail-header > div > div > span:first-child { font-size: calc(16px * var(--font-scale)) !important; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .task-detail-header > div > div { gap: 4px !important; }
+  .task-detail-header-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 4px !important;
+  }
+  .task-detail-header-fields .task-detail-title {
+    grid-row: 1;
+    grid-column: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: calc(16px * var(--font-scale)) !important;
+  }
+  .task-detail-header-badge:not([data-status]) { grid-row: 1; grid-column: 2; max-width: 84px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .task-detail-header-badge[data-status] { grid-row: 1; grid-column: 3; white-space: nowrap; }
+  .task-detail-header-creator,
+  .task-detail-header-time,
+  .task-detail-recovered-badge { display: none; }
   .task-detail-header > div > div + div { display: none; }
   .task-detail-discussion-button,
   .task-detail-share-button,
@@ -339,14 +356,19 @@
     padding-block: 0;
   }
   .task-detail-share-button {
+    grid-row: 2;
+    grid-column: 3;
     width: var(--mobile-control-regular);
     min-width: var(--mobile-control-regular);
     padding: 0 !important;
     justify-content: center;
-    margin-left: auto !important;
+    margin-left: 0 !important;
   }
+  .task-detail-discussion-button { grid-row: 2; grid-column: 1; justify-self: start; }
   .task-detail-share-label { display: none; }
   .task-detail-id-button {
+    grid-row: 2;
+    grid-column: 2;
     width: 84px;
     max-width: 84px;
     flex: 0 0 84px;

@@ -52,6 +52,9 @@ test('mobile task header aligns discussion, share, and compact id controls', () 
   assert.match(mobileCss, /\.task-detail-id-button\s*\{[^}]*width:\s*84px[^}]*max-width:\s*84px/s)
   assert.match(mobileCss, /\.task-detail-id-marquee-track\s*\{[^}]*animation:\s*task-detail-id-scroll/s)
   assert.match(mobileCss, /prefers-reduced-motion:\s*reduce[\s\S]*\.task-detail-id-marquee-track/s)
+  assert.match(mobileCss, /\.task-detail-header-fields\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto\s+auto/s)
+  assert.match(mobileCss, /\.task-detail-id-button\s*\{[^}]*grid-row:\s*2[^}]*grid-column:\s*2/s)
+  assert.match(mobileCss, /\.task-detail-header-creator,\s*\.task-detail-header-time,\s*\.task-detail-recovered-badge\s*\{[^}]*display:\s*none/s)
 })
 
 test('session chat composes engine quota with its shared input', () => {
