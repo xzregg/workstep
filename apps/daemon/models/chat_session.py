@@ -53,7 +53,11 @@ class ChatMessage(BaseModel):
     role = pw.TextField()  # 'user' / 'assistant'
     content = pw.TextField(default="")
     author_id = pw.TextField(null=True)
+    author_username = pw.TextField(null=True)
     author_name = pw.TextField(null=True)
+    author_type = pw.TextField(null=True)
+    initiated_by_user_id = pw.TextField(null=True)
+    initiated_by_username = pw.TextField(null=True)
     author_device_id = pw.TextField(null=True)
     author_device_name = pw.TextField(null=True)
     status = pw.TextField(null=True)

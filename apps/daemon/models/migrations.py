@@ -49,7 +49,11 @@ _LEGACY_MALFORMED_INDEXES = (
 _ADDITIVE_COLUMNS = {
     "message": {
         "author_id": "TEXT",
+        "author_username": "TEXT",
         "author_name": "TEXT",
+        "author_type": "TEXT",
+        "initiated_by_user_id": "TEXT",
+        "initiated_by_username": "TEXT",
         "author_device_id": "TEXT",
         "author_device_name": "TEXT",
         "event_log_path": "TEXT",
@@ -61,7 +65,11 @@ _ADDITIVE_COLUMNS = {
     },
     "chat_messages": {
         "author_id": "TEXT",
+        "author_username": "TEXT",
         "author_name": "TEXT",
+        "author_type": "TEXT",
+        "initiated_by_user_id": "TEXT",
+        "initiated_by_username": "TEXT",
         "author_device_id": "TEXT",
         "author_device_name": "TEXT",
         "event_log_path": "TEXT",
