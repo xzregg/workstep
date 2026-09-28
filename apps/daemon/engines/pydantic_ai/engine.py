@@ -389,6 +389,7 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
         ``protocol`` 由基类 ``pick_protocol`` 解析（供应商多协议时按其
         列表顺序与本引擎支持集合取交集）；缺省回退供应商默认协议。
         """
+        provider_service.require_managed_model(provider, model_name)
         provider_type = str(provider.get("type") or "custom")
         protocol = str(protocol or "").strip() or (
             provider_service.normalize_provider_protocol(
