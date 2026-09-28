@@ -5,9 +5,15 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from sqlalchemy import exists, or_, select
 
-from .models import AuditEvent, AuditEventReceipt
+from .identity_api import _super_admin_read
+from .models import AuditEvent, AuditEventReceipt, PlatformProject
+
+
+router = APIRouter(prefix="/api/admin/audit")
 
 
 _METADATA_KEYS = {
@@ -115,3 +121,85 @@ async def record_audit_batch(
                 accepted.append(event.audit_event_id)
     return {"batch_id": batch_id, "accepted": accepted,
             "duplicates": duplicates, "rejected": rejected}
+
+
+_VISIBLE_METADATA_KEYS = _METADATA_KEYS | {
+    "device_id", "user_id", "group_id", "project_id", "provider_id",
+    "batch_id", "skill_id", "source_id", "scope_type", "scope_id",
+    "subject_id", "subject_type", "access_level", "role",
+}
+
+
+def _visible_metadata(raw: str | None) -> dict:
+    try:
+        value = json.loads(raw or "{}")
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: item for key, item in value.items()
+        if key in _VISIBLE_METADATA_KEYS
+        and isinstance(item, (str, int, bool))
+        and (not isinstance(item, str) or len(item) <= 256)
+    }
+
+
+@router.get("")
+async def query_audit(
+    request: Request,
+    project_id: str | None = Query(default=None, max_length=64),
+    device_id: str | None = Query(default=None, max_length=64),
+    action: str | None = Query(default=None, max_length=128),
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    await _super_admin_read(request)
+    async with request.app.state.database.session() as session:
+        published = exists(select(PlatformProject.id).where(
+            PlatformProject.device_id == AuditEvent.device_id,
+            PlatformProject.host_project_id == AuditEvent.project_id,
+            PlatformProject.access_mode == "remote_published",
+            PlatformProject.status == "active",
+        ))
+        conditions = [or_(AuditEvent.project_id.is_(None), published)]
+        if project_id:
+            project = await session.get(PlatformProject, project_id)
+            if (project is None or project.access_mode != "remote_published"
+                    or project.status != "active"):
+                raise HTTPException(404, "Published project unavailable")
+            conditions.extend((
+                AuditEvent.project_id == project.host_project_id,
+                AuditEvent.device_id == project.device_id,
+            ))
+        if device_id:
+            conditions.append(AuditEvent.device_id == device_id)
+        if action:
+            conditions.append(AuditEvent.action == action)
+        rows = (await session.scalars(
+            select(AuditEvent).where(*conditions)
+            .order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc())
+            .limit(limit + 1).offset(offset)
+        )).all()
+        return {
+            "items": [{
+                "id": row.id,
+                "device_id": row.device_id,
+                "project_id": row.project_id,
+                "task_id": row.task_id,
+                "action": row.action,
+                "result": row.result,
+                "mode": row.mode,
+                "actor_id": row.user_id or row.actor_type,
+                "actor_username": row.actor_username,
+                "actor_name": row.actor_name,
+                "actor_type": row.actor_type,
+                "actor_device_id": row.actor_device_id,
+                "actor_device_name": row.actor_device_name,
+                "initiated_by_user_id": row.initiated_by_user_id,
+                "initiated_by_username": row.initiated_by_username,
+                "metadata": _visible_metadata(row.metadata_json),
+                "occurred_at": (row.occurred_at or row.created_at).isoformat(),
+            } for row in rows[:limit]],
+            "next_offset": offset + limit if len(rows) > limit else None,
+        }

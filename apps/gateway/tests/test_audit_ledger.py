@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from gateway.app import create_app
 from gateway.config import GatewaySettings
-from gateway.models import AuditEvent, Device
+from gateway.models import AuditEvent, Device, PlatformProject
 from gateway.audit_ledger import record_audit_batch
 
 
@@ -90,3 +90,62 @@ def test_audit_batch_rejects_cross_device_and_sensitive_metadata(tmp_path):
             ],
         )
         assert result["rejected"] == ["bad-device", "bad-secret"]
+
+
+def test_admin_audit_query_only_exposes_published_project_events(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        setup = client.post("/api/platform/setup", json={
+            "username": "owner", "display_name": "Owner",
+            "password": "OwnerPassphrase-2026!",
+            "recovery_username": "recovery",
+            "recovery_password": "RecoveryPassphrase-2026!",
+            "registration_mode": "open",
+        })
+        assert setup.status_code == 201
+        owner_id = setup.json()["user"]["id"]
+
+        async def seed():
+            async with app.state.database.session() as session:
+                async with session.begin():
+                    session.add(Device(
+                        id="device-1", name="PC", public_key="test",
+                        app_instance_id="app", version="1.0", status="active",
+                    ))
+                    session.add(PlatformProject(
+                        id="published-1", device_id="device-1",
+                        host_project_id="project-1", name="Public",
+                        access_mode="remote_published", status="active",
+                    ))
+                    session.add(PlatformProject(
+                        id="private-1", device_id="device-1",
+                        host_project_id="project-2", name="Private",
+                        access_mode="policy_only", status="active",
+                    ))
+                    session.add(AuditEvent(
+                        id="global-secret", user_id=owner_id,
+                        action="auth.login", result="success",
+                        metadata_json='{"token":"secret","user_id":"owner"}',
+                    ))
+
+        client.portal.call(seed)
+        client.portal.call(record_audit_batch, app.state.database,
+                           "device-1", "batch-1", [_event("visible")])
+        client.portal.call(record_audit_batch, app.state.database,
+                           "device-1", "batch-2", [
+                               {**_event("hidden"), "project_id": "project-2"},
+                           ])
+        visible = client.get("/api/admin/audit", params={"project_id": "published-1"})
+        assert visible.status_code == 200, visible.text
+        assert [item["id"] for item in visible.json()["items"]] == ["visible"]
+        hidden = client.get("/api/admin/audit", params={"project_id": "private-1"})
+        assert hidden.status_code == 404
+        all_events = client.get("/api/admin/audit")
+        assert all_events.status_code == 200
+        assert "hidden" not in {item["id"] for item in all_events.json()["items"]}
+        legacy = next(item for item in all_events.json()["items"]
+                      if item["id"] == "global-secret")
+        assert legacy["metadata"] == {"user_id": "owner"}
+
+    with TestClient(app, base_url="https://gateway.test") as anonymous:
+        assert anonymous.get("/api/admin/audit").status_code == 401
