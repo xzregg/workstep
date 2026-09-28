@@ -113,6 +113,18 @@ async def create_skill(request: Request, body: SkillInput):
             "description": row.description, "status": row.status}
 
 
+@router.get("")
+async def list_skills(request: Request):
+    await _admin_read(request)
+    async with request.app.state.database.session() as session:
+        rows = (await session.scalars(select(SkillPackage).order_by(
+            SkillPackage.name, SkillPackage.id,
+        ))).all()
+    return {"skills": [{"id": row.id, "name": row.name, "slug": row.slug,
+                        "description": row.description, "status": row.status}
+                       for row in rows]}
+
+
 @router.post("/{skill_id}/versions", status_code=201)
 async def upload_skill_version(request: Request, skill_id: str, body: SkillVersionInput):
     actor = await _admin(request)
@@ -295,6 +307,27 @@ async def revoke_group_skill(request: Request, group_id: str, skill_id: str):
                                    metadata_json=f'{{"group_id":"{group_id}","skill_id":"{skill_id}"}}'))
 
 
+@project_skill_router.get("/{group_id}/skills")
+async def list_group_skills(request: Request, group_id: str):
+    service, actor = await _actor(request, write=False)
+    async with request.app.state.database.session() as session:
+        if not await _can_manage_group(session, service, actor, group_id):
+            raise HTTPException(status_code=403, detail="Group management denied")
+        rows = (await session.execute(select(
+            GroupSkillCatalog, SkillVersion, SkillPackage,
+        ).join(SkillVersion, SkillVersion.id == GroupSkillCatalog.skill_version_id)
+            .join(SkillPackage, SkillPackage.id == GroupSkillCatalog.skill_id)
+            .where(GroupSkillCatalog.group_id == group_id,
+                   GroupSkillCatalog.revoked_at.is_(None),
+                   SkillVersion.status == "approved",
+                   SkillPackage.status == "active")
+            .order_by(SkillPackage.name))).all()
+    return {"skills": [{"skill_id": package.id, "name": package.name,
+                        "slug": package.slug, "skill_version_id": version.id,
+                        "version": version.version, "digest": version.digest}
+                       for _, version, package in rows]}
+
+
 @project_skill_router.post("/{group_id}/projects/{project_id}/skills")
 async def assign_project_skill(request: Request, group_id: str,
                                project_id: str, body: SkillGrantInput):
@@ -360,6 +393,40 @@ async def assign_project_skill(request: Request, group_id: str,
     return {"project_id": project_id, "skill_id": version.skill_id,
             "skill_version_id": version.id,
             "desired_revision": assignment.desired_revision}
+
+
+@project_skill_router.get("/{group_id}/projects/{project_id}/skills")
+async def list_project_skills(request: Request, group_id: str, project_id: str):
+    service, actor = await _actor(request, write=False)
+    async with request.app.state.database.session() as session:
+        if not await _can_manage_group(session, service, actor, group_id):
+            raise HTTPException(status_code=403, detail="Group management denied")
+        linked = await session.scalar(select(GroupProject.id).where(
+            GroupProject.group_id == group_id,
+            GroupProject.platform_project_id == project_id,
+            GroupProject.revoked_at.is_(None),
+        ))
+        if linked is None:
+            raise HTTPException(status_code=403, detail="Project is not linked to group")
+        project = await session.get(PlatformProject, project_id)
+        rows = (await session.execute(select(
+            ProjectSkillAssignment, SkillVersion, SkillPackage,
+        ).join(SkillVersion, SkillVersion.id == ProjectSkillAssignment.skill_version_id)
+            .join(SkillPackage, SkillPackage.id == ProjectSkillAssignment.skill_id)
+            .where(ProjectSkillAssignment.platform_project_id == project_id,
+                   ProjectSkillAssignment.source_group_id == group_id,
+                   ProjectSkillAssignment.revoked_at.is_(None))
+            .order_by(SkillPackage.name))).all()
+        state = await session.get(DeviceProjectSkillState,
+                                  (project.device_id, project.host_project_id))
+    return {"desired_revision": project.skill_revision,
+            "applied_revision": state.applied_revision if state else None,
+            "status": state.status if state else "pending",
+            "last_error_code": state.last_error_code if state else None,
+            "skills": [{"skill_id": package.id, "name": package.name,
+                        "skill_version_id": version.id, "version": version.version,
+                        "desired_revision": assignment.desired_revision}
+                       for assignment, version, package in rows]}
 
 
 @project_skill_router.delete("/{group_id}/projects/{project_id}/skills/{skill_id}",

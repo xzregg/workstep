@@ -73,6 +73,15 @@ def test_group_leader_can_manage_only_own_skill_projects(tmp_path):
         assert client.post(f"/api/groups/{group_id}/members", json={
             "user_id": member_id, "role": "member",
         }, headers={"X-CSRF-Token": leader_csrf}).status_code == 200
+        members = client.get(f"/api/groups/{group_id}/members")
+        assert members.status_code == 200
+        assert members.json()["members"] == [{
+            "user_id": leader_id, "username": "leader", "display_name": "Leader",
+            "role": "leader", "source": "manual",
+        }, {
+            "user_id": member_id, "username": "member", "display_name": "Member",
+            "role": "member", "source": "manual",
+        }]
         assert client.post(f"/api/groups/{group_id}/members", json={
             "user_id": member_id, "role": "leader",
         }, headers={"X-CSRF-Token": leader_csrf}).status_code == 403
@@ -95,6 +104,7 @@ def test_group_leader_can_manage_only_own_skill_projects(tmp_path):
             "username": "leader", "password": "LeaderNewPassphrase-2026!",
         })
         assert client.get(f"/api/groups/{group_id}/projects").status_code == 403
+        assert client.get(f"/api/groups/{group_id}/members").status_code == 403
 
 
 def test_external_department_group_tracks_directory_members_without_replacing_group(tmp_path):

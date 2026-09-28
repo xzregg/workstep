@@ -150,6 +150,23 @@ async def add_group_member(request: Request, group_id: str, body: MemberInput):
     return {"group_id": group_id, "user_id": body.user_id, "role": body.role}
 
 
+@router.get("/{group_id}/members")
+async def list_group_members(request: Request, group_id: str):
+    service, actor = await _actor(request, write=False)
+    async with request.app.state.database.session() as session:
+        if not await _can_manage_group(session, service, actor, group_id):
+            raise HTTPException(status_code=403, detail="Group management denied")
+        rows = (await session.execute(select(GroupMembership, User).join(
+            User, User.id == GroupMembership.user_id,
+        ).where(GroupMembership.group_id == group_id,
+                GroupMembership.revoked_at.is_(None))
+            .order_by(User.username))).all()
+    return {"members": [{"user_id": user.id, "username": user.username,
+                         "display_name": user.display_name, "role": membership.role,
+                         "source": membership.source}
+                        for membership, user in rows]}
+
+
 @router.delete("/{group_id}/members/{user_id}", status_code=204)
 async def remove_group_member(request: Request, group_id: str, user_id: str):
     service, actor = await _actor(request, write=True)
