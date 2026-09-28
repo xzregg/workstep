@@ -33,6 +33,33 @@ TEST_ACTOR_HEADERS = {
 
 
 @pytest.mark.anyio
+async def test_manual_start_slow_local_identity_lookup_does_not_block_health(
+    api_context, monkeypatch,
+):
+    from services.config import config_store
+
+    client, _tmp_path = api_context
+    entered = threading.Event()
+
+    def slow_name():
+        entered.set()
+        time.sleep(0.8)
+        return "Test User"
+
+    monkeypatch.setattr(config_store, "get_user_name", slow_name)
+    started = asyncio.create_task(client.post(
+        "/api/task/run?project_id=missing-project",
+        json={"task_id": "missing-task", "prompt": "开始"},
+    ))
+    assert await asyncio.to_thread(entered.wait, 2)
+    before = time.monotonic()
+    health = await client.get("/api/health")
+    assert health.status_code == 200
+    assert time.monotonic() - before < 0.5
+    assert (await started).status_code >= 400
+
+
+@pytest.mark.anyio
 async def test_pending_insert_slow_actor_lookup_does_not_block_health(
     api_context, monkeypatch,
 ):
