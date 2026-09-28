@@ -18,6 +18,7 @@ from .reconciliation import DirectoryReconciler
 from .signing import GatewaySigner
 from .desktop_authorization_api import router as desktop_authorization_router
 from .client_releases import router as client_releases_router
+from .control_connection import ControlConnections, router as control_router
 
 
 def create_app(settings: GatewaySettings | None = None) -> FastAPI:
@@ -43,6 +44,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         finally:
             app.state.ready = False
             stop_reconciliation.set()
+            await app.state.control_connections.shutdown()
             await reconciliation_task
             await database.close()
 
@@ -52,6 +54,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.state.protocol_version = PROTOCOL_VERSION
     app.state.identity_rate_limiter = IdentityRateLimiter()
     app.state.identity_connectors = {"dingtalk": DingTalkConnector(), "wecom": WeComConnector()}
+    app.state.control_connections = ControlConnections()
 
     @app.exception_handler(HTTPException)
     async def http_error(_request: Request, exc: HTTPException) -> JSONResponse:
@@ -76,6 +79,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(external_identity_router)
     app.include_router(desktop_authorization_router)
     app.include_router(client_releases_router)
+    app.include_router(control_router)
 
     if settings.web_dist and settings.web_dist.is_dir():
         assets = settings.web_dist / "assets"

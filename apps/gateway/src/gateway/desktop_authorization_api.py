@@ -99,6 +99,7 @@ async def list_devices(request: Request, status: Literal["pending", "active", "d
     await _super_admin_read(request)
     devices = await _service(request).list_devices(status)
     return {"devices": [{"id": device.id, "name": device.name, "status": device.status,
+                         "online": request.app.state.control_connections.is_online(device.id),
                          "version": device.version, "app_instance_id": device.app_instance_id}
                         for device in devices]}
 
@@ -114,9 +115,11 @@ async def _device_admin(request: Request):
 async def disable_device(request: Request, device_id: str):
     actor = await _device_admin(request)
     await _service(request).change_device_status(device_id, actor.id, "disabled")
+    await request.app.state.control_connections.disconnect(device_id)
 
 
 @router.post("/admin/devices/{device_id}/revoke", status_code=204)
 async def revoke_device(request: Request, device_id: str):
     actor = await _device_admin(request)
     await _service(request).change_device_status(device_id, actor.id, "revoked")
+    await request.app.state.control_connections.disconnect(device_id)
