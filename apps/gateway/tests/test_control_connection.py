@@ -124,6 +124,32 @@ def test_control_socket_authenticates_device_and_tracks_connection(tmp_path):
         assert listed[0]["online"] is False
 
 
+def test_control_delivers_signed_device_command_and_records_result(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        device_id, token, device_key, csrf = _active_device(client)
+        created = client.post("/api/admin/device-operations", headers={"X-CSRF-Token": csrf}, json={
+            "action": "refresh", "engine_id": "codex", "device_ids": [device_id],
+            "max_concurrency": 1,
+        })
+        assert created.status_code == 200, created.text
+        command_id = created.json()["commands"][0]["id"]
+        with client.websocket_connect("/api/control/ws") as ws:
+            _handshake(ws, token, device_key)
+            hello = ws.receive_json()
+            assert hello["command"]["kind"] == "device_command"
+            claims = json.loads(base64.urlsafe_b64decode(
+                hello["command"]["token"].split(".")[1] + "===",
+            ))
+            assert claims["command_id"] == command_id
+            assert claims["device_id"] == device_id
+            ws.send_json({"kind": "command_status", "command_id": command_id,
+                          "status": "succeeded"})
+            assert ws.receive_json()["kind"] == "command_status_ack"
+        status = client.get(f"/api/admin/device-operations/{created.json()['id']}")
+        assert status.json()["commands"][0]["status"] == "succeeded"
+
+
 def test_control_opens_one_time_data_connection_on_demand(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:

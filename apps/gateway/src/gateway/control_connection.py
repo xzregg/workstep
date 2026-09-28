@@ -25,6 +25,7 @@ from workstep_gateway_protocol import (FrameType, ProxyFrame,
 from .models import Device, DeviceConnection, DeviceProviderApplication, User, UserDevice
 from .capabilities import compiled_device_policy
 from .providers_api import compile_provider_bundle, compiled_provider_access
+from .device_commands import next_command_for_device, record_command_result
 
 router = APIRouter()
 
@@ -46,6 +47,19 @@ async def binding_active(ws: WebSocket, device_id: str, user_id: str) -> bool:
         ))
     return bool(device and device.status == "active" and user and user.status == "active"
                 and assignment)
+
+
+async def _signed_command(ws: WebSocket, device_id: str) -> dict | None:
+    command = await next_command_for_device(
+        ws.app.state.database, ws.app.state.command_scheduler_lock, device_id,
+    )
+    if command is None:
+        return None
+    token = ws.app.state.gateway_signer.sign_device_command(
+        gateway_id=ws.app.state.settings.gateway_id, **command,
+    )
+    return {"kind": "device_command", "version": 1, "device_id": device_id,
+            "token": token}
 
 
 async def authenticate_device(ws: WebSocket, message: dict, nonce: str) -> tuple[str, str, str]:
@@ -573,7 +587,8 @@ async def control_socket(ws: WebSocket):
         await ws.send_json({"kind": "hello", "version": 1, "device_id": device_id,
                             "gateway_public_key_pem": signer.public_key_pem,
                             "policy_snapshot": policy,
-                            "provider_bundle": provider_bundle})
+                            "provider_bundle": provider_bundle,
+                            "command": await _signed_command(ws, device_id)})
         while True:
             try:
                 message = await asyncio.wait_for(ws.receive_json(), timeout=90)
@@ -624,6 +639,22 @@ async def control_socket(ws: WebSocket):
                 await ws.send_json({"kind": "provider_applied_ack", "version": 1,
                                     "device_id": device_id, "revision": revision})
                 continue
+            if message.get("kind") == "command_status":
+                command_id = message.get("command_id")
+                status = message.get("status")
+                error = message.get("error")
+                if (not isinstance(command_id, str) or len(command_id) > 64
+                        or status not in ("received", "running", "succeeded", "failed")
+                        or (error is not None and (not isinstance(error, str) or len(error) > 512))):
+                    await ws.close(code=4400, reason="Invalid command status")
+                    return
+                accepted = await record_command_result(
+                    ws.app.state.database, command_id, device_id, status, error,
+                )
+                await ws.send_json({"kind": "command_status_ack", "version": 1,
+                                    "device_id": device_id, "command_id": command_id,
+                                    "accepted": accepted})
+                continue
             if message.get("kind") != "heartbeat":
                 await ws.close(code=4400, reason="Invalid control message")
                 return
@@ -648,7 +679,8 @@ async def control_socket(ws: WebSocket):
             )
             await ws.send_json({"kind": "heartbeat_ack", "version": 1,
                                 "device_id": device_id, "policy_snapshot": policy,
-                                "provider_bundle": provider_bundle})
+                                "provider_bundle": provider_bundle,
+                                "command": await _signed_command(ws, device_id)})
     except WebSocketDisconnect:
         pass
     finally:

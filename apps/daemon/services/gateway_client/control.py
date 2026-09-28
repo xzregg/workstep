@@ -17,6 +17,8 @@ from workstep_gateway_protocol import FrameType, ProxyFrame
 from .policy import ManagedPolicyCache, verify_policy_snapshot
 from .bridge import ManagedHttpBridge, ManagedWebSocketBridge
 from .provider_config import verify_provider_bundle
+from .commands import ManagedCommandExecutor, verify_device_command
+from .engine_actions import execute_engine_command
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +49,13 @@ class GatewayControlClient:
         self.heartbeat_seconds = heartbeat_seconds
         self.asgi_app = asgi_app
         self.provider_store = provider_store
+        self.command_executor = (ManagedCommandExecutor(provider_store, execute_engine_command)
+                                 if provider_store is not None else None)
         self.online = False
         self.authorization_required = False
         self._task: asyncio.Task | None = None
         self._data_tasks: set[asyncio.Task] = set()
+        self._command_tasks: set[asyncio.Task] = set()
         self._stop = asyncio.Event()
         self.config_private_key: X25519PrivateKey | None = None
 
@@ -76,6 +81,10 @@ class GatewayControlClient:
 
     async def stop(self) -> None:
         self._stop.set()
+        for task in self._command_tasks:
+            task.cancel()
+        if self._command_tasks:
+            await asyncio.gather(*self._command_tasks, return_exceptions=True)
         for task in self._data_tasks:
             task.cancel()
         if self._data_tasks:
@@ -145,6 +154,7 @@ class GatewayControlClient:
                     await self._ack_policy(socket, messages, device_id)
                     await self._apply_provider_bundle(socket, messages, hello,
                                                       gateway_key, device_id)
+                    self._accept_command(socket, hello, gateway_key, device_id)
                     self.online = True
                     delay = 1.0
                     while not self._stop.is_set():
@@ -161,6 +171,7 @@ class GatewayControlClient:
                         await self._ack_policy(socket, messages, device_id)
                         await self._apply_provider_bundle(socket, messages, ack,
                                                           gateway_key, device_id)
+                        self._accept_command(socket, ack, gateway_key, device_id)
                         try:
                             await asyncio.wait_for(self._stop.wait(), timeout=self.heartbeat_seconds)
                         except asyncio.TimeoutError:
@@ -178,6 +189,10 @@ class GatewayControlClient:
             finally:
                 self.online = False
                 self.config_private_key = None
+                for task in self._command_tasks:
+                    task.cancel()
+                if self._command_tasks:
+                    await asyncio.gather(*self._command_tasks, return_exceptions=True)
                 if reader_task:
                     reader_task.cancel()
                     await asyncio.gather(reader_task, return_exceptions=True)
@@ -222,6 +237,11 @@ class GatewayControlClient:
                     task = asyncio.create_task(self._run_data(device_id, token))
                     self._data_tasks.add(task)
                     task.add_done_callback(self._data_tasks.discard)
+                elif message.get("kind") == "command_status_ack":
+                    if (message.get("version") != 1 or message.get("device_id") != device_id
+                            or not isinstance(message.get("command_id"), str)
+                            or type(message.get("accepted")) is not bool):
+                        raise ValueError("Invalid command status acknowledgment")
                 else:
                     messages.put_nowait(message)
         except asyncio.CancelledError:
@@ -314,3 +334,37 @@ class GatewayControlClient:
         if (ack.get("version") != 1 or ack.get("device_id") != device_id
                 or ack.get("revision") != revision):
             raise ValueError("Invalid provider application acknowledgment")
+
+    def _accept_command(self, socket, envelope: dict, gateway_key: str,
+                        device_id: str) -> None:
+        raw = envelope.get("command")
+        if raw is None or self.command_executor is None:
+            return
+        if (not isinstance(raw, dict) or raw.get("kind") != "device_command"
+                or raw.get("version") != 1 or raw.get("device_id") != device_id
+                or not isinstance(raw.get("token"), str)):
+            raise ValueError("Invalid Gateway command envelope")
+        command = verify_device_command(
+            raw["token"], gateway_key, self.public_key_fingerprint,
+            self.gateway_id, device_id,
+        )
+        task = asyncio.create_task(self._execute_command(socket, command))
+        self._command_tasks.add(task)
+        task.add_done_callback(self._command_tasks.discard)
+
+    async def _execute_command(self, socket, command) -> None:
+        async def report(status: str, error: str | None = None) -> None:
+            await socket.send(json.dumps({
+                "kind": "command_status", "command_id": command.command_id,
+                "status": status, "error": error,
+            }))
+
+        try:
+            await report("received")
+            await report("running")
+            status, error = await self.command_executor.execute(command)
+            await report(status, error)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("Gateway device command failed: %s", type(exc).__name__)

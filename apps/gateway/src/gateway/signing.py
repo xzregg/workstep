@@ -194,3 +194,23 @@ class GatewaySigner:
         }, separators=(",", ":"), sort_keys=True).encode())
         signing_input = f"{header}.{payload}"
         return f"{signing_input}.{_b64(self.private_key.sign(signing_input.encode()))}"
+
+    def sign_device_command(self, *, gateway_id: str, id: str, batch_id: str,
+                            device_id: str, idempotency_key: str, action: str,
+                            engine_id: str, version: str | None,
+                            accept_third_party_terms: bool, expires_at: int) -> str:
+        now = int(time.time())
+        if (action not in {"install", "update", "rollback", "refresh", "test"}
+                or expires_at <= now or expires_at > now + 3600):
+            raise ValueError("Invalid device command")
+        header = _b64(b'{"alg":"EdDSA","typ":"JWT"}')
+        payload = _b64(json.dumps({
+            "iss": gateway_id, "gateway_id": gateway_id, "kind": "device.command",
+            "command_id": id, "batch_id": batch_id, "device_id": device_id,
+            "idempotency_key": idempotency_key, "action": action,
+            "engine_id": engine_id, "version": version,
+            "accept_third_party_terms": accept_third_party_terms,
+            "iat": now, "exp": expires_at,
+        }, separators=(",", ":"), sort_keys=True).encode())
+        signing_input = f"{header}.{payload}"
+        return f"{signing_input}.{_b64(self.private_key.sign(signing_input.encode()))}"

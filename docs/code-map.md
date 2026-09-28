@@ -25,6 +25,8 @@ Gateway 整机访问关系由 `apps/gateway/src/gateway/user_devices_api.py` 管
 
 阶段 4A 的 Gateway 供应商目录、分配、轮换、撤销和应用状态由 `apps/gateway/src/gateway/providers_api.py` 持有，迁移 `0013_providers.py` 建表，`signing.py` 加密落盘密钥及设备配置包；`control_connection.py` 仅向已认证的设备控制连接下发。daemon 的 `services/gateway_client/provider_config.py` 验签解密，`control.py` 在线程中调用 `services/config.py::apply_managed_providers` 原子落盘及引擎刷新；`api/provider.py` 封闭本地写入与密钥显示。行为测试见 Gateway `test_platform_providers.py`、`test_provider_crypto.py`、`test_control_connection.py` 与 daemon `test_gateway_provider_config.py`。
 
+阶段 4B 的 Gateway 批量命令提交、分页查询、调度、逐台状态与重试由 `apps/gateway/src/gateway/device_commands.py` 持有，`control_connection.py` 送出签名命令并接收状态，迁移 `0014_device_commands.py` 扩展结果字段；daemon `services/gateway_client/commands.py` 验签并持久化幂等收据，`engine_actions.py` 调用 `services/engine_runtime.py` 的版本化操作及共享 `services/engine_actions.py` 引擎测试，`api/engine.py` 的本地入口执行受管策略门禁。行为测试见 Gateway `test_device_commands.py`、`test_control_connection.py` 与 daemon `test_gateway_device_commands.py`、`test_api_engine_config.py`。
+
 修改功能时先找所属模块，再沿前端页面或组件 → API → 服务 → 数据模型追踪。行为测试放在实际拥有该行为的模块附近；不要把页面、`src/api/client.ts` 或通用服务文件作为新功能的默认落点。
 
 | 功能 | Web 入口 | Daemon 入口 | 深入阅读 |

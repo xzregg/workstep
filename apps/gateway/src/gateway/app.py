@@ -26,6 +26,7 @@ from .remote_access_api import (router as remote_access_router,
                                 websocket_router as remote_websocket_router,
                                 proxy_remote_request)
 from .providers_api import router as providers_router
+from .device_commands import router as device_commands_router
 
 
 def create_app(settings: GatewaySettings | None = None) -> FastAPI:
@@ -62,6 +63,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.state.identity_rate_limiter = IdentityRateLimiter()
     app.state.identity_connectors = {"dingtalk": DingTalkConnector(), "wecom": WeComConnector()}
     app.state.control_connections = ControlConnections()
+    app.state.command_scheduler_lock = asyncio.Lock()
 
     @app.middleware("http")
     async def device_host_boundary(request: Request, call_next):
@@ -105,6 +107,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(remote_access_router)
     app.include_router(remote_websocket_router)
     app.include_router(providers_router)
+    app.include_router(device_commands_router)
 
     if settings.web_dist and settings.web_dist.is_dir():
         assets = settings.web_dist / "assets"
