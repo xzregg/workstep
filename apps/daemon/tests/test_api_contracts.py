@@ -206,6 +206,54 @@ async def test_local_user_name_is_required_for_manual_run_and_task_chat(
 
 
 @pytest.mark.anyio
+async def test_invalid_manual_workflow_start_records_denial(api_context, monkeypatch):
+    import main
+    from models import ProjectAuditEvent, Task
+    from models.fields import utc_now
+    from services.remote_access import ActorSnapshot, actor_context
+    from services.workflow_definition import WorkflowValidationError
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "invalid-start-audit"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)},
+    )).json()["id"]
+    await main.project_manager.run_db(project_id, lambda _project: Task.create(
+        id="task-invalid-start", title="Invalid", cwd=str(project_dir),
+        created_at=utc_now(), updated_at=utc_now(),
+    ))
+    def invalid_workflow(_project, _task):
+        raise WorkflowValidationError("workflow: cycle detected")
+
+    monkeypatch.setattr(
+        main.workflow_runtime, "_current_workflow_steps", invalid_workflow,
+    )
+
+    with actor_context(ActorSnapshot(
+        actor_id="operator-1", user_name="Operator", username="operator",
+        device_id="device-1", device_name="Test Device", source="local",
+    )):
+        response = await client.post(f"/api/task/run?project_id={project_id}", json={
+            "task_id": "task-invalid-start", "prompt": "Start",
+        })
+    assert response.status_code == 422, response.text
+    audit = await main.project_manager.run_db(
+        project_id,
+        lambda _project: ProjectAuditEvent.get(
+            ProjectAuditEvent.task_id == "task-invalid-start"
+        ),
+    )
+    assert audit.action == "task.start"
+    assert audit.result == "denied"
+    assert audit.actor_username == "operator"
+    assert audit.metadata_json == '{"reason_code": "workflow_invalid"}'
+    assert await main.project_manager.run_db(
+        project_id, lambda _project: Task.get_by_id("task-invalid-start").status,
+    ) == "ready"
+
+
+@pytest.mark.anyio
 async def test_workflow_start_and_audit_roll_back_together(api_context, monkeypatch):
     import main
     from models import ProjectAuditEvent, Task, WorkflowRun
