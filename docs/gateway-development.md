@@ -1,6 +1,8 @@
 # Gateway 开发与部署
 
-Gateway 是独立 FastAPI 服务，`apps/gateway-web` 是独立门户。阶段 0、1 已完成；尚无登录、设备连接或平台授权能力。部署验收以 `plans/platform-gateway-development.md` 为准。
+Gateway 是独立 FastAPI 服务，`apps/gateway-web` 是独立门户。阶段 0、1 已完成；阶段 2 的本地账号 API 已实现，企业身份、设备连接与平台授权尚未完成。部署验收以 `plans/platform-gateway-development.md` 为准。
+
+空平台使用 `POST /api/platform/setup` 一次性创建超级管理员及独立恢复管理员，并设置注册模式。`POST /api/auth/register` 遵循 `open`、`open_with_approval` 或 `closed` 策略；`POST /api/auth/login` 返回 CSRF token 并写入安全、HttpOnly Cookie。修改类请求在 `X-CSRF-Token` 传入该 token。登录后的 `POST /api/auth/password`、`POST /api/auth/logout` 管理自身会话；管理员可建号、审核与禁用用户。禁用管理员和重置密码需要先调用 `POST /api/auth/step-up` 以密码确认，确认有效五分钟。重置或禁用会撤销目标用户已有会话。生产访问须用 HTTPS，当前登录 API 尚未与门户页面集成。
 
 本地开发使用 `uv run --project apps/gateway --group dev uvicorn gateway.app:app --host 127.0.0.1 --port 8766`。门户在 `apps/gateway-web` 执行 `yarn dev`，开发服务器将 `/api` 代理到 8766。构建后可设置 `WORKSTEP_GATEWAY_WEB_DIST` 为门户 `dist` 的绝对路径，让 Gateway 托管静态文件。默认 SQLite 位于 `~/.workstep-gateway/workstep_platform.db`，可用 `WORKSTEP_GATEWAY_DATA_DIR` 指定数据目录，或用 `WORKSTEP_GATEWAY_DATABASE_URL` 指定 `sqlite+aiosqlite` / `postgresql+asyncpg` 地址。启动执行 Alembic 迁移，未知版本拒绝启动，不会自动退回别的数据库。
 

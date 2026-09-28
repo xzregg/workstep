@@ -9,6 +9,8 @@ from workstep_gateway_protocol import PROTOCOL_VERSION
 
 from .config import GatewaySettings
 from .database import GatewayDatabase
+from .identity_api import router as identity_router
+from .rate_limit import IdentityRateLimiter
 
 
 def create_app(settings: GatewaySettings | None = None) -> FastAPI:
@@ -30,6 +32,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.state.ready = False
     app.state.settings = settings
     app.state.protocol_version = PROTOCOL_VERSION
+    app.state.identity_rate_limiter = IdentityRateLimiter()
 
     @app.exception_handler(HTTPException)
     async def http_error(_request: Request, exc: HTTPException) -> JSONResponse:
@@ -49,6 +52,8 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     @app.get("/api/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    app.include_router(identity_router)
 
     if settings.web_dist and settings.web_dist.is_dir():
         assets = settings.web_dist / "assets"
