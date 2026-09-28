@@ -286,7 +286,7 @@ def test_department_admin_only_manages_members_in_scope(tmp_path):
         assert client.post(f"/api/admin/identity-sources/{source}/sync", headers={"X-CSRF-Token": csrf}, json={
             "departments": [
                 {"external_id": "dept-a", "display_name": "A"},
-                {"external_id": "dept-b", "display_name": "B"},
+                {"external_id": "dept-b", "display_name": "B", "parent_external_id": "dept-a"},
             ],
             "people": [
                 {"subject": "person-a", "display_name": "甲", "department_ids": ["dept-a"]},
@@ -302,6 +302,7 @@ def test_department_admin_only_manages_members_in_scope(tmp_path):
         }).status_code == 200
         assigned = client.post(f"/api/admin/users/{alice['id']}/roles", json={
             "role": "identity_admin", "scope_type": "department", "scope_id": dept_id,
+            "include_subdepartments": False,
         }, headers={"X-CSRF-Token": csrf})
         assert assigned.status_code == 201
         client.cookies.clear()
@@ -311,8 +312,61 @@ def test_department_admin_only_manages_members_in_scope(tmp_path):
         assert client.post("/api/auth/password", headers={"X-CSRF-Token": csrf}, json={
             "current_password": "AlicePassphrase-2026!", "new_password": "AliceNewPassphrase-2026!",
         }).status_code == 204
+        scoped = client.get("/api/admin/users?page=1&page_size=10")
+        assert scoped.status_code == 200, scoped.text
+        assert [user["id"] for user in scoped.json()["users"]] == [person_a]
+        assert scoped.json()["total"] == 1
         assert client.post(f"/api/admin/users/{person_b}/disable", headers={"X-CSRF-Token": csrf}).status_code == 403
         assert client.post(f"/api/admin/users/{person_a}/disable", headers={"X-CSRF-Token": csrf}).status_code == 204
+        client.cookies.clear()
+        owner = client.post("/api/auth/login", json={
+            "username": "owner", "password": "OwnerPassphrase-2026!",
+        })
+        owner_csrf = owner.json()["csrf_token"]
+        assert client.post("/api/auth/step-up", json={"password": "OwnerPassphrase-2026!"}, headers={
+            "X-CSRF-Token": owner_csrf,
+        }).status_code == 200
+        assert client.post(f"/api/admin/users/{alice['id']}/roles", json={
+            "role": "identity_admin", "scope_type": "department", "scope_id": dept_id,
+            "include_subdepartments": True,
+        }, headers={"X-CSRF-Token": owner_csrf}).status_code == 201
+        client.cookies.clear()
+        client.post("/api/auth/login", json={
+            "username": "alice", "password": "AliceNewPassphrase-2026!",
+        })
+        assert {user["id"] for user in client.get("/api/admin/users").json()["users"]} == {person_a, person_b}
+
+
+def test_user_list_filters_and_pages_with_server_scope(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        csrf = _setup(client).json()["csrf_token"]
+        for username, status in (("alice", "active"), ("bob", "pending"), ("carol", "active")):
+            created = client.post("/api/admin/users", headers={"X-CSRF-Token": csrf}, json={
+                "username": username, "display_name": username.title(),
+                "password": "TemporaryPassphrase-2026!", "status": status,
+            })
+            assert created.status_code == 201
+        pending = client.get("/api/admin/users?status=pending&page=1&page_size=2")
+        assert pending.status_code == 200, pending.text
+        assert pending.json()["total"] == 1
+        assert [user["username"] for user in pending.json()["users"]] == ["bob"]
+        first = client.get("/api/admin/users?sort=username&direction=asc&page=1&page_size=2").json()
+        second = client.get("/api/admin/users?sort=username&direction=asc&page=2&page_size=2").json()
+        assert first["total"] == 5
+        assert [user["username"] for user in first["users"]] == ["alice", "bob"]
+        assert [user["username"] for user in second["users"]] == ["carol", "owner"]
+        assert [user["username"] for user in client.get("/api/admin/users?q=ali").json()["users"]] == ["alice"]
+        assert client.get("/api/admin/users?page_size=101").status_code == 422
+        client.cookies.clear()
+        assert client.post("/api/auth/login", json={
+            "username": "alice", "password": "TemporaryPassphrase-2026!",
+        }).status_code == 200
+        csrf = client.get("/api/auth/session").json()["csrf_token"]
+        assert client.post("/api/auth/password", headers={"X-CSRF-Token": csrf}, json={
+            "current_password": "TemporaryPassphrase-2026!", "new_password": "AliceNewPassphrase-2026!",
+        }).status_code == 204
+        assert client.get("/api/admin/users").status_code == 403
 
 
 def test_admin_can_change_registration_policy_without_restart(tmp_path):
