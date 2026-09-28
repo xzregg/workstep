@@ -33,12 +33,6 @@ main > header nav {
   gap: 24px;
 }
 
-@media (max-width: 600px) {
-  main > header { align-items: flex-start; flex-direction: column; gap: 12px; }
-  main > header nav { gap: 10px 18px; }
-  .gateway-auth-card { padding: 24px; }
-}
-
 a {
   color: #0071e3;
 }
@@ -253,14 +247,14 @@ a {
 
 @media (max-width: 600px) {
   main > header {
+    align-items: flex-start;
+    flex-direction: column;
     padding: 16px;
-    flex-wrap: wrap;
     gap: 12px;
   }
 
   main > header nav {
-    gap: 12px;
-    flex-wrap: wrap;
+    gap: 10px 18px;
   }
 
   .gateway-auth-card {
