@@ -16,7 +16,7 @@ import peewee
 from models import ActionRun, ChatMessage, ChatSession, Message, ProjectSetting, Task, Workflow
 from models.base import db_proxy
 from models.fields import utc_now
-from services.messages import create_task_message
+from services.messages import create_task_message, current_actor_message_fields
 from services.quick_buttons import valid_script_path
 
 
@@ -378,14 +378,22 @@ class ActionRuntime:
                     )
                 except peewee.IntegrityError:
                     return _serialize(ActionRun.get(ActionRun.active_key == active_key)), None
+                actor_fields = current_actor_message_fields()
                 ChatMessage.create(
                     id=run.user_message_id, session=session, role="user",
                     content=f"执行快捷动作：{button['label']}", status="completed",
                     engine="action", created_at=now, ended_at=now,
+                    **actor_fields,
                 )
                 ChatMessage.create(
                     id=run.reply_message_id, session=session, role="assistant",
                     content="", status="action_running", engine="action", created_at=now,
+                    author_id="action", author_username="action", author_name="action",
+                    author_type="assistant",
+                    initiated_by_user_id=actor_fields.get("initiated_by_user_id"),
+                    initiated_by_username=actor_fields.get("initiated_by_username"),
+                    author_device_id=actor_fields.get("author_device_id"),
+                    author_device_name=actor_fields.get("author_device_name"),
                 )
             return _serialize(run), config
 
