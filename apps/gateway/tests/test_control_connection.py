@@ -2,6 +2,7 @@ import base64
 import hashlib
 import json
 import sqlite3
+import time
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -137,6 +138,25 @@ def test_control_opens_one_time_data_connection_on_demand(tmp_path):
                     assert False, "Permission changes must close active data connection"
                 except WebSocketDisconnect as exc:
                     assert exc.code == 4003
+
+
+def test_slow_data_connection_does_not_delay_gateway_health_or_control_heartbeat(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        device_id, token, device_key, _ = _active_device(client)
+        with client.websocket_connect("/api/control/ws") as control:
+            _handshake(control, token, device_key)
+            assert control.receive_json()["kind"] == "hello"
+            pending = client.portal.start_task_soon(
+                app.state.control_connections.request_data, device_id,
+            )
+            assert control.receive_json()["kind"] == "open_data"
+            started = time.monotonic()
+            assert client.get("/api/health").json() == {"status": "ok"}
+            control.send_json({"kind": "heartbeat"})
+            assert control.receive_json()["kind"] == "heartbeat_ack"
+            assert time.monotonic() - started < 0.5
+            pending.cancel()
 
 
 def test_control_socket_rejects_wrong_proof(tmp_path):
