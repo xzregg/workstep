@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request, WebSocket
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from workstep_gateway_protocol import project_http_route_allowed
 
 from .identity import COOKIE_NAME, IdentityService
 from .models import Device, PlatformProject, UsedDeviceAccessTicket, User, UserDevice
@@ -165,12 +166,9 @@ async def proxy_remote_request(request: Request):
         raise HTTPException(status_code=403, detail="Invalid remote origin")
     user, device_id, auth_session, host_project_id = await _remote_identity(request)
     if auth_session.project_id:
-        project_ids = request.query_params.getlist("project_id")
-        task_list = (request.url.path == "/api/task/list"
-                     and project_ids == [host_project_id])
-        summary = (request.url.path == f"/api/project/{host_project_id}/summary"
-                   and not request.query_params)
-        if request.method != "GET" or not (task_list or summary):
+        if not project_http_route_allowed(
+                request.method, request.url.path,
+                list(request.query_params.multi_items()), host_project_id):
             raise HTTPException(status_code=403, detail="Project proxy scope unavailable")
     try:
         connection = await request.app.state.control_connections.request_data(device_id)
