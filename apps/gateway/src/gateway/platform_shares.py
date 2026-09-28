@@ -68,6 +68,25 @@ async def _live_share(request: Request, token: str) -> PlatformShare:
     return share
 
 
+async def _authorized_visitor(request: Request, token: str):
+    share = await _live_share(request, token)
+    session_token = request.cookies.get(SHARE_SESSION_COOKIE)
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Share session required")
+    async with request.app.state.database.session() as session:
+        visit = await session.scalar(select(PlatformShareSession).where(
+            PlatformShareSession.session_token_hash == _digest(session_token),
+            PlatformShareSession.share_id == share.id,
+            PlatformShareSession.revoked_at.is_(None),
+        ))
+        project = await session.get(PlatformProject, share.project_id)
+    if visit is None or _utc(visit.expires_at) <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=401, detail="Share session expired")
+    if project is None or project.device_id != share.device_id:
+        raise HTTPException(status_code=503, detail="Share project unavailable")
+    return share, project
+
+
 @router.post("/platform-shares", status_code=201)
 async def create_platform_share(request: Request, body: CreateShareInput):
     origin = request.app.state.settings.public_origin
@@ -200,18 +219,37 @@ async def unlock_public_share(request: Request, token: str, body: UnlockShareInp
 
 @router.get("/public/shares/{token}/session")
 async def public_share_session(request: Request, token: str):
-    share = await _live_share(request, token)
-    session_token = request.cookies.get(SHARE_SESSION_COOKIE)
-    if not session_token:
-        raise HTTPException(status_code=401, detail="Share session required")
-    async with request.app.state.database.session() as session:
-        async with session.begin():
-            visit = await session.scalar(select(PlatformShareSession).where(
-                PlatformShareSession.session_token_hash == _digest(session_token),
-                PlatformShareSession.share_id == share.id,
-                PlatformShareSession.revoked_at.is_(None),
-            ))
-            if visit is None or _utc(visit.expires_at) <= datetime.now(timezone.utc):
-                raise HTTPException(status_code=401, detail="Share session expired")
-            visit.last_seen_at = datetime.now(timezone.utc)
+    share, _ = await _authorized_visitor(request, token)
     return {"share_id": share.id, "mode": share.mode, "task_id": share.task_id}
+
+
+@router.get("/public/shares/{token}/task")
+async def public_share_task(request: Request, token: str):
+    share, project = await _authorized_visitor(request, token)
+    connections = request.app.state.control_connections
+    if not connections.is_online(share.device_id):
+        raise HTTPException(status_code=503, detail="Shared device offline")
+
+    async def authorize_stream():
+        current, current_project = await _authorized_visitor(request, token)
+        if (current.id != share.id or current.device_id != share.device_id
+                or current_project.host_project_id != project.host_project_id):
+            raise HTTPException(status_code=403, detail="Share changed")
+
+    ticket = request.app.state.gateway_signer.sign_platform_share_ticket(
+        gateway_id=request.app.state.settings.gateway_id,
+        device_id=share.device_id, share_id=share.id,
+        project_id=share.project_id, host_project_id=project.host_project_id,
+        task_id=share.task_id, mode=share.mode,
+    )
+    try:
+        connection = await connections.request_data(share.device_id)
+        response = await connection.proxy_http(
+            request, share_ticket=ticket,
+            target_path="/api/platform-share/task",
+            authorization_check=authorize_stream,
+        )
+        response.headers["Cache-Control"] = "no-store"
+        return response
+    except (ConnectionError, asyncio.TimeoutError) as exc:
+        raise HTTPException(status_code=503, detail="Shared device unavailable") from exc

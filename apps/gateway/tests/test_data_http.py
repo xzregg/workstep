@@ -13,6 +13,49 @@ from gateway.control_connection import DataConnection
 
 
 @pytest.mark.asyncio
+async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
+    starts = []
+
+    class Socket:
+        async def send_json(self, message):
+            frame = ProxyFrame.model_validate(message)
+            if frame.type != FrameType.http_request:
+                return
+            if frame.payload.get("phase") == "start":
+                starts.append(frame.payload)
+            if frame.payload.get("phase") == "end":
+                await connection.deliver(ProxyFrame(
+                    stream_id=frame.stream_id, type=FrameType.http_response,
+                    payload={"phase": "start", "status": 200, "headers": []},
+                ))
+                await connection.deliver(ProxyFrame(
+                    stream_id=frame.stream_id, type=FrameType.http_response,
+                    payload={"phase": "end"},
+                ))
+
+    connection = DataConnection("device-1", Socket())
+    app = FastAPI()
+
+    @app.get("/api/public/shares/token/task")
+    async def guest_task(request: Request):
+        return await connection.proxy_http(
+            request, share_ticket="signed-ticket",
+            target_path="/api/platform-share/task",
+        )
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                 base_url="https://gateway.test") as client:
+        response = await client.get("/api/public/shares/token/task",
+                                    headers={"Cookie": "guest=private"})
+        assert response.status_code == 200
+    assert starts[0]["path"] == "/api/platform-share/task"
+    assert starts[0]["share_ticket"] == "signed-ticket"
+    assert "user_id" not in starts[0]
+    assert "username" not in starts[0]
+    assert all(name.lower() != "cookie" for name, _ in starts[0]["headers"])
+
+
+@pytest.mark.asyncio
 async def test_data_connection_multiplexes_large_http_body_and_streamed_response():
     received = {}
     tasks = []
