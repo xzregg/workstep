@@ -386,6 +386,21 @@ async def admin_set_registration_policy(request: Request, body: RegistrationPoli
     return {"mode": body.mode}
 
 
+@router.get("/admin/platform-settings")
+async def admin_platform_settings(request: Request):
+    identity, _ = await _super_admin_read(request)
+    settings = request.app.state.settings
+    return {
+        "gateway_id": settings.gateway_id,
+        "public_origin": settings.public_origin,
+        "registration_mode": await identity.registration_mode(),
+        "session_seconds": SESSION_SECONDS,
+        "protocol_version": request.app.state.protocol_version,
+        "data_dir": str(settings.data_dir),
+        "database": await request.app.state.database.status(),
+    }
+
+
 @router.post("/admin/users/{user_id}/reset-password", status_code=204)
 async def admin_reset_password(request: Request, user_id: str, body: ResetPasswordInput):
     identity, _ = await _super_admin_request(request)

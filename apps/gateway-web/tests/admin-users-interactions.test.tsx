@@ -270,6 +270,10 @@ test('management navigation and module routes respect current roles', async () =
   render(<MemoryRouter initialEntries={['/admin/audit']}><App /></MemoryRouter>)
   await screen.findByText('当前账号没有访问该管理页面的权限。')
   assert.equal(screen.queryByRole('heading', { name: '审计记录' }), null)
+  cleanup()
+  render(<MemoryRouter initialEntries={['/admin/settings']}><App /></MemoryRouter>)
+  await screen.findByText('当前账号没有访问该管理页面的权限。')
+  assert.equal(screen.queryByRole('heading', { name: '平台设置' }), null)
 })
 
 test('audit administrator can enter the audit workbench without broader admin modules', async () => {
@@ -287,6 +291,7 @@ test('audit administrator can enter the audit workbench without broader admin mo
   render(<MemoryRouter initialEntries={['/admin']}><App /></MemoryRouter>)
   await screen.findByRole('link', { name: '审计记录' })
   assert.equal(screen.queryByRole('link', { name: 'Token 用量' }), null)
+  assert.equal(screen.queryByRole('link', { name: '平台设置' }), null)
 })
 
 test('management tab appears after signing in on the workbench', async () => {
