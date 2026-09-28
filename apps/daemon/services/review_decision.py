@@ -143,6 +143,22 @@ def persist_review_decision(
         "terminated" if terminated else "passed" if approved else "rejected"
     )
     review.save()
+    from services.project_audit import record_project_audit
+    from services.remote_access import get_effective_actor
+
+    actor = get_effective_actor()
+    record_project_audit(
+        project_id=project.id,
+        task_id=task_id,
+        action=f"review.{decision}",
+        result="succeeded",
+        mode="managed" if actor is not None and actor.source == "managed" else "local",
+        metadata={
+            "step_key": step_key,
+            "review_run_id": review_run_id,
+            "workflow_run_id": workflow_run.id,
+        },
+    )
 
     # 人工审核完成后，同步审核消息的结束时间，前端据此显示审核耗时。
     Message.update(

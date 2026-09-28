@@ -29,6 +29,18 @@ from services.history import get_message_events, get_task_history
 from streaming.bus import EventBus
 
 
+@pytest.fixture(autouse=True)
+def review_test_actor():
+    """Review commands in this module represent a named local operator."""
+    from services.remote_access import ActorSnapshot, actor_context
+
+    with actor_context(ActorSnapshot(
+        actor_id="reviewer-1", user_name="Reviewer", device_id="device-1",
+        device_name="Test device", source="local", username="reviewer",
+    )):
+        yield
+
+
 def test_review_prompt_uses_step_as_the_product_term(tmp_path):
     task = type("TaskStub", (), {
         "workflow_id": "flow",
@@ -1416,7 +1428,7 @@ async def test_manual_reject_injects_feedback_into_next_attempt(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_manual_review_can_terminate_until_user_reruns_step(tmp_path):
+async def test_manual_review_can_terminate_until_user_reruns_step(tmp_path, monkeypatch):
     """终止人工审核后不再调度；只有用户 @ 当前步骤才重新执行。"""
     from contextlib import nullcontext
     from types import SimpleNamespace
@@ -1464,6 +1476,21 @@ async def test_manual_review_can_terminate_until_user_reruns_step(tmp_path):
         await runtime.wait(handle)
         review = ReviewRun.get(ReviewRun.task == task)
 
+        from models import ProjectAuditEvent
+        from services import project_audit
+
+        with monkeypatch.context() as patcher:
+            patcher.setattr(
+                project_audit, "record_project_audit",
+                lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("audit unavailable")),
+            )
+            with pytest.raises(RuntimeError, match="audit unavailable"):
+                await runtime.decide_review(
+                    project.id, task.id, "build", review.id, "terminate",
+                )
+        assert ReviewRun.get_by_id(review.id).decision is None
+        assert Task.get_by_id(task.id).status != "stopped"
+
         resumed = await runtime.decide_review(
             project.id,
             task.id,
@@ -1486,6 +1513,17 @@ async def test_manual_review_can_terminate_until_user_reruns_step(tmp_path):
         assert task_step.status == "cancelled"
         assert task_step.error == "无需继续"
         assert WorkflowRun.get_by_id(handle.id).status == "stopped"
+        events = list(ProjectAuditEvent.select().where(
+            (ProjectAuditEvent.task_id == task.id)
+            & (ProjectAuditEvent.action == "review.terminate"),
+        ))
+        assert len(events) == 1
+        assert events[0].action == "review.terminate"
+        assert events[0].result == "succeeded"
+        assert events[0].metadata_json == (
+            '{"review_run_id": "' + review.id + '", "step_key": "build", '
+            '"workflow_run_id": "' + handle.id + '"}'
+        )
 
         accepted = await runtime.resume_step_with_message(
             project.id,
