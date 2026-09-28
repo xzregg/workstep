@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { GatewayLoginForm } from './GatewayLoginForm'
 
 type DesktopRequest = {
   gateway_id: string
@@ -29,8 +29,6 @@ export function DesktopLoginPage() {
   const request = parseDesktopRequest(searchParams.toString())
   const [status, setStatus] = useState<'checking' | 'login' | 'ready' | 'submitting'>('checking')
   const [csrf, setCsrf] = useState<string | null>(null)
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [sources, setSources] = useState<IdentitySource[]>([])
 
@@ -81,16 +79,14 @@ export function DesktopLoginPage() {
     }
   }
 
-  async function signIn(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!username.trim() || !password) return
+  async function signIn(username: string, password: string) {
     setStatus('submitting')
     setError('')
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim(), password }),
+        body: JSON.stringify({ username, password }),
       })
       if (!response.ok) throw new Error('用户名或密码不正确，或账号尚未获准登录。')
       const result = await response.json()
@@ -139,15 +135,7 @@ export function DesktopLoginPage() {
       {status === 'checking' && <p role="status">正在检查登录状态…</p>}
       {status === 'login' && (
         <>
-          <form onSubmit={(event) => void signIn(event)} className="gateway-auth-form">
-            <label htmlFor="gateway-username">用户名</label>
-            <input id="gateway-username" autoComplete="username" value={username}
-              onChange={(event) => setUsername(event.target.value)} />
-            <label htmlFor="gateway-password">密码</label>
-            <input id="gateway-password" type="password" autoComplete="current-password" value={password}
-              onChange={(event) => setPassword(event.target.value)} />
-            <button type="submit" disabled={!username.trim() || !password}>登录并继续</button>
-          </form>
+          <GatewayLoginForm onSubmit={signIn} submitLabel="登录并继续" />
           {sources.length > 0 && <div className="gateway-auth-external">
             <p>或使用企业身份登录</p>
             {sources.map((source) => <button key={source.id} type="button"
