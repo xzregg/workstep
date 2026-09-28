@@ -67,6 +67,7 @@ export function ProjectsPage() {
     {status === 'login' && <div className="gateway-admin-login">
       <p>登录后查看获授权的远程项目。</p>
       <GatewayLoginForm busy={busy} onSubmit={signIn} />
+      <p><Link to="/auth">注册账号或使用企业身份登录</Link></p>
     </div>}
     {status === 'ready' && <>
       {projects.length === 0 && <div className="gateway-empty-devices">

@@ -2,6 +2,7 @@
 
 import re
 from typing import Literal
+from urllib.parse import parse_qs, urlsplit
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
@@ -53,10 +54,20 @@ class ExternalStartInput(BaseModel):
     @field_validator("return_to")
     @classmethod
     def safe_return_to(cls, value: str | None) -> str | None:
-        if value is not None and not (value == "/" or value.startswith("/desktop/login?")):
+        if value is not None and not (value == "/" or value.startswith("/desktop/login?")
+                                       or value.startswith("/auth?")):
             raise ValueError("Unsupported scan return path")
         if value and (value.startswith("//") or "\\" in value or "\n" in value or "\r" in value):
             raise ValueError("Invalid scan return path")
+        if value and value.startswith("/auth?"):
+            parsed = urlsplit(value)
+            params = parse_qs(parsed.query, keep_blank_values=True)
+            target = params.get("next", [])
+            if (parsed.path != "/auth" or parsed.fragment or set(params) != {"next"}
+                    or len(target) != 1 or not target[0].startswith("/")
+                    or target[0].startswith("//") or "\\" in target[0]
+                    or "\n" in target[0] or "\r" in target[0]):
+                raise ValueError("Invalid portal return path")
         return value
 
 

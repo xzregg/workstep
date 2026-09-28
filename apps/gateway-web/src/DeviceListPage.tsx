@@ -67,6 +67,7 @@ export function DeviceListPage() {
     {status === 'login' && <div className="gateway-admin-login">
       <p>登录后查看获分配的 WorkStep 电脑。</p>
       <GatewayLoginForm busy={busy} onSubmit={signIn} />
+      <p><Link to="/auth?next=%2Fdevices">注册账号或使用企业身份登录</Link></p>
     </div>}
     {status === 'ready' && <>
       {devices.length === 0 && <div className="gateway-empty-devices">

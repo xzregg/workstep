@@ -118,6 +118,11 @@ async def setup(request: Request, response: Response, body: SetupInput):
     return {"user": public_user(user), "csrf_token": csrf_token(token)}
 
 
+@router.get("/platform/status")
+async def platform_status(request: Request):
+    return {"initialized": await _identity(request).initialized()}
+
+
 @router.post("/auth/register")
 async def register(request: Request, response: Response, body: AccountInput):
     await _limit_public_action(request, "register")

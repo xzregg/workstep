@@ -48,6 +48,10 @@ class IdentityService:
     def __init__(self, database: GatewayDatabase):
         self.database = database
 
+    async def initialized(self) -> bool:
+        async with self.database.session() as session:
+            return await session.get(PlatformSetting, "platform_initialized") is not None
+
     @staticmethod
     async def _hash_password(password: str) -> str:
         return await asyncio.to_thread(_password_hasher.hash, password)
