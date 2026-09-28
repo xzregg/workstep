@@ -1,10 +1,13 @@
 """Outbound managed device control connection with bounded reconnect."""
 
 import asyncio
+import base64
 import json
 import logging
 from urllib.parse import urlsplit
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
 
@@ -29,12 +32,25 @@ class GatewayControlClient:
         self._task: asyncio.Task | None = None
         self._stop = asyncio.Event()
 
-    def start(self, authorization: str, proof: str, device_id: str) -> None:
+    def start(self, authorization: str, device_id: str,
+              control_private_key_pem: str, control_public_key_pem: str,
+              delegation_signature: str) -> None:
         if self._task and not self._task.done():
             raise RuntimeError("Control client already started")
         self._stop.clear()
         self.authorization_required = False
-        self._task = asyncio.create_task(self._run(authorization, proof, device_id))
+        private_key = serialization.load_pem_private_key(control_private_key_pem.encode(), password=None)
+        if not isinstance(private_key, Ed25519PrivateKey):
+            raise ValueError("Control key must be Ed25519")
+        expected_public = private_key.public_key().public_bytes(
+            serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
+        ).decode()
+        if expected_public != control_public_key_pem:
+            raise ValueError("Control key pair mismatch")
+        self._task = asyncio.create_task(self._run(
+            authorization, device_id, private_key, control_public_key_pem,
+            delegation_signature,
+        ))
 
     async def stop(self) -> None:
         self._stop.set()
@@ -47,14 +63,29 @@ class GatewayControlClient:
             self._task = None
         self.online = False
 
-    async def _run(self, authorization: str, proof: str, device_id: str) -> None:
+    async def _run(self, authorization: str, device_id: str,
+                   private_key: Ed25519PrivateKey, public_key_pem: str,
+                   delegation_signature: str) -> None:
         delay = 1.0
         while not self._stop.is_set():
             try:
                 async with self.connector(self.url, origin=self.origin, open_timeout=10,
                                           max_size=1024 * 1024) as socket:
-                    await socket.send(json.dumps({"authorization": authorization,
-                                                  "device_proof": proof}))
+                    raw = await asyncio.wait_for(socket.recv(), timeout=10)
+                    challenge = json.loads(raw)
+                    nonce = challenge.get("nonce") if isinstance(challenge, dict) else None
+                    if (not isinstance(challenge, dict) or challenge.get("kind") != "challenge"
+                            or not isinstance(nonce, str) or len(nonce) < 32):
+                        raise ValueError("Invalid Gateway control challenge")
+                    challenge_proof = base64.urlsafe_b64encode(private_key.sign(
+                        f"workstep-control-challenge-v1:{nonce}:{authorization}".encode(),
+                    )).rstrip(b"=").decode()
+                    await socket.send(json.dumps({
+                        "authorization": authorization,
+                        "control_public_key_pem": public_key_pem,
+                        "control_delegation_signature": delegation_signature,
+                        "control_challenge_proof": challenge_proof,
+                    }))
                     raw = await asyncio.wait_for(socket.recv(), timeout=10)
                     hello = json.loads(raw)
                     if hello != {"kind": "hello", "version": 1, "device_id": device_id}:

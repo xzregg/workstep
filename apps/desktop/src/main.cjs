@@ -6,6 +6,7 @@ const { loadOrCreateDeviceIdentity } = require('./credential-store.cjs')
 const { managedSessionExpired } = require('./managed-session.cjs')
 const {
   createAuthorizationRequest, claimAuthCallback, exchangeDesktopCode,
+  createControlDelegation,
 } = require('./desktop-auth.cjs')
 const {
   backendLaunch,
@@ -93,7 +94,8 @@ async function authorizeManagedDesktop(managed) {
   }
   const proof = sign(null, Buffer.from(result.device_authorization),
     createPrivateKey(identity.privateKeyPem)).toString('base64url')
-  return { authorization: result.device_authorization, proof }
+  return { authorization: result.device_authorization, proof,
+    ...createControlDelegation(result.device_authorization, identity.privateKeyPem) }
 }
 
 async function bootstrapManagedBackend(url, authorization) {
@@ -101,7 +103,10 @@ async function bootstrapManagedBackend(url, authorization) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-WorkStep-Desktop-Token': desktopToken },
     body: JSON.stringify({ device_authorization: authorization.authorization,
-      device_proof: authorization.proof }),
+      device_proof: authorization.proof,
+      control_private_key_pem: authorization.controlPrivateKeyPem,
+      control_public_key_pem: authorization.controlPublicKeyPem,
+      control_delegation_signature: authorization.delegationSignature }),
   })
   if (!response.ok) throw new Error(`Managed backend rejected device authorization (${response.status})`)
   const result = await response.json()

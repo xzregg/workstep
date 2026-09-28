@@ -35,14 +35,18 @@ class GatewayClientService:
                 self.managed_config.gateway_public_key_fingerprint,
             )
 
-    async def bootstrap(self, authorization: str, proof: str):
+    async def bootstrap(self, authorization: str, proof: str, control_private_key_pem: str,
+                        control_public_key_pem: str, delegation_signature: str):
         if self.managed_config is None or self.verifier is None:
             raise ValueError("Managed Gateway is unavailable")
         actor = await self.verifier.verify(authorization, proof)
         if self.control_client is not None:
             await self.control_client.stop()
         self.control_client = self.control_client_factory(self.managed_config.gateway_origin)
-        self.control_client.start(authorization, proof, actor.device_id)
+        self.control_client.start(
+            authorization, actor.device_id, control_private_key_pem,
+            control_public_key_pem, delegation_signature,
+        )
         return self.local_sessions.create(actor), actor
 
     async def close(self) -> None:

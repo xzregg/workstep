@@ -26,8 +26,8 @@ def test_bootstrap_uses_desktop_secret_once_then_local_session(monkeypatch):
             self.online = False
             self.authorization_required = False
 
-        def start(self, authorization, proof, device_id):
-            starts.append((authorization, proof, device_id))
+        def start(self, authorization, device_id, _private_key, _public_key, _delegation):
+            starts.append((authorization, device_id))
 
         async def stop(self):
             pass
@@ -50,7 +50,9 @@ def test_bootstrap_uses_desktop_secret_once_then_local_session(monkeypatch):
         return {"user_id": actor.user_id, "device_id": actor.device_id}
 
     with TestClient(app) as client:
-        body = {"device_authorization": "signed-authorization", "device_proof": "device-proof"}
+        body = {"device_authorization": "signed-authorization", "device_proof": "device-proof",
+                "control_private_key_pem": "private", "control_public_key_pem": "public",
+                "control_delegation_signature": "delegation"}
         assert client.post("/api/managed/bootstrap", json=body).status_code == 401
         bootstrapped = client.post("/api/managed/bootstrap", json=body, headers={
             "X-WorkStep-Desktop-Token": "desktop-secret",
@@ -64,7 +66,7 @@ def test_bootstrap_uses_desktop_secret_once_then_local_session(monkeypatch):
         assert client.get("/api/private", headers={
             "X-WorkStep-Desktop-Token": "desktop-secret",
         }).status_code == 401
-        assert starts == [("signed-authorization", "device-proof", "device-1")]
+        assert starts == [("signed-authorization", "device-1")]
         assert client.get("/api/managed/control-status", headers={
             "X-WorkStep-Desktop-Token": "desktop-secret",
             "X-WorkStep-Local-Session": session_token,
@@ -103,6 +105,8 @@ async def test_slow_gateway_key_fetch_keeps_daemon_health_responsive(monkeypatch
                                      base_url="http://127.0.0.1") as client:
             bootstrap = asyncio.create_task(client.post("/api/managed/bootstrap", json={
                 "device_authorization": "bogus", "device_proof": "bogus",
+                "control_private_key_pem": "private", "control_public_key_pem": "public",
+                "control_delegation_signature": "delegation",
             }, headers={"X-WorkStep-Desktop-Token": "desktop-secret"}))
             await asyncio.wait_for(started.wait(), timeout=1)
             response = await asyncio.wait_for(client.get("/api/health", headers={

@@ -47,16 +47,38 @@ def _active_device(client):
                        headers={"X-CSRF-Token": csrf}).status_code == 204
     active = redeem()
     token = active["device_authorization"]
-    proof = base64.urlsafe_b64encode(private_key.sign(token.encode())).rstrip(b"=").decode()
-    return device_id, token, proof, csrf
+    return device_id, token, private_key, csrf
+
+
+def _handshake(ws, token, device_key, *, wrong_challenge=False, wrong_delegation=False):
+    challenge = ws.receive_json()
+    assert challenge["kind"] == "challenge"
+    control_key = Ed25519PrivateKey.generate()
+    public_key = control_key.public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode()
+    fingerprint = hashlib.sha256(control_key.public_key().public_bytes(
+        serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo,
+    )).hexdigest()
+    signing_key = Ed25519PrivateKey.generate() if wrong_delegation else device_key
+    delegation = base64.urlsafe_b64encode(signing_key.sign(
+        f"workstep-control-delegate-v1:{token}:{fingerprint}".encode(),
+    )).rstrip(b"=").decode()
+    nonce = "wrong-nonce" if wrong_challenge else challenge["nonce"]
+    proof = base64.urlsafe_b64encode(control_key.sign(
+        f"workstep-control-challenge-v1:{nonce}:{token}".encode(),
+    )).rstrip(b"=").decode()
+    ws.send_json({"authorization": token, "control_public_key_pem": public_key,
+                  "control_delegation_signature": delegation,
+                  "control_challenge_proof": proof})
 
 
 def test_control_socket_authenticates_device_and_tracks_connection(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:
-        device_id, token, proof, csrf = _active_device(client)
+        device_id, token, device_key, csrf = _active_device(client)
         with client.websocket_connect("/api/control/ws") as ws:
-            ws.send_json({"authorization": token, "device_proof": proof})
+            _handshake(ws, token, device_key)
             hello = ws.receive_json()
             assert hello["kind"] == "hello"
             assert hello["device_id"] == device_id
@@ -71,12 +93,19 @@ def test_control_socket_authenticates_device_and_tracks_connection(tmp_path):
 def test_control_socket_rejects_wrong_proof(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:
-        device_id, token, proof, csrf = _active_device(client)
+        device_id, token, device_key, csrf = _active_device(client)
         with client.websocket_connect("/api/control/ws") as ws:
-            ws.send_json({"authorization": token, "device_proof": "invalid"})
+            _handshake(ws, token, device_key, wrong_challenge=True)
             try:
                 ws.receive_json()
                 assert False, "Wrong proof must be rejected"
+            except WebSocketDisconnect as exc:
+                assert exc.code == 4401
+        with client.websocket_connect("/api/control/ws") as ws:
+            _handshake(ws, token, device_key, wrong_delegation=True)
+            try:
+                ws.receive_json()
+                assert False, "Undelegated control key must be rejected"
             except WebSocketDisconnect as exc:
                 assert exc.code == 4401
 
@@ -84,9 +113,9 @@ def test_control_socket_rejects_wrong_proof(tmp_path):
 def test_device_revocation_closes_existing_control_socket(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:
-        device_id, token, proof, csrf = _active_device(client)
+        device_id, token, device_key, csrf = _active_device(client)
         with client.websocket_connect("/api/control/ws") as ws:
-            ws.send_json({"authorization": token, "device_proof": proof})
+            _handshake(ws, token, device_key)
             assert ws.receive_json()["kind"] == "hello"
             assert client.post(f"/api/admin/devices/{device_id}/revoke",
                                headers={"X-CSRF-Token": csrf}).status_code == 204
@@ -96,7 +125,7 @@ def test_device_revocation_closes_existing_control_socket(tmp_path):
             except WebSocketDisconnect as exc:
                 assert exc.code == 4003
         with client.websocket_connect("/api/control/ws") as ws:
-            ws.send_json({"authorization": token, "device_proof": proof})
+            _handshake(ws, token, device_key)
             try:
                 ws.receive_json()
                 assert False, "Revoked device must be rejected"
