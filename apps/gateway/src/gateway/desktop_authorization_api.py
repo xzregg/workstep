@@ -38,6 +38,7 @@ class DesktopTokenInput(BaseModel):
     device_public_key: str = Field(min_length=32, max_length=4096)
     device_name: str = Field(min_length=1, max_length=256)
     version: str = Field(min_length=1, max_length=64)
+    rotation_signature: str | None = Field(default=None, max_length=256)
 
 
 def _service(request: Request) -> DesktopAuthorizationService:
@@ -77,6 +78,7 @@ async def redeem_desktop_code(request: Request, body: DesktopTokenInput):
         verifier=body.code_verifier, app_instance_id=body.app_instance_id,
         gateway_id=body.gateway_id, device_public_key=body.device_public_key,
         device_name=body.device_name, version=body.version,
+        rotation_signature=body.rotation_signature,
     )
     return {"user": public_user(user),
             "device": {"id": device.id, "status": device.status},
@@ -89,3 +91,22 @@ async def approve_device(request: Request, device_id: str):
     _, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
     await identity.require_step_up(auth_session)
     await _service(request).approve_device(device_id, actor.id)
+
+
+async def _device_admin(request: Request):
+    identity, actor = await _super_admin_request(request)
+    _, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
+    await identity.require_step_up(auth_session)
+    return actor
+
+
+@router.post("/admin/devices/{device_id}/disable", status_code=204)
+async def disable_device(request: Request, device_id: str):
+    actor = await _device_admin(request)
+    await _service(request).change_device_status(device_id, actor.id, "disabled")
+
+
+@router.post("/admin/devices/{device_id}/revoke", status_code=204)
+async def revoke_device(request: Request, device_id: str):
+    actor = await _device_admin(request)
+    await _service(request).change_device_status(device_id, actor.id, "revoked")

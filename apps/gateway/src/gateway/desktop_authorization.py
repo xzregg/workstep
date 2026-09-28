@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.exceptions import InvalidSignature
 from fastapi import HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
@@ -62,7 +63,8 @@ class DesktopAuthorizationService:
 
     async def redeem(self, *, code: str, state: str, nonce: str, verifier: str,
                      app_instance_id: str, gateway_id: str, device_public_key: str,
-                     device_name: str, version: str) -> tuple[User, Device, str | None]:
+                     device_name: str, version: str,
+                     rotation_signature: str | None = None) -> tuple[User, Device, str | None]:
         if gateway_id != self.gateway_id:
             raise HTTPException(status_code=403, detail="Wrong Gateway")
         canonical_key, fingerprint = _device_key(device_public_key)
@@ -101,10 +103,26 @@ class DesktopAuthorizationService:
                 ))
                 if existing_key and device and existing_key.id != device.id:
                     raise HTTPException(status_code=409, detail="Device key belongs to another installation")
-                if device and device.public_key_fingerprint != fingerprint:
-                    raise HTTPException(status_code=409, detail="Device key rotation requires approval")
                 if existing_key and not device:
                     raise HTTPException(status_code=409, detail="Device key belongs to another installation")
+                if device and device.status in ("disabled", "revoked"):
+                    raise HTTPException(status_code=403, detail="Device unavailable")
+                if device and device.public_key_fingerprint != fingerprint:
+                    if not rotation_signature:
+                        raise HTTPException(status_code=403, detail="Old device key proof required")
+                    try:
+                        signature = base64.urlsafe_b64decode(rotation_signature + "===")
+                        old_key = serialization.load_pem_public_key(device.public_key.encode())
+                        old_key.verify(signature, f"workstep-device-rotate-v1:{code}:{fingerprint}".encode())
+                    except (ValueError, InvalidSignature) as exc:
+                        raise HTTPException(status_code=403, detail="Invalid rotation proof") from exc
+                    device.public_key = canonical_key
+                    device.public_key_fingerprint = fingerprint
+                    device.status = "pending"
+                    session.add(AuditEvent(
+                        id=str(uuid4()), user_id=user.id, device_id=device.id,
+                        action="device.key_rotation_requested", result="success", metadata_json=None,
+                    ))
                 if device is None:
                     device = Device(
                         id=str(uuid4()), name=device_name, public_key=canonical_key,
@@ -113,8 +131,6 @@ class DesktopAuthorizationService:
                     )
                     session.add(device)
                 else:
-                    if device.status in ("disabled", "revoked"):
-                        raise HTTPException(status_code=403, detail="Device unavailable")
                     device.name = device_name
                     device.version = version
                 linkage = await session.scalar(select(UserDevice).where(
@@ -141,10 +157,26 @@ class DesktopAuthorizationService:
                 device = await session.get(Device, device_id)
                 if device is None:
                     raise HTTPException(status_code=404, detail="Device not found")
-                if device.status in ("disabled", "revoked"):
+                if device.status == "revoked":
                     raise HTTPException(status_code=409, detail="Device unavailable")
                 device.status = "active"
                 session.add(AuditEvent(
                     id=str(uuid4()), user_id=actor_id, device_id=device_id,
                     action="admin.device_approved", result="success", metadata_json=None,
+                ))
+
+    async def change_device_status(self, device_id: str, actor_id: str, status: str) -> None:
+        async with self.database.session() as session:
+            async with session.begin():
+                device = await session.get(Device, device_id)
+                if device is None:
+                    raise HTTPException(status_code=404, detail="Device not found")
+                if device.status == "revoked":
+                    raise HTTPException(status_code=409, detail="Device already revoked")
+                device.status = status
+                if status == "revoked":
+                    device.revoked_at = _now()
+                session.add(AuditEvent(
+                    id=str(uuid4()), user_id=actor_id, device_id=device_id,
+                    action=f"admin.device_{status}", result="success", metadata_json=None,
                 ))
