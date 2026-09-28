@@ -179,3 +179,25 @@ def test_admin_can_list_pending_devices_for_approval(tmp_path):
         assert pending.json()["devices"][0]["name"] == "Alice PC"
         client.cookies.clear()
         assert client.get("/api/admin/devices").status_code == 401
+
+
+def test_admin_device_list_filters_sorts_and_pages_on_server(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        _setup(client)
+        with sqlite3.connect(tmp_path / "workstep_platform.db") as connection:
+            connection.executemany(
+                "INSERT INTO devices (id, name, public_key, status, created_at) VALUES (?, ?, ?, ?, ?)",
+                [(f"device-{index}", f"Team PC {index:02d}", "key", "active", "2026-01-01 00:00:00")
+                 for index in range(5)],
+            )
+            connection.execute(
+                "INSERT INTO devices (id, name, public_key, status, created_at) VALUES (?, ?, ?, ?, ?)",
+                ("other", "Other PC", "key", "pending", "2026-01-01 00:00:00"),
+            )
+        result = client.get("/api/admin/devices?status=active&q=Team&sort=name&direction=asc&page=2&page_size=2")
+        assert result.status_code == 200, result.text
+        assert result.json()["total"] == 5
+        assert result.json()["page"] == 2
+        assert [device["name"] for device in result.json()["devices"]] == ["Team PC 02", "Team PC 03"]
+        assert client.get("/api/admin/devices?page_size=101").status_code == 422

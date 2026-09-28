@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.exceptions import InvalidSignature
 from fastapi import HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from .database import GatewayDatabase
@@ -183,9 +183,18 @@ class DesktopAuthorizationService:
                     action=f"admin.device_{status}", result="success", metadata_json=None,
                 ))
 
-    async def list_devices(self, status: str | None = None) -> list[Device]:
+    async def list_devices(self, *, status: str | None = None, q: str = '', sort: str = 'created_at',
+                           direction: str = 'desc', page: int = 1, page_size: int = 25) -> tuple[list[Device], int]:
         async with self.database.session() as session:
-            query = select(Device).order_by(Device.created_at.desc()).limit(100)
+            conditions = []
             if status:
-                query = query.where(Device.status == status)
-            return (await session.scalars(query)).all()
+                conditions.append(Device.status == status)
+            if q.strip():
+                conditions.append(Device.name.ilike(f"%{q.strip()}%"))
+            total = await session.scalar(select(func.count()).select_from(Device).where(*conditions))
+            column = {'created_at': Device.created_at, 'name': Device.name,
+                      'status': Device.status}[sort]
+            order = column.asc() if direction == 'asc' else column.desc()
+            query = (select(Device).where(*conditions).order_by(order, Device.id.asc())
+                     .offset((page - 1) * page_size).limit(page_size))
+            return (await session.scalars(query)).all(), int(total or 0)
