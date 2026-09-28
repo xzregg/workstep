@@ -4,6 +4,7 @@ import { JSDOM } from 'jsdom'
 import { MemoryRouter } from 'react-router-dom'
 import { AdminCreateUserDialog } from '../src/AdminCreateUserDialog'
 import { AdminUsersPage } from '../src/AdminUsersPage'
+import { DeviceAdminPage } from '../src/DeviceAdminPage'
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://gateway.test/admin/users' })
 Object.assign(globalThis, {
@@ -83,4 +84,29 @@ test('user page searches server results and refreshes after approval', async () 
   fireEvent.click(within(dialog).getByRole('button', { name: '批准' }))
   await waitFor(() => assert.ok(requests.filter(url => url.startsWith('/api/admin/users?')).length >= 3))
   assert.ok(requests.includes('/api/admin/users/user-1/approve'))
+})
+
+test('device page retries load errors and pages server results', async () => {
+  const requests: string[] = []
+  let fail = true
+  globalThis.fetch = async input => {
+    const url = String(input)
+    requests.push(url)
+    if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
+    if (url.startsWith('/api/admin/devices?')) {
+      if (fail) { fail = false; return new Response(null, { status: 503 }) }
+      return Response.json({ devices: [{ id: 'device-1', name: 'Alice PC', version: '1',
+        status: 'pending', online: false }], total: 30 })
+    }
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+  render(<DeviceAdminPage />)
+  await screen.findByRole('alert')
+  fireEvent.click(screen.getByRole('button', { name: '重试' }))
+  await screen.findByText('Alice PC')
+  fireEvent.change(screen.getByLabelText('搜索设备'), { target: { value: 'Alice' } })
+  fireEvent.click(screen.getByRole('button', { name: '搜索' }))
+  await waitFor(() => assert.ok(requests.some(url => url.includes('q=Alice'))))
+  fireEvent.click(screen.getByRole('button', { name: '下一页' }))
+  await waitFor(() => assert.ok(requests.some(url => url.includes('page=2'))))
 })

@@ -3,7 +3,7 @@
 import re
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 
 from .desktop_authorization import DesktopAuthorizationService
@@ -95,13 +95,18 @@ async def approve_device(request: Request, device_id: str):
 
 
 @router.get("/admin/devices")
-async def list_devices(request: Request, status: Literal["pending", "active", "disabled", "revoked"] | None = None):
+async def list_devices(request: Request, status: Literal["pending", "active", "disabled", "revoked"] | None = None,
+                       q: str = Query(default='', max_length=128),
+                       sort: Literal['created_at', 'name', 'status'] = 'created_at',
+                       direction: Literal['asc', 'desc'] = 'desc',
+                       page: int = Query(default=1, ge=1), page_size: int = Query(default=25, ge=1, le=100)):
     await _super_admin_read(request)
-    devices = await _service(request).list_devices(status)
+    devices, total = await _service(request).list_devices(
+        status=status, q=q, sort=sort, direction=direction, page=page, page_size=page_size)
     return {"devices": [{"id": device.id, "name": device.name, "status": device.status,
                          "online": request.app.state.control_connections.is_online(device.id),
                          "version": device.version, "app_instance_id": device.app_instance_id}
-                        for device in devices]}
+                        for device in devices], "total": total, "page": page, "page_size": page_size}
 
 
 async def _device_admin(request: Request):
