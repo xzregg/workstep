@@ -238,6 +238,103 @@ def test_group_skill_catalog_only_allows_reviewed_version_on_linked_project(tmp_
         assert later_claims["projects"][0]["skills"] == []
 
 
+def test_same_skill_from_two_groups_survives_one_source_revocation(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        setup = client.post("/api/platform/setup", json={
+            "username": "owner", "display_name": "Owner", "password": "OwnerPassphrase-2026!",
+            "recovery_username": "recovery", "recovery_password": "RecoveryPassphrase-2026!",
+            "registration_mode": "closed",
+        }).json()
+        headers = {"X-CSRF-Token": setup["csrf_token"]}
+        owner_id = setup["user"]["id"]
+        client.post("/api/auth/step-up", json={"password": "OwnerPassphrase-2026!"},
+                    headers=headers)
+        skill_id = client.post("/api/admin/skills", json={
+            "name": "Review", "slug": "review",
+        }, headers=headers).json()["id"]
+        version_id = client.post(f"/api/admin/skills/{skill_id}/versions", json={
+            "version": "1.0.0", "archive_base64": _archive({"SKILL.md": "# Review"}),
+        }, headers=headers).json()["id"]
+        client.post(f"/api/admin/skills/{skill_id}/versions/{version_id}/approve",
+                    headers=headers)
+        groups = [client.post("/api/groups", json={
+            "name": name, "slug": name.lower(),
+        }, headers=headers).json()["id"] for name in ("Alpha", "Beta")]
+
+        async def seed_project():
+            async with app.state.database.session() as session:
+                async with session.begin():
+                    session.add(Device(id="device-1", name="PC", public_key="test",
+                                       status="active", app_instance_id="app", version="1.0"))
+                    session.add(PlatformProject(id="project-1", device_id="device-1",
+                                                host_project_id="host-1", name="Project",
+                                                access_mode="policy_only"))
+                    session.add(UserDevice(id="access-1", user_id=owner_id,
+                                           device_id="device-1", access_level="edit"))
+        client.portal.call(seed_project)
+
+        def manifest_skills():
+            signed = client.portal.call(
+                compile_skill_manifest, app.state.database, app.state.gateway_signer,
+                app.state.settings.gateway_id, "device-1", owner_id,
+            )
+            claims = app.state.gateway_signer.verify_skill_manifest(
+                signed, gateway_id=app.state.settings.gateway_id,
+                device_id="device-1", user_id=owner_id,
+            )
+            return claims["projects"][0]["skills"]
+
+        for group_id in groups:
+            assert client.post(f"/api/groups/{group_id}/projects", json={
+                "project_id": "project-1",
+            }, headers=headers).status_code == 200
+            assert client.post(f"/api/admin/groups/{group_id}/skills", json={
+                "skill_version_id": version_id,
+            }, headers=headers).status_code == 200
+            assigned = client.post(f"/api/groups/{group_id}/projects/project-1/skills",
+                                   json={"skill_version_id": version_id}, headers=headers)
+            assert assigned.status_code == 200, assigned.text
+        assert len(manifest_skills()) == 1
+        other_version = client.post(f"/api/admin/skills/{skill_id}/versions", json={
+            "version": "2.0.0", "archive_base64": _archive({"SKILL.md": "# Review v2"}),
+        }, headers=headers).json()["id"]
+        client.post(f"/api/admin/skills/{skill_id}/versions/{other_version}/approve",
+                    headers=headers)
+        conflicting_group = client.post("/api/groups", json={
+            "name": "Gamma", "slug": "gamma",
+        }, headers=headers).json()["id"]
+        client.post(f"/api/groups/{conflicting_group}/projects", json={
+            "project_id": "project-1",
+        }, headers=headers)
+        client.post(f"/api/admin/groups/{conflicting_group}/skills", json={
+            "skill_version_id": other_version,
+        }, headers=headers)
+        assert client.post(f"/api/groups/{conflicting_group}/projects/project-1/skills",
+                           json={"skill_version_id": other_version},
+                           headers=headers).status_code == 409
+        assert client.post(f"/api/admin/groups/{groups[1]}/skills", json={
+            "skill_version_id": other_version,
+        }, headers=headers).status_code == 409
+        assert len(manifest_skills()) == 1
+        assert client.delete(
+            f"/api/groups/{groups[0]}/projects/project-1/skills/{skill_id}",
+            headers=headers,
+        ).status_code == 204
+        assert len(manifest_skills()) == 1
+        assert manifest_skills()[0]["source_group_id"] == groups[1]
+        assert client.post(f"/api/groups/{groups[0]}/projects/project-1/skills",
+                           json={"skill_version_id": version_id},
+                           headers=headers).status_code == 200
+        assert client.delete(f"/api/admin/groups/{groups[0]}/skills/{skill_id}",
+                             headers=headers).status_code == 204
+        assert len(manifest_skills()) == 1
+        assert manifest_skills()[0]["source_group_id"] == groups[1]
+        assert client.delete(f"/api/admin/groups/{groups[1]}/skills/{skill_id}",
+                             headers=headers).status_code == 204
+        assert manifest_skills() == []
+
+
 def test_skill_admin_role_is_separate_from_user_administration(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path))
     with TestClient(app, base_url="https://gateway.test") as client:
