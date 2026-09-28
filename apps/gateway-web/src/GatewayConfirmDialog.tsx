@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react'
 
 export function GatewayConfirmDialog({ title, message, confirmLabel = '确认', busy = false,
-  disabled = false, children, onConfirm, onCancel }: {
+  disabled = false, children, onConfirm, onCancel, className = '' }: {
   title: string; message: string; confirmLabel?: string; busy?: boolean; disabled?: boolean
-  children?: ReactNode; onConfirm: () => void; onCancel: () => void
+  children?: ReactNode; onConfirm: () => void; onCancel: () => void; className?: string
 }) {
   return <div className="gateway-dialog-backdrop">
-    <div className="gateway-confirm-dialog" role="dialog" aria-modal="true" aria-label={title}>
+    <div className={`gateway-confirm-dialog ${className}`} role="dialog" aria-modal="true" aria-label={title}>
       <h3>{title}</h3>
       <p>{message}</p>
       {children}

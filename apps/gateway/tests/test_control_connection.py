@@ -669,3 +669,9 @@ def test_control_delivers_encrypted_provider_bundle_and_records_application(tmp_
                     "SELECT applied_revision FROM device_provider_applications WHERE device_id=?",
                     (device_id,),
                 ).fetchone() == (bundle["revision"],)
+            ws.send_json({"kind": "provider_applied", "revision": bundle["revision"],
+                          "result": "error", "error": "sk-secret-api-key"})
+            assert ws.receive_json()["kind"] == "provider_applied_ack"
+            applications = client.get("/api/admin/providers/applications")
+            assert applications.json()["devices"][0]["last_error"] == "application_failed"
+            assert "sk-secret-api-key" not in applications.text
