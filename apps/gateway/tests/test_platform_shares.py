@@ -102,6 +102,10 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
                 captured["path"] = target_path
                 if target_path == "/api/platform-share/history":
                     return JSONResponse({"messages": [{"id": "message-1", "content": "Visible"}]})
+                if target_path == "/api/platform-share/artifacts":
+                    return JSONResponse({"artifacts": [{"id": "a" * 64, "name": "result.txt"}]})
+                if target_path.endswith("/content"):
+                    return JSONResponse({"content": "visible"})
                 return JSONResponse({"id": "task-1", "title": "Shared task"})
 
         async def request_data(device_id):
@@ -118,6 +122,14 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         assert history.status_code == 200, history.text
         assert history.json()["messages"][0]["content"] == "Visible"
         assert captured["path"] == "/api/platform-share/history"
+        artifacts = client.get(f"/api/public/shares/{token}/artifacts")
+        assert artifacts.status_code == 200
+        assert artifacts.json()["artifacts"][0]["name"] == "result.txt"
+        assert captured["path"] == "/api/platform-share/artifacts"
+        content = client.get(f"/api/public/shares/{token}/artifacts/{'a' * 64}/content")
+        assert content.status_code == 200
+        assert captured["path"] == f"/api/platform-share/artifacts/{'a' * 64}/content"
+        assert client.get(f"/api/public/shares/{token}/artifacts/invalid/content").status_code == 404
         import base64
         import json
         claims = json.loads(base64.urlsafe_b64decode(captured["ticket"].split(".")[1] + "==="))
@@ -129,6 +141,7 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         assert client.get(f"/api/public/shares/{token}/session").status_code == 401
         assert client.get(f"/api/public/shares/{token}/task").status_code == 401
         assert client.get(f"/api/public/shares/{token}/history").status_code == 401
+        assert client.get(f"/api/public/shares/{token}/artifacts").status_code == 401
 
         login = client.post("/api/auth/login", json={
             "username": "owner", "password": "OwnerPassphrase-2026!",
@@ -147,6 +160,7 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         assert client.get(f"/api/public/shares/{token}/session").status_code == 404
         assert client.get(f"/api/public/shares/{token}/task").status_code == 404
         assert client.get(f"/api/public/shares/{token}/history").status_code == 404
+        assert client.get(f"/api/public/shares/{token}/artifacts").status_code == 404
 
         client.cookies.clear()
         owner_login = client.post("/api/auth/login", json={

@@ -37,6 +37,9 @@ test('public share route works without portal authentication and unlocks task', 
       id: 'message-1', role: 'assistant', content: 'Visible execution reply',
       step_key: 'build', created_at: '2026-09-29T10:05:00Z',
     }] })
+    if (url.endsWith('/artifacts')) return Response.json({ artifacts: [{
+      id: 'a'.repeat(64), name: 'result.txt', step_key: 'build', size: 13,
+    }] })
     throw new Error(`Unexpected fetch: ${url}`)
   }
   render(<MemoryRouter initialEntries={['/share/sample-token']}><App /></MemoryRouter>)
@@ -49,6 +52,9 @@ test('public share route works without portal authentication and unlocks task', 
   assert.match(document.body.textContent ?? '', /Visible description/)
   assert.match(document.body.textContent ?? '', /只读分享/)
   await screen.findByText('Visible execution reply')
+  const artifact = await screen.findByRole('link', { name: /result.txt/ })
+  assert.equal(artifact.getAttribute('href'),
+    `/api/public/shares/sample-token/artifacts/${'a'.repeat(64)}/content`)
   assert.equal(calls.find(call => call.url.endsWith('/unlock'))?.body,
     JSON.stringify({ password: 'secret' }))
 })
@@ -66,6 +72,7 @@ test('public share reports offline host and allows retry', async () => {
       ? new Response(null, { status: 503 })
       : Response.json({ id: 'task-1', title: 'Recovered', status: 'ready' })
     if (url.endsWith('/history')) return Response.json({ messages: [] })
+    if (url.endsWith('/artifacts')) return Response.json({ artifacts: [] })
     throw new Error(`Unexpected fetch: ${url}`)
   }
   render(<MemoryRouter initialEntries={['/share/sample-token']}><Routes>
@@ -90,6 +97,7 @@ test('public share retries metadata after a temporarily unavailable host', async
     if (url.endsWith('/task')) return Response.json({ id: 'task-1', title: 'Available',
       status: 'ready' })
     if (url.endsWith('/history')) return Response.json({ messages: [] })
+    if (url.endsWith('/artifacts')) return Response.json({ artifacts: [] })
     throw new Error(`Unexpected fetch: ${url}`)
   }
   render(<MemoryRouter initialEntries={['/share/sample-token']}><Routes>
