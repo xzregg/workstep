@@ -35,4 +35,6 @@ SQLite 可在服务运行时执行 `uv run --project apps/gateway python apps/ga
 
 阶段 4B 的超级管理员在密码二次认证后可用 `POST /api/admin/device-operations` 提交 `install/update/rollback/refresh/test`、引擎 ID、确切版本、设备列表与并发数；`GET /api/admin/device-operations` 分页查询，`GET /api/admin/device-operations/{id}` 查看逐台状态，`POST /api/admin/device-operations/{id}/retry-failed` 仅重试失败或过期设备。命令在控制 WSS 上用 Gateway 密钥签名并绑定设备、动作、参数、幂等键和到期时间；PC 在执行前持久化收据，重复命令返回已有结果。安装/更新/回退仍走本机版本化运行时管理器的官方包目录和互斥逻辑，普通受管本地 API 的引擎管理动作由签名策略门禁拒绝。长时间安装的断线恢复与真实受管包验收仍待完成。
 
+阶段 4C 的设备从标准化用量生成稳定 `usage_event_id`，先写本机 `usage-outbox.db`，控制 WSS 每批最多上传 100 条；Gateway 事务内写入幂等收据和账本，提交后才回复 `usage_ack`。断线或暂时失败保留原批次重发，重复 ID 不二次计量，非法事件进入本机拒收隔离。超级管理员可用 `GET /api/admin/usage` 按设备、用户、项目、供应商、模型和时间范围查询总量；响应含 `unmetered_count`，缺失用量不会显示为零。当前只接入任务步骤执行消息，其它模型调用路径、完整分组报表及账单对账仍在开发中。
+
 测试：`uv run --project apps/gateway --group dev pytest apps/gateway/tests packages/gateway-protocol/tests`；协议模型变更后运行 `uv run --project apps/gateway python packages/gateway-protocol/scripts/schema.py` 并提交 `schema.json`。门户在 `apps/gateway-web` 运行 `yarn test && yarn build`。

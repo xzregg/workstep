@@ -26,6 +26,7 @@ from .models import Device, DeviceConnection, DeviceProviderApplication, User, U
 from .capabilities import compiled_device_policy
 from .providers_api import compile_provider_bundle, compiled_provider_access
 from .device_commands import next_command_for_device, record_command_result
+from .usage_ledger import record_usage_batch
 
 router = APIRouter()
 
@@ -549,10 +550,36 @@ async def control_socket(ws: WebSocket):
     user_id = None
     connection_id = None
     config_public_key_pem = None
+    usage_tasks: set[asyncio.Task] = set()
+    send_lock = asyncio.Lock()
+
+    async def send_json(value: dict) -> None:
+        async with send_lock:
+            await ws.send_json(value)
+
+    async def apply_usage_batch(batch_id: str, events: list[dict]) -> None:
+        try:
+            async with ws.app.state.usage_ledger_lock:
+                result = await record_usage_batch(
+                    ws.app.state.database, device_id, batch_id, events,
+                )
+            await send_json({"kind": "usage_ack", "version": 1,
+                             "device_id": device_id, **result})
+        except ValueError:
+            await send_json({"kind": "usage_ack", "version": 1,
+                             "device_id": device_id, "batch_id": batch_id,
+                             "accepted": [], "duplicates": [],
+                             "rejected": [str(item.get("usage_event_id", ""))[:64]
+                                          for item in events if isinstance(item, dict)]})
+        except Exception:
+            await send_json({"kind": "usage_retry", "version": 1,
+                             "device_id": device_id, "batch_id": batch_id,
+                             "retry_after": 5})
+
     try:
         try:
             nonce = secrets.token_urlsafe(32)
-            await ws.send_json({"kind": "challenge", "version": 1, "nonce": nonce})
+            await send_json({"kind": "challenge", "version": 1, "nonce": nonce})
             hello = await asyncio.wait_for(ws.receive_json(), timeout=5)
             if not isinstance(hello, dict):
                 raise ValueError("Invalid handshake")
@@ -584,7 +611,7 @@ async def control_socket(ws: WebSocket):
             ws.app.state.database, signer, ws.app.state.settings.gateway_id,
             device_id, user_id, config_public_key_pem,
         )
-        await ws.send_json({"kind": "hello", "version": 1, "device_id": device_id,
+        await send_json({"kind": "hello", "version": 1, "device_id": device_id,
                             "gateway_public_key_pem": signer.public_key_pem,
                             "policy_snapshot": policy,
                             "provider_bundle": provider_bundle,
@@ -608,7 +635,7 @@ async def control_socket(ws: WebSocket):
                     if connection:
                         connection.applied_policy_revision = revision
                         await session.commit()
-                await ws.send_json({"kind": "policy_applied_ack", "version": 1,
+                await send_json({"kind": "policy_applied_ack", "version": 1,
                                     "device_id": device_id, "revision": revision})
                 continue
             if message.get("kind") == "provider_applied":
@@ -636,7 +663,7 @@ async def control_socket(ws: WebSocket):
                             applied.last_error = None
                         else:
                             applied.last_error = error or "Provider application failed"
-                await ws.send_json({"kind": "provider_applied_ack", "version": 1,
+                await send_json({"kind": "provider_applied_ack", "version": 1,
                                     "device_id": device_id, "revision": revision})
                 continue
             if message.get("kind") == "command_status":
@@ -651,9 +678,26 @@ async def control_socket(ws: WebSocket):
                 accepted = await record_command_result(
                     ws.app.state.database, command_id, device_id, status, error,
                 )
-                await ws.send_json({"kind": "command_status_ack", "version": 1,
+                await send_json({"kind": "command_status_ack", "version": 1,
                                     "device_id": device_id, "command_id": command_id,
                                     "accepted": accepted})
+                continue
+            if message.get("kind") == "usage_batch":
+                batch_id = message.get("batch_id")
+                events = message.get("events")
+                if (message.get("version") != 1 or not isinstance(batch_id, str)
+                        or not 1 <= len(batch_id) <= 128
+                        or not isinstance(events, list) or not 1 <= len(events) <= 100):
+                    await ws.close(code=4400, reason="Invalid usage batch")
+                    return
+                if len(usage_tasks) >= 4:
+                    await send_json({"kind": "usage_retry", "version": 1,
+                                     "device_id": device_id, "batch_id": batch_id,
+                                     "retry_after": 5})
+                    continue
+                task = asyncio.create_task(apply_usage_batch(batch_id, events))
+                usage_tasks.add(task)
+                task.add_done_callback(usage_tasks.discard)
                 continue
             if message.get("kind") != "heartbeat":
                 await ws.close(code=4400, reason="Invalid control message")
@@ -677,13 +721,17 @@ async def control_socket(ws: WebSocket):
                 ws.app.state.database, signer, ws.app.state.settings.gateway_id,
                 device_id, user_id, config_public_key_pem,
             )
-            await ws.send_json({"kind": "heartbeat_ack", "version": 1,
+            await send_json({"kind": "heartbeat_ack", "version": 1,
                                 "device_id": device_id, "policy_snapshot": policy,
                                 "provider_bundle": provider_bundle,
                                 "command": await _signed_command(ws, device_id)})
     except WebSocketDisconnect:
         pass
     finally:
+        for task in usage_tasks:
+            task.cancel()
+        if usage_tasks:
+            await asyncio.gather(*usage_tasks, return_exceptions=True)
         if device_id and connection_id:
             with anyio.CancelScope(shield=True):
                 async with ws.app.state.database.session() as session:

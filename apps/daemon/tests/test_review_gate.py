@@ -753,7 +753,7 @@ async def test_automatic_review_history_restores_running_output(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_execution_message_ends_before_its_automatic_review(tmp_path):
+async def test_execution_message_ends_before_its_automatic_review(tmp_path, monkeypatch):
     """执行消息的 ended_at 不能晚于其审核消息，否则前端会把审核排到执行上方。"""
     db = init_db(str(tmp_path / "workstep.db"))
     task = Task.create(
@@ -773,6 +773,12 @@ async def test_execution_message_ends_before_its_automatic_review(tmp_path):
         started_at=1,
     )
     calls: list[str] = []
+    recorded_usage: list[dict] = []
+
+    async def record_usage(**kwargs):
+        recorded_usage.append(kwargs)
+
+    monkeypatch.setattr("main.gateway_client.record_message_usage", record_usage)
     original = ENGINE_REGISTRY.copy()
     ENGINE_REGISTRY["review-test"] = lambda: SequencedReviewEngine(calls)
     try:
@@ -805,6 +811,9 @@ async def test_execution_message_ends_before_its_automatic_review(tmp_path):
         assert execution.ended_at is not None
         assert review.ended_at is not None
         assert execution.ended_at <= review.ended_at
+        assert len(recorded_usage) == 1
+        assert recorded_usage[0]["message_id"] == execution.id
+        assert json.loads(recorded_usage[0]["usage_json"])["input_tokens"] == 101
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)

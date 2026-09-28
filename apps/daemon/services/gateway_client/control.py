@@ -38,7 +38,7 @@ class GatewayControlClient:
     def __init__(self, origin: str, *, gateway_id: str, public_key_fingerprint: str,
                  user_id: str, policy_cache: ManagedPolicyCache,
                  connector=connect, heartbeat_seconds: float = 20, asgi_app=None,
-                 provider_store=None):
+                 provider_store=None, usage_outbox=None):
         self.url = control_url(origin)
         self.origin = origin
         self.gateway_id = gateway_id
@@ -49,6 +49,7 @@ class GatewayControlClient:
         self.heartbeat_seconds = heartbeat_seconds
         self.asgi_app = asgi_app
         self.provider_store = provider_store
+        self.usage_outbox = usage_outbox
         self.command_executor = (ManagedCommandExecutor(provider_store, execute_engine_command)
                                  if provider_store is not None else None)
         self.online = False
@@ -104,6 +105,7 @@ class GatewayControlClient:
         delay = 1.0
         while not self._stop.is_set():
             reader_task = None
+            usage_task = None
             try:
                 async with self.connector(self.url, origin=self.origin, open_timeout=10,
                                           max_size=1024 * 1024) as socket:
@@ -137,8 +139,10 @@ class GatewayControlClient:
                         "config_key_proof": config_key_proof,
                     }))
                     messages = asyncio.Queue()
+                    usage_messages = asyncio.Queue()
                     reader_task = asyncio.create_task(
-                        self._read_control_messages(socket, device_id, messages),
+                        self._read_control_messages(socket, device_id, messages,
+                                                    usage_messages),
                     )
                     hello = await self._receive_kind(messages, "hello")
                     if (not isinstance(hello, dict) or hello.get("kind") != "hello"
@@ -155,6 +159,10 @@ class GatewayControlClient:
                     await self._apply_provider_bundle(socket, messages, hello,
                                                       gateway_key, device_id)
                     self._accept_command(socket, hello, gateway_key, device_id)
+                    if self.usage_outbox is not None:
+                        usage_task = asyncio.create_task(
+                            self._usage_loop(socket, device_id, usage_messages),
+                        )
                     self.online = True
                     delay = 1.0
                     while not self._stop.is_set():
@@ -189,6 +197,9 @@ class GatewayControlClient:
             finally:
                 self.online = False
                 self.config_private_key = None
+                if usage_task:
+                    usage_task.cancel()
+                    await asyncio.gather(usage_task, return_exceptions=True)
                 for task in self._command_tasks:
                     task.cancel()
                 if self._command_tasks:
@@ -223,7 +234,8 @@ class GatewayControlClient:
         return message
 
     async def _read_control_messages(self, socket, device_id: str,
-                                     messages: asyncio.Queue) -> None:
+                                     messages: asyncio.Queue,
+                                     usage_messages: asyncio.Queue) -> None:
         try:
             while not self._stop.is_set():
                 message = json.loads(await socket.recv())
@@ -242,6 +254,8 @@ class GatewayControlClient:
                             or not isinstance(message.get("command_id"), str)
                             or type(message.get("accepted")) is not bool):
                         raise ValueError("Invalid command status acknowledgment")
+                elif message.get("kind") in ("usage_ack", "usage_retry"):
+                    usage_messages.put_nowait(message)
                 else:
                     messages.put_nowait(message)
         except asyncio.CancelledError:
@@ -368,3 +382,45 @@ class GatewayControlClient:
             raise
         except Exception as exc:
             logger.warning("Gateway device command failed: %s", type(exc).__name__)
+
+    async def _usage_loop(self, socket, device_id: str,
+                          usage_messages: asyncio.Queue) -> None:
+        while not self._stop.is_set():
+            batch = await asyncio.to_thread(self.usage_outbox.pending,
+                                            device_id=device_id)
+            if batch is None:
+                await asyncio.sleep(5)
+                continue
+            await socket.send(json.dumps({
+                "kind": "usage_batch", "version": 1, **batch,
+            }))
+            try:
+                response = await asyncio.wait_for(usage_messages.get(), timeout=30)
+            except asyncio.TimeoutError:
+                await asyncio.sleep(5)
+                continue
+            if (not isinstance(response, dict) or response.get("version") != 1
+                    or response.get("device_id") != device_id
+                    or response.get("batch_id") != batch["batch_id"]):
+                raise ValueError("Invalid Gateway usage acknowledgment")
+            if response.get("kind") == "usage_retry":
+                retry_after = response.get("retry_after")
+                if type(retry_after) is not int or not 1 <= retry_after <= 60:
+                    raise ValueError("Invalid Gateway usage retry")
+                await asyncio.sleep(retry_after)
+                continue
+            if response.get("kind") != "usage_ack":
+                raise ValueError("Invalid Gateway usage response")
+            for key in ("accepted", "duplicates", "rejected"):
+                values = response.get(key)
+                if (not isinstance(values, list) or len(values) > 100
+                        or any(not isinstance(value, str) or len(value) > 64
+                               for value in values)):
+                    raise ValueError("Invalid Gateway usage acknowledgment IDs")
+            await asyncio.to_thread(
+                self.usage_outbox.ack, batch["batch_id"],
+                accepted=response["accepted"], duplicates=response["duplicates"],
+                rejected=response["rejected"],
+            )
+            if not (response["accepted"] or response["duplicates"] or response["rejected"]):
+                await asyncio.sleep(5)
