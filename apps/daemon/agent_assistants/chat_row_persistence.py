@@ -15,6 +15,7 @@ from engines.codex_visualize import (
 )
 from models.chat_session import ChatMessage, ChatSession
 from models.fields import utc_now
+from services.messages import extract_usage_json
 
 logger = logging.getLogger(__name__)
 DEFAULT_TITLE_LENGTH = 40
@@ -47,14 +48,6 @@ def _load_json(raw: str | None, default):
 def _preview(text: str, limit: int) -> str:
     collapsed = re.sub(r"\s+", " ", text or "").strip()
     return collapsed if len(collapsed) <= limit else f"{collapsed[:limit]}…"
-
-
-def _extract_usage(events: list | None) -> dict | None:
-    for event in events or []:
-        if isinstance(event, dict) and event.get("type") in ("usage", "usage_update"):
-            data = event.get("data")
-            return data if isinstance(data, dict) else dict(event)
-    return None
 
 
 class ChatRowPersistence(PersistenceAdapter):
@@ -214,10 +207,7 @@ class ChatRowPersistence(PersistenceAdapter):
                 ),
                 "event_count": int((item.get("event_summary") or {}).get("event_count") or 0),
                 "last_event_seq": int((item.get("event_summary") or {}).get("last_event_seq") or 0),
-                "usage_json": (
-                    json.dumps(_extract_usage(events), ensure_ascii=False)
-                    if _extract_usage(events) else None
-                ),
+                "usage_json": extract_usage_json(events),
                 "created_at": created_at,
                 "ended_at": ended_at,
             }

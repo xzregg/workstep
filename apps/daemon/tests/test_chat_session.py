@@ -1774,6 +1774,13 @@ async def test_live_message_splits_chat_reply_around_inserted_user_message(
 ):
     """会话顺序与任务阶段一致：第一段输出 → 用户插入 → 第二段输出。"""
     module, _bus, _manager, project, _ = chat_module
+    import main
+    recorded_usage = []
+
+    async def record_usage(**kwargs):
+        recorded_usage.append(kwargs)
+
+    monkeypatch.setattr(main.gateway_client, "record_message_usage", record_usage)
     first_chunk_sent = asyncio.Event()
 
     async def injecting_invoke(
@@ -1836,6 +1843,7 @@ async def test_live_message_splits_chat_reply_around_inserted_user_message(
     assert detail["messages"][3]["author_type"] == "assistant"
     assert (detail["messages"][3]["initiated_by_user_id"]
             == detail["messages"][2]["author_id"])
+    assert [item["message_id"] for item in recorded_usage] == [detail["messages"][3]["id"]]
 
 
 @pytest.mark.anyio
@@ -2098,6 +2106,87 @@ async def test_submit_is_idempotent_and_events_are_channel_scoped(chat_module, m
 
     replayed = module.submit_message(project.id, session_id, "第一轮", "idem-http-1")
     assert replayed.turn_id == accepted.turn_id
+
+
+@pytest.mark.anyio
+async def test_chat_records_final_usage_once_after_message_persistence(chat_module, monkeypatch):
+    module, _bus, manager, project, _ = chat_module
+    import main
+    recorded = []
+
+    async def record_usage(**kwargs):
+        recorded.append(kwargs)
+        def read_persisted(_project):
+            return ChatMessage.get_by_id(kwargs["message_id"]).usage_json
+        assert await manager.run_db(project.id, read_persisted)
+
+    monkeypatch.setattr(main.gateway_client, "record_message_usage", record_usage)
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None,
+                          message_history=None):
+        for tokens in (4, 9):
+            await on_event(InternalEvent(type="usage_update", data={
+                "input_tokens": tokens, "output_tokens": 2,
+            }))
+        return "回复", [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    session = module.create_session(project.id, "wf-usage")
+    accepted = module.submit_message(project.id, session["id"], "第一轮", "idem-usage")
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    detail = module.get_session(project.id, session["id"])
+    assistant = next(item for item in detail["messages"] if item["role"] == "assistant")
+    assert len(recorded) == 1
+    assert recorded[0]["message_id"] == assistant["id"]
+    assert recorded[0]["session_id"] == session["id"]
+    assert json.loads(recorded[0]["usage_json"])["input_tokens"] == 9
+    assert await manager.run_db(project.id, lambda _project:
+        json.loads(ChatMessage.get_by_id(assistant["id"]).usage_json)["input_tokens"]) == 9
+    assert module.submit_message(project.id, session["id"], "第一轮", "idem-usage").turn_id == accepted.turn_id
+    assert len(recorded) == 1
+
+
+@pytest.mark.anyio
+async def test_chat_usage_provider_read_keeps_event_loop_responsive(chat_module, monkeypatch):
+    module, _bus, _manager, project, config_store = chat_module
+    import main
+    entered = threading.Event()
+    release = threading.Event()
+    recorded = []
+    config_store.values["providers"] = [{
+        "id": "provider-1", "prices": {"model-a": {"input": "1"}},
+        "managed_revision": 3,
+    }]
+    original_get_provider = config_store.get_provider
+
+    def slow_get_provider(provider_id):
+        entered.set()
+        release.wait(timeout=2)
+        return original_get_provider(provider_id)
+
+    async def fake_invoke(*args, **kwargs):
+        state = next(state for state in module._turn_states.values()
+                     if state.get("status") == "running")
+        state["resolved_provider_id"] = "provider-1"
+        return "回复", [], None
+
+    async def record_usage(**kwargs):
+        recorded.append(kwargs)
+
+    monkeypatch.setattr(config_store, "get_provider", slow_get_provider)
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    monkeypatch.setattr(main.gateway_client, "record_message_usage", record_usage)
+    try:
+        session = module.create_session(project.id)
+        accepted = module.submit_message(
+            project.id, session["id"], "检查", "idem-slow-usage-provider",
+        )
+        assert await asyncio.to_thread(entered.wait, 2)
+        await asyncio.wait_for(asyncio.sleep(0.01), timeout=0.1)
+    finally:
+        release.set()
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    assert recorded[0]["provider"]["managed_revision"] == 3
 
 
 @pytest.mark.anyio
