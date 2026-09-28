@@ -1,3 +1,6 @@
+import base64
+import json
+
 from fastapi.testclient import TestClient
 
 from gateway.app import create_app
@@ -5,8 +8,9 @@ from gateway.config import GatewaySettings
 from gateway.models import Device, PlatformProject
 
 
-def test_project_grants_require_publication_and_follow_current_group_membership(tmp_path):
-    app = create_app(GatewaySettings(data_dir=tmp_path))
+def test_project_grants_require_publication_and_follow_current_group_membership(tmp_path, monkeypatch):
+    app = create_app(GatewaySettings(data_dir=tmp_path,
+                                     public_origin="https://gateway.test"))
     with TestClient(app, base_url="https://gateway.test") as client:
         setup = client.post("/api/platform/setup", json={
             "username": "owner", "display_name": "Owner", "password": "OwnerPassphrase-2026!",
@@ -67,6 +71,24 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
             "id": "project-1", "name": "Project", "device_id": "device-1",
             "access_level": "read",
         }]
+        assert client.get("/api/projects/project-1/access").status_code == 409
+        monkeypatch.setattr(app.state.control_connections, "is_online", lambda _id: True)
+        issued = client.get("/api/projects/project-1/access")
+        assert issued.status_code == 200, issued.text
+        ticket = issued.json()["ticket"]
+        claims = json.loads(base64.urlsafe_b64decode(ticket.split(".")[1] + "==="))
+        assert claims["kind"] == "project.access"
+        assert claims["project_id"] == "project-1"
+        assert claims["host_project_id"] == "host-1"
+        assert claims["access_level"] == "read"
+        host = "https://d-device-1.gateway.test"
+        assert client.post(f"{host}/api/remote/redeem", data={"ticket": ticket},
+                           follow_redirects=False).status_code == 303
+        assert client.post(f"{host}/api/remote/redeem", data={"ticket": ticket}).status_code == 409
+        assert client.get(f"{host}/api/remote/session").json()["project_id"] == "project-1"
+        assert client.get(f"{host}/api/health").status_code == 403
+        remote_cookie = client.cookies.get("workstep_gateway_session", domain="d-device-1.gateway.test")
+        client.cookies.clear()
         client.cookies.clear()
         owner_login = client.post("/api/auth/login", json={
             "username": "owner", "password": "OwnerPassphrase-2026!",
@@ -74,6 +96,9 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         owner_headers = {"X-CSRF-Token": owner_login.json()["csrf_token"]}
         assert client.delete(f"/api/groups/{group_id}/members/{worker_id}",
                              headers=owner_headers).status_code == 204
+        assert client.get(f"{host}/api/remote/session", headers={
+            "Cookie": f"workstep_gateway_session={remote_cookie}",
+        }).status_code == 403
         client.post("/api/auth/step-up", json={"password": "OwnerPassphrase-2026!"},
                     headers=owner_headers)
         assert client.post(grant_url, json={

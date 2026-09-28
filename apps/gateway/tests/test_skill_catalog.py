@@ -99,8 +99,9 @@ def test_group_skill_catalog_only_allows_reviewed_version_on_linked_project(tmp_
         skill_id = client.post("/api/admin/skills", json={
             "name": "Review", "slug": "review",
         }, headers=headers).json()["id"]
+        archive = _archive({"SKILL.md": "# Review"})
         version_id = client.post(f"/api/admin/skills/{skill_id}/versions", json={
-            "version": "1.0.0", "archive_base64": _archive({"SKILL.md": "# Review"}),
+            "version": "1.0.0", "archive_base64": archive,
         }, headers=headers).json()["id"]
         group_id = client.post("/api/groups", json={
             "name": "Backend", "slug": "backend",
@@ -171,7 +172,7 @@ def test_group_skill_catalog_only_allows_reviewed_version_on_linked_project(tmp_
             "Authorization": f"Bearer {manifest}",
         })
         assert download.status_code == 200, download.text
-        assert download.content == base64.b64decode(_archive({"SKILL.md": "# Review"}))
+        assert download.content == base64.b64decode(archive)
         assert client.delete(
             f"/api/groups/{group_id}/projects/project-1/skills/{skill_id}",
             headers=headers,

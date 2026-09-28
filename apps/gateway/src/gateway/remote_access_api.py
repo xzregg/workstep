@@ -11,7 +11,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from .identity import COOKIE_NAME, IdentityService
-from .models import Device, UsedDeviceAccessTicket, User, UserDevice
+from .models import Device, PlatformProject, UsedDeviceAccessTicket, User, UserDevice
+from .project_access_api import effective_project_access
 
 router = APIRouter(prefix="/api/remote")
 websocket_router = APIRouter()
@@ -43,6 +44,24 @@ async def _active_access(request: Request, user_id: str, device_id: str) -> None
         raise HTTPException(status_code=409, detail="Device is offline")
 
 
+async def _active_project_access(request: Request, user_id: str, device_id: str,
+                                 project_id: str, host_project_id: str) -> str:
+    async with request.app.state.database.session() as session:
+        user = await session.get(User, user_id)
+        device = await session.get(Device, device_id)
+        project = await session.get(PlatformProject, project_id)
+        level = await effective_project_access(session, user_id, project_id)
+    if (not user or user.status != "active" or user.must_change_password
+            or not device or device.status != "active" or not project
+            or project.device_id != device_id or project.host_project_id != host_project_id
+            or project.status != "active" or project.access_mode != "remote_published"
+            or level is None):
+        raise HTTPException(status_code=403, detail="Project access denied")
+    if not request.app.state.control_connections.is_online(device_id):
+        raise HTTPException(status_code=409, detail="Device is offline")
+    return level
+
+
 @router.post("/redeem")
 async def redeem_device_ticket(request: Request):
     host = _device_host(request)
@@ -56,7 +75,7 @@ async def redeem_device_ticket(request: Request):
         ticket = fields["ticket"]
         if len(ticket) != 1:
             raise ValueError("Ticket count")
-        claims = request.app.state.gateway_signer.verify_device_access_ticket(
+        claims = request.app.state.gateway_signer.verify_access_ticket(
             ticket[0], gateway_id=request.app.state.settings.gateway_id, audience=host,
         )
     except (ValueError, KeyError, UnicodeDecodeError) as exc:
@@ -64,9 +83,20 @@ async def redeem_device_ticket(request: Request):
     device_id, user_id = claims["device_id"], claims["user_id"]
     if host != f"d-{device_id}.{urlsplit(request.app.state.settings.public_origin).hostname}":
         raise HTTPException(status_code=403, detail="Ticket device mismatch")
-    await _active_access(request, user_id, device_id)
+    if claims["kind"] == "project.access":
+        current_level = await _active_project_access(
+            request, user_id, device_id, claims["project_id"],
+            claims["host_project_id"],
+        )
+    else:
+        await _active_access(request, user_id, device_id)
     auth_session, token = IdentityService._create_session(user_id)
     auth_session.device_id = device_id
+    if claims["kind"] == "project.access":
+        auth_session.project_id = claims["project_id"]
+        auth_session.project_access_level = (
+            "read" if "read" in (claims["access_level"], current_level) else "edit"
+        )
     auth_session.expires_at = datetime.fromtimestamp(
         min(claims["exp"] + 3600, int(auth_session.expires_at.timestamp())), timezone.utc,
     )
@@ -90,18 +120,20 @@ async def redeem_device_ticket(request: Request):
 
 @router.get("/session")
 async def remote_session(request: Request):
-    user, device_id = await _remote_identity(request)
+    user, device_id, auth_session = await _remote_identity(request)
     async with request.app.state.database.session() as session:
         device = await session.get(Device, device_id)
     if device is None:
         raise HTTPException(status_code=403, detail="Device access denied")
     return {"user_id": user.id, "username": user.display_name,
             "device_id": device_id, "device_name": device.name,
+            "project_id": auth_session.project_id,
+            "access_level": auth_session.project_access_level,
             "online": True,
             "gateway_url": request.app.state.settings.public_origin + "/devices"}
 
 
-async def _remote_identity(request: Request) -> tuple[User, str]:
+async def _remote_identity(request: Request):
     host = _device_host(request)
     user, auth_session = await IdentityService(request.app.state.database).session_user(
         request.cookies.get(COOKIE_NAME), allow_device_session=True,
@@ -109,8 +141,18 @@ async def _remote_identity(request: Request) -> tuple[User, str]:
     device_id = auth_session.device_id
     if not device_id or host != f"d-{device_id}.{urlsplit(request.app.state.settings.public_origin).hostname}":
         raise HTTPException(status_code=403, detail="Device session mismatch")
-    await _active_access(request, user.id, device_id)
-    return user, device_id
+    if auth_session.project_id:
+        async with request.app.state.database.session() as session:
+            project = await session.get(PlatformProject, auth_session.project_id)
+        if project is None:
+            raise HTTPException(status_code=403, detail="Project unavailable")
+        current_level = await _active_project_access(request, user.id, device_id,
+                                                     project.id, project.host_project_id)
+        if current_level == "read":
+            auth_session.project_access_level = "read"
+    else:
+        await _active_access(request, user.id, device_id)
+    return user, device_id, auth_session
 
 
 async def proxy_remote_request(request: Request):
@@ -118,7 +160,9 @@ async def proxy_remote_request(request: Request):
     origin = request.headers.get("origin")
     if request.method not in ("GET", "HEAD", "OPTIONS") and origin and origin != f"https://{host}":
         raise HTTPException(status_code=403, detail="Invalid remote origin")
-    user, device_id = await _remote_identity(request)
+    user, device_id, auth_session = await _remote_identity(request)
+    if auth_session.project_id:
+        raise HTTPException(status_code=403, detail="Project proxy scope unavailable")
     try:
         connection = await request.app.state.control_connections.request_data(device_id)
         return await connection.proxy_http(request, user_id=user.id, username=user.username)
@@ -132,7 +176,9 @@ async def proxy_remote_websocket(ws: WebSocket, path: str):
         host = _device_host(ws)
         if ws.headers.get("origin") != f"https://{host}":
             raise HTTPException(status_code=403, detail="Invalid remote WebSocket origin")
-        user, device_id = await _remote_identity(ws)
+        user, device_id, auth_session = await _remote_identity(ws)
+        if auth_session.project_id:
+            raise HTTPException(status_code=403, detail="Project proxy scope unavailable")
         connection = await ws.app.state.control_connections.request_data(device_id)
         await connection.proxy_websocket(ws, user_id=user.id, username=user.username)
     except HTTPException:

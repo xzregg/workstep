@@ -55,6 +55,8 @@ class AuthSession(Base):
     step_up_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     device_id: Mapped[str | None] = mapped_column(String(64))
     device_name: Mapped[str | None] = mapped_column(String(256))
+    project_id: Mapped[str | None] = mapped_column(String(64))
+    project_access_level: Mapped[str | None] = mapped_column(String(16))
 
 
 class UsedDeviceAccessTicket(Base):
