@@ -83,6 +83,20 @@ async def list_projects():
     return {"projects": [*local, *remote]}
 
 
+@router.get("/{project_id}/summary")
+async def get_project_summary(project_id: str):
+    """Expose one project's metadata without its host filesystem path."""
+    def summarize(project):
+        summary = project_manager.project_summary(project)
+        summary.pop("path", None)
+        return summary
+
+    try:
+        return await project_manager.run_db(project_id, summarize)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Project not found") from exc
+
+
 @router.post("/{project_id}/publication")
 async def set_project_publication(project_id: str, req: ProjectPublicationRequest):
     from main import gateway_client

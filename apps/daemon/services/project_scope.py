@@ -8,6 +8,8 @@ def project_http_allowed(request: Request, project_id: str, access_level: str) -
         return False
     if request.method != "GET":
         return False
+    if request.url.path == f"/api/project/{project_id}/summary":
+        return not request.query_params
     if request.url.path != "/api/task/list":
         return False
     values = request.query_params.getlist("project_id")
