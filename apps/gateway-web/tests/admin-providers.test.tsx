@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { AdminProvidersPage } from '../src/AdminProvidersPage'
 import { AdminProviderDisableDialog, AdminProviderEditorDialog } from '../src/AdminProviderEditorDialog'
 import { AdminProviderAssignments } from '../src/AdminProviderAssignments'
+import { AdminProviderTestPanel } from '../src/AdminProviderTestPanel'
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   url: 'https://gateway.test/admin/providers',
@@ -16,6 +17,42 @@ Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.
 const { cleanup, fireEvent, render, screen, waitFor, within } = await import('@testing-library/react')
 const originalFetch = globalThis.fetch
 afterEach(() => { cleanup(); globalThis.fetch = originalFetch })
+
+test('provider test selects an online PC and displays only a bounded result', async () => {
+  const requests: Array<{ url: string; init?: RequestInit }> = []
+  let targetFailures = 1
+  globalThis.fetch = async (input, init) => {
+    const url = String(input)
+    requests.push({ url, init })
+    if (url.includes('/test-targets?')) {
+      if (targetFailures--) return new Response(null, { status: 503 })
+      return Response.json({ devices: [{ id: 'pc-1', name: 'Office PC' }], total: 1 })
+    }
+    if (url === '/api/auth/step-up') return Response.json({})
+    if (url.endsWith('/test')) return Response.json({ status: 'failed', duration_ms: 125,
+      error_code: 'connection_failed' })
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+  let closed = 0
+  render(<AdminProviderTestPanel providerId="provider-1" providerName="Company API" csrf="csrf"
+    onClose={() => { closed++ }} />)
+  const dialog = screen.getByRole('dialog', { name: '测试供应商连接' })
+  await within(dialog).findByText('在线 PC 加载失败。')
+  fireEvent.click(within(dialog).getByRole('button', { name: '重试加载' }))
+  await within(dialog).findByRole('option', { name: 'Office PC' })
+  fireEvent.change(within(dialog).getByLabelText('目标 PC'), { target: { value: 'pc-1' } })
+  fireEvent.change(within(dialog).getByLabelText('输入管理员密码确认'), {
+    target: { value: 'password' },
+  })
+  fireEvent.click(within(dialog).getByRole('button', { name: '发送测试命令' }))
+  await within(dialog).findByText(/连接失败 · 耗时 125 毫秒/)
+  assert.deepEqual(JSON.parse(String(requests.find(request => request.url.endsWith('/test'))?.init?.body)),
+    { device_id: 'pc-1' })
+  assert.equal(requests.find(request => request.url.endsWith('/test'))?.init?.method, 'POST')
+  assert.equal(document.body.textContent?.includes('password'), false)
+  fireEvent.click(within(dialog).getByRole('button', { name: '关闭' }))
+  assert.equal(closed, 1)
+})
 
 test('provider directory pages on the server and shows PC application state', async () => {
   const urls: string[] = []
