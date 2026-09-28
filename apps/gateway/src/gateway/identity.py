@@ -276,6 +276,18 @@ class IdentityService:
 
     async def manageable_user_ids(self, session, actor_id: str) -> set[str] | None:
         """None means platform-wide; a set means department-scoped users."""
+        allowed_departments = await self.manageable_department_ids(session, actor_id)
+        if allowed_departments is None:
+            return None
+        if not allowed_departments:
+            return set()
+        return set((await session.scalars(select(DirectoryPerson.user_id).join(
+            DirectoryMembership, DirectoryMembership.person_id == DirectoryPerson.id,
+        ).where(DirectoryPerson.active == 1,
+                DirectoryMembership.department_id.in_(allowed_departments)))).all())
+
+    async def manageable_department_ids(self, session, actor_id: str) -> set[str] | None:
+        """None means platform-wide; a set contains readable department IDs."""
         assignments = (await session.scalars(select(AdminAssignment).where(
             AdminAssignment.user_id == actor_id,
             AdminAssignment.revoked_at.is_(None),
@@ -312,10 +324,7 @@ class IdentityService:
                     pending.extend(children.get((current.source_id, current.external_id), []))
         if not allowed_departments:
             return set()
-        return set((await session.scalars(select(DirectoryPerson.user_id).join(
-            DirectoryMembership, DirectoryMembership.person_id == DirectoryPerson.id,
-        ).where(DirectoryPerson.active == 1,
-                DirectoryMembership.department_id.in_(allowed_departments)))).all())
+        return allowed_departments
 
     async def grant_role(self, actor_id: str, user_id: str, role: str,
                          scope_type: str, scope_id: str | None,

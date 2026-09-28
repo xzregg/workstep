@@ -213,6 +213,14 @@ a {
 .gateway-overview-card strong { font-size: 1.6rem; }
 .gateway-overview-activity { margin-top: 28px; }
 .gateway-overview-activity li { margin: 8px 0; }
+.gateway-org-sources { margin: 24px 0 32px; }
+.gateway-org-directory { display: grid; grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.4fr); gap: 24px; }
+.gateway-org-departments, .gateway-org-members { min-width: 0; }
+.gateway-org-department-list { padding: 0; margin: 16px 0; list-style: none; }
+.gateway-org-department-list li { margin-bottom: 8px; }
+.gateway-admin-page .gateway-org-department-list button { width: 100%; padding: 12px; text-align: left; background: #fff; color: #1d1d1f; border: 1px solid #e5e5ea; }
+.gateway-org-department-list button span { display: block; margin-top: 4px; color: #65656b; font-size: 0.85rem; }
+.gateway-admin-page .gateway-org-department-list button.gateway-org-selected { border-color: #4678d5; background: #f2f6ff; }
 .gateway-role-dialog { max-height: min(90vh, 760px); overflow-y: auto; }
 .gateway-role-dialog .gateway-admin-search { margin-bottom: 12px; }
 .gateway-role-dialog .gateway-admin-search input { flex: 1; min-width: 0; }
@@ -307,5 +315,6 @@ a {
   }
 
   .gateway-admin-page { padding: 24px; }
+  .gateway-org-directory { grid-template-columns: 1fr; }
   .gateway-device-list li { display: block; }
 }

@@ -36,6 +36,7 @@ from .skills_api import (router as skills_router,
                          project_skill_router, device_skill_router)
 from .project_access_api import router as project_access_router
 from .admin_overview import router as admin_overview_router
+from .org_api import router as org_router
 
 
 def create_app(settings: GatewaySettings | None = None) -> FastAPI:
@@ -120,6 +121,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
 
     app.include_router(identity_router)
     app.include_router(admin_overview_router)
+    app.include_router(org_router)
     app.include_router(external_identity_router)
     app.include_router(directory_callbacks_router)
     app.include_router(desktop_authorization_router)

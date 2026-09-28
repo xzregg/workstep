@@ -10,6 +10,7 @@ import { AdminRolesPage } from '../src/AdminRolesPage'
 import type { AdminRole } from '../src/AdminRolesPage'
 import { AdminOverviewPage } from '../src/AdminOverviewPage'
 import { App } from '../src/App'
+import { AdminOrgPage } from '../src/AdminOrgPage'
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://gateway.test/admin/users' })
 Object.assign(globalThis, {
@@ -298,4 +299,47 @@ test('management access check can be retried after a transient failure', async (
   fireEvent.click(screen.getByRole('button', { name: '重试' }))
   await screen.findByRole('heading', { name: '管理概览' })
   assert.equal(calls, 2)
+})
+
+test('organization page browses a source, its departments and direct members', async () => {
+  const requests: string[] = []
+  globalThis.fetch = async input => {
+    const url = String(input)
+    requests.push(url)
+    if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
+    if (url.startsWith('/api/admin/identity-sources?')) return Response.json({ sources: [
+      { id: 'source-1', provider: 'wecom', tenant_id: 'tenant-a', client_id: 'app', enabled: true,
+        callback_configured: true, created_at: '2026-01-01' }], total: 1 })
+    if (url.startsWith('/api/admin/org/departments?')) return Response.json({ departments: [
+      { id: 'dept-1', source_id: 'source-1', provider: 'wecom', tenant_id: 'tenant-a',
+        external_id: 'engineering', display_name: 'Engineering', parent_external_id: null,
+        active: true, direct_members: 1 }], total: 1 })
+    if (url.startsWith('/api/admin/org/departments/dept-1/members?')) return Response.json({ members: [
+      { id: 'person-1', user_id: 'user-1', subject: 'person-a', display_name: 'Alice',
+        username: 'alice', user_status: 'active' }], total: 1 })
+    if (url === '/api/admin/identity-sources/source-1/reconcile') return Response.json({ departments: 1, people: 1 })
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+  render(<MemoryRouter><AdminOrgPage roles={['super_admin']} /></MemoryRouter>)
+  await screen.findByText(/企业微信 · tenant-a/)
+  fireEvent.click(screen.getByRole('button', { name: '查看目录' }))
+  await waitFor(() => assert.ok(requests.some(url => url.includes('source_id=source-1'))))
+  fireEvent.click(screen.getByRole('button', { name: /Engineering/ }))
+  await screen.findByText('Alice')
+  fireEvent.click(screen.getByRole('button', { name: '手动对账' }))
+  fireEvent.click(within(screen.getByRole('dialog', { name: '手动对账' })).getByRole('button', { name: '开始对账' }))
+  await waitFor(() => assert.ok(requests.includes('/api/admin/identity-sources/source-1/reconcile')))
+})
+
+test('department admin browses organization without loading source administration', async () => {
+  const requests: string[] = []
+  globalThis.fetch = async input => {
+    const url = String(input)
+    requests.push(url)
+    if (url.startsWith('/api/admin/org/departments?')) return Response.json({ departments: [], total: 0 })
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+  render(<MemoryRouter><AdminOrgPage roles={['identity_admin']} /></MemoryRouter>)
+  await screen.findByText('当前条件下没有部门。')
+  assert.ok(requests.every(url => !url.startsWith('/api/admin/identity-sources')))
 })
