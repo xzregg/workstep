@@ -11,6 +11,7 @@ from weakref import WeakValueDictionary
 
 from models.task import Task
 from services.config import config_store
+from services.remote_access import ActorSnapshot, actor_context
 
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,19 @@ class IncomingMessage:
     text: str
     sender_name: str = ""
     reply_context: object | None = None
+
+
+def _sender_actor(message: IncomingMessage, platform: str) -> ActorSnapshot:
+    label = "企业微信" if platform == "wecom" else "钉钉"
+    sender_id = message.sender_id.strip() or message.conversation_id
+    return ActorSnapshot(
+        actor_id=f"channel:{platform}:{sender_id}",
+        user_name=f"{label} · {message.sender_name or sender_id}",
+        username=sender_id,
+        device_id=f"channel:{message.bot_id}",
+        device_name=label,
+        source="channel",
+    )
 
 
 AdapterFactory = Callable[[dict, Callable[[IncomingMessage], Awaitable[None]], Callable[[str, str], Awaitable[None]]], object]
@@ -297,9 +311,10 @@ class BotManager:
             else:
                 session_key = f"{message.bot_id}:{message.conversation_type}:{message.conversation_id}"
                 session_id = data["sessions"].get(session_key)
-                session_id, reply = await self._responder(
-                    project_id, session_id, message.text, "channel_chat", "",
-                )
+                with actor_context(_sender_actor(message, bot["platform"])):
+                    session_id, reply = await self._responder(
+                        project_id, session_id, message.text, "channel_chat", "",
+                    )
                 async with self._config_lock:
                     latest = await self._load()
                     latest["sessions"][session_key] = session_id
@@ -319,11 +334,13 @@ class BotManager:
             and event.get("channel") == "coordinator"
         ))
         try:
-            accepted = await self._coordinator.submit_message(
-                project_id, task_id, message.text,
-                f"channel:{message.bot_id}:{message.message_id}",
-                author_name=f"{'企业微信' if platform == 'wecom' else '钉钉'} · {message.sender_name or message.sender_id}",
-            )
+            actor = _sender_actor(message, platform)
+            with actor_context(actor):
+                accepted = await self._coordinator.submit_message(
+                    project_id, task_id, message.text,
+                    f"channel:{message.bot_id}:{message.message_id}",
+                    author_name=actor.user_name,
+                )
             reply = ""
             while True:
                 event = await asyncio.wait_for(queue.get(), timeout=600)

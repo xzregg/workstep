@@ -126,12 +126,13 @@ class ScheduleModule:
         return str(task_template.get("mode") or "static")
 
     @staticmethod
-    def _template_creator_fields(task_template: dict) -> dict[str, str]:
+    def _template_creator_fields(task_template: dict) -> dict[str, str | None]:
         raw = task_template.get("_creator")
         if not isinstance(raw, dict):
             return {}
         return {
             "creator_id": str(raw.get("id") or "").strip(),
+            "creator_username": str(raw.get("username") or "").strip() or None,
             "creator_name": str(raw.get("name") or "").strip(),
             "creator_device_id": str(raw.get("device_id") or "").strip(),
             "creator_device_name": str(raw.get("device_name") or "").strip(),
@@ -205,6 +206,7 @@ class ScheduleModule:
         if creator and "_creator" not in task_template:
             task_template["_creator"] = {
                 "id": creator["creator_id"],
+                "username": creator["creator_username"],
                 "name": creator["creator_name"],
                 "device_id": creator["creator_device_id"],
                 "device_name": creator["creator_device_name"],
@@ -276,6 +278,7 @@ class ScheduleModule:
                 if creator:
                     task_template["_creator"] = {
                         "id": creator["creator_id"],
+                        "username": creator["creator_username"],
                         "name": creator["creator_name"],
                         "device_id": creator["creator_device_id"],
                         "device_name": creator["creator_device_name"],
