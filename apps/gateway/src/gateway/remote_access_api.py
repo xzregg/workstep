@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from workstep_gateway_protocol import project_http_route_allowed
 
+from .capabilities import compiled_device_policy
 from .identity import COOKIE_NAME, IdentityService
 from .models import Device, PlatformProject, UsedDeviceAccessTicket, User, UserDevice
 from .project_access_api import effective_project_access
@@ -165,10 +166,21 @@ async def proxy_remote_request(request: Request):
     if request.method not in ("GET", "HEAD", "OPTIONS") and origin and origin != f"https://{host}":
         raise HTTPException(status_code=403, detail="Invalid remote origin")
     user, device_id, auth_session, host_project_id = await _remote_identity(request)
+    task_create = False
     if auth_session.project_id:
+        if request.method not in ("GET", "HEAD", "OPTIONS") and origin != f"https://{host}":
+            raise HTTPException(status_code=403, detail="Project request origin required")
+        if request.method == "POST" and request.url.path == "/api/task/create":
+            _, broad, _, project_allowed, project_denied = await compiled_device_policy(
+                request.app.state.database, device_id, user.id,
+            )
+            task_create = ((broad or host_project_id in project_allowed)
+                           and host_project_id not in project_denied)
         if not project_http_route_allowed(
                 request.method, request.url.path,
-                list(request.query_params.multi_items()), host_project_id):
+                list(request.query_params.multi_items()), host_project_id,
+                access_level=auth_session.project_access_level,
+                task_create=task_create):
             raise HTTPException(status_code=403, detail="Project proxy scope unavailable")
     try:
         connection = await request.app.state.control_connections.request_data(device_id)
@@ -180,11 +192,20 @@ async def proxy_remote_request(request: Request):
                 )
                 if auth_session.project_access_level == "edit" and current_level != "edit":
                     raise HTTPException(status_code=403, detail="Project edit access revoked")
+                if task_create:
+                    _, broad, _, allowed, denied = await compiled_device_policy(
+                        request.app.state.database, device_id, user.id,
+                    )
+                    if not ((broad or host_project_id in allowed)
+                            and host_project_id not in denied):
+                        raise HTTPException(status_code=403,
+                                            detail="Task creation capability revoked")
 
             return await connection.proxy_http(
                 request, user_id=user.id, username=user.username,
                 project_id=host_project_id,
                 access_level=auth_session.project_access_level,
+                task_create=task_create,
                 authorization_check=authorize_stream,
             )
         return await connection.proxy_http(request, user_id=user.id, username=user.username)

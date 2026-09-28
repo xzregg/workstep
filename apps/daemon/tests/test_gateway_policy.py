@@ -121,3 +121,23 @@ def test_project_scoped_task_creation_and_explicit_denial(monkeypatch):
     with pytest.raises(ValueError):
         verify_policy_snapshot(invalid, pem, fingerprint,
                                "gateway-test", "device-1", "user-1")
+
+
+def test_remote_project_task_creation_uses_its_own_capability(monkeypatch):
+    import main
+
+    monkeypatch.setattr(main, "gateway_client", SimpleNamespace(
+        managed_config=object(), policy_cache=ManagedPolicyCache(),
+    ))
+    actor = ActorSnapshot("worker", "Worker", "device-1", "PC", "managed",
+                          project_id="host-1", access_level="edit",
+                          remote_task_create=True)
+    with actor_context(actor):
+        require_managed_capability("task.create", project_id="host-1")
+        with pytest.raises(PermissionError):
+            require_managed_capability("task.create", project_id="host-2")
+    with actor_context(ActorSnapshot("worker", "Worker", "device-1", "PC", "managed",
+                                     project_id="host-1", access_level="read",
+                                     remote_task_create=True)):
+        with pytest.raises(PermissionError):
+            require_managed_capability("task.create", project_id="host-1")
