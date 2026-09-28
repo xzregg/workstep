@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -21,6 +22,7 @@ from .client_releases import router as client_releases_router
 from .control_connection import ControlConnections, router as control_router
 from .capabilities import router as capabilities_router
 from .user_devices_api import router as user_devices_router
+from .remote_access_api import router as remote_access_router
 
 
 def create_app(settings: GatewaySettings | None = None) -> FastAPI:
@@ -58,6 +60,18 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.state.identity_connectors = {"dingtalk": DingTalkConnector(), "wecom": WeComConnector()}
     app.state.control_connections = ControlConnections()
 
+    @app.middleware("http")
+    async def device_host_boundary(request: Request, call_next):
+        if settings.public_origin:
+            host = request.headers.get("host", "").lower()
+            suffix = f".{urlsplit(settings.public_origin).hostname}"
+            if host.startswith("d-") and host.endswith(suffix):
+                if request.url.path not in ("/api/remote/redeem", "/api/remote/session"):
+                    return JSONResponse(status_code=403, content={
+                        "error": {"code": "unauthorized", "message": "Remote proxy unavailable"},
+                    })
+        return await call_next(request)
+
     @app.exception_handler(HTTPException)
     async def http_error(_request: Request, exc: HTTPException) -> JSONResponse:
         code = "not_found" if exc.status_code == 404 else "http_error"
@@ -84,6 +98,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(control_router)
     app.include_router(capabilities_router)
     app.include_router(user_devices_router)
+    app.include_router(remote_access_router)
 
     if settings.web_dist and settings.web_dist.is_dir():
         assets = settings.web_dist / "assets"

@@ -56,6 +56,16 @@ class AuthSession(Base):
     device_name: Mapped[str | None] = mapped_column(String(256))
 
 
+class UsedDeviceAccessTicket(Base):
+    __tablename__ = "used_device_access_tickets"
+
+    jti_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"))
+    used_at: Mapped[datetime] = timestamp()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
 class AdminAssignment(Base):
     __tablename__ = "admin_assignments"
     __table_args__ = (Index("ix_admin_user_role", "user_id", "role"),)

@@ -69,6 +69,24 @@ def test_user_sees_only_assigned_pc_and_admin_can_revoke(tmp_path, monkeypatch):
         assert claims["device_id"] == "device-1"
         assert claims["user_id"] == user_id
         assert claims["aud"] == "d-device-1.gateway.test"
+        remote_url = "https://d-device-1.gateway.test"
+        wrong_host = client.post("/api/remote/redeem", data={"ticket": issued["ticket"]})
+        assert wrong_host.status_code == 403
+        assert client.post("https://d-device-2.gateway.test/api/remote/redeem",
+                           data={"ticket": issued["ticket"]}).status_code == 403
+        assert client.post(f"{remote_url}/api/remote/redeem",
+                           data={"ticket": issued["ticket"] + "x"}).status_code == 403
+        redeemed = client.post(f"{remote_url}/api/remote/redeem", data={"ticket": issued["ticket"]},
+                               follow_redirects=False)
+        assert redeemed.status_code == 303, redeemed.text
+        assert redeemed.headers["location"] == "/"
+        assert "workstep_gateway_session=" in redeemed.headers["set-cookie"]
+        assert client.post(f"{remote_url}/api/remote/redeem",
+                           data={"ticket": issued["ticket"]}).status_code == 409
+        assert client.get(f"{remote_url}/api/remote/session").json()["device_id"] == "device-1"
+        assert client.get(f"{remote_url}/api/devices").status_code == 403
+        assert client.get("https://d-device-2.gateway.test/api/remote/session").status_code == 403
+        assert client.get("/api/devices").status_code == 200
         client.post("/api/auth/logout", headers={"X-CSRF-Token": alice.json()["csrf_token"]})
         owner = client.post("/api/auth/login", json={"username": "owner",
                                                    "password": "OwnerPassphrase-2026!"})
@@ -81,3 +99,4 @@ def test_user_sees_only_assigned_pc_and_admin_can_revoke(tmp_path, monkeypatch):
                                                "password": "AlicePassphrase-2026!"})
         assert client.get("/api/devices").json() == {"devices": []}
         assert client.get("/api/devices/device-1/access").status_code == 403
+        assert client.get(f"{remote_url}/api/remote/session").status_code == 403
