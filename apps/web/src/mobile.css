@@ -329,24 +329,33 @@
   .task-detail-header { padding: 8px 12px !important; gap: 8px !important; }
   .task-detail-header > div { min-width: 0; }
   .task-detail-header-fields {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    display: flex;
+    flex-direction: column;
     gap: 4px !important;
   }
-  .task-detail-header-fields .task-detail-title {
-    grid-row: 1;
-    grid-column: 1;
+  .task-detail-header-primary,
+  .task-detail-header-secondary {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+    gap: 4px;
+    flex-wrap: nowrap;
+  }
+  .task-detail-header-primary .task-detail-title {
+    flex: 1 1 0;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: calc(16px * var(--font-scale)) !important;
   }
-  .task-detail-header-badge:not([data-status]) { grid-row: 1; grid-column: 2; max-width: 84px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .task-detail-header-badge[data-status] { grid-row: 1; grid-column: 3; white-space: nowrap; }
-  .task-detail-header-creator,
-  .task-detail-header-time,
+  .task-detail-header-primary .task-detail-header-badge:not([data-status]) { max-width: 84px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .task-detail-header-primary .task-detail-header-badge[data-status] { flex-shrink: 0; white-space: nowrap; }
   .task-detail-recovered-badge { display: none; }
+  .task-detail-header-meta { flex: 1 1 0; min-width: 0; }
+  .task-detail-header-actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+  .task-detail-header-close { align-self: flex-end; width: var(--mobile-control-regular); height: var(--mobile-control-regular); }
   .task-detail-header > div > div + div { display: none; }
   .task-detail-discussion-button,
   .task-detail-share-button,
@@ -356,19 +365,14 @@
     padding-block: 0;
   }
   .task-detail-share-button {
-    grid-row: 2;
-    grid-column: 3;
     width: var(--mobile-control-regular);
     min-width: var(--mobile-control-regular);
     padding: 0 !important;
     justify-content: center;
     margin-left: 0 !important;
   }
-  .task-detail-discussion-button { grid-row: 2; grid-column: 1; justify-self: start; }
   .task-detail-share-label { display: none; }
   .task-detail-id-button {
-    grid-row: 2;
-    grid-column: 2;
     width: 84px;
     max-width: 84px;
     flex: 0 0 84px;
