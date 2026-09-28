@@ -9,8 +9,11 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 from sqlalchemy import exists, or_, select
 
-from .identity_api import _super_admin_read
-from .models import AuditEvent, AuditEventReceipt, PlatformProject
+from .identity_api import COOKIE_NAME, _identity
+from .models import (
+    AdminAssignment, AuditEvent, AuditEventReceipt, DirectoryDepartment,
+    DirectoryMembership, DirectoryPerson, PlatformProject,
+)
 
 
 router = APIRouter(prefix="/api/admin/audit")
@@ -148,6 +151,65 @@ def _visible_metadata(raw: str | None) -> dict:
     }
 
 
+async def _audit_scope(request: Request, session):
+    identity = _identity(request)
+    user, _ = await identity.session_user(request.cookies.get(COOKIE_NAME))
+    if user.must_change_password:
+        raise HTTPException(status_code=403, detail="Password change required")
+    assignments = (await session.scalars(select(AdminAssignment).where(
+        AdminAssignment.user_id == user.id,
+        AdminAssignment.role.in_(("super_admin", "audit_admin")),
+        AdminAssignment.revoked_at.is_(None),
+    ))).all()
+    if not assignments:
+        raise HTTPException(status_code=403, detail="Audit administrator access required")
+    if any(
+        role.role == "super_admin" or role.scope_type == "platform"
+        for role in assignments
+    ):
+        return None
+
+    department_ids = {role.scope_id for role in assignments
+                      if role.scope_type == "department" and role.scope_id}
+    recursive_ids = {role.scope_id for role in assignments
+                     if role.scope_type == "department" and role.scope_id
+                     and role.include_subdepartments}
+    if recursive_ids:
+        departments = (await session.scalars(select(DirectoryDepartment).where(
+            DirectoryDepartment.active == 1,
+        ))).all()
+        by_id = {row.id: row for row in departments}
+        children: dict[tuple[str, str], list[str]] = {}
+        for row in departments:
+            if row.parent_external_id:
+                children.setdefault(
+                    (row.source_id, row.parent_external_id), [],
+                ).append(row.id)
+        pending = list(recursive_ids)
+        while pending:
+            parent = by_id.get(pending.pop())
+            if parent is None:
+                continue
+            for child_id in children.get((parent.source_id, parent.external_id), []):
+                if child_id not in department_ids:
+                    department_ids.add(child_id)
+                    pending.append(child_id)
+
+    if not department_ids:
+        raise HTTPException(status_code=403, detail="Audit administrator scope unavailable")
+    member_users = select(DirectoryPerson.user_id).join(
+        DirectoryMembership,
+        DirectoryMembership.person_id == DirectoryPerson.id,
+    ).where(
+        DirectoryPerson.active == 1,
+        DirectoryMembership.department_id.in_(department_ids),
+    )
+    return or_(
+        AuditEvent.user_id.in_(member_users),
+        AuditEvent.initiated_by_user_id.in_(member_users),
+    )
+
+
 @router.get("")
 async def query_audit(
     request: Request,
@@ -157,8 +219,8 @@ async def query_audit(
     limit: int = Query(default=100, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ):
-    await _super_admin_read(request)
     async with request.app.state.database.session() as session:
+        scope = await _audit_scope(request, session)
         published = exists(select(PlatformProject.id).where(
             PlatformProject.device_id == AuditEvent.device_id,
             PlatformProject.host_project_id == AuditEvent.project_id,
@@ -166,6 +228,8 @@ async def query_audit(
             PlatformProject.status == "active",
         ))
         conditions = [or_(AuditEvent.project_id.is_(None), published)]
+        if scope is not None:
+            conditions.append(scope)
         if project_id:
             project = await session.get(PlatformProject, project_id)
             if (project is None or project.access_mode != "remote_published"

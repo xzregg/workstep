@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import hmac
+import json
 import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
@@ -287,7 +288,8 @@ class IdentityService:
         raise HTTPException(status_code=403, detail="Administrator scope does not cover this user")
 
     async def grant_role(self, actor_id: str, user_id: str, role: str,
-                         scope_type: str, scope_id: str | None) -> AdminAssignment:
+                         scope_type: str, scope_id: str | None,
+                         include_subdepartments: bool = True) -> AdminAssignment:
         async with self.database.session() as session:
             async with session.begin():
                 user = await session.get(User, user_id)
@@ -305,14 +307,36 @@ class IdentityService:
                     AdminAssignment.scope_id == scope_id if scope_id else AdminAssignment.scope_id.is_(None),
                     AdminAssignment.revoked_at.is_(None),
                 ))
+                scoped_children = int(
+                    scope_type == "department" and include_subdepartments
+                )
+                metadata = json.dumps({
+                    "user_id": user_id,
+                    "role": role,
+                    "scope_type": scope_type,
+                    "scope_id": scope_id or "",
+                }, sort_keys=True)
                 if existing:
+                    if existing.include_subdepartments != scoped_children:
+                        existing.include_subdepartments = scoped_children
+                        session.add(AuditEvent(
+                            id=str(uuid4()), user_id=actor_id,
+                            action="admin.role.update", result="success",
+                            metadata_json=metadata,
+                        ))
                     return existing
                 assignment = AdminAssignment(
                     id=str(uuid4()), user_id=user_id, role=role,
                     scope_type=scope_type, scope_id=scope_id,
+                    include_subdepartments=scoped_children,
                     granted_by_user_id=actor_id,
                 )
                 session.add(assignment)
+                session.add(AuditEvent(
+                    id=str(uuid4()), user_id=actor_id,
+                    action="admin.role.grant", result="success",
+                    metadata_json=metadata,
+                ))
                 return assignment
 
     async def reset_password(self, user_id: str, new_password: str) -> None:

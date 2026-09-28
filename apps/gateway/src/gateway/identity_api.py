@@ -70,9 +70,10 @@ class AdminCreateInput(AccountInput):
 
 
 class GrantRoleInput(BaseModel):
-    role: Literal["identity_admin", "skill_admin", "super_admin"]
+    role: Literal["identity_admin", "skill_admin", "audit_admin", "super_admin"]
     scope_type: Literal["platform", "department"] = "platform"
     scope_id: str | None = None
+    include_subdepartments: bool = True
 
     @model_validator(mode="after")
     def valid_scope(self):
@@ -240,9 +241,11 @@ async def admin_grant_role(request: Request, user_id: str, body: GrantRoleInput)
     await identity.require_step_up(auth_session)
     assignment = await identity.grant_role(
         actor.id, user_id, body.role, body.scope_type, body.scope_id,
+        body.include_subdepartments,
     )
     return {"id": assignment.id, "user_id": assignment.user_id, "role": assignment.role,
-            "scope_type": assignment.scope_type, "scope_id": assignment.scope_id}
+            "scope_type": assignment.scope_type, "scope_id": assignment.scope_id,
+            "include_subdepartments": bool(assignment.include_subdepartments)}
 
 
 @router.put("/admin/registration-policy")
