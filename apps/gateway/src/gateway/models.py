@@ -71,6 +71,88 @@ class AdminAssignment(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class IdentitySource(Base):
+    __tablename__ = "identity_sources"
+    __table_args__ = (UniqueConstraint("provider", "tenant_id"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32))
+    tenant_id: Mapped[str] = mapped_column(String(128))
+    client_id: Mapped[str] = mapped_column(String(256))
+    secret_env: Mapped[str] = mapped_column(String(128))
+    agent_id: Mapped[str | None] = mapped_column(String(128))
+    enabled: Mapped[int] = mapped_column(Integer, server_default="1")
+    created_at: Mapped[datetime] = timestamp()
+
+
+class ExternalIdentity(Base):
+    __tablename__ = "external_identities"
+    __table_args__ = (UniqueConstraint("source_id", "subject"), UniqueConstraint("source_id", "user_id"))
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("identity_sources.id"))
+    subject: Mapped[str] = mapped_column(String(256))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    display_name: Mapped[str] = mapped_column(String(256))
+    created_at: Mapped[datetime] = timestamp()
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ExternalLoginAttempt(Base):
+    __tablename__ = "external_login_attempts"
+
+    state_hash: Mapped[str] = mapped_column(String(128), primary_key=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("identity_sources.id"))
+    nonce: Mapped[str] = mapped_column(String(128))
+    binding_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    binding_session_id: Mapped[str | None] = mapped_column(ForeignKey("auth_sessions.id"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DirectoryDepartment(Base):
+    __tablename__ = "directory_departments"
+    __table_args__ = (UniqueConstraint("source_id", "external_id"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("identity_sources.id"))
+    external_id: Mapped[str] = mapped_column(String(256))
+    parent_external_id: Mapped[str | None] = mapped_column(String(256))
+    display_name: Mapped[str] = mapped_column(String(256))
+    active: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class DirectoryPerson(Base):
+    __tablename__ = "directory_people"
+    __table_args__ = (UniqueConstraint("source_id", "subject"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("identity_sources.id"))
+    subject: Mapped[str] = mapped_column(String(256))
+    display_name: Mapped[str] = mapped_column(String(256))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    active: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class DirectoryMembership(Base):
+    __tablename__ = "directory_memberships"
+    __table_args__ = (UniqueConstraint("person_id", "department_id"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    person_id: Mapped[str] = mapped_column(ForeignKey("directory_people.id"))
+    department_id: Mapped[str] = mapped_column(ForeignKey("directory_departments.id"))
+
+
+class DirectoryEventReceipt(Base):
+    __tablename__ = "directory_event_receipts"
+    __table_args__ = (UniqueConstraint("source_id", "event_id"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("identity_sources.id"))
+    event_id: Mapped[str] = mapped_column(String(256))
+    received_at: Mapped[datetime] = timestamp()
+
+
 class Device(Base):
     __tablename__ = "devices"
 

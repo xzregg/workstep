@@ -69,6 +69,22 @@ class AdminCreateInput(AccountInput):
     status: Literal["active", "pending"] = "active"
 
 
+class GrantRoleInput(BaseModel):
+    role: Literal["identity_admin", "super_admin"]
+    scope_type: Literal["platform", "department"] = "platform"
+    scope_id: str | None = None
+
+    @model_validator(mode="after")
+    def valid_scope(self):
+        if self.role == "super_admin" and self.scope_type != "platform":
+            raise ValueError("Super administrator must have platform scope")
+        return self
+
+
+class RegistrationPolicyInput(BaseModel):
+    mode: Literal["open", "open_with_approval", "closed"]
+
+
 def _identity(request: Request) -> IdentityService:
     return IdentityService(request.app.state.database)
 
@@ -110,6 +126,11 @@ async def register(request: Request, response: Response, body: AccountInput):
         _set_session_cookie(response, token)
         return {"user": public_user(user), "csrf_token": csrf_token(token)}
     return {"user": public_user(user)}
+
+
+@router.get("/auth/registration-policy")
+async def registration_policy(request: Request):
+    return {"mode": await _identity(request).registration_mode()}
 
 
 @router.post("/auth/login")
@@ -160,13 +181,27 @@ async def _super_admin_request(request: Request):
     identity = _identity(request)
     user, _ = await identity.session_user(token)
     _check_csrf(request, token)
+    if user.must_change_password:
+        raise HTTPException(status_code=403, detail="Password change required")
     await identity.require_super_admin(user.id)
+    return identity, user
+
+
+async def _user_manager_request(request: Request, target_user_id: str | None = None,
+                                platform_only: bool = False):
+    token = request.cookies.get(COOKIE_NAME)
+    identity = _identity(request)
+    user, _ = await identity.session_user(token)
+    _check_csrf(request, token)
+    if user.must_change_password:
+        raise HTTPException(status_code=403, detail="Password change required")
+    await identity.require_user_manager(user.id, target_user_id, platform_only)
     return identity, user
 
 
 @router.post("/admin/users", status_code=201)
 async def admin_create_user(request: Request, body: AdminCreateInput):
-    identity, actor = await _super_admin_request(request)
+    identity, actor = await _user_manager_request(request, platform_only=True)
     user = await identity.admin_create_user(
         body.username, body.display_name, body.password, body.status, actor.id,
     )
@@ -175,17 +210,39 @@ async def admin_create_user(request: Request, body: AdminCreateInput):
 
 @router.post("/admin/users/{user_id}/approve", status_code=204)
 async def admin_approve_user(request: Request, user_id: str):
-    identity, _ = await _super_admin_request(request)
+    identity, _ = await _user_manager_request(request, user_id)
     await identity.approve_user(user_id)
 
 
 @router.post("/admin/users/{user_id}/disable", status_code=204)
 async def admin_disable_user(request: Request, user_id: str):
-    identity, _ = await _super_admin_request(request)
+    identity, actor = await _user_manager_request(request, user_id)
     if await identity.is_super_admin(user_id):
+        await identity.require_super_admin(actor.id)
         _, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
         await identity.require_step_up(auth_session)
     await identity.disable_user(user_id)
+
+
+@router.post("/admin/users/{user_id}/roles", status_code=201)
+async def admin_grant_role(request: Request, user_id: str, body: GrantRoleInput):
+    identity, actor = await _super_admin_request(request)
+    _, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
+    await identity.require_step_up(auth_session)
+    assignment = await identity.grant_role(
+        actor.id, user_id, body.role, body.scope_type, body.scope_id,
+    )
+    return {"id": assignment.id, "user_id": assignment.user_id, "role": assignment.role,
+            "scope_type": assignment.scope_type, "scope_id": assignment.scope_id}
+
+
+@router.put("/admin/registration-policy")
+async def admin_set_registration_policy(request: Request, body: RegistrationPolicyInput):
+    identity, actor = await _super_admin_request(request)
+    _, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
+    await identity.require_step_up(auth_session)
+    await identity.set_registration_mode(body.mode, actor.id)
+    return {"mode": body.mode}
 
 
 @router.post("/admin/users/{user_id}/reset-password", status_code=204)

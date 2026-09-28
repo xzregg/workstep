@@ -14,7 +14,8 @@ from sqlalchemy import select, update, func
 from sqlalchemy.exc import IntegrityError
 
 from .database import GatewayDatabase
-from .models import AdminAssignment, AuthSession, PlatformSetting, User
+from .models import (AdminAssignment, AuditEvent, AuthSession, DirectoryDepartment,
+                     DirectoryMembership, DirectoryPerson, PlatformSetting, User)
 
 SESSION_SECONDS = 24 * 60 * 60
 COOKIE_NAME = "workstep_gateway_session"
@@ -37,8 +38,9 @@ def csrf_token(token: str) -> str:
     return hmac.new(token.encode(), b"workstep-gateway-csrf-v1", hashlib.sha256).hexdigest()
 
 
-def public_user(user: User) -> dict[str, str]:
-    return {"id": user.id, "username": user.username, "display_name": user.display_name, "status": user.status}
+def public_user(user: User) -> dict[str, str | bool]:
+    return {"id": user.id, "username": user.username, "display_name": user.display_name,
+            "status": user.status, "must_change_password": bool(user.must_change_password)}
 
 
 class IdentityService:
@@ -96,6 +98,10 @@ class IdentityService:
                         AdminAssignment(id=str(uuid4()), user_id=recovery.id, role="super_admin"),
                     ])
                     session.add(auth_session)
+                    session.add(AuditEvent(
+                        id=str(uuid4()), user_id=primary.id, action="admin.recovery_created",
+                        result="success", metadata_json=None,
+                    ))
         except IntegrityError as exc:
             raise HTTPException(status_code=409, detail="Platform already initialized") from exc
         return primary, token
@@ -106,6 +112,19 @@ class IdentityService:
             if setting is None:
                 raise HTTPException(status_code=503, detail="Platform not initialized")
             return setting.value_json.strip('"')
+
+    async def set_registration_mode(self, mode: str, actor_id: str) -> None:
+        async with self.database.session() as session:
+            async with session.begin():
+                setting = await session.get(PlatformSetting, "registration_mode")
+                if setting is None:
+                    raise HTTPException(status_code=503, detail="Platform not initialized")
+                setting.value_json = f'"{mode}"'
+                setting.updated_by_user_id = actor_id
+                session.add(AuditEvent(
+                    id=str(uuid4()), user_id=actor_id, action="admin.registration_policy_changed",
+                    result="success", metadata_json=None,
+                ))
 
     async def register(self, username: str, display_name: str, password: str) -> tuple[User, str | None]:
         mode = await self.registration_mode()
@@ -145,6 +164,11 @@ class IdentityService:
                 fresh_user.last_login_at = _now()
                 if _password_hasher.check_needs_rehash(user.password_hash):
                     fresh_user.password_hash = await self._hash_password(password)
+                if fresh_user.is_recovery:
+                    session.add(AuditEvent(
+                        id=str(uuid4()), user_id=fresh_user.id, action="auth.recovery_login",
+                        result="success", metadata_json=None,
+                    ))
         return user, token
 
     async def session_user(self, token: str | None) -> tuple[User, AuthSession]:
@@ -221,6 +245,62 @@ class IdentityService:
                 AdminAssignment.revoked_at.is_(None),
             ))
             return assignment is not None
+
+    async def require_user_manager(self, actor_id: str, target_user_id: str | None = None,
+                                   platform_only: bool = False) -> None:
+        async with self.database.session() as session:
+            assignments = (await session.scalars(select(AdminAssignment).where(
+                AdminAssignment.user_id == actor_id,
+                AdminAssignment.revoked_at.is_(None),
+            ))).all()
+            if any(assignment.role == "super_admin" for assignment in assignments):
+                return
+            for assignment in assignments:
+                if assignment.role != "identity_admin":
+                    continue
+                if assignment.scope_type == "platform":
+                    return
+                if platform_only or target_user_id is None or assignment.scope_type != "department":
+                    continue
+                member = await session.scalar(select(DirectoryMembership.id).join(
+                    DirectoryPerson, DirectoryMembership.person_id == DirectoryPerson.id,
+                ).where(
+                    DirectoryPerson.user_id == target_user_id,
+                    DirectoryPerson.active == 1,
+                    DirectoryMembership.department_id == assignment.scope_id,
+                ))
+                if member is not None:
+                    return
+        raise HTTPException(status_code=403, detail="Administrator scope does not cover this user")
+
+    async def grant_role(self, actor_id: str, user_id: str, role: str,
+                         scope_type: str, scope_id: str | None) -> AdminAssignment:
+        async with self.database.session() as session:
+            async with session.begin():
+                user = await session.get(User, user_id)
+                if user is None:
+                    raise HTTPException(status_code=404, detail="User not found")
+                if scope_type == "department":
+                    if not scope_id or await session.get(DirectoryDepartment, scope_id) is None:
+                        raise HTTPException(status_code=422, detail="Department scope not found")
+                elif scope_id is not None:
+                    raise HTTPException(status_code=422, detail="Platform scope cannot have an ID")
+                existing = await session.scalar(select(AdminAssignment).where(
+                    AdminAssignment.user_id == user_id,
+                    AdminAssignment.role == role,
+                    AdminAssignment.scope_type == scope_type,
+                    AdminAssignment.scope_id == scope_id if scope_id else AdminAssignment.scope_id.is_(None),
+                    AdminAssignment.revoked_at.is_(None),
+                ))
+                if existing:
+                    return existing
+                assignment = AdminAssignment(
+                    id=str(uuid4()), user_id=user_id, role=role,
+                    scope_type=scope_type, scope_id=scope_id,
+                    granted_by_user_id=actor_id,
+                )
+                session.add(assignment)
+                return assignment
 
     async def reset_password(self, user_id: str, new_password: str) -> None:
         password_hash = await self._hash_password(new_password)
