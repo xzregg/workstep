@@ -2754,9 +2754,10 @@ async def _wait_run_finished(run_id: str, timeout: float = 5.0) -> WorkflowRun:
 
 
 @pytest.mark.anyio
-async def test_cancel_orphaned_running_step_preserves_session_for_restart(tmp_path):
+async def test_cancel_orphaned_running_step_preserves_session_for_restart(tmp_path, monkeypatch):
     """停止失联 runner 时收尾持久状态，并从日志路径恢复已有会话。"""
-    from models import Message
+    from models import Message, ProjectAuditEvent
+    from services.remote_access import ActorSnapshot, actor_context
     from services.workflow_runtime import WorkflowRuntime
 
     db = init_db(str(tmp_path / "workstep.db"))
@@ -2842,7 +2843,23 @@ async def test_cancel_orphaned_running_step_preserves_session_for_restart(tmp_pa
         # 租约过期后才允许本实例将失联步骤收尾。
         WorkflowRun.update(heartbeat_at=1).where(WorkflowRun.id == run.id).execute()
         runtime._leases._leased_runs[run.id] = project.id
-        assert await runtime.cancel(task.id) is True
+        from services import project_audit
+
+        with monkeypatch.context() as patcher:
+            patcher.setattr(
+                project_audit, "record_project_audit",
+                lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("audit unavailable")),
+            )
+            with pytest.raises(RuntimeError, match="audit unavailable"):
+                await runtime.cancel_step(project.id, task.id, "do")
+        assert TaskStep.get_by_id((task.id, "do")).status == "running"
+        assert Task.get_by_id(task.id).status == "running"
+        with actor_context(ActorSnapshot(
+            actor_id="operator-2", user_name="Second operator",
+            device_id="device-2", device_name="Desktop", source="managed",
+            username="operator2",
+        )):
+            assert await runtime.cancel(task.id) is True
 
         step = TaskStep.get_by_id((task.id, "do"))
         assert step.status == "cancelled"
@@ -2860,6 +2877,14 @@ async def test_cancel_orphaned_running_step_preserves_session_for_restart(tmp_pa
 
         task = Task.get_by_id(task.id)
         assert task.status == "paused"
+        stop_event = ProjectAuditEvent.get(
+            (ProjectAuditEvent.task_id == task.id)
+            & (ProjectAuditEvent.action == "step.cancel")
+        )
+        assert stop_event.actor_username == "operator2"
+        assert stop_event.metadata_json == (
+            '{"status": "paused", "step_key": "do"}'
+        )
         run = WorkflowRun.get_by_id(run.id)
         assert run.status == "failed"
         assert run.owner_id is None
