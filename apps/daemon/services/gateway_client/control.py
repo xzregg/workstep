@@ -10,8 +10,10 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
+from workstep_gateway_protocol import FrameType, ProxyFrame
 
 from .policy import ManagedPolicyCache, verify_policy_snapshot
+from .bridge import ManagedHttpBridge
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +32,7 @@ def data_url(origin: str) -> str:
 class GatewayControlClient:
     def __init__(self, origin: str, *, gateway_id: str, public_key_fingerprint: str,
                  user_id: str, policy_cache: ManagedPolicyCache,
-                 connector=connect, heartbeat_seconds: float = 20):
+                 connector=connect, heartbeat_seconds: float = 20, asgi_app=None):
         self.url = control_url(origin)
         self.origin = origin
         self.gateway_id = gateway_id
@@ -39,6 +41,7 @@ class GatewayControlClient:
         self.policy_cache = policy_cache
         self.connector = connector
         self.heartbeat_seconds = heartbeat_seconds
+        self.asgi_app = asgi_app
         self.online = False
         self.authorization_required = False
         self._task: asyncio.Task | None = None
@@ -202,6 +205,7 @@ class GatewayControlClient:
             messages.put_nowait(exc)
 
     async def _run_data(self, device_id: str, token: str) -> None:
+        streams: dict[str, ManagedHttpBridge] = {}
         try:
             async with self.connector(data_url(self.origin), origin=self.origin,
                                       open_timeout=10, max_size=1024 * 1024) as socket:
@@ -209,9 +213,34 @@ class GatewayControlClient:
                 ready = json.loads(await asyncio.wait_for(socket.recv(), timeout=10))
                 if ready != {"kind": "data_ready", "version": 1, "device_id": device_id}:
                     raise ValueError("Invalid Gateway data connection acknowledgment")
+                send_lock = asyncio.Lock()
+                async def send_frame(frame: ProxyFrame):
+                    async with send_lock:
+                        await socket.send(frame.model_dump_json())
                 while not self._stop.is_set():
-                    await socket.recv()
+                    frame = ProxyFrame.model_validate_json(await socket.recv())
+                    bridge = streams.get(frame.stream_id)
+                    if frame.type == FrameType.http_request and frame.payload.get("phase") == "start":
+                        if self.asgi_app is None or bridge is not None or len(streams) >= 32:
+                            raise ValueError("Invalid managed data stream")
+                        bridge = ManagedHttpBridge(self.asgi_app, frame.stream_id,
+                                                   frame.payload, send_frame, device_id)
+                        streams[frame.stream_id] = bridge
+                        bridge.start_task()
+                    elif frame.type == FrameType.cancel:
+                        if bridge:
+                            bridge.cancel()
+                            streams.pop(frame.stream_id, None)
+                    elif frame.type == FrameType.http_request and bridge:
+                        await bridge.feed(frame)
+                        if bridge.done:
+                            streams.pop(frame.stream_id, None)
+                    else:
+                        raise ValueError("Invalid managed data frame")
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             logger.warning("Gateway data connection failed: %s", type(exc).__name__)
+        finally:
+            for bridge in streams.values():
+                bridge.cancel()

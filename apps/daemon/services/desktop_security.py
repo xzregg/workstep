@@ -85,18 +85,19 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
         protected = request.url.path.startswith(("/api/", "/docs", "/redoc", "/openapi.json"))
         gateway_client = getattr(request.app.state, "gateway_client", None)
         managed = gateway_client is not None and getattr(gateway_client, "managed_config", None) is not None
-        actor = None
+        actor = request.scope.get("gateway_remote_actor")
+        remote_bridge = actor is not None and managed
         invalid_origin = managed and protected and not _same_origin(
             request.headers.get("origin"), request.url.scheme, request.headers.get("host", ""),
-        )
+        ) and not remote_bridge
         if invalid_origin:
             response = JSONResponse({"detail": "invalid desktop origin"}, status_code=403)
         else:
-            if managed and protected and request.url.path not in ("/api/managed/bootstrap", "/api/health"):
+            if managed and protected and not remote_bridge and request.url.path not in ("/api/managed/bootstrap", "/api/health"):
                 actor = gateway_client.local_sessions.resolve(request.headers.get(LOCAL_SESSION_HEADER))
             denied = protected and (
-                not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER))
-                or (managed and request.url.path not in ("/api/managed/bootstrap", "/api/health") and actor is None)
+                (not remote_bridge and not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)))
+                or (managed and not remote_bridge and request.url.path not in ("/api/managed/bootstrap", "/api/health") and actor is None)
             )
             if denied:
                 response = JSONResponse(

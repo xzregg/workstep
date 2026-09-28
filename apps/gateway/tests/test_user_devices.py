@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 import base64
 import json
 from cryptography.hazmat.primitives import serialization
+from fastapi.responses import JSONResponse
 
 from gateway.app import create_app
 from gateway.config import GatewaySettings
@@ -84,7 +85,17 @@ def test_user_sees_only_assigned_pc_and_admin_can_revoke(tmp_path, monkeypatch):
         assert client.post(f"{remote_url}/api/remote/redeem",
                            data={"ticket": issued["ticket"]}).status_code == 409
         assert client.get(f"{remote_url}/api/remote/session").json()["device_id"] == "device-1"
-        assert client.get(f"{remote_url}/api/devices").status_code == 403
+        class FakeData:
+            async def proxy_http(self, request, *, user_id, username):
+                assert request.url.path == "/api/health"
+                assert user_id == claims["user_id"]
+                assert username == "alice"
+                return JSONResponse({"proxied": True})
+        async def request_data(device_id):
+            assert device_id == "device-1"
+            return FakeData()
+        monkeypatch.setattr(app.state.control_connections, "request_data", request_data)
+        assert client.get(f"{remote_url}/api/health").json() == {"proxied": True}
         assert client.get("https://d-device-2.gateway.test/api/remote/session").status_code == 403
         assert client.get("/api/devices").status_code == 200
         client.post("/api/auth/logout", headers={"X-CSRF-Token": alice.json()["csrf_token"]})
@@ -92,8 +103,13 @@ def test_user_sees_only_assigned_pc_and_admin_can_revoke(tmp_path, monkeypatch):
                                                    "password": "OwnerPassphrase-2026!"})
         headers = {"X-CSRF-Token": owner.json()["csrf_token"]}
         client.post("/api/auth/step-up", json={"password": "OwnerPassphrase-2026!"}, headers=headers)
+        closed = []
+        async def close_data(device_id):
+            closed.append(device_id)
+        monkeypatch.setattr(app.state.control_connections, "close_data", close_data)
         assert client.post(f"/api/admin/devices/device-1/users/{user_id}/revoke",
                            headers=headers).status_code == 204
+        assert closed == ["device-1"]
         client.post("/api/auth/logout", headers=headers)
         client.post("/api/auth/login", json={"username": "alice",
                                                "password": "AlicePassphrase-2026!"})

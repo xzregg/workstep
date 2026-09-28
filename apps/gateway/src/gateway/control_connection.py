@@ -8,6 +8,7 @@ import json
 import secrets
 import time
 from datetime import datetime, timezone
+from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
 import anyio
@@ -16,6 +17,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
+from fastapi.responses import StreamingResponse
+from workstep_gateway_protocol import FrameType, ProxyFrame
 
 from .models import Device, DeviceConnection, User, UserDevice
 from .capabilities import compiled_device_policy
@@ -205,6 +208,7 @@ class ControlConnections:
                 self._data_active.pop(connection.device_id, None)
         if connection.ready_future is not None and not connection.ready_future.done():
             connection.ready_future.set_exception(ConnectionError("Data connection closed"))
+        connection.fail_streams(ConnectionError("Data connection closed"))
 
     async def shutdown(self) -> None:
         async with self._lock:
@@ -238,12 +242,135 @@ class ControlConnections:
             except (RuntimeError, anyio.ClosedResourceError):
                 pass
 
+    async def close_data(self, device_id: str) -> None:
+        async with self._lock:
+            data = self._data_active.get(device_id)
+        if data:
+            try:
+                await data.socket.close(code=4003, reason="Device access changed")
+            except (RuntimeError, anyio.ClosedResourceError):
+                pass
+
 
 class DataConnection:
     def __init__(self, device_id: str, socket: WebSocket):
         self.device_id = device_id
         self.socket = socket
         self.ready_future: asyncio.Future | None = None
+        self._send_lock = asyncio.Lock()
+        self._streams: dict[str, asyncio.Queue] = {}
+
+    async def send_frame(self, frame: ProxyFrame) -> None:
+        async with self._send_lock:
+            await self.socket.send_json(frame.model_dump(mode="json"))
+
+    async def deliver(self, frame: ProxyFrame) -> None:
+        queue = self._streams.get(frame.stream_id)
+        if queue is not None:
+            await queue.put(frame)
+
+    def fail_streams(self, error: Exception) -> None:
+        for queue in self._streams.values():
+            try:
+                queue.put_nowait(error)
+            except asyncio.QueueFull:
+                pass
+
+    async def proxy_http(self, request, *, user_id: str, username: str):
+        stream_id = uuid4().hex
+        queue: asyncio.Queue = asyncio.Queue(maxsize=32)
+        self._streams[stream_id] = queue
+
+        async def upload():
+            headers = [[key.decode("latin1"), value.decode("latin1")]
+                       for key, value in request.scope["headers"]
+                       if key.lower() not in (b"host", b"cookie", b"connection",
+                                              b"x-workstep-actor-id", b"x-workstep-actor-name",
+                                              b"x-workstep-actor-device-id", b"x-workstep-actor-device-name")]
+            await self.send_frame(ProxyFrame(
+                stream_id=stream_id, type=FrameType.http_request,
+                payload={"phase": "start", "method": request.method,
+                         "path": request.url.path, "query": request.url.query,
+                         "headers": headers, "user_id": user_id, "username": username},
+            ))
+            async for chunk in request.stream():
+                for offset in range(0, len(chunk), 16384):
+                    await self.send_frame(ProxyFrame(
+                        stream_id=stream_id, type=FrameType.http_request,
+                        payload={"phase": "body", "data": base64.b64encode(
+                            chunk[offset:offset + 16384],
+                        ).decode()},
+                    ))
+            await self.send_frame(ProxyFrame(
+                stream_id=stream_id, type=FrameType.http_request, payload={"phase": "end"},
+            ))
+
+        upload_task = asyncio.create_task(upload())
+        try:
+            first = await asyncio.wait_for(queue.get(), timeout=30)
+            if isinstance(first, Exception):
+                raise first
+            if first.type != FrameType.http_response or first.payload.get("phase") != "start":
+                raise ValueError("Invalid proxy response")
+            status = first.payload.get("status")
+            if type(status) is not int or status < 100 or status > 599:
+                raise ValueError("Invalid proxy status")
+            response_headers = first.payload.get("headers", [])
+            if not isinstance(response_headers, list):
+                raise ValueError("Invalid proxy headers")
+
+            async def body():
+                try:
+                    while True:
+                        frame = await asyncio.wait_for(queue.get(), timeout=60)
+                        if isinstance(frame, Exception):
+                            raise frame
+                        if frame.type != FrameType.http_response:
+                            raise ValueError("Invalid proxy frame")
+                        phase = frame.payload.get("phase")
+                        if phase == "end":
+                            break
+                        if phase != "body":
+                            raise ValueError("Invalid proxy body frame")
+                        yield base64.b64decode(frame.payload["data"], validate=True)
+                finally:
+                    upload_task.cancel()
+                    self._streams.pop(stream_id, None)
+                    try:
+                        await self.send_frame(ProxyFrame(
+                            stream_id=stream_id, type=FrameType.cancel, payload={},
+                        ))
+                    except Exception:
+                        pass
+
+            response = StreamingResponse(body(), status_code=status)
+            remote_host = request.headers.get("host", "")
+            for pair in response_headers:
+                if (isinstance(pair, list) and len(pair) == 2
+                        and all(isinstance(item, str) for item in pair)
+                        and pair[0].lower() not in ("connection", "transfer-encoding",
+                                                    "content-length", "set-cookie",
+                                                    "content-security-policy",
+                                                    "access-control-allow-origin")):
+                    value = pair[1]
+                    if pair[0].lower() == "location":
+                        parsed = urlsplit(value)
+                        if parsed.hostname in ("127.0.0.1", "localhost"):
+                            value = urlunsplit(("https", remote_host, parsed.path,
+                                                parsed.query, parsed.fragment))
+                    response.headers.append(pair[0], value)
+            response.headers["Content-Security-Policy"] = "; ".join((
+                "default-src 'self'", "script-src 'self' 'unsafe-inline'",
+                "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob: https:",
+                "font-src 'self' data:", f"connect-src 'self' wss://{remote_host}",
+                "object-src 'none'", "base-uri 'self'", "form-action 'self'",
+                "frame-ancestors 'none'",
+            ))
+            return response
+        except Exception:
+            upload_task.cancel()
+            self._streams.pop(stream_id, None)
+            raise
 
 
 @router.websocket("/api/data/ws")
@@ -265,10 +392,18 @@ async def data_socket(ws: WebSocket):
         ws.app.state.control_connections.data_ready(connection)
         while True:
             message = await ws.receive_json()
-            if not isinstance(message, dict) or message.get("kind") != "heartbeat":
+            if isinstance(message, dict) and message.get("kind") == "heartbeat":
+                await ws.send_json({"kind": "heartbeat_ack", "version": 1})
+                continue
+            try:
+                frame = ProxyFrame.model_validate(message)
+            except Exception:
                 await ws.close(code=4400)
                 return
-            await ws.send_json({"kind": "heartbeat_ack", "version": 1})
+            if frame.type != FrameType.http_response:
+                await ws.close(code=4400)
+                return
+            await connection.deliver(frame)
     except (asyncio.TimeoutError, WebSocketDisconnect):
         pass
     finally:

@@ -22,7 +22,7 @@ from .client_releases import router as client_releases_router
 from .control_connection import ControlConnections, router as control_router
 from .capabilities import router as capabilities_router
 from .user_devices_api import router as user_devices_router
-from .remote_access_api import router as remote_access_router
+from .remote_access_api import router as remote_access_router, proxy_remote_request
 
 
 def create_app(settings: GatewaySettings | None = None) -> FastAPI:
@@ -67,9 +67,10 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
             suffix = f".{urlsplit(settings.public_origin).hostname}"
             if host.startswith("d-") and host.endswith(suffix):
                 if request.url.path not in ("/api/remote/redeem", "/api/remote/session"):
-                    return JSONResponse(status_code=403, content={
-                        "error": {"code": "unauthorized", "message": "Remote proxy unavailable"},
-                    })
+                    try:
+                        return await proxy_remote_request(request)
+                    except HTTPException as exc:
+                        return await http_error(request, exc)
         return await call_next(request)
 
     @app.exception_handler(HTTPException)
