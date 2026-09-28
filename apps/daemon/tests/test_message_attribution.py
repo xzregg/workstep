@@ -7,6 +7,46 @@ from services.remote_access import ActorSnapshot, actor_context
 from services.task import TaskService
 from streaming.bus import EventBus
 from datetime import timedelta
+from types import SimpleNamespace
+
+
+def test_scheduled_workflow_input_has_scheduler_author_and_creator_initiator(tmp_path):
+    from services.workflow_start import prepare_start_in_project
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    try:
+        now = utc_now()
+        task = Task.create(
+            id="scheduled-input", title="定时任务", cwd=str(tmp_path),
+            creator_id="creator-1", creator_username="alice",
+            creator_name="Alice", creator_device_id="device-1",
+            creator_device_name="Laptop", created_at=now, updated_at=now,
+        )
+        project = SimpleNamespace(
+            id="project-1", path=tmp_path,
+            workstep_dir=tmp_path / ".workstep",
+        )
+        prepared = prepare_start_in_project(
+            project, task.id, "定时启动文本", instance_id="daemon-1",
+            current_workflow_steps=lambda _project, _task: {
+                "nodes": [{"id": "do", "type": "do", "key": "do", "title": "执行"}],
+                "connections": [],
+            },
+            source="schedule",
+        )
+        message = prepared.user_message
+        assert message is not None
+        assert (message.author_id, message.author_username, message.author_name,
+                message.author_type) == (
+                    "scheduler", "scheduler", "定时任务", "scheduler",
+                )
+        assert (message.initiated_by_user_id, message.initiated_by_username) == (
+            "creator-1", "alice",
+        )
+        assert prepared.workflow_run.initiated_by_username == "alice"
+        assert prepared.workflow_run.initiated_by_name == "Alice"
+    finally:
+        db.close()
 
 
 def test_user_task_message_snapshots_current_actor_and_initiator(tmp_path):
