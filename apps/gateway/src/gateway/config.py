@@ -11,3 +11,10 @@ class GatewaySettings(BaseSettings):
     port: int = Field(default=8766, ge=1, le=65535)
     data_dir: Path = Path.home() / ".workstep-gateway"
     web_dist: Path | None = None
+    database_url: str | None = None
+
+    @property
+    def effective_database_url(self) -> str:
+        if self.database_url:
+            return self.database_url
+        return f"sqlite+aiosqlite:///{self.data_dir / 'workstep_platform.db'}"

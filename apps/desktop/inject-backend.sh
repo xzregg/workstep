@@ -8,5 +8,8 @@ source_dir="$repo_dir/build-artifacts/$platform_name/backend/main.dist"
 target_dir="$desktop_dir/resources-placeholder/backend"
 
 test -d "$source_dir"
-mkdir -p "$target_dir"
-cp -R "$source_dir/." "$target_dir/"
+stage_dir="$(mktemp -d "$desktop_dir/resources-placeholder/backend.stage.XXXXXX")"
+trap 'rm -rf "$stage_dir"' EXIT
+cp -R "$source_dir/." "$stage_dir/"
+rm -rf "$target_dir"
+mv "$stage_dir" "$target_dir"

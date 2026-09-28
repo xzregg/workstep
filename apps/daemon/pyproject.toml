@@ -19,6 +19,7 @@ dependencies = [
     "wecom-aibot-python-sdk>=1.0.2",
     "dingtalk-stream>=0.24.3",
     "workstep-gateway-protocol",
+    "cryptography>=43.0",
 ]
 
 [tool.uv.sources]

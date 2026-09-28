@@ -77,6 +77,44 @@
       "title": "Handshake",
       "type": "object"
     },
+    "ManagedGatewayPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "deployment_channel": {
+          "minLength": 1,
+          "title": "Deployment Channel",
+          "type": "string"
+        },
+        "gateway_id": {
+          "minLength": 1,
+          "title": "Gateway Id",
+          "type": "string"
+        },
+        "gateway_origin": {
+          "title": "Gateway Origin",
+          "type": "string"
+        },
+        "gateway_public_key_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Gateway Public Key Fingerprint",
+          "type": "string"
+        },
+        "min_protocol_version": {
+          "minimum": 1,
+          "title": "Min Protocol Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "gateway_id",
+        "gateway_origin",
+        "gateway_public_key_fingerprint",
+        "deployment_channel",
+        "min_protocol_version"
+      ],
+      "title": "ManagedGatewayPayload",
+      "type": "object"
+    },
     "ProxyFrame": {
       "$defs": {
         "FrameType": {
@@ -114,6 +152,65 @@
         "payload"
       ],
       "title": "ProxyFrame",
+      "type": "object"
+    },
+    "SignedManagedGatewayConfig": {
+      "$defs": {
+        "ManagedGatewayPayload": {
+          "additionalProperties": false,
+          "properties": {
+            "deployment_channel": {
+              "minLength": 1,
+              "title": "Deployment Channel",
+              "type": "string"
+            },
+            "gateway_id": {
+              "minLength": 1,
+              "title": "Gateway Id",
+              "type": "string"
+            },
+            "gateway_origin": {
+              "title": "Gateway Origin",
+              "type": "string"
+            },
+            "gateway_public_key_fingerprint": {
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Gateway Public Key Fingerprint",
+              "type": "string"
+            },
+            "min_protocol_version": {
+              "minimum": 1,
+              "title": "Min Protocol Version",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "gateway_id",
+            "gateway_origin",
+            "gateway_public_key_fingerprint",
+            "deployment_channel",
+            "min_protocol_version"
+          ],
+          "title": "ManagedGatewayPayload",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "payload": {
+          "$ref": "#/$defs/ManagedGatewayPayload"
+        },
+        "signature": {
+          "minLength": 1,
+          "title": "Signature",
+          "type": "string"
+        }
+      },
+      "required": [
+        "payload",
+        "signature"
+      ],
+      "title": "SignedManagedGatewayConfig",
       "type": "object"
     }
   },
