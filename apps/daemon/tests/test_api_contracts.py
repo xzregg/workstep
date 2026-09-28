@@ -561,6 +561,75 @@ async def test_project_only_remote_actor_creates_task_in_host_project(api_contex
 
 
 @pytest.mark.anyio
+async def test_project_proxy_files_stay_inside_project_and_slow_upload_does_not_block_health(
+        api_context, monkeypatch):
+    import base64
+    import main
+    from services.gateway_client.bridge import ManagedHttpBridge
+    from workstep_gateway_protocol import FrameType, ProxyFrame
+    from urllib.parse import urlencode
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "shared-files"
+    project_dir.mkdir()
+    project_id = (await client.post("/api/project/init", json={
+        "path": str(project_dir),
+    })).json()["id"]
+    inside = project_dir / "README.txt"
+    inside.write_text("visible")
+    outside = tmp_path / "private.txt"
+    outside.write_text("secret")
+    monkeypatch.setattr(main.gateway_client, "managed_config", object())
+
+    async def call_bridge(method, path, query, *, level="read", body=None):
+        frames = []
+        async def capture(frame):
+            frames.append(frame)
+        bridge = ManagedHttpBridge(main.app, "file-stream", {
+            "method": method, "path": path, "query": query,
+            "headers": [["content-type", "application/json"]] if body else [],
+            "user_id": "worker", "username": "Worker", "project_id": project_id,
+            "access_level": level,
+        }, capture, "device-1")
+        bridge.start_task()
+        if body is not None:
+            await bridge.feed(ProxyFrame(stream_id="file-stream", type=FrameType.http_request,
+                                         payload={"phase": "body", "data": base64.b64encode(
+                                             json.dumps(body).encode()).decode()}))
+        await bridge.feed(ProxyFrame(stream_id="file-stream", type=FrameType.http_request,
+                                     payload={"phase": "end"}))
+        await asyncio.wait_for(bridge._task, timeout=3)
+        return frames
+
+    inside_query = urlencode({"project_id": project_id, "path": str(inside)})
+    inside_frames = await call_bridge("GET", "/api/fs/file", inside_query)
+    assert inside_frames[0].payload["status"] == 200
+    outside_query = urlencode({"project_id": project_id, "path": str(outside)})
+    assert (await call_bridge("GET", "/api/fs/file", outside_query))[0].payload["status"] == 403
+    assert (await call_bridge("GET", "/api/fs/preview", urlencode({
+        "project_id": project_id, "path": str(outside), "absolute": "true",
+    })))[0].payload["status"] == 403
+    upload_query = urlencode({"project_id": project_id})
+    upload_body = {"data_url": "data:image/png;base64,aGVsbG8="}
+    assert (await call_bridge("POST", "/api/fs/upload/image", upload_query,
+                              body=upload_body))[0].payload["status"] == 403
+
+    original_write = Path.write_bytes
+    entered = threading.Event()
+    def slow_upload(path, data):
+        if ".workstep/uploads" in str(path):
+            entered.set()
+            time.sleep(0.25)
+        return original_write(path, data)
+    monkeypatch.setattr(Path, "write_bytes", slow_upload)
+    pending = asyncio.create_task(call_bridge("POST", "/api/fs/upload/image", upload_query,
+                                              level="edit", body=upload_body))
+    assert await asyncio.to_thread(entered.wait, 1)
+    assert (await asyncio.wait_for(client.get("/api/health"), timeout=0.15)).status_code == 200
+    assert (await pending)[0].payload["status"] == 200
+
+
+@pytest.mark.anyio
 async def test_single_project_summary_hides_host_path_and_keeps_health_responsive(
         api_context, monkeypatch):
     from main import project_manager

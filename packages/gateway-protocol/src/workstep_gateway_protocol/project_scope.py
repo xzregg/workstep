@@ -18,6 +18,8 @@ _CHAT_SESSION_DETAIL = re.compile(r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}\Z")
 _CHAT_MESSAGE_EVENTS = re.compile(
     r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}/messages/"
     r"[A-Za-z0-9_-]{1,128}/events\Z")
+_UPLOAD_FILE = re.compile(r"/api/fs/serve/[A-Za-z0-9_.-]{1,256}\Z")
+_PROJECT_RAW = re.compile(r"/api/fs/project-raw/[A-Za-z0-9_-]{1,128}/.+\Z")
 
 
 def project_http_route_allowed(method: str, path: str,
@@ -31,6 +33,8 @@ def project_http_route_allowed(method: str, path: str,
             return False
         if path == "/api/task/create":
             return task_create
+        if path in ("/api/fs/upload/file", "/api/fs/upload/image"):
+            return True
         return path in ("/api/task/run", "/api/task/pause", "/api/task/cancel")
     if method != "GET":
         return False
@@ -44,6 +48,21 @@ def project_http_route_allowed(method: str, path: str,
     values = [value for key, value in query_pairs if key == "project_id"]
     if values != [project_id]:
         return False
+    if path == "/api/fs/browse":
+        return all(key in ("project_id", "path", "include_hidden")
+                   for key, _ in query_pairs)
+    if path == "/api/fs/search":
+        return all(key in ("project_id", "query", "root", "limit", "include_hidden")
+                   for key, _ in query_pairs)
+    if path == "/api/fs/file":
+        return all(key in ("project_id", "path") for key, _ in query_pairs)
+    if path == "/api/fs/preview" or _PROJECT_RAW.fullmatch(path):
+        return all(key in ("project_id", "path", "absolute")
+                   for key, _ in query_pairs) and all(
+                       value in ("false", "False", "0") for key, value in query_pairs
+                       if key == "absolute")
+    if path.startswith("/api/fs/raw/") or _UPLOAD_FILE.fullmatch(path):
+        return len(query_pairs) == 1
     if path == "/api/task/list":
         return all(key in ("project_id", "workflow_id", "archived")
                    for key, _ in query_pairs)
