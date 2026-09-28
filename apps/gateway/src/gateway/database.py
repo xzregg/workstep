@@ -18,7 +18,7 @@ from .config import GatewaySettings
 from .models import PlatformSetting
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
-HEAD_REVISION = "0009_client_releases"
+HEAD_REVISION = "0010_connection_policy"
 
 
 def safe_database_location(url: str) -> tuple[str, str]:

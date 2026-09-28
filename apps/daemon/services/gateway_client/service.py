@@ -5,6 +5,7 @@ from pathlib import Path
 from .managed_config import InvalidManagedGatewayConfig, load_managed_config
 from .identity import ManagedAuthorizationVerifier, ManagedLocalSessions
 from .control import GatewayControlClient
+from .policy import ManagedPolicyCache
 
 
 class GatewayClientService:
@@ -16,6 +17,7 @@ class GatewayClientService:
         self.local_sessions = ManagedLocalSessions()
         self.control_client = None
         self.control_client_factory = control_client_factory
+        self.policy_cache = ManagedPolicyCache()
 
     async def start(self) -> None:
         bundle_dir = os.environ.get("WORKSTEP_MANAGED_BUNDLE_DIR")
@@ -42,7 +44,16 @@ class GatewayClientService:
         actor = await self.verifier.verify(authorization, proof)
         if self.control_client is not None:
             await self.control_client.stop()
-        self.control_client = self.control_client_factory(self.managed_config.gateway_origin)
+        if self.policy_cache.current and (
+                self.policy_cache.current.user_id != actor.user_id
+                or self.policy_cache.current.device_id != actor.device_id):
+            self.policy_cache.clear()
+        self.control_client = self.control_client_factory(
+            self.managed_config.gateway_origin,
+            gateway_id=self.managed_config.gateway_id,
+            public_key_fingerprint=self.managed_config.gateway_public_key_fingerprint,
+            user_id=actor.user_id, policy_cache=self.policy_cache,
+        )
         self.control_client.start(
             authorization, actor.device_id, control_private_key_pem,
             control_public_key_pem, delegation_signature,
@@ -53,4 +64,5 @@ class GatewayClientService:
         if self.control_client is not None:
             await self.control_client.stop()
             self.control_client = None
+        self.policy_cache.clear()
         self.local_sessions.clear()

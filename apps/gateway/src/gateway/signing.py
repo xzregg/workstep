@@ -65,3 +65,18 @@ class GatewaySigner:
         }, separators=(",", ":"), sort_keys=True).encode())
         signing_input = f"{header}.{payload}"
         return f"{signing_input}.{_b64(self.private_key.sign(signing_input.encode()))}"
+
+    def sign_policy_snapshot(self, *, gateway_id: str, device_id: str, user_id: str,
+                             revision: int = 0, ttl_seconds: int = 600) -> str:
+        now = int(time.time())
+        header = _b64(json.dumps({"alg": "EdDSA", "typ": "JWT"}, separators=(",", ":")).encode())
+        payload = _b64(json.dumps({
+            "iss": gateway_id, "kind": "policy.snapshot", "gateway_id": gateway_id,
+            "device_id": device_id, "user_id": user_id,
+            "policy_revision": revision, "iat": now, "exp": now + ttl_seconds,
+            "allowed_provider_ids": [], "allowed_models": [],
+            "allow_local_providers": False, "task_create": False,
+            "project_publish": False, "task_share": False, "engine_install": False,
+        }, separators=(",", ":"), sort_keys=True).encode())
+        signing_input = f"{header}.{payload}"
+        return f"{signing_input}.{_b64(self.private_key.sign(signing_input.encode()))}"

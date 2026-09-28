@@ -1,5 +1,7 @@
 import base64
 import hashlib
+import json
+import sqlite3
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -82,6 +84,20 @@ def test_control_socket_authenticates_device_and_tracks_connection(tmp_path):
             hello = ws.receive_json()
             assert hello["kind"] == "hello"
             assert hello["device_id"] == device_id
+            assert hello["policy_snapshot"]
+            signing_input = ".".join(hello["policy_snapshot"].split(".")[:2]).encode()
+            signature = base64.urlsafe_b64decode(hello["policy_snapshot"].split(".")[2] + "==")
+            serialization.load_pem_public_key(hello["gateway_public_key_pem"].encode()).verify(
+                signature, signing_input,
+            )
+            policy = json.loads(base64.urlsafe_b64decode(hello["policy_snapshot"].split(".")[1] + "=="))
+            assert policy["device_id"] == device_id
+            assert policy["user_id"]
+            assert policy["allow_local_providers"] is False
+            ws.send_json({"kind": "policy_applied", "revision": policy["policy_revision"]})
+            assert ws.receive_json()["kind"] == "policy_applied_ack"
+            with sqlite3.connect(tmp_path / "workstep_platform.db") as database:
+                assert database.execute("SELECT applied_policy_revision FROM device_connections").fetchone() == (0,)
             listed = client.get("/api/admin/devices", headers={"X-CSRF-Token": csrf}).json()["devices"]
             assert listed[0]["online"] is True
             ws.send_json({"kind": "heartbeat"})
@@ -131,3 +147,21 @@ def test_device_revocation_closes_existing_control_socket(tmp_path):
                 assert False, "Revoked device must be rejected"
             except WebSocketDisconnect as exc:
                 assert exc.code == 4401
+
+
+def test_disabled_account_stops_policy_renewal(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        device_id, token, device_key, _ = _active_device(client)
+        user_id = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))["user_id"]
+        with client.websocket_connect("/api/control/ws") as ws:
+            _handshake(ws, token, device_key)
+            assert ws.receive_json()["kind"] == "hello"
+            with sqlite3.connect(tmp_path / "workstep_platform.db") as database:
+                database.execute("UPDATE users SET status='disabled' WHERE id=?", (user_id,))
+            ws.send_json({"kind": "heartbeat"})
+            try:
+                ws.receive_json()
+                assert False, "Disabled account must not renew policy"
+            except WebSocketDisconnect as exc:
+                assert exc.code == 4003

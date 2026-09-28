@@ -28,7 +28,20 @@ def _decode(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + "===")
 
 
-async def authenticate_device(ws: WebSocket, message: dict, nonce: str) -> str:
+async def binding_active(ws: WebSocket, device_id: str, user_id: str) -> bool:
+    async with ws.app.state.database.session() as session:
+        device = await session.get(Device, device_id)
+        user = await session.get(User, user_id)
+        assignment = await session.scalar(select(UserDevice).where(
+            UserDevice.device_id == device_id,
+            UserDevice.user_id == user_id,
+            UserDevice.revoked_at.is_(None),
+        ))
+    return bool(device and device.status == "active" and user and user.status == "active"
+                and assignment)
+
+
+async def authenticate_device(ws: WebSocket, message: dict, nonce: str) -> tuple[str, str]:
     token = message.get("authorization")
     delegation = message.get("control_delegation_signature")
     challenge_proof = message.get("control_challenge_proof")
@@ -85,7 +98,7 @@ async def authenticate_device(ws: WebSocket, message: dict, nonce: str) -> str:
             or device.app_instance_id != claims.get("app_instance_id")
             or not user or user.status != "active" or not assignment):
         raise ValueError("Device or user unavailable")
-    return device_id
+    return device_id, user.id
 
 
 class ControlConnections:
@@ -136,6 +149,7 @@ class ControlConnections:
 async def control_socket(ws: WebSocket):
     await ws.accept()
     device_id = None
+    user_id = None
     connection_id = None
     try:
         try:
@@ -144,7 +158,7 @@ async def control_socket(ws: WebSocket):
             hello = await asyncio.wait_for(ws.receive_json(), timeout=5)
             if not isinstance(hello, dict):
                 raise ValueError("Invalid handshake")
-            device_id = await authenticate_device(ws, hello, nonce)
+            device_id, user_id = await authenticate_device(ws, hello, nonce)
         except (ValueError, asyncio.TimeoutError):
             await ws.close(code=4401)
             return
@@ -153,17 +167,49 @@ async def control_socket(ws: WebSocket):
             async with session.begin():
                 session.add(DeviceConnection(id=connection_id, device_id=device_id))
         await ws.app.state.control_connections.claim(device_id, connection_id, ws)
-        await ws.send_json({"kind": "hello", "version": 1, "device_id": device_id})
+        signer = ws.app.state.gateway_signer
+        policy = signer.sign_policy_snapshot(
+            gateway_id=ws.app.state.settings.gateway_id,
+            device_id=device_id, user_id=user_id,
+        )
+        await ws.send_json({"kind": "hello", "version": 1, "device_id": device_id,
+                            "gateway_public_key_pem": signer.public_key_pem,
+                            "policy_snapshot": policy})
+        policy_revision = 0
         while True:
             try:
                 message = await asyncio.wait_for(ws.receive_json(), timeout=90)
             except asyncio.TimeoutError:
                 await ws.close(code=4001, reason="Heartbeat timeout")
                 return
-            if not isinstance(message, dict) or message.get("kind") != "heartbeat":
+            if not isinstance(message, dict):
                 await ws.close(code=4400, reason="Invalid control message")
                 return
-            await ws.send_json({"kind": "heartbeat_ack", "version": 1, "device_id": device_id})
+            if message.get("kind") == "policy_applied":
+                revision = message.get("revision")
+                if type(revision) is not int or revision < 0 or revision > policy_revision:
+                    await ws.close(code=4400, reason="Invalid policy revision")
+                    return
+                async with ws.app.state.database.session() as session:
+                    connection = await session.get(DeviceConnection, connection_id)
+                    if connection:
+                        connection.applied_policy_revision = revision
+                        await session.commit()
+                await ws.send_json({"kind": "policy_applied_ack", "version": 1,
+                                    "device_id": device_id, "revision": revision})
+                continue
+            if message.get("kind") != "heartbeat":
+                await ws.close(code=4400, reason="Invalid control message")
+                return
+            if not await binding_active(ws, device_id, user_id):
+                await ws.close(code=4003, reason="Device access revoked")
+                return
+            policy = signer.sign_policy_snapshot(
+                gateway_id=ws.app.state.settings.gateway_id,
+                device_id=device_id, user_id=user_id,
+            )
+            await ws.send_json({"kind": "heartbeat_ack", "version": 1,
+                                "device_id": device_id, "policy_snapshot": policy})
     except WebSocketDisconnect:
         pass
     finally:
