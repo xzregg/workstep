@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from settings import settings
 from services.engine_packages import prepare_engine_package_dir
 from services.gateway_client import GatewayClientService
+from api.managed import router as managed_router
 
 prepare_engine_package_dir()
 
@@ -226,6 +227,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="WorkStep Daemon", lifespan=lifespan, favicon_url="/static/favicon.svg")
+app.state.gateway_client = gateway_client
+app.include_router(managed_router)
 instrument_fastapi(app)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.add_middleware(DesktopSecurityMiddleware)

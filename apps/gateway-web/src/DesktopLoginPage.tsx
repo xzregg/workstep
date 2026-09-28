@@ -1,0 +1,129 @@
+import { useEffect, useState } from 'react'
+import type { FormEvent } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+
+type DesktopRequest = {
+  gateway_id: string
+  app_instance_id: string
+  state: string
+  nonce: string
+  code_challenge: string
+}
+
+export function parseDesktopRequest(search: string): DesktopRequest | null {
+  const params = new URLSearchParams(search)
+  const keys = ['gateway_id', 'app_instance_id', 'state', 'nonce', 'code_challenge'] as const
+  if ([...params].length !== keys.length) return null
+  if (keys.some((key) => params.get(key) === null)) return null
+  const values = Object.fromEntries(keys.map((key) => [key, params.get(key)])) as DesktopRequest
+  if (!values.gateway_id || !values.app_instance_id
+      || values.state.length < 32 || values.nonce.length < 32
+      || !/^[A-Za-z0-9_-]{43}$/.test(values.code_challenge)) return null
+  return values
+}
+
+export function DesktopLoginPage() {
+  const [searchParams] = useSearchParams()
+  const request = parseDesktopRequest(searchParams.toString())
+  const [status, setStatus] = useState<'checking' | 'login' | 'ready' | 'submitting'>('checking')
+  const [csrf, setCsrf] = useState<string | null>(null)
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!request) return
+    const controller = new AbortController()
+    void fetch('/api/auth/session', { credentials: 'same-origin', signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) {
+          setStatus('login')
+          return
+        }
+        const result = await response.json()
+        setCsrf(result.csrf_token)
+        setStatus('ready')
+      })
+      .catch((reason) => {
+        if (reason?.name !== 'AbortError') setStatus('login')
+      })
+    return () => controller.abort()
+  }, [request?.state])
+
+  async function authorize(token: string) {
+    if (!request) return
+    setStatus('submitting')
+    setError('')
+    try {
+      const response = await fetch('/api/desktop/authorize', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
+        body: JSON.stringify(request),
+      })
+      if (!response.ok) throw new Error('桌面端授权失败，请重新登录后再试。')
+      const result = await response.json()
+      if (typeof result.callback_url !== 'string'
+          || !result.callback_url.startsWith('workstep://auth/callback?')) {
+        throw new Error('授权回调无效。')
+      }
+      window.location.assign(result.callback_url)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '授权失败，请重试。')
+      setStatus('ready')
+    }
+  }
+
+  async function signIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!username.trim() || !password) return
+    setStatus('submitting')
+    setError('')
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim(), password }),
+      })
+      if (!response.ok) throw new Error('用户名或密码不正确，或账号尚未获准登录。')
+      const result = await response.json()
+      setCsrf(result.csrf_token)
+      await authorize(result.csrf_token)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '登录失败，请重试。')
+      setStatus('login')
+    }
+  }
+
+  if (!request) return (
+    <section className="gateway-auth-card">
+      <h2>登录请求无效</h2>
+      <p>请从 WorkStep 桌面端重新发起登录。</p>
+      <Link to="/">返回工作台</Link>
+    </section>
+  )
+
+  return (
+    <section className="gateway-auth-card">
+      <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY</span>
+      <h2>WorkStep 桌面端登录</h2>
+      <p className="gateway-auth-description">登录后授权当前电脑访问所属工作空间。</p>
+      {status === 'checking' && <p role="status">正在检查登录状态…</p>}
+      {status === 'login' && (
+        <form onSubmit={(event) => void signIn(event)} className="gateway-auth-form">
+          <label htmlFor="gateway-username">用户名</label>
+          <input id="gateway-username" autoComplete="username" value={username}
+            onChange={(event) => setUsername(event.target.value)} />
+          <label htmlFor="gateway-password">密码</label>
+          <input id="gateway-password" type="password" autoComplete="current-password" value={password}
+            onChange={(event) => setPassword(event.target.value)} />
+          <button type="submit" disabled={!username.trim() || !password}>登录并继续</button>
+        </form>
+      )}
+      {status === 'ready' && <button type="button" onClick={() => csrf && void authorize(csrf)}>
+        在此电脑上继续
+      </button>}
+      {status === 'submitting' && <p role="status">正在完成授权…</p>}
+      {error && <p className="gateway-auth-error" role="alert">{error}</p>}
+    </section>
+  )
+}
