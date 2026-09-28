@@ -2840,6 +2840,7 @@ dependencies = [
     { name = "uvicorn", extra = ["standard"] },
     { name = "websockets" },
     { name = "wecom-aibot-python-sdk" },
+    { name = "workstep-gateway-protocol" },
 ]
 
 [package.dev-dependencies]
@@ -2868,6 +2869,7 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
     { name = "websockets", specifier = ">=15.0" },
     { name = "wecom-aibot-python-sdk", specifier = ">=1.0.2" },
+    { name = "workstep-gateway-protocol", editable = "../../packages/gateway-protocol" },
 ]
 
 [package.metadata.requires-dev]
@@ -2877,6 +2879,20 @@ dev = [
     { name = "pytest-timeout", specifier = ">=2.4.0" },
 ]
 qoder = [{ name = "qoder-agent-sdk", specifier = ">=1.0.11" }]
+
+[[package]]
+name = "workstep-gateway-protocol"
+version = "0.1.0"
+source = { editable = "../../packages/gateway-protocol" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.0" }]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.0" }]
 
 [[package]]
 name = "wrapt"

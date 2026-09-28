@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "workstep-gateway"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "pydantic-settings>=2.0",
+    "workstep-gateway-protocol",
+]
+
+[tool.uv.sources]
+workstep-gateway-protocol = { path = "../../packages/gateway-protocol", editable = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gateway"]
+
+[dependency-groups]
+dev = ["pytest>=8.0", "httpx>=0.27"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

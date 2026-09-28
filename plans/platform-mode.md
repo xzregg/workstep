@@ -10,6 +10,7 @@
 
 - [平台网关模式架构图](./platform-gateway-architecture.html)
 - [Gateway 注册、组织、用户与设备接入交互原型](./gateway-prototype.html)
+- [逐阶段开发计划与验收门](./platform-gateway-development.md)
 
 本计划的核心目标：
 
@@ -1333,6 +1334,8 @@ Gateway 远程项目：
 ## 11. 实施阶段与验证
 
 全程采用测试先行方式。每一阶段先增加失败测试，再实现最小功能使测试通过。
+
+各阶段的依赖顺序、开发任务、接口边界与交付判据见[逐阶段开发计划](./platform-gateway-development.md)；本节保留总体阶段摘要。
 
 ### 阶段 0：独立应用骨架与协议边界
 

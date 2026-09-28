@@ -24,5 +24,6 @@
 - [业务域代码优化路线图](codebase-optimization-roadmap.md) — 按任务、流程、助手、引擎和平台业务边界治理仍较大的源码文件。
 - [快捷按钮与 Action 执行方案](action-shortcuts.md) — 项目/流程快捷按钮、任务工作区、脚本执行与停止机制。
 - [平台模式](platform-mode.md) — 尚未实现，不属于当前产品能力。
+- [Gateway 平台模式逐阶段开发计划](platform-gateway-development.md) — 平台模式各阶段的开发任务、接口边界与验收门。
 
 每份记录开头必须声明状态。行为发生变化时，优先更新 `docs/` 的现行说明，并在对应记录中注明历史内容不再是当前契约。
