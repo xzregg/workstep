@@ -307,6 +307,7 @@ class CoordinatorModule:
         if not created:
             return accepted
         await self._publish_message_event(
+            project_id,
             task_id,
             user_message,
             "message_started",
@@ -721,6 +722,7 @@ class CoordinatorModule:
 
             try:
                 await self._publish_message_event(
+                    project_id,
                     task_id,
                     assistant,
                     "message_started",
@@ -744,6 +746,7 @@ class CoordinatorModule:
                         )
                         if is_commentary(event):
                             await self._publish_message_event(
+                                project_id,
                                 task_id, assistant, event.type, event.data, live_event_sequence,
                             )
                             live_event_sequence += 1
@@ -758,6 +761,7 @@ class CoordinatorModule:
                                 return
                             streamed_reply = partial_reply
                             await self._publish_message_event(
+                                project_id,
                                 task_id,
                                 assistant,
                                 "agent_message_chunk",
@@ -781,6 +785,7 @@ class CoordinatorModule:
                             "session_started",
                         }:
                             await self._publish_message_event(
+                                project_id,
                                 task_id,
                                 assistant,
                                 event.type,
@@ -910,6 +915,7 @@ class CoordinatorModule:
                 )
 
                 await self._publish_message_event(
+                    project_id,
                     task_id,
                     assistant,
                     "message_snapshot",
@@ -927,6 +933,7 @@ class CoordinatorModule:
                 next_event_sequence = live_event_sequence
                 if usage_event is not None:
                     await self._publish_message_event(
+                        project_id,
                         task_id,
                         assistant,
                         "usage",
@@ -936,6 +943,7 @@ class CoordinatorModule:
                     next_event_sequence += 1
                 if proposal is not None:
                     await self._publish_message_event(
+                        project_id,
                         task_id,
                         assistant,
                         "action_proposal",
@@ -944,6 +952,7 @@ class CoordinatorModule:
                     )
                     next_event_sequence += 1
                 await self._publish_message_event(
+                    project_id,
                     task_id,
                     assistant,
                     "message_completed",
@@ -969,6 +978,7 @@ class CoordinatorModule:
                     ),
                 )
                 await self._publish_message_event(
+                    project_id,
                     task_id,
                     assistant,
                     "message_snapshot",
@@ -976,6 +986,7 @@ class CoordinatorModule:
                     1,
                 )
                 await self._publish_message_event(
+                    project_id,
                     task_id,
                     assistant,
                     "message_completed",
@@ -1499,6 +1510,7 @@ class CoordinatorModule:
 
     async def _publish_message_event(
         self,
+        project_id: str,
         task_id: str,
         message: Message,
         event_type: str,
@@ -1508,6 +1520,7 @@ class CoordinatorModule:
         """发布出口：内部事件 → AG-UI 标准事件后推送。"""
         payload = {
             "event_id": str(uuid.uuid4()),
+            "project_id": project_id,
             "task_id": task_id,
             "channel": message.channel,
             "message_id": message.id,
@@ -1639,6 +1652,7 @@ class CoordinatorModule:
         if assistant is None:
             return
         await self._publish_message_event(
+            project_id,
             task_id,
             assistant,
             "message_snapshot",
@@ -1646,6 +1660,7 @@ class CoordinatorModule:
             1,
         )
         await self._publish_message_event(
+            project_id,
             task_id,
             assistant,
             "message_completed",
