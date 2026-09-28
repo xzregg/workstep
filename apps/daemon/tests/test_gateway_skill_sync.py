@@ -196,3 +196,48 @@ async def test_control_reports_skill_application_and_checks_ack():
                                        "gateway-key", "device-1")
     assert socket.sent["kind"] == "skill_applied"
     assert socket.sent["projects"][0]["project_id"] == "platform-1"
+
+
+@pytest.mark.asyncio
+async def test_slow_skill_disk_apply_keeps_event_loop_responsive(tmp_path, monkeypatch):
+    import asyncio
+    import threading
+    import services.gateway_client.skill_sync_client as sync_client
+
+    key = Ed25519PrivateKey.generate()
+    public = key.public_key()
+    pem = public.public_bytes(serialization.Encoding.PEM,
+                              serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+    pin = hashlib.sha256(public.public_bytes(
+        serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo,
+    )).hexdigest()
+    raw = _archive({"SKILL.md": "# Review"})
+    token = _signed_manifest(key, [{
+        "platform_project_id": "platform-1", "host_project_id": "host-1",
+        "revision": 1, "skills": [_skill(raw)],
+    }])
+    started = threading.Event()
+    finish = threading.Event()
+    original = sync_client.apply_project_skills
+
+    def slow_apply(*args):
+        started.set()
+        assert finish.wait(timeout=3)
+        return original(*args)
+
+    monkeypatch.setattr(sync_client, "apply_project_skills", slow_apply)
+    async def fetch(_version_id, _token):
+        return raw
+    service = ManagedSkillSyncService(
+        "https://gateway.test", project_lookup=lambda _project_id:
+        SimpleNamespace(path=tmp_path / "project"), fetcher=fetch,
+    )
+    task = asyncio.create_task(service.apply_manifest(
+        token, pem, pin, "gateway-test", "device-1", "user-1",
+    ))
+    try:
+        assert await asyncio.to_thread(started.wait, 2)
+        await asyncio.wait_for(asyncio.sleep(0.01), timeout=0.05)
+    finally:
+        finish.set()
+    assert (await task)[0]["status"] == "applied"

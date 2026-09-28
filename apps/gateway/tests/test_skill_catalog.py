@@ -172,9 +172,44 @@ def test_group_skill_catalog_only_allows_reviewed_version_on_linked_project(tmp_
         })
         assert download.status_code == 200, download.text
         assert download.content == base64.b64decode(_archive({"SKILL.md": "# Review"}))
+        assert client.delete(
+            f"/api/groups/{group_id}/projects/project-1/skills/{skill_id}",
+            headers=headers,
+        ).status_code == 204
+        assert client.get(f"/api/device/skills/{version_id}", headers={
+            "Authorization": f"Bearer {manifest}",
+        }).status_code == 403
+        restored = client.post(f"/api/groups/{group_id}/projects/project-1/skills", json={
+            "skill_version_id": version_id,
+        }, headers=headers)
+        assert restored.status_code == 200
+        assert restored.json()["desired_revision"] == 3
         assert client.post(f"/api/groups/{group_id}/projects/other/skills", json={
             "skill_version_id": version_id,
         }, headers=headers).status_code == 403
+        client.cookies.clear()
+        owner_login = client.post("/api/auth/login", json={
+            "username": "owner", "password": "OwnerPassphrase-2026!",
+        })
+        owner_headers = {"X-CSRF-Token": owner_login.json()["csrf_token"]}
+        client.post("/api/auth/step-up", json={"password": "OwnerPassphrase-2026!"},
+                    headers=owner_headers)
+        assert client.delete(f"/api/admin/groups/{group_id}/skills/{skill_id}",
+                             headers=owner_headers).status_code == 204
+        assert client.get(f"/api/device/skills/{version_id}", headers={
+            "Authorization": f"Bearer {manifest}",
+        }).status_code == 403
+        assert client.post(f"/api/admin/groups/{group_id}/skills", json={
+            "skill_version_id": version_id,
+        }, headers=owner_headers).status_code == 200
+        client.cookies.clear()
+        leader_login = client.post("/api/auth/login", json={
+            "username": "leader", "password": "LeaderNewPassphrase-2026!",
+        })
+        leader_headers = {"X-CSRF-Token": leader_login.json()["csrf_token"]}
+        assert client.post(f"/api/groups/{group_id}/projects/project-1/skills", json={
+            "skill_version_id": version_id,
+        }, headers=leader_headers).json()["desired_revision"] == 5
         client.cookies.clear()
         owner_login = client.post("/api/auth/login", json={
             "username": "owner", "password": "OwnerPassphrase-2026!",
@@ -198,7 +233,7 @@ def test_group_skill_catalog_only_allows_reviewed_version_on_linked_project(tmp_
             later, gateway_id=app.state.settings.gateway_id,
             device_id="device-1", user_id=owner_id,
         )
-        assert later_claims["projects"][0]["revision"] == 2
+        assert later_claims["projects"][0]["revision"] == 6
         assert later_claims["projects"][0]["skills"] == []
 
 
