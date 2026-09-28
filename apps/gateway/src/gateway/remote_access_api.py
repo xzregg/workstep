@@ -120,7 +120,7 @@ async def redeem_device_ticket(request: Request):
 
 @router.get("/session")
 async def remote_session(request: Request):
-    user, device_id, auth_session, _ = await _remote_identity(request)
+    user, device_id, auth_session, host_project_id = await _remote_identity(request)
     async with request.app.state.database.session() as session:
         device = await session.get(Device, device_id)
     if device is None:
@@ -128,6 +128,7 @@ async def remote_session(request: Request):
     return {"user_id": user.id, "username": user.display_name,
             "device_id": device_id, "device_name": device.name,
             "project_id": auth_session.project_id,
+            "host_project_id": host_project_id,
             "access_level": auth_session.project_access_level,
             "online": True,
             "gateway_url": request.app.state.settings.public_origin + "/devices"}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { GatewayLoginForm } from './GatewayLoginForm'
+import { openRemoteAccess } from './openRemoteAccess'
 
 type Device = { id: string; name: string; status: string; online: boolean; version: string }
 
@@ -52,15 +53,7 @@ export function DeviceListPage() {
       })
       if (!response.ok) throw new Error(response.status === 409 ? '电脑当前离线。' : '无法打开这台电脑。')
       const access: { url: string; ticket: string } = await response.json()
-      const form = document.createElement('form')
-      form.method = 'POST'
-      form.action = new URL('api/remote/redeem', access.url).toString()
-      const ticket = document.createElement('input')
-      ticket.type = 'hidden'; ticket.name = 'ticket'; ticket.value = access.ticket
-      form.append(ticket)
-      document.body.append(form)
-      form.submit()
-      form.remove()
+      openRemoteAccess(access)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '无法打开这台电脑。')
       setOpeningDevice(null)

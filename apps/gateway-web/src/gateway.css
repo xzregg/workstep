@@ -176,6 +176,8 @@ a {
   padding: 16px 0;
   border-bottom: 1px solid #e8e8ed;
 }
+.gateway-device-list li > div { min-width: 0; }
+.gateway-device-list strong { overflow-wrap: anywhere; }
 .gateway-device-list p { color: #6e6e73; overflow-wrap: anywhere; }
 .gateway-device-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .gateway-device-actions button:first-child { background: #f5f5f7; color: #1d1d1f; }
@@ -213,10 +215,13 @@ a {
 @media (max-width: 600px) {
   main > header {
     padding: 16px;
+    flex-wrap: wrap;
+    gap: 12px;
   }
 
   main > header nav {
     gap: 12px;
+    flex-wrap: wrap;
   }
 
   .gateway-auth-card {

@@ -10,8 +10,13 @@ from gateway.models import Device, PlatformProject
 
 
 def test_project_grants_require_publication_and_follow_current_group_membership(tmp_path, monkeypatch):
+    web_dist = tmp_path / "dist"
+    (web_dist / "assets").mkdir(parents=True)
+    (web_dist / "index.html").write_text("<main>Gateway project workspace</main>")
+    (web_dist / "assets" / "app.js").write_text("/* project UI */")
     app = create_app(GatewaySettings(data_dir=tmp_path,
-                                     public_origin="https://gateway.test"))
+                                     public_origin="https://gateway.test",
+                                     web_dist=web_dist))
     with TestClient(app, base_url="https://gateway.test") as client:
         setup = client.post("/api/platform/setup", json={
             "username": "owner", "display_name": "Owner", "password": "OwnerPassphrase-2026!",
@@ -68,6 +73,8 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         }, headers=worker_headers)
         listing = client.get("/api/projects")
         assert listing.status_code == 200, listing.text
+        assert client.get("/api/devices").json() == {"devices": []}
+        assert client.get("/api/devices/device-1/access").status_code == 403
         assert listing.json()["projects"] == [{
             "id": "project-1", "name": "Project", "device_id": "device-1",
             "access_level": "read",
@@ -87,6 +94,10 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
                            follow_redirects=False).status_code == 303
         assert client.post(f"{host}/api/remote/redeem", data={"ticket": ticket}).status_code == 409
         assert client.get(f"{host}/api/remote/session").json()["project_id"] == "project-1"
+        assert client.get(f"{host}/api/remote/session").json()["host_project_id"] == "host-1"
+        assert "Gateway project workspace" in client.get(f"{host}/").text
+        assert client.get(f"{host}/assets/app.js").status_code == 200
+        assert client.get(f"{host}/admin").status_code == 403
         assert client.get(f"{host}/api/health").status_code == 403
         class ProjectData:
             async def proxy_http(self, request, *, user_id, username,
