@@ -15,14 +15,16 @@ import anyio
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PublicKey
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 from fastapi.responses import StreamingResponse
 from workstep_gateway_protocol import (FrameType, ProxyFrame,
                                        WebSocketMessageAssembler, websocket_payloads)
 
-from .models import Device, DeviceConnection, User, UserDevice
+from .models import Device, DeviceConnection, DeviceProviderApplication, User, UserDevice
 from .capabilities import compiled_device_policy
+from .providers_api import compile_provider_bundle, compiled_provider_access
 
 router = APIRouter()
 
@@ -46,14 +48,18 @@ async def binding_active(ws: WebSocket, device_id: str, user_id: str) -> bool:
                 and assignment)
 
 
-async def authenticate_device(ws: WebSocket, message: dict, nonce: str) -> tuple[str, str]:
+async def authenticate_device(ws: WebSocket, message: dict, nonce: str) -> tuple[str, str, str]:
     token = message.get("authorization")
     delegation = message.get("control_delegation_signature")
     challenge_proof = message.get("control_challenge_proof")
     control_public_key_pem = message.get("control_public_key_pem")
+    config_public_key_pem = message.get("config_public_key_pem")
+    config_key_proof = message.get("config_key_proof")
     if (not isinstance(token, str) or not isinstance(delegation, str)
             or not isinstance(challenge_proof, str) or not isinstance(control_public_key_pem, str)
-            or len(token) > 16384 or len(control_public_key_pem) > 4096):
+            or not isinstance(config_public_key_pem, str) or not isinstance(config_key_proof, str)
+            or len(token) > 16384 or len(control_public_key_pem) > 4096
+            or len(config_public_key_pem) > 4096):
         raise ValueError("Missing control credential")
     try:
         header, payload, signature = token.split(".")
@@ -85,6 +91,14 @@ async def authenticate_device(ws: WebSocket, message: dict, nonce: str) -> tuple
                           f"workstep-control-delegate-v1:{token}:{control_fingerprint}".encode())
         control_key.verify(_decode(challenge_proof),
                            f"workstep-control-challenge-v1:{nonce}:{token}".encode())
+        config_key = serialization.load_pem_public_key(config_public_key_pem.encode())
+        if not isinstance(config_key, X25519PublicKey):
+            raise ValueError("Invalid config encryption key")
+        config_fingerprint = hashlib.sha256(config_key.public_bytes(
+            serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo,
+        )).hexdigest()
+        control_key.verify(_decode(config_key_proof),
+                           f"workstep-config-key-v1:{nonce}:{token}:{config_fingerprint}".encode())
         fingerprint = hashlib.sha256(device_key.public_bytes(
             serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo,
         )).hexdigest()
@@ -103,7 +117,7 @@ async def authenticate_device(ws: WebSocket, message: dict, nonce: str) -> tuple
             or device.app_instance_id != claims.get("app_instance_id")
             or not user or user.status != "active" or not assignment):
         raise ValueError("Device or user unavailable")
-    return device_id, user.id
+    return device_id, user.id, config_public_key_pem
 
 
 class ControlConnections:
@@ -112,15 +126,18 @@ class ControlConnections:
         self._data_active: dict[str, DataConnection] = {}
         self._pending_data: dict[str, tuple[str, float, asyncio.Future]] = {}
         self._device_pending: dict[str, str] = {}
+        self._config_keys: dict[str, str] = {}
         self._lock = asyncio.Lock()
 
     def is_online(self, device_id: str) -> bool:
         return device_id in self._active
 
-    async def claim(self, device_id: str, connection_id: str, ws: WebSocket) -> None:
+    async def claim(self, device_id: str, connection_id: str, ws: WebSocket,
+                    config_public_key_pem: str) -> None:
         async with self._lock:
             previous = self._active.get(device_id)
             self._active[device_id] = (connection_id, ws, asyncio.current_task())
+            self._config_keys[device_id] = config_public_key_pem
         if previous:
             try:
                 await previous[1].close(code=4000, reason="Replaced by new connection")
@@ -131,6 +148,7 @@ class ControlConnections:
         async with self._lock:
             if self._active.get(device_id, (None,))[0] == connection_id:
                 self._active.pop(device_id, None)
+                self._config_keys.pop(device_id, None)
                 pending_token = self._device_pending.pop(device_id, None)
                 if pending_token:
                     pending = self._pending_data.pop(pending_token, None)
@@ -251,6 +269,9 @@ class ControlConnections:
                 await data.socket.close(code=4003, reason="Device access changed")
             except (RuntimeError, anyio.ClosedResourceError):
                 pass
+
+    def config_key(self, device_id: str) -> str | None:
+        return self._config_keys.get(device_id)
 
 
 class DataConnection:
@@ -513,6 +534,7 @@ async def control_socket(ws: WebSocket):
     device_id = None
     user_id = None
     connection_id = None
+    config_public_key_pem = None
     try:
         try:
             nonce = secrets.token_urlsafe(32)
@@ -520,7 +542,7 @@ async def control_socket(ws: WebSocket):
             hello = await asyncio.wait_for(ws.receive_json(), timeout=5)
             if not isinstance(hello, dict):
                 raise ValueError("Invalid handshake")
-            device_id, user_id = await authenticate_device(ws, hello, nonce)
+            device_id, user_id, config_public_key_pem = await authenticate_device(ws, hello, nonce)
         except (ValueError, asyncio.TimeoutError):
             await ws.close(code=4401)
             return
@@ -528,19 +550,30 @@ async def control_socket(ws: WebSocket):
         async with ws.app.state.database.session() as session:
             async with session.begin():
                 session.add(DeviceConnection(id=connection_id, device_id=device_id))
-        await ws.app.state.control_connections.claim(device_id, connection_id, ws)
+        await ws.app.state.control_connections.claim(
+            device_id, connection_id, ws, config_public_key_pem,
+        )
         signer = ws.app.state.gateway_signer
         policy_revision, task_create = await compiled_device_policy(
+            ws.app.state.database, device_id, user_id,
+        )
+        provider_ids, models = await compiled_provider_access(
             ws.app.state.database, device_id, user_id,
         )
         policy = signer.sign_policy_snapshot(
             gateway_id=ws.app.state.settings.gateway_id,
             device_id=device_id, user_id=user_id, revision=policy_revision,
             task_create=task_create,
+            allowed_provider_ids=provider_ids, allowed_models=models,
+        )
+        provider_bundle = await compile_provider_bundle(
+            ws.app.state.database, signer, ws.app.state.settings.gateway_id,
+            device_id, user_id, config_public_key_pem,
         )
         await ws.send_json({"kind": "hello", "version": 1, "device_id": device_id,
                             "gateway_public_key_pem": signer.public_key_pem,
-                            "policy_snapshot": policy})
+                            "policy_snapshot": policy,
+                            "provider_bundle": provider_bundle})
         while True:
             try:
                 message = await asyncio.wait_for(ws.receive_json(), timeout=90)
@@ -563,6 +596,34 @@ async def control_socket(ws: WebSocket):
                 await ws.send_json({"kind": "policy_applied_ack", "version": 1,
                                     "device_id": device_id, "revision": revision})
                 continue
+            if message.get("kind") == "provider_applied":
+                revision = message.get("revision")
+                result = message.get("result")
+                error = message.get("error")
+                if (type(revision) is not int or revision < 0
+                        or result not in ("success", "error")
+                        or (error is not None and (not isinstance(error, str) or len(error) > 512))):
+                    await ws.close(code=4400, reason="Invalid provider application")
+                    return
+                async with ws.app.state.database.session() as session:
+                    async with session.begin():
+                        device = await session.get(Device, device_id)
+                        if not device or revision > device.provider_revision:
+                            await ws.close(code=4400, reason="Invalid provider revision")
+                            return
+                        applied = await session.get(DeviceProviderApplication, device_id)
+                        if applied is None:
+                            applied = DeviceProviderApplication(device_id=device_id)
+                            session.add(applied)
+                        applied.desired_revision = device.provider_revision
+                        if result == "success":
+                            applied.applied_revision = revision
+                            applied.last_error = None
+                        else:
+                            applied.last_error = error or "Provider application failed"
+                await ws.send_json({"kind": "provider_applied_ack", "version": 1,
+                                    "device_id": device_id, "revision": revision})
+                continue
             if message.get("kind") != "heartbeat":
                 await ws.close(code=4400, reason="Invalid control message")
                 return
@@ -572,13 +633,22 @@ async def control_socket(ws: WebSocket):
             policy_revision, task_create = await compiled_device_policy(
                 ws.app.state.database, device_id, user_id,
             )
+            provider_ids, models = await compiled_provider_access(
+                ws.app.state.database, device_id, user_id,
+            )
             policy = signer.sign_policy_snapshot(
                 gateway_id=ws.app.state.settings.gateway_id,
                 device_id=device_id, user_id=user_id, revision=policy_revision,
                 task_create=task_create,
+                allowed_provider_ids=provider_ids, allowed_models=models,
+            )
+            provider_bundle = await compile_provider_bundle(
+                ws.app.state.database, signer, ws.app.state.settings.gateway_id,
+                device_id, user_id, config_public_key_pem,
             )
             await ws.send_json({"kind": "heartbeat_ack", "version": 1,
-                                "device_id": device_id, "policy_snapshot": policy})
+                                "device_id": device_id, "policy_snapshot": policy,
+                                "provider_bundle": provider_bundle})
     except WebSocketDisconnect:
         pass
     finally:

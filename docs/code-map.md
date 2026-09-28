@@ -23,6 +23,8 @@ Gateway 整机访问关系由 `apps/gateway/src/gateway/user_devices_api.py` 管
 
 共享协议 `packages/gateway-protocol` 的 `websocket_payloads` / `WebSocketMessageAssembler` 对业务 WS 消息作 16KiB 分块、16MiB 上限与类型校验；Gateway 和 daemon 同用，测试见 `packages/gateway-protocol/tests/test_protocol.py` 及两端桥接测试。PC 的 `services/desktop_security.py` 对 Gateway 远程操作者禁止原生目录/桌面动作和无项目作用域的 FS 浏览，Web `ProjectConnectionDialog.tsx`、`useTaskArtifacts.ts`、`MessageIdPopover.tsx` 等由 `utils/gatewayRemote.ts` 降级这些入口；行为测试见 `tests/gatewayRemoteFrame.test.tsx` 和 daemon `test_gateway_http_bridge.py`。
 
+阶段 4A 的 Gateway 供应商目录、分配、轮换、撤销和应用状态由 `apps/gateway/src/gateway/providers_api.py` 持有，迁移 `0013_providers.py` 建表，`signing.py` 加密落盘密钥及设备配置包；`control_connection.py` 仅向已认证的设备控制连接下发。daemon 的 `services/gateway_client/provider_config.py` 验签解密，`control.py` 在线程中调用 `services/config.py::apply_managed_providers` 原子落盘及引擎刷新；`api/provider.py` 封闭本地写入与密钥显示。行为测试见 Gateway `test_platform_providers.py`、`test_provider_crypto.py`、`test_control_connection.py` 与 daemon `test_gateway_provider_config.py`。
+
 修改功能时先找所属模块，再沿前端页面或组件 → API → 服务 → 数据模型追踪。行为测试放在实际拥有该行为的模块附近；不要把页面、`src/api/client.ts` 或通用服务文件作为新功能的默认落点。
 
 | 功能 | Web 入口 | Daemon 入口 | 深入阅读 |

@@ -6,6 +6,7 @@ from .managed_config import InvalidManagedGatewayConfig, load_managed_config
 from .identity import ManagedAuthorizationVerifier, ManagedLocalSessions
 from .control import GatewayControlClient
 from .policy import ManagedPolicyCache
+from services.config import config_store
 
 
 class GatewayClientService:
@@ -32,6 +33,15 @@ class GatewayClientService:
             if bundle_dir else None
         )
         if self.managed_config is not None:
+            config_store.set_managed_gateway_id(
+                self.managed_config.gateway_id,
+                provider_guard=lambda provider_id: bool(
+                    self.policy_cache.current and self.policy_cache.current.valid
+                    and config_store.get("managed_provider_state", {}).get("user_id")
+                        == self.policy_cache.current.user_id
+                    and provider_id in self.policy_cache.current.allowed_provider_ids
+                ),
+            )
             self.verifier = ManagedAuthorizationVerifier(
                 self.managed_config.gateway_id,
                 self.managed_config.gateway_origin,
@@ -55,6 +65,7 @@ class GatewayClientService:
             public_key_fingerprint=self.managed_config.gateway_public_key_fingerprint,
             user_id=actor.user_id, policy_cache=self.policy_cache,
             asgi_app=self.asgi_app,
+            provider_store=config_store,
         )
         self.control_client.start(
             authorization, actor.device_id, control_private_key_pem,
@@ -68,3 +79,4 @@ class GatewayClientService:
             self.control_client = None
         self.policy_cache.clear()
         self.local_sessions.clear()
+        config_store.set_managed_gateway_id(None)

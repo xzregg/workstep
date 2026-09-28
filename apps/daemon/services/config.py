@@ -1,6 +1,8 @@
 """Global config store — single ~/.workstep/config.json for all settings."""
 
 import json
+import hashlib
+import copy
 import logging
 import os
 import platform
@@ -8,6 +10,7 @@ from functools import wraps
 import threading
 import uuid
 from pathlib import Path
+from urllib.parse import urlsplit
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -86,6 +89,8 @@ class ConfigStore:
     def __init__(self):
         self._cache: dict[str, Any] | None = None
         self._lock = threading.RLock()
+        self._managed_gateway_id: str | None = None
+        self._managed_provider_guard = None
 
     def _load(self) -> dict:
         with self._lock:
@@ -939,7 +944,12 @@ class ConfigStore:
 
     # --- Providers (global LLM API suppliers) ---
 
-    def get_providers(self) -> list[dict[str, Any]]:
+    def set_managed_gateway_id(self, gateway_id: str | None, provider_guard=None) -> None:
+        with self._lock:
+            self._managed_gateway_id = gateway_id
+            self._managed_provider_guard = provider_guard
+
+    def get_providers(self, *, include_unmanaged: bool = False) -> list[dict[str, Any]]:
         raw = self.get("providers", [])
         if not isinstance(raw, list):
             return []
@@ -993,6 +1003,11 @@ class ConfigStore:
         if changed:
             self._load()["providers"] = providers
             self._save()
+        if self._managed_gateway_id and not include_unmanaged:
+            return [item for item in providers
+                    if item.get("managed_gateway_id") == self._managed_gateway_id
+                    and self._managed_provider_guard is not None
+                    and self._managed_provider_guard(str(item.get("id")))]
         return providers
 
     def get_provider(self, provider_id: str) -> dict[str, Any] | None:
@@ -1002,7 +1017,9 @@ class ConfigStore:
         return None
 
     def save_provider(self, provider: dict[str, Any]) -> dict[str, Any]:
-        providers = self.get_providers()
+        if self._managed_gateway_id:
+            raise PermissionError("Managed providers cannot be changed locally")
+        providers = self.get_providers(include_unmanaged=True)
         provider_id = str(provider.get("id") or "")
         replaced = False
         for index, item in enumerate(providers):
@@ -1073,12 +1090,98 @@ class ConfigStore:
         })
 
     def delete_provider(self, provider_id: str) -> bool:
-        providers = self.get_providers()
+        if self._managed_gateway_id:
+            raise PermissionError("Managed providers cannot be changed locally")
+        providers = self.get_providers(include_unmanaged=True)
         remaining = [item for item in providers if item.get("id") != provider_id]
         if len(remaining) == len(providers):
             return False
         self.set("providers", remaining)
         return True
+
+    def apply_managed_providers(self, gateway_id: str, revision: int,
+                                desired: list[dict[str, Any]],
+                                after_apply=None, *, user_id: str = "") -> bool:
+        """Replace only this Gateway's managed entries in one config-file write."""
+        if (not gateway_id or self._managed_gateway_id != gateway_id
+                or type(revision) is not int or revision < 0
+                or not isinstance(user_id, str)
+                or not isinstance(desired, list) or len(desired) > 100):
+            raise ValueError("Invalid managed provider scope")
+        ids: set[str] = set()
+        names: set[str] = set()
+        normalized: list[dict[str, Any]] = []
+        for item in desired:
+            if not isinstance(item, dict):
+                raise ValueError("Invalid managed provider")
+            provider_id, name = item.get("id"), item.get("name")
+            protocols = item.get("protocols")
+            urls = item.get("protocol_base_urls")
+            api_key = item.get("api_key")
+            models = item.get("models", [])
+            if (not isinstance(provider_id, str) or not provider_id or provider_id in ids
+                    or not isinstance(name, str) or not name or name in names
+                    or not isinstance(item.get("type"), str)
+                    or not isinstance(protocols, list) or not protocols or len(protocols) > 8
+                    or any(not isinstance(protocol, str) or protocol not in PROVIDER_PROTOCOLS
+                           for protocol in protocols)
+                    or not isinstance(urls, dict) or set(urls) != set(protocols)
+                    or not isinstance(api_key, str) or not api_key or len(api_key) > 4096
+                    or not isinstance(models, list) or len(models) > 1000
+                    or any(not isinstance(model, str) or not model or len(model) > 128
+                           for model in models)
+                    or len(set(models)) != len(models)):
+                raise ValueError("Invalid managed provider")
+            for url in urls.values():
+                parsed = urlsplit(url) if isinstance(url, str) else None
+                if (parsed is None or parsed.scheme != "https" or not parsed.hostname
+                        or parsed.username or parsed.password or parsed.fragment):
+                    raise ValueError("Invalid managed provider endpoint")
+            ids.add(provider_id)
+            names.add(name)
+            normalized.append({**item, "managed": True, "managed_gateway_id": gateway_id,
+                               "managed_revision": revision, "enabled": True})
+        canonical = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+        digest = hashlib.sha256(canonical.encode()).hexdigest()
+        with self._lock:
+            data = self._load()
+            state = data.get("managed_provider_state", {})
+            if isinstance(state, dict) and state.get("gateway_id") == gateway_id:
+                current_revision = state.get("revision", -1)
+                if revision < current_revision:
+                    raise ValueError("Stale managed provider revision")
+                if revision == current_revision and state.get("user_id", "") == user_id:
+                    if state.get("digest") != digest:
+                        raise ValueError("Managed provider revision conflict")
+                    return False
+            existing = self.get_providers(include_unmanaged=True)
+            retained = [item for item in existing
+                        if item.get("managed_gateway_id") != gateway_id]
+            if any(item.get("id") in ids or item.get("name") in names for item in retained):
+                raise ValueError("Managed provider conflicts with a local provider")
+            previous = copy.deepcopy(data)
+            cache = data.get("provider_models", {})
+            cache = dict(cache) if isinstance(cache, dict) else {}
+            for item in existing:
+                if item.get("managed_gateway_id") == gateway_id:
+                    cache.pop(str(item.get("id")), None)
+            for item in normalized:
+                cache[item["id"]] = {"models": [{"id": model} for model in item.get("models", [])],
+                                     "fetched_at": "managed"}
+            data["providers"] = retained + normalized
+            data["provider_models"] = cache
+            data["managed_provider_state"] = {"gateway_id": gateway_id,
+                                               "user_id": user_id,
+                                               "revision": revision, "digest": digest}
+            try:
+                self._save()
+                if after_apply is not None:
+                    after_apply()
+            except Exception:
+                self._cache = previous
+                self._save()
+                raise
+            return True
 
     def is_provider_in_use(self, provider_id: str) -> bool:
         """Whether an API-driven engine currently uses this provider."""

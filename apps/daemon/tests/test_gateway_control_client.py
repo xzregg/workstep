@@ -78,6 +78,12 @@ async def test_control_client_handshake_heartbeat_and_shutdown():
                 public_key = serialization.load_pem_public_key(message["control_public_key_pem"].encode())
                 public_key.verify(base64.urlsafe_b64decode(message["control_challenge_proof"] + "=="),
                                   b"workstep-control-challenge-v1:fresh-nonce-0123456789ABCDEFGHIJKLMN:authorization")
+                config_key = serialization.load_pem_public_key(message["config_public_key_pem"].encode())
+                config_fingerprint = hashlib.sha256(config_key.public_bytes(
+                    serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo,
+                )).hexdigest()
+                public_key.verify(base64.urlsafe_b64decode(message["config_key_proof"] + "=="),
+                                  f"workstep-config-key-v1:fresh-nonce-0123456789ABCDEFGHIJKLMN:authorization:{config_fingerprint}".encode())
                 self.messages.put_nowait(json.dumps({"kind": "hello", "version": 1,
                                                      "device_id": "device-1",
                                                      "gateway_public_key_pem": gateway_key,
