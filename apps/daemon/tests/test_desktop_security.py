@@ -10,6 +10,7 @@ from services.desktop_security import (
     desktop_websocket_allowed,
 )
 from services.gateway_client.identity import ManagedActor, ManagedLocalSessions
+from services.remote_access import get_effective_actor
 
 
 def _app() -> FastAPI:
@@ -19,6 +20,11 @@ def _app() -> FastAPI:
     @app.get('/api/private')
     async def private():
         return {'ok': True}
+
+    @app.get('/api/actor')
+    async def actor():
+        current = get_effective_actor()
+        return {'id': current.actor_id, 'source': current.source}
 
     @app.get('/')
     async def index():
@@ -129,6 +135,10 @@ def test_managed_runtime_requires_gateway_derived_local_session(monkeypatch):
             'X-WorkStep-Desktop-Token': 'runtime-secret',
             'X-WorkStep-Local-Session': local_token,
         }).status_code == 200
+        assert client.get('/api/actor', headers={
+            'X-WorkStep-Desktop-Token': 'runtime-secret',
+            'X-WorkStep-Local-Session': local_token,
+        }).json() == {'id': 'user-1', 'source': 'managed'}
         with client.websocket_connect('/ws', headers={
             'X-WorkStep-Desktop-Token': 'runtime-secret',
             'X-WorkStep-Local-Session': local_token,

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import hmac
 import os
+from contextlib import nullcontext
 from urllib.parse import urlsplit
 
 from fastapi import WebSocket
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+
+from services.remote_access import ActorSnapshot, actor_context
 
 
 DESKTOP_TOKEN_HEADER = "x-workstep-desktop-token"
@@ -104,7 +107,13 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
             else:
                 if actor is not None:
                     request.state.managed_actor = actor
-                response = await call_next(request)
+                context = actor_context(ActorSnapshot(
+                    actor_id=actor.user_id, user_name=actor.username,
+                    device_id=actor.device_id, device_name=actor.device_id,
+                    source="managed",
+                )) if actor is not None else nullcontext()
+                with context:
+                    response = await call_next(request)
 
         response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")

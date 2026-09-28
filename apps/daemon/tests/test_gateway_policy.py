@@ -7,7 +7,9 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from services.gateway_client.policy import ManagedPolicyCache, verify_policy_snapshot
+from services.gateway_client.policy import ManagedPolicyCache, verify_policy_snapshot, require_managed_capability
+from services.remote_access import ActorSnapshot, actor_context
+from types import SimpleNamespace
 
 
 def _signed_policy(**overrides):
@@ -62,3 +64,23 @@ def test_policy_cache_refuses_older_revision_and_expires(monkeypatch):
                         lambda: cache.current.expires_at + 1)
     assert cache.current.valid is False
     assert cache.allows("task.create") is False
+
+
+def test_managed_task_creation_requires_matching_live_capability(monkeypatch):
+    import main
+
+    cache = ManagedPolicyCache()
+    monkeypatch.setattr(main, "gateway_client", SimpleNamespace(
+        managed_config=object(), policy_cache=cache,
+    ))
+    actor = ActorSnapshot("user-1", "alice", "device-1", "Alice PC", "managed")
+    with actor_context(actor):
+        with pytest.raises(PermissionError):
+            require_managed_capability("task.create")
+        token, pem, fingerprint = _signed_policy(task_create=True)
+        cache.apply(verify_policy_snapshot(token, pem, fingerprint,
+                                           "gateway-test", "device-1", "user-1"))
+        require_managed_capability("task.create")
+    with actor_context(ActorSnapshot("user-2", "bob", "device-1", "Alice PC", "managed")):
+        with pytest.raises(PermissionError):
+            require_managed_capability("task.create")

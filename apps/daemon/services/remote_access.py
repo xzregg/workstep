@@ -13,6 +13,7 @@ import socket
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import wraps
@@ -37,7 +38,7 @@ class ActorSnapshot:
     user_name: str
     device_id: str
     device_name: str
-    source: Literal["local", "browser", "remote"]
+    source: Literal["local", "browser", "remote", "managed"]
 
 
 @dataclass(frozen=True)
@@ -56,6 +57,15 @@ _current_actor: ContextVar[ActorSnapshot | None] = ContextVar(
 
 def get_current_actor() -> ActorSnapshot | None:
     return _current_actor.get()
+
+
+@contextmanager
+def actor_context(actor: ActorSnapshot):
+    token = _current_actor.set(actor)
+    try:
+        yield
+    finally:
+        _current_actor.reset(token)
 
 
 def get_effective_actor() -> ActorSnapshot | None:

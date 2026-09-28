@@ -442,6 +442,39 @@ async def test_task_creation_binds_selected_workflow(api_context, monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_managed_task_creation_uses_live_signed_policy(api_context, monkeypatch):
+    from dataclasses import replace
+    from time import time
+    import main
+    from services.gateway_client.identity import ManagedActor
+    from services.gateway_client.policy import ManagedPolicy
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "managed-task-policy"
+    project_dir.mkdir()
+    project_id = (await client.post("/api/project/init", json={"path": str(project_dir)})).json()["id"]
+    workflow_id = (await _create_test_workflow(client, project_id))["id"]
+    monkeypatch.setenv("WORKSTEP_DESKTOP_RUNTIME", "1")
+    monkeypatch.setenv("WORKSTEP_DESKTOP_TOKEN", "desktop-secret")
+    monkeypatch.setattr(main.gateway_client, "managed_config", object())
+    actor = ManagedActor("user-1", "alice", "device-1", "instance-1", 0)
+    session = main.gateway_client.local_sessions.create(actor)
+    now = int(time())
+    policy = ManagedPolicy("gateway-test", "device-1", "user-1", 0, now, now + 600,
+                           frozenset(), frozenset(), False, False, False, False, False)
+    main.gateway_client.policy_cache.apply(policy)
+    headers = {"X-WorkStep-Desktop-Token": "desktop-secret",
+               "X-WorkStep-Local-Session": session}
+    body = {"title": "Managed task", "cwd": str(project_dir), "workflow_id": workflow_id}
+    denied = await client.post(f"/api/task/create?project_id={project_id}", json=body, headers=headers)
+    assert denied.status_code == 403
+    main.gateway_client.policy_cache.apply(replace(policy, task_create=True))
+    allowed = await client.post(f"/api/task/create?project_id={project_id}", json=body, headers=headers)
+    assert allowed.status_code == 200, allowed.text
+    main.gateway_client.policy_cache.clear()
+
+
+@pytest.mark.anyio
 async def test_sqlite_write_lock_does_not_block_health_check(api_context):
     """A busy project writer must not stall unrelated FastAPI requests."""
     client, tmp_path = api_context
