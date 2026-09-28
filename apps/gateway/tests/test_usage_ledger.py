@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from gateway.app import create_app
 from gateway.config import GatewaySettings
-from gateway.models import Device
+from gateway.models import AuditEvent, Device
 from gateway.usage_ledger import record_usage_batch
 
 
@@ -162,3 +162,116 @@ def test_usage_detail_requires_administrator_role(tmp_path):
         }).status_code == 204
         assert client.get("/api/admin/usage").status_code == 403
         assert client.get("/api/admin/usage/events").status_code == 403
+
+
+def test_provider_bill_import_is_idempotent_and_reports_daily_difference(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    day = datetime.now(timezone.utc).date().isoformat()
+    with TestClient(app, base_url="https://gateway.test") as client:
+        setup = client.post("/api/platform/setup", json={
+            "username": "owner", "display_name": "Owner", "password": "OwnerPassphrase-2026!",
+            "recovery_username": "recovery", "recovery_password": "RecoveryPassphrase-2026!",
+            "registration_mode": "closed",
+        })
+        csrf = {"X-CSRF-Token": setup.json()["csrf_token"]}
+        event = _event()
+        client.portal.call(record_usage_batch, app.state.database,
+                           "device-1", "batch-1", [event])
+        bill = {"batch_id": "bill-import-1", "lines": [{
+            "line_id": "provider-line-1", "provider_id": "provider-1",
+            "model": "model-a", "day": day, "input_tokens": 125,
+            "output_tokens": 30, "currency": "USD", "billed_cost": "0.00020",
+        }]}
+        assert client.post("/api/admin/usage/provider-bills", json=bill).status_code == 403
+        assert client.post("/api/admin/usage/provider-bills", headers=csrf,
+                           json=bill).status_code == 403
+        assert client.post("/api/auth/step-up", headers=csrf, json={
+            "password": "OwnerPassphrase-2026!",
+        }).status_code == 200
+        first = client.post("/api/admin/usage/provider-bills", headers=csrf, json=bill)
+        assert first.status_code == 200, first.text
+        assert first.json()["accepted"] == ["provider-line-1"]
+        async def audit_actions():
+            from sqlalchemy import select
+            async with app.state.database.session() as session:
+                return (await session.scalars(select(AuditEvent.action).where(
+                    AuditEvent.action == "admin.provider_bill_imported",
+                ))).all()
+        assert client.portal.call(audit_actions) == ["admin.provider_bill_imported"]
+        replay = client.post("/api/admin/usage/provider-bills", headers=csrf, json=bill)
+        assert replay.json()["duplicates"] == ["provider-line-1"]
+        changed = client.post("/api/admin/usage/provider-bills", headers=csrf,
+                              json={**bill, "lines": [{**bill["lines"][0],
+                                                        "input_tokens": 999}]})
+        assert changed.status_code == 409
+        assert client.get("/api/admin/usage").json()["event_count"] == 1
+        provider_summary = client.get("/api/admin/usage?source=provider_reconciled").json()
+        assert provider_summary["event_count"] == 1
+        assert provider_summary["billed_cost"] == "0.000200"
+        reconciliation = client.get(
+            f"/api/admin/usage/reconciliation?provider_id=provider-1&from_day={day}&to_day={day}"
+        )
+        assert reconciliation.status_code == 200, reconciliation.text
+        row = reconciliation.json()["rows"][0]
+        assert row["status"] == "different"
+        assert row["input_tokens_difference"] == 5
+        assert row["cost_difference"] == "0.000020"
+        assert row["billed_cost"] == "0.000200"
+        assert client.get(
+            f"/api/admin/usage/reconciliation?provider_id=provider-1&from_day={day}"
+            "&to_day=2099-01-01"
+        ).status_code == 422
+
+
+def test_provider_reconciliation_distinguishes_missing_unmetered_and_currency(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    day = datetime.now(timezone.utc).date().isoformat()
+    with TestClient(app, base_url="https://gateway.test") as client:
+        setup = client.post("/api/platform/setup", json={
+            "username": "owner", "display_name": "Owner", "password": "OwnerPassphrase-2026!",
+            "recovery_username": "recovery", "recovery_password": "RecoveryPassphrase-2026!",
+            "registration_mode": "closed",
+        })
+        csrf = {"X-CSRF-Token": setup.json()["csrf_token"]}
+        assert client.post("/api/auth/step-up", headers=csrf, json={
+            "password": "OwnerPassphrase-2026!",
+        }).status_code == 200
+        device_events = [
+            {**_event("matched"), "model": "matched", "input_tokens": 10,
+             "output_tokens": 2, "total_tokens": 12, "estimated_cost": "0.1"},
+            {"usage_event_id": "unmetered", "provider_id": "provider-1",
+             "model": "incomplete", "metering_status": "unmetered",
+             "occurred_at": datetime.now(timezone.utc).isoformat()},
+            {**_event("currency"), "model": "currency", "currency": "CNY"},
+            {**_event("no-bill"), "model": "no-bill"},
+            {"usage_event_id": "no-model", "provider_id": "provider-1",
+             "metering_status": "unmetered",
+             "occurred_at": datetime.now(timezone.utc).isoformat()},
+        ]
+        client.portal.call(record_usage_batch, app.state.database,
+                           "device-1", "batch-1", device_events)
+        lines = [
+            {"line_id": "matched", "provider_id": "provider-1", "model": "matched",
+             "day": day, "input_tokens": 10, "output_tokens": 2,
+             "currency": "USD", "billed_cost": "0.1"},
+            {"line_id": "incomplete", "provider_id": "provider-1",
+             "model": "incomplete", "day": day, "input_tokens": 0,
+             "output_tokens": 0, "currency": "USD", "billed_cost": "0"},
+            {"line_id": "currency", "provider_id": "provider-1", "model": "currency",
+             "day": day, "input_tokens": 120, "output_tokens": 30,
+             "currency": "USD", "billed_cost": "0.00018"},
+            {"line_id": "no-device", "provider_id": "provider-1",
+             "model": "no-device", "day": day, "input_tokens": 3,
+             "output_tokens": 1, "currency": "USD", "billed_cost": "0.01"},
+        ]
+        imported = client.post("/api/admin/usage/provider-bills", headers=csrf,
+                               json={"batch_id": "bill-1", "lines": lines})
+        assert imported.status_code == 200, imported.text
+        rows = client.get(
+            f"/api/admin/usage/reconciliation?provider_id=provider-1&from_day={day}&to_day={day}"
+        ).json()["rows"]
+        assert {row["model"]: row["status"] for row in rows} == {
+            "matched": "matched", "incomplete": "incomplete",
+            "currency": "incomparable", "no-bill": "awaiting_provider",
+            "no-device": "missing_device", None: "awaiting_provider",
+        }

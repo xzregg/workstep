@@ -2,16 +2,18 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AdminUsageSummary } from './AdminUsageSummary'
 import { AdminUsageEvents } from './AdminUsageEvents'
+import { AdminUsageReconciliation } from './AdminUsageReconciliation'
+import { AdminUsageBillImport } from './AdminUsageBillImport'
 
 type Filters = { from_time: string; to_time: string; user_id: string; device_id: string;
   project_id: string; provider_id: string; model: string; source: string;
   metering_status: string }
 const emptyFilters: Filters = { from_time: '', to_time: '', user_id: '', device_id: '',
-  project_id: '', provider_id: '', model: '', source: '', metering_status: '' }
+  project_id: '', provider_id: '', model: '', source: 'reported_by_device', metering_status: '' }
 
 export function AdminUsagePage() {
   const [draft, setDraft] = useState<Filters>(emptyFilters)
-  const [filters, setFilters] = useState('')
+  const [filters, setFilters] = useState('source=reported_by_device')
   const [error, setError] = useState('')
 
   function update(field: keyof Filters, value: string) {
@@ -54,17 +56,19 @@ export function AdminUsagePage() {
       <label>模型<input value={draft.model} maxLength={128}
         onChange={event => update('model', event.target.value)} /></label>
       <label>计量来源<select value={draft.source} onChange={event => update('source', event.target.value)}>
-        <option value="">全部</option><option value="reported_by_device">PC 回传</option>
+        <option value="reported_by_device">PC 回传</option>
         <option value="provider_reconciled">供应商对账</option></select></label>
       <label>计量状态<select value={draft.metering_status}
         onChange={event => update('metering_status', event.target.value)}>
         <option value="">全部</option><option value="metered">已计量</option>
         <option value="unmetered">未完成计量</option></select></label>
       <div className="gateway-usage-filter-actions"><button type="submit">查询用量</button>
-        <button type="button" onClick={() => { setDraft(emptyFilters); setFilters(''); setError('') }}>清除筛选</button></div>
+        <button type="button" onClick={() => { setDraft(emptyFilters); setFilters('source=reported_by_device'); setError('') }}>清除筛选</button></div>
     </form>
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}
     <AdminUsageSummary key={`summary-${filters}`} filters={filters} />
     <AdminUsageEvents key={`events-${filters}`} filters={filters} />
+    <AdminUsageBillImport />
+    <AdminUsageReconciliation />
   </section>
 }

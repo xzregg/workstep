@@ -479,7 +479,10 @@ class DeviceProviderApplication(Base):
 
 class UsageEvent(Base):
     __tablename__ = "usage_events"
-    __table_args__ = (Index("ix_usage_dimension_time", "user_id", "device_id", "occurred_at"),)
+    __table_args__ = (
+        Index("ix_usage_dimension_time", "user_id", "device_id", "occurred_at"),
+        Index("ix_usage_source_provider_day", "source", "provider_id", "model", "occurred_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str | None] = mapped_column(String(64))
@@ -504,6 +507,7 @@ class UsageEvent(Base):
     unit_price_snapshot_json: Mapped[str | None] = mapped_column(Text)
     currency: Mapped[str | None] = mapped_column(String(3))
     estimated_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
+    billed_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
     metering_status: Mapped[str] = mapped_column(String(16), server_default="metered")
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     received_at: Mapped[datetime] = timestamp()

@@ -8,7 +8,7 @@ type UsageEvent = { id: string; request_id: string | null; source: string;
   model: string | null; input_tokens: number | null; output_tokens: number | null;
   cache_read_tokens: number | null; cache_write_tokens: number | null;
   total_tokens: number | null; pricing_version: string | null; currency: string | null;
-  estimated_cost: string | null }
+  estimated_cost: string | null; billed_cost: string | null }
 
 function value(input: string | number | null) { return input === null ? '未知' : String(input) }
 function sourceName(source: string) {
@@ -50,8 +50,11 @@ export function AdminUsageEvents({ filters }: { filters: string }) {
       <div><strong>{event.model ?? '模型未标记'}</strong><p>{sourceName(event.source)} · {
         event.metering_status === 'unmetered' ? '未完成计量' : '已计量'} · {
         new Date(event.occurred_at).toLocaleString()}</p>
-        <p>PC {event.device_id} · 供应商 {value(event.provider_id)} · 总 Token {
-          value(event.total_tokens)} · 估算成本 {event.estimated_cost ?? '未完成计量'} {
+        <p>{event.source === 'provider_reconciled' ? '供应商账单' : `PC ${event.device_id}`} · 供应商 {
+          value(event.provider_id)} · 总 Token {value(event.total_tokens)} · {
+          event.source === 'provider_reconciled' ? '账单金额' : '估算成本'} {
+          (event.source === 'provider_reconciled' ? event.billed_cost : event.estimated_cost)
+            ?? '未完成计量'} {
           event.currency ?? ''}</p>
         <details><summary>事件定位与分类</summary>
           <p>用量事件 {event.id} · 请求 {value(event.request_id)} · 用户 {value(event.user_id)} · 原始发起人 {
