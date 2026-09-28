@@ -272,6 +272,67 @@ def test_platform_identity_admin_can_manage_users_but_cannot_grant_roles(tmp_pat
         }, headers={"X-CSRF-Token": csrf}).status_code == 403
 
 
+def test_super_admin_lists_and_revokes_role_assignments(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        csrf = _setup(client).json()["csrf_token"]
+        created = client.post("/api/admin/users", headers={"X-CSRF-Token": csrf}, json={
+            "username": "alice", "display_name": "Alice", "password": "AlicePassphrase-2026!",
+        }).json()
+        assert client.get("/api/admin/roles").status_code == 200
+        assert client.delete("/api/admin/roles/no-such-role", headers={"X-CSRF-Token": csrf}).status_code == 403
+        assert client.post("/api/auth/step-up", json={"password": "OwnerPassphrase-2026!"},
+                           headers={"X-CSRF-Token": csrf}).status_code == 200
+        granted = client.post(f"/api/admin/users/{created['id']}/roles", headers={"X-CSRF-Token": csrf}, json={
+            "role": "identity_admin", "scope_type": "platform",
+        })
+        assert granted.status_code == 201
+        assignment_id = granted.json()["id"]
+        second = client.post("/api/admin/users", headers={"X-CSRF-Token": csrf}, json={
+            "username": "bob", "display_name": "Bob", "password": "BobPassphrase-2026!",
+        }).json()
+        assert client.post(f"/api/admin/users/{second['id']}/roles", headers={"X-CSRF-Token": csrf}, json={
+            "role": "identity_admin", "scope_type": "platform",
+        }).status_code == 201
+        listed = client.get("/api/admin/roles?role=identity_admin&q=Alice&page=1&page_size=1")
+        assert listed.status_code == 200, listed.text
+        assert listed.json()["total"] == 1
+        assert listed.json()["roles"][0]["id"] == assignment_id
+        assert listed.json()["roles"][0]["username"] == "alice"
+        first_page = client.get("/api/admin/roles?role=identity_admin&sort=username&direction=asc&page_size=1&page=1").json()
+        second_page = client.get("/api/admin/roles?role=identity_admin&sort=username&direction=asc&page_size=1&page=2").json()
+        assert first_page["total"] == second_page["total"] == 2
+        assert [first_page["roles"][0]["username"], second_page["roles"][0]["username"]] == ["alice", "bob"]
+        assert client.delete(f"/api/admin/roles/{assignment_id}", headers={"X-CSRF-Token": csrf}).status_code == 204
+        assert client.get("/api/admin/roles?role=identity_admin").json()["total"] == 1
+        assert client.delete(f"/api/admin/roles/{assignment_id}", headers={"X-CSRF-Token": csrf}).status_code == 404
+        assert client.get("/api/admin/roles?page_size=101").status_code == 422
+
+
+def test_last_super_admin_role_cannot_be_revoked_and_normal_user_cannot_read_roles(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        csrf = _setup(client).json()["csrf_token"]
+        assert client.post("/api/auth/step-up", json={"password": "OwnerPassphrase-2026!"},
+                           headers={"X-CSRF-Token": csrf}).status_code == 200
+        roles = client.get("/api/admin/roles?role=super_admin").json()["roles"]
+        assert len(roles) == 2
+        recovery_role = next(role for role in roles if role["username"] == "recovery")
+        owner_role = next(role for role in roles if role["username"] == "owner")
+        assert client.delete(f"/api/admin/roles/{recovery_role['id']}", headers={"X-CSRF-Token": csrf}).status_code == 403
+        assert client.delete(f"/api/admin/roles/{owner_role['id']}", headers={"X-CSRF-Token": csrf}).status_code == 204
+        client.cookies.clear()
+        csrf = client.post("/api/auth/login", json={"username": "recovery",
+                          "password": "RecoveryPassphrase-2026!"}).json()["csrf_token"]
+        assert client.post("/api/auth/step-up", json={"password": "RecoveryPassphrase-2026!"},
+                           headers={"X-CSRF-Token": csrf}).status_code == 200
+        assert client.delete(f"/api/admin/roles/{recovery_role['id']}", headers={"X-CSRF-Token": csrf}).status_code == 409
+        client.cookies.clear()
+        assert client.post("/api/auth/login", json={"username": "owner",
+                          "password": "OwnerPassphrase-2026!"}).status_code == 200
+        assert client.get("/api/admin/roles").status_code == 403
+
+
 def test_department_admin_only_manages_members_in_scope(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path))
     with TestClient(app, base_url="https://gateway.test") as client:

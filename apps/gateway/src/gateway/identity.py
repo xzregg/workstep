@@ -369,6 +369,37 @@ class IdentityService:
                 ))
                 return assignment
 
+    async def revoke_role(self, actor_id: str, assignment_id: str) -> None:
+        async with self.database.session() as session:
+            async with session.begin():
+                # Serialize the final-admin check across concurrent revocations.
+                await session.execute(update(PlatformSetting).where(
+                    PlatformSetting.key == "platform_initialized",
+                ).values(value_json="true"))
+                assignment = await session.get(AdminAssignment, assignment_id)
+                if assignment is None or assignment.revoked_at is not None:
+                    raise HTTPException(status_code=404, detail="Administrator assignment not found")
+                user = await session.get(User, assignment.user_id)
+                if assignment.role == "super_admin":
+                    active_local = await session.scalar(select(func.count()).select_from(AdminAssignment).join(User).where(
+                        AdminAssignment.role == "super_admin",
+                        AdminAssignment.revoked_at.is_(None),
+                        User.status == "active",
+                        User.registration_source == "local",
+                    ))
+                    if user and user.status == "active" and user.registration_source == "local" and active_local <= 1:
+                        raise HTTPException(status_code=409, detail="Cannot revoke last local super administrator")
+                    if user and user.is_recovery:
+                        raise HTTPException(status_code=403, detail="Recovery administrator is protected")
+                assignment.revoked_at = _now()
+                session.add(AuditEvent(
+                    id=str(uuid4()), user_id=actor_id,
+                    action="admin.role.revoke", result="success",
+                    metadata_json=json.dumps({"user_id": assignment.user_id, "role": assignment.role,
+                                              "scope_type": assignment.scope_type,
+                                              "scope_id": assignment.scope_id or ""}, sort_keys=True),
+                ))
+
     async def reset_password(self, user_id: str, new_password: str) -> None:
         password_hash = await self._hash_password(new_password)
         async with self.database.session() as session:
