@@ -67,6 +67,7 @@ export function DeviceAdminPage() {
       if (!response.ok) throw new Error('登录失败，请检查账号和密码。')
       setCsrf((await response.json()).csrf_token)
       setStatus('ready')
+      window.dispatchEvent(new Event('gateway-auth-changed'))
     } catch (reason) { setError(reason instanceof Error ? reason.message : '登录失败。') }
     finally { setBusy(false) }
   }

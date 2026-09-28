@@ -37,6 +37,45 @@ def test_setup_is_single_use_and_creates_recovery_admin(tmp_path):
         assert token_hash not in response.headers["set-cookie"]
 
 
+def test_session_reports_only_active_management_roles(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        csrf = _setup(client).json()["csrf_token"]
+        assert client.get("/api/auth/session").json()["admin_roles"] == ["super_admin"]
+        alice = client.post("/api/admin/users", headers={"X-CSRF-Token": csrf}, json={
+            "username": "alice", "display_name": "Alice", "password": "AlicePassphrase-2026!",
+        }).json()
+        assert client.post("/api/auth/step-up", headers={"X-CSRF-Token": csrf},
+                           json={"password": "OwnerPassphrase-2026!"}).status_code == 200
+        role = client.post(f"/api/admin/users/{alice['id']}/roles", headers={"X-CSRF-Token": csrf}, json={
+            "role": "identity_admin", "scope_type": "platform",
+        }).json()["id"]
+        client.cookies.clear()
+        assert client.post("/api/auth/login", json={
+            "username": "alice", "password": "AlicePassphrase-2026!",
+        }).status_code == 200
+        assert client.get("/api/auth/session").json()["admin_roles"] == ["identity_admin"]
+        client.cookies.clear()
+        client.post("/api/auth/login", json={"username": "owner", "password": "OwnerPassphrase-2026!"})
+        csrf = client.get("/api/auth/session").json()["csrf_token"]
+        assert client.post("/api/auth/step-up", headers={"X-CSRF-Token": csrf},
+                           json={"password": "OwnerPassphrase-2026!"}).status_code == 200
+        assert client.delete(f"/api/admin/roles/{role}", headers={"X-CSRF-Token": csrf}).status_code == 204
+        client.cookies.clear()
+        client.post("/api/auth/login", json={"username": "alice", "password": "AlicePassphrase-2026!"})
+        assert client.get("/api/auth/session").json()["admin_roles"] == []
+
+
+def test_admin_access_navigation_uses_the_same_session(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        assert client.get("/api/auth/admin-access").status_code == 401
+        _setup(client)
+        assert client.get("/api/auth/admin-access").json() == {
+            "roles": ["super_admin"], "must_change_password": False,
+        }
+
+
 def test_setup_rejects_nonempty_uninitialized_database(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path))
     with TestClient(app, base_url="https://gateway.test") as client:
