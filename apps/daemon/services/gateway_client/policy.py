@@ -119,3 +119,20 @@ class ManagedPolicyCache:
 
     def clear(self) -> None:
         self.current = None
+
+
+def require_managed_capability(action: str, *, creator_fields: dict | None = None) -> None:
+    """Fail closed at a shared service entry when this daemon is Gateway-managed."""
+    from main import gateway_client
+    from services.remote_access import get_current_actor
+
+    if gateway_client.managed_config is None:
+        return
+    actor = get_current_actor()
+    user_id = actor.actor_id if actor is not None and actor.source == "managed" else None
+    if user_id is None and actor is None and creator_fields:
+        user_id = creator_fields.get("creator_id")
+    policy = gateway_client.policy_cache.current
+    if (not user_id or policy is None or policy.user_id != user_id
+            or not gateway_client.policy_cache.allows(action)):
+        raise PermissionError(f"Managed capability denied: {action}")

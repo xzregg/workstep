@@ -80,6 +80,8 @@ async def create_task(req: CreateTaskRequest, pid: str = Query(..., alias="proje
         return result.task
     except WorkflowValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         status = 422 if "scheduled_start_at" in str(exc) else 404
         raise HTTPException(status_code=status, detail=str(exc)) from exc
