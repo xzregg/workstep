@@ -2,7 +2,7 @@
 
 from models import Message, Task, init_db
 from models.fields import utc_now
-from services.messages import create_task_message
+from services.messages import create_task_message, current_actor_task_fields
 from services.remote_access import ActorSnapshot, actor_context
 from services.task import TaskService
 from streaming.bus import EventBus
@@ -96,5 +96,31 @@ def test_assistant_message_keeps_own_author_and_inherits_initiator(tmp_path):
             reply.author_device_name,
         ) == ("assistant", "assistant", "user-2", "operator", "device-2", "电脑二")
         assert Message.select().count() == 3
+    finally:
+        db.close()
+
+
+def test_task_creator_username_is_preserved_for_automatic_reply(tmp_path):
+    db = init_db(str(tmp_path / "workstep.db"))
+    try:
+        now = utc_now()
+        actor = ActorSnapshot(
+            actor_id="user-3", user_name="Bob Display", username="bob",
+            device_id="device-3", device_name="电脑三", source="managed",
+        )
+        with actor_context(actor):
+            task = Task.create(
+                id="task-creator", title="自动回复", cwd=str(tmp_path),
+                created_at=now, updated_at=now,
+                **current_actor_task_fields(),
+            )
+        assert task.creator_name == "Bob Display"
+        assert task.creator_username == "bob"
+        reply = create_task_message(
+            task=task, channel="execution", step_key="automatic",
+            role="assistant", content="完成", position=1, created_at=now,
+        )
+        assert reply.initiated_by_user_id == "user-3"
+        assert reply.initiated_by_username == "bob"
     finally:
         db.close()
