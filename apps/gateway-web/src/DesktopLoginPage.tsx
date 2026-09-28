@@ -10,6 +10,8 @@ type DesktopRequest = {
   code_challenge: string
 }
 
+type IdentitySource = { id: string; provider: 'dingtalk' | 'wecom'; tenant_id: string }
+
 export function parseDesktopRequest(search: string): DesktopRequest | null {
   const params = new URLSearchParams(search)
   const keys = ['gateway_id', 'app_instance_id', 'state', 'nonce', 'code_challenge'] as const
@@ -30,6 +32,7 @@ export function DesktopLoginPage() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [sources, setSources] = useState<IdentitySource[]>([])
 
   useEffect(() => {
     if (!request) return
@@ -47,6 +50,11 @@ export function DesktopLoginPage() {
       .catch((reason) => {
         if (reason?.name !== 'AbortError') setStatus('login')
       })
+    void fetch('/api/auth/identity-sources', { signal: controller.signal })
+      .then(async (response) => {
+        if (response.ok) setSources((await response.json()).sources ?? [])
+      })
+      .catch(() => {})
     return () => controller.abort()
   }, [request?.state])
 
@@ -94,6 +102,27 @@ export function DesktopLoginPage() {
     }
   }
 
+  async function startExternalLogin(sourceId: string) {
+    setStatus('submitting')
+    setError('')
+    try {
+      const response = await fetch(`/api/auth/external/${encodeURIComponent(sourceId)}/start`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ return_to: window.location.pathname + window.location.search }),
+      })
+      if (!response.ok) throw new Error('扫码登录暂时不可用，请重试或使用用户名密码。')
+      const result = await response.json()
+      if (typeof result.authorization_url !== 'string'
+          || !result.authorization_url.startsWith('https://')) {
+        throw new Error('身份源返回了无效的登录地址。')
+      }
+      window.location.assign(result.authorization_url)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '扫码登录失败，请重试。')
+      setStatus('login')
+    }
+  }
+
   if (!request) return (
     <section className="gateway-auth-card">
       <h2>登录请求无效</h2>
@@ -109,15 +138,24 @@ export function DesktopLoginPage() {
       <p className="gateway-auth-description">登录后授权当前电脑访问所属工作空间。</p>
       {status === 'checking' && <p role="status">正在检查登录状态…</p>}
       {status === 'login' && (
-        <form onSubmit={(event) => void signIn(event)} className="gateway-auth-form">
-          <label htmlFor="gateway-username">用户名</label>
-          <input id="gateway-username" autoComplete="username" value={username}
-            onChange={(event) => setUsername(event.target.value)} />
-          <label htmlFor="gateway-password">密码</label>
-          <input id="gateway-password" type="password" autoComplete="current-password" value={password}
-            onChange={(event) => setPassword(event.target.value)} />
-          <button type="submit" disabled={!username.trim() || !password}>登录并继续</button>
-        </form>
+        <>
+          <form onSubmit={(event) => void signIn(event)} className="gateway-auth-form">
+            <label htmlFor="gateway-username">用户名</label>
+            <input id="gateway-username" autoComplete="username" value={username}
+              onChange={(event) => setUsername(event.target.value)} />
+            <label htmlFor="gateway-password">密码</label>
+            <input id="gateway-password" type="password" autoComplete="current-password" value={password}
+              onChange={(event) => setPassword(event.target.value)} />
+            <button type="submit" disabled={!username.trim() || !password}>登录并继续</button>
+          </form>
+          {sources.length > 0 && <div className="gateway-auth-external">
+            <p>或使用企业身份登录</p>
+            {sources.map((source) => <button key={source.id} type="button"
+              onClick={() => void startExternalLogin(source.id)}>
+              {source.provider === 'dingtalk' ? '钉钉' : '企业微信'} · {source.tenant_id}
+            </button>)}
+          </div>}
+        </>
       )}
       {status === 'ready' && <button type="button" onClick={() => csrf && void authorize(csrf)}>
         在此电脑上继续

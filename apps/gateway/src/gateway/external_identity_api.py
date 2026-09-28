@@ -4,7 +4,8 @@ import re
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel, Field
+from fastapi.responses import RedirectResponse
+from pydantic import BaseModel, Field, field_validator
 
 from .external_identity import ExternalIdentityService
 from .identity import COOKIE_NAME, IdentityService, csrf_token, public_user
@@ -44,6 +45,19 @@ class PersonEvent(BaseModel):
     subject: str = Field(min_length=1, max_length=256)
     display_name: str | None = Field(default=None, max_length=256)
     department_ids: list[str] = []
+
+
+class ExternalStartInput(BaseModel):
+    return_to: str | None = Field(default=None, max_length=2048)
+
+    @field_validator("return_to")
+    @classmethod
+    def safe_return_to(cls, value: str | None) -> str | None:
+        if value is not None and not (value == "/" or value.startswith("/desktop/login?")):
+            raise ValueError("Unsupported scan return path")
+        if value and (value.startswith("//") or "\\" in value or "\n" in value or "\r" in value):
+            raise ValueError("Invalid scan return path")
+        return value
 
 
 def _service(request: Request) -> ExternalIdentityService:
@@ -110,7 +124,7 @@ async def disable_source(request: Request, source_id: str):
     await _service(request).disable_source(source_id)
 
 
-async def _begin(request: Request, source_id: str, binding: bool):
+async def _begin(request: Request, source_id: str, binding: bool, return_to: str | None = None):
     identity = IdentityService(request.app.state.database)
     user_id = session_id = None
     if binding:
@@ -118,7 +132,7 @@ async def _begin(request: Request, source_id: str, binding: bool):
         user, auth_session = await identity.session_user(token)
         _check_csrf(request, token)
         user_id, session_id = user.id, auth_session.id
-    source, state, nonce = await _service(request).begin(source_id, user_id, session_id)
+    source, state, nonce = await _service(request).begin(source_id, user_id, session_id, return_to)
     redirect_uri = str(request.url_for("external_callback", source_id=source_id))
     return {"authorization_url": _connector(request, source.provider).authorization_url(
         source, state, nonce, redirect_uri,
@@ -126,11 +140,18 @@ async def _begin(request: Request, source_id: str, binding: bool):
 
 
 @router.post("/auth/external/{source_id}/start")
-async def external_start(request: Request, source_id: str):
+async def external_start(request: Request, source_id: str, body: ExternalStartInput | None = None):
     await request.app.state.identity_rate_limiter.check(
         "external_start", request.client.host if request.client else "unknown",
     )
-    return await _begin(request, source_id, False)
+    return await _begin(request, source_id, False, body.return_to if body else None)
+
+
+@router.get("/auth/identity-sources")
+async def identity_sources(request: Request):
+    sources = await _service(request).enabled_sources()
+    return {"sources": [{"id": source.id, "provider": source.provider,
+                         "tenant_id": source.tenant_id} for source in sources]}
 
 
 @router.post("/auth/external/{source_id}/bind/start")
@@ -153,9 +174,14 @@ async def external_callback(request: Request, response: Response, source_id: str
             browser_session_id = auth_session.id
         except HTTPException:
             pass
-    user, new_token = await _service(request).complete(
+    user, new_token, return_to = await _service(request).complete(
         source_id, state, authorization_code, _connector(request, source.provider), browser_session_id,
     )
+    if return_to:
+        redirect = RedirectResponse(return_to if user.status == "active" else "/auth/pending", status_code=303)
+        if new_token:
+            _set_session_cookie(redirect, new_token)
+        return redirect
     if new_token:
         _set_session_cookie(response, new_token)
     if user.status == "pending":

@@ -61,8 +61,15 @@ class ExternalIdentityService:
                 raise HTTPException(status_code=403, detail="Identity source disabled")
             return source
 
+    async def enabled_sources(self) -> list[IdentitySource]:
+        async with self.database.session() as session:
+            return (await session.scalars(select(IdentitySource).where(
+                IdentitySource.enabled == 1,
+            ).order_by(IdentitySource.provider, IdentitySource.tenant_id))).all()
+
     async def begin(self, source_id: str, binding_user_id: str | None = None,
-                    binding_session_id: str | None = None) -> tuple[IdentitySource, str, str]:
+                    binding_session_id: str | None = None,
+                    return_to: str | None = None) -> tuple[IdentitySource, str, str]:
         source = await self.source(source_id)
         state = secrets.token_urlsafe(32)
         nonce = secrets.token_urlsafe(32)
@@ -71,12 +78,13 @@ class ExternalIdentityService:
                 session.add(ExternalLoginAttempt(
                     state_hash=_state_digest(state), source_id=source_id, nonce=nonce,
                     binding_user_id=binding_user_id, binding_session_id=binding_session_id,
+                    return_to=return_to,
                     expires_at=_now() + timedelta(minutes=5),
                 ))
         return source, state, nonce
 
     async def complete(self, source_id: str, state: str, code: str, connector,
-                       browser_session_id: str | None = None) -> tuple[User, str | None]:
+                       browser_session_id: str | None = None) -> tuple[User, str | None, str | None]:
         source = await self.source(source_id)
         async with self.database.session() as session:
             attempt = await session.get(ExternalLoginAttempt, _state_digest(state))
@@ -86,6 +94,7 @@ class ExternalIdentityService:
                 raise HTTPException(status_code=401, detail="Original browser session required")
             nonce = attempt.nonce
             binding_user_id = attempt.binding_user_id
+            return_to = attempt.return_to
         async with self.database.session() as session:
             async with session.begin():
                 result = await session.execute(update(ExternalLoginAttempt).where(
@@ -151,7 +160,7 @@ class ExternalIdentityService:
                         auth_session, token = IdentityService._create_session(user.id)
                         session.add(auth_session)
                     await session.flush()
-                    return user, token
+                    return user, token, return_to
         except IntegrityError as exc:
             raise HTTPException(status_code=409, detail="External identity already linked") from exc
 
