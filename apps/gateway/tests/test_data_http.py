@@ -4,6 +4,7 @@ import base64
 import httpx
 import pytest
 from fastapi import FastAPI, Request
+from starlette.requests import Request as StarletteRequest
 from types import SimpleNamespace
 from workstep_gateway_protocol import (FrameType, ProxyFrame,
                                        WebSocketMessageAssembler, websocket_payloads)
@@ -26,6 +27,8 @@ async def test_data_connection_multiplexes_large_http_body_and_streamed_response
             if phase == "start":
                 stream["headers"] = frame.payload["headers"]
                 stream["user_id"] = frame.payload["user_id"]
+                stream["project_id"] = frame.payload.get("project_id")
+                stream["access_level"] = frame.payload.get("access_level")
             elif phase == "body":
                 stream["body"].extend(base64.b64decode(frame.payload["data"]))
             elif phase == "end":
@@ -54,7 +57,8 @@ async def test_data_connection_multiplexes_large_http_body_and_streamed_response
 
     @app.post("/echo")
     async def echo(request: Request):
-        return await connection.proxy_http(request, user_id="user-1", username="alice")
+        return await connection.proxy_http(request, user_id="user-1", username="alice",
+                                           project_id="host-1", access_level="read")
 
     upload = b"x" * 70000
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
@@ -68,6 +72,8 @@ async def test_data_connection_multiplexes_large_http_body_and_streamed_response
     assert len(received) == 1
     stream = next(iter(received.values()))
     assert stream["user_id"] == "user-1"
+    assert stream["project_id"] == "host-1"
+    assert stream["access_level"] == "read"
     assert all(name.lower() not in ("cookie", "x-workstep-actor-name")
                for name, _ in stream["headers"])
 
@@ -105,6 +111,8 @@ async def test_data_connection_forwards_bidirectional_websocket_frames():
             frame = ProxyFrame.model_validate(message)
             if frame.type == FrameType.websocket_open:
                 assert frame.payload["user_id"] == "user-1"
+                assert frame.payload["project_id"] == "host-1"
+                assert frame.payload["access_level"] == "edit"
                 assert all(name.lower() != "cookie" for name, _ in frame.payload["headers"])
                 await connection.deliver(ProxyFrame(
                     stream_id=frame.stream_id, type=FrameType.websocket_open,
@@ -125,6 +133,43 @@ async def test_data_connection_forwards_bidirectional_websocket_frames():
     connection = DataConnection("device-1", Socket())
     await asyncio.wait_for(connection.proxy_websocket(
         browser, user_id="user-1", username="alice",
+        project_id="host-1", access_level="edit",
     ), timeout=2)
     assert browser.accepted
     assert browser.sent == ["echo:" + "hello" * 20000]
+
+
+@pytest.mark.asyncio
+async def test_project_http_stream_stops_when_authorization_is_revoked():
+    allowed = True
+    frames = []
+
+    async def authorize():
+        if not allowed:
+            raise PermissionError("Project access revoked")
+
+    class Socket:
+        async def send_json(self, message):
+            frame = ProxyFrame.model_validate(message)
+            frames.append(frame)
+            if frame.type == FrameType.http_request and frame.payload["phase"] == "end":
+                await connection.deliver(ProxyFrame(
+                    stream_id=frame.stream_id, type=FrameType.http_response,
+                    payload={"phase": "start", "status": 200, "headers": []},
+                ))
+
+    connection = DataConnection("device-1", Socket())
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+    request = StarletteRequest({
+        "type": "http", "method": "GET", "scheme": "https", "path": "/api/task/list",
+        "query_string": b"project_id=host-1", "headers": [], "server": ("gateway.test", 443),
+    }, receive)
+    response = await connection.proxy_http(
+        request, user_id="user-1", username="alice", project_id="host-1",
+        access_level="read", authorization_check=authorize,
+    )
+    allowed = False
+    with pytest.raises(PermissionError):
+        await anext(response.body_iterator)
+    assert any(frame.type == FrameType.cancel for frame in frames)

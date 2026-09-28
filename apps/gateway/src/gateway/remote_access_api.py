@@ -120,7 +120,7 @@ async def redeem_device_ticket(request: Request):
 
 @router.get("/session")
 async def remote_session(request: Request):
-    user, device_id, auth_session = await _remote_identity(request)
+    user, device_id, auth_session, _ = await _remote_identity(request)
     async with request.app.state.database.session() as session:
         device = await session.get(Device, device_id)
     if device is None:
@@ -150,9 +150,11 @@ async def _remote_identity(request: Request):
                                                      project.id, project.host_project_id)
         if current_level == "read":
             auth_session.project_access_level = "read"
+        host_project_id = project.host_project_id
     else:
         await _active_access(request, user.id, device_id)
-    return user, device_id, auth_session
+        host_project_id = None
+    return user, device_id, auth_session, host_project_id
 
 
 async def proxy_remote_request(request: Request):
@@ -160,11 +162,29 @@ async def proxy_remote_request(request: Request):
     origin = request.headers.get("origin")
     if request.method not in ("GET", "HEAD", "OPTIONS") and origin and origin != f"https://{host}":
         raise HTTPException(status_code=403, detail="Invalid remote origin")
-    user, device_id, auth_session = await _remote_identity(request)
+    user, device_id, auth_session, host_project_id = await _remote_identity(request)
     if auth_session.project_id:
-        raise HTTPException(status_code=403, detail="Project proxy scope unavailable")
+        project_ids = request.query_params.getlist("project_id")
+        if (request.method != "GET" or request.url.path != "/api/task/list"
+                or project_ids != [host_project_id]):
+            raise HTTPException(status_code=403, detail="Project proxy scope unavailable")
     try:
         connection = await request.app.state.control_connections.request_data(device_id)
+        if auth_session.project_id:
+            async def authorize_stream():
+                current_level = await _active_project_access(
+                    request, user.id, device_id, auth_session.project_id,
+                    host_project_id,
+                )
+                if auth_session.project_access_level == "edit" and current_level != "edit":
+                    raise HTTPException(status_code=403, detail="Project edit access revoked")
+
+            return await connection.proxy_http(
+                request, user_id=user.id, username=user.username,
+                project_id=host_project_id,
+                access_level=auth_session.project_access_level,
+                authorization_check=authorize_stream,
+            )
         return await connection.proxy_http(request, user_id=user.id, username=user.username)
     except (ConnectionError, asyncio.TimeoutError) as exc:
         raise HTTPException(status_code=502, detail="Device data connection unavailable") from exc
@@ -176,7 +196,7 @@ async def proxy_remote_websocket(ws: WebSocket, path: str):
         host = _device_host(ws)
         if ws.headers.get("origin") != f"https://{host}":
             raise HTTPException(status_code=403, detail="Invalid remote WebSocket origin")
-        user, device_id, auth_session = await _remote_identity(ws)
+        user, device_id, auth_session, _ = await _remote_identity(ws)
         if auth_session.project_id:
             raise HTTPException(status_code=403, detail="Project proxy scope unavailable")
         connection = await ws.app.state.control_connections.request_data(device_id)

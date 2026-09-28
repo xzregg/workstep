@@ -2,6 +2,7 @@ import base64
 import json
 
 from fastapi.testclient import TestClient
+from fastapi.responses import JSONResponse
 
 from gateway.app import create_app
 from gateway.config import GatewaySettings
@@ -87,6 +88,23 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         assert client.post(f"{host}/api/remote/redeem", data={"ticket": ticket}).status_code == 409
         assert client.get(f"{host}/api/remote/session").json()["project_id"] == "project-1"
         assert client.get(f"{host}/api/health").status_code == 403
+        class ProjectData:
+            async def proxy_http(self, request, *, user_id, username,
+                                 project_id, access_level, authorization_check):
+                await authorization_check()
+                assert user_id == worker_id
+                assert project_id == "host-1"
+                assert access_level == "read"
+                return JSONResponse({"project_id": project_id})
+
+        async def project_data(_device_id):
+            return ProjectData()
+
+        monkeypatch.setattr(app.state.control_connections, "request_data", project_data)
+        assert client.get(f"{host}/api/task/list?project_id=host-1").json() == {
+            "project_id": "host-1",
+        }
+        assert client.get(f"{host}/api/task/list?project_id=host-2").status_code == 403
         remote_cookie = client.cookies.get("workstep_gateway_session", domain="d-device-1.gateway.test")
         client.cookies.clear()
         client.cookies.clear()
@@ -97,6 +115,9 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         assert client.delete(f"/api/groups/{group_id}/members/{worker_id}",
                              headers=owner_headers).status_code == 204
         assert client.get(f"{host}/api/remote/session", headers={
+            "Cookie": f"workstep_gateway_session={remote_cookie}",
+        }).status_code == 403
+        assert client.get(f"{host}/api/task/list?project_id=host-1", headers={
             "Cookie": f"workstep_gateway_session={remote_cookie}",
         }).status_code == 403
         client.post("/api/auth/step-up", json={"password": "OwnerPassphrase-2026!"},
