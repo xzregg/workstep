@@ -266,6 +266,27 @@ test('management navigation and module routes respect current roles', async () =
   render(<MemoryRouter initialEntries={['/admin/projects']}><App /></MemoryRouter>)
   await screen.findByText('当前账号没有访问该管理页面的权限。')
   assert.equal(screen.queryByRole('heading', { name: '项目管理' }), null)
+  cleanup()
+  render(<MemoryRouter initialEntries={['/admin/audit']}><App /></MemoryRouter>)
+  await screen.findByText('当前账号没有访问该管理页面的权限。')
+  assert.equal(screen.queryByRole('heading', { name: '审计记录' }), null)
+})
+
+test('audit administrator can enter the audit workbench without broader admin modules', async () => {
+  globalThis.fetch = async input => {
+    const url = String(input)
+    if (url === '/api/auth/admin-access') return Response.json({ roles: ['audit_admin'], must_change_password: false })
+    if (url.startsWith('/api/admin/audit?')) return Response.json({ items: [], total: 0 })
+    if (url === '/api/admin/overview') return Response.json({ roles: ['audit_admin'], users: null,
+      devices: null, projects: null, tasks: { running: null }, recent_actions: [] })
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+  render(<MemoryRouter initialEntries={['/admin/audit']}><App /></MemoryRouter>)
+  await screen.findByRole('heading', { name: '审计记录' })
+  cleanup()
+  render(<MemoryRouter initialEntries={['/admin']}><App /></MemoryRouter>)
+  await screen.findByRole('link', { name: '审计记录' })
+  assert.equal(screen.queryByRole('link', { name: 'Token 用量' }), null)
 })
 
 test('management tab appears after signing in on the workbench', async () => {

@@ -7,7 +7,7 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
-from sqlalchemy import exists, or_, select
+from sqlalchemy import and_, exists, func, or_, select
 
 from .identity_api import COOKIE_NAME, _identity
 from .models import (
@@ -216,9 +216,18 @@ async def query_audit(
     project_id: str | None = Query(default=None, max_length=64),
     device_id: str | None = Query(default=None, max_length=64),
     action: str | None = Query(default=None, max_length=128),
+    user_id: str | None = Query(default=None, max_length=64),
+    result: str | None = Query(default=None, max_length=16),
+    q: str | None = Query(default=None, max_length=128),
+    from_time: datetime | None = None,
+    to_time: datetime | None = None,
     limit: int = Query(default=100, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ):
+    if (from_time and from_time.tzinfo is None) or (to_time and to_time.tzinfo is None):
+        raise HTTPException(422, "Audit time must include timezone")
+    if from_time and to_time and from_time >= to_time:
+        raise HTTPException(422, "End time must be after start time")
     async with request.app.state.database.session() as session:
         scope = await _audit_scope(request, session)
         published = exists(select(PlatformProject.id).where(
@@ -243,16 +252,50 @@ async def query_audit(
             conditions.append(AuditEvent.device_id == device_id)
         if action:
             conditions.append(AuditEvent.action == action)
+        if user_id:
+            conditions.append(or_(AuditEvent.user_id == user_id,
+                                  AuditEvent.initiated_by_user_id == user_id))
+        if result:
+            conditions.append(AuditEvent.result == result)
+        event_time = func.coalesce(AuditEvent.occurred_at, AuditEvent.created_at)
+        if from_time:
+            conditions.append(event_time >= from_time)
+        if to_time:
+            conditions.append(event_time < to_time)
+        if q and q.strip():
+            pattern = '%' + q.strip().replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
+            conditions.append(or_(*(
+                column.ilike(pattern, escape='\\') for column in (
+                    AuditEvent.action, AuditEvent.actor_username,
+                    AuditEvent.actor_name, AuditEvent.initiated_by_username,
+                    AuditEvent.task_id, AuditEvent.device_id,
+                )
+            )))
+        total = await session.scalar(select(func.count()).select_from(AuditEvent).where(*conditions))
         rows = (await session.scalars(
             select(AuditEvent).where(*conditions)
-            .order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc())
+            .order_by(event_time.desc(), AuditEvent.id.desc())
             .limit(limit + 1).offset(offset)
         )).all()
+        project_keys = {(row.device_id, row.project_id) for row in rows[:limit]
+                        if row.device_id and row.project_id}
+        projects = (await session.scalars(select(PlatformProject).where(
+            PlatformProject.access_mode == "remote_published",
+            PlatformProject.status == "active",
+            or_(*(and_(PlatformProject.device_id == device,
+                       PlatformProject.host_project_id == host)
+                   for device, host in project_keys)),
+        ))).all() if project_keys else []
+        project_map = {(row.device_id, row.host_project_id): row for row in projects}
         return {
             "items": [{
                 "id": row.id,
                 "device_id": row.device_id,
                 "project_id": row.project_id,
+                "platform_project_id": project_map[(row.device_id, row.project_id)].id
+                if (row.device_id, row.project_id) in project_map else None,
+                "project_name": project_map[(row.device_id, row.project_id)].name
+                if (row.device_id, row.project_id) in project_map else None,
                 "task_id": row.task_id,
                 "action": row.action,
                 "result": row.result,
@@ -268,5 +311,6 @@ async def query_audit(
                 "metadata": _visible_metadata(row.metadata_json),
                 "occurred_at": (row.occurred_at or row.created_at).isoformat(),
             } for row in rows[:limit]],
+            "total": total or 0,
             "next_offset": offset + limit if len(rows) > limit else None,
         }
