@@ -1,0 +1,299 @@
+"""Gateway-local accounts and browser sessions."""
+
+import asyncio
+import hashlib
+import hmac
+import secrets
+from datetime import datetime, timedelta, timezone
+from uuid import uuid4
+
+from argon2 import PasswordHasher
+from argon2.exceptions import VerificationError
+from fastapi import HTTPException
+from sqlalchemy import select, update, func
+from sqlalchemy.exc import IntegrityError
+
+from .database import GatewayDatabase
+from .models import AdminAssignment, AuthSession, PlatformSetting, User
+
+SESSION_SECONDS = 24 * 60 * 60
+COOKIE_NAME = "workstep_gateway_session"
+_password_hasher = PasswordHasher()
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+def _digest(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
+def csrf_token(token: str) -> str:
+    return hmac.new(token.encode(), b"workstep-gateway-csrf-v1", hashlib.sha256).hexdigest()
+
+
+def public_user(user: User) -> dict[str, str]:
+    return {"id": user.id, "username": user.username, "display_name": user.display_name, "status": user.status}
+
+
+class IdentityService:
+    def __init__(self, database: GatewayDatabase):
+        self.database = database
+
+    @staticmethod
+    async def _hash_password(password: str) -> str:
+        return await asyncio.to_thread(_password_hasher.hash, password)
+
+    @staticmethod
+    async def _verify_password(stored_hash: str, password: str) -> bool:
+        try:
+            return await asyncio.to_thread(_password_hasher.verify, stored_hash, password)
+        except VerificationError:
+            return False
+
+    @staticmethod
+    def _create_session(user_id: str) -> tuple[AuthSession, str]:
+        token = secrets.token_urlsafe(32)
+        return AuthSession(
+            id=str(uuid4()), user_id=user_id, token_hash=_digest(token),
+            expires_at=_now() + timedelta(seconds=SESSION_SECONDS),
+        ), token
+
+    async def setup(self, username: str, display_name: str, password: str,
+                    recovery_username: str, recovery_password: str,
+                    registration_mode: str) -> tuple[User, str]:
+        async with self.database.session() as session:
+            if await session.get(PlatformSetting, "platform_initialized"):
+                raise HTTPException(status_code=409, detail="Platform already initialized")
+            if await session.scalar(select(func.count(User.id))):
+                raise HTTPException(status_code=409, detail="Platform already contains users")
+        primary_hash = await self._hash_password(password)
+        recovery_hash = await self._hash_password(recovery_password)
+        primary = User(
+            id=str(uuid4()), username=username, display_name=display_name,
+            password_hash=primary_hash, password_changed_at=_now(),
+            status="active", registration_source="local",
+        )
+        recovery = User(
+            id=str(uuid4()), username=recovery_username, display_name="Recovery Administrator",
+            password_hash=recovery_hash, password_changed_at=_now(),
+            status="active", registration_source="local", is_recovery=1,
+        )
+        auth_session, token = self._create_session(primary.id)
+        try:
+            async with self.database.session() as session:
+                async with session.begin():
+                    session.add(PlatformSetting(key="platform_initialized", value_json="true"))
+                    session.add(PlatformSetting(key="registration_mode", value_json=f'"{registration_mode}"'))
+                    session.add_all([primary, recovery])
+                    session.add_all([
+                        AdminAssignment(id=str(uuid4()), user_id=primary.id, role="super_admin"),
+                        AdminAssignment(id=str(uuid4()), user_id=recovery.id, role="super_admin"),
+                    ])
+                    session.add(auth_session)
+        except IntegrityError as exc:
+            raise HTTPException(status_code=409, detail="Platform already initialized") from exc
+        return primary, token
+
+    async def registration_mode(self) -> str:
+        async with self.database.session() as session:
+            setting = await session.get(PlatformSetting, "registration_mode")
+            if setting is None:
+                raise HTTPException(status_code=503, detail="Platform not initialized")
+            return setting.value_json.strip('"')
+
+    async def register(self, username: str, display_name: str, password: str) -> tuple[User, str | None]:
+        mode = await self.registration_mode()
+        if mode == "closed":
+            raise HTTPException(status_code=403, detail="Registration is closed")
+        password_hash = await self._hash_password(password)
+        user = User(
+            id=str(uuid4()), username=username, display_name=display_name,
+            password_hash=password_hash, password_changed_at=_now(),
+            status="active" if mode == "open" else "pending", registration_source="local",
+        )
+        auth_session, token = self._create_session(user.id) if mode == "open" else (None, None)
+        try:
+            async with self.database.session() as session:
+                async with session.begin():
+                    session.add(user)
+                    if auth_session is not None:
+                        session.add(auth_session)
+        except IntegrityError as exc:
+            raise HTTPException(status_code=409, detail="Username unavailable") from exc
+        return user, token
+
+    async def login(self, username: str, password: str) -> tuple[User, str]:
+        async with self.database.session() as session:
+            user = await session.scalar(select(User).where(User.username == username))
+        if user is None or not user.password_hash or not await self._verify_password(user.password_hash, password):
+            raise HTTPException(status_code=401, detail="Invalid username or password")
+        if user.status == "pending":
+            raise HTTPException(status_code=403, detail="Account awaiting approval")
+        if user.status != "active":
+            raise HTTPException(status_code=403, detail="Account disabled")
+        auth_session, token = self._create_session(user.id)
+        async with self.database.session() as session:
+            async with session.begin():
+                session.add(auth_session)
+                fresh_user = await session.get(User, user.id)
+                fresh_user.last_login_at = _now()
+                if _password_hasher.check_needs_rehash(user.password_hash):
+                    fresh_user.password_hash = await self._hash_password(password)
+        return user, token
+
+    async def session_user(self, token: str | None) -> tuple[User, AuthSession]:
+        if not token:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        async with self.database.session() as session:
+            auth_session = await session.scalar(select(AuthSession).where(AuthSession.token_hash == _digest(token)))
+            if auth_session is None or auth_session.revoked_at or _as_utc(auth_session.expires_at) <= _now():
+                raise HTTPException(status_code=401, detail="Session expired")
+            user = await session.get(User, auth_session.user_id)
+            if user is None or user.status != "active":
+                raise HTTPException(status_code=401, detail="Account unavailable")
+            return user, auth_session
+
+    async def logout(self, token: str) -> None:
+        async with self.database.session() as session:
+            async with session.begin():
+                auth_session = await session.scalar(select(AuthSession).where(AuthSession.token_hash == _digest(token)))
+                if auth_session is not None:
+                    auth_session.revoked_at = _now()
+
+    async def change_password(self, user: User, auth_session: AuthSession,
+                              current_password: str, new_password: str) -> None:
+        if not user.password_hash or not await self._verify_password(user.password_hash, current_password):
+            raise HTTPException(status_code=403, detail="Current password is incorrect")
+        new_hash = await self._hash_password(new_password)
+        async with self.database.session() as session:
+            async with session.begin():
+                fresh = await session.get(User, user.id)
+                if fresh.password_hash != user.password_hash:
+                    raise HTTPException(status_code=409, detail="Password changed; retry")
+                fresh.password_hash = new_hash
+                fresh.password_changed_at = _now()
+                fresh.must_change_password = 0
+                await session.execute(
+                    update(AuthSession).where(
+                        AuthSession.user_id == user.id,
+                        AuthSession.id != auth_session.id,
+                        AuthSession.revoked_at.is_(None),
+                    ).values(revoked_at=_now())
+                )
+
+    async def require_super_admin(self, user_id: str) -> None:
+        async with self.database.session() as session:
+            assignment = await session.scalar(select(AdminAssignment.id).where(
+                AdminAssignment.user_id == user_id,
+                AdminAssignment.role == "super_admin",
+                AdminAssignment.revoked_at.is_(None),
+            ))
+            if assignment is None:
+                raise HTTPException(status_code=403, detail="Administrator access required")
+
+    async def step_up(self, user: User, auth_session: AuthSession, password: str) -> None:
+        if not user.password_hash or not await self._verify_password(user.password_hash, password):
+            raise HTTPException(status_code=403, detail="Password is incorrect")
+        async with self.database.session() as session:
+            async with session.begin():
+                current = await session.get(AuthSession, auth_session.id)
+                if current is None or current.revoked_at or _as_utc(current.expires_at) <= _now():
+                    raise HTTPException(status_code=401, detail="Session expired")
+                current.step_up_expires_at = _now() + timedelta(minutes=5)
+
+    async def require_step_up(self, auth_session: AuthSession) -> None:
+        async with self.database.session() as session:
+            current = await session.get(AuthSession, auth_session.id)
+            if current is None or current.step_up_expires_at is None or _as_utc(current.step_up_expires_at) <= _now():
+                raise HTTPException(status_code=403, detail="Recent password confirmation required")
+
+    async def is_super_admin(self, user_id: str) -> bool:
+        async with self.database.session() as session:
+            assignment = await session.scalar(select(AdminAssignment.id).where(
+                AdminAssignment.user_id == user_id,
+                AdminAssignment.role == "super_admin",
+                AdminAssignment.revoked_at.is_(None),
+            ))
+            return assignment is not None
+
+    async def reset_password(self, user_id: str, new_password: str) -> None:
+        password_hash = await self._hash_password(new_password)
+        async with self.database.session() as session:
+            async with session.begin():
+                user = await session.get(User, user_id)
+                if user is None:
+                    raise HTTPException(status_code=404, detail="User not found")
+                user.password_hash = password_hash
+                user.password_changed_at = _now()
+                user.must_change_password = 1
+                await session.execute(update(AuthSession).where(
+                    AuthSession.user_id == user_id,
+                    AuthSession.revoked_at.is_(None),
+                ).values(revoked_at=_now()))
+
+    async def admin_create_user(self, username: str, display_name: str, password: str,
+                                status: str, created_by: str) -> User:
+        password_hash = await self._hash_password(password)
+        user = User(
+            id=str(uuid4()), username=username, display_name=display_name,
+            password_hash=password_hash, password_changed_at=_now(),
+            status=status, registration_source="admin_created", created_by_user_id=created_by,
+            must_change_password=1,
+        )
+        try:
+            async with self.database.session() as session:
+                async with session.begin():
+                    session.add(user)
+        except IntegrityError as exc:
+            raise HTTPException(status_code=409, detail="Username unavailable") from exc
+        return user
+
+    async def approve_user(self, user_id: str) -> None:
+        async with self.database.session() as session:
+            async with session.begin():
+                user = await session.get(User, user_id)
+                if user is None:
+                    raise HTTPException(status_code=404, detail="User not found")
+                if user.status == "disabled":
+                    raise HTTPException(status_code=409, detail="Disabled account cannot be approved")
+                user.status = "active"
+
+    async def disable_user(self, user_id: str) -> None:
+        async with self.database.session() as session:
+            async with session.begin():
+                # Acquire a write lock before counting active super admins on
+                # SQLite; PostgreSQL locks the same sentinel row.
+                await session.execute(update(PlatformSetting).where(
+                    PlatformSetting.key == "platform_initialized",
+                ).values(value_json="true"))
+                user = await session.get(User, user_id)
+                if user is None:
+                    raise HTTPException(status_code=404, detail="User not found")
+                if user.status == "disabled":
+                    return
+                assignment = await session.scalar(select(AdminAssignment.id).where(
+                    AdminAssignment.user_id == user_id,
+                    AdminAssignment.role == "super_admin",
+                    AdminAssignment.revoked_at.is_(None),
+                ))
+                if assignment is not None:
+                    count = await session.scalar(select(func.count()).select_from(AdminAssignment).join(User).where(
+                        AdminAssignment.role == "super_admin",
+                        AdminAssignment.revoked_at.is_(None),
+                        User.status == "active",
+                    ))
+                    if count <= 1:
+                        raise HTTPException(status_code=409, detail="Cannot disable last super administrator")
+                if user.is_recovery:
+                    raise HTTPException(status_code=403, detail="Recovery administrator is protected")
+                user.status = "disabled"
+                await session.execute(update(AuthSession).where(
+                    AuthSession.user_id == user_id,
+                    AuthSession.revoked_at.is_(None),
+                ).values(revoked_at=_now()))

@@ -30,6 +30,8 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(128), unique=True)
     display_name: Mapped[str] = mapped_column(String(256))
     password_hash: Mapped[str | None] = mapped_column(Text)
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_recovery: Mapped[int] = mapped_column(Integer, server_default="0")
     registration_source: Mapped[str] = mapped_column(String(32), server_default="local")
     status: Mapped[str] = mapped_column(String(16), server_default="pending")
     must_change_password: Mapped[int] = mapped_column(Integer, server_default="0")
@@ -49,8 +51,24 @@ class AuthSession(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    step_up_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     device_id: Mapped[str | None] = mapped_column(String(64))
     device_name: Mapped[str | None] = mapped_column(String(256))
+
+
+class AdminAssignment(Base):
+    __tablename__ = "admin_assignments"
+    __table_args__ = (Index("ix_admin_user_role", "user_id", "role"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    role: Mapped[str] = mapped_column(String(32))
+    scope_type: Mapped[str] = mapped_column(String(32), server_default="platform")
+    scope_id: Mapped[str | None] = mapped_column(String(64))
+    include_subdepartments: Mapped[int] = mapped_column(Integer, server_default="0")
+    granted_by_user_id: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = timestamp()
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Device(Base):
