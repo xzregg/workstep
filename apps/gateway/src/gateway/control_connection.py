@@ -5,6 +5,7 @@ import base64
 import binascii
 import hashlib
 import json
+import re
 import secrets
 import time
 from collections.abc import Awaitable, Callable
@@ -462,8 +463,12 @@ class DataConnection:
                          authorization_check=None):
         if share_ticket is not None:
             if (not isinstance(share_ticket, str) or not share_ticket
-                    or target_path not in ("/api/platform-share/task",
-                                           "/api/platform-share/history")
+                    or (target_path not in ("/api/platform-share/task",
+                                            "/api/platform-share/history",
+                                            "/api/platform-share/artifacts")
+                        and not re.fullmatch(
+                            r"/api/platform-share/artifacts/[0-9a-f]{64}/content",
+                            target_path or ""))
                     or request.method != "GET"
                     or user_id is not None or username is not None
                     or project_id is not None or access_level is not None

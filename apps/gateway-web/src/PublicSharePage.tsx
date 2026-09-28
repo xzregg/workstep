@@ -13,6 +13,7 @@ type SharedTask = {
 }
 type SharedMessage = { id: string; role: string; content: string; step_key: string;
   created_at: string; truncated?: boolean }
+type SharedArtifact = { id: string; name: string; step_key: string; size: number | null }
 type Phase = 'loading' | 'password' | 'task' | 'offline' | 'unavailable'
 
 export function PublicSharePage() {
@@ -21,7 +22,9 @@ export function PublicSharePage() {
   const [meta, setMeta] = useState<ShareMeta | null>(null)
   const [task, setTask] = useState<SharedTask | null>(null)
   const [messages, setMessages] = useState<SharedMessage[]>([])
+  const [artifacts, setArtifacts] = useState<SharedArtifact[]>([])
   const [historyError, setHistoryError] = useState(false)
+  const [artifactError, setArtifactError] = useState(false)
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -40,11 +43,22 @@ export function PublicSharePage() {
     try {
       const history = await fetch(`${base}/history`, { signal })
       if (signal?.aborted) return
-      if (!history.ok) { setHistoryError(true); return }
-      const result: { messages: SharedMessage[] } = await history.json()
-      if (!signal?.aborted) setMessages(result.messages)
+      if (!history.ok) setHistoryError(true)
+      else {
+        const result: { messages: SharedMessage[] } = await history.json()
+        if (!signal?.aborted) setMessages(result.messages)
+      }
     } catch (reason) {
       if (!(reason instanceof DOMException && reason.name === 'AbortError')) setHistoryError(true)
+    }
+    try {
+      const response = await fetch(`${base}/artifacts`, { signal })
+      if (signal?.aborted) return
+      if (!response.ok) { setArtifactError(true); return }
+      const result: { artifacts: SharedArtifact[] } = await response.json()
+      if (!signal?.aborted) setArtifacts(result.artifacts)
+    } catch (reason) {
+      if (!(reason instanceof DOMException && reason.name === 'AbortError')) setArtifactError(true)
     }
   }
 
@@ -54,7 +68,9 @@ export function PublicSharePage() {
     setMeta(null)
     setTask(null)
     setMessages([])
+    setArtifacts([])
     setHistoryError(false)
+    setArtifactError(false)
     setError('')
     async function openShare() {
       try {
@@ -148,6 +164,15 @@ export function PublicSharePage() {
             <div className="gateway-share-message-content">{message.content}</div>
             {message.truncated && <p>消息过长，仅显示前一部分。</p>}
           </article>)}
+        </section>
+        <section className="gateway-share-messages">
+          <h3>任务产物</h3>
+          {artifactError && <p>产物暂时不可用，请稍后重试。</p>}
+          {!artifactError && artifacts.length === 0 && <p>暂无产物。</p>}
+          {artifacts.map(artifact => <p key={artifact.id}>
+            <a href={`${base}/artifacts/${artifact.id}/content`}>{artifact.name}</a>
+            {artifact.step_key && <span> · {artifact.step_key}</span>}
+          </p>)}
         </section>
       </>}
       {phase === 'offline' && <>

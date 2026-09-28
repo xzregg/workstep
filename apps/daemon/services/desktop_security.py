@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hmac
 import os
+import re
 from contextlib import nullcontext
 from urllib.parse import urlsplit
 
@@ -41,6 +42,7 @@ REMOTE_PROJECT_SCOPED_FS = frozenset({
     "/api/fs/browse", "/api/fs/search", "/api/fs/file", "/api/fs/preview",
     "/api/fs/serve", "/api/fs/upload/file", "/api/fs/upload/image",
 })
+SHARE_ARTIFACT_CONTENT = re.compile(r"/api/platform-share/artifacts/[0-9a-f]{64}/content\Z")
 
 
 def _remote_filesystem_denied(request: Request) -> bool:
@@ -122,8 +124,10 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
         if managed and (share_scope is not None or request.url.path.startswith("/api/platform-share/")):
             if (not remote_bridge or not isinstance(share_scope, dict)
                     or request.method != "GET"
-                    or request.url.path not in (
-                        "/api/platform-share/task", "/api/platform-share/history")
+                    or (request.url.path not in (
+                        "/api/platform-share/task", "/api/platform-share/history",
+                        "/api/platform-share/artifacts")
+                        and not SHARE_ARTIFACT_CONTENT.fullmatch(request.url.path))
                     or request.url.query):
                 response = JSONResponse({"detail": "share scope denied"}, status_code=403)
                 response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)

@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Literal
@@ -270,6 +271,20 @@ async def public_share_task(request: Request, token: str):
 @router.get("/public/shares/{token}/history")
 async def public_share_history(request: Request, token: str):
     return await _proxy_share_read(request, token, "/api/platform-share/history")
+
+
+@router.get("/public/shares/{token}/artifacts")
+async def public_share_artifacts(request: Request, token: str):
+    return await _proxy_share_read(request, token, "/api/platform-share/artifacts")
+
+
+@router.get("/public/shares/{token}/artifacts/{artifact_id}/content")
+async def public_share_artifact_content(request: Request, token: str, artifact_id: str):
+    if not re.fullmatch(r"[0-9a-f]{64}", artifact_id):
+        raise HTTPException(status_code=404, detail="Artifact unavailable")
+    return await _proxy_share_read(
+        request, token, f"/api/platform-share/artifacts/{artifact_id}/content",
+    )
 
 
 async def _proxy_share_read(request: Request, token: str, target_path: str):
