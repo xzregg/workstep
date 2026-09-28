@@ -187,6 +187,15 @@ async def _super_admin_request(request: Request):
     return identity, user
 
 
+async def _super_admin_read(request: Request):
+    identity = _identity(request)
+    user, _ = await identity.session_user(request.cookies.get(COOKIE_NAME))
+    if user.must_change_password:
+        raise HTTPException(status_code=403, detail="Password change required")
+    await identity.require_super_admin(user.id)
+    return identity, user
+
+
 async def _user_manager_request(request: Request, target_user_id: str | None = None,
                                 platform_only: bool = False):
     token = request.cookies.get(COOKIE_NAME)

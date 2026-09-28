@@ -181,3 +181,10 @@ class DesktopAuthorizationService:
                     id=str(uuid4()), user_id=actor_id, device_id=device_id,
                     action=f"admin.device_{status}", result="success", metadata_json=None,
                 ))
+
+    async def list_devices(self, status: str | None = None) -> list[Device]:
+        async with self.database.session() as session:
+            query = select(Device).order_by(Device.created_at.desc()).limit(100)
+            if status:
+                query = query.where(Device.status == status)
+            return (await session.scalars(query)).all()
