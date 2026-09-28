@@ -83,6 +83,10 @@ def desktop_websocket_allowed(ws: WebSocket) -> bool:
     """Require the Electron main-process header in packaged desktop mode."""
 
     gateway_client = getattr(ws.app.state, "gateway_client", None)
+    if (gateway_client is not None
+            and getattr(gateway_client, "managed_config", None) is not None
+            and ws.url.path == "/ws/remote-project"):
+        return False
     remote_actor = ws.scope.get("gateway_remote_actor")
     if (remote_actor is not None and gateway_client is not None
             and getattr(gateway_client, "managed_config", None) is not None):
@@ -142,6 +146,11 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                 )
                 if managed and protected and _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)):
                     response.headers["X-WorkStep-Managed-Session-Expired"] = "1"
+            elif managed and request.url.path.startswith((
+                    "/api/remote-project/", "/api/task-share/")):
+                response = JSONResponse(
+                    {"detail": "legacy sharing is unavailable in managed mode"}, status_code=403,
+                )
             else:
                 if actor is not None:
                     request.state.managed_actor = actor
