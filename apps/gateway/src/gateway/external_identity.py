@@ -72,26 +72,15 @@ class ExternalIdentityService:
                 IdentitySource.enabled == 1,
             ).order_by(IdentitySource.provider, IdentitySource.tenant_id))).all()
 
-    async def reconcile_callback(self, source: IdentitySource, payload: bytes, connector) -> bool:
-        """Reconcile a verified vendor event, then record its replay receipt."""
+    async def enqueue_callback(self, source: IdentitySource, payload: bytes) -> bool:
+        """Durably record a verified event as a directory reconciliation trigger."""
         event_id = "callback:" + hashlib.sha256(payload).hexdigest()
-        async with self.database.session() as session:
-            known = await session.scalar(select(DirectoryEventReceipt.id).where(
-                DirectoryEventReceipt.source_id == source.id,
-                DirectoryEventReceipt.event_id == event_id,
-            ))
-            if known:
-                return False
-        try:
-            snapshot = await connector.fetch_directory(source)
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail="Directory provider unavailable") from exc
-        await self.full_sync(source.id, snapshot["departments"], snapshot["people"])
         try:
             async with self.database.session() as session:
                 async with session.begin():
                     session.add(DirectoryEventReceipt(
                         id=str(uuid4()), source_id=source.id, event_id=event_id,
+                        status="pending",
                     ))
         except IntegrityError:
             return False

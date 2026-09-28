@@ -3,11 +3,11 @@
 import asyncio
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from .database import GatewayDatabase
 from .external_identity import ExternalIdentityService
-from .models import IdentitySource
+from .models import DirectoryEventReceipt, IdentitySource
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,51 @@ class DirectoryReconciler:
             except Exception as exc:
                 logger.error("Directory reconciliation failed for source %s (%s)",
                              source.id, type(exc).__name__)
+
+    async def run_pending_callbacks(self) -> None:
+        async with self.database.session() as session:
+            pending = (await session.scalars(select(DirectoryEventReceipt).where(
+                DirectoryEventReceipt.status == "pending",
+            ).order_by(DirectoryEventReceipt.received_at, DirectoryEventReceipt.id).limit(1000))).all()
+            sources = {source.id: source for source in (await session.scalars(select(IdentitySource).where(
+                IdentitySource.id.in_({receipt.source_id for receipt in pending}),
+            ))).all()}
+        by_source: dict[str, list[str]] = {}
+        for receipt in pending:
+            by_source.setdefault(receipt.source_id, []).append(receipt.id)
+        service = ExternalIdentityService(self.database)
+        for source_id, receipt_ids in by_source.items():
+            source = sources.get(source_id)
+            connector = self.connectors.get(source.provider) if source and source.enabled else None
+            if source and source.enabled and connector is None:
+                continue
+            if connector is not None:
+                try:
+                    snapshot = await connector.fetch_directory(source)
+                    await service.full_sync(source_id, snapshot["departments"], snapshot["people"])
+                except Exception as exc:
+                    logger.error("Directory callback reconciliation failed for source %s (%s)",
+                                 source_id, type(exc).__name__)
+                    continue
+            async with self.database.session() as session:
+                async with session.begin():
+                    await session.execute(update(DirectoryEventReceipt).where(
+                        DirectoryEventReceipt.id.in_(receipt_ids),
+                        DirectoryEventReceipt.status == "pending",
+                    ).values(status="done"))
+
+    async def run_callback_periodic(self, stop: asyncio.Event, wake: asyncio.Event,
+                                    *, retry_seconds: float = 60) -> None:
+        while not stop.is_set():
+            wake.clear()
+            try:
+                await self.run_pending_callbacks()
+            except Exception as exc:
+                logger.error("Directory callback queue failed (%s)", type(exc).__name__)
+            try:
+                await asyncio.wait_for(wake.wait(), timeout=retry_seconds)
+            except asyncio.TimeoutError:
+                pass
 
     async def run_periodic(self, stop: asyncio.Event, *, interval_seconds: float) -> None:
         while not stop.is_set():

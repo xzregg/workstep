@@ -2,7 +2,9 @@
 
 import asyncio
 import json
+import sqlite3
 from time import monotonic
+from time import sleep
 
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
@@ -12,6 +14,13 @@ from gateway.callback_crypto import CallbackCrypto
 from gateway.config import GatewaySettings
 
 AES_KEY = "Yue0EfdN5900c1ce5cf6A152c63DDe1808a60c5ecd7"
+
+
+def _wait_until(predicate):
+    deadline = monotonic() + 2
+    while not predicate() and monotonic() < deadline:
+        sleep(0.01)
+    assert predicate()
 
 
 class DirectoryConnector:
@@ -79,12 +88,13 @@ def test_dingtalk_encrypted_event_and_challenge(monkeypatch, tmp_path):
         unavailable = client.post(url, params={"signature": event["msg_signature"],
                                                "timestamp": "124", "nonce": "nonce-2"},
                                   json={"encrypt": event["encrypt"]})
-        assert unavailable.status_code == 502
+        assert unavailable.status_code == 200
         connector.fail = False
         applied = client.post(url, params={"signature": event["msg_signature"],
                                            "timestamp": "124", "nonce": "nonce-2"},
                               json={"encrypt": event["encrypt"]})
         assert applied.status_code == 200, applied.text
+        _wait_until(lambda: connector.calls == 1)
         assert connector.calls == 1
         duplicate = client.post(url, params={"signature": event["msg_signature"],
                                              "timestamp": "124", "nonce": "nonce-2"},
@@ -115,6 +125,7 @@ def test_wecom_url_challenge_and_encrypted_directory_event(monkeypatch, tmp_path
                                             "timestamp": "124", "nonce": "nonce-2"},
                                content=f"<xml><Encrypt><![CDATA[{event['encrypt']}]]></Encrypt></xml>")
         assert response.status_code == 200, response.text
+        _wait_until(lambda: connector.calls == 1)
         assert connector.calls == 1
 
 
@@ -147,15 +158,44 @@ async def test_slow_directory_callback_keeps_health_responsive(monkeypatch, tmp_
             crypto = CallbackCrypto(token="callback-token", encoding_aes_key=AES_KEY,
                                     owner_key="app-key")
             event = crypto.encrypt(b'{"EventType":"user_add_org"}', timestamp="123", nonce="nonce")
-            pending = asyncio.create_task(client.post(
+            started = monotonic()
+            accepted = await client.post(
                 f"/api/auth/external/{source.json()['id']}/events",
                 params={"signature": event["msg_signature"], "timestamp": "123", "nonce": "nonce"},
                 json={"encrypt": event["encrypt"]},
-            ))
+            )
+            assert accepted.status_code == 200
+            assert monotonic() - started < 0.3
             await asyncio.wait_for(entered.wait(), 1)
             started = monotonic()
             health = await client.get("/api/health")
             assert health.status_code == 200
             assert monotonic() - started < 0.3
             release.set()
-            assert (await pending).status_code == 200
+
+
+def test_verified_callback_is_retried_after_gateway_restart(monkeypatch, tmp_path):
+    monkeypatch.setenv("CALLBACK_TOKEN", "callback-token")
+    monkeypatch.setenv("CALLBACK_AES_KEY", AES_KEY)
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    failing = DirectoryConnector()
+    failing.fail = True
+    app.state.identity_connectors = {"dingtalk": failing}
+    with TestClient(app, base_url="https://gateway.test") as client:
+        source_id = _source(client, "dingtalk", "tenant-a")
+        crypto = CallbackCrypto(token="callback-token", encoding_aes_key=AES_KEY, owner_key="app-key")
+        event = crypto.encrypt(b'{"EventType":"user_add_org"}', timestamp="123", nonce="nonce")
+        response = client.post(f"/api/auth/external/{source_id}/events", params={
+            "signature": event["msg_signature"], "timestamp": "123", "nonce": "nonce",
+        }, json={"encrypt": event["encrypt"]})
+        assert response.status_code == 200
+    with sqlite3.connect(tmp_path / "workstep_platform.db") as connection:
+        assert connection.execute("SELECT status FROM directory_event_receipts WHERE event_id LIKE 'callback:%'").fetchone() == ("pending",)
+
+    restarted = create_app(GatewaySettings(data_dir=tmp_path))
+    working = DirectoryConnector()
+    restarted.state.identity_connectors = {"dingtalk": working}
+    with TestClient(restarted, base_url="https://gateway.test"):
+        _wait_until(lambda: working.calls == 1)
+    with sqlite3.connect(tmp_path / "workstep_platform.db") as connection:
+        assert connection.execute("SELECT status FROM directory_event_receipts WHERE event_id LIKE 'callback:%'").fetchone() == ("done",)

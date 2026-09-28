@@ -166,6 +166,7 @@ class DirectoryEventReceipt(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     source_id: Mapped[str] = mapped_column(ForeignKey("identity_sources.id"))
     event_id: Mapped[str] = mapped_column(String(256))
+    status: Mapped[str] = mapped_column(String(16), server_default="done", index=True)
     received_at: Mapped[datetime] = timestamp()
 
 
