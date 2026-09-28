@@ -2190,6 +2190,46 @@ async def test_chat_usage_provider_read_keeps_event_loop_responsive(chat_module,
 
 
 @pytest.mark.anyio
+async def test_chat_usage_keeps_provider_price_version_from_call_start(chat_module, monkeypatch):
+    module, _bus, _manager, project, config_store = chat_module
+    import main
+    provider = {
+        "id": "provider-1", "protocol": "openai_compatible", "enabled": True,
+        "prices": {"version": "v1", "models": {"model-a": {
+            "input_per_million": "1", "output_per_million": "2",
+        }}},
+        "managed_revision": 3,
+    }
+    config_store.values["providers"] = [provider]
+    recorded = []
+
+    async def fake_invoke_engine(*args, **kwargs):
+        assert kwargs["config_overrides"] == {"provider_id": "provider-1"}
+        await args[5](InternalEvent(
+            type="usage_update", data={"input_tokens": 10, "output_tokens": 5},
+        ))
+        provider["prices"]["version"] = "v2"
+        provider["managed_revision"] = 4
+        return "回复", [], None
+
+    async def record_usage(**kwargs):
+        recorded.append(kwargs)
+
+    monkeypatch.setattr("agent_assistants.base.invoke_engine", fake_invoke_engine)
+    monkeypatch.setattr(main.gateway_client, "record_message_usage", record_usage)
+    session = module.create_session(
+        project.id, engine="claude", model="model-a", provider_id="provider-1",
+    )
+    accepted = module.submit_message(
+        project.id, session["id"], "检查", "idem-price-snapshot",
+    )
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    assert len(recorded) == 1
+    assert recorded[0]["provider"]["managed_revision"] == 3
+    assert recorded[0]["provider"]["prices"]["version"] == "v1"
+
+
+@pytest.mark.anyio
 async def test_submit_publishes_user_message_live_event_with_actor(chat_module, monkeypatch):
     """会话聊天：用户消息也发实时事件并带发送者身份，远端可即时看到且头像按人显示。"""
     module, bus, manager, project, _ = chat_module
