@@ -59,6 +59,18 @@ def test_project_http_allowlist_matches_only_the_bound_project():
     assert not allowed("POST", "/api/task/run", [("project_id", "host-1")],
                        "host-1", access_level="read")
     assert not allowed("GET", "/api/project/list", [("project_id", "host-1")], "host-1")
+    assert allowed("GET", "/api/fs/browse", [("project_id", "host-1")], "host-1")
+    assert allowed("GET", "/api/fs/file", [
+        ("project_id", "host-1"), ("path", "/project/readme.md")], "host-1")
+    assert allowed("GET", "/api/fs/preview", [
+        ("project_id", "host-1"), ("path", "readme.md")], "host-1")
+    assert not allowed("GET", "/api/fs/preview", [
+        ("project_id", "host-1"), ("path", "/private"), ("absolute", "true")], "host-1")
+    assert not allowed("GET", "/api/fs/file", [("path", "/private")], "host-1")
+    assert allowed("POST", "/api/fs/upload/file", [("project_id", "host-1")],
+                   "host-1", access_level="edit")
+    assert not allowed("POST", "/api/fs/upload/file", [("project_id", "host-1")],
+                       "host-1", access_level="read")
 
 
 def test_control_envelope_requires_known_version_and_target():
