@@ -121,7 +121,7 @@ async def test_local_user_name_is_required_for_manual_run_and_task_chat(
     api_context, monkeypatch,
 ):
     import main
-    from models import Task
+    from models import ProjectAuditEvent, Task
     from models.fields import utc_now
     from services.config import config_store
 
@@ -159,6 +159,14 @@ async def test_local_user_name_is_required_for_manual_run_and_task_chat(
     assert await main.project_manager.run_db(
         project_id, lambda _project: Task.get_by_id("task-identity-required").status,
     ) == "ready"
+    denied_audit = await main.project_manager.run_db(
+        project_id, lambda _project: list(ProjectAuditEvent.select().where(
+            ProjectAuditEvent.task_id == "task-identity-required"
+        )),
+    )
+    assert [(row.action, row.result) for row in denied_audit] == [
+        ("task.start", "denied"),
+    ]
 
 
 @pytest.mark.anyio
