@@ -235,10 +235,14 @@ async def proxy_remote_websocket(ws: WebSocket, path: str):
             access_level = auth_session.project_access_level
 
             async def authorize_stream():
-                current_level = await _active_project_access(
-                    ws, user.id, device_id, project_id, host_project_id,
+                current_user, current_device, current_session, current_host = (
+                    await _remote_identity(ws)
                 )
-                if access_level == "edit" and current_level != "edit":
+                if (current_user.id != user.id or current_device != device_id
+                        or current_session.project_id != project_id
+                        or current_host != host_project_id):
+                    raise HTTPException(status_code=403, detail="Project session revoked")
+                if access_level == "edit" and current_session.project_access_level != "edit":
                     raise HTTPException(status_code=403, detail="Project edit access revoked")
 
             connection = await ws.app.state.control_connections.request_data(device_id)
