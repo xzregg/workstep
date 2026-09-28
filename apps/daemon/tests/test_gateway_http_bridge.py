@@ -4,7 +4,8 @@ import base64
 import httpx
 import pytest
 from fastapi import FastAPI, Request, WebSocket
-from workstep_gateway_protocol import FrameType, ProxyFrame
+from workstep_gateway_protocol import (FrameType, ProxyFrame,
+                                       WebSocketMessageAssembler, websocket_payloads)
 
 from services.desktop_security import DesktopSecurityMiddleware
 from services.gateway_client.bridge import ManagedHttpBridge, ManagedWebSocketBridge
@@ -29,6 +30,14 @@ async def test_gateway_bridge_streams_body_and_attaches_remote_actor_without_blo
     @app.get("/api/health")
     async def health():
         return {"status": "ok"}
+
+    @app.post("/api/fs/open-directory")
+    async def native_open():
+        return {"opened": True}
+
+    @app.get("/api/fs/browse")
+    async def unscoped_browse():
+        return {"path": "/home/private"}
 
     frames = []
     async def send_frame(frame):
@@ -58,6 +67,18 @@ async def test_gateway_bridge_streams_body_and_attaches_remote_actor_without_blo
     assert b'"body":"hello"' in body
     assert b'"source":"managed"' in body
     assert frames[-1].payload == {"phase": "end"}
+
+    for blocked_path in ("/api/fs/open-directory", "/api/fs/browse"):
+        blocked_frames = []
+        async def capture(frame):
+            blocked_frames.append(frame)
+        blocked = ManagedHttpBridge(app, "blocked", {
+            "method": "GET", "path": blocked_path, "query": "", "headers": [],
+            "user_id": "user-remote", "username": "alice",
+        }, capture, "device-1")
+        blocked.start_task()
+        await asyncio.wait_for(blocked._task, timeout=1)
+        assert blocked_frames[0].payload["status"] == 403
 
 
 @pytest.mark.asyncio
@@ -89,9 +110,14 @@ async def test_gateway_websocket_bridge_carries_bidirectional_messages_with_mana
     await asyncio.wait_for(emitted.wait(), timeout=1)
     assert frames[0].type == FrameType.websocket_open
     assert frames[0].payload["accepted"] is True
-    await bridge.feed(ProxyFrame(stream_id="socket-1", type=FrameType.websocket_data,
-                                 payload={"kind": "text", "data": "hello"}))
+    for payload in websocket_payloads("text", ("hello" * 20000).encode()):
+        await bridge.feed(ProxyFrame(stream_id="socket-1", type=FrameType.websocket_data,
+                                     payload=payload))
     await asyncio.wait_for(bridge._task, timeout=1)
-    assert frames[1].type == FrameType.websocket_data
-    assert frames[1].payload == {"kind": "text", "data": "remote-user:hello"}
+    assembler = WebSocketMessageAssembler()
+    assembled = None
+    for frame in frames:
+        if frame.type == FrameType.websocket_data:
+            assembled = assembler.add(frame.payload)
+    assert assembled == ("text", ("remote-user:" + "hello" * 20000).encode())
     assert frames[-1].type == FrameType.websocket_close

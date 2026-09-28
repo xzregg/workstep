@@ -33,4 +33,16 @@
   white-space: nowrap;
 }
 
+.gateway-remote-banner > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .gateway-remote-banner a { margin-left: auto; white-space: nowrap; }
+
+@media (max-width: 390px) {
+  .gateway-remote-banner { gap: 6px; padding-inline: 8px; }
+  .gateway-remote-banner strong { max-width: 30%; }
+}

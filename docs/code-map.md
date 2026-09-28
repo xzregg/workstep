@@ -21,6 +21,8 @@ Gateway 整机访问关系由 `apps/gateway/src/gateway/user_devices_api.py` 管
 
 整机远程 HTTP 和业务 WebSocket 由 Gateway `app.py::device_host_boundary`、`remote_access_api.py` 和 `control_connection.py::DataConnection` 多路复用；daemon `services/gateway_client/bridge.py` 的 HTTP/WebSocket 桥直接调用现有 ASGI 应用，`services/desktop_security.py` 仅对桥内注入的受管操作者放行。`apps/gateway-web/src/DeviceListPage.tsx` 通过表单提交一次性票据进入设备子域；`apps/web/src/components/GatewayRemoteFrame.tsx` 显示设备、用户、状态和返回入口。行为测试在 Gateway `test_data_http.py`、`test_user_devices.py`，daemon `test_gateway_http_bridge.py` 和 Web `tests/gatewayRemoteFrame.test.tsx`。
 
+共享协议 `packages/gateway-protocol` 的 `websocket_payloads` / `WebSocketMessageAssembler` 对业务 WS 消息作 16KiB 分块、16MiB 上限与类型校验；Gateway 和 daemon 同用，测试见 `packages/gateway-protocol/tests/test_protocol.py` 及两端桥接测试。PC 的 `services/desktop_security.py` 对 Gateway 远程操作者禁止原生目录/桌面动作和无项目作用域的 FS 浏览，Web `ProjectConnectionDialog.tsx`、`useTaskArtifacts.ts`、`MessageIdPopover.tsx` 等由 `utils/gatewayRemote.ts` 降级这些入口；行为测试见 `tests/gatewayRemoteFrame.test.tsx` 和 daemon `test_gateway_http_bridge.py`。
+
 修改功能时先找所属模块，再沿前端页面或组件 → API → 服务 → 数据模型追踪。行为测试放在实际拥有该行为的模块附近；不要把页面、`src/api/client.ts` 或通用服务文件作为新功能的默认落点。
 
 | 功能 | Web 入口 | Daemon 入口 | 深入阅读 |

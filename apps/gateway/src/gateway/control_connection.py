@@ -18,7 +18,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 from fastapi.responses import StreamingResponse
-from workstep_gateway_protocol import FrameType, ProxyFrame
+from workstep_gateway_protocol import (FrameType, ProxyFrame,
+                                       WebSocketMessageAssembler, websocket_payloads)
 
 from .models import Device, DeviceConnection, User, UserDevice
 from .capabilities import compiled_device_policy
@@ -416,16 +417,17 @@ class DataConnection:
                     if message["type"] != "websocket.receive":
                         continue
                     if message.get("text") is not None:
-                        payload = {"kind": "text", "data": message["text"]}
+                        kind, data = "text", message["text"].encode("utf-8")
                     else:
-                        payload = {"kind": "bytes", "data": base64.b64encode(
-                            message.get("bytes") or b"",
-                        ).decode()}
-                    await self.send_frame(ProxyFrame(
-                        stream_id=stream_id, type=FrameType.websocket_data, payload=payload,
-                    ))
+                        kind, data = "bytes", message.get("bytes") or b""
+                    for payload in websocket_payloads(kind, data):
+                        await self.send_frame(ProxyFrame(
+                            stream_id=stream_id, type=FrameType.websocket_data,
+                            payload=payload,
+                        ))
 
             async def pc_to_browser():
+                assembler = WebSocketMessageAssembler()
                 while True:
                     frame = await queue.get()
                     if isinstance(frame, Exception):
@@ -435,12 +437,14 @@ class DataConnection:
                         return
                     if frame.type != FrameType.websocket_data:
                         raise ValueError("Invalid managed WebSocket frame")
-                    if frame.payload.get("kind") == "text":
-                        await browser.send_text(frame.payload["data"])
-                    elif frame.payload.get("kind") == "bytes":
-                        await browser.send_bytes(base64.b64decode(frame.payload["data"], validate=True))
+                    message = assembler.add(frame.payload)
+                    if message is None:
+                        continue
+                    kind, data = message
+                    if kind == "text":
+                        await browser.send_text(data.decode("utf-8"))
                     else:
-                        raise ValueError("Invalid managed WebSocket data")
+                        await browser.send_bytes(data)
 
             tasks = [asyncio.create_task(browser_to_pc()), asyncio.create_task(pc_to_browser())]
             done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)

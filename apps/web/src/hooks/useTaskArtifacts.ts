@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { fsApi, taskApi, type TaskArtifact, type TaskArtifactInputSnapshot } from '../api/client'
 import { useI18n } from '../i18n'
 import { findPreferredArtifact } from '../pages/taskArtifactRules'
+import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
 
 interface Options {
   taskId: string
@@ -104,7 +105,7 @@ export function useTaskArtifacts({ taskId, projectId, steps, remote }: Options) 
   }, [artifacts, taskId, projectId, identity, refreshArtifacts, showNotice, t])
 
   const openArtifactDirectory = useCallback(async () => {
-    if (!previewArtifact || remote) return
+    if (!previewArtifact || remote || isGatewayRemoteBrowser()) return
     try {
       const result = await fsApi.openDirectory(previewArtifact.path)
       showNotice(t('taskDetail.directoryOpened', { path: result.path }))

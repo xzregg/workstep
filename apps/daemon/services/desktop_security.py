@@ -32,6 +32,24 @@ CONTENT_SECURITY_POLICY = "; ".join(
     )
 )
 
+REMOTE_NATIVE_PATHS = frozenset({
+    "/api/fs/open-directory", "/api/fs/open-session-journal", "/api/fs/directory-openers",
+    "/api/project/init", "/api/project/register",
+})
+REMOTE_PROJECT_SCOPED_FS = frozenset({
+    "/api/fs/browse", "/api/fs/search", "/api/fs/file", "/api/fs/preview",
+    "/api/fs/serve", "/api/fs/upload/file", "/api/fs/upload/image",
+})
+
+
+def _remote_filesystem_denied(request: Request) -> bool:
+    path = request.url.path
+    if path in REMOTE_NATIVE_PATHS:
+        return True
+    if path in REMOTE_PROJECT_SCOPED_FS or path.startswith("/api/fs/raw/") or path.startswith("/api/fs/serve/"):
+        return not bool(request.query_params.get("project_id"))
+    return False
+
 
 def _desktop_token() -> str | None:
     if os.environ.get("WORKSTEP_DESKTOP_RUNTIME") != "1":
@@ -93,6 +111,10 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
         managed = gateway_client is not None and getattr(gateway_client, "managed_config", None) is not None
         actor = request.scope.get("gateway_remote_actor")
         remote_bridge = actor is not None and managed
+        if remote_bridge and _remote_filesystem_denied(request):
+            response = JSONResponse({"detail": "remote host filesystem access unavailable"}, status_code=403)
+            response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+            return response
         invalid_origin = managed and protected and not _same_origin(
             request.headers.get("origin"), request.url.scheme, request.headers.get("host", ""),
         ) and not remote_bridge

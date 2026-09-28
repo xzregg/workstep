@@ -7,6 +7,8 @@ from workstep_gateway_protocol import (
     ProxyFrame,
     UnsupportedProtocolVersion,
     assert_protocol_version,
+    websocket_payloads,
+    WebSocketMessageAssembler,
 )
 
 
@@ -31,3 +33,15 @@ def test_proxy_frame_has_typed_stream_identifier():
     assert frame.stream_id == "stream-1"
     with pytest.raises(ValidationError):
         ProxyFrame(stream_id="", type=FrameType.http_request, payload={})
+
+
+def test_websocket_messages_are_chunked_and_reassembled_with_size_limit():
+    message = b"hello" * 20000
+    payloads = list(websocket_payloads("bytes", message))
+    assert len(payloads) > 1
+    assert all(len(payload["data"]) < 30000 for payload in payloads)
+    assembler = WebSocketMessageAssembler()
+    assert all(assembler.add(payload) is None for payload in payloads[:-1])
+    assert assembler.add(payloads[-1]) == ("bytes", message)
+    with pytest.raises(ValueError):
+        assembler.add({"kind": "text", "data": "%%%", "final": True})
