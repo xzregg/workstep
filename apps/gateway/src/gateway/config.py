@@ -12,6 +12,7 @@ class GatewaySettings(BaseSettings):
     data_dir: Path = Path.home() / ".workstep-gateway"
     web_dist: Path | None = None
     database_url: str | None = None
+    directory_reconcile_seconds: int = Field(default=21600, ge=60)
 
     @property
     def effective_database_url(self) -> str:

@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -13,6 +14,7 @@ from .identity_api import router as identity_router
 from .external_identity_api import router as external_identity_router
 from .identity_connectors import DingTalkConnector, WeComConnector
 from .rate_limit import IdentityRateLimiter
+from .reconciliation import DirectoryReconciler
 
 
 def create_app(settings: GatewaySettings | None = None) -> FastAPI:
@@ -24,10 +26,18 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         await database.start()
         app.state.database = database
         app.state.ready = True
+        stop_reconciliation = asyncio.Event()
+        reconciler = DirectoryReconciler(database, app.state.identity_connectors)
+        app.state.directory_reconciler = reconciler
+        reconciliation_task = asyncio.create_task(reconciler.run_periodic(
+            stop_reconciliation, interval_seconds=settings.directory_reconcile_seconds,
+        ))
         try:
             yield
         finally:
             app.state.ready = False
+            stop_reconciliation.set()
+            await reconciliation_task
             await database.close()
 
     app = FastAPI(title="WorkStep Gateway", lifespan=lifespan)

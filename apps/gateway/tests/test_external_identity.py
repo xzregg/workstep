@@ -203,3 +203,35 @@ def test_external_registration_waits_for_approval(tmp_path):
         client.cookies.clear()
         state = _start(client, source_id)
         assert client.get(f"/api/auth/external/{source_id}/callback?state={state}&code=valid-code").status_code == 200
+
+
+def test_provider_reconciliation_is_atomic_and_provisions_closed_registration(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+
+    class DirectoryConnector(FakeConnector):
+        failing = False
+
+        async def fetch_directory(self, source):
+            if self.failing:
+                raise TimeoutError("provider offline")
+            return {"departments": [{"external_id": "dept-1", "display_name": "研发"}],
+                    "people": [{"subject": "employee-1", "display_name": "张三",
+                                "department_ids": ["dept-1"]}]}
+
+    connector = DirectoryConnector()
+    app.state.identity_connectors = {"dingtalk": connector}
+    with TestClient(app, base_url="https://gateway.test") as client:
+        csrf = _setup(client)
+        source_id = _source(client, csrf)
+        reconcile_url = f"/api/admin/identity-sources/{source_id}/reconcile"
+        reconciled = client.post(reconcile_url, headers={"X-CSRF-Token": csrf})
+        assert reconciled.status_code == 200, reconciled.text
+        assert reconciled.json() == {"departments": 1, "people": 1}
+        connector.failing = True
+        assert client.post(reconcile_url, headers={"X-CSRF-Token": csrf}).status_code == 502
+        with __import__("sqlite3").connect(tmp_path / "workstep_platform.db") as connection:
+            assert connection.execute("SELECT active FROM directory_people WHERE subject='employee-1'").fetchone() == (1,)
+        client.cookies.clear()
+        state = _start(client, source_id)
+        connector.failing = False
+        assert client.get(f"/api/auth/external/{source_id}/callback?state={state}&code=valid-code").status_code == 200
