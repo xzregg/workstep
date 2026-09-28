@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 
@@ -76,12 +76,16 @@ async def _live_share(request: Request, token: str) -> PlatformShare:
         share = await session.scalar(select(PlatformShare).where(
             PlatformShare.token_hash == _digest(token),
         ))
-        if share is None or share.status != "active" or share.revoked_at is not None:
+        if share is None or share.revoked_at is not None or share.status == "revoked":
             raise HTTPException(status_code=404, detail="Share unavailable")
         project = await session.get(PlatformProject, share.project_id)
         device = await session.get(Device, share.device_id)
     if share.expires_at is not None and _utc(share.expires_at) <= datetime.now(timezone.utc):
         raise HTTPException(status_code=404, detail="Share expired")
+    if share.status == "paused":
+        raise HTTPException(status_code=503, detail="Share paused")
+    if share.status != "active":
+        raise HTTPException(status_code=404, detail="Share unavailable")
     if (project is None or project.status != "active"
             or project.access_mode != "remote_published"
             or project.device_id != share.device_id):
@@ -91,22 +95,25 @@ async def _live_share(request: Request, token: str) -> PlatformShare:
     return share
 
 
-async def _authorized_visitor(request: Request, token: str):
+async def _authorized_visitor(request: Request, token: str, *, touch: bool = False):
     share = await _live_share(request, token)
     session_token = request.cookies.get(SHARE_SESSION_COOKIE)
     if not session_token:
         raise HTTPException(status_code=401, detail="Share session required")
     async with request.app.state.database.session() as session:
-        visit = await session.scalar(select(PlatformShareSession).where(
-            PlatformShareSession.session_token_hash == _digest(session_token),
-            PlatformShareSession.share_id == share.id,
-            PlatformShareSession.revoked_at.is_(None),
-        ))
-        project = await session.get(PlatformProject, share.project_id)
-    if visit is None or _utc(visit.expires_at) <= datetime.now(timezone.utc):
-        raise HTTPException(status_code=401, detail="Share session expired")
-    if project is None or project.device_id != share.device_id:
-        raise HTTPException(status_code=503, detail="Share project unavailable")
+        async with session.begin():
+            visit = await session.scalar(select(PlatformShareSession).where(
+                PlatformShareSession.session_token_hash == _digest(session_token),
+                PlatformShareSession.share_id == share.id,
+                PlatformShareSession.revoked_at.is_(None),
+            ))
+            project = await session.get(PlatformProject, share.project_id)
+            if visit is None or _utc(visit.expires_at) <= datetime.now(timezone.utc):
+                raise HTTPException(status_code=401, detail="Share session expired")
+            if project is None or project.device_id != share.device_id:
+                raise HTTPException(status_code=503, detail="Share project unavailable")
+            if touch:
+                visit.last_seen_at = datetime.now(timezone.utc)
     return share, project
 
 
@@ -152,6 +159,31 @@ async def create_platform_share(request: Request, body: CreateShareInput):
     return {"id": share.id, "url": f"{origin.rstrip('/')}/share/{token}",
             "status": share.status, "mode": share.mode, "title": share.title,
             "expires_at": expiry}
+
+
+@router.get("/platform-shares")
+async def list_own_platform_shares(request: Request,
+                                   project_id: str = Query(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"),
+                                   task_id: str = Query(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")):
+    actor, _ = await IdentityService(request.app.state.database).session_user(
+        request.cookies.get(COOKIE_NAME),
+    )
+    if actor.status != "active" or actor.must_change_password:
+        raise HTTPException(status_code=403, detail="Account unavailable")
+    async with request.app.state.database.session() as session:
+        rows = (await session.scalars(select(PlatformShare).where(
+            PlatformShare.created_by_user_id == actor.id,
+            PlatformShare.project_id == project_id,
+            PlatformShare.task_id == task_id,
+        ).order_by(PlatformShare.created_at.desc(), PlatformShare.id.desc()).limit(100))).all()
+    now = datetime.now(timezone.utc)
+    return {"shares": [{
+        "id": share.id, "title": share.title, "mode": share.mode,
+        "status": ("revoked" if share.revoked_at is not None
+                   else "expired" if share.expires_at is not None and _utc(share.expires_at) <= now
+                   else share.status),
+        "created_at": share.created_at, "expires_at": share.expires_at,
+    } for share in rows]}
 
 
 @router.post("/platform-shares/{share_id}/revoke", status_code=204)
@@ -226,13 +258,13 @@ async def unlock_public_share(request: Request, token: str, body: UnlockShareInp
 
 @router.get("/public/shares/{token}/session")
 async def public_share_session(request: Request, token: str):
-    share, _ = await _authorized_visitor(request, token)
+    share, _ = await _authorized_visitor(request, token, touch=True)
     return {"share_id": share.id, "mode": share.mode, "task_id": share.task_id}
 
 
 @router.get("/public/shares/{token}/task")
 async def public_share_task(request: Request, token: str):
-    share, project = await _authorized_visitor(request, token)
+    share, project = await _authorized_visitor(request, token, touch=True)
     connections = request.app.state.control_connections
     if not connections.is_online(share.device_id):
         raise HTTPException(status_code=503, detail="Shared device offline")

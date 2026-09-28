@@ -37,6 +37,7 @@ from .skills_api import (router as skills_router,
                          project_skill_router, device_skill_router)
 from .project_access_api import router as project_access_router
 from .platform_shares import router as platform_shares_router
+from .admin_shares import router as admin_shares_router
 from .admin_overview import router as admin_overview_router
 from .org_api import router as org_router
 
@@ -148,6 +149,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(device_skill_router)
     app.include_router(project_access_router)
     app.include_router(platform_shares_router)
+    app.include_router(admin_shares_router)
 
     if settings.web_dist and settings.web_dist.is_dir():
         assets = settings.web_dist / "assets"

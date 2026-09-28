@@ -3,6 +3,8 @@ import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 
 type CreatedShare = { id: string; url: string; status: string; mode: string; title: string }
+type ExistingShare = { id: string; title: string; mode: string; status: string;
+  created_at: string; expires_at: string | null }
 const PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
 const TASK_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/
 
@@ -24,6 +26,9 @@ export function GatewayShareCreatePage() {
   const [revoked, setRevoked] = useState(false)
   const [confirmRevoke, setConfirmRevoke] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [existingShares, setExistingShares] = useState<ExistingShare[]>([])
+  const [existingRevokeTarget, setExistingRevokeTarget] = useState<ExistingShare | null>(null)
+  const [listRevision, setListRevision] = useState(0)
 
   useEffect(() => {
     if (!validTarget) return
@@ -40,6 +45,19 @@ export function GatewayShareCreatePage() {
       .catch(reason => { if (reason?.name !== 'AbortError') setAuth('login') })
     return () => controller.abort()
   }, [projectId, taskId, validTarget])
+
+  useEffect(() => {
+    if (auth !== 'ready' || !validTarget) return
+    const controller = new AbortController()
+    const params = new URLSearchParams({ project_id: projectId, task_id: taskId })
+    void fetch(`/api/platform-shares?${params}`, { signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error('分享列表加载失败。')
+        const result: { shares: ExistingShare[] } = await response.json()
+        if (!controller.signal.aborted) setExistingShares(result.shares)
+      }).catch(reason => { if (reason?.name !== 'AbortError') setError('分享列表加载失败。') })
+    return () => controller.abort()
+  }, [auth, projectId, taskId, validTarget, listRevision])
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -60,21 +78,24 @@ export function GatewayShareCreatePage() {
       if (response.status === 404) { setError('项目已停止发布或不可用。'); return }
       if (!response.ok) { setError('创建分享失败，请检查输入后重试。'); return }
       setCreated(await response.json() as CreatedShare)
+      setListRevision(value => value + 1)
     } catch { setError('无法连接 Gateway，请稍后重试。') }
     finally { setBusy(false) }
   }
 
-  async function revoke() {
-    if (!created || busy) return
+  async function revoke(shareId: string) {
+    if (busy) return
     setBusy(true)
     setError('')
     try {
-      const response = await fetch(`/api/platform-shares/${encodeURIComponent(created.id)}/revoke`, {
+      const response = await fetch(`/api/platform-shares/${encodeURIComponent(shareId)}/revoke`, {
         method: 'POST', headers: { 'X-CSRF-Token': csrfToken },
       })
       if (!response.ok) { setError('撤销失败，请重试。'); return }
-      setRevoked(true)
+      if (created?.id === shareId) setRevoked(true)
       setConfirmRevoke(false)
+      setExistingRevokeTarget(null)
+      setListRevision(value => value + 1)
     } catch { setError('无法连接 Gateway，请稍后重试。') }
     finally { setBusy(false) }
   }
@@ -131,8 +152,24 @@ export function GatewayShareCreatePage() {
       </>}
       {error && <p className="gateway-auth-error" role="alert">{error}</p>}
     </div>}
+    {auth === 'ready' && existingShares.length > 0 && <section className="gateway-share-existing">
+      <h3>我创建的分享</h3>
+      <p>出于安全考虑，已创建的链接不会再次显示；需要新链接时可重新创建。</p>
+      <ul>{existingShares.filter(share => share.id !== created?.id).map(share => <li key={share.id}>
+        <span>{share.title || '未命名分享'} · {share.status === 'revoked' ? '已撤销'
+          : share.status === 'expired' ? '已过期' : share.status === 'paused' ? '已暂停' : '有效'}</span>
+        {share.status !== 'revoked' && <button type="button"
+          onClick={() => setExistingRevokeTarget(share)}>撤销{share.title || '未命名分享'}</button>}
+      </li>)}</ul>
+    </section>}
     {confirmRevoke && <GatewayConfirmDialog title="确认撤销分享"
       message="撤销后，访客将无法再使用此链接。" confirmLabel="确认撤销"
-      busy={busy} onConfirm={() => void revoke()} onCancel={() => setConfirmRevoke(false)} />}
+      busy={busy} onConfirm={() => { if (created) void revoke(created.id) }}
+      onCancel={() => setConfirmRevoke(false)} />}
+    {existingRevokeTarget && <GatewayConfirmDialog title="确认撤销分享"
+      message={`撤销「${existingRevokeTarget.title || '未命名分享'}」后访客将无法访问。`}
+      confirmLabel="确认撤销" busy={busy}
+      onConfirm={() => void revoke(existingRevokeTarget.id)}
+      onCancel={() => setExistingRevokeTarget(null)} />}
   </section>
 }

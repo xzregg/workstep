@@ -105,6 +105,38 @@ body {
 .gateway-share-create-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .gateway-share-create-actions a { padding: 8px 0; }
 .gateway-share-create-actions button { width: auto; margin-top: 0; }
+.gateway-share-existing { margin-top: 28px; padding-top: 20px; border-top: 1px solid #e8e8ed; }
+.gateway-share-existing ul { list-style: none; padding: 0; display: grid; gap: 10px; }
+.gateway-share-existing li { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.gateway-share-existing li button { width: auto; min-height: 36px; margin: 0; }
+
+.gateway-share-filters { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; margin: 20px 0; }
+.gateway-share-filters label { align-self: center; }
+.gateway-share-filters input, .gateway-share-filters select {
+  box-sizing: border-box;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid #d2d2d7;
+  border-radius: 8px;
+  font: inherit;
+}
+.gateway-share-filters button { min-height: 36px; }
+.gateway-share-admin-list { list-style: none; padding: 0; display: grid; gap: 12px; }
+.gateway-share-admin-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 18px;
+  border: 1px solid #e8e8ed;
+  border-radius: 12px;
+  background: #fff;
+}
+.gateway-share-admin-info { display: grid; gap: 6px; overflow-wrap: anywhere; }
+.gateway-share-admin-info span { color: #6e6e73; font-size: 13px; }
+.gateway-share-admin-actions, .gateway-share-pagination { display: flex; gap: 8px; }
+.gateway-share-pagination { margin-top: 20px; }
 
 main {
   min-height: 100vh;

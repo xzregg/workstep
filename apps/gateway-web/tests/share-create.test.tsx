@@ -47,6 +47,7 @@ test('Gateway share page validates and creates a task share with CSRF', async ()
     const url = String(input)
     calls.push({ url, init })
     if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf-token' })
+    if (url.startsWith('/api/platform-shares?')) return Response.json({ shares: [] })
     if (url === '/api/platform-shares') return Response.json({
       id: 'share-1', url: 'https://gateway.test/share/public-token',
       status: 'active', mode: 'read_only', title: 'Task for review',
@@ -74,4 +75,31 @@ test('Gateway share page validates and creates a task share with CSRF', async ()
     .querySelector('button:last-child')!)
   await waitFor(() => assert.ok(calls.some(call => call.url === '/api/platform-shares/share-1/revoke')))
   await screen.findByText('分享已撤销。')
+})
+
+test('creator can revisit and revoke an existing share without recovering its token', async () => {
+  let revoked = false
+  globalThis.fetch = async (input, init) => {
+    const url = String(input)
+    if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf-token' })
+    if (url.startsWith('/api/platform-shares?')) return Response.json({ shares: [{
+      id: 'old-share', title: '旧链接', mode: 'read_only',
+      status: revoked ? 'revoked' : 'active', created_at: '2026-09-29T10:00:00Z',
+      expires_at: null,
+    }] })
+    if (url === '/api/platform-shares/old-share/revoke' && init?.method === 'POST') {
+      revoked = true
+      return new Response(null, { status: 204 })
+    }
+    throw new Error(`Unexpected fetch ${url}`)
+  }
+  render(<MemoryRouter initialEntries={['/shares/new?project_id=project-1&task_id=task-1']}>
+    <Routes><Route path="/shares/new" element={<GatewayShareCreatePage />} /></Routes>
+  </MemoryRouter>)
+  await screen.findByText(/旧链接 · 有效/)
+  assert.equal(screen.queryByText('https://gateway.test/share/old-share'), null)
+  fireEvent.click(screen.getByRole('button', { name: '撤销旧链接' }))
+  fireEvent.click(screen.getByRole('dialog', { name: '确认撤销分享' })
+    .querySelector('button:last-child')!)
+  await screen.findByText(/旧链接 · 已撤销/)
 })

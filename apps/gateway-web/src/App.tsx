@@ -23,6 +23,7 @@ import { AdminSkillsPage } from './AdminSkillsPage'
 import { AdminGroupsPage } from './AdminGroupsPage'
 import { PublicSharePage } from './PublicSharePage'
 import { GatewayShareCreatePage } from './GatewayShareCreatePage'
+import { AdminSharesPage } from './AdminSharesPage'
 
 export function App({ deviceHost = typeof window !== 'undefined' && window.location.hostname.startsWith('d-') }: { deviceHost?: boolean }) {
   const location = useLocation()
@@ -54,6 +55,8 @@ function GatewayPortalApp() {
           allow={['super_admin']}><AdminDeviceOperationsPage /></AdminAccessGate>} />
         <Route path="/admin/projects" element={<AdminAccessGate state={adminAccess}
           allow={['super_admin']}><AdminProjectsPage /></AdminAccessGate>} />
+        <Route path="/admin/shares" element={<AdminAccessGate state={adminAccess}
+          allow={['super_admin']}><AdminSharesPage /></AdminAccessGate>} />
         <Route path="/admin/providers" element={<AdminAccessGate state={adminAccess}
           allow={['super_admin']}><AdminProvidersPage /></AdminAccessGate>} />
         <Route path="/admin/skills" element={<AdminAccessGate state={adminAccess}
