@@ -773,21 +773,24 @@ class WorkflowRuntime:
                     break
                 await asyncio.sleep(0.01)
         actor_fields = current_actor_message_fields()
+        def persist_decision(project):
+            with db_proxy.atomic("IMMEDIATE"):
+                return persist_review_decision(
+                    project,
+                    task_id,
+                    step_key,
+                    review_run_id,
+                    decision,
+                    comment,
+                    actor_fields,
+                    schedule_downstream,
+                    active_runners=self._runners,
+                    instance_id=self._leases.instance_id,
+                    current_workflow_steps=self._current_workflow_steps,
+                )
+
         decision_data = await self._run_db(
-            project_id,
-            lambda project: persist_review_decision(
-                project,
-                task_id,
-                step_key,
-                review_run_id,
-                decision,
-                comment,
-                actor_fields,
-                schedule_downstream,
-                active_runners=self._runners,
-                instance_id=self._leases.instance_id,
-                current_workflow_steps=self._current_workflow_steps,
-            ),
+            project_id, persist_decision,
         )
         if decision in {"terminate", "complete_task", "set_complete"}:
             event = {
