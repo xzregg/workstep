@@ -6,12 +6,13 @@ import { DeviceListPage } from './DeviceListPage'
 import { ProjectsPage } from './ProjectsPage'
 import { ProjectWorkspacePage } from './ProjectWorkspacePage'
 import { PortalAuthPage } from './PortalAuthPage'
+import { AccountPage } from './AccountPage'
 
 export function App({ deviceHost = typeof window !== 'undefined' && window.location.hostname.startsWith('d-') }: { deviceHost?: boolean }) {
   if (deviceHost) return <main><header><h1>WorkStep 远程项目</h1></header><ProjectWorkspacePage /></main>
   return (
     <main>
-      <header><h1>WorkStep Gateway</h1><nav><Link to="/">我的项目</Link> <Link to="/devices">我的电脑</Link> <Link to="/admin">管理后台</Link> <Link to="/auth">登录 / 注册</Link></nav></header>
+      <header><h1>WorkStep Gateway</h1><nav><Link to="/">我的项目</Link> <Link to="/devices">我的电脑</Link> <Link to="/account">个人账户</Link> <Link to="/admin">管理后台</Link> <Link to="/auth">登录 / 注册</Link></nav></header>
       <Routes>
         <Route path="/" element={<ProjectsPage />} />
         <Route path="/admin" element={<section><h2>管理后台</h2><p>平台服务正在建设中。</p><Link to="/admin/devices">设备管理</Link></section>} />
@@ -20,6 +21,7 @@ export function App({ deviceHost = typeof window !== 'undefined' && window.locat
         <Route path="/devices" element={<DeviceListPage />} />
         <Route path="/desktop/login" element={<DesktopLoginPage />} />
         <Route path="/auth" element={<PortalAuthPage />} />
+        <Route path="/account" element={<AccountPage />} />
         <Route path="/auth/pending" element={<section className="gateway-auth-card">
           <h2>账号等待审核</h2><p>管理员批准后，请重新登录。</p><Link to="/auth">返回登录</Link>
         </section>} />
