@@ -8,14 +8,21 @@ from workstep_gateway_protocol import (FrameType, ProxyFrame,
                                        WebSocketMessageAssembler, websocket_payloads)
 
 from .identity import ManagedActor
+from .share_ticket import verify_share_ticket
 
 
 class ManagedHttpBridge:
-    def __init__(self, app, stream_id: str, start: dict, send_frame, device_id: str):
+    def __init__(self, app, stream_id: str, start: dict, send_frame, device_id: str,
+                 *, gateway_key: str | None = None,
+                 gateway_fingerprint: str | None = None,
+                 gateway_id: str | None = None):
         self.app = app
         self.stream_id = stream_id
         self.send_frame = send_frame
         self.device_id = device_id
+        self.gateway_key = gateway_key
+        self.gateway_fingerprint = gateway_fingerprint
+        self.gateway_id = gateway_id
         self._inbound: asyncio.Queue = asyncio.Queue(maxsize=32)
         self._task: asyncio.Task | None = None
         self.start = start
@@ -46,6 +53,23 @@ class ManagedHttpBridge:
             project_id = self.start.get("project_id")
             access_level = self.start.get("access_level")
             task_create = self.start.get("task_create", False)
+            share_ticket = self.start.get("share_ticket")
+            share_scope = None
+            if share_ticket is not None:
+                if (not isinstance(share_ticket, str)
+                        or not self.gateway_key or not self.gateway_fingerprint
+                        or not self.gateway_id
+                        or any(self.start.get(name) is not None for name in (
+                            "user_id", "username", "display_name", "project_id",
+                            "access_level")) or task_create is not False):
+                    raise ValueError("Invalid managed share request")
+                share_scope = verify_share_ticket(
+                    share_ticket, self.gateway_key, self.gateway_fingerprint,
+                    self.gateway_id, self.device_id,
+                )
+                user_id = f"share:{share_scope['share_id']}"
+                username = "share-visitor"
+                display_name = "Share visitor"
             raw_headers = self.start.get("headers", [])
             if (not isinstance(method, str) or not method.isascii() or not method.isalpha()
                     or not isinstance(path, str) or not path.startswith("/")
@@ -81,6 +105,8 @@ class ManagedHttpBridge:
                 "root_path": "", "headers": headers, "client": ("127.0.0.1", 0),
                 "server": ("127.0.0.1", 80), "gateway_remote_actor": actor,
             }
+            if share_scope is not None:
+                scope["gateway_share_scope"] = share_scope
 
             async def receive():
                 frame = await self._inbound.get()
