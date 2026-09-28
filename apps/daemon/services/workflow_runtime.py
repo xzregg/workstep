@@ -1391,7 +1391,7 @@ class WorkflowRuntime:
 
         return workflow_run.id
 
-    async def cancel(self, task_id: str) -> bool:
+    async def cancel(self, task_id: str, *, action: str = "task.cancel") -> bool:
         """Cancel every active step owned by a task's pipeline.
 
         A task that is still waiting for a concurrency slot (status ``queued``)
@@ -1435,4 +1435,4 @@ class WorkflowRuntime:
                     )
                 return stopped
             return False
-        return await runner.cancel_task(task_id)
+        return await runner.cancel_task(task_id, action=action)

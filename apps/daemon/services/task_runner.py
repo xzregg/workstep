@@ -16,6 +16,7 @@ from models import (
     WorkflowRun,
 )
 from models.fields import utc_now
+from models.base import db_proxy
 from services.artifact_rounds import (
     discard_artifact_round,
     write_round_manifest,
@@ -124,6 +125,7 @@ class TaskRunner:
         self._initial_user_input_step_key = initial_user_input_step_key
         self._retry_message_ids = dict(retry_message_ids or {})
         self._graceful_shutdown = False
+        self._cancel_audit = None
         self._event_journal = TurnEventJournal()
         self._execution_messages = StepExecutionMessages(
             self._event_journal, self._run_db, self._publish,
@@ -320,10 +322,29 @@ class TaskRunner:
             finished_at = utc_now()
 
             def persist_pipeline_status():
-                Task.update(
-                    status=final_status,
-                    updated_at=finished_at,
-                ).where(Task.id == task.id).execute()
+                with db_proxy.atomic("IMMEDIATE"):
+                    Task.update(
+                        status=final_status,
+                        updated_at=finished_at,
+                    ).where(Task.id == task.id).execute()
+                    if (
+                        self._cancel_audit is not None
+                        and self._source_project_id is not None
+                        and final_status in {"paused", "stopped"}
+                    ):
+                        from services.project_audit import record_project_audit
+                        from services.remote_access import replayed_actor_context
+
+                        action, actor = self._cancel_audit
+                        with replayed_actor_context(actor):
+                            record_project_audit(
+                                project_id=self._source_project_id,
+                                task_id=task.id,
+                                action=action,
+                                result="succeeded",
+                                mode=("managed" if actor is not None and actor.source == "managed" else "local"),
+                                metadata={"status": final_status},
+                            )
 
             task.updated_at = finished_at
             await self._run_db(persist_pipeline_status)
@@ -1292,8 +1313,15 @@ class TaskRunner:
             task_id, step_key, content, as_guidance
         )
 
-    async def cancel_task(self, task_id: str) -> bool:
-        return await self._live.cancel_task(task_id)
+    async def cancel_task(self, task_id: str, action: str = "task.cancel") -> bool:
+        from services.remote_access import get_effective_actor
+
+        intent = (action, get_effective_actor())
+        self._cancel_audit = intent
+        cancelled = await self._live.cancel_task(task_id)
+        if not cancelled and self._cancel_audit is intent:
+            self._cancel_audit = None
+        return cancelled
 
     async def stop_for_shutdown(self) -> None:
         """Stop engines while leaving running steps recoverable."""
