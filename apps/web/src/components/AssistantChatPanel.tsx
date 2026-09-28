@@ -161,14 +161,19 @@ const MessageItem = memo(function MessageItem({
 }: MessageItemProps) {
   const { t } = useI18n()
   const ownUserMessage = !message.author_device_id || message.author_device_id === deviceId
-  const userSender = displayUserSender(message.author_name, userName, copy.me)
+  const userSender = displayUserSender(
+    message.author_name, userName, copy.me, t('aiFlow.historicalUser'),
+  )
   return (
     <ChatMessageBubble
       role={message.role}
       sender={message.role === 'user' ? userSender : copy.agent}
       senderTitle={
         message.role === 'user'
-          ? displayUserDetail(message.author_name, message.author_device_name, copy.me)
+          ? displayUserDetail(
+              message.author_name, message.author_device_name,
+              t('aiFlow.historicalUser'), message.author_username,
+            )
           : undefined
       }
       initials={message.role === 'user' ? (ownUserMessage ? copy.meInitials : userSender.slice(0, 2)) : copy.agentInitials}

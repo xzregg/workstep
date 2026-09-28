@@ -831,6 +831,7 @@ export const jaJP: Messages = {
     thinking: 'コーディネーター思考中…',
     emptyIntro: '目標を説明してください（例：「コンテンツ公開フローを作る」）。最初にいくつか重要な質問をしてから、編集可能なフロー構成を生成します。',
     me: '自分',
+    historicalUser: '历史用户',
     agent: 'コーディネーター',
     meInitials: '私',
     agentInitials: 'コ',

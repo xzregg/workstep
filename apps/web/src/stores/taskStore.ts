@@ -80,7 +80,11 @@ export interface LiveMessage {
   restarted?: boolean
   role?: 'user' | 'assistant'
   author_id?: string
+  author_username?: string
   author_name?: string
+  author_type?: 'user' | 'assistant' | 'system' | 'scheduler'
+  initiated_by_user_id?: string
+  initiated_by_username?: string
   author_device_id?: string
   author_device_name?: string
   proposals: Array<Record<string, unknown>>
