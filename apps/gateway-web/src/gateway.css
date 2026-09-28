@@ -218,6 +218,9 @@ a {
 .gateway-org-departments, .gateway-org-members { min-width: 0; }
 .gateway-org-department-list { padding: 0; margin: 16px 0; list-style: none; }
 .gateway-org-department-list li { margin-bottom: 8px; }
+.gateway-org-node { display: flex; align-items: stretch; gap: 4px; }
+.gateway-org-children { margin: 8px 0 12px 16px; padding-left: 12px; border-left: 1px solid #d8dce5; }
+.gateway-admin-page .gateway-org-department-list .gateway-org-expand { width: 32px; min-width: 32px; padding: 0; text-align: center; }
 .gateway-admin-page .gateway-org-department-list button { width: 100%; padding: 12px; text-align: left; background: #fff; color: #1d1d1f; border: 1px solid #e5e5ea; }
 .gateway-org-department-list button span { display: block; margin-top: 4px; color: #65656b; font-size: 0.85rem; }
 .gateway-admin-page .gateway-org-department-list button.gateway-org-selected { border-color: #4678d5; background: #f2f6ff; }

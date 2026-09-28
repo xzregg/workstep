@@ -52,6 +52,16 @@ def test_super_admin_lists_sources_departments_and_direct_members_with_paginatio
         assert child['direct_members'] == 1
         assert child['provider'] == 'wecom'
         assert child['parent_external_id'] == 'root'
+        roots = client.get(f'/api/admin/org/departments?source_id={source}&roots_only=true&page_size=1').json()
+        assert roots['total'] == 2
+        assert roots['departments'][0]['external_id'] == 'other'
+        assert roots['departments'][0]['child_count'] == 0
+        root_page = client.get(f'/api/admin/org/departments?source_id={source}&roots_only=true&page=2&page_size=1').json()
+        assert root_page['departments'][0]['external_id'] == 'root'
+        root_id = root_page['departments'][0]['id']
+        assert root_page['departments'][0]['child_count'] == 1
+        children = client.get(f'/api/admin/org/departments?parent_id={root_id}').json()
+        assert [row['external_id'] for row in children['departments']] == ['child']
         members = client.get(f"/api/admin/org/departments/{child['id']}/members?page=1&page_size=1")
         assert members.status_code == 200, members.text
         assert members.json()['total'] == 1
@@ -96,6 +106,10 @@ def test_department_admin_cannot_read_outside_scope_or_deleted_directory_rows(tm
         listed = client.get(f'/api/admin/org/departments?source_id={source}')
         assert listed.status_code == 200, listed.text
         assert [row['id'] for row in listed.json()['departments']] == [root]
+        scoped_roots = client.get('/api/admin/org/departments?roots_only=true').json()
+        assert [row['id'] for row in scoped_roots['departments']] == [root]
+        assert scoped_roots['departments'][0]['child_count'] == 0
+        assert client.get(f'/api/admin/org/departments?parent_id={child}').status_code == 403
         assert client.get(f'/api/admin/org/departments/{child}/members').status_code == 403
         assert client.get(f'/api/admin/org/departments/{other}/members').status_code == 403
         assert client.get('/api/admin/identity-sources').status_code == 403
