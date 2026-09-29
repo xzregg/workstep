@@ -6,18 +6,33 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 
 from api.task_context import _run_db
 
 router = APIRouter(prefix="/api/platform-share")
 _ARTIFACT_ID = re.compile(r"[0-9a-f]{64}\Z")
 _MESSAGE_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
+_STEP_KEY = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
+
+
+class ShareStepMessage(BaseModel):
+    content: str = Field(min_length=1, max_length=65536)
 
 
 def _share_scope(request: Request) -> dict:
     scope = request.scope.get("gateway_share_scope")
     if not isinstance(scope, dict):
         raise HTTPException(status_code=403, detail="Gateway share ticket required")
+    return scope
+
+
+def _interactive_scope(request: Request, step_key: str) -> dict:
+    scope = _share_scope(request)
+    if scope.get("mode") != "interactive":
+        raise HTTPException(status_code=403, detail="Share is read-only")
+    if not _STEP_KEY.fullmatch(step_key):
+        raise HTTPException(status_code=404, detail="Step unavailable")
     return scope
 
 
@@ -98,10 +113,60 @@ async def read_platform_share_task(request: Request):
     )
     if task is None or task.get("id") != scope["task_id"]:
         raise HTTPException(status_code=404, detail="Task unavailable")
-    return {key: task.get(key) for key in (
+    public = {key: task.get(key) for key in (
         "id", "title", "description", "status", "created_at", "updated_at",
         "creator_name",
     )}
+    public["steps"] = [
+        {key: step.get(key) for key in ("step_key", "status", "has_history")}
+        for step in task.get("steps", [])
+    ]
+    return public
+
+
+@router.post("/steps/{step_key}/message")
+async def send_platform_share_step_message(request: Request, step_key: str,
+                                           body: ShareStepMessage):
+    scope = _interactive_scope(request, step_key)
+    from main import workflow_runtime
+    if workflow_runtime is None:
+        raise HTTPException(status_code=503, detail="Workflow runtime unavailable")
+    try:
+        return await workflow_runtime.send_step_message(
+            scope["host_project_id"], scope["task_id"], step_key, body.content,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/steps/{step_key}/resume")
+async def resume_platform_share_step(request: Request, step_key: str,
+                                     body: ShareStepMessage):
+    scope = _interactive_scope(request, step_key)
+    from main import workflow_runtime
+    if workflow_runtime is None:
+        raise HTTPException(status_code=503, detail="Workflow runtime unavailable")
+    try:
+        return await workflow_runtime.resume_step_with_message(
+            scope["host_project_id"], scope["task_id"], step_key, body.content,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/steps/{step_key}/cancel")
+async def cancel_platform_share_step(request: Request, step_key: str):
+    scope = _interactive_scope(request, step_key)
+    from main import workflow_runtime
+    if workflow_runtime is None:
+        raise HTTPException(status_code=503, detail="Workflow runtime unavailable")
+    try:
+        cancelled = await workflow_runtime.cancel_step(
+            scope["host_project_id"], scope["task_id"], step_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"cancelled": cancelled}
 
 
 @router.get("/history")

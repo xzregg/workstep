@@ -87,6 +87,7 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         visitor_cookie = client.cookies["platform_share_session"]
         assert client.get(f"/api/public/shares/{token}/session").json() == {
             "share_id": share["id"], "mode": "read_only", "task_id": "task-1",
+            "csrf_token": unlocked.json()["csrf_token"],
         }
         with sqlite3.connect(tmp_path / "workstep_platform.db") as db:
             assert db.execute("SELECT last_seen_at FROM platform_share_sessions WHERE share_id=?",
@@ -203,6 +204,88 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
                     existing.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
         client.portal.call(expire_share)
         assert client.get(f"/api/public/shares/{second_token}/meta").status_code == 404
+
+
+def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, monkeypatch):
+    app = create_app(GatewaySettings(
+        data_dir=tmp_path, public_origin="https://gateway.test",
+    ))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        setup = client.post("/api/platform/setup", json={
+            "username": "owner", "display_name": "Owner",
+            "password": "OwnerPassphrase-2026!",
+            "recovery_username": "recovery",
+            "recovery_password": "RecoveryPassphrase-2026!",
+            "registration_mode": "closed",
+        })
+        headers = {"X-CSRF-Token": setup.json()["csrf_token"]}
+
+        async def seed_project():
+            async with app.state.database.session() as session:
+                async with session.begin():
+                    session.add(Device(id="device-1", name="PC", public_key="test",
+                                       status="active", app_instance_id="app", version="1.0"))
+                    session.add(PlatformProject(
+                        id="project-1", device_id="device-1", host_project_id="host-1",
+                        name="Project", status="active", access_mode="remote_published",
+                    ))
+
+        client.portal.call(seed_project)
+        tokens = {}
+        for mode in ("read_only", "interactive"):
+            created = client.post("/api/platform-shares", json={
+                "project_id": "project-1", "task_id": "task-1", "mode": mode,
+            }, headers=headers)
+            assert created.status_code == 201, created.text
+            tokens[mode] = created.json()["url"].rsplit("/", 1)[1]
+
+        captured = []
+
+        class ShareConnection:
+            async def proxy_http(self, request, *, share_ticket, target_path,
+                                 authorization_check, share_body=None):
+                await authorization_check()
+                captured.append((target_path, share_body))
+                from fastapi.responses import JSONResponse
+                return JSONResponse({"message_id": "accepted"})
+
+        async def request_data(device_id):
+            assert device_id == "device-1"
+            return ShareConnection()
+
+        monkeypatch.setattr(app.state.control_connections, "is_online", lambda _id: True)
+        monkeypatch.setattr(app.state.control_connections, "request_data", request_data)
+        client.cookies.clear()
+        token = tokens["read_only"]
+        unlocked = client.post(f"/api/public/shares/{token}/unlock", json={"password": ""})
+        assert unlocked.status_code == 200
+        read_csrf = unlocked.json()["csrf_token"]
+        assert client.post(f"/api/public/shares/{token}/steps/build/message",
+                           headers={"X-Share-CSRF": read_csrf},
+                           json={"content": "hello"}).status_code == 403
+        assert captured == []
+
+        token = tokens["interactive"]
+        unlocked = client.post(f"/api/public/shares/{token}/unlock", json={"password": ""})
+        assert unlocked.status_code == 200
+        csrf = unlocked.json()["csrf_token"]
+        assert client.get(f"/api/public/shares/{token}/session").json()["csrf_token"] == csrf
+        path = f"/api/public/shares/{token}/steps/build/message"
+        assert client.post(path, json={"content": "hello"}).status_code == 403
+        assert client.post(path, headers={"X-Share-CSRF": "wrong"},
+                           json={"content": "hello"}).status_code == 403
+        sent = client.post(path, headers={"X-Share-CSRF": csrf},
+                           json={"content": "hello"})
+        assert sent.status_code == 200, sent.text
+        assert captured == [("/api/platform-share/steps/build/message", b'{"content":"hello"}')]
+        assert client.post(f"/api/public/shares/{token}/steps/build/resume",
+                           headers={"X-Share-CSRF": csrf},
+                           json={"content": "again"}).status_code == 200
+        assert client.post(f"/api/public/shares/{token}/steps/build/cancel",
+                           headers={"X-Share-CSRF": csrf}).status_code == 200
+        assert client.post(f"/api/public/shares/{token}/steps/../message",
+                           headers={"X-Share-CSRF": csrf},
+                           json={"content": "escape"}).status_code != 200
 
 
 def test_project_editor_needs_live_share_create_capability(tmp_path):

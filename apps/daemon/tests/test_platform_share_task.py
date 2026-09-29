@@ -82,6 +82,86 @@ async def test_platform_share_task_read_scope_and_slow_db_health(api_context, mo
     assert body["description"] == "Visible description"
     assert "cwd" not in body
     assert "engine" not in body
+    assert body["steps"]
+    assert all(set(step) == {"step_key", "status", "has_history"}
+               for step in body["steps"])
+
+
+@pytest.mark.anyio
+async def test_platform_share_interaction_requires_mode_and_stays_on_ticket_task(api_context, monkeypatch):
+    import main
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "interactive-share"
+    project_dir.mkdir()
+    project_id = (await client.post("/api/project/init", json={
+        "path": str(project_dir),
+    })).json()["id"]
+    workflow_id = (await _create_test_workflow(client, project_id))["id"]
+    created = await client.post(f"/api/task/create?project_id={project_id}", json={
+        "title": "Interactive", "workflow_id": workflow_id, "auto_start": False,
+    })
+    task_id = created.json()["id"]
+    monkeypatch.setattr(main.gateway_client, "managed_config", object())
+    calls = []
+
+    class Runtime:
+        async def send_step_message(self, pid, tid, step, content):
+            calls.append(("message", pid, tid, step, content))
+            await asyncio.sleep(0.7)
+            return {"message_id": "sent-1"}
+
+        async def resume_step_with_message(self, pid, tid, step, content):
+            calls.append(("resume", pid, tid, step, content))
+            return {"message_id": "sent-2"}
+
+        async def cancel_step(self, pid, tid, step):
+            calls.append(("cancel", pid, tid, step))
+            return True
+
+    monkeypatch.setattr(main, "workflow_runtime", Runtime())
+
+    async def write(path, mode="interactive", body=None):
+        ticket, key, fingerprint = _ticket(task_id=task_id,
+            host_project_id=project_id, mode=mode)
+        frames = []
+        async def capture(frame):
+            frames.append(frame)
+        bridge = ManagedHttpBridge(main.app, "share-write", {
+            "method": "POST", "path": path, "query": "",
+            "headers": [["content-type", "application/json"]],
+            "share_ticket": ticket,
+        }, capture, "device-1", gateway_key=key,
+            gateway_fingerprint=fingerprint, gateway_id="gateway-1")
+        bridge.start_task()
+        if body is not None:
+            await bridge.feed(ProxyFrame(stream_id="share-write", type=FrameType.http_request,
+                payload={"phase": "body", "data": base64.b64encode(
+                    json.dumps(body).encode()).decode()}))
+        await bridge.feed(ProxyFrame(stream_id="share-write", type=FrameType.http_request,
+                                     payload={"phase": "end"}))
+        await asyncio.wait_for(bridge._task, timeout=3)
+        response = b"".join(base64.b64decode(frame.payload["data"])
+                            for frame in frames if frame.payload.get("phase") == "body")
+        return frames[0].payload["status"], json.loads(response) if response else None
+
+    route = "/api/platform-share/steps/build/message"
+    assert (await write(route, "read_only", {"content": "hello"}))[0] == 403
+    assert calls == []
+    pending = asyncio.create_task(write(route, body={"content": "hello"}))
+    await asyncio.sleep(0.05)
+    started = time.monotonic()
+    assert (await client.get("/api/health")).status_code == 200
+    assert time.monotonic() - started < 0.5
+    assert (await pending)[0] == 200
+    assert calls[0] == ("message", project_id, task_id, "build", "hello")
+    assert (await write("/api/platform-share/steps/build/resume",
+                        body={"content": "again"}))[0] == 200
+    assert (await write("/api/platform-share/steps/build/cancel"))[0] == 200
+    assert calls[1:] == [("resume", project_id, task_id, "build", "again"),
+                         ("cancel", project_id, task_id, "build")]
+    assert (await write("/api/platform-share/steps/../message",
+                        body={"content": "escape"}))[0] == 403
 
 
 @pytest.mark.anyio

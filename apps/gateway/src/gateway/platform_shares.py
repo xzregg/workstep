@@ -2,6 +2,8 @@
 
 import asyncio
 import hashlib
+import hmac
+import json
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -12,7 +14,7 @@ from uuid import uuid4
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select, update
 
 from .identity import COOKIE_NAME, IdentityService
@@ -45,6 +47,36 @@ class CreateShareInput(BaseModel):
 
 class UnlockShareInput(BaseModel):
     password: str = Field(default="", max_length=200)
+
+
+class ShareMessageInput(BaseModel):
+    content: str = Field(min_length=1, max_length=65536)
+
+
+def _share_csrf(session_token: str) -> str:
+    return hashlib.sha256(f"share-csrf:{session_token}".encode()).hexdigest()
+
+
+def _check_share_csrf(request: Request) -> None:
+    session_token = request.cookies.get(SHARE_SESSION_COOKIE, "")
+    provided = request.headers.get("x-share-csrf", "")
+    if not provided or not hmac.compare_digest(provided, _share_csrf(session_token)):
+        raise HTTPException(status_code=403, detail="Share CSRF token required")
+
+
+async def _share_message_body(request: Request) -> bytes:
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw.extend(chunk)
+        if len(raw) > 262144:
+            raise HTTPException(status_code=413, detail="Share message too large")
+    try:
+        body = ShareMessageInput.model_validate(json.loads(raw))
+    except (ValueError, ValidationError, UnicodeDecodeError) as exc:
+        raise HTTPException(status_code=422, detail="Invalid share message") from exc
+    if not body.content.strip():
+        raise HTTPException(status_code=422, detail="Share message required")
+    return json.dumps({"content": body.content}, separators=(",", ":")).encode()
 
 
 async def can_create_platform_share(session, user_id: str, project: PlatformProject) -> bool:
@@ -250,7 +282,7 @@ async def unlock_public_share(request: Request, token: str, body: UnlockShareInp
                 session_token_hash=_digest(session_token), expires_at=expiry,
             ))
     from fastapi.responses import JSONResponse
-    response = JSONResponse({"unlocked": True})
+    response = JSONResponse({"unlocked": True, "csrf_token": _share_csrf(session_token)})
     response.set_cookie(SHARE_SESSION_COOKIE, session_token, max_age=3600,
                         secure=True, httponly=True, samesite="lax", path="/")
     response.headers["Cache-Control"] = "no-store"
@@ -260,51 +292,82 @@ async def unlock_public_share(request: Request, token: str, body: UnlockShareInp
 @router.get("/public/shares/{token}/session")
 async def public_share_session(request: Request, token: str):
     share, _ = await _authorized_visitor(request, token, touch=True)
-    return {"share_id": share.id, "mode": share.mode, "task_id": share.task_id}
+    return {"share_id": share.id, "mode": share.mode, "task_id": share.task_id,
+            "csrf_token": _share_csrf(request.cookies[SHARE_SESSION_COOKIE])}
 
 
 @router.get("/public/shares/{token}/task")
 async def public_share_task(request: Request, token: str):
-    return await _proxy_share_read(request, token, "/api/platform-share/task")
+    return await _proxy_share_request(request, token, "/api/platform-share/task")
 
 
 @router.get("/public/shares/{token}/history")
 async def public_share_history(request: Request, token: str):
-    return await _proxy_share_read(request, token, "/api/platform-share/history")
+    return await _proxy_share_request(request, token, "/api/platform-share/history")
 
 
 @router.get("/public/shares/{token}/history/{offset}")
 async def public_share_history_page(request: Request, token: str, offset: int):
     if not 0 <= offset <= 999999:
         raise HTTPException(status_code=404, detail="History page unavailable")
-    return await _proxy_share_read(request, token, f"/api/platform-share/history/{offset}")
+    return await _proxy_share_request(request, token, f"/api/platform-share/history/{offset}")
 
 
 @router.get("/public/shares/{token}/events/{message_id}/{cursor}")
 async def public_share_events(request: Request, token: str, message_id: str, cursor: int):
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", message_id) or not 0 <= cursor <= 999999999:
         raise HTTPException(status_code=404, detail="Message events unavailable")
-    return await _proxy_share_read(
+    return await _proxy_share_request(
         request, token, f"/api/platform-share/events/{message_id}/{cursor}",
     )
 
 
 @router.get("/public/shares/{token}/artifacts")
 async def public_share_artifacts(request: Request, token: str):
-    return await _proxy_share_read(request, token, "/api/platform-share/artifacts")
+    return await _proxy_share_request(request, token, "/api/platform-share/artifacts")
 
 
 @router.get("/public/shares/{token}/artifacts/{artifact_id}/content")
 async def public_share_artifact_content(request: Request, token: str, artifact_id: str):
     if not re.fullmatch(r"[0-9a-f]{64}", artifact_id):
         raise HTTPException(status_code=404, detail="Artifact unavailable")
-    return await _proxy_share_read(
+    return await _proxy_share_request(
         request, token, f"/api/platform-share/artifacts/{artifact_id}/content",
     )
 
 
-async def _proxy_share_read(request: Request, token: str, target_path: str):
+@router.post("/public/shares/{token}/steps/{step_key}/message")
+async def public_share_step_message(request: Request, token: str, step_key: str):
+    return await _proxy_share_step(request, token, step_key, "message")
+
+
+@router.post("/public/shares/{token}/steps/{step_key}/resume")
+async def public_share_step_resume(request: Request, token: str, step_key: str):
+    return await _proxy_share_step(request, token, step_key, "resume")
+
+
+@router.post("/public/shares/{token}/steps/{step_key}/cancel")
+async def public_share_step_cancel(request: Request, token: str, step_key: str):
+    return await _proxy_share_step(request, token, step_key, "cancel")
+
+
+async def _proxy_share_step(request: Request, token: str, step_key: str, action: str):
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", step_key):
+        raise HTTPException(status_code=404, detail="Step unavailable")
+    return await _proxy_share_request(
+        request, token, f"/api/platform-share/steps/{step_key}/{action}",
+        write=True, message_body=action != "cancel",
+    )
+
+
+async def _proxy_share_request(request: Request, token: str, target_path: str,
+                               *, write: bool = False, message_body: bool = False):
     share, project = await _authorized_visitor(request, token, touch=True)
+    if write:
+        if share.mode != "interactive":
+            raise HTTPException(status_code=403, detail="Share is read-only")
+        _check_share_csrf(request)
+    share_body = await _share_message_body(request) if message_body else (b"" if write else None)
     connections = request.app.state.control_connections
     if not connections.is_online(share.device_id):
         raise HTTPException(status_code=503, detail="Shared device offline")
@@ -312,7 +375,8 @@ async def _proxy_share_read(request: Request, token: str, target_path: str):
     async def authorize_stream():
         current, current_project = await _authorized_visitor(request, token)
         if (current.id != share.id or current.device_id != share.device_id
-                or current_project.host_project_id != project.host_project_id):
+                or current_project.host_project_id != project.host_project_id
+                or current.mode != share.mode):
             raise HTTPException(status_code=403, detail="Share changed")
 
     ticket = request.app.state.gateway_signer.sign_platform_share_ticket(
@@ -327,6 +391,7 @@ async def _proxy_share_read(request: Request, token: str, target_path: str):
             request, share_ticket=ticket,
             target_path=target_path,
             authorization_check=authorize_stream,
+            **({"share_body": share_body} if write else {}),
         )
         response.headers["Cache-Control"] = "no-store"
         return response
