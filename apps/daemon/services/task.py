@@ -605,6 +605,7 @@ class TaskService:
         new_title: str,
         project_id: str,
         creator_fields: dict[str, str] | None = None,
+        cwd_override: str | None = None,
     ) -> dict | None:
         """Copy a task with a new title."""
         try:
@@ -616,7 +617,7 @@ class TaskService:
                 id=new_id,
                 title=new_title,
                 description=original.description,
-                cwd=original.cwd,
+                cwd=cwd_override or original.cwd,
                 engine=original.engine or DEFAULT_EXECUTION_ENGINE,
                 created_at=now,
                 updated_at=now,

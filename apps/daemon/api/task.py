@@ -691,6 +691,7 @@ async def delete_task(req: DeleteTaskRequest, pid: str = Query(..., alias="proje
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(pid, req.task_id)
     project = _project(pid)
     from models import Task
     task = await _run_db(pid, lambda: (
@@ -753,15 +754,28 @@ class CopyTaskRequest(BaseSchema):
 async def copy_task(req: CopyTaskRequest, pid: str = Query(..., alias="project_id")):
     """Copy a task with a new title."""
     from main import task_service
+    from services.gateway_client.policy import require_managed_capability
+    from services.remote_access import get_current_actor
+
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    creator_fields = await asyncio.to_thread(current_actor_task_fields)
+    try:
+        require_managed_capability("task.create", creator_fields=creator_fields,
+                                   project_id=pid)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    await _require_scoped_task(pid, req.task_id)
+    actor = get_current_actor()
+    cwd_override = str(_project(pid).path) if actor is not None and actor.project_id is not None else None
     copied = await _run_db(
         pid,
         lambda: task_service.copy_task(
             req.task_id,
             req.newTitle,
             pid,
-            creator_fields=current_actor_task_fields(),
+            creator_fields=creator_fields,
+            cwd_override=cwd_override,
         ),
     )
     if not copied:

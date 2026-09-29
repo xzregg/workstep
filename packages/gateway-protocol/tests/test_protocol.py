@@ -137,6 +137,9 @@ def test_project_http_allowlist_matches_only_the_bound_project():
         ("POST", "/api/task/task-1/steps/dev/review/terminate"),
         ("POST", "/api/task/task-1/steps/dev/review/complete-task"),
         ("POST", "/api/task/task-1/steps/dev/review/set-complete"),
+        ("POST", "/api/task/archive"),
+        ("POST", "/api/task/unarchive"),
+        ("DELETE", "/api/task/delete"),
     ):
         assert allowed(method, path, [("project_id", "host-1")],
                        "host-1", access_level="edit")
@@ -144,6 +147,12 @@ def test_project_http_allowlist_matches_only_the_bound_project():
                            "host-1", access_level="read")
         assert not allowed(method, path, [("project_id", "host-2")],
                            "host-1", access_level="edit")
+    assert not allowed("POST", "/api/task/copy", [("project_id", "host-1")],
+                       "host-1", access_level="edit")
+    assert allowed("POST", "/api/task/copy", [("project_id", "host-1")],
+                   "host-1", access_level="edit", task_create=True)
+    assert not allowed("POST", "/api/task/copy", [("project_id", "host-2")],
+                       "host-1", access_level="edit", task_create=True)
 
 
 def test_control_envelope_requires_known_version_and_target():
