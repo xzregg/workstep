@@ -880,7 +880,7 @@ async def test_project_only_remote_actor_creates_task_in_host_project(api_contex
     assert frames[0].payload["status"] == 200
     result = json.loads(b"".join(base64.b64decode(frame.payload["data"])
                            for frame in frames if frame.payload.get("phase") == "body"))
-    assert result["cwd"] == str(project_dir)
+    assert result["cwd"] == "."
     assert result["creator_id"] == "worker"
     assert result["creator_username"] == "worker"
     assert result["creator_name"] == "Worker Display"
@@ -1001,6 +1001,8 @@ async def test_project_proxy_files_stay_inside_project_and_slow_upload_does_not_
 async def test_project_proxy_messages_require_edit_and_bound_project(api_context, monkeypatch):
     import base64
     import main
+    from models import Task
+    from models.fields import utc_now
     from services.gateway_client.bridge import ManagedHttpBridge
     from workstep_gateway_protocol import FrameType, ProxyFrame
 
@@ -1010,6 +1012,13 @@ async def test_project_proxy_messages_require_edit_and_bound_project(api_context
     project_id = (await client.post("/api/project/init", json={
         "path": str(project_dir),
     })).json()["id"]
+
+    def seed(_project):
+        now = utc_now()
+        Task.create(id="task-1", title="Task", cwd=str(project_dir),
+                    created_at=now, updated_at=now)
+
+    await main.project_manager.run_db(project_id, seed)
     monkeypatch.setattr(main.gateway_client, "managed_config", object())
 
     class Accepted:

@@ -75,6 +75,8 @@ Gateway 项目管理的只读分页目录、已发布项目过滤、授权摘要
 
 任务产物列表由 daemon `api/task.py::get_task_artifacts` 汇总 `services/artifacts.py` 的文件与步骤输入快照。项目票据响应在项目数据库执行器内转为项目相对路径，过滤项目外的输入来源；本地响应仍保留绝对路径。真实代理路径隔离测试见 `tests/test_gateway_project_artifact_scope.py`，本地契约见 `tests/test_api_contracts.py`；Web 由 `src/hooks/useTaskArtifacts.ts` 消费列表。
 
+任务对象的列表、详情及创建、编辑、计划时间和复制响应由 `api/task.py::_project_task_response` 处理工作目录：项目票据只返回项目相对目录，项目外旧目录返回空字符串，本地接口保留原路径。真实代理与本地契约见 `tests/test_gateway_project_task_paths.py`，复制回归见 `tests/test_gateway_project_task_lifecycle_scope.py`。
+
 归档体验的草稿读取、生成、停止及确认也由 `api/task_archive.py` 负责，Web 入口在 `src/api/task.ts::taskApi`。共享 `project_scope.py` 仅允许项目内草稿读取及 `edit` 写入；生成与停止的 `message_id` 查询参数须单值且符合安全标识格式。调用协调器或写项目记忆前用 `_require_scoped_task` 确认任务归属。真实代理隔离见 `tests/test_gateway_project_task_lifecycle_scope.py`，草稿缓存、确认与慢盘健康检查见 `tests/test_api_contracts.py`。
 
 项目实时事件的作用域由 `streaming/ws.py::_make_subscription_predicate` 在入队前执行：目标项目 ID 必须显式匹配，频道仅允许任务执行与协调器，独立助手会话流被拒绝。事件生产者的项目标记见 `services/task_runner.py`、`services/workflow_runtime.py`、`agent_assistants/coordinator.py`、`services/schedule.py` 和 `api/task.py`；回归见 `test_main.py`、`test_coordinator.py`、`test_schedule.py`。

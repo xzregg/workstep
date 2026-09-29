@@ -98,7 +98,7 @@ async def test_project_proxy_task_archive_delete_and_copy_require_scope_and_capa
                           task_create=True))[0] == 404
     code, copied = await request("POST", copy_path, copy_body, task_create=True)
     assert code == 200 and copied["title"] == "Copied"
-    assert copied["cwd"] == str(visible_dir)
+    assert copied["cwd"] == "."
 
     from api.task import CopyTaskRequest, copy_task
 

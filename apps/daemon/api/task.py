@@ -32,6 +32,23 @@ from api.task_context import _project, _require_scoped_task, _run_db
 router = APIRouter(prefix="/api/task")
 
 
+def _project_task_response(pid: str, task: dict) -> dict:
+    """Keep host working directories out of project-ticket task responses."""
+    from services.remote_access import get_current_actor
+
+    actor = get_current_actor()
+    if actor is None or actor.project_id is None:
+        return task
+    cwd = Path(task["cwd"])
+    try:
+        relative = cwd.relative_to(_project(pid).path) if cwd.is_absolute() else None
+    except ValueError:
+        relative = None
+    if relative is not None and ".." in relative.parts:
+        relative = None
+    return {**task, "cwd": relative.as_posix() if relative is not None else ""}
+
+
 @router.post("/create")
 async def create_task(req: CreateTaskRequest, pid: str = Query(..., alias="project_id")):
     """Create a new task."""
@@ -78,7 +95,7 @@ async def create_task(req: CreateTaskRequest, pid: str = Query(..., alias="proje
             scheduled_start_at=req.scheduled_start_at,
             creator_fields=creator_fields,
         )
-        return result.task
+        return _project_task_response(pid, result.task)
     except WorkflowValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PermissionError as exc:
@@ -124,7 +141,7 @@ async def update_scheduled_start(
         },
         "task_id": task_id,
     })
-    return task
+    return _project_task_response(pid, task)
 
 
 @router.get("/list")
@@ -141,7 +158,7 @@ async def list_tasks(
         pid,
         lambda: task_service.list_tasks(workflow_id=wf, archived=archived),
     )
-    return {"tasks": tasks}
+    return {"tasks": [_project_task_response(pid, task) for task in tasks]}
 
 
 @router.get("/{task_id}")
@@ -153,7 +170,7 @@ async def get_task(task_id: str, pid: str = Query(..., alias="project_id")):
     task = await _run_db(pid, lambda: task_service.get_task(task_id))
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    return task
+    return _project_task_response(pid, task)
 
 
 @router.get("/{task_id}/execution-report")
@@ -200,7 +217,7 @@ async def update_task(
     )
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    return task
+    return _project_task_response(pid, task)
 
 
 @router.get("/{task_id}/history")
@@ -787,4 +804,4 @@ async def copy_task(req: CopyTaskRequest, pid: str = Query(..., alias="project_i
     )
     if not copied:
         raise HTTPException(status_code=404, detail="Task not found")
-    return copied
+    return _project_task_response(pid, copied)
