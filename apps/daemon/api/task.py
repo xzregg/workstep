@@ -22,6 +22,7 @@ from services.config import DEFAULT_EXECUTION_ENGINE, config_store
 from services.workflow_definition import WorkflowValidationError
 from services.task_creation import create_project_task
 from services.messages import current_actor_task_fields
+from services.task_read_model import project_relative_task_cwd
 from services.artifacts import (
     list_task_artifact_input_snapshots,
     list_task_artifacts,
@@ -39,14 +40,7 @@ def _project_task_response(pid: str, task: dict) -> dict:
     actor = get_current_actor()
     if actor is None or actor.project_id is None:
         return task
-    cwd = Path(task["cwd"])
-    try:
-        relative = cwd.relative_to(_project(pid).path) if cwd.is_absolute() else None
-    except ValueError:
-        relative = None
-    if relative is not None and ".." in relative.parts:
-        relative = None
-    return {**task, "cwd": relative.as_posix() if relative is not None else ""}
+    return {**task, "cwd": project_relative_task_cwd(task["cwd"], _project(pid).path)}
 
 
 @router.post("/create")
