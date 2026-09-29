@@ -59,6 +59,10 @@ test('public share route works without portal authentication and unlocks task', 
         path: 'README.md', index_status: ' ', worktree_status: 'M',
       }],
     })
+    if (url.endsWith(`/git/worktrees/${'a'.repeat(24)}/branches`)) return Response.json({
+      branches: [{ name: 'feature', head: 'c'.repeat(40), upstream: 'origin/feature',
+        ahead: 1, behind: 0, occupied: true, worktree_id: 'a'.repeat(24) }],
+    })
     if (url.endsWith(`/artifacts/${'a'.repeat(64)}/preview`)) return Response.json({
       type: 'text', content: 'Preview content', content_type: 'text/plain',
     })
@@ -96,6 +100,8 @@ test('public share route works without portal authentication and unlocks task', 
   await screen.findByText('Preview content')
   fireEvent.click(screen.getByRole('button', { name: '查看 Git 工作区' }))
   await screen.findByText('App · app · feature')
+  fireEvent.click(screen.getByRole('button', { name: '查看 app 分支' }))
+  await screen.findByText(/领先 1 \/ 落后 0/)
   fireEvent.click(screen.getByRole('button', { name: '查看 app 状态' }))
   await screen.findByText('README.md')
   assert.equal(calls.find(call => call.url.endsWith('/unlock'))?.body,

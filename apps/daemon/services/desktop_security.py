@@ -45,6 +45,7 @@ REMOTE_PROJECT_SCOPED_FS = frozenset({
 SHARE_ARTIFACT_CONTENT = re.compile(r"/api/platform-share/artifacts/[0-9a-f]{64}/(?:content|preview)\Z")
 SHARE_UPLOAD_CONTENT = re.compile(r"/api/platform-share/uploads/t[0-9a-f]{24}-[0-9a-f]{32}\.[a-z0-9]{1,10}\Z")
 SHARE_GIT_STATUS = re.compile(r"/api/platform-share/git/worktrees/[0-9a-f]{24}/status\Z")
+SHARE_GIT_BRANCHES = re.compile(r"/api/platform-share/git/worktrees/[0-9a-f]{24}/branches\Z")
 SHARE_GIT_COMMIT = re.compile(r"/api/platform-share/git/worktrees/[0-9a-f]{24}/commit\Z")
 SHARE_GIT_SYNC = re.compile(r"/api/platform-share/git/worktrees/[0-9a-f]{24}/(?:pull|push)\Z")
 SHARE_HISTORY_PAGE = re.compile(r"/api/platform-share/history/(?:0|[1-9][0-9]{0,5})\Z")
@@ -148,6 +149,7 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                         and not SHARE_ARTIFACT_CONTENT.fullmatch(request.url.path)
                         and not SHARE_UPLOAD_CONTENT.fullmatch(request.url.path)
                         and not SHARE_GIT_STATUS.fullmatch(request.url.path)
+                        and not SHARE_GIT_BRANCHES.fullmatch(request.url.path)
                         and not SHARE_HISTORY_PAGE.fullmatch(request.url.path)
                         and not SHARE_EVENTS_PAGE.fullmatch(request.url.path))
                     or (request.method == "POST" and (

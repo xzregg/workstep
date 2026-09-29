@@ -311,12 +311,15 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
         sync_body = {"branch": "feature", "snapshot": "d" * 64}
         assert client.post(f"/api/public/shares/{token}/git/worktrees/{'a' * 24}/push",
                            headers={"X-Share-CSRF": read_csrf}, json=sync_body).status_code == 403
+        branch_path = f"/api/public/shares/{token}/git/worktrees/{'a' * 24}/branches"
+        assert client.get(branch_path).status_code == 200
         assert client.get(f"/api/public/shares/{token}/reviews").status_code == 200
         assert client.post(f"/api/public/shares/{token}/steps/build/review/approve",
                            headers={"X-Share-CSRF": read_csrf},
                            json={"review_run_id": "review-1"}).status_code == 403
         assert client.get(f"/api/public/shares/{token}/interventions").status_code == 403
-        assert captured == [("/api/platform-share/reviews", None)]
+        assert captured == [(f"/api/platform-share/git/worktrees/{'a' * 24}/branches", None),
+                            ("/api/platform-share/reviews", None)]
         captured.clear()
 
         token = tokens["interactive"]

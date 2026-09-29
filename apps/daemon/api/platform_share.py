@@ -334,6 +334,32 @@ async def read_platform_share_git_status(request: Request, tree_id: str):
     )}, "files": files}
 
 
+@router.get("/git/worktrees/{tree_id}/branches")
+async def read_platform_share_git_branches(request: Request, tree_id: str):
+    if not _GIT_TREE_ID.fullmatch(tree_id):
+        raise HTTPException(status_code=404, detail="Git worktree unavailable")
+    workspace = await _share_git_workspace(_share_scope(request))
+    task_tree_ids = {tree.get("id") for tree in workspace["worktrees"]}
+    if tree_id not in task_tree_ids:
+        raise HTTPException(status_code=404, detail="Git worktree unavailable")
+    from api import git as git_api
+    result = await _share_git_result(git_api.git_service.branches(tree_id))
+    branches = []
+    for branch in result.get("branches", []):
+        item = {key: branch.get(key) for key in (
+            "name", "head", "upstream", "remote", "ahead", "behind", "upstream_gone",
+        )}
+        occupied_id = branch.get("worktree_id")
+        item["occupied"] = occupied_id is not None
+        item["worktree_id"] = occupied_id if occupied_id in task_tree_ids else None
+        branches.append(item)
+    remote_branches = [{key: branch.get(key) for key in (
+        "name", "remote", "branch", "head",
+    )} for branch in result.get("remote_branches", [])]
+    return {"branches": branches, "remote_branches": remote_branches,
+            "fetched_at": result.get("fetched_at")}
+
+
 @router.post("/git/worktrees/{tree_id}/commit")
 async def commit_platform_share_git(request: Request, tree_id: str, body: ShareGitCommit):
     scope = _interactive_share_scope(request)

@@ -478,6 +478,9 @@ class DataConnection:
                     r"/api/platform-share/git/worktrees/[0-9a-f]{24}/status",
                     target_path or "")
                 or re.fullmatch(
+                    r"/api/platform-share/git/worktrees/[0-9a-f]{24}/branches",
+                    target_path or "")
+                or re.fullmatch(
                     r"/api/platform-share/history/(?:0|[1-9][0-9]{0,5})",
                     target_path or "")
                 or re.fullmatch(
