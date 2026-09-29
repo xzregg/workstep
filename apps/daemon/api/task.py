@@ -293,6 +293,7 @@ async def send_step_message(
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Workflow runtime not initialized")
+    await _require_scoped_task(pid, task_id)
     _project(pid)
     try:
         accepted = await workflow_runtime.send_step_message(
