@@ -149,6 +149,58 @@ async def test_platform_share_git_workspace_rechecks_task_and_hides_host_paths(a
                                                  "branch": "main", "head": "f" * 40}]
     assert "/private/host" not in json.dumps(branch_result)
     assert (await read(branch_path, task_id=task_ids[1]))[0] == 404
+    branch_writes = []
+    switch_entered = threading.Event()
+
+    async def switch(tree_id, branch, snapshot, remote=None):
+        switch_entered.set()
+        await asyncio.to_thread(time.sleep, 0.7)
+        branch_writes.append(("switch", tree_id, branch, snapshot, remote))
+        return {"path": "/private/host/worktree", "branch": branch,
+                "head": "f" * 40, "snapshot": "d" * 64, "files": []}
+
+    async def create_branch(tree_id, name, base_branch, base_head, snapshot, base_remote=None):
+        branch_writes.append(("create", tree_id, name, base_branch, base_head, snapshot,
+                              base_remote))
+        return await branches(tree_id)
+
+    async def delete_branch(tree_id, branch, head, snapshot):
+        branch_writes.append(("delete", tree_id, branch, head, snapshot))
+        return await branches(tree_id)
+
+    monkeypatch.setattr(git_service, "switch", switch)
+    monkeypatch.setattr(git_service, "create_branch", create_branch)
+    monkeypatch.setattr(git_service, "delete_branch", delete_branch)
+    branch_actions = [
+        ("switch", f"/api/platform-share/git/worktrees/{'a' * 24}/switch",
+         {"branch": "main", "snapshot": "d" * 64}),
+        ("create", branch_path,
+         {"name": "new", "base_branch": "feature", "base_head": "c" * 40,
+          "snapshot": "d" * 64}),
+        ("delete", branch_path + "/delete",
+         {"branch": "private", "head": "e" * 40, "snapshot": "d" * 64}),
+    ]
+    for action, action_path, body in branch_actions:
+        assert (await read(action_path, method="POST", body=body))[0] == 403
+        assert (await read(action_path, task_id=task_ids[1], method="POST",
+                           mode="interactive", body=body))[0] == 404
+        if action == "switch":
+            pending_write = asyncio.create_task(read(action_path, method="POST",
+                                                     mode="interactive", body=body))
+            assert await asyncio.to_thread(switch_entered.wait, 2)
+            started = time.monotonic()
+            assert (await client.get("/api/health")).status_code == 200
+            assert time.monotonic() - started < 0.5
+            code, result = await pending_write
+        else:
+            code, result = await read(action_path, method="POST", mode="interactive", body=body)
+        assert code == 200
+        assert "/private/host" not in json.dumps(result)
+    assert branch_writes == [
+        ("switch", "a" * 24, "main", "d" * 64, None),
+        ("create", "a" * 24, "new", "feature", "c" * 40, "d" * 64, None),
+        ("delete", "a" * 24, "private", "e" * 40, "d" * 64),
+    ]
     commit_path = f"/api/platform-share/git/worktrees/{'a' * 24}/commit"
     commit_body = {"paths": ["README.md"], "message": "Share commit", "snapshot": "d" * 64}
     assert (await read(commit_path, method="POST", body=commit_body))[0] == 403

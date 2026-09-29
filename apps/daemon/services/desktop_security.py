@@ -48,6 +48,7 @@ SHARE_GIT_STATUS = re.compile(r"/api/platform-share/git/worktrees/[0-9a-f]{24}/s
 SHARE_GIT_BRANCHES = re.compile(r"/api/platform-share/git/worktrees/[0-9a-f]{24}/branches\Z")
 SHARE_GIT_COMMIT = re.compile(r"/api/platform-share/git/worktrees/[0-9a-f]{24}/commit\Z")
 SHARE_GIT_SYNC = re.compile(r"/api/platform-share/git/worktrees/[0-9a-f]{24}/(?:pull|push)\Z")
+SHARE_GIT_BRANCH_WRITE = re.compile(r"/api/platform-share/git/worktrees/[0-9a-f]{24}/(?:switch|branches|branches/delete)\Z")
 SHARE_HISTORY_PAGE = re.compile(r"/api/platform-share/history/(?:0|[1-9][0-9]{0,5})\Z")
 SHARE_EVENTS_PAGE = re.compile(
     r"/api/platform-share/events/[A-Za-z0-9_-]{1,128}/(?:0|[1-9][0-9]{0,8})\Z"
@@ -159,6 +160,7 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                             and not SHARE_INTERVENTION_WRITE.fullmatch(request.url.path)
                             and not SHARE_GIT_COMMIT.fullmatch(request.url.path)
                             and not SHARE_GIT_SYNC.fullmatch(request.url.path)
+                            and not SHARE_GIT_BRANCH_WRITE.fullmatch(request.url.path)
                             and request.url.path != "/api/platform-share/uploads")))
                     or request.method not in ("GET", "POST")
                     or request.url.query):

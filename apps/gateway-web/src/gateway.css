@@ -111,6 +111,8 @@ body {
 .gateway-share-git-status input[type="checkbox"] { width: 16px; height: 16px; vertical-align: middle; }
 .gateway-share-git-sync { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .gateway-share-git-branches { margin-top: 12px; }
+.gateway-share-git-branch-actions { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-left: 8px; }
+.gateway-share-git-create { display: grid; gap: 8px; margin-top: 12px; }
 .gateway-share-step-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .gateway-share-reviews article { display: grid; gap: 10px; }
 .gateway-share-reviews label { font-weight: 600; }
