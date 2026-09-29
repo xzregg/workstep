@@ -18,6 +18,7 @@ from schemas.task import (
     StepResumeRequest,
     UpdateTaskRequest,
 )
+from services import config as config_service
 from services.config import DEFAULT_EXECUTION_ENGINE, config_store
 from services.workflow_definition import WorkflowValidationError
 from services.task_creation import create_project_task
@@ -176,7 +177,7 @@ async def get_task_execution_report(
     from services.task_execution_report import build_task_execution_report
 
     project = _project(pid)
-    pricing = await asyncio.to_thread(config_store.get_model_pricing)
+    pricing = await asyncio.to_thread(config_service.config_store.get_model_pricing)
     report = await _run_db(
         pid,
         lambda: build_task_execution_report(

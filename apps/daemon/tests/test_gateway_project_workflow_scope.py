@@ -5,8 +5,11 @@ import base64
 import json
 
 import pytest
+from fastapi import HTTPException
 
+from schemas.project import UpdateWorkflowRequest
 from services.gateway_client.bridge import ManagedHttpBridge
+from services.remote_access import ActorSnapshot, actor_context
 from tests.test_api_contracts import api_context
 from workstep_gateway_protocol import FrameType, ProxyFrame
 
@@ -109,3 +112,20 @@ async def test_project_proxy_workflow_crud_is_project_scoped(api_context, monkey
         )
     )
     assert private_after["name"] == "Private"
+
+    import api.workflow as workflow_api
+
+    actor = ActorSnapshot(actor_id="worker", user_name="worker", device_id="device-1",
+                          device_name="Device", source="managed", project_id=visible,
+                          access_level="edit")
+    with actor_context(actor):
+        for call in (
+            lambda: workflow_api.list_workflows(pid=private),
+            lambda: workflow_api.get_workflow(private_flow_id, pid=private),
+            lambda: workflow_api.update_workflow(
+                private_flow_id, UpdateWorkflowRequest(name="Escape"), pid=private,
+            ),
+        ):
+            with pytest.raises(HTTPException) as denied:
+                await call()
+            assert denied.value.status_code == 403

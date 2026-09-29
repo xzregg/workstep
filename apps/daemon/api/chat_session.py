@@ -143,6 +143,7 @@ def _enforce_project_scope(project_id: str | None) -> None:
 async def _run_db(project_id: str, operation):
     from main import project_manager
 
+    _enforce_project_scope(project_id)
     return await project_manager.run_db(
         project_id,
         lambda _project: operation(),
