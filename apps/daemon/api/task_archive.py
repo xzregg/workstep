@@ -90,6 +90,7 @@ async def get_archive_experience_draft(
     project = project_manager.get_project_by_id(pid)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
+    await _require_scoped_task(pid, task_id)
 
     def load():
         if Task.get_or_none(Task.id == task_id) is None:
@@ -141,6 +142,7 @@ async def prepare_archive_experience(
 
     if not coordinator_module:
         raise HTTPException(status_code=503, detail="Coordinator is not initialized")
+    await _require_scoped_task(pid, task_id)
     try:
         progress_message_id = message_id or str(uuid.uuid4())
         raw_experience = await coordinator_module.draft_archive_experience(
@@ -241,6 +243,7 @@ async def stop_archive_experience(
 
     if not coordinator_module:
         raise HTTPException(status_code=503, detail="Coordinator is not initialized")
+    await _require_scoped_task(pid, task_id)
     stopped = await coordinator_module.stop_archive_experience(
         pid,
         task_id,
@@ -261,6 +264,7 @@ async def confirm_archive_experience(
 
     if not project_manager or not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(pid, task_id)
     experience = req.experience.strip()
     if not experience:
         draft = await _run_db(pid, lambda: _load_archive_experience_draft(task_id))

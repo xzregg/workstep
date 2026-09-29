@@ -25,6 +25,10 @@ def test_project_http_allowlist_matches_only_the_bound_project():
     assert not allowed("GET", "/api/project/host-2/summary", [], "host-1")
     assert allowed("GET", "/api/task/list", [("project_id", "host-1")], "host-1")
     assert allowed("GET", "/api/task/task-1", [("project_id", "host-1")], "host-1")
+    assert allowed("GET", "/api/task/task-1/archive-experience/draft", [
+        ("project_id", "host-1")], "host-1")
+    assert not allowed("GET", "/api/task/task-1/archive-experience/draft", [
+        ("project_id", "host-2")], "host-1")
     assert allowed("GET", "/api/workflow/list", [("project_id", "host-1")], "host-1")
     assert allowed("GET", "/api/workflow/flow-1", [("project_id", "host-1")], "host-1")
     assert allowed("GET", "/api/chat-sessions", [("project_id", "host-1")], "host-1")
@@ -140,6 +144,7 @@ def test_project_http_allowlist_matches_only_the_bound_project():
         ("POST", "/api/task/archive"),
         ("POST", "/api/task/unarchive"),
         ("DELETE", "/api/task/delete"),
+        ("POST", "/api/task/task-1/archive-experience/confirm"),
     ):
         assert allowed(method, path, [("project_id", "host-1")],
                        "host-1", access_level="edit")
@@ -153,6 +158,23 @@ def test_project_http_allowlist_matches_only_the_bound_project():
                    "host-1", access_level="edit", task_create=True)
     assert not allowed("POST", "/api/task/copy", [("project_id", "host-2")],
                        "host-1", access_level="edit", task_create=True)
+    for action in ("prepare", "stop"):
+        path = f"/api/task/task-1/archive-experience/{action}"
+        query = [("project_id", "host-1"), ("message_id", "message-1")]
+        assert allowed("POST", path, query, "host-1", access_level="edit")
+        assert not allowed("POST", path, query, "host-1", access_level="read")
+        assert not allowed("POST", path, [("project_id", "host-2"),
+                                          ("message_id", "message-1")],
+                           "host-1", access_level="edit")
+        assert not allowed("POST", path, query + [("project_id", "host-2")],
+                           "host-1", access_level="edit")
+        assert not allowed("POST", path, [("project_id", "host-1"),
+                                          ("message_id", "../other")],
+                           "host-1", access_level="edit")
+    assert allowed("POST", "/api/task/task-1/archive-experience/prepare", [
+        ("project_id", "host-1")], "host-1", access_level="edit")
+    assert not allowed("POST", "/api/task/task-1/archive-experience/stop", [
+        ("project_id", "host-1")], "host-1", access_level="edit")
 
 
 def test_control_envelope_requires_known_version_and_target():

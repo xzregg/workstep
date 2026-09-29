@@ -23,6 +23,10 @@ _TASK_PROPOSAL_ACTION = re.compile(
 _TASK_REVIEW_DECISION = re.compile(
     r"/api/task/[A-Za-z0-9_-]{1,128}/steps/[A-Za-z0-9_-]{1,128}/review/"
     r"(?:approve|reject|force-approve|terminate|complete-task|set-complete)\Z")
+_TASK_ARCHIVE_EXPERIENCE = re.compile(
+    r"/api/task/[A-Za-z0-9_-]{1,128}/archive-experience/"
+    r"(draft|prepare|stop|confirm)\Z")
+_SAFE_MESSAGE_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 _TASK_METADATA_UPDATE = re.compile(
     r"/api/task/[A-Za-z0-9_-]{1,128}/(?:scheduled-start|coordinator-config)\Z")
 _TASK_STEP_HISTORY = re.compile(
@@ -58,7 +62,18 @@ def project_http_route_allowed(method: str, path: str,
     if not project_id or access_level not in ("read", "edit"):
         return False
     if method in ("POST", "PUT", "PATCH", "DELETE"):
-        if access_level != "edit" or query_pairs != [("project_id", project_id)]:
+        if access_level != "edit":
+            return False
+        archive_action = _TASK_ARCHIVE_EXPERIENCE.fullmatch(path)
+        if method == "POST" and archive_action and archive_action.group(1) in ("prepare", "stop"):
+            if query_pairs == [("project_id", project_id)]:
+                return archive_action.group(1) == "prepare"
+            if len(query_pairs) != 2:
+                return False
+            params = dict(query_pairs)
+            return (len(params) == 2 and params.get("project_id") == project_id
+                    and _SAFE_MESSAGE_ID.fullmatch(params.get("message_id", "")) is not None)
+        if query_pairs != [("project_id", project_id)]:
             return False
         if method == "PUT":
             if _WORKFLOW_DETAIL.fullmatch(path):
@@ -89,6 +104,8 @@ def project_http_route_allowed(method: str, path: str,
         if path == "/api/task/copy":
             return task_create
         if path in ("/api/task/archive", "/api/task/unarchive"):
+            return True
+        if archive_action and archive_action.group(1) == "confirm":
             return True
         if path in ("/api/workflow/create", "/api/workflow/reorder"):
             return True
@@ -143,6 +160,9 @@ def project_http_route_allowed(method: str, path: str,
         return all(key in ("project_id", "workflow_id", "archived")
                    for key, _ in query_pairs)
     if _TASK_DETAIL.fullmatch(path):
+        return len(query_pairs) == 1
+    archive_action = _TASK_ARCHIVE_EXPERIENCE.fullmatch(path)
+    if archive_action and archive_action.group(1) == "draft":
         return len(query_pairs) == 1
     if (_TASK_READ_DETAIL.fullmatch(path) or _TASK_STEP_CONFIG.fullmatch(path)
             or _TASK_STEP_HISTORY.fullmatch(path)):

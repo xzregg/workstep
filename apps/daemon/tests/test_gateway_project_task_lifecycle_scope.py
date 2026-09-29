@@ -5,6 +5,7 @@ import base64
 import json
 import threading
 import time
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
@@ -51,14 +52,16 @@ async def test_project_proxy_task_archive_delete_and_copy_require_scope_and_capa
     monkeypatch.setattr(main.gateway_client, "managed_config", object())
 
     async def request(method, path, body, *, query_project=visible,
-                      level="edit", task_create=False):
+                      level="edit", task_create=False, message_id=None):
         frames = []
 
         async def capture(frame):
             frames.append(frame)
 
         bridge = ManagedHttpBridge(main.app, "project-lifecycle", {
-            "method": method, "path": path, "query": f"project_id={query_project}",
+            "method": method, "path": path,
+            "query": f"project_id={query_project}"
+            + (f"&message_id={message_id}" if message_id else ""),
             "headers": [["content-type", "application/json"]],
             "user_id": "worker", "username": "worker", "project_id": visible,
             "access_level": level, "task_create": task_create,
@@ -105,6 +108,37 @@ async def test_project_proxy_task_archive_delete_and_copy_require_scope_and_capa
     with actor_context(actor), pytest.raises(HTTPException) as denied:
         await copy_task(CopyTaskRequest(**copy_body), pid=visible)
     assert denied.value.status_code == 403
+
+    draft_path = "/api/task/copy-source/archive-experience/draft"
+    assert (await request("GET", draft_path, {}, level="read"))[0] == 200
+    assert (await request("GET", "/api/task/private-task/archive-experience/draft",
+                          {}))[0] == 404
+    draft = AsyncMock(return_value="Remember this failure")
+    stop = AsyncMock(return_value=True)
+    monkeypatch.setattr(main.coordinator_module, "draft_archive_experience", draft)
+    monkeypatch.setattr(main.coordinator_module, "stop_archive_experience", stop)
+    monkeypatch.setattr(main.coordinator_module, "take_archive_experience_journal",
+                        lambda *_args: None)
+    for action in ("prepare", "stop"):
+        path = f"/api/task/copy-source/archive-experience/{action}"
+        private_path = f"/api/task/private-task/archive-experience/{action}"
+        assert (await request("POST", path, {}, level="read",
+                              message_id="archive-message-1"))[0] == 403
+        assert (await request("POST", path, {}, query_project=private,
+                              message_id="archive-message-1"))[0] == 403
+        assert (await request("POST", private_path, {},
+                              message_id="archive-message-1"))[0] == 404
+        assert (await request("POST", path, {},
+                              message_id="archive-message-1"))[0] == 200
+    draft.assert_awaited_once()
+    stop.assert_awaited_once()
+    confirm_path = "/api/task/copy-source/archive-experience/confirm"
+    assert (await request("POST", confirm_path, {"experience": "Remember"},
+                          level="read"))[0] == 403
+    assert (await request("POST", "/api/task/private-task/archive-experience/confirm",
+                          {"experience": "Escape"}))[0] == 404
+    assert (await request("POST", confirm_path, {"experience": "Remember"}))[0] == 200
+    assert "Remember" in (visible_dir / ".workstep" / "MEMORY.md").read_text()
 
 
 @pytest.mark.anyio
