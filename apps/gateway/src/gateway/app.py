@@ -88,6 +88,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.state.command_scheduler_lock = asyncio.Lock()
     app.state.usage_ledger_lock = asyncio.Lock()
     app.state.usage_batch_slots = asyncio.Semaphore(2)
+    app.state.share_upload_slots = asyncio.Semaphore(2)
     app.state.usage_batch_timeout_seconds = 10.0
 
     @app.middleware("http")

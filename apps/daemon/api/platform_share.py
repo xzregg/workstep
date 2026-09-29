@@ -4,7 +4,9 @@ import asyncio
 import hashlib
 import json
 import re
+import uuid
 from pathlib import Path
+from urllib.parse import unquote
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -16,6 +18,7 @@ router = APIRouter(prefix="/api/platform-share")
 _ARTIFACT_ID = re.compile(r"[0-9a-f]{64}\Z")
 _MESSAGE_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 _STEP_KEY = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
+_UPLOAD_NAME = re.compile(r"t[0-9a-f]{24}-[0-9a-f]{32}\.[a-z0-9]{1,10}\Z")
 
 
 class ShareStepMessage(BaseModel):
@@ -160,6 +163,91 @@ async def read_platform_share_artifact_preview(request: Request, artifact_id: st
     return {key: preview[key] for key in (
         "type", "content_type", "content", "file_size", "extension",
     )}
+
+
+def _upload_prefix(task_id: str) -> str:
+    return f"t{hashlib.sha256(task_id.encode()).hexdigest()[:24]}-"
+
+
+def _persist_share_upload(workstep_dir: Path, filename: str, content: bytes) -> None:
+    root = workstep_dir.resolve()
+    upload_dir = workstep_dir / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    if not upload_dir.resolve().is_relative_to(root):
+        raise HTTPException(status_code=403, detail="Attachment storage unavailable")
+    path = upload_dir / filename
+    created = False
+    try:
+        with path.open("xb") as output:
+            created = True
+            output.write(content)
+    except BaseException:
+        if created:
+            path.unlink(missing_ok=True)
+        raise
+
+
+def _serve_share_upload(workstep_dir: Path, filename: str) -> FileResponse:
+    from api.fs import _serve_upload_file
+    upload_dir = workstep_dir / "uploads"
+    if not upload_dir.resolve().is_relative_to(workstep_dir.resolve()):
+        raise HTTPException(status_code=404, detail="Attachment unavailable")
+    return _serve_upload_file(upload_dir, filename)
+
+
+@router.post("/uploads")
+async def upload_platform_share_attachment(request: Request):
+    scope = _interactive_share_scope(request)
+    encoded_name = request.headers.get("x-share-filename", "")
+    if not encoded_name or len(encoded_name) > 512:
+        raise HTTPException(status_code=422, detail="Attachment filename required")
+    name = unquote(encoded_name)
+    extension = Path(name).suffix.lower()
+    if not re.fullmatch(r"\.[a-z0-9]{1,10}", extension):
+        extension = ".bin"
+    content = bytearray()
+    async for chunk in request.stream():
+        content.extend(chunk)
+        if len(content) > 25_000_000:
+            raise HTTPException(status_code=413, detail="Attachment exceeds 25 MB")
+    if not content:
+        raise HTTPException(status_code=422, detail="Attachment is empty")
+    from main import project_manager
+    from models import Task
+    if project_manager is None:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    project = project_manager.get_project_by_id(scope["host_project_id"])
+    if project is None:
+        raise HTTPException(status_code=404, detail="Task unavailable")
+    exists = await _run_db(scope["host_project_id"], lambda: Task.select().where(
+        Task.id == scope["task_id"],
+    ).exists())
+    if not exists:
+        raise HTTPException(status_code=404, detail="Task unavailable")
+    filename = f"{_upload_prefix(scope['task_id'])}{uuid.uuid4().hex}{extension}"
+    await asyncio.to_thread(_persist_share_upload, Path(project.workstep_dir),
+                            filename, bytes(content))
+    return {"url": f".workstep/uploads/{filename}", "filename": filename,
+            "size": len(content)}
+
+
+@router.get("/uploads/{filename}")
+async def read_platform_share_attachment(request: Request, filename: str):
+    scope = _share_scope(request)
+    if not _UPLOAD_NAME.fullmatch(filename) or not filename.startswith(_upload_prefix(scope["task_id"])):
+        raise HTTPException(status_code=404, detail="Attachment unavailable")
+    from main import project_manager
+    if project_manager is None:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    project = project_manager.get_project_by_id(scope["host_project_id"])
+    if project is None:
+        raise HTTPException(status_code=404, detail="Attachment unavailable")
+    response = await asyncio.to_thread(
+        _serve_share_upload, Path(project.workstep_dir), filename,
+    )
+    response.headers["Content-Security-Policy"] = "sandbox"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @router.get("/task")

@@ -39,6 +39,14 @@ test('public share route works without portal authentication and unlocks task', 
     if (url.endsWith('/history')) return Response.json({ messages: [{
       id: 'message-1', role: 'assistant', content: 'Visible execution reply',
       step_key: 'build', created_at: '2026-09-29T10:05:00Z',
+    }, {
+      id: 'message-2', role: 'user', step_key: 'build',
+      content: `[report.txt](.workstep/uploads/t${'a'.repeat(24)}-${'b'.repeat(32)}.txt)`,
+      created_at: '2026-09-29T10:06:00Z',
+    }, {
+      id: 'message-3', role: 'user', step_key: 'build',
+      content: '[private](.workstep/uploads/other-task-file.txt)',
+      created_at: '2026-09-29T10:07:00Z',
     }] })
     if (url.endsWith('/artifacts')) return Response.json({ artifacts: [{
       id: 'a'.repeat(64), name: 'result.txt', step_key: 'build', size: 13,
@@ -65,8 +73,11 @@ test('public share route works without portal authentication and unlocks task', 
   assert.match(document.body.textContent ?? '', /Visible description/)
   assert.match(document.body.textContent ?? '', /只读分享/)
   await screen.findByText('Visible execution reply')
+  assert.equal((await screen.findByRole('link', { name: 'report.txt' })).getAttribute('href'),
+    `/api/public/shares/sample-token/uploads/t${'a'.repeat(24)}-${'b'.repeat(32)}.txt`)
+  assert.equal(screen.queryByRole('link', { name: 'private' }), null)
   assert.equal(screen.queryByRole('button', { name: '发送消息' }), null)
-  fireEvent.click(screen.getByRole('button', { name: '查看过程' }))
+  fireEvent.click(screen.getAllByRole('button', { name: '查看过程' })[0])
   await screen.findByText(/Visible event detail/)
   fireEvent.click(screen.getByRole('button', { name: '加载更多过程' }))
   await screen.findByText(/Later event detail/)
@@ -185,6 +196,10 @@ test('interactive public share sends a step message with session CSRF', async ()
     if (url.endsWith('/artifacts')) return Response.json({ artifacts: [] })
     if (url.endsWith('/reviews')) return Response.json({ reviews: [] })
     if (url.endsWith('/interventions')) return Response.json({ interventions: [] })
+    if (url.endsWith('/uploads') && init?.method === 'POST') return Response.json({
+      filename: `t${'a'.repeat(24)}-${'b'.repeat(32)}.txt`, size: 7,
+      url: `.workstep/uploads/t${'a'.repeat(24)}-${'b'.repeat(32)}.txt`,
+    })
     if (url.endsWith('/steps/build/message')) {
       sent = true
       return Response.json({ message_id: 'sent-1' })
@@ -203,4 +218,17 @@ test('interactive public share sends a step message with session CSRF', async ()
   assert.equal(posted?.method, 'POST')
   assert.equal((posted?.headers as Record<string, string>)?.['X-Share-CSRF'], 'csrf-1')
   assert.equal(posted?.body, JSON.stringify({ content: 'Please continue' }))
+  const file = new dom.window.File(['visible'], 'report.txt', { type: 'text/plain' })
+  fireEvent.change(screen.getByLabelText('添加附件'), { target: { files: [file] } })
+  await screen.findByRole('link', { name: 'report.txt' })
+  const upload = calls.find(call => call.url.endsWith('/uploads') && call.method === 'POST')
+  assert.equal((upload?.headers as Record<string, string>)?.['X-Share-CSRF'], 'csrf-1')
+  assert.equal((upload?.headers as Record<string, string>)?.['X-Share-Filename'], 'report.txt')
+  assert.equal(upload?.body, file)
+  fireEvent.click(screen.getByRole('button', { name: '发送消息' }))
+  await waitFor(() => assert.equal(calls.filter(call => call.url.endsWith('/steps/build/message')).length, 2))
+  const withAttachment = calls.filter(call => call.url.endsWith('/steps/build/message'))[1]
+  assert.equal(withAttachment.body, JSON.stringify({ content:
+    `[report.txt](.workstep/uploads/t${'a'.repeat(24)}-${'b'.repeat(32)}.txt)`,
+  }))
 })

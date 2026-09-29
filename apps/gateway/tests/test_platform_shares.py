@@ -255,6 +255,7 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
             tokens[mode] = created.json()["url"].rsplit("/", 1)[1]
 
         captured = []
+        upload_name = f"t{'a' * 24}-{'b' * 32}.txt"
 
         class ShareConnection:
             async def proxy_http(self, request, *, share_ticket, target_path,
@@ -268,6 +269,9 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
                 if target_path == "/api/platform-share/interventions":
                     return JSONResponse({"interventions": [{"interaction_id": "interaction-1",
                         "step_key": "build", "request": {"method": "session/request_permission"}}]})
+                if target_path == "/api/platform-share/uploads" and request.method == "POST":
+                    return JSONResponse({"filename": upload_name, "size": len(share_body),
+                                         "url": f".workstep/uploads/{upload_name}"})
                 return JSONResponse({"message_id": "accepted"})
 
         async def request_data(device_id):
@@ -284,6 +288,9 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
         assert client.post(f"/api/public/shares/{token}/steps/build/message",
                            headers={"X-Share-CSRF": read_csrf},
                            json={"content": "hello"}).status_code == 403
+        assert client.post(f"/api/public/shares/{token}/uploads",
+                           headers={"X-Share-CSRF": read_csrf, "X-Share-Filename": "report.txt"},
+                           content=b"visible").status_code == 403
         assert client.get(f"/api/public/shares/{token}/reviews").status_code == 200
         assert client.post(f"/api/public/shares/{token}/steps/build/review/approve",
                            headers={"X-Share-CSRF": read_csrf},
@@ -297,6 +304,24 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
         assert unlocked.status_code == 200
         csrf = unlocked.json()["csrf_token"]
         assert client.get(f"/api/public/shares/{token}/session").json()["csrf_token"] == csrf
+        upload_path = f"/api/public/shares/{token}/uploads"
+        assert client.post(upload_path, headers={"X-Share-Filename": "report.txt"},
+                           content=b"visible").status_code == 403
+        uploaded = client.post(upload_path, headers={"X-Share-CSRF": csrf,
+                                                    "X-Share-Filename": "report.txt"},
+                               content=b"visible")
+        assert uploaded.status_code == 200, uploaded.text
+        assert uploaded.json()["size"] == 7
+        assert captured == [("/api/platform-share/uploads", b"visible")]
+        asset = client.get(f"{upload_path}/{upload_name}")
+        assert asset.status_code == 200
+        assert asset.headers["content-security-policy"] == "sandbox"
+        assert asset.headers["x-content-type-options"] == "nosniff"
+        assert captured[-1] == (f"/api/platform-share/uploads/{upload_name}", None)
+        assert client.post(upload_path, headers={"X-Share-CSRF": csrf,
+                                                "X-Share-Filename": "report.txt"},
+                           content=b"x" * 25_000_001).status_code == 413
+        captured.clear()
         path = f"/api/public/shares/{token}/steps/build/message"
         assert client.post(path, json={"content": "hello"}).status_code == 403
         assert client.post(path, headers={"X-Share-CSRF": "wrong"},
