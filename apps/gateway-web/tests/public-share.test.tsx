@@ -58,6 +58,7 @@ test('public share route works without portal authentication and unlocks task', 
   assert.match(document.body.textContent ?? '', /Visible description/)
   assert.match(document.body.textContent ?? '', /只读分享/)
   await screen.findByText('Visible execution reply')
+  assert.equal(screen.queryByRole('button', { name: '发送消息' }), null)
   fireEvent.click(screen.getByRole('button', { name: '查看过程' }))
   await screen.findByText(/Visible event detail/)
   fireEvent.click(screen.getByRole('button', { name: '加载更多过程' }))
@@ -151,4 +152,42 @@ test('public share loads older execution messages on demand', async () => {
   await screen.findByText('Older message')
   assert.equal(calls.filter(url => url.endsWith('/history/100')).length, 1)
   assert.equal(screen.queryByRole('button', { name: '加载更早消息' }), null)
+})
+
+test('interactive public share sends a step message with session CSRF', async () => {
+  const calls: Array<{ url: string; method: string; headers?: HeadersInit; body?: BodyInit | null }> = []
+  let sent = false
+  globalThis.fetch = async (input, init) => {
+    const url = String(input)
+    calls.push({ url, method: init?.method ?? 'GET', headers: init?.headers, body: init?.body })
+    if (url.endsWith('/meta')) return Response.json({
+      title: 'Interactive', mode: 'interactive', has_password: false, status: 'active',
+    })
+    if (url.endsWith('/session')) return new Response(null, { status: 401 })
+    if (url.endsWith('/unlock')) return Response.json({ unlocked: true, csrf_token: 'csrf-1' })
+    if (url.endsWith('/task')) return Response.json({ id: 'task-1', title: 'Task',
+      status: 'running', steps: [{ step_key: 'build', status: 'running', has_history: true }] })
+    if (url.endsWith('/history')) return Response.json({ messages: sent ? [{
+      id: 'sent-1', role: 'user', content: 'Please continue', step_key: 'build',
+      created_at: '2026-09-29T10:00:00Z',
+    }] : [], next_offset: null })
+    if (url.endsWith('/artifacts')) return Response.json({ artifacts: [] })
+    if (url.endsWith('/steps/build/message')) {
+      sent = true
+      return Response.json({ message_id: 'sent-1' })
+    }
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+  render(<MemoryRouter initialEntries={['/share/sample-token']}><Routes>
+    <Route path="/share/:token" element={<PublicSharePage />} />
+  </Routes></MemoryRouter>)
+  await screen.findByText('Task')
+  fireEvent.change(screen.getByLabelText('发送给步骤'), { target: { value: 'build' } })
+  fireEvent.change(screen.getByLabelText('消息内容'), { target: { value: 'Please continue' } })
+  fireEvent.click(screen.getByRole('button', { name: '发送消息' }))
+  await screen.findByText('Please continue')
+  const posted = calls.find(call => call.url.endsWith('/steps/build/message'))
+  assert.equal(posted?.method, 'POST')
+  assert.equal((posted?.headers as Record<string, string>)?.['X-Share-CSRF'], 'csrf-1')
+  assert.equal(posted?.body, JSON.stringify({ content: 'Please continue' }))
 })

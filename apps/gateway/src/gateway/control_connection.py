@@ -460,27 +460,35 @@ class DataConnection:
                          task_create: bool = False,
                          share_ticket: str | None = None,
                          target_path: str | None = None,
+                         share_body: bytes | None = None,
                          authorization_check=None):
         if share_ticket is not None:
+            read_path = (target_path in (
+                "/api/platform-share/task", "/api/platform-share/history",
+                "/api/platform-share/artifacts")
+                or re.fullmatch(
+                    r"/api/platform-share/artifacts/[0-9a-f]{64}/content",
+                    target_path or "")
+                or re.fullmatch(
+                    r"/api/platform-share/history/(?:0|[1-9][0-9]{0,5})",
+                    target_path or "")
+                or re.fullmatch(
+                    r"/api/platform-share/events/[A-Za-z0-9_-]{1,128}/(?:0|[1-9][0-9]{0,8})",
+                    target_path or ""))
+            write_path = re.fullmatch(
+                r"/api/platform-share/steps/[A-Za-z0-9_-]{1,128}/(?:message|resume|cancel)",
+                target_path or "")
             if (not isinstance(share_ticket, str) or not share_ticket
-                    or (target_path not in ("/api/platform-share/task",
-                                            "/api/platform-share/history",
-                                            "/api/platform-share/artifacts")
-                        and not re.fullmatch(
-                            r"/api/platform-share/artifacts/[0-9a-f]{64}/content",
-                            target_path or "")
-                        and not re.fullmatch(
-                            r"/api/platform-share/history/(?:0|[1-9][0-9]{0,5})",
-                            target_path or "")
-                        and not re.fullmatch(
-                            r"/api/platform-share/events/[A-Za-z0-9_-]{1,128}/(?:0|[1-9][0-9]{0,8})",
-                            target_path or ""))
-                    or request.method != "GET"
+                    or not ((request.method == "GET" and read_path and share_body is None)
+                            or (request.method == "POST" and write_path
+                                and isinstance(share_body, bytes)
+                                and len(share_body) <= 262144))
                     or user_id is not None or username is not None
                     or project_id is not None or access_level is not None
                     or task_create):
                 raise ValueError("Invalid share proxy scope")
-        elif (not user_id or not username or target_path is not None):
+        elif (not user_id or not username or target_path is not None
+              or share_body is not None):
             raise ValueError("Invalid managed proxy identity")
         if (project_id is None) != (access_level is None) or (
                 access_level is not None and access_level not in ("read", "edit")) or (
@@ -511,11 +519,21 @@ class DataConnection:
                     continue
 
         async def upload():
+            async def chunks():
+                if share_body is not None:
+                    yield share_body
+                else:
+                    async for chunk in request.stream():
+                        yield chunk
+
             headers = [[key.decode("latin1"), value.decode("latin1")]
                        for key, value in request.scope["headers"]
                        if key.lower() not in (b"host", b"cookie", b"connection",
+                                              b"x-share-csrf",
                                               b"x-workstep-actor-id", b"x-workstep-actor-name",
-                                              b"x-workstep-actor-device-id", b"x-workstep-actor-device-name")]
+                                              b"x-workstep-actor-device-id", b"x-workstep-actor-device-name")
+                       and not (share_body is not None and key.lower() in (
+                           b"content-length", b"transfer-encoding"))]
             start_payload = {"phase": "start", "method": request.method,
                              "path": target_path or request.url.path,
                              "query": "" if share_ticket else request.url.query,
@@ -533,7 +551,7 @@ class DataConnection:
                 stream_id=stream_id, type=FrameType.http_request,
                 payload=start_payload,
             ))
-            async for chunk in request.stream():
+            async for chunk in chunks():
                 for offset in range(0, len(chunk), 16384):
                     if authorization_check is not None:
                         await authorization_check()

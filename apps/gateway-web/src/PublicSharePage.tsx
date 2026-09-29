@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import { SharedMessageEvents } from './SharedMessageEvents'
+import { SharedStepChat } from './SharedStepChat'
 
 type ShareMeta = { title: string; mode: 'read_only' | 'interactive'; has_password: boolean }
 type SharedTask = {
@@ -11,6 +12,7 @@ type SharedTask = {
   created_at?: string | null
   updated_at?: string | null
   creator_name?: string | null
+  steps?: Array<{ step_key: string; status: string; has_history: boolean }>
 }
 type SharedMessage = { id: string; role: string; content: string; step_key: string;
   created_at: string; truncated?: boolean }
@@ -29,6 +31,7 @@ export function PublicSharePage() {
   const [historyError, setHistoryError] = useState(false)
   const [artifactError, setArtifactError] = useState(false)
   const [password, setPassword] = useState('')
+  const [shareCsrf, setShareCsrf] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [revision, setRevision] = useState(0)
@@ -79,6 +82,7 @@ export function PublicSharePage() {
     setHistoryError(false)
     setArtifactError(false)
     setError('')
+    setShareCsrf('')
     async function openShare() {
       try {
         if (!token) { setPhase('unavailable'); return }
@@ -91,7 +95,11 @@ export function PublicSharePage() {
         setMeta(currentMeta)
         const session = await fetch(`${base}/session`, { signal: controller.signal })
         if (controller.signal.aborted) return
-        if (session.ok) { await loadTask(controller.signal); return }
+        if (session.ok) {
+          const details = await session.json() as { csrf_token?: string }
+          setShareCsrf(details.csrf_token ?? '')
+          await loadTask(controller.signal); return
+        }
         if (session.status !== 401) { setPhase('unavailable'); return }
         if (currentMeta.has_password) { setPhase('password'); return }
         const unlocked = await fetch(`${base}/unlock`, {
@@ -100,6 +108,8 @@ export function PublicSharePage() {
         })
         if (controller.signal.aborted) return
         if (!unlocked.ok) { setPhase('unavailable'); return }
+        const unlockedSession = await unlocked.json() as { csrf_token?: string }
+        setShareCsrf(unlockedSession.csrf_token ?? '')
         await loadTask(controller.signal)
       } catch (reason) {
         if (!(reason instanceof DOMException && reason.name === 'AbortError')) setPhase('offline')
@@ -122,6 +132,8 @@ export function PublicSharePage() {
       if (response.status === 403) { setError('密码错误，请重试。'); return }
       if (response.status === 503) { setPhase('offline'); return }
       if (!response.ok) { setPhase('unavailable'); return }
+      const unlockedSession = await response.json() as { csrf_token?: string }
+      setShareCsrf(unlockedSession.csrf_token ?? '')
       await loadTask()
     } catch {
       setPhase('offline')
@@ -175,6 +187,8 @@ export function PublicSharePage() {
           {task.created_at && <div><dt>创建时间</dt><dd>{new Date(task.created_at).toLocaleString()}</dd></div>}
         </dl>
         {task.description && <div className="gateway-share-description">{task.description}</div>}
+        {meta?.mode === 'interactive' && <SharedStepChat base={base} csrf={shareCsrf}
+          steps={task.steps ?? []} onUpdated={loadTask} />}
         <section className="gateway-share-messages">
           <h3>任务消息</h3>
           {historyError && <p>消息暂时不可用，请稍后重试。</p>}
