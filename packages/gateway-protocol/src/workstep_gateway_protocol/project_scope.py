@@ -9,6 +9,14 @@ _TASK_READ_DETAIL = re.compile(
     r"(?:execution-report|history|artifacts|reviews|coordinator-config)\Z")
 _TASK_STEP_CONFIG = re.compile(
     r"/api/task/[A-Za-z0-9_-]{1,128}/step/[A-Za-z0-9_-]{1,128}/config\Z")
+_TASK_STEP_ACTION = re.compile(
+    r"/api/task/[A-Za-z0-9_-]{1,128}/step/[A-Za-z0-9_-]{1,128}/"
+    r"(?:cancel|resume|restart)\Z")
+_TASK_MESSAGE_ACTION = re.compile(
+    r"/api/task/[A-Za-z0-9_-]{1,128}/messages/[A-Za-z0-9_-]{1,128}/"
+    r"(?:retry|set-complete)\Z")
+_TASK_COORDINATOR_STOP = re.compile(
+    r"/api/task/[A-Za-z0-9_-]{1,128}/coordinator/stop\Z")
 _TASK_METADATA_UPDATE = re.compile(
     r"/api/task/[A-Za-z0-9_-]{1,128}/(?:scheduled-start|coordinator-config)\Z")
 _TASK_STEP_HISTORY = re.compile(
@@ -85,6 +93,9 @@ def project_http_route_allowed(method: str, path: str,
         if path in ("/api/fs/upload/file", "/api/fs/upload/image", "/api/fs/entry"):
             return True
         if _TASK_CHAT.fullmatch(path) or _TASK_STEP_MESSAGE.fullmatch(path):
+            return True
+        if (_TASK_COORDINATOR_STOP.fullmatch(path) or _TASK_STEP_ACTION.fullmatch(path)
+                or _TASK_MESSAGE_ACTION.fullmatch(path)):
             return True
         return path in ("/api/task/run", "/api/task/pause", "/api/task/cancel")
     if method != "GET":

@@ -263,6 +263,7 @@ async def stop_coordinator(
     from main import coordinator_module
     if not coordinator_module:
         raise HTTPException(status_code=503, detail="Coordinator is not initialized")
+    await _require_scoped_task(pid, task_id)
     try:
         stopped = await coordinator_module.stop_current(pid, task_id)
     except ValueError as exc:
@@ -378,6 +379,7 @@ async def cancel_step(
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Workflow runtime not initialized")
+    await _require_scoped_task(pid, task_id)
     _project(pid)
     try:
         cancelled = await workflow_runtime.cancel_step(pid, task_id, step_key)
@@ -397,6 +399,7 @@ async def resume_step(
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(pid, task_id)
     _project(pid)
     try:
         accepted = await workflow_runtime.resume_step_with_message(
@@ -421,6 +424,7 @@ async def restart_step_with_fresh_session(
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(pid, task_id)
     _project(pid)
     try:
         accepted = await workflow_runtime.restart_step_with_fresh_session(
@@ -443,6 +447,7 @@ async def retry_failed_message(
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(pid, task_id)
     _project(pid)
     try:
         return await workflow_runtime.retry_failed_message(pid, task_id, message_id)
@@ -461,6 +466,7 @@ async def set_failed_execution_complete(
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(pid, task_id)
     _project(pid)
     try:
         handle = await workflow_runtime.complete_failed_step(
