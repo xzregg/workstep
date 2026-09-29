@@ -531,7 +531,7 @@ export const chatSessionApi = {
       `/chat-sessions/quick-buttons?project_id=${encodeURIComponent(projectId)}`,
     ),
   saveQuickButtons: (projectId: string, buttons: ChatQuickButton[]) =>
-    request<{ buttons: ChatQuickButton[] }>('/chat-sessions/quick-buttons', {
+    request<{ buttons: ChatQuickButton[] }>(`/chat-sessions/quick-buttons?project_id=${encodeURIComponent(projectId)}`, {
       method: 'PUT',
       body: JSON.stringify({ project_id: projectId, buttons }),
     }),
@@ -540,12 +540,12 @@ export const chatSessionApi = {
       `/chat-sessions/system-prompt?project_id=${encodeURIComponent(projectId)}`,
     ),
   saveSystemPrompt: (projectId: string, prompt: string) =>
-    request<{ prompt: string }>('/chat-sessions/system-prompt', {
+    request<{ prompt: string }>(`/chat-sessions/system-prompt?project_id=${encodeURIComponent(projectId)}`, {
       method: 'PUT',
       body: JSON.stringify({ project_id: projectId, prompt }),
     }),
   enhancePrompt: (projectId: string, prompt: string) =>
-    request<{ prompt: string }>('/chat-sessions/enhance-prompt', {
+    request<{ prompt: string }>(`/chat-sessions/enhance-prompt?project_id=${encodeURIComponent(projectId)}`, {
       method: 'POST',
       body: JSON.stringify({ project_id: projectId, prompt }),
     }),
