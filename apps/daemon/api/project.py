@@ -86,6 +86,12 @@ async def list_projects():
 @router.get("/{project_id}/summary")
 async def get_project_summary(project_id: str):
     """Expose one project's metadata without its host filesystem path."""
+    from services.remote_access import get_current_actor
+
+    actor = get_current_actor()
+    if actor is not None and actor.project_id is not None and actor.project_id != project_id:
+        raise HTTPException(status_code=403, detail="Project scope denied")
+
     def summarize(project):
         summary = project_manager.project_summary(project)
         summary.pop("path", None)
