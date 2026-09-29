@@ -97,7 +97,8 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
             host = request.headers.get("host", "").lower()
             suffix = f".{urlsplit(settings.public_origin).hostname}"
             if host.startswith("d-") and host.endswith(suffix):
-                if request.url.path not in ("/api/remote/redeem", "/api/remote/session"):
+                if request.url.path not in ("/api/remote/redeem", "/api/remote/session",
+                                            "/api/remote/project-grants"):
                     try:
                         if request.url.path == "/" or request.url.path.startswith("/assets/"):
                             _, _, auth_session, _ = await _remote_identity(request)

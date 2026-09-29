@@ -97,6 +97,11 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         assert client.get(f"{host}/api/remote/session").json()["project_id"] == "project-1"
         assert client.get(f"{host}/api/remote/session").json()["host_project_id"] == "host-1"
         assert client.get(f"{host}/api/remote/session").json()["task_create"] is False
+        assert client.get(f"{host}/api/remote/session").json()["can_manage_project_access"] is False
+        grants = client.get(f"{host}/api/remote/project-grants")
+        assert grants.status_code == 200, grants.text
+        assert grants.json() == {"grants": [{"subject_type": "group", "subject_id": group_id,
+                                             "subject_name": "Backend", "access_level": "read"}]}
         assert "Gateway project workspace" in client.get(f"{host}/").text
         assert client.get(f"{host}/assets/app.js").status_code == 200
         assert client.get(f"{host}/admin").status_code == 403
@@ -157,6 +162,9 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         assert client.delete(f"/api/groups/{group_id}/members/{worker_id}",
                              headers=owner_headers).status_code == 204
         assert client.get(f"{host}/api/remote/session", headers={
+            "Cookie": f"workstep_gateway_session={remote_cookie}",
+        }).status_code == 403
+        assert client.get(f"{host}/api/remote/project-grants", headers={
             "Cookie": f"workstep_gateway_session={remote_cookie}",
         }).status_code == 403
         assert client.get(f"{host}/api/task/list?project_id=host-1", headers={
