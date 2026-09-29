@@ -17,6 +17,12 @@ _TASK_MESSAGE_ACTION = re.compile(
     r"(?:retry|set-complete)\Z")
 _TASK_COORDINATOR_STOP = re.compile(
     r"/api/task/[A-Za-z0-9_-]{1,128}/coordinator/stop\Z")
+_TASK_PROPOSAL_ACTION = re.compile(
+    r"/api/task/[A-Za-z0-9_-]{1,128}/actions/[A-Za-z0-9_-]{1,128}/"
+    r"(?:confirm|cancel)\Z")
+_TASK_REVIEW_DECISION = re.compile(
+    r"/api/task/[A-Za-z0-9_-]{1,128}/steps/[A-Za-z0-9_-]{1,128}/review/"
+    r"(?:approve|reject|force-approve|terminate|complete-task|set-complete)\Z")
 _TASK_METADATA_UPDATE = re.compile(
     r"/api/task/[A-Za-z0-9_-]{1,128}/(?:scheduled-start|coordinator-config)\Z")
 _TASK_STEP_HISTORY = re.compile(
@@ -95,7 +101,9 @@ def project_http_route_allowed(method: str, path: str,
         if _TASK_CHAT.fullmatch(path) or _TASK_STEP_MESSAGE.fullmatch(path):
             return True
         if (_TASK_COORDINATOR_STOP.fullmatch(path) or _TASK_STEP_ACTION.fullmatch(path)
-                or _TASK_MESSAGE_ACTION.fullmatch(path)):
+                or _TASK_MESSAGE_ACTION.fullmatch(path)
+                or _TASK_PROPOSAL_ACTION.fullmatch(path)
+                or _TASK_REVIEW_DECISION.fullmatch(path)):
             return True
         return path in ("/api/task/run", "/api/task/pause", "/api/task/cancel")
     if method != "GET":

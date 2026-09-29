@@ -518,6 +518,7 @@ async def confirm_coordinator_action(
     from main import coordinator_module
     if not coordinator_module:
         raise HTTPException(status_code=503, detail="Coordinator is not initialized")
+    await _require_scoped_task(pid, task_id)
     try:
         return await coordinator_module.confirm_action(
             pid,
@@ -543,6 +544,7 @@ async def cancel_coordinator_action(
     from main import coordinator_module
     if not coordinator_module:
         raise HTTPException(status_code=503, detail="Coordinator is not initialized")
+    await _require_scoped_task(pid, task_id)
     try:
         return await coordinator_module.cancel_action(pid, task_id, proposal_id)
     except ValueError as exc:
