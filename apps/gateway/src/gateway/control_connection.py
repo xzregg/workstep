@@ -471,6 +471,9 @@ class DataConnection:
                     r"/api/platform-share/artifacts/[0-9a-f]{64}/(?:content|preview)",
                     target_path or "")
                 or re.fullmatch(
+                    r"/api/platform-share/uploads/t[0-9a-f]{24}-[0-9a-f]{32}\.[a-z0-9]{1,10}",
+                    target_path or "")
+                or re.fullmatch(
                     r"/api/platform-share/history/(?:0|[1-9][0-9]{0,5})",
                     target_path or "")
                 or re.fullmatch(
@@ -482,12 +485,14 @@ class DataConnection:
                 r"/api/platform-share/steps/[A-Za-z0-9_-]{1,128}/review/(?:approve|reject|force_approve|terminate|complete_task)",
                 target_path or "") or re.fullmatch(
                 r"/api/platform-share/interventions/[A-Za-z0-9_-]{1,128}/respond",
-                target_path or "")
+                target_path or "") or target_path == "/api/platform-share/uploads"
+            max_share_body = (25_000_000 if target_path == "/api/platform-share/uploads"
+                              else 262144)
             if (not isinstance(share_ticket, str) or not share_ticket
                     or not ((request.method == "GET" and read_path and share_body is None)
                             or (request.method == "POST" and write_path
                                 and isinstance(share_body, bytes)
-                                and len(share_body) <= 262144))
+                                and len(share_body) <= max_share_body))
                     or user_id is not None or username is not None
                     or project_id is not None or access_level is not None
                     or task_create):

@@ -43,6 +43,7 @@ REMOTE_PROJECT_SCOPED_FS = frozenset({
     "/api/fs/serve", "/api/fs/upload/file", "/api/fs/upload/image",
 })
 SHARE_ARTIFACT_CONTENT = re.compile(r"/api/platform-share/artifacts/[0-9a-f]{64}/(?:content|preview)\Z")
+SHARE_UPLOAD_CONTENT = re.compile(r"/api/platform-share/uploads/t[0-9a-f]{24}-[0-9a-f]{32}\.[a-z0-9]{1,10}\Z")
 SHARE_HISTORY_PAGE = re.compile(r"/api/platform-share/history/(?:0|[1-9][0-9]{0,5})\Z")
 SHARE_EVENTS_PAGE = re.compile(
     r"/api/platform-share/events/[A-Za-z0-9_-]{1,128}/(?:0|[1-9][0-9]{0,8})\Z"
@@ -141,13 +142,15 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                         "/api/platform-share/artifacts", "/api/platform-share/reviews",
                         "/api/platform-share/interventions")
                         and not SHARE_ARTIFACT_CONTENT.fullmatch(request.url.path)
+                        and not SHARE_UPLOAD_CONTENT.fullmatch(request.url.path)
                         and not SHARE_HISTORY_PAGE.fullmatch(request.url.path)
                         and not SHARE_EVENTS_PAGE.fullmatch(request.url.path))
                     or (request.method == "POST" and (
                         share_scope.get("mode") != "interactive"
                         or (not SHARE_STEP_WRITE.fullmatch(request.url.path)
                             and not SHARE_REVIEW_WRITE.fullmatch(request.url.path)
-                            and not SHARE_INTERVENTION_WRITE.fullmatch(request.url.path))))
+                            and not SHARE_INTERVENTION_WRITE.fullmatch(request.url.path)
+                            and request.url.path != "/api/platform-share/uploads")))
                     or request.method not in ("GET", "POST")
                     or request.url.query):
                 response = JSONResponse({"detail": "share scope denied"}, status_code=403)

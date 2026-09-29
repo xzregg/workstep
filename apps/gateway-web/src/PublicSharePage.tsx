@@ -5,6 +5,7 @@ import { SharedStepChat } from './SharedStepChat'
 import { SharedReviewPanel } from './SharedReviewPanel'
 import { SharedInteractionPanel } from './SharedInteractionPanel'
 import { SharedArtifactItem, type SharedArtifact } from './SharedArtifactItem'
+import { SharedMessageContent } from './SharedMessageContent'
 
 type ShareMeta = { title: string; mode: 'read_only' | 'interactive'; has_password: boolean }
 type SharedTask = {
@@ -231,7 +232,7 @@ export function PublicSharePage() {
               {message.step_key && <span>{message.step_key}</span>}
               {message.created_at && <time>{new Date(message.created_at).toLocaleString()}</time>}
             </div>
-            <div className="gateway-share-message-content">{message.content}</div>
+            <SharedMessageContent base={base} content={message.content} />
             {message.truncated && <p>消息过长，仅显示前一部分。</p>}
             <SharedMessageEvents base={base} messageId={message.id} />
           </article>)}

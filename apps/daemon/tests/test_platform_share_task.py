@@ -6,6 +6,7 @@ import hashlib
 import json
 import threading
 import time
+from urllib.parse import quote
 
 import pytest
 
@@ -13,6 +14,108 @@ from services.gateway_client.bridge import ManagedHttpBridge
 from tests.test_api_contracts import _create_test_workflow, api_context
 from tests.test_gateway_share_ticket import _ticket
 from workstep_gateway_protocol import FrameType, ProxyFrame
+
+
+@pytest.mark.anyio
+async def test_platform_share_upload_is_task_scoped_and_disk_write_keeps_health(api_context, monkeypatch):
+    import main
+    from api import platform_share
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "upload-share"
+    project_dir.mkdir()
+    project_id = (await client.post("/api/project/init", json={
+        "path": str(project_dir),
+    })).json()["id"]
+    workflow_id = (await _create_test_workflow(client, project_id))["id"]
+    task_ids = []
+    for title in ("Visible", "Private"):
+        created = await client.post(f"/api/task/create?project_id={project_id}", json={
+            "title": title, "workflow_id": workflow_id, "auto_start": False,
+        })
+        task_ids.append(created.json()["id"])
+    monkeypatch.setattr(main.gateway_client, "managed_config", object())
+
+    async def request(path, *, method="GET", mode="interactive", task_id=None, body=b""):
+        ticket, key, fingerprint = _ticket(
+            task_id=task_id or task_ids[0], host_project_id=project_id, mode=mode,
+        )
+        frames = []
+
+        async def capture(frame):
+            frames.append(frame)
+
+        bridge = ManagedHttpBridge(main.app, "share-upload", {
+            "method": method, "path": path, "query": "",
+            "headers": [["x-share-filename", quote("report.txt")]],
+            "share_ticket": ticket,
+        }, capture, "device-1", gateway_key=key,
+            gateway_fingerprint=fingerprint, gateway_id="gateway-1")
+        bridge.start_task()
+        if body:
+            await bridge.feed(ProxyFrame(
+                stream_id="share-upload", type=FrameType.http_request,
+                payload={"phase": "body", "data": base64.b64encode(body).decode()},
+            ))
+        await bridge.feed(ProxyFrame(
+            stream_id="share-upload", type=FrameType.http_request,
+            payload={"phase": "end"},
+        ))
+        await asyncio.wait_for(bridge._task, timeout=3)
+        content = b"".join(base64.b64decode(frame.payload["data"])
+                           for frame in frames if frame.payload.get("phase") == "body")
+        return frames[0].payload["status"], content
+
+    assert (await request("/api/platform-share/uploads", method="POST",
+                          mode="read_only", body=b"visible"))[0] == 403
+    entered = threading.Event()
+    original = platform_share._persist_share_upload
+
+    def slow_write(*args):
+        entered.set()
+        time.sleep(0.7)
+        return original(*args)
+
+    monkeypatch.setattr(platform_share, "_persist_share_upload", slow_write)
+    pending = asyncio.create_task(request("/api/platform-share/uploads", method="POST",
+                                          body=b"visible"))
+    assert await asyncio.to_thread(entered.wait, 2)
+    started = time.monotonic()
+    assert (await client.get("/api/health")).status_code == 200
+    assert time.monotonic() - started < 0.5
+    status, payload = await pending
+    assert status == 200
+    uploaded = json.loads(payload)
+    assert uploaded["size"] == 7
+    assert uploaded["url"] == f".workstep/uploads/{uploaded['filename']}"
+    assert uploaded["filename"].endswith(".txt")
+    path = f"/api/platform-share/uploads/{uploaded['filename']}"
+    assert await request(path) == (200, b"visible")
+    assert (await request(path, task_id=task_ids[1]))[0] == 404
+    assert (await request("/api/platform-share/uploads/other-task-file.txt"))[0] == 403
+    read_entered = threading.Event()
+    original_read = platform_share._serve_share_upload
+
+    def slow_read(*args):
+        read_entered.set()
+        time.sleep(0.7)
+        return original_read(*args)
+
+    monkeypatch.setattr(platform_share, "_serve_share_upload", slow_read)
+    pending_read = asyncio.create_task(request(path))
+    assert await asyncio.to_thread(read_entered.wait, 2)
+    started = time.monotonic()
+    assert (await client.get("/api/health")).status_code == 200
+    assert time.monotonic() - started < 0.5
+    assert await pending_read == (200, b"visible")
+    monkeypatch.setattr(platform_share, "_serve_share_upload", original_read)
+    upload_dir = main.project_manager.get_project_by_id(project_id).workstep_dir / "uploads"
+    upload_dir.rename(upload_dir.with_name("uploads-original"))
+    outside = tmp_path / "outside-uploads"
+    outside.mkdir()
+    (outside / uploaded["filename"]).write_bytes(b"private")
+    upload_dir.symlink_to(outside, target_is_directory=True)
+    assert (await request(path))[0] == 404
 
 
 @pytest.mark.anyio

@@ -85,6 +85,20 @@ async def _bounded_share_json(request: Request):
         raise HTTPException(status_code=422, detail="Invalid share message") from exc
 
 
+async def _share_upload_body(request: Request) -> bytes:
+    filename = request.headers.get("x-share-filename", "")
+    if not filename or len(filename) > 512:
+        raise HTTPException(status_code=422, detail="Attachment filename required")
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw.extend(chunk)
+        if len(raw) > 25_000_000:
+            raise HTTPException(status_code=413, detail="Attachment exceeds 25 MB")
+    if not raw:
+        raise HTTPException(status_code=422, detail="Attachment is empty")
+    return bytes(raw)
+
+
 async def _share_message_body(request: Request) -> bytes:
     try:
         body = ShareMessageInput.model_validate(await _bounded_share_json(request))
@@ -403,6 +417,27 @@ async def public_share_artifact_preview(request: Request, token: str, artifact_i
     )
 
 
+@router.post("/public/shares/{token}/uploads")
+async def public_share_upload(request: Request, token: str):
+    async with request.app.state.share_upload_slots:
+        return await _proxy_share_request(
+            request, token, "/api/platform-share/uploads", write=True,
+            body_kind="upload",
+        )
+
+
+@router.get("/public/shares/{token}/uploads/{filename}")
+async def public_share_upload_content(request: Request, token: str, filename: str):
+    if not re.fullmatch(r"t[0-9a-f]{24}-[0-9a-f]{32}\.[a-z0-9]{1,10}", filename):
+        raise HTTPException(status_code=404, detail="Attachment unavailable")
+    response = await _proxy_share_request(
+        request, token, f"/api/platform-share/uploads/{filename}",
+    )
+    response.headers["Content-Security-Policy"] = "sandbox"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
 @router.post("/public/shares/{token}/steps/{step_key}/message")
 async def public_share_step_message(request: Request, token: str, step_key: str):
     return await _proxy_share_step(request, token, step_key, "message")
@@ -454,7 +489,7 @@ async def public_share_intervention_response(request: Request, token: str,
 async def _proxy_share_request(request: Request, token: str, target_path: str,
                                *, write: bool = False,
                                interactive_read: bool = False,
-                               body_kind: Literal["message", "review", "interaction"] | None = None):
+                               body_kind: Literal["message", "review", "interaction", "upload"] | None = None):
     share, project = await _authorized_visitor(request, token, touch=True)
     if write or interactive_read:
         if share.mode != "interactive":
@@ -464,6 +499,7 @@ async def _proxy_share_request(request: Request, token: str, target_path: str,
     share_body = (await _share_message_body(request) if body_kind == "message"
                   else await _share_review_body(request) if body_kind == "review"
                   else await _share_interaction_body(request) if body_kind == "interaction"
+                  else await _share_upload_body(request) if body_kind == "upload"
                   else b"" if write else None)
     connections = request.app.state.control_connections
     if not connections.is_online(share.device_id):
