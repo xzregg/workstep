@@ -118,9 +118,10 @@ def desktop_websocket_allowed(ws: WebSocket) -> bool:
 
     if not _valid_token(ws.headers.get(DESKTOP_TOKEN_HEADER)):
         return False
-    if not _same_origin(ws.headers.get("origin"),
-                        "https" if ws.url.scheme == "wss" else "http", ws.headers.get("host", "")):
-        return False
+    # 不做 Origin 同源校验：TLS 终结的逆向代理（nginx 等）把 wss 转发到本机
+    # daemon 后，连接是 ws:// 而 Origin 仍是 https://，scheme 对不上会把所有
+    # 合法的反代部署挡在门外。WS 访问控制由 desktop token + managed local
+    # session 承担（HTTP 面的 origin 校验只作用于 managed 模式，见中间件）。
     if gateway_client is None or getattr(gateway_client, "managed_config", None) is None:
         return True
     actor = gateway_client.local_sessions.resolve(ws.headers.get(LOCAL_SESSION_HEADER))

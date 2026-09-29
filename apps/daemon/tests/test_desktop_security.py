@@ -167,14 +167,15 @@ def test_managed_runtime_requires_gateway_derived_local_session(monkeypatch):
             'X-WorkStep-Local-Session': local_token,
         }) as websocket:
             assert websocket.receive_text() == 'ok'
-        with pytest.raises(WebSocketDisconnect) as denied:
-            with client.websocket_connect('/ws', headers={
-                'X-WorkStep-Desktop-Token': 'runtime-secret',
-                'X-WorkStep-Local-Session': local_token,
-                'Origin': 'https://attacker.example',
-            }):
-                pass
-        assert denied.value.code == 4401
+        # WS 握手只校验 token + local session，不做 Origin 同源校验：TLS 终结
+        # 的逆向代理把 wss 转成本机 ws 后 Origin scheme 是 https，硬校验会把
+        # 合法反代部署全部挡掉。
+        with client.websocket_connect('/ws', headers={
+            'X-WorkStep-Desktop-Token': 'runtime-secret',
+            'X-WorkStep-Local-Session': local_token,
+            'Origin': 'https://attacker.example',
+        }) as websocket:
+            assert websocket.receive_text() == 'ok'
 
 
 def test_managed_runtime_rejects_legacy_share_credentials(monkeypatch):
