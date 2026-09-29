@@ -311,6 +311,15 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
         sync_body = {"branch": "feature", "snapshot": "d" * 64}
         assert client.post(f"/api/public/shares/{token}/git/worktrees/{'a' * 24}/push",
                            headers={"X-Share-CSRF": read_csrf}, json=sync_body).status_code == 403
+        for suffix, body in (
+            ("switch", {"branch": "main", "snapshot": "d" * 64}),
+            ("branches", {"name": "new", "base_branch": "feature",
+                          "base_head": "c" * 40, "snapshot": "d" * 64}),
+            ("branches/delete", {"branch": "old", "head": "e" * 40,
+                                 "snapshot": "d" * 64}),
+        ):
+            assert client.post(f"/api/public/shares/{token}/git/worktrees/{'a' * 24}/{suffix}",
+                               headers={"X-Share-CSRF": read_csrf}, json=body).status_code == 403
         branch_path = f"/api/public/shares/{token}/git/worktrees/{'a' * 24}/branches"
         assert client.get(branch_path).status_code == 200
         assert client.get(f"/api/public/shares/{token}/reviews").status_code == 200
@@ -395,6 +404,20 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
                 f"/api/platform-share/git/worktrees/{'a' * 24}/{action}",
                 b'{"branch":"feature","snapshot":"' + b"d" * 64 + b'","set_upstream":false}',
             )
+        branch_base = f"/api/public/shares/{token}/git/worktrees/{'a' * 24}"
+        branch_requests = [
+            ("/switch", {"branch": "main", "snapshot": "d" * 64}),
+            ("/branches", {"name": "new", "base_branch": "feature",
+                            "base_head": "c" * 40, "snapshot": "d" * 64}),
+            ("/branches/delete", {"branch": "private", "head": "e" * 40,
+                                  "snapshot": "d" * 64}),
+        ]
+        for suffix, body in branch_requests:
+            assert client.post(branch_base + suffix, json=body).status_code == 403
+            response = client.post(branch_base + suffix,
+                                   headers={"X-Share-CSRF": csrf}, json=body)
+            assert response.status_code == 200
+            assert captured[-1][0] == f"/api/platform-share/git/worktrees/{'a' * 24}{suffix}"
         assert client.post(f"/api/public/shares/{token}/steps/../message",
                            headers={"X-Share-CSRF": csrf},
                            json={"content": "escape"}).status_code != 200

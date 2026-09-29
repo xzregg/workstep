@@ -56,6 +56,26 @@ class ShareGitSync(BaseModel):
     set_upstream: bool = False
 
 
+class ShareGitSwitch(BaseModel):
+    branch: str = Field(min_length=1, max_length=1024)
+    snapshot: str = Field(pattern=r"^[0-9a-f]{64}$")
+    remote: str | None = Field(default=None, min_length=1, max_length=1024)
+
+
+class ShareGitBranchCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    base_branch: str = Field(min_length=1, max_length=1024)
+    base_head: str = Field(pattern=r"^[0-9a-f]{40,64}$")
+    snapshot: str = Field(pattern=r"^[0-9a-f]{64}$")
+    base_remote: str | None = Field(default=None, min_length=1, max_length=1024)
+
+
+class ShareGitBranchDelete(BaseModel):
+    branch: str = Field(min_length=1, max_length=1024)
+    head: str = Field(pattern=r"^[0-9a-f]{40,64}$")
+    snapshot: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 def _share_scope(request: Request) -> dict:
     scope = request.scope.get("gateway_share_scope")
     if not isinstance(scope, dict):
@@ -344,6 +364,10 @@ async def read_platform_share_git_branches(request: Request, tree_id: str):
         raise HTTPException(status_code=404, detail="Git worktree unavailable")
     from api import git as git_api
     result = await _share_git_result(git_api.git_service.branches(tree_id))
+    return _public_git_branches(result, task_tree_ids)
+
+
+def _public_git_branches(result: dict, task_tree_ids: set[str]) -> dict:
     branches = []
     for branch in result.get("branches", []):
         item = {key: branch.get(key) for key in (
@@ -358,6 +382,50 @@ async def read_platform_share_git_branches(request: Request, tree_id: str):
     )} for branch in result.get("remote_branches", [])]
     return {"branches": branches, "remote_branches": remote_branches,
             "fetched_at": result.get("fetched_at")}
+
+
+async def _share_git_write_workspace(request: Request, tree_id: str) -> set[str]:
+    scope = _interactive_share_scope(request)
+    if not _GIT_TREE_ID.fullmatch(tree_id):
+        raise HTTPException(status_code=404, detail="Git worktree unavailable")
+    workspace = await _share_git_workspace(scope)
+    task_tree_ids = {tree.get("id") for tree in workspace["worktrees"]}
+    if tree_id not in task_tree_ids:
+        raise HTTPException(status_code=404, detail="Git worktree unavailable")
+    return task_tree_ids
+
+
+@router.post("/git/worktrees/{tree_id}/switch")
+async def switch_platform_share_git(request: Request, tree_id: str, body: ShareGitSwitch):
+    await _share_git_write_workspace(request, tree_id)
+    from api import git as git_api
+    await _share_git_result(git_api.git_service.switch(
+        tree_id, body.branch, body.snapshot, body.remote,
+    ))
+    return {"completed": True}
+
+
+@router.post("/git/worktrees/{tree_id}/branches")
+async def create_platform_share_git_branch(request: Request, tree_id: str,
+                                           body: ShareGitBranchCreate):
+    task_tree_ids = await _share_git_write_workspace(request, tree_id)
+    from api import git as git_api
+    result = await _share_git_result(git_api.git_service.create_branch(
+        tree_id, body.name, body.base_branch, body.base_head,
+        body.snapshot, body.base_remote,
+    ))
+    return _public_git_branches(result, task_tree_ids)
+
+
+@router.post("/git/worktrees/{tree_id}/branches/delete")
+async def delete_platform_share_git_branch(request: Request, tree_id: str,
+                                           body: ShareGitBranchDelete):
+    task_tree_ids = await _share_git_write_workspace(request, tree_id)
+    from api import git as git_api
+    result = await _share_git_result(git_api.git_service.delete_branch(
+        tree_id, body.branch, body.head, body.snapshot,
+    ))
+    return _public_git_branches(result, task_tree_ids)
 
 
 @router.post("/git/worktrees/{tree_id}/commit")

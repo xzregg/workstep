@@ -83,6 +83,26 @@ class ShareGitSyncInput(BaseModel):
     set_upstream: bool = False
 
 
+class ShareGitSwitchInput(BaseModel):
+    branch: str = Field(min_length=1, max_length=1024)
+    snapshot: str = Field(pattern=r"^[0-9a-f]{64}$")
+    remote: str | None = Field(default=None, min_length=1, max_length=1024)
+
+
+class ShareGitBranchCreateInput(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    base_branch: str = Field(min_length=1, max_length=1024)
+    base_head: str = Field(pattern=r"^[0-9a-f]{40,64}$")
+    snapshot: str = Field(pattern=r"^[0-9a-f]{64}$")
+    base_remote: str | None = Field(default=None, min_length=1, max_length=1024)
+
+
+class ShareGitBranchDeleteInput(BaseModel):
+    branch: str = Field(min_length=1, max_length=1024)
+    head: str = Field(pattern=r"^[0-9a-f]{40,64}$")
+    snapshot: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 def _share_csrf(session_token: str) -> str:
     return hashlib.sha256(f"share-csrf:{session_token}".encode()).hexdigest()
 
@@ -160,6 +180,17 @@ async def _share_git_sync_body(request: Request) -> bytes:
         body = ShareGitSyncInput.model_validate(await _bounded_share_json(request))
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail="Invalid Git sync request") from exc
+    return json.dumps(body.model_dump(exclude_none=True), separators=(",", ":")).encode()
+
+
+async def _share_git_branch_body(request: Request, kind: str) -> bytes:
+    model = {"git_switch": ShareGitSwitchInput,
+             "git_branch_create": ShareGitBranchCreateInput,
+             "git_branch_delete": ShareGitBranchDeleteInput}[kind]
+    try:
+        body = model.model_validate(await _bounded_share_json(request))
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail="Invalid Git branch request") from exc
     return json.dumps(body.model_dump(exclude_none=True), separators=(",", ":")).encode()
 
 
@@ -508,6 +539,36 @@ async def public_share_git_commit(request: Request, token: str, tree_id: str):
     )
 
 
+@router.post("/public/shares/{token}/git/worktrees/{tree_id}/switch")
+async def public_share_git_switch(request: Request, token: str, tree_id: str):
+    if not re.fullmatch(r"[0-9a-f]{24}", tree_id):
+        raise HTTPException(status_code=404, detail="Git worktree unavailable")
+    return await _proxy_share_request(
+        request, token, f"/api/platform-share/git/worktrees/{tree_id}/switch",
+        write=True, body_kind="git_switch",
+    )
+
+
+@router.post("/public/shares/{token}/git/worktrees/{tree_id}/branches")
+async def public_share_git_create_branch(request: Request, token: str, tree_id: str):
+    if not re.fullmatch(r"[0-9a-f]{24}", tree_id):
+        raise HTTPException(status_code=404, detail="Git worktree unavailable")
+    return await _proxy_share_request(
+        request, token, f"/api/platform-share/git/worktrees/{tree_id}/branches",
+        write=True, body_kind="git_branch_create",
+    )
+
+
+@router.post("/public/shares/{token}/git/worktrees/{tree_id}/branches/delete")
+async def public_share_git_delete_branch(request: Request, token: str, tree_id: str):
+    if not re.fullmatch(r"[0-9a-f]{24}", tree_id):
+        raise HTTPException(status_code=404, detail="Git worktree unavailable")
+    return await _proxy_share_request(
+        request, token, f"/api/platform-share/git/worktrees/{tree_id}/branches/delete",
+        write=True, body_kind="git_branch_delete",
+    )
+
+
 @router.post("/public/shares/{token}/git/worktrees/{tree_id}/{action}")
 async def public_share_git_sync(request: Request, token: str, tree_id: str, action: str):
     if not re.fullmatch(r"[0-9a-f]{24}", tree_id) or action not in {"pull", "push"}:
@@ -569,7 +630,7 @@ async def public_share_intervention_response(request: Request, token: str,
 async def _proxy_share_request(request: Request, token: str, target_path: str,
                                *, write: bool = False,
                                interactive_read: bool = False,
-                               body_kind: Literal["message", "review", "interaction", "upload", "git_commit", "git_sync"] | None = None):
+                               body_kind: Literal["message", "review", "interaction", "upload", "git_commit", "git_sync", "git_switch", "git_branch_create", "git_branch_delete"] | None = None):
     share, project = await _authorized_visitor(request, token, touch=True)
     if write or interactive_read:
         if share.mode != "interactive":
@@ -581,6 +642,8 @@ async def _proxy_share_request(request: Request, token: str, target_path: str,
                   else await _share_interaction_body(request) if body_kind == "interaction"
                   else await _share_git_commit_body(request) if body_kind == "git_commit"
                   else await _share_git_sync_body(request) if body_kind == "git_sync"
+                  else await _share_git_branch_body(request, body_kind) if body_kind in (
+                      "git_switch", "git_branch_create", "git_branch_delete")
                   else await _share_upload_body(request) if body_kind == "upload"
                   else b"" if write else None)
     connections = request.app.state.control_connections

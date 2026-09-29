@@ -162,6 +162,15 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
             target_path=f"/api/platform-share/git/worktrees/{'a' * 24}/branches",
         )
 
+    @app.post("/api/public/shares/token/git/worktrees/{action}/write")
+    async def guest_branch_write(request: Request, action: str):
+        suffix = {"switch": "switch", "create": "branches",
+                  "delete": "branches/delete"}[action]
+        return await connection.proxy_http(
+            request, share_ticket="signed-ticket", share_body=b'{"snapshot":"' + b"d" * 64 + b'"}',
+            target_path=f"/api/platform-share/git/worktrees/{'a' * 24}/{suffix}",
+        )
+
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
                                  base_url="https://gateway.test") as client:
         response = await client.get("/api/public/shares/token/task",
@@ -188,6 +197,8 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
         assert (await client.post("/api/public/shares/token/git/worktrees/pull")).status_code == 200
         assert (await client.post("/api/public/shares/token/git/worktrees/push")).status_code == 200
         assert (await client.get("/api/public/shares/token/git/worktrees/branches")).status_code == 200
+        for action in ("switch", "create", "delete"):
+            assert (await client.post(f"/api/public/shares/token/git/worktrees/{action}/write")).status_code == 200
     assert starts[0]["path"] == "/api/platform-share/task"
     assert starts[0]["share_ticket"] == "signed-ticket"
     assert "user_id" not in starts[0]
@@ -211,9 +222,15 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
     assert starts[15]["path"] == f"/api/platform-share/git/worktrees/{'a' * 24}/pull"
     assert starts[16]["path"] == f"/api/platform-share/git/worktrees/{'a' * 24}/push"
     assert starts[17]["path"] == f"/api/platform-share/git/worktrees/{'a' * 24}/branches"
+    assert [item["path"] for item in starts[18:21]] == [
+        f"/api/platform-share/git/worktrees/{'a' * 24}/switch",
+        f"/api/platform-share/git/worktrees/{'a' * 24}/branches",
+        f"/api/platform-share/git/worktrees/{'a' * 24}/branches/delete",
+    ]
     assert bodies == [b'{"content":"hello"}', b'{"review_run_id":"review-1"}',
                       b'{"data":{"action":"cancel"}}', b"visible", b'{"message":"Commit"}',
-                      b'{"branch":"feature"}', b'{"branch":"feature"}']
+                      b'{"branch":"feature"}', b'{"branch":"feature"}',
+                      *([b'{"snapshot":"' + b"d" * 64 + b'"}'] * 3)]
 
 
 @pytest.mark.asyncio

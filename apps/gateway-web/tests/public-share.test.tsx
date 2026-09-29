@@ -104,6 +104,7 @@ test('public share route works without portal authentication and unlocks task', 
   await screen.findByText(/领先 1 \/ 落后 0/)
   fireEvent.click(screen.getByRole('button', { name: '查看 app 状态' }))
   await screen.findByText('README.md')
+  assert.equal(screen.queryByRole('button', { name: '创建 app 分支' }), null)
   assert.equal(calls.find(call => call.url.endsWith('/unlock'))?.body,
     JSON.stringify({ password: 'secret' }))
 })
@@ -226,6 +227,16 @@ test('interactive public share sends a step message with session CSRF', async ()
     })
     if (url.endsWith(`/git/worktrees/${'a'.repeat(24)}/pull`)
       || url.endsWith(`/git/worktrees/${'a'.repeat(24)}/push`)) return Response.json({ completed: true })
+    if (url.endsWith(`/git/worktrees/${'a'.repeat(24)}/branches`)) return Response.json({
+      branches: [{ name: 'feature', head: 'c'.repeat(40), upstream: 'origin/feature',
+        ahead: 1, behind: 0, occupied: true, worktree_id: 'a'.repeat(24) },
+      { name: 'main', head: 'e'.repeat(40), upstream: null, ahead: null,
+        behind: null, occupied: false, worktree_id: null },
+      { name: 'old', head: 'b'.repeat(40), upstream: null, ahead: null,
+        behind: null, occupied: false, worktree_id: null }],
+    })
+    if (url.endsWith(`/git/worktrees/${'a'.repeat(24)}/switch`)) return Response.json({ completed: true })
+    if (url.endsWith(`/git/worktrees/${'a'.repeat(24)}/branches/delete`)) return Response.json({ branches: [] })
     if (url.endsWith('/uploads') && init?.method === 'POST') return Response.json({
       filename: `t${'a'.repeat(24)}-${'b'.repeat(32)}.txt`, size: 7,
       url: `.workstep/uploads/t${'a'.repeat(24)}-${'b'.repeat(32)}.txt`,
@@ -284,4 +295,29 @@ test('interactive public share sends a step message with session CSRF', async ()
     assert.equal((sync?.headers as Record<string, string>)?.['X-Share-CSRF'], 'csrf-1')
     assert.equal(sync?.body, JSON.stringify({ branch: 'feature', snapshot: 'd'.repeat(64) }))
   }
+  fireEvent.click(screen.getByRole('button', { name: '查看 app 分支' }))
+  await screen.findByText(/领先 1 \/ 落后 0/)
+  fireEvent.change(screen.getByLabelText('app 新分支名称'), { target: { value: 'new' } })
+  fireEvent.click(screen.getByRole('button', { name: '创建 app 分支' }))
+  await waitFor(() => assert.equal(calls.filter(call => call.url.endsWith('/branches')
+    && call.method === 'POST').length, 1))
+  const createdBranch = calls.find(call => call.url.endsWith('/branches') && call.method === 'POST')
+  assert.equal((createdBranch?.headers as Record<string, string>)?.['X-Share-CSRF'], 'csrf-1')
+  assert.equal(createdBranch?.body, JSON.stringify({ name: 'new', base_branch: 'feature',
+    base_head: 'c'.repeat(40), snapshot: 'd'.repeat(64) }))
+  fireEvent.click(screen.getByRole('button', { name: '删除 old 分支' }))
+  await screen.findByRole('dialog', { name: '确认删除分支' })
+  fireEvent.click(screen.getByRole('button', { name: '确认删除' }))
+  await waitFor(() => assert.equal(calls.filter(call => call.url.endsWith('/branches/delete')).length, 1))
+  const deletedBranch = calls.find(call => call.url.endsWith('/branches/delete'))
+  assert.equal((deletedBranch?.headers as Record<string, string>)?.['X-Share-CSRF'], 'csrf-1')
+  assert.equal(deletedBranch?.body, JSON.stringify({ branch: 'old', head: 'b'.repeat(40),
+    snapshot: 'd'.repeat(64) }))
+  fireEvent.click(screen.getByRole('button', { name: '切换到 main' }))
+  await screen.findByRole('dialog', { name: '确认切换分支' })
+  fireEvent.click(screen.getByRole('button', { name: '确认切换' }))
+  await waitFor(() => assert.equal(calls.filter(call => call.url.endsWith('/switch')).length, 1))
+  const switched = calls.find(call => call.url.endsWith('/switch'))
+  assert.equal((switched?.headers as Record<string, string>)?.['X-Share-CSRF'], 'csrf-1')
+  assert.equal(switched?.body, JSON.stringify({ branch: 'main', snapshot: 'd'.repeat(64) }))
 })
