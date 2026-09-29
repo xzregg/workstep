@@ -20,12 +20,14 @@ type SharedTask = {
 type SharedMessage = { id: string; role: string; content: string; step_key: string;
   created_at: string; truncated?: boolean }
 type Phase = 'loading' | 'password' | 'task' | 'offline' | 'unavailable'
+type HostStatus = { connected: boolean; daemon_health: boolean | null }
 
 export function PublicSharePage() {
   const { token } = useParams()
   const [phase, setPhase] = useState<Phase>('loading')
   const [meta, setMeta] = useState<ShareMeta | null>(null)
   const [task, setTask] = useState<SharedTask | null>(null)
+  const [hostStatus, setHostStatus] = useState<HostStatus | null>(null)
   const [messages, setMessages] = useState<SharedMessage[]>([])
   const [nextOffset, setNextOffset] = useState<number | null>(null)
   const [historyBusy, setHistoryBusy] = useState(false)
@@ -39,15 +41,27 @@ export function PublicSharePage() {
   const [revision, setRevision] = useState(0)
   const base = `/api/public/shares/${encodeURIComponent(token ?? '')}`
 
+  async function loadHostStatus(signal?: AbortSignal) {
+    try {
+      const status = await fetch(`${base}/host-status`, { signal })
+      if (status.ok && !signal?.aborted) setHostStatus(await status.json() as HostStatus)
+    } catch { /* The status endpoint may be unavailable with the host. */ }
+  }
+
   async function loadTask(signal?: AbortSignal) {
     const response = await fetch(`${base}/task`, { signal })
     if (signal?.aborted) return
-    if (response.status === 503) { setPhase('offline'); return }
+    if (response.status === 503) {
+      await loadHostStatus(signal)
+      if (!signal?.aborted) setPhase('offline')
+      return
+    }
     if (response.status === 401) { setPhase('password'); return }
     if (!response.ok) { setPhase('unavailable'); return }
     setTask(await response.json() as SharedTask)
     if (signal?.aborted) return
     setPhase('task')
+    await loadHostStatus(signal)
     try {
       const history = await fetch(`${base}/history`, { signal })
       if (signal?.aborted) return
@@ -78,6 +92,7 @@ export function PublicSharePage() {
     setPhase('loading')
     setMeta(null)
     setTask(null)
+    setHostStatus(null)
     setMessages([])
     setNextOffset(null)
     setArtifacts([])
@@ -183,6 +198,12 @@ export function PublicSharePage() {
       {phase === 'task' && task && <>
         <p className="gateway-share-eyebrow">{meta?.mode === 'interactive' ? '互动分享' : '只读分享'}</p>
         <h2>{task.title}</h2>
+        {hostStatus && <p className="gateway-share-host-status" role="status">
+          {!hostStatus.connected ? '宿主电脑当前离线。'
+            : hostStatus.daemon_health === false ? '宿主电脑已连接，WorkStep 服务暂时不可用。'
+              : hostStatus.daemon_health === null ? '宿主电脑已连接，服务状态待确认。'
+                : '宿主电脑与 WorkStep 服务正常连接。'}
+        </p>}
         {meta?.title && <p className="gateway-share-caption">{meta.title}</p>}
         <dl className="gateway-share-facts"><div><dt>状态</dt><dd>{task.status}</dd></div>
           {task.creator_name && <div><dt>创建者</dt><dd>{task.creator_name}</dd></div>}
@@ -226,6 +247,11 @@ export function PublicSharePage() {
       {phase === 'offline' && <>
         <h2>暂时无法打开分享</h2>
         <p>宿主电脑暂时不可用，请稍后重试。</p>
+        {hostStatus && <p className="gateway-share-host-status" role="status">
+          {!hostStatus.connected ? '宿主电脑当前离线。'
+            : hostStatus.daemon_health === false ? '宿主电脑已连接，WorkStep 服务暂时不可用。'
+              : '宿主电脑已连接，请稍后重试。'}
+        </p>}
         <button type="button" onClick={() => setRevision(value => value + 1)}>重试</button>
       </>}
       {phase === 'unavailable' && <>
