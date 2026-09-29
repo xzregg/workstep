@@ -679,6 +679,23 @@ async def cancel_task(req: CancelTaskRequest, pid: str | None = Query(None, alia
     if pid:
         _project(pid)
     cancelled = await workflow_runtime.cancel(req.task_id)
+    if not cancelled and pid:
+        from models import Task
+        from services.project_audit import record_project_audit
+        from services.remote_access import get_effective_actor
+
+        actor = get_effective_actor()
+        def audit_idle_cancel():
+            if Task.get_or_none(Task.id == req.task_id) is not None:
+                record_project_audit(
+                    project_id=pid, task_id=req.task_id,
+                    action="task.cancel", result="denied",
+                    mode=("managed" if actor is not None and actor.source == "managed"
+                          else "local"),
+                    metadata={"reason_code": "not_running"},
+                )
+
+        await _run_db(pid, audit_idle_cancel)
     return {"cancelled": cancelled}
 
 
