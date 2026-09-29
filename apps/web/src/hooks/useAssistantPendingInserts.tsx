@@ -24,9 +24,14 @@ export function useAssistantPendingInserts({
   projectId, sessionId, messages, input, onInputChange, onSendContent,
 }: AssistantPendingInsertOptions) {
   const { t } = useI18n()
-  const activeMessageId = [...messages].reverse().find((message) => (
+  const runningMessage = [...messages].reverse().find((message) => (
     message.engine !== 'action' && message.role === 'assistant' && message.status === 'running'
-  ))?.id || ''
+  ))
+  const latestAssistant = [...messages].reverse().find((message) => (
+    message.engine !== 'action' && message.role === 'assistant'
+  ))
+  const activeMessageId = runningMessage?.id
+    || (latestAssistant?.status === 'stopped' ? latestAssistant.id : '')
   const pendingKey = pendingInsertQueueKey(projectId, activeMessageId)
   const items = usePendingMessageInsertStore((state) => (
     activeMessageId ? state.queues[pendingKey] || EMPTY_PENDING_INSERTS : EMPTY_PENDING_INSERTS
@@ -117,5 +122,5 @@ export function useAssistantPendingInserts({
     reorderHint={t('chatSession.pendingInsertReorderHint')}
   /> : null
 
-  return { panel, error, queueEnabled: Boolean(sessionId && activeMessageId), queueCurrentInput }
+  return { panel, error, queueEnabled: Boolean(sessionId && runningMessage), queueCurrentInput }
 }

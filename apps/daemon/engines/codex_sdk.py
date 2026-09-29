@@ -607,6 +607,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                     if goal_action:
                         await self._run_goal_command(
                             client, thread, goal_action, prompt, state, event_queue,
+                            model=model, reasoning_effort=reasoning_effort,
                         )
                         return
                     if plan_mode is None:
@@ -682,6 +683,9 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         objective: str,
         state: dict[str, Any],
         event_queue: asyncio.Queue,
+        *,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
     ) -> None:
         """Run one native goal operation through the shared engine event stream."""
         from openai_codex.generated.v2_all import ThreadGoalGetResponse, ThreadGoalStatus
@@ -708,7 +712,38 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             return
 
         if action == "start":
-            goal_state, _ = await raw.start_goal_operation(thread.id, objective)
+            if not model:
+                raise RuntimeError("Codex 目标模式需要明确的模型")
+            goal_state = raw.register_goal_operation(thread.id)
+            started_turn_id: str | None = None
+            try:
+                # An automatic goal continuation can inherit a persisted Plan
+                # mode. Start the first turn explicitly in Default mode, then
+                # attach the goal to that running turn. Later turns remain native.
+                await raw.thread_goal_clear(thread.id)
+                goal_state.activate_turn_routing()
+                started = await raw.turn_start(thread.id, objective, params={
+                    "collaborationMode": {
+                        "mode": "default",
+                        "settings": {
+                            "model": model,
+                            "reasoning_effort": reasoning_effort,
+                            "developer_instructions": None,
+                        },
+                    },
+                })
+                started_turn_id = str(started.turn.id)
+                await raw.thread_goal_set(
+                    thread.id, objective=objective, status=ThreadGoalStatus.active,
+                )
+            except BaseException:
+                if started_turn_id is not None:
+                    try:
+                        await raw.turn_interrupt(thread.id, started_turn_id)
+                    except Exception:
+                        logger.warning("Failed to interrupt orphaned Codex goal turn", exc_info=True)
+                raw.unregister_goal_operation(goal_state)
+                raise
         elif action == "resume":
             goal_state = raw.register_goal_operation(thread.id)
             try:

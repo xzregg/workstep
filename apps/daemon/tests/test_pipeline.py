@@ -337,13 +337,65 @@ def test_assemble_prompt_basic(tmp_path):
     assert "MEMORY" not in SYSTEM_PROMPT
     assert "You are" in SYSTEM_PROMPT
     assert all(ord(char) < 128 for char in SYSTEM_PROMPT)
-    assert "## Task description\nCurrent task context" in prompt
-    assert "## Task title\nTest" in prompt
+    assert "## Task\nTest\nCurrent task context" in prompt
     assert "You are executing one step in a WorkStep workflow." in prompt
     assert "## Step requirements\nWrite a PRD" in prompt
     assert not re.search(r"\bstage\b", prompt, re.IGNORECASE)
     assert "Write a PRD" in prompt
     assert f"artifacts/default/{task.id}/req" in prompt
+    db.close()
+
+
+def test_previous_outputs_are_available_to_new_and_resumed_sessions(tmp_path):
+    from models import Task, init_db
+    import time
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id="task", title="Revise", cwd=str(tmp_path), workflow_id="flow",
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    artifacts = tmp_path / ".workstep" / "artifacts"
+    previous = artifacts / "flow" / task.id / "a" / "1"
+    previous.mkdir(parents=True)
+    (previous / "plan.md").write_text("first version", encoding="utf-8")
+    step = Step(key="a", label="A", prompt="Revise the plan", outputs=[
+        {"name": "plan", "type": "md"},
+    ])
+    snapshot = {"execution_type": "feedback", "ports": [{
+        "port": 0, "name": "Review feedback", "status": "ready",
+        "sources": [{
+            "kind": "dashed", "step": "b", "round": 1,
+            "name": "feedback", "path": str(tmp_path / "feedback.md"),
+        }],
+    }]}
+
+    first = assemble_prompt(task, step, artifacts, artifact_round=1)
+    fresh = assemble_prompt(
+        task, step, artifacts, artifact_round=2, input_snapshot=snapshot,
+    )
+    resumed = assemble_retry_prompt(
+        task, step, artifacts, snapshot, artifact_round=2,
+    )
+    followup = assemble_followup_prompt(
+        task, step, artifacts, "Continue", artifact_round=2,
+        input_snapshot=snapshot,
+    )
+    expected = f".workstep/artifacts/flow/{task.id}/a/1/"
+    for prompt in (fresh, resumed, followup):
+        assert f"## Previous outputs\n`{expected}`" in prompt
+        assert "Copy still-needed, unchanged outputs" in prompt
+        assert "plan.md" not in prompt.split("## Previous outputs", 1)[1].split("\n\n", 1)[0]
+        assert "Execution reason:" not in prompt
+        assert "Source step:" not in prompt
+        assert "Source round:" not in prompt
+        assert "Artifact: feedback" not in prompt
+    assert "feedback.md" in fresh
+    assert "feedback.md" in resumed
+    assert "## User message\nContinue" in followup
+    assert "## Inputs\n- Review feedback: `feedback.md`" in followup
+    assert "Use this feedback to revise the affected outputs." in followup
+    assert "## Previous outputs" not in first
     db.close()
 
 
@@ -617,17 +669,17 @@ def test_assemble_prompt_renders_dynamic_input_port_snapshot(tmp_path):
         input_snapshot=snapshot,
     )
 
-    assert "## Step execution context" in prompt
-    assert "Execution reason: `feedback_revision`" in prompt
-    assert "### Input: PRD" in prompt
-    assert "### Input: Bug列表" in prompt
+    assert "## Inputs" in prompt
+    assert "Execution reason:" not in prompt
+    assert "- PRD: `prd.md`" in prompt
+    assert "- Bug列表: `bugs.md`" in prompt
     assert "Input port" not in prompt
     assert "connection-0" not in prompt
     assert "connection-3" not in prompt
     assert "kind `solid`" not in prompt
     assert "kind `dashed`" not in prompt
-    assert "Path: `prd.md`" in prompt
-    assert "Path: `bugs.md`" in prompt
+    assert "Source step:" not in prompt
+    assert "Source round:" not in prompt
     assert "当前是首次开发" not in prompt
     assert "不是缺陷返工" not in prompt
     db.close()
@@ -672,8 +724,8 @@ def test_assemble_prompt_omits_inactive_feedback_input_and_its_outputs(tmp_path)
 
     prompt = assemble_prompt(task, step, tmp_path / "artifacts", input_snapshot=snapshot)
 
-    assert "### Input: 功能开发" in prompt
-    assert "### Input: 前端BUG 修复" not in prompt
+    assert "- 功能开发: `design.html`" in prompt
+    assert "前端BUG 修复" not in prompt
     assert "No artifact is available" not in prompt
     assert "开发文档" in prompt
     assert "分支名" in prompt
@@ -710,8 +762,8 @@ def test_assemble_prompt_feedback_includes_only_feedback_port_outputs(tmp_path):
 
     prompt = assemble_prompt(task, step, tmp_path / "artifacts", input_snapshot=snapshot)
 
-    assert "### Input: 前端BUG 修复" in prompt
-    assert "### Input: 功能开发" not in prompt
+    assert "- 前端BUG 修复: `bugs.md`" in prompt
+    assert "功能开发" not in prompt
     assert "修复列表" in prompt
     assert "开发文档" not in prompt
     retry_prompt = assemble_retry_prompt(
@@ -749,8 +801,8 @@ def test_assemble_prompt_with_only_inactive_input_has_no_artifact_contract(tmp_p
 
     prompt = assemble_prompt(task, step, tmp_path / "artifacts", input_snapshot=snapshot)
 
-    assert "## Step execution context" not in prompt
-    assert "## Output specification" not in prompt
+    assert "## Inputs" not in prompt
+    assert "## Outputs" not in prompt
     assert "## Artifact output directory" not in prompt
     assert "## Step requirements\n处理任务" in prompt
     db.close()
@@ -792,8 +844,8 @@ def test_assemble_prompt_tells_agent_to_inspect_directory_input(tmp_path):
         input_snapshot=snapshot,
     )
 
-    assert "- Directory: `solution-package`" in prompt
-    assert "Inspect this directory and read the files required for this step." in prompt
+    assert "- 方案包 (directory): `solution-package`" in prompt
+    assert "inspect the files needed for this step." in prompt
     db.close()
 
 
@@ -867,7 +919,7 @@ def test_assemble_followup_prompt_only_contains_message_and_output_requirements(
     assert SYSTEM_PROMPT not in prompt
     assert "交付文档.md" in prompt
     assert "必须生成或更新" not in prompt
-    assert "you may omit artifacts or leave them empty" in prompt
+    assert "## Current outputs" in prompt
     db.close()
 
 
@@ -911,12 +963,45 @@ def test_assemble_retry_prompt_only_contains_current_inputs_and_output_contract(
     )
 
     assert "## Step execution update" in prompt
-    assert "Execution reason: `feedback_revision`" in prompt
-    assert "Path: `feedback.md`" in prompt
+    assert "Execution reason:" not in prompt
+    assert "- 修改意见: `feedback.md`" in prompt
     assert "交付文档.md" in prompt
     assert "不应重复的任务说明" not in prompt
     assert "不应重复的步骤要求" not in prompt
     assert "internal-edge" not in prompt
+    db.close()
+
+
+def test_retry_prompt_recognizes_task_in_legacy_saved_prompt(tmp_path):
+    from models import Task, init_db
+    import time
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id="task", title="Original title", description="Original description",
+        cwd=str(tmp_path), created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    previous_prompt = (
+        "## Task title\nOriginal title\n\n"
+        "## Task description\nOriginal description\n\n"
+        "## Step requirements\nBuild it"
+    )
+    step = Step(key="build", label="Build", prompt="Build it")
+
+    unchanged = assemble_retry_prompt(
+        task, step, tmp_path / "artifacts",
+        {"execution_type": "feedback", "ports": []},
+        previous_prompt=previous_prompt,
+    )
+    assert "## Updated Task" not in unchanged
+
+    task.description = "Revised description"
+    changed = assemble_retry_prompt(
+        task, step, tmp_path / "artifacts",
+        {"execution_type": "feedback", "ports": []},
+        previous_prompt=previous_prompt,
+    )
+    assert "## Updated Task\nOriginal title\nRevised description" in changed
     db.close()
 
 
@@ -937,9 +1022,9 @@ def test_assemble_prompt_unknown_output_type_uses_default_constraint(tmp_path):
     artifacts_dir.mkdir()
 
     prompt = assemble_prompt(task, step, artifacts_dir)
-    assert "## Output specification" in prompt
+    assert "## Outputs" in prompt
     assert "mystery" in prompt
-    assert "format requirement" in prompt
+    assert "Generic UTF-8 text" in prompt
     db.close()
 
 
@@ -962,7 +1047,7 @@ def test_assemble_prompt_empty_constraints_does_not_crash(tmp_path, monkeypatch)
     artifacts_dir.mkdir()
 
     prompt = assemble_prompt(task, step, artifacts_dir)
-    assert "## Output specification" in prompt
+    assert "## Outputs" in prompt
     db.close()
 
 
@@ -984,11 +1069,11 @@ def test_assemble_prompt_multi_output_avoids_generic_delegation_noise(tmp_path):
     artifacts_dir.mkdir()
 
     prompt = assemble_prompt(task, step, artifacts_dir)
-    assert "## Output specification" in prompt
+    assert "## Outputs" in prompt
     assert "b1" in prompt and "b2" in prompt
     assert "subagent" not in prompt
     assert "Delegation" not in prompt
-    assert "you may omit artifacts or leave them empty" in prompt
+    assert "If an output is not ready, omit it and explain why" in prompt
     assert "every artifact has been written" not in prompt
     assert "produce exactly the following list" not in prompt
     assert "strictly follow the declared output specification" not in prompt
@@ -1068,11 +1153,11 @@ def test_assemble_prompt_formats_dispatched_inputs_once_without_source_ids(tmp_p
 
     prompt = assemble_prompt(task, step, tmp_path / "artifacts")
 
-    assert "## Task description\n原始任务说明" in prompt
+    assert "## Task\nChild\n原始任务说明" in prompt
     assert "## Upstream task inputs" in prompt
     assert "brief.md" in prompt
-    assert "Source step: `design`" in prompt
-    assert "Source round: 2" in prompt
+    assert "Source step:" not in prompt
+    assert "Source round:" not in prompt
     assert prompt.count(f"task-inputs/opaque-dispatch-id/design/brief.md") == 1
     assert "project-secret" not in prompt
     assert "task-secret" not in prompt
@@ -1098,7 +1183,7 @@ def test_assemble_prompt_single_output_no_subagent_section(tmp_path):
     artifacts_dir.mkdir()
 
     prompt = assemble_prompt(task, step, artifacts_dir)
-    assert "## Output specification" in prompt
+    assert "## Outputs" in prompt
     assert "subagent" not in prompt
     db.close()
 
@@ -1154,7 +1239,7 @@ def test_assemble_prompt_directory_output_allows_multiple_files(tmp_path):
     prompt = assemble_prompt(task, step, artifacts_dir)
 
     output_path = f"artifacts/default/{task.id}/design/原型集合/"
-    assert "type: `directory`" in prompt
+    assert "— directory;" in prompt
     assert "Directory artifact" in prompt
     assert "multiple files and subdirectories" in prompt
     assert "do not merge everything into one file" in prompt
@@ -1683,7 +1768,8 @@ async def test_task_runner_persists_usage_json(tmp_path):
         assert received_prompts == [persisted_prompt]
         assert persisted_prompt.startswith("You are executing one step")
         assert "## Project memory\n统一使用公开消息边界" in persisted_prompt
-        assert "## Task description\n实现完整提示词展示" in persisted_prompt
+        assert "## Task\n" in persisted_prompt
+        assert "实现完整提示词展示" in persisted_prompt
         assert persisted_prompt.endswith(
             f"artifacts/default/{task.id}/a"
         )
@@ -1746,6 +1832,59 @@ async def test_execution_message_start_slow_insert_keeps_loop_responsive(
         started = time.perf_counter()
         await asyncio.wait_for(asyncio.sleep(0), timeout=0.2)
         assert time.perf_counter() - started < 0.2
+        await pipeline_task
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original_engines)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_previous_outputs_slow_scan_keeps_loop_responsive(
+    tmp_path, monkeypatch,
+):
+    import threading
+    import time
+    import uuid
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import Task, WorkflowRun, init_db
+    import services.prompt as prompt_module
+
+    db = init_db(str(tmp_path / "slow-previous-round.db"))
+    task = Task.create(
+        id="slow-previous-round", title="Revise", cwd=str(tmp_path),
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    previous = tmp_path / "artifacts" / "default" / task.id / "a" / "1"
+    previous.mkdir(parents=True)
+    (previous / "plan.md").write_text("first version", encoding="utf-8")
+    scan_started = threading.Event()
+    original_scan = prompt_module.iter_artifact_rounds
+
+    def slow_scan(*args, **kwargs):
+        scan_started.set()
+        time.sleep(0.3)
+        return original_scan(*args, **kwargs)
+
+    monkeypatch.setattr(prompt_module, "iter_artifact_rounds", slow_scan)
+    original_engines = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = lambda: PipelineUsageEngine("output")
+    workflow_run = WorkflowRun.create(
+        id=str(uuid.uuid4()), task=task, workflow_schema_version=1,
+        workflow_snapshot_json="{}", started_at=int(time.time()),
+    )
+    pipeline_task = asyncio.create_task(TaskRunner(EventBus()).run_pipeline(
+        task,
+        {"steps": [{
+            "key": "a", "label": "A", "engine": "claude", "prompt": "Revise",
+        }]},
+        tmp_path / "artifacts",
+        workflow_run=workflow_run,
+    ))
+    try:
+        assert await asyncio.to_thread(scan_started.wait, 2)
+        assert not pipeline_task.done()
+        await asyncio.wait_for(asyncio.sleep(0.01), 0.1)
         await pipeline_task
     finally:
         ENGINE_REGISTRY.clear()

@@ -3410,11 +3410,101 @@ def test_codex_sdk_maps_goal_lifecycle_to_shared_event():
 
 
 @pytest.mark.anyio
+async def test_codex_sdk_goal_start_explicitly_uses_default_mode():
+    engine = CodexSDKEngine()
+    calls = []
+
+    class GoalState:
+        def activate_turn_routing(self):
+            calls.append("route")
+
+        def is_finished(self):
+            return True
+
+    class RawClient:
+        def register_goal_operation(self, thread_id):
+            calls.append(("register", thread_id))
+            return GoalState()
+
+        async def thread_goal_clear(self, thread_id):
+            calls.append(("clear", thread_id))
+
+        async def turn_start(self, thread_id, prompt, params=None):
+            calls.append(("turn", thread_id, prompt, params))
+            return SimpleNamespace(turn=SimpleNamespace(id="first-turn"))
+
+        async def thread_goal_set(self, thread_id, **kwargs):
+            calls.append(("goal", thread_id, kwargs))
+
+        async def next_goal_notification(self, state):
+            return SimpleNamespace(method="thread/goal/updated")
+
+        def unregister_goal_operation(self, state):
+            calls.append("unregister")
+
+    raw = RawClient()
+    engine._map_notification = lambda notification, state: []
+    await engine._run_goal_command(
+        SimpleNamespace(_client=raw), SimpleNamespace(id="thread-1"),
+        "start", "完成计划", {}, asyncio.Queue(),
+        model="gpt-test", reasoning_effort="medium",
+    )
+
+    turn = next(call for call in calls if isinstance(call, tuple) and call[0] == "turn")
+    assert turn[1:3] == ("thread-1", "完成计划")
+    assert turn[3]["collaborationMode"]["mode"] == "default"
+    assert calls.index("route") < calls.index(turn) < next(
+        index for index, call in enumerate(calls)
+        if isinstance(call, tuple) and call[0] == "goal"
+    )
+
+
+@pytest.mark.anyio
+async def test_codex_sdk_goal_start_interrupts_first_turn_if_goal_set_fails():
+    engine = CodexSDKEngine()
+    calls = []
+
+    class GoalState:
+        def activate_turn_routing(self):
+            pass
+
+    class RawClient:
+        def register_goal_operation(self, thread_id):
+            return GoalState()
+
+        async def thread_goal_clear(self, thread_id):
+            pass
+
+        async def turn_start(self, thread_id, prompt, params=None):
+            return SimpleNamespace(turn=SimpleNamespace(id="first-turn"))
+
+        async def thread_goal_set(self, thread_id, **kwargs):
+            raise RuntimeError("goal set failed")
+
+        async def turn_interrupt(self, thread_id, turn_id):
+            calls.append(("interrupt", thread_id, turn_id))
+
+        def unregister_goal_operation(self, state):
+            calls.append(("unregister", state))
+
+    with pytest.raises(RuntimeError, match="goal set failed"):
+        await engine._run_goal_command(
+            SimpleNamespace(_client=RawClient()), SimpleNamespace(id="thread-1"),
+            "start", "完成计划", {}, asyncio.Queue(), model="gpt-test",
+        )
+    assert calls[0] == ("interrupt", "thread-1", "first-turn")
+    assert calls[1][0] == "unregister"
+
+
+@pytest.mark.anyio
 async def test_codex_sdk_goal_stream_waits_for_goal_completion_across_turns(monkeypatch):
     engine = CodexSDKEngine()
 
     class GoalState:
         index = 0
+
+        def activate_turn_routing(self):
+            pass
 
         def is_finished(self):
             return self.index == 4
@@ -3433,9 +3523,20 @@ async def test_codex_sdk_goal_stream_waits_for_goal_completion_across_turns(monk
     class RawClient:
         unregistered = False
 
-        async def start_goal_operation(self, thread_id, objective):
-            assert (thread_id, objective) == ("thread-1", "修复性能问题")
-            return goal_state, "first-turn"
+        def register_goal_operation(self, thread_id):
+            assert thread_id == "thread-1"
+            return goal_state
+
+        async def thread_goal_clear(self, thread_id):
+            assert thread_id == "thread-1"
+
+        async def turn_start(self, thread_id, prompt, params=None):
+            assert (thread_id, prompt) == ("thread-1", "修复性能问题")
+            assert params["collaborationMode"]["mode"] == "default"
+            return SimpleNamespace(turn=SimpleNamespace(id="first-turn"))
+
+        async def thread_goal_set(self, thread_id, **kwargs):
+            assert thread_id == "thread-1"
 
         async def next_goal_notification(self, state):
             item = notifications[state.index]
@@ -3451,6 +3552,7 @@ async def test_codex_sdk_goal_stream_waits_for_goal_completion_across_turns(monk
     await engine._run_goal_command(
         SimpleNamespace(_client=raw), SimpleNamespace(id="thread-1"),
         "start", "修复性能问题", {}, queue,
+        model="gpt-test",
     )
     events = [queue.get_nowait() for _ in range(queue.qsize())]
     assert [event.data.get("status") for event in events if event.type == "status"] == [

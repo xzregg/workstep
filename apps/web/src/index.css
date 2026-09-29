@@ -4045,7 +4045,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .chat-composer-outer { position: relative; flex-shrink: 0; background: var(--bg); }
 .chat-composer-inner { display: flex; flex-direction: column; padding: 12px; overflow-y: visible; }
 .chat-composer-inner.is-resized,
-.chat-composer-inner.is-resizing { height: 100%; overflow-y: auto; }
+.chat-composer-inner.is-resizing { height: 100%; overflow-y: visible; }
 .chat-composer-inner.is-compact { height: auto; padding: 0; overflow-y: visible; }
 .chat-composer-resizing { cursor: row-resize; user-select: none; }
 .chat-composer-resize-handle {

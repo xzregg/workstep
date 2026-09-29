@@ -512,7 +512,8 @@ async def test_nonempty_feedback_output_reworks_target_before_forward_branch(tmp
         assert "PRD：实现订单查询接口" in calls["develop"][1]
         assert "PRD.md" in calls["develop"][1]
         assert "Bug列表.md" in calls["develop"][1]
-        assert "Execution reason: `feedback_revision`" in calls["develop"][1]
+        assert "Execution reason:" not in calls["develop"][1]
+        assert "## Previous outputs" in calls["develop"][1]
         assert "测试报告.md" in calls["publish"][0]
         assert "Bug列表.md" not in calls["publish"][0]
         run = WorkflowRun.get_by_id(run.id)
@@ -1164,7 +1165,8 @@ async def test_manual_approval_of_feedback_artifact_resumes_target_rework(tmp_pa
         assert len(calls["develop"]) == 2
         assert len(calls["test"]) == 2
         assert "Bug列表.md" in calls["develop"][1]
-        assert "Execution reason: `feedback_revision`" in calls["develop"][1]
+        assert "Execution reason:" not in calls["develop"][1]
+        assert "## Previous outputs" in calls["develop"][1]
         second_review = (
             ReviewRun.select()
             .where((ReviewRun.task == task) & (ReviewRun.status == "pending"))
