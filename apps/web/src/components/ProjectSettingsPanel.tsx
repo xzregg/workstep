@@ -13,6 +13,7 @@ import { copyText } from '../utils/clipboard'
 import { useChatListStore } from '../stores/chatSessionStore'
 import { resolveAccessExpiresAt, type AccessDurationPreset } from '../utils/remoteDeviceAccess'
 import { useManagedMode } from '../hooks/useManagedMode'
+import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
 import Button from './Button'
 import ConcurrencyLimitInput from './ConcurrencyLimitInput'
 import Field from './Field'
@@ -22,6 +23,7 @@ import QuickButtonEditor, { type QuickButtonDraft, quickButtonToDraft, quickButt
 import RemoteDeviceAccessList from './RemoteDeviceAccessList'
 import Select from './Select'
 import SkillCenterSettings from '../pages/SkillCenterSettings'
+import ProjectPublicationSettings from './ProjectPublicationSettings'
 
 interface ProjectSettingsPanelProps {
   project: Project | null
@@ -29,7 +31,7 @@ interface ProjectSettingsPanelProps {
   onProjectRenamed?: (name: string) => void
 }
 
-type TabKey = 'general' | 'assistant' | 'quickButtons' | 'skills' | 'concurrency' | 'share'
+type TabKey = 'general' | 'assistant' | 'quickButtons' | 'skills' | 'concurrency' | 'access' | 'share'
 
 function randomId(): string {
   return `qb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -99,12 +101,16 @@ export default function ProjectSettingsPanel({
     { key: 'quickButtons', label: t('projectSettings.tabs.quickButtons') },
     { key: 'skills', label: t('skillCenter.nav') },
     { key: 'concurrency', label: t('projectSettings.tabs.concurrency') },
+    ...(managedMode === true && !isGatewayRemoteBrowser() && project?.type !== 'remote'
+      ? [{ key: 'access' as const, label: t('projectSettings.tabs.access') }] : []),
     ...(managedMode === true ? [] : [{ key: 'share' as const, label: t('projectSettings.tabs.share') }]),
-  ], [t, managedMode])
+  ], [t, managedMode, project?.type])
 
   useEffect(() => {
     if (managedMode === true && activeTab === 'share') setActiveTab('general')
-  }, [managedMode, activeTab])
+    if (activeTab === 'access' && (managedMode !== true || isGatewayRemoteBrowser()
+        || project?.type === 'remote')) setActiveTab('general')
+  }, [managedMode, activeTab, project?.type])
 
   const loadSettings = useCallback(async () => {
     if (!projectId) return
@@ -440,6 +446,8 @@ export default function ProjectSettingsPanel({
               />
             ) : activeTab === 'skills' ? (
               <SkillCenterSettings project={project} embedded />
+            ) : activeTab === 'access' ? (
+              <ProjectPublicationSettings projectId={projectId || ''} />
             ) : activeTab === 'concurrency' ? (
               <div style={tabBodyStyle}>
                 <p style={{ margin: 0, color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>

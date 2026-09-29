@@ -37,6 +37,16 @@ async def test_control_project_publication_waits_for_matching_ack():
                            "action": "publish", "host_project_id": "host-1",
                            "name": "Backend"}
 
+    client._project_ack_messages.put_nowait({
+        "kind": "project_publish_ack", "version": 1,
+        "device_id": "device-1", "host_project_id": "host-1",
+        "project_id": "platform-1", "status": "published",
+        "grants": [], "can_manage": True, "can_publish": True,
+    })
+    status = await client.project_publication_status("device-1", "host-1", "Backend")
+    assert status["status"] == "published"
+    assert socket.sent["action"] == "status"
+
 
 @pytest.mark.asyncio
 async def test_control_project_catalog_sends_only_ids_and_names(monkeypatch):
@@ -142,6 +152,13 @@ async def test_project_publication_api_maps_gateway_results(monkeypatch):
         return {"project_id": "platform-1", "status": "published"}
 
     monkeypatch.setattr(main.gateway_client, "publish_project", publish)
+    async def publication_status(project_id):
+        called.append((project_id, "status"))
+        return {"project_id": "platform-1", "status": "published",
+                "grants": [], "can_manage": False}
+
+    monkeypatch.setattr(main.gateway_client, "project_publication_status", publication_status,
+                        raising=False)
     app = FastAPI()
     app.include_router(project_api.router)
     async with AsyncClient(transport=ASGITransport(app=app),
@@ -152,6 +169,10 @@ async def test_project_publication_api_maps_gateway_results(monkeypatch):
         assert response.status_code == 200
         assert response.json()["project_id"] == "platform-1"
         assert called == [("host-1", True)]
+        status = await client.get("/api/project/host-1/publication")
+        assert status.status_code == 200
+        assert status.json()["status"] == "published"
+        assert called[-1] == ("host-1", "status")
 
         async def denied(_project_id, *, published):
             raise PermissionError("Managed capability denied: project.publish")

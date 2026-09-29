@@ -132,6 +132,23 @@ class GatewayControlClient:
 
     async def publish_project(self, device_id: str, host_project_id: str,
                               name: str, action: str) -> dict:
+        return await self._project_publication_request(
+            device_id, host_project_id, name, action,
+        )
+
+    async def project_publication_status(self, device_id: str, host_project_id: str,
+                                         name: str) -> dict:
+        response = await self._project_publication_request(
+            device_id, host_project_id, name, "status",
+        )
+        if (not isinstance(response.get("grants"), list)
+                or type(response.get("can_manage")) is not bool
+                or type(response.get("can_publish")) is not bool):
+            raise ValueError("Invalid Gateway project publication status")
+        return response
+
+    async def _project_publication_request(self, device_id: str, host_project_id: str,
+                                           name: str, action: str) -> dict:
         async with self._project_request_lock:
             socket = self._active_socket
             messages = self._project_ack_messages

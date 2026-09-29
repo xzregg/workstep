@@ -153,6 +153,17 @@ class GatewayClientService:
             "publish" if published else "unpublish",
         )
 
+    async def project_publication_status(self, project_id: str) -> dict:
+        if self.managed_config is None or self.control_client is None or not self.device_id:
+            raise ConnectionError("Managed Gateway is unavailable")
+        project = project_manager.get_project_by_id(project_id)
+        if project is None:
+            raise KeyError("Project not found")
+        result = await self.control_client.project_publication_status(
+            self.device_id, project.id, project.name,
+        )
+        return {**result, "gateway_url": self.managed_config.gateway_origin}
+
     async def close(self) -> None:
         if self.control_client is not None:
             await self.control_client.stop()

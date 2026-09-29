@@ -2120,7 +2120,8 @@ export const zhCN = {
     title: '项目配置',
     loadFailed: '读取项目设置失败',
     saveFailed: '保存失败',
-    tabs: { general: '常规', assistant: '对话助手', quickButtons: '快捷按钮', concurrency: '并发限制', share: '分享' },
+    tabs: { general: '常规', assistant: '对话助手', quickButtons: '快捷按钮', concurrency: '并发限制', access: '访问授权', share: '分享' },
+    access: { published: '已发布到 Gateway', unpublished: '尚未发布到 Gateway', publish: '发布到 Gateway', unpublish: '取消发布', confirmUnpublish: '确认取消发布', unpublishHint: '只移除 Gateway 登记和访问授权，不删除本机项目目录或数据。', grants: '访问授权', user: '用户', group: '用户组', read: '只读', edit: '可编辑', empty: '暂无访问授权。', manage: '管理授权', loadFailed: '读取访问授权失败。', changeFailed: '更新发布状态失败。', retry: '重试' },
     general: {
       name: '项目名称',
       namePlaceholder: '请输入项目名称',

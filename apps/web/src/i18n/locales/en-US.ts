@@ -2096,7 +2096,8 @@ export const enUS: Messages = {
     title: 'Project Settings',
     loadFailed: 'Failed to load project settings',
     saveFailed: 'Failed to save',
-    tabs: { general: 'General', assistant: 'Chat Assistant', quickButtons: 'Quick Buttons', concurrency: 'Concurrency', share: 'Share' },
+    tabs: { general: 'General', assistant: 'Chat Assistant', quickButtons: 'Quick Buttons', concurrency: 'Concurrency', access: 'Access grants', share: 'Share' },
+    access: { published: 'Published to Gateway', unpublished: 'Not published to Gateway', publish: 'Publish to Gateway', unpublish: 'Unpublish', confirmUnpublish: 'Confirm unpublish', unpublishHint: 'This removes the Gateway registration and access grants without deleting local project files or data.', grants: 'Access grants', user: 'User', group: 'Group', read: 'Read only', edit: 'Can edit', empty: 'No access grants.', manage: 'Manage grants', loadFailed: 'Failed to load access grants.', changeFailed: 'Failed to update publication.', retry: 'Retry' },
     general: {
       name: 'Project name',
       namePlaceholder: 'Enter a project name',
