@@ -1056,6 +1056,8 @@ async def test_archive_experience_streams_visible_coordinator_progress(
         "TEXT_MESSAGE_END",
     ]
     assert all(event["channel"] == "archive_experience" for event in events)
+    assert all(event["project_id"] == project_id and event["task_id"] == task_id
+               for event in events)
     assert "Task evidence" in events[0]["prompt"]
     assert "must not be written to Memory now" in events[0]["prompt"]
     assert "not a task summary" in ArchiveProgressCoordinatorFakeEngine.calls[0]["prompt"]
