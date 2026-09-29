@@ -62,6 +62,7 @@ export function AdminProjectsPage() {
   const [query, setQuery] = useState('')
   const [filters, setFilters] = useState<Filters>({ q: '', sort: 'name', direction: 'asc', page: 1 })
   const [selected, setSelected] = useState<Project | null>(null)
+  const [selectedTab, setSelectedTab] = useState<'grants' | 'task-create'>('grants')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
@@ -127,7 +128,9 @@ export function AdminProjectsPage() {
           <p>用户授权 {project.grant_users} · 用户组授权 {project.grant_groups} · 只读 {
             project.grant_levels.read} · 可编辑 {project.grant_levels.edit}</p>
           <p>运行状态：{project.running_tasks === null ? '尚未上报' : `${project.running_tasks} 项任务`}</p></div>
-        <div className="gateway-device-actions"><button type="button" onClick={() => setSelected(project)}>管理授权</button>
+        <div className="gateway-device-actions"><button type="button" onClick={() => {
+          setSelected(project); setSelectedTab('grants')
+        }}>管理授权</button>
           <button type="button" onClick={() => setUnpublish(project)}>取消发布</button></div>
       </li>)}</ul>
       <div className="gateway-admin-pagination"><span>共 {total} 个已发布项目 · 第 {filters.page}/{
@@ -136,10 +139,26 @@ export function AdminProjectsPage() {
           onClick={() => setFilters(current => ({ ...current, page: current.page - 1 }))}>上一页</button>
         <button type="button" disabled={filters.page >= Math.ceil(total / 25) || loading}
           onClick={() => setFilters(current => ({ ...current, page: current.page + 1 }))}>下一页</button></div>
-      {selected && <ProjectGrants key={`grants-${selected.id}`} project={selected} csrf={csrf}
-        onChanged={() => setRevision(value => value + 1)} />}
-      {selected && <AdminProjectTaskCreatePanel key={`capabilities-${selected.id}`}
-        projectId={selected.id} csrf={csrf} />}
+      {selected && <section aria-label={`${selected.name} · 项目设置`}>
+        <div className="gateway-project-settings-tabs" role="tablist" aria-label="项目设置">
+          <button type="button" role="tab" id="project-grants-tab"
+            aria-controls="project-grants-panel" aria-selected={selectedTab === 'grants'}
+            onClick={() => setSelectedTab('grants')}>访问授权</button>
+          <button type="button" role="tab" id="project-task-create-tab"
+            aria-controls="project-task-create-panel" aria-selected={selectedTab === 'task-create'}
+            onClick={() => setSelectedTab('task-create')}>任务创建能力</button>
+        </div>
+        {selectedTab === 'grants' && <div role="tabpanel" id="project-grants-panel"
+          aria-labelledby="project-grants-tab">
+          <ProjectGrants key={`grants-${selected.id}`} project={selected} csrf={csrf}
+            onChanged={() => setRevision(value => value + 1)} />
+        </div>}
+        {selectedTab === 'task-create' && <div role="tabpanel" id="project-task-create-panel"
+          aria-labelledby="project-task-create-tab">
+          <AdminProjectTaskCreatePanel key={`capabilities-${selected.id}`}
+            projectId={selected.id} csrf={csrf} />
+        </div>}
+      </section>}
       {unpublish && <AdminUnpublishProjectDialog project={unpublish} csrf={csrf}
         onClose={() => setUnpublish(null)} onComplete={() => {
           if (selected?.id === unpublish.id) setSelected(null)

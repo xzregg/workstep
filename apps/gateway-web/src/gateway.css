@@ -425,6 +425,8 @@ a {
 .gateway-operation-list > li { padding: 16px 0; border-top: 1px solid #e5e5ea; }
 .gateway-operation-list ul { margin: 8px 0; padding-left: 24px; }
 .gateway-project-grants { margin-top: 24px; padding: 20px; border: 1px solid #e5e5ea; border-radius: 12px; }
+.gateway-project-settings-tabs { display: flex; gap: 8px; margin-top: 24px; }
+.gateway-project-settings-tabs button[aria-selected="true"] { background: #202a44; color: #fff; }
 .gateway-project-grants h3 { margin: 0; }
 .gateway-project-grants .gateway-device-list { margin-top: 12px; }
 .gateway-project-catalog { margin-top: 20px; padding-top: 16px; border-top: 1px solid #e5e5ea; }
