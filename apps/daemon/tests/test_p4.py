@@ -44,6 +44,30 @@ def test_intervention_unknown_returns_false():
     assert mgr.deliver_response("nonexistent", {}) is False
 
 
+def test_intervention_pending_projection_is_task_scoped_and_cleared():
+    mgr = InterventionManager()
+
+    async def run():
+        visible = asyncio.create_task(mgr.request_response(
+            "visible", "task-1", "build", {"method": "elicitation/create", "message": "Question"},
+        ))
+        private = asyncio.create_task(mgr.request_response(
+            "private", "task-2", "build", {"method": "elicitation/create", "message": "Secret"},
+        ))
+        await asyncio.sleep(0)
+        assert mgr.list_pending_for_task("task-1") == [{
+            "interaction_id": "visible", "step_key": "build",
+            "request": {"method": "elicitation/create", "message": "Question"},
+        }]
+        mgr.deliver_response("visible", {"action": "cancel"}, "task-1")
+        await visible
+        assert mgr.list_pending_for_task("task-1") == []
+        mgr.cancel("private")
+        await private
+
+    asyncio.run(run())
+
+
 def test_intervention_cancel():
     mgr = InterventionManager()
 

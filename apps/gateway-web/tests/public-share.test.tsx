@@ -173,6 +173,7 @@ test('interactive public share sends a step message with session CSRF', async ()
     }] : [], next_offset: null })
     if (url.endsWith('/artifacts')) return Response.json({ artifacts: [] })
     if (url.endsWith('/reviews')) return Response.json({ reviews: [] })
+    if (url.endsWith('/interventions')) return Response.json({ interventions: [] })
     if (url.endsWith('/steps/build/message')) {
       sent = true
       return Response.json({ message_id: 'sent-1' })

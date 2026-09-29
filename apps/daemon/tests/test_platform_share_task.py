@@ -121,14 +121,14 @@ async def test_platform_share_interaction_requires_mode_and_stays_on_ticket_task
 
     monkeypatch.setattr(main, "workflow_runtime", Runtime())
 
-    async def write(path, mode="interactive", body=None):
+    async def write(path, mode="interactive", body=None, method="POST"):
         ticket, key, fingerprint = _ticket(task_id=task_id,
             host_project_id=project_id, mode=mode)
         frames = []
         async def capture(frame):
             frames.append(frame)
         bridge = ManagedHttpBridge(main.app, "share-write", {
-            "method": "POST", "path": path, "query": "",
+            "method": method, "path": path, "query": "",
             "headers": [["content-type", "application/json"]],
             "share_ticket": ticket,
         }, capture, "device-1", gateway_key=key,
@@ -162,6 +162,39 @@ async def test_platform_share_interaction_requires_mode_and_stays_on_ticket_task
                          ("cancel", project_id, task_id, "build")]
     assert (await write("/api/platform-share/steps/../message",
                         body={"content": "escape"}))[0] == 403
+
+    from services.intervention import intervention_manager
+    visible = asyncio.create_task(intervention_manager.request_response(
+        "visible-interaction", task_id, "build", {
+            "method": "session/request_permission", "options": [{
+                "option_id": "allow_once", "name": "Allow once",
+            }],
+        },
+    ))
+    private = asyncio.create_task(intervention_manager.request_response(
+        "private-interaction", "other-task", "build", {
+            "method": "elicitation/create", "message": "Private question",
+        },
+    ))
+    await asyncio.sleep(0)
+    assert (await write("/api/platform-share/interventions", mode="read_only",
+                        method="GET"))[0] == 403
+    status, listing = await write("/api/platform-share/interventions", method="GET")
+    assert status == 200
+    assert [item["interaction_id"] for item in listing["interventions"]] == ["visible-interaction"]
+    assert "Private question" not in json.dumps(listing)
+    assert (await write("/api/platform-share/interventions/private-interaction/respond",
+                        body={"data": {"action": "cancel"}}))[0] == 404
+    assert (await write("/api/platform-share/interventions/visible-interaction/respond",
+                        mode="read_only", body={"data": {"action": "cancel"}}))[0] == 403
+    status, delivered = await write(
+        "/api/platform-share/interventions/visible-interaction/respond",
+        body={"data": {"outcome": {"outcome": "selected", "option_id": "allow_once"}}},
+    )
+    assert status == 200 and delivered == {"delivered": True}
+    assert await visible == {"outcome": {"outcome": "selected", "option_id": "allow_once"}}
+    intervention_manager.cancel("private-interaction")
+    await private
 
 
 @pytest.mark.anyio

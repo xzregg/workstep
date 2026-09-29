@@ -53,6 +53,9 @@ SHARE_STEP_WRITE = re.compile(
 SHARE_REVIEW_WRITE = re.compile(
     r"/api/platform-share/steps/[A-Za-z0-9_-]{1,128}/review/(?:approve|reject|force_approve|terminate|complete_task)\Z"
 )
+SHARE_INTERVENTION_WRITE = re.compile(
+    r"/api/platform-share/interventions/[A-Za-z0-9_-]{1,128}/respond\Z"
+)
 
 
 def _remote_filesystem_denied(request: Request) -> bool:
@@ -135,14 +138,16 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
             if (not remote_bridge or not isinstance(share_scope, dict)
                     or (request.method == "GET" and request.url.path not in (
                         "/api/platform-share/task", "/api/platform-share/history",
-                        "/api/platform-share/artifacts", "/api/platform-share/reviews")
+                        "/api/platform-share/artifacts", "/api/platform-share/reviews",
+                        "/api/platform-share/interventions")
                         and not SHARE_ARTIFACT_CONTENT.fullmatch(request.url.path)
                         and not SHARE_HISTORY_PAGE.fullmatch(request.url.path)
                         and not SHARE_EVENTS_PAGE.fullmatch(request.url.path))
                     or (request.method == "POST" and (
                         share_scope.get("mode") != "interactive"
                         or (not SHARE_STEP_WRITE.fullmatch(request.url.path)
-                            and not SHARE_REVIEW_WRITE.fullmatch(request.url.path))))
+                            and not SHARE_REVIEW_WRITE.fullmatch(request.url.path)
+                            and not SHARE_INTERVENTION_WRITE.fullmatch(request.url.path))))
                     or request.method not in ("GET", "POST")
                     or request.url.query):
                 response = JSONResponse({"detail": "share scope denied"}, status_code=403)
