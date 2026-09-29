@@ -9,7 +9,9 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from api.fs_paths import _assert_project_path, _project
+from api.fs_paths import (
+    _assert_project_path, _path_error_detail, _project, _require_actor_project,
+)
 from services.remote_access import get_current_actor
 
 router = APIRouter()
@@ -19,6 +21,19 @@ def _require_scoped_project(project_id: str) -> None:
     actor = get_current_actor()
     if actor is not None and actor.project_id is not None and actor.project_id != project_id:
         raise HTTPException(status_code=403, detail="Project scope mismatch")
+
+
+def _browser_path(path: Path, project_root: Path | None) -> str:
+    actor = get_current_actor()
+    if project_root is not None and actor is not None and actor.project_id is not None:
+        relative = path.relative_to(project_root)
+        return "" if path == project_root else relative.as_posix()
+    return str(path)
+
+
+def _browser_os_error(exc: OSError) -> str:
+    actor = get_current_actor()
+    return "File operation failed" if actor is not None and actor.project_id is not None else str(exc)
 
 class MkdirRequest(BaseModel):
     parent: str
@@ -53,6 +68,7 @@ class BrowserContentWriteRequest(BrowserEntryDeleteRequest):
 
 def _resolve_browse_directory(path: str | None, project_id: str | None) -> tuple[Path, Path | None]:
     """Resolve a browser directory and return it with its optional project root."""
+    _require_actor_project(project_id)
     project_root: Path | None = None
     if project_id:
         project_root = _project(project_id).path.resolve()
@@ -66,9 +82,9 @@ def _resolve_browse_directory(path: str | None, project_id: str | None) -> tuple
         target = Path.home() if path is None else Path(path).expanduser().resolve()
     _assert_project_path(target, project_id)
     if not target.exists():
-        raise HTTPException(status_code=404, detail=f"Directory not found: {target}")
+        raise HTTPException(status_code=404, detail=_path_error_detail("Directory not found", target))
     if not target.is_dir():
-        raise HTTPException(status_code=400, detail=f"Not a directory: {target}")
+        raise HTTPException(status_code=400, detail=_path_error_detail("Not a directory", target))
     return target, project_root
 
 
@@ -109,7 +125,7 @@ async def browse_directory(
                 entries.append({
                     "name": item.name,
                     "type": "directory" if item.is_dir() else "file",
-                    "path": str(item),
+                    "path": _browser_path(item, project_root),
                     "relative_path": (
                         item.relative_to(project_root).as_posix()
                         if project_root is not None
@@ -117,19 +133,19 @@ async def browse_directory(
                     ),
                 })
         except PermissionError:
-            raise HTTPException(status_code=403, detail=f"Permission denied: {target}")
+            raise HTTPException(status_code=403, detail=_path_error_detail("Permission denied", target))
         parent = target.parent if target.parent != target else None
         if project_root is not None and target == project_root:
             parent = None
         return {
-            "path": str(target),
+            "path": _browser_path(target, project_root),
             "name": target.name or str(target),
             "relative_path": (
                 target.relative_to(project_root).as_posix()
                 if project_root is not None and target != project_root
                 else "" if project_root is not None else None
             ),
-            "parent": str(parent) if parent is not None else None,
+            "parent": _browser_path(parent, project_root) if parent is not None else None,
             "parent_relative_path": (
                 parent.relative_to(project_root).as_posix()
                 if project_root is not None and parent is not None and parent != project_root
@@ -186,7 +202,7 @@ async def search_files(
                 entries.append({
                     "name": filename,
                     "type": "file",
-                    "path": str(file_path),
+                    "path": _browser_path(file_path, project_root),
                     "relative_path": relative if project_root is not None else None,
                 })
             if truncated:
@@ -251,8 +267,8 @@ async def create_browser_entry(req: BrowserEntryCreateRequest):
         except FileExistsError as exc:
             raise HTTPException(status_code=409, detail="Entry already exists") from exc
         except OSError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
-        return {"path": str(target), "name": name, "kind": req.kind}
+            raise HTTPException(status_code=403, detail=_browser_os_error(exc)) from exc
+        return {"path": _browser_path(target, _project(req.project_id).path.resolve()), "name": name, "kind": req.kind}
 
     return await asyncio.to_thread(create)
 
@@ -274,8 +290,8 @@ async def rename_browser_entry(req: BrowserEntryRenameRequest):
         try:
             target.rename(destination)
         except OSError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
-        return {"path": str(destination), "name": name}
+            raise HTTPException(status_code=403, detail=_browser_os_error(exc)) from exc
+        return {"path": _browser_path(destination, _project(req.project_id).path.resolve()), "name": name}
 
     return await asyncio.to_thread(rename)
 
@@ -296,7 +312,7 @@ async def delete_browser_entry(req: BrowserEntryDeleteRequest):
             else:
                 target.unlink()
         except OSError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
+            raise HTTPException(status_code=403, detail=_browser_os_error(exc)) from exc
         return {"deleted": True}
 
     return await asyncio.to_thread(delete)
@@ -321,7 +337,7 @@ async def write_browser_content(req: BrowserContentWriteRequest):
         try:
             target.write_text(req.content, encoding="utf-8")
         except OSError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
+            raise HTTPException(status_code=403, detail=_browser_os_error(exc)) from exc
         return {"saved": True}
 
     return await asyncio.to_thread(save)
