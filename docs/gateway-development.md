@@ -1,5 +1,7 @@
 # Gateway 开发与部署
 
+生产部署、DNS/TLS、备份恢复、密钥与客户端回滚步骤见 [Gateway 运维手册](gateway-operations.md)。
+
 Gateway 是独立 FastAPI 服务，`apps/gateway-web` 是独立门户。阶段 0、1 已完成，后续阶段仍在开发与验收。部署验收以 `plans/platform-gateway-development.md` 为准。
 
 空平台使用 `POST /api/platform/setup` 一次性创建超级管理员及独立恢复管理员，并设置注册模式。`POST /api/auth/register` 遵循 `open`、`open_with_approval` 或 `closed` 策略；`POST /api/auth/login` 返回 CSRF token 并写入安全、HttpOnly Cookie。修改类请求在 `X-CSRF-Token` 传入该 token。登录后的 `POST /api/auth/password`、`POST /api/auth/logout` 管理自身会话；管理员可建号、审核与禁用用户。禁用管理员和重置密码需要先调用 `POST /api/auth/step-up` 以密码确认，确认有效五分钟。重置或禁用会撤销目标用户已有会话。生产访问须用 HTTPS；门户 `/auth` 和 `/account` 已接入初始化、注册、登录、改密与注销。
