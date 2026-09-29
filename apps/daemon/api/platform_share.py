@@ -48,6 +48,14 @@ class ShareGitCommit(BaseModel):
         return value.strip()
 
 
+class ShareGitSync(BaseModel):
+    branch: str = Field(min_length=1, max_length=1024)
+    snapshot: str = Field(pattern=r"^[0-9a-f]{64}$")
+    remote: str | None = Field(default=None, min_length=1, max_length=1024)
+    target_branch: str | None = Field(default=None, min_length=1, max_length=1024)
+    set_upstream: bool = False
+
+
 def _share_scope(request: Request) -> dict:
     scope = request.scope.get("gateway_share_scope")
     if not isinstance(scope, dict):
@@ -340,6 +348,24 @@ async def commit_platform_share_git(request: Request, tree_id: str, body: ShareG
     return await _share_git_result(git_api.git_service.commit(
         tree_id, body.paths, body.message, body.snapshot,
     ))
+
+
+@router.post("/git/worktrees/{tree_id}/{action}")
+async def sync_platform_share_git(request: Request, tree_id: str, action: str,
+                                  body: ShareGitSync):
+    scope = _interactive_share_scope(request)
+    if not _GIT_TREE_ID.fullmatch(tree_id) or action not in {"pull", "push"}:
+        raise HTTPException(status_code=404, detail="Git operation unavailable")
+    workspace = await _share_git_workspace(scope)
+    if tree_id not in {tree.get("id") for tree in workspace["worktrees"]}:
+        raise HTTPException(status_code=404, detail="Git worktree unavailable")
+    from api import git as git_api
+    operation = getattr(git_api.git_service, action)
+    await _share_git_result(operation(
+        tree_id, body.branch, body.snapshot, body.remote, body.target_branch,
+        body.set_upstream,
+    ))
+    return {"completed": True}
 
 
 @router.get("/task")

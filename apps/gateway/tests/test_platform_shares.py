@@ -308,6 +308,9 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
         commit_body = {"paths": ["README.md"], "message": "Share commit", "snapshot": "d" * 64}
         assert client.post(commit_path, headers={"X-Share-CSRF": read_csrf},
                            json=commit_body).status_code == 403
+        sync_body = {"branch": "feature", "snapshot": "d" * 64}
+        assert client.post(f"/api/public/shares/{token}/git/worktrees/{'a' * 24}/push",
+                           headers={"X-Share-CSRF": read_csrf}, json=sync_body).status_code == 403
         assert client.get(f"/api/public/shares/{token}/reviews").status_code == 200
         assert client.post(f"/api/public/shares/{token}/steps/build/review/approve",
                            headers={"X-Share-CSRF": read_csrf},
@@ -380,6 +383,15 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
             f"/api/platform-share/git/worktrees/{'a' * 24}/commit",
             b'{"paths":["README.md"],"message":"Share commit","snapshot":"' + b"d" * 64 + b'"}',
         )
+        for action in ("pull", "push"):
+            sync_path = f"/api/public/shares/{token}/git/worktrees/{'a' * 24}/{action}"
+            assert client.post(sync_path, json=sync_body).status_code == 403
+            synced = client.post(sync_path, headers={"X-Share-CSRF": csrf}, json=sync_body)
+            assert synced.status_code == 200
+            assert captured[-1] == (
+                f"/api/platform-share/git/worktrees/{'a' * 24}/{action}",
+                b'{"branch":"feature","snapshot":"' + b"d" * 64 + b'","set_upstream":false}',
+            )
         assert client.post(f"/api/public/shares/{token}/steps/../message",
                            headers={"X-Share-CSRF": csrf},
                            json={"content": "escape"}).status_code != 200

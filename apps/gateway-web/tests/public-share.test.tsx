@@ -218,6 +218,8 @@ test('interactive public share sends a step message with session CSRF', async ()
     if (url.endsWith(`/git/worktrees/${'a'.repeat(24)}/commit`)) return Response.json({
       head: 'f'.repeat(40),
     })
+    if (url.endsWith(`/git/worktrees/${'a'.repeat(24)}/pull`)
+      || url.endsWith(`/git/worktrees/${'a'.repeat(24)}/push`)) return Response.json({ completed: true })
     if (url.endsWith('/uploads') && init?.method === 'POST') return Response.json({
       filename: `t${'a'.repeat(24)}-${'b'.repeat(32)}.txt`, size: 7,
       url: `.workstep/uploads/t${'a'.repeat(24)}-${'b'.repeat(32)}.txt`,
@@ -267,4 +269,13 @@ test('interactive public share sends a step message with session CSRF', async ()
   assert.equal((commit?.headers as Record<string, string>)?.['X-Share-CSRF'], 'csrf-1')
   assert.equal(commit?.body, JSON.stringify({ paths: ['README.md'], message: 'Share commit',
     snapshot: 'd'.repeat(64) }))
+  for (const [action, label] of [['pull', '拉取'], ['push', '推送']] as const) {
+    fireEvent.click(screen.getByRole('button', { name: `${label} app` }))
+    await screen.findByRole('dialog', { name: `确认 Git ${label}` })
+    fireEvent.click(screen.getByRole('button', { name: `确认${label}` }))
+    await waitFor(() => assert.equal(calls.filter(call => call.url.endsWith(`/${action}`)).length, 1))
+    const sync = calls.find(call => call.url.endsWith(`/${action}`))
+    assert.equal((sync?.headers as Record<string, string>)?.['X-Share-CSRF'], 'csrf-1')
+    assert.equal(sync?.body, JSON.stringify({ branch: 'feature', snapshot: 'd'.repeat(64) }))
+  }
 })

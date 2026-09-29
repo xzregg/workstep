@@ -130,6 +130,32 @@ async def test_platform_share_git_workspace_rechecks_task_and_hides_host_paths(a
     assert time.monotonic() - started < 0.5
     assert await pending_commit == (200, {"head": "f" * 40})
     assert commits == [("a" * 24, ["README.md"], "Share commit", "d" * 64)]
+    sync_calls = []
+    sync_entered = threading.Event()
+
+    async def sync(tree_id, branch, snapshot, remote=None, target_branch=None, set_upstream=False):
+        sync_entered.set()
+        await asyncio.to_thread(time.sleep, 0.7)
+        sync_calls.append((tree_id, branch, snapshot, remote, target_branch, set_upstream))
+        return {"path": "/private/host/worktree", "branch": branch}
+
+    monkeypatch.setattr(git_service, "pull", sync)
+    monkeypatch.setattr(git_service, "push", sync)
+    sync_body = {"branch": "feature", "snapshot": "d" * 64}
+    for action in ("pull", "push"):
+        sync_path = f"/api/platform-share/git/worktrees/{'a' * 24}/{action}"
+        assert (await read(sync_path, method="POST", body=sync_body))[0] == 403
+        assert (await read(sync_path, task_id=task_ids[1], method="POST",
+                           mode="interactive", body=sync_body))[0] == 404
+        pending_sync = asyncio.create_task(read(sync_path, method="POST",
+                                                mode="interactive", body=sync_body))
+        assert await asyncio.to_thread(sync_entered.wait, 2)
+        started = time.monotonic()
+        assert (await client.get("/api/health")).status_code == 200
+        assert time.monotonic() - started < 0.5
+        assert await pending_sync == (200, {"completed": True})
+        sync_entered.clear()
+    assert sync_calls == [("a" * 24, "feature", "d" * 64, None, None, False)] * 2
     from fastapi import HTTPException
 
     async def broken_status(_tree_id):

@@ -75,6 +75,14 @@ class ShareGitCommitInput(BaseModel):
         return value.strip()
 
 
+class ShareGitSyncInput(BaseModel):
+    branch: str = Field(min_length=1, max_length=1024)
+    snapshot: str = Field(pattern=r"^[0-9a-f]{64}$")
+    remote: str | None = Field(default=None, min_length=1, max_length=1024)
+    target_branch: str | None = Field(default=None, min_length=1, max_length=1024)
+    set_upstream: bool = False
+
+
 def _share_csrf(session_token: str) -> str:
     return hashlib.sha256(f"share-csrf:{session_token}".encode()).hexdigest()
 
@@ -145,6 +153,14 @@ async def _share_git_commit_body(request: Request) -> bytes:
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail="Invalid Git commit") from exc
     return json.dumps(body.model_dump(), separators=(",", ":")).encode()
+
+
+async def _share_git_sync_body(request: Request) -> bytes:
+    try:
+        body = ShareGitSyncInput.model_validate(await _bounded_share_json(request))
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail="Invalid Git sync request") from exc
+    return json.dumps(body.model_dump(exclude_none=True), separators=(",", ":")).encode()
 
 
 async def can_create_platform_share(session, user_id: str, project: PlatformProject) -> bool:
@@ -483,6 +499,16 @@ async def public_share_git_commit(request: Request, token: str, tree_id: str):
     )
 
 
+@router.post("/public/shares/{token}/git/worktrees/{tree_id}/{action}")
+async def public_share_git_sync(request: Request, token: str, tree_id: str, action: str):
+    if not re.fullmatch(r"[0-9a-f]{24}", tree_id) or action not in {"pull", "push"}:
+        raise HTTPException(status_code=404, detail="Git operation unavailable")
+    return await _proxy_share_request(
+        request, token, f"/api/platform-share/git/worktrees/{tree_id}/{action}",
+        write=True, body_kind="git_sync",
+    )
+
+
 @router.post("/public/shares/{token}/steps/{step_key}/message")
 async def public_share_step_message(request: Request, token: str, step_key: str):
     return await _proxy_share_step(request, token, step_key, "message")
@@ -534,7 +560,7 @@ async def public_share_intervention_response(request: Request, token: str,
 async def _proxy_share_request(request: Request, token: str, target_path: str,
                                *, write: bool = False,
                                interactive_read: bool = False,
-                               body_kind: Literal["message", "review", "interaction", "upload", "git_commit"] | None = None):
+                               body_kind: Literal["message", "review", "interaction", "upload", "git_commit", "git_sync"] | None = None):
     share, project = await _authorized_visitor(request, token, touch=True)
     if write or interactive_read:
         if share.mode != "interactive":
@@ -545,6 +571,7 @@ async def _proxy_share_request(request: Request, token: str, target_path: str,
                   else await _share_review_body(request) if body_kind == "review"
                   else await _share_interaction_body(request) if body_kind == "interaction"
                   else await _share_git_commit_body(request) if body_kind == "git_commit"
+                  else await _share_git_sync_body(request) if body_kind == "git_sync"
                   else await _share_upload_body(request) if body_kind == "upload"
                   else b"" if write else None)
     connections = request.app.state.control_connections
