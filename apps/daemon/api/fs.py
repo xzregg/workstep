@@ -13,7 +13,10 @@ from pydantic import BaseModel
 
 from services.config import CONFIG_DIR
 from api.fs_browser import router as browser_router
-from api.fs_paths import _assert_project_path, _project, _project_relative_path, _resolve_project_file
+from api.fs_paths import (
+    _assert_project_path, _path_error_detail, _project, _project_relative_path,
+    _require_actor_project, _resolve_project_file,
+)
 
 router = APIRouter(prefix="/api/fs")
 router.include_router(browser_router)
@@ -349,6 +352,7 @@ async def serve_upload(
     pid: str = Query("", alias="project_id"),
 ):
     """Serve an uploaded file from a project or the global uploads dir."""
+    _require_actor_project(pid or None)
     if not pid:
         return await asyncio.to_thread(
             _serve_upload_file, CONFIG_DIR / "data" / "uploads", filename
@@ -378,6 +382,7 @@ async def serve_upload_by_project_name(project_name: str, filename: str):
     project = project_manager.get_project_by_name(project_name)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
+    _require_actor_project(project.id)
     return await asyncio.to_thread(
         _serve_upload_file, Path(project.workstep_dir) / "uploads", filename
     )
@@ -387,12 +392,11 @@ async def serve_upload_by_project_name(project_name: str, filename: str):
 async def serve_file(path: str, project_id: str | None = Query(None)):
     """Serve a raw file over HTTP (used for HTML preview links / downloads)."""
     def response() -> FileResponse:
-        file_path = Path(path).expanduser().resolve()
-        _assert_project_path(file_path, project_id)
+        file_path = _resolve_project_file(path, project_id)
         if not file_path.exists():
-            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+            raise HTTPException(status_code=404, detail=_path_error_detail("File not found", file_path))
         if not file_path.is_file():
-            raise HTTPException(status_code=400, detail=f"Not a file: {file_path}")
+            raise HTTPException(status_code=400, detail=_path_error_detail("Not a file", file_path))
         content_type, _ = mimetypes.guess_type(str(file_path))
         return FileResponse(file_path, media_type=content_type or "application/octet-stream")
 
@@ -407,9 +411,9 @@ async def serve_raw_file(full_path: str, project_id: str | None = Query(None)):
         file_path = Path("/" + full_path).expanduser().resolve()
         _assert_project_path(file_path, project_id)
         if not file_path.exists():
-            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+            raise HTTPException(status_code=404, detail=_path_error_detail("File not found", file_path))
         if not file_path.is_file():
-            raise HTTPException(status_code=400, detail=f"Not a file: {file_path}")
+            raise HTTPException(status_code=400, detail=_path_error_detail("Not a file", file_path))
         content_type, _ = mimetypes.guess_type(str(file_path))
         return FileResponse(file_path, media_type=content_type or "application/octet-stream")
 
@@ -432,9 +436,9 @@ async def serve_project_raw_file(
             allow_absolute=absolute,
         )
         if not file_path.exists():
-            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+            raise HTTPException(status_code=404, detail=_path_error_detail("File not found", file_path))
         if not file_path.is_file():
-            raise HTTPException(status_code=400, detail=f"Not a file: {file_path}")
+            raise HTTPException(status_code=400, detail=_path_error_detail("Not a file", file_path))
         content_type, _ = mimetypes.guess_type(str(file_path))
         return FileResponse(file_path, media_type=content_type or "application/octet-stream")
 
@@ -455,10 +459,10 @@ def _preview_file_sync(path: str, project_id: str | None, absolute: bool):
     file_path = _resolve_project_file(path, project_id, allow_absolute=absolute)
 
     if not file_path.exists():
-        raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+        raise HTTPException(status_code=404, detail=_path_error_detail("File not found", file_path))
 
     if not file_path.is_file():
-        raise HTTPException(status_code=400, detail=f"Not a file: {file_path}")
+        raise HTTPException(status_code=400, detail=_path_error_detail("Not a file", file_path))
 
     content_type, _ = mimetypes.guess_type(str(file_path))
     file_size = file_path.stat().st_size
@@ -484,7 +488,7 @@ def _preview_file_sync(path: str, project_id: str | None, absolute: bool):
                 "relative_path": relative_path,
             }
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to read image: {str(e)}")
+            raise HTTPException(status_code=500, detail=_path_error_detail("Failed to read image", e))
 
     try:
         content = file_path.read_text(encoding='utf-8')
@@ -509,7 +513,7 @@ def _preview_file_sync(path: str, project_id: str | None, absolute: bool):
             "relative_path": relative_path,
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to read file: {str(e)}")
+        raise HTTPException(status_code=500, detail=_path_error_detail("Failed to read file", e))
 
 
 @router.post("/open-directory")

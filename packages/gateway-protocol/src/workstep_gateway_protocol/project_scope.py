@@ -157,7 +157,7 @@ def project_http_route_allowed(method: str, path: str,
                    for key, _ in query_pairs) and all(
                        value in ("false", "False", "0") for key, value in query_pairs
                        if key == "absolute")
-    if path.startswith("/api/fs/raw/") or _UPLOAD_FILE.fullmatch(path):
+    if _UPLOAD_FILE.fullmatch(path):
         return len(query_pairs) == 1
     if path == "/api/task/list":
         return all(key in ("project_id", "workflow_id", "archived")

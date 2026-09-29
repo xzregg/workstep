@@ -3,11 +3,25 @@
 from pathlib import Path
 
 from fastapi import HTTPException
+from services.remote_access import get_current_actor
+
+
+def _require_actor_project(project_id: str | None) -> None:
+    actor = get_current_actor()
+    if actor is not None and actor.project_id is not None and actor.project_id != project_id:
+        raise HTTPException(status_code=403, detail="Project scope denied")
+
+
+def _path_error_detail(label: str, path: object) -> str:
+    actor = get_current_actor()
+    return label if actor is not None and actor.project_id is not None else f"{label}: {path}"
 
 
 def _project(project_id: str):
     """Resolve project paths without opening or rebinding its database."""
     from main import project_manager
+
+    _require_actor_project(project_id)
 
     if not project_manager:
         raise HTTPException(status_code=503, detail="Service not initialized")
@@ -18,6 +32,7 @@ def _project(project_id: str):
 
 
 def _assert_project_path(path: Path, project_id: str | None) -> None:
+    _require_actor_project(project_id)
     if not project_id:
         return
     project = _project(project_id)
@@ -34,6 +49,10 @@ def _resolve_project_file(
     allow_absolute: bool = False,
 ) -> Path:
     """Resolve a file link, allowing project escape only for explicit absolute paths."""
+    _require_actor_project(project_id)
+    actor = get_current_actor()
+    if actor is not None and actor.project_id is not None:
+        allow_absolute = False
     candidate = Path(path).expanduser()
     if not project_id:
         return candidate.resolve()
