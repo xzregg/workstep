@@ -381,6 +381,15 @@ async def public_share_artifact_content(request: Request, token: str, artifact_i
     )
 
 
+@router.get("/public/shares/{token}/artifacts/{artifact_id}/preview")
+async def public_share_artifact_preview(request: Request, token: str, artifact_id: str):
+    if not re.fullmatch(r"[0-9a-f]{64}", artifact_id):
+        raise HTTPException(status_code=404, detail="Artifact unavailable")
+    return await _proxy_share_request(
+        request, token, f"/api/platform-share/artifacts/{artifact_id}/preview",
+    )
+
+
 @router.post("/public/shares/{token}/steps/{step_key}/message")
 async def public_share_step_message(request: Request, token: str, step_key: str):
     return await _proxy_share_step(request, token, step_key, "message")

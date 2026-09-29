@@ -93,6 +93,8 @@ Gateway 审计工作台由 `apps/gateway-web/src/AdminAuditPage.tsx` 持有筛�
 
 并发任务队列在 `services/workflow_runtime.py::WorkflowRuntime.start` 与 `_mark_task_status` 把启动文本、来源及发起人写入 `models/task.py::Task.queued_run_json`；`requeue_queued_tasks` 按保存的来源重新入队，`services/workflow_start.py::prepare_start_in_project` 消费快照、写 `WorkflowRun.trigger_source` 与发起人并清除任务队列字段。旧排队任务回退创建人，取消排队清除快照。行为与慢 SQL canary 见 `tests/test_concurrency_gate.py`、`tests/test_workflow_run_attribution.py`、`tests/test_api_contracts.py`，迁移见 `tests/test_migrations.py`。
 
+平台分享页在 `apps/gateway-web/src/PublicSharePage.tsx` 装配任务和产物列表，`SharedArtifactItem.tsx` 管理单个产物的按需预览与下载。Gateway `platform_shares.py` 校验访客会话并由 `control_connection.py::DataConnection.proxy_http` 将固定路径转发给宿主；daemon `api/platform_share.py` 根据签名票据中的任务重新匹配产物标识，预览复用 `api/fs.py::_preview_file_sync` 的 1 MiB 限额并在线程中读取，仅返回内容和类型。受管访问边界在 `services/desktop_security.py`。行为与慢文件健康检查见 daemon `tests/test_platform_share_task.py`、Gateway `tests/test_platform_shares.py` 和 `test_data_http.py`、Gateway Web `tests/public-share.test.tsx`。
+
 修改功能时先找所属模块，再沿前端页面或组件 → API → 服务 → 数据模型追踪。行为测试放在实际拥有该行为的模块附近；不要把页面、`src/api/client.ts` 或通用服务文件作为新功能的默认落点。
 
 | 功能 | Web 入口 | Daemon 入口 | 深入阅读 |

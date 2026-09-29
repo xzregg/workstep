@@ -42,7 +42,7 @@ REMOTE_PROJECT_SCOPED_FS = frozenset({
     "/api/fs/browse", "/api/fs/search", "/api/fs/file", "/api/fs/preview",
     "/api/fs/serve", "/api/fs/upload/file", "/api/fs/upload/image",
 })
-SHARE_ARTIFACT_CONTENT = re.compile(r"/api/platform-share/artifacts/[0-9a-f]{64}/content\Z")
+SHARE_ARTIFACT_CONTENT = re.compile(r"/api/platform-share/artifacts/[0-9a-f]{64}/(?:content|preview)\Z")
 SHARE_HISTORY_PAGE = re.compile(r"/api/platform-share/history/(?:0|[1-9][0-9]{0,5})\Z")
 SHARE_EVENTS_PAGE = re.compile(
     r"/api/platform-share/events/[A-Za-z0-9_-]{1,128}/(?:0|[1-9][0-9]{0,8})\Z"

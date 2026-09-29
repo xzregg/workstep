@@ -108,6 +108,8 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
                                          "next_cursor": None})
                 if target_path == "/api/platform-share/artifacts":
                     return JSONResponse({"artifacts": [{"id": "a" * 64, "name": "result.txt"}]})
+                if target_path.endswith("/preview"):
+                    return JSONResponse({"type": "text", "content": "visible preview"})
                 if target_path.endswith("/content"):
                     return JSONResponse({"content": "visible"})
                 return JSONResponse({"id": "task-1", "title": "Shared task"})
@@ -142,6 +144,10 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         content = client.get(f"/api/public/shares/{token}/artifacts/{'a' * 64}/content")
         assert content.status_code == 200
         assert captured["path"] == f"/api/platform-share/artifacts/{'a' * 64}/content"
+        preview = client.get(f"/api/public/shares/{token}/artifacts/{'a' * 64}/preview")
+        assert preview.status_code == 200
+        assert preview.json()["content"] == "visible preview"
+        assert captured["path"] == f"/api/platform-share/artifacts/{'a' * 64}/preview"
         assert client.get(f"/api/public/shares/{token}/artifacts/invalid/content").status_code == 404
         import base64
         import json
