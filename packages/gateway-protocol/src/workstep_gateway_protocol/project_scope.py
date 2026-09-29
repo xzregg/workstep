@@ -21,6 +21,8 @@ _CHAT_SESSION_DETAIL = re.compile(r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}\Z")
 _CHAT_MESSAGE_EVENTS = re.compile(
     r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}/messages/"
     r"[A-Za-z0-9_-]{1,128}/events\Z")
+_CHAT_SESSION_CHAT = re.compile(
+    r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}/chat\Z")
 _UPLOAD_FILE = re.compile(r"/api/fs/serve/[A-Za-z0-9_.-]{1,256}\Z")
 _PROJECT_RAW = re.compile(r"/api/fs/project-raw/[A-Za-z0-9_-]{1,128}/.+\Z")
 
@@ -42,6 +44,8 @@ def project_http_route_allowed(method: str, path: str,
             return path == "/api/fs/entry"
         if path == "/api/task/create":
             return task_create
+        if path == "/api/chat-sessions" or _CHAT_SESSION_CHAT.fullmatch(path):
+            return True
         if path in ("/api/fs/upload/file", "/api/fs/upload/image", "/api/fs/entry"):
             return True
         if _TASK_CHAT.fullmatch(path) or _TASK_STEP_MESSAGE.fullmatch(path):

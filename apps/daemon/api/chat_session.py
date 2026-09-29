@@ -132,6 +132,14 @@ def _error_status(exc: ValueError) -> int:
     return 400
 
 
+def _enforce_project_scope(project_id: str) -> None:
+    from services.remote_access import get_current_actor
+
+    actor = get_current_actor()
+    if actor is not None and actor.project_id is not None and actor.project_id != project_id:
+        raise HTTPException(status_code=403, detail="Project scope denied")
+
+
 async def _run_db(project_id: str, operation):
     from main import project_manager
 
@@ -234,6 +242,7 @@ async def archive_session(session_id: str, req: ChatSessionArchiveRequest):
 @router.post("")
 async def create_session(req: ChatSessionCreateRequest):
     """Create one chat session for a project."""
+    _enforce_project_scope(req.project_id)
     try:
         session = await _run_db(
             req.project_id,
@@ -393,6 +402,7 @@ async def chat_message(
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
 ):
     """Queue one chat turn for a session; events stream over WebSocket."""
+    _enforce_project_scope(req.project_id)
     try:
         accepted = await _run_db(
             req.project_id,
