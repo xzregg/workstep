@@ -26,7 +26,7 @@ from services.artifacts import (
     list_task_artifact_input_snapshots,
     list_task_artifacts,
 )
-from api.task_context import _project, _run_db
+from api.task_context import _project, _require_scoped_task, _run_db
 
 router = APIRouter(prefix="/api/task")
 
@@ -638,6 +638,7 @@ async def cancel_task(req: CancelTaskRequest, pid: str | None = Query(None, alia
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(pid, req.task_id)
     if pid:
         _project(pid)
     cancelled = await workflow_runtime.cancel(req.task_id)
@@ -652,6 +653,7 @@ class PauseTaskRequest(BaseSchema):
 async def pause_task(req: PauseTaskRequest, pid: str = Query(..., alias="project_id")):
     """Pause a running task."""
     from main import task_service, workflow_runtime
+    await _require_scoped_task(pid, req.task_id)
     if workflow_runtime and await workflow_runtime.cancel(req.task_id, action="task.pause"):
         return {"paused": True}
     if not task_service:
