@@ -24,6 +24,13 @@ def test_project_http_allowlist_matches_only_the_bound_project():
     assert allowed("GET", "/api/project/host-1/summary", [], "host-1")
     assert not allowed("GET", "/api/project/host-2/summary", [], "host-1")
     assert allowed("GET", "/api/task/list", [("project_id", "host-1")], "host-1")
+    assert allowed("GET", "/api/statistics/overview", [
+        ("project_id", "host-1"), ("range", "7d")], "host-1")
+    assert not allowed("GET", "/api/statistics/overview", [], "host-1")
+    assert not allowed("GET", "/api/statistics/overview", [
+        ("project_id", "host-2")], "host-1")
+    assert not allowed("GET", "/api/statistics/overview", [
+        ("project_id", "host-1"), ("project_id", "host-2")], "host-1")
     assert allowed("GET", "/api/task/task-1", [("project_id", "host-1")], "host-1")
     assert allowed("GET", "/api/task/task-1/archive-experience/draft", [
         ("project_id", "host-1")], "host-1")
