@@ -6,7 +6,7 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, Query
 
-from api.task_context import _project, _run_db
+from api.task_context import _project, _require_scoped_task, _run_db
 from schemas.base import BaseSchema
 
 router = APIRouter(prefix="/api/task")
@@ -116,6 +116,7 @@ async def archive_task(req: ArchiveTaskRequest, pid: str = Query(..., alias="pro
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(pid, req.task_id)
     try:
         archived = await _run_db(
             pid,
@@ -333,6 +334,7 @@ async def unarchive_task(req: ArchiveTaskRequest, pid: str = Query(..., alias="p
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(pid, req.task_id)
     try:
         unarchived = await _run_db(
             pid,

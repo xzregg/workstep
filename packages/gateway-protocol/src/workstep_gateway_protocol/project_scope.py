@@ -75,6 +75,8 @@ def project_http_route_allowed(method: str, path: str,
                 return True
             return path == "/api/fs/entry"
         if method == "DELETE":
+            if path == "/api/task/delete":
+                return True
             if _TASK_STEP_CONFIG.fullmatch(path):
                 return True
             if _WORKFLOW_DETAIL.fullmatch(path):
@@ -84,6 +86,10 @@ def project_http_route_allowed(method: str, path: str,
             return path == "/api/fs/entry"
         if path == "/api/task/create":
             return task_create
+        if path == "/api/task/copy":
+            return task_create
+        if path in ("/api/task/archive", "/api/task/unarchive"):
+            return True
         if path in ("/api/workflow/create", "/api/workflow/reorder"):
             return True
         if _WORKFLOW_ACTION.fullmatch(path):
