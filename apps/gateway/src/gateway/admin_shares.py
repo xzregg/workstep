@@ -1,5 +1,6 @@
 """Platform share inventory and administrator lifecycle controls."""
 
+import json
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -110,11 +111,11 @@ async def change_admin_share(request: Request, share_id: str, action: str):
                 expiry = share.expires_at.replace(tzinfo=timezone.utc) if share.expires_at.tzinfo is None else share.expires_at
                 if expiry <= datetime.now(timezone.utc):
                     raise HTTPException(status_code=409, detail="Share expired")
+            project = await session.get(PlatformProject, share.project_id)
             if action == "pause":
                 share.status = "paused"
             elif action == "resume":
                 device = await session.get(Device, share.device_id)
-                project = await session.get(PlatformProject, share.project_id)
                 if (device is None or device.status != "active" or project is None
                         or project.status != "active"
                         or project.access_mode != "remote_published"):
@@ -130,4 +131,10 @@ async def change_admin_share(request: Request, share_id: str, action: str):
             session.add(AuditEvent(
                 id=str(uuid4()), user_id=actor.id, device_id=share.device_id,
                 action=f"platform_share.{action}", result="success",
+                project_id=project.host_project_id if project else None,
+                task_id=share.task_id,
+                actor_username=actor.username, actor_name=actor.display_name,
+                actor_type="user", initiated_by_user_id=actor.id,
+                initiated_by_username=actor.username,
+                metadata_json=json.dumps({"share_id": share.id}),
             ))

@@ -132,7 +132,7 @@ async def record_audit_batch(
 _VISIBLE_METADATA_KEYS = _METADATA_KEYS | {
     "device_id", "user_id", "group_id", "project_id", "provider_id",
     "batch_id", "skill_id", "source_id", "scope_type", "scope_id",
-    "subject_id", "subject_type", "access_level", "role",
+    "subject_id", "subject_type", "access_level", "role", "share_id",
 }
 
 
