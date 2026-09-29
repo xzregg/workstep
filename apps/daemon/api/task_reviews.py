@@ -4,7 +4,7 @@ import json
 
 from fastapi import APIRouter, HTTPException, Query
 
-from api.task_context import _run_db
+from api.task_context import _require_scoped_task, _run_db
 from schemas.task import ReviewDecisionRequest
 
 router = APIRouter(prefix="/api/task")
@@ -17,6 +17,7 @@ async def get_task_reviews(
 ):
     """Return persisted review history for a task."""
     from models import ReviewRun
+    await _require_scoped_task(pid, task_id)
     def load_reviews():
         rows = (
             ReviewRun.select()
@@ -58,6 +59,7 @@ async def _decide_review(
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(project_id, task_id)
     try:
         options = (
             {"schedule_downstream": req.schedule_downstream}

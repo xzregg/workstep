@@ -129,6 +129,14 @@ def test_project_http_allowlist_matches_only_the_bound_project():
         ("POST", "/api/task/task-1/step/dev/restart"),
         ("POST", "/api/task/task-1/messages/message-1/retry"),
         ("POST", "/api/task/task-1/messages/message-1/set-complete"),
+        ("POST", "/api/task/task-1/actions/proposal-1/confirm"),
+        ("POST", "/api/task/task-1/actions/proposal-1/cancel"),
+        ("POST", "/api/task/task-1/steps/dev/review/approve"),
+        ("POST", "/api/task/task-1/steps/dev/review/reject"),
+        ("POST", "/api/task/task-1/steps/dev/review/force-approve"),
+        ("POST", "/api/task/task-1/steps/dev/review/terminate"),
+        ("POST", "/api/task/task-1/steps/dev/review/complete-task"),
+        ("POST", "/api/task/task-1/steps/dev/review/set-complete"),
     ):
         assert allowed(method, path, [("project_id", "host-1")],
                        "host-1", access_level="edit")

@@ -49,7 +49,7 @@ async def test_project_proxy_task_actions_are_project_scoped(
     monkeypatch.setattr(main.gateway_client, "managed_config", object())
 
     async def request(path, task_id, *, method="POST", query_project=visible,
-                      level="edit", body=None):
+                      level="edit", body=None, extra_headers=None):
         frames = []
 
         async def capture(frame):
@@ -57,7 +57,7 @@ async def test_project_proxy_task_actions_are_project_scoped(
 
         bridge = ManagedHttpBridge(main.app, "project-task-action", {
             "method": method, "path": path, "query": f"project_id={query_project}",
-            "headers": [["content-type", "application/json"]],
+            "headers": [["content-type", "application/json"], *(extra_headers or [])],
             "user_id": "worker", "username": "worker", "project_id": visible,
             "access_level": level,
         }, capture, "device-1")
@@ -146,6 +146,45 @@ async def test_project_proxy_task_actions_are_project_scoped(
     for operation in (stop_coordinator, cancel_step, resume_step, restart_step,
                       retry_message, complete_message):
         operation.assert_awaited_once()
+
+    review_history = "/api/task/visible-task-id/reviews"
+    assert await request(review_history, "visible-task-id", method="GET",
+                         level="read") == 200
+    assert await request("/api/task/private-task-id/reviews", "private-task-id",
+                         method="GET") == 404
+    decide_review = AsyncMock(return_value=None)
+    monkeypatch.setattr(main.workflow_runtime, "decide_review", decide_review)
+    for decision in ("approve", "reject", "force-approve", "terminate",
+                     "complete-task", "set-complete"):
+        suffix = f"/steps/dev/review/{decision}"
+        body = {"review_run_id": "review-1", "schedule_downstream": False}
+        assert await request(f"/api/task/visible-task-id{suffix}", "visible-task-id",
+                             body=body, level="read") == 403
+        assert await request(f"/api/task/visible-task-id{suffix}", "visible-task-id",
+                             body=body, query_project=private) == 403
+        assert await request(f"/api/task/private-task-id{suffix}", "private-task-id",
+                             body=body) == 404
+        assert await request(f"/api/task/visible-task-id{suffix}", "visible-task-id",
+                             body=body) == 200
+    assert decide_review.await_count == 6
+
+    confirm_action = AsyncMock(return_value={"status": "confirmed"})
+    cancel_action = AsyncMock(return_value={"status": "cancelled"})
+    monkeypatch.setattr(main.coordinator_module, "confirm_action", confirm_action)
+    monkeypatch.setattr(main.coordinator_module, "cancel_action", cancel_action)
+    for action in ("confirm", "cancel"):
+        suffix = f"/actions/proposal-1/{action}"
+        headers = [["idempotency-key", "proposal-1"]]
+        assert await request(f"/api/task/visible-task-id{suffix}", "visible-task-id",
+                             body={}, extra_headers=headers, level="read") == 403
+        assert await request(f"/api/task/visible-task-id{suffix}", "visible-task-id",
+                             body={}, extra_headers=headers, query_project=private) == 403
+        assert await request(f"/api/task/private-task-id{suffix}", "private-task-id",
+                             body={}, extra_headers=headers) == 404
+        assert await request(f"/api/task/visible-task-id{suffix}", "visible-task-id",
+                             body={}, extra_headers=headers) == 200
+    confirm_action.assert_awaited_once()
+    cancel_action.assert_awaited_once()
 
     from api import task_context
 
