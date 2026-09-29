@@ -110,6 +110,8 @@ def test_project_http_allowlist_matches_only_the_bound_project():
         ("PUT", "/api/chat-sessions/quick-buttons"),
         ("PUT", "/api/chat-sessions/system-prompt"),
         ("POST", "/api/chat-sessions/enhance-prompt"),
+        ("POST", "/api/chat-sessions/session-1/fork"),
+        ("POST", "/api/chat-sessions/session-1/handoff"),
     ):
         assert allowed(method, path, [("project_id", "host-1")],
                        "host-1", access_level="edit")

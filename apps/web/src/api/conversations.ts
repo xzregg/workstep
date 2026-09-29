@@ -456,12 +456,12 @@ export const chatSessionApi = {
     ),
   fork: (sessionId: string, input: ChatSessionForkInput) =>
     request<ChatSessionDetail>(
-      `/chat-sessions/${encodeURIComponent(sessionId)}/fork`,
+      `/chat-sessions/${encodeURIComponent(sessionId)}/fork?project_id=${encodeURIComponent(input.project_id)}`,
       { method: 'POST', body: JSON.stringify(input) },
     ),
   handoff: (sessionId: string, input: ChatSessionHandoffInput) =>
     request<ChatSessionDetail>(
-      `/chat-sessions/${encodeURIComponent(sessionId)}/handoff`,
+      `/chat-sessions/${encodeURIComponent(sessionId)}/handoff?project_id=${encodeURIComponent(input.project_id)}`,
       { method: 'POST', body: JSON.stringify(input) },
     ),
   chat: (

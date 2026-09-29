@@ -173,3 +173,22 @@ async def test_project_proxy_chat_creation_and_message_are_project_scoped(chat_m
     code, enhanced = await request(enhance_path, {"project_id": visible, "prompt": "draft"})
     assert code == 200 and enhanced["prompt"] == "Improved"
     enhance.assert_awaited_once_with(visible, "draft")
+
+    source = await manager.run_db(
+        visible, lambda _project: module.create_session(visible, engine="claude")
+    )
+    fork_path = f"/api/chat-sessions/{source['id']}/fork"
+    fork_body = {"project_id": visible, "title": "Branch", "engine": "pydantic_ai",
+                 "context_mode": "none"}
+    assert (await request(fork_path, {**fork_body, "project_id": private}))[0] == 403
+    assert (await request(fork_path, fork_body, level="read"))[0] == 403
+    assert (await request("/api/chat-sessions/missing/fork", fork_body))[0] == 404
+    code, forked = await request(fork_path, fork_body)
+    assert code == 200 and forked["parent_session_id"] == source["id"]
+    handoff_path = f"/api/chat-sessions/{source['id']}/handoff"
+    handoff_body = {"project_id": visible, "engine": "pydantic_ai",
+                    "context_mode": "none"}
+    assert (await request(handoff_path, {**handoff_body, "project_id": private}))[0] == 403
+    assert (await request(handoff_path, handoff_body, level="read"))[0] == 403
+    code, handed_off = await request(handoff_path, handoff_body)
+    assert code == 200 and handed_off["engine"] == "pydantic_ai"

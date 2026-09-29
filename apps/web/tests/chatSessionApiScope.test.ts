@@ -20,6 +20,12 @@ test('session writes include the bound project in URL and body', async () => {
     await chatSessionApi.saveQuickButtons('project one', [])
     await chatSessionApi.saveSystemPrompt('project one', 'Work here')
     await chatSessionApi.enhancePrompt('project one', 'draft')
+    await chatSessionApi.fork('session-1', {
+      project_id: 'project one', title: 'Fork', engine: 'pydantic_ai', context_mode: 'none',
+    })
+    await chatSessionApi.handoff('session-1', {
+      project_id: 'project one', engine: 'pydantic_ai', context_mode: 'none',
+    })
     assert.match(calls[0].url, /\/chat-sessions\?project_id=project%20one$/)
     assert.match(calls[1].url, /\/chat-sessions\/session-1\/chat\?project_id=project%20one$/)
     assert.equal(JSON.parse(calls[0].body).project_id, 'project one')

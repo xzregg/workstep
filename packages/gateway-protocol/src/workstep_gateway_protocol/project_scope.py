@@ -27,6 +27,8 @@ _CHAT_SESSION_UPDATE = re.compile(
     r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}/(?:archive|permission-mode)\Z")
 _CHAT_SESSION_ACTION = re.compile(
     r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}/(?:live-message|stop)\Z")
+_CHAT_SESSION_TRANSITION = re.compile(
+    r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}/(?:fork|handoff)\Z")
 _UPLOAD_FILE = re.compile(r"/api/fs/serve/[A-Za-z0-9_.-]{1,256}\Z")
 _PROJECT_RAW = re.compile(r"/api/fs/project-raw/[A-Za-z0-9_-]{1,128}/.+\Z")
 
@@ -61,7 +63,7 @@ def project_http_route_allowed(method: str, path: str,
             return True
         if path == "/api/chat-sessions/enhance-prompt":
             return True
-        if _CHAT_SESSION_ACTION.fullmatch(path):
+        if _CHAT_SESSION_ACTION.fullmatch(path) or _CHAT_SESSION_TRANSITION.fullmatch(path):
             return True
         if path in ("/api/fs/upload/file", "/api/fs/upload/image", "/api/fs/entry"):
             return True

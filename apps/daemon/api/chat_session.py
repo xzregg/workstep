@@ -344,6 +344,7 @@ async def update_permission_mode(
 @router.post("/{session_id}/fork")
 async def fork_session(session_id: str, req: ChatSessionForkRequest):
     """Create an independent native or history-backed chat-session fork."""
+    _enforce_project_scope(req.project_id)
     try:
         return await _module().fork_session(
             req.project_id,
@@ -365,6 +366,7 @@ async def fork_session(session_id: str, req: ChatSessionForkRequest):
 @router.post("/{session_id}/handoff")
 async def handoff_session(session_id: str, req: ChatSessionHandoffRequest):
     """Switch engines without creating another visible chat session."""
+    _enforce_project_scope(req.project_id)
     try:
         return await _run_db(
             req.project_id,
