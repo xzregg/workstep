@@ -132,7 +132,7 @@ def _error_status(exc: ValueError) -> int:
     return 400
 
 
-def _enforce_project_scope(project_id: str) -> None:
+def _enforce_project_scope(project_id: str | None) -> None:
     from services.remote_access import get_current_actor
 
     actor = get_current_actor()
@@ -230,6 +230,7 @@ async def list_sessions(
 
 @router.patch("/{session_id}/archive")
 async def archive_session(session_id: str, req: ChatSessionArchiveRequest):
+    _enforce_project_scope(req.project_id)
     try:
         return await _run_db(
             req.project_id,
@@ -307,6 +308,7 @@ async def rename_session(
     req: ChatSessionRenameRequest,
 ):
     """Rename one chat session."""
+    _enforce_project_scope(req.project_id)
     try:
         session = await _run_db(
             req.project_id,
@@ -325,6 +327,7 @@ async def update_permission_mode(
     req: ChatSessionPermissionRequest,
 ):
     """Apply a permission mode to the current run and future turns."""
+    _enforce_project_scope(req.project_id)
     try:
         return await _module().update_permission_mode(
             req.project_id,
@@ -384,6 +387,7 @@ async def delete_session(
     project_id: str = Query(..., alias="project_id"),
 ):
     """Delete one chat session and all of its messages."""
+    _enforce_project_scope(project_id)
     try:
         deleted = await _run_db(
             project_id, lambda: _module().delete_session(project_id, session_id)
@@ -435,6 +439,7 @@ async def reorder_sessions(
     ordered_ids: list[str] = Body(..., embed=True),
 ):
     """Persist a new display order for a project's chat sessions."""
+    _enforce_project_scope(pid)
     try:
         await _run_db(pid, lambda: _module().reorder_sessions(pid, ordered_ids))
     except ValueError as exc:
@@ -448,6 +453,7 @@ async def bulk_delete_sessions(
     session_ids: list[str] = Body(..., embed=True),
 ):
     """Delete multiple chat sessions; running sessions are skipped."""
+    _enforce_project_scope(pid)
     try:
         result = await _run_db(
             pid, lambda: _module().bulk_delete_sessions(pid, session_ids)
@@ -460,12 +466,22 @@ async def bulk_delete_sessions(
 @router.post("/{session_id}/stop")
 async def stop_session(session_id: str, project_id: str | None = Query(None)):
     """Stop the running turn of one chat session."""
-    return {"stopped": await _module().stop_current(session_id)}
+    _enforce_project_scope(project_id)
+    if project_id is not None:
+        from models.chat_session import ChatSession
+
+        exists = await _run_db(project_id, lambda: ChatSession.select().where(
+            ChatSession.id == session_id,
+        ).exists())
+        if not exists:
+            raise HTTPException(status_code=404, detail="Chat session not found")
+    return {"stopped": await _module().stop_current(session_id, project_id=project_id)}
 
 
 @router.post("/{session_id}/live-message")
 async def send_live_message(session_id: str, req: ChatLiveMessageRequest):
     """Insert a user message into the session's currently running turn."""
+    _enforce_project_scope(req.project_id)
     try:
         return await _module().send_live_message(
             session_id,

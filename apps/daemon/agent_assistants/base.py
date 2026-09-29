@@ -673,10 +673,13 @@ class AssistantRuntime:
         if accepted is not None:
             self.start_queued_turn(accepted.turn_id)
 
-    async def stop_current(self, session_id: str) -> bool:
+    async def stop_current(self, session_id: str, project_id: str | None = None) -> bool:
         """Stop the newest queued or running turn for an assistant session."""
         for turn_id, state in reversed(self._turn_states.items()):
             if state.get("session_id") != session_id:
+                continue
+            session = self._sessions.get(state.get("memory_key"))
+            if project_id is not None and (session is None or session.project_id != project_id):
                 continue
             if state.get("status") == "stopping":
                 return True
@@ -684,7 +687,6 @@ class AssistantRuntime:
                 continue
             task = self._turn_tasks.get(turn_id)
             if task is None or task.done():
-                session = self._sessions.get(state.get("memory_key"))
                 if session is not None:
                     await self._finalize_queued_turn_as_stopped(
                         session,

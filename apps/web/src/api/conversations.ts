@@ -403,7 +403,7 @@ export const chatSessionApi = {
       `/chat-sessions?project_id=${encodeURIComponent(projectId)}&archived=${archived}`,
     ),
   setArchived: (sessionId: string, projectId: string, archived: boolean) =>
-    request<ChatSessionSummary>(`/chat-sessions/${encodeURIComponent(sessionId)}/archive`, {
+    request<ChatSessionSummary>(`/chat-sessions/${encodeURIComponent(sessionId)}/archive?project_id=${encodeURIComponent(projectId)}`, {
       method: 'PATCH',
       body: JSON.stringify({ project_id: projectId, archived }),
     }),
@@ -429,7 +429,7 @@ export const chatSessionApi = {
   ),
   rename: (sessionId: string, projectId: string, title: string) =>
     request<ChatSessionSummary>(
-      `/chat-sessions/${encodeURIComponent(sessionId)}`,
+      `/chat-sessions/${encodeURIComponent(sessionId)}?project_id=${encodeURIComponent(projectId)}`,
       {
         method: 'PATCH',
         body: JSON.stringify({ project_id: projectId, title }),
@@ -440,7 +440,7 @@ export const chatSessionApi = {
     projectId: string,
     permissionMode: string,
   ) => request<ChatSessionSummary>(
-    `/chat-sessions/${encodeURIComponent(sessionId)}/permission-mode`,
+    `/chat-sessions/${encodeURIComponent(sessionId)}/permission-mode?project_id=${encodeURIComponent(projectId)}`,
     {
       method: 'PATCH',
       body: JSON.stringify({
@@ -495,7 +495,7 @@ export const chatSessionApi = {
     pendingInsertIds: string[] = [],
   ) =>
     request<{ message_id: string; status: string; created_at: string }>(
-      `/chat-sessions/${encodeURIComponent(sessionId)}/live-message`,
+      `/chat-sessions/${encodeURIComponent(sessionId)}/live-message?project_id=${encodeURIComponent(projectId)}`,
       {
         method: 'POST',
         body: JSON.stringify({

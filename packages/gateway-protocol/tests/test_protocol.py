@@ -95,6 +95,22 @@ def test_project_http_allowlist_matches_only_the_bound_project():
                        "host-1", access_level="edit")
     assert not allowed("POST", "/api/chat-sessions/session-1/chat", [("project_id", "host-1")],
                        "host-1", access_level="read")
+    for method, path in (
+        ("PATCH", "/api/chat-sessions/session-1"),
+        ("PATCH", "/api/chat-sessions/session-1/archive"),
+        ("PATCH", "/api/chat-sessions/session-1/permission-mode"),
+        ("DELETE", "/api/chat-sessions/session-1"),
+        ("POST", "/api/chat-sessions/session-1/live-message"),
+        ("POST", "/api/chat-sessions/session-1/stop"),
+        ("POST", "/api/chat-sessions/reorder"),
+        ("POST", "/api/chat-sessions/bulk-delete"),
+    ):
+        assert allowed(method, path, [("project_id", "host-1")],
+                       "host-1", access_level="edit")
+        assert not allowed(method, path, [("project_id", "host-1")],
+                           "host-1", access_level="read")
+        assert not allowed(method, path, [("project_id", "host-2")],
+                           "host-1", access_level="edit")
 
 
 def test_control_envelope_requires_known_version_and_target():
