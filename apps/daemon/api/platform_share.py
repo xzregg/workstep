@@ -11,6 +11,7 @@ from api.task_context import _run_db
 
 router = APIRouter(prefix="/api/platform-share")
 _ARTIFACT_ID = re.compile(r"[0-9a-f]{64}\Z")
+_MESSAGE_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 
 
 def _share_scope(request: Request) -> dict:
@@ -140,4 +141,35 @@ async def _history_page(request: Request, offset: int):
     from main import project_manager
     if project_manager is None:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    return await project_manager.run_db(scope["host_project_id"], load)
+
+
+@router.get("/events/{message_id}/{cursor}")
+async def read_platform_share_events(request: Request, message_id: str, cursor: int):
+    scope = _share_scope(request)
+    if not _MESSAGE_ID.fullmatch(message_id) or not 0 <= cursor <= 999999999:
+        raise HTTPException(status_code=404, detail="Message events unavailable")
+    from main import project_manager
+    from models import Message
+    from services.history import get_message_events
+    from services.share import _scrub_events
+
+    if project_manager is None:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    def load(project):
+        message = Message.get_or_none(
+            (Message.id == message_id)
+            & (Message.task == scope["task_id"])
+            & (Message.channel == "execution")
+        )
+        if message is None:
+            raise HTTPException(status_code=404, detail="Message events unavailable")
+        page = get_message_events(
+            scope["task_id"], message_id, project.workstep_dir,
+            cursor=cursor, limit=100,
+        )
+        page["events"] = _scrub_events(page["events"], mode=scope["mode"])
+        return page
+
     return await project_manager.run_db(scope["host_project_id"], load)

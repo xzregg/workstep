@@ -471,6 +471,9 @@ class DataConnection:
                             target_path or "")
                         and not re.fullmatch(
                             r"/api/platform-share/history/(?:0|[1-9][0-9]{0,5})",
+                            target_path or "")
+                        and not re.fullmatch(
+                            r"/api/platform-share/events/[A-Za-z0-9_-]{1,128}/(?:0|[1-9][0-9]{0,8})",
                             target_path or ""))
                     or request.method != "GET"
                     or user_id is not None or username is not None

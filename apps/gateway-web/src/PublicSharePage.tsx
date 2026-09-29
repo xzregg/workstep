@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
+import { SharedMessageEvents } from './SharedMessageEvents'
 
 type ShareMeta = { title: string; mode: 'read_only' | 'interactive'; has_password: boolean }
 type SharedTask = {
@@ -191,6 +192,7 @@ export function PublicSharePage() {
             </div>
             <div className="gateway-share-message-content">{message.content}</div>
             {message.truncated && <p>消息过长，仅显示前一部分。</p>}
+            <SharedMessageEvents base={base} messageId={message.id} />
           </article>)}
         </section>
         <section className="gateway-share-messages">

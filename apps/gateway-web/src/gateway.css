@@ -82,6 +82,8 @@ body {
 .gateway-share-message-meta { display: flex; flex-wrap: wrap; gap: 10px; color: #6e6e73; font-size: 13px; }
 .gateway-share-message-meta strong { color: #1d1d1f; }
 .gateway-share-message-content { margin-top: 12px; white-space: pre-wrap; line-height: 1.6; overflow-wrap: anywhere; }
+.gateway-share-events { margin-top: 12px; }
+.gateway-share-events pre { max-height: 320px; overflow: auto; padding: 12px; border-radius: 8px; background: #f5f5f7; font-size: 12px; line-height: 1.5; }
 .gateway-share-spinner {
   width: 14px;
   height: 14px;

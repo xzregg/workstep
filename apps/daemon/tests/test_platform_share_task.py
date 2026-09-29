@@ -178,10 +178,17 @@ async def test_platform_share_history_pages_execution_messages(api_context, monk
             Message.create(id=f"page-{index}", task=task_id, step_key="build",
                            channel="execution", sequence=index + 1, position=index + 1,
                            role="assistant", content=f"message-{index}",
+                           events_json=(json.dumps([{"type": "agent_message_chunk",
+                               "data": {"content": {"text": f"visible event {event_index}"}}}
+                               for event_index in range(105)])
+                               if index == 100 else None),
                            created_at=utc_now())
         Message.create(id="private-page", task=task_id, step_key="build",
                        channel="coordinator", sequence=106, position=106,
-                       role="assistant", content="private", created_at=utc_now())
+                       role="assistant", content="private",
+                       events_json=json.dumps([{"type": "agent_message_chunk",
+                           "data": {"content": {"text": "private event"}}}]),
+                       created_at=utc_now())
 
     await main.project_manager.run_db(project_id, seed)
     monkeypatch.setattr(main.gateway_client, "managed_config", object())
@@ -216,6 +223,33 @@ async def test_platform_share_history_pages_execution_messages(api_context, monk
     ]
     assert older["next_offset"] is None
     assert (await read("/api/platform-share/history/1000000"))[0] == 403
+    status, detail = await read("/api/platform-share/events/page-100/0")
+    assert status == 200
+    assert len(detail["events"]) == 100
+    assert detail["events"][0]["type"] == "TEXT_MESSAGE_CHUNK"
+    assert detail["next_cursor"] == 100
+    status, final_events = await read("/api/platform-share/events/page-100/100")
+    assert status == 200
+    assert len(final_events["events"]) == 5
+    assert final_events["next_cursor"] is None
+    assert (await read("/api/platform-share/events/private-page/0"))[0] == 404
+
+    from services import history as history_service
+    original_events = history_service.get_message_events
+    entered = threading.Event()
+
+    def slow_events(*args, **kwargs):
+        entered.set()
+        time.sleep(0.7)
+        return original_events(*args, **kwargs)
+
+    monkeypatch.setattr(history_service, "get_message_events", slow_events)
+    pending = asyncio.create_task(read("/api/platform-share/events/page-100/0"))
+    assert await asyncio.to_thread(entered.wait, 2)
+    started = time.monotonic()
+    assert (await client.get("/api/health")).status_code == 200
+    assert time.monotonic() - started < 0.5
+    assert (await pending)[0] == 200
 
 
 @pytest.mark.anyio
