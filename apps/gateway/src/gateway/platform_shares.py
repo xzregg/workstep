@@ -280,6 +280,15 @@ async def public_share_history_page(request: Request, token: str, offset: int):
     return await _proxy_share_read(request, token, f"/api/platform-share/history/{offset}")
 
 
+@router.get("/public/shares/{token}/events/{message_id}/{cursor}")
+async def public_share_events(request: Request, token: str, message_id: str, cursor: int):
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", message_id) or not 0 <= cursor <= 999999999:
+        raise HTTPException(status_code=404, detail="Message events unavailable")
+    return await _proxy_share_read(
+        request, token, f"/api/platform-share/events/{message_id}/{cursor}",
+    )
+
+
 @router.get("/public/shares/{token}/artifacts")
 async def public_share_artifacts(request: Request, token: str):
     return await _proxy_share_read(request, token, "/api/platform-share/artifacts")

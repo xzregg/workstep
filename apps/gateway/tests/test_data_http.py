@@ -57,6 +57,13 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
             target_path="/api/platform-share/history/100",
         )
 
+    @app.get("/api/public/shares/token/events")
+    async def guest_events(request: Request):
+        return await connection.proxy_http(
+            request, share_ticket="signed-ticket",
+            target_path="/api/platform-share/events/message-1/0",
+        )
+
     @app.get("/api/public/shares/token/artifacts")
     async def guest_artifacts(request: Request):
         return await connection.proxy_http(
@@ -78,6 +85,7 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
         assert response.status_code == 200
         assert (await client.get("/api/public/shares/token/history")).status_code == 200
         assert (await client.get("/api/public/shares/token/history/100")).status_code == 200
+        assert (await client.get("/api/public/shares/token/events")).status_code == 200
         assert (await client.get("/api/public/shares/token/artifacts")).status_code == 200
         assert (await client.get("/api/public/shares/token/artifacts/content")).status_code == 200
     assert starts[0]["path"] == "/api/platform-share/task"
@@ -87,8 +95,9 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
     assert all(name.lower() != "cookie" for name, _ in starts[0]["headers"])
     assert starts[1]["path"] == "/api/platform-share/history"
     assert starts[2]["path"] == "/api/platform-share/history/100"
-    assert starts[3]["path"] == "/api/platform-share/artifacts"
-    assert starts[4]["path"] == f"/api/platform-share/artifacts/{'a' * 64}/content"
+    assert starts[3]["path"] == "/api/platform-share/events/message-1/0"
+    assert starts[4]["path"] == "/api/platform-share/artifacts"
+    assert starts[5]["path"] == f"/api/platform-share/artifacts/{'a' * 64}/content"
 
 
 @pytest.mark.asyncio

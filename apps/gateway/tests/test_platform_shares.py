@@ -102,6 +102,9 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
                 captured["path"] = target_path
                 if target_path.startswith("/api/platform-share/history"):
                     return JSONResponse({"messages": [{"id": "message-1", "content": "Visible"}]})
+                if target_path.startswith("/api/platform-share/events/"):
+                    return JSONResponse({"events": [{"type": "TEXT_MESSAGE_CHUNK"}],
+                                         "next_cursor": None})
                 if target_path == "/api/platform-share/artifacts":
                     return JSONResponse({"artifacts": [{"id": "a" * 64, "name": "result.txt"}]})
                 if target_path.endswith("/content"):
@@ -126,6 +129,11 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         assert older.status_code == 200
         assert captured["path"] == "/api/platform-share/history/100"
         assert client.get(f"/api/public/shares/{token}/history/1000000").status_code == 404
+        events = client.get(f"/api/public/shares/{token}/events/message-1/0")
+        assert events.status_code == 200
+        assert events.json()["events"][0]["type"] == "TEXT_MESSAGE_CHUNK"
+        assert captured["path"] == "/api/platform-share/events/message-1/0"
+        assert client.get(f"/api/public/shares/{token}/events/invalid.id/0").status_code == 404
         artifacts = client.get(f"/api/public/shares/{token}/artifacts")
         assert artifacts.status_code == 200
         assert artifacts.json()["artifacts"][0]["name"] == "result.txt"

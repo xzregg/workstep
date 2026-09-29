@@ -40,6 +40,12 @@ test('public share route works without portal authentication and unlocks task', 
     if (url.endsWith('/artifacts')) return Response.json({ artifacts: [{
       id: 'a'.repeat(64), name: 'result.txt', step_key: 'build', size: 13,
     }] })
+    if (url.endsWith('/events/message-1/0')) return Response.json({ events: [{
+      type: 'TEXT_MESSAGE_CHUNK', delta: 'Visible event detail',
+    }], next_cursor: 100 })
+    if (url.endsWith('/events/message-1/100')) return Response.json({ events: [{
+      type: 'TEXT_MESSAGE_CHUNK', delta: 'Later event detail',
+    }], next_cursor: null })
     throw new Error(`Unexpected fetch: ${url}`)
   }
   render(<MemoryRouter initialEntries={['/share/sample-token']}><App /></MemoryRouter>)
@@ -52,6 +58,10 @@ test('public share route works without portal authentication and unlocks task', 
   assert.match(document.body.textContent ?? '', /Visible description/)
   assert.match(document.body.textContent ?? '', /只读分享/)
   await screen.findByText('Visible execution reply')
+  fireEvent.click(screen.getByRole('button', { name: '查看过程' }))
+  await screen.findByText(/Visible event detail/)
+  fireEvent.click(screen.getByRole('button', { name: '加载更多过程' }))
+  await screen.findByText(/Later event detail/)
   const artifact = await screen.findByRole('link', { name: /result.txt/ })
   assert.equal(artifact.getAttribute('href'),
     `/api/public/shares/sample-token/artifacts/${'a'.repeat(64)}/content`)
