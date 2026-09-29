@@ -10,7 +10,7 @@ from urllib.parse import unquote
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from api.task_context import _run_db
 
@@ -33,6 +33,19 @@ class ShareReviewDecision(BaseModel):
 
 class ShareInterventionResponse(BaseModel):
     data: dict
+
+
+class ShareGitCommit(BaseModel):
+    paths: list[str] = Field(min_length=1, max_length=10000)
+    message: str = Field(min_length=1, max_length=100000)
+    snapshot: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @field_validator("message")
+    @classmethod
+    def valid_message(cls, value: str) -> str:
+        if not value.strip() or "\0" in value:
+            raise ValueError("Commit message required")
+        return value.strip()
 
 
 def _share_scope(request: Request) -> dict:
@@ -262,11 +275,22 @@ async def read_platform_share_attachment(request: Request, filename: str):
 
 async def _share_git_workspace(scope: dict) -> dict:
     from api import git as git_api
-    project = git_api._task_project(scope["host_project_id"])
-    task = await git_api._task_exists(scope["host_project_id"], scope["task_id"])
-    return await git_api.result(git_api.TaskGitWorkspace(
-        git_api.git_service, task["workflow_id"],
-    ).list(project.path, scope["task_id"]))
+    try:
+        project = git_api._task_project(scope["host_project_id"])
+        task = await git_api._task_exists(scope["host_project_id"], scope["task_id"])
+        return await git_api.result(git_api.TaskGitWorkspace(
+            git_api.git_service, task["workflow_id"],
+        ).list(project.path, scope["task_id"]))
+    except HTTPException as exc:
+        raise HTTPException(status_code=exc.status_code, detail="Git workspace unavailable") from exc
+
+
+async def _share_git_result(operation):
+    from api import git as git_api
+    try:
+        return await git_api.result(operation)
+    except HTTPException as exc:
+        raise HTTPException(status_code=exc.status_code, detail="Git operation unavailable") from exc
 
 
 @router.get("/git/workspace")
@@ -285,7 +309,7 @@ async def read_platform_share_git_status(request: Request, tree_id: str):
     if tree_id not in {tree.get("id") for tree in workspace["worktrees"]}:
         raise HTTPException(status_code=404, detail="Git worktree unavailable")
     from api import git as git_api
-    status = await git_api.result(git_api.git_service.status(tree_id))
+    status = await _share_git_result(git_api.git_service.status(tree_id))
     files = []
     for file in status.get("files", []):
         if not _safe_git_path(file.get("path")):
@@ -300,6 +324,22 @@ async def read_platform_share_git_status(request: Request, tree_id: str):
         "id", "head", "branch", "snapshot", "operation", "active",
         "upstream", "ahead", "behind",
     )}, "files": files}
+
+
+@router.post("/git/worktrees/{tree_id}/commit")
+async def commit_platform_share_git(request: Request, tree_id: str, body: ShareGitCommit):
+    scope = _interactive_share_scope(request)
+    if not _GIT_TREE_ID.fullmatch(tree_id):
+        raise HTTPException(status_code=404, detail="Git worktree unavailable")
+    if len(set(body.paths)) != len(body.paths) or not all(_safe_git_path(path) for path in body.paths):
+        raise HTTPException(status_code=422, detail="Invalid commit paths")
+    workspace = await _share_git_workspace(scope)
+    if tree_id not in {tree.get("id") for tree in workspace["worktrees"]}:
+        raise HTTPException(status_code=404, detail="Git worktree unavailable")
+    from api import git as git_api
+    return await _share_git_result(git_api.git_service.commit(
+        tree_id, body.paths, body.message, body.snapshot,
+    ))
 
 
 @router.get("/task")

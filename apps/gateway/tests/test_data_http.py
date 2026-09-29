@@ -141,6 +141,13 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
             target_path=f"/api/platform-share/git/worktrees/{'a' * 24}/status",
         )
 
+    @app.post("/api/public/shares/token/git/worktrees/commit")
+    async def guest_git_commit(request: Request):
+        return await connection.proxy_http(
+            request, share_ticket="signed-ticket", share_body=b'{"message":"Commit"}',
+            target_path=f"/api/platform-share/git/worktrees/{'a' * 24}/commit",
+        )
+
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
                                  base_url="https://gateway.test") as client:
         response = await client.get("/api/public/shares/token/task",
@@ -163,6 +170,7 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
         assert (await client.get("/api/public/shares/token/uploads/file")).status_code == 200
         assert (await client.get("/api/public/shares/token/git/workspace")).status_code == 200
         assert (await client.get("/api/public/shares/token/git/worktrees/status")).status_code == 200
+        assert (await client.post("/api/public/shares/token/git/worktrees/commit")).status_code == 200
     assert starts[0]["path"] == "/api/platform-share/task"
     assert starts[0]["share_ticket"] == "signed-ticket"
     assert "user_id" not in starts[0]
@@ -182,8 +190,9 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
     assert starts[11]["path"] == f"/api/platform-share/uploads/{upload_name}"
     assert starts[12]["path"] == "/api/platform-share/git/workspace"
     assert starts[13]["path"] == f"/api/platform-share/git/worktrees/{'a' * 24}/status"
+    assert starts[14]["path"] == f"/api/platform-share/git/worktrees/{'a' * 24}/commit"
     assert bodies == [b'{"content":"hello"}', b'{"review_run_id":"review-1"}',
-                      b'{"data":{"action":"cancel"}}', b"visible"]
+                      b'{"data":{"action":"cancel"}}', b"visible", b'{"message":"Commit"}']
 
 
 @pytest.mark.asyncio
