@@ -11,6 +11,7 @@ from engines.core.registry import list_all_engines
 from services import config as config_service
 from services.config import resolve_execution_engine
 from services.project import project_manager
+from services.remote_access import get_current_actor
 from services.workflow_definition import WorkflowDefinition, WorkflowValidationError
 from services.workflow_actions import create_workflow_action, normalize_action_payload
 
@@ -20,6 +21,9 @@ router = APIRouter(prefix="/api/workflow", tags=["工作流管理"])
 
 
 async def _run_db(project_id, operation):
+    actor = get_current_actor()
+    if actor is not None and actor.project_id is not None and actor.project_id != project_id:
+        raise HTTPException(status_code=403, detail="Project scope denied")
     run_db = getattr(project_manager, "run_db", None)
     if run_db is not None:
         return await run_db(project_id, operation)

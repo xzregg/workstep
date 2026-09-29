@@ -5,10 +5,19 @@ import asyncio
 from fastapi import HTTPException
 
 
+def _require_project_scope(project_id: str | None) -> None:
+    from services.remote_access import get_current_actor
+
+    actor = get_current_actor()
+    if actor is not None and actor.project_id is not None and actor.project_id != project_id:
+        raise HTTPException(status_code=403, detail="Project scope denied")
+
+
 def _project(project_id: str):
     """Resolve project metadata without touching its SQLite connection."""
     from main import project_manager
 
+    _require_project_scope(project_id)
     if not project_manager:
         raise HTTPException(status_code=503, detail="Service not initialized")
     try:
@@ -24,6 +33,7 @@ async def _run_db(project_id: str, operation):
     """Run task persistence on the selected project's DB executor."""
     from main import project_manager
 
+    _require_project_scope(project_id)
     run_db = getattr(project_manager, "run_db", None)
     if run_db is not None:
         return await run_db(project_id, lambda _project: operation())
@@ -42,8 +52,7 @@ async def _require_scoped_task(project_id: str | None, task_id: str) -> None:
     actor = get_current_actor()
     if actor is None or actor.project_id is None:
         return
-    if project_id != actor.project_id:
-        raise HTTPException(status_code=403, detail="Project scope denied")
+    _require_project_scope(project_id)
 
     from models import Task
 

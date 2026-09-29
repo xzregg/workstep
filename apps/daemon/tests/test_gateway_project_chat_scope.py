@@ -8,11 +8,45 @@ import time
 from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 
 from services.gateway_client.bridge import ManagedHttpBridge
+from services.remote_access import ActorSnapshot, actor_context
 from tests.test_chat_session import chat_module
 from workstep_gateway_protocol import FrameType, ProxyFrame
+
+
+@pytest.mark.anyio
+async def test_direct_project_actor_cannot_read_other_chat_project(chat_module, tmp_path, monkeypatch):
+    import api.chat_session as chat_api
+    import main
+
+    module, _bus, manager, visible_project, _config = chat_module
+    private_project = manager.init_project(tmp_path / "private-chat")
+    private_session = await manager.run_db(
+        private_project.id,
+        lambda _: module.create_session(private_project.id, title="Private session"),
+    )
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    actor = ActorSnapshot(actor_id="worker", user_name="worker", device_id="device-1",
+                          device_name="Device", source="managed",
+                          project_id=visible_project.id, access_level="read")
+
+    with actor_context(actor):
+        for call in (
+            lambda: chat_api.list_sessions(project_id=private_project.id),
+            lambda: chat_api.get_session(private_session["id"], project_id=private_project.id),
+            lambda: chat_api.get_quick_buttons(project_id=private_project.id),
+            lambda: chat_api.get_system_prompt(project_id=private_project.id),
+            lambda: chat_api.get_message_events(
+                private_session["id"], "missing-message", project_id=private_project.id,
+            ),
+        ):
+            with pytest.raises(HTTPException) as denied:
+                await call()
+            assert denied.value.status_code == 403
 
 
 @pytest.mark.anyio

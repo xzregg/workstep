@@ -5,10 +5,12 @@ import base64
 import json
 
 import pytest
+from fastapi import HTTPException
 
 from models import Task
 from models.fields import utc_now
 from services.gateway_client.bridge import ManagedHttpBridge
+from services.remote_access import ActorSnapshot, actor_context
 from tests.test_api_contracts import api_context
 from workstep_gateway_protocol import FrameType, ProxyFrame
 
@@ -35,6 +37,15 @@ async def test_project_task_list_and_detail_hide_host_cwd(api_context, monkeypat
                         created_at=now, updated_at=now)
 
     await main.project_manager.run_db(project_id, seed)
+    private_dir = tmp_path / "private"
+    private_dir.mkdir()
+    private_response = await client.post("/api/project/init", json={"path": str(private_dir)})
+    assert private_response.status_code == 200
+    private_id = private_response.json()["id"]
+    await main.project_manager.run_db(private_id, lambda _: Task.create(
+        id="private-task", title="Private", cwd=str(private_dir),
+        created_at=utc_now(), updated_at=utc_now(),
+    ))
     local = await client.get(f"/api/task/root-task?project_id={project_id}")
     assert local.status_code == 200
     assert local.json()["cwd"] == str(project_dir)
@@ -69,3 +80,18 @@ async def test_project_task_list_and_detail_hide_host_cwd(api_context, monkeypat
     detail = await request("/api/task/root-task")
     assert detail["cwd"] == "."
     assert str(tmp_path) not in json.dumps(detail)
+
+    import api.task as task_api
+
+    actor = ActorSnapshot(actor_id="worker", user_name="worker", device_id="device-1",
+                          device_name="Device", source="managed", project_id=project_id,
+                          access_level="read")
+    with actor_context(actor):
+        for call in (
+            lambda: task_api.list_tasks(pid=private_id),
+            lambda: task_api.get_task("private-task", pid=private_id),
+            lambda: task_api.get_task_artifacts("private-task", pid=private_id),
+        ):
+            with pytest.raises(HTTPException) as denied:
+                await call()
+            assert denied.value.status_code == 403

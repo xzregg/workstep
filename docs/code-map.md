@@ -67,6 +67,8 @@ Gateway 项目管理的只读分页目录、已发布项目过滤、授权摘要
 
 项目专用会话的创建、消息、重命名、归档、权限模式、运行中插入、停止、删除、排序、批量删除、分叉与引擎交接，以及项目级快捷按钮、系统提示词和提示词增强，由 Web `src/api/conversations.ts::chatSessionApi` 调用；带正文项目 ID 的请求在 URL 中也携带同一项目 ID。共享协议 `project_scope.py` 仅向目标项目的 `edit` 票据开放写入路径，向 `read` 票据开放项目级设置读取；daemon `api/chat_session.py` 按可信代理操作者核对正文或查询项目。分叉与交接的实际会话读写由 `agent_assistants/chat_session_transitions.py` 在目标项目数据库执行；停止前在目标项目数据库确认会话存在，`agent_assistants/base.py` 再校验运行中会话的项目归属。`streaming/ws.py` 只向明确订阅会话 ID 的项目连接发送同项目 `session_chat` 事件。真实代理 API、跨项目与只读拒绝、慢数据库健康检查见 daemon `tests/test_gateway_project_chat_scope.py`，WebSocket 作用域见 `test_main.py`，Web URL 行为见 `tests/chatSessionApiScope.test.ts`。
 
+daemon 的会话只读入口同样通过 `api/chat_session.py::_run_db` 再核对可信操作者项目，覆盖会话列表、详情、消息事件和项目级设置；流程与任务的共享入口分别在 `api/workflow.py::_run_db`、`api/task_context.py::_project`／`_run_db` 做同一校验。真实代理及绕过外层路由表的直接调用回归见 `test_gateway_project_chat_scope.py`、`test_gateway_project_workflow_scope.py`、`test_gateway_project_task_paths.py`。
+
 项目文件浏览、搜索、条目编辑及内容读取由 `api/fs_browser.py`、`api/fs.py` 负责；`api/fs_paths.py` 在可信项目操作者下要求明确且匹配的项目 ID，并禁止绝对路径绕过项目根。项目票据的目录、条目和错误响应不含宿主路径，`/api/fs/file` 接受项目相对路径；共享 `project_scope.py` 不开放镜像宿主绝对路径的 `/api/fs/raw`。旧 Markdown 的项目名图片路径由 Web `utils/markdownImages.ts` 映射为带项目 ID 的 `/api/fs/serve`，daemon 的旧式直达路由再次核对操作者项目。真实代理、直接调用和慢目录健康检查见 `tests/test_gateway_project_file_paths.py`，本地文件契约见 `tests/test_api_contracts.py`，映射测试见 Web `tests/chatInputImages.test.mjs`。
 
 项目专用流程编辑沿用 Web `src/api/project.ts::workflowApi` 的项目查询参数；共享 `project_scope.py` 向目标项目 `edit` 票据开放创建、更新、删除、恢复、排序和流程快捷 Action 发布，保留 `read` 的列表与详情。daemon `api/workflow.py` 在目标项目执行器内调用 `services/project.py` 与 `services/workflow_actions.py`，流程 ID 猜测无法跨项目查改。真实代理正反例见 `tests/test_gateway_project_workflow_scope.py`，流程数据库隔离及慢创建健康检查见 `tests/test_api_contracts.py`。
