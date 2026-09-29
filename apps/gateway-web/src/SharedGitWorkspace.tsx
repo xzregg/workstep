@@ -4,6 +4,8 @@ import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 type Worktree = { id: string; alias: string; repository_name: string; branch: string | null }
 type Status = { branch: string | null; head: string | null; snapshot: string; active?: boolean;
   files: Array<{ path: string; index_status: string; worktree_status: string }> }
+type Branch = { name: string; head: string; upstream: string | null; ahead: number | null;
+  behind: number | null; occupied: boolean; worktree_id: string | null }
 type SyncAction = 'pull' | 'push'
 
 export function SharedGitWorkspace({ base, csrf, interactive }: {
@@ -12,8 +14,10 @@ export function SharedGitWorkspace({ base, csrf, interactive }: {
   const [open, setOpen] = useState(false)
   const [worktrees, setWorktrees] = useState<Worktree[] | null>(null)
   const [statuses, setStatuses] = useState<Record<string, Status>>({})
+  const [branches, setBranches] = useState<Record<string, Branch[]>>({})
   const [busy, setBusy] = useState(false)
   const [statusBusy, setStatusBusy] = useState<string | null>(null)
+  const [branchesBusy, setBranchesBusy] = useState<string | null>(null)
   const [selectedPaths, setSelectedPaths] = useState<Record<string, string[]>>({})
   const [commitMessages, setCommitMessages] = useState<Record<string, string>>({})
   const [commitTarget, setCommitTarget] = useState<Worktree | null>(null)
@@ -54,6 +58,22 @@ export function SharedGitWorkspace({ base, csrf, interactive }: {
       setError('暂时无法连接宿主电脑，请稍后重试。')
     } finally {
       setStatusBusy(null)
+    }
+  }
+
+  async function loadBranches(tree: Worktree) {
+    if (branchesBusy) return
+    setBranchesBusy(tree.id)
+    setError('')
+    try {
+      const response = await fetch(`${base}/git/worktrees/${tree.id}/branches`)
+      if (!response.ok) { setError('分支列表暂时不可用，请稍后重试。'); return }
+      const result = await response.json() as { branches: Branch[] }
+      setBranches(current => ({ ...current, [tree.id]: result.branches }))
+    } catch {
+      setError('暂时无法连接宿主电脑，请稍后重试。')
+    } finally {
+      setBranchesBusy(null)
     }
   }
 
@@ -125,6 +145,22 @@ export function SharedGitWorkspace({ base, csrf, interactive }: {
         {statusBusy === tree.id && <span className="gateway-share-spinner" aria-hidden="true" />}
         查看 {tree.alias} 状态
       </button>
+      <button type="button" disabled={branchesBusy !== null}
+        onClick={() => void loadBranches(tree)}>
+        {branchesBusy === tree.id && <span className="gateway-share-spinner" aria-hidden="true" />}
+        查看 {tree.alias} 分支
+      </button>
+      {branches[tree.id] && <div className="gateway-share-git-branches">
+        <h5>本地分支</h5>
+        {branches[tree.id].length === 0 ? <p>没有本地分支。</p>
+          : <ul>{branches[tree.id].map(branch => <li key={branch.name}>
+            <strong>{branch.name}</strong> · {branch.head.slice(0, 8)}
+            {branch.upstream && <> · 上游 {branch.upstream}</>}
+            {branch.ahead != null && branch.behind != null
+              && <> · 领先 {branch.ahead} / 落后 {branch.behind}</>}
+            {branch.occupied && <> · 已检出</>}
+          </li>)}</ul>}
+      </div>}
       {statuses[tree.id] && <div className="gateway-share-git-status">
         <p>分支：{statuses[tree.id].branch || '未命名'} · 提交：{statuses[tree.id].head || '暂无'}</p>
         {statuses[tree.id].files.length === 0 ? <p>没有未提交的文件变更。</p>

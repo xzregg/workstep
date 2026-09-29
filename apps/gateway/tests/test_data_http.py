@@ -155,6 +155,13 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
             target_path=f"/api/platform-share/git/worktrees/{'a' * 24}/{action}",
         )
 
+    @app.get("/api/public/shares/token/git/worktrees/branches")
+    async def guest_git_branches(request: Request):
+        return await connection.proxy_http(
+            request, share_ticket="signed-ticket",
+            target_path=f"/api/platform-share/git/worktrees/{'a' * 24}/branches",
+        )
+
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
                                  base_url="https://gateway.test") as client:
         response = await client.get("/api/public/shares/token/task",
@@ -180,6 +187,7 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
         assert (await client.post("/api/public/shares/token/git/worktrees/commit")).status_code == 200
         assert (await client.post("/api/public/shares/token/git/worktrees/pull")).status_code == 200
         assert (await client.post("/api/public/shares/token/git/worktrees/push")).status_code == 200
+        assert (await client.get("/api/public/shares/token/git/worktrees/branches")).status_code == 200
     assert starts[0]["path"] == "/api/platform-share/task"
     assert starts[0]["share_ticket"] == "signed-ticket"
     assert "user_id" not in starts[0]
@@ -202,6 +210,7 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
     assert starts[14]["path"] == f"/api/platform-share/git/worktrees/{'a' * 24}/commit"
     assert starts[15]["path"] == f"/api/platform-share/git/worktrees/{'a' * 24}/pull"
     assert starts[16]["path"] == f"/api/platform-share/git/worktrees/{'a' * 24}/push"
+    assert starts[17]["path"] == f"/api/platform-share/git/worktrees/{'a' * 24}/branches"
     assert bodies == [b'{"content":"hello"}', b'{"review_run_id":"review-1"}',
                       b'{"data":{"action":"cancel"}}', b"visible", b'{"message":"Commit"}',
                       b'{"branch":"feature"}', b'{"branch":"feature"}']
