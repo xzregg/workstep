@@ -557,6 +557,7 @@ class WorkflowRuntime:
             step_followup=normalized,
             trigger_name=trigger_name,
             reset_session=reset_session,
+            audit_action="task.resume",
         )
         await self._publish_user_message(
             project_id,
@@ -1200,6 +1201,7 @@ class WorkflowRuntime:
         input_rounds: dict[str, int] | None = None,
         reset_session: bool = False,
         expected_failed_message_id: str | None = None,
+        audit_action: str = "task.restart",
     ) -> WorkflowRunHandle:
         """Stop the current runner and start a child run from one DAG step.
 
@@ -1269,7 +1271,7 @@ class WorkflowRuntime:
                     actor = get_effective_actor()
                     record_project_audit(
                         project_id=project.id, task_id=task.id,
-                        action="task.restart", result="succeeded",
+                        action=audit_action, result="succeeded",
                         mode=("managed" if actor is not None and actor.source == "managed"
                               else "local"),
                         initiated_by_user_id=child.initiated_by_user_id,
