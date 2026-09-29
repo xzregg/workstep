@@ -610,7 +610,9 @@ async def run_task(req: RunTaskRequest, pid: str = Query(..., alias="project_id"
         raise HTTPException(status_code=503, detail="Service not initialized")
     await _require_scoped_task(pid, req.task_id)
 
-    async def audit_denial(reason_code: str, *, system_actor: bool = False) -> None:
+    async def audit_outcome(
+        reason_code: str, *, result: str = "denied", system_actor: bool = False,
+    ) -> None:
         if await asyncio.to_thread(project_manager.get_project_by_id, pid) is None:
             return
         from services.project_audit import record_project_audit
@@ -620,7 +622,7 @@ async def run_task(req: RunTaskRequest, pid: str = Query(..., alias="project_id"
             pid,
             lambda _project: record_project_audit(
                 project_id=pid, task_id=req.task_id,
-                action="task.start", result="denied",
+                action="task.start", result=result,
                 mode="managed" if actor is not None and actor.source == "managed" else "local",
                 actor_type="system" if system_actor else None,
                 metadata={"reason_code": reason_code},
@@ -647,14 +649,18 @@ async def run_task(req: RunTaskRequest, pid: str = Query(..., alias="project_id"
                 "task_id": req.task_id,
             })
     except UserIdentityRequired as exc:
-        await audit_denial("identity_required", system_actor=True)
+        await audit_outcome("identity_required", system_actor=True)
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except WorkflowValidationError as exc:
-        await audit_denial("workflow_invalid")
+        await audit_outcome("workflow_invalid")
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
+        if str(exc) == f"Task is already queued or running: {req.task_id}":
+            await audit_outcome("already_active")
+        else:
+            await audit_outcome("run_error", result="failed")
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {
         "status": "started",
