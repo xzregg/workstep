@@ -96,6 +96,16 @@ body {
 }
 .gateway-share-step-chat select { min-height: 42px; }
 .gateway-share-step-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.gateway-share-reviews article { display: grid; gap: 10px; }
+.gateway-share-reviews label { font-weight: 600; }
+.gateway-share-reviews select, .gateway-share-reviews textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d2d2d7;
+  border-radius: 12px;
+  font: inherit;
+}
 .gateway-share-spinner {
   width: 14px;
   height: 14px;

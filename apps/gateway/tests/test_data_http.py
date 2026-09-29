@@ -88,6 +88,14 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
             target_path="/api/platform-share/steps/build/message",
         )
 
+    @app.post("/api/public/shares/token/steps/build/review/approve")
+    async def guest_review(request: Request):
+        return await connection.proxy_http(
+            request, share_ticket="signed-ticket",
+            share_body=b'{"review_run_id":"review-1"}',
+            target_path="/api/platform-share/steps/build/review/approve",
+        )
+
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
                                  base_url="https://gateway.test") as client:
         response = await client.get("/api/public/shares/token/task",
@@ -100,6 +108,8 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
         assert (await client.get("/api/public/shares/token/artifacts/content")).status_code == 200
         assert (await client.post("/api/public/shares/token/steps/build/message",
                                   json={"content": "longer body"})).status_code == 200
+        assert (await client.post("/api/public/shares/token/steps/build/review/approve",
+                                  json={"review_run_id": "review-1"})).status_code == 200
     assert starts[0]["path"] == "/api/platform-share/task"
     assert starts[0]["share_ticket"] == "signed-ticket"
     assert "user_id" not in starts[0]
@@ -112,7 +122,8 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
     assert starts[5]["path"] == f"/api/platform-share/artifacts/{'a' * 64}/content"
     assert starts[6]["path"] == "/api/platform-share/steps/build/message"
     assert starts[6]["method"] == "POST"
-    assert bodies == [b'{"content":"hello"}']
+    assert starts[7]["path"] == "/api/platform-share/steps/build/review/approve"
+    assert bodies == [b'{"content":"hello"}', b'{"review_run_id":"review-1"}']
 
 
 @pytest.mark.asyncio

@@ -53,6 +53,11 @@ class ShareMessageInput(BaseModel):
     content: str = Field(min_length=1, max_length=65536)
 
 
+class ShareReviewInput(BaseModel):
+    review_run_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,128}$")
+    comment: str | None = Field(default=None, max_length=4096)
+
+
 def _share_csrf(session_token: str) -> str:
     return hashlib.sha256(f"share-csrf:{session_token}".encode()).hexdigest()
 
@@ -64,19 +69,35 @@ def _check_share_csrf(request: Request) -> None:
         raise HTTPException(status_code=403, detail="Share CSRF token required")
 
 
-async def _share_message_body(request: Request) -> bytes:
+async def _bounded_share_json(request: Request):
     raw = bytearray()
     async for chunk in request.stream():
         raw.extend(chunk)
         if len(raw) > 262144:
             raise HTTPException(status_code=413, detail="Share message too large")
     try:
-        body = ShareMessageInput.model_validate(json.loads(raw))
-    except (ValueError, ValidationError, UnicodeDecodeError) as exc:
+        return json.loads(raw)
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise HTTPException(status_code=422, detail="Invalid share message") from exc
+
+
+async def _share_message_body(request: Request) -> bytes:
+    try:
+        body = ShareMessageInput.model_validate(await _bounded_share_json(request))
+    except ValidationError as exc:
         raise HTTPException(status_code=422, detail="Invalid share message") from exc
     if not body.content.strip():
         raise HTTPException(status_code=422, detail="Share message required")
     return json.dumps({"content": body.content}, separators=(",", ":")).encode()
+
+
+async def _share_review_body(request: Request) -> bytes:
+    try:
+        body = ShareReviewInput.model_validate(await _bounded_share_json(request))
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail="Invalid review decision") from exc
+    return json.dumps({"review_run_id": body.review_run_id, "comment": body.comment},
+                      separators=(",", ":")).encode()
 
 
 async def can_create_platform_share(session, user_id: str, project: PlatformProject) -> bool:
@@ -327,6 +348,11 @@ async def public_share_artifacts(request: Request, token: str):
     return await _proxy_share_request(request, token, "/api/platform-share/artifacts")
 
 
+@router.get("/public/shares/{token}/reviews")
+async def public_share_reviews(request: Request, token: str):
+    return await _proxy_share_request(request, token, "/api/platform-share/reviews")
+
+
 @router.get("/public/shares/{token}/artifacts/{artifact_id}/content")
 async def public_share_artifact_content(request: Request, token: str, artifact_id: str):
     if not re.fullmatch(r"[0-9a-f]{64}", artifact_id):
@@ -356,18 +382,33 @@ async def _proxy_share_step(request: Request, token: str, step_key: str, action:
         raise HTTPException(status_code=404, detail="Step unavailable")
     return await _proxy_share_request(
         request, token, f"/api/platform-share/steps/{step_key}/{action}",
-        write=True, message_body=action != "cancel",
+        write=True, body_kind="message" if action != "cancel" else None,
+    )
+
+
+@router.post("/public/shares/{token}/steps/{step_key}/review/{decision}")
+async def public_share_review_decision(request: Request, token: str,
+                                       step_key: str, decision: str):
+    if (not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", step_key)
+            or decision not in {"approve", "reject", "force_approve", "terminate", "complete_task"}):
+        raise HTTPException(status_code=404, detail="Review decision unavailable")
+    return await _proxy_share_request(
+        request, token, f"/api/platform-share/steps/{step_key}/review/{decision}",
+        write=True, body_kind="review",
     )
 
 
 async def _proxy_share_request(request: Request, token: str, target_path: str,
-                               *, write: bool = False, message_body: bool = False):
+                               *, write: bool = False,
+                               body_kind: Literal["message", "review"] | None = None):
     share, project = await _authorized_visitor(request, token, touch=True)
     if write:
         if share.mode != "interactive":
             raise HTTPException(status_code=403, detail="Share is read-only")
         _check_share_csrf(request)
-    share_body = await _share_message_body(request) if message_body else (b"" if write else None)
+    share_body = (await _share_message_body(request) if body_kind == "message"
+                  else await _share_review_body(request) if body_kind == "review"
+                  else b"" if write else None)
     connections = request.app.state.control_connections
     if not connections.is_online(share.device_id):
         raise HTTPException(status_code=503, detail="Shared device offline")

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import { SharedMessageEvents } from './SharedMessageEvents'
 import { SharedStepChat } from './SharedStepChat'
+import { SharedReviewPanel } from './SharedReviewPanel'
 
 type ShareMeta = { title: string; mode: 'read_only' | 'interactive'; has_password: boolean }
 type SharedTask = {
@@ -189,6 +190,8 @@ export function PublicSharePage() {
         {task.description && <div className="gateway-share-description">{task.description}</div>}
         {meta?.mode === 'interactive' && <SharedStepChat base={base} csrf={shareCsrf}
           steps={task.steps ?? []} onUpdated={loadTask} />}
+        {meta?.mode === 'interactive' && <SharedReviewPanel base={base} csrf={shareCsrf}
+          onUpdated={loadTask} />}
         <section className="gateway-share-messages">
           <h3>任务消息</h3>
           {historyError && <p>消息暂时不可用，请稍后重试。</p>}
