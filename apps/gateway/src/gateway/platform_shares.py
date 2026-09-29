@@ -303,6 +303,11 @@ async def create_platform_share(request: Request, body: CreateShareInput):
             session.add(AuditEvent(
                 id=str(uuid4()), user_id=actor.id, device_id=device.id,
                 action="platform_share.created", result="success",
+                project_id=project.host_project_id, task_id=share.task_id,
+                actor_username=actor.username, actor_name=actor.display_name,
+                actor_type="user", initiated_by_user_id=actor.id,
+                initiated_by_username=actor.username,
+                metadata_json=json.dumps({"share_id": share.id}),
             ))
     return {"id": share.id, "url": f"{origin.rstrip('/')}/share/{token}",
             "status": share.status, "mode": share.mode, "title": share.title,
@@ -352,6 +357,7 @@ async def revoke_platform_share(request: Request, share_id: str):
             if actor.id != share.created_by_user_id and admin is None:
                 raise HTTPException(status_code=403, detail="Share management unavailable")
             if share.revoked_at is None:
+                project = await session.get(PlatformProject, share.project_id)
                 share.status = "revoked"
                 share.revoked_at = datetime.now(timezone.utc)
                 await session.execute(update(PlatformShareSession).where(
@@ -361,6 +367,12 @@ async def revoke_platform_share(request: Request, share_id: str):
                 session.add(AuditEvent(
                     id=str(uuid4()), user_id=actor.id, device_id=share.device_id,
                     action="platform_share.revoked", result="success",
+                    project_id=project.host_project_id if project else None,
+                    task_id=share.task_id,
+                    actor_username=actor.username, actor_name=actor.display_name,
+                    actor_type="user", initiated_by_user_id=actor.id,
+                    initiated_by_username=actor.username,
+                    metadata_json=json.dumps({"share_id": share.id}),
                 ))
 
 

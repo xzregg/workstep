@@ -1,4 +1,5 @@
 import hashlib
+import json
 import sqlite3
 import threading
 import time
@@ -202,6 +203,19 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         assert client.get(f"/api/public/shares/{token}/task").status_code == 404
         assert client.get(f"/api/public/shares/{token}/history").status_code == 404
         assert client.get(f"/api/public/shares/{token}/artifacts").status_code == 404
+        with sqlite3.connect(tmp_path / "workstep_platform.db") as db:
+            audits = db.execute(
+                "SELECT action, project_id, task_id, actor_username, "
+                "initiated_by_username, metadata_json FROM audit_events "
+                "WHERE action IN ('platform_share.created', 'platform_share.revoked') "
+                "ORDER BY created_at"
+            ).fetchall()
+        assert {row[0] for row in audits} == {
+            "platform_share.created", "platform_share.revoked",
+        }
+        assert all(row[1:5] == ("host-1", "task-1", "owner", "owner")
+                   and json.loads(row[5]) == {"share_id": share["id"]}
+                   for row in audits)
 
         client.cookies.clear()
         owner_login = client.post("/api/auth/login", json={
@@ -658,3 +672,20 @@ def test_admin_lists_pauses_resumes_and_revokes_platform_shares(tmp_path):
         assert client.post(f"/api/admin/shares/{share['id']}/revoke",
                            headers=headers).status_code == 204
         assert client.get(f"/api/public/shares/{token}/meta").status_code == 404
+        with sqlite3.connect(tmp_path / "workstep_platform.db") as db:
+            audits = db.execute(
+                "SELECT action, project_id, task_id, actor_username, metadata_json "
+                "FROM audit_events WHERE action IN "
+                "('platform_share.pause', 'platform_share.resume', 'platform_share.revoke')"
+            ).fetchall()
+        assert {row[0] for row in audits} == {
+            "platform_share.pause", "platform_share.resume", "platform_share.revoke",
+        }
+        assert all(row[1:4] == ("host-1", "task-1", "owner")
+                   and json.loads(row[4]) == {"share_id": share["id"]}
+                   for row in audits)
+        audit_page = client.get("/api/admin/audit", params={
+            "action": "platform_share.pause", "project_id": "project-1",
+        })
+        assert audit_page.status_code == 200, audit_page.text
+        assert audit_page.json()["items"][0]["metadata"] == {"share_id": share["id"]}
