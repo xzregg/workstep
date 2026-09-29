@@ -340,10 +340,20 @@ def test_admin_publishes_from_live_catalog_and_unpublishes_offline(tmp_path):
                 assert result.status_code == 200, result.text
                 project_id = result.json()["project_id"]
                 assert client.get("/api/admin/projects").json()["projects"][0]["id"] == project_id
+        owner_id = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "==="))["user_id"]
+        grant = client.post(f"/api/admin/projects/{project_id}/grants", headers=headers,
+                            json={"subject_type": "user", "subject_id": owner_id,
+                                  "access_level": "edit"})
+        assert grant.status_code == 200, grant.text
         assert client.get(f"/api/admin/devices/{device_id}/publishable-projects").status_code == 503
         removed = client.post(f"/api/admin/projects/{project_id}/unpublish", headers=headers)
         assert removed.status_code == 200, removed.text
         assert removed.json()["status"] == "unpublished"
+        with sqlite3.connect(tmp_path / "workstep_platform.db") as database:
+            assert database.execute(
+                "SELECT revoked_at FROM project_access_grants WHERE project_id=?",
+                (project_id,),
+            ).fetchone()[0] is not None
         assert client.get("/api/admin/projects").json()["projects"] == []
         worker = client.post("/api/admin/users", headers=headers, json={
             "username": "worker", "display_name": "Worker",
@@ -391,6 +401,14 @@ def test_device_explicitly_publishes_and_unpublishes_its_project(tmp_path):
             _handshake(ws, token, device_key)
             assert ws.receive_json()["kind"] == "hello"
             ws.send_json({"kind": "project_publish", "version": 1,
+                          "action": "status", "host_project_id": "host-1",
+                          "name": "Backend"})
+            assert ws.receive_json() == {"kind": "project_publish_ack", "version": 1,
+                                         "device_id": device_id, "host_project_id": "host-1",
+                                         "project_id": None, "status": "unpublished",
+                                         "grants": [], "can_manage": True,
+                                         "can_publish": False}
+            ws.send_json({"kind": "project_publish", "version": 1,
                           "action": "publish", "host_project_id": "host-1",
                           "name": "Backend"})
             assert ws.receive_json()["status"] == "denied"
@@ -409,6 +427,14 @@ def test_device_explicitly_publishes_and_unpublishes_its_project(tmp_path):
             assert published["kind"] == "project_publish_ack"
             assert published["status"] == "published"
             platform_id = published["project_id"]
+            ws.send_json({"kind": "project_publish", "version": 1,
+                          "action": "status", "host_project_id": "host-1",
+                          "name": "Backend"})
+            assert ws.receive_json() == {"kind": "project_publish_ack", "version": 1,
+                                         "device_id": device_id, "host_project_id": "host-1",
+                                         "project_id": platform_id, "status": "published",
+                                         "grants": [], "can_manage": True,
+                                         "can_publish": True}
             with sqlite3.connect(tmp_path / "workstep_platform.db") as database:
                 assert database.execute(
                     "SELECT device_id,host_project_id,name,access_mode FROM platform_projects "

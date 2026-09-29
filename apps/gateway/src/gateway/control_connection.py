@@ -33,6 +33,8 @@ from .usage_ledger import record_usage_batch
 from .audit_ledger import record_audit_batch
 from .skills_api import compile_skill_manifest
 from .project_publication import record_project_publication
+from .project_access_api import project_grant_rows
+from .identity import IdentityService
 
 router = APIRouter()
 
@@ -1074,11 +1076,42 @@ async def control_socket(ws: WebSocket):
                 continue
             if message.get("kind") == "project_publish":
                 if (message.get("version") != 1
-                        or message.get("action") not in ("publish", "unpublish")
+                        or message.get("action") not in ("publish", "unpublish", "status")
                         or not isinstance(message.get("host_project_id"), str)
                         or not isinstance(message.get("name"), str)):
                     await ws.close(code=4400, reason="Invalid project publication")
                     return
+                if message["action"] == "status":
+                    host_project_id = message["host_project_id"]
+                    if (not 1 <= len(host_project_id) <= 128
+                            or any(char in host_project_id for char in ("/", "\\", " "))):
+                        await ws.close(code=4400, reason="Invalid project publication")
+                        return
+                    async with ws.app.state.database.session() as session:
+                        project = await session.scalar(select(PlatformProject).where(
+                            PlatformProject.device_id == device_id,
+                            PlatformProject.host_project_id == host_project_id,
+                        ))
+                        published = bool(project and project.status == "active"
+                                         and project.access_mode == "remote_published")
+                        grants = await project_grant_rows(session, project.id) if published else []
+                    can_manage = await IdentityService(
+                        ws.app.state.database).is_super_admin(user_id)
+                    _, _, can_publish, _, _ = await compiled_device_policy(
+                        ws.app.state.database, device_id, user_id,
+                    )
+                    await send_json({"kind": "project_publish_ack", "version": 1,
+                                     "device_id": device_id,
+                                     "host_project_id": host_project_id,
+                                     "project_id": project.id if published else None,
+                                     "status": "published" if published else "unpublished",
+                                     "grants": [{key: row[key] for key in (
+                                         "subject_type", "subject_id", "subject_name",
+                                         "access_level",
+                                     )} for row in grants],
+                                     "can_manage": can_manage,
+                                     "can_publish": can_publish})
+                    continue
                 _, _, may_publish, _, _ = await compiled_device_policy(
                     ws.app.state.database, device_id, user_id,
                 )

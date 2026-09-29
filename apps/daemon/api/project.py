@@ -124,6 +124,20 @@ async def set_project_publication(project_id: str, req: ProjectPublicationReques
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.get("/{project_id}/publication")
+async def get_project_publication(project_id: str):
+    from main import gateway_client
+
+    try:
+        return await gateway_client.project_publication_status(project_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc).strip("'")) from exc
+    except ConnectionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
 @router.delete("/{project_id}")
 async def delete_project(project_id: str):
     """Unregister a project without deleting its files."""

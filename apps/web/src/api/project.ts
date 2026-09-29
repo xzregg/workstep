@@ -29,6 +29,20 @@ export interface Project {
   host_project_id?: string
 }
 
+export interface ProjectPublicationStatus {
+  project_id: string | null
+  status: 'published' | 'unpublished'
+  grants: {
+    subject_type: 'user' | 'group'
+    subject_id: string
+    subject_name: string
+    access_level: 'read' | 'edit'
+  }[]
+  can_manage: boolean
+  can_publish: boolean
+  gateway_url: string
+}
+
 export const projectApi = {
   list: () => request<{ projects: Project[] }>('/project/list'),
   init: (path: string, name?: string) =>
@@ -55,6 +69,14 @@ export const projectApi = {
     request<{ deleted: boolean }>(`/project/${encodeURIComponent(projectId)}`, {
       method: 'DELETE',
     }),
+  publication: (projectId: string) => request<ProjectPublicationStatus>(
+    `/project/${encodeURIComponent(projectId)}/publication`,
+  ),
+  setPublication: (projectId: string, published: boolean) => request<{
+    project_id: string | null; status: 'published' | 'unpublished'
+  }>(`/project/${encodeURIComponent(projectId)}/publication`, {
+    method: 'POST', body: JSON.stringify({ published }),
+  }),
   saveSteps: (projectId: string, steps: any, workflowId?: string) =>
     request<{ saved: boolean }>(
       `/project/save-steps?project_id=${encodeURIComponent(projectId)}${workflowId ? `&workflow_id=${encodeURIComponent(workflowId)}` : ''}`,

@@ -2080,7 +2080,8 @@ export const zhTW: Messages = {
     title: '專案設定',
     loadFailed: '讀取專案設定失敗',
     saveFailed: '儲存失敗',
-    tabs: { general: '一般', assistant: '對話助手', quickButtons: '快捷按鈕', concurrency: '並發限制', share: '分享' },
+    tabs: { general: '一般', assistant: '對話助手', quickButtons: '快捷按鈕', concurrency: '並發限制', access: '存取授權', share: '分享' },
+    access: { published: '已發布到 Gateway', unpublished: '尚未發布到 Gateway', publish: '發布到 Gateway', unpublish: '取消發布', confirmUnpublish: '確認取消發布', unpublishHint: '只移除 Gateway 登記和存取授權，不刪除本機專案目錄或資料。', grants: '存取授權', user: '使用者', group: '使用者群組', read: '唯讀', edit: '可編輯', empty: '尚無存取授權。', manage: '管理授權', loadFailed: '讀取存取授權失敗。', changeFailed: '更新發布狀態失敗。', retry: '重試' },
     general: {
       name: '專案名稱',
       namePlaceholder: '請輸入專案名稱',

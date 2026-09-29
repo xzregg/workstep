@@ -2080,7 +2080,8 @@ export const jaJP: Messages = {
     title: 'プロジェクト設定',
     loadFailed: 'プロジェクト設定の読み込みに失敗しました',
     saveFailed: '保存に失敗しました',
-    tabs: { general: '一般', assistant: 'チャットアシスタント', quickButtons: 'クイックボタン', concurrency: '同時実行制限', share: '共有' },
+    tabs: { general: '一般', assistant: 'チャットアシスタント', quickButtons: 'クイックボタン', concurrency: '同時実行制限', access: 'アクセス権', share: '共有' },
+    access: { published: 'Gateway に公開済み', unpublished: 'Gateway に未公開', publish: 'Gateway に公開', unpublish: '公開を取り消す', confirmUnpublish: '公開取り消しを確認', unpublishHint: 'Gateway の登録とアクセス権のみ削除し、ローカルのプロジェクトデータは削除しません。', grants: 'アクセス権', user: 'ユーザー', group: 'グループ', read: '閲覧のみ', edit: '編集可', empty: 'アクセス権がありません。', manage: 'アクセス権を管理', loadFailed: 'アクセス権の読み込みに失敗しました。', changeFailed: '公開状態の更新に失敗しました。', retry: '再試行' },
     general: {
       name: 'プロジェクト名',
       namePlaceholder: 'プロジェクト名を入力',

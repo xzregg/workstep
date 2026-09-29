@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from sqlalchemy import select, update
 
-from .models import AuditEvent, Device, PlatformProject
+from .models import AuditEvent, Device, PlatformProject, ProjectAccessGrant
 
 
 async def record_project_publication(database, *, device_id: str, user_id: str,
@@ -44,6 +44,11 @@ async def record_project_publication(database, *, device_id: str, user_id: str,
                 if action == "publish":
                     project.published_by_user_id = user_id
                     project.published_at = now
+                else:
+                    await session.execute(update(ProjectAccessGrant).where(
+                        ProjectAccessGrant.project_id == project.id,
+                        ProjectAccessGrant.revoked_at.is_(None),
+                    ).values(revoked_at=now))
             await session.execute(update(Device).where(Device.id == device_id).values(
                 policy_revision=Device.policy_revision + 1,
             ))
