@@ -25,6 +25,7 @@ from services.messages import current_actor_task_fields
 from services.artifacts import (
     list_task_artifact_input_snapshots,
     list_task_artifacts,
+    project_relative_artifact_listing,
 )
 from api.task_context import _project, _require_scoped_task, _run_db
 
@@ -560,20 +561,26 @@ async def get_task_artifacts(
 ):
     """List files produced for a task, enriched by step manifests."""
     from main import task_service
+    from services.remote_access import get_current_actor
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
     project = _project(pid)
     exists = await _run_db(pid, lambda: task_service.get_task(task_id))
     if not exists:
         raise HTTPException(status_code=404, detail="Task not found")
-    artifacts, input_snapshots = await _run_db(
-        pid,
-        lambda: (
-            list_task_artifacts(project, task_id),
-            list_task_artifact_input_snapshots(task_id),
-        ),
-    )
+    project_scoped = (actor := get_current_actor()) is not None and actor.project_id is not None
+
+    def listing():
+        artifacts = list_task_artifacts(project, task_id)
+        snapshots = list_task_artifact_input_snapshots(task_id)
+        if project_scoped:
+            return project_relative_artifact_listing(project, artifacts, snapshots)
+        return artifacts, snapshots
+
+    artifacts, input_snapshots = await _run_db(pid, listing)
     artifact_directory = Path(project.workstep_dir) / "artifacts" / (exists["workflow_id"] or "default") / task_id
+    if project_scoped:
+        artifact_directory = artifact_directory.relative_to(project.path)
     return {
         "artifacts": artifacts,
         "input_snapshots": input_snapshots,

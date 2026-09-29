@@ -259,3 +259,40 @@ def list_task_artifact_input_snapshots(task_id: str) -> list[dict]:
             **snapshot,
         }
     return [snapshots[key] for key in sorted(snapshots)]
+
+
+def project_relative_artifact_listing(
+    project, artifacts: list[dict], input_snapshots: list[dict],
+) -> tuple[list[dict], list[dict]]:
+    """Project a task's artifact paths without exposing host filesystem paths."""
+    project_root = project.path.resolve()
+
+    def relative_path(value: str) -> str | None:
+        path = Path(value)
+        try:
+            return (path if path.is_absolute() else project_root / path).resolve().relative_to(
+                project_root
+            ).as_posix()
+        except ValueError:
+            return None
+
+    visible_artifacts = []
+    for artifact in artifacts:
+        path = relative_path(artifact["path"])
+        if path is not None:
+            visible_artifacts.append({**artifact, "path": path})
+
+    visible_snapshots = []
+    for snapshot in input_snapshots:
+        ports = []
+        for port in snapshot.get("ports", []):
+            sources = []
+            for source in port.get("sources", []):
+                if not isinstance(source, dict) or not isinstance(source.get("path"), str):
+                    continue
+                path = relative_path(source["path"])
+                if path is not None:
+                    sources.append({**source, "path": path})
+            ports.append({**port, "sources": sources})
+        visible_snapshots.append({**snapshot, "ports": ports})
+    return visible_artifacts, visible_snapshots
