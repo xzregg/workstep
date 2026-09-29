@@ -48,7 +48,7 @@ async def test_project_proxy_cannot_cancel_or_pause_another_projects_task(
     monkeypatch.setattr(main.workflow_runtime, "cancel", cancel)
     monkeypatch.setattr(main.gateway_client, "managed_config", object())
 
-    async def request(path, task_id, *, query_project=visible, level="edit"):
+    async def request(path, task_id, *, query_project=visible, level="edit", body=None):
         frames = []
 
         async def capture(frame):
@@ -62,7 +62,9 @@ async def test_project_proxy_cannot_cancel_or_pause_another_projects_task(
         }, capture, "device-1")
         bridge.start_task()
         await bridge.feed(ProxyFrame(stream_id="project-task-action", type=FrameType.http_request,
-            payload={"phase": "body", "data": base64.b64encode(json.dumps({"task_id": task_id}).encode()).decode()}))
+            payload={"phase": "body", "data": base64.b64encode(json.dumps(
+                {"task_id": task_id} if body is None else body,
+            ).encode()).decode()}))
         await bridge.feed(ProxyFrame(stream_id="project-task-action", type=FrameType.http_request,
             payload={"phase": "end"}))
         await asyncio.wait_for(bridge._task, timeout=3)
@@ -74,6 +76,14 @@ async def test_project_proxy_cannot_cancel_or_pause_another_projects_task(
         assert await request(path, "visible-task-id", level="read") == 403
         assert await request(path, "visible-task-id") == 200
     assert cancel.await_count == 2
+
+    live_message = AsyncMock(return_value={"message_id": "message-1", "status": "queued"})
+    monkeypatch.setattr(main.workflow_runtime, "send_step_message", live_message)
+    private_step = "/api/task/private-task-id/step/dev/message"
+    visible_step = "/api/task/visible-task-id/step/dev/message"
+    assert await request(private_step, "private-task-id", body={"content": "escape"}) == 404
+    assert await request(visible_step, "visible-task-id", body={"content": "hello"}) == 200
+    live_message.assert_awaited_once()
 
     from api import task_context
 
