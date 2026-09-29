@@ -14,7 +14,7 @@ from uuid import uuid4
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy import select, update
 
 from .identity import COOKIE_NAME, IdentityService
@@ -60,6 +60,19 @@ class ShareReviewInput(BaseModel):
 
 class ShareInteractionInput(BaseModel):
     data: dict
+
+
+class ShareGitCommitInput(BaseModel):
+    paths: list[str] = Field(min_length=1, max_length=10000)
+    message: str = Field(min_length=1, max_length=100000)
+    snapshot: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @field_validator("message")
+    @classmethod
+    def valid_message(cls, value: str) -> str:
+        if not value.strip() or "\0" in value:
+            raise ValueError("Commit message required")
+        return value.strip()
 
 
 def _share_csrf(session_token: str) -> str:
@@ -124,6 +137,14 @@ async def _share_interaction_body(request: Request) -> bytes:
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail="Invalid interaction response") from exc
     return json.dumps({"data": body.data}, separators=(",", ":")).encode()
+
+
+async def _share_git_commit_body(request: Request) -> bytes:
+    try:
+        body = ShareGitCommitInput.model_validate(await _bounded_share_json(request))
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail="Invalid Git commit") from exc
+    return json.dumps(body.model_dump(), separators=(",", ":")).encode()
 
 
 async def can_create_platform_share(session, user_id: str, project: PlatformProject) -> bool:
@@ -452,6 +473,16 @@ async def public_share_git_status(request: Request, token: str, tree_id: str):
     )
 
 
+@router.post("/public/shares/{token}/git/worktrees/{tree_id}/commit")
+async def public_share_git_commit(request: Request, token: str, tree_id: str):
+    if not re.fullmatch(r"[0-9a-f]{24}", tree_id):
+        raise HTTPException(status_code=404, detail="Git worktree unavailable")
+    return await _proxy_share_request(
+        request, token, f"/api/platform-share/git/worktrees/{tree_id}/commit",
+        write=True, body_kind="git_commit",
+    )
+
+
 @router.post("/public/shares/{token}/steps/{step_key}/message")
 async def public_share_step_message(request: Request, token: str, step_key: str):
     return await _proxy_share_step(request, token, step_key, "message")
@@ -503,7 +534,7 @@ async def public_share_intervention_response(request: Request, token: str,
 async def _proxy_share_request(request: Request, token: str, target_path: str,
                                *, write: bool = False,
                                interactive_read: bool = False,
-                               body_kind: Literal["message", "review", "interaction", "upload"] | None = None):
+                               body_kind: Literal["message", "review", "interaction", "upload", "git_commit"] | None = None):
     share, project = await _authorized_visitor(request, token, touch=True)
     if write or interactive_read:
         if share.mode != "interactive":
@@ -513,6 +544,7 @@ async def _proxy_share_request(request: Request, token: str, target_path: str,
     share_body = (await _share_message_body(request) if body_kind == "message"
                   else await _share_review_body(request) if body_kind == "review"
                   else await _share_interaction_body(request) if body_kind == "interaction"
+                  else await _share_git_commit_body(request) if body_kind == "git_commit"
                   else await _share_upload_body(request) if body_kind == "upload"
                   else b"" if write else None)
     connections = request.app.state.control_connections

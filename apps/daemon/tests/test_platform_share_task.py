@@ -62,21 +62,36 @@ async def test_platform_share_git_workspace_rechecks_task_and_hides_host_paths(a
 
     monkeypatch.setattr(TaskGitWorkspace, "list", list_workspace)
     monkeypatch.setattr(git_service, "status", status)
+    commit_entered = threading.Event()
+    commits = []
 
-    async def read(path, task_id=None):
+    async def commit(tree_id, paths, message, snapshot):
+        commit_entered.set()
+        await asyncio.to_thread(time.sleep, 0.7)
+        commits.append((tree_id, paths, message, snapshot))
+        return {"head": "f" * 40}
+
+    monkeypatch.setattr(git_service, "commit", commit)
+
+    async def read(path, task_id=None, *, method="GET", mode="read_only", body=None):
         ticket, key, fingerprint = _ticket(task_id=task_id or task_ids[0],
-            host_project_id=project_id)
+            host_project_id=project_id, mode=mode)
         frames = []
 
         async def capture(frame):
             frames.append(frame)
 
         bridge = ManagedHttpBridge(main.app, "share-git", {
-            "method": "GET", "path": path, "query": "", "headers": [],
+            "method": method, "path": path, "query": "",
+            "headers": [["content-type", "application/json"]],
             "share_ticket": ticket,
         }, capture, "device-1", gateway_key=key,
             gateway_fingerprint=fingerprint, gateway_id="gateway-1")
         bridge.start_task()
+        if body is not None:
+            await bridge.feed(ProxyFrame(stream_id="share-git", type=FrameType.http_request,
+                payload={"phase": "body", "data": base64.b64encode(
+                    json.dumps(body).encode()).decode()}))
         await bridge.feed(ProxyFrame(stream_id="share-git", type=FrameType.http_request,
                                      payload={"phase": "end"}))
         await asyncio.wait_for(bridge._task, timeout=3)
@@ -102,6 +117,28 @@ async def test_platform_share_git_workspace_rechecks_task_and_hides_host_paths(a
     assert len(result["files"]) == 1 and result["files"][0]["old_path"] is None
     assert "/private/host" not in json.dumps(result)
     assert (await read(path, task_id=task_ids[1]))[0] == 404
+    commit_path = f"/api/platform-share/git/worktrees/{'a' * 24}/commit"
+    commit_body = {"paths": ["README.md"], "message": "Share commit", "snapshot": "d" * 64}
+    assert (await read(commit_path, method="POST", body=commit_body))[0] == 403
+    assert (await read(commit_path, task_id=task_ids[1], method="POST",
+                       mode="interactive", body=commit_body))[0] == 404
+    pending_commit = asyncio.create_task(read(commit_path, method="POST",
+                                             mode="interactive", body=commit_body))
+    assert await asyncio.to_thread(commit_entered.wait, 2)
+    started = time.monotonic()
+    assert (await client.get("/api/health")).status_code == 200
+    assert time.monotonic() - started < 0.5
+    assert await pending_commit == (200, {"head": "f" * 40})
+    assert commits == [("a" * 24, ["README.md"], "Share commit", "d" * 64)]
+    from fastapi import HTTPException
+
+    async def broken_status(_tree_id):
+        raise HTTPException(status_code=400, detail="/private/host/worktree")
+
+    monkeypatch.setattr(git_service, "status", broken_status)
+    code, failure = await read(path)
+    assert code == 400
+    assert "/private/host" not in json.dumps(failure)
 
 
 @pytest.mark.anyio

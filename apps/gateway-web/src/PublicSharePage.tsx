@@ -245,7 +245,8 @@ export function PublicSharePage() {
           {artifacts.map(artifact => <SharedArtifactItem key={artifact.id} base={base}
             artifact={artifact} />)}
         </section>
-        <SharedGitWorkspace base={base} />
+        <SharedGitWorkspace base={base} csrf={shareCsrf}
+          interactive={meta?.mode === 'interactive'} />
       </>}
       {phase === 'offline' && <>
         <h2>暂时无法打开分享</h2>

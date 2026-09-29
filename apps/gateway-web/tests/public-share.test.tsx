@@ -208,6 +208,16 @@ test('interactive public share sends a step message with session CSRF', async ()
     if (url.endsWith('/artifacts')) return Response.json({ artifacts: [] })
     if (url.endsWith('/reviews')) return Response.json({ reviews: [] })
     if (url.endsWith('/interventions')) return Response.json({ interventions: [] })
+    if (url.endsWith('/git/workspace')) return Response.json({ worktrees: [{
+      id: 'a'.repeat(24), alias: 'app', repository_name: 'App', branch: 'feature',
+    }] })
+    if (url.endsWith(`/git/worktrees/${'a'.repeat(24)}/status`)) return Response.json({
+      branch: 'feature', head: 'c'.repeat(40), snapshot: 'd'.repeat(64),
+      files: [{ path: 'README.md', index_status: ' ', worktree_status: 'M' }],
+    })
+    if (url.endsWith(`/git/worktrees/${'a'.repeat(24)}/commit`)) return Response.json({
+      head: 'f'.repeat(40),
+    })
     if (url.endsWith('/uploads') && init?.method === 'POST') return Response.json({
       filename: `t${'a'.repeat(24)}-${'b'.repeat(32)}.txt`, size: 7,
       url: `.workstep/uploads/t${'a'.repeat(24)}-${'b'.repeat(32)}.txt`,
@@ -243,4 +253,18 @@ test('interactive public share sends a step message with session CSRF', async ()
   assert.equal(withAttachment.body, JSON.stringify({ content:
     `[report.txt](.workstep/uploads/t${'a'.repeat(24)}-${'b'.repeat(32)}.txt)`,
   }))
+  fireEvent.click(screen.getByRole('button', { name: '查看 Git 工作区' }))
+  await screen.findByText('App · app · feature')
+  fireEvent.click(screen.getByRole('button', { name: '查看 app 状态' }))
+  await screen.findByText('README.md')
+  fireEvent.click(screen.getByRole('checkbox', { name: '选择 README.md' }))
+  fireEvent.change(screen.getByLabelText('app 提交说明'), { target: { value: 'Share commit' } })
+  fireEvent.click(screen.getByRole('button', { name: '提交选中文件' }))
+  await screen.findByRole('dialog', { name: '确认 Git 提交' })
+  fireEvent.click(screen.getByRole('button', { name: '确认提交' }))
+  await waitFor(() => assert.equal(calls.filter(call => call.url.endsWith('/commit')).length, 1))
+  const commit = calls.find(call => call.url.endsWith('/commit'))
+  assert.equal((commit?.headers as Record<string, string>)?.['X-Share-CSRF'], 'csrf-1')
+  assert.equal(commit?.body, JSON.stringify({ paths: ['README.md'], message: 'Share commit',
+    snapshot: 'd'.repeat(64) }))
 })
