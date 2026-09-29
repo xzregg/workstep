@@ -18,7 +18,7 @@ from workstep_gateway_protocol import FrameType, ProxyFrame
 
 
 @pytest.mark.anyio
-async def test_project_proxy_cannot_cancel_or_pause_another_projects_task(
+async def test_project_proxy_task_actions_are_project_scoped(
     api_context, monkeypatch,
 ):
     import main
@@ -48,14 +48,15 @@ async def test_project_proxy_cannot_cancel_or_pause_another_projects_task(
     monkeypatch.setattr(main.workflow_runtime, "cancel", cancel)
     monkeypatch.setattr(main.gateway_client, "managed_config", object())
 
-    async def request(path, task_id, *, query_project=visible, level="edit", body=None):
+    async def request(path, task_id, *, method="POST", query_project=visible,
+                      level="edit", body=None):
         frames = []
 
         async def capture(frame):
             frames.append(frame)
 
         bridge = ManagedHttpBridge(main.app, "project-task-action", {
-            "method": "POST", "path": path, "query": f"project_id={query_project}",
+            "method": method, "path": path, "query": f"project_id={query_project}",
             "headers": [["content-type", "application/json"]],
             "user_id": "worker", "username": "worker", "project_id": visible,
             "access_level": level,
@@ -84,6 +85,33 @@ async def test_project_proxy_cannot_cancel_or_pause_another_projects_task(
     assert await request(private_step, "private-task-id", body={"content": "escape"}) == 404
     assert await request(visible_step, "visible-task-id", body={"content": "hello"}) == 200
     live_message.assert_awaited_once()
+
+    update_config = AsyncMock(return_value={"engine": "claude"})
+    reset_config = AsyncMock(return_value={"engine": "claude"})
+    update_coordinator = AsyncMock(return_value={"engine": "claude"})
+    monkeypatch.setattr(main.workflow_runtime, "update_step_execution_config", update_config)
+    monkeypatch.setattr(main.workflow_runtime, "reset_step_execution_config", reset_config)
+    monkeypatch.setattr(main.coordinator_module, "update_config", update_coordinator)
+    for method, suffix, body in (
+        ("PATCH", "", {"description": "Updated"}),
+        ("PATCH", "/scheduled-start", {"scheduled_start_at": None}),
+        ("PATCH", "/coordinator-config", {"engine": "claude"}),
+        ("PATCH", "/step/dev/config", {"engine": "claude"}),
+        ("DELETE", "/step/dev/config", {}),
+    ):
+        private_path = f"/api/task/private-task-id{suffix}"
+        visible_path = f"/api/task/visible-task-id{suffix}"
+        assert await request(visible_path, "visible-task-id", method=method,
+                             body=body, level="read") == 403
+        assert await request(visible_path, "visible-task-id", method=method,
+                             body=body, query_project=private) == 403
+        assert await request(private_path, "private-task-id", method=method,
+                             body=body) == 404
+        assert await request(visible_path, "visible-task-id", method=method,
+                             body=body) == 200
+    update_config.assert_awaited_once()
+    reset_config.assert_awaited_once()
+    update_coordinator.assert_awaited_once()
 
     from api import task_context
 
