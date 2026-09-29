@@ -41,7 +41,10 @@ def project_http_route_allowed(method: str, path: str,
         if access_level != "edit" or query_pairs != [("project_id", project_id)]:
             return False
         if method == "PUT":
-            return path == "/api/fs/content"
+            return path in (
+                "/api/fs/content", "/api/chat-sessions/quick-buttons",
+                "/api/chat-sessions/system-prompt",
+            )
         if method == "PATCH":
             if _CHAT_SESSION_DETAIL.fullmatch(path) or _CHAT_SESSION_UPDATE.fullmatch(path):
                 return True
@@ -55,6 +58,8 @@ def project_http_route_allowed(method: str, path: str,
         if path == "/api/chat-sessions" or _CHAT_SESSION_CHAT.fullmatch(path):
             return True
         if path in ("/api/chat-sessions/reorder", "/api/chat-sessions/bulk-delete"):
+            return True
+        if path == "/api/chat-sessions/enhance-prompt":
             return True
         if _CHAT_SESSION_ACTION.fullmatch(path):
             return True
@@ -106,6 +111,8 @@ def project_http_route_allowed(method: str, path: str,
     if path == "/api/chat-sessions":
         return all(key in ("project_id", "workflow_id", "archived")
                    for key, _ in query_pairs)
+    if path in ("/api/chat-sessions/quick-buttons", "/api/chat-sessions/system-prompt"):
+        return len(query_pairs) == 1
     if _CHAT_SESSION_DETAIL.fullmatch(path):
         return len(query_pairs) == 1
     return False

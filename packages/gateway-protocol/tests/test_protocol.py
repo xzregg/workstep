@@ -30,6 +30,9 @@ def test_project_http_allowlist_matches_only_the_bound_project():
     assert allowed("GET", "/api/chat-sessions", [("project_id", "host-1")], "host-1")
     assert allowed("GET", "/api/chat-sessions/session-1", [
         ("project_id", "host-1")], "host-1")
+    for path in ("/api/chat-sessions/quick-buttons", "/api/chat-sessions/system-prompt"):
+        assert allowed("GET", path, [("project_id", "host-1")], "host-1")
+        assert not allowed("GET", path, [("project_id", "host-2")], "host-1")
     assert allowed("GET", "/api/search/tasks", [
         ("projectId", "host-1"), ("query", "bug")], "host-1")
     assert allowed("GET", "/api/task/task-1/history", [
@@ -104,6 +107,9 @@ def test_project_http_allowlist_matches_only_the_bound_project():
         ("POST", "/api/chat-sessions/session-1/stop"),
         ("POST", "/api/chat-sessions/reorder"),
         ("POST", "/api/chat-sessions/bulk-delete"),
+        ("PUT", "/api/chat-sessions/quick-buttons"),
+        ("PUT", "/api/chat-sessions/system-prompt"),
+        ("POST", "/api/chat-sessions/enhance-prompt"),
     ):
         assert allowed(method, path, [("project_id", "host-1")],
                        "host-1", access_level="edit")

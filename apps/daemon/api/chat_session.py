@@ -162,6 +162,7 @@ async def get_quick_buttons(project_id: str = Query(..., alias="project_id")):
 @router.put("/quick-buttons")
 async def set_quick_buttons(req: QuickButtonsRequest):
     """Persist the per-project chat quick buttons."""
+    _enforce_project_scope(req.project_id)
     try:
         buttons = await _run_db(
             req.project_id,
@@ -191,6 +192,7 @@ async def get_system_prompt(project_id: str = Query(..., alias="project_id")):
 @router.put("/system-prompt")
 async def set_system_prompt(req: SystemPromptRequest):
     """Persist the project's chat system prompt; empty clears it (no system prompt)."""
+    _enforce_project_scope(req.project_id)
     try:
         prompt = await _run_db(
             req.project_id,
@@ -204,6 +206,7 @@ async def set_system_prompt(req: SystemPromptRequest):
 @router.post("/enhance-prompt")
 async def enhance_prompt(req: EnhancePromptRequest):
     """Rewrite a draft prompt into a clearer version (default chat engine)."""
+    _enforce_project_scope(req.project_id)
     try:
         prompt = await _module().enhance_prompt(req.project_id, req.prompt)
     except ValueError as exc:

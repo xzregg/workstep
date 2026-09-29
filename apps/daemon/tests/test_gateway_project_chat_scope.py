@@ -152,3 +152,24 @@ async def test_project_proxy_chat_creation_and_message_are_project_scoped(chat_m
     assert (await request(bulk_path, {"session_ids": [other["id"]]}, level="read"))[0] == 403
     code, deleted = await request(bulk_path, {"session_ids": [other["id"]]})
     assert code == 200 and other["id"] in deleted["deleted"]
+
+    for path in ("/api/chat-sessions/quick-buttons", "/api/chat-sessions/system-prompt"):
+        assert (await request(path, method="GET", level="read"))[0] == 200
+        assert (await request(path, method="GET", query_project=private))[0] == 403
+    for path, body in (
+        ("/api/chat-sessions/quick-buttons", {"buttons": []}),
+        ("/api/chat-sessions/system-prompt", {"prompt": "Work here"}),
+    ):
+        assert (await request(path, {"project_id": private, **body}, method="PUT"))[0] == 403
+        assert (await request(path, {"project_id": visible, **body},
+                              method="PUT", level="read"))[0] == 403
+        assert (await request(path, {"project_id": visible, **body}, method="PUT"))[0] == 200
+    enhance = AsyncMock(return_value="Improved")
+    monkeypatch.setattr(module, "enhance_prompt", enhance)
+    enhance_path = "/api/chat-sessions/enhance-prompt"
+    assert (await request(enhance_path, {"project_id": private, "prompt": "draft"}))[0] == 403
+    assert (await request(enhance_path, {"project_id": visible, "prompt": "draft"},
+                          level="read"))[0] == 403
+    code, enhanced = await request(enhance_path, {"project_id": visible, "prompt": "draft"})
+    assert code == 200 and enhanced["prompt"] == "Improved"
+    enhance.assert_awaited_once_with(visible, "draft")
