@@ -112,6 +112,12 @@ def test_project_http_allowlist_matches_only_the_bound_project():
         ("POST", "/api/chat-sessions/enhance-prompt"),
         ("POST", "/api/chat-sessions/session-1/fork"),
         ("POST", "/api/chat-sessions/session-1/handoff"),
+        ("POST", "/api/workflow/create"),
+        ("POST", "/api/workflow/reorder"),
+        ("POST", "/api/workflow/flow-1/restore"),
+        ("POST", "/api/workflow/flow-1/actions"),
+        ("PUT", "/api/workflow/flow-1"),
+        ("DELETE", "/api/workflow/flow-1"),
     ):
         assert allowed(method, path, [("project_id", "host-1")],
                        "host-1", access_level="edit")

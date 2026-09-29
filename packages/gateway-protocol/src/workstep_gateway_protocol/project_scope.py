@@ -17,6 +17,8 @@ _TASK_CHAT = re.compile(r"/api/task/[A-Za-z0-9_-]{1,128}/chat\Z")
 _TASK_STEP_MESSAGE = re.compile(
     r"/api/task/[A-Za-z0-9_-]{1,128}/step/[A-Za-z0-9_-]{1,128}/message\Z")
 _WORKFLOW_DETAIL = re.compile(r"/api/workflow/[A-Za-z0-9_-]{1,128}\Z")
+_WORKFLOW_ACTION = re.compile(
+    r"/api/workflow/[A-Za-z0-9_-]{1,128}/(?:actions|restore)\Z")
 _CHAT_SESSION_DETAIL = re.compile(r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}\Z")
 _CHAT_MESSAGE_EVENTS = re.compile(
     r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}/messages/"
@@ -43,6 +45,8 @@ def project_http_route_allowed(method: str, path: str,
         if access_level != "edit" or query_pairs != [("project_id", project_id)]:
             return False
         if method == "PUT":
+            if _WORKFLOW_DETAIL.fullmatch(path):
+                return True
             return path in (
                 "/api/fs/content", "/api/chat-sessions/quick-buttons",
                 "/api/chat-sessions/system-prompt",
@@ -52,11 +56,17 @@ def project_http_route_allowed(method: str, path: str,
                 return True
             return path == "/api/fs/entry"
         if method == "DELETE":
+            if _WORKFLOW_DETAIL.fullmatch(path):
+                return True
             if _CHAT_SESSION_DETAIL.fullmatch(path):
                 return True
             return path == "/api/fs/entry"
         if path == "/api/task/create":
             return task_create
+        if path in ("/api/workflow/create", "/api/workflow/reorder"):
+            return True
+        if _WORKFLOW_ACTION.fullmatch(path):
+            return True
         if path == "/api/chat-sessions" or _CHAT_SESSION_CHAT.fullmatch(path):
             return True
         if path in ("/api/chat-sessions/reorder", "/api/chat-sessions/bulk-delete"):
