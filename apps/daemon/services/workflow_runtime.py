@@ -1248,20 +1248,35 @@ class WorkflowRuntime:
                     raise RuntimeError("Task runner did not stop in time")
 
             def persist_restart(project):
-                task = Task.get_by_id(task_id)
-                heal_task_cwd(task, project)
-                parent = WorkflowRun.get_by_id(parent_run_id)
-                execution_keys = affected
-                task, child = create_restart_run(
-                    task,
-                    parent,
-                    compiled.schema_version,
-                    step_key,
-                    execution_keys,
-                    instance_id=self._leases.instance_id,
-                    reset_session_step_key=(step_key if reset_session else None),
-                    feedback_inputs=inspected["feedback_inputs"],
-                )
+                from services.project_audit import record_project_audit
+                from services.remote_project import get_effective_actor
+
+                with db_proxy.atomic():
+                    task = Task.get_by_id(task_id)
+                    heal_task_cwd(task, project)
+                    parent = WorkflowRun.get_by_id(parent_run_id)
+                    execution_keys = affected
+                    task, child = create_restart_run(
+                        task,
+                        parent,
+                        compiled.schema_version,
+                        step_key,
+                        execution_keys,
+                        instance_id=self._leases.instance_id,
+                        reset_session_step_key=(step_key if reset_session else None),
+                        feedback_inputs=inspected["feedback_inputs"],
+                    )
+                    actor = get_effective_actor()
+                    record_project_audit(
+                        project_id=project.id, task_id=task.id,
+                        action="task.restart", result="succeeded",
+                        mode=("managed" if actor is not None and actor.source == "managed"
+                              else "local"),
+                        initiated_by_user_id=child.initiated_by_user_id,
+                        initiated_by_username=child.initiated_by_username,
+                        metadata={"step_key": step_key, "workflow_run_id": child.id},
+                        event_id=f"workflow-restart:{child.id}",
+                    )
                 return PreparedWorkflowRun(
                     project_id=project.id,
                     database_executor=getattr(project, "database_executor", None),
