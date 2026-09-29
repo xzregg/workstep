@@ -40,6 +40,9 @@ test('public share route works without portal authentication and unlocks task', 
     if (url.endsWith('/artifacts')) return Response.json({ artifacts: [{
       id: 'a'.repeat(64), name: 'result.txt', step_key: 'build', size: 13,
     }] })
+    if (url.endsWith(`/artifacts/${'a'.repeat(64)}/preview`)) return Response.json({
+      type: 'text', content: 'Preview content', content_type: 'text/plain',
+    })
     if (url.endsWith('/events/message-1/0')) return Response.json({ events: [{
       type: 'TEXT_MESSAGE_CHUNK', delta: 'Visible event detail',
     }], next_cursor: 100 })
@@ -66,6 +69,8 @@ test('public share route works without portal authentication and unlocks task', 
   const artifact = await screen.findByRole('link', { name: /result.txt/ })
   assert.equal(artifact.getAttribute('href'),
     `/api/public/shares/sample-token/artifacts/${'a'.repeat(64)}/content`)
+  fireEvent.click(screen.getByRole('button', { name: '预览 result.txt' }))
+  await screen.findByText('Preview content')
   assert.equal(calls.find(call => call.url.endsWith('/unlock'))?.body,
     JSON.stringify({ password: 'secret' }))
 })

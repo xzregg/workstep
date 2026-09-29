@@ -1,5 +1,6 @@
 """Task-scoped read projection for Gateway public sharing."""
 
+import asyncio
 import hashlib
 import json
 import re
@@ -120,6 +121,13 @@ async def read_platform_share_artifacts(request: Request):
 @router.get("/artifacts/{artifact_id}/content")
 async def read_platform_share_artifact_content(request: Request, artifact_id: str):
     scope = _share_scope(request)
+    path = await _share_artifact_path(scope, artifact_id)
+    return FileResponse(path, media_type="application/octet-stream",
+                        filename=Path(path).name,
+                        content_disposition_type="attachment")
+
+
+async def _share_artifact_path(scope: dict, artifact_id: str) -> str:
     if not _ARTIFACT_ID.fullmatch(artifact_id):
         raise HTTPException(status_code=404, detail="Artifact unavailable")
     from main import project_manager
@@ -133,9 +141,25 @@ async def read_platform_share_artifact_content(request: Request, artifact_id: st
     path = await project_manager.run_db(scope["host_project_id"], find)
     if path is None:
         raise HTTPException(status_code=404, detail="Artifact unavailable")
-    return FileResponse(path, media_type="application/octet-stream",
-                        filename=Path(path).name,
-                        content_disposition_type="attachment")
+    return path
+
+
+@router.get("/artifacts/{artifact_id}/preview")
+async def read_platform_share_artifact_preview(request: Request, artifact_id: str):
+    scope = _share_scope(request)
+    path = await _share_artifact_path(scope, artifact_id)
+    from api import fs as fs_api
+    try:
+        preview = await asyncio.to_thread(
+            fs_api._preview_file_sync, path, scope["host_project_id"], True,
+        )
+    except HTTPException as exc:
+        if exc.status_code == 413:
+            raise HTTPException(status_code=413, detail="Artifact too large to preview") from exc
+        raise HTTPException(status_code=404, detail="Artifact preview unavailable") from exc
+    return {key: preview[key] for key in (
+        "type", "content_type", "content", "file_size", "extension",
+    )}
 
 
 @router.get("/task")

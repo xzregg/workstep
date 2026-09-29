@@ -81,6 +81,13 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
             target_path=f"/api/platform-share/artifacts/{'a' * 64}/content",
         )
 
+    @app.get("/api/public/shares/token/artifacts/preview")
+    async def guest_artifact_preview(request: Request):
+        return await connection.proxy_http(
+            request, share_ticket="signed-ticket",
+            target_path=f"/api/platform-share/artifacts/{'a' * 64}/preview",
+        )
+
     @app.post("/api/public/shares/token/steps/build/message")
     async def guest_step_message(request: Request):
         return await connection.proxy_http(
@@ -114,6 +121,7 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
         assert (await client.get("/api/public/shares/token/events")).status_code == 200
         assert (await client.get("/api/public/shares/token/artifacts")).status_code == 200
         assert (await client.get("/api/public/shares/token/artifacts/content")).status_code == 200
+        assert (await client.get("/api/public/shares/token/artifacts/preview")).status_code == 200
         assert (await client.post("/api/public/shares/token/steps/build/message",
                                   json={"content": "longer body"})).status_code == 200
         assert (await client.post("/api/public/shares/token/steps/build/review/approve",
@@ -130,10 +138,11 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
     assert starts[3]["path"] == "/api/platform-share/events/message-1/0"
     assert starts[4]["path"] == "/api/platform-share/artifacts"
     assert starts[5]["path"] == f"/api/platform-share/artifacts/{'a' * 64}/content"
-    assert starts[6]["path"] == "/api/platform-share/steps/build/message"
-    assert starts[6]["method"] == "POST"
-    assert starts[7]["path"] == "/api/platform-share/steps/build/review/approve"
-    assert starts[8]["path"] == "/api/platform-share/interventions/interaction-1/respond"
+    assert starts[6]["path"] == f"/api/platform-share/artifacts/{'a' * 64}/preview"
+    assert starts[7]["path"] == "/api/platform-share/steps/build/message"
+    assert starts[7]["method"] == "POST"
+    assert starts[8]["path"] == "/api/platform-share/steps/build/review/approve"
+    assert starts[9]["path"] == "/api/platform-share/interventions/interaction-1/respond"
     assert bodies == [b'{"content":"hello"}', b'{"review_run_id":"review-1"}',
                       b'{"data":{"action":"cancel"}}']
 

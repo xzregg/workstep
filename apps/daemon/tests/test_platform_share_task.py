@@ -514,9 +514,16 @@ async def test_platform_share_artifacts_are_task_scoped_and_hide_host_paths(api_
     assert artifacts[0]["name"] == "result.txt"
     status, body = await read(f"/api/platform-share/artifacts/{artifact_id}/content")
     assert status == 200 and body == b"visible bytes"
+    status, body = await read(f"/api/platform-share/artifacts/{artifact_id}/preview")
+    assert status == 200
+    preview = json.loads(body)
+    assert preview["type"] == "text" and preview["content"] == "visible bytes"
+    assert "relative_path" not in preview
+    assert str(project_dir) not in json.dumps(preview)
     private_relative = f"{workflow_id}/{task_ids[1]}/build/result.txt"
     private_id = hashlib.sha256(private_relative.encode()).hexdigest()
     assert (await read(f"/api/platform-share/artifacts/{private_id}/content"))[0] == 404
+    assert (await read(f"/api/platform-share/artifacts/{private_id}/preview"))[0] == 404
     assert (await read("/api/platform-share/artifacts", ticket + "x"))[0] != 200
 
     from services import artifacts as artifact_service
@@ -535,3 +542,21 @@ async def test_platform_share_artifacts_are_task_scoped_and_hide_host_paths(api_
     assert (await client.get("/api/health")).status_code == 200
     assert time.monotonic() - started < 0.5
     assert (await pending)[0] == 200
+
+    from api import fs as fs_api
+    original_preview = fs_api._preview_file_sync
+    entered_preview = threading.Event()
+
+    def slow_preview(*args, **kwargs):
+        entered_preview.set()
+        time.sleep(0.7)
+        return original_preview(*args, **kwargs)
+
+    monkeypatch.setattr(fs_api, "_preview_file_sync", slow_preview)
+    pending_preview = asyncio.create_task(read(
+        f"/api/platform-share/artifacts/{artifact_id}/preview"))
+    assert await asyncio.to_thread(entered_preview.wait, 2)
+    started = time.monotonic()
+    assert (await client.get("/api/health")).status_code == 200
+    assert time.monotonic() - started < 0.5
+    assert (await pending_preview)[0] == 200

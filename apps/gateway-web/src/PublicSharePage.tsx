@@ -4,6 +4,7 @@ import { SharedMessageEvents } from './SharedMessageEvents'
 import { SharedStepChat } from './SharedStepChat'
 import { SharedReviewPanel } from './SharedReviewPanel'
 import { SharedInteractionPanel } from './SharedInteractionPanel'
+import { SharedArtifactItem, type SharedArtifact } from './SharedArtifactItem'
 
 type ShareMeta = { title: string; mode: 'read_only' | 'interactive'; has_password: boolean }
 type SharedTask = {
@@ -18,7 +19,6 @@ type SharedTask = {
 }
 type SharedMessage = { id: string; role: string; content: string; step_key: string;
   created_at: string; truncated?: boolean }
-type SharedArtifact = { id: string; name: string; step_key: string; size: number | null }
 type Phase = 'loading' | 'password' | 'task' | 'offline' | 'unavailable'
 
 export function PublicSharePage() {
@@ -219,10 +219,8 @@ export function PublicSharePage() {
           <h3>任务产物</h3>
           {artifactError && <p>产物暂时不可用，请稍后重试。</p>}
           {!artifactError && artifacts.length === 0 && <p>暂无产物。</p>}
-          {artifacts.map(artifact => <p key={artifact.id}>
-            <a href={`${base}/artifacts/${artifact.id}/content`}>{artifact.name}</a>
-            {artifact.step_key && <span> · {artifact.step_key}</span>}
-          </p>)}
+          {artifacts.map(artifact => <SharedArtifactItem key={artifact.id} base={base}
+            artifact={artifact} />)}
         </section>
       </>}
       {phase === 'offline' && <>
