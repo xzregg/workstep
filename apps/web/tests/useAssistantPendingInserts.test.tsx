@@ -8,14 +8,15 @@ import { useAssistantPendingInserts } from '../src/hooks/useAssistantPendingInse
 import { I18nProvider } from '../src/i18n'
 import { usePendingMessageInsertStore } from '../src/stores/pendingMessageInsertStore'
 
-function PendingHarness({ onSendContent }: {
+function PendingHarness({ onSendContent, status = 'running' }: {
   onSendContent: (content: string, ids: string[]) => Promise<boolean>
+  status?: 'running' | 'stopped'
 }) {
   const [input, setInput] = useState('  稍后执行  ')
   const pending = useAssistantPendingInserts({
     projectId: 'project-1',
     sessionId: 'session-1',
-    messages: [{ id: 'running-1', role: 'assistant', status: 'running', engine: 'claude' }],
+    messages: [{ id: 'running-1', role: 'assistant', status, engine: 'claude' }],
     input,
     onInputChange: setInput,
     onSendContent,
@@ -75,6 +76,35 @@ test('assistant pending insert stays queued after failed send and clears on succ
   } finally {
     Object.assign(pendingMessageInsertApi, originals)
     await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+test('stopped assistant reply reloads its persisted pending inserts after refresh', async () => {
+  const { window } = installDomEnvironment()
+  const container = window.document.body.appendChild(window.document.createElement('div'))
+  const root = createRoot(container as never)
+  const originalList = pendingMessageInsertApi.list
+  const requests: Array<[string, string]> = []
+  pendingMessageInsertApi.list = async (projectId, targetMessageId) => {
+    requests.push([projectId, targetMessageId])
+    return { items: [{
+      id: 'saved-1', target_message_id: targetMessageId, content: '刷新前排队的消息',
+      position: 0, username: '测试用户', created_at: '', updated_at: '',
+    }] }
+  }
+  usePendingMessageInsertStore.setState({ queues: {}, loaded: {}, loading: {} })
+  try {
+    await act(async () => root.render(<I18nProvider><PendingHarness
+      status="stopped" onSendContent={async () => true}
+    /></I18nProvider>))
+    assert.deepEqual(requests, [['project-1', 'running-1']])
+    assert.match(container.querySelector('[role="region"]')?.textContent || '', /刷新前排队的消息/)
+    assert.equal(container.querySelector('[data-enabled]')?.textContent, 'false')
+  } finally {
+    pendingMessageInsertApi.list = originalList
+    await act(async () => root.unmount())
+    usePendingMessageInsertStore.setState({ queues: {}, loaded: {}, loading: {} })
     await window.happyDOM.close()
   }
 })

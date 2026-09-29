@@ -1,5 +1,6 @@
 # WorkStep documentation
 
+- [项目简介](intro.md) *(简体中文)* — 面向新用户的简短介绍：定位、核心功能、三层架构与快速开始。
 - [项目概览](overview.md) *(简体中文)* — 定位、子应用架构、核心概念、快速开始与文档导航，新开发者的入口。
 - [Architecture](architecture.md) *(简体中文)* — components, storage, engine boundary, and event flow.
 - [Multi-engine architecture](multi-engine-architecture.md) *(简体中文)* — engine base classes, auto-discovery, ACP/AG-UI event boundary, capability declarations, and the engine list.

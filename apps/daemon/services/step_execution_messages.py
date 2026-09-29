@@ -129,9 +129,9 @@ class StepExecutionMessages:
                 )
             )
             prompt += (
-                "\n\n请根据以上反馈修复问题，保留已有正确结果。\n"
-                "**注意：修复时必须严格遵守「输出规范」中声明的产物类型、名称和写入路径，"
-                "不要改变输出格式、文件扩展名或目录结构。**"
+                "\n\nRevise the affected work and preserve correct results. "
+                "Write generated artifacts using the declared names, types, "
+                "and current-round paths."
             )
 
         out_dir = (
