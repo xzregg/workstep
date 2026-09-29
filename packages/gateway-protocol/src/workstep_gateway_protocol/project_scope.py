@@ -141,6 +141,9 @@ def project_http_route_allowed(method: str, path: str,
     values = [value for key, value in query_pairs if key == "project_id"]
     if values != [project_id]:
         return False
+    if path == "/api/statistics/overview":
+        return all(key in ("project_id", "workflow_id", "range", "start", "end", "timezone")
+                   for key, _ in query_pairs)
     if path == "/api/fs/browse":
         return all(key in ("project_id", "path", "include_hidden")
                    for key, _ in query_pairs)
