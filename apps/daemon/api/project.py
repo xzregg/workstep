@@ -73,6 +73,11 @@ async def reorder_projects(req: ReorderProjectsRequest):
 async def list_projects():
     """List all registered projects."""
     from api.remote_project import remote_project_registry
+    from services.remote_access import get_current_actor
+
+    actor = get_current_actor()
+    if actor is not None and actor.project_id is not None:
+        raise HTTPException(status_code=403, detail="Project scope denied")
 
     local_projects = await asyncio.to_thread(project_manager.list_projects)
     local = [
