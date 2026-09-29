@@ -1,10 +1,23 @@
 """Materialize the canonical task payload within a project database work unit."""
 
 import json
+from pathlib import Path
 
 from peewee import fn
 
 from models import CoordinatorSession, Message, ReviewRun, StepRun, Task, TaskStep, WorkflowRun
+
+
+def project_relative_task_cwd(cwd: str, project_root: Path) -> str:
+    """Render a task working directory without a host path for project tickets."""
+    path = Path(cwd)
+    if not path.is_absolute():
+        return ""
+    try:
+        relative = path.relative_to(project_root)
+    except ValueError:
+        return ""
+    return "" if ".." in relative.parts else relative.as_posix()
 
 
 def latest_previous_step_statuses(task: Task) -> dict[str, str]:
