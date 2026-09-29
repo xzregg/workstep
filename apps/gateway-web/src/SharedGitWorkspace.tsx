@@ -1,12 +1,11 @@
 import { useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
+import { SharedGitBranches } from './SharedGitBranches'
 
 type Worktree = { id: string; alias: string; repository_name: string; branch: string | null }
 type Status = { branch: string | null; head: string | null; snapshot: string; active?: boolean;
   operation?: string | null;
   files: Array<{ path: string; index_status: string; worktree_status: string }> }
-type Branch = { name: string; head: string; upstream: string | null; ahead: number | null;
-  behind: number | null; occupied: boolean; worktree_id: string | null }
 type SyncAction = 'pull' | 'push'
 
 export function SharedGitWorkspace({ base, csrf, interactive }: {
@@ -15,16 +14,8 @@ export function SharedGitWorkspace({ base, csrf, interactive }: {
   const [open, setOpen] = useState(false)
   const [worktrees, setWorktrees] = useState<Worktree[] | null>(null)
   const [statuses, setStatuses] = useState<Record<string, Status>>({})
-  const [branches, setBranches] = useState<Record<string, Branch[]>>({})
-  const [newBranchNames, setNewBranchNames] = useState<Record<string, string>>({})
-  const [baseBranches, setBaseBranches] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [statusBusy, setStatusBusy] = useState<string | null>(null)
-  const [branchesBusy, setBranchesBusy] = useState<string | null>(null)
-  const [branchWriteBusy, setBranchWriteBusy] = useState(false)
-  const [branchTarget, setBranchTarget] = useState<{
-    tree: Worktree; branch: Branch; action: 'switch' | 'delete'
-  } | null>(null)
   const [selectedPaths, setSelectedPaths] = useState<Record<string, string[]>>({})
   const [commitMessages, setCommitMessages] = useState<Record<string, string>>({})
   const [commitTarget, setCommitTarget] = useState<Worktree | null>(null)
@@ -67,76 +58,6 @@ export function SharedGitWorkspace({ base, csrf, interactive }: {
       setStatusBusy(null)
     }
   }
-
-  async function loadBranches(tree: Worktree) {
-    if (branchesBusy) return
-    setBranchesBusy(tree.id)
-    setError('')
-    try {
-      const response = await fetch(`${base}/git/worktrees/${tree.id}/branches`)
-      if (!response.ok) { setError('分支列表暂时不可用，请稍后重试。'); return }
-      const result = await response.json() as { branches: Branch[] }
-      setBranches(current => ({ ...current, [tree.id]: result.branches }))
-    } catch {
-      setError('暂时无法连接宿主电脑，请稍后重试。')
-    } finally {
-      setBranchesBusy(null)
-    }
-  }
-
-  async function createBranch(tree: Worktree) {
-    if (branchWriteBusy) return
-    const name = newBranchNames[tree.id]?.trim()
-    const base = baseBranches[tree.id] || statuses[tree.id]?.branch
-    const source = branches[tree.id]?.find(branch => branch.name === base)
-    const snapshot = statuses[tree.id]?.snapshot
-    if (!name || !source || !snapshot) return
-    setBranchWriteBusy(true)
-    setError('')
-    try {
-      const response = await fetch(`${baseUrl(tree)}/branches`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Share-CSRF': csrf },
-        body: JSON.stringify({ name, base_branch: source.name, base_head: source.head, snapshot }),
-      })
-      if (!response.ok) { setError('创建分支失败，请刷新状态和分支后重试。'); return }
-      setNewBranchNames(current => ({ ...current, [tree.id]: '' }))
-      await loadBranches(tree)
-    } catch {
-      setError('暂时无法连接宿主电脑，请稍后重试。')
-    } finally {
-      setBranchWriteBusy(false)
-    }
-  }
-
-  async function writeBranch() {
-    const target = branchTarget
-    if (!target || branchWriteBusy) return
-    const snapshot = statuses[target.tree.id]?.snapshot
-    if (!snapshot) return
-    setBranchWriteBusy(true)
-    setError('')
-    try {
-      const endpoint = target.action === 'switch' ? 'switch' : 'branches/delete'
-      const body = target.action === 'switch'
-        ? { branch: target.branch.name, snapshot }
-        : { branch: target.branch.name, head: target.branch.head, snapshot }
-      const response = await fetch(`${baseUrl(target.tree)}/${endpoint}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Share-CSRF': csrf },
-        body: JSON.stringify(body),
-      })
-      setBranchTarget(null)
-      if (!response.ok) { setError('分支操作失败，请刷新状态和分支后重试。'); return }
-      await loadStatus(target.tree)
-      await loadBranches(target.tree)
-    } catch {
-      setBranchTarget(null)
-      setError('暂时无法连接宿主电脑，请稍后重试。')
-    } finally {
-      setBranchWriteBusy(false)
-    }
-  }
-
-  function baseUrl(tree: Worktree) { return `${base}/git/worktrees/${tree.id}` }
 
   async function commit() {
     const tree = commitTarget
@@ -206,58 +127,11 @@ export function SharedGitWorkspace({ base, csrf, interactive }: {
         {statusBusy === tree.id && <span className="gateway-share-spinner" aria-hidden="true" />}
         查看 {tree.alias} 状态
       </button>
-      <button type="button" disabled={branchesBusy !== null}
-        onClick={() => void loadBranches(tree)}>
-        {branchesBusy === tree.id && <span className="gateway-share-spinner" aria-hidden="true" />}
-        查看 {tree.alias} 分支
-      </button>
-      {branches[tree.id] && <div className="gateway-share-git-branches">
-        <h5>本地分支</h5>
-        {branches[tree.id].length === 0 ? <p>没有本地分支。</p>
-          : <ul>{branches[tree.id].map(branch => <li key={branch.name}>
-            <strong>{branch.name}</strong> · {branch.head.slice(0, 8)}
-            {branch.upstream && <> · 上游 {branch.upstream}</>}
-            {branch.ahead != null && branch.behind != null
-              && <> · 领先 {branch.ahead} / 落后 {branch.behind}</>}
-            {branch.occupied && <> · 已检出</>}
-            {interactive && statuses[tree.id] && !branch.occupied && !statuses[tree.id].active
-              && !statuses[tree.id].operation
-              && <span className="gateway-share-git-branch-actions">
-                <button type="button" disabled={!csrf || branchWriteBusy || commitBusy || syncBusy}
-                  onClick={() => setBranchTarget({ tree, branch, action: 'switch' })}>
-                  切换到 {branch.name}
-                </button>
-                <button type="button" disabled={!csrf || branchWriteBusy || commitBusy || syncBusy}
-                  onClick={() => setBranchTarget({ tree, branch, action: 'delete' })}>
-                  删除 {branch.name} 分支
-                </button>
-              </span>}
-          </li>)}</ul>}
-        {interactive && statuses[tree.id] && !statuses[tree.id].active
-          && !statuses[tree.id].operation && <div className="gateway-share-git-create">
-          <label htmlFor={`gateway-share-branch-name-${tree.id}`}>{tree.alias} 新分支名称</label>
-          <input id={`gateway-share-branch-name-${tree.id}`} type="text" maxLength={255}
-            value={newBranchNames[tree.id] ?? ''}
-            onChange={event => setNewBranchNames(current => ({ ...current,
-              [tree.id]: event.target.value }))} />
-          <label htmlFor={`gateway-share-branch-base-${tree.id}`}>来源分支</label>
-          <select id={`gateway-share-branch-base-${tree.id}`}
-            value={baseBranches[tree.id] || statuses[tree.id].branch || ''}
-            onChange={event => setBaseBranches(current => ({ ...current,
-              [tree.id]: event.target.value }))}>
-            {branches[tree.id].map(branch => <option key={branch.name} value={branch.name}>
-              {branch.name}</option>)}
-          </select>
-          <button type="button" disabled={!csrf || !newBranchNames[tree.id]?.trim()
-            || !branches[tree.id].some(branch => branch.name === (
-              baseBranches[tree.id] || statuses[tree.id].branch)) || branchWriteBusy
-            || commitBusy || syncBusy}
-            onClick={() => void createBranch(tree)}>
-            {branchWriteBusy && <span className="gateway-share-spinner" aria-hidden="true" />}
-            创建 {tree.alias} 分支
-          </button>
-        </div>}
-      </div>}
+      <SharedGitBranches base={`${base}/git/worktrees/${tree.id}`} treeId={tree.id}
+        alias={tree.alias}
+        csrf={csrf} interactive={interactive} status={statuses[tree.id]}
+        blocked={commitBusy || syncBusy || statusBusy !== null}
+        onStatusChanged={() => loadStatus(tree)} />
       {statuses[tree.id] && <div className="gateway-share-git-status">
         <p>分支：{statuses[tree.id].branch || '未命名'} · 提交：{statuses[tree.id].head || '暂无'}</p>
         {statuses[tree.id].files.length === 0 ? <p>没有未提交的文件变更。</p>
@@ -278,16 +152,16 @@ export function SharedGitWorkspace({ base, csrf, interactive }: {
             onChange={event => setCommitMessages(current => ({ ...current,
               [tree.id]: event.target.value }))} />
           <button type="button" disabled={!csrf || !(selectedPaths[tree.id]?.length)
-            || !commitMessages[tree.id]?.trim() || commitBusy || branchWriteBusy || syncBusy}
+            || !commitMessages[tree.id]?.trim() || commitBusy || syncBusy}
             onClick={() => setCommitTarget(tree)}>提交选中文件</button>
         </div>}
         {interactive && statuses[tree.id].branch && <div className="gateway-share-git-sync">
           <button type="button" disabled={!csrf || !!statuses[tree.id].active || statusBusy !== null
-            || commitBusy || syncBusy || branchWriteBusy} onClick={() => setSyncTarget({ tree, action: 'pull' })}>
+            || commitBusy || syncBusy} onClick={() => setSyncTarget({ tree, action: 'pull' })}>
             拉取 {tree.alias}
           </button>
           <button type="button" disabled={!csrf || !!statuses[tree.id].active || statusBusy !== null
-            || commitBusy || syncBusy || branchWriteBusy} onClick={() => setSyncTarget({ tree, action: 'push' })}>
+            || commitBusy || syncBusy} onClick={() => setSyncTarget({ tree, action: 'push' })}>
             推送 {tree.alias}
           </button>
         </div>}
@@ -302,13 +176,5 @@ export function SharedGitWorkspace({ base, csrf, interactive }: {
       message={`${syncTarget.action === 'pull' ? '从上游拉取并快进' : '向上游推送'} ${syncTarget.tree.alias} 当前分支？`}
       confirmLabel={`确认${syncTarget.action === 'pull' ? '拉取' : '推送'}`}
       busy={syncBusy} onConfirm={() => void sync()} onCancel={() => setSyncTarget(null)} />}
-    {branchTarget && <GatewayConfirmDialog
-      title={branchTarget.action === 'switch' ? '确认切换分支' : '确认删除分支'}
-      message={branchTarget.action === 'switch'
-        ? `将 ${branchTarget.tree.alias} 工作树切换到 ${branchTarget.branch.name}？`
-        : `删除 ${branchTarget.branch.name} 分支？仅已合并的分支可删除。`}
-      confirmLabel={branchTarget.action === 'switch' ? '确认切换' : '确认删除'}
-      busy={branchWriteBusy} onConfirm={() => void writeBranch()}
-      onCancel={() => setBranchTarget(null)} />}
   </section>
 }

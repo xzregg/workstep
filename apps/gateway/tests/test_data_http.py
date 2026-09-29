@@ -151,7 +151,8 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
     @app.post("/api/public/shares/token/git/worktrees/{action}")
     async def guest_git_sync(request: Request, action: str):
         return await connection.proxy_http(
-            request, share_ticket="signed-ticket", share_body=b'{"branch":"feature"}',
+            request, share_ticket="signed-ticket",
+            share_body=b"" if action == "fetch" else b'{"branch":"feature"}',
             target_path=f"/api/platform-share/git/worktrees/{'a' * 24}/{action}",
         )
 
@@ -199,6 +200,7 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
         assert (await client.get("/api/public/shares/token/git/worktrees/branches")).status_code == 200
         for action in ("switch", "create", "delete"):
             assert (await client.post(f"/api/public/shares/token/git/worktrees/{action}/write")).status_code == 200
+        assert (await client.post("/api/public/shares/token/git/worktrees/fetch")).status_code == 200
     assert starts[0]["path"] == "/api/platform-share/task"
     assert starts[0]["share_ticket"] == "signed-ticket"
     assert "user_id" not in starts[0]
@@ -227,6 +229,7 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
         f"/api/platform-share/git/worktrees/{'a' * 24}/branches",
         f"/api/platform-share/git/worktrees/{'a' * 24}/branches/delete",
     ]
+    assert starts[21]["path"] == f"/api/platform-share/git/worktrees/{'a' * 24}/fetch"
     assert bodies == [b'{"content":"hello"}', b'{"review_run_id":"review-1"}',
                       b'{"data":{"action":"cancel"}}', b"visible", b'{"message":"Commit"}',
                       b'{"branch":"feature"}', b'{"branch":"feature"}',

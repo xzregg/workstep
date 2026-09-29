@@ -201,6 +201,28 @@ async def test_platform_share_git_workspace_rechecks_task_and_hides_host_paths(a
         ("create", "a" * 24, "new", "feature", "c" * 40, "d" * 64, None),
         ("delete", "a" * 24, "private", "e" * 40, "d" * 64),
     ]
+    fetch_entered = threading.Event()
+
+    async def fetch(tree_id):
+        assert tree_id == "a" * 24
+        fetch_entered.set()
+        await asyncio.to_thread(time.sleep, 0.7)
+        return await branches(tree_id)
+
+    monkeypatch.setattr(git_service, "fetch", fetch)
+    fetch_path = f"/api/platform-share/git/worktrees/{'a' * 24}/fetch"
+    assert (await read(fetch_path, method="POST"))[0] == 403
+    assert (await read(fetch_path, task_id=task_ids[1], method="POST",
+                       mode="interactive"))[0] == 404
+    pending_fetch = asyncio.create_task(read(fetch_path, method="POST", mode="interactive"))
+    assert await asyncio.to_thread(fetch_entered.wait, 2)
+    started = time.monotonic()
+    assert (await client.get("/api/health")).status_code == 200
+    assert time.monotonic() - started < 0.5
+    code, result = await pending_fetch
+    assert code == 200
+    assert "/private/host" not in json.dumps(result)
+    assert result["remote_branches"][0]["name"] == "origin/main"
     commit_path = f"/api/platform-share/git/worktrees/{'a' * 24}/commit"
     commit_body = {"paths": ["README.md"], "message": "Share commit", "snapshot": "d" * 64}
     assert (await read(commit_path, method="POST", body=commit_body))[0] == 403

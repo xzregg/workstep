@@ -405,6 +405,14 @@ async def switch_platform_share_git(request: Request, tree_id: str, body: ShareG
     return {"completed": True}
 
 
+@router.post("/git/worktrees/{tree_id}/fetch")
+async def fetch_platform_share_git(request: Request, tree_id: str):
+    task_tree_ids = await _share_git_write_workspace(request, tree_id)
+    from api import git as git_api
+    result = await _share_git_result(git_api.git_service.fetch(tree_id))
+    return _public_git_branches(result, task_tree_ids)
+
+
 @router.post("/git/worktrees/{tree_id}/branches")
 async def create_platform_share_git_branch(request: Request, tree_id: str,
                                            body: ShareGitBranchCreate):

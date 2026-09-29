@@ -234,6 +234,12 @@ test('interactive public share sends a step message with session CSRF', async ()
         behind: null, occupied: false, worktree_id: null },
       { name: 'old', head: 'b'.repeat(40), upstream: null, ahead: null,
         behind: null, occupied: false, worktree_id: null }],
+      remote_branches: [{ name: 'origin/release', remote: 'origin', branch: 'release',
+        head: 'a'.repeat(40) }],
+    })
+    if (url.endsWith(`/git/worktrees/${'a'.repeat(24)}/fetch`)) return Response.json({
+      branches: [], remote_branches: [{ name: 'origin/release', remote: 'origin',
+        branch: 'release', head: 'a'.repeat(40) }],
     })
     if (url.endsWith(`/git/worktrees/${'a'.repeat(24)}/switch`)) return Response.json({ completed: true })
     if (url.endsWith(`/git/worktrees/${'a'.repeat(24)}/branches/delete`)) return Response.json({ branches: [] })
@@ -320,4 +326,16 @@ test('interactive public share sends a step message with session CSRF', async ()
   const switched = calls.find(call => call.url.endsWith('/switch'))
   assert.equal((switched?.headers as Record<string, string>)?.['X-Share-CSRF'], 'csrf-1')
   assert.equal(switched?.body, JSON.stringify({ branch: 'main', snapshot: 'd'.repeat(64) }))
+  fireEvent.click(screen.getByRole('button', { name: '刷新 app 远程分支' }))
+  await waitFor(() => assert.equal(calls.filter(call => call.url.endsWith('/fetch')).length, 1))
+  const fetched = calls.find(call => call.url.endsWith('/fetch'))
+  assert.equal((fetched?.headers as Record<string, string>)?.['X-Share-CSRF'], 'csrf-1')
+  fireEvent.click(screen.getByRole('button', { name: '跟踪 origin/release' }))
+  await screen.findByRole('dialog', { name: '确认跟踪远程分支' })
+  fireEvent.click(screen.getByRole('button', { name: '确认跟踪' }))
+  await waitFor(() => assert.equal(calls.filter(call => call.url.endsWith('/switch')).length, 2))
+  const tracked = calls.filter(call => call.url.endsWith('/switch'))[1]
+  assert.equal((tracked?.headers as Record<string, string>)?.['X-Share-CSRF'], 'csrf-1')
+  assert.equal(tracked?.body, JSON.stringify({ branch: 'release', snapshot: 'd'.repeat(64),
+    remote: 'origin' }))
 })
