@@ -1319,18 +1319,19 @@ class WorkflowRuntime:
         feedback_inputs: dict[str, dict] | None = None,
         reset_session: bool = False,
     ) -> WorkflowRunHandle:
-        prepared = await self._run_db(
-            project_id,
-            lambda project: prepare_start_from_step_without_parent(
-                project,
-                task_id,
-                step_key,
-                instance_id=self._leases.instance_id,
-                current_workflow_steps=self._current_workflow_steps,
-                reset_session=reset_session,
-                feedback_inputs=feedback_inputs,
-            ),
-        )
+        def persist_start(project):
+            with db_proxy.atomic("IMMEDIATE"):
+                return prepare_start_from_step_without_parent(
+                    project,
+                    task_id,
+                    step_key,
+                    instance_id=self._leases.instance_id,
+                    current_workflow_steps=self._current_workflow_steps,
+                    reset_session=reset_session,
+                    feedback_inputs=feedback_inputs,
+                )
+
+        prepared = await self._run_db(project_id, persist_start)
         return self._launch_prepared_run(
             prepared,
             "",
