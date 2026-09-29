@@ -408,7 +408,7 @@ export const chatSessionApi = {
       body: JSON.stringify({ project_id: projectId, archived }),
     }),
   create: (input: ChatSessionCreateInput) =>
-    request<ChatSessionDetail>('/chat-sessions', {
+    request<ChatSessionDetail>(`/chat-sessions?project_id=${encodeURIComponent(input.project_id)}`, {
       method: 'POST',
       body: JSON.stringify(input),
       signal: AbortSignal.timeout(20_000),
@@ -471,7 +471,7 @@ export const chatSessionApi = {
     idempotencyKey: string,
     options: ChatMessageOptions = {},
   ) =>
-    request<ChatAccepted>(`/chat-sessions/${encodeURIComponent(sessionId)}/chat`, {
+    request<ChatAccepted>(`/chat-sessions/${encodeURIComponent(sessionId)}/chat?project_id=${encodeURIComponent(projectId)}`, {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey },
       body: JSON.stringify({

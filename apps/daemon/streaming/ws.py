@@ -51,7 +51,7 @@ def _local_project_summary(project_id: str) -> dict[str, Any] | None:
 
 
 _SUBSCRIBE_KEYS = ("task_ids", "status_only_task_ids", "session_ids", "channels")
-_PROJECT_EVENT_CHANNELS = frozenset({"execution", "coordinator"})
+_PROJECT_EVENT_CHANNELS = frozenset({"execution", "coordinator", "session_chat"})
 
 
 @dataclass
@@ -123,6 +123,8 @@ def _make_subscription_predicate(sub: WsSubscription):
             channel = event.get("channel")
             if channel is not None and channel not in _PROJECT_EVENT_CHANNELS:
                 return False
+            if channel == "session_chat":
+                return bool(sub.active and event.get("session_id") in sub.session_ids)
             if event.get("session_id") and not event.get("task_id"):
                 return False
         return matches_subscription(event, sub)
