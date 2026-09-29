@@ -96,6 +96,7 @@ async def update_scheduled_start(
     from main import task_service, event_bus
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(pid, task_id)
     try:
         task = await _run_db(
             pid,
@@ -187,6 +188,7 @@ async def update_task(
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(pid, task_id)
     task = await _run_db(
         pid,
         lambda: task_service.update_task_description(
@@ -333,6 +335,7 @@ async def update_step_execution_config(
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Workflow runtime not initialized")
+    await _require_scoped_task(pid, task_id)
     try:
         return await workflow_runtime.update_step_execution_config(
             pid, task_id, step_key,
@@ -356,6 +359,7 @@ async def reset_step_execution_config(
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Workflow runtime not initialized")
+    await _require_scoped_task(pid, task_id)
     try:
         return await workflow_runtime.reset_step_execution_config(pid, task_id, step_key)
     except RuntimeError as exc:
@@ -481,6 +485,7 @@ async def update_coordinator_config(
     from main import coordinator_module
     if not coordinator_module:
         raise HTTPException(status_code=503, detail="Coordinator is not initialized")
+    await _require_scoped_task(pid, task_id)
     try:
         return await coordinator_module.update_config(
             pid,

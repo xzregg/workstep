@@ -118,6 +118,11 @@ def test_project_http_allowlist_matches_only_the_bound_project():
         ("POST", "/api/workflow/flow-1/actions"),
         ("PUT", "/api/workflow/flow-1"),
         ("DELETE", "/api/workflow/flow-1"),
+        ("PATCH", "/api/task/task-1"),
+        ("PATCH", "/api/task/task-1/scheduled-start"),
+        ("PATCH", "/api/task/task-1/coordinator-config"),
+        ("PATCH", "/api/task/task-1/step/dev/config"),
+        ("DELETE", "/api/task/task-1/step/dev/config"),
     ):
         assert allowed(method, path, [("project_id", "host-1")],
                        "host-1", access_level="edit")

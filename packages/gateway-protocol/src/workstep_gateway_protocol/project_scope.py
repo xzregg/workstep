@@ -9,6 +9,8 @@ _TASK_READ_DETAIL = re.compile(
     r"(?:execution-report|history|artifacts|reviews|coordinator-config)\Z")
 _TASK_STEP_CONFIG = re.compile(
     r"/api/task/[A-Za-z0-9_-]{1,128}/step/[A-Za-z0-9_-]{1,128}/config\Z")
+_TASK_METADATA_UPDATE = re.compile(
+    r"/api/task/[A-Za-z0-9_-]{1,128}/(?:scheduled-start|coordinator-config)\Z")
 _TASK_STEP_HISTORY = re.compile(
     r"/api/task/[A-Za-z0-9_-]{1,128}/step/[A-Za-z0-9_-]{1,128}/history\Z")
 _TASK_MESSAGE_EVENTS = re.compile(
@@ -52,10 +54,15 @@ def project_http_route_allowed(method: str, path: str,
                 "/api/chat-sessions/system-prompt",
             )
         if method == "PATCH":
+            if (_TASK_DETAIL.fullmatch(path) or _TASK_METADATA_UPDATE.fullmatch(path)
+                    or _TASK_STEP_CONFIG.fullmatch(path)):
+                return True
             if _CHAT_SESSION_DETAIL.fullmatch(path) or _CHAT_SESSION_UPDATE.fullmatch(path):
                 return True
             return path == "/api/fs/entry"
         if method == "DELETE":
+            if _TASK_STEP_CONFIG.fullmatch(path):
+                return True
             if _WORKFLOW_DETAIL.fullmatch(path):
                 return True
             if _CHAT_SESSION_DETAIL.fullmatch(path):
