@@ -549,6 +549,16 @@ async def public_share_git_switch(request: Request, token: str, tree_id: str):
     )
 
 
+@router.post("/public/shares/{token}/git/worktrees/{tree_id}/fetch")
+async def public_share_git_fetch(request: Request, token: str, tree_id: str):
+    if not re.fullmatch(r"[0-9a-f]{24}", tree_id):
+        raise HTTPException(status_code=404, detail="Git worktree unavailable")
+    return await _proxy_share_request(
+        request, token, f"/api/platform-share/git/worktrees/{tree_id}/fetch",
+        write=True,
+    )
+
+
 @router.post("/public/shares/{token}/git/worktrees/{tree_id}/branches")
 async def public_share_git_create_branch(request: Request, token: str, tree_id: str):
     if not re.fullmatch(r"[0-9a-f]{24}", tree_id):

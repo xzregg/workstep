@@ -113,6 +113,7 @@ body {
 .gateway-share-git-branches { margin-top: 12px; }
 .gateway-share-git-branch-actions { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-left: 8px; }
 .gateway-share-git-create { display: grid; gap: 8px; margin-top: 12px; }
+.gateway-share-git-create input, .gateway-share-git-create select { box-sizing: border-box; width: 100%; min-height: 42px; padding: 8px 12px; border: 1px solid #d2d2d7; border-radius: 12px; font: inherit; }
 .gateway-share-step-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .gateway-share-reviews article { display: grid; gap: 10px; }
 .gateway-share-reviews label { font-weight: 600; }

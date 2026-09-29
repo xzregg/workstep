@@ -320,6 +320,8 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
         ):
             assert client.post(f"/api/public/shares/{token}/git/worktrees/{'a' * 24}/{suffix}",
                                headers={"X-Share-CSRF": read_csrf}, json=body).status_code == 403
+        assert client.post(f"/api/public/shares/{token}/git/worktrees/{'a' * 24}/fetch",
+                           headers={"X-Share-CSRF": read_csrf}).status_code == 403
         branch_path = f"/api/public/shares/{token}/git/worktrees/{'a' * 24}/branches"
         assert client.get(branch_path).status_code == 200
         assert client.get(f"/api/public/shares/{token}/reviews").status_code == 200
@@ -418,6 +420,10 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
                                    headers={"X-Share-CSRF": csrf}, json=body)
             assert response.status_code == 200
             assert captured[-1][0] == f"/api/platform-share/git/worktrees/{'a' * 24}{suffix}"
+        fetch_path = f"/api/public/shares/{token}/git/worktrees/{'a' * 24}/fetch"
+        assert client.post(fetch_path).status_code == 403
+        assert client.post(fetch_path, headers={"X-Share-CSRF": csrf}).status_code == 200
+        assert captured[-1] == (f"/api/platform-share/git/worktrees/{'a' * 24}/fetch", b"")
         assert client.post(f"/api/public/shares/{token}/steps/../message",
                            headers={"X-Share-CSRF": csrf},
                            json={"content": "escape"}).status_code != 200
