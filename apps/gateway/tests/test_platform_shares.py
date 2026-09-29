@@ -250,6 +250,9 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
                 if target_path == "/api/platform-share/reviews":
                     return JSONResponse({"reviews": [{"id": "review-1", "step_key": "build",
                                                       "report": {"summary": "Check output"}}]})
+                if target_path == "/api/platform-share/interventions":
+                    return JSONResponse({"interventions": [{"interaction_id": "interaction-1",
+                        "step_key": "build", "request": {"method": "session/request_permission"}}]})
                 return JSONResponse({"message_id": "accepted"})
 
         async def request_data(device_id):
@@ -270,6 +273,7 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
         assert client.post(f"/api/public/shares/{token}/steps/build/review/approve",
                            headers={"X-Share-CSRF": read_csrf},
                            json={"review_run_id": "review-1"}).status_code == 403
+        assert client.get(f"/api/public/shares/{token}/interventions").status_code == 403
         assert captured == [("/api/platform-share/reviews", None)]
         captured.clear()
 
@@ -291,6 +295,16 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
                            json={"content": "again"}).status_code == 200
         assert client.post(f"/api/public/shares/{token}/steps/build/cancel",
                            headers={"X-Share-CSRF": csrf}).status_code == 200
+        interventions = client.get(f"/api/public/shares/{token}/interventions")
+        assert interventions.status_code == 200
+        assert interventions.json()["interventions"][0]["interaction_id"] == "interaction-1"
+        interaction_path = f"/api/public/shares/{token}/interventions/interaction-1/respond"
+        assert client.post(interaction_path, json={"data": {"action": "cancel"}}).status_code == 403
+        replied = client.post(interaction_path, headers={"X-Share-CSRF": csrf},
+                              json={"data": {"action": "cancel"}})
+        assert replied.status_code == 200
+        assert captured[-1] == ("/api/platform-share/interventions/interaction-1/respond",
+                                b'{"data":{"action":"cancel"}}')
         review_path = f"/api/public/shares/{token}/steps/build/review/approve"
         assert client.post(review_path, json={"review_run_id": "review-1"}).status_code == 403
         review = client.post(review_path, headers={"X-Share-CSRF": csrf},

@@ -58,6 +58,10 @@ class ShareReviewInput(BaseModel):
     comment: str | None = Field(default=None, max_length=4096)
 
 
+class ShareInteractionInput(BaseModel):
+    data: dict
+
+
 def _share_csrf(session_token: str) -> str:
     return hashlib.sha256(f"share-csrf:{session_token}".encode()).hexdigest()
 
@@ -98,6 +102,14 @@ async def _share_review_body(request: Request) -> bytes:
         raise HTTPException(status_code=422, detail="Invalid review decision") from exc
     return json.dumps({"review_run_id": body.review_run_id, "comment": body.comment},
                       separators=(",", ":")).encode()
+
+
+async def _share_interaction_body(request: Request) -> bytes:
+    try:
+        body = ShareInteractionInput.model_validate(await _bounded_share_json(request))
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail="Invalid interaction response") from exc
+    return json.dumps({"data": body.data}, separators=(",", ":")).encode()
 
 
 async def can_create_platform_share(session, user_id: str, project: PlatformProject) -> bool:
@@ -353,6 +365,13 @@ async def public_share_reviews(request: Request, token: str):
     return await _proxy_share_request(request, token, "/api/platform-share/reviews")
 
 
+@router.get("/public/shares/{token}/interventions")
+async def public_share_interventions(request: Request, token: str):
+    return await _proxy_share_request(
+        request, token, "/api/platform-share/interventions", interactive_read=True,
+    )
+
+
 @router.get("/public/shares/{token}/artifacts/{artifact_id}/content")
 async def public_share_artifact_content(request: Request, token: str, artifact_id: str):
     if not re.fullmatch(r"[0-9a-f]{64}", artifact_id):
@@ -398,16 +417,31 @@ async def public_share_review_decision(request: Request, token: str,
     )
 
 
+@router.post("/public/shares/{token}/interventions/{interaction_id}/respond")
+async def public_share_intervention_response(request: Request, token: str,
+                                             interaction_id: str):
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", interaction_id):
+        raise HTTPException(status_code=404, detail="Interaction unavailable")
+    return await _proxy_share_request(
+        request, token,
+        f"/api/platform-share/interventions/{interaction_id}/respond",
+        write=True, body_kind="interaction",
+    )
+
+
 async def _proxy_share_request(request: Request, token: str, target_path: str,
                                *, write: bool = False,
-                               body_kind: Literal["message", "review"] | None = None):
+                               interactive_read: bool = False,
+                               body_kind: Literal["message", "review", "interaction"] | None = None):
     share, project = await _authorized_visitor(request, token, touch=True)
-    if write:
+    if write or interactive_read:
         if share.mode != "interactive":
             raise HTTPException(status_code=403, detail="Share is read-only")
+    if write:
         _check_share_csrf(request)
     share_body = (await _share_message_body(request) if body_kind == "message"
                   else await _share_review_body(request) if body_kind == "review"
+                  else await _share_interaction_body(request) if body_kind == "interaction"
                   else b"" if write else None)
     connections = request.app.state.control_connections
     if not connections.is_online(share.device_id):

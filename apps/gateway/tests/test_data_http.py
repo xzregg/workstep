@@ -96,6 +96,14 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
             target_path="/api/platform-share/steps/build/review/approve",
         )
 
+    @app.post("/api/public/shares/token/interventions/interaction-1/respond")
+    async def guest_interaction(request: Request):
+        return await connection.proxy_http(
+            request, share_ticket="signed-ticket",
+            share_body=b'{"data":{"action":"cancel"}}',
+            target_path="/api/platform-share/interventions/interaction-1/respond",
+        )
+
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
                                  base_url="https://gateway.test") as client:
         response = await client.get("/api/public/shares/token/task",
@@ -110,6 +118,8 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
                                   json={"content": "longer body"})).status_code == 200
         assert (await client.post("/api/public/shares/token/steps/build/review/approve",
                                   json={"review_run_id": "review-1"})).status_code == 200
+        assert (await client.post("/api/public/shares/token/interventions/interaction-1/respond",
+                                  json={"data": {"action": "cancel"}})).status_code == 200
     assert starts[0]["path"] == "/api/platform-share/task"
     assert starts[0]["share_ticket"] == "signed-ticket"
     assert "user_id" not in starts[0]
@@ -123,7 +133,9 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
     assert starts[6]["path"] == "/api/platform-share/steps/build/message"
     assert starts[6]["method"] == "POST"
     assert starts[7]["path"] == "/api/platform-share/steps/build/review/approve"
-    assert bodies == [b'{"content":"hello"}', b'{"review_run_id":"review-1"}']
+    assert starts[8]["path"] == "/api/platform-share/interventions/interaction-1/respond"
+    assert bodies == [b'{"content":"hello"}', b'{"review_run_id":"review-1"}',
+                      b'{"data":{"action":"cancel"}}']
 
 
 @pytest.mark.asyncio

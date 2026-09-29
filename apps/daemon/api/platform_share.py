@@ -26,6 +26,10 @@ class ShareReviewDecision(BaseModel):
     comment: str | None = Field(default=None, max_length=4096)
 
 
+class ShareInterventionResponse(BaseModel):
+    data: dict
+
+
 def _share_scope(request: Request) -> dict:
     scope = request.scope.get("gateway_share_scope")
     if not isinstance(scope, dict):
@@ -33,13 +37,40 @@ def _share_scope(request: Request) -> dict:
     return scope
 
 
-def _interactive_scope(request: Request, step_key: str) -> dict:
+def _interactive_share_scope(request: Request) -> dict:
     scope = _share_scope(request)
     if scope.get("mode") != "interactive":
         raise HTTPException(status_code=403, detail="Share is read-only")
+    return scope
+
+
+def _interactive_scope(request: Request, step_key: str) -> dict:
+    scope = _interactive_share_scope(request)
     if not _STEP_KEY.fullmatch(step_key):
         raise HTTPException(status_code=404, detail="Step unavailable")
     return scope
+
+
+@router.get("/interventions")
+async def read_platform_share_interventions(request: Request):
+    scope = _interactive_share_scope(request)
+    from services.intervention import intervention_manager
+    return {"interventions": intervention_manager.list_pending_for_task(scope["task_id"])}
+
+
+@router.post("/interventions/{interaction_id}/respond")
+async def respond_platform_share_intervention(request: Request, interaction_id: str,
+                                              body: ShareInterventionResponse):
+    scope = _interactive_share_scope(request)
+    if not _MESSAGE_ID.fullmatch(interaction_id):
+        raise HTTPException(status_code=404, detail="Interaction unavailable")
+    from services.intervention import intervention_manager
+    delivered = intervention_manager.deliver_response(
+        interaction_id, body.data, scope["task_id"],
+    )
+    if not delivered:
+        raise HTTPException(status_code=404, detail="Interaction unavailable")
+    return {"delivered": True}
 
 
 def _task_artifacts(project, task_id: str) -> list[tuple[dict, Path]]:
