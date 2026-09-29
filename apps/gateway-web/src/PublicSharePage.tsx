@@ -6,6 +6,7 @@ import { SharedReviewPanel } from './SharedReviewPanel'
 import { SharedInteractionPanel } from './SharedInteractionPanel'
 import { SharedArtifactItem, type SharedArtifact } from './SharedArtifactItem'
 import { SharedMessageContent } from './SharedMessageContent'
+import { SharedGitWorkspace } from './SharedGitWorkspace'
 
 type ShareMeta = { title: string; mode: 'read_only' | 'interactive'; has_password: boolean }
 type SharedTask = {
@@ -244,6 +245,7 @@ export function PublicSharePage() {
           {artifacts.map(artifact => <SharedArtifactItem key={artifact.id} base={base}
             artifact={artifact} />)}
         </section>
+        <SharedGitWorkspace base={base} />
       </>}
       {phase === 'offline' && <>
         <h2>暂时无法打开分享</h2>

@@ -17,6 +17,94 @@ from workstep_gateway_protocol import FrameType, ProxyFrame
 
 
 @pytest.mark.anyio
+async def test_platform_share_git_workspace_rechecks_task_and_hides_host_paths(api_context, monkeypatch):
+    import main
+    import services.project as project_service
+    from services.git.task_workspace import TaskGitWorkspace
+    from services.git import git_service
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "git-share"
+    project_dir.mkdir()
+    project_id = (await client.post("/api/project/init", json={
+        "path": str(project_dir),
+    })).json()["id"]
+    workflow_id = (await _create_test_workflow(client, project_id))["id"]
+    task_ids = []
+    for title in ("Visible", "Private"):
+        created = await client.post(f"/api/task/create?project_id={project_id}", json={
+            "title": title, "workflow_id": workflow_id, "auto_start": False,
+        })
+        task_ids.append(created.json()["id"])
+    monkeypatch.setattr(main.gateway_client, "managed_config", object())
+    monkeypatch.setattr(project_service, "project_manager", main.project_manager)
+    entered = threading.Event()
+
+    async def list_workspace(self, project_path, task_id):
+        entered.set()
+        await asyncio.to_thread(time.sleep, 0.7)
+        tree_id = "a" * 24 if task_id == task_ids[0] else "b" * 24
+        return {"path": "/private/host/workspace", "worktrees": [{
+            "id": tree_id, "alias": "app", "repository_name": "App",
+            "branch": "feature", "path": "/private/host/worktree",
+            "relative_path": ".workstep/worktrees/app", "common_dir": "/private/host/git",
+        }]}
+
+    async def status(tree_id):
+        assert tree_id == "a" * 24
+        return {"id": tree_id, "path": "/private/host/worktree",
+                "head": "c" * 40, "branch": "feature", "snapshot": "d" * 64,
+                "files": [{"path": "README.md", "old_path": "/private/host/old.txt",
+                           "index_status": " ", "worktree_status": "M", "digest": "e" * 64},
+                          {"path": "/private/host/secret", "index_status": " ",
+                           "worktree_status": "M"}],
+                "operation": None, "upstream": "origin/feature", "ahead": 1, "behind": 0}
+
+    monkeypatch.setattr(TaskGitWorkspace, "list", list_workspace)
+    monkeypatch.setattr(git_service, "status", status)
+
+    async def read(path, task_id=None):
+        ticket, key, fingerprint = _ticket(task_id=task_id or task_ids[0],
+            host_project_id=project_id)
+        frames = []
+
+        async def capture(frame):
+            frames.append(frame)
+
+        bridge = ManagedHttpBridge(main.app, "share-git", {
+            "method": "GET", "path": path, "query": "", "headers": [],
+            "share_ticket": ticket,
+        }, capture, "device-1", gateway_key=key,
+            gateway_fingerprint=fingerprint, gateway_id="gateway-1")
+        bridge.start_task()
+        await bridge.feed(ProxyFrame(stream_id="share-git", type=FrameType.http_request,
+                                     payload={"phase": "end"}))
+        await asyncio.wait_for(bridge._task, timeout=3)
+        body = b"".join(base64.b64decode(frame.payload["data"])
+                        for frame in frames if frame.payload.get("phase") == "body")
+        return frames[0].payload["status"], json.loads(body) if body else None
+
+    pending = asyncio.create_task(read("/api/platform-share/git/workspace"))
+    if not await asyncio.to_thread(entered.wait, 2):
+        pytest.fail(f"Git workspace was not called: {await pending}")
+    started = time.monotonic()
+    assert (await client.get("/api/health")).status_code == 200
+    assert time.monotonic() - started < 0.5
+    code, workspace = await pending
+    assert code == 200
+    assert workspace == {"worktrees": [{"id": "a" * 24, "alias": "app",
+                                      "repository_name": "App", "branch": "feature"}]}
+    assert "/private/host" not in json.dumps(workspace)
+    path = f"/api/platform-share/git/worktrees/{'a' * 24}/status"
+    code, result = await read(path)
+    assert code == 200
+    assert result["branch"] == "feature" and result["files"][0]["path"] == "README.md"
+    assert len(result["files"]) == 1 and result["files"][0]["old_path"] is None
+    assert "/private/host" not in json.dumps(result)
+    assert (await read(path, task_id=task_ids[1]))[0] == 404
+
+
+@pytest.mark.anyio
 async def test_platform_share_upload_is_task_scoped_and_disk_write_keeps_health(api_context, monkeypatch):
     import main
     from api import platform_share

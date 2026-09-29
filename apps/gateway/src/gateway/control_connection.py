@@ -466,12 +466,16 @@ class DataConnection:
             read_path = (target_path in (
                 "/api/platform-share/task", "/api/platform-share/history",
                 "/api/platform-share/artifacts", "/api/platform-share/reviews",
-                "/api/platform-share/interventions")
+                "/api/platform-share/interventions",
+                "/api/platform-share/git/workspace")
                 or re.fullmatch(
                     r"/api/platform-share/artifacts/[0-9a-f]{64}/(?:content|preview)",
                     target_path or "")
                 or re.fullmatch(
                     r"/api/platform-share/uploads/t[0-9a-f]{24}-[0-9a-f]{32}\.[a-z0-9]{1,10}",
+                    target_path or "")
+                or re.fullmatch(
+                    r"/api/platform-share/git/worktrees/[0-9a-f]{24}/status",
                     target_path or "")
                 or re.fullmatch(
                     r"/api/platform-share/history/(?:0|[1-9][0-9]{0,5})",

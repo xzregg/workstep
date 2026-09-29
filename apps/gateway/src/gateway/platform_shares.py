@@ -438,6 +438,20 @@ async def public_share_upload_content(request: Request, token: str, filename: st
     return response
 
 
+@router.get("/public/shares/{token}/git/workspace")
+async def public_share_git_workspace(request: Request, token: str):
+    return await _proxy_share_request(request, token, "/api/platform-share/git/workspace")
+
+
+@router.get("/public/shares/{token}/git/worktrees/{tree_id}/status")
+async def public_share_git_status(request: Request, token: str, tree_id: str):
+    if not re.fullmatch(r"[0-9a-f]{24}", tree_id):
+        raise HTTPException(status_code=404, detail="Git worktree unavailable")
+    return await _proxy_share_request(
+        request, token, f"/api/platform-share/git/worktrees/{tree_id}/status",
+    )
+
+
 @router.post("/public/shares/{token}/steps/{step_key}/message")
 async def public_share_step_message(request: Request, token: str, step_key: str):
     return await _proxy_share_step(request, token, step_key, "message")
