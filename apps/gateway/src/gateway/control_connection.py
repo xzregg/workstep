@@ -465,7 +465,7 @@ class DataConnection:
         if share_ticket is not None:
             read_path = (target_path in (
                 "/api/platform-share/task", "/api/platform-share/history",
-                "/api/platform-share/artifacts")
+                "/api/platform-share/artifacts", "/api/platform-share/reviews")
                 or re.fullmatch(
                     r"/api/platform-share/artifacts/[0-9a-f]{64}/content",
                     target_path or "")
@@ -477,6 +477,8 @@ class DataConnection:
                     target_path or ""))
             write_path = re.fullmatch(
                 r"/api/platform-share/steps/[A-Za-z0-9_-]{1,128}/(?:message|resume|cancel)",
+                target_path or "") or re.fullmatch(
+                r"/api/platform-share/steps/[A-Za-z0-9_-]{1,128}/review/(?:approve|reject|force_approve|terminate|complete_task)",
                 target_path or "")
             if (not isinstance(share_ticket, str) or not share_ticket
                     or not ((request.method == "GET" and read_path and share_body is None)

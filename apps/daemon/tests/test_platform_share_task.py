@@ -165,6 +165,104 @@ async def test_platform_share_interaction_requires_mode_and_stays_on_ticket_task
 
 
 @pytest.mark.anyio
+async def test_platform_share_review_is_task_scoped_and_slow_sql_keeps_health(api_context, monkeypatch):
+    import main
+    from models import ReviewRun, StepRun, WorkflowRun
+    from models.fields import utc_now
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "review-share"
+    project_dir.mkdir()
+    project_id = (await client.post("/api/project/init", json={
+        "path": str(project_dir),
+    })).json()["id"]
+    workflow_id = (await _create_test_workflow(client, project_id))["id"]
+    task_ids = []
+    for title in ("Visible review", "Private review"):
+        created = await client.post(f"/api/task/create?project_id={project_id}", json={
+            "title": title, "workflow_id": workflow_id, "auto_start": False,
+        })
+        task_ids.append(created.json()["id"])
+
+    def seed(_project):
+        for index, task_id in enumerate(task_ids):
+            run = WorkflowRun.create(id=f"review-run-{index}", task=task_id,
+                                     workflow_schema_version=1)
+            step = StepRun.create(id=f"review-step-{index}", run=run,
+                                  step_key="build", attempt=1)
+            ReviewRun.create(id=f"review-{index}", workflow_run=run, step_run=step,
+                             task=task_id, step_key="build", mode="manual", status="pending",
+                             report_json=json.dumps({"summary": f"summary-{index}"}),
+                             started_at=utc_now())
+
+    await main.project_manager.run_db(project_id, seed)
+    monkeypatch.setattr(main.gateway_client, "managed_config", object())
+    calls = []
+
+    class Runtime:
+        async def decide_review(self, pid, tid, step, review, decision, comment):
+            calls.append((pid, tid, step, review, decision, comment))
+            return None
+
+    monkeypatch.setattr(main, "workflow_runtime", Runtime())
+
+    async def request(path, *, method="GET", mode="interactive", body=None):
+        ticket, key, fingerprint = _ticket(task_id=task_ids[0],
+            host_project_id=project_id, mode=mode)
+        frames = []
+        async def capture(frame):
+            frames.append(frame)
+        bridge = ManagedHttpBridge(main.app, "share-review", {
+            "method": method, "path": path, "query": "",
+            "headers": [["content-type", "application/json"]],
+            "share_ticket": ticket,
+        }, capture, "device-1", gateway_key=key,
+            gateway_fingerprint=fingerprint, gateway_id="gateway-1")
+        bridge.start_task()
+        if body is not None:
+            await bridge.feed(ProxyFrame(stream_id="share-review", type=FrameType.http_request,
+                payload={"phase": "body", "data": base64.b64encode(
+                    json.dumps(body).encode()).decode()}))
+        await bridge.feed(ProxyFrame(stream_id="share-review", type=FrameType.http_request,
+                                     payload={"phase": "end"}))
+        await asyncio.wait_for(bridge._task, timeout=3)
+        content = b"".join(base64.b64decode(frame.payload["data"])
+                           for frame in frames if frame.payload.get("phase") == "body")
+        return frames[0].payload["status"], json.loads(content) if content else None
+
+    project = main.project_manager.get_project_by_id(project_id)
+    original_execute = project.db.execute_sql
+    entered = threading.Event()
+
+    def slow_execute(sql, *args, **kwargs):
+        if sql.lstrip().upper().startswith("SELECT") and '"review_runs"' in sql:
+            entered.set()
+            time.sleep(0.7)
+        return original_execute(sql, *args, **kwargs)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_execute)
+    pending = asyncio.create_task(request("/api/platform-share/reviews"))
+    assert await asyncio.to_thread(entered.wait, 2)
+    started = time.monotonic()
+    assert (await client.get("/api/health")).status_code == 200
+    assert time.monotonic() - started < 0.5
+    status, reviews = await pending
+    assert status == 200
+    assert [review["id"] for review in reviews["reviews"]] == ["review-0"]
+    assert "summary-1" not in json.dumps(reviews)
+
+    route = "/api/platform-share/steps/build/review/approve"
+    assert (await request(route, method="POST", mode="read_only",
+                          body={"review_run_id": "review-0"}))[0] == 403
+    assert (await request(route, method="POST",
+                          body={"review_run_id": "review-1"}))[0] == 404
+    status, result = await request(route, method="POST",
+                                   body={"review_run_id": "review-0", "comment": "Looks good"})
+    assert status == 200 and result["decision"] == "approve"
+    assert calls == [(project_id, task_ids[0], "build", "review-0", "approve", "Looks good")]
+
+
+@pytest.mark.anyio
 async def test_platform_share_history_excludes_private_channel_and_slow_sql(api_context, monkeypatch):
     import main
     from models import Message

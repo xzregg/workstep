@@ -1,6 +1,7 @@
 """Task-scoped read projection for Gateway public sharing."""
 
 import hashlib
+import json
 import re
 from pathlib import Path
 
@@ -18,6 +19,11 @@ _STEP_KEY = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 
 class ShareStepMessage(BaseModel):
     content: str = Field(min_length=1, max_length=65536)
+
+
+class ShareReviewDecision(BaseModel):
+    review_run_id: str = Field(min_length=1, max_length=128)
+    comment: str | None = Field(default=None, max_length=4096)
 
 
 def _share_scope(request: Request) -> dict:
@@ -167,6 +173,69 @@ async def cancel_platform_share_step(request: Request, step_key: str):
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"cancelled": cancelled}
+
+
+@router.get("/reviews")
+async def read_platform_share_reviews(request: Request):
+    scope = _share_scope(request)
+    from main import project_manager
+    from models import ReviewRun
+
+    if project_manager is None:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    def load(_project):
+        rows = list(ReviewRun.select(
+            ReviewRun.id, ReviewRun.step_key, ReviewRun.report_json,
+            ReviewRun.started_at,
+        ).where(
+            (ReviewRun.task == scope["task_id"])
+            & (ReviewRun.mode == "manual")
+            & (ReviewRun.status == "pending")
+        ).order_by(ReviewRun.started_at.desc(), ReviewRun.id.desc()).limit(100))
+        return [{"id": row.id, "step_key": row.step_key,
+                 "report": json.loads(row.report_json) if row.report_json else None,
+                 "started_at": row.started_at} for row in rows]
+
+    return {"reviews": await project_manager.run_db(scope["host_project_id"], load)}
+
+
+@router.post("/steps/{step_key}/review/{decision}")
+async def decide_platform_share_review(request: Request, step_key: str,
+                                       decision: str, body: ShareReviewDecision):
+    scope = _interactive_scope(request, step_key)
+    if decision not in {"approve", "reject", "force_approve", "terminate", "complete_task"}:
+        raise HTTPException(status_code=404, detail="Review decision unavailable")
+    if not _MESSAGE_ID.fullmatch(body.review_run_id):
+        raise HTTPException(status_code=404, detail="Review unavailable")
+    from main import project_manager, workflow_runtime
+    from models import ReviewRun
+
+    if project_manager is None or workflow_runtime is None:
+        raise HTTPException(status_code=503, detail="Workflow runtime unavailable")
+
+    def review_exists(_project):
+        return ReviewRun.select(ReviewRun.id).where(
+            (ReviewRun.id == body.review_run_id)
+            & (ReviewRun.task == scope["task_id"])
+            & (ReviewRun.step_key == step_key)
+            & (ReviewRun.mode == "manual")
+            & (ReviewRun.status == "pending")
+        ).exists()
+
+    if not await project_manager.run_db(scope["host_project_id"], review_exists):
+        raise HTTPException(status_code=404, detail="Review unavailable")
+    try:
+        handle = await workflow_runtime.decide_review(
+            scope["host_project_id"], scope["task_id"], step_key,
+            body.review_run_id, decision, body.comment,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"decision": decision, "resumed": handle is not None,
+            "run_id": handle.id if handle else None}
 
 
 @router.get("/history")

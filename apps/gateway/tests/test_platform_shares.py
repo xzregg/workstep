@@ -247,6 +247,9 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
                 await authorization_check()
                 captured.append((target_path, share_body))
                 from fastapi.responses import JSONResponse
+                if target_path == "/api/platform-share/reviews":
+                    return JSONResponse({"reviews": [{"id": "review-1", "step_key": "build",
+                                                      "report": {"summary": "Check output"}}]})
                 return JSONResponse({"message_id": "accepted"})
 
         async def request_data(device_id):
@@ -263,7 +266,12 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
         assert client.post(f"/api/public/shares/{token}/steps/build/message",
                            headers={"X-Share-CSRF": read_csrf},
                            json={"content": "hello"}).status_code == 403
-        assert captured == []
+        assert client.get(f"/api/public/shares/{token}/reviews").status_code == 200
+        assert client.post(f"/api/public/shares/{token}/steps/build/review/approve",
+                           headers={"X-Share-CSRF": read_csrf},
+                           json={"review_run_id": "review-1"}).status_code == 403
+        assert captured == [("/api/platform-share/reviews", None)]
+        captured.clear()
 
         token = tokens["interactive"]
         unlocked = client.post(f"/api/public/shares/{token}/unlock", json={"password": ""})
@@ -283,6 +291,16 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
                            json={"content": "again"}).status_code == 200
         assert client.post(f"/api/public/shares/{token}/steps/build/cancel",
                            headers={"X-Share-CSRF": csrf}).status_code == 200
+        review_path = f"/api/public/shares/{token}/steps/build/review/approve"
+        assert client.post(review_path, json={"review_run_id": "review-1"}).status_code == 403
+        review = client.post(review_path, headers={"X-Share-CSRF": csrf},
+                             json={"review_run_id": "review-1", "comment": "Approved"})
+        assert review.status_code == 200
+        assert captured[-1] == ("/api/platform-share/steps/build/review/approve",
+                                b'{"review_run_id":"review-1","comment":"Approved"}')
+        assert client.post(f"/api/public/shares/{token}/steps/build/review/unknown",
+                           headers={"X-Share-CSRF": csrf},
+                           json={"review_run_id": "review-1"}).status_code == 404
         assert client.post(f"/api/public/shares/{token}/steps/../message",
                            headers={"X-Share-CSRF": csrf},
                            json={"content": "escape"}).status_code != 200
