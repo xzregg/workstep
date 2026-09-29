@@ -68,6 +68,19 @@ async def test_restarting_step_records_actor_and_child_run(tmp_path, monkeypatch
             "step_key": "do", "workflow_run_id": restarted.id,
         }
 
+        with actor_context(actor):
+            resumed = await runtime.resume_step_with_message(
+                project.id, task_id, "do", "Continue work"
+            )
+            await asyncio.gather(*tuple(runtime._active_tasks))
+        audits = await manager.run_db(project.id, read_audit)
+        resume = [row for row in audits if row[0] == "task.resume"]
+        assert len(resume) == 1
+        assert resume[0][1:4] == ("succeeded", "alice", "alice")
+        assert resume[0][4] == {
+            "step_key": "do", "workflow_run_id": resumed["run_id"],
+        }
+
         original_execute = project.db.execute_sql
         entered = threading.Event()
 
@@ -112,7 +125,7 @@ async def test_restarting_step_records_actor_and_child_run(tmp_path, monkeypatch
 
         active_run_id, runs = await manager.run_db(project.id, read_runs)
         assert active_run_id == second.id
-        assert len(runs) == 3
+        assert len(runs) == 4
         assert next(status for run_id, status in runs if run_id == second.id) == "succeeded"
     finally:
         await runtime.shutdown()
