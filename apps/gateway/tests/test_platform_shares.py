@@ -112,6 +112,10 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
                                          "next_cursor": None})
                 if target_path == "/api/platform-share/artifacts":
                     return JSONResponse({"artifacts": [{"id": "a" * 64, "name": "result.txt"}]})
+                if target_path == "/api/platform-share/git/workspace":
+                    return JSONResponse({"worktrees": [{"id": "a" * 24, "alias": "app"}]})
+                if target_path.endswith("/status"):
+                    return JSONResponse({"branch": "feature", "files": []})
                 if target_path.endswith("/preview"):
                     return JSONResponse({"type": "text", "content": "visible preview"})
                 if target_path.endswith("/content"):
@@ -157,6 +161,15 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         assert preview.status_code == 200
         assert preview.json()["content"] == "visible preview"
         assert captured["path"] == f"/api/platform-share/artifacts/{'a' * 64}/preview"
+        workspace = client.get(f"/api/public/shares/{token}/git/workspace")
+        assert workspace.status_code == 200
+        assert workspace.json()["worktrees"][0]["alias"] == "app"
+        assert captured["path"] == "/api/platform-share/git/workspace"
+        git_status = client.get(f"/api/public/shares/{token}/git/worktrees/{'a' * 24}/status")
+        assert git_status.status_code == 200
+        assert git_status.json()["branch"] == "feature"
+        assert captured["path"] == f"/api/platform-share/git/worktrees/{'a' * 24}/status"
+        assert client.get(f"/api/public/shares/{token}/git/worktrees/invalid/status").status_code == 404
         assert client.get(f"/api/public/shares/{token}/artifacts/invalid/content").status_code == 404
         import base64
         import json

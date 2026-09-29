@@ -5,7 +5,7 @@ import hashlib
 import json
 import re
 import uuid
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from urllib.parse import unquote
 
 from fastapi import APIRouter, HTTPException, Request
@@ -19,6 +19,7 @@ _ARTIFACT_ID = re.compile(r"[0-9a-f]{64}\Z")
 _MESSAGE_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 _STEP_KEY = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 _UPLOAD_NAME = re.compile(r"t[0-9a-f]{24}-[0-9a-f]{32}\.[a-z0-9]{1,10}\Z")
+_GIT_TREE_ID = re.compile(r"[0-9a-f]{24}\Z")
 
 
 class ShareStepMessage(BaseModel):
@@ -169,6 +170,15 @@ def _upload_prefix(task_id: str) -> str:
     return f"t{hashlib.sha256(task_id.encode()).hexdigest()[:24]}-"
 
 
+def _safe_git_path(value: object) -> bool:
+    if not isinstance(value, str) or not value or "\0" in value:
+        return False
+    native = Path(value)
+    windows = PureWindowsPath(value)
+    return not (native.is_absolute() or windows.is_absolute()
+                or ".." in native.parts or ".." in windows.parts)
+
+
 def _persist_share_upload(workstep_dir: Path, filename: str, content: bytes) -> None:
     root = workstep_dir.resolve()
     upload_dir = workstep_dir / "uploads"
@@ -248,6 +258,48 @@ async def read_platform_share_attachment(request: Request, filename: str):
     response.headers["Content-Security-Policy"] = "sandbox"
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response
+
+
+async def _share_git_workspace(scope: dict) -> dict:
+    from api import git as git_api
+    project = git_api._task_project(scope["host_project_id"])
+    task = await git_api._task_exists(scope["host_project_id"], scope["task_id"])
+    return await git_api.result(git_api.TaskGitWorkspace(
+        git_api.git_service, task["workflow_id"],
+    ).list(project.path, scope["task_id"]))
+
+
+@router.get("/git/workspace")
+async def read_platform_share_git_workspace(request: Request):
+    workspace = await _share_git_workspace(_share_scope(request))
+    return {"worktrees": [{key: tree.get(key) for key in (
+        "id", "alias", "repository_name", "branch",
+    )} for tree in workspace["worktrees"] if _GIT_TREE_ID.fullmatch(str(tree.get("id", "")))]}
+
+
+@router.get("/git/worktrees/{tree_id}/status")
+async def read_platform_share_git_status(request: Request, tree_id: str):
+    if not _GIT_TREE_ID.fullmatch(tree_id):
+        raise HTTPException(status_code=404, detail="Git worktree unavailable")
+    workspace = await _share_git_workspace(_share_scope(request))
+    if tree_id not in {tree.get("id") for tree in workspace["worktrees"]}:
+        raise HTTPException(status_code=404, detail="Git worktree unavailable")
+    from api import git as git_api
+    status = await git_api.result(git_api.git_service.status(tree_id))
+    files = []
+    for file in status.get("files", []):
+        if not _safe_git_path(file.get("path")):
+            continue
+        public = {key: file.get(key) for key in (
+            "path", "index_status", "worktree_status", "untracked",
+            "conflict", "staged", "submodule", "digest",
+        )}
+        public["old_path"] = file.get("old_path") if _safe_git_path(file.get("old_path")) else None
+        files.append(public)
+    return {**{key: status.get(key) for key in (
+        "id", "head", "branch", "snapshot", "operation", "active",
+        "upstream", "ahead", "behind",
+    )}, "files": files}
 
 
 @router.get("/task")

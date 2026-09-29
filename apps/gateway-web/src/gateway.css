@@ -103,6 +103,9 @@ body {
 .gateway-share-step-chat select { min-height: 42px; }
 .gateway-share-attachments { display: grid; gap: 8px; margin: 0; padding-left: 20px; }
 .gateway-share-attachments li { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.gateway-share-git-tree { margin-top: 16px; padding: 16px; border: 1px solid #e8e8ed; border-radius: 12px; }
+.gateway-share-git-tree h4 { margin: 0 0 12px; overflow-wrap: anywhere; }
+.gateway-share-git-status { max-height: 360px; overflow: auto; overflow-wrap: anywhere; }
 .gateway-share-step-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .gateway-share-reviews article { display: grid; gap: 10px; }
 .gateway-share-reviews label { font-weight: 600; }

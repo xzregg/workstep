@@ -51,6 +51,14 @@ test('public share route works without portal authentication and unlocks task', 
     if (url.endsWith('/artifacts')) return Response.json({ artifacts: [{
       id: 'a'.repeat(64), name: 'result.txt', step_key: 'build', size: 13,
     }] })
+    if (url.endsWith('/git/workspace')) return Response.json({ worktrees: [{
+      id: 'a'.repeat(24), alias: 'app', repository_name: 'App', branch: 'feature',
+    }] })
+    if (url.endsWith(`/git/worktrees/${'a'.repeat(24)}/status`)) return Response.json({
+      branch: 'feature', head: 'c'.repeat(40), files: [{
+        path: 'README.md', index_status: ' ', worktree_status: 'M',
+      }],
+    })
     if (url.endsWith(`/artifacts/${'a'.repeat(64)}/preview`)) return Response.json({
       type: 'text', content: 'Preview content', content_type: 'text/plain',
     })
@@ -86,6 +94,10 @@ test('public share route works without portal authentication and unlocks task', 
     `/api/public/shares/sample-token/artifacts/${'a'.repeat(64)}/content`)
   fireEvent.click(screen.getByRole('button', { name: '预览 result.txt' }))
   await screen.findByText('Preview content')
+  fireEvent.click(screen.getByRole('button', { name: '查看 Git 工作区' }))
+  await screen.findByText('App · app · feature')
+  fireEvent.click(screen.getByRole('button', { name: '查看 app 状态' }))
+  await screen.findByText('README.md')
   assert.equal(calls.find(call => call.url.endsWith('/unlock'))?.body,
     JSON.stringify({ password: 'secret' }))
 })
