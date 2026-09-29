@@ -33,6 +33,9 @@ test('public share route works without portal authentication and unlocks task', 
       id: 'task-1', title: 'Visible task', description: 'Visible description',
       status: 'running', created_at: '2026-09-29T10:00:00Z',
     })
+    if (url.endsWith('/host-status')) return Response.json({
+      connected: true, daemon_health: false,
+    })
     if (url.endsWith('/history')) return Response.json({ messages: [{
       id: 'message-1', role: 'assistant', content: 'Visible execution reply',
       step_key: 'build', created_at: '2026-09-29T10:05:00Z',
@@ -58,6 +61,7 @@ test('public share route works without portal authentication and unlocks task', 
   fireEvent.change(screen.getByLabelText('分享密码'), { target: { value: 'secret' } })
   fireEvent.click(screen.getByRole('button', { name: '查看任务' }))
   await screen.findByText('Visible task')
+  await screen.findByText('宿主电脑已连接，WorkStep 服务暂时不可用。')
   assert.match(document.body.textContent ?? '', /Visible description/)
   assert.match(document.body.textContent ?? '', /只读分享/)
   await screen.findByText('Visible execution reply')
@@ -84,6 +88,7 @@ test('public share reports offline host and allows retry', async () => {
     })
     if (url.endsWith('/session')) return new Response(null, { status: 401 })
     if (url.endsWith('/unlock')) return Response.json({ unlocked: true })
+    if (url.endsWith('/host-status')) return Response.json({ connected: false, daemon_health: null })
     if (url.endsWith('/task')) return offline
       ? new Response(null, { status: 503 })
       : Response.json({ id: 'task-1', title: 'Recovered', status: 'ready' })
@@ -95,6 +100,7 @@ test('public share reports offline host and allows retry', async () => {
     <Route path="/share/:token" element={<PublicSharePage />} />
   </Routes></MemoryRouter>)
   await screen.findByText(/宿主电脑暂时不可用/)
+  await screen.findByText('宿主电脑当前离线。')
   offline = false
   fireEvent.click(screen.getByRole('button', { name: '重试' }))
   await screen.findByText('Recovered')

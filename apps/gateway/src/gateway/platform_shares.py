@@ -334,6 +334,19 @@ async def public_share_task(request: Request, token: str):
     return await _proxy_share_request(request, token, "/api/platform-share/task")
 
 
+@router.get("/public/shares/{token}/host-status")
+async def public_share_host_status(request: Request, token: str):
+    from fastapi.responses import JSONResponse
+    share, _ = await _authorized_visitor(request, token)
+    connections = request.app.state.control_connections
+    connected = connections.is_online(share.device_id)
+    return JSONResponse(
+        {"connected": connected,
+         "daemon_health": connections.daemon_health(share.device_id) if connected else None},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @router.get("/public/shares/{token}/history")
 async def public_share_history(request: Request, token: str):
     return await _proxy_share_request(request, token, "/api/platform-share/history")

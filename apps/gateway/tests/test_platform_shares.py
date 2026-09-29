@@ -75,6 +75,7 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         assert meta.status_code == 200, meta.text
         assert meta.json() == {"title": "Demo", "mode": "read_only",
                                "has_password": True, "status": "active"}
+        assert client.get(f"/api/public/shares/{token}/host-status").status_code == 401
         assert client.get(f"/api/public/shares/{token}/task").status_code == 401
         assert client.post(f"/api/public/shares/{token}/unlock", json={
             "password": "wrong",
@@ -88,6 +89,9 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         assert client.get(f"/api/public/shares/{token}/session").json() == {
             "share_id": share["id"], "mode": "read_only", "task_id": "task-1",
             "csrf_token": unlocked.json()["csrf_token"],
+        }
+        assert client.get(f"/api/public/shares/{token}/host-status").json() == {
+            "connected": False, "daemon_health": None,
         }
         with sqlite3.connect(tmp_path / "workstep_platform.db") as db:
             assert db.execute("SELECT last_seen_at FROM platform_share_sessions WHERE share_id=?",
@@ -119,7 +123,12 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
             return ShareConnection()
 
         monkeypatch.setattr(app.state.control_connections, "is_online", lambda _id: True)
+        monkeypatch.setattr(app.state.control_connections, "daemon_health", lambda _id: False)
         monkeypatch.setattr(app.state.control_connections, "request_data", request_data)
+        status = client.get(f"/api/public/shares/{token}/host-status")
+        assert status.json() == {"connected": True, "daemon_health": False}
+        assert status.headers["cache-control"] == "no-store"
+        assert "device-1" not in status.text and "host-1" not in status.text
         task = client.get(f"/api/public/shares/{token}/task")
         assert task.status_code == 200, task.text
         assert task.json()["id"] == "task-1"
