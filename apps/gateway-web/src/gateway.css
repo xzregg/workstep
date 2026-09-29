@@ -109,6 +109,7 @@ body {
 .gateway-share-git-commit { display: grid; gap: 8px; margin-top: 16px; }
 .gateway-share-git-commit input[type="text"] { box-sizing: border-box; width: 100%; min-height: 42px; padding: 8px 12px; border: 1px solid #d2d2d7; border-radius: 12px; font: inherit; }
 .gateway-share-git-status input[type="checkbox"] { width: 16px; height: 16px; vertical-align: middle; }
+.gateway-share-git-sync { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .gateway-share-step-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .gateway-share-reviews article { display: grid; gap: 10px; }
 .gateway-share-reviews label { font-weight: 600; }

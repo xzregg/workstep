@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 
 type Worktree = { id: string; alias: string; repository_name: string; branch: string | null }
-type Status = { branch: string | null; head: string | null; snapshot: string;
+type Status = { branch: string | null; head: string | null; snapshot: string; active?: boolean;
   files: Array<{ path: string; index_status: string; worktree_status: string }> }
+type SyncAction = 'pull' | 'push'
 
 export function SharedGitWorkspace({ base, csrf, interactive }: {
   base: string; csrf: string; interactive: boolean
@@ -17,6 +18,8 @@ export function SharedGitWorkspace({ base, csrf, interactive }: {
   const [commitMessages, setCommitMessages] = useState<Record<string, string>>({})
   const [commitTarget, setCommitTarget] = useState<Worktree | null>(null)
   const [commitBusy, setCommitBusy] = useState(false)
+  const [syncTarget, setSyncTarget] = useState<{ tree: Worktree; action: SyncAction } | null>(null)
+  const [syncBusy, setSyncBusy] = useState(false)
   const [error, setError] = useState('')
 
   async function toggle() {
@@ -84,6 +87,29 @@ export function SharedGitWorkspace({ base, csrf, interactive }: {
     }
   }
 
+  async function sync() {
+    const target = syncTarget
+    if (!target || syncBusy) return
+    const status = statuses[target.tree.id]
+    if (!status?.branch || !status.snapshot) return
+    setSyncBusy(true)
+    setError('')
+    try {
+      const response = await fetch(`${base}/git/worktrees/${target.tree.id}/${target.action}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Share-CSRF': csrf },
+        body: JSON.stringify({ branch: status.branch, snapshot: status.snapshot }),
+      })
+      setSyncTarget(null)
+      if (!response.ok) { setError('同步失败，请刷新状态后重试。'); return }
+      await loadStatus(target.tree)
+    } catch {
+      setSyncTarget(null)
+      setError('暂时无法连接宿主电脑，请稍后重试。')
+    } finally {
+      setSyncBusy(false)
+    }
+  }
+
   return <section className="gateway-share-messages gateway-share-git">
     <h3>Git 工作区</h3>
     <button type="button" disabled={busy} aria-expanded={open} onClick={() => void toggle()}>
@@ -122,11 +148,26 @@ export function SharedGitWorkspace({ base, csrf, interactive }: {
             || !commitMessages[tree.id]?.trim() || commitBusy}
             onClick={() => setCommitTarget(tree)}>提交选中文件</button>
         </div>}
+        {interactive && statuses[tree.id].branch && <div className="gateway-share-git-sync">
+          <button type="button" disabled={!csrf || !!statuses[tree.id].active || statusBusy !== null
+            || commitBusy || syncBusy} onClick={() => setSyncTarget({ tree, action: 'pull' })}>
+            拉取 {tree.alias}
+          </button>
+          <button type="button" disabled={!csrf || !!statuses[tree.id].active || statusBusy !== null
+            || commitBusy || syncBusy} onClick={() => setSyncTarget({ tree, action: 'push' })}>
+            推送 {tree.alias}
+          </button>
+        </div>}
       </div>}
     </article>)}
     {commitTarget && <GatewayConfirmDialog title="确认 Git 提交"
       message={`将 ${commitTarget.alias} 工作树中 ${(selectedPaths[commitTarget.id] ?? []).length} 个文件提交？`}
       confirmLabel="确认提交" busy={commitBusy} onConfirm={() => void commit()}
       onCancel={() => setCommitTarget(null)} />}
+    {syncTarget && <GatewayConfirmDialog
+      title={`确认 Git ${syncTarget.action === 'pull' ? '拉取' : '推送'}`}
+      message={`${syncTarget.action === 'pull' ? '从上游拉取并快进' : '向上游推送'} ${syncTarget.tree.alias} 当前分支？`}
+      confirmLabel={`确认${syncTarget.action === 'pull' ? '拉取' : '推送'}`}
+      busy={syncBusy} onConfirm={() => void sync()} onCancel={() => setSyncTarget(null)} />}
   </section>
 }

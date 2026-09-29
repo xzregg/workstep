@@ -491,6 +491,8 @@ class DataConnection:
                 r"/api/platform-share/interventions/[A-Za-z0-9_-]{1,128}/respond",
                 target_path or "") or re.fullmatch(
                 r"/api/platform-share/git/worktrees/[0-9a-f]{24}/commit",
+                target_path or "") or re.fullmatch(
+                r"/api/platform-share/git/worktrees/[0-9a-f]{24}/(?:pull|push)",
                 target_path or "") or target_path == "/api/platform-share/uploads"
             max_share_body = (25_000_000 if target_path == "/api/platform-share/uploads"
                               else 262144)
