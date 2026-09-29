@@ -123,6 +123,12 @@ def test_project_http_allowlist_matches_only_the_bound_project():
         ("PATCH", "/api/task/task-1/coordinator-config"),
         ("PATCH", "/api/task/task-1/step/dev/config"),
         ("DELETE", "/api/task/task-1/step/dev/config"),
+        ("POST", "/api/task/task-1/coordinator/stop"),
+        ("POST", "/api/task/task-1/step/dev/cancel"),
+        ("POST", "/api/task/task-1/step/dev/resume"),
+        ("POST", "/api/task/task-1/step/dev/restart"),
+        ("POST", "/api/task/task-1/messages/message-1/retry"),
+        ("POST", "/api/task/task-1/messages/message-1/set-complete"),
     ):
         assert allowed(method, path, [("project_id", "host-1")],
                        "host-1", access_level="edit")

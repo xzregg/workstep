@@ -113,6 +113,40 @@ async def test_project_proxy_task_actions_are_project_scoped(
     reset_config.assert_awaited_once()
     update_coordinator.assert_awaited_once()
 
+    stop_coordinator = AsyncMock(return_value=True)
+    cancel_step = AsyncMock(return_value=True)
+    resume_step = AsyncMock(return_value={"status": "queued"})
+    restart_step = AsyncMock(return_value={"status": "queued"})
+    retry_message = AsyncMock(return_value={"status": "queued"})
+    complete_message = AsyncMock(return_value=None)
+    monkeypatch.setattr(main.coordinator_module, "stop_current", stop_coordinator)
+    monkeypatch.setattr(main.workflow_runtime, "cancel_step", cancel_step)
+    monkeypatch.setattr(main.workflow_runtime, "resume_step_with_message", resume_step)
+    monkeypatch.setattr(main.workflow_runtime, "restart_step_with_fresh_session", restart_step)
+    monkeypatch.setattr(main.workflow_runtime, "retry_failed_message", retry_message)
+    monkeypatch.setattr(main.workflow_runtime, "complete_failed_step", complete_message)
+    for suffix, body in (
+        ("/coordinator/stop", {}),
+        ("/step/dev/cancel", {}),
+        ("/step/dev/resume", {"content": "Continue"}),
+        ("/step/dev/restart", {}),
+        ("/messages/message-1/retry", {}),
+        ("/messages/message-1/set-complete", {
+            "artifact_round": 1, "schedule_downstream": False,
+        }),
+    ):
+        private_path = f"/api/task/private-task-id{suffix}"
+        visible_path = f"/api/task/visible-task-id{suffix}"
+        assert await request(visible_path, "visible-task-id", body=body,
+                             level="read") == 403
+        assert await request(visible_path, "visible-task-id", body=body,
+                             query_project=private) == 403
+        assert await request(private_path, "private-task-id", body=body) == 404
+        assert await request(visible_path, "visible-task-id", body=body) == 200
+    for operation in (stop_coordinator, cancel_step, resume_step, restart_step,
+                      retry_message, complete_message):
+        operation.assert_awaited_once()
+
     from api import task_context
 
     entered = threading.Event()
