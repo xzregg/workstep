@@ -33,3 +33,22 @@ async def _run_db(project_id: str, operation):
             return operation()
 
     return await asyncio.to_thread(execute)
+
+
+async def _require_scoped_task(project_id: str | None, task_id: str) -> None:
+    """Verify a project-only actor owns a task before using global runtime state."""
+    from services.remote_access import get_current_actor
+
+    actor = get_current_actor()
+    if actor is None or actor.project_id is None:
+        return
+    if project_id != actor.project_id:
+        raise HTTPException(status_code=403, detail="Project scope denied")
+
+    from models import Task
+
+    exists = await _run_db(project_id, lambda: Task.select().where(
+        Task.id == task_id,
+    ).exists())
+    if not exists:
+        raise HTTPException(status_code=404, detail="Task not found")

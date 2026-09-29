@@ -69,6 +69,8 @@ Gateway 项目管理的只读分页目录、已发布项目过滤、授权摘要
 
 项目专用流程编辑沿用 Web `src/api/project.ts::workflowApi` 的项目查询参数；共享 `project_scope.py` 向目标项目 `edit` 票据开放创建、更新、删除、恢复、排序和流程快捷 Action 发布，保留 `read` 的列表与详情。daemon `api/workflow.py` 在目标项目执行器内调用 `services/project.py` 与 `services/workflow_actions.py`，流程 ID 猜测无法跨项目查改。真实代理正反例见 `tests/test_gateway_project_workflow_scope.py`，流程数据库隔离及慢创建健康检查见 `tests/test_api_contracts.py`。
 
+项目票据取消与暂停任务时，`api/task.py` 先用 `api/task_context.py::_require_scoped_task` 在目标项目数据库确认任务归属，再调用按全局任务 ID 查找活动运行器的 `services/workflow_runtime.py::cancel`；本地无项目范围的调用沿用原行为。真实代理跨项目和慢查询健康检查见 `tests/test_gateway_project_task_actions_scope.py`。
+
 项目实时事件的作用域由 `streaming/ws.py::_make_subscription_predicate` 在入队前执行：目标项目 ID 必须显式匹配，频道仅允许任务执行与协调器，独立助手会话流被拒绝。事件生产者的项目标记见 `services/task_runner.py`、`services/workflow_runtime.py`、`agent_assistants/coordinator.py`、`services/schedule.py` 和 `api/task.py`；回归见 `test_main.py`、`test_coordinator.py`、`test_schedule.py`。
 
 阶段 7 的消息作者字段定义在 `models/message.py`、`models/chat_session.py`，旧项目数据库通过 `models/migrations.py` 加列且保留历史空值。`services/messages.py::create_task_message` 保存任务用户/助手作者及原始发起人，`agent_assistants/coordinator.py` 保存协调器消息，`agent_assistants/base.py` 生成助手会话快照，`chat_row_persistence.py` 和 `chat_session_transitions.py` 负责落库、回读和分叉复制，`history.py`、`services/task.py` 对外投影。`services/task_execution_report.py`、`services/statistics.py` 按原始发起人汇总新式助手用量。行为测试见 `test_migrations.py`、`test_message_attribution.py`、`test_coordinator.py`、`test_chat_session.py`、`test_task_execution_report.py` 和 `test_statistics.py`。
