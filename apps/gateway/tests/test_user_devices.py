@@ -87,6 +87,7 @@ def test_user_sees_only_assigned_pc_and_admin_can_revoke(tmp_path, monkeypatch):
         assert client.post(f"{remote_url}/api/remote/redeem",
                            data={"ticket": issued["ticket"]}).status_code == 409
         assert client.get(f"{remote_url}/api/remote/session").json()["device_id"] == "device-1"
+        assert client.get(f"{remote_url}/api/remote/project-grants").status_code == 403
         class FakeData:
             async def proxy_http(self, request, *, user_id, username, display_name):
                 assert display_name == "Alice"

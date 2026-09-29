@@ -14,7 +14,7 @@ from workstep_gateway_protocol import project_http_route_allowed
 from .capabilities import compiled_device_policy
 from .identity import COOKIE_NAME, IdentityService
 from .models import Device, PlatformProject, UsedDeviceAccessTicket, User, UserDevice
-from .project_access_api import effective_project_access
+from .project_access_api import effective_project_access, project_grant_rows
 from .platform_shares import can_create_platform_share
 
 router = APIRouter(prefix="/api/remote")
@@ -150,8 +150,22 @@ async def remote_session(request: Request):
             "access_level": auth_session.project_access_level,
             "task_create": task_create,
             "share_create": share_create,
+            "can_manage_project_access": await IdentityService(
+                request.app.state.database).is_super_admin(user.id),
             "online": True,
             "gateway_url": request.app.state.settings.public_origin + "/devices"}
+
+
+@router.get("/project-grants")
+async def remote_project_grants(request: Request):
+    _, _, auth_session, _ = await _remote_identity(request)
+    if auth_session.project_id is None:
+        raise HTTPException(status_code=403, detail="Project session required")
+    async with request.app.state.database.session() as session:
+        rows = await project_grant_rows(session, auth_session.project_id)
+    return {"grants": [{key: row[key] for key in (
+        "subject_type", "subject_id", "subject_name", "access_level",
+    )} for row in rows]}
 
 
 async def _remote_identity(request: Request):

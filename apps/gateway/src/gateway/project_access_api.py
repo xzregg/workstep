@@ -332,19 +332,23 @@ async def list_project_grants(request: Request, project_id: str):
         if (project is None or project.access_mode != 'remote_published'
                 or project.status != 'active'):
             raise HTTPException(status_code=404, detail='Published project unavailable')
-        rows = (await session.scalars(select(ProjectAccessGrant).where(
-            ProjectAccessGrant.project_id == project_id,
-            ProjectAccessGrant.revoked_at.is_(None),
-        ).order_by(ProjectAccessGrant.subject_type,
-                   ProjectAccessGrant.subject_id))).all()
-        user_ids = [row.subject_id for row in rows if row.subject_type == 'user']
-        group_ids = [row.subject_id for row in rows if row.subject_type == 'group']
-        user_names = dict((await session.execute(select(User.id, User.username).where(
-            User.id.in_(user_ids)))).all()) if user_ids else {}
-        group_names = dict((await session.execute(select(UserGroup.id, UserGroup.name).where(
-            UserGroup.id.in_(group_ids)))).all()) if group_ids else {}
-    return {"grants": [{"id": row.id, "subject_type": row.subject_type,
-                        "subject_id": row.subject_id,
-                        "subject_name": (user_names if row.subject_type == 'user'
-                                         else group_names).get(row.subject_id, row.subject_id),
-                        "access_level": row.access_level} for row in rows]}
+        return {"grants": await project_grant_rows(session, project_id)}
+
+
+async def project_grant_rows(session, project_id: str) -> list[dict]:
+    rows = (await session.scalars(select(ProjectAccessGrant).where(
+        ProjectAccessGrant.project_id == project_id,
+        ProjectAccessGrant.revoked_at.is_(None),
+    ).order_by(ProjectAccessGrant.subject_type,
+               ProjectAccessGrant.subject_id))).all()
+    user_ids = [row.subject_id for row in rows if row.subject_type == 'user']
+    group_ids = [row.subject_id for row in rows if row.subject_type == 'group']
+    user_names = dict((await session.execute(select(User.id, User.username).where(
+        User.id.in_(user_ids)))).all()) if user_ids else {}
+    group_names = dict((await session.execute(select(UserGroup.id, UserGroup.name).where(
+        UserGroup.id.in_(group_ids)))).all()) if group_ids else {}
+    return [{"id": row.id, "subject_type": row.subject_type,
+             "subject_id": row.subject_id,
+             "subject_name": (user_names if row.subject_type == 'user'
+                              else group_names).get(row.subject_id, row.subject_id),
+             "access_level": row.access_level} for row in rows]

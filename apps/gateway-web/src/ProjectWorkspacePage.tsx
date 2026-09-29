@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ProjectAccessSettings } from './ProjectAccessSettings'
 
 type RemoteSession = {
   project_id: string | null
@@ -7,6 +8,7 @@ type RemoteSession = {
   task_create: boolean
   share_create: boolean
   gateway_url: string
+  can_manage_project_access: boolean
 }
 type ProjectSummary = {
   id: string
@@ -25,6 +27,7 @@ export function ProjectWorkspacePage() {
   const [workflowId, setWorkflowId] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -109,6 +112,10 @@ export function ProjectWorkspacePage() {
     {error && <p className="gateway-auth-error" role="alert">{error}</p>}
     {summary && <>
       <p>{session?.access_level === 'edit' ? '编辑授权' : '只读授权'} · {summary.workflows?.length ?? 0} 个流程</p>
+      <button type="button" onClick={() => setSettingsOpen(open => !open)}>项目设置</button>
+      {settingsOpen && session?.access_level && <ProjectAccessSettings
+        projectName={summary.name} accessLevel={session.access_level}
+        canManage={session.can_manage_project_access} gatewayUrl={session.gateway_url} />}
       {session?.access_level === 'edit' && session.task_create && <form
         className="gateway-project-create" onSubmit={event => void createTask(event)}>
         <h3>新建任务</h3>
