@@ -13,7 +13,7 @@ from httpx import ASGITransport, AsyncClient
 
 from models import Task
 from models.fields import utc_now
-from schemas.task import RunTaskRequest
+from schemas.task import CoordinatorChatRequest, RunTaskRequest
 from services.gateway_client.bridge import ManagedHttpBridge
 from services.remote_access import ActorSnapshot, actor_context
 from tests.test_api_contracts import api_context
@@ -202,6 +202,16 @@ async def test_project_proxy_task_actions_are_project_scoped(
         )
     assert denied.value.status_code == 403
     start_run.assert_not_awaited()
+
+    submit_coordinator = AsyncMock()
+    monkeypatch.setattr(main.coordinator_module, "submit_message", submit_coordinator)
+    with actor_context(actor), pytest.raises(HTTPException) as denied:
+        await task_api.chat_with_coordinator(
+            "private-task-id", CoordinatorChatRequest(content="escape"),
+            pid=private, idempotency_key="scope-check",
+        )
+    assert denied.value.status_code == 403
+    submit_coordinator.assert_not_awaited()
 
     from api import task_context
 

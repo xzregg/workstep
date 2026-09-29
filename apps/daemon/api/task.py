@@ -253,6 +253,7 @@ async def chat_with_coordinator(
     from main import coordinator_module
     if not coordinator_module:
         raise HTTPException(status_code=503, detail="Coordinator is not initialized")
+    await _require_scoped_task(pid, task_id)
     try:
         accepted = await coordinator_module.submit_message(
             pid,
