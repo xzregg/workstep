@@ -607,6 +607,7 @@ async def run_task(req: RunTaskRequest, pid: str = Query(..., alias="project_id"
     from services.remote_access import UserIdentityRequired, get_effective_actor
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(pid, req.task_id)
 
     async def audit_denial(reason_code: str, *, system_actor: bool = False) -> None:
         if await asyncio.to_thread(project_manager.get_project_by_id, pid) is None:

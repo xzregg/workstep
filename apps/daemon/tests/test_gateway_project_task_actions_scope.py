@@ -8,11 +8,14 @@ import time
 from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 
 from models import Task
 from models.fields import utc_now
+from schemas.task import RunTaskRequest
 from services.gateway_client.bridge import ManagedHttpBridge
+from services.remote_access import ActorSnapshot, actor_context
 from tests.test_api_contracts import api_context
 from workstep_gateway_protocol import FrameType, ProxyFrame
 
@@ -185,6 +188,20 @@ async def test_project_proxy_task_actions_are_project_scoped(
                              body={}, extra_headers=headers) == 200
     confirm_action.assert_awaited_once()
     cancel_action.assert_awaited_once()
+
+    import api.task as task_api
+
+    start_run = AsyncMock()
+    monkeypatch.setattr(main.workflow_runtime, "start", start_run)
+    actor = ActorSnapshot(actor_id="worker", user_name="worker", device_id="device-1",
+                          device_name="Device", source="managed", project_id=visible,
+                          access_level="edit")
+    with actor_context(actor), pytest.raises(HTTPException) as denied:
+        await task_api.run_task(
+            RunTaskRequest(task_id="private-task-id", prompt="escape"), pid=private,
+        )
+    assert denied.value.status_code == 403
+    start_run.assert_not_awaited()
 
     from api import task_context
 
