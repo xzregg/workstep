@@ -184,6 +184,9 @@ def prepare_start_in_project(
     task.status = "running"
     task.active_workflow_run_id = workflow_run.id
     task.queued_run_json = None
+    task.scheduled_start_at = None
+    task.scheduled_start_state = None
+    task.scheduled_start_error = None
     task.state_version += 1
     task.updated_at = now
     task.save()

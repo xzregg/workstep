@@ -631,23 +631,6 @@ async def run_task(req: RunTaskRequest, pid: str = Query(..., alias="project_id"
 
     try:
         handle = await workflow_runtime.start(pid, req.task_id, req.prompt)
-        if task_service and hasattr(task_service, "clear_scheduled_start"):
-            await _run_db(
-                pid,
-                lambda: task_service.clear_scheduled_start(req.task_id),
-            )
-            await event_bus.publish({
-                "type": "CUSTOM",
-                "project_id": pid,
-                "name": "workstep.scheduled_start",
-                "value": {
-                    "task_id": req.task_id,
-                    "scheduled_start_at": None,
-                    "scheduled_start_state": None,
-                    "scheduled_start_error": None,
-                },
-                "task_id": req.task_id,
-            })
     except UserIdentityRequired as exc:
         await audit_outcome("identity_required", system_actor=True)
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -662,6 +645,19 @@ async def run_task(req: RunTaskRequest, pid: str = Query(..., alias="project_id"
         else:
             await audit_outcome("run_error", result="failed")
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if task_service:
+        await event_bus.publish({
+            "type": "CUSTOM",
+            "project_id": pid,
+            "name": "workstep.scheduled_start",
+            "value": {
+                "task_id": req.task_id,
+                "scheduled_start_at": None,
+                "scheduled_start_state": None,
+                "scheduled_start_error": None,
+            },
+            "task_id": req.task_id,
+        })
     return {
         "status": "started",
         "task_id": req.task_id,
