@@ -204,6 +204,11 @@ async def lifespan(app: FastAPI):
         await git_service.close()
         from services.engine_runtime import runtime_manager
         await runtime_manager.shutdown()
+        try:
+            from engines.deepseek_harness import DeepSeekHarnessEngine
+            await asyncio.to_thread(DeepSeekHarnessEngine.shutdown_pool)
+        except Exception:
+            logger.warning("DeepSeek Harness pool shutdown failed", exc_info=True)
         logger.info("WorkStep Daemon shutting down")
         if workflow_gen_module is not None:
             await workflow_gen_module.shutdown()

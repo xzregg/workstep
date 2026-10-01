@@ -26,6 +26,12 @@ QODER_PERMISSION_MODES = {
     "auto",
 }
 
+OPENCODE_PERMISSION_MODES = {
+    "ask",
+    "allow",
+    "deny",
+}
+
 PROVIDER_PROTOCOLS = {
     "anthropic_messages",
     "openai_responses",

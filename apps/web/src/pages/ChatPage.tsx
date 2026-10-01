@@ -109,6 +109,7 @@ export default function ChatPage() {
   const [permissionMode, setPermissionMode] = useState('')
   const [planMode, setPlanMode] = useState(false)
   const [goalMode, setGoalMode] = useState(false)
+  const [configReopenSignal, setConfigReopenSignal] = useState(0)
 
   const session = useChatSessionStore((s) => (sessionId ? s.sessions[sessionId] : undefined))
   const messages = session?.messages ?? []
@@ -167,6 +168,7 @@ export default function ChatPage() {
     permissionMode,
     onHandoffApplied: applyHandoff,
     navigate,
+    onHandoffSettled: () => { setConfigReopenSignal((n) => n + 1) },
   })
   const quickButtons = useChatListStore((s) => s.quickButtons)
   const projectActions = useProjectActions(activeProject?.id, sessionId)
@@ -515,11 +517,18 @@ export default function ChatPage() {
           onEngineChange: (engineId) => {
             const defaultEngine = assistantConfig?.configured.engine || assistantConfig?.resolved?.engine || 'pydantic_ai'
             const targetEngine = engineId || defaultEngine
-            if (requestEngineHandoff(targetEngine)) return
+            if (requestEngineHandoff(targetEngine)) {
+              // 移动端：交接确认弹层弹出时收起配置菜单，避免双层叠放互相遮挡。
+              if (compact) return false
+              return
+            }
             chooseEngine(engineId)
           },
           onProviderChange: (providerId) => {
-            if (requestProviderHandoff(providerId || '')) return
+            if (requestProviderHandoff(providerId || '')) {
+              if (compact) return false
+              return
+            }
             chooseProvider(providerId)
           },
           onModelChange: setSelectedModel,
@@ -527,6 +536,7 @@ export default function ChatPage() {
           onVisionModelChange: setSelectedVisionModel,
           onThinkingEffortChange: setSelectedThinkingEffort,
           onReset: resetEngineSelection,
+          reopenSignal: configReopenSignal,
         }}
         permission={{
           value: permissionMode,

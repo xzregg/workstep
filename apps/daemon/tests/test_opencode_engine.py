@@ -59,6 +59,50 @@ def test_permission_mode_always_ask():
     assert OpencodeEngine().get_permission_mode() == "ask"
 
 
+@pytest.mark.parametrize(
+    ("stored", "bridge", "file_mode"),
+    [
+        ("ask", "ask", "ask"),
+        ("allow", "auto", "allow"),
+        ("deny", "read-only", "deny"),
+    ],
+)
+def test_permission_mode_translated_for_approval_bridge(monkeypatch, stored, bridge, file_mode):
+    """引擎配置 allow/deny 必须翻译成审批桥懂的词汇，否则漏网的
+    request_permission 会被一律拒绝（已设 allow 仍报权限不足）。"""
+    monkeypatch.setattr(
+        "engines.opencode.config_store.get_opencode_config",
+        lambda: {"permission_mode": stored},
+    )
+    engine = OpencodeEngine()
+    assert engine.get_permission_mode() == bridge
+    # OPENCODE_CONFIG 文件仍用 opencode 原生词汇。
+    env = engine.project_skill_env("/tmp/some-project")
+    data = json.loads(open(env["OPENCODE_CONFIG"], encoding="utf-8").read())
+    assert data["permission"]["edit"] == file_mode
+    assert data["permission"]["bash"] == file_mode
+
+
+@pytest.mark.anyio
+async def test_allow_mode_auto_approves_bridge_permission():
+    """桥接层词汇 auto 必须自动放行（allow 翻译的目标）。"""
+    from acp import schema
+
+    from engines.core.acp_streaming_client import ACPStreamingClient
+
+    client = ACPStreamingClient("auto")
+    tool_call = schema.ToolCall(
+        toolCallId="call-1", title="bash", kind="execute", rawInput={},
+    )
+    options = [
+        schema.PermissionOption(optionId="allow-once", name="Allow", kind="allow_once"),
+        schema.PermissionOption(optionId="reject", name="Reject", kind="reject_once"),
+    ]
+    response = await client.request_permission("ses-1", tool_call, options)
+    assert response.outcome.outcome == "selected"
+    assert response.outcome.option_id == "allow-once"
+
+
 def test_project_skill_env_injects_permission_config():
     engine = OpencodeEngine()
     env = engine.project_skill_env("/tmp/some-project")
@@ -159,3 +203,66 @@ def test_permission_config_write_failure_stops_spawn(monkeypatch, tmp_path):
     monkeypatch.setattr("engines.opencode.os.makedirs", mock.Mock(side_effect=OSError("readonly")))
     with pytest.raises(RuntimeError, match="权限配置"):
         OpencodeEngine().project_skill_env("/tmp")
+
+
+@pytest.mark.anyio
+async def test_resume_prefers_resume_over_load_to_avoid_replay(monkeypatch):
+    """续轮必须走 session/resume 而非 session/load。
+
+    opencode 的 session/load 会把整段历史当实时 update 重播，
+    旧正文混入新回复；resume 实测恢复上下文且不重播。
+    """
+    from contextlib import asynccontextmanager
+
+    from acp import schema
+
+    class Client:
+        loaded = False
+        resumed = False
+        prompts = 0
+
+        async def initialize(self, **kwargs):
+            return schema.InitializeResponse(
+                protocolVersion=1,
+                agentCapabilities=schema.AgentCapabilities(
+                    loadSession=True,
+                    sessionCapabilities=schema.SessionCapabilities(
+                        resume=schema.SessionResumeCapabilities(),
+                    ),
+                ),
+            )
+
+        async def load_session(self, **kwargs):
+            self.loaded = True
+            return object()
+
+        async def resume_session(self, **kwargs):
+            self.resumed = True
+            return object()
+
+        async def set_config_option(self, **kwargs):
+            return None
+
+        async def prompt(self, *, prompt, **kwargs):
+            self.prompts += 1
+            return type("Response", (), {"usage": None, "stop_reason": "end_turn"})()
+
+    client = Client()
+
+    @asynccontextmanager
+    async def fake_spawn(*args, **kwargs):
+        yield client, object()
+
+    monkeypatch.setattr("engines.core.acp_base.acp.spawn_agent_process", fake_spawn)
+    events = [event async for event in OpencodeEngine().spawn(
+        "你是谁", "/tmp", session_id="ses_old",
+    )]
+
+    assert client.resumed is True
+    assert client.loaded is False
+    assert client.prompts == 1
+    # fake 未推送任何 chunk 会触发空轮保护，只断言没有其它错误。
+    assert not [
+        event for event in events
+        if event.type == "error" and not event.data.get("empty_turn")
+    ]

@@ -7,7 +7,7 @@ import Icon from './Icon'
 import EngineConfigForm, { type EngineConfigFormHandle } from './EngineConfigForm'
 import ExecutionDefaultSettings from './ExecutionDefaultSettings'
 import EngineRuntimeControl from './EngineRuntimeControl'
-import { engineApi, fetchEngineModels, invalidateEngineModels, type EngineInfo, type EngineModel, type EngineTestResult } from '../api/client'
+import { engineApi, fetchEngineModels, invalidateEngineModels, providerApi, providerProtocolsMatch, type EngineInfo, type EngineModel, type EngineTestResult, type ProviderInfo } from '../api/client'
 import { ENGINE_COLORS, engineLabel, engineDescription, sortExecutionEngines } from '../engineMeta'
 import { useI18n } from '../i18n'
 import { publishEngineCatalog } from '../stores/engineAvailabilityStore'
@@ -50,6 +50,9 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
   const [savingModel, setSavingModel] = useState<string | null>(null)
   const [customModelMode, setCustomModelMode] = useState<Record<string, boolean>>({})
   const [customModelDrafts, setCustomModelDrafts] = useState<Record<string, string>>({})
+  const [providers, setProviders] = useState<ProviderInfo[]>([])
+  // 模型来源供应商：选了之后走供应商的模型列表，而不是引擎原生列表。
+  const [modelSourceProvider, setModelSourceProvider] = useState<Record<string, string>>({})
   const [editingEngine, setEditingEngine] = useState<string | null>(null)
   const [expandedConfigs, setExpandedConfigs] = useState<Record<string, boolean>>({})
   const engineFormRefs = useRef<Record<string, EngineConfigFormHandle | null>>({})
@@ -64,12 +67,12 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
     if (engines.length > 0) publishEngineCatalog(engines)
   }, [engines])
 
-  const loadEngineModels = async (engineId: string, force = false) => {
+  const loadEngineModels = async (engineId: string, force = false, providerId?: string) => {
     if ((models[engineId] || modelsLoading[engineId]) && !force) return
     setModelsLoading((current) => ({ ...current, [engineId]: true }))
     let result
     try {
-      result = await fetchEngineModels(engineId, force)
+      result = await fetchEngineModels(engineId, force, providerId ?? modelSourceProvider[engineId] ?? '')
     } catch (modelError) {
       result = {
         engine_id: engineId,
@@ -155,6 +158,10 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
     if (initialized.current) return
     initialized.current = true
     void loadEngines(false)
+    void providerApi.list().then(
+      (result) => setProviders(result.providers || []),
+      () => setProviders([]),
+    )
   }, [])
 
 
@@ -210,6 +217,17 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
     } finally {
       setSavingModel(null)
     }
+  }
+
+  const selectModelSourceProvider = (engineId: string, providerId: string) => {
+    setModelSourceProvider((current) => ({ ...current, [engineId]: providerId }))
+    invalidateEngineModels(engineId)
+    setModels((current) => {
+      const next = { ...current }
+      delete next[engineId]
+      return next
+    })
+    void loadEngineModels(engineId, true, providerId)
   }
 
   const selectDefaultModel = (engineId: string, value: string) => {
@@ -344,6 +362,30 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                 )
                 const modelSelectRow = (
                   <>
+                    {engine.supports_provider && (
+                      <>
+                        <span className="engine-settings-model-label">
+                          {t('settings.modelSourceProvider')}
+                        </span>
+                        <Select
+                          id={`model-source-${engine.id}`}
+                          aria-label={t('settings.modelSourceProviderAria', { name: engineLabel(engine.id, t) })}
+                          title={t('settings.modelSourceProviderTitle')}
+                          value={modelSourceProvider[engine.id] ?? ''}
+                          disabled={Boolean(modelsLoading[engine.id])}
+                          onChange={(event) => selectModelSourceProvider(engine.id, event.target.value)}
+                          className="engine-settings-model-select"
+                        >
+                          <option value="">{t('settings.engineNativeModels')}</option>
+                          {providers
+                            .filter((provider) => provider.enabled !== false
+                              && providerProtocolsMatch(provider, engine.provider_protocols))
+                            .map((provider) => (
+                              <option key={provider.id} value={provider.id}>{provider.name}</option>
+                            ))}
+                        </Select>
+                      </>
+                    )}
                     <span className="engine-settings-model-label">
                       {t('chatInput.model')}
                     </span>

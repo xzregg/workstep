@@ -403,6 +403,8 @@ async def get_engine_quota(engine_id: str, project_id: str = ""):
     quota = await get_quota(
         cwd=str(project.path) if project else str(Path.cwd())
     )
+    if quota is None:
+        return {"engine_id": engine_id, "supported": False, "quota": None}
     return {
         "engine_id": engine_id,
         "supported": True,

@@ -76,6 +76,7 @@ export default function ChatEngineHandoffDialog({
       confirmText={t('chatSession.handoffConfirm')}
       loading={loading}
       width={620}
+      zIndex={2300}
       onCancel={onCancel}
       onConfirm={() => onConfirm({
         project_id: projectId,

@@ -97,8 +97,9 @@ export interface ChatInputEngineConfig {
   notice?: string
   hint?: string
   engineTitle?: string
-  onEngineChange: (engineId: string) => void
-  onProviderChange?: (providerId: string) => void
+  /** 返回 false 表示弹层应关闭（如移动端弹出引擎交接确认，避免双层叠放）。 */
+  onEngineChange: (engineId: string) => boolean | void
+  onProviderChange?: (providerId: string) => boolean | void
   onModelChange: (model: string) => void
   onFastModelChange: (model: string) => void
   onVisionModelChange?: (model: string) => void
@@ -111,6 +112,8 @@ export interface ChatInputEngineConfig {
   allowDefault?: boolean
   /** Reset all selections back to the defaults. */
   onReset?: () => void
+  /** 递增即重新打开配置弹层并聚焦模型选择（交接确认关闭后回流）。 */
+  reopenSignal?: number
 }
 
 export interface ChatInputImageAttach {
@@ -290,6 +293,15 @@ export default function ChatInput({
   const inputFocusedRef = useRef(false)
   const [configOpen, setConfigOpen] = useState(false)
   const [configFocus, setConfigFocus] = useState<'model' | 'reasoning' | null>(null)
+  const reopenSignal = config?.reopenSignal ?? 0
+  const reopenSeenRef = useRef(0)
+  useEffect(() => {
+    if (reopenSignal > reopenSeenRef.current) {
+      reopenSeenRef.current = reopenSignal
+      setConfigFocus(null)
+      setConfigOpen(true)
+    }
+  }, [reopenSignal])
   const [statusOpen, setStatusOpen] = useState(false)
   const isCompact = useCompactLayout()
   const permissionMenu = useFloatingMenu()
@@ -1193,8 +1205,8 @@ export default function ChatInput({
                       onStepFieldChange={config.onStepFieldChange}
                       requireCoordinator={config.requireCoordinator}
                       allowDefault={config.allowDefault}
-                      onEngineChange={(id) => { config.onEngineChange(id); setConfigOpen(true) }}
-                      onProviderChange={config.onProviderChange}
+                      onEngineChange={(id) => { setConfigOpen(config.onEngineChange(id) !== false) }}
+                      onProviderChange={(id) => { setConfigOpen((config.onProviderChange?.(id) ?? true) !== false) }}
                       onModelChange={config.onModelChange}
                       onFastModelChange={config.onFastModelChange}
                       onVisionModelChange={config.onVisionModelChange}
