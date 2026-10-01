@@ -1,0 +1,18 @@
+# WorkStep patch for the official DeepSeek Harness `sdk` profile.
+#
+# deepseek-harness-sdk >= 0.1.5rc1 generation: the Python SDK launches the
+# bundled dsh runtime with `--profile sdk --patch <this-file>`, and every
+# entry below targets a base-tree entry by id to override its config. The
+# runtime keeps stdout exclusively for JSON-RPC, so keep this list minimal
+# and free of non-protocol output.
+#
+# `<WORKSTEP_SKILL_DIRS>` is replaced with the project's controlled skill
+# directory by `services.skill_runtime.prepare_deepseek_patch`.
+
+# Mirror WorkStep's controlled skill whitelist: disable the default
+# project/user/bundled skill roots so the harness only sees the skills
+# enabled in WorkStep under `.workstep/skills`.
+- id: skill-filesystem
+  config:
+    includeDefaultRoots: false
+    customSkillDirs: [<WORKSTEP_SKILL_DIRS>]
