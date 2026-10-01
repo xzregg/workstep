@@ -62,6 +62,30 @@ class MemoryConfigStore:
             if isinstance(value, str) and value.strip()
         }
 
+    def get_user_name(self):
+        return "Test User"
+
+    def get_device_identity(self):
+        return {"device_id": "test-device", "device_name": "Test Device"}
+
+
+@pytest.fixture(autouse=True)
+def _named_test_user(monkeypatch):
+    """HTTP contract tests hit the real global config store: seed a user.
+
+    Module-level tests replace ``services.config.config_store`` with the
+    ``MemoryConfigStore`` above (which now also carries an identity), so this
+    only affects the tests that go through ``main.app``. (commit 45c02827)
+    """
+    import services.config as config_mod
+
+    monkeypatch.setattr(config_mod.config_store, "get_user_name", lambda: "Test User")
+    monkeypatch.setattr(
+        config_mod.config_store,
+        "get_device_identity",
+        lambda: {"device_id": "test-device", "device_name": "Test Device"},
+    )
+
 
 class FakeEngine:
     capabilities = SimpleNamespace(supports_coordinator=True)

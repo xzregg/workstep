@@ -23,6 +23,19 @@ from services.workflow_definition import WorkflowDefinition
 from streaming.bus import EventBus
 
 
+@pytest.fixture(autouse=True)
+def _named_test_user(monkeypatch):
+    """Manual workflow runs require a named local actor (commit 45c02827)."""
+    import services.config as config_mod
+
+    monkeypatch.setattr(config_mod.config_store, "get_user_name", lambda: "Test User")
+    monkeypatch.setattr(
+        config_mod.config_store,
+        "get_device_identity",
+        lambda: {"device_id": "test-device", "device_name": "Test Device"},
+    )
+
+
 OUTPUT_PATH_RE = re.compile(r"output path: `([^`]+)`")
 
 
