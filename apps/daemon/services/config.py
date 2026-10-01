@@ -42,6 +42,7 @@ from services.engine_config_rules import (
     CODEX_SDK_APPROVAL_MODES,
     PROVIDER_PROTOCOLS,
     QODER_PERMISSION_MODES,
+    OPENCODE_PERMISSION_MODES,
     claude_custom_settings_env,
     claude_custom_settings_json,
     claude_custom_settings_payload,
@@ -904,6 +905,26 @@ class ConfigStore:
             raw.pop("max_turns", None)
         raw["include_partial_messages"] = bool(include_partial_messages)
         self.set("qoder_sdk_engine", raw)
+
+    # --- OpenCode engine config ---
+
+    def get_opencode_config(self) -> dict[str, Any]:
+        raw = self.get("opencode_engine", {})
+        if not isinstance(raw, dict):
+            raw = {}
+        mode = str(raw.get("permission_mode") or "").strip() or "ask"
+        if mode not in OPENCODE_PERMISSION_MODES:
+            mode = "ask"
+        return {"permission_mode": mode}
+
+    def set_opencode_config(self, permission_mode: str = "ask") -> None:
+        mode = str(permission_mode or "").strip() or "ask"
+        if mode not in OPENCODE_PERMISSION_MODES:
+            raise ValueError(f"Unsupported OpenCode permission mode: {mode}")
+        raw = self.get("opencode_engine", {})
+        raw = dict(raw) if isinstance(raw, dict) else {}
+        raw["permission_mode"] = mode
+        self.set("opencode_engine", raw)
 
     # --- Codex Agent SDK config ---
 

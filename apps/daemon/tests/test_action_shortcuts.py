@@ -52,7 +52,7 @@ def test_action_button_keeps_confirmation_input_prompt():
     without_confirmation = normalize_quick_buttons([{
         **buttons[0], "require_confirmation": False,
     }])
-    assert without_confirmation[0]["confirmation_input_prompt"] == ""
+    assert without_confirmation[0]["confirmation_input_prompt"] == "请输入 Commit 消息"
     with pytest.raises(ValueError, match="确认输入提示"):
         normalize_quick_buttons([{
             **buttons[0], "confirmation_input_prompt": "x" * 201,

@@ -1,13 +1,20 @@
 """DeepSeekHarnessEngine — DeepSeek official Harness Python SDK adapter."""
 
 import asyncio
+import hashlib
 import importlib.metadata
 import importlib.util
+import inspect
+import itertools
 import json
 import logging
 import os
+import re
+import threading
+import time
 import uuid
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, AsyncIterator
 
@@ -36,12 +43,55 @@ from services.config import config_store
 
 logger = logging.getLogger(__name__)
 
+# SDK JSON-RPC 服务端在跨进程恢复已持久化会话失败时，以 JSON-RPC
+# Internal error（code -32603）上报，且 message 精确为
+# ``session "<id>" already exists``（SDK 0.1.5rc1 实测：persistence.create
+# 抛 SessionAlreadyExistsError）。只认“结构化信号”（code + 身份正则，或
+# SDK 异常类型名），不做裸字符串匹配——turn 内错误（如工具返回
+# "file not found"）绝不能误判为会话丢失。
+_SESSION_EXISTS_CODE = -32603
+# 只认 session 身份重复 create 的报错，避免把文件已存在等无关错误误判为会话丢失。
+_SESSION_EXISTS_RE = re.compile(r'session\s+"[^"]+"\s+already\s+exists')
+# 无 code 属性的老世代 SDK（0.1.0rc7）回退：只认持久化层冲突原文，
+# 不认裸 "not found"（resume 缺席由服务端内部消化，冒泡出来的 not found
+# 另有所指；之前把 turn 内 "file not found" 误判为会话丢失即源于此）。
+_LEGACY_SESSION_CONFLICT_MARKERS = (
+    "id collision",
+    "already has a persisted log",
+)
+
+
+def _is_session_exists_error(exc: BaseException) -> bool:
+    """Return True when the SDK error means resume collided with a stored log."""
+    code = getattr(exc, "code", None)
+    if code is not None:
+        return code == _SESSION_EXISTS_CODE and bool(
+            _SESSION_EXISTS_RE.search(str(exc))
+        )
+    name = type(exc).__name__
+    if "SessionAlreadyExists" in name:
+        return True
+    text = f"{name}: {exc}".lower()
+    if _SESSION_EXISTS_RE.search(text):
+        return True
+    return any(marker in text for marker in _LEGACY_SESSION_CONFLICT_MARKERS)
+
+
+@dataclass
+class _PooledHarness:
+    harness: Any
+    fingerprint: str
+    inflight: set[int] = field(default_factory=set)
+    last_used: float = field(default_factory=time.monotonic)
+
 
 class DeepSeekHarnessEngine(AcpEngineBase):
     """Run the official local DeepSeek Harness composition through its SDK."""
 
     ENGINE_ID = "deepseek_harness"
-    RUNTIME_PACKAGE = RuntimePackage('deepseek-harness-sdk', 'pypi', '0.1.0rc6', '0.1.0rc6')
+    # minimum 保留 rc7：适配器通过运行时签名同时兼容两代 SDK；
+    # default_version 跟随最新版（0.1.5rc1 起参数改为 dsh_home/patches/dsh_bin）。
+    RUNTIME_PACKAGE = RuntimePackage('deepseek-harness-sdk', 'pypi', '0.1.0rc7', '0.1.5rc1')
     UPDATE_PACKAGE = "deepseek-harness-sdk"
 
     @classmethod
@@ -58,8 +108,9 @@ class DeepSeekHarnessEngine(AcpEngineBase):
             super().supports_provider(provider)
             and str(provider.get("type") or "") == "deepseek"
         )
-    SDK_PACKAGE = "deepseek-harness-sdk==0.1.0rc6"
+    SDK_PACKAGE = "deepseek-harness-sdk==0.1.5rc1"
     DEFAULT_PRESET = "standard"
+    # 0.1.0rc7 世代：完整 Cordis 组合（``cordis`` / DSH_CORDIS_CONFIG 环境变量）。
     PRESET_COMPOSITIONS = {
         "standard": (
             Path(__file__).resolve().parent.parent
@@ -68,14 +119,137 @@ class DeepSeekHarnessEngine(AcpEngineBase):
             / "standard.cordis.yml"
         ),
     }
+    # >= 0.1.5rc1 世代：``--profile sdk --patch`` 叠加在 profile 基础树上的补丁列表。
+    PRESET_PATCHES = {
+        "standard": (
+            Path(__file__).resolve().parent.parent
+            / "data"
+            / "deepseek-harness"
+            / "standard.workstep.patch.yml"
+        ),
+    }
+
+    # 同项目 + 同配置复用同一个 SDK server 进程：server 把已创建会话缓存在
+    # 进程内（getOrCreateSession），同进程内同 session_id 的第二轮 prompt
+    # 直接命中内存记录、无需跨进程 resume。SDK 0.1.5rc1 的跨进程 resume
+    # 已实测损坏（resume 报 not found → 回退 create → AlreadyExists），
+    # 每轮 spawn 新建进程即必丢记忆，故必须池化。
+    _POOL: dict[str, _PooledHarness] = {}
+    _POOL_GUARD = threading.Lock()
+    _POOL_IDLE_TTL = 30 * 60.0
 
     def __init__(self):
         super().__init__()
         self._running = False
         self._harness = None
+        self._pool_key: str | None = None
+        self._pool_token = -1
         self._run_task: asyncio.Task | None = None
         self._streamed_blocks: set[tuple[int, int, str]] = set()
         self._turn_error_emitted = False
+        self._result_discarded = False
+
+    @classmethod
+    def _pool_fingerprint(
+        cls,
+        *,
+        project_root: str,
+        provider: dict,
+        model: str,
+        max_tokens: int | None,
+        preset: str,
+    ) -> str:
+        try:
+            sdk_version = importlib.metadata.version("deepseek-harness-sdk") or "?"
+        except importlib.metadata.PackageNotFoundError:
+            sdk_version = "?"
+        base_patch = cls.PRESET_PATCHES.get(preset)
+        base_composition = cls.PRESET_COMPOSITIONS.get(preset)
+        seed = "|".join([
+            project_root,
+            str(provider.get("base_url") or ""),
+            hashlib.sha256(str(provider.get("api_key") or "").encode()).hexdigest()[:16],
+            model,
+            "" if max_tokens is None else str(max_tokens),
+            preset,
+            sdk_version,
+            cls.get_binary_override() or "",
+            str(cls._file_tag(base_patch)),
+            str(cls._file_tag(base_composition)),
+        ])
+        return hashlib.sha256(seed.encode()).hexdigest()[:32]
+
+    @staticmethod
+    def _file_tag(path: Path | None) -> str:
+        if path is None:
+            return "-"
+        try:
+            stat = path.stat()
+            return f"{stat.st_mtime_ns}:{stat.st_size}"
+        except OSError:
+            return "?"
+
+    @classmethod
+    def _acquire_pooled(cls, key: str, fingerprint: str, build) -> tuple[Any, int]:
+        """Return (harness, owner_token) for key, building on fingerprint miss."""
+        with cls._POOL_GUARD:
+            entry = cls._POOL.get(key)
+            now = time.monotonic()
+            if entry is not None and entry.fingerprint != fingerprint:
+                if not entry.inflight:
+                    cls._close_entry(key, entry)
+                    entry = None
+                # 有在途 run 时保留旧实例：本轮仍用旧配置跑完，
+                # 新指纹的实例下次 acquire 时再建。
+            if entry is None:
+                # 顺手回收过期空闲实例，避免配置/项目删减后堆积子进程。
+                for stale_key, stale in list(cls._POOL.items()):
+                    if not stale.inflight and now - stale.last_used > cls._POOL_IDLE_TTL:
+                        cls._close_entry(stale_key, stale)
+                entry = _PooledHarness(harness=build(), fingerprint=fingerprint)
+                cls._POOL[key] = entry
+            entry.last_used = now
+            token = next(cls._POOL_TOKEN_SEQ)
+            entry.inflight.add(token)
+            return entry.harness, token
+
+    _POOL_TOKEN_SEQ = itertools.count(1)
+
+    @classmethod
+    def _release_pooled(cls, key: str, token: int, *, close_idle: bool) -> None:
+        with cls._POOL_GUARD:
+            entry = cls._POOL.get(key)
+            if entry is None:
+                return
+            entry.inflight.discard(token)
+            entry.last_used = time.monotonic()
+            if close_idle and not entry.inflight:
+                cls._close_entry(key, entry)
+
+    @classmethod
+    def _close_entry(cls, key: str, entry: _PooledHarness) -> None:
+        cls._POOL.pop(key, None)
+        harness, entry.harness = entry.harness, None
+        if harness is not None:
+            try:
+                harness.close()
+            except Exception:
+                logger.warning("DeepSeek Harness pooled runtime close failed", exc_info=True)
+
+    @classmethod
+    def shutdown_pool(cls) -> None:
+        """Close every pooled runtime (daemon lifespan shutdown)."""
+        with cls._POOL_GUARD:
+            entries = list(cls._POOL.items())
+            cls._POOL.clear()
+        for _, entry in entries:
+            harness, entry.harness = entry.harness, None
+            if harness is None:
+                continue
+            try:
+                harness.close()
+            except Exception:
+                logger.warning("DeepSeek Harness pooled runtime close failed", exc_info=True)
 
     @staticmethod
     def is_installed() -> bool:
@@ -239,37 +413,72 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         max_tokens: int | None,
         preset: str,
     ):
-        composition = self.PRESET_COMPOSITIONS.get(preset)
-        if composition is None:
+        base_composition = self.PRESET_COMPOSITIONS.get(preset)
+        base_patch = self.PRESET_PATCHES.get(preset)
+        if base_composition is None or base_patch is None:
             raise ValueError(f"Unsupported DeepSeek Harness preset: {preset}")
-        if not composition.is_file():
-            raise FileNotFoundError(f"DeepSeek Harness composition not found: {composition}")
+        if not base_composition.is_file():
+            raise FileNotFoundError(
+                f"DeepSeek Harness composition not found: {base_composition}"
+            )
+        if not base_patch.is_file():
+            raise FileNotFoundError(f"DeepSeek Harness patch not found: {base_patch}")
 
-        from deepseek_harness import DeepSeekHarness
+        from deepseek_harness import DeepSeekHarness, DeepSeekHarnessConfig
 
         project_root = Path(cwd).expanduser().resolve()
-        from services.skill_runtime import prepare_deepseek_composition
-
         controlled_skills = self.project_skills(str(project_root))
-        composition = prepare_deepseek_composition(controlled_skills, composition)
-        session_root = project_root / ".workstep" / "deepseek-harness" / "sessions"
-        session_root.mkdir(parents=True, exist_ok=True)
+        # 两代 SDK 的 config 参数完全不同（0.1.0rc7 用 session_root/cordis/
+        # runtime_bin；>= 0.1.5rc1 用 dsh_home/patches/dsh_bin），按已安装
+        # SDK 的签名选择世代，避免新版抛 unexpected keyword argument。
+        params = inspect.signature(DeepSeekHarnessConfig.__init__).parameters
         kwargs: dict[str, Any] = {
             "provider": "deepseek-official",
             "model": model,
             "max_tokens": max_tokens,
             "cwd": str(project_root),
             "runtime_cwd": str(project_root),
-            "session_root": str(session_root),
             "base_url": provider_service.provider_runtime_base_url(
                 provider, "openai_chat_completions"
             ),
             "api_key": str(provider.get("api_key") or ""),
-            "cordis": str(composition),
         }
+        if "session_root" in params:
+            # 0.1.0rc7 世代：完整组合经 DSH_CORDIS_CONFIG 注入，
+            # 会话 JSONL 落在 DSH_SESSION_ROOT 下。
+            from services.skill_runtime import prepare_deepseek_composition
+
+            composition = prepare_deepseek_composition(
+                controlled_skills, base_composition
+            )
+            session_root = project_root / ".workstep" / "deepseek-harness" / "sessions"
+            session_root.mkdir(parents=True, exist_ok=True)
+            kwargs["session_root"] = str(session_root)
+            kwargs["cordis"] = str(composition)
+            binary_key = "runtime_bin"
+        elif "dsh_home" in params:
+            # >= 0.1.5rc1 世代：运行时要求显式 DSH_HOME（会话落在
+            # ``<dsh_home>/sessions``），组合改为 --patch 叠加层。
+            from services.skill_runtime import prepare_deepseek_patch
+
+            patch = prepare_deepseek_patch(controlled_skills, base_patch)
+            harness_home = project_root / ".workstep" / "deepseek-harness"
+            harness_home.mkdir(parents=True, exist_ok=True)
+            kwargs["dsh_home"] = str(harness_home)
+            kwargs["patches"] = (str(patch),)
+            binary_key = "dsh_bin"
+        else:
+            try:
+                version = importlib.metadata.version("deepseek-harness-sdk")
+            except importlib.metadata.PackageNotFoundError:
+                version = "unknown"
+            raise RuntimeError(
+                f"Unsupported DeepSeek Harness SDK signature ({version}); "
+                "cannot map WorkStep's session and skill configuration."
+            )
         override = self.get_binary_override()
         if override:
-            kwargs["runtime_bin"] = override
+            kwargs[binary_key] = override
         return DeepSeekHarness(**kwargs)
 
     @staticmethod
@@ -496,7 +705,7 @@ class DeepSeekHarnessEngine(AcpEngineBase):
             supports_resume=True,
             supports_tool_disable=False,
             supports_native_schema=False,
-            supports_live_step_message=False,
+            supports_live_step_message=True,
             supports_sessions=True,
             supports_tool_approval=False,
             supports_vision=False,
@@ -506,6 +715,11 @@ class DeepSeekHarnessEngine(AcpEngineBase):
 
     @property
     def supports_sessions(self) -> bool:
+        return True
+
+    @property
+    def supports_live_step_message(self) -> bool:
+        # 轮间续跑：本轮结束后用队列内容在同一会话上再跑一轮。
         return True
 
     @property
@@ -519,8 +733,16 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         model: str | None = None,
         session_id: str | None = None,
         images: list[EngineImage] | None = None,
+        live_message_queue: asyncio.Queue | None = None,
         **kwargs,
     ) -> AsyncIterator[InternalEvent]:
+        """Run the harness, chaining queued live messages as follow-up turns.
+
+        deepseek-harness-sdk 的 ``harness.run`` 是同步阻塞调用，没有运行中
+        注入协议。当 ``live_message_queue`` 中出现待插入消息时，本轮结束后
+        用合并后的内容在同一会话上再跑一轮（resume 同 session），从而延续
+        完整上下文继续作答。
+        """
         yield InternalEvent(type="status", data={"status": "initializing"})
         if images:
             yield InternalEvent(
@@ -570,22 +792,43 @@ class DeepSeekHarnessEngine(AcpEngineBase):
             return
         raw_max_tokens = str(config.get("max_tokens") or "").strip()
         max_tokens = int(raw_max_tokens) if raw_max_tokens else None
+        preset = str(config.get("preset") or self.DEFAULT_PRESET)
         root_session_id = str(session_id or f"session-{uuid.uuid4().hex}")
         event_queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
         loop = asyncio.get_running_loop()
         harness = None
+        pool_key: str | None = None
+        pool_token = -1
 
         try:
-            harness = await asyncio.to_thread(
-                self._build_harness,
-                cwd=cwd,
+            project_root = str(Path(cwd).expanduser().resolve())
+            fingerprint = self._pool_fingerprint(
+                project_root=project_root,
                 provider=provider,
                 model=selected_model,
                 max_tokens=max_tokens,
-                preset=str(config.get("preset") or self.DEFAULT_PRESET),
+                preset=preset,
             )
+            pool_key = project_root
+            build_kwargs = {
+                "cwd": cwd,
+                "provider": provider,
+                "model": selected_model,
+                "max_tokens": max_tokens,
+                "preset": preset,
+            }
+
+            def _build():
+                return self._build_harness(**build_kwargs)
+
+            harness, pool_token = await asyncio.to_thread(
+                self._acquire_pooled, pool_key, fingerprint, _build
+            )
+            self._pool_key = pool_key
+            self._pool_token = pool_token
             self._harness = harness
             self._running = True
+            self._result_discarded = False
             self._streamed_blocks.clear()
             self.__dict__.setdefault("_child_streamed_blocks", {}).clear()
             self._turn_error_emitted = False
@@ -601,34 +844,104 @@ class DeepSeekHarnessEngine(AcpEngineBase):
                     ("notification", notification),
                 )
 
-            async def run_sdk() -> None:
+            run_session_id = root_session_id
+            resumed = session_id is not None
+            retried = False
+            session_lost_in_stream = False
+
+            async def run_sdk(sid: str, current_prompt: str) -> None:
                 try:
                     result = await asyncio.to_thread(
                         harness.run,
-                        prompt,
-                        session_id=root_session_id,
+                        current_prompt,
+                        session_id=sid,
                         on_notification=on_notification,
                     )
+                    if self._result_discarded:
+                        return
                     await event_queue.put(("result", result))
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
+                    if self._result_discarded:
+                        return
                     await event_queue.put(("error", exc))
 
-            self._run_task = asyncio.create_task(run_sdk())
+            current_prompt = prompt
+            self._run_task = asyncio.create_task(run_sdk(run_session_id, current_prompt))
             finish_reason: str | None = None
             while True:
                 item_type, value = await event_queue.get()
                 if item_type == "notification":
-                    for event in self._map_notification(value, root_session_id):
+                    for event in self._map_notification(value, run_session_id):
                         # The adapter owns top-level lifecycle events. SDK idle/running
                         # notifications only delimit its synchronous run internally.
                         if event.type != "status":
                             yield event
+                        if event.type == "error" and _is_session_exists_error(
+                            RuntimeError(str(event.data.get("message") or ""))
+                        ):
+                            session_lost_in_stream = True
                     continue
                 if item_type == "error":
+                    if resumed and not retried and _is_session_exists_error(value):
+                        # 池化后跨进程 resume 已极少发生（仅 daemon 重启后的
+                        # 首轮）；此时仍回退全新会话并明示用户。
+                        retried = True
+                        run_session_id = f"session-{uuid.uuid4().hex}"
+                        logger.warning(
+                            "DeepSeek Harness failed to restore session %s (%s); "
+                            "falling back to a fresh session %s",
+                            root_session_id, value, run_session_id,
+                        )
+                        yield InternalEvent(
+                            type="status",
+                            data={
+                                "status": "session_fallback",
+                                "message": (
+                                    f"无法恢复之前的会话（{root_session_id}），"
+                                    "已自动开启新会话，本次未携带该会话的历史上下文。"
+                                ),
+                            },
+                        )
+                        yield InternalEvent(
+                            type="session_started",
+                            data={"session_id": run_session_id},
+                        )
+                        self._run_task = asyncio.create_task(run_sdk(run_session_id, current_prompt))
+                        continue
                     raise value
                 finish_reason = str(getattr(value, "finish_reason", "") or "")
+                if (
+                    resumed and not retried
+                    and session_lost_in_stream and self._turn_error_emitted
+                ):
+                    # SDK 把会话失效作为流内错误报告（而非抛出异常）：
+                    # 同样回退到全新会话重跑，不终止本轮。
+                    retried = True
+                    session_lost_in_stream = False
+                    run_session_id = f"session-{uuid.uuid4().hex}"
+                    logger.warning(
+                        "DeepSeek Harness session %s unusable (in-stream error); "
+                        "falling back to a fresh session %s",
+                        root_session_id, run_session_id,
+                    )
+                    yield InternalEvent(
+                        type="status",
+                        data={
+                            "status": "session_fallback",
+                            "message": (
+                                f"无法恢复之前的会话（{root_session_id}），"
+                                "已自动开启新会话，本次未携带该会话的历史上下文。"
+                            ),
+                        },
+                    )
+                    yield InternalEvent(
+                        type="session_started",
+                        data={"session_id": run_session_id},
+                    )
+                    self._run_task = asyncio.create_task(run_sdk(run_session_id, current_prompt))
+                    continue
                 break
 
             await self._run_task
@@ -641,6 +954,52 @@ class DeepSeekHarnessEngine(AcpEngineBase):
                         data={"message": "DeepSeek Harness 执行失败"},
                     )
             else:
+                # 本轮结束：有待插入消息时在同一会话上续跑一轮（轮间续跑，
+                # 非运行中打断；语义与 codex exec 的 resume 重启一致）。
+                pending: list[str] = []
+                if live_message_queue is not None:
+                    while not live_message_queue.empty():
+                        try:
+                            item = live_message_queue.get_nowait()
+                        except asyncio.QueueEmpty:
+                            break
+                        content = item[1] if isinstance(item, tuple) else item
+                        text = str(content or "").strip()
+                        if text:
+                            pending.append(text)
+                if pending:
+                    current_prompt = "\n\n".join(pending)
+                    resumed = True
+                    self._run_task = asyncio.create_task(
+                        run_sdk(run_session_id, current_prompt)
+                    )
+                    finish_reason = None
+                    while True:
+                        item_type, value = await event_queue.get()
+                        if item_type == "notification":
+                            for event in self._map_notification(value, run_session_id):
+                                if event.type != "status":
+                                    yield event
+                            continue
+                        if item_type == "error":
+                            raise value
+                        finish_reason = str(getattr(value, "finish_reason", "") or "")
+                        break
+                    await self._run_task
+                    # 续跑轮只处理一批：再有新的插入留给上层下一轮调度。
+                    while live_message_queue is not None and not live_message_queue.empty():
+                        try:
+                            live_message_queue.get_nowait()
+                        except asyncio.QueueEmpty:
+                            break
+                        yield InternalEvent(
+                            type="status",
+                            data={
+                                "status": "live_message_deferred",
+                                "message": "本轮已有续跑插入，新的插入消息请在下一轮发送",
+                            },
+                        )
+                        break
                 yield InternalEvent(type="status", data={"status": "done"})
         except asyncio.CancelledError:
             yield InternalEvent(type="status", data={"status": "cancelled"})
@@ -652,22 +1011,35 @@ class DeepSeekHarnessEngine(AcpEngineBase):
             if task is not None and not task.done():
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
-            if harness is not None:
-                try:
-                    await asyncio.wait_for(asyncio.to_thread(harness.close), timeout=5)
-                except Exception:
-                    logger.warning("DeepSeek Harness runtime close failed", exc_info=True)
+            # 正常结束只归还租约、保留池化实例给下一轮（同进程 resume 即记忆）。
+            # 主动 stop()/cancel 走 _detach_pooled 关闭空闲实例。
+            if pool_key is not None and pool_token >= 0:
+                await asyncio.to_thread(
+                    self._release_pooled, pool_key, pool_token, close_idle=False
+                )
             self._harness = None
+            self._pool_key = None
+            self._pool_token = -1
             self._running = False
 
     async def stop(self) -> None:
         self._running = False
+        self._result_discarded = True
+        task, self._run_task = self._run_task, None
+        if task is not None and not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        pool_key, self._pool_key = self._pool_key, None
+        pool_token, self._pool_token = self._pool_token, -1
         harness, self._harness = self._harness, None
-        if harness is not None:
-            try:
-                await asyncio.wait_for(asyncio.to_thread(harness.close), timeout=5)
-            except Exception:
-                logger.warning("DeepSeek Harness runtime stop failed", exc_info=True)
+        if pool_key is None or harness is None:
+            return
+        # SDK server 没有单会话 cancel 接口：先归还本轮租约，只有当池实例
+        # 上没有其它在途 run 时才关闭它，否则仅摘除本轮（后台线程跑完后
+        # 结果直接丢弃），避免把同项目其它会话的 server 进程一起杀掉。
+        await asyncio.to_thread(
+            self._release_pooled, pool_key, pool_token, close_idle=True
+        )
 
     async def create_session(
         self,

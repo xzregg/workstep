@@ -41,6 +41,14 @@ _QODER_PERMISSION = {
     "ask": "default",
 }
 
+_OPENCODE_PERMISSION = {
+    "read-only": "deny",
+    "workspace-write": "ask",
+    "danger-full-access": "allow",
+    "auto": "allow",
+    "ask": "ask",
+}
+
 
 def is_valid_permission_mode(mode: str) -> bool:
     return mode in CHAT_PERMISSION_MODES
@@ -62,6 +70,8 @@ def map_permission_overrides(engine_id: str, mode: str) -> dict:
         return {"permission_mode": _CLAUDE_PERMISSION[mode]}
     if engine_id == "qoder_sdk":
         return {"permission_mode": _QODER_PERMISSION[mode]}
+    if engine_id == "opencode":
+        return {"permission_mode": _OPENCODE_PERMISSION[mode]}
     if engine_id == "pydantic_ai":
         if mode in _SANDBOX_MODES:
             return {"sandbox": mode}

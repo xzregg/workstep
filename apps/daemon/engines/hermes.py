@@ -8,7 +8,7 @@ import shutil
 from typing import AsyncIterator
 
 from engines.core.acp_base import AcpEngineBase
-from engines.core.base import ProviderRuntimeConfig
+from engines.core.base import EngineModel, ProviderRuntimeConfig
 from engines.core.plans import plan_event
 from engines.core.events import (
     InternalEvent,
@@ -87,21 +87,13 @@ class HermesEngine(AcpEngineBase):
         binary = self.resolve_binary()
         if not binary:
             return []
-        command = [binary]
-        preload = getattr(self, "_workstep_preload_skills", [])
-        if preload:
-            command.extend(["--skills", ",".join(preload)])
-        return [*command, "acp", "--accept-hooks"]
+        return [binary, "acp", "--accept-hooks"]
 
-    def project_skill_env(self, cwd: str) -> dict[str, str]:
-        from hashlib import sha256
-        from services.skill_runtime import prepare_hermes_home
-
-        project_id = sha256(str(os.path.realpath(cwd)).encode()).hexdigest()[:16]
-        selection = self.project_skills(cwd)
-        self._workstep_preload_skills = [skill.name for skill in selection.enabled]
-        home = prepare_hermes_home(selection, project_id)
-        return {"HERMES_HOME": str(home)}
+    # 不再为 hermes 构建 per-project HERMES_HOME：
+    # 隔离 home 会在每轮重建时毁掉 hermes 自己的会话持久化（state.db），
+    # 导致第二轮 session 恢复失败（hermes 把 session-not-found 误报为
+    # stop_reason="refusal"）。让引擎用全局 ~/.hermes 自管会话与技能，
+    # WorkStep 只负责把项目目录作为 cwd 传给引擎。
 
     def get_permission_mode(self) -> str:
         """ACP permissions must be decided by the user, never auto-approved."""
@@ -156,6 +148,17 @@ class HermesEngine(AcpEngineBase):
             config_overrides=config_overrides,
             thinking_effort=thinking_effort,
         ):
+            if event.type == "error" and (event.data.get("message") or "") == "Internal error":
+                # Hermes 服务端把真实原因吞成无意义的 Internal error（实测最常见
+                # 的是自身未配置供应商）；转成可行动的提示，而不是让用户干瞪眼。
+                event = InternalEvent(type="error", data={
+                    **event.data,
+                    "message": (
+                        "Hermes 内部错误（Internal error）：可能是 Hermes 自身未配置"
+                        "可用的模型供应商（与 WorkStep 供应商配置无关），请在终端运行"
+                        " `hermes model` 选择供应商，或 `hermes setup` 完成首次配置"
+                    ),
+                })
             yield event
 
     def _stdout_lines(self) -> ChunkedLineReader:
@@ -397,3 +400,21 @@ class HermesEngine(AcpEngineBase):
 
     def build_resume_params(self, session_id: str) -> dict:
         return {"session_id": session_id}
+
+    @staticmethod
+    def _agent_capability(response, name=None, nested=None):
+        # Hermes 虽声明 sessionCapabilities.resume，但实测 session/resume
+        # 直接报 Internal error；续轮统一走 session/load（实测恢复上下文
+        # 且不重播历史），隐藏坏掉的 resume 能力避免基类误入。
+        if name == "session_capabilities" and nested == "resume":
+            return None
+        return AcpEngineBase._agent_capability(response, name, nested)
+
+    async def list_models(self, cwd: str) -> list[EngineModel]:
+        # Hermes 自管 provider/模型，session/new 失败（如 provider 未配置
+        # 或额度耗尽）时不抛错：配置页降级为仅默认模型，而不是整页报错。
+        try:
+            return await super().list_models(cwd)
+        except Exception as exc:
+            logger.warning("hermes list_models 失败，已降级为空列表: %s", exc)
+            return []

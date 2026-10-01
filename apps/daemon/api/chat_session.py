@@ -105,6 +105,7 @@ class QuickButtonItem(BaseSchema):
     script_path: str | None = None
     cwd_mode: str | None = None
     require_confirmation: bool | None = None
+    confirmation_input_prompt: str | None = None
 
 
 class QuickButtonsRequest(BaseSchema):

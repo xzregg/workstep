@@ -27,12 +27,13 @@ interface TransitionOptions {
   permissionMode: string
   onHandoffApplied: (detail: ChatSessionDetail) => void
   navigate: (path: string) => void
+  onHandoffSettled?: () => void
 }
 
 /** Owns fork and handoff prompts, requests, errors and successful session updates. */
 export function useChatSessionTransitions({
   project, sessionId, sessionTitle, messageIds, running, current, defaultEngine,
-  engines, providers, permissionMode, onHandoffApplied, navigate,
+  engines, providers, permissionMode, onHandoffApplied, navigate, onHandoffSettled,
 }: TransitionOptions) {
   const { t } = useI18n()
   const [forkOpen, setForkOpen] = useState(false)
@@ -117,6 +118,7 @@ export function useChatSessionTransitions({
       onHandoffApplied(detail)
       setConfirmedHandoffMessageCount(messageCount)
       setHandoffOpen(false)
+      onHandoffSettled?.()
       await useChatListStore.getState().fetchSessions(project.id)
     } catch (reason) {
       setHandoffError(reason instanceof Error ? reason.message : t('chatSession.handoffFailed'))
@@ -165,7 +167,7 @@ export function useChatSessionTransitions({
       loading={handingOff}
       error={handoffError}
       onConfirm={(input) => { void handoffSession(input) }}
-      onCancel={() => { if (!handingOff) setHandoffOpen(false) }}
+      onCancel={() => { if (!handingOff) { setHandoffOpen(false); onHandoffSettled?.() } }}
     />
   </> : null
 

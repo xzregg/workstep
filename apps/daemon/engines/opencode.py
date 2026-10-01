@@ -12,8 +12,12 @@ OpenCode（opencode.ai）原生支持 Agent Client Protocol v1：
 
 WorkStep 通过 ``OPENCODE_CONFIG`` 环境变量（**文件路径**，env JSON 字符串
 不生效）注入权限配置：读取用户全局 ``~/.config/opencode/opencode.json``
-（保留其 provider / auth 配置）并覆盖 ``permission`` 为 ``ask``，写入
+（保留其 provider / auth 配置）并覆盖 ``permission``，写入
 ``~/.workstep/engines/opencode/opencode.json`` 后指给子进程。
+
+权限来源优先级：单次 ``config_overrides["permission_mode"]`` >
+运行时 ``set_permission_mode``（会话聊天权限选择器）> 引擎配置页 >
+默认 ``ask``。
 """
 
 import asyncio
@@ -25,27 +29,64 @@ import subprocess
 from typing import AsyncIterator, ClassVar
 
 from engines.core.acp_base import AcpEngineBase
-from engines.core.base import EngineModel, ProviderRuntimeConfig
+from engines.core.base import (
+    EngineConfigField,
+    EngineConfigOption,
+    EngineModel,
+    ProviderRuntimeConfig,
+)
 from engines.core.events import InternalEvent
 from engines.core.packages import RuntimePackage
 from engines.core.schema import EngineImage
 from engines.core.stream_lines import ChunkedLineReader
 from services import providers as provider_service
+from services.config import config_store
+from services.engine_config_rules import OPENCODE_PERMISSION_MODES
 
 logger = logging.getLogger(__name__)
 
-#: 权限固定为 ask：ACP 审批必须由用户决定，绝不自动通过。
-_PERMISSIONS = {"edit": "ask", "bash": "ask", "webfetch": "ask"}
+#: opencode 原生 permission 取值：ask（每次确认）/ allow（自动放行）/ deny。
+#: 写入 managed config 的 edit/bash/webfetch 三项。
+_OPENCODE_ALLOW = {"edit": "allow", "bash": "allow", "webfetch": "allow"}
+_OPENCODE_ASK = {"edit": "ask", "bash": "ask", "webfetch": "ask"}
+_OPENCODE_DENY = {"edit": "deny", "bash": "deny", "webfetch": "deny"}
+
+#: 运行时（ACP 审批桥）可识别的模式：allow 系自动通过。
+_RUNTIME_AUTO_MODES = {"allow", "auto", "bypassPermissions", "workspace-write", "danger-full-access"}
+
+#: opencode 原生词汇 → 审批桥（ACPStreamingClient）词汇。引擎配置页与
+#: OPENCODE_CONFIG 文件用 opencode 词汇（ask/allow/deny）；但审批桥只认识
+#: auto/bypassPermissions/workspace-write/danger-full-access（自动放行）、
+#: ask（挂起等用户确认）、read-only/plan（只放行只读工具），其它一律拒绝。
+#: 不翻译的话，引擎默认 allow 时漏网的 request_permission 会被全部拒绝，
+#: 表现为“已设 allow 但有时候还是权限不足”。
+_BRIDGE_PERMISSION_MODES = {"allow": "auto", "deny": "read-only", "ask": "ask"}
 
 _GLOBAL_CONFIG_PATH = os.path.expanduser("~/.config/opencode/opencode.json")
+
+
+def _resolve_opencode_mode(config_overrides: dict | None = None) -> str:
+    """按 overrides > runtime > 引擎配置 > ask 解析生效的权限模式。"""
+    override = str(((config_overrides or {}).get("permission_mode") or "")).strip()
+    if override in OPENCODE_PERMISSION_MODES:
+        return override
+    return config_store.get_opencode_config().get("permission_mode") or "ask"
+
+
+def _permissions_for(mode: str) -> dict[str, str]:
+    if mode == "allow":
+        return dict(_OPENCODE_ALLOW)
+    if mode == "deny":
+        return dict(_OPENCODE_DENY)
+    return dict(_OPENCODE_ASK)
 
 
 def _managed_config_path() -> str:
     return os.path.expanduser("~/.workstep/engines/opencode/opencode.json")
 
 
-def _ensure_permission_config() -> str:
-    """生成 WorkStep 管理的 opencode 配置（全局配置 + permission=ask 覆盖）。
+def _ensure_permission_config(mode: str = "ask") -> str:
+    """生成 WorkStep 管理的 opencode 配置（全局配置 + permission 覆盖）。
 
     合并用户全局配置以保留其 provider / auth 设置；无法写入权限配置时
     阻止启动，避免回退到未受控的默认权限。
@@ -59,7 +100,7 @@ def _ensure_permission_config() -> str:
                 merged.update(data)
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning("读取 opencode 全局配置失败，使用最小配置: %s", exc)
-    merged["permission"] = dict(_PERMISSIONS)
+    merged["permission"] = _permissions_for(mode)
     path = _managed_config_path()
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -133,18 +174,67 @@ class OpencodeEngine(AcpEngineBase):
         return [binary, "acp"]
 
     def get_permission_mode(self) -> str:
-        """ACP 审批必须由用户决定，绝不自动通过。"""
-        return "ask"
+        """审批桥看到的权限模式（桥接层词汇）。
+
+        单次调用可经 overrides/runtime 覆盖；引擎配置页的默认值在这里翻
+        译成桥接层词汇，OPENCODE_CONFIG 文件仍由 ``project_skill_env`` 按
+        opencode 原生词汇写入，两边各走各的词汇表。
+        """
+        return _BRIDGE_PERMISSION_MODES.get(_resolve_opencode_mode(), "ask")
 
     def project_skill_env(self, cwd: str) -> dict[str, str]:
-        path = _ensure_permission_config()
+        runtime = (self.runtime_permission_mode() or "").strip()
+        if runtime in _RUNTIME_AUTO_MODES:
+            mode = "allow"
+        elif runtime in OPENCODE_PERMISSION_MODES:
+            mode = runtime
+        else:
+            mode = _resolve_opencode_mode()
+        path = _ensure_permission_config(mode)
         return {"OPENCODE_CONFIG": path}
+
+    # ---------------------------------------------------------------- 配置
+
+    @classmethod
+    def config_schema(cls) -> list[EngineConfigField]:
+        return [
+            EngineConfigField(
+                key="permission_mode",
+                label="权限模式",
+                type="select",
+                options=tuple(
+                    EngineConfigOption(mode, mode)
+                    for mode in sorted(OPENCODE_PERMISSION_MODES)
+                ),
+                default="ask",
+                required=True,
+                confirm_values=("allow",),
+                help="ask 每次弹窗确认；allow 自动放行 edit/bash/webfetch；deny 一律拒绝。",
+            ),
+        ]
+
+    def get_config_values(self) -> dict:
+        return dict(config_store.get_opencode_config())
+
+    async def save_config_values(
+        self,
+        values: dict,
+        clear: dict[str, bool] | None = None,
+        confirmed: dict[str, bool] | None = None,
+    ) -> None:
+        mode = str(values.get("permission_mode") or "ask").strip()
+        if mode not in OPENCODE_PERMISSION_MODES:
+            raise ValueError("不支持的 OpenCode 权限模式")
+        if mode == "allow" and not (confirmed or {}).get("permission_mode"):
+            raise ValueError("allow 需要明确确认风险")
+        await asyncio.to_thread(config_store.set_opencode_config, mode)
 
     # ---------------------------------------------------------------- 能力
 
     @property
     def supports_resume(self) -> bool:
-        return self._is_acp_native and True  # loadSession 实测为 true
+        # loadSession/resume 均为 true；续轮走 resume（load 会重播历史）。
+        return self._is_acp_native and True
 
     @property
     def supports_tool_approval(self) -> bool:
@@ -164,6 +254,23 @@ class OpencodeEngine(AcpEngineBase):
     def build_resume_params(self, session_id: str) -> dict:
         return {"session_id": session_id}
 
+    async def get_quota(self, cwd: str = "") -> dict | None:
+        """opencode 暂无账户额度原生接口：如实返回 None。
+
+        ACP 只给上下文用量快照（usage_update 的 used/size/cost），没有订阅
+        余额/配额端点；显式声明避免上层误判为“支持但查不到”。
+        """
+        return None
+
+    @staticmethod
+    def _agent_capability(response, name=None, nested=None):
+        # opencode 的 session/load 会把整段历史当实时 update 重播，
+        # 旧正文混入新回复；隐藏该能力让基类改走 session/resume
+        #（实测恢复上下文且不重播）。
+        if name == "load_session":
+            return False
+        return AcpEngineBase._agent_capability(response, name, nested)
+
     # ---------------------------------------------------------------- 执行
 
     async def spawn(
@@ -178,18 +285,35 @@ class OpencodeEngine(AcpEngineBase):
         config_overrides: dict | None = None,
         thinking_effort: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
-        async for event in super().spawn(
-            prompt=prompt,
-            cwd=cwd,
-            model=model,
-            add_dirs=add_dirs,
-            session_id=session_id,
-            images=images,
-            live_message_queue=live_message_queue,
-            config_overrides=config_overrides,
-            thinking_effort=thinking_effort,
-        ):
-            yield event
+        effective = self.merge_config_overrides(
+            {"permission_mode": _resolve_opencode_mode()},
+            config_overrides,
+        )["permission_mode"]
+        if effective not in OPENCODE_PERMISSION_MODES:
+            effective = "ask"
+        runtime_map = {"allow": "auto", "deny": "read-only", "ask": "ask"}
+        previous = self.runtime_permission_mode()
+        # 单次 overrides 优先于会话级 runtime：临时提升 runtime，
+        # 让基类 prepare_spawn（permission_mode + OPENCODE_CONFIG +
+        # 审批桥 handler）三处一致。
+        override_runtime = str(((config_overrides or {}).get("permission_mode") or "")).strip()
+        if override_runtime in OPENCODE_PERMISSION_MODES:
+            await self.set_permission_mode(runtime_map[override_runtime])
+        try:
+            async for event in super().spawn(
+                prompt=prompt,
+                cwd=cwd,
+                model=model,
+                add_dirs=add_dirs,
+                session_id=session_id,
+                images=images,
+                live_message_queue=live_message_queue,
+                config_overrides=config_overrides,
+                thinking_effort=thinking_effort,
+            ):
+                yield event
+        finally:
+            await self.set_permission_mode(previous or "")
 
     async def list_models(self, cwd: str | None = None) -> list[EngineModel]:
         """经 ACP session configOptions 读取真实模型列表（按需，带超时）。"""

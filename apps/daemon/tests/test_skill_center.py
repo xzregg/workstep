@@ -11,7 +11,6 @@ from services.skill_runtime import (
     deepseek_skill_provider_config,
     prepare_codex_skills,
     prepare_claude_plugin,
-    prepare_hermes_home,
     prepare_qoder_plugin,
     write_openclaw_config,
 )
@@ -394,12 +393,6 @@ def test_plugin_runtimes_reuse_unchanged_skill_projections(
     selection = center.runtime_selection(project)
     prepare_claude_plugin(selection)
     prepare_qoder_plugin(selection)
-    prepare_hermes_home(
-        selection,
-        "project-id",
-        source_home=tmp_path / "missing-hermes-home",
-        runtime_root=tmp_path / "hermes-runtime",
-    )
 
     def unexpected_rebuild(*_args, **_kwargs):
         raise AssertionError("unchanged engine projection must not be rebuilt")
@@ -407,12 +400,6 @@ def test_plugin_runtimes_reuse_unchanged_skill_projections(
     monkeypatch.setattr("services.skill_runtime._replace_tree", unexpected_rebuild)
     prepare_claude_plugin(selection)
     prepare_qoder_plugin(selection)
-    prepare_hermes_home(
-        selection,
-        "project-id",
-        source_home=tmp_path / "missing-hermes-home",
-        runtime_root=tmp_path / "hermes-runtime",
-    )
 
 
 def test_switching_from_project_local_preserves_original_recoverably(
@@ -430,32 +417,3 @@ def test_switching_from_project_local_preserves_original_recoverably(
     disabled = list((project / ".workstep" / "skills-disabled").glob("review-*"))
     assert len(disabled) == 1
     assert "description: local" in (disabled[0] / "SKILL.md").read_text()
-
-
-def test_hermes_profile_copies_only_auth_and_sanitized_config(
-    tmp_path: Path, roots: dict[str, Path]
-) -> None:
-    source = write_skill(roots["agents"] / "on", "on")
-    project = tmp_path / "project"
-    center = SkillCenter(source_roots=roots)
-    skill = next(item for item in center.list_project(project) if Path(item.source_path) == source)
-    center.set_enabled(project, skill.skill_id, True)
-    user_home = tmp_path / "hermes-user"
-    user_home.mkdir()
-    (user_home / "auth.json").write_text('{"token":"secret"}')
-    (user_home / "config.yaml").write_text(
-        "model: test\nskills:\n  external_dirs:\n    - /unsafe/personal\n"
-    )
-
-    profile = prepare_hermes_home(
-        center.runtime_selection(project),
-        "project-id",
-        source_home=user_home,
-        runtime_root=tmp_path / "runtime",
-    )
-
-    assert (profile / "auth.json").stat().st_mode & 0o777 == 0o600
-    config = (profile / "config.yaml").read_text()
-    assert "model: test" in config
-    assert "/unsafe/personal" not in config
-    assert (profile / "skills" / "on" / "SKILL.md").is_file()
