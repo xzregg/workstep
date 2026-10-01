@@ -624,7 +624,7 @@ export default function AssistantChatPanel({
                     onSelect={(prompt) => {
                       if (onQuickPromptItemSelect) onQuickPromptItemSelect(item)
                       else onQuickPromptSelect?.(prompt)
-                      requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }))
+                      if (item.kind !== 'action') requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }))
                     }}
                     style={{ flexShrink: 0, borderRadius: 999, whiteSpace: 'nowrap' }}
                   />
@@ -690,7 +690,7 @@ export default function AssistantChatPanel({
                         setQuickPromptsOpen(false)
                         if (onQuickPromptItemSelect) onQuickPromptItemSelect(item)
                         else onQuickPromptSelect?.(prompt)
-                        requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }))
+                        if (item.kind !== 'action') requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }))
                       }}
                       style={{ justifyContent: 'flex-start', width: '100%' }}
                     />
