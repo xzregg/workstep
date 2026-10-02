@@ -200,7 +200,7 @@ SDK 可以封装子进程、JSONL、JSON-RPC 或进程内消息流；这些都�
 
 ### 3.5 `acp_events` 能力声明
 
-**声明 = 实际**：每个引擎声明自己实际产出的 ACP 词汇事件集合（`frozenset[str]`），有原生等价就映射，无来源不发、不合成默认值。契约测试（`tests/test_engine_base_hierarchy.py`）保证：
+**声明 = 实际**：每个引擎声明自己实际产出的 ACP 词汇事件集合（`frozenset[str]`），有原生等价就映射，无来源不发、不合成默认值。**能力覆盖原则**：引擎原生支持某类语义（子代理/后台任务、计划、思考、审批等），就必须映射为对应的 ACP/编排事件，不得降级为普通 `tool_call` 或丢弃；`acp_events` 缺席某类型即承诺“本引擎无此来源”。新引擎接入时先列出下游原生能力清单，对照 `ACP_EVENTS` 逐项打勾。契约测试（`tests/test_engine_base_hierarchy.py`）保证：
 
 - `acp_events ⊆ ACP_EVENTS`（`engines/core/acp_base.py` 定义完整词汇，25 种）。
 - ACP 原生引擎继承即声明全集。
@@ -416,7 +416,8 @@ WorkStep 因此定义一个 SDK 可独立启动的 `standard` preset，基于官
 - 适配器或 Agent 实际执行工具时，必须在执行结束后映射为 `tool_call_update`（`completed` / `failed`），并保持相同的 `tool_call_id`。
 - 引擎发布执行计划时必须映射为 `plan`；这是当前 LLM run 的展示状态，不得修改 WorkStep 工作流 DAG。
 - 引擎产生子代理 / 后台任务生命周期事件（如 Claude/Qoder 的 `task_started` / `task_progress` / `task_updated` / `task_notification`）时必须映射为 `subagent`，不得因子代理状态生成 `plan`。
-- 协议没有独立子代理事件时，委托类工具调用（`Task` / `spawnAgent` 等）保持为 `tool_call` / `tool_call_update`；适配器只需如实映射工具事件，不要将委托提示词当作计划条目，也不要伪造 `subagent` 事件。Codex 的原生协作快照可以映射为 `subagent`。
+- 协议没有独立子代理事件、且无任何子代理语义来源时，委托类工具调用（`Task` / `spawnAgent` 等）保持为 `tool_call` / `tool_call_update`；不要将委托提示词当作计划条目，也不要伪造 `subagent` 事件。Codex 的原生协作快照可以映射为 `subagent`。
+- 有委托语义来源（`Task` / `task` / `spawnAgent` / `background` 工具、child session、可恢复 `task_id` 句柄）时必须提升为 `subagent`（原工具事件嵌 `data.event`，`stage` 保留原始帧，`status` 用语义状态）；如 OpenCode 的 `task` 工具创建 child session 即属此类，不得降级为普通 `tool_call`。
 - Provider 没有返回思考内容，或当前模式没有工具能力时，可以不产生对应事件，但不得伪造思考、工具调用或工具结果。
 - 只提供最终完整消息的协议也必须完成相同映射，只是无法承诺增量实时性；引擎说明和测试中必须明确该降级（如 OpenClaw 一次性信封只产出单个 `agent_message_chunk`）。
 

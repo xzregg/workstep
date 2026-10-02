@@ -658,7 +658,14 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         live_message_queue: asyncio.Queue | None = None,
         config_overrides: dict | None = None,
         thinking_effort: str | None = None,
+        plan_mode: bool | None = None,
+        goal_action: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
+        if goal_action and not self.supports_goal_mode:
+            yield InternalEvent(type="error", data={
+                "message": f"当前引擎不支持目标模式：{self.ENGINE_ID}",
+            })
+            return
         if prompt.strip() == "/compact":
             if not session_id:
                 yield InternalEvent(type="error", data={
@@ -800,6 +807,18 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                         )
                     except Exception:
                         logger.warning("Failed to set model %s", model)
+
+                if plan_mode is not None and self.supports_plan_mode:
+                    # 原生计划模式：经 session config `mode` 切换
+                    #（如 OpenCode 的 build/plan）；不支持的 agent 忽略。
+                    try:
+                        await client.set_config_option(
+                            config_id="mode",
+                            session_id=active_session_id,
+                            value="plan" if plan_mode else "build",
+                        )
+                    except Exception:
+                        logger.warning("Failed to set plan_mode %s", plan_mode)
 
                 effort = resolve_thinking_effort(thinking_effort)
                 if effort:

@@ -3374,7 +3374,30 @@ async def test_invoke_engine_routes_goal_command_only_to_native_adapter(monkeypa
 
 
 @pytest.mark.anyio
-async def test_invoke_engine_rejects_unsupported_goal_mode(monkeypatch):
+async def test_invoke_engine_falls_back_to_prompt_for_unsupported_goal_start(monkeypatch):
+    import agent_assistants.base as base
+
+    captured: dict = {}
+
+    class PlainEngine:
+        capabilities = SimpleNamespace(supports_goal_mode=False, supports_thinking_effort=False)
+        supports_resume = False
+        supports_message_history = False
+
+        async def spawn(self, **kwargs):
+            captured.update(prompt=kwargs.get("prompt"), goal_action=kwargs.get("goal_action"))
+            if False:
+                yield
+
+    monkeypatch.setattr(base, "create_engine", lambda engine_id: PlainEngine())
+    await base.invoke_engine("codex", None, "/tmp", "/goal 修复性能问题", None)
+    assert captured.get("goal_action") is None
+    assert "修复性能问题" in captured.get("prompt")
+    assert "Goal mode" in captured.get("prompt")
+
+
+@pytest.mark.anyio
+async def test_invoke_engine_rejects_unsupported_goal_control(monkeypatch):
     import agent_assistants.base as base
 
     class PlainEngine:
@@ -3383,12 +3406,12 @@ async def test_invoke_engine_rejects_unsupported_goal_mode(monkeypatch):
         supports_message_history = False
 
         async def spawn(self, **kwargs):
-            raise AssertionError("unsupported goal must not become a normal prompt")
+            raise AssertionError("unsupported goal control must not become a normal prompt")
             yield
 
     monkeypatch.setattr(base, "create_engine", lambda engine_id: PlainEngine())
     with pytest.raises(ValueError, match="目标模式"):
-        await base.invoke_engine("codex", None, "/tmp", "/goal 修复性能问题", None)
+        await base.invoke_engine("codex", None, "/tmp", "/goal pause", None)
 
 
 @pytest.mark.anyio

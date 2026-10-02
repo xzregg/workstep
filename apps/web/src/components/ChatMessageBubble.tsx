@@ -24,7 +24,10 @@ import {
 import { useI18n } from '../i18n'
 import { latestMarkdownPlanFromEvents, latestPlanFromEvents } from '../utils/plan'
 import { latestGoalFromEvents } from '../utils/goal'
-import { visibleAssistantContent } from '../utils/chatMessageDisplay'
+import {
+  assistantBodyFallback,
+  visibleAssistantContent,
+} from '../utils/chatMessageDisplay'
 import { asyncQuestionAnswer, asyncQuestionsFromEvents } from '../utils/asyncQuestion'
 
 /* ══════════════════════════════════════════
@@ -198,7 +201,12 @@ export default function ChatMessageBubble({
     || isToolEvent(event)
   ))
   if (isUser && isHiddenA2uiActionMessage(content)) return null
-  const visibleContent = isUser ? content : visibleAssistantContent(content, error)
+  const dedupedContent = isUser ? content : visibleAssistantContent(content, error)
+  // 兜底：正文为空、或被覆盖成「（生成失败：…）」包装文案时，从事件里的
+  // final_answer 正文重建，避免失败消息只剩红色错误行、正文消失。
+  const visibleContent = isUser
+    ? content
+    : dedupedContent || assistantBodyFallback(content, events)
   const rootStyle: CSSProperties = {
     width: isUser ? 'fit-content' : '100%',
     maxWidth: '100%', minWidth: 0,
