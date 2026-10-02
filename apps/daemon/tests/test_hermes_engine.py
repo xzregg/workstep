@@ -76,3 +76,70 @@ async def test_bare_internal_error_gets_actionable_hint(monkeypatch):
     assert errors
     assert "hermes model" in errors[-1].data["message"]
     assert "Internal error" in errors[-1].data["message"]
+
+
+def _replay_chunk(update_cls, session_update, text):
+    return update_cls(
+        sessionUpdate=session_update,
+        content=schema.TextContentBlock(type="text", text=text),
+    )
+
+
+@pytest.mark.anyio
+async def test_resumed_turn_drops_replayed_history(monkeypatch):
+    """load 内重播的历史 chunk 不能混入新一轮正文（旧文复读回归）。
+
+    Hermes 按 ACP 规范在 load 请求内重播整段历史；引擎在基类 yield
+    session_started 的挂起点（load 已返回、prompt 未发出）同步丢弃
+    内容型 update，本轮 live 与状态类 update 不受影响。
+    """
+    from contextlib import asynccontextmanager
+
+    holder = {}
+
+    class Client:
+        async def initialize(self, **kwargs):
+            return schema.InitializeResponse(
+                protocolVersion=1,
+                agentCapabilities=schema.AgentCapabilities(loadSession=True),
+            )
+
+        async def load_session(self, **kwargs):
+            handler = holder["handler"]
+            await handler.updates.put(_replay_chunk(
+                schema.AgentMessageChunk, "agent_message_chunk", "OLD TURN TEXT"))
+            await handler.updates.put(_replay_chunk(
+                schema.AgentThoughtChunk, "agent_thought_chunk", "old thinking"))
+            await handler.updates.put(schema.UsageUpdate(
+                sessionUpdate="usage_update", used=10, size=100,
+            ))
+            return object()
+
+        async def set_config_option(self, **kwargs):
+            return None
+
+        async def prompt(self, **kwargs):
+            await holder["handler"].updates.put(_replay_chunk(
+                schema.AgentMessageChunk, "agent_message_chunk", "NEW TURN TEXT"))
+            return type("Response", (), {"usage": None, "stop_reason": "end_turn"})()
+
+    @asynccontextmanager
+    async def fake_spawn(*args, **kwargs):
+        holder["handler"] = args[0]
+        yield Client(), object()
+
+    monkeypatch.setattr("engines.core.acp_base.acp.spawn_agent_process", fake_spawn)
+    events = [event async for event in HermesEngine().spawn(
+        "go on", "/tmp", session_id="s1"
+    )]
+
+    texts = [
+        event.data.get("content", {}).get("text", "")
+        for event in events
+        if event.type in ("agent_message_chunk", "agent_thought_chunk")
+    ]
+    assert not [event for event in events if event.type == "error"]
+    assert "NEW TURN TEXT" in texts
+    assert not any("OLD TURN TEXT" in text for text in texts)
+    assert not any("old thinking" in text for text in texts)
+    assert [event for event in events if event.type == "usage_update"]
