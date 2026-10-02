@@ -289,6 +289,8 @@ export const enUS: Messages = {
     unknown: 'Unknown',
     select: 'Select',
     search: 'Search',
+    searchOptions: 'Search options…',
+    noMatchingOptions: 'No matching options',
     refresh: 'Refresh',
     open: 'Open',
     submit: 'Submit',

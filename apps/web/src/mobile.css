@@ -559,6 +559,11 @@
     grid-column: 1 / -1;
     justify-content: flex-start !important;
   }
+  .provider-settings-model-list {
+    max-height: min(160px, 24dvh) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
   .engine-settings-section-heading {
     align-items: flex-start !important;
     flex-direction: column;

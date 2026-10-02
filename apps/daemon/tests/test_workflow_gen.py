@@ -276,7 +276,9 @@ async def gen_module(tmp_path, monkeypatch):
     module = WorkflowGenModule(bus, manager)
     project = manager.init_project(tmp_path / "gen-proj")
     monkeypatch.setattr(
-        wfgen_service, "create_engine", lambda engine_id: FakeEngine()
+        wfgen_service,
+        "create_engine",
+        lambda engine_id: None if engine_id in ("claude", "codex") else FakeEngine(),
     )
     yield module, bus, manager, project, config_store
     await module.shutdown()
@@ -848,7 +850,7 @@ async def test_resolve_engine_models_falls_back_when_default_unavailable(gen_mod
     config_store.values["coordinator_default_engine"] = "pydantic_ai"
     config_store.values["coordinator_default_model"] = "gpt-x"
     config_store.values["coordinator_default_fast_model"] = "gpt-fast"
-    config_store.values["engine_default_models"] = {"claude": "claude-default"}
+    config_store.values["engine_default_models"] = {"hermes": "hermes-default"}
 
     def fake_create(engine_id):
         if engine_id == "pydantic_ai":
@@ -859,9 +861,9 @@ async def test_resolve_engine_models_falls_back_when_default_unavailable(gen_mod
 
     engine_id, model, fast_model = module._resolve_engine_models()
     # 回退到第一个可用的协调引擎，且不沿用原引擎的协调模型
-    assert engine_id == "claude"
-    assert model == "claude-default"
-    assert fast_model == "claude-default"
+    assert engine_id == "hermes"
+    assert model == "hermes-default"
+    assert fast_model == "hermes-default"
 
     # 没有任何可用引擎时仍给出明确错误
     monkeypatch.setattr(
@@ -882,7 +884,7 @@ async def test_resolve_engine_models_keeps_builtin_with_provider(gen_module, mon
     module, bus, manager, project, config_store = gen_module
     config_store.values["coordinator_default_engine"] = "pydantic_ai"
     config_store.values["engine_default_models"] = {
-        "claude": "claude-default",
+        "hermes": "hermes-default",
         "pydantic_ai": "pai-default",
     }
     config_store.values["assistant_defaults"] = {
@@ -912,7 +914,7 @@ async def test_history_survives_unavailable_coordinator_engine(gen_module, monke
 
     module, bus, manager, project, config_store = gen_module
     config_store.values["coordinator_default_engine"] = "pydantic_ai"
-    config_store.values["engine_default_models"] = {"claude": "claude-default"}
+    config_store.values["engine_default_models"] = {"hermes": "hermes-default"}
 
     # 默认引擎不可用，但有可用的回退引擎：历史正常返回，并带上回退引擎信息
     def fake_create(engine_id):
@@ -923,8 +925,8 @@ async def test_history_survives_unavailable_coordinator_engine(gen_module, monke
     monkeypatch.setattr(wfgen_service, "create_engine", fake_create)
     history = module.history(project.id, "wf-x")
     assert history["session_id"] == f"wf:{project.id}:wf-x"
-    assert history["engine"] == "claude"
-    assert history["model"] == "claude-default"
+    assert history["engine"] == "hermes"
+    assert history["model"] == "hermes-default"
     assert history["messages"] == []
 
     # 任何引擎都不可用时：只读历史仍然不抛错，返回空会话
@@ -943,7 +945,9 @@ async def test_resolve_engine_models_uses_coordinator_defaults(gen_module, monke
 
     module, bus, manager, project, config_store = gen_module
     monkeypatch.setattr(
-        wfgen_service, "create_engine", lambda engine_id: FakeEngine()
+        wfgen_service,
+        "create_engine",
+        lambda engine_id: None if engine_id in ("claude", "codex") else FakeEngine(),
     )
 
     config_store.values["coordinator_default_engine"] = "pydantic_ai"
@@ -954,7 +958,7 @@ async def test_resolve_engine_models_uses_coordinator_defaults(gen_module, monke
 
     config_store.values.clear()
     engine_id, model, fast_model = module._resolve_engine_models()
-    assert engine_id == "claude"
+    assert engine_id == "hermes"
     assert model is None
 
 
@@ -1190,9 +1194,9 @@ async def test_engine_model_overrides_are_session_scoped(gen_module, monkeypatch
     import agent_assistants.workflow_gen as wfgen_service
 
     module, bus, manager, project, config_store = gen_module
-    config_store.values["coordinator_default_engine"] = "claude"
-    config_store.values["coordinator_default_model"] = "claude-slow"
-    config_store.values["coordinator_default_fast_model"] = "claude-fast"
+    config_store.values["coordinator_default_engine"] = "hermes"
+    config_store.values["coordinator_default_model"] = "hermes-slow"
+    config_store.values["coordinator_default_fast_model"] = "hermes-fast"
 
     seen: list[tuple] = []
 
@@ -1207,7 +1211,7 @@ async def test_engine_model_overrides_are_session_scoped(gen_module, monkeypatch
         None,
         "设计一个流程",
         "idem-override",
-        engine="codex",
+        engine="hermes",
         model="gpt-5",
         fast_model="gpt-5-mini",
     )
@@ -1216,16 +1220,16 @@ async def test_engine_model_overrides_are_session_scoped(gen_module, monkeypatch
     assert status == "completed"
     assert seen, "expected _invoke to be called"
     engine_id, model, _sid = seen[0]
-    assert engine_id == "codex"
+    assert engine_id == "hermes"
     assert model == "gpt-5"
     session = module._sessions[(project.id, accepted.session_id)]
-    assert session.engine == "codex"
+    assert session.engine == "hermes"
     assert session.model == "gpt-5"
     assert session.fast_model == "gpt-5-mini"
 
     # Overrides are not persisted to the global config store.
-    assert config_store.values.get("coordinator_default_engine") == "claude"
-    assert config_store.values.get("coordinator_default_model") == "claude-slow"
+    assert config_store.values.get("coordinator_default_engine") == "hermes"
+    assert config_store.values.get("coordinator_default_model") == "hermes-slow"
 
     # Follow-up turn without overrides falls back to the defaults.
     seen.clear()
@@ -1235,16 +1239,16 @@ async def test_engine_model_overrides_are_session_scoped(gen_module, monkeypatch
     status = await _wait_turn(module, follow.turn_id)
     assert status == "completed"
     assert seen
-    assert seen[0][0] == "claude"
-    assert seen[0][1] == "claude-slow"
-    assert session.engine == "claude"
-    assert session.model == "claude-slow"
+    assert seen[0][0] == "hermes"
+    assert seen[0][1] == "hermes-slow"
+    assert session.engine == "hermes"
+    assert session.model == "hermes-slow"
 
     # Unsupported engine raises ValueError (surfaced as 400 by the API route).
     monkeypatch.setattr(
         wfgen_service,
         "create_engine",
-        lambda engine_id: FakeEngine() if engine_id == "claude" else None,
+        lambda engine_id: FakeEngine() if engine_id == "hermes" else None,
     )
     with pytest.raises(ValueError):
         module.submit_message(

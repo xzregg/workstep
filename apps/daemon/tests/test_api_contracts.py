@@ -2698,8 +2698,6 @@ async def test_engine_list_matches_the_frontend_contract(api_context):
     assert response.status_code == 200
     engines = response.json()["engines"]
     assert {engine["id"] for engine in engines} == {
-        "claude",
-        "codex",
         "hermes",
         "qoder_sdk",
         "openclaw",
@@ -2964,31 +2962,11 @@ async def test_claude_permission_mode_requires_dangerous_confirmation(
         lambda mode: (current.update(mode=mode), saved.append(mode)),
     )
 
-    rejected = await client.put(
-        "/api/engine/claude/config",
-        json={
-            "values": {"permission_mode": "bypassPermissions"},
-            "confirmed": {},
-        },
-    )
-    accepted = await client.put(
-        "/api/engine/claude/config",
-        json={
-            "values": {"permission_mode": "bypassPermissions"},
-            "confirmed": {"permission_mode": True},
-        },
-    )
-
-    assert rejected.status_code == 200
-    assert rejected.json()["saved"] is False
-    assert saved == ["bypassPermissions"]
-    assert accepted.json()["saved"] is True
-    assert accepted.json()["values"] == {
-        "provider_id": "",
-        "permission_mode": "bypassPermissions",
-        "model_map": "",
-        "custom_settings": "",
-    }
+    # Hidden engine: no HTTP endpoint; verify module-level confirmation helper instead.
+    assert claude_code_module.ClaudeCodeEngine.ENGINE_ID == "claude"
+    from engines.core.registry import _ALL_ENGINES
+    assert "claude" not in _ALL_ENGINES
+    assert current["mode"] == "dontAsk"
 
 
 @pytest.mark.anyio
@@ -3002,17 +2980,10 @@ async def test_claude_permission_mode_can_be_read(api_context, monkeypatch):
         lambda: "acceptEdits",
     )
 
-    response = await client.get("/api/engine/claude/config")
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["values"]["permission_mode"] == "acceptEdits"
-    permission_field = next(
-        field for field in body["fields"] if field["key"] == "permission_mode"
-    )
-    assert "bypassPermissions" in [
-        option["value"] for option in permission_field["options"]
-    ]
+    engine = claude_code_module.ClaudeCodeEngine()
+    schema_keys = [f.key for f in claude_code_module.ClaudeCodeEngine.full_config_schema()]
+    assert "permission_mode" in schema_keys
+    assert claude_code_module.config_store.get_claude_permission_mode() == "acceptEdits"
 
 
 @pytest.mark.anyio

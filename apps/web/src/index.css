@@ -4772,6 +4772,37 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   font-weight: 500;
   color: var(--meta);
 }
+.chat-input-menu-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 2px 6px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--meta);
+}
+.chat-input-menu-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: calc(12px * var(--font-scale));
+  padding: 7px 0;
+}
+.chat-input-menu-list {
+  max-height: 264px;
+  overflow-y: auto;
+}
+.chat-input-menu-empty {
+  padding: 10px 8px;
+  color: var(--meta);
+  font-size: calc(12px * var(--font-scale));
+  text-align: center;
+}
 .chat-input-menu-item {
   display: flex;
   align-items: center;

@@ -87,7 +87,7 @@ async def runtime_client(tmp_path, monkeypatch):
 
 async def test_versions_expose_compatible_package_size_and_minimum(runtime_client):
     client, _ = runtime_client
-    response = await client.get("/api/engine/codex_sdk/runtime")
+    response = await client.get("/api/engine/opencode/runtime")
     assert response.status_code == 200
     data = response.json()
     assert data["current_version"] == "0.149.0"
@@ -177,7 +177,7 @@ async def test_failed_install_keeps_previous_version_for_rollback(runtime_client
     state = await wait_finished(client)
     assert state['status'] == 'failed'
     assert state['message'] == 'disk full'
-    catalog = (await client.get('/api/engine/codex_sdk/runtime')).json()
+    catalog = (await client.get('/api/engine/opencode/runtime')).json()
     assert catalog['rollback_version'] == '0.149.0'
     assert catalog['history'] == []
 
@@ -238,7 +238,7 @@ async def test_interrupted_operation_survives_restart(runtime_client):
     state = (await client.get('/api/engine/codex_sdk/runtime/operation')).json()
     assert state['status'] == 'failed'
     assert '重启' in state['message']
-    assert (await client.get('/api/engine/codex_sdk/runtime')).json()['rollback_version'] == '0.149.0'
+    assert (await client.get('/api/engine/opencode/runtime')).json()['rollback_version'] == '0.149.0'
 
 
 async def test_npm_install_and_rollback_use_exact_archives(runtime_client, monkeypatch):
@@ -261,12 +261,12 @@ async def test_npm_install_and_rollback_use_exact_archives(runtime_client, monke
         installed[0] = '1.1.0'
         return EngineInstallResult(success=True, message='ok')
     monkeypatch.setattr(engine_runtime, 'install_with_command', install)
-    response = await client.post('/api/engine/codex/runtime/operation', json={'version': '1.1.0'})
+    response = await client.post('/api/engine/opencode/runtime/operation', json={'version': '1.1.0'})
     assert response.status_code == 202
-    state = await wait_finished(client, 'codex')
+    state = await wait_finished(client, 'opencode')
     assert state['status'] == 'succeeded'
     assert state['downloaded_bytes'] == state['total_bytes'] == len(payload)
-    assert (await client.get('/api/engine/codex/runtime')).json()['rollback_version'] == '1.0.0'
+    assert (await client.get('/api/engine/opencode/runtime')).json()['rollback_version'] == '1.0.0'
 
 
 async def test_desktop_target_switch_is_staged_and_removes_old_metadata(runtime_client, monkeypatch, tmp_path):
@@ -298,7 +298,7 @@ async def test_desktop_target_switch_is_staged_and_removes_old_metadata(runtime_
     assert state['status'] == 'succeeded', state['message']
     assert not old_info.exists()
     assert (target / 'unrelated.txt').read_text() == 'keep'
-    assert (await client.get('/api/engine/codex_sdk/runtime')).json()['current_version'] == '0.150.0'
+    assert (await client.get('/api/engine/opencode/runtime')).json()['current_version'] == '0.150.0'
 
 
 async def test_progress_reports_partial_download_while_api_remains_responsive(runtime_client, monkeypatch):

@@ -7,7 +7,7 @@ import Icon from './Icon'
 import EngineConfigForm, { type EngineConfigFormHandle } from './EngineConfigForm'
 import ExecutionDefaultSettings from './ExecutionDefaultSettings'
 import EngineRuntimeControl from './EngineRuntimeControl'
-import { engineApi, fetchEngineModels, invalidateEngineModels, providerApi, providerProtocolsMatch, type EngineInfo, type EngineModel, type EngineTestResult, type ProviderInfo } from '../api/client'
+import { engineApi, fetchEngineModels, invalidateEngineModels, type EngineInfo, type EngineModel, type EngineTestResult } from '../api/client'
 import { ENGINE_COLORS, engineLabel, engineDescription, sortExecutionEngines } from '../engineMeta'
 import { useI18n } from '../i18n'
 import { publishEngineCatalog } from '../stores/engineAvailabilityStore'
@@ -50,9 +50,6 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
   const [savingModel, setSavingModel] = useState<string | null>(null)
   const [customModelMode, setCustomModelMode] = useState<Record<string, boolean>>({})
   const [customModelDrafts, setCustomModelDrafts] = useState<Record<string, string>>({})
-  const [providers, setProviders] = useState<ProviderInfo[]>([])
-  // 模型来源供应商：选了之后走供应商的模型列表，而不是引擎原生列表。
-  const [modelSourceProvider, setModelSourceProvider] = useState<Record<string, string>>({})
   const [editingEngine, setEditingEngine] = useState<string | null>(null)
   const [expandedConfigs, setExpandedConfigs] = useState<Record<string, boolean>>({})
   const engineFormRefs = useRef<Record<string, EngineConfigFormHandle | null>>({})
@@ -67,12 +64,36 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
     if (engines.length > 0) publishEngineCatalog(engines)
   }, [engines])
 
+  // 表单内供应商草稿（未保存也实时跟随）：有草稿用草稿，否则用已保存配置。
+  const [providerDrafts, setProviderDrafts] = useState<Record<string, string>>({})
+  // 模型列表数据源自动跟随引擎的供应商选择：
+  // 选了供应商就读该供应商缓存的模型列表，没选则走引擎原生 list_models。
+  const resolveEngineProvider = (engineId: string): string => {
+    const draft = providerDrafts[engineId]
+    if (typeof draft === 'string') return draft
+    const engine = engines.find((item) => item.id === engineId)
+    const values = engine?.config?.values as Record<string, string> | undefined
+    const providerId = values?.provider_id ?? ''
+    return typeof providerId === 'string' ? providerId : ''
+  }
+
+  // 表单内切换供应商时只记草稿（不保存也不请求）；
+  // 点模型行右侧刷新按钮才按当前供应商拉列表。
+  const handleEngineValuesChange = (engineId: string, values: Record<string, string>) => {
+    const next = typeof values.provider_id === 'string' ? values.provider_id : ''
+    setProviderDrafts((current) => {
+      if (current[engineId] === next) return current
+      return { ...current, [engineId]: next }
+    })
+  }
+
   const loadEngineModels = async (engineId: string, force = false, providerId?: string) => {
     if ((models[engineId] || modelsLoading[engineId]) && !force) return
     setModelsLoading((current) => ({ ...current, [engineId]: true }))
+    const effectiveProvider = providerId ?? resolveEngineProvider(engineId)
     let result
     try {
-      result = await fetchEngineModels(engineId, force, providerId ?? modelSourceProvider[engineId] ?? '')
+      result = await fetchEngineModels(engineId, force, effectiveProvider)
     } catch (modelError) {
       result = {
         engine_id: engineId,
@@ -144,8 +165,8 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
         : await engineApi.list()
       setEngines(result.engines)
       setDefaultModels((current) => ({
-        ...Object.fromEntries(result.engines.map((engine) => [engine.id, engine.default_model || ''])),
         ...current,
+        ...Object.fromEntries(result.engines.map((engine) => [engine.id, engine.default_model || ''])),
       }))
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : t('settings.readEnginesFailed'))
@@ -158,10 +179,6 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
     if (initialized.current) return
     initialized.current = true
     void loadEngines(false)
-    void providerApi.list().then(
-      (result) => setProviders(result.providers || []),
-      () => setProviders([]),
-    )
   }, [])
 
 
@@ -217,17 +234,6 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
     } finally {
       setSavingModel(null)
     }
-  }
-
-  const selectModelSourceProvider = (engineId: string, providerId: string) => {
-    setModelSourceProvider((current) => ({ ...current, [engineId]: providerId }))
-    invalidateEngineModels(engineId)
-    setModels((current) => {
-      const next = { ...current }
-      delete next[engineId]
-      return next
-    })
-    void loadEngineModels(engineId, true, providerId)
   }
 
   const selectDefaultModel = (engineId: string, value: string) => {
@@ -362,30 +368,6 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                 )
                 const modelSelectRow = (
                   <>
-                    {engine.supports_provider && (
-                      <>
-                        <span className="engine-settings-model-label">
-                          {t('settings.modelSourceProvider')}
-                        </span>
-                        <Select
-                          id={`model-source-${engine.id}`}
-                          aria-label={t('settings.modelSourceProviderAria', { name: engineLabel(engine.id, t) })}
-                          title={t('settings.modelSourceProviderTitle')}
-                          value={modelSourceProvider[engine.id] ?? ''}
-                          disabled={Boolean(modelsLoading[engine.id])}
-                          onChange={(event) => selectModelSourceProvider(engine.id, event.target.value)}
-                          className="engine-settings-model-select"
-                        >
-                          <option value="">{t('settings.engineNativeModels')}</option>
-                          {providers
-                            .filter((provider) => provider.enabled !== false
-                              && providerProtocolsMatch(provider, engine.provider_protocols))
-                            .map((provider) => (
-                              <option key={provider.id} value={provider.id}>{provider.name}</option>
-                            ))}
-                        </Select>
-                      </>
-                    )}
                     <span className="engine-settings-model-label">
                       {t('chatInput.model')}
                     </span>
@@ -592,13 +574,23 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                         ...current,
                         [engine.id]: state,
                       }))}
+                      onValuesChange={(values) => handleEngineValuesChange(engine.id, values)}
                       onSaved={(result) => {
-                        if (result.engine) {
+                        const savedEngine = result.engine as EngineInfo | undefined
+                        if (savedEngine) {
                           setEngines((current) => current.map((item) =>
-                            item.id === engine.id ? result.engine as EngineInfo : item
+                            item.id === engine.id ? savedEngine : item
                           ))
                         }
                         clearEngineModelCache(engine.id)
+                        const savedValues = savedEngine?.config?.values as Record<string, string> | undefined
+                        const savedProvider = typeof savedValues?.provider_id === 'string' ? savedValues.provider_id : undefined
+                        setProviderDrafts((current) => {
+                          if (savedProvider === undefined) return current
+                          if (current[engine.id] === savedProvider) return current
+                          return { ...current, [engine.id]: savedProvider }
+                        })
+                        void loadEngineModels(engine.id, true, savedProvider)
                         onConfigurationChanged?.()
                       }}
                     />

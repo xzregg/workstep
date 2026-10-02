@@ -289,6 +289,8 @@ export const jaJP: Messages = {
     unknown: '不明',
     select: '選択',
     search: '検索',
+    searchOptions: 'オプションを検索…',
+    noMatchingOptions: '一致するオプションがありません',
     refresh: '更新',
     open: '開く',
     submit: '送信',

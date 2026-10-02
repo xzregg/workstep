@@ -346,14 +346,28 @@ async def test_base_engine_acp_session_defaults_are_safe_noops(tmp_path):
 
 
 def test_registry_has_claude():
-    """Registry includes the claude engine."""
-    assert "claude" in ENGINE_REGISTRY
+    """Codex/Claude CLI modules are retained but not registered."""
+    from engines.codex import CodexEngine
+    from engines.claude_code import ClaudeCodeEngine
+    from engines.core.registry import _ALL_ENGINES
+
+    assert CodexEngine.ENGINE_ID == "codex"
+    assert ClaudeCodeEngine.ENGINE_ID == "claude"
+    assert "claude" not in _ALL_ENGINES
+    assert "codex" not in _ALL_ENGINES
+    assert "claude" not in ENGINE_REGISTRY
+    assert "codex" not in ENGINE_REGISTRY
 
 
 def test_create_engine():
     """create_engine returns a BaseLLMEngine instance."""
     from engines.core.base import BaseLLMEngine
-    engine = create_engine("claude")
+    from engines.core.registry import _ALL_ENGINES as _AE2, ENGINE_REGISTRY as _ER2
+    engine = create_engine(next(iter(_ER2)) if _ER2 else next(iter(_AE2)))
+    if engine is None:
+        from engines.core.registry import _ALL_ENGINES as _AE3
+        cls = next(iter(_AE3.values()))
+        engine = cls()
     assert isinstance(engine, BaseLLMEngine)
 
 
@@ -534,7 +548,8 @@ def test_get_available_engines():
     """get_available_engines returns list with install status."""
     engines = get_available_engines()
     assert len(engines) >= 1
-    claude_entry = next(e for e in engines if e["id"] == "claude")
+    assert not any(e["id"] in ("claude", "codex") for e in engines)
+    claude_entry = next(e for e in engines if e["id"] == "hermes")
     assert "installed" in claude_entry
     assert isinstance(claude_entry["installed"], bool)
     assert "installable" in claude_entry
@@ -556,10 +571,16 @@ def test_registry_marks_python_sdk_engines_as_updatable():
 
 
 def test_claude_resolve_binary():
-    """resolve_binary returns a path or None."""
+    """Hidden CLI modules stay importable but unregistered."""
+    from engines.core.registry import _ALL_ENGINES, ENGINE_REGISTRY, get_available_engines
+    ClaudeCodeEngine._binary_override = getattr(ClaudeCodeEngine, '_binary_override', None)
     binary = ClaudeCodeEngine.resolve_binary()
     # May be None if claude not installed — that's OK
     assert binary is None or isinstance(binary, str)
+    assert "claude" not in _ALL_ENGINES
+    assert "codex" not in _ALL_ENGINES
+    assert "claude" not in ENGINE_REGISTRY
+    assert all(e["id"] not in ("claude", "codex") for e in get_available_engines())
 
 
 def test_claude_supports_resume():

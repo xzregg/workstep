@@ -303,6 +303,8 @@ export const zhCN = {
     unknown: '未知',
     select: '选择',
     search: '搜索',
+    searchOptions: '搜索选项…',
+    noMatchingOptions: '无匹配选项',
     refresh: '刷新',
     open: '打开',
     submit: '提交',
