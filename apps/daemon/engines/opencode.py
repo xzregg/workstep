@@ -28,14 +28,18 @@ import shutil
 import subprocess
 from typing import AsyncIterator, ClassVar
 
+import acp
+from settings import settings
 from engines.core.acp_base import AcpEngineBase
+from engines.core.acp_streaming_client import ACPStreamingClient as _StreamingClient
 from engines.core.base import (
     EngineConfigField,
     EngineConfigOption,
     EngineModel,
     ProviderRuntimeConfig,
+    resolve_thinking_effort,
 )
-from engines.core.events import InternalEvent
+from engines.core.events import InternalEvent, compacted_event
 from engines.core.packages import RuntimePackage
 from engines.core.plans import subagent_event
 from engines.core.schema import EngineImage
@@ -344,6 +348,13 @@ class OpencodeEngine(AcpEngineBase):
         plan_mode: bool | None = None,
         goal_action: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
+        """opencode 本地 spawn：基类 ACP 流程 + 运行中插入即打断。
+
+        与其它 ACP 引擎不同：等待 prompt 时轮询插入队列，有新消息就
+        ``session/cancel`` 打断本轮（Codex CLI 终止重开的 ACP 等价），
+        cancelled 且队列非空时不收尾，直接用新消息重开一轮；
+        cancel 失败则回退为等整轮结束。其它引擎仍走基类实现。
+        """
         effective = self.merge_config_overrides(
             {"permission_mode": _resolve_opencode_mode()},
             config_overrides,
@@ -359,7 +370,7 @@ class OpencodeEngine(AcpEngineBase):
         if override_runtime in OPENCODE_PERMISSION_MODES:
             await self.set_permission_mode(runtime_map[override_runtime])
         try:
-            async for event in super().spawn(
+            async for event in self._spawn_with_live_interrupt(
                 prompt=prompt,
                 cwd=cwd,
                 model=model,
@@ -375,6 +386,321 @@ class OpencodeEngine(AcpEngineBase):
                 yield event
         finally:
             await self.set_permission_mode(previous or "")
+
+    async def _spawn_with_live_interrupt(
+        self,
+        prompt: str,
+        cwd: str,
+        model: str | None = None,
+        add_dirs: list[str] | None = None,
+        session_id: str | None = None,
+        images: list[EngineImage] | None = None,
+        live_message_queue: asyncio.Queue | None = None,
+        config_overrides: dict | None = None,
+        thinking_effort: str | None = None,
+        plan_mode: bool | None = None,
+        goal_action: str | None = None,
+    ) -> AsyncIterator[InternalEvent]:
+        """ACP 标准建连/恢复/配置流程；仅 prompt 等待与插入消费为打断语义."""
+        if goal_action and not self.supports_goal_mode:
+            yield InternalEvent(type="error", data={
+                "message": f"当前引擎不支持目标模式：{self.ENGINE_ID}",
+            })
+            return
+        if prompt.strip() == "/compact":
+            if not session_id:
+                yield InternalEvent(type="error", data={
+                    "message": "没有可压缩的 ACP 会话",
+                })
+                return
+            commands = await self._inspect_acp_commands(cwd)
+            if not any(command["name"] == "compact" for command in commands):
+                yield InternalEvent(type="error", data={
+                    "message": "ACP 引擎未声明 /compact 命令",
+                })
+                return
+
+        def prepare_spawn():
+            provider_runtime = self.resolve_provider_runtime(
+                provider_id=str((config_overrides or {}).get("provider_id") or ""),
+                model=model,
+            )
+            return (
+                provider_runtime,
+                self.project_skill_env(cwd),
+                self.get_command(),
+                self.get_permission_mode(),
+            )
+
+        provider_runtime, skill_env, cmd, permission_mode = await asyncio.to_thread(
+            prepare_spawn
+        )
+        model = provider_runtime.model
+        if not cmd:
+            yield InternalEvent(type="error", data={"message": f"{self.ENGINE_ID}: no command configured"})
+            return
+
+        if self.REQUIRES_PERMISSION_MODE and not permission_mode:
+            yield InternalEvent(type="error", data={
+                "message": "Claude Code 权限模式尚未确认，请先在设置中选择权限模式",
+            })
+            return
+
+        logger.info("ACP spawn: %s (cwd=%s)", " ".join(cmd), cwd)
+        yield InternalEvent(type="status", data={"status": "initializing"})
+
+        handler = _StreamingClient(self.runtime_permission_mode() or permission_mode)
+        self._handler = handler
+        self._last_cwd = cwd
+        try:
+            process_env = (
+                provider_runtime.child_env()
+                if provider_runtime.provider_id or provider_runtime.env
+                else dict(os.environ)
+            )
+            process_env.update(skill_env)
+            async with acp.spawn_agent_process(
+                handler,
+                cmd[0],
+                *cmd[1:],
+                cwd=cwd,
+                env=process_env,
+            ) as (client, process):
+                self._process = process
+                self._running = True
+
+                init_resp = await client.initialize(
+                    protocol_version=acp.PROTOCOL_VERSION,
+                    client_capabilities=self._client_capabilities(),
+                    client_info={"name": "WorkStep", "version": settings.version},
+                )
+                self._initialize_response = init_resp
+                logger.info("ACP initialized: %s", init_resp)
+
+                if (
+                    init_resp is not None
+                    and getattr(init_resp, "protocol_version", acp.PROTOCOL_VERSION)
+                    != acp.PROTOCOL_VERSION
+                ):
+                    raise RuntimeError(
+                        "ACP 协议版本不兼容："
+                        f"客户端={acp.PROTOCOL_VERSION}，Agent={init_resp.protocol_version}"
+                    )
+
+                mcp_servers = list(
+                    (config_overrides or {}).get("mcp_servers") or []
+                )
+                self._validate_session_inputs(
+                    init_resp, add_dirs or [], mcp_servers
+                )
+
+                if session_id:
+                    try:
+                        if self._agent_capability(
+                            init_resp, "load_session"
+                        ):
+                            await client.load_session(
+                                cwd=cwd,
+                                session_id=session_id,
+                                mcp_servers=mcp_servers,
+                                additional_directories=add_dirs or [],
+                            )
+                        elif self._agent_capability(
+                            init_resp, "session_capabilities", "resume"
+                        ):
+                            await client.resume_session(
+                                cwd=cwd,
+                                session_id=session_id,
+                                mcp_servers=mcp_servers,
+                                additional_directories=add_dirs or [],
+                            )
+                        else:
+                            raise RuntimeError(
+                                "ACP Agent 未声明 session/load 或 session/resume 支持"
+                            )
+                        active_session_id = session_id
+                    except Exception as exc:
+                        logger.warning("Failed to load session %s: %s", session_id, exc)
+                        yield InternalEvent(type="error", data={
+                            "message": f"无法恢复 ACP 会话 {session_id}: {exc}",
+                            "session_id": session_id,
+                        })
+                        return
+                else:
+                    session = await client.new_session(
+                        cwd=cwd,
+                        additional_directories=add_dirs or [],
+                        mcp_servers=mcp_servers,
+                    )
+                    active_session_id = session.session_id
+
+                yield InternalEvent(
+                    type="session_started",
+                    data={"session_id": active_session_id},
+                )
+
+                if model:
+                    try:
+                        await client.set_config_option(
+                            config_id="model",
+                            session_id=active_session_id,
+                            value=model,
+                        )
+                    except Exception:
+                        logger.warning("Failed to set model %s", model)
+
+                if plan_mode is not None and self.supports_plan_mode:
+                    # 原生计划模式：经 session config `mode` 切换
+                    #（opencode 的 build/plan）；不支持的 agent 忽略。
+                    try:
+                        await client.set_config_option(
+                            config_id="mode",
+                            session_id=active_session_id,
+                            value="plan" if plan_mode else "build",
+                        )
+                    except Exception:
+                        logger.warning("Failed to set plan_mode %s", plan_mode)
+
+                effort = resolve_thinking_effort(thinking_effort)
+                if effort:
+                    # 思考强度不是 ACP 协议固定字段：按常见 configId
+                    # 尽力设置，不支持时忽略。
+                    try:
+                        await client.set_config_option(
+                            config_id="reasoning_effort",
+                            session_id=active_session_id,
+                            value=effort,
+                        )
+                    except Exception:
+                        logger.warning(
+                            "ACP agent does not accept reasoning_effort=%s",
+                            effort,
+                        )
+
+                yield InternalEvent(type="status", data={"status": "running"})
+                if images and not self._agent_capability(
+                    init_resp, "prompt_capabilities", "image"
+                ):
+                    raise RuntimeError("ACP Agent 未声明图片 Prompt 支持")
+                prompt_blocks = await asyncio.to_thread(
+                    self._acp_prompt_blocks, prompt, images
+                )
+                interrupt_state = {"requested": False}
+
+                async def _drain_prompt(
+                    task: asyncio.Task,
+                ) -> AsyncIterator[InternalEvent]:
+                    """消费一轮 prompt 的实时 update；轮询间隙检查插入队列，
+                    有新消息就 session/cancel 打断本轮（失败则回退等待）."""
+                    while not task.done() or not handler.updates.empty():
+                        try:
+                            update = await asyncio.wait_for(
+                                handler.updates.get(),
+                                timeout=0.1,
+                            )
+                        except asyncio.TimeoutError:
+                            if (
+                                live_message_queue is not None
+                                and not interrupt_state["requested"]
+                                and not live_message_queue.empty()
+                            ):
+                                interrupt_state["requested"] = True
+                                try:
+                                    await client.cancel(
+                                        session_id=active_session_id,
+                                    )
+                                    logger.info(
+                                        "opencode prompt interrupted by live message"
+                                    )
+                                except Exception:
+                                    logger.warning(
+                                        "opencode session/cancel failed, fallback to waiting",
+                                        exc_info=True,
+                                    )
+                            continue
+                        event = self._map_notification(update)
+                        if event:
+                            yield event
+
+                interrupt_state["requested"] = False
+                prompt_task = asyncio.create_task(
+                    client.prompt(
+                        session_id=active_session_id,
+                        prompt=prompt_blocks,
+                    )
+                )
+                async for event in _drain_prompt(prompt_task):
+                    yield event
+
+                prompt_response = await prompt_task
+                usage_event = self._map_prompt_response_usage(prompt_response)
+                if usage_event:
+                    yield usage_event
+                stop_reason = str(
+                    getattr(prompt_response, "stop_reason", "end_turn")
+                    or "end_turn"
+                )
+                if stop_reason == "cancelled":
+                    if (
+                        interrupt_state["requested"]
+                        and live_message_queue is not None
+                        and not live_message_queue.empty()
+                    ):
+                        # 插入打断：不收尾，落入下方插入队列处理，
+                        # 用新消息重开一轮。
+                        logger.info("opencode prompt cancelled, re-prompting")
+                    else:
+                        yield InternalEvent(type="status", data={"status": "stopped"})
+                        return
+                if stop_reason in {"max_tokens", "max_turn_requests", "refusal"}:
+                    yield InternalEvent(type="error", data={
+                        "message": f"ACP Agent 提前停止：{stop_reason}",
+                        "stop_reason": stop_reason,
+                    })
+                    return
+                if prompt.strip() == "/compact":
+                    # The advertised ACP command has finished successfully.
+                    yield compacted_event()
+                    yield InternalEvent(type="status", data={"status": "done"})
+                    return
+
+                if live_message_queue is not None:
+                    while True:
+                        live_items: list[tuple[str, str]] = []
+                        while not live_message_queue.empty():
+                            live_items.append(live_message_queue.get_nowait())
+                        if not live_items:
+                            # 插入队列已空：回复即收尾，不等待未来消息。
+                            break
+                        injected = "\n\n".join(
+                            content for _, content in live_items
+                        )
+                        interrupt_state["requested"] = False
+                        prompt_task = asyncio.create_task(
+                            client.prompt(
+                                session_id=active_session_id,
+                                prompt=[acp.text_block(injected)],
+                            )
+                        )
+                        async for event in _drain_prompt(prompt_task):
+                            yield event
+                        await prompt_task
+                        for message_id, _ in live_items:
+                            yield InternalEvent(type="live_message", data={
+                                "message_id": message_id,
+                                "status": "delivered",
+                                "detail": "",
+                            })
+
+                yield InternalEvent(type="status", data={"status": "done"})
+
+        except Exception as e:
+            logger.exception("ACP session error")
+            yield InternalEvent(type="error", data={"message": str(e)})
+        finally:
+            self._running = False
+            self._process = None
+            self._handler = None
 
     async def list_models(self, cwd: str | None = None) -> list[EngineModel]:
         """经 ACP session configOptions 读取真实模型列表（按需，带超时）。"""

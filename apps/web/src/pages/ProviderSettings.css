@@ -24,7 +24,7 @@
 .provider-settings-model-status--empty { color: var(--meta); }
 .provider-settings-model-groups { display: flex; flex-direction: column; gap: 7px; margin-top: 8px; }
 .provider-settings-model-group-title { margin-bottom: 4px; color: var(--muted); font-size: calc(10px * var(--font-scale)); font-weight: 650; }
-.provider-settings-model-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.provider-settings-model-list { display: flex; flex-wrap: wrap; gap: 4px; max-height: 132px; overflow-y: auto; }
 .provider-settings-model-chip { padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); font-size: calc(11px * var(--font-scale)); overflow-wrap: anywhere; }
 .provider-settings-card-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
 .provider-settings-action { min-width: 54px; height: 30px; justify-content: center; }

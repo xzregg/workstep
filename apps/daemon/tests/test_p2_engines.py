@@ -53,8 +53,15 @@ async def test_sdk_permission_mode_changes_active_client_immediately(
 # --- CodexEngine ---
 
 def test_codex_resolve_binary():
-    binary = CodexEngine.resolve_binary()
+    from engines.codex import CodexEngine as DirectCodex
+    from engines.claude_code import ClaudeCodeEngine as DirectClaude
+    DirectCodex._binary_override = getattr(DirectCodex, '_binary_override', None)
+    binary = DirectCodex.resolve_binary()
     assert binary is None or isinstance(binary, str)
+    assert DirectCodex.ENGINE_ID == "codex"
+    assert DirectClaude.ENGINE_ID == "claude"
+    assert "codex" not in _ALL_ENGINES
+    assert "claude" not in _ALL_ENGINES
 
 
 @pytest.mark.anyio
@@ -4564,9 +4571,9 @@ async def test_claude_permission_mode_save_requires_confirmation(monkeypatch):
 
 def test_all_engines_registered():
     """All engines are in the full list."""
-    assert len(_ALL_ENGINES) == 11
-    assert "claude" in _ALL_ENGINES
-    assert "codex" in _ALL_ENGINES
+    assert len(_ALL_ENGINES) == 9
+    assert "claude" not in _ALL_ENGINES
+    assert "codex" not in _ALL_ENGINES
     assert "hermes" in _ALL_ENGINES
     assert "qoder_sdk" in _ALL_ENGINES
     assert "openclaw" in _ALL_ENGINES
@@ -4596,12 +4603,13 @@ def test_get_available_engines_lists_all_backends():
     """get_available_engines returns entries for all backends."""
     engines = get_available_engines()
     ids = {e["id"] for e in engines}
-    assert "claude" in ids
-    assert "codex" in ids
+    assert "claude" not in ids
+    assert "codex" not in ids
     assert "hermes" in ids
     assert "qoder_sdk" in ids
     assert "openclaw" in ids
     assert "claude_agent_sdk" in ids
+    assert ids == set(_ALL_ENGINES.keys())
 
 
 def test_create_engine_returns_instance():

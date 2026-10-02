@@ -289,6 +289,8 @@ export const zhTW: Messages = {
     unknown: '未知',
     select: '選擇',
     search: '搜尋',
+    searchOptions: '搜尋選項…',
+    noMatchingOptions: '無符合的選項',
     refresh: '重新整理',
     open: '開啟',
     submit: '提交',

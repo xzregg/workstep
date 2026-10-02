@@ -70,13 +70,23 @@ async def fetch_models(
     """
     protocol = select_provider_protocol(provider, protocol)
     models_url = provider_endpoint_url(provider, protocol, "models")
+    # Anthropic 兼容网关（如 OpenRouter `https://openrouter.ai/api`）的模型列表
+    # 需要 `/v1/models`，而真实消息调用用无 `v1` 的地址：缺 `v1` 时自动补一次重试，
+    # 保证供应商测试通过，不改动实际调用地址。
+    fallback_url = _anthropic_models_v1_fallback(provider, protocol, models_url)
     async with httpx.AsyncClient(
         headers=auth_headers(provider, protocol),
         timeout=15,
         transport=transport,
     ) as client:
-        response = await client.get(models_url)
-        response.raise_for_status()
+        try:
+            response = await client.get(models_url)
+            response.raise_for_status()
+        except httpx.HTTPStatusError:
+            if fallback_url is None:
+                raise
+            response = await client.get(fallback_url)
+            response.raise_for_status()
         payload = response.json()
 
     items = payload.get("data", []) if isinstance(payload, dict) else []
@@ -96,6 +106,20 @@ async def fetch_models(
             ),
         )
     return sorted(models.values(), key=lambda item: item.label.lower())
+
+
+def _anthropic_models_v1_fallback(
+    provider: dict, protocol: str, models_url: str
+) -> str | None:
+    """Return the `/v1/models` retry URL for Anthropic protocol, if applicable."""
+    if protocol != "anthropic_messages":
+        return None
+    if "/v1" in (models_url.split("://", 1)[-1]):
+        return None
+    basic = provider_basic_url(provider, protocol)
+    if not basic:
+        return None
+    return f"{basic.rstrip('/')}/v1/models"
 
 
 def saved_models(provider_id: str, protocol: str = "") -> list[EngineModel]:

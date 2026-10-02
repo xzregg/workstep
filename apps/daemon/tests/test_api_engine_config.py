@@ -1151,7 +1151,7 @@ async def test_cc_switch_import_creates_skips_and_rejects(engine_client, monkeyp
     expected_map = json.dumps({
         "sonnet": {"model": "qwen3-max", "name": "Qwen Max"},
     }, sort_keys=True, ensure_ascii=False)
-    assert store.get_claude_code_config()["model_map"] == expected_map
+    assert store.get_claude_agent_sdk_config()["model_map"] == expected_map
     sdk = store.get_claude_agent_sdk_config()
     assert sdk["model_map"] == expected_map
     assert sdk["max_turns"] == "77"
@@ -1176,7 +1176,7 @@ async def test_cc_switch_import_keeps_existing_claude_model_maps(
     )
 
     assert response.json()["errors"] == []
-    assert "my-opus" in store.get_claude_code_config()["model_map"]
+    assert "my-opus" in store.get_claude_agent_sdk_config()["model_map"]
     assert "my-opus" in store.get_claude_agent_sdk_config()["model_map"]
 
 
@@ -1208,7 +1208,7 @@ async def test_cc_switch_import_does_not_prefill_non_claude_sources(
     )
 
     assert response.json()["errors"] == []
-    assert store.get_claude_code_config()["model_map"] == ""
+    assert store.get_claude_agent_sdk_config()["model_map"] == ""
     assert store.get_claude_agent_sdk_config()["model_map"] == ""
 
 
@@ -1259,21 +1259,23 @@ async def test_engine_list_drops_api_engine_and_embeds_provider_select(engine_cl
     }
     assert config["secrets"] == {}
 
-    assert engines["claude"]["config"] is not None
-    assert {field["key"] for field in engines["claude"]["config"]["fields"]} == {
+    assert engines["claude_agent_sdk"]["config"] is not None
+    assert {field["key"] for field in engines["claude_agent_sdk"]["config"]["fields"]} == {
         "permission_mode",
         "provider_id",
         "model_map",
         "custom_settings",
+        "max_turns",
+        "fallback_model",
     }
-    claude_fields = {field["key"]: field for field in engines["claude"]["config"]["fields"]}
+    claude_fields = {field["key"]: field for field in engines["claude_agent_sdk"]["config"]["fields"]}
     assert claude_fields["model_map"]["type"] == "model_map"
     assert claude_fields["model_map"]["step_hidden"] is True
     assert claude_fields["custom_settings"]["type"] == "json"
     assert claude_fields["custom_settings"]["step_hidden"] is True
     # 结构化映射与自定义 JSON 不进阶段配置模板，避免阶段覆盖整段替换全局值。
     step_keys = {
-        field["key"] for field in engines["claude"]["config"]["step_fields"]
+        field["key"] for field in engines["claude_agent_sdk"]["config"]["step_fields"]
     }
     assert "model_map" not in step_keys
     assert "custom_settings" not in step_keys
@@ -1406,7 +1408,7 @@ async def test_compatible_engine_config_exposes_and_saves_common_provider(engine
         protocol="anthropic_messages",
     )
 
-    loaded = (await client.get("/api/engine/claude/config")).json()
+    loaded = (await client.get("/api/engine/claude-agent-sdk/config")).json()
     fields = {field["key"]: field for field in loaded["fields"]}
     assert fields["provider_id"]["required"] is False
     assert fields["provider_id"]["options"] == [
@@ -1414,7 +1416,7 @@ async def test_compatible_engine_config_exposes_and_saves_common_provider(engine
     ]
 
     saved = await client.put(
-        "/api/engine/claude/config",
+        "/api/engine/claude-agent-sdk/config",
         json={
             "values": {
                 "permission_mode": "acceptEdits",
@@ -1424,7 +1426,7 @@ async def test_compatible_engine_config_exposes_and_saves_common_provider(engine
     )
     assert saved.json()["saved"] is True
     assert saved.json()["values"]["provider_id"] == provider["id"]
-    assert store.get_engine_provider("claude") == provider["id"]
+    assert store.get_engine_provider("claude_agent_sdk") == provider["id"]
 
 
 @pytest.mark.anyio
@@ -1436,7 +1438,7 @@ async def test_engine_config_save_persists_and_echoes_model_map(engine_client):
     })
 
     saved = await client.put(
-        "/api/engine/claude/config",
+        "/api/engine/claude-agent-sdk/config",
         json={"values": {"permission_mode": "acceptEdits", "model_map": payload}},
     )
 
@@ -1446,10 +1448,10 @@ async def test_engine_config_save_persists_and_echoes_model_map(engine_client):
         "opus": {"model": "deepseek-v4", "name": "DeepSeek V4"},
         "sonnet": {"model": "qwen3-max", "name": "qwen3-max"},
     }
-    assert body["values"]["model_map"] == store.get_claude_code_config()["model_map"]
+    assert body["values"]["model_map"] == store.get_claude_agent_sdk_config()["model_map"]
 
     rejected = await client.put(
-        "/api/engine/claude/config",
+        "/api/engine/claude-agent-sdk/config",
         json={"values": {
             "permission_mode": "acceptEdits",
             "model_map": '{"sonnet":"bad-shape"}',
@@ -1457,7 +1459,7 @@ async def test_engine_config_save_persists_and_echoes_model_map(engine_client):
     )
     assert rejected.json()["saved"] is False
     assert "格式不正确" in rejected.json()["message"]
-    assert store.get_claude_code_config()["model_map"] == body["values"]["model_map"]
+    assert store.get_claude_agent_sdk_config()["model_map"] == body["values"]["model_map"]
 
 
 @pytest.mark.anyio
@@ -1469,7 +1471,7 @@ async def test_engine_config_save_persists_custom_settings_for_both_claude_engin
         "model": "sonnet",
     }, ensure_ascii=False)
 
-    for engine_id in ("claude", "claude-agent-sdk"):
+    for engine_id in ("claude-agent-sdk",):
         saved = await client.put(
             f"/api/engine/{engine_id}/config",
             json={
@@ -1486,13 +1488,13 @@ async def test_engine_config_save_persists_custom_settings_for_both_claude_engin
         }
         # 保存不改写用户文本：空格与换行原样回显。
         assert body["values"]["custom_settings"] == custom
-    assert json.loads(store.get_claude_code_config()["custom_settings"])["model"] == "sonnet"
+    assert json.loads(store.get_claude_agent_sdk_config()["custom_settings"])["model"] == "sonnet"
     assert json.loads(
         store.get_claude_agent_sdk_config()["custom_settings"]
     )["model"] == "sonnet"
 
     rejected = await client.put(
-        "/api/engine/claude/config",
+        "/api/engine/claude-agent-sdk/config",
         json={"values": {"permission_mode": "acceptEdits", "custom_settings": "{bad"}},
     )
     assert rejected.json()["saved"] is False
@@ -1507,24 +1509,24 @@ async def test_engine_config_resaves_stable_model_map_without_invalidating(engin
         "opus": {"model": "a"},
     })
     await client.put(
-        "/api/engine/claude/config",
+        "/api/engine/claude-agent-sdk/config",
         json={"values": {"permission_mode": "acceptEdits", "model_map": first}},
     )
-    store.set_engine_verified("claude", True)
-    store.set_engine_models("claude", [{"id": "cached"}], "now")
+    store.set_engine_verified("claude-agent-sdk", True)
+    store.set_engine_models("claude-agent-sdk", [{"id": "cached"}], "now")
 
     reordered = json.dumps({
         "opus": {"name": "a", "model": "a"},
         "sonnet": {"name": "b", "model": "b"},
     })
     saved = await client.put(
-        "/api/engine/claude/config",
+        "/api/engine/claude-agent-sdk/config",
         json={"values": {"permission_mode": "acceptEdits", "model_map": reordered}},
     )
 
     assert saved.json()["saved"] is True
-    assert store.is_engine_verified("claude") is True
-    assert store.get_engine_models("claude")["models"] == [{"id": "cached"}]
+    assert store.is_engine_verified("claude-agent-sdk") is True
+    assert store.get_engine_models("claude-agent-sdk")["models"] == [{"id": "cached"}]
 
 
 @pytest.mark.anyio
@@ -1533,10 +1535,10 @@ async def test_engine_config_rejects_incompatible_common_provider(engine_client)
     provider = _add_provider(store)
 
     response = await client.put(
-        "/api/engine/codex/config",
+        "/api/engine/claude-agent-sdk/config",
         json={
             "values": {
-                "sandbox_mode": "workspace-write",
+                "permission_mode": "acceptEdits",
                 "provider_id": provider["id"],
             }
         },
@@ -2319,7 +2321,7 @@ def test_claude_custom_settings_preserves_user_whitespace(tmp_path, monkeypatch)
     store.set_claude_code_config(custom_settings=pretty)
     store.set_claude_agent_sdk_config(custom_settings=pretty)
 
-    assert store.get_claude_code_config()["custom_settings"] == pretty
+    assert store.get_claude_agent_sdk_config()["custom_settings"] == pretty
     assert store.get_claude_agent_sdk_config()["custom_settings"] == pretty
 
 
@@ -2362,19 +2364,19 @@ async def test_engine_install_endpoint_runs_install(engine_client, monkeypatch):
     client, _store = engine_client
 
     async def fake_install(self):
-        return EngineInstallResult(success=True, message="Codex CLI 安装完成")
+        return EngineInstallResult(success=True, message="Codex SDK 安装完成")
 
     monkeypatch.setattr(
-        "engines.codex.CodexEngine.is_installed",
+        "engines.codex_sdk.CodexSDKEngine.is_installed",
         staticmethod(lambda: False),
     )
-    monkeypatch.setattr("engines.codex.CodexEngine.install", fake_install)
+    monkeypatch.setattr("engines.codex_sdk.CodexSDKEngine.install", fake_install)
     engine_registry.refresh_registry()
 
-    resp = await client.post("/api/engine/codex/install")
+    resp = await client.post("/api/engine/codex_sdk/install")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["engine_id"] == "codex"
+    assert body["engine_id"] == "codex_sdk"
     assert body["success"] is True
     assert body["already_installed"] is False
     assert "安装完成" in body["message"]
