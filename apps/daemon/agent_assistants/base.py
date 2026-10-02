@@ -1796,6 +1796,15 @@ class AssistantRuntime:
                         pass
                     self._turn_states[turn_id]["status"] = "stopped"
                     return
+                failed_error = str(exc)
+                # 保留已流式出来的正文（final_answer）。旧实现无条件把 content
+                # 覆盖成「（生成失败：…）」，会把真实回复吞掉：重开会话后正文
+                # 消失、只剩红色错误行。仅当没有任何正文时才用包装错误占位。
+                failed_content = (
+                    streamed_reply
+                    if streamed_reply
+                    else f"（生成失败：{failed_error}）"
+                )
                 logger.exception(
                     "Assistant turn %s (%s) failed",
                     turn_id,
@@ -1804,7 +1813,7 @@ class AssistantRuntime:
                 active_message[0].update(
                     {
                         "role": "assistant",
-                        "content": f"（生成失败：{exc}）",
+                        "content": failed_content,
                         "id": active_message_id[0],
                         "engine": session.engine,
                         "model": session.model,
@@ -1818,7 +1827,7 @@ class AssistantRuntime:
                 await self._finish_journal(
                     active_journal_ref[0],
                     active_message[0],
-                    {"type": "error", "data": {"message": str(exc)}},
+                    {"type": "error", "data": {"message": failed_error}},
                 )
                 turn_persisted[0] = await self._persist_session(session)
                 try:
@@ -1826,14 +1835,18 @@ class AssistantRuntime:
                         session,
                         active_message_id[0],
                         "error",
-                        {"message": str(exc)},
+                        {"message": failed_error},
                         seq,
                     )
                     await self._publish(
                         session,
                         active_message_id[0],
                         "message_completed",
-                        {"status": "error", "content": str(exc)},
+                        {
+                            "status": "error",
+                            "content": failed_content,
+                            "error": failed_error,
+                        },
                         seq,
                     )
                 except Exception:

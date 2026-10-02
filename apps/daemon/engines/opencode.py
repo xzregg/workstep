@@ -37,6 +37,7 @@ from engines.core.base import (
 )
 from engines.core.events import InternalEvent
 from engines.core.packages import RuntimePackage
+from engines.core.plans import subagent_event
 from engines.core.schema import EngineImage
 from engines.core.stream_lines import ChunkedLineReader
 from services import providers as provider_service
@@ -44,6 +45,20 @@ from services.config import config_store
 from services.engine_config_rules import OPENCODE_PERMISSION_MODES
 
 logger = logging.getLogger(__name__)
+
+#: opencode `task` 委托工具（子代理语义来源）：命中即提升为 `subagent`。
+_SUBAGENT_TOOL_NAMES = frozenset({"task", "subagent", "spawnagent", "background"})
+
+
+def _is_subagent_tool(title: str | None, kind: str | None, raw: object) -> bool:
+    candidates = [str(title or ""), str(kind or "")]
+    if isinstance(raw, dict):
+        if any(raw.get(key) not in (None, "") for key in ("subagent_type", "task_id", "background")):
+            return True
+        candidates.append(str(raw.get("name") or ""))
+    text = " ".join(candidates).lower()
+    return any(name in text for name in _SUBAGENT_TOOL_NAMES)
+
 
 #: opencode 原生 permission 取值：ask（每次确认）/ allow（自动放行）/ deny。
 #: 写入 managed config 的 edit/bash/webfetch 三项。
@@ -113,6 +128,9 @@ def _ensure_permission_config(mode: str = "ask") -> str:
 
 class OpencodeEngine(AcpEngineBase):
     ENGINE_ID = "opencode"
+
+    #: ACP 原生全量词汇 + 子代理提升（`task` 委托工具 → `subagent`）。
+    acp_events: ClassVar[frozenset] = frozenset(AcpEngineBase.acp_events)
 
     RUNTIME_PACKAGE: ClassVar[RuntimePackage] = RuntimePackage(
         "opencode-ai", "npm", "0", None
@@ -251,6 +269,12 @@ class OpencodeEngine(AcpEngineBase):
         # configOptions 仅 model / mode，无 reasoning_effort 入口，如实声明。
         return False
 
+    @property
+    def supports_plan_mode(self) -> bool:
+        # session configOptions 原生 `mode`(build/plan)：基类经
+        # session/set_config_option 切换，无需提示词注入。
+        return self._is_acp_native
+
     def build_resume_params(self, session_id: str) -> dict:
         return {"session_id": session_id}
 
@@ -273,6 +297,39 @@ class OpencodeEngine(AcpEngineBase):
 
     # ---------------------------------------------------------------- 执行
 
+    def _map_notification(self, update) -> InternalEvent | None:
+        event = super()._map_notification(update)
+        if event is None:
+            return None
+        if event.type == "tool_call":
+            data = event.data
+            if _is_subagent_tool(data.get("title"), data.get("kind"), data.get("raw_input")):
+                frame = subagent_event(
+                    task_id=str(data.get("tool_call_id")),
+                    status="running",
+                    stage="started",
+                    description=str(data.get("title") or "task"),
+                    tool_use_id=str(data.get("tool_call_id")),
+                )
+                frame.data["event"] = event.to_dict()
+                return frame
+        elif event.type == "tool_call_update":
+            data = event.data
+            if _is_subagent_tool(data.get("title"), data.get("kind"), data.get("raw_input")):
+                status = str(data.get("status") or "")
+                terminal = status if status in {"completed", "failed"} else None
+                frame = subagent_event(
+                    task_id=str(data.get("tool_call_id")),
+                    status=terminal or "running",
+                    stage="notification" if terminal else "progress",
+                    description=str(data.get("title") or "task"),
+                    tool_use_id=str(data.get("tool_call_id")),
+                    summary=str(data.get("raw_output"))[:500] if terminal and data.get("raw_output") is not None else None,
+                )
+                frame.data["event"] = event.to_dict()
+                return frame
+        return event
+
     async def spawn(
         self,
         prompt: str,
@@ -284,6 +341,8 @@ class OpencodeEngine(AcpEngineBase):
         live_message_queue: asyncio.Queue | None = None,
         config_overrides: dict | None = None,
         thinking_effort: str | None = None,
+        plan_mode: bool | None = None,
+        goal_action: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
         effective = self.merge_config_overrides(
             {"permission_mode": _resolve_opencode_mode()},
@@ -310,6 +369,8 @@ class OpencodeEngine(AcpEngineBase):
                 live_message_queue=live_message_queue,
                 config_overrides=config_overrides,
                 thinking_effort=thinking_effort,
+                plan_mode=plan_mode,
+                goal_action=goal_action,
             ):
                 yield event
         finally:

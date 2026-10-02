@@ -88,6 +88,13 @@ PLAN_MODE_INSTRUCTION = (
     "and wait for user confirmation."
 )
 
+GOAL_MODE_INSTRUCTION = (
+    "Goal mode: keep working toward the objective below until it is complete. "
+    "Break it into steps, execute them one by one with the tools available to you, "
+    "and report progress. If you are blocked and cannot proceed, state exactly "
+    "what you need. Do not stop with a partial result while executable steps remain."
+)
+
 
 def map_plan_mode_overrides(engine_id: str) -> dict:
     """Engine-specific ``config_overrides`` for Codex-style plan mode.

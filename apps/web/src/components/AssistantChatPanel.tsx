@@ -41,6 +41,7 @@ import { useUserSettingsStore } from '../stores/userSettingsStore'
 import { shouldShowAssistantThinking } from '../utils/assistantThinking'
 import { displayUserDetail, displayUserSender } from '../utils/actorDisplay'
 import { useI18n } from '../i18n'
+import { resolveMessageError } from '../pages/taskDetailChat'
 import QuickPromptButton from './QuickPromptButton'
 import { ActionConversationMessage } from './TaskActionShortcuts'
 import { mergeActionMessages } from '../utils/actionConversation'
@@ -185,7 +186,11 @@ const MessageItem = memo(function MessageItem({
       onInteractionRespond={respondInteraction}
       streaming={message.status === 'running'}
       projectId={projectId}
-      error={message.role === 'assistant' ? message.error : undefined}
+      error={
+        message.role === 'assistant'
+          ? message.error || resolveMessageError(message.events)
+          : undefined
+      }
       showLoading={message.role === 'assistant' && message.status === 'running'}
       loading={message.role === 'assistant'
         ? <StreamingStatusText label={t('bubble.thinking')} />

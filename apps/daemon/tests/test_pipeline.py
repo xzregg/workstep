@@ -384,7 +384,11 @@ def test_previous_outputs_are_available_to_new_and_resumed_sessions(tmp_path):
     expected = f".workstep/artifacts/flow/{task.id}/a/1/"
     for prompt in (fresh, resumed, followup):
         assert f"## Previous outputs\n`{expected}`" in prompt
-        assert "Copy still-needed, unchanged outputs" in prompt
+        assert "copy the file verbatim from the previous round" in prompt
+        assert "write the revised full file (not a diff)" in prompt
+        assert "do not create empty/placeholder files" in prompt
+        assert "Never modify files in the previous round directory." in prompt
+        assert "must be self-contained" in prompt
         assert "plan.md" not in prompt.split("## Previous outputs", 1)[1].split("\n\n", 1)[0]
         assert "Execution reason:" not in prompt
         assert "Source step:" not in prompt

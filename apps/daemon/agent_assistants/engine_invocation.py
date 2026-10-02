@@ -10,6 +10,7 @@ from services.chat_permissions import (
     map_permission_overrides,
     map_plan_mode_overrides,
     parse_goal_command,
+    GOAL_MODE_INSTRUCTION,
     PLAN_MODE_INSTRUCTION,
 )
 from services.intervention import intervention_manager
@@ -89,12 +90,21 @@ async def run_engine_turn(
         if plan_mode:
             raise ValueError("目标模式不能与计划模式同时启用")
         if not getattr(getattr(engine, "capabilities", None), "supports_goal_mode", False):
-            raise ValueError(f"当前引擎不支持目标模式：{engine_id}")
-        goal_action, prompt = goal_command
-        if goal_action != "start" and not session_id:
-            raise ValueError("当前会话还没有可操作的目标")
-        if goal_action == "start" and not prompt.strip():
-            raise ValueError("目标内容不能为空")
+            # 无原生 goal 语义的引擎：仅支持 start，经提示词级目标指令
+            # 兜底（pause/resume/clear/status 无可操作对象，仍拒绝）。
+            goal_action, goal_prompt = goal_command
+            if goal_action != "start":
+                raise ValueError(f"当前引擎不支持目标模式：{engine_id}")
+            if not goal_prompt.strip():
+                raise ValueError("目标内容不能为空")
+            prompt = f"{goal_prompt}\n\n{GOAL_MODE_INSTRUCTION}"
+            goal_command = None
+        else:
+            goal_action, prompt = goal_command
+            if goal_action != "start" and not session_id:
+                raise ValueError("当前会话还没有可操作的目标")
+            if goal_action == "start" and not prompt.strip():
+                raise ValueError("目标内容不能为空")
     if plan_mode and not supports_native_plan_mode and prompt.strip() != "/compact":
         prompt = f"{prompt}\n\n{PLAN_MODE_INSTRUCTION}"
     content: list[str] = []

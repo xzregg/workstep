@@ -274,9 +274,14 @@ def _format_previous_outputs(
     )
     return (
         f"## Previous outputs\n`{path}/`\n"
-        "Review the current inputs and previous outputs. "
-        "Copy still-needed, unchanged outputs to their declared current paths; "
-        "revise affected outputs there. Leave out outputs no longer needed."
+        "Review the current inputs and the previous round directory. "
+        "For each declared current path: "
+        "needed and unaffected, copy the file verbatim from the previous round; "
+        "needed and affected, write the revised full file (not a diff); "
+        "no longer needed, write nothing (do not create empty/placeholder files). "
+        "Never modify files in the previous round directory. "
+        "The current round directory must be self-contained: "
+        "a consumer reading only the current paths gets the complete result."
     )
 
 

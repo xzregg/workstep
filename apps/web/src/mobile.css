@@ -181,6 +181,19 @@
   .markdown-body, .markdown-message { min-width: 0; overflow-wrap: anywhere; }
   .markdown-body pre, .markdown-message pre, .chat-message-row pre { max-width: 100%; overflow-x: auto; }
   .markdown-body table, .markdown-message table { display: block; max-width: 100%; overflow-x: auto; }
+  .markdown-body th, .markdown-body td,
+  .markdown-message th, .markdown-message td {
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    vertical-align: top;
+  }
+  .markdown-body td code, .markdown-body th code,
+  .markdown-message td code, .markdown-message th code {
+    white-space: break-spaces;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
   .chat-message-row img { max-width: 100%; height: auto; }
   .desktop-task-toolbar, .desktop-task-board { display: none !important; }
   .mobile-task-toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--border-soft); }

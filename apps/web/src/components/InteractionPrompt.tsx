@@ -48,6 +48,8 @@ function InteractionOptionButton({
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.6 : 1,
         fontSize: 'calc(12px * var(--font-scale))', textAlign: 'left',
+        minWidth: 0, maxWidth: '100%',
+        whiteSpace: 'normal', overflowWrap: 'anywhere', wordBreak: 'break-word',
       }}
     >
       {option.label}
@@ -118,6 +120,7 @@ export default function InteractionPrompt({ request, response, onRespond }: Prop
       border: '1px solid var(--border)', borderRadius: 10,
       padding: 12, background: 'var(--surface)',
       display: 'flex', flexDirection: 'column', gap: 10,
+      minWidth: 0, maxWidth: '100%', boxSizing: 'border-box',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{
@@ -186,7 +189,7 @@ export default function InteractionPrompt({ request, response, onRespond }: Prop
           {form.fields.map((field) => {
             const selected = values[field.id]
             return (
-              <div key={field.id} style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <div key={field.id} style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0, maxWidth: '100%' }}>
                 <div>
                   <span style={{ fontSize: 'calc(12px * var(--font-scale))', fontWeight: 600, color: 'var(--fg-2)' }}>
                     {field.title}
@@ -203,7 +206,7 @@ export default function InteractionPrompt({ request, response, onRespond }: Prop
                   )}
                 </div>
                 {field.options.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, minWidth: 0, maxWidth: '100%' }}>
                     {field.options.map((option) => {
                       const active = field.type === 'multiple'
                         ? Array.isArray(selected) && selected.includes(option.value)
