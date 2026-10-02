@@ -1,4 +1,5 @@
 import ProviderImportDialog from '../components/ProviderImportDialog'
+import ProviderModelsDialog from '../components/ProviderModelsDialog'
 import ProviderEditorDialog, { type ProviderEditorTarget } from '../components/ProviderEditorDialog'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Button from '../components/Button'
@@ -6,6 +7,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import Icon from '../components/Icon'
 import {
   providerApi,
+  type EngineModel,
   type ProviderInfo,
   type ProviderTestResult,
   type ProviderTypeMeta,
@@ -189,39 +191,52 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
     }
   }
 
-  const loadModels = async (provider: ProviderInfo) => {
+  const [modelsDialog, setModelsDialog] = useState<{
+    provider: ProviderInfo
+    protocol: string
+    queue: string[]
+    preview: EngineModel[]
+    selected: string[]
+    saving: boolean
+    error: string
+  } | null>(null)
+
+  const protocolLabel = (protocol: string) => {
+    const option = ALL_PROTOCOLS.find((item) => item.value === protocol)
+    return option ? t(option.labelKey) : protocol
+  }
+
+  const openModelsPreview = async (provider: ProviderInfo, protocols: string[]) => {
+    const [protocol, ...rest] = protocols
+    if (!protocol) {
+      await refresh()
+      onChanged?.()
+      return
+    }
     setModelsLoadingId(provider.id)
-    setModelErrors((current) => {
-      const next = { ...current }
-      delete next[provider.id]
-      return next
-    })
     try {
-      const protocols = provider.protocols?.length ? provider.protocols : [provider.protocol]
-      const entries: ProviderProtocolModels[] = []
-      const errors: string[] = []
-      for (const protocol of protocols) {
-        const result = await providerApi.models(provider.id, true, protocol)
-        entries.push({
-          protocol,
-          models: result.models,
-          fetchedAt: result.fetched_at || null,
-        })
-        if (result.error) {
-          const option = ALL_PROTOCOLS.find((item) => item.value === protocol)
-          errors.push(`${option ? t(option.labelKey) : protocol}: ${result.error}`)
-        }
+      const preview = await providerApi.previewModels(provider.id, protocol)
+      if (preview.error) {
+        setModelErrors((current) => ({
+          ...current,
+          [provider.id]: `${protocolLabel(protocol)}: ${preview.error}`,
+        }))
+        await openModelsPreview(provider, rest)
+        return
       }
-      const summary = summarizeProviderProtocolModels(entries)
-      setModelGroups((current) => ({ ...current, [provider.id]: summary.groups }))
-      setModelCounts((current) => ({ ...current, [provider.id]: summary.uniqueCount }))
-      setModelFetchedAt((current) => ({
-        ...current,
-        [provider.id]: summary.latestFetchedAt,
-      }))
-      if (errors.length) {
-        setModelErrors((current) => ({ ...current, [provider.id]: errors.join('；') }))
-      }
+      const saved = await providerApi.models(provider.id, false, protocol).catch(() => null)
+      const savedIds = new Set((saved?.models || []).map((item) => item.id))
+      const initial = preview.models.filter((item) => savedIds.has(item.id)).map((item) => item.id)
+      setModelsDialog({
+        provider,
+        protocol,
+        queue: rest,
+        preview: preview.models,
+        // 默认全选预览结果，已入库的保持勾选；用户取消勾选即不入库。
+        selected: initial.length ? initial : preview.models.map((item) => item.id),
+        saving: false,
+        error: '',
+      })
     } catch (reason) {
       setModelErrors((current) => ({
         ...current,
@@ -229,6 +244,32 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
       }))
     } finally {
       setModelsLoadingId(null)
+    }
+  }
+
+  const loadModels = async (provider: ProviderInfo) => {
+    setModelErrors((current) => {
+      const next = { ...current }
+      delete next[provider.id]
+      return next
+    })
+    const protocols = provider.protocols?.length ? provider.protocols : [provider.protocol]
+    await openModelsPreview(provider, protocols)
+  }
+
+  const confirmModelsSelection = async () => {
+    if (!modelsDialog) return
+    const { provider, protocol, queue, preview, selected } = modelsDialog
+    setModelsDialog((current) => (current ? { ...current, saving: true, error: '' } : current))
+    try {
+      const chosen = preview.filter((item) => selected.includes(item.id))
+      await providerApi.saveModelSelection(provider.id, protocol, chosen)
+      setModelsDialog(null)
+      await openModelsPreview(provider, queue)
+    } catch (reason) {
+      setModelsDialog((current) => (current
+        ? { ...current, saving: false, error: reason instanceof Error ? reason.message : t('providerSettings.modelsFailed') }
+        : current))
     }
   }
 
@@ -444,6 +485,38 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
         types={types}
         onClose={() => setEditorTarget(null)}
         onSaved={async () => { await refresh(); onChanged?.() }}
+      />}
+
+      {modelsDialog && <ProviderModelsDialog
+        providerName={modelsDialog.provider.name}
+        protocolLabel={protocolLabel(modelsDialog.protocol)}
+        models={modelsDialog.preview}
+        initialSelected={modelsDialog.selected}
+        saving={modelsDialog.saving}
+        saveError={modelsDialog.error}
+        onToggle={(id) => setModelsDialog((current) => {
+          if (!current) return current
+          const has = current.selected.includes(id)
+          return {
+            ...current,
+            selected: has
+              ? current.selected.filter((item) => item !== id)
+              : [...current.selected, id],
+          }
+        })}
+        onSelectAll={(ids) => setModelsDialog((current) => {
+          if (!current) return current
+          const next = new Set(current.selected)
+          ids.forEach((id) => next.add(id))
+          return { ...current, selected: [...next] }
+        })}
+        onClear={(ids) => setModelsDialog((current) => {
+          if (!current) return current
+          const remove = new Set(ids)
+          return { ...current, selected: current.selected.filter((id) => !remove.has(id)) }
+        })}
+        onConfirm={() => void confirmModelsSelection()}
+        onClose={() => setModelsDialog(null)}
       />}
 
       <ConfirmDialog
