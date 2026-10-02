@@ -354,6 +354,20 @@ export const providerApi = {
       `/provider/${encodeURIComponent(providerId)}/reveal`,
       { method: 'POST' },
     ),
+  previewModels: (providerId: string, protocol = '') =>
+    request<ProviderModelsResult>(
+      `/provider/${encodeURIComponent(providerId)}/models/preview${
+        protocol ? `?protocol=${encodeURIComponent(protocol)}` : ''
+      }`,
+    ),
+  saveModelSelection: (providerId: string, protocol: string, models: EngineModel[]) =>
+    request<{ provider_id: string; count: number }>(
+      `/provider/${encodeURIComponent(providerId)}/models/selection`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ protocol, models }),
+      },
+    ),
   importSources: () =>
     request<{ sources: ProviderImportSource[] }>('/provider/import/sources'),
   importFromCcSwitch: (providerIds: string[]) =>

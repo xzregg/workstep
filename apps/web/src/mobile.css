@@ -732,12 +732,13 @@
     display: none !important;
   }
 
-  /* token 摘要 4-5 行 → 2 行，超出省略。 */
-  .footer-usage-summary {
+  /* token 摘要 4-5 行 → 2 行，超出省略。点击后切换单行跑马灯（--marquee）时不 clamp。 */
+  .footer-usage-summary:not(.footer-usage-summary--marquee) {
     display: -webkit-box !important;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     overflow: hidden;
+    cursor: pointer;
   }
 
   /* 快捷提示行：保留功能，压薄。 */

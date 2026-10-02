@@ -1,6 +1,8 @@
 import Icon from './Icon'
 import { useEffect, useMemo, useState } from 'react'
 import { engineLabel } from '../engineMeta'
+import MarqueeText from './MarqueeText'
+import { useCompactLayout } from '../hooks/useCompactLayout'
 import { copyText } from '../utils/clipboard'
 import Button from './Button'
 import {
@@ -339,17 +341,45 @@ export default function MessageResponseFooter({
     ].filter(Boolean).join(' ') || null,
   ].filter((part): part is string => Boolean(part))
 
+  const executionModelSuffix = executionModel && executionModel !== model
+    ? t('footer.executionModel', { model: executionModel })
+    : ''
+  const summaryText = summaryParts.join(' · ') + executionModelSuffix
+
+  // 移动端：点击 token 栏切换成单行跑马灯滚动展示全文（静止保留 mobile.css 的 2 行 clamp）；
+  // 消息状态变化（如 running 结束）时回到静止态，避免新/恢复的消息一进来就在滚动。
+  const isMobile = useCompactLayout()
+  const [marqueeActive, setMarqueeActive] = useState(false)
+  useEffect(() => { setMarqueeActive(false) }, [running])
+
   return (
     <div className={running ? 'message-footer--running' : undefined} style={{
       minHeight: 24, display: 'flex', alignItems: 'center', gap: 8,
       color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))',
     }}>
-      <span className="footer-usage-summary" style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
-        {summaryParts.join(' · ')}
-        {executionModel && executionModel !== model
-          ? t('footer.executionModel', { model: executionModel })
-          : ''}
-      </span>
+      {isMobile ? (
+        marqueeActive ? (
+          <MarqueeText
+            className="footer-usage-summary footer-usage-summary--marquee"
+            text={summaryText}
+            forceActive
+            onClick={() => setMarqueeActive(false)}
+          />
+        ) : (
+          <span
+            className="footer-usage-summary"
+            role="button"
+            style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}
+            onClick={() => setMarqueeActive(true)}
+          >
+            {summaryText}
+          </span>
+        )
+      ) : (
+        <span className="footer-usage-summary" style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
+          {summaryText}
+        </span>
+      )}
       {stopped && onContinueStep && (
         <button
           type="button"
