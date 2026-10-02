@@ -86,6 +86,7 @@ export function useChatSessionActions({
     if (!running) return sendMessageNow(content)
     setSendError('')
     try {
+      useChatSessionStore.getState().addUserMessage(sessionId, content)
       await chatSessionApi.sendLiveMessage(sessionId, projectId, content, pendingInsertIds)
       return true
     } catch (reason) {
