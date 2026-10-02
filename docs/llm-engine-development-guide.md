@@ -55,6 +55,12 @@ AcpEngineBase(BaseLLMEngine)              # 通用 ACP 协议调用（所有引�
 - **非 ACP 原生传输适配器**（Codex / CodexSDK / Claude Code / ClaudeAgentSDK / QoderSDK / DeepSeek Harness / PydanticAI / OpenClaw）：继承 `AcpEngineBase`，用下游传输覆盖 `spawn`，并**实现我方 ACP 接口的等价会话 / 审批语义**（无原生入口的如实声明能力并安全降级），事件统一产出 ACP 词汇。
 - 新引擎 = 新增一个文件：继承 `AcpEngineBase`，实现 `BaseLLMEngine` 的抽象自定义函数，声明 `acp_events`，按第 2、3 节覆盖协议方法。
 
+> **禁动 base 规则：为接入单个 LLM 引擎，不得修改 `engines/core/` 下的基类
+> （`base.py` / `acp_base.py` 等共享协议实现）。引擎侧的服务端 quirk、恢复
+> 失败形态、历史重播、事件形状差异，一律在引擎自己的适配器文件内部兼容
+> （覆写 `spawn` / 事件映射 / 能力声明，或在引擎内加兜底与重试），并附
+> 引擎级回归测试。基类只承载全引擎通用的协议语义。
+
 > **统一接口不等于底层必须使用 ACP 传输。** `AcpEngineBase` 是 WorkStep
 > 面向上层的通用协议接口和事件语义；CLI、HTTP、厂商 SDK、JSONL、JSON-RPC
 > 都可以作为底层传输。非 ACP 原生传输适配器必须把真实能力映射到这套接口，
