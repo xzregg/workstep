@@ -13,6 +13,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from services.remote_access import ActorSnapshot, actor_context
+from services.project_request_audit import record_remote_request_failure
 from services.project_scope import project_http_allowed
 
 
@@ -159,10 +160,12 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
         if remote_bridge and actor.project_id is not None and not project_http_allowed(
                 request, actor.project_id, actor.project_access_level,
                 actor.remote_task_create):
+            await record_remote_request_failure(actor, 403, "project_scope")
             response = JSONResponse({"detail": "project scope denied"}, status_code=403)
             response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
             return response
         if remote_bridge and _remote_filesystem_denied(request):
+            await record_remote_request_failure(actor, 403, "host_filesystem_scope")
             response = JSONResponse({"detail": "remote host filesystem access unavailable"}, status_code=403)
             response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
             return response
@@ -197,7 +200,14 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                 username=actor.username,
             )) if actor is not None else nullcontext()
             with context:
-                response = await call_next(request)
+                try:
+                    response = await call_next(request)
+                except Exception:
+                    if remote_bridge:
+                        await record_remote_request_failure(actor, 500, "handler_failure")
+                    raise
+                if remote_bridge and response.status_code >= 400:
+                    await record_remote_request_failure(actor, response.status_code, "handler_rejected")
 
         response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")

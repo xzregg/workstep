@@ -136,7 +136,7 @@ async def archive_task(req: ArchiveTaskRequest, pid: str = Query(..., alias="pro
     try:
         archived = await _run_db(
             pid,
-            lambda: task_service.archive_task(req.task_id),
+            lambda: task_service.archive_task(req.task_id, pid),
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -306,7 +306,7 @@ async def confirm_archive_experience(
         if draft is None or draft["has_experience"]:
             raise HTTPException(status_code=422, detail="Experience cannot be empty")
         try:
-            archived = await _run_db(pid, lambda: task_service.archive_task(task_id))
+            archived = await _run_db(pid, lambda: task_service.archive_task(task_id, pid))
         except RuntimeError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         if not archived:
@@ -343,7 +343,7 @@ async def confirm_archive_experience(
         try:
             temporary.write_text(content, encoding="utf-8")
             os.replace(temporary, memory_path)
-            archived = task_service.archive_task(task_id)
+            archived = task_service.archive_task(task_id, pid)
             if not archived:
                 raise ValueError("Task not found")
         except Exception:
@@ -377,7 +377,7 @@ async def unarchive_task(req: ArchiveTaskRequest, pid: str = Query(..., alias="p
     try:
         unarchived = await _run_db(
             pid,
-            lambda: task_service.unarchive_task(req.task_id),
+            lambda: task_service.unarchive_task(req.task_id, pid),
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

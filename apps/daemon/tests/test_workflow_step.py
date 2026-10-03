@@ -183,6 +183,9 @@ async def test_dispatch_step_creates_child_task_with_direct_inputs(tmp_path):
 
     assert result["title"] == "Parent"
     assert result["source_dispatch_id"] == "parent-1:handoff"
+    from models import ProjectAuditEvent
+    event = ProjectAuditEvent.get(ProjectAuditEvent.task_id == result['id'])
+    assert (event.project_id, event.action, event.result) == ('project-b', 'task.create', 'succeeded')
     assert result["description"] == "原始任务说明"
     assert "project-a" not in result["description"]
     assert "parent-1" not in result["description"]

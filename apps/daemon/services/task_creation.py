@@ -62,6 +62,7 @@ async def create_project_task(
             )
         definition = WorkflowDefinition.load(workflow["steps"])
         created = task_service.create_task(
+            project_id=project_id,
             title=title,
             cwd=cwd or str(project.path),
             description=description,
@@ -111,6 +112,10 @@ async def create_project_task(
             if hasattr(project_manager, "activate_project_by_id")
             else nullcontext(project_manager.bind_project_by_id(project_id))
         )
-        with context:
-            created = task_service.get_task(created["id"]) or created
+        if hasattr(project_manager, "run_db"):
+            created = await project_manager.run_db(project_id, lambda _project:
+                task_service.get_task(created["id"]) or created)
+        else:
+            with context:
+                created = task_service.get_task(created["id"]) or created
     return TaskCreationResult(created, handle)
