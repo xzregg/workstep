@@ -27,6 +27,11 @@ test('mobile form and sheet controls share height and typography', () => {
   assert.match(mobileCss, /\.mobile-sheet-body > button svg\s*\{[^}]*width:\s*var\(--mobile-control-icon-size\)\s*!important/s)
 })
 
+test('quota refresh keeps its round visual size on mobile', () => {
+  assert.match(mobileCss, /\.chat-input-quota-refresh\s*\{[^}]*min-height:\s*0\s*;/s)
+  assert.doesNotMatch(mobileCss, /\.chat-input-quota-refresh\s*,[^{}]*\{[^}]*min-height:\s*var\(--mobile-control-compact\)/s)
+})
+
 test('mobile workflow chrome uses explicit compact visual heights', () => {
   assert.match(mobileCss, /\.ai-flow-editor-mobile-header button\s*\{[^}]*height:\s*var\(--mobile-control-regular\)[^}]*min-height:\s*var\(--mobile-control-regular\)/s)
   assert.match(mobileCss, /\.flow-canvas-toolbar button,[\s\S]*?\{[^}]*height:\s*var\(--mobile-toolbar-control-height\)\s*!important[^}]*min-height:\s*var\(--mobile-toolbar-control-height\)\s*!important/s)

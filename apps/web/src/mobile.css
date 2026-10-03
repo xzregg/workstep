@@ -612,7 +612,6 @@
   .btn-icon, .btn-sm,
   .chat-message-action,
   .ws-session-time-button,
-  .chat-input-quota-refresh,
   .chat-input-image-remove,
   .conversation-new-messages-button,
   .git-copy-block,
@@ -625,6 +624,10 @@
   .artifact-preview-container button,
   .dialog-header button {
     min-height: var(--mobile-control-compact);
+  }
+  /* 额度刷新沿用 24px 圆形，避免通用最小高度将按钮撑成椭圆。 */
+  .chat-input-quota-refresh {
+    min-height: 0;
   }
   /* 图片删除按钮保持原始小尺寸 */
   .chat-input-image-remove {

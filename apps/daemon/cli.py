@@ -22,6 +22,16 @@ from services.quick_buttons import ACTION_ID, normalize_quick_buttons
 from services.tool_registry import DEFAULT_DAEMON_URL, WorkstepClient
 
 
+LIST_FIELDS = {
+    "project": ("projects", ("id", "name", "path", "type", "connection_status")),
+    "workflow": ("workflows", ("id", "name", "is_default", "deleted", "running", "failed", "nodeCount")),
+    "task": ("tasks", ("id", "title", "status", "archived", "workflow_id", "created_at", "updated_at")),
+    "engine": ("engines", ("id", "installed", "configured", "verified", "built_in", "version", "mode", "default_model")),
+    "schedule": ("schedules", ("id", "name", "workflow_id", "status", "summary", "next_run_at", "last_run_at")),
+    "channel": (None, ("id", "name", "platform", "enabled", "status")),
+}
+
+
 async def _create_project_action_on_existing_daemon(args, client, script_content: str) -> dict:
     """Use the project quick-button API when the daemon predates action-create."""
     if not ACTION_ID.fullmatch(args.action_id):
@@ -88,16 +98,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    def add_json(sub: argparse.ArgumentParser) -> None:
+    def add_json(sub: argparse.ArgumentParser, *, list_output: bool = False) -> None:
         sub.add_argument(
             "--json",
             action="store_true",
             help="compact single-line JSON output",
         )
+        if list_output:
+            sub.add_argument(
+                "--verbose", action="store_true",
+                help="include full data instead of list summaries",
+            )
 
     project = subparsers.add_parser("project", help="manage projects")
     project_sub = project.add_subparsers(dest="subcommand", required=True)
-    add_json(project_sub.add_parser("list", help="list registered projects"))
+    project_list = project_sub.add_parser("list", help="list registered project summaries")
+    add_json(project_list, list_output=True)
     project_buttons = project_sub.add_parser("quick-buttons", help="list project chat quick buttons")
     project_buttons.add_argument("--project", required=True, dest="project_id", help="project id")
     add_json(project_buttons)
@@ -119,7 +135,7 @@ def build_parser() -> argparse.ArgumentParser:
     task_sub = task.add_subparsers(dest="subcommand", required=True)
     task_list = task_sub.add_parser("list", help="list tasks of a project")
     task_list.add_argument("--project", required=True, dest="project_id", help="project id")
-    add_json(task_list)
+    add_json(task_list, list_output=True)
     task_get = task_sub.add_parser("get", help="get one task")
     task_get.add_argument("--project", required=True, dest="project_id", help="project id")
     task_get.add_argument("--task", required=True, dest="task_id", help="task id")
@@ -152,7 +168,7 @@ def build_parser() -> argparse.ArgumentParser:
     workflow_sub = workflow.add_subparsers(dest="subcommand", required=True)
     workflow_list = workflow_sub.add_parser("list", help="list workflows of a project")
     workflow_list.add_argument("--project", required=True, dest="project_id", help="project id")
-    add_json(workflow_list)
+    add_json(workflow_list, list_output=True)
     workflow_get = workflow_sub.add_parser("get", help="get one workflow with its steps")
     workflow_get.add_argument("--project", required=True, dest="project_id", help="project id")
     workflow_get.add_argument("--workflow", required=True, dest="workflow_id", help="workflow id")
@@ -175,7 +191,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     channel = subparsers.add_parser("channel", help="send messages through channel bots")
     channel_sub = channel.add_subparsers(dest="subcommand", required=True)
-    add_json(channel_sub.add_parser("list", help="list configured bots"))
+    add_json(channel_sub.add_parser("list", help="list configured bots"), list_output=True)
     channel_sessions = channel_sub.add_parser("sessions", help="list active channel conversation recipients")
     channel_sessions.add_argument("--project", dest="project_id", required=True)
     add_json(channel_sessions)
@@ -193,14 +209,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     engine = subparsers.add_parser("engine", help="manage engines")
     engine_sub = engine.add_subparsers(dest="subcommand", required=True)
-    add_json(engine_sub.add_parser("list", help="list installed LLM engines"))
+    add_json(engine_sub.add_parser("list", help="list installed LLM engines"), list_output=True)
 
     schedule = subparsers.add_parser("schedule", help="manage project schedules")
     schedule_sub = schedule.add_subparsers(dest="subcommand", required=True)
 
     schedule_list = schedule_sub.add_parser("list", help="list schedules")
     schedule_list.add_argument("--project", required=True, dest="project_id")
-    add_json(schedule_list)
+    add_json(schedule_list, list_output=True)
     schedule_get = schedule_sub.add_parser("get", help="get one schedule")
     schedule_get.add_argument("--project", required=True, dest="project_id")
     schedule_get.add_argument("--schedule", required=True, dest="schedule_id")
@@ -257,7 +273,20 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-async def dispatch(args: argparse.Namespace, client: WorkstepClient | None = None) -> dict:
+async def dispatch(args: argparse.Namespace, client: WorkstepClient | None = None) -> dict | list:
+    """Return list summaries by default, keeping detail and verbose responses intact."""
+    result = await _dispatch(args, client)
+    if args.subcommand != "list" or getattr(args, "verbose", False):
+        return result
+    key, fields = LIST_FIELDS[args.command]
+    if isinstance(result, dict) and (result.get("ok") is False or key not in result):
+        return result
+    items = result[key] if key else result
+    summaries = [{field: item[field] for field in fields if field in item} for item in items]
+    return {**result, key: summaries} if key else summaries
+
+
+async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = None) -> dict | list:
     """Resolve a parsed command to one tool call and return its JSON result."""
     client = client or WorkstepClient(base_url=args.url)
     command = args.command

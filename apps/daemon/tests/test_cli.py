@@ -339,6 +339,100 @@ async def test_dispatch_create_task_defaults_cwd_to_project_path():
     assert result["cwd"] == "/tmp/project-a"
 
 
+@pytest.mark.parametrize("json_output", [False, True])
+@pytest.mark.parametrize("verbose", [False, True])
+def test_project_list_summary_and_verbose_output(capsys, json_output, verbose):
+    summary = {
+        "id": "p1", "name": "项目", "path": "/tmp/project",
+        "type": "remote", "connection_status": "disconnected",
+    }
+    project = {
+        **summary, "steps": {"nodes": [{"prompt": "完整提示词"}]},
+        "workflows": [{"id": "w1"}], "endpoint": "ws://host/ws",
+        "access_status": "active", "future_field": "extra",
+    }
+    payload = {"projects": [project, {"id": "p2", "name": "本地项目"}]}
+
+    async def handler(request):
+        assert request.url.path == "/api/project/list"
+        return httpx.Response(200, json=payload)
+
+    arguments = ["project", "list"]
+    if json_output:
+        arguments.append("--json")
+    if verbose:
+        arguments.append("--verbose")
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    assert main(arguments, client=client) == 0
+    out = capsys.readouterr().out.strip()
+    assert json.loads(out) == (payload if verbose else {
+        "projects": [summary, {"id": "p2", "name": "本地项目"}],
+    })
+    assert ("\n" not in out) == json_output
+
+
+@pytest.mark.parametrize("command", ["project", "workflow", "task", "engine", "schedule", "channel"])
+def test_list_preserves_errors(capsys, command):
+    async def handler(request):
+        return httpx.Response(500, json={"detail": "项目列表读取失败"})
+
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    arguments = [command, "list", "--json"]
+    if command in {"workflow", "task", "schedule"}:
+        arguments += ["--project", "p1"]
+    assert main(arguments, client=client) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] is False
+    assert "项目列表读取失败" in out["error"]
+
+
+@pytest.mark.parametrize("verbose", [False, True])
+@pytest.mark.parametrize("command,key,summary", [
+    ("workflow", "workflows", {"id": "w1", "name": "流程", "is_default": True,
+                               "deleted": False, "running": False, "failed": True, "nodeCount": 3}),
+    ("task", "tasks", {"id": "t1", "title": "任务", "status": "running",
+                       "workflow_id": "w1", "created_at": "2026-10-03"}),
+    ("engine", "engines", {"id": "codex", "installed": True, "configured": True,
+                           "version": "1", "mode": "cli", "default_model": "model"}),
+    ("schedule", "schedules", {"id": "s1", "name": "每天执行", "status": "active",
+                               "workflow_id": "w1", "summary": "每天 9 点", "next_run_at": None}),
+    ("channel", None, {"id": "b1", "name": "机器人", "platform": "wecom",
+                       "enabled": True, "status": "connected"}),
+])
+def test_other_lists_return_summaries(capsys, verbose, command, key, summary):
+    item = {**summary, "steps": {"nodes": [{"prompt": "长提示词"}]},
+            "description": "长描述", "config": {"fields": ["配置表单"]},
+            "task_template": {"instruction": "完整生成指令"}, "future_field": "extra"}
+    payload = {key: [item], "total": 1, "offset": 0} if key else [item]
+
+    async def handler(request):
+        return httpx.Response(200, json=payload)
+
+    arguments = [command, "list", "--json"]
+    if command in {"task", "workflow", "schedule"}:
+        arguments += ["--project", "p1"]
+    if verbose:
+        arguments.append("--verbose")
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    assert main(arguments, client=client) == 0
+    result = json.loads(capsys.readouterr().out)
+    expected = {key: [summary], "total": 1, "offset": 0} if key else [summary]
+    assert result == (payload if verbose else expected)
+
+
+@pytest.mark.parametrize("command,selector", [("task", "--task"), ("workflow", "--workflow"), ("schedule", "--schedule")])
+def test_detail_commands_keep_full_response(capsys, command, selector):
+    payload = {"id": "item", "description": "完整描述", "steps": {"nodes": [{"prompt": "提示词"}]},
+               "task_template": {"instruction": "生成指令"}}
+
+    async def handler(request):
+        return httpx.Response(200, json=payload)
+
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    assert main([command, "get", "--project", "p1", selector, "item", "--json"], client=client) == 0
+    assert json.loads(capsys.readouterr().out) == payload
+
+
 def test_main_json_compact_output(capsys):
     async def handler(request):
         return httpx.Response(200, json={"projects": [{"id": "p1", "name": "P"}]})
