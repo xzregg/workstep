@@ -3,6 +3,7 @@ export const zhCN = {
 
   gatewayRemote: { loading: '远程电脑', disconnected: '连接已断开', online: '在线', back: '返回我的电脑', localOnly: '本机目录与桌面应用操作仅在电脑本机可用。' },
   channelBot: {
+    taskBindingHint: '任务群绑定请在任务详情「绑定 BOT」中设置。旧版默认任务配置在此保存后改为默认项目，已有群绑定保留。',
     title: '渠道机器人', intro: '通过官方长连接接入企业微信智能机器人或钉钉 Stream 机器人。群可绑定任务，消息会进入该任务的协调助手。',
     wecom: '企业微信', dingtalk: '钉钉', platform: '平台', name: '机器人名称',
     add: '添加机器人', edit: '编辑机器人', empty: '尚未添加机器人',
@@ -14,7 +15,7 @@ export const zhCN = {
     discussionGroups: '绑定BOT', discussionHint: '将群标识绑定到此任务。群内消息会交给此任务的协调助手。',
     noGroups: '此任务尚未绑定讨论群', robot: '机器人', groupId: '群标识',
     noBots: '请先在全局设置添加并启用机器人。',
-    groupIdHint: '机器人收到群消息后，最近的群标识会出现在输入建议中；也可以手动粘贴。',
+    groupIdHint: '将机器人加入群，在群内 @机器人发送一条消息，再从输入建议中选择群标识；任务 ID 自动使用当前任务。也可粘贴已知的群标识。',
     bind: '绑定群', unbind: '解绑', unbindHint: '解绑后，此群不再进入此任务。',
     discardTitle: '放弃未保存的群标识？', discardHint: '当前填写的群标识尚未绑定。',
     status: { connected: '已连接', connecting: '连接中', reconnecting: '重连中', disabled: '未启用', error: '连接失败' },
