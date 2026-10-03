@@ -293,7 +293,9 @@ async def test_workflow_start_and_audit_roll_back_together(api_context, monkeypa
         return (
             Task.get_by_id(task_id).status,
             WorkflowRun.select().where(WorkflowRun.task == task_id).count(),
-            ProjectAuditEvent.select().where(ProjectAuditEvent.task_id == task_id).count(),
+            ProjectAuditEvent.select().where(
+                (ProjectAuditEvent.task_id == task_id) & (ProjectAuditEvent.action == "task.start")
+            ).count(),
         )
 
     assert await main.project_manager.run_db(project_id, inspect) == ("ready", 0, 0)

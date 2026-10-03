@@ -91,6 +91,9 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.state.share_upload_slots = asyncio.Semaphore(2)
     app.state.usage_batch_timeout_seconds = 10.0
 
+    from .request_audit import audit_admin_request
+    app.middleware("http")(audit_admin_request)
+
     @app.middleware("http")
     async def device_host_boundary(request: Request, call_next):
         if settings.public_origin:

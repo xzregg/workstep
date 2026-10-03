@@ -81,6 +81,15 @@ async def test_project_proxy_task_actions_are_project_scoped(
         assert await request(path, "visible-task-id") == 200
     assert cancel.await_count == 2
 
+    def read_denials(_project):
+        from models import ProjectAuditEvent
+        return [(row.actor_id, row.project_id, row.task_id, row.action)
+                for row in ProjectAuditEvent.select().where(ProjectAuditEvent.action == 'request.denied')]
+    denials = await main.project_manager.run_db(visible, read_denials)
+    assert len(denials) >= 4
+    assert all(row == ('worker', visible, None, 'request.denied') for row in denials)
+    assert await main.project_manager.run_db(private, read_denials) == []
+
     live_message = AsyncMock(return_value={"message_id": "message-1", "status": "queued"})
     monkeypatch.setattr(main.workflow_runtime, "send_step_message", live_message)
     private_step = "/api/task/private-task-id/step/dev/message"

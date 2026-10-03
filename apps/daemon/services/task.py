@@ -50,6 +50,16 @@ class TaskService:
         self._cancelled_tasks: set[str] = set()
         self._event_journal = TurnEventJournal()
 
+    @staticmethod
+    def _audit_change(project_id: str | None, task_id: str, action: str):
+        if project_id is None:
+            return
+        from services.project_audit import record_project_audit
+        from services.remote_access import get_effective_actor
+        actor = get_effective_actor()
+        record_project_audit(project_id=project_id, task_id=task_id, action=action,
+            result="succeeded", mode="managed" if actor and actor.source == "managed" else "local")
+
     def create_task(
         self,
         title: str,
@@ -68,6 +78,7 @@ class TaskService:
         input_manifest: list[dict] | None = None,
         dispatch_lineage: list[str] | None = None,
         creator_fields: dict[str, str] | None = None,
+        project_id: str | None = None,
     ) -> dict:
         """Create a task, optionally skipping steps before its start step."""
         steps = (
@@ -99,48 +110,50 @@ class TaskService:
         now = utc_now()
         task_id = str(uuid.uuid4())
 
-        task = Task.create(
-            id=task_id,
-            title=title,
-            description=description,
-            cwd=cwd,
-            engine=engine,
-            workflow_id=workflow_id,
-            created_at=now,
-            updated_at=now,
-            scheduled_start_at=scheduled_start_at,
-            scheduled_start_state="pending" if scheduled_start_at else None,
-            source_dispatch_id=source_dispatch_id,
-            source_project_id=source_project_id,
-            source_task_id=source_task_id,
-            source_step_key=source_step_key,
-            input_manifest_json=(
-                json.dumps(input_manifest, ensure_ascii=False)
-                if input_manifest is not None else None
-            ),
-            dispatch_lineage_json=(
-                json.dumps(dispatch_lineage, ensure_ascii=False)
-                if dispatch_lineage is not None else None
-            ),
-            **(
-                creator_fields
-                if creator_fields is not None
-                else current_actor_task_fields()
-            ),
-        )
-        if review_overrides:
-            task.review_overrides_json = json.dumps(review_overrides, ensure_ascii=False)
-            task.save()
-
-        for index, step in enumerate(steps):
-            TaskStep.create(
-                task=task,
-                step_key=step["key"],
-                status="pending" if step["key"] in execution_keys else "skipped",
-                engine=step.get("engine"),
+        with Task._meta.database.atomic():
+            task = Task.create(
+                id=task_id,
+                title=title,
+                description=description,
+                cwd=cwd,
+                engine=engine,
+                workflow_id=workflow_id,
+                created_at=now,
+                updated_at=now,
+                scheduled_start_at=scheduled_start_at,
+                scheduled_start_state="pending" if scheduled_start_at else None,
+                source_dispatch_id=source_dispatch_id,
+                source_project_id=source_project_id,
+                source_task_id=source_task_id,
+                source_step_key=source_step_key,
+                input_manifest_json=(
+                    json.dumps(input_manifest, ensure_ascii=False)
+                    if input_manifest is not None else None
+                ),
+                dispatch_lineage_json=(
+                    json.dumps(dispatch_lineage, ensure_ascii=False)
+                    if dispatch_lineage is not None else None
+                ),
+                **(
+                    creator_fields
+                    if creator_fields is not None
+                    else current_actor_task_fields()
+                ),
             )
+            if review_overrides:
+                task.review_overrides_json = json.dumps(review_overrides, ensure_ascii=False)
+                task.save()
 
-        return task_to_dict(task)
+            for index, step in enumerate(steps):
+                TaskStep.create(
+                    task=task,
+                    step_key=step["key"],
+                    status="pending" if step["key"] in execution_keys else "skipped",
+                    engine=step.get("engine"),
+                )
+
+            self._audit_change(project_id, task.id, "task.create")
+            return task_to_dict(task)
 
     def update_scheduled_start(
         self, task_id: str, scheduled_start_at: datetime | None,
@@ -564,38 +577,44 @@ class TaskService:
     def delete_task(self, task_id: str, project_id: str) -> bool:
         """Delete a task."""
         try:
-            task = Task.get_by_id(task_id)
-            if task.status == "running":
-                raise RuntimeError("Running tasks cannot be deleted")
-            task.delete_instance(recursive=True)
-            return True
+            with Task._meta.database.atomic():
+                task = Task.get_by_id(task_id)
+                if task.status == "running":
+                    raise RuntimeError("Running tasks cannot be deleted")
+                task.delete_instance(recursive=True)
+                self._audit_change(project_id, task_id, "task.delete")
+                return True
         except Task.DoesNotExist:
             return False
 
-    def archive_task(self, task_id: str) -> bool:
+    def archive_task(self, task_id: str, project_id: str | None = None) -> bool:
         """Archive a task so it disappears from the active board."""
         try:
-            task = Task.get_by_id(task_id)
-            if task.status == "running":
-                raise RuntimeError("Running tasks cannot be archived")
-            task.archived = 1
-            self.clear_scheduled_start(task_id)
-            task.updated_at = utc_now()
-            task.save()
-            return True
+            with Task._meta.database.atomic():
+                task = Task.get_by_id(task_id)
+                if task.status == "running":
+                    raise RuntimeError("Running tasks cannot be archived")
+                task.archived = 1
+                self.clear_scheduled_start(task_id)
+                task.updated_at = utc_now()
+                task.save()
+                self._audit_change(project_id, task_id, "task.archive")
+                return True
         except Task.DoesNotExist:
             return False
 
-    def unarchive_task(self, task_id: str) -> bool:
+    def unarchive_task(self, task_id: str, project_id: str | None = None) -> bool:
         """Restore an archived task back to the active board."""
         try:
-            task = Task.get_by_id(task_id)
-            if not task.archived:
-                return False
-            task.archived = 0
-            task.updated_at = utc_now()
-            task.save()
-            return True
+            with Task._meta.database.atomic():
+                task = Task.get_by_id(task_id)
+                if not task.archived:
+                    return False
+                task.archived = 0
+                task.updated_at = utc_now()
+                task.save()
+                self._audit_change(project_id, task_id, "task.unarchive")
+                return True
         except Task.DoesNotExist:
             return False
 
@@ -609,31 +628,33 @@ class TaskService:
     ) -> dict | None:
         """Copy a task with a new title."""
         try:
-            original = Task.get_by_id(task_id)
-            now = utc_now()
-            new_id = str(uuid.uuid4())
-            # Create new task
-            new_task = Task.create(
-                id=new_id,
-                title=new_title,
-                description=original.description,
-                cwd=cwd_override or original.cwd,
-                engine=original.engine or DEFAULT_EXECUTION_ENGINE,
-                created_at=now,
-                updated_at=now,
-                **(creator_fields if creator_fields is not None else current_actor_task_fields()),
-            )
-
-            # Copy task steps
-            for step in TaskStep.select().where(TaskStep.task == original):
-                TaskStep.create(
-                    task=new_task,
-                    step_key=step.step_key,
-                    status="pending",
-                    engine=step.engine,
+            with Task._meta.database.atomic():
+                original = Task.get_by_id(task_id)
+                now = utc_now()
+                new_id = str(uuid.uuid4())
+                # Create new task
+                new_task = Task.create(
+                    id=new_id,
+                    title=new_title,
+                    description=original.description,
+                    cwd=cwd_override or original.cwd,
+                    engine=original.engine or DEFAULT_EXECUTION_ENGINE,
+                    created_at=now,
+                    updated_at=now,
+                    **(creator_fields if creator_fields is not None else current_actor_task_fields()),
                 )
 
-            return task_to_dict(new_task)
+                # Copy task steps
+                for step in TaskStep.select().where(TaskStep.task == original):
+                    TaskStep.create(
+                        task=new_task,
+                        step_key=step.step_key,
+                        status="pending",
+                        engine=step.engine,
+                    )
+
+                self._audit_change(project_id, new_task.id, "task.copy")
+                return task_to_dict(new_task)
         except Task.DoesNotExist:
             return None
 
