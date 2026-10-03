@@ -168,6 +168,14 @@ async def fetch_and_save_models(
 
 
 def require_managed_model(provider: dict, model: str) -> None:
+    if config_store.managed_gateway_id:
+        current = config_store.get_provider(str(provider.get('id') or ''))
+        if (current is None
+                or current.get('managed_gateway_id') != config_store.managed_gateway_id
+                or any(current.get(key) != provider.get(key) for key in (
+                    'api_key', 'models', 'protocol_base_urls', 'protocols', 'base_url',
+                ))):
+            raise ValueError('所选供应商授权已失效，请重新选择供应商')
     if provider.get("managed") and model not in provider.get("models", []):
         raise ValueError("所选模型未获平台供应商授权")
 
@@ -192,7 +200,7 @@ async def chat_completion(
     (e.g. DeepSeek); providers that reject the field fall back to a plain call.
     """
     model = (model or "").strip()
-    require_managed_model(provider, model)
+    await asyncio.to_thread(require_managed_model, provider, model)
     has_base_url = bool(
         provider.get("base_url") or provider.get("protocol_base_urls")
     )
@@ -308,7 +316,7 @@ async def text_completion(
 ) -> str:
     """Run a one-shot text request through any configured provider protocol."""
     model = (model or "").strip()
-    require_managed_model(provider, model)
+    await asyncio.to_thread(require_managed_model, provider, model)
     has_base_url = bool(
         provider.get("base_url") or provider.get("protocol_base_urls")
     )

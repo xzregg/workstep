@@ -133,6 +133,34 @@ async def test_signed_skill_manifest_downloads_once_and_applies_revocation(tmp_p
     assert (await service.apply_manifest(token, pem, pin, "gateway-test",
                                          "device-1", "user-1"))[0]["status"] == "applied"
     assert (project / ".workstep" / "skills" / "review" / "SKILL.md").is_file()
+    # Exercise the real Codex spawn adapter after signed deployment. The fake
+    # process only substitutes the external binary; whitelist preparation runs.
+    import asyncio
+    from engines.codex import CodexEngine
+    from services import config as config_module
+    from services.skill_center import SkillCenter
+    import services.skill_center as skill_module
+    from unittest.mock import patch
+    center = SkillCenter(source_roots={})
+    commands = []
+    async def subprocess(*args, **kwargs):
+        commands.append(args)
+        stdout = asyncio.StreamReader(); stdout.feed_eof()
+        stderr = asyncio.StreamReader(); stderr.feed_eof()
+        async def wait():
+            return 0
+        async def drain():
+            pass
+        stdin = SimpleNamespace(write=lambda _data: None, drain=drain, close=lambda: None)
+        return SimpleNamespace(stdout=stdout, stderr=stderr, stdin=stdin, returncode=0, wait=wait)
+    with patch.object(config_module, 'CONFIG_FILE', tmp_path / 'engine-config.json'), \
+            patch.object(skill_module, 'skill_center', center), \
+            patch.object(CodexEngine, 'provider_config_store', return_value=config_module.ConfigStore()), \
+            patch.object(CodexEngine, 'resolve_binary', return_value='/fake/codex'), \
+            patch.object(asyncio, 'create_subprocess_exec', subprocess):
+        async for _event in CodexEngine().spawn(prompt='Review', cwd=str(project)):
+            pass
+    assert any('skills.config=' in arg and 'review' in arg for arg in commands[0])
     await service.apply_manifest(token, pem, pin, "gateway-test", "device-1", "user-1")
     assert calls == ["version-1"]
     (project / ".workstep" / "skills" / "review" / "SKILL.md").write_text("# Tampered")

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { LedgerExportButton } from './LedgerExportButton'
 
 type AuditEvent = {
   id: string; occurred_at: string; action: string; result: string
@@ -112,6 +113,12 @@ export function AdminAuditPage() {
     </div></li>)}</ul>
     <div className="gateway-admin-pagination"><span>共 {total} 条记录 · 第 {page}/{
       Math.max(1, Math.ceil(total / pageSize))} 页</span>
+      <LedgerExportButton rows={events} filename={`audit-page-${page}.csv`} disabled={loading || !!error}
+        columns={[{ name: '事件 ID', key: 'id' }, { name: '时间', key: 'occurred_at' },
+          { name: '操作', key: 'action' }, { name: '结果', key: 'result' },
+          { name: '用户 ID', key: 'actor_id' }, { name: '设备 ID', key: 'device_id' },
+          { name: '项目 ID', key: 'platform_project_id' }, { name: '任务 ID', key: 'task_id' },
+          { name: '详情', key: 'metadata' }]} />
       <button type="button" disabled={page <= 1 || loading} onClick={() => setPage(current => current - 1)}>上一页</button>
       <button type="button" disabled={page >= Math.ceil(total / pageSize) || loading}
         onClick={() => setPage(current => current + 1)}>下一页</button></div>

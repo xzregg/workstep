@@ -481,6 +481,8 @@ class DataConnection:
                          project_id: str | None = None,
                          access_level: str | None = None,
                          task_create: bool = False,
+                         provider_ids: list[str] | None = None,
+                         provider_grant_expires_at: int | None = None,
                          share_ticket: str | None = None,
                          target_path: str | None = None,
                          share_body: bytes | None = None,
@@ -598,6 +600,8 @@ class DataConnection:
                     "display_name": display_name or username,
                     "project_id": project_id, "access_level": access_level,
                     "task_create": task_create,
+                    "provider_ids": provider_ids,
+                    "provider_grant_expires_at": provider_grant_expires_at,
                 })
             await self.send_frame(ProxyFrame(
                 stream_id=stream_id, type=FrameType.http_request,
@@ -694,6 +698,8 @@ class DataConnection:
                               username: str, display_name: str | None = None,
                               project_id: str | None = None,
                               access_level: str | None = None,
+                              provider_ids: list[str] | None = None,
+                              provider_grant_expires_at: int | None = None,
                               authorization_check=None) -> None:
         if (project_id is None) != (access_level is None) or (
                 access_level is not None and access_level not in ("read", "edit")):
@@ -724,7 +730,9 @@ class DataConnection:
                          "query": browser.url.query, "headers": headers,
                          "user_id": user_id, "username": username,
                          "display_name": display_name or username,
-                         "project_id": project_id, "access_level": access_level},
+                         "project_id": project_id, "access_level": access_level,
+                         "provider_ids": provider_ids,
+                         "provider_grant_expires_at": provider_grant_expires_at},
             ))
             opened = await asyncio.wait_for(queue.get(), timeout=15)
             if self.flow_control and not isinstance(opened, Exception):

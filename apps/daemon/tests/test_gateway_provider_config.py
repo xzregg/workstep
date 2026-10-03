@@ -344,3 +344,50 @@ async def test_slow_provider_disk_apply_does_not_block_control_loop(tmp_path, mo
     assert not task.done()
     await asyncio.wait_for(asyncio.sleep(0.01), timeout=0.05)
     await task
+
+
+def test_remote_actor_cannot_use_another_users_installed_provider(tmp_path, monkeypatch):
+    from services.remote_access import ActorSnapshot, actor_context
+    monkeypatch.setattr(config_module, 'CONFIG_FILE', tmp_path / 'config.json')
+    store = config_module.ConfigStore()
+    store.set_managed_gateway_id('gateway', provider_guard=lambda _id: True)
+    store.apply_managed_providers('gateway', 1, [{
+        'id': 'owner-only', 'name': 'Owner API', 'type': 'custom', 'protocols': ['openai_responses'],
+        'protocol_base_urls': {'openai_responses': 'https://api.example.test'},
+        'api_key': 'owner-secret', 'models': ['model-a'],
+    }], user_id='owner', default_provider_id='owner-only')
+    monkeypatch.setattr(CodexEngine, 'provider_config_store', classmethod(lambda cls: store))
+    actor = ActorSnapshot(actor_id='other', username='other', user_name='Other', device_id='pc',
+                          device_name='PC', source='managed', project_id='project')
+    with actor_context(actor):
+        assert store.get_providers() == []
+
+        with pytest.raises(ValueError):
+            CodexEngine().resolve_provider_runtime(provider_id='owner-only', model='model-a')
+        with pytest.raises(ValueError):
+            CodexEngine().resolve_provider_runtime(model='model-a')
+
+    from dataclasses import replace
+    allowed = replace(actor, provider_ids=frozenset({'owner-only'}), provider_grant_expires_at=int(time.time()) + 60)
+    with actor_context(allowed):
+        assert store.get_provider('owner-only') is not None
+        assert CodexEngine().resolve_provider_runtime(model='model-a').provider_id == 'owner-only'
+    expired = replace(allowed, provider_grant_expires_at=int(time.time()) - 1)
+    with actor_context(expired):
+        assert store.get_providers() == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('engine_id', ['openclaw', 'qoder_sdk', 'cursor_sdk'])
+async def test_native_credentials_engines_fail_closed_in_managed_mode(engine_id, tmp_path, monkeypatch):
+    from engines.openclaw import OpenClawEngine
+    from engines.qoder_sdk import QoderSDKEngine
+    from engines.cursor_sdk import CursorSdkEngine
+    store = config_module.ConfigStore()
+    store.set_managed_gateway_id('gateway', provider_guard=lambda _id: True)
+    engine_class = {'openclaw': OpenClawEngine, 'qoder_sdk': QoderSDKEngine,
+                    'cursor_sdk': CursorSdkEngine}[engine_id]
+    monkeypatch.setattr(engine_class, 'provider_config_store', classmethod(lambda cls: store))
+    with pytest.raises(ValueError, match='受管模式'):
+        async for _event in engine_class().spawn(prompt='Hello', cwd=str(tmp_path)):
+            pass

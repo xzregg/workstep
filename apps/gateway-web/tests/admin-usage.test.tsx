@@ -150,3 +150,19 @@ test('provider bill import requires step-up and submits only bounded billing fie
   assert.ok(requests.findIndex(item => item.url === '/api/auth/step-up') <
     requests.findIndex(item => item.url === '/api/admin/usage/provider-bills'))
 })
+
+
+test('read-only usage page exposes scoped reports without global bill controls', async () => {
+  const paths: string[] = []
+  globalThis.fetch = async input => {
+    const path = String(input); paths.push(path)
+    if (path.startsWith('/api/admin/usage/events?')) return Response.json({ events: [], total: 0 })
+    if (path.startsWith('/api/admin/usage?')) return Response.json({ event_count: 0, unmetered_count: 0, input_tokens: null, output_tokens: null, cache_read_tokens: null, cache_write_tokens: null, total_tokens: null, estimated_cost: null, billed_cost: null, currency: null, groups: [], group_total: 0 })
+    throw new Error(path)
+  }
+  render(<MemoryRouter><AdminUsagePage readOnly /></MemoryRouter>)
+  await screen.findByText('当前条件下没有计量事件。')
+  assert.equal(screen.queryByRole('button', { name: '导入供应商账单' }), null)
+  assert.equal(screen.queryByLabelText('对账供应商 ID'), null)
+  assert.ok(paths.every(path => !path.includes('/reconciliation')))
+})

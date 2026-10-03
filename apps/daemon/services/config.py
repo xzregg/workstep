@@ -973,6 +973,22 @@ class ConfigStore:
             self._managed_gateway_id = gateway_id
             self._managed_provider_guard = provider_guard
 
+    @property
+    def managed_gateway_id(self) -> str | None:
+        return self._managed_gateway_id
+
+    def _provider_allowed_for_actor(self, provider_id: str) -> bool:
+        from services.remote_access import get_current_actor
+        import time
+        actor = get_current_actor()
+        if actor is None or actor.source != "managed":
+            return True
+        if actor.provider_ids is not None:
+            return (actor.provider_grant_expires_at is not None
+                    and actor.provider_grant_expires_at > time.time()
+                    and provider_id in actor.provider_ids)
+        return actor.actor_id == self.get("managed_provider_state", {}).get("user_id")
+
     def get_managed_default_provider(self) -> str:
         if not self._managed_gateway_id:
             return ""
@@ -1086,7 +1102,8 @@ class ConfigStore:
             return [item for item in providers
                     if item.get("managed_gateway_id") == self._managed_gateway_id
                     and self._managed_provider_guard is not None
-                    and self._managed_provider_guard(str(item.get("id")))]
+                    and self._managed_provider_guard(str(item.get("id")))
+                    and self._provider_allowed_for_actor(str(item.get("id")))]
         return providers
 
     def get_provider(self, provider_id: str) -> dict[str, Any] | None:

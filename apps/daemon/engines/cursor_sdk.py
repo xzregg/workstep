@@ -185,6 +185,7 @@ class CursorSdkEngine(AcpEngineBase):
         config_overrides: dict | None = None,
         thinking_effort: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
+        self.require_native_credentials_allowed()
         api_key = await asyncio.to_thread(self._api_key)
         if not api_key:
             yield InternalEvent(

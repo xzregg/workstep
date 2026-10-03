@@ -296,7 +296,7 @@ test('management navigation and module routes respect current roles', async () =
   assert.equal(screen.queryByRole('heading', { name: '平台设置' }), null)
 })
 
-test('audit administrator can enter the audit workbench without broader admin modules', async () => {
+test('audit administrator can enter scoped ledger workbenches without broader admin modules', async () => {
   globalThis.fetch = async input => {
     const url = String(input)
     if (url === '/api/auth/admin-access') return Response.json({ roles: ['audit_admin'], must_change_password: false })
@@ -310,7 +310,7 @@ test('audit administrator can enter the audit workbench without broader admin mo
   cleanup()
   render(<MemoryRouter initialEntries={['/admin']}><App /></MemoryRouter>)
   await screen.findByRole('link', { name: '审计记录' })
-  assert.equal(screen.queryByRole('link', { name: 'Token 用量' }), null)
+  assert.ok(screen.getByRole('link', { name: 'Token 用量' }))
   assert.equal(screen.queryByRole('link', { name: '平台设置' }), null)
 })
 

@@ -11,7 +11,7 @@ type Filters = { from_time: string; to_time: string; user_id: string; device_id:
 const emptyFilters: Filters = { from_time: '', to_time: '', user_id: '', device_id: '',
   project_id: '', provider_id: '', model: '', source: 'reported_by_device', metering_status: '' }
 
-export function AdminUsagePage() {
+export function AdminUsagePage({ readOnly = false }: { readOnly?: boolean }) {
   const [draft, setDraft] = useState<Filters>(emptyFilters)
   const [filters, setFilters] = useState('source=reported_by_device')
   const [error, setError] = useState('')
@@ -68,7 +68,6 @@ export function AdminUsagePage() {
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}
     <AdminUsageSummary key={`summary-${filters}`} filters={filters} />
     <AdminUsageEvents key={`events-${filters}`} filters={filters} />
-    <AdminUsageBillImport />
-    <AdminUsageReconciliation />
+    {!readOnly && <><AdminUsageBillImport /><AdminUsageReconciliation /></>}
   </section>
 }

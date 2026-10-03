@@ -54,7 +54,7 @@ export function AdminOverviewPage() {
         {overview.roles.some(role => role === 'super_admin' || role === 'skill_admin') &&
           <Link to="/admin/skills">Skill 管理</Link>}
         {overview.roles.includes('super_admin') && <Link to="/admin/groups">用户组管理</Link>}
-        {overview.roles.includes('super_admin') && <Link to="/admin/usage">Token 用量</Link>}
+        {overview.roles.some(role => ['super_admin', 'audit_admin'].includes(role)) && <Link to="/admin/usage">Token 用量</Link>}
         {overview.roles.some(role => role === 'super_admin' || role === 'audit_admin') &&
           <Link to="/admin/audit">审计记录</Link>}
         {overview.roles.includes('super_admin') && <Link to="/admin/settings">平台设置</Link>}

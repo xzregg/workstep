@@ -11,6 +11,18 @@ from .identity import ManagedActor
 from .share_ticket import verify_share_ticket
 
 
+def _provider_scope(start: dict):
+    ids = start.get("provider_ids")
+    expires = start.get("provider_grant_expires_at")
+    if ids is None and expires is None:
+        return None, None
+    if (not isinstance(ids, list) or len(ids) > 1000
+            or any(not isinstance(item, str) or not 1 <= len(item) <= 128 for item in ids)
+            or type(expires) is not int):
+        raise ValueError("Invalid managed provider scope")
+    return frozenset(ids), expires
+
+
 class ManagedHttpBridge:
     def __init__(self, app, stream_id: str, start: dict, send_frame, device_id: str,
                  *, gateway_key: str | None = None,
@@ -106,8 +118,10 @@ class ManagedHttpBridge:
                         or name.startswith("x-workstep-")):
                     continue
                 headers.append((name.encode("ascii"), pair[1].encode("latin1")))
+            provider_ids, provider_expires = _provider_scope(self.start)
             actor = ManagedActor(user_id, username, self.device_id, "gateway-remote", 0,
-                                 project_id, access_level, task_create, display_name)
+                                 project_id, access_level, task_create, display_name,
+                                 provider_ids, provider_expires)
             scope = {
                 "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
                 "method": method.upper(), "scheme": "http", "path": unquote(path),
@@ -261,8 +275,10 @@ class ManagedWebSocketBridge:
                         or name.startswith("x-workstep-")):
                     continue
                 headers.append((name.encode("ascii"), pair[1].encode("latin1")))
+            provider_ids, provider_expires = _provider_scope(self.start)
             actor = ManagedActor(user_id, username, self.device_id, "gateway-remote", 0,
-                                 project_id, access_level, task_create, display_name)
+                                 project_id, access_level, task_create, display_name,
+                                 provider_ids, provider_expires)
             scope = {
                 "type": "websocket", "asgi": {"version": "3.0"}, "scheme": "ws",
                 "path": unquote(path), "raw_path": path.encode("utf-8"),

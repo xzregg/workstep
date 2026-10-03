@@ -321,6 +321,7 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
         live_message_queue: asyncio.Queue | None = None,
         config_overrides: dict | None = None,
     ) -> AsyncIterator[InternalEvent]:
+        self.require_native_credentials_allowed()
         if not self._sdk_available():
             yield InternalEvent(
                 type="error", data={"message": "qoder-agent-sdk 未安装"}

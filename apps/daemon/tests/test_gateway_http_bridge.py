@@ -1,5 +1,7 @@
 import asyncio
 import base64
+import json
+import time
 
 import httpx
 import pytest
@@ -135,7 +137,9 @@ async def test_gateway_bridge_streams_body_and_attaches_remote_actor_without_blo
         actor = get_current_actor()
         return {"body": (await request.body()).decode(), "user_id": actor.actor_id,
                 "source": actor.source, "device_id": request.state.managed_actor.device_id,
-                "message_author": current_actor_message_fields()}
+                "message_author": current_actor_message_fields(),
+                "provider_ids": sorted(actor.provider_ids or []),
+                "provider_grant_expires_at": actor.provider_grant_expires_at}
 
     @app.get("/api/health")
     async def health():
@@ -153,11 +157,13 @@ async def test_gateway_bridge_streams_body_and_attaches_remote_actor_without_blo
     async def send_frame(frame):
         frames.append(frame)
 
+    expires = int(time.time()) + 60
     bridge = ManagedHttpBridge(app, "stream-1", {
         "method": "POST", "path": "/api/echo", "query": "",
         "headers": [["content-type", "text/plain"], ["x-workstep-actor-name", "spoof"]],
         "user_id": "user-remote", "username": "alice",
         "display_name": "Alice Display",
+        "provider_ids": ["provider-allowed"], "provider_grant_expires_at": expires,
     }, send_frame, "device-1", flow_control=True)
     bridge.start_task()
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
@@ -181,6 +187,8 @@ async def test_gateway_bridge_streams_body_and_attaches_remote_actor_without_blo
     assert b'"source":"managed"' in body
     assert b'"author_username":"alice"' in body
     assert b'"author_name":"Alice Display"' in body
+    assert json.loads(body)["provider_ids"] == ["provider-allowed"]
+    assert json.loads(body)["provider_grant_expires_at"] == expires
     assert response_frames[-1].payload == {"phase": "end"}
 
     for blocked_path in ("/api/fs/open-directory", "/api/fs/browse"):
@@ -301,6 +309,8 @@ async def test_gateway_websocket_bridge_carries_bidirectional_messages_with_mana
             await ws.close(code=4401)
             return
         await ws.accept()
+        assert ws.scope['managed_actor'].provider_ids == frozenset({'supplier'})
+        assert ws.scope['managed_actor'].provider_grant_expires_at == expires
         message = await ws.receive_text()
         await ws.send_text(
             f"{ws.scope['managed_actor'].user_id}:"
@@ -314,10 +324,12 @@ async def test_gateway_websocket_bridge_carries_bidirectional_messages_with_mana
         frames.append(frame)
         emitted.set()
 
+    expires = int(__import__('time').time()) + 60
     bridge = ManagedWebSocketBridge(app, "socket-1", {
         "path": "/ws", "query": "", "headers": [],
         "user_id": "remote-user", "username": "alice",
         "display_name": "Alice Display",
+        "provider_ids": ['supplier'], "provider_grant_expires_at": expires,
     }, send_frame, "device-1")
     bridge.start_task()
     await asyncio.wait_for(emitted.wait(), timeout=1)

@@ -2,6 +2,7 @@
 
 import hashlib
 import asyncio
+import time
 from datetime import datetime, timezone
 from urllib.parse import parse_qs
 
@@ -11,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from workstep_gateway_protocol import project_http_route_allowed
 
+from .providers_api import compiled_provider_access
 from .capabilities import compiled_device_policy
 from .identity import COOKIE_NAME, IdentityService
 from .models import Device, PlatformProject, UsedDeviceAccessTicket, User, UserDevice
@@ -191,8 +193,16 @@ async def _remote_identity(request: Request):
     return user, device_id, auth_session, host_project_id
 
 
+async def _check_provider_grants(request, device_id: str, user_id: str, provider_ids: list[str]):
+    current, _ = await compiled_provider_access(request.app.state.database, device_id, user_id)
+    if set(provider_ids) - set(current):
+        raise HTTPException(status_code=403, detail='Provider access revoked')
+
+
 async def proxy_remote_request(request: Request):
     user, device_id, auth_session, host_project_id = await _remote_identity(request)
+    provider_ids, _ = await compiled_provider_access(request.app.state.database, device_id, user.id)
+    provider_grant_expires_at = int(time.time()) + 300
     task_create = False
     if auth_session.project_id:
         if request.method == "POST" and request.url.path in ("/api/task/create", "/api/task/copy"):
@@ -209,6 +219,7 @@ async def proxy_remote_request(request: Request):
         connection = await request.app.state.control_connections.request_data(device_id)
         if auth_session.project_id:
             async def authorize_stream():
+                await _check_provider_grants(request, device_id, user.id, provider_ids)
                 current_level = await _active_project_access(
                     request, user.id, device_id, auth_session.project_id,
                     host_project_id,
@@ -223,7 +234,8 @@ async def proxy_remote_request(request: Request):
 
             return await connection.proxy_http(
                 request, user_id=user.id, username=user.username,
-                display_name=user.display_name,
+                display_name=user.display_name, provider_ids=provider_ids,
+                provider_grant_expires_at=provider_grant_expires_at,
                 project_id=host_project_id,
                 access_level=auth_session.project_access_level,
                 task_create=task_create,
@@ -231,7 +243,8 @@ async def proxy_remote_request(request: Request):
             )
         return await connection.proxy_http(
             request, user_id=user.id, username=user.username,
-            display_name=user.display_name,
+            display_name=user.display_name, provider_ids=provider_ids,
+            provider_grant_expires_at=provider_grant_expires_at,
         )
     except (ConnectionError, asyncio.TimeoutError) as exc:
         raise HTTPException(status_code=502, detail="Device data connection unavailable") from exc
@@ -241,6 +254,8 @@ async def proxy_remote_request(request: Request):
 async def proxy_remote_websocket(ws: WebSocket, path: str):
     try:
         user, device_id, auth_session, host_project_id = await _remote_identity(ws)
+        provider_ids, _ = await compiled_provider_access(ws.app.state.database, device_id, user.id)
+        provider_grant_expires_at = int(time.time()) + 300
         if auth_session.project_id:
             if ws.url.path != "/ws":
                 raise HTTPException(status_code=403, detail="Project proxy scope unavailable")
@@ -248,6 +263,7 @@ async def proxy_remote_websocket(ws: WebSocket, path: str):
             access_level = auth_session.project_access_level
 
             async def authorize_stream():
+                await _check_provider_grants(ws, device_id, user.id, provider_ids)
                 current_user, current_device, current_session, current_host = (
                     await _remote_identity(ws)
                 )
@@ -261,7 +277,8 @@ async def proxy_remote_websocket(ws: WebSocket, path: str):
             connection = await ws.app.state.control_connections.request_data(device_id)
             await connection.proxy_websocket(
                 ws, user_id=user.id, username=user.username,
-                display_name=user.display_name,
+                display_name=user.display_name, provider_ids=provider_ids,
+                provider_grant_expires_at=provider_grant_expires_at,
                 project_id=host_project_id, access_level=access_level,
                 authorization_check=authorize_stream,
             )
@@ -269,7 +286,8 @@ async def proxy_remote_websocket(ws: WebSocket, path: str):
         connection = await ws.app.state.control_connections.request_data(device_id)
         await connection.proxy_websocket(
             ws, user_id=user.id, username=user.username,
-            display_name=user.display_name,
+            display_name=user.display_name, provider_ids=provider_ids,
+            provider_grant_expires_at=provider_grant_expires_at,
         )
     except HTTPException:
         await ws.close(code=4403)

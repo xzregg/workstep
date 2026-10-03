@@ -49,7 +49,9 @@ class GatewayClientService:
             if bundle_dir else None
         )
         if self.managed_config is not None:
-            self.usage_outbox = UsageOutbox(config_module.CONFIG_DIR / "usage-outbox.db")
+            self.usage_outbox = await asyncio.to_thread(
+                UsageOutbox, config_module.CONFIG_DIR / "usage-outbox.db",
+            )
             config_store.set_managed_gateway_id(
                 self.managed_config.gateway_id,
                 provider_guard=lambda provider_id: bool(
@@ -130,7 +132,7 @@ class GatewayClientService:
             return
         from services.remote_project import get_effective_actor
 
-        actor = get_effective_actor()
+        actor = await asyncio.to_thread(get_effective_actor)
         request_id = uuid4().hex
         await self.record_message_usage(
             project_id=project_id, task_id=None, message_id=request_id,
