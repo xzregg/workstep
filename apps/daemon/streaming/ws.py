@@ -146,6 +146,13 @@ async def _handle_client_message(
     try:
         msg = json.loads(raw)
         msg_type = msg.get("type")
+        if msg_type == "ping":
+            if queue is not None:
+                try:
+                    queue.put_nowait({"type": "pong", "nonce": msg.get("nonce")})
+                except asyncio.QueueFull:
+                    logger.warning("WebSocket heartbeat queue full")
+            return
 
         # Project sessions may narrow their feed, but never select another
         # project or invoke global intervention/task controls.

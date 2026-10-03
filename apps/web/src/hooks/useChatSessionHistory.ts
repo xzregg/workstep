@@ -38,25 +38,45 @@ export function useChatSessionHistory({ sessionId, messageSessionId, projectId, 
     pageRef.current = page
     const store = useChatSessionStore.getState()
     store.newSession(sessionId)
-    chatSessionApi.get(sessionId, projectId, PAGE_SIZE, 0)
-      .then((detail) => {
-        if (!active) return
-        page.offset = detail.messages?.length || 0
-        page.hasOlder = page.offset === PAGE_SIZE
-        page.loading = false
-        callbacks.current.onLoaded(detail)
-        store.newSession(detail.id)
-        store.hydrateSession(
-          detail.id,
-          normalizeMessages(detail.messages || []),
-          detail.running,
-        )
-      })
-      .catch(() => {
-        page.loading = false
-        if (active) callbacks.current.onMissing()
-      })
-    return () => { active = false; pageRef.current = { key: '', offset: 0, hasOlder: false, loading: false } }
+    let inFlight = false
+    let refreshPending = false
+    const load = (refresh = false) => {
+      if (inFlight) { refreshPending = true; return }
+      inFlight = true
+      page.loading = true
+      const unchangedMessages = useChatSessionStore.getState().sessions[sessionId]?.messages || []
+      void chatSessionApi.get(sessionId, projectId, PAGE_SIZE, 0)
+        .then((detail) => {
+          if (!active) return
+          page.offset = detail.messages?.length || 0
+          page.hasOlder = page.offset === PAGE_SIZE
+          page.loading = false
+          if (!refresh) callbacks.current.onLoaded(detail)
+          store.newSession(detail.id)
+          store.hydrateSession(
+            detail.id,
+            normalizeMessages(detail.messages || []),
+            detail.running,
+            unchangedMessages,
+          )
+        })
+        .catch(() => {
+          page.loading = false
+          if (active && !refresh) callbacks.current.onMissing()
+        })
+        .finally(() => {
+          inFlight = false
+          if (active && refreshPending) { refreshPending = false; load(true) }
+        })
+    }
+    const recovered = () => load(true)
+    window.addEventListener('workstep:reconnected', recovered)
+    load()
+    return () => {
+      active = false
+      window.removeEventListener('workstep:reconnected', recovered)
+      pageRef.current = { key: '', offset: 0, hasOlder: false, loading: false }
+    }
   }, [sessionId, projectId])
 
   const loadOlderHistory = useCallback(async (beforePrepend?: () => void) => {

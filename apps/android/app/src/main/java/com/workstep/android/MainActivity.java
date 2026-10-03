@@ -622,8 +622,11 @@ public final class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (foregroundRefresh.onResume(SystemClock.elapsedRealtime()) && webView != null)
-            webView.reload();
+        boolean reload = foregroundRefresh.onResume(SystemClock.elapsedRealtime());
+        if (webView != null) {
+            if (reload) webView.reload();
+            else webView.evaluateJavascript("window.dispatchEvent(new Event('workstep:resume'))", null);
+        }
     }
 
     @Override

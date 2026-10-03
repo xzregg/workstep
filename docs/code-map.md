@@ -1,5 +1,7 @@
 # 按功能查找代码
 
+WebSocket 前台恢复由 `apps/web/src/hooks/useWebSocket.ts` 持有：页面可见、重新联网、历史缓存恢复和 Android `MainActivity.onResume` 的 `workstep:resume` 通知会替换旧连接，重新订阅并补拉列表；20 秒心跳与 10 秒超时检测失效连接，daemon `streaming/ws.py::_handle_client_message` 仅向发起连接回复 pong。`useChatSessionHistory.ts` 串行补拉当前对话，`assistantStore.ts::hydrateSession` 仅替换请求开始后未变化的消息，保留并发实时更新及消息顺序。行为见 Web `websocketRecovery.test.tsx`、`useChatSessionHistory.test.tsx`、`chatSessionStore.test.ts` 和 daemon `test_main.py`。
+
 企业微信入站回复的正文流式更新由 `apps/daemon/services/channels/reply_stream.py::ChannelReplyStream` 合并、节流和隔离网络发送；`responder.py` 与 `bots.py::_task_reply` 提供累计 LLM 正文，`BotManager` 管理更新任务的生命周期，`wecom.py::update_reply` 更新同一气泡，最终回复按 UTF-8 限长分段。统一能力与接口在 `base.py`，协议说明见 `docs/channel-message-protocol.md`；行为及慢网络健康检查见 `tests/test_channel_streaming.py`、`test_channel_bots.py` 和 `test_channel_chat_responder.py`。
 
 Gateway 自主账号注册：`apps/gateway-web/src/PortalAuthPage.tsx` 编排平台状态、登录及注册入口；`GatewayRegistrationForm.tsx` 自主管理注册表单、校验、单次提交、错误恢复与关闭注册提示；`RegistrationPendingPage.tsx` 保留审核后的原登录目标；`portalAccount.ts` 统一账号规则与同源回跳规则。后端路由为 `apps/gateway/src/gateway/api/identity_api.py::register`，服务处理在 `services/identity_api.py`，`identity.py::register` 在密码计算后于账号写入事务内锁定并重新读取注册策略，审核模式不签发会话。行为测试在 `apps/gateway-web/tests/registration.test.tsx` 和 `apps/gateway/tests/test_self_registration.py`，覆盖注册三模式、并发重复账号、策略变更、普通用户权限、密码慢计算健康检查及请求失败恢复。

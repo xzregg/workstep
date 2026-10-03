@@ -151,6 +151,7 @@ export interface AssistantStore {
     sessionId: string,
     messages: AssistantChatMessage[],
     running?: boolean,
+    unchangedMessages?: AssistantChatMessage[],
   ) => void
   handleWsEvent: (event: AssistantChatEvent) => void
   setMessageEventLoading: (
@@ -341,12 +342,23 @@ export function createAssistantStore(
         }
       }),
 
-    hydrateSession: (sessionId, messages, running = false) =>
+    hydrateSession: (sessionId, messages, running = false, unchangedMessages) =>
       set((s) => {
         const session = s.sessions[sessionId] || emptySession()
         // Merge: keep any live messages (running turn) and backfill history.
         const existingIds = new Set(session.messages.map((m) => m.id))
-        const merged = [
+        const unchanged = new Map(unchangedMessages?.map((m) => [m.id, m]))
+        const recovered = new Map(messages.map((m) => [m.id, capHistoryEvents(m)]))
+        const live = new Map(session.messages.map((m) => [m.id, m]))
+        const liveChanged = session.messages.some((m) => unchanged.get(m.id) !== m)
+        const merged = unchangedMessages ? [
+          ...session.messages.filter((m) => !recovered.has(m.id) && unchanged.has(m.id)),
+          ...messages.map((m) => (
+            live.has(m.id) && unchanged.get(m.id) !== live.get(m.id)
+              ? live.get(m.id)! : recovered.get(m.id)!
+          )),
+          ...session.messages.filter((m) => !recovered.has(m.id) && !unchanged.has(m.id)),
+        ] : [
           ...messages.filter((m) => !existingIds.has(m.id)).map(capHistoryEvents),
           ...session.messages,
         ]
@@ -405,7 +417,7 @@ export function createAssistantStore(
           sessions: upsertSession(s.sessions, sessionId, {
             ...session,
             messages: merged,
-            running: running || session.running || merged.some((message) => (
+            running: (unchangedMessages && liveChanged ? session.running : running || (!unchangedMessages && session.running)) || merged.some((message) => (
               message.role === 'assistant' && message.status === 'running'
             )),
             a2uiMessages,
