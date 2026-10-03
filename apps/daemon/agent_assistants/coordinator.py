@@ -66,6 +66,7 @@ from services.remote_access import replayed_actor_context
 from services.remote_access import require_user_actor
 from services.intervention import intervention_manager
 from services.messages import extract_usage_json
+from services.channels.source_prompt import request_source_prompt, source_snapshot
 from services.remote_project import current_actor_event_fields
 from streaming.bus import EventBus
 
@@ -288,6 +289,7 @@ class CoordinatorModule:
         pending_insert_ids: list[str] | None = None,
         reset_session: bool = False,
         replay_pending: bool = False,
+        channel_source: dict | None = None,
     ) -> ChatAccepted:
         normalized = content.strip()
         if not normalized:
@@ -306,6 +308,7 @@ class CoordinatorModule:
                 pending_insert_ids=pending_insert_ids,
                 reset_session=reset_session,
                 replay_pending=replay_pending,
+                channel_source=channel_source,
             ),
         )
         accepted, user_message, created = persisted
@@ -333,6 +336,7 @@ class CoordinatorModule:
         pending_insert_ids: list[str] | None = None,
         reset_session: bool = False,
         replay_pending: bool = False,
+        channel_source: dict | None = None,
     ):
         if not replay_pending:
             require_user_actor()
@@ -405,6 +409,8 @@ class CoordinatorModule:
                     sequence=user_sequence,
                     role="user",
                     content=normalized,
+                    prompt_json=(json.dumps({"channel_source": source_snapshot(channel_source)}, ensure_ascii=False)
+                                 if channel_source else None),
                     run_id=turn_id,
                     run_status="completed",
                     position=0,
@@ -827,6 +833,8 @@ class CoordinatorModule:
                     message_history=engine_state,
                     thinking_effort=thinking_effort,
                     provider_id=provider_id,
+                    system_prompt=prepared["channel_source_instruction"],
+                    system_prompt_each_turn=bool(prepared["channel_source_instruction"]),
                 )
                 self._record_unstreamed_journal_events(
                     journal_ref, events, journaled_events
@@ -875,6 +883,8 @@ class CoordinatorModule:
                         turn_id,
                         thinking_effort=thinking_effort,
                         provider_id=provider_id,
+                        system_prompt=prepared["channel_source_instruction"],
+                        system_prompt_each_turn=bool(prepared["channel_source_instruction"]),
                     )
                     self._record_unstreamed_journal_events(
                         journal_ref, more_events, journaled_more_events
@@ -1116,6 +1126,12 @@ class CoordinatorModule:
         provider_id = self._resolve_provider_id(task)
         thinking_effort = self._resolve_thinking_effort(task)
         user_message = Message.get_by_id(turn.user_message_id)
+        previous_channel = Message.select(Message.id).where(
+            (Message.task == task) & (Message.channel == COORDINATOR_CHANNEL)
+            & (Message.role == "user") & (Message.sequence <= user_message.sequence)
+            & Message.prompt_json.contains('"channel_source"')
+        ).exists()
+        source_instruction = request_source_prompt(user_message, previous_channel=previous_channel)
         engine = create_engine(turn.engine) if turn.engine else None
         if session.session_id and engine is not None and engine.supports_resume:
             # The engine already has the bootstrap instructions and context.
@@ -1129,7 +1145,8 @@ class CoordinatorModule:
             project, task.cwd, user_message.content or ""
         )
         turn_model = (vision_model or turn.model) if images else turn.model
-        assistant.prompt_json = json.dumps({"prompt": prompt}, ensure_ascii=False)
+        display_prompt = "\n\n".join(filter(None, [source_instruction, prompt]))
+        assistant.prompt_json = json.dumps({"prompt": display_prompt}, ensure_ascii=False)
         assistant.save(only=[Message.prompt_json])
         journal_ref = self._event_journal.reopen(
             project.workstep_dir,
@@ -1146,6 +1163,7 @@ class CoordinatorModule:
             "provider_id": provider_id,
             "thinking_effort": thinking_effort,
             "prompt": prompt,
+            "channel_source_instruction": source_instruction,
             "artifacts": artifacts,
             "images": images,
             "turn_model": turn_model,
@@ -1407,6 +1425,8 @@ class CoordinatorModule:
         message_history: list | None = None,
         thinking_effort: str | None = None,
         provider_id: str | None = None,
+        system_prompt: str | None = None,
+        system_prompt_each_turn: bool = False,
     ) -> tuple[str, list[dict], str | None]:
         model_supports_multimodal = getattr(
             config_store,
@@ -1426,8 +1446,12 @@ class CoordinatorModule:
             )
         )
 
-        def spawn(engine, *, workstep_tools=False, config_overrides=None):
+        def spawn(engine, *, workstep_tools=False, config_overrides=None, system_prompt=None, system_prompt_each_turn=False):
             spawn_kwargs = {}
+            if system_prompt:
+                spawn_kwargs["system_prompt"] = system_prompt
+            if system_prompt_each_turn:
+                spawn_kwargs["system_prompt_each_turn"] = True
             if workstep_tools:
                 spawn_kwargs["workstep_tools"] = True
             if config_overrides:
@@ -1470,6 +1494,8 @@ class CoordinatorModule:
             session_id,
             on_event,
             spawner=spawn,
+            system_prompt=system_prompt,
+            system_prompt_each_turn=system_prompt_each_turn,
             error_prefix="Coordinator engine",
             run_key=turn_id,
             running_engines=self._running_engines,

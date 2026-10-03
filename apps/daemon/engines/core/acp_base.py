@@ -131,6 +131,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         spawn_method,
         *,
         system_prompt: str | None = None,
+        system_prompt_each_turn: bool = False,
         **kwargs,
     ) -> AsyncIterator[InternalEvent]:
         """Run one engine stream, retrying its first terminal failure once.
@@ -145,7 +146,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
             attempt_kwargs = dict(kwargs)
             if self.supports_resume:
                 attempt_kwargs["session_id"] = retry_session_id
-            attempt_kwargs = self._prepare_system_prompt(attempt_kwargs, system_prompt)
+            attempt_kwargs = self._prepare_system_prompt(attempt_kwargs, system_prompt, each_turn=system_prompt_each_turn)
             failed_event: InternalEvent | None = None
             try:
                 iterator = spawn_method(**attempt_kwargs)
@@ -190,19 +191,19 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                 },
             )
 
-    def _prepare_system_prompt(self, kwargs: dict, system_prompt: str | None) -> dict:
+    def _prepare_system_prompt(self, kwargs: dict, system_prompt: str | None, *, each_turn: bool = False) -> dict:
         kwargs = dict(kwargs)
         instruction = (system_prompt or "").strip()
         if not instruction or str(kwargs.get("prompt") or "").strip() == "/compact":
             return kwargs
         if self.SYSTEM_PROMPT_MODE != "body":
             kwargs["system_prompt"] = instruction
-        elif not (kwargs.get("session_id") and self.supports_resume):
+        elif each_turn or not (kwargs.get("session_id") and self.supports_resume):
             kwargs["prompt"] = f"{instruction}\n\n{kwargs.get('prompt') or ''}"
         return kwargs
 
     async def spawn_with_retry(
-        self, *, system_prompt: str | None = None, **kwargs,
+        self, *, system_prompt: str | None = None, system_prompt_each_turn: bool = False, **kwargs,
     ) -> AsyncIterator[InternalEvent]:
         """Run the normal execution entry point with one failure retry."""
         if str(kwargs.get("prompt") or "").strip() == "/compact":
@@ -230,18 +231,20 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                     "message": "引擎未返回压缩完成事件，无法确认上下文已压缩",
                 })
             return
-        async for event in self._stream_with_retry(self.spawn, system_prompt=system_prompt, **kwargs):
+        async for event in self._stream_with_retry(self.spawn, system_prompt=system_prompt, system_prompt_each_turn=system_prompt_each_turn, **kwargs):
             yield event
 
     async def spawn_coordinator_with_retry(
         self,
         system_prompt: str | None = None,
+        system_prompt_each_turn: bool = False,
         **kwargs,
     ) -> AsyncIterator[InternalEvent]:
         """Run the coordinator entry point with one failure retry."""
         async for event in self._stream_with_retry(
             self.spawn_coordinator,
             system_prompt=system_prompt,
+            system_prompt_each_turn=system_prompt_each_turn,
             **kwargs,
         ):
             yield event

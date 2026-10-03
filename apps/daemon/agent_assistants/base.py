@@ -190,6 +190,7 @@ async def invoke_engine(
     config_overrides: dict | None = None,
     live_message_queue: asyncio.Queue | None = None,
     system_prompt: str | None = None,
+    system_prompt_each_turn: bool = False,
 ) -> tuple[str, list[dict], str | None]:
     """Compatibility entry point; the turn transport lives in engine_invocation."""
     return await run_engine_turn(
@@ -212,6 +213,7 @@ async def invoke_engine(
         config_overrides=config_overrides,
         live_message_queue=live_message_queue,
         **({"system_prompt": system_prompt} if system_prompt else {}),
+        **({"system_prompt_each_turn": True} if system_prompt_each_turn else {}),
     )
 
 

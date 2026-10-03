@@ -568,10 +568,12 @@ class BotManager:
         try:
             actor = _sender_actor(message, platform)
             with actor_context(actor):
+                from services.channels.source_prompt import message_source
                 accepted = await self._coordinator.submit_message(
-                    project_id, task_id, _context_content(message, platform),
+                    project_id, task_id, message.text,
                     f"channel:{message.bot_id}:{message.message_id}",
                     author_name=actor.user_name,
+                    channel_source=message_source(message, platform),
                 )
             forwarded = self._task_forwarder.register_origin(project_id, task_id, accepted.assistant_message_id, message)
             control_scope = await self._controls.begin(message, project_id, task_id=task_id,

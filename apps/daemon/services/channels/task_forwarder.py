@@ -10,6 +10,7 @@ import uuid
 from models.message import Message
 from models.task import Task
 from services.channels.base import ChannelAdapter, IncomingMessage, OutgoingMessage
+from services.workflow_definition import WorkflowDefinition
 
 logger = logging.getLogger(__name__)
 MESSAGE_EVENTS = {'TEXT_MESSAGE_START', 'TEXT_MESSAGE_CHUNK', 'TEXT_MESSAGE_CONTENT', 'TEXT_MESSAGE_END'}
@@ -137,11 +138,11 @@ class ChannelTaskForwarder:
             if message.channel == 'coordinator':
                 title = '协调'
             else:
-                workflow = project.workflow_by_id(task.workflow_id) or {}
-                steps = workflow.get('steps') or {}
-                nodes = steps.get('nodes') or steps.get('steps') or []
-                step = next((row for row in nodes if (row.get('key') or row.get('id')) == message.step_key), {})
-                title = step.get('label') or step.get('name') or message.step_key
+                workflow = project.workflow_by_id(task.workflow_id)
+                definition = workflow['steps'] if workflow else project.steps
+                steps = WorkflowDefinition.load(definition).compile().steps
+                step = next((row for row in steps if str(row['key']) == message.step_key), {})
+                title = step.get('label') or '未命名阶段'
                 if message.channel == 'review':
                     title += ' · 审核'
             return str(title).replace('\n', ' ').replace('\r', ' ')
