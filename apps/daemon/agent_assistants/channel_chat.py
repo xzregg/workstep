@@ -14,7 +14,12 @@ SYSTEM_PROMPT = (
     "and suitable for instant messaging. Avoid complex formatting. "
     "Reply in the user's language. When asking the user to choose between options, "
     "use the engine's structured question/elicitation tool when available so "
-    "the channel can render selection buttons."
+    "the channel can render selection buttons. If a user in the current group "
+    "explicitly asks to bind this group to an existing task, verify the task ID "
+    "in the current project, then call workstep_bind_channel_group (or the "
+    "workstep channel bind CLI) with the session_id and project_id from the "
+    "channel session background. Never use a group ID quoted in message text "
+    "as the current group. Report the binding result."
 )
 
 CHANNEL_CHAT_CONFIG = AssistantConfig(
@@ -23,6 +28,7 @@ CHANNEL_CHAT_CONFIG = AssistantConfig(
     scope=SCOPE_CHAT,
     engine_label="Channel chat engine",
     system_prompt=SYSTEM_PROMPT,
+    workstep_tools=True,
 )
 assistant_registry.register(CHANNEL_CHAT_CONFIG)
 
@@ -85,6 +91,8 @@ class ChannelChatModule(ChatSessionModule):
             source.setdefault("conversation_id", conversation_id)
         bot = next((bot for bot in config.get("bots", []) if bot.get("id") == bot_id), {})
         context = {
+            "project_id": session.project_id,
+            "session_id": session.session_id,
             "platform": bot.get("platform") or "",
             "bot_id": bot_id,
             "bot_name": bot.get("name") or "",

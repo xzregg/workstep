@@ -234,6 +234,19 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         required=("project_id",), query_params=("project_id",),
     ),
     WorkstepTool(
+        name="workstep_bind_channel_group",
+        description="Bind the current group channel session to a task in its project after the group user explicitly asks.",
+        method="POST", path="/api/channel-bots/sessions/{session_id}/bind-task",
+        parameters={
+            "session_id": {"type": "string", "description": "current channel session id from system context"},
+            "project_id": {"type": "string", "description": "project id of the current channel session"},
+            "task_id": {"type": "string", "description": "existing target task id"},
+        },
+        required=("session_id", "project_id", "task_id"), read_only=False,
+        side_effect="bind the current platform group to a task",
+        path_params=("session_id",), body_params=("project_id", "task_id"),
+    ),
+    WorkstepTool(
         name="workstep_send_channel_message", description="Send a notification via a channel session, or bot plus user/group, only when authorized.",
         method="POST", path="/api/channel-bots/send",
         parameters={key: {"type": "string", "description": description} for key, description in {

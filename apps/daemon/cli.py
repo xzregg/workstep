@@ -195,6 +195,11 @@ def build_parser() -> argparse.ArgumentParser:
     channel_sessions = channel_sub.add_parser("sessions", help="list active channel conversation recipients")
     channel_sessions.add_argument("--project", dest="project_id", required=True)
     add_json(channel_sessions)
+    channel_bind = channel_sub.add_parser("bind", help="bind the current group session to a task")
+    channel_bind.add_argument("--session", dest="session_id", required=True)
+    channel_bind.add_argument("--project", dest="project_id", required=True)
+    channel_bind.add_argument("--task", dest="task_id", required=True)
+    add_json(channel_bind)
     channel_send = channel_sub.add_parser("send", help="send a notification without starting an LLM turn")
     channel_send.add_argument("--project", dest="project_id", required=True)
     channel_send.add_argument("--text", default="")
@@ -295,6 +300,11 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
             return await client.call("workstep_list_channel_bots", {})
         if args.subcommand == "sessions":
             return await client.call("workstep_list_channel_sessions", {"project_id": args.project_id})
+        if args.subcommand == "bind":
+            return await client.call("workstep_bind_channel_group", {
+                "session_id": args.session_id, "project_id": args.project_id,
+                "task_id": args.task_id, "confirm": "yes",
+            })
         if (args.session_id and args.bot_id) or (not args.session_id and not args.bot_id):
             raise ValueError("按会话发送只需 --session；指定 --user 或 --group 时必须同时指定 --bot")
         arguments = {"project_id": args.project_id, "text": args.text, "confirm": "yes"}

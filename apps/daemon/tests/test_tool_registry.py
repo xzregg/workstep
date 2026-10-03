@@ -34,6 +34,7 @@ def test_registry_defines_expected_tool_set():
         "workstep_list_engines",
         "workstep_list_channel_bots",
         "workstep_list_channel_sessions",
+        "workstep_bind_channel_group",
         "workstep_send_channel_message",
         "workstep_upload_channel_attachment",
         "workstep_create_project",
@@ -297,3 +298,19 @@ async def test_channel_notification_requires_explicit_tool_confirmation():
     assert result["ok"] is False
     assert not calls
     assert (await client.call("workstep_send_channel_message", {**arguments, "confirm": "yes"}))["sent"] is True
+
+
+@pytest.mark.anyio
+async def test_bind_channel_group_requires_confirmation_and_current_session():
+    requests = []
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, json={'group_id':'g1','task_id':'t1'})
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    args = {'session_id':'s1','project_id':'p1','task_id':'t1'}
+    assert (await client.call('workstep_bind_channel_group', args))['ok'] is False
+    assert requests == []
+    result = await client.call('workstep_bind_channel_group', {**args,'confirm':'yes'})
+    assert result['group_id'] == 'g1'
+    assert requests[0].url.path == '/api/channel-bots/sessions/s1/bind-task'
+    assert json.loads(requests[0].content) == {'project_id':'p1','task_id':'t1'}

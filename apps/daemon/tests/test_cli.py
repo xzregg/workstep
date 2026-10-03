@@ -507,3 +507,14 @@ def test_cli_channel_send_rejects_ambiguous_targets(target, capsys):
     except SystemExit as exc:
         code = exc.code
     assert code != 0
+
+
+async def test_cli_channel_bind_uses_session_and_task_ids():
+    def handler(request):
+        assert request.method == 'POST'
+        assert request.url.path == '/api/channel-bots/sessions/session-1/bind-task'
+        assert json.loads(request.content) == {'project_id': 'p1', 'task_id': 't1'}
+        return httpx.Response(200, json={'bot_id':'b1','group_id':'g1','project_id':'p1','task_id':'t1'})
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    args = build_parser().parse_args(['channel','bind','--session','session-1','--project','p1','--task','t1','--json'])
+    assert (await dispatch(args, client))['group_id'] == 'g1'

@@ -42,6 +42,11 @@ class BindGroupRequest(BaseModel):
     group_name: str | None = Field(default=None, max_length=200)
 
 
+class BindCurrentGroupRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    task_id: str = Field(min_length=1)
+
+
 class ChannelAttachmentRequest(BaseModel):
     kind: Literal['image', 'file']
     path: str = Field(min_length=1)
@@ -85,6 +90,15 @@ async def channel_sessions(project_id: str = Query(..., min_length=1)):
         return await _manager().list_channel_sessions(project_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/sessions/{session_id}/bind-task")
+async def bind_current_group(session_id: str, request: BindCurrentGroupRequest):
+    _enforce_project_scope(request.project_id)
+    try:
+        return await _manager().bind_session_group(session_id, request.project_id, request.task_id)
+    except (ValueError, LookupError) as exc:
+        _raise_error(exc)
 
 
 @router.post("/send")
