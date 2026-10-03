@@ -413,6 +413,26 @@ reset sessions and disabled robots cannot send. Native operations are
 `sent: true` before reporting success; transport failures return non-zero.
 
 
+## Bind the current channel group to a task
+
+When a user explicitly asks in a group to bind that group to an existing task,
+use the `session_id` and `project_id` from the channel session's system
+background. Do not copy a group ID from user text. Confirm the task ID with
+`task list` or `task get`, then bind the current group:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli channel bind \
+  --session <current_channel_session_id> --project <project_id> \
+  --task <existing_task_id> --json
+```
+
+The equivalent native operation is `workstep_bind_channel_group` with
+`session_id`, `project_id`, `task_id`, and `confirm='yes'`. The daemon resolves
+the robot and group from the active session and rejects private chats, reset
+sessions, tasks outside the session's project, and groups bound to another
+task. Inspect the returned JSON before telling the user the binding succeeded.
+Future group messages route to that task's coordinator.
+
 ## Channel images and files
 
 `channel send` accepts repeatable `--image <local_path>` and `--file <local_path>`

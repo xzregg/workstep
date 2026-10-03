@@ -801,3 +801,90 @@ async def test_dingtalk_optional_card_template_is_saved_and_updated_through_api(
         update = await client.patch('/api/channel-bots/'+bot['id'],json={'card_template_id':''})
         assert update.status_code == 200
         assert (await client.get('/api/channel-bots')).json()[0]['card_template_id'] == ''
+
+
+async def test_channel_session_binding_uses_actual_group_and_rejects_private_or_stale_session(bots):
+    manager, project, other, submissions, project_chats, _adapters = bots
+    async def respond_unique(project_id, session_id, content, assistant_id, model):
+        project_chats.append((project_id, session_id, content))
+        return session_id or f"session-{len(project_chats)}", "已收到"
+    manager._responder = respond_unique
+    bot = await manager.create_bot({
+        "platform": "wecom", "name": "助手", "app_id": "bind-from-group",
+        "secret": "secret", "enabled": True,
+        "default_target_type": "project", "default_project_id": project.id,
+    })
+    await manager.handle_message(IncomingMessage(bot['id'], 'first', 'group', 'room', 'alice', '绑定到任务', conversation_name='研发群'))
+    session_id = (await manager._load())['sessions'][f"{bot['id']}:group:room"]
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
+        path = f'/api/channel-bots/sessions/{session_id}/bind-task'
+        response = await client.post(path, json={'project_id': project.id, 'task_id': 'task-1'})
+        assert response.status_code == 200
+        assert response.json()['group_id'] == 'room'
+        assert response.json()['group_name'] == '研发群'
+        assert (await client.post(path, json={'project_id': other.id, 'task_id': 'task-2'})).status_code == 400
+        await manager.handle_message(IncomingMessage(bot['id'], 'private', 'single', 'alice', 'alice', '你好'))
+        private_session = (await manager._load())['sessions'][f"{bot['id']}:single:alice"]
+        assert (await client.post(f'/api/channel-bots/sessions/{private_session}/bind-task', json={
+            'project_id': project.id, 'task_id': 'task-1',
+        })).status_code == 400
+        assert (await client.post('/api/channel-bots/sessions/stale/bind-task', json={
+            'project_id': project.id, 'task_id': 'task-1',
+        })).status_code == 404
+    await manager.handle_message(IncomingMessage(bot['id'], 'second', 'group', 'room', 'alice', '继续'))
+    assert submissions[-1][1] == 'task-1'
+
+
+def test_channel_assistant_can_use_binding_tool_with_session_context():
+    from agent_assistants.channel_chat import CHANNEL_CHAT_CONFIG, SYSTEM_PROMPT
+    assert CHANNEL_CHAT_CONFIG.workstep_tools is True
+    assert 'workstep_bind_channel_group' in SYSTEM_PROMPT
+    assert 'session_id' in SYSTEM_PROMPT
+
+
+async def test_channel_session_binding_slow_task_lookup_keeps_health_responsive(bots, monkeypatch):
+    manager, project, _, _, _, _ = bots
+    bot = await manager.create_bot({
+        'platform': 'wecom', 'name': '助手', 'app_id': 'slow-binding',
+        'secret': 'secret', 'enabled': True,
+        'default_target_type': 'project', 'default_project_id': project.id,
+    })
+    await manager.handle_message(IncomingMessage(bot['id'], 'first', 'group', 'room', 'alice', '绑定任务'))
+    session_id = (await manager._load())['sessions'][f"{bot['id']}:group:room"]
+    entered, release = threading.Event(), threading.Event()
+    original = Task.get_or_none
+    def slow_lookup(*args, **kwargs):
+        entered.set()
+        release.wait(2)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(Task, 'get_or_none', slow_lookup)
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
+        pending = asyncio.create_task(client.post(f'/api/channel-bots/sessions/{session_id}/bind-task', json={
+            'project_id': project.id, 'task_id': 'task-1',
+        }))
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            assert (await asyncio.wait_for(client.get('/api/health'), .5)).status_code == 200
+        finally:
+            release.set()
+        assert (await pending).status_code == 200
+
+
+async def test_channel_binding_prompt_uses_current_session_identity(bots, monkeypatch):
+    import agent_assistants.channel_chat as channel_module
+    manager, project, _, _, _, _ = bots
+    bot = await manager.create_bot({
+        'platform': 'wecom', 'name': '助手', 'app_id': 'binding-prompt',
+        'secret': 'secret', 'enabled': True,
+        'default_target_type': 'project', 'default_project_id': project.id,
+    })
+    await manager.handle_message(IncomingMessage(bot['id'], 'first', 'group', 'room', 'alice', '绑定任务'))
+    session_id = (await manager._load())['sessions'][f"{bot['id']}:group:room"]
+    monkeypatch.setattr(channel_module, 'config_store', manager._store)
+    module = ChannelChatModule(manager._event_bus, manager._project_manager, register=False)
+    monkeypatch.setattr(module, 'get_system_prompt', lambda _project: '')
+    session = SimpleNamespace(project_id=project.id, session_id=session_id, messages=[])
+    prompt = module._engine_system_prompt(session)
+    assert f'"project_id": "{project.id}"' in prompt
+    assert f'"session_id": "{session_id}"' in prompt
+    assert '"conversation_id": "room"' in prompt

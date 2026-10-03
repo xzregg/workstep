@@ -252,13 +252,33 @@ class BotManager:
         await self._stop_bot(bot_id)
         self._statuses.pop(bot_id, None)
 
-    async def bind_group(self, project_id: str, task_id: str, bot_id: str, group_id: str, group_name: str | None = None) -> dict:
+    async def bind_session_group(self, session_id: str, project_id: str, task_id: str) -> dict:
+        data = await self._load()
+        key = next((key for key, mapped in data["sessions"].items() if mapped == session_id), "")
+        if not key:
+            raise LookupError("渠道会话不存在或已重置")
+        bot_id, conversation_type, group_id = key.split(":", 2)
+        if conversation_type != "group":
+            raise ValueError("仅群聊会话可以绑定任务")
+        source = data["session_sources"].get(session_id, {})
+        if source.get("project_id") != project_id:
+            raise ValueError("任务必须属于当前渠道会话的项目")
+        return await self.bind_group(project_id, task_id, bot_id, group_id, source_session_id=session_id)
+
+    async def bind_group(self, project_id: str, task_id: str, bot_id: str, group_id: str, group_name: str | None = None, *, source_session_id: str = "") -> dict:
         group_id = group_id.strip()
         if not group_id:
             raise ValueError("群标识不能为空")
         await self._validate_target("task", project_id, task_id)
         async with self._config_lock:
             data = await self._load()
+            if source_session_id:
+                key = f"{bot_id}:group:{group_id}"
+                if data["sessions"].get(key) != source_session_id or data["session_sources"].get(source_session_id, {}).get("project_id") != project_id:
+                    raise LookupError("渠道会话不存在或已重置")
+                bot = next((row for row in data["bots"] if row["id"] == bot_id), None)
+                if not bot or bot.get("default_project_id") != project_id:
+                    raise ValueError("渠道机器人已改绑项目")
             if not any(bot["id"] == bot_id for bot in data["bots"]):
                 raise ValueError("机器人不存在")
             conflict = next((row for row in data["groups"] if row["bot_id"] == bot_id and row["group_id"] == group_id), None)

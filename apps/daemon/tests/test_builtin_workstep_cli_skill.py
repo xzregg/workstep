@@ -36,6 +36,8 @@ def test_builtin_workstep_cli_skill_is_enabled_and_mirrored_by_default(tmp_path)
     assert "python -m cli channel list" in text
     assert "python -m cli channel sessions" in text
     assert "python -m cli channel send" in text
+    assert "python -m cli channel bind" in text
+    assert "workstep_bind_channel_group" in text
     assert "--image" in text
     assert "--file" in text
     assert "workstep_upload_channel_attachment" in text
