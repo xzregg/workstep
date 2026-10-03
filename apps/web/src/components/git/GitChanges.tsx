@@ -1,4 +1,4 @@
-import { useGitApi, useReadOnlyGit } from './GitApiContext'
+import { useGitApi, useReadOnlyGit, useGitActionAllowed } from './GitApiContext'
 import { useEffect, useState, type ReactNode } from 'react'
 import { create } from 'zustand'
 import { type GitStatus, type GitFile } from '../../api/git'
@@ -51,6 +51,7 @@ export default function GitChanges({ status, onRefresh, onDiff }: { status: GitS
   const gitApi = useGitApi()
   const writes = usePanelGitWrites()
   const readOnly = useReadOnlyGit()
+  const can = useGitActionAllowed()
   const { t } = useI18n()
   const saved = useDrafts(s => s.drafts[status.id])
   const draft = saved || { message: '', selected: status.files.filter(f => !f.untracked && !f.conflict && !f.submodule).map(f => f.path) }
@@ -117,11 +118,11 @@ export default function GitChanges({ status, onRefresh, onDiff }: { status: GitS
     finally { setGenerating(false) }
   }
   return <div className="git-changes">
-    <fieldset disabled={busy || generating || writes.busy} className="git-files-fieldset"><GitFileList files={status.files} selected={readOnly ? undefined : selected} onToggle={readOnly ? undefined : toggle} onDiff={onDiff} onDiscard={readOnly ? undefined : setDiscarding} onIgnore={readOnly ? undefined : file => void ignore(file)} actions={readOnly ? undefined : <><Button size="sm" disabled={busy || generating} onClick={() => update(status.id, { ...draft, selected: available.map(f => f.path) })}>{t('git.selectAll')}</Button><Button size="sm" disabled={busy || generating} onClick={() => update(status.id, { ...draft, selected: [] })}>{t('git.clear')}</Button></>} /></fieldset>
+    <fieldset disabled={busy || generating || writes.busy} className="git-files-fieldset"><GitFileList files={status.files} selected={readOnly ? undefined : selected} onToggle={readOnly ? undefined : toggle} onDiff={onDiff} onDiscard={!can('discard') ? undefined : setDiscarding} onIgnore={!can('ignore') ? undefined : file => void ignore(file)} actions={readOnly ? undefined : <><Button size="sm" disabled={busy || generating} onClick={() => update(status.id, { ...draft, selected: available.map(f => f.path) })}>{t('git.selectAll')}</Button><Button size="sm" disabled={busy || generating} onClick={() => update(status.id, { ...draft, selected: [] })}>{t('git.clear')}</Button></>} /></fieldset>
     {!readOnly && <div className="git-commit-form"><div className="git-message-header"><label htmlFor={`git-message-${status.id}`}>{t('git.message')}</label></div><textarea id={`git-message-${status.id}`} value={draft.message} disabled={busy || generating} placeholder={t('git.messageHint')} onChange={e => update(status.id, { ...draft, message: e.target.value })} />
       <p className="git-commit-hint">{t('git.commitHint')}</p>{blocked && <p className="git-danger">{t('git.blocked')}</p>}
       {notice && <p role="status" className="git-notice">{notice}</p>}
-      <div className="git-commit-actions"><Button data-commit variant="primary" loading={busy} disabled={writes.busy || generating || !draft.message.trim() || !selected.length || blocked} onClick={() => void commit()}>{busy ? t('git.committing') : t('git.commit', { count: selected.length })}</Button><Button size="sm" loading={generating} disabled={busy || blocked || !selected.length} onClick={() => void generateMessage()}><Icon name="sparkles" size={14} />{generating ? t('git.generatingCommit') : t('git.generateCommit')}</Button></div>
+      <div className="git-commit-actions"><Button data-commit variant="primary" loading={busy} disabled={writes.busy || generating || !draft.message.trim() || !selected.length || blocked} onClick={() => void commit()}>{busy ? t('git.committing') : t('git.commit', { count: selected.length })}</Button>{can('generateCommitMessage') && <Button size="sm" loading={generating} disabled={busy || blocked || !selected.length} onClick={() => void generateMessage()}><Icon name="sparkles" size={14} />{generating ? t('git.generatingCommit') : t('git.generateCommit')}</Button>}</div>
     </div>}
     <ConfirmDialog open={!!discarding} title={t('git.discardTitle')} message={discarding ? t(discarding.untracked ? 'git.discardUntrackedConfirm' : 'git.discardConfirm', { name: discarding.path }) : ''} confirmText={t('git.discard')} danger loading={busy} confirmDisabled={writes.busy} onConfirm={() => void discard()} onCancel={() => !busy && setDiscarding(null)} />
   </div>

@@ -521,3 +521,33 @@ async def test_project_http_stream_stops_when_authorization_is_revoked():
     with pytest.raises(PermissionError):
         await anext(response.body_iterator)
     assert any(frame.type == FrameType.cancel for frame in frames)
+
+@pytest.mark.asyncio
+async def test_slow_authorization_cannot_exceed_device_stream_capacity():
+    class Socket:
+        async def send_json(self, data):
+            frame = ProxyFrame.model_validate(data)
+            if frame.type == FrameType.http_request and frame.payload['phase'] == 'end':
+                for payload in ({'phase': 'start', 'status': 200, 'headers': []}, {'phase': 'end'}):
+                    await connection.deliver(ProxyFrame(stream_id=frame.stream_id, type=FrameType.http_response, payload=payload))
+    connection = DataConnection('device', Socket())
+    ready = asyncio.Event(); entered = 0
+    async def authorize():
+        nonlocal entered
+        entered += 1
+        if entered >= 33: ready.set()
+        await ready.wait()
+    async def one():
+        async def receive(): return {'type': 'http.request', 'body': b'', 'more_body': False}
+        request = StarletteRequest({'type': 'http', 'method': 'GET', 'scheme': 'http', 'path': '/api/health',
+            'query_string': b'', 'headers': [(b'host', b'd-device.localhost:8700')], 'server': ('localhost', 8700)}, receive)
+        return await connection.proxy_http(request, user_id='user', username='User', authorization_check=authorize)
+    results = await asyncio.wait_for(asyncio.gather(*(one() for _ in range(33)), return_exceptions=True), 3)
+    try:
+        assert len(connection._streams) == 32
+        assert sum(isinstance(result, ConnectionError) for result in results) == 1
+    finally:
+        for result in results:
+            if not isinstance(result, Exception):
+                async for _ in result.body_iterator: pass
+    assert connection._streams == {}

@@ -445,6 +445,16 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
                            headers={"X-Share-CSRF": csrf},
                            json={"content": "escape"}).status_code != 200
 
+        async def disable_creator():
+            from sqlalchemy import update
+            from gateway.models import User
+            async with app.state.database.session() as session:
+                async with session.begin():
+                    await session.execute(update(User).where(User.username == 'owner').values(status='disabled'))
+        client.portal.call(disable_creator)
+        assert client.post(f"/api/public/shares/{token}/steps/build/message",
+                           headers={"X-Share-CSRF": csrf}, json={"content": "must reject"}).status_code == 403
+
 
 def test_project_editor_needs_live_share_create_capability(tmp_path):
     app = create_app(GatewaySettings(

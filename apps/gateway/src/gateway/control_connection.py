@@ -492,7 +492,8 @@ class DataConnection:
                 "/api/platform-share/task", "/api/platform-share/history",
                 "/api/platform-share/artifacts", "/api/platform-share/reviews",
                 "/api/platform-share/interventions",
-                "/api/platform-share/git/workspace")
+                "/api/platform-share/git/workspace",
+                "/api/platform-share/execution-report")
                 or re.fullmatch(
                     r"/api/platform-share/artifacts/[0-9a-f]{64}/(?:content|preview)",
                     target_path or "")
@@ -511,6 +512,8 @@ class DataConnection:
                 or re.fullmatch(
                     r"/api/platform-share/events/[A-Za-z0-9_-]{1,128}/(?:0|[1-9][0-9]{0,8})",
                     target_path or ""))
+            read_path = read_path or re.fullmatch(
+                r"/api/platform-share/git/read/(?:repositories|history|changes|diff|blame|remotes|browse|preview|content)/[0-9a-f]{2,16384}", target_path or "")
             write_path = re.fullmatch(
                 r"/api/platform-share/steps/[A-Za-z0-9_-]{1,128}/(?:message|resume|cancel)",
                 target_path or "") or re.fullmatch(
@@ -546,6 +549,9 @@ class DataConnection:
             raise ConnectionError("Too many managed data streams")
         if authorization_check is not None:
             await authorization_check()
+        # Authorization can yield while other requests reserve slots.
+        if len(self._streams) >= 32:
+            raise ConnectionError("Too many managed data streams")
         stream_id = uuid4().hex
         queue: asyncio.Queue = asyncio.Queue(maxsize=32)
         self._streams[stream_id] = queue
@@ -713,6 +719,10 @@ class DataConnection:
             except Exception:
                 await browser.close(code=4403)
                 return
+        # Authorization can yield while other requests reserve slots.
+        if len(self._streams) >= 32:
+            await browser.close(code=1013)
+            return
         stream_id = uuid4().hex
         queue: asyncio.Queue = asyncio.Queue(maxsize=32)
         self._streams[stream_id] = queue

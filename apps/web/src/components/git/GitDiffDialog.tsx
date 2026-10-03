@@ -1,4 +1,4 @@
-import { useGitApi, useReadOnlyGit } from './GitApiContext'
+import { useGitApi, useReadOnlyGit, useGitActionAllowed } from './GitApiContext'
 import ResizablePanel from '../ResizablePanel'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -17,6 +17,7 @@ export default function GitDiffDialog({ id, files, path, comparison, onSelect, o
   const gitApi = useGitApi()
   const writes = usePanelGitWrites()
   const readOnly = useReadOnlyGit()
+  const can = useGitActionAllowed()
   const { t } = useI18n()
   const dialog = useRef<HTMLDivElement>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
@@ -108,7 +109,7 @@ export default function GitDiffDialog({ id, files, path, comparison, onSelect, o
   const viewHunks = useMemo(() => fullFile && data ? [expandHunks(data.before, data.after, hunks)] : hunks, [fullFile, data, hunks])
   const authors = useMemo(() => ({ before: new Map(blame.before.map(line => [line.line, line])), after: new Map(blame.after.map(line => [line.line, line])) }), [blame])
   const index = files.indexOf(path)
-  const editable = !readOnly && !comparison.ref && !comparison.commit && !!data?.snapshot && !data.binary && !data.truncated && !data.submodule
+  const editable = !readOnly && can('saveFile') && !comparison.ref && !comparison.commit && !!data?.snapshot && !data.binary && !data.truncated && !data.submodule
   async function persistContent(content: string, snapshot: string, expectedContent?: string): Promise<GitStatus | null> {
     if (saving || writes.busy) return null
     setSaving(true); setError('')

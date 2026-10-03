@@ -33,3 +33,17 @@ def test_platform_share_ticket_is_short_lived_and_task_scoped():
             project_id="project-1", host_project_id="host-1",
             task_id="../task", mode="read_only",
         )
+
+
+def test_interactive_ticket_embeds_only_the_share_creators_current_supplier_grants():
+    signer = GatewaySigner(Ed25519PrivateKey.generate())
+    ticket = signer.sign_platform_share_ticket(
+        gateway_id='gateway', device_id='pc', share_id='share', project_id='project',
+        host_project_id='host', task_id='task', mode='interactive', provider_ids=['supplier'])
+    claims = json.loads(base64.urlsafe_b64decode(ticket.split('.')[1] + '==='))
+    assert claims['provider_ids'] == ['supplier']
+    assert claims['provider_grant_expires_at'] - claims['iat'] == 300
+    with pytest.raises(ValueError):
+        signer.sign_platform_share_ticket(
+            gateway_id='gateway', device_id='pc', share_id='share', project_id='project',
+            host_project_id='host', task_id='task', mode='read_only', provider_ids=['supplier'])

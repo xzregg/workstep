@@ -63,6 +63,7 @@ interface TaskConversationMessageProps extends Pick<TaskDetailViewProps,
   | 'retryingFailedMessageIds'
   | 'reviewActionPending'
   | 'onReviewAction'
+  | 'reviewCanCompleteStep'
   | 'reviewComment'
   | 'onReviewCommentChange'
   | 'projectId'
@@ -107,6 +108,7 @@ export default function TaskConversationMessage({
   retryingFailedMessageIds,
   reviewActionPending,
   onReviewAction,
+  reviewCanCompleteStep,
   reviewComment,
   onReviewCommentChange,
   projectId,
@@ -725,6 +727,7 @@ export default function TaskConversationMessage({
                       )}
                     {onReviewAction && (
                       <ReviewDecisionActions
+                        canCompleteStep={reviewCanCompleteStep}
                         status={msgReview!.status}
                         pending={!!reviewActionPending}
                         onAction={(decision) => onReviewAction?.(decision, msgReview!, stepKey)}

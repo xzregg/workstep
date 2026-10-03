@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { shareApi, type ReviewRun, type ShareMeta, type SharedTask, type TaskArtifact } from '../api/client'
+import { ApiError } from '../api/transport'
+import type { SharedTaskApi } from '../api/share'
 import { useI18n } from '../i18n'
 import { mergeLoadedTaskMessageEvents } from '../pages/taskHistoryModel'
-import { applySharedMessageEvent, capSharedHistoryEvents } from '../pages/sharedTaskMessages'
+import { applySharedMessageEvent, capSharedHistoryEvents, mergeSharedHistorySnapshot } from '../pages/sharedTaskMessages'
 
 export type SharePhase =
   | { kind: 'loading-meta' }
@@ -13,7 +15,7 @@ export type SharePhase =
   | { kind: 'error'; message: string }
 
 /** Owns public share access, the initial snapshot, and its live subscription. */
-export function useSharedTaskSession(token?: string) {
+export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareApi) {
   const { t } = useI18n()
   const [phase, setPhase] = useState<SharePhase>({ kind: 'loading-meta' })
   const [meta, setMeta] = useState<ShareMeta | null>(null)
@@ -25,25 +27,32 @@ export function useSharedTaskSession(token?: string) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [wsStatus, setWsStatus] = useState<'disconnected' | 'connecting' | 'live'>('disconnected')
+  const [revision, setRevision] = useState(0)
+  const [nextOffset, setNextOffset] = useState<number | null>(null)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const scopeVersion = useRef(0)
+  const olderInFlight = useRef(false)
   const wsRef = useRef<WebSocket | null>(null)
   const reunlockAttemptsRef = useRef(0)
 
-  const loadWithSession = useCallback(async (sessionToken: string) => {
-    if (!token) return
+  const loadWithSession = useCallback(async (sessionToken: string, version = scopeVersion.current) => {
+    if (!token || version !== scopeVersion.current) return
     setPhase({ kind: 'loading-task' })
     const [taskData, historyData, artifactsData, reviewsData] = await Promise.all([
-      shareApi.task(token, sessionToken),
-      shareApi.history(token, sessionToken),
-      shareApi.artifacts(token, sessionToken),
-      shareApi.reviews(token, sessionToken).catch(() => ({ reviews: [] })),
+      api.task(token, sessionToken),
+      api.history(token, sessionToken),
+      api.artifacts(token, sessionToken),
+      api.reviews(token, sessionToken).catch(() => ({ reviews: [] })),
     ])
+    if (version !== scopeVersion.current) return
     setTask(taskData)
     setMessages(historyData.messages.map(capSharedHistoryEvents))
+    setNextOffset('next_offset' in historyData && historyData.next_offset != null ? Number(historyData.next_offset) : null)
     setArtifacts(artifactsData.artifacts)
     setArtifactDirectory(artifactsData.artifact_directory || '')
     setReviews(reviewsData.reviews || [])
     setPhase({ kind: 'ready', sessionToken })
-  }, [token])
+  }, [api, token])
 
   const recoverSession = useCallback(async (shareMeta: ShareMeta) => {
     if (!token) return
@@ -56,27 +65,41 @@ export function useSharedTaskSession(token?: string) {
       return
     }
     reunlockAttemptsRef.current += 1
+    const version = scopeVersion.current
     try {
-      const { session_token } = await shareApi.unlock(token, '')
-      await loadWithSession(session_token)
+      const { session_token } = await api.unlock(token, '')
+      await loadWithSession(session_token, version)
     } catch (reason) {
+      if (version !== scopeVersion.current) return
       setPhase({ kind: 'error', message: reason instanceof Error ? reason.message : String(reason) })
     }
-  }, [token, loadWithSession, t])
+  }, [api, token, loadWithSession, t])
 
   useEffect(() => {
     if (!token) return
     let cancelled = false
     setPhase({ kind: 'loading-meta' })
-    shareApi.meta(token).then((shareMeta) => {
+    setTask(null); setMessages([]); setArtifacts([]); setReviews([]); setNextOffset(null)
+    olderInFlight.current = false; setLoadingOlder(false)
+    api.meta(token).then(async (shareMeta) => {
       if (cancelled) return
       setMeta(shareMeta)
+      if (api.restoreSession) {
+        try {
+          const session = await api.restoreSession(token)
+          if (!cancelled) await loadWithSession(session.session_token)
+          return
+        } catch (reason) {
+          if (!(reason instanceof ApiError) || reason.status !== 401) throw reason
+        }
+      }
+      if (cancelled) return
       if (shareMeta.has_password) {
         setPhase({ kind: 'need-password', meta: shareMeta })
         return
       }
       setPhase({ kind: 'unlocking', meta: shareMeta, password: '' })
-      shareApi.unlock(token, '').then(({ session_token }) => {
+      api.unlock(token, '').then(({ session_token }) => {
         if (!cancelled) return loadWithSession(session_token)
       }).catch((reason: Error) => {
         if (cancelled) return
@@ -86,8 +109,8 @@ export function useSharedTaskSession(token?: string) {
     }).catch((reason: Error) => {
       if (!cancelled) setPhase({ kind: 'error', message: reason.message })
     })
-    return () => { cancelled = true }
-  }, [token, loadWithSession, recoverSession])
+    return () => { cancelled = true; scopeVersion.current += 1 }
+  }, [api, token, revision, loadWithSession, recoverSession])
 
   const unlock = useCallback(async () => {
     if (!token || !meta || !password) return
@@ -97,12 +120,14 @@ export function useSharedTaskSession(token?: string) {
     }
     setError(null)
     setPhase({ kind: 'unlocking', meta, password })
+    const version = scopeVersion.current
     try {
-      const { session_token } = await shareApi.unlock(token, password)
-      await loadWithSession(session_token)
+      const { session_token } = await api.unlock(token, password)
+      await loadWithSession(session_token, version)
     } catch (reason) {
+      if (version !== scopeVersion.current) return
       const message = reason instanceof Error ? reason.message : String(reason)
-      if (/401/i.test(message)) {
+      if (reason instanceof ApiError && [401, 403].includes(reason.status) || /401/i.test(message)) {
         if (meta.has_password) {
           setError(t('share.incorrectPassword'))
           setPhase({ kind: 'need-password', meta })
@@ -113,7 +138,7 @@ export function useSharedTaskSession(token?: string) {
         setPhase({ kind: 'error', message })
       }
     }
-  }, [token, meta, password, t, loadWithSession, recoverSession])
+  }, [api, token, meta, password, t, loadWithSession, recoverSession])
 
   useEffect(() => {
     if (phase.kind !== 'ready' || !token) return
@@ -145,11 +170,11 @@ export function useSharedTaskSession(token?: string) {
           || eventType === 'review_result'
           || event?.name === 'workstep.review_status'
           || event?.name === 'workstep.review_result'
-        shareApi.task(token, sessionToken).then((fresh) => {
+        api.task(token, sessionToken).then((fresh) => {
           if (!closed) setTask(fresh)
         }).catch(() => { /* swallow */ })
         if (shouldRefreshReviews) {
-          shareApi.reviews(token, sessionToken).then((fresh) => {
+          api.reviews(token, sessionToken).then((fresh) => {
             if (!closed) setReviews(fresh.reviews || [])
           }).catch(() => { /* swallow */ })
         }
@@ -159,7 +184,9 @@ export function useSharedTaskSession(token?: string) {
     const connect = () => {
       if (closed) return
       setWsStatus('connecting')
-      const ws = new WebSocket(shareApi.buildWsUrl(sessionToken))
+      const url = api.buildWsUrl(sessionToken)
+      if (url === null) return
+      const ws = new WebSocket(url)
       wsRef.current = ws
       ws.onopen = () => {
         if (closed) return
@@ -188,6 +215,34 @@ export function useSharedTaskSession(token?: string) {
       }
     }
 
+    if (api.buildWsUrl(sessionToken) === null) {
+      let timer: ReturnType<typeof setTimeout> | null = null
+      const poll = async () => {
+        try {
+          const [fresh, history, review] = await Promise.all([
+            api.task(token, sessionToken), api.history(token, sessionToken),
+            api.reviews(token, sessionToken),
+          ])
+          if (!closed) {
+            setTask(fresh); setMessages(previous => mergeSharedHistorySnapshot(previous, history.messages))
+            setReviews(review.reviews); setWsStatus('live')
+          }
+        } catch (reason) {
+          if (!closed) {
+            setWsStatus('disconnected')
+            if (reason && typeof reason === 'object' && 'status' in reason
+                && [401, 403, 404].includes(Number(reason.status))) {
+              setTask(null); setMessages([]); setArtifacts([]); setReviews([])
+              setPhase({ kind: 'error', message: t('share.sessionExpired') })
+              return
+            }
+          }
+        }
+        if (!closed) timer = setTimeout(() => void poll(), 2000)
+      }
+      timer = setTimeout(() => void poll(), 2000)
+      return () => { closed = true; if (timer) clearTimeout(timer) }
+    }
     connect()
     return () => {
       closed = true
@@ -196,13 +251,14 @@ export function useSharedTaskSession(token?: string) {
       wsRef.current = null
       try { ws?.close() } catch { /* ignore */ }
     }
-  }, [phase, token, recoverSession, meta])
+  }, [api, phase, token, recoverSession, meta])
 
   const refreshTask = useCallback(async () => {
     if (!token || phase.kind !== 'ready') return
-    const fresh = await shareApi.task(token, phase.sessionToken)
-    setTask(fresh)
-  }, [token, phase])
+    const version = scopeVersion.current
+    const fresh = await api.task(token, phase.sessionToken)
+    if (version === scopeVersion.current) setTask(fresh)
+  }, [api, token, phase])
 
   const appendOptimisticMessage = useCallback((message: any) => {
     setMessages((current) => [...current, message])
@@ -221,7 +277,7 @@ export function useSharedTaskSession(token?: string) {
       const events: any[] = []
       let nextCursor: number | null = null
       while (!complete) {
-        const page = await shareApi.messageEvents(token, phase.sessionToken, messageId, cursor)
+        const page = await api.messageEvents(token, phase.sessionToken, messageId, cursor)
         events.push(...page.events)
         complete = page.complete || page.next_cursor === null
         nextCursor = page.next_cursor
@@ -239,9 +295,32 @@ export function useSharedTaskSession(token?: string) {
         ? { ...item, event_detail: { ...item.event_detail, loading: false, error } }
         : item))
     }
-  }, [messages, phase, token])
+  }, [api, messages, phase, token])
+
+  const loadOlderHistory = useCallback(async () => {
+    if (!token || phase.kind !== 'ready' || nextOffset === null || olderInFlight.current) return
+    const version = scopeVersion.current
+    olderInFlight.current = true; setLoadingOlder(true); setError(null)
+    try {
+      const page = await api.history(token, phase.sessionToken, 100, nextOffset)
+      if (version !== scopeVersion.current) return
+      setMessages(current => {
+        const known = new Set(current.map(message => message.id))
+        return [...page.messages.filter(message => !known.has(message.id)).map(capSharedHistoryEvents), ...current]
+      })
+      setNextOffset('next_offset' in page && page.next_offset != null ? Number(page.next_offset) : null)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    } finally { if (version === scopeVersion.current) { olderInFlight.current = false; setLoadingOlder(false) } }
+  }, [api, token, phase, nextOffset])
+
+  const retry = useCallback(() => {
+    setTask(null); setMessages([]); setArtifacts([]); setReviews([]); setError(null)
+    reunlockAttemptsRef.current = 0; setRevision(current => current + 1)
+  }, [])
 
   return {
+    retry, loadOlderHistory: nextOffset === null ? undefined : loadOlderHistory, loadingOlder,
     phase, meta, task, messages, artifacts, artifactDirectory, reviews, wsStatus,
     password, setPassword, error, unlock, refreshTask, appendOptimisticMessage, loadMessageEvents,
   }

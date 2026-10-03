@@ -325,9 +325,10 @@ def load_shared_history(
     for msg in reversed(messages):
         step_run_id, artifact_round = artifact_projections[msg.id]
         raw_events: list[dict] = []
-        if msg.events_json:
+        projected_events = msg.event_summary_json or msg.events_json
+        if projected_events:
             try:
-                raw_events = _json.loads(msg.events_json)
+                raw_events = _json.loads(projected_events)
             except Exception:
                 raw_events = []
         # 与实时推送共用 AG-UI 翻译层（旧词汇经兼容映射），

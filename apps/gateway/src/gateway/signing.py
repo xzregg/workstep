@@ -119,7 +119,7 @@ class GatewaySigner:
     def sign_platform_share_ticket(self, *, gateway_id: str, device_id: str,
                                    share_id: str, project_id: str,
                                    host_project_id: str, task_id: str,
-                                   mode: str) -> str:
+                                   mode: str, provider_ids: list[str] | None = None) -> str:
         if mode not in ("read_only", "interactive"):
             raise ValueError("Invalid platform share mode")
         for value, limit in ((share_id, 128), (project_id, 64),
@@ -130,6 +130,14 @@ class GatewaySigner:
                            for char in value)):
                 raise ValueError("Invalid platform share scope")
         now = int(time.time())
+        provider_scope = {}
+        if provider_ids is not None:
+            if (not isinstance(provider_ids, list) or len(provider_ids) > 1000
+                    or any(not isinstance(item, str) or not 1 <= len(item) <= 128 for item in provider_ids)
+                    or (mode == 'read_only' and provider_ids)):
+                raise ValueError('Invalid share provider scope')
+            provider_scope = {'provider_ids': sorted(set(provider_ids)),
+                              'provider_grant_expires_at': now + 300}
         header = _b64(json.dumps({"alg": "EdDSA", "typ": "JWT"}, separators=(",", ":")).encode())
         payload = _b64(json.dumps({
             "iss": gateway_id, "gateway_id": gateway_id, "kind": "platform.share",
@@ -137,6 +145,7 @@ class GatewaySigner:
             "project_id": project_id, "host_project_id": host_project_id,
             "task_id": task_id, "mode": mode,
             "jti": secrets.token_urlsafe(24), "iat": now, "exp": now + 60,
+            **provider_scope,
         }, separators=(",", ":"), sort_keys=True).encode())
         signing_input = f"{header}.{payload}"
         return f"{signing_input}.{_b64(self.private_key.sign(signing_input.encode()))}"

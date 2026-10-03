@@ -406,3 +406,11 @@ async def test_project_websocket_bridge_only_receives_explicit_project_events():
     await asyncio.wait_for(share_bridge._task, timeout=1)
     assert blocked[0].type == FrameType.websocket_close
     assert blocked[0].payload["code"] == 4401
+
+
+def test_remote_provider_grant_cannot_extend_its_trusted_lifetime():
+    from services.gateway_client.bridge import _provider_scope
+    expires = int(time.time()) + 300
+    assert _provider_scope({'provider_ids': ['supplier'], 'provider_grant_expires_at': expires}) == (frozenset({'supplier'}), expires)
+    with pytest.raises(ValueError):
+        _provider_scope({'provider_ids': ['supplier'], 'provider_grant_expires_at': expires + 3600})

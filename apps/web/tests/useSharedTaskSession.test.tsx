@@ -4,6 +4,7 @@ import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { I18nProvider } from '../src/i18n'
+import { gatewayShareApi } from '../src/api/gatewayShare'
 import { useSharedTaskSession } from '../src/hooks/useSharedTaskSession'
 
 function response(data: unknown, status = 200) {
@@ -136,4 +137,27 @@ test('live share events update capped messages and refresh task and reviews', as
     container.remove()
     await window.happyDOM.close()
   }
+})
+
+test('changing public share ignores a late snapshot from the previous token', async () => {
+  const { window } = installDomEnvironment()
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  let resolveOld!: (task: any) => void
+  const oldTask = new Promise<any>(resolve => { resolveOld = resolve })
+  const api = { ...gatewayShareApi,
+    meta: async () => ({ title: 'Share', mode: 'read_only' as const, has_password: false, status: 'active' }),
+    restoreSession: async () => ({ session_token: 'csrf' }),
+    task: async (token: string) => token === 'old' ? oldTask : { id: 'new', title: 'New', steps: [] },
+    history: async () => ({ messages: [], limit: 100, offset: 0 }),
+    artifacts: async () => ({ artifacts: [], artifact_directory: '' }), reviews: async () => ({ reviews: [] }),
+  } as typeof gatewayShareApi
+  let session!: ReturnType<typeof useSharedTaskSession>
+  function Harness({ token }: { token: string }) { session = useSharedTaskSession(token, api); return null }
+  try {
+    await act(async () => root.render(<I18nProvider><Harness token="old" /></I18nProvider>))
+    await act(async () => root.render(<I18nProvider><Harness token="new" /></I18nProvider>))
+    assert.equal(session.task?.id, 'new')
+    await act(async () => resolveOld({ id: 'old', steps: [] }))
+    assert.equal(session.task?.id, 'new')
+  } finally { await act(async () => root.unmount()); await window.happyDOM.close() }
 })

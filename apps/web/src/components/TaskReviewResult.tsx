@@ -10,6 +10,7 @@ interface TaskReviewResultProps {
   review: ReviewRun
   projectId?: string
   actionable: boolean
+  canCompleteStep?: boolean
   pending?: boolean
   comment?: string
   onCommentChange?: (value: string) => void
@@ -18,7 +19,7 @@ interface TaskReviewResultProps {
 }
 
 export default function TaskReviewResult({ review, projectId, actionable, pending,
-  comment, onCommentChange, onAction, containerRef }: TaskReviewResultProps) {
+  comment, onCommentChange, onAction, containerRef, canCompleteStep }: TaskReviewResultProps) {
   const { t } = useI18n()
   const actor = review.decision ? reviewActorLabel(review) : undefined
   const status = review.status === 'passed' ? 'passed'
@@ -46,7 +47,7 @@ export default function TaskReviewResult({ review, projectId, actionable, pendin
         <Textarea rows={2} value={comment ?? ''}
           onChange={(event) => onCommentChange?.(event.target.value)}
           placeholder={t('taskDetail.reviewCommentPlaceholder')} />
-        <ReviewDecisionActions status={review.status} pending={!!pending} onAction={onAction} />
+        <ReviewDecisionActions canCompleteStep={canCompleteStep} status={review.status} pending={!!pending} onAction={onAction} />
       </>}
     </div>
   </section>

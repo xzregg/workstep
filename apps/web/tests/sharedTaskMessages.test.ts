@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { applySharedMessageEvent, capSharedHistoryEvents } from '../src/pages/sharedTaskMessages'
+import { applySharedMessageEvent, capSharedHistoryEvents, mergeSharedHistorySnapshot } from '../src/pages/sharedTaskMessages'
 
 test('shared live message events append text, retain process events, and settle status', () => {
   const started = applySharedMessageEvent([], {
@@ -36,4 +36,21 @@ test('shared interaction events attach to the existing message without changing 
   assert.equal(updated[0].content, 'Working')
   assert.equal(updated[0].events[0].request_id, 'approval')
   assert.deepEqual(message.events, [])
+})
+
+ test('polled share snapshots retain older history and loaded details but remove settled interactions', () => {
+  const details = [{ type: 'TOOL_CALL_START', tool: 'shell' }]
+  const previous = [
+    { id: 'older', content: 'old' },
+    { id: 'current', content: 'before', events: details, event_detail: { loaded: true } },
+    { id: 'gateway-interaction:resolved', events: [] },
+  ]
+  const merged = mergeSharedHistorySnapshot(previous, [
+    { id: 'current', content: 'after', events: [], event_detail: { loaded: false } },
+    { id: 'gateway-interaction:pending', events: [] },
+  ])
+  assert.deepEqual(merged.map(item => item.id), ['older', 'current', 'gateway-interaction:pending'])
+  assert.equal(merged[1].content, 'after')
+  assert.deepEqual(merged[1].events, details)
+  assert.equal(merged[1].event_detail.loaded, true)
 })

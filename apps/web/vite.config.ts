@@ -1,7 +1,10 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  ...(mode === 'gateway-share' ? {
+    base: '/workspace-assets/', build: { outDir: 'dist-gateway-share', assetsDir: '' },
+  } : {}),
   plugins: [react()],
   server: {
     proxy: {
@@ -21,4 +24,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))
