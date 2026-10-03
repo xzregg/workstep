@@ -362,6 +362,12 @@ export function createAssistantStore(
           ...messages.filter((m) => !existingIds.has(m.id)).map(capHistoryEvents),
           ...session.messages,
         ]
+        // A cached message can predate prompt persistence; backfill only the
+        // missing prompt without replacing newer streamed content or inputs.
+        const mergedWithPrompts = merged.map((message) => {
+          const storedPrompt = recovered.get(message.id)?.prompt
+          return !message.prompt && storedPrompt ? { ...message, prompt: storedPrompt } : message
+        })
         // 历史事件兼容两种形状：内部词汇（``type: 'a2ui'``，data 为载荷）与
         // 对外 AG-UI CUSTOM（``type: 'CUSTOM'``、``name: 'a2ui.surface'``）。
         const historyPayloads = (events: AssistantChatEvent[] | undefined, internalType: string, aguiName: string) =>
@@ -416,7 +422,7 @@ export function createAssistantStore(
         return {
           sessions: upsertSession(s.sessions, sessionId, {
             ...session,
-            messages: merged,
+            messages: mergedWithPrompts,
             running: (unchangedMessages && liveChanged ? session.running : running || (!unchangedMessages && session.running)) || merged.some((message) => (
               message.role === 'assistant' && message.status === 'running'
             )),

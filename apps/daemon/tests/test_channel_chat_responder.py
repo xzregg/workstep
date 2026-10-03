@@ -123,3 +123,20 @@ async def test_responder_announces_accepted_and_finished_channel_turn(tmp_path, 
     finally:
         bus.unsubscribe(observed)
         manager.close_all()
+
+
+async def test_channel_stop_only_stops_the_matching_reply():
+    bus = EventBus()
+    manager = ProjectManager()
+    module = ChannelChatModule(bus, manager)
+    module._turn_states = {
+        'target': {'project_id':'project','session_id':'session','assistant_message_id':'reply','status':'running'},
+        'next': {'project_id':'project','session_id':'session','assistant_message_id':'later','status':'queued'},
+        'other': {'project_id':'other-project','session_id':'session','assistant_message_id':'reply','status':'running'},
+    }
+    responder = ChatSessionResponder(bus, manager, module)
+    assert await responder.stop('project','session','reply')
+    assert module._turn_states['target']['status'] == 'stopped'
+    assert module._turn_states['next']['status'] == 'queued'
+    assert module._turn_states['other']['status'] == 'running'
+    assert not await responder.stop('project','session','reply')

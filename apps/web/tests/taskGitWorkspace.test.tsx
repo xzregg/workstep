@@ -328,3 +328,47 @@ test('project with no Git repository offers root initialization only after confi
     await window.happyDOM.close()
   }
 })
+
+test('remote task workspace loads its own discovery, refreshes initialization and previews remotely', async () => {
+  const { window } = installDomEnvironment()
+  const originalStore = useGitStore.getState()
+  const originalOpen = fsApi.openDirectory
+  let localScans = 0
+  let localOpens = 0
+  let reads = 0
+  let initialized = false
+  const browsed: string[] = []
+  const api = { ...gitApi,
+    repositories: async () => {
+      reads++
+      return { projects: [{ id: 'remote:p', name: 'Remote', path: '/remote' }], repositories: initialized ? [{ id: 'repo', name: 'Remote', common_dir: '/remote/.git', projects: [{ id: 'remote:p', relative_path: '.' }], worktrees: [] }] : [], depth: 5, scanned_at: 1, errors: [] }
+    },
+    openTaskWorkspace: async () => ({ path: '/remote/.workstep/worktrees/t', worktrees: [] }),
+    initialize: async () => { initialized = true; return { project_id: 'remote:p', path: '/remote' } },
+  }
+  useGitStore.setState({ scan: async () => { localScans++ }, data: null })
+  fsApi.openDirectory = async path => { localOpens++; return { path } }
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><GitApiContext.Provider value={{ api, shared: false, projectScoped: true, readOnly: false, browseWorkspace: async path => { browsed.push(path); return { path, parent: null, entries: [] } } }}><TaskGitWorkspace projectId="remote:p" taskId="t" /></GitApiContext.Provider></I18nProvider>))
+    assert.equal(reads, 1)
+    assert.equal(localScans, 0)
+    await act(async () => container.querySelector<HTMLButtonElement>('.task-git-initialize button')!.click())
+    await act(async () => document.querySelector<HTMLButtonElement>('[role="dialog"] button.btn-primary')!.click())
+    assert.equal(initialized, true)
+    assert.equal(reads, 2)
+    assert.equal(localScans, 0)
+    assert.equal(container.querySelector('.task-git-initialize'), null)
+    await act(async () => container.querySelector<HTMLButtonElement>('.git-page-header .git-open-location button')!.click())
+    assert.equal(localOpens, 0)
+    assert.deepEqual(browsed, ['/remote/.workstep/worktrees/t'])
+    assert.ok(document.querySelector('.project-directory-dialog'))
+  } finally {
+    await act(async () => root.unmount())
+    useGitStore.setState(originalStore)
+    fsApi.openDirectory = originalOpen
+    container.remove()
+    await window.happyDOM.close()
+  }
+})

@@ -455,6 +455,9 @@ export default function TaskConversationMessage({
                     {sender !== t('aiFlow.me') && (
                       <MarqueeText text={sender} className="user-sender-marquee" />
                     )}
+                    {sender === t('aiFlow.me') && (
+                      <MarqueeText text={msg.author_name?.trim() || sender} className="user-sender-marquee chat-message-sender-mobile" />
+                    )}
                     {formatConversationDateTime(
                       msg.started_at ||
                         msg.created_at,

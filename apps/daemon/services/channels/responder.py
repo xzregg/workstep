@@ -45,7 +45,7 @@ class ChatSessionResponder:
                    and state.get("project_id") == project_id and state.get("status") in {"queued", "running", "stopping"}
                    for state in module._turn_states.values()):
             return False
-        return await module.stop_current(session_id, project_id=project_id)
+        return await module.stop_current(session_id, project_id=project_id, expected_message_id=assistant_message_id)
 
     async def __call__(
         self,

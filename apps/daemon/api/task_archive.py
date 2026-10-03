@@ -65,9 +65,9 @@ def _load_archive_experience_draft(task_id: str, workstep_dir=None):
             engine=message.engine,
             model=message.model,
         )
-    prompt = ""
-    if message.prompt_json:
-        prompt = str(json.loads(message.prompt_json).get("prompt") or "")
+    from agent_assistants.prompt_input import get_prompt_view
+    stored = json.loads(message.prompt_json or "{}")
+    prompt = get_prompt_view(workstep_dir, message.id) or stored.get("prompt") or ""
     return {
         "found": True,
         "message_id": message.id,
@@ -210,7 +210,7 @@ async def prepare_archive_experience(
             if journal is not None:
                 existing.engine = journal["engine"]
                 existing.model = journal["model"]
-                existing.prompt_json = json.dumps({"prompt": journal["prompt"]}, ensure_ascii=False)
+                existing.prompt_json = json.dumps({"prompt": journal.get("prompt")}, ensure_ascii=False)
                 existing.event_log_path = journal["event_log_path"]
                 existing.events_json = json.dumps(journal_snapshot["events"], ensure_ascii=False)
                 existing.event_count = journal_snapshot["summary"]["event_count"]
@@ -236,10 +236,7 @@ async def prepare_archive_experience(
             run_status="succeeded",
             engine=journal["engine"] if journal is not None else None,
             model=journal["model"] if journal is not None else None,
-            prompt_json=(
-                json.dumps({"prompt": journal["prompt"]}, ensure_ascii=False)
-                if journal is not None else None
-            ),
+            prompt_json=json.dumps({"prompt": journal.get("prompt")}, ensure_ascii=False) if journal else None,
             event_log_path=journal["event_log_path"] if journal is not None else None,
             events_json=(
                 json.dumps(journal_snapshot["events"], ensure_ascii=False)

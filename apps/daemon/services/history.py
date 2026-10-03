@@ -317,6 +317,9 @@ def get_task_history(
             except (json.JSONDecodeError, AttributeError):
                 pass
 
+        if msg.channel in {"coordinator", "archive_experience"}:
+            from agent_assistants.prompt_input import get_prompt_view
+            entry["prompt"] = get_prompt_view(workstep_dir, msg.id) or entry["prompt"]
         result.append(entry)
 
     return result
@@ -380,6 +383,9 @@ def get_step_history(
                 entry["usage"] = json.loads(msg.usage_json)
             except json.JSONDecodeError:
                 pass
+        if msg.channel in {"coordinator", "archive_experience"}:
+            from agent_assistants.prompt_input import get_prompt_view
+            entry["prompt"] = get_prompt_view(workstep_dir, msg.id) or entry["prompt"]
         result.append(entry)
 
     return result

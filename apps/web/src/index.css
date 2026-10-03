@@ -527,6 +527,10 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
   font-family: var(--font-mono); font-size: calc(11px * var(--font-scale));
   color: var(--meta); min-height: 22px; padding: 0 5px; order: 99;
 }
+.task-detail-id-text {
+  display: block; width: 100%; min-width: 0;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
 .task-detail-id-button[data-copied="true"] { color: var(--success); }
 .shared-task-page {
   height: 100vh; overflow: hidden; display: flex; flex-direction: column;
@@ -2320,6 +2324,19 @@ details[open] > summary > .process-trace-chevron {
   width: auto;
   white-space: pre-wrap;
   padding: 4px 8px 4px 8px;
+}
+
+/* Prompt inspection preserves the captured text while wrapping it to the dialog. */
+.markdown-message.prompt-viewer-markdown pre,
+.markdown-message.prompt-viewer-markdown pre code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.markdown-message.prompt-viewer-markdown pre code {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .user-message-markdown img,
@@ -4136,6 +4153,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   max-width: 100%;
 }
 
+/* Empty caret targets stay compact even in WebViews without field-sizing. */
+.chat-input-text-segment--empty {
+  flex: 0 0 1ch;
+  width: 1ch;
+}
+
 .chat-input-text-segment::placeholder {
   color: var(--meta);
 }
@@ -5021,6 +5044,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   position: relative;
   display: inline-flex;
   flex-shrink: 0;
+}
+.chat-message-sender-mobile {
+  display: none;
 }
 .chat-message-avatar-tooltip-wrap {
   position: absolute;

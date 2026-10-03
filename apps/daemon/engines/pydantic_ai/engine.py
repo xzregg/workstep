@@ -806,7 +806,7 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
         capabilities.append(WebFetch(native=False, local=True))
         agent = Agent(
             model,
-            **({"instructions": system_prompt} if system_prompt else {}),
+            **({"system_prompt": system_prompt} if system_prompt else {}),
             capabilities=capabilities,
             retries={"tools": PYDANTIC_AI_TOOL_RETRIES, "output": 1},
         )
@@ -897,6 +897,7 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
                     if harness_capabilities
                     else None
                 )
+                seeded_history = self._with_session_system_prompt(seeded_history, system_prompt)
                 if seeded_history is not None:
                     stream_kwargs["message_history"] = seeded_history
                 result = await self._stream_agent_run(
@@ -1166,7 +1167,7 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
             }
             if thinking_effort:
                 run_kwargs["thinking_effort"] = thinking_effort
-            if system_prompt:
+            if system_prompt is not None:
                 run_kwargs["system_prompt"] = system_prompt
             if workstep_tools:
                 run_kwargs["workstep_tools"] = True

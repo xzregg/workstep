@@ -11,6 +11,33 @@ import { I18nProvider } from '../src/i18n'
 const firstImage = '![one](.workstep/uploads/one.png)'
 const secondImage = '![two](.workstep/uploads/two.png)'
 
+test('image-only composer keeps empty caret segments compact and editable', async () => {
+  const { window } = installDomEnvironment()
+  const changes: string[] = []
+  let root!: Root
+  try {
+    const container = window.document.body.appendChild(window.document.createElement('div'))
+    await act(async () => {
+      root = createRoot(container as never)
+      root.render(<Harness initial={firstImage} onChange={(value) => changes.push(value)} />)
+    })
+    const textareas = Array.from(container.querySelectorAll('textarea')) as HTMLTextAreaElement[]
+    assert.equal(textareas.length, 2)
+    assert.ok(textareas.every((element) => element.classList.contains('chat-input-text-segment--empty')),
+      'empty caret targets must not reserve the default textarea width before or after an image')
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!.call(textareas[0], '说明')
+      textareas[0].dispatchEvent(new window.Event('input', { bubbles: true }))
+    })
+    assert.equal(changes.at(-1), `说明${firstImage}`)
+    assert.equal(textareas[0].classList.contains('chat-input-text-segment--empty'), false)
+    assert.equal(textareas[1].classList.contains('chat-input-text-segment--empty'), true)
+    await act(async () => { root.unmount() })
+  } finally {
+    await window.happyDOM.close()
+  }
+})
+
 function Harness({
   initial,
   onChange,

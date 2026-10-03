@@ -281,6 +281,7 @@ export interface TaskDetailViewProps {
 
   // ── Header / layout ──
   headerActions?: React.ReactNode
+  navigationActions?: React.ReactNode
   taskHeaderExtra?: React.ReactNode
   onClose?: () => void
   onHeaderPointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void
@@ -416,6 +417,7 @@ export default function TaskDetailView({
   onProposalOverride,
   // Header
   headerActions,
+  navigationActions,
   taskHeaderExtra,
   onClose,
   onHeaderPointerDown,
@@ -1095,12 +1097,13 @@ export default function TaskDetailView({
       {/* Header */}
       {task && <TaskDetailHeader task={task} locale={locale} activeStep={activeStep}
         activeStepColor={activeStepColor} taskCompleted={taskCompleted}
-        headerActions={headerActions} taskHeaderExtra={taskHeaderExtra} onClose={onClose}
+        headerActions={<>{!compact && navigationActions}{headerActions}</>} taskHeaderExtra={taskHeaderExtra} onClose={onClose}
         onHeaderPointerDown={onHeaderPointerDown} onHeaderKeyDown={onHeaderKeyDown}
         onHeaderDoubleClick={onHeaderDoubleClick} />}
 
-      {(!compact || canShowAnalysis || gitEnabled) && <TaskDetailTabs
+      {(!compact || canShowAnalysis || gitEnabled || navigationActions) && <TaskDetailTabs
         className="task-detail-primary-tabs" ariaLabel={t('executionAnalysis.title')}
+        actions={compact ? navigationActions : undefined}
         selected={detailMode} onSelect={setDetailMode}
         tabs={[
           { id: 'detail', label: t('taskDetail.detailTab') },

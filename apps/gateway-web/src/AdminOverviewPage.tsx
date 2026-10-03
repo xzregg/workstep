@@ -36,29 +36,12 @@ export function AdminOverviewPage() {
 
   return <section className="gateway-admin-page">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
-    <div className="gateway-admin-toolbar"><h2>管理概览</h2><Link to="/">返回工作台</Link></div>
+    <div className="gateway-admin-toolbar"><h2>管理概览</h2></div>
     {access === 'checking' && !error && <p role="status">正在加载管理概览…</p>}
     {access === 'forbidden' && <p role="alert">当前账号没有管理后台权限，或需要先<Link to="/account">修改初始密码</Link>。</p>}
     {error && <p className="gateway-auth-error" role="alert">{error} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {access === 'ready' && overview && <>
-      <nav className="gateway-admin-links" aria-label="管理模块">
-        {overview.users && <Link to="/admin/users">用户管理</Link>}
-        {overview.users && <Link to="/admin/org">组织与同步</Link>}
-        {overview.roles.some(role => ['super_admin', 'org_admin'].includes(role)) && <Link to="/admin/admins">管理员权限</Link>}
-        {overview.devices && <Link to="/admin/devices">设备管理</Link>}
-        {overview.roles.includes('super_admin') && <Link to="/admin/device-groups">设备组与部门归属</Link>}
-        {overview.roles.some(role => ['super_admin', 'org_admin', 'department_admin'].includes(role)) && <Link to="/admin/projects">项目管理</Link>}
-        {overview.roles.includes('super_admin') && <Link to="/admin/shares">平台分享管理</Link>}
-        {overview.roles.some(role => ['super_admin', 'org_admin', 'department_admin'].includes(role)) && <Link to="/admin/providers">供应商管理</Link>}
-        {overview.roles.some(role => role === 'super_admin' || role === 'skill_admin') &&
-          <Link to="/admin/skills">Skill 管理</Link>}
-        {overview.roles.includes('super_admin') && <Link to="/admin/groups">用户组管理</Link>}
-        {overview.roles.some(role => ['super_admin', 'audit_admin'].includes(role)) && <Link to="/admin/usage">Token 用量</Link>}
-        {overview.roles.some(role => role === 'super_admin' || role === 'audit_admin') &&
-          <Link to="/admin/audit">审计记录</Link>}
-        {overview.roles.includes('super_admin') && <Link to="/admin/settings">平台设置</Link>}
-      </nav>
       <div className="gateway-overview-grid">
         {overview.users && <section className="gateway-overview-card"><h3>用户</h3>
           <p><strong>{overview.users.total}</strong> 位用户</p>

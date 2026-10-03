@@ -191,6 +191,7 @@ async def invoke_engine(
     live_message_queue: asyncio.Queue | None = None,
     system_prompt: str | None = None,
     system_prompt_each_turn: bool = False,
+    capture_prompt_input: bool = False,
 ) -> tuple[str, list[dict], str | None]:
     """Compatibility entry point; the turn transport lives in engine_invocation."""
     return await run_engine_turn(
@@ -214,6 +215,7 @@ async def invoke_engine(
         live_message_queue=live_message_queue,
         **({"system_prompt": system_prompt} if system_prompt else {}),
         **({"system_prompt_each_turn": True} if system_prompt_each_turn else {}),
+        **({"capture_prompt_input": True} if capture_prompt_input else {}),
     )
 
 
@@ -230,6 +232,7 @@ class AssistantConfig:
     name: str
     channel: str
     system_prompt: str = ""
+    system_prompt_transport: bool = False
     scope: str = SCOPE_EPHEMERAL
     engine_label: str = "LLM engine"
     max_history_turns: int = MAX_HISTORY_TURNS
@@ -246,6 +249,7 @@ class AssistantConfig:
     # Hooks (defaults are provided by AssistantRuntime).
     session_identity: Callable[[str, str | None, str | None], tuple[tuple, str]] | None = None
     resolve_engine_models: Callable[[], tuple[str, str | None, str | None]] | None = None
+    engine_system_prompt: Callable[[AssistantSession], str] | None = None
     build_prompt: Callable[[AssistantSession], str] | None = None
     parse_response: Callable[[AssistantSession, str], tuple[str, list, list]] | None = None
     publish_structured: Callable[[AssistantSession, str, str, list, int], Awaitable[int]] | None = None
@@ -273,6 +277,7 @@ class AssistantRuntime:
         self._active_tasks: set[asyncio.Task] = set()
         self._turn_tasks: dict[str, asyncio.Task] = {}
         self._running_engines: dict[str, object] = {}
+        self._prompt_input_callbacks: dict[str, Callable] = {}
         self._stop_tasks: set[asyncio.Task] = set()
         self._shutting_down = False
 
@@ -680,11 +685,13 @@ class AssistantRuntime:
         if accepted is not None:
             self.start_queued_turn(accepted.turn_id)
 
-    async def stop_current(self, session_id: str, project_id: str | None = None) -> bool:
-        """Stop all queued and running turns for an assistant session."""
+    async def stop_current(self, session_id: str, project_id: str | None = None, *, expected_message_id: str | None = None) -> bool:
+        """Stop session turns, optionally restricted to one assistant reply."""
         accepted = False
         for turn_id, state in reversed(list(self._turn_states.items())):
             if state.get("session_id") != session_id:
+                continue
+            if expected_message_id is not None and state.get("assistant_message_id") != expected_message_id:
                 continue
             session = self._sessions.get(state.get("memory_key"))
             owner_project_id = session.project_id if session is not None else state.get("project_id")
@@ -909,6 +916,11 @@ class AssistantRuntime:
         vision_model = (
             restored_vision if restored_vision is not None else vision_model
         )
+        if self._capture_prompt_input():
+            captured = {item.get("id"): item.get("prompt") for live in self._sessions.values()
+                        if live.project_id == project_id and live.scope_key == scope_key
+                        for item in live.messages}
+            messages = [{**item, "prompt": captured.get(item.get("id")) or item.get("prompt")} for item in messages]
         normalize = self._config.history_message or default_history_message
         return {
             "engine": engine,
@@ -1213,7 +1225,7 @@ class AssistantRuntime:
             )
             head = (
                 self._config.system_prompt
-                if not session.resolved_session_id
+                if not session.resolved_session_id and not self._config.system_prompt_transport
                 else ""
             )
             return f"{head}\n\n{user_message}"
@@ -1227,7 +1239,7 @@ class AssistantRuntime:
             for item in turns
         )
         return (
-            f"{self._config.system_prompt}"
+            f"{'' if self._config.system_prompt_transport else self._config.system_prompt}"
             f"\n\nConversation history:\n{history}\n\nContinue."
         )
 
@@ -1236,16 +1248,29 @@ class AssistantRuntime:
         return self._config.system_prompt
 
     def _engine_system_prompt(self, session: AssistantSession) -> str:
-        """Opt-in instruction transport; existing assistants keep their prompts."""
-        return ""
+        """Return fixed rules separately from the changing turn context."""
+        if self._config.engine_system_prompt is not None:
+            return self._config.engine_system_prompt(session)
+        return self._config.system_prompt if self._config.system_prompt_transport else ""
 
-    def _display_prompt(self, session: AssistantSession, prompt: str) -> str:
-        """Return the complete effective prompt shown by ``查看提示词``.
+    def _system_prompt_each_turn(self) -> bool:
+        return False
 
-        Resume-capable engines retain the system instruction in their session,
-        so later wire prompts intentionally omit it.  The inspection view must
-        still show that effective instruction without sending it again.
-        """
+    def _capture_prompt_input(self) -> bool:
+        return self._config.system_prompt_transport or self._system_prompt_each_turn()
+
+    def _format_prompt_input(self, data: dict) -> str | None:
+        """Opt-in transport inspection; existing assistant displays are unchanged."""
+        if not self._capture_prompt_input():
+            return None
+        from agent_assistants.prompt_input import format_prompt_input
+
+        return format_prompt_input(data)
+
+    def _display_prompt(self, session: AssistantSession, prompt: str, system_prompt: str | None = None) -> str:
+        """Migrated assistants wait for actual inputs; legacy previews stay compatible."""
+        if self._capture_prompt_input():
+            return ""
         system_prompt = self._system_prompt_for_display(session).strip()
         if not system_prompt or prompt.lstrip().startswith(system_prompt):
             return prompt
@@ -1348,8 +1373,10 @@ class AssistantRuntime:
                 session.cwd = await asyncio.to_thread(self._cwd, session.project_id)
                 prompt = await asyncio.to_thread(self._build_prompt, session)
                 system_prompt = await asyncio.to_thread(self._engine_system_prompt, session)
-                display_prompt = await asyncio.to_thread(self._display_prompt, session, prompt)
+                display_prompt = await asyncio.to_thread(self._display_prompt, session, prompt, system_prompt)
                 active_prompt = [display_prompt]
+                prompt_input_snapshots: list[str] = []
+                captured_inputs: list[dict] = []
                 user_messages = [
                     message
                     for message in session.messages
@@ -1418,6 +1445,20 @@ class AssistantRuntime:
 
                     async def publish_live_event(event: InternalEvent) -> None:
                         nonlocal raw_content, streamed_reply
+                        if event.type == "prompt_input":
+                            captured_inputs.append(event.data)
+                            snapshot = self._format_prompt_input(event.data)
+                            if snapshot is not None:
+                                prompt_input_snapshots.append(snapshot)
+                                active_prompt[0] = "\n\n".join(prompt_input_snapshots)
+                                active_message[0]["prompt"] = active_prompt[0]
+                                await self._persist_session(session)
+                                await self._publish(
+                                    session, active_message_id[0], "message_started",
+                                    {"prompt": active_prompt[0]}, seq_holder[0],
+                                )
+                                seq_holder[0] += 1
+                            return
                         if event.type == "session_started":
                             resolved = str(event.data.get("session_id") or "")
                             if resolved:
@@ -1686,6 +1727,7 @@ class AssistantRuntime:
                             # event has no current AG-UI rendering path.
                             await self._record_journal_event(active_journal_ref[0], event_dict)
 
+                    self._prompt_input_callbacks[turn_id] = publish_live_event
                     return publish_live_event
 
                 journaled_events: list[dict] = []
@@ -1731,6 +1773,16 @@ class AssistantRuntime:
                         None,
                         **invoke_kwargs,
                     )
+                unmatched_inputs = list(captured_inputs)
+                for input_event in _events:
+                    if input_event.get("type") != "prompt_input":
+                        continue
+                    data = input_event.get("data") or {}
+                    if data in unmatched_inputs:
+                        unmatched_inputs.remove(data)
+                    else:
+                        await make_live_callback(journaled_events)(InternalEvent("prompt_input", data))
+                _events = [item for item in _events if item.get("type") != "prompt_input"]
                 # 回合结束：先冲刷聚合器里剩余的思考流，再补录非实时事件。
                 for pending in thought_aggregator.flush():
                     await emit_aggregated(pending)
@@ -1755,6 +1807,9 @@ class AssistantRuntime:
                 if live_split_count[0] > 0 and not structured:
                     reply = streamed_reply
                 for extra_event in repair_events:
+                    if extra_event.get("type") == "prompt_input":
+                        await make_live_callback(journaled_events)(InternalEvent("prompt_input", extra_event.get("data") or {}))
+                        continue
                     await self._record_journal_event(active_journal_ref[0], extra_event)
                     await self._publish(
                         session,
@@ -1924,6 +1979,7 @@ class AssistantRuntime:
                     return
                 await record_turn_error(exc)
             finally:
+                self._prompt_input_callbacks.pop(turn_id, None)
                 session.last_active = time.monotonic()
                 # 兜底：各终态分支已在对外可见前落库；只有终态保存失败
                 # （或被跳过）时才在这里重试一次，避免状态先于数据可见。
@@ -2014,6 +2070,8 @@ class AssistantRuntime:
         """Persist events returned by adapters that skipped the live callback."""
         unmatched = list(journaled_events)
         for event in returned_events:
+            if event.get("type") == "prompt_input":
+                continue
             if event in unmatched:
                 unmatched.remove(event)
             else:
@@ -2206,6 +2264,12 @@ class AssistantRuntime:
             ),
             None,
         )
+        auxiliary_capture = on_event is None and run_key in self._prompt_input_callbacks
+        if auxiliary_capture:
+            async def capture_input(event):
+                if event.type == "prompt_input":
+                    await self._prompt_input_callbacks[run_key](event)
+            on_event = capture_input
         thinking_effort = (
             self._turn_states.get(run_key, {}).get("thinking_effort")
             if run_key
@@ -2245,7 +2309,7 @@ class AssistantRuntime:
             )
             turn_state["usage_provider_id"] = selected
             turn_state["usage_provider_snapshot"] = snapshot
-        return await invoke_engine(
+        result = await invoke_engine(
             engine_id,
             model,
             cwd,
@@ -2266,7 +2330,14 @@ class AssistantRuntime:
             config_overrides=config_overrides,
             live_message_queue=turn_state.get("live_message_queue"),
             **({"system_prompt": system_prompt} if system_prompt else {}),
+            **({"system_prompt_each_turn": True} if self._system_prompt_each_turn() else {}),
+            **({"capture_prompt_input": True} if self._capture_prompt_input() else {}),
         )
+
+        if auxiliary_capture:
+            raw, events, resolved = result
+            return raw, [event for event in events if event.get("type") != "prompt_input"], resolved
+        return result
 
     def _build_rebuild_prompt(self, session: AssistantSession) -> str:
         """Build a stateless prompt after an engine session was lost."""
@@ -2283,7 +2354,7 @@ class AssistantRuntime:
             for item in turns
         )
         return (
-            f"{self._config.system_prompt}"
+            f"{'' if self._config.system_prompt_transport else self._config.system_prompt}"
             f"\n\nConversation history:\n{history}\n\nContinue."
         )
 

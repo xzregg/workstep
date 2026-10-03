@@ -162,3 +162,67 @@ async def test_dingtalk_failed_final_card_update_falls_back_to_full_text():
     await adapter.send_text(message,'完整正文')
     adapter._send_text.assert_awaited_once_with(message,'完整正文')
     assert not adapter._reply_cards
+
+
+async def test_dingtalk_stop_button_stays_on_the_streaming_reply_and_finish_keeps_body():
+    import json
+    from services.channels.base import ChannelButton, ChannelCard
+    from services.channels.dingtalk import DingTalkAdapter
+    adapter = DingTalkAdapter({'id':'bot','app_id':'client','secret':'secret'}, AsyncMock(), AsyncMock())
+    adapter._card_api = AsyncMock(return_value={})
+    message = IncomingMessage('bot','message','group','group','user','问题')
+    await adapter.send_card(message, ChannelCard('stop-card','正在处理','等待回复',
+        (ChannelButton('0','终止'),), running=True))
+    await adapter.update_reply(message, '部分正文')
+    await adapter.update_reply(message, '更多正文')
+    calls = adapter._card_api.await_args_list
+    assert [c.args[0] for c in calls] == ['POST', 'PUT', 'PUT']
+    assert {c.args[1]['outTrackId'] for c in calls} == {'stop-card'}
+    for call in calls:
+        buttons = json.loads(call.args[1]['cardData']['cardParamMap']['sys_full_json_obj'])['msgButtons']
+        assert [button['text'] for button in buttons] == ['终止']
+    await adapter.send_text(message, '完整正文')
+    await adapter.update_card(message, ChannelCard('stop-card','已结束','点击终止可停止本次运行。', running=True))
+    final = adapter._card_api.await_args.args[1]['cardData']['cardParamMap']
+    assert final['markdown'] == '完整正文'
+    assert json.loads(final['sys_full_json_obj'])['msgButtons'] == []
+
+
+async def test_wecom_running_reply_keeps_controls_separate_from_text_stream():
+    from services.channels.base import ChannelButton, ChannelCard
+    adapter = WeComAdapter({'id':'bot'}, AsyncMock(), AsyncMock())
+    adapter._client = type('Client', (), {'reply_stream':AsyncMock(),
+        'reply_stream_with_card':AsyncMock(), 'send_message':AsyncMock()})()
+    message = IncomingMessage('bot','message','single','user','user','问题',
+        reply_context={'headers':{'req_id':'req'}})
+    await adapter.start_reply(message)
+    await adapter.send_card(message, ChannelCard('stop','正在处理','等待回复',
+        (ChannelButton('0','中止'),), running=True))
+    await adapter.update_reply(message,'部分正文')
+    await adapter.send_text(message,'已停止。')
+    assert [c.args[2] for c in adapter._client.reply_stream.await_args_list] == ['', '部分正文', '已停止。']
+    adapter._client.reply_stream_with_card.assert_not_awaited()
+    adapter._client.send_message.assert_awaited_once()
+    adapter.release_reply(message)
+
+
+async def test_dingtalk_stop_callback_preserves_reply_and_releases_completed_control():
+    from services.channels.base import ChannelAction, ChannelButton, ChannelCard
+    from services.channels.dingtalk import DingTalkAdapter
+    adapter = DingTalkAdapter({'id':'bot','app_id':'client','secret':'secret'}, AsyncMock(), AsyncMock())
+    adapter._card_api = AsyncMock(return_value={})
+    message = IncomingMessage('bot','message','group','group','user','问题')
+    await adapter.send_card(message, ChannelCard('stop','正在处理','等待回复',
+        (ChannelButton('0','终止'),), running=True))
+    await adapter.update_reply(message,'部分正文')
+    async def stop(click, on_claimed):
+        await on_claimed()
+        await adapter.update_reply(message,'停止前最后一段正文')
+        await adapter.send_text(message,'已停止。')
+        await adapter.update_card(message,ChannelCard('stop','已结束','操作提示',running=True))
+        return '已停止'
+    adapter.set_action_handler(stop)
+    await adapter._card_action(ChannelAction('bot','stop','0','user',conversation_id='group'))
+    assert adapter._card_api.await_args.args[1]['cardData']['cardParamMap']['markdown'] == '已停止。'
+    assert not adapter._reply_cards
+    assert not adapter._running_reply_cards

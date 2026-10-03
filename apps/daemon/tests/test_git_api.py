@@ -1259,11 +1259,19 @@ async def test_history_root_commit_binary_and_large_previews(client, layout):
     assert large['truncated'] and not large['patch']
 
 
-async def test_git_routes_are_not_exposed_over_remote_project_channel():
+async def test_remote_git_catalog_exposes_project_operations_and_denies_global_settings():
     from services.remote_project import _build_route_catalog
     app = FastAPI()
     app.include_router(git_api.router)
-    assert not _build_route_catalog(app)
+    catalog = _build_route_catalog(app)
+    paths = {route.path_template for route in catalog}
+    assert '/api/git/projects/{project_id}/tasks/{task_id}/workspace' in paths
+    assert '/api/git/projects/{project_id}/repositories' in paths
+    assert '/api/git/worktrees/{id}/status' in paths
+    assert '/api/git/worktrees/{id}/commit' in paths
+    assert '/api/git/scans' not in paths
+    assert '/api/git/repositories' not in paths
+    assert not any('/credentials' in path or path.endswith('/identity/global') for path in paths)
 
 
 async def test_branch_sync_fetch_and_fast_forward_pull(client, layout, tmp_path):

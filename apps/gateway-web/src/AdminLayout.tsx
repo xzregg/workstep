@@ -1,46 +1,49 @@
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Link, NavLink } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
+import { AdminNavigation, adminPageTitle } from './AdminNavigation'
 
-const modules = [
- { path: '/admin', label: '管理概览', roles: [] },
- { path: '/admin/users', label: '用户管理', roles: ['identity_admin', 'org_admin', 'department_admin'] },
- { path: '/admin/org', label: '组织与同步', roles: ['identity_admin', 'org_admin', 'department_admin'] },
- { path: '/admin/admins', label: '管理员权限', roles: ['org_admin'] },
- { path: '/admin/devices', label: '设备管理', roles: ['device_admin', 'org_admin', 'department_admin'] },
- { path: '/admin/device-groups', label: '设备组与部门', roles: ['super_admin'] },
- { path: '/admin/device-operations', label: '设备作业', roles: ['device_admin', 'org_admin', 'department_admin'] },
- { path: '/admin/projects', label: '项目管理', roles: ['org_admin', 'department_admin'] },
- { path: '/admin/shares', label: '分享管理', roles: ['super_admin'] },
- { path: '/admin/providers', label: '模型供应商', roles: ['org_admin', 'department_admin'] },
- { path: '/admin/skills', label: 'Skills 管理', roles: ['skill_admin'] },
- { path: '/admin/groups', label: '用户组管理', roles: ['super_admin'] },
- { path: '/admin/usage', label: '用量与对账', roles: ['audit_admin'] },
- { path: '/admin/audit', label: '审计记录', roles: ['audit_admin'] },
- { path: '/admin/settings', label: '平台设置', roles: ['super_admin'] },
-]
+function AdminBrand({ onNavigate }: { onNavigate?: () => void }) {
+ return <Link className="gateway-admin-brand" to="/admin" onClick={onNavigate}><span className="gateway-admin-brand-mark" aria-hidden="true">W</span><span>WORKSTEP<span className="gateway-admin-brand-caption">平台管理后台</span></span></Link>
+}
 
 export function AdminLayout({ roles, children }: { roles: string[]; children: ReactNode }) {
+ const { pathname } = useLocation()
+ const menu = useRef<HTMLDialogElement>(null)
+ const [menuOpen, setMenuOpen] = useState(false)
+ const closeMenu = () => { menu.current?.close(); setMenuOpen(false) }
+ useEffect(() => {
+  if (!menuOpen || !window.matchMedia) return
+  const desktop = window.matchMedia('(min-width: 1024px)')
+  const closeOnDesktop = () => { if (desktop.matches) { menu.current?.close(); setMenuOpen(false) } }
+  desktop.addEventListener('change', closeOnDesktop)
+  closeOnDesktop()
+  return () => desktop.removeEventListener('change', closeOnDesktop)
+ }, [menuOpen])
  return <div className="gateway-admin-shell">
-   <aside className="gateway-admin-sidebar">
-     <Link className="gateway-admin-brand" to="/admin">WORKSTEP 平台</Link>
-     <p className="gateway-admin-sidebar-label">管理后台</p>
-     <nav aria-label="管理菜单">
-      <NavLink to="/admin" end>管理概览</NavLink>
-      {[
-       { title: '用户与权限', paths: ['/admin/users', '/admin/groups', '/admin/org', '/admin/admins'] },
-       { title: '设备管理', paths: ['/admin/devices', '/admin/device-groups', '/admin/device-operations'] },
-       { title: '资源管理', paths: ['/admin/projects', '/admin/shares', '/admin/providers', '/admin/skills'] },
-       { title: '统计与审计', paths: ['/admin/usage', '/admin/audit'] },
-       { title: '系统设置', paths: ['/admin/settings'] },
-      ].map(group => {
-       const visible = modules.filter(item => group.paths.includes(item.path) && (roles.includes('super_admin') || item.roles.some(role => roles.includes(role))))
-       return visible.length > 0 && <details className="gateway-admin-nav-group" key={group.title} open>
-        <summary>{group.title}</summary><div>{visible.map(item => <NavLink key={item.path} to={item.path}>{item.path === '/admin/org' ? '组织目录' : item.label}</NavLink>)}</div>
-       </details>
-      })}
-     </nav>
-     <Link className="gateway-admin-return" to="/">返回工作台</Link>
+   <aside className="gateway-admin-sidebar gateway-admin-desktop-sidebar">
+     <AdminBrand />
+     <p className="gateway-admin-sidebar-label">工作空间</p>
+     <AdminNavigation roles={roles} />
+     <Link className="gateway-admin-return" to="/">返回工作台<span aria-hidden="true">↗</span></Link>
    </aside>
-   <div className="gateway-admin-content"><div className="gateway-admin-topbar"><span>平台管理</span><Link to="/account">个人账户</Link></div>{children}</div>
+   <div className="gateway-admin-content">
+    <header className="gateway-admin-topbar">
+     <div className="gateway-admin-topbar-heading">
+      <button className="gateway-admin-menu-trigger" type="button" aria-label="打开管理菜单" aria-controls="gateway-admin-mobile-menu" aria-expanded={menuOpen} onClick={() => { menu.current?.showModal(); setMenuOpen(true) }}><span className="gateway-admin-menu-icon" aria-hidden="true" /></button>
+      <div className="gateway-admin-breadcrumb"><span>管理后台</span><span aria-hidden="true">/</span><strong>{adminPageTitle(pathname)}</strong></div>
+     </div>
+     <Link className="gateway-admin-account" to="/account">个人账户</Link>
+    </header>
+    {children}
+   </div>
+   <dialog id="gateway-admin-mobile-menu" ref={menu} className="gateway-admin-mobile-menu" aria-label="移动端管理菜单" onClose={() => setMenuOpen(false)} onClick={event => { if (event.target === event.currentTarget) closeMenu() }}>
+    <div className="gateway-admin-sidebar">
+     <div className="gateway-admin-mobile-menu-header"><AdminBrand onNavigate={closeMenu} /><button type="button" className="gateway-admin-menu-close" aria-label="关闭管理菜单" onClick={closeMenu}><span aria-hidden="true">×</span></button></div>
+     <p className="gateway-admin-sidebar-label">工作空间</p>
+     <AdminNavigation roles={roles} onNavigate={closeMenu} />
+     <Link className="gateway-admin-return" to="/" onClick={closeMenu}>返回工作台<span aria-hidden="true">↗</span></Link>
+    </div>
+   </dialog>
  </div>
 }

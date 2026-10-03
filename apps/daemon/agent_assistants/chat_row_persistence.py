@@ -53,6 +53,9 @@ def _preview(text: str, limit: int) -> str:
 class ChatRowPersistence(PersistenceAdapter):
     """Persist one chat conversation as rows in chat_sessions / chat_messages."""
 
+    def __init__(self, *, persist_prompt: bool = True):
+        self._persist_prompt = persist_prompt
+
     # ── session / messages loading ─────────────────────────────────────
 
     def load(self, session) -> None:
@@ -110,7 +113,7 @@ class ChatRowPersistence(PersistenceAdapter):
                 message["engine"] = item.engine
             if item.model:
                 message["model"] = item.model
-            if item.prompt:
+            if self._persist_prompt and item.prompt:
                 message["prompt"] = item.prompt
             if item.ended_at:
                 message["ended_at"] = _iso(item.ended_at)
@@ -200,7 +203,7 @@ class ChatRowPersistence(PersistenceAdapter):
                 ),
                 "engine": item.get("engine"),
                 "model": item.get("model"),
-                "prompt": item.get("prompt"),
+                **({"prompt": item.get("prompt")} if self._persist_prompt and item.get("prompt") else {}),
                 "events_json": json.dumps(events, ensure_ascii=False) if events else None,
                 "event_log_path": item.get("event_log_path"),
                 "event_summary_json": (

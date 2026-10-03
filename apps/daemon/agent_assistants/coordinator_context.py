@@ -21,6 +21,7 @@ def assemble_context(
     task: Task,
     turn: CoordinatorTurn,
     root_dir: str | None = None,
+    separate_instructions: bool = False,
 ):
     workflow_data = project.steps
     if task.workflow_id:
@@ -165,6 +166,9 @@ def assemble_context(
             "artifacts": artifact_views,
         })
     instructions = (
+        "You are the WorkStep task coordinator. Use WorkStep internal tools "
+        "to inspect projects and tasks via workstep_call or the workstep CLI. "
+        "Mutating operations require explicit user authorization. "
         "Understand the task and answer the user. You may propose at most one "
         "action, but never execute it. Allowed proposal types are "
         "supplement_step, rerun_from_step, review_decision, create_workflow_action. For a proposal "
@@ -230,6 +234,8 @@ def assemble_context(
             "For example, use workstep project list or workstep task list "
             "to locate current records, then read details as needed."
         )
+    if separate_instructions:
+        return f"Context:\n{json.dumps(context, ensure_ascii=False, default=str)}", instructions, artifacts
     prompt = (
         f"{instructions}\n\n"
         f"Context:\n{json.dumps(context, ensure_ascii=False, default=str)}"

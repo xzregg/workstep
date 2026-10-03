@@ -246,6 +246,8 @@ test('overview distinguishes control connectivity from daemon health and recover
   assert.match(document.body.textContent ?? '', /运行状态尚未全部上报/)
   assert.match(document.body.textContent ?? '', /1 个项目状态未知/)
   assert.equal(calls, 2)
+  assert.ok(screen.queryByRole('navigation', { name: '管理模块' }) === null, 'overview should use the shared sidebar navigation')
+  assert.ok(screen.queryByRole('link', { name: '返回工作台' }) === null, 'workbench navigation belongs to the shared layout')
 })
 
 test('normal users cannot see or directly enter management routes', async () => {
@@ -309,7 +311,9 @@ test('audit administrator can enter scoped ledger workbenches without broader ad
   await screen.findByRole('heading', { name: '审计记录' })
   cleanup()
   render(<MemoryRouter initialEntries={['/admin']}><App /></MemoryRouter>)
-  await screen.findByRole('link', { name: '审计记录' })
+  await screen.findByRole('heading', { name: '管理概览' })
+  within(screen.getByRole('navigation', { name: '管理菜单' })).getByText('统计与审计').closest('details')!.open = true
+  assert.ok(screen.getByRole('link', { name: '审计记录' }))
   assert.ok(screen.getByRole('link', { name: '用量与对账' }))
   assert.equal(screen.queryByRole('link', { name: '平台设置' }), null)
 })
@@ -333,7 +337,9 @@ test('Skill administrator enters only the Skill management module', async () => 
   await screen.findByRole('heading', { name: '平台 Skill 管理' })
   cleanup()
   render(<MemoryRouter initialEntries={['/admin']}><App /></MemoryRouter>)
-  await screen.findByRole('link', { name: 'Skill 管理' })
+  await screen.findByRole('heading', { name: '管理概览' })
+  within(screen.getByRole('navigation', { name: '管理菜单' })).getByText('资源管理').closest('details')!.open = true
+  assert.ok(screen.getByRole('link', { name: 'Skills 管理' }))
   assert.equal(screen.queryByRole('link', { name: '用户管理' }), null)
   cleanup()
   render(<MemoryRouter initialEntries={['/admin/users']}><App /></MemoryRouter>)

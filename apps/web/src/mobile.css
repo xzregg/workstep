@@ -339,7 +339,8 @@
   .mobile-task-row-meta time { margin-left: auto; font-variant-numeric: tabular-nums; }
   .mobile-empty { padding-block: 48px; color: var(--meta); text-align: center; }
   .task-detail-window, .task-create-panel { inset: 0 !important; width: 100% !important; min-width: 0 !important; height: var(--app-viewport-height, 100dvh) !important; max-height: var(--app-viewport-height, 100dvh); padding-top: env(safe-area-inset-top); box-shadow: none !important; border: 0 !important; }
-  .task-detail-header { padding: 8px 12px !important; gap: 8px !important; }
+  .task-detail-header { --task-detail-badge-height: 22px; padding: 8px 12px !important; gap: 8px !important; }
+  .task-detail-header-badge { min-height: var(--task-detail-badge-height); }
   .task-detail-header > div { min-width: 0; }
   .task-detail-header-fields {
     display: flex;
@@ -371,8 +372,7 @@
   .task-detail-header-close { align-self: flex-end; width: var(--mobile-control-regular); height: var(--mobile-control-regular); }
   .task-detail-header > div > div + div { display: none; }
   .task-detail-discussion-button,
-  .task-detail-share-button,
-  .task-detail-id-button {
+  .task-detail-share-button {
     height: var(--mobile-control-regular);
     min-height: var(--mobile-control-regular);
     padding-block: 0;
@@ -386,26 +386,29 @@
   }
   .task-detail-share-label { display: none; }
   .task-detail-id-button {
+    height: var(--task-detail-badge-height);
+    min-height: var(--task-detail-badge-height);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
     width: 84px;
     max-width: 84px;
     flex: 0 0 84px;
     overflow: hidden;
     font-size: calc(10px * var(--font-scale)) !important;
   }
-  .task-detail-id-marquee { display: block; width: 100%; min-width: 0; overflow: hidden; }
-  .task-detail-id-marquee-track {
-    display: inline-block;
-    white-space: nowrap;
-    animation: task-detail-id-scroll 9s ease-in-out infinite alternate;
+  .task-detail-primary-tabs-row {
+    display: flex; align-items: center; flex-shrink: 0; min-width: 0;
+    padding-inline: 12px; gap: 8px; border-bottom: 1px solid var(--border-soft);
   }
-  .task-detail-id-button[data-copied="true"] .task-detail-id-marquee-track { animation: none; }
-  @keyframes task-detail-id-scroll {
-    0%, 18% { transform: translateX(0); }
-    82%, 100% { transform: translateX(calc(74px - 100%)); }
+  .task-detail-primary-tabs-row > .task-detail-primary-tabs {
+    flex: 1; min-width: 0; padding: 0; gap: 6px; border-bottom: 0; overflow-x: auto;
+    white-space: nowrap; font-size: calc(12px * var(--font-scale));
   }
-  @media (prefers-reduced-motion: reduce) {
-    .task-detail-id-marquee-track { animation: none; }
-  }
+  .task-detail-primary-tabs-row > .task-detail-primary-tabs > button { flex-shrink: 0; padding-inline: 1px; }
+  .task-detail-primary-tabs-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+  .task-detail-id-button:hover { background: transparent; }
   .mobile-detail-tabs { display: flex; flex-shrink: 0; border-bottom: 1px solid var(--border-soft); padding-inline: 12px; }
   .mobile-detail-tabs button { flex: 1; height: var(--mobile-button-height); min-height: var(--mobile-button-height); padding: 0 12px; justify-content: center; border-radius: 0; border-bottom: 2px solid transparent; }
   .mobile-detail-tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
@@ -420,7 +423,7 @@
   .task-artifact-step-section { padding: 10px; }
   .task-artifact-round-tabs > button { white-space: nowrap; text-align: center; }
   .task-artifact-file-row { padding-inline: 0; }
-  .task-detail-conversation > div > div:first-child { padding: 8px 16px !important; flex-wrap: wrap; }
+  .task-conversation-header { display: none; }
   .task-detail-composer {
     padding: 2px 2px max(2px, env(safe-area-inset-bottom)) !important;
     gap: 4px !important;
@@ -711,9 +714,9 @@
     display: none !important;
   }
 
-  /* 移动端思考中/运行中隐藏消息操作按钮（复制/fork），已完成消息保留显示。 */
-  .chat-message-row[data-thinking] .chat-message-action,
-  .message-footer--running .chat-message-action {
+  /* 移动端运行中隐藏复制/fork，已捕获的提示词仍允许查看。 */
+  .chat-message-row[data-thinking] .chat-message-action:not(.chat-message-action--prompt),
+  .message-footer--running .chat-message-action:not(.chat-message-action--prompt) {
     display: none !important;
   }
 
@@ -830,9 +833,30 @@
 
   /* ── C 方案补充（纯 CSS） ── */
 
-  /* 隐藏头像：移动端屏幕窄，省出 ~40px 给正文。 */
+  /* 普通助手对话隐藏头像；任务对话历史保留头像及身份文字。 */
   .chat-message-avatar-anchor {
     display: none !important;
+  }
+  /* 头像放在左右留白中，不占用正文的 flex 宽度。 */
+  .task-conversation-content .chat-message-row {
+    position: relative;
+  }
+  .task-conversation-content .chat-message-avatar-anchor {
+    display: inline-flex !important;
+    position: absolute;
+    left: -34px;
+  }
+  .task-conversation-content .chat-message-row[data-message-role="user"] .chat-message-avatar-anchor {
+    left: auto;
+    right: -34px;
+  }
+  .chat-message-row .chat-message-sender-mobile {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+    color: var(--meta);
+    font-size: calc(11px * var(--font-scale));
+    overflow-wrap: anywhere;
   }
 
   /* Meta 栏去底线 + 弱化：C 风格是灰色单行，不要分隔线。 */

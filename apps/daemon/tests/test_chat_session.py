@@ -705,19 +705,17 @@ async def test_cross_engine_handoff_continues_the_same_session(chat_module, monk
     assert "<workstep_context_handoff>" in prompts[0]
     assert str(handoff_path.resolve()) in prompts[0]
     assert "旧目标：完成登录" not in prompts[0]
-    assert detail["messages"][-1]["prompt"] == prompts[0]
-    assert "<workstep_context_handoff>" in detail["messages"][-1]["prompt"]
-    assert str(handoff_path.resolve()) in detail["messages"][-1]["prompt"]
+    assert not detail["messages"][-1].get("prompt")  # Fake invocation did not capture its input.
     with module._project_ctx(project.id):
         row = ChatSession.get_by_id(source["id"])
         assert row.fork_context_json is None
 
 
 @pytest.mark.anyio
-async def test_resumed_chat_prompt_view_keeps_custom_system_injection_visible(
+async def test_chat_global_prompt_is_separate_and_view_records_actual_input(
     chat_module, monkeypatch
 ):
-    """查看提示词应展示引擎会话中仍然生效的项目自定义系统提示。"""
+    """Fixed global rules are independent of user input on every native turn."""
     import agent_assistants.chat_session as chat_service
 
     module, _bus, _manager, project, _ = chat_module
@@ -725,6 +723,7 @@ async def test_resumed_chat_prompt_view_keeps_custom_system_injection_visible(
     module.set_system_prompt(project.id, custom_system)
     session = module.create_session(project.id, title="系统提示展示", engine="claude")
     sent_prompts: list[str] = []
+    sent_instructions: list[str] = []
 
     class ResumeEngine(FakeEngine):
         supports_resume = True
@@ -733,9 +732,15 @@ async def test_resumed_chat_prompt_view_keeps_custom_system_injection_visible(
 
     async def fake_invoke(
         engine_id, model, cwd, prompt, session_id, on_event=None,
-        message_history=None,
+        message_history=None, system_prompt=None,
     ):
         sent_prompts.append(prompt)
+        sent_instructions.append(system_prompt)
+        await on_event(InternalEvent(type="prompt_input", data={
+            "engine": engine_id, "attempt": 1, "session_id": session_id,
+            "instruction_transport": "developer", "prompt": prompt,
+            "system_prompt": system_prompt,
+        }))
         return "完成", [], "engine-session"
 
     monkeypatch.setattr(module, "_invoke", fake_invoke)
@@ -744,9 +749,12 @@ async def test_resumed_chat_prompt_view_keeps_custom_system_injection_visible(
     second = module.submit_message(project.id, session["id"], "第二次", "chat-display-2")
     assert await _wait_turn(module, second.turn_id) == "completed"
 
-    assert custom_system not in sent_prompts[1]
+    assert sent_prompts == ["第一次", "第二次"]
+    assert sent_instructions == [custom_system, custom_system]
     visible_prompt = module.get_session(project.id, session["id"])["messages"][-1]["prompt"]
-    assert visible_prompt.startswith(custom_system)
+    assert custom_system in visible_prompt
+    assert "### 独立指令（developer）" in visible_prompt
+    assert "原始调用记录" not in visible_prompt
     assert "第二次" in visible_prompt
 
 
@@ -2151,7 +2159,7 @@ async def test_live_message_splits_chat_reply_around_inserted_user_message(
     ]
     assert detail["messages"][1]["status"] == "succeeded"
     assert detail["messages"][3]["status"] == "succeeded"
-    assert detail["messages"][3]["prompt"] == "插入要求"
+    assert "插入要求" in detail["messages"][3]["prompt"]
     assert detail["messages"][3]["author_id"] == detail["messages"][3]["engine"]
     assert detail["messages"][3]["author_type"] == "assistant"
     assert (detail["messages"][3]["initiated_by_user_id"]
@@ -4130,3 +4138,142 @@ async def test_session_history_pages_and_slow_query_keep_health_responsive(chat_
         older = (await client.get(f"/api/chat-sessions/{session_id}", params={"project_id": project.id, "offset": 300})).json()
         assert [m["content"] for m in older["messages"]] == [str(i) for i in range(5)]
         assert (await client.get(f"/api/chat-sessions/{session_id}", params={"project_id": project.id, "limit": 301})).status_code == 422
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("transport", ["body", "system", "developer"])
+async def test_chat_global_rules_transport_and_slow_read_keep_api_responsive(
+    chat_module, monkeypatch, transport,
+):
+    import main
+    from engines.core.acp_base import AcpEngineBase
+
+    module, bus, manager, project, _ = chat_module
+    calls = []
+
+    class Engine(FakeEngine, AcpEngineBase):
+        ENGINE_ID = "recording-chat"
+        SYSTEM_PROMPT_MODE = transport
+        supports_resume = True
+
+        @staticmethod
+        def is_installed():
+            return True
+
+        @staticmethod
+        def get_version():
+            return "test"
+
+        @staticmethod
+        def resolve_binary():
+            return None
+
+        async def spawn(self, prompt, cwd, model=None, session_id=None, **kwargs):
+            calls.append((prompt, session_id, kwargs))
+            yield InternalEvent(type="session_started", data={"session_id": "thread"})
+            yield InternalEvent(type="agent_message_chunk", data={"content": {"type": "text", "text": "完成"}})
+            yield InternalEvent(type="done", data={})
+
+    monkeypatch.setattr("agent_assistants.chat_session.create_engine", lambda _id: Engine())
+    monkeypatch.setattr("agent_assistants.base.create_engine", lambda _id: Engine())
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    session = module.create_session(project.id, engine="claude")
+    module.set_system_prompt(project.id, "固定全局规则")
+    entered, release = threading.Event(), threading.Event()
+    original_get = module.get_system_prompt
+
+    def slow_get(project_id):
+        entered.set()
+        assert release.wait(2)
+        return original_get(project_id)
+
+    monkeypatch.setattr(module, "get_system_prompt", slow_get)
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        response = await client.post(
+            f"/api/chat-sessions/{session['id']}/chat",
+            headers={"Idempotency-Key": "global-instruction-first"},
+            json={"project_id": project.id, "content": "第一次"},
+        )
+        assert response.status_code == 200, response.text
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            assert (await asyncio.wait_for(client.get("/api/health"), .2)).status_code == 200
+        finally:
+            release.set()
+        assert await _wait_turn(module, response.json()["turn_id"]) == "completed"
+        monkeypatch.setattr(module, "get_system_prompt", original_get)
+        response = await client.post(
+            f"/api/chat-sessions/{session['id']}/chat",
+            headers={"Idempotency-Key": "global-instruction-second"},
+            json={"project_id": project.id, "content": "第二次"},
+        )
+        assert response.status_code == 200, response.text
+        assert await _wait_turn(module, response.json()["turn_id"]) == "completed"
+        detail = (await client.get(f"/api/chat-sessions/{session['id']}", params={"project_id": project.id})).json()
+    assert [item["content"] for item in detail["messages"] if item["role"] == "user"] == ["第一次", "第二次"]
+    assert [call[1] for call in calls] == [None, "thread"]
+    if transport == "body":
+        assert [call[0] for call in calls] == ["固定全局规则\n\n第一次", "第二次"]
+        assert all("system_prompt" not in call[2] for call in calls)
+        assert "固定全局规则" not in detail["messages"][-1]["prompt"]
+    else:
+        assert [call[0] for call in calls] == ["第一次", "第二次"]
+        assert [call[2]["system_prompt"] for call in calls] == ["固定全局规则", "固定全局规则"]
+        assert "固定全局规则" in detail["messages"][-1]["prompt"]
+    assert "原始调用记录" not in detail["messages"][-1]["prompt"]
+    assert "### 正文（user）" in detail["messages"][-1]["prompt"]
+    saved_prompts = await manager.run_db(project.id, lambda _project: [
+        row.prompt for row in ChatMessage.select().where(ChatMessage.session == session["id"])
+    ])
+    assert detail["messages"][-1]["prompt"] in saved_prompts
+    await manager.run_db(project.id, lambda _project: module.set_system_prompt(project.id, "后来修改的规则"))
+    unchanged = await manager.run_db(project.id, lambda _project: module.get_session(project.id, session["id"]))
+    assert "后来修改的规则" not in unchanged["messages"][-1]["prompt"]
+    assert unchanged["messages"][-1]["prompt"] == detail["messages"][-1]["prompt"]
+    module._sessions.clear()
+    reloaded = await manager.run_db(project.id, lambda _project: module.get_session(project.id, session["id"]))
+    assert reloaded["messages"][-1]["prompt"] == detail["messages"][-1]["prompt"]
+
+
+@pytest.mark.anyio
+async def test_prompt_view_does_not_invent_historical_injection(chat_module, monkeypatch):
+    import main
+    module, _bus, manager, project, _config = chat_module
+    session = await manager.run_db(project.id, lambda _project: module.create_session(project.id, engine="claude"))
+
+    def seed(_project):
+        row = ChatSession.get_by_id(session["id"])
+        ChatMessage.create(id="source-user", session=row, role="user", content="原始问题", created_at=utc_now())
+        ChatMessage.create(id="source-answer", session=row, role="assistant", content="回答", prompt="过去的冗长快照", created_at=utc_now())
+        module.set_system_prompt(project.id, "当前全局规则")
+    await manager.run_db(project.id, seed)
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    def forbidden_rules(_project_id):
+        raise AssertionError("Viewing past inputs must not rebuild them from current rules")
+    monkeypatch.setattr(module, "get_system_prompt", forbidden_rules)
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        response = await client.get(
+            f"/api/chat-sessions/{session['id']}", params={"project_id": project.id, "limit": 1},
+        )
+    assert response.status_code == 200
+    assert response.json()["messages"][0]["prompt"] == "过去的冗长快照"
+    stored = await manager.run_db(project.id, lambda _project: ChatMessage.get_by_id("source-answer").prompt)
+    assert stored == "过去的冗长快照"  # Viewing does not rewrite historical rows.
+
+
+@pytest.mark.anyio
+async def test_saving_partial_history_preserves_existing_prompt(chat_module):
+    from agent_assistants.session_state import AssistantSession
+    from agent_assistants.chat_row_persistence import ChatRowPersistence
+    module, _, manager, project, _ = chat_module
+    summary = await manager.run_db(project.id, lambda _: module.create_session(project.id, engine="claude"))
+    def save_partial(_):
+        row = ChatSession.get_by_id(summary["id"])
+        ChatMessage.create(id="old-prompt", session=row, role="assistant", content="旧回答", prompt="以前存好的提示词", created_at=utc_now())
+        runtime = AssistantSession(session_id=row.id, project_id=project.id, scope="chat", engine=row.engine)
+        runtime.messages = [{"id":"old-prompt", "role":"assistant", "content":"旧回答", "prompt":""}]
+        ChatRowPersistence().save(runtime)
+        return ChatMessage.get_by_id("old-prompt").prompt
+    assert await manager.run_db(project.id, save_partial) == "以前存好的提示词"

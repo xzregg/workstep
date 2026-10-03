@@ -132,6 +132,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         *,
         system_prompt: str | None = None,
         system_prompt_each_turn: bool = False,
+        capture_prompt_input: bool = False,
         **kwargs,
     ) -> AsyncIterator[InternalEvent]:
         """Run one engine stream, retrying its first terminal failure once.
@@ -146,7 +147,19 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
             attempt_kwargs = dict(kwargs)
             if self.supports_resume:
                 attempt_kwargs["session_id"] = retry_session_id
-            attempt_kwargs = self._prepare_system_prompt(attempt_kwargs, system_prompt, each_turn=system_prompt_each_turn)
+            attempt_kwargs = await self._prepare_prompt_input(
+                attempt_kwargs, system_prompt, each_turn=system_prompt_each_turn,
+            )
+            if capture_prompt_input or system_prompt_each_turn:
+                # Snapshot the real adapter arguments after fallback and retry
+                # selection. This is not the provider's hidden conversation.
+                yield self._prompt_input_event(
+                    attempt_kwargs, attempt_index + 1,
+                    instruction_in_body=(
+                        self.SYSTEM_PROMPT_MODE == "body"
+                        and attempt_kwargs.get("prompt") != kwargs.get("prompt")
+                    ),
+                )
             failed_event: InternalEvent | None = None
             try:
                 iterator = spawn_method(**attempt_kwargs)
@@ -191,6 +204,21 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                 },
             )
 
+    def _prompt_input_event(
+        self, kwargs: dict, attempt: int = 1, *, instruction_in_body: bool = False,
+    ) -> InternalEvent:
+        return InternalEvent(type="prompt_input", data={
+            "engine": self.ENGINE_ID,
+            "attempt": attempt,
+            "session_id": kwargs.get("session_id"),
+            "instruction_transport": self.SYSTEM_PROMPT_MODE,
+            "prompt": kwargs.get("prompt") or "",
+            "system_prompt": kwargs.get("system_prompt"),
+            "system_prompt_in_body": instruction_in_body,
+            "images": [image.reference for image in kwargs.get("images") or []],
+            "message_history": kwargs.get("message_history"),
+        })
+
     def _prepare_system_prompt(self, kwargs: dict, system_prompt: str | None, *, each_turn: bool = False) -> dict:
         kwargs = dict(kwargs)
         instruction = (system_prompt or "").strip()
@@ -202,8 +230,13 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
             kwargs["prompt"] = f"{instruction}\n\n{kwargs.get('prompt') or ''}"
         return kwargs
 
+    async def _prepare_prompt_input(self, kwargs: dict, system_prompt: str | None, *, each_turn: bool = False) -> dict:
+        """Let an adapter resolve persisted instructions before input capture."""
+        return self._prepare_system_prompt(kwargs, system_prompt, each_turn=each_turn)
+
     async def spawn_with_retry(
-        self, *, system_prompt: str | None = None, system_prompt_each_turn: bool = False, **kwargs,
+        self, *, system_prompt: str | None = None, system_prompt_each_turn: bool = False,
+        capture_prompt_input: bool = False, **kwargs,
     ) -> AsyncIterator[InternalEvent]:
         """Run the normal execution entry point with one failure retry."""
         if str(kwargs.get("prompt") or "").strip() == "/compact":
@@ -220,6 +253,8 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                 })
                 return
             # Compaction changes the current session. Never retry it blindly.
+            if capture_prompt_input or system_prompt_each_turn:
+                yield self._prompt_input_event(kwargs)
             confirmed = False
             failed = False
             async for event in self.spawn(**kwargs):
@@ -231,20 +266,32 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                     "message": "引擎未返回压缩完成事件，无法确认上下文已压缩",
                 })
             return
-        async for event in self._stream_with_retry(self.spawn, system_prompt=system_prompt, system_prompt_each_turn=system_prompt_each_turn, **kwargs):
+        async for event in self._stream_with_retry(
+            self.spawn, system_prompt=system_prompt,
+            system_prompt_each_turn=system_prompt_each_turn,
+            capture_prompt_input=capture_prompt_input, **kwargs,
+        ):
             yield event
 
     async def spawn_coordinator_with_retry(
         self,
         system_prompt: str | None = None,
         system_prompt_each_turn: bool = False,
+        capture_prompt_input: bool = False,
         **kwargs,
     ) -> AsyncIterator[InternalEvent]:
         """Run the coordinator entry point with one failure retry."""
+        if capture_prompt_input:
+            # Assistant-owned rules are already supplied; do not add a second role.
+            kwargs["_coordinator_prepared"] = True
+            if kwargs.get("images") and not self.capabilities.supports_vision:
+                kwargs["prompt"] = await asyncio.to_thread(self.render_image_prompt, kwargs["prompt"], kwargs["images"])
+                kwargs["images"] = None
         async for event in self._stream_with_retry(
             self.spawn_coordinator,
             system_prompt=system_prompt,
             system_prompt_each_turn=system_prompt_each_turn,
+            capture_prompt_input=capture_prompt_input,
             **kwargs,
         ):
             yield event
@@ -1066,10 +1113,11 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         workstep_tools: bool = False,
         config_overrides: dict | None = None,
         system_prompt: str | None = None,
+        _coordinator_prepared: bool = False,
     ) -> AsyncIterator[InternalEvent]:
         """Run a no-tools coordinator turn through this adapter seam."""
         guarded_prompt = (
-            prompt if session_id and self.supports_resume
+            prompt if _coordinator_prepared or (session_id and self.supports_resume)
             else self._coordinator_prompt(prompt, workstep_tools=workstep_tools)
         )
         if images and not self.capabilities.supports_vision:

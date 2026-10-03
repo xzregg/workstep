@@ -1,4 +1,4 @@
-import { useGitApi, useGitWorkspaceBrowser, useReadOnlyGit, useSharedGit, useGitWorkspaceEditable } from './GitApiContext'
+import { useGitApi, useGitWorkspaceBrowser, useReadOnlyGit, useSharedGit, useProjectScopedGit, useGitWorkspaceEditable } from './GitApiContext'
 import { useEffect, useMemo, useState } from 'react'
 import { type GitDiscovery, type TaskGitWorkspace as Workspace } from '../../api/git'
 import { useGitStore } from '../../stores/gitStore'
@@ -16,6 +16,8 @@ import './git.css'
 export default function TaskGitWorkspace({ projectId, taskId }: { projectId: string; taskId: string }) {
   const gitApi = useGitApi()
   const shared = useSharedGit()
+  const projectScoped = useProjectScopedGit()
+  const scopedDiscovery = shared || projectScoped
   const readOnly = useReadOnlyGit()
   const workspaceEditable = useGitWorkspaceEditable()
   const browseWorkspace = useGitWorkspaceBrowser()
@@ -24,7 +26,7 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
   const projects = useProjectStore(state => state.projects)
   const [sharedData, setSharedData] = useState<GitDiscovery | null>(null)
   const refreshRepositories = async () => {
-    if (shared) setSharedData(await gitApi.repositories())
+    if (scopedDiscovery) setSharedData(await gitApi.repositories())
     else await scan()
   }
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
@@ -53,7 +55,7 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
   const [deleteWorkspaceBranches, setDeleteWorkspaceBranches] = useState<string[]>([])
   const { treeWidth, startResize, resizeWithKeyboard, resetResize } = useGitTreeResize()
 
-  const discovery = shared ? sharedData : data
+  const discovery = scopedDiscovery ? sharedData : data
   const repositories = useMemo(() => discovery?.repositories.filter(repo =>
     repo.projects.some(project => project.id === projectId),
   ) ?? [], [discovery, projectId])
@@ -73,7 +75,7 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
       if (active) setError(reason instanceof Error ? reason.message : String(reason))
     }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [projectId, taskId, scan, shared, readOnly, workspaceEditable, gitApi])
+  }, [projectId, taskId, scan, shared, projectScoped, readOnly, workspaceEditable, gitApi])
 
   useEffect(() => {
     if (!sourceTreeId) {
@@ -101,7 +103,7 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
 
   const selectedTree = workspace?.worktrees.find(tree => tree.id === selected) ?? workspace?.worktrees[0]
   const settingsId = selectedTree?.id ?? repositories.flatMap(repo => repo.worktrees).find(tree => tree.available)?.id
-  const discoveredProject = (shared ? sharedData : data)?.projects.find(item => item.id === projectId)
+  const discoveredProject = discovery?.projects.find(item => item.id === projectId)
   const project = projects.find(item => item.id === projectId)
     ?? (discoveredProject ? { ...discoveredProject, steps: [], workflows: [] } : null)
 
@@ -118,8 +120,9 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
     try {
       await gitApi.initialize(projectId)
       setInitializeOpen(false)
-      await scan(`initialize:${projectId}:${Date.now()}`)
-      const scanError = useGitStore.getState().error
+      if (projectScoped) await refreshRepositories()
+      else await scan(`initialize:${projectId}:${Date.now()}`)
+      const scanError = projectScoped ? '' : useGitStore.getState().error
       if (scanError) setError(scanError)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
@@ -203,7 +206,7 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
       <h1>{t('git.taskWorkspace')}</h1>
       <small title={workspace?.relative_path || workspace?.path}>{workspace?.relative_path || workspace?.path}</small>
       <span className="git-grow" />
-      {workspace?.path && project && <span className="git-open-location"><OpenLocationButton activeProject={project} directoryPath={workspace.path} buttonLabel={t('git.taskOpenWorkspaceDirectory')} browserProjectId={shared ? '' : projectId} forceWebBrowser={shared} browseDirectory={shared ? browseWorkspace : undefined} readOnlyBrowser={shared} t={t} /></span>}
+      {workspace?.path && project && <span className="git-open-location"><OpenLocationButton activeProject={project} directoryPath={workspace.path} buttonLabel={t('git.taskOpenWorkspaceDirectory')} browserProjectId={shared ? '' : projectId} forceWebBrowser={scopedDiscovery} browseDirectory={scopedDiscovery ? browseWorkspace : undefined} readOnlyBrowser={shared} t={t} /></span>}
       {!readOnly && workspaceEditable && repositories.length > 0 && <Button size="sm" onClick={() => setShowAdd(value => !value)}>{t('git.taskAddRepository')}</Button>}
       {!readOnly && workspaceEditable && settingsId && <Button className="git-settings-toggle" size="sm" aria-label={t('git.settings')} aria-expanded={settings} onClick={() => setSettings(value => !value)}><Icon name="settings" size={14} /><span>{t('git.settings')}</span></Button>}
       <Button size="sm" loading={loading} onClick={() => void refresh()}>{t('git.refresh')}</Button>
@@ -275,7 +278,7 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
           </div>)}
         </aside>
         <div className="git-tree-resizer" role="separator" aria-orientation="vertical" aria-label={t('git.resizeTree')} aria-valuemin={230} aria-valuemax={clampGitTreeWidth(Number.MAX_SAFE_INTEGER)} aria-valuenow={treeWidth} tabIndex={0} onPointerDown={startResize} onDoubleClick={resetResize} onKeyDown={resizeWithKeyboard} />
-        {selectedTree && <GitWorktreePanel key={selectedTree.id} id={selectedTree.id} displayPath={selectedTree.relative_path} headerActions={project && <span className="git-open-location"><OpenLocationButton activeProject={project} directoryPath={selectedTree.path} buttonLabel={t('git.taskOpenRepositoryDirectory')} browserProjectId={shared ? '' : projectId} forceWebBrowser={shared} browseDirectory={shared ? browseWorkspace : undefined} readOnlyBrowser={shared} t={t} /></span>} onLocate={id => {
+        {selectedTree && <GitWorktreePanel key={selectedTree.id} id={selectedTree.id} displayPath={selectedTree.relative_path} headerActions={project && <span className="git-open-location"><OpenLocationButton activeProject={project} directoryPath={selectedTree.path} buttonLabel={t('git.taskOpenRepositoryDirectory')} browserProjectId={shared ? '' : projectId} forceWebBrowser={scopedDiscovery} browseDirectory={scopedDiscovery ? browseWorkspace : undefined} readOnlyBrowser={shared} t={t} /></span>} onLocate={id => {
           if (workspace.worktrees.some(tree => tree.id === id)) setSelected(id)
         }} onChanged={refresh} />}
       </div> : <div className="git-empty"><Icon name="git-fork" size={28} /><h2>{t('git.taskEmpty')}</h2><p>{t('git.taskEmptyHint')}</p></div>}

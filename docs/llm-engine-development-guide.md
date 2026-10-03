@@ -24,9 +24,15 @@
 
 `AcpEngineBase.spawn_with_retry` 和 `spawn_coordinator_with_retry` 接受独立的可选 `system_prompt`。这是 WorkStep 的基类扩展，不是 ACP `session/prompt` 的协议字段；语义是补充会话角色和来源背景，保留引擎内置指令。每轮调用可提供同一份配置，由适配器管理创建、恢复和重新创建会话时的传输，不能把配置重复追加成历史消息。`/compact` 不接收该指令。
 
-原生适配器声明 `SYSTEM_PROMPT_MODE`：Codex SDK 使用 `developer`，映射为线程的 `developer_instructions`，保留 `base_instructions`；Claude/Qoder SDK 使用 `system`，分别通过 `claude_code` / `qodercli` 预设的 `append` 追加；Pydantic AI 使用 `system`，通过 `Agent.instructions` 与现有 harness 能力指令共同生效。未声明的引擎默认为 `body`，基类只在新会话或无恢复能力时前置正文，恢复与恢复重试不重复前置。
+原生适配器声明 `SYSTEM_PROMPT_MODE`：Codex SDK 使用 `developer`，映射为线程的 `developer_instructions`，保留 `base_instructions`；Claude/Qoder SDK 使用 `system`，分别通过 `claude_code` / `qodercli` 预设的 `append` 追加；Pydantic AI 使用 `system`，通过持久化的 `SystemPromptPart` 与现有 harness 能力指令共同生效，固定规则随会话历史恢复；相同规则不重新注入，变更／清空只替换 WorkStep 自己的系统消息，历史缺失时重新初始化。未声明的引擎默认为 `body`，基类只在新会话或无恢复能力时前置正文，恢复与恢复重试不重复前置。
 
-当前只有 `agent_assistants/channel_chat.py` 选择该入口：角色、项目配置及渠道会话背景独立传递，当前发送者仍随每条正文提供。其他助手和任务步骤保持原有提示词行为。行为测试在 `tests/test_engine_system_prompt.py`、`tests/test_pydantic_ai_harness.py` 和 `tests/test_channel_bots.py`。
+`agent_assistants/chat_session.py` 将项目设置中的「全局提示词」（`project_settings.chat_system_prompt`，不是跨项目的系统设置）作为独立 `system_prompt` 提供；正文仅保留用户输入及必要交接/重建背景，空配置不补默认角色。普通对话使用默认首次正文降级策略，固定规则不在恢复轮次重复插入；原生适配器按自身 system/developer 配置追加。
+
+`agent_assistants/channel_chat.py` 也选择该入口，独立提供角色、项目配置、渠道会话背景和当前发送者。它通过 `system_prompt_each_turn=True` 要求正文降级引擎在恢复会话时也传递最新背景。
+
+`capture_prompt_input=True` 在统一入口的降级与重试选择后捕获本轮实际适配器输入，不改变首次／每轮降级策略；参数由统一入口消费，不传给 SDK。`agent_assistants/prompt_input.py` 只展示实传独立指令、正文及明确传入的历史／图片；没有独立指令时不显示该区块。持久化助手复用原字段保存格式化输入：普通／渠道对话为 `chat_messages.prompt`，流程为 `gen_sessions.messages_json` 内消息的 `prompt`，协调与经验归档为 `messages.prompt_json` 的 `prompt`。用户正文仍独立保存在 `content`；内部 `prompt_input` 不进入过程日志。历史读取优先使用对应当轮记录，不使用当前配置重新组合；重启或缓存清除后已存输入仍可查看，未捕获的历史不补造。固定角色／输出规则通过独立指令提供，变化画布／草稿／任务状态作为本轮正文背景；协调恢复轮次刷新任务快照，权限和角色规则由协调助手上下文层统一提供，捕获路径不再由 ACP 追加第二套 guard。任务创建／定时生成等创建态会话仍默认仅内存；步骤／审核的固定角色与结果格式也通过此入口传入，任务要求留在正文；`messages.prompt_json` 和 `review_runs.prompt_json` 中 `prompt` 保存实际查看记录、`input_prompt` 保存恢复用原始输入，恢复读取兼容仅有 `prompt` 的旧记录。回归见 `tests/test_prompt_input.py`、`tests/test_engine_system_prompt.py`、`tests/test_chat_session.py`（真实 API、恢复后的实际输入、配置修改不改变历史、慢读取健康检查）、`tests/test_channel_bots.py`、`tests/test_workflow_gen.py`、`tests/test_coordinator.py`、`tests/test_review_gate.py`（执行与审核的原生／正文降级、同会话重跑、检查点恢复、慢输入保存健康检查）和 `tests/test_pydantic_ai_harness.py`。
+
+缓存取决于实际发送的稳定前缀、模型及服务商策略，独立 system/developer 指令不会自动关闭缓存。固定规则保持内容和顺序稳定；规则修改或每轮变化的背景若位于历史前，会缩短可复用前缀。WorkStep 不在这次迁移中配置缓存断点，也不承诺缓存命中率。参考 [OpenAI 提示词缓存](https://developers.openai.com/api/docs/guides/prompt-caching)、[Claude 提示词缓存](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)。
 
 **所有引擎都必须继承 `AcpEngineBase`**；`AcpEngineBase` 继承 `BaseLLMEngine`。上层调用（`task_runner` / `coordinator` / `assistant_base` / API）只依赖 `AcpEngineBase`，不感知引擎类型。
 
@@ -274,7 +280,7 @@ SDK 与 CLI 引擎不在项目内预装依赖，而是在设置页检测到未�
 
 ### 4.5 `spawn_coordinator` / `coordinator_guard`
 
-协调 Agent 使用只读 turn：基类 `spawn_coordinator` 自动加读保护指令并透传 `spawn`；支持 `message_history`（Pydantic AI）的引擎通过 `report_engine_state` 上报可序列化状态。一般无需覆盖。
+协调助手通过 `spawn_coordinator_with_retry` 提供自己的角色、权限与提案规则，ACP 捕获路径只做适配与传输，不追加规范。旧的未启用输入捕获的 `spawn_coordinator` 调用仍保留 guard 兼容。Pydantic AI 的历史及系统消息由 Harness store 恢复，不由宿主回传 `message_history`。
 
 WorkStep 内部工具（`workstep_call`）不是引擎层能力：由助手在
 `AssistantConfig.workstep_tools` 声明是否加载，引擎仅按 `workstep_tools`
@@ -947,3 +953,5 @@ corepack yarn build
 - [ ] 已加入 Registry、配置和前端元数据。
 - [ ] 设置页连接测试通过。
 - [ ] 单元测试、ACP 契约测试、三步骤场景的工作流测试和前端构建通过。
+
+Pydantic AI 的 `_prepare_prompt_input` 在输入捕获前异步检查持久化历史，只有匹配的 WorkStep 系统消息存在时才省略新注入；不只依赖 Session ID。`harness_runtime.py::_with_session_system_prompt` 用独立来源标记保存／替换规则，系统消息位于历史前部滑动窗口通过 WorkStep 包装保留该消息，摘要压缩继续保留系统消息。渠道的 `system_prompt_each_turn` 仍显式刷新来源背景，但不累积多份消息。查看记录仍显示本次传给引擎的新输入参数，不补造恢复历史；模型请求仍包含恢复的系统规则。测试见 `test_pydantic_ai_harness.py`（真实 SQLite 重启恢复、规则更新／清空、压缩、模型输入和慢读取健康检查）。

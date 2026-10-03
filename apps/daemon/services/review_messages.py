@@ -125,17 +125,15 @@ class StepReviewMessages:
             execution_prompt = ""
             if execution_messages:
                 try:
-                    execution_prompt = str(json.loads(
-                        execution_messages[0].prompt_json or "{}"
-                    ).get("prompt") or "")
+                    prompt_data = json.loads(execution_messages[0].prompt_json or "{}")
+                    execution_prompt = str(prompt_data.get("input_prompt", prompt_data.get("prompt")) or "")
                 except (TypeError, json.JSONDecodeError):
                     pass
             review_prompt = None
             if latest_review is not None:
                 try:
-                    review_prompt = json.loads(
-                        latest_review.prompt_json or "{}"
-                    ).get("prompt")
+                    prompt_data = json.loads(latest_review.prompt_json or "{}")
+                    review_prompt = prompt_data.get("input_prompt", prompt_data.get("prompt"))
                 except (TypeError, json.JSONDecodeError):
                     pass
             return ReviewCheckpoint(
@@ -275,7 +273,7 @@ class StepReviewMessages:
                 step_run_id=step_run.id,
                 artifact_round=step_run.artifact_round,
                 run_status="running",
-                prompt_json=json.dumps({"prompt": review_prompt}, ensure_ascii=False),
+                prompt_json=json.dumps({"prompt": None, "input_prompt": review_prompt}, ensure_ascii=False),
                 event_log_path=journal_ref.relative_path,
                 position=0,
                 started_at=now,
@@ -293,7 +291,7 @@ class StepReviewMessages:
                 "role": "assistant",
                 "status": "running",
                 "content": "审核中",
-                "prompt": review_prompt,
+                "prompt": None,
                 "artifact_round": step_run.artifact_round,
             },
             "created_at": now.isoformat(),

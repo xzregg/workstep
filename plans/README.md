@@ -21,6 +21,8 @@
 
 ## 提案
 
+- [助手提示词传输与查看方案](assistant-prompt-transport.md) — 渠道及普通对话全局指令已接入；其余助手的规则、每轮背景与用户输入拆分待确认。
+
 - [业务域代码优化路线图](codebase-optimization-roadmap.md) — 按任务、流程、助手、引擎和平台业务边界治理仍较大的源码文件。
 - [快捷按钮与 Action 执行方案](action-shortcuts.md) — 项目/流程快捷按钮、任务工作区、脚本执行与停止机制。
 - [平台模式](platform-mode.md) — 尚未实现，不属于当前产品能力。

@@ -13,6 +13,64 @@ logger = logging.getLogger(__name__)
 class PydanticAIHarnessRuntime:
     """Own harness configuration and session persistence for the engine."""
 
+    async def _prepare_prompt_input(self, kwargs: dict, system_prompt: str | None, *, each_turn: bool = False) -> dict:
+        prepared = await super()._prepare_prompt_input(kwargs, system_prompt, each_turn=each_turn)
+        instruction = prepared.get("system_prompt")
+        if str(kwargs.get("prompt") or "").strip() == "/compact":
+            return prepared
+        history = await self._harness_continue_history(Path(kwargs["cwd"]), kwargs.get("session_id"))
+        from pydantic_ai.messages import ModelRequest, SystemPromptPart
+
+        previous = [
+            part.content
+            for message in history or [] if isinstance(message, ModelRequest)
+            for part in message.parts if isinstance(part, SystemPromptPart)
+            and part.dynamic_ref == "workstep.session.instructions"
+        ]
+        if not instruction and previous:
+            prepared["system_prompt"] = ""  # Explicitly clear the saved WorkStep rules.
+        elif not each_turn and previous == [instruction]:
+            prepared.pop("system_prompt", None)
+        return prepared
+
+    @staticmethod
+    def _with_session_system_prompt(history: list | None, instruction: str | None) -> list | None:
+        """Keep one WorkStep system message; preserve other system messages."""
+        if instruction is None:
+            return history
+        from dataclasses import replace
+        from pydantic_ai.messages import ModelRequest, SystemPromptPart
+
+        messages = []
+        for message in history or []:
+            if isinstance(message, ModelRequest):
+                parts = [part for part in message.parts if not (
+                    isinstance(part, SystemPromptPart)
+                    and part.dynamic_ref == "workstep.session.instructions"
+                )]
+                if not parts:
+                    continue
+                message = replace(message, parts=parts)
+            messages.append(message)
+        if not instruction:
+            return messages or None
+        return [ModelRequest(parts=[SystemPromptPart(
+            content=instruction, dynamic_ref="workstep.session.instructions",
+        )]), *messages]
+
+    @staticmethod
+    def _retain_session_system_prompt(original: list, compacted: list) -> list:
+        from pydantic_ai.messages import ModelRequest, SystemPromptPart
+
+        def rules(messages):
+            return [part for message in messages if isinstance(message, ModelRequest)
+                    for part in message.parts if isinstance(part, SystemPromptPart)
+                    and part.dynamic_ref == "workstep.session.instructions"]
+        saved = rules(original)
+        if saved and not rules(compacted):
+            return [ModelRequest(parts=saved), *compacted]
+        return compacted
+
     # --- pydantic-ai-harness 扩展（上下文压缩 / 会话持久化） ---
 
     @staticmethod
@@ -132,6 +190,11 @@ class PydanticAIHarnessRuntime:
             from pydantic_ai_harness.step_persistence import StepPersistence
         except Exception:
             return None
+        class SessionSlidingWindowCompaction(SlidingWindowCompaction):
+            async def compact(self, messages, ctx):
+                compacted = await super().compact(messages, ctx)
+                return cls._retain_session_system_prompt(messages, compacted)
+
         # StepPersistence 与 ConversationSearch 共享同一个 SQLite store：
         # 后者通过 SnapshotHistorySource 做 BM25 检索（scope=conversation，
         # 只召回同一 conversation_id 的历史 run）。
@@ -145,7 +208,7 @@ class PydanticAIHarnessRuntime:
                     # ConversationSearch 检索。TieredCompaction 直接驱动
                     # compact()，max_messages 仅用于满足构造校验（trigger 旁路），
                     # 实际裁剪目标是 keep_messages=60 条尾部。
-                    SlidingWindowCompaction(max_messages=200, keep_messages=60),
+                    SessionSlidingWindowCompaction(max_messages=200, keep_messages=60),
                     SummarizingCompaction(
                         max_messages=120,
                         keep_messages=30,
@@ -171,7 +234,7 @@ class PydanticAIHarnessRuntime:
         """Load the persisted snapshot for this session, when available."""
         if (
             not session_id
-            or not cls._harness_enabled()
+            or not await asyncio.to_thread(cls._harness_enabled)
             or root is None
             or not await asyncio.to_thread(root.is_dir)
         ):

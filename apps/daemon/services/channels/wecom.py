@@ -48,6 +48,7 @@ class WeComAdapter(ChannelAdapter):
         self._task: asyncio.Task | None = None
         self._stopped = False
         self._last_error = ""
+        self._card_streams = set()
 
     async def start(self) -> None:
         self._stopped = False
@@ -149,6 +150,7 @@ class WeComAdapter(ChannelAdapter):
 
     async def stop(self) -> None:
         self._stopped = True
+        self._card_streams.clear()
         if self._client:
             self._client.disconnect()
             self._client = None
@@ -189,7 +191,7 @@ class WeComAdapter(ChannelAdapter):
         if frame:
             try:
                 first = next(_utf8_parts(text, 20480), '')
-                await self._client.reply_stream(frame, self._stream_id(message), first, finish=True)
+                await self._reply_stream(message, first, finish=True)
                 text = text[len(first):]
             except Exception:
                 logger.warning("Enterprise WeChat stream reply failed; using active send", exc_info=True)
@@ -204,7 +206,17 @@ class WeComAdapter(ChannelAdapter):
         frame = self._reply_frame(message)
         if frame and text:
             preview = next(_utf8_parts(text, 20480))
-            await self._client.reply_stream(frame, self._stream_id(message), preview, finish=False)
+            await self._reply_stream(message, preview, finish=False)
+
+
+    async def _reply_stream(self, message: IncomingMessage, text: str, *, finish: bool) -> None:
+        stream_id = self._stream_id(message)
+        method = self._client.reply_stream_with_card if stream_id in self._card_streams else self._client.reply_stream
+        # The template is sent once; subsequent updates retain the combined type.
+        await method(self._reply_frame(message), stream_id, text, finish=finish)
+
+    def release_reply(self, message: IncomingMessage) -> None:
+        self._card_streams.discard(self._stream_id(message))
 
 
     async def send_card(self, recipient: IncomingMessage, card: ChannelCard) -> None:

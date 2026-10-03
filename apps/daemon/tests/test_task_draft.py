@@ -141,7 +141,7 @@ async def test_task_draft_publishes_description_without_creating_task(
 
     async def fake_invoke(
         engine_id, model, cwd, prompt, session_id, on_event=None,
-        message_history=None,
+        message_history=None, system_prompt=None,
     ):
         prompts.append(prompt)
         return json.dumps({
@@ -470,7 +470,9 @@ async def test_run_schedule_returns_validated_result_without_creating_task(
         "start_step_key": first_key,
     }
     assert "生成日报任务" in prompts[0]
-    assert "scheduled task execution assistant" in prompts[0]
+    assert "scheduled task execution assistant" not in prompts[0]
+    from agent_assistants.task_draft import SYSTEM_PROMPT_SCHEDULE
+    assert "scheduled task execution assistant" in SYSTEM_PROMPT_SCHEDULE
     with project.db.bind_ctx([Task]):
         assert Task.select().count() == 0
 
@@ -563,3 +565,43 @@ async def test_await_turn_times_out_without_cancelling_background(
     assert module._turn_states[accepted.turn_id]["status"] == "running"
     assert await module.stop_current(accepted.session_id) is True
     assert await _wait_turn(module, accepted.turn_id) == "stopped"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("schedule_mode", [False, True])
+async def test_task_assistant_actual_system_input(draft_module, monkeypatch, schedule_mode):
+    import agent_assistants.base as base
+    import agent_assistants.task_draft as draft
+    from engines.core.acp_base import AcpEngineBase
+    from engines.core.events import InternalEvent
+    module, bus, manager, project, _ = draft_module
+    calls = []
+    class Engine(AcpEngineBase):
+        @staticmethod
+        def is_installed():
+            return True
+        @staticmethod
+        def get_version():
+            return "test"
+        @staticmethod
+        def resolve_binary():
+            return "test"
+        @property
+        def supports_coordinator(self):
+            return True
+        SYSTEM_PROMPT_MODE = "system"
+        async def spawn(self, **kwargs):
+            calls.append(kwargs)
+            yield InternalEvent("agent_message_chunk", {"content":{"text":json.dumps({"reply":"请补充", "task_draft":None})}})
+    monkeypatch.setattr(base, "create_engine", lambda _: Engine())
+    accepted = module.submit_message(project.id, None, "实际用户要求", "actual-input", title="创建任务")
+    session = next(iter(module._sessions.values()))
+    session.extra["schedule_mode"] = schedule_mode
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    expected = draft.SYSTEM_PROMPT_SCHEDULE if schedule_mode else draft.SYSTEM_PROMPT
+    assert calls[0]["system_prompt"] == expected
+    assert expected not in calls[0]["prompt"]
+    assert "实际用户要求" in calls[0]["prompt"]
+    view = session.messages[-1]["prompt"]
+    assert expected in view and calls[0]["prompt"] in view
+    assert "独立指令（system）" in view
