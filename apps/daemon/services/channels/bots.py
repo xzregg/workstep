@@ -579,7 +579,7 @@ class BotManager:
                 )
             forwarded = self._task_forwarder.register_origin(project_id, task_id, accepted.assistant_message_id, message)
             control_scope = await self._controls.begin(message, project_id, task_id=task_id,
-                assistant_message_id=accepted.assistant_message_id, turn_id=getattr(accepted, "turn_id", ""))
+                assistant_message_id=accepted.assistant_message_id, turn_id=getattr(accepted, "turn_id", ""), title='@协调')
             reply = ""
             while True:
                 event = await asyncio.wait_for(queue.get(), timeout=600)

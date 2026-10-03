@@ -100,3 +100,6 @@ WorkStep 渠道消息协议 v1 是项目内部的收发契约。它采用与 LLM
 
 
 群聊完成回复的发送人提醒由 `services/channels/wecom.py::_send_text` 和 `dingtalk.py::send` 持有，仅使用本条入站群消息的发送人及回复上下文；企业微信在最终正文追加 `<@userid>`，钉钉使用原始 sessionWebhook 的 `at.atUserIds`，流式卡片完成后单独提醒一次。广播群和私聊不自动提及。中止卡片由 `controls.py::begin` 展示助手消息 ID，`base.py::ChannelCard.message_id` 传递诊断标识，钉钉在卡片 tips 中保留 ID。行为、回退及慢网络健康检查见 `tests/test_channel_mentions.py`。
+
+
+渠道运行卡片统一由 `controls.py::begin` 按项目、任务／会话、助手消息 ID 及渠道会话去重，接收入口与 `task_forwarder.py::_deliver` 共用，发起群也必须确保运行卡片存在；`finish` 幂等收尾。确认卡片优先取同条回复的正文摘要，所有企业微信按钮卡片由 `wecom.py::send_card` 显示助手消息 ID，超长说明分开发送后卡片仍保留 ID。中止按钮的通用 `ChannelButton.danger` 由操作类型决定，企业微信映射到[官方红色样式 3](https://developer.work.weixin.qq.com/document/path/101032)，钉钉映射为模板 `color=red`，确认／取消保持原色。入口隔离、去重、实际中止、卡片正文与 ID、颜色及慢发送健康检查见 `tests/test_channel_origin_stop.py`。

@@ -22,6 +22,8 @@ class ChannelControls:
         self._workflow_runtime = workflow_runtime
         self._lock = asyncio.Lock()
         self._active = set()
+        self._running_scopes = {}
+        self._reply_texts = {}
         self._claims = set()
 
     async def _load(self):
@@ -31,16 +33,35 @@ class ChannelControls:
         await asyncio.to_thread(self._store.set, CONFIG_KEY, rows)
 
     async def begin(self, message, project_id, *, task_id='', session_id='', assistant_message_id='', turn_id='', step_key='', broadcast=False, title='正在处理'):
+        key = (project_id, task_id, session_id, assistant_message_id,
+               message.bot_id, message.conversation_type, message.conversation_id)
+        existing = self._running_scopes.get(key) if assistant_message_id else None
+        if existing is not None:
+            scope, ready = existing
+            await asyncio.shield(ready)
+            return scope
         scope = {
             'id': uuid.uuid4().hex, 'project_id': project_id, 'task_id': task_id,
             'session_id': session_id, 'assistant_message_id': assistant_message_id,
             'turn_id': turn_id, 'step_key':step_key, 'broadcast':broadcast, 'message': {k: getattr(message, k) for k in ('bot_id','message_id','conversation_type','conversation_id','sender_id','text','sender_name','conversation_name')},
         }
         self._active.add(scope['id'])
+        ready = asyncio.get_running_loop().create_future()
+        if assistant_message_id:
+            # Register before I/O so the inbound route and task broadcaster
+            # share the same control even while its first send is pending.
+            self._running_scopes[key] = (scope, ready)
         text = '点击中止可停止本次运行。'
         if assistant_message_id:
             text += '\n消息 ID: ' + assistant_message_id
-        await self._card(scope, title, text, [('中止', {'kind':'stop'})], recipient_override=message)
+        try:
+            await self._card(scope, title, text, [('中止', {'kind':'stop'})], recipient_override=message)
+        except BaseException:
+            ready.cancel()
+            self._running_scopes.pop(key, None)
+            self._active.discard(scope['id'])
+            raise
+        ready.set_result(None)
         return scope
 
     async def _card(self, scope, title, text, options, recipient_override=None):
@@ -53,7 +74,7 @@ class ChannelControls:
         for offset in range(0, len(options), 6):
             items = options[offset:offset + 6]
             card_id = uuid.uuid4().hex
-            card = ChannelCard(card_id, title, text, tuple(ChannelButton(str(i), label) for i, (label, _) in enumerate(items)), running=all(action["kind"] == "stop" for _, action in items), message_id=scope.get('assistant_message_id', ''))
+            card = ChannelCard(card_id, title, text, tuple(ChannelButton(str(i), label, danger=action['kind'] == 'stop') for i, (label, action) in enumerate(items)), running=all(action["kind"] == "stop" for _, action in items), message_id=scope.get('assistant_message_id', ''))
             row = {**scope, 'created_at':time.time(), 'status':'pending',
                    'title':title, 'text':text, 'options':{str(i): {'label':label, **action} for i, (label, action) in enumerate(items)}}
             async with self._lock:
@@ -75,11 +96,19 @@ class ChannelControls:
                     logger.warning('Failed to send channel card fallback', exc_info=True)
 
     async def event(self, scope, event):
+        if event.get('messageId') and event['messageId'] != scope['assistant_message_id']:
+            return
+        kind = event.get('type')
+        if kind == 'TEXT_MESSAGE_CHUNK':
+            self._reply_texts[scope['id']] = (self._reply_texts.get(scope['id'], '') + str(event.get('delta') or ''))[-4096:]
+        elif kind in {'TEXT_MESSAGE_CONTENT', 'TEXT_MESSAGE_END'} and event.get('content') is not None:
+            self._reply_texts[scope['id']] = str(event['content'])[-4096:]
         if event.get('type') != 'CUSTOM':
             return
         name, data = event.get('name'), event.get('value') or {}
         if name == 'workstep.action_proposal' and scope['task_id'] and data.get('status') == 'pending':
-            await self._card(scope, '请确认操作', str((data.get('impact') or {}).get('summary') or data.get('type') or '协调助手提案'),
+            description = self._reply_texts.get(scope['id'], '').strip() or str((data.get('impact') or {}).get('summary') or data.get('type') or '协调助手提案')
+            await self._card(scope, '请确认操作', description,
                 [('确认', {'kind':'proposal','proposal_id':data['id'],'confirm':True}),
                  ('取消', {'kind':'proposal','proposal_id':data['id'],'confirm':False})])
         elif name == 'workstep.async_question':
@@ -145,7 +174,13 @@ class ChannelControls:
                     logger.warning('Failed to close channel card', exc_info=True)
 
     async def finish(self, scope):
+        if scope['id'] not in self._active:
+            return
         self._active.discard(scope['id'])
+        self._reply_texts.pop(scope['id'], None)
+        for key, (current, _) in tuple(self._running_scopes.items()):
+            if current is scope:
+                self._running_scopes.pop(key, None)
         await self._expire(scope)
 
     async def handle(self, click: ChannelAction, on_claimed=None) -> str:

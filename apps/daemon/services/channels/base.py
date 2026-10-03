@@ -65,6 +65,7 @@ class OutgoingMessage:
 class ChannelButton:
     key: str
     label: str
+    danger: bool = False
 
 
 @dataclass(frozen=True, slots=True)
