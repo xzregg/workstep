@@ -100,7 +100,7 @@ export function AdminProjectsPage() {
   }, [csrf, filters, revision])
 
   return <section className="gateway-admin-page">
-    <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY · ADMIN</span>
+    <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>项目管理</h2><Link to="/admin">返回管理概览</Link></div>
     {!csrf && !error && <p role="status">正在检查登录状态…</p>}
     {csrf && <>

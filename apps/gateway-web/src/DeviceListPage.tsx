@@ -72,7 +72,7 @@ export function DeviceListPage() {
   }
 
   return <section className="gateway-admin-page">
-    <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY</span>
+    <span className="gateway-auth-eyebrow">WORKSTEP 平台</span>
     <h2>我的电脑</h2>
     {status === 'checking' && <p role="status">正在检查登录状态…</p>}
     {status === 'login' && <div className="gateway-admin-login">

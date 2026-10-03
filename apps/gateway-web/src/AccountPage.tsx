@@ -68,7 +68,7 @@ export function AccountPage() {
   }
 
   return <section className="gateway-admin-page gateway-account-page">
-    <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY</span>
+    <span className="gateway-auth-eyebrow">WORKSTEP 平台</span>
     <h2>个人账户</h2>
     {status === 'checking' && <p role="status">正在检查登录状态…</p>}
     {status === 'expired' && <p>登录已失效。<Link to="/auth?next=%2Faccount">重新登录</Link></p>}

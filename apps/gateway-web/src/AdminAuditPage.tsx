@@ -66,7 +66,7 @@ export function AdminAuditPage() {
   }
 
   return <section className="gateway-admin-page">
-    <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY · ADMIN</span>
+    <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>审计记录</h2><Link to="/admin">返回管理概览</Link></div>
     <form className="gateway-usage-filters" onSubmit={event => { event.preventDefault(); apply() }}>
       <label>开始时间<input type="datetime-local" value={draft.from_time}
