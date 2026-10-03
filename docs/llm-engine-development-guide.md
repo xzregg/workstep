@@ -20,6 +20,14 @@
 
 ## 0. 基类层次（先读）
 
+### 会话系统指令追加
+
+`AcpEngineBase.spawn_with_retry` 和 `spawn_coordinator_with_retry` 接受独立的可选 `system_prompt`。这是 WorkStep 的基类扩展，不是 ACP `session/prompt` 的协议字段；语义是补充会话角色和来源背景，保留引擎内置指令。每轮调用可提供同一份配置，由适配器管理创建、恢复和重新创建会话时的传输，不能把配置重复追加成历史消息。`/compact` 不接收该指令。
+
+原生适配器声明 `SYSTEM_PROMPT_MODE`：Codex SDK 使用 `developer`，映射为线程的 `developer_instructions`，保留 `base_instructions`；Claude/Qoder SDK 使用 `system`，分别通过 `claude_code` / `qodercli` 预设的 `append` 追加；Pydantic AI 使用 `system`，通过 `Agent.instructions` 与现有 harness 能力指令共同生效。未声明的引擎默认为 `body`，基类只在新会话或无恢复能力时前置正文，恢复与恢复重试不重复前置。
+
+当前只有 `agent_assistants/channel_chat.py` 选择该入口：角色、项目配置及渠道会话背景独立传递，当前发送者仍随每条正文提供。其他助手和任务步骤保持原有提示词行为。行为测试在 `tests/test_engine_system_prompt.py`、`tests/test_pydantic_ai_harness.py` 和 `tests/test_channel_bots.py`。
+
 **所有引擎都必须继承 `AcpEngineBase`**；`AcpEngineBase` 继承 `BaseLLMEngine`。上层调用（`task_runner` / `coordinator` / `assistant_base` / API）只依赖 `AcpEngineBase`，不感知引擎类型。
 
 接入任何 CLI、HTTP Agent 或 Agent SDK，本质上只做两件事：

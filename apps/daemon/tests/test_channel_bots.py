@@ -608,6 +608,90 @@ async def test_private_source_preserves_initiator_and_updates_current_sender(bot
     assert 'u1' in chats[-1][2] and '王同学' in chats[-1][2]
 
 
+async def test_channel_background_uses_separate_instruction_and_survives_reload(bots, monkeypatch):
+    from engines.core.events import InternalEvent
+    import agent_assistants.channel_chat as channel_module
+
+    manager, project, _, _, _, _ = bots
+    module = ChannelChatModule(manager._event_bus, manager._project_manager, register=False)
+    monkeypatch.setattr(module, "_validate_engine", lambda _engine: None)
+    monkeypatch.setattr(module._config, "validate_engine", lambda _engine: None)
+    monkeypatch.setattr(module, "_resolve_engine_models", lambda: ("codex_sdk", "gpt-6.1-sol", None))
+    monkeypatch.setattr(module._config, "resolve_engine_models", lambda: ("codex_sdk", "gpt-6.1-sol", None))
+    monkeypatch.setattr(module, "get_system_prompt", lambda _project: "Project role")
+    monkeypatch.setattr(channel_module, "config_store", manager._store)
+    monkeypatch.setattr("agent_assistants.base.create_engine", lambda _id: SimpleNamespace(supports_resume=True))
+    monkeypatch.setattr("agent_assistants.chat_session.create_engine", lambda _id: SimpleNamespace(supports_resume=True))
+    monkeypatch.setattr("services.config.config_store.get_assistant_defaults", lambda _id: {
+        "engine": "codex_sdk", "model": "gpt-6.1-sol",
+    })
+    calls = []
+
+    async def invoke(engine, model, cwd, prompt, session_id, on_event, **kwargs):
+        calls.append((prompt, session_id, kwargs["system_prompt"]))
+        await on_event(InternalEvent(type="session_started", data={"session_id": "engine-session"}))
+        return "回复", [], "engine-session"
+
+    monkeypatch.setattr(module, "_invoke", invoke)
+    manager._responder = ChatSessionResponder(manager._event_bus, manager._project_manager, module)
+    bot = await manager.create_bot({
+        "platform": "dingtalk", "name": "研发机器人", "app_id": "bot", "secret": "never-inject-secret",
+        "enabled": True, "default_target_type": "project", "default_project_id": project.id,
+    })
+    try:
+        for index, (sender_id, name) in enumerate((("u1", "小王"), ("u2", "小李"))):
+            if index:
+                module._sessions.clear()  # Simulate reloading from persistent chat history.
+            message = IncomingMessage(
+                bot_id=bot["id"], message_id=f"msg-{index}", conversation_type="group",
+                conversation_id="group:123", conversation_name="研发群", sender_id=sender_id,
+                sender_name=name, text="你好",
+            )
+            if not index:
+                await manager.handle_message(message)
+            else:
+                entered = threading.Event()
+                original_get = manager._store.get
+
+                def slow_get(key, default=None):
+                    if key == "channel_bots":
+                        entered.set()
+                        time.sleep(0.2)
+                    return original_get(key, default)
+
+                monkeypatch.setattr(manager._store, "get", slow_get)
+                pending = asyncio.create_task(manager.handle_message(message))
+                assert await asyncio.to_thread(entered.wait, 2)
+                async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+                    assert (await asyncio.wait_for(client.get("/api/health"), 0.3)).status_code == 200
+                await asyncio.wait_for(pending, 5)
+                monkeypatch.setattr(manager._store, "get", original_get)
+        assert len(calls) == 2
+        assert [call[1] for call in calls] == [None, "engine-session"]
+        for prompt, _, instruction in calls:
+            assert "group:123" not in prompt and "研发群" not in prompt
+            assert prompt.endswith("你好")
+            assert "group:123" in instruction and "研发群" in instruction
+            assert "研发机器人" in instruction and "dingtalk" in instruction
+            assert "Project role" in instruction and "小王" in instruction
+            assert "never-inject-secret" not in instruction
+        assert "小李" in calls[1][0]
+        session_id = (await manager._load())["sessions"][f"{bot['id']}:group:group:123"]
+        messages = await manager._project_manager.run_db(project.id, lambda _project: [
+            message.prompt for message in ChatMessage.select().where(ChatMessage.session == session_id)
+        ])
+        assert any("研发群" in (prompt or "") for prompt in messages)
+        await manager.handle_message(IncomingMessage(
+            bot_id=bot["id"], message_id="another-room", conversation_type="group",
+            conversation_id="another-group", sender_id="u3", text="新群",
+        ))
+        assert calls[-1][1] is None
+        assert "another-group" in calls[-1][2] and "group:123" not in calls[-1][2]
+        assert '"conversation_name": ""' in calls[-1][2]
+    finally:
+        await module.shutdown()
+
+
 async def test_recent_group_falls_back_to_renamed_conversation_and_db_does_not_block_health(bots, monkeypatch):
     manager, project, *_ = bots
     bot = await manager.create_bot({'platform': 'wecom', 'name': '机器人', 'app_id': 'bot', 'secret': 'secret',

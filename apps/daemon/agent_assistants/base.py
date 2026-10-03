@@ -189,6 +189,7 @@ async def invoke_engine(
     workstep_tools: bool = False,
     config_overrides: dict | None = None,
     live_message_queue: asyncio.Queue | None = None,
+    system_prompt: str | None = None,
 ) -> tuple[str, list[dict], str | None]:
     """Compatibility entry point; the turn transport lives in engine_invocation."""
     return await run_engine_turn(
@@ -210,6 +211,7 @@ async def invoke_engine(
         workstep_tools=workstep_tools,
         config_overrides=config_overrides,
         live_message_queue=live_message_queue,
+        **({"system_prompt": system_prompt} if system_prompt else {}),
     )
 
 
@@ -1231,6 +1233,10 @@ class AssistantRuntime:
         """Return the system instruction that remains effective for this session."""
         return self._config.system_prompt
 
+    def _engine_system_prompt(self, session: AssistantSession) -> str:
+        """Opt-in instruction transport; existing assistants keep their prompts."""
+        return ""
+
     def _display_prompt(self, session: AssistantSession, prompt: str) -> str:
         """Return the complete effective prompt shown by ``查看提示词``.
 
@@ -1339,7 +1345,8 @@ class AssistantRuntime:
             try:
                 session.cwd = await asyncio.to_thread(self._cwd, session.project_id)
                 prompt = await asyncio.to_thread(self._build_prompt, session)
-                display_prompt = self._display_prompt(session, prompt)
+                system_prompt = await asyncio.to_thread(self._engine_system_prompt, session)
+                display_prompt = await asyncio.to_thread(self._display_prompt, session, prompt)
                 active_prompt = [display_prompt]
                 user_messages = [
                     message
@@ -1681,6 +1688,8 @@ class AssistantRuntime:
 
                 journaled_events: list[dict] = []
                 invoke_kwargs = {"message_history": session.engine_state}
+                if system_prompt:
+                    invoke_kwargs["system_prompt"] = system_prompt
                 if images:
                     invoke_kwargs["images"] = images
                 try:
@@ -2184,6 +2193,7 @@ class AssistantRuntime:
         on_event: Callable[[InternalEvent], Awaitable[None]] | None = None,
         message_history: list | None = None,
         images: list[EngineImage] | None = None,
+        system_prompt: str | None = None,
     ) -> tuple[str, list[dict], str | None]:
         current_task = asyncio.current_task()
         run_key = next(
@@ -2253,6 +2263,7 @@ class AssistantRuntime:
             workstep_tools=self._config.workstep_tools,
             config_overrides=config_overrides,
             live_message_queue=turn_state.get("live_message_queue"),
+            **({"system_prompt": system_prompt} if system_prompt else {}),
         )
 
     def _build_rebuild_prompt(self, session: AssistantSession) -> str:

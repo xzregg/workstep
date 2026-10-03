@@ -10,11 +10,13 @@ import { useChatListStore } from '../src/stores/chatSessionStore'
 import { useProjectStore } from '../src/stores/projectStore'
 import { installDomEnvironment } from './helpers/domEnv'
 
-test('deleting a sidebar conversation only selects a remaining conversation of the same type', async () => {
+for (const action of ['deleteSession', 'archiveSession'] as const) {
+test(`${action} only selects a remaining sidebar conversation of the same type`, async () => {
   const { window } = installDomEnvironment()
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
   const originalRemove = chatSessionApi.remove
+  const originalArchive = chatSessionApi.setArchived
   const originalProjects = useProjectStore.getState()
   const originalList = useChatListStore.getState()
   const project: Project = { id: 'project-types', name: 'Types', path: '/tmp/types', steps: {}, workflows: [] }
@@ -27,6 +29,7 @@ test('deleting a sidebar conversation only selects a remaining conversation of t
     return null
   }
   chatSessionApi.remove = async () => ({ success: true }) as never
+  chatSessionApi.setArchived = async () => ({ success: true }) as never
   useProjectStore.setState({ projects: [project], activeProject: project })
   try {
     for (const scenario of [
@@ -45,11 +48,12 @@ test('deleting a sidebar conversation only selects a remaining conversation of t
           <I18nProvider><Harness /></I18nProvider>
         </MemoryRouter>,
       ))
-      await act(async () => { assert.equal(await controls.deleteSession('deleted', project.id), true) })
+      await act(async () => { await controls[action]('deleted', project.id) })
       assert.equal(new URLSearchParams(route.split('?')[1]).get('session'), scenario.expected)
     }
   } finally {
     chatSessionApi.remove = originalRemove
+    chatSessionApi.setArchived = originalArchive
     await act(async () => root.unmount())
     useProjectStore.setState({ projects: originalProjects.projects, activeProject: originalProjects.activeProject })
     useChatListStore.setState({ sessionsByProject: originalList.sessionsByProject })
@@ -57,6 +61,7 @@ test('deleting a sidebar conversation only selects a remaining conversation of t
     await window.happyDOM.close()
   }
 })
+}
 
 test('sidebar session deletion keeps failure visible and redirects the active conversation after retry', async () => {
   const { window } = installDomEnvironment()

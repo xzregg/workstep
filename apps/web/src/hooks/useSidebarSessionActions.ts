@@ -94,10 +94,13 @@ export function useSidebarSessionActions() {
   const archiveSession = async (sessionId: string, projectId: string) => {
     setSessionError('')
     try {
+      const archivedSession = useChatListStore.getState().sessionsByProject[projectId]?.find((session) => session.id === sessionId)
       await chatSessionApi.setArchived(sessionId, projectId, true)
       useChatListStore.getState().removeSession(sessionId)
       if (activeSessionId === sessionId) {
-        const next = useChatListStore.getState().sessionsByProject[projectId]?.[0]
+        const next = useChatListStore.getState().sessionsByProject[projectId]?.find(
+          (session) => (session.source === 'channel') === (archivedSession?.source === 'channel'),
+        )
         const ownerName = projects.find((project) => project.id === projectId)?.name || activeProject?.name || ''
         navigate(`/chat?project=${encodeURIComponent(ownerName)}${next ? `&session=${encodeURIComponent(next.id)}` : ''}`, {
           replace: true,

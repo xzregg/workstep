@@ -72,6 +72,7 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
         await client.set_permission_mode(mapped)
 
     ENGINE_ID = "qoder_sdk"
+    SYSTEM_PROMPT_MODE = "system"
     RUNTIME_PACKAGE = RuntimePackage('qoder-agent-sdk', 'pypi', '1.0.11', None)
     UPDATE_PACKAGE = "qoder-agent-sdk"
 
@@ -320,6 +321,7 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
         images: list[EngineImage] | None = None,
         live_message_queue: asyncio.Queue | None = None,
         config_overrides: dict | None = None,
+        system_prompt: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
         self.require_native_credentials_allowed()
         if not self._sdk_available():
@@ -422,6 +424,10 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
         )
         if add_dirs:
             options.add_dirs = list(add_dirs)
+        if system_prompt:
+            options.system_prompt = {
+                "type": "preset", "preset": "qodercli", "append": system_prompt,
+            }
         if session_id:
             options.resume = session_id
         if config["permission_mode"] == "bypassPermissions":

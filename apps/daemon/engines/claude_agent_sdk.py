@@ -53,6 +53,7 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
     """
 
     ENGINE_ID = "claude_agent_sdk"
+    SYSTEM_PROMPT_MODE = "system"
     RUNTIME_PACKAGE = RuntimePackage('claude-agent-sdk', 'pypi', '0.1.0', None)
     UPDATE_PACKAGE = "claude-agent-sdk"
 
@@ -307,6 +308,7 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
         live_message_queue: asyncio.Queue | None = None,
         thinking_effort: str | None = None,
         config_overrides: dict | None = None,
+        system_prompt: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
         prompt, binary = await asyncio.to_thread(
             lambda: (self.render_image_prompt(prompt, images), self.resolve_binary())
@@ -400,6 +402,10 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
             setting_sources=[],
             settings=json.dumps(settings_payload, ensure_ascii=False),
         )
+        if system_prompt:
+            options.system_prompt = {
+                "type": "preset", "preset": "claude_code", "append": system_prompt,
+            }
         if add_dirs:
             options.add_dirs = list(add_dirs)
         if sdk_config["max_turns"]:
