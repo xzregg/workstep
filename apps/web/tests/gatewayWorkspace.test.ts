@@ -54,3 +54,40 @@ test('project workspace loads only its signed project and deduplicates session l
     useProjectStore.setState({ projects: [], activeProject: null, activeWorkflowId: null })
   }
 })
+
+
+test('workspace catalog adapters always include the signed project and reject another project', async () => {
+  const { engineApi, providerApi } = await import('../src/api/engine')
+  const { assistantApi } = await import('../src/api/client')
+  const oldWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  const oldFetch = globalThis.fetch
+  Object.defineProperty(globalThis, 'window', { configurable: true,
+    value: { location: { hostname: 'd-device-1.localhost', protocol: 'http:', port: '8700' } } })
+  useGatewaySessionStore.setState({ session: {
+    device_id: 'device-1', device_name: 'PC', username: 'Alice', gateway_url: 'http://localhost:8700/devices',
+    project_id: 'platform-1', host_project_id: 'host-1', access_level: 'read', task_create: false,
+    share_create: false, can_manage_project_access: false,
+  } })
+  const calls: string[] = []
+  globalThis.fetch = async input => { calls.push(String(input)); return Response.json({}) }
+  try {
+    await engineApi.list()
+    await engineApi.executionConfig()
+    await engineApi.coordinatorDefaults()
+    await assistantApi.list()
+    await providerApi.list()
+    await engineApi.models('codex', 'allowed', true)
+    assert.deepEqual(calls, [
+      '/api/engine/list?project_id=host-1', '/api/engine/execution/config?project_id=host-1',
+      '/api/engine/coordinator/config?project_id=host-1', '/api/assistant/list?project_id=host-1',
+      '/api/provider/list?project_id=host-1', '/api/engine/codex/models?provider_id=allowed&project_id=host-1',
+    ])
+    await assert.rejects(providerApi.list('private'), /项目/)
+    assert.equal(calls.length, 6)
+  } finally {
+    globalThis.fetch = oldFetch
+    if (oldWindow) Object.defineProperty(globalThis, 'window', oldWindow)
+    else Reflect.deleteProperty(globalThis, 'window')
+    useGatewaySessionStore.setState({ session: null })
+  }
+})

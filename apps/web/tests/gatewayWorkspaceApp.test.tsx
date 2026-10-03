@@ -59,6 +59,9 @@ test('the real WorkStep app opens the bound task workspace and subscribes within
     assert.equal(calls.includes('/api/project/list'), false)
     assert.equal(calls.filter(path => path === '/api/project/host-1/summary').length, 1)
     assert.ok(subscriptions.some(subscription => subscription.project_id === 'host-1'))
+    assert.equal(element.querySelector('.mobile-task-new-button'), null)
+    assert.equal(element.querySelector('.task-board-lane-add'), null)
+    assert.equal([...element.querySelectorAll('button')].some(button => button.textContent?.trim() === '新建任务'), false)
   } finally {
     await act(async () => root.unmount())
     element.remove()

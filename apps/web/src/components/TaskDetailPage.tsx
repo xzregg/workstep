@@ -1,3 +1,4 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useI18n } from '../i18n'
 import type { Project, TaskArtifact } from '../api/client'
 import type { GitWorkspaceBrowser } from './git/GitApiContext'
@@ -70,6 +71,15 @@ export default function TaskDetailPage({
   ...viewProps
 }: TaskDetailPageProps) {
   const { t } = useI18n()
+  const { canEdit } = useGatewayProjectPermissions(viewProps.projectId)
+  if (!canEdit) {
+    viewProps = { ...viewProps, chatEnabled: false, descriptionEditable: false, reviewConfigEditable: false,
+      onSend: undefined, onSendPrompt: undefined, onStop: undefined, onStopStep: undefined,
+      onOpenPromptEditor: undefined, onRestartStepWithFreshSession: undefined,
+      onRetryFailedMessage: undefined, onSetFailedExecutionComplete: undefined,
+      onReviewAction: undefined, onA2uiAction: undefined, onInteractionRespond: undefined,
+      onProposalOverride: undefined }
+  }
 
   return (
     <GitApiContext.Provider value={{ api: gitCapability?.api || gitApi, shared: !!gitCapability?.shared, readOnly: !!gitCapability?.readOnly, browseWorkspace: readCapabilities.browseGitWorkspace }}>

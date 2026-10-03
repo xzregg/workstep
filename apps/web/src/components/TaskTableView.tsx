@@ -16,6 +16,8 @@ interface Lane {
 }
 
 interface TaskTableViewProps {
+  readOnly?: boolean
+  canCreateTask?: boolean
   lanes: Lane[]
   tasksByLane: Record<string, Task[]>
   showArchived: boolean
@@ -76,6 +78,8 @@ export default function TaskTableView({
   onArchiveTask,
   onDeleteTask,
   onError,
+  readOnly = false,
+  canCreateTask = true,
 }: TaskTableViewProps) {
   const { t, locale } = useI18n()
   const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({})
@@ -117,7 +121,7 @@ export default function TaskTableView({
   }
 
   const runBulkAction = async (deleteWorkspace = false) => {
-    if (!pendingAction || selectedIds.length === 0 || busy) return
+    if (!pendingAction || readOnly || selectedIds.length === 0 || busy) return
     setBusy(true)
     try {
       if (pendingAction === 'archive') {
@@ -179,10 +183,10 @@ export default function TaskTableView({
           {t('taskList.selectedTasks', { count: selectedIds.length })}
         </span>
         <span style={{ flex: 1 }} />
-        {!showArchived && (
+        {canCreateTask && !showArchived && (
           <Button
             variant="ghost"
-            disabled={selectedIds.length === 0 || busy}
+            disabled={readOnly || selectedIds.length === 0 || busy}
             onClick={() => setPendingAction('archive')}
             style={{ gap: 5 }}
           >
@@ -192,7 +196,7 @@ export default function TaskTableView({
         )}
         <Button
           variant="ghost"
-          disabled={selectedIds.length === 0 || busy}
+          disabled={readOnly || selectedIds.length === 0 || busy}
           onClick={() => setPendingAction('delete')}
           style={{ gap: 5, color: 'var(--danger)' }}
         >
@@ -231,7 +235,7 @@ export default function TaskTableView({
                 {t('taskList.taskCount', { count: laneTasks.length })}
               </span>
               <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                {!showArchived && (
+                {canCreateTask && !showArchived && (
                   <Button
                     variant="ghost"
                     aria-label={t('taskList.addTaskToLane', { lane: lane.label })}

@@ -1,3 +1,4 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useChatComposerResize } from '../hooks/useChatComposerResize'
 import { useAssistantPendingInserts } from '../hooks/useAssistantPendingInserts'
@@ -164,6 +165,7 @@ const MessageItem = memo(function MessageItem({
   onForkMessage, onSendToInput, onAsyncQuestionSubmit, onA2uiAction,
 }: MessageItemProps) {
   const { t } = useI18n()
+  const { canEdit } = useGatewayProjectPermissions(projectId)
   const ownUserMessage = !message.author_device_id || message.author_device_id === deviceId
   const userSender = displayUserSender(
     message.author_name, userName, copy.me, t('aiFlow.historicalUser'),
@@ -184,9 +186,9 @@ const MessageItem = memo(function MessageItem({
       color={message.role === 'user' ? 'var(--accent)' : 'var(--ai-assistant)'}
       content={message.content}
       events={message.events}
-      interactionsEnabled={message.status === 'running'}
+      interactionsEnabled={canEdit && message.status === 'running'}
       a2uiMessages={a2uiEntry}
-      onInteractionRespond={respondInteraction}
+      onInteractionRespond={canEdit ? respondInteraction : undefined}
       streaming={message.status === 'running'}
       projectId={projectId}
       error={
@@ -255,7 +257,7 @@ const MessageItem = memo(function MessageItem({
       }
       onSendToInput={onSendToInput}
       onAsyncQuestionSubmit={onAsyncQuestionSubmit}
-      onA2uiAction={onA2uiAction}
+      onA2uiAction={canEdit ? onA2uiAction : undefined}
     />
   )
 })
@@ -271,6 +273,7 @@ export default function AssistantChatPanel({
   const deviceId = useUserSettingsStore((state) => state.deviceId)
   const userName = useUserSettingsStore((state) => state.userName)
   const { t } = useI18n()
+  const { canEdit } = useGatewayProjectPermissions(projectId)
   const engineMessages = messages.filter((message) => message.engine !== 'action')
   const { panel: pendingPanel, error: pendingError, queueEnabled, queueCurrentInput } = useAssistantPendingInserts({
     projectId, sessionId, messages, input, onInputChange, onSendContent,
@@ -554,7 +557,7 @@ export default function AssistantChatPanel({
               key={message.id}
               message={message}
               run={(message as AssistantChatMessage & { actionRun?: ActionRun }).actionRun}
-              onStop={onStopAction}
+              onStop={canEdit ? onStopAction : undefined}
             />
           ) : (
             <MessageItem
@@ -571,10 +574,10 @@ export default function AssistantChatPanel({
               respondInteraction={respondInteraction}
               onViewPrompt={setViewingPrompt}
               onLoadMessageEvents={onLoadMessageEvents}
-              onForkMessage={onForkMessage}
+              onForkMessage={canEdit ? onForkMessage : undefined}
               onSendToInput={handleSendToInput}
               onAsyncQuestionSubmit={handleAsyncQuestionSubmit}
-              onA2uiAction={onA2uiAction}
+              onA2uiAction={canEdit ? onA2uiAction : undefined}
             />
           ))}
           {showThinkingReply && (
@@ -612,6 +615,7 @@ export default function AssistantChatPanel({
       </div>
 
       {(sendError || pendingError) && <div className="assistant-chat-error">{sendError || pendingError}</div>}
+      {canEdit && <>
       <div
         role="separator"
         aria-orientation="horizontal"
@@ -734,6 +738,8 @@ export default function AssistantChatPanel({
           />
         </div>
       </div>
+
+      </>}
 
       {viewingPrompt && (
         <PromptViewerDialog
