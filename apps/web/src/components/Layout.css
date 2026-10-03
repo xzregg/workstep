@@ -72,12 +72,16 @@
   cursor: pointer;
 }
 .layout-sidebar-session-label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   gap: 6px;
   margin-top: 14px;
   padding: 10px 6px 0 0;
   border-top: 1px solid var(--border-soft);
 }
 .layout-sidebar-session-label .layout-sidebar-section-name { flex-shrink: 0; }
+.layout-sidebar-session-label .sidebar-conversation-tabs { grid-column: 2; justify-self: center; }
+.layout-sidebar-session-label .sidebar-add-button { grid-column: 3; justify-self: end; }
 
 .layout-project-row {
   position: relative;
