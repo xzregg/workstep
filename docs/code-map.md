@@ -326,3 +326,6 @@ Gateway 后台布局由 `apps/gateway-web/src/AdminLayout.tsx` 持有按角色�
 企业微信长选项的展示适配由 `services/channels/wecom.py::send_card` 负责：编号按钮、完整选项正文和超长说明主动发送，控制回调仍由 `controls.py` 按原 key 处理；测试在 `tests/test_channel_bot_adapters.py`。
 
 任务渠道终态判断由 `services/channels/bots.py::_task_reply` 负责，以协调助手的 `TEXT_MESSAGE_END` 为准，停止时的引擎退出事件不直接触发失败回复；有无任务转发器的回归在 `tests/test_channel_terminal_state.py`、`tests/test_channel_task_forwarder.py`。 企业微信中止卡片由 `wecom.py::send_card` 独立主动发送，避免正文流更新覆盖按钮；运行中卡片与流式正文隔离测试在 `tests/test_channel_bot_adapters.py`。
+
+
+群聊完成回复的发送人提醒由 `services/channels/wecom.py::_send_text` 和 `dingtalk.py::send` 持有，仅使用本条入站群消息的发送人及回复上下文；企业微信在最终正文追加 `<@userid>`，钉钉使用原始 sessionWebhook 的 `at.atUserIds`，流式卡片完成后单独提醒一次。广播群和私聊不自动提及。中止卡片由 `controls.py::begin` 展示助手消息 ID，`base.py::ChannelCard.message_id` 传递诊断标识，钉钉在卡片 tips 中保留 ID。行为、回退及慢网络健康检查见 `tests/test_channel_mentions.py`。

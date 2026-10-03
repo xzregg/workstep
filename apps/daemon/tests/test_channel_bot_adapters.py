@@ -54,7 +54,7 @@ async def test_wecom_group_message_and_reply_use_official_sdk_frame(monkeypatch)
     assert first.args[1] == last.args[1]
     assert first.args[2] == ""
     assert first.kwargs == {"finish": False}
-    assert last.args[2] == "完成"
+    assert last.args[2] == "完成\n\n<@u1>"
     assert last.kwargs == {"finish": True}
     client.send_message.assert_not_awaited()
     await adapter.stop()
@@ -426,7 +426,7 @@ async def test_wecom_stop_card_is_sent_independently_of_stream_updates():
     template=client.send_message.await_args.args[1]['template_card']
     assert template['task_id']=='c'
     assert template['button_list']==[{'text':'中止','key':'0'}]
-    assert [c.args[2] for c in client.reply_stream.await_args_list]==['','部分正文','已停止。']
+    assert [c.args[2] for c in client.reply_stream.await_args_list]==['','部分正文','已停止。\n\n<@u>']
 
 
 

@@ -183,6 +183,9 @@ class WeComAdapter(ChannelAdapter):
         if not self._client:
             raise RuntimeError("企业微信机器人未连接")
         frame = self._reply_frame(message)
+        if frame and message.conversation_type == 'group' and message.sender_id:
+            # Delivery metadata stays out of the stored/streaming LLM body.
+            text += '\n\n<@' + message.sender_id + '>'
         if frame:
             try:
                 first = next(_utf8_parts(text, 20480), '')
