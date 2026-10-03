@@ -193,15 +193,9 @@ async def _remote_identity(request: Request):
 
 
 async def proxy_remote_request(request: Request):
-    host = _device_host(request)
-    origin = request.headers.get("origin")
-    if request.method not in ("GET", "HEAD", "OPTIONS") and origin and origin != f"https://{host}":
-        raise HTTPException(status_code=403, detail="Invalid remote origin")
     user, device_id, auth_session, host_project_id = await _remote_identity(request)
     task_create = False
     if auth_session.project_id:
-        if request.method not in ("GET", "HEAD", "OPTIONS") and origin != f"https://{host}":
-            raise HTTPException(status_code=403, detail="Project request origin required")
         if request.method == "POST" and request.url.path == "/api/task/create":
             task_create = await _project_task_create_allowed(
                 request, device_id, user.id, host_project_id,
@@ -247,9 +241,6 @@ async def proxy_remote_request(request: Request):
 @websocket_router.websocket("/{path:path}")
 async def proxy_remote_websocket(ws: WebSocket, path: str):
     try:
-        host = _device_host(ws)
-        if ws.headers.get("origin") != f"https://{host}":
-            raise HTTPException(status_code=403, detail="Invalid remote WebSocket origin")
         user, device_id, auth_session, host_project_id = await _remote_identity(ws)
         if auth_session.project_id:
             if ws.url.path != "/ws":

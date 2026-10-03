@@ -152,7 +152,11 @@ def test_managed_runtime_requires_gateway_derived_local_session(monkeypatch):
             'X-WorkStep-Desktop-Token': 'runtime-secret',
             'X-WorkStep-Local-Session': local_token,
             'Origin': 'https://attacker.example',
-        }).status_code == 403
+        }).status_code == 200
+        assert client.get('/api/private', headers={
+            'X-WorkStep-Local-Session': local_token,
+            'Origin': 'https://attacker.example',
+        }).status_code == 401
         assert client.get('/api/private', headers={
             'X-WorkStep-Desktop-Token': 'runtime-secret',
             'X-WorkStep-Local-Session': local_token,

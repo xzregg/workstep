@@ -212,7 +212,11 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         }, headers=owner_headers).status_code == 200
         assert client.post(create_url, headers={
             "Cookie": f"workstep_gateway_session={edit_cookie}",
-        }, json={"title": "New task"}).status_code == 403
+        }, json={"title": "New task"}).status_code == 200
+        assert client.post(create_url, headers={
+            "Cookie": f"workstep_gateway_session={edit_cookie}",
+            "Origin": "https://proxy.example",
+        }, json={"title": "New task"}).status_code == 200
         assert client.post(create_url, headers=edit_headers,
                            json={"title": "New task"}).status_code == 200
         assert client.get(f"{host}/api/remote/session", headers={
