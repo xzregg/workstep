@@ -38,3 +38,16 @@ WorkStep 使用平台官方长连接接收机器人消息。daemon 主动连出�
 在左侧「渠道」Tab 打开会话并发送消息后，LLM 已完成的正文回复会主动推送到该会话当前映射的机器人私聊或群聊。普通会话、已归档或已被重置替换的会话不推送；渠道入站消息已有回复回调，不会重复发送。思考、工具调用与流式碎片不逐条推送。失败会记录日志并发布 `channel_bots.reply_error` 事件。
 
 企业微信使用长连接 SDK 的主动发送接口；钉钉使用 [机器人群聊发送](https://open.dingtalk.com/document/orgapp/the-robot-sends-a-group-message) 或 [机器人单聊发送](https://open.dingtalk.com/document/orgapp/chatbots-send-one-on-one-chat-messages-in-batches)，通过应用凭证获取并缓存 accessToken。钉钉应用需要具备相应主动发送权限。
+
+
+### CLI 主动通知
+
+使用 `workstep channel list --json` 查看机器人，用 `workstep channel sessions --project <项目ID> --json` 查看当前项目的渠道会话及收件人。
+
+```bash
+workstep channel send --project <项目ID> --session <渠道会话ID> --text "任务已完成" --json
+workstep channel send --project <项目ID> --bot <机器人ID> --user <平台用户ID> --text "任务已完成" --json
+workstep channel send --project <项目ID> --bot <机器人ID> --group <平台群ID> --text "任务已完成" --json
+```
+
+源码环境将 `workstep` 替换为 `uv run --no-sync --directory apps/daemon python -m cli`。按会话发送会自动识别机器人、私聊用户或群；直接指定目标时，机器人默认项目或群绑定的项目必须匹配。归档、重置后的旧会话和未启用机器人拒绝发送，项目范围凭据不能跨项目发送。消息直接发给渠道，不启动 LLM，也不写入聊天历史；返回 `sent: true` 表示平台发送接口成功，失败返回非零退出码，不能等同于用户已读。助手和定时任务须有明确的发送授权。

@@ -224,6 +224,26 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         body_params=("repository_id", "alias", "base_ref", "branch_name"),
     ),
     WorkstepTool(
+        name="workstep_list_channel_bots", description="List configured channel robots without secrets.",
+        method="GET", path="/api/channel-bots",
+    ),
+    WorkstepTool(
+        name="workstep_list_channel_sessions", description="List active channel sessions and their exact recipients in one project.",
+        method="GET", path="/api/channel-bots/sessions",
+        parameters={"project_id": {"type": "string", "description": "project id"}},
+        required=("project_id",), query_params=("project_id",),
+    ),
+    WorkstepTool(
+        name="workstep_send_channel_message", description="Send a notification via a channel session, or bot plus user/group, only when authorized.",
+        method="POST", path="/api/channel-bots/send",
+        parameters={key: {"type": "string", "description": description} for key, description in {
+            "project_id": "project id", "text": "message text", "session_id": "existing channel session id",
+            "bot_id": "bot id for explicit recipient", "user_id": "platform user id", "group_id": "platform group id",
+        }.items()},
+        required=("project_id", "text"), read_only=False, side_effect="send an external channel message",
+        body_params=("project_id", "text", "session_id", "bot_id", "user_id", "group_id"),
+    ),
+    WorkstepTool(
         name="workstep_list_engines",
         description=(
             "List installed LLM engines and their capabilities (coordinator, "

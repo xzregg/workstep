@@ -173,6 +173,22 @@ def build_parser() -> argparse.ArgumentParser:
     workflow_action.add_argument("--overwrite", action="store_true", help="replace the existing workflow Action with the same ID")
     add_json(workflow_action)
 
+    channel = subparsers.add_parser("channel", help="send messages through channel bots")
+    channel_sub = channel.add_subparsers(dest="subcommand", required=True)
+    add_json(channel_sub.add_parser("list", help="list configured bots"))
+    channel_sessions = channel_sub.add_parser("sessions", help="list active channel conversation recipients")
+    channel_sessions.add_argument("--project", dest="project_id", required=True)
+    add_json(channel_sessions)
+    channel_send = channel_sub.add_parser("send", help="send a notification without starting an LLM turn")
+    channel_send.add_argument("--project", dest="project_id", required=True)
+    channel_send.add_argument("--text", required=True)
+    channel_send.add_argument("--bot", dest="bot_id")
+    recipients = channel_send.add_mutually_exclusive_group(required=True)
+    recipients.add_argument("--session", dest="session_id")
+    recipients.add_argument("--user", dest="user_id")
+    recipients.add_argument("--group", dest="group_id")
+    add_json(channel_send)
+
     engine = subparsers.add_parser("engine", help="manage engines")
     engine_sub = engine.add_subparsers(dest="subcommand", required=True)
     add_json(engine_sub.add_parser("list", help="list installed LLM engines"))
@@ -243,6 +259,16 @@ async def dispatch(args: argparse.Namespace, client: WorkstepClient | None = Non
     """Resolve a parsed command to one tool call and return its JSON result."""
     client = client or WorkstepClient(base_url=args.url)
     command = args.command
+    if command == "channel":
+        if args.subcommand == "list":
+            return await client.call("workstep_list_channel_bots", {})
+        if args.subcommand == "sessions":
+            return await client.call("workstep_list_channel_sessions", {"project_id": args.project_id})
+        if (args.session_id and args.bot_id) or (not args.session_id and not args.bot_id):
+            raise ValueError("按会话发送只需 --session；指定 --user 或 --group 时必须同时指定 --bot")
+        arguments = {"project_id": args.project_id, "text": args.text, "confirm": "yes"}
+        arguments.update({key: getattr(args, key) for key in ("session_id", "bot_id", "user_id", "group_id") if getattr(args, key)})
+        return await client.call("workstep_send_channel_message", arguments)
     if command == "project":
         if args.subcommand == "list":
             return await client.call("workstep_list_projects", {})
