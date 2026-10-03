@@ -5,10 +5,12 @@ import './SidebarConversationTabs.css'
 
 type ConversationTab = 'chat' | 'channel'
 
-export default function SidebarConversationTabs({ sessions, activeSessionId, onSwitch, children }: {
+export default function SidebarConversationTabs({ sessions, activeSessionId, onSwitch, header, open = true, children }: {
   sessions: ChatSessionSummary[]
   activeSessionId?: string | null
   onSwitch: () => void
+  header?: (tabs: ReactNode, tab: ConversationTab) => ReactNode
+  open?: boolean
   children: (sessions: ChatSessionSummary[]) => ReactNode
 }) {
   const { t } = useI18n()
@@ -32,12 +34,12 @@ export default function SidebarConversationTabs({ sessions, activeSessionId, onS
     }
   }
   const visible = sessions.filter(session => (session.source === 'channel' ? 'channel' : 'chat') === tab)
-  return <>
-    <div className="sidebar-conversation-tabs" role="tablist" aria-label={t('chatSession.conversationTypes')}>
+  const tabs = <div className="sidebar-conversation-tabs" role="tablist" aria-label={t('chatSession.conversationTypes')} onClick={event => event.stopPropagation()}>
       {(['chat', 'channel'] as const).map(value => <button
         key={value} type="button" role="tab" id={`${id}-${value}`}
         aria-selected={tab === value} aria-controls={`${id}-panel`} tabIndex={tab === value ? 0 : -1}
         className="sidebar-conversation-tab"
+        aria-label={t(value === 'chat' ? 'chatSession.ordinaryTab' : 'chatSession.channelTab')}
         onClick={event => { event.stopPropagation(); choose(value) }}
         onKeyDown={event => {
           if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
@@ -48,14 +50,16 @@ export default function SidebarConversationTabs({ sessions, activeSessionId, onS
           document.getElementById(`${id}-${next}`)?.focus()
         }}
       >
-        {t(value === 'chat' ? 'chatSession.ordinaryTab' : 'chatSession.channelTab')}
+        {t(value === 'chat' ? 'chatSession.ordinaryTabShort' : 'chatSession.channelTabShort')}
         <span className="sidebar-conversation-tab-count">{sessions.filter(session => (session.source === 'channel' ? 'channel' : 'chat') === value).length}</span>
       </button>)}
     </div>
-    <div role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${tab}`}>
+  return <>
+    {header ? header(open ? tabs : null, tab) : tabs}
+    {open && <div role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${tab}`}>
       {visible.length ? children(visible) : <div className="sidebar-conversation-empty">
         {t(tab === 'channel' ? 'chatSession.noChannelSessions' : 'chatSession.noOrdinarySessions')}
       </div>}
-    </div>
+    </div>}
   </>
 }

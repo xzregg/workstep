@@ -843,7 +843,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                   : sessionSectionOpen[p.id]
                     ?? (location.pathname === '/chat' && !!activeSessionId)
                 return (
-                  <>
+                  <SidebarConversationTabs sessions={searchResult.sessions} activeSessionId={activeSessionId} onSwitch={clearSelection} open={open} header={(tabs, tab) => (
                     <div
                       className="layout-sidebar-nested-label layout-sidebar-session-label"
                       data-open={open}
@@ -859,7 +859,8 @@ export default function Layout({ onSelectProject, children }: Props) {
                         />
                         {t('chatSession.navSection')}
                       </span>
-                      {open && (
+                      {tabs}
+                      {open && tab === 'chat' && (
                         <SidebarAddButton
                           loading={creatingSession}
                           disabled={creatingSession}
@@ -869,10 +870,8 @@ export default function Layout({ onSelectProject, children }: Props) {
                             />
                       )}
                     </div>
-                    {open && (
-                    <div className="layout-session-list">
-                      <SidebarConversationTabs sessions={searchResult.sessions} activeSessionId={activeSessionId} onSwitch={clearSelection}>
-                        {visibleSessions => <>
+                    )}>
+                      {visibleSessions => <div className="layout-session-list">
                       {/* Bulk action bar (visible when 2+ sessions selected) */}
                       {selectionProjectId === p.id && selectedIds.size >= 2 && (
                         <div className="layout-session-bulk-actions">
@@ -1004,7 +1003,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                           ) : (
                             <MarqueeText text={session.title} />
                           )}
-                          <ChatSessionSourceBadge source={session.source} />
+                          <ChatSessionSourceBadge source={session.source} platform={session.channel_platform} botName={session.channel_name} />
                           <SidebarStatusIndicator
                             running={sessionRunning}
                             failed={failedChatSessions[session.id]}
@@ -1023,11 +1022,8 @@ export default function Layout({ onSelectProject, children }: Props) {
                         </div>
                         )
                       })}
-                        </>}
-                      </SidebarConversationTabs>
-                    </div>
-                    )}
-                  </>
+                      </div>}
+                  </SidebarConversationTabs>
                 )
               })()}
                 </div>
