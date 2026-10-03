@@ -119,7 +119,7 @@ def project_http_route_allowed(method: str, path: str,
             return True
         if _CHAT_SESSION_ACTION.fullmatch(path) or _CHAT_SESSION_TRANSITION.fullmatch(path):
             return True
-        if path in ("/api/fs/upload/file", "/api/fs/upload/image", "/api/fs/entry"):
+        if path in ("/api/fs/upload/file", "/api/fs/upload/image", "/api/fs/entry", "/api/fs/browser-upload"):
             return True
         if _TASK_CHAT.fullmatch(path) or _TASK_STEP_MESSAGE.fullmatch(path):
             return True

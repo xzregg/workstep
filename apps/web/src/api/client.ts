@@ -345,6 +345,10 @@ export const fsApi = {
     if (includeHidden) params.set('include_hidden', 'true')
     return request<FileSearchResult>(`/fs/search?${params.toString()}`)
   },
+  uploadToDirectory: async (file: File, projectId: string, root: string | undefined, parent: string) =>
+    request<{ path: string; name: string; size: number }>('/fs/browser-upload', {
+      method: 'POST', body: JSON.stringify({ project_id: projectId, root, parent, filename: file.name, data_url: await fileDataUrl(file) }),
+    }),
   createEntry: (projectId: string, root: string | undefined, parent: string, name: string, kind: 'file' | 'directory') =>
     request<{ path: string; name: string; kind: 'file' | 'directory' }>('/fs/entry', {
       method: 'POST', body: JSON.stringify({ project_id: projectId, root, parent, name, kind }),

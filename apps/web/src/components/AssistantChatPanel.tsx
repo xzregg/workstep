@@ -5,7 +5,7 @@ import {
   ComposerOverlayHostContext,
   useComposerOverlayClearance,
 } from '../hooks/useComposerOverlayClearance'
-import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import MobileSheet from './MobileSheet'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 
@@ -106,6 +106,7 @@ export interface AssistantChatPanelProps {
   composerActions?: ReactNode
   /** Floating content anchored immediately above the composer. */
   composerOverlay?: ReactNode
+  composerStatus?: ReactNode
   afterMessages?: ReactNode
   actionRuns?: ActionRun[]
   onStopAction?: (runId: string) => void
@@ -120,8 +121,10 @@ export interface AssistantChatPanelProps {
   showUserTag?: boolean
   /** Load one persisted message's JSONL process timeline on demand. */
   onLoadMessageEvents?: (messageId: string) => void
+  /** Fetch older messages; capture the scroll position immediately before prepending. */
+  onLoadOlderHistory?: (beforePrepend?: () => void) => Promise<void>
   /** Optional message-level fork action, shown on completed assistant replies. */
-  onForkMessage?: (messageId: string) => void
+  onForkMessage?: (messageId: string, preferSmart?: boolean) => void
 }
 
 interface MessageItemProps {
@@ -140,7 +143,7 @@ interface MessageItemProps {
   ) => Promise<void>
   onViewPrompt: (value: string | null) => void
   onLoadMessageEvents?: (messageId: string) => void
-  onForkMessage?: (messageId: string) => void
+  onForkMessage?: (messageId: string, preferSmart?: boolean) => void
   onSendToInput: (content: string) => void
   onAsyncQuestionSubmit: (content: string) => Promise<boolean>
   onA2uiAction?: (action: A2uiClientAction) => void
@@ -232,9 +235,8 @@ const MessageItem = memo(function MessageItem({
         />
       )}
       footer={
-        message.role === 'assistant' &&
-        // 思考中（尚无正文）也展示 Token / t/s / 引擎 * 模型
-        (message.content || message.status === 'running' || message.status === 'stopped') ? (
+        // 无正文、失败或停止的助手回复也保留元信息与分叉操作。
+        message.role === 'assistant' ? (
           <MessageResponseFooter
             content={stripA2uiBlocks(message.content)}
             usage={usageFromEvents(message.events ?? [])}
@@ -245,8 +247,8 @@ const MessageItem = memo(function MessageItem({
             startedAt={message.created_at}
             running={message.status === 'running'}
             stopped={message.status === 'stopped'}
-            onFork={message.status === 'succeeded' && onForkMessage
-              ? () => onForkMessage(message.id)
+            onFork={message.status !== 'running' && onForkMessage
+              ? () => onForkMessage(message.id, message.status === 'error')
               : undefined}
           />
         ) : undefined
@@ -262,9 +264,9 @@ const MessageItem = memo(function MessageItem({
 export default function AssistantChatPanel({
   projectId, sessionId, title, messages, running, stopping, input, sendError, copy,
   locale, config, permission, enhance, context, quota, onRefreshQuota, quotaRefreshing, plan, goal, availableCommands, attachmentPrefix, onInputChange, onSend, onSendContent, onStop, onAttachmentError, onClose,
-  onA2uiAction, headerActions, composerActions, composerOverlay, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
+  onA2uiAction, headerActions, composerActions, composerStatus, composerOverlay, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, onQuickPromptItemSelect, a2uiMessages, showUserTag = false,
-  onLoadMessageEvents, onForkMessage, allowSendWhileRunning = false,
+  onLoadMessageEvents, onLoadOlderHistory, onForkMessage, allowSendWhileRunning = false,
 }: AssistantChatPanelProps) {
   const deviceId = useUserSettingsStore((state) => state.deviceId)
   const userName = useUserSettingsStore((state) => state.userName)
@@ -288,6 +290,8 @@ export default function AssistantChatPanel({
   const lastProgrammaticScrollTopRef = useRef(0)
   const lastScrollTopRef = useRef(0)
   const lastScrollHeightRef = useRef(0)
+  const prependHeightRef = useRef<number | null>(null)
+  const prependedRef = useRef(false)
   const {
     rootRef, composerRef, composerInnerRef, height: composerHeight,
     startResize: startComposerResize, resetHeight: resetComposerHeight,
@@ -322,7 +326,24 @@ export default function AssistantChatPanel({
     onSendContent(content, [])
   ), [onSendContent])
 
+  useLayoutEffect(() => {
+    const list = listRef.current
+    const previousHeight = prependHeightRef.current
+    if (!list || previousHeight === null) return
+    const target = list.scrollTop + list.scrollHeight - previousHeight
+    list.scrollTop = target
+    lastProgrammaticScrollTopRef.current = target
+    lastScrollTopRef.current = target
+    lastScrollHeightRef.current = list.scrollHeight
+    prependHeightRef.current = null
+    prependedRef.current = true
+  }, [messages])
+
   useEffect(() => {
+    if (prependedRef.current) {
+      prependedRef.current = false
+      return
+    }
     const list = listRef.current
     if (!followRef.current) {
       if (list) lastScrollHeightRef.current = list.scrollHeight
@@ -440,7 +461,7 @@ export default function AssistantChatPanel({
           由包裹层留出「面板高度 + 10px」，滚动容器随之整体变矮。 */}
       <div className={`chat-history-wrapper${scrolledToBottom ? ' is-at-bottom' : ''}`} style={{ flex: 1, minHeight: 0, position: 'relative', paddingBottom: overlayPaddingBottom(5) }}>
         <div
-          className="chat-history-scroll"
+          className={`chat-history-scroll${onLoadOlderHistory ? ' chat-history-scroll--paged' : ''}`}
           ref={listRef}
           onWheelCapture={(event) => {
             if (shouldPauseConversationFollow({ type: 'wheel', deltaY: event.deltaY })) {
@@ -505,6 +526,12 @@ export default function AssistantChatPanel({
             setScrolledToBottom(nearBottom)
             lastScrollTopRef.current = list.scrollTop
             lastScrollHeightRef.current = list.scrollHeight
+            if (list.scrollTop <= 40 && onLoadOlderHistory) {
+              void onLoadOlderHistory(() => {
+                followRef.current = false
+                prependHeightRef.current = list.scrollHeight
+              })
+            }
           }}
           style={{
             height: '100%', minHeight: 0, overflowY: 'auto', paddingBlock: 10,
@@ -610,6 +637,7 @@ export default function AssistantChatPanel({
           ref={composerInnerRef}
           className={`chat-composer-inner${!compactLayout && composerHeight !== null ? ' is-resized' : ''}${compactLayout ? ' is-compact' : ''}`}
         >
+          {composerStatus}
           {(composerActions || (quickPrompts && quickPrompts.length > 0)) && !compactLayout && (
               <div
                 className="chat-quick-prompts"

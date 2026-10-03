@@ -624,6 +624,9 @@ export const zhCN = {
     progress: '第 {current}/{total} 步 · 已完成 {completed}',
   },
   goal: {
+    original: '目标原文',
+    resume: '继续',
+    end: '结束',
     title: '目标',
     status: { active: '进行中', paused: '已暂停', blocked: '受阻', usageLimited: '用量受限', budgetLimited: '预算已用尽', complete: '已完成', cleared: '已清除' },
   },
@@ -657,6 +660,10 @@ export const zhCN = {
     mermaidZoomIn: '放大流程图',
   },
   browser: {
+    uploadFiles: '上传文件',
+    uploadTarget: '上传文件到：{path}',
+    uploadFailed: '上传失败',
+    uploadTooLarge: '文件超过 25MB 上限',
     newFolder: '新建文件夹',
     folderName: '文件夹名称',
     createFolder: '创建',

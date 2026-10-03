@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { chatSessionApi } from '../api/client'
+import { ApiError, chatSessionApi } from '../api/client'
 import { useI18n } from '../i18n'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
 import type { ChatEngineConfigState } from '../utils/chatEngineConfig'
@@ -32,25 +32,26 @@ export function useChatSessionActions({
     setStopping(false)
   }, [sessionId, projectId])
 
-  const sendMessageNow = useCallback(async (content: string): Promise<boolean> => {
+  const sendMessageNow = useCallback(async (content: string, goalCommand = false): Promise<boolean> => {
     if (!content || !sessionId) {
       if (!sessionId) setSendError(t('chatSession.noSession'))
       return false
     }
     if (!projectId) return false
     setSendError('')
+    // 先记乐观 id：彻底失败时撤掉气泡，不留后端不存在的幻影消息。
+    const optimisticId = useChatSessionStore.getState().addUserMessage(sessionId, content)
     try {
-      useChatSessionStore.getState().addUserMessage(sessionId, content)
       const accepted = await chatSessionApi.chat(sessionId, projectId, content, randomUuid(), {
         engine: engineConfig.engine || undefined,
-        provider_id: engineConfig.providerId || undefined,
+        provider_id: engineConfig.providerId || (engineConfig.providerCleared ? '' : undefined),
         model: engineConfig.model || undefined,
         fast_model: engineConfig.fastModel || undefined,
         vision_model: engineConfig.visionModel || undefined,
         thinking_effort: engineConfig.thinkingEffort || undefined,
         permission_mode: permissionMode || undefined,
-        plan_mode: planMode || undefined,
-        goal_mode: goalMode && effectiveEngine === 'codex_sdk' || undefined,
+        plan_mode: goalCommand ? false : planMode || undefined,
+        goal_mode: goalCommand ? false : goalMode && effectiveEngine === 'codex_sdk' || undefined,
       })
       if (accepted.session_id && accepted.session_id !== sessionId) {
         const store = useChatSessionStore.getState()
@@ -73,6 +74,7 @@ export function useChatSessionActions({
       }
       return true
     } catch (reason) {
+      useChatSessionStore.getState().removeMessage(sessionId, optimisticId)
       setSendError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
       return false
     }
@@ -85,29 +87,40 @@ export function useChatSessionActions({
     if (!sessionId || !projectId) return false
     if (!running) return sendMessageNow(content)
     setSendError('')
+    const optimisticId = useChatSessionStore.getState().addUserMessage(sessionId, content)
+    const dropOptimistic = () => {
+      useChatSessionStore.getState().removeMessage(sessionId, optimisticId)
+    }
     try {
-      useChatSessionStore.getState().addUserMessage(sessionId, content)
       await chatSessionApi.sendLiveMessage(sessionId, projectId, content, pendingInsertIds)
       return true
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : ''
       if (message.includes('待插入消息已被处理')) return true
-      if (message.includes('not running') || message.includes('未在运行')) {
+      // 上一轮在前端判忙、后端已收尾：按 409 状态兜底（文本匹配只做兼容），
+      // 走普通发送开新一轮；其它错误撤掉乐观气泡。
+      const turnGone = reason instanceof ApiError
+        ? reason.status === 409
+        : (message.includes('not running') || message.includes('未在运行'))
+      if (turnGone) {
+        dropOptimistic()
         return sendMessageNow(content)
       }
+      dropOptimistic()
       setSendError(message || t('chatSession.sendFailed'))
       return false
     }
   }, [projectId, running, sendMessageNow, sessionId, t])
 
   const stop = useCallback(async () => {
-    if (!sessionId || !projectId || stopping) return
+    if (!sessionId || !projectId || stopping) return false
     setStopping(true)
     setSendError('')
     try {
       const result = await chatSessionApi.stop(sessionId, projectId)
       if (result.stopped) {
         useChatSessionStore.getState().markStopped(sessionId)
+        return true
       } else {
         setSendError(t('chatSession.stopFailed'))
       }
@@ -116,7 +129,14 @@ export function useChatSessionActions({
     } finally {
       setStopping(false)
     }
+    return false
   }, [sessionId, projectId, stopping, t])
 
-  return { sendMessageNow, sendPendingContent, stop, sendError, setSendError, stopping }
+  const continueGoal = useCallback(() => sendMessageNow('/goal resume', true), [sendMessageNow])
+  const endGoal = useCallback(async () => {
+    if (running && !await stop()) return false
+    return sendMessageNow('/goal clear', true)
+  }, [running, stop, sendMessageNow])
+
+  return { sendMessageNow, sendPendingContent, stop, continueGoal, endGoal, sendError, setSendError, stopping }
 }

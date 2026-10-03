@@ -6,6 +6,7 @@ import importlib.metadata
 import json
 import threading
 import time
+import sys
 from pathlib import Path
 
 import httpx
@@ -54,6 +55,9 @@ async def test_slow_download_file_open_keeps_event_loop_responsive(tmp_path, mon
 
 @pytest.fixture
 async def runtime_client(tmp_path, monkeypatch):
+    # This isolated app has no managed-mode lifecycle. Avoid importing main
+    # through its policy guard and changing the install directory mid-test.
+    monkeypatch.setattr("api.engine.require_managed_capability", lambda _action: None)
     monkeypatch.delenv("WORKSTEP_ENGINE_PACKAGE_DIR", raising=False)
     monkeypatch.setattr(engine_runtime.config_store, "set_engine_verified", lambda *args: None)
     async def unexpected_install(*args, **kwargs):
@@ -87,7 +91,7 @@ async def runtime_client(tmp_path, monkeypatch):
 
 async def test_versions_expose_compatible_package_size_and_minimum(runtime_client):
     client, _ = runtime_client
-    response = await client.get("/api/engine/opencode/runtime")
+    response = await client.get("/api/engine/codex_sdk/runtime")
     assert response.status_code == 200
     data = response.json()
     assert data["current_version"] == "0.149.0"
@@ -151,7 +155,10 @@ async def test_exact_version_install_tracks_bytes_and_persists_rollback(runtime_
     monkeypatch.setattr(engine_runtime, 'install_python_package', install)
     response = await client.post('/api/engine/codex_sdk/runtime/operation', json={'version': '0.150.0'})
     assert response.status_code == 202
-    await asyncio.wait_for(entered.wait(), 2)
+    try:
+        await asyncio.wait_for(entered.wait(), 2)
+    except TimeoutError:
+        pytest.fail(f"Installer did not start: {await service.operation('codex_sdk')}")
     state = (await client.get('/api/engine/codex_sdk/runtime/operation')).json()
     assert state['stage'] == 'installing'
     assert state['downloaded_bytes'] == state['total_bytes'] == 15
@@ -177,7 +184,7 @@ async def test_failed_install_keeps_previous_version_for_rollback(runtime_client
     state = await wait_finished(client)
     assert state['status'] == 'failed'
     assert state['message'] == 'disk full'
-    catalog = (await client.get('/api/engine/opencode/runtime')).json()
+    catalog = (await client.get('/api/engine/codex_sdk/runtime')).json()
     assert catalog['rollback_version'] == '0.149.0'
     assert catalog['history'] == []
 
@@ -238,7 +245,90 @@ async def test_interrupted_operation_survives_restart(runtime_client):
     state = (await client.get('/api/engine/codex_sdk/runtime/operation')).json()
     assert state['status'] == 'failed'
     assert '重启' in state['message']
-    assert (await client.get('/api/engine/opencode/runtime')).json()['rollback_version'] == '0.149.0'
+    assert (await client.get('/api/engine/codex_sdk/runtime')).json()['rollback_version'] == '0.149.0'
+
+
+@pytest.mark.parametrize("action", ["install", "update", "rollback"])
+async def test_managed_install_recovers_after_abrupt_process_exit(runtime_client, monkeypatch, action):
+    from services import config as config_module
+    from services.gateway_client.commands import ManagedCommandExecutor, ManagedDeviceCommand
+    from services.gateway_client.engine_actions import execute_engine_command, recover_engine_command, _command_scope
+
+    _, service = runtime_client
+    monkeypatch.setattr(config_module, "CONFIG_DIR", service.directory)
+    monkeypatch.setattr(config_module, "CONFIG_FILE", service.directory / "config.json")
+    command = ManagedDeviceCommand(
+        command_id="crash-command", batch_id="crash-batch", device_id="crash-device",
+        idempotency_key="crash-key", engine_id="codex_sdk", action=action,
+        version=None if action == "rollback" else "0.150.0",
+        accept_third_party_terms=False, expires_at=int(time.time()) + 600,
+        reconcile_only=True,
+    )
+    # A separate daemon worker exits without finally/receipt completion. All
+    # state is temporary and the installer is replaced before starting it.
+    child = """
+import asyncio, json, os, sys
+from pathlib import Path
+from services import config
+from services.engine_runtime import EngineRuntimeManager
+directory = Path(sys.argv[1])
+scope = json.loads(sys.argv[2])
+config.CONFIG_DIR = directory
+config.CONFIG_FILE = directory / 'config.json'
+config.config_store._cache = None
+async def main():
+    store = config.ConfigStore()
+    store.claim_managed_command(scope['command_id'], scope['idempotency_key'])
+    manager = EngineRuntimeManager(directory)
+    manager.installed_version = lambda spec: '0.149.0'
+    if scope['action'] == 'rollback':
+        await asyncio.to_thread(manager._save, 'codex_sdk', {'rollback_version': '0.150.0'})
+    async def crash(engine_id, spec, state, record):
+        state.update(status='running', stage='installing')
+        await asyncio.to_thread(manager._save, engine_id, record)
+        os._exit(0)
+    manager._run = crash
+    await manager.start('codex_sdk', scope['version'], rollback=scope['action'] == 'rollback',
+                        managed_command=scope)
+    await asyncio.sleep(10)
+asyncio.run(main())
+"""
+    process = await asyncio.create_subprocess_exec(
+        sys.executable, "-c", child, str(service.directory), json.dumps(_command_scope(command)),
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        _, stderr = await asyncio.wait_for(process.communicate(), 5)
+        assert process.returncode == 0, stderr.decode()
+    finally:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+    journal = await asyncio.to_thread(service._read, "codex_sdk")
+    operation_id = journal["operation"]["id"]
+    assert journal["operation"]["status"] == "running"
+    installs = []
+    installed = ["0.149.0"]
+    monkeypatch.setattr(service, "installed_version", lambda spec: installed[0])
+    monkeypatch.setattr("engines.core.registry.refresh_registry", lambda: None)
+
+    async def install(package, **kwargs):
+        assert Path(package).read_bytes() == b"a wheel payload"
+        installs.append(Path(package).name)
+        installed[0] = "0.150.0"
+        return EngineInstallResult(success=True, message="done")
+
+    monkeypatch.setattr(engine_runtime, "install_python_package", install)
+    executor = ManagedCommandExecutor(config_module.ConfigStore(), execute_engine_command,
+                                      recover=recover_engine_command)
+    assert await executor.execute(command) == ("succeeded", None)
+    assert await ManagedCommandExecutor(config_module.ConfigStore(), execute_engine_command,
+                                        recover=recover_engine_command).execute(command) == ("succeeded", None)
+    assert len(installs) == 1
+    final = await asyncio.to_thread(service._read, "codex_sdk")
+    assert final["operation"]["id"] == operation_id
+    assert final["operation"]["target_version"] == "0.150.0"
+    assert len(final["history"]) == 1
 
 
 async def test_npm_install_and_rollback_use_exact_archives(runtime_client, monkeypatch):
@@ -298,7 +388,7 @@ async def test_desktop_target_switch_is_staged_and_removes_old_metadata(runtime_
     assert state['status'] == 'succeeded', state['message']
     assert not old_info.exists()
     assert (target / 'unrelated.txt').read_text() == 'keep'
-    assert (await client.get('/api/engine/opencode/runtime')).json()['current_version'] == '0.150.0'
+    assert (await client.get('/api/engine/codex_sdk/runtime')).json()['current_version'] == '0.150.0'
 
 
 async def test_progress_reports_partial_download_while_api_remains_responsive(runtime_client, monkeypatch):

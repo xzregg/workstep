@@ -164,11 +164,59 @@ class EngineRuntimeManager:
         record = await asyncio.to_thread(self._read, engine_id)
         state = record.get("operation")
         if state and state["status"] in ("queued", "running"):
-            state.update(status="failed", stage="failed", message="后台服务已重启，安装中断；请重试或回退")
+            state.update(status="failed", stage="failed", interrupted=True,
+                         message="后台服务已重启，安装中断；请重试或回退")
             await asyncio.to_thread(self._save, engine_id, record)
         return state
 
-    async def start(self, engine_id: str, version: str | None, *, rollback=False, accept_terms=False) -> dict:
+    async def recover_managed(self, engine_id: str, command_scope: dict) -> dict | None:
+        """Resume only an already journaled managed operation, at its original target."""
+        spec = self.package(engine_id)
+        state = self._states.get(engine_id)
+        if state is not None:
+            return dict(state) if state.get("managed_command") == command_scope else None
+        if self._busy:
+            raise RuntimeError("已有引擎安装任务正在执行，请等待完成")
+        self._busy = True
+        try:
+            record = await asyncio.to_thread(self._read, engine_id)
+            state = record.get("operation")
+            if not state or state.get("managed_command") != command_scope:
+                self._busy = False
+                return None
+            expected_action = "rollback" if command_scope.get("action") == "rollback" else "install"
+            target = state.get("target_version")
+            if (state.get("engine_id") != engine_id or state.get("action") != expected_action
+                    or not isinstance(target, str)
+                    or not re.fullmatch(r"[0-9][0-9A-Za-z.+-]{0,99}", target)
+                    or (expected_action == "install" and target != command_scope.get("version"))):
+                raise ValueError("Invalid managed recovery target")
+            if state.get("status") in ("succeeded", "failed") and not state.get("interrupted"):
+                self._busy = False
+                return dict(state)
+            if state.get("status") not in ("queued", "running", "failed"):
+                raise ValueError("Invalid recovery operation status")
+            # Keep the original operation ID, rollback target and previous version.
+            # start(rollback=True) would resolve a possibly changed rollback target.
+            cls = list_all_engines()[engine_id]
+            if (cls.requires_third_party_terms_acceptance()
+                    and not command_scope.get("accept_third_party_terms")):
+                raise ValueError("请先阅读并接受第三方服务条款")
+            if await asyncio.to_thread(cls.get_binary_override):
+                raise ValueError("当前使用自定义可执行文件路径，请先清除路径配置再管理版本")
+            state.pop("interrupted", None)
+            state.update(status="queued", stage="preparing", message="",
+                         downloaded_bytes=0, total_bytes=None)
+            await asyncio.to_thread(self._save, engine_id, record)
+            self._states[engine_id] = state
+            self._task = asyncio.create_task(self._run(engine_id, spec, state, record))
+            return dict(state)
+        except BaseException:
+            self._busy = False
+            raise
+
+    async def start(self, engine_id: str, version: str | None, *, rollback=False, accept_terms=False,
+                    managed_command: dict | None = None) -> dict:
         spec = self.package(engine_id)
         if self._busy:
             raise RuntimeError("已有引擎安装任务正在执行，请等待完成")
@@ -192,6 +240,8 @@ class EngineRuntimeManager:
                      "previous_version": previous, "status": "queued", "stage": "preparing",
                      "downloaded_bytes": 0, "total_bytes": None, "size_scope": "primary_package",
                      "message": "", "started_at": datetime.now(timezone.utc).isoformat()}
+            if managed_command is not None:
+                state["managed_command"] = dict(managed_command)
             # Save the recovery target BEFORE changing anything in the environment.
             # A retry must not overwrite recovery with a partially installed version.
             failed = record.get("operation", {}).get("status") in ("failed", "running", "queued")

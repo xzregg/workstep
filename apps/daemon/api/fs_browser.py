@@ -1,6 +1,8 @@
 """Scoped file browser, search, and entry editing routes."""
 
 import asyncio
+import base64
+import binascii
 import os
 import shutil
 from pathlib import Path
@@ -64,6 +66,14 @@ class BrowserEntryDeleteRequest(BaseModel):
 class BrowserContentWriteRequest(BrowserEntryDeleteRequest):
     content: str
     expected_content: str
+
+
+class BrowserUploadRequest(BaseModel):
+    project_id: str
+    root: str | None = None
+    parent: str
+    filename: str
+    data_url: str
 
 
 def _resolve_browse_directory(path: str | None, project_id: str | None) -> tuple[Path, Path | None]:
@@ -247,6 +257,44 @@ async def mkdir_directory(req: MkdirRequest):
 
     target = await asyncio.to_thread(create_directory)
     return {"path": str(target), "name": name}
+
+
+@router.post("/browser-upload")
+async def upload_browser_file(req: BrowserUploadRequest):
+    """Upload a named file into the selected directory without overwriting entries."""
+    _require_scoped_project(req.project_id)
+
+    def upload() -> dict:
+        name = _browser_entry_name(req.filename)
+        parent, _ = _browser_edit_target(req.parent, req.project_id, req.root)
+        if not parent.is_dir():
+            raise HTTPException(status_code=404, detail="Parent directory not found")
+        header, separator, encoded = req.data_url.partition(",")
+        if not separator or not header.startswith("data:") or not header.endswith(";base64"):
+            raise HTTPException(status_code=400, detail="Invalid data URL format")
+        if len(encoded) > 33_333_336:
+            raise HTTPException(status_code=413, detail="文件超过 25MB 上限")
+        try:
+            content = base64.b64decode(encoded, validate=True)
+        except (ValueError, binascii.Error) as exc:
+            raise HTTPException(status_code=400, detail="Invalid base64 data") from exc
+        if len(content) > 25_000_000:
+            raise HTTPException(status_code=413, detail="文件超过 25MB 上限")
+        target = parent / name
+        try:
+            with target.open("xb") as output:
+                try:
+                    output.write(content)
+                except OSError:
+                    target.unlink()
+                    raise
+        except FileExistsError as exc:
+            raise HTTPException(status_code=409, detail="Entry already exists") from exc
+        except OSError as exc:
+            raise HTTPException(status_code=403, detail=_browser_os_error(exc)) from exc
+        return {"path": _browser_path(target, _project(req.project_id).path.resolve()), "name": name, "size": len(content)}
+
+    return await asyncio.to_thread(upload)
 
 
 @router.post("/entry")

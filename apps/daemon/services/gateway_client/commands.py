@@ -92,9 +92,11 @@ def verify_device_command(token: str, public_key_pem: str, expected_fingerprint:
 
 
 class ManagedCommandExecutor:
-    def __init__(self, store, action: Callable[[ManagedDeviceCommand], Awaitable[tuple[str, str | None]]]):
+    def __init__(self, store, action: Callable[[ManagedDeviceCommand], Awaitable[tuple[str, str | None]]],
+                 *, recover: Callable[[ManagedDeviceCommand], Awaitable[tuple[str, str | None]]] | None = None):
         self.store = store
         self.action = action
+        self.recover = recover
         self._inflight: dict[str, asyncio.Task] = {}
         self._started: dict[str, asyncio.Future[bool]] = {}
         self._lock = asyncio.Lock()
@@ -137,16 +139,15 @@ class ManagedCommandExecutor:
             raise
         started.set_result(claimed)
         if not claimed:
-            if receipt["status"] == "running":
-                result = ("failed", "Previous execution interrupted")
-                await asyncio.to_thread(
-                    self.store.finish_managed_command, command.command_id,
-                    command.idempotency_key, *result,
-                )
-                return result
-            return receipt["status"], receipt.get("error")
+            if receipt["status"] != "running":
+                return receipt["status"], receipt.get("error")
         try:
-            result = await self.action(command)
+            if claimed:
+                result = await self.action(command)
+            elif self.recover:
+                result = await self.recover(command)
+            else:
+                result = ("failed", "Previous execution interrupted")
             if result[0] not in ("succeeded", "failed"):
                 raise ValueError("Invalid local command result")
         except asyncio.CancelledError:

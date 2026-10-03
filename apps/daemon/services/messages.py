@@ -84,7 +84,9 @@ def attributed_actor_message_fields(
     """
     source = None
     if reply_to_message_id:
-        source = Message.get_or_none(Message.id == reply_to_message_id)
+        source = Message.get_or_none(
+            (Message.id == reply_to_message_id) & (Message.task == task)
+        )
     explicit_source = source is not None
     if source is None:
         base_predicate = (
@@ -116,7 +118,9 @@ def attributed_actor_message_fields(
                 .first()
             )
     run = (
-        WorkflowRun.get_or_none(WorkflowRun.id == task.active_workflow_run_id)
+        WorkflowRun.get_or_none(
+            (WorkflowRun.id == task.active_workflow_run_id) & (WorkflowRun.task == task)
+        )
         if task.active_workflow_run_id else None
     )
     if run is not None and not explicit_source and (

@@ -19,7 +19,7 @@ from .policy import ManagedPolicyCache, verify_policy_snapshot
 from .bridge import ManagedHttpBridge, ManagedWebSocketBridge
 from .provider_config import verify_provider_bundle
 from .commands import ManagedCommandExecutor, verify_device_command
-from .engine_actions import execute_engine_command
+from .engine_actions import execute_engine_command, recover_engine_command
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,8 @@ class GatewayControlClient:
         self.usage_outbox = usage_outbox
         self.audit_outbox = audit_outbox
         self.skill_sync = skill_sync
-        self.command_executor = (ManagedCommandExecutor(provider_store, execute_engine_command)
+        self.command_executor = (ManagedCommandExecutor(provider_store, execute_engine_command,
+                                                       recover=recover_engine_command)
                                  if provider_store is not None else None)
         self.online = False
         self.authorization_required = False

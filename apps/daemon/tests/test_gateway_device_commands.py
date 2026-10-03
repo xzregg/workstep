@@ -163,7 +163,10 @@ async def test_versioned_engine_command_waits_for_existing_runtime_manager(monke
 
     monkeypatch.setattr(engine_runtime, "runtime_manager", Manager())
     assert await execute_engine_command(command) == ("succeeded", None)
-    assert calls == [("codex", "1.2.3", {"rollback": False, "accept_terms": False})]
+    assert calls == [("codex", "1.2.3", {"rollback": False, "accept_terms": False,
+        "managed_command": {"command_id": "command-1", "idempotency_key": "idempotency-1",
+                            "device_id": "device-1", "action": "install", "version": "1.2.3",
+                            "accept_third_party_terms": False}})]
 
 
 @pytest.mark.asyncio
@@ -323,3 +326,116 @@ async def test_managed_local_engine_actions_require_policy(monkeypatch):
         })).status_code == 403
         assert (await client.post("/api/engine/codex/install")).status_code == 403
         assert (await client.post("/api/engine/codex/update")).status_code == 403
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["queued", "running", "interrupted", "succeeded", "failed"])
+async def test_restarted_command_reconciles_matching_runtime_journal(tmp_path, monkeypatch, status):
+    from services import engine_runtime
+    from services.gateway_client.engine_actions import recover_engine_command
+
+    monkeypatch.setattr(config_module, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(config_module, "CONFIG_FILE", tmp_path / "config.json")
+    store = config_module.ConfigStore()
+    key, pem, fingerprint, claims = _credential()
+    command = verify_device_command(_sign(key, {
+        **claims, "engine_id": "codex_sdk", "action": "rollback", "kind": "device.command.reconcile",
+    }), pem, fingerprint, "gateway-test", "device-1")
+    store.claim_managed_command(command.command_id, command.idempotency_key)
+    manager = engine_runtime.EngineRuntimeManager(tmp_path / "runtimes")
+    scope = {"command_id": command.command_id, "idempotency_key": command.idempotency_key,
+             "device_id": command.device_id, "action": command.action,
+             "version": command.version, "accept_third_party_terms": False}
+    operation = {"id": "original-operation", "engine_id": "codex_sdk", "action": "rollback",
+                 "target_version": "1.2.3", "previous_version": "1.3.0",
+                 "status": "running" if status == "interrupted" else status,
+                 "stage": "installing", "managed_command": scope}
+    await asyncio.to_thread(manager._save, "codex_sdk", {
+        "operation": operation, "rollback_version": "1.2.3", "history": [],
+    })
+    calls = []
+
+    async def install(engine_id, spec, state, record):
+        calls.append((state["id"], state["target_version"], state["action"]))
+        state.update(status="succeeded", stage="completed")
+        record["operation"] = state
+        await asyncio.to_thread(manager._save, engine_id, record)
+        manager._busy = False
+
+    monkeypatch.setattr(manager, "_run", install)
+    monkeypatch.setattr(engine_runtime, "runtime_manager", manager)
+    if status == "interrupted":
+        assert (await manager.operation("codex_sdk"))["status"] == "failed"
+
+    async def never_start(_command):
+        pytest.fail("Recovery must not call the fresh-command action")
+
+    executor = ManagedCommandExecutor(config_module.ConfigStore(), never_start,
+                                      recover=recover_engine_command)
+    try:
+        result = await executor.execute(command)
+        assert result == (("failed", "Engine operation failed") if status == "failed"
+                          else ("succeeded", None))
+        assert calls == ([] if status in ("succeeded", "failed") else
+                         [("original-operation", "1.2.3", "rollback")])
+        assert await executor.execute(command) == result
+        assert config_module.ConfigStore().get("managed_command_receipts", {})[command.command_id]["status"] == result[0]
+    finally:
+        await manager.shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("changed", [None, {"command_id": "other"}, {"device_id": "other"},
+                                     {"version": "9.9.9"}, {"accept_third_party_terms": True}])
+async def test_recovery_rejects_missing_or_mismatched_journal(tmp_path, monkeypatch, changed):
+    from services import engine_runtime
+    from services.gateway_client.engine_actions import recover_engine_command
+
+    key, pem, fingerprint, claims = _credential()
+    command = verify_device_command(_sign(key, {**claims, "engine_id": "codex_sdk", "action": "install", "version": "1.2.3"}),
+                                    pem, fingerprint, "gateway-test", "device-1")
+    manager = engine_runtime.EngineRuntimeManager(tmp_path / "runtimes")
+    if changed is not None:
+        scope = {"command_id": command.command_id, "idempotency_key": command.idempotency_key,
+                 "device_id": command.device_id, "action": command.action,
+                 "version": command.version, "accept_third_party_terms": False, **changed}
+        await asyncio.to_thread(manager._save, "codex_sdk", {"operation": {
+            "id": "foreign-operation", "status": "running", "managed_command": scope,
+            "target_version": "1.2.3", "action": "install",
+        }})
+    monkeypatch.setattr(engine_runtime, "runtime_manager", manager)
+    assert await recover_engine_command(command) == ("failed", "Previous execution interrupted")
+    assert manager._task is None
+
+
+@pytest.mark.asyncio
+async def test_slow_recovery_journal_keeps_health_responsive(tmp_path, monkeypatch):
+    from services import engine_runtime
+    from services.gateway_client.engine_actions import recover_engine_command
+
+    manager = engine_runtime.EngineRuntimeManager(tmp_path / "runtimes")
+    entered = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    def slow_read(_engine_id):
+        loop.call_soon_threadsafe(entered.set)
+        time.sleep(0.2)
+        return {}
+
+    monkeypatch.setattr(manager, "_read", slow_read)
+    monkeypatch.setattr(engine_runtime, "runtime_manager", manager)
+    key, pem, fingerprint, claims = _credential()
+    command = verify_device_command(_sign(key, {**claims, "engine_id": "codex_sdk", "action": "install", "version": "1.2.3"}),
+                                    pem, fingerprint, "gateway-test", "device-1")
+    recovery = asyncio.create_task(recover_engine_command(command))
+    app = FastAPI()
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok"}
+
+    await asyncio.wait_for(entered.wait(), 1)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        assert (await asyncio.wait_for(client.get("/health"), .1)).status_code == 200
+    assert not recovery.done()
+    assert await recovery == ("failed", "Previous execution interrupted")

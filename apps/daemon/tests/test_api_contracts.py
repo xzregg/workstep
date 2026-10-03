@@ -965,6 +965,16 @@ async def test_project_proxy_files_stay_inside_project_and_slow_upload_does_not_
     assert (await call_bridge("POST", "/api/fs/upload/image", upload_query,
                               body=upload_body))[0].payload["status"] == 403
 
+    browser_upload = {"project_id": project_id, "parent": "", "filename": "from-browser.txt",
+                      "data_url": "data:text/plain;base64,aGVsbG8="}
+    assert (await call_bridge("POST", "/api/fs/browser-upload", upload_query,
+                              body=browser_upload))[0].payload["status"] == 403
+    assert (await call_bridge("POST", "/api/fs/browser-upload", upload_query, level="edit",
+                              body=browser_upload))[0].payload["status"] == 200
+    assert (project_dir / "from-browser.txt").read_bytes() == b"hello"
+    assert (await call_bridge("POST", "/api/fs/browser-upload", upload_query, level="edit",
+                              body={**browser_upload, "project_id": "other-project"}))[0].payload["status"] == 403
+
     original_write = Path.write_bytes
     entered = threading.Event()
     def slow_upload(path, data):
@@ -3711,6 +3721,56 @@ async def test_project_directory_editor_operations_stay_within_browser_root(api_
     })
     assert outside_save.status_code == 403
     assert outside.read_text() == "keep"
+
+
+@pytest.mark.anyio
+async def test_slow_browser_upload_does_not_block_health(api_context, monkeypatch):
+    client, tmp_path = api_context
+    project_dir = tmp_path / "slow-browser-upload"
+    project_dir.mkdir()
+    initialized = await client.post("/api/project/init", json={"path": str(project_dir)})
+    started, release = threading.Event(), threading.Event()
+    original_open = Path.open
+
+    def slow_open(path, *args, **kwargs):
+        if path == project_dir / "note.txt":
+            started.set()
+            assert release.wait(2)
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", slow_open)
+    uploading = asyncio.create_task(client.post("/api/fs/browser-upload", json={
+        "project_id": initialized.json()["id"], "parent": "", "filename": "note.txt",
+        "data_url": "data:text/plain;base64,aGVsbG8=",
+    }))
+    try:
+        assert await asyncio.to_thread(started.wait, 1)
+        assert (await asyncio.wait_for(client.get("/api/health"), 0.2)).status_code == 200
+        assert not uploading.done()
+    finally:
+        release.set()
+        result = await uploading
+    assert result.status_code == 200
+    assert (project_dir / "note.txt").read_bytes() == b"hello"
+
+
+@pytest.mark.anyio
+async def test_browser_upload_preserves_name_and_rejects_conflicts_and_escape(api_context):
+    client, tmp_path = api_context
+    project_dir = tmp_path / "browser-upload"
+    output = project_dir / "output"
+    output.mkdir(parents=True)
+    initialized = await client.post("/api/project/init", json={"path": str(project_dir)})
+    payload = {"project_id": initialized.json()["id"], "root": "output", "parent": "output",
+               "filename": "报告.txt", "data_url": "data:text/plain;base64,aGVsbG8="}
+    assert (await client.post("/api/fs/browser-upload", json=payload)).status_code == 200
+    assert (output / "报告.txt").read_bytes() == b"hello"
+    assert (await client.post("/api/fs/browser-upload", json=payload)).status_code == 409
+    for patch, status in [({"parent": ""}, 403), ({"filename": "../escape"}, 400),
+                          ({"data_url": "data:text/plain;base64,???"}, 400)]:
+        assert (await client.post("/api/fs/browser-upload", json={**payload, **patch})).status_code == status
+    (output / "link.txt").symlink_to(project_dir / "absent")
+    assert (await client.post("/api/fs/browser-upload", json={**payload, "filename": "link.txt"})).status_code == 409
 
 
 @pytest.mark.anyio

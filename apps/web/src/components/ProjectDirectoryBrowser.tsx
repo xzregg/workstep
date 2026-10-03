@@ -9,6 +9,7 @@ import Icon from './Icon'
 import ProjectDirectoryFileEditor from './ProjectDirectoryFileEditor'
 import ProjectDirectoryTreeActions, { type BrowserActionTarget } from './ProjectDirectoryTreeActions'
 import Spinner from './Spinner'
+import ProjectDirectoryUpload from './ProjectDirectoryUpload'
 
 interface ProjectDirectoryBrowserProps {
   projectId: string
@@ -39,6 +40,7 @@ export default function ProjectDirectoryBrowser({
   onDirtyChange,
 }: ProjectDirectoryBrowserProps) {
   const { t } = useI18n()
+  const [selectedDirectory, setSelectedDirectory] = useState<string | null>(null)
   const [root, setRoot] = useState<DirectoryBrowseResult | null>(null)
   const [rootLoading, setRootLoading] = useState(true)
   const [rootError, setRootError] = useState('')
@@ -61,6 +63,7 @@ export default function ProjectDirectoryBrowser({
   const [editorRevision, setEditorRevision] = useState(0)
   const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null)
   const [contextTarget, setContextTarget] = useState<BrowserActionTarget | null>(null)
+  const [uploadRevision, setUploadRevision] = useState(0)
   const [reloadRevision, setReloadRevision] = useState(0)
   const browserRef = useRef<HTMLDivElement>(null)
   const childrenRef = useRef<Record<string, DirectoryBrowseResult>>({})
@@ -92,6 +95,7 @@ export default function ProjectDirectoryBrowser({
 
   useEffect(() => {
     setSearchQuery('')
+    setSelectedDirectory(null)
   }, [projectId, rootPath])
 
   useEffect(() => {
@@ -177,7 +181,7 @@ export default function ProjectDirectoryBrowser({
       active = false
       window.clearTimeout(timer)
     }
-  }, [projectId, rootPath, searchQuery, showHidden, reloadRevision, browseDirectory])
+  }, [projectId, rootPath, searchQuery, showHidden, reloadRevision, uploadRevision, browseDirectory])
 
   const loadDirectory = useCallback((entry: DirectoryEntry): Promise<DirectoryBrowseResult | null> => {
     const key = requestPath(entry)
@@ -275,7 +279,7 @@ export default function ProjectDirectoryBrowser({
     const isDirectory = entry.type === 'directory'
     const isExpanded = isDirectory && expanded.has(key)
     const listing = children[key]
-    const selected = !isDirectory && selectedFile?.path === key
+    const selected = isDirectory ? selectedDirectory === key : selectedFile?.path === key
     return (
       <div key={`${entry.type}:${key}`}>
         <div
@@ -293,13 +297,13 @@ export default function ProjectDirectoryBrowser({
             setContextTarget({ entry, parentPath, x: event.clientX, y: event.clientY })
           }}
           onClick={() => {
-            if (isDirectory) toggleDirectory(entry)
+            if (isDirectory) { setSelectedDirectory(key); toggleDirectory(entry) }
             else selectFile(entry)
           }}
           onKeyDown={(event) => {
             if (event.key !== 'Enter' && event.key !== ' ') return
             event.preventDefault()
-            if (isDirectory) toggleDirectory(entry)
+            if (isDirectory) { setSelectedDirectory(key); toggleDirectory(entry) }
             else selectFile(entry)
           }}
         >
@@ -345,6 +349,28 @@ export default function ProjectDirectoryBrowser({
         <div className="project-directory-tree-heading">
           <span>{t('browser.projectFiles')}</span>
           <div className="project-directory-tree-actions">
+            {!readOnly && <ProjectDirectoryUpload
+              projectId={projectId} rootPath={rootPath}
+              parent={selectedDirectory ?? root?.relative_path ?? root?.path ?? ''}
+              disabled={!root || rootLoading}
+              onBeforeUpload={beforeLeave}
+              onUploaded={() => {
+                const generation = generationRef.current
+                const paths = Object.keys(childrenRef.current)
+                void Promise.all([fsApi.browse(rootPath, projectId, showHidden),
+                  ...paths.map(path => fsApi.browse(path, projectId, showHidden))])
+                  .then(([listing, ...directories]) => {
+                    if (generation !== generationRef.current) return
+                    setRoot(listing)
+                    const refreshed = Object.fromEntries(paths.map((path, index) => [path, directories[index]]))
+                    childrenRef.current = { ...childrenRef.current, ...refreshed }
+                    setChildren(current => ({ ...current, ...refreshed }))
+                  }).catch(error => {
+                    if (generation === generationRef.current) setRootError(error instanceof Error ? error.message : String(error))
+                  })
+                setUploadRevision(current => current + 1)
+              }}
+            />}
             <button
               type="button"
               className="settings-switch"
@@ -457,6 +483,12 @@ export default function ProjectDirectoryBrowser({
             <div>
               <div
                 className="project-directory-tree-item project-directory-tree-root"
+                aria-selected={selectedDirectory === requestPath(rootEntry)}
+                data-selected={selectedDirectory === requestPath(rootEntry) ? 'true' : undefined}
+                onClick={() => setSelectedDirectory(requestPath(rootEntry))}
+                onKeyDown={event => {
+                  if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedDirectory(requestPath(rootEntry)) }
+                }}
                 role="treeitem"
                 aria-expanded="true"
                 tabIndex={0}
@@ -537,6 +569,7 @@ export default function ProjectDirectoryBrowser({
         }}
         onBeforeAction={beforeLeave}
         onChanged={() => {
+          setSelectedDirectory(null)
           markEditorDirty(false)
           setSelectedFile(null)
           setReloadRevision((current) => current + 1)

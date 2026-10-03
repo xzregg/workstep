@@ -55,6 +55,8 @@ MAX_HISTORY_TURNS = 8
 MAX_SESSIONS = 200
 SESSION_TTL_SECONDS = 60 * 60
 SHUTDOWN_DRAIN_TIMEOUT_SECONDS = 1.0
+#: 聊天回合空闲看门狗的轮询间隔上限（秒）；实际取 min(该值， timeout/4)。
+IDLE_WATCHDOG_POLL_SECONDS = 5.0
 
 _IMAGE_MARKDOWN_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 _UPLOADS_PATH_RE = re.compile(r"([^\s`\"'()]+\.workstep/uploads/[^\s`\"'()]+)")
@@ -481,6 +483,7 @@ class AssistantRuntime:
         self._turn_keys[key] = turn_id
         self._turn_states[turn_id] = {
             "status": "queued",
+            "project_id": session.project_id,
             "assistant_message_id": assistant_message_id,
             "session_id": session.session_id,
             "thinking_effort": normalized_effort or None,
@@ -674,18 +677,29 @@ class AssistantRuntime:
             self.start_queued_turn(accepted.turn_id)
 
     async def stop_current(self, session_id: str, project_id: str | None = None) -> bool:
-        """Stop the newest queued or running turn for an assistant session."""
-        for turn_id, state in reversed(self._turn_states.items()):
+        """Stop all queued and running turns for an assistant session."""
+        accepted = False
+        for turn_id, state in reversed(list(self._turn_states.items())):
             if state.get("session_id") != session_id:
                 continue
             session = self._sessions.get(state.get("memory_key"))
-            if project_id is not None and (session is None or session.project_id != project_id):
+            owner_project_id = session.project_id if session is not None else state.get("project_id")
+            if project_id is not None and owner_project_id != project_id:
                 continue
             if state.get("status") == "stopping":
-                return True
+                accepted = True
+                continue
             if state.get("status") not in ("queued", "running"):
                 continue
             task = self._turn_tasks.get(turn_id)
+            if state.get("status") == "queued" and session is not None:
+                if task is not None:
+                    task.cancel()
+                await self._finalize_queued_turn_as_stopped(
+                    session, turn_id, str(state.get("assistant_message_id") or "")
+                )
+                accepted = True
+                continue
             if task is None or task.done():
                 if session is not None:
                     await self._finalize_queued_turn_as_stopped(
@@ -695,7 +709,8 @@ class AssistantRuntime:
                     )
                 else:
                     state["status"] = "stopped"
-                return True
+                accepted = True
+                continue
             state["status"] = "stopping"
             engine = self._running_engines.get(turn_id)
             if engine is not None:
@@ -707,8 +722,8 @@ class AssistantRuntime:
                 cleanup.add_done_callback(self._consume_stop_task)
             else:
                 task.cancel()
-            return True
-        return False
+            accepted = True
+        return accepted
 
     async def set_running_permission_mode(
         self,
@@ -833,13 +848,24 @@ class AssistantRuntime:
         task: asyncio.Task,
         engine: object,
     ) -> None:
+        stop_task = asyncio.create_task(engine.stop())
         try:
-            await engine.stop()
+            done, _ = await asyncio.wait(
+                {stop_task}, timeout=SHUTDOWN_DRAIN_TIMEOUT_SECONDS
+            )
+            if stop_task in done:
+                await stop_task
+            else:
+                stop_task.cancel()
+                stop_task.add_done_callback(self._consume_stop_task)
         except Exception:
             logger.exception(
                 "Engine stop raised while stopping assistant turn %s",
                 turn_id,
             )
+        finally:
+            if not stop_task.done():
+                stop_task.cancel()
         if not task.done():
             done, _ = await asyncio.wait(
                 {task},
@@ -1088,27 +1114,44 @@ class AssistantRuntime:
 
     def _prune_sessions(self) -> None:
         now = time.monotonic()
+        # Long-running turns must retain their session and stop/idempotency state.
+        active_turn_ids = {
+            turn_id for turn_id in self._turn_states
+            if self._turn_is_active(turn_id)
+        }
+        active_memory_keys = {
+            self._turn_states[turn_id].get("memory_key")
+            for turn_id in active_turn_ids
+        }
         stale = [
             key
             for key, session in self._sessions.items()
-            if now - session.last_active > self._config.session_ttl_seconds
+            if key not in active_memory_keys
+            and now - session.last_active > self._config.session_ttl_seconds
         ]
         for key in stale:
             self._sessions.pop(key, None)
         if len(self._sessions) > self._config.max_sessions:
             oldest = sorted(
-                self._sessions.items(), key=lambda item: item[1].last_active
+                ((key, session) for key, session in self._sessions.items()
+                 if key not in active_memory_keys),
+                key=lambda item: item[1].last_active,
             )[: len(self._sessions) - self._config.max_sessions]
             for key, _ in oldest:
                 self._sessions.pop(key, None)
         # Bound turn idempotency state (dicts preserve insertion order).
         if len(self._turn_states) > self._config.max_sessions * 5:
             overflow = len(self._turn_states) - self._config.max_sessions * 5
-            for turn_id in list(self._turn_states)[:overflow]:
+            inactive = [turn_id for turn_id in self._turn_states if turn_id not in active_turn_ids]
+            for turn_id in inactive[:overflow]:
                 self._turn_states.pop(turn_id, None)
         if len(self._turn_keys) > self._config.max_sessions * 5:
             overflow = len(self._turn_keys) - self._config.max_sessions * 5
-            for key in list(self._turn_keys)[:overflow]:
+            inactive_keys = [
+                key for key, turn_id in self._turn_keys.items()
+                if turn_id not in active_turn_ids
+            ]
+            for key in inactive_keys[:overflow]:
                 self._turn_keys.pop(key, None)
 
     def _resolve_engine_models(self) -> tuple[str, str | None, str | None]:
@@ -1233,6 +1276,66 @@ class AssistantRuntime:
             active_segment_events: list[dict] = []
             live_split_count = [0]
             turn_persisted = [False]
+
+            async def record_turn_error(exc: BaseException) -> None:
+                """把回合落为 error 终态（含落库与广播），供各异常分支复用。"""
+                failed_error = str(exc)
+                # 保留已流式出来的正文（final_answer）。旧实现无条件把 content
+                # 覆盖成「（生成失败：…）」，会把真实回复吞掉：重开会话后正文
+                # 消失、只剩红色错误行。仅当没有任何正文时才用包装错误占位。
+                failed_content = (
+                    streamed_reply
+                    if streamed_reply
+                    else f"（生成失败：{failed_error}）"
+                )
+                logger.exception(
+                    "Assistant turn %s (%s) failed",
+                    turn_id,
+                    self._config.name,
+                )
+                active_message[0].update(
+                    {
+                        "role": "assistant",
+                        "content": failed_content,
+                        "id": active_message_id[0],
+                        "engine": session.engine,
+                        "model": session.model,
+                        "status": "error",
+                        "created_at": active_started_at[0],
+                        "ended_at": utc_now().isoformat(),
+                        "prompt": active_prompt[0],
+                        "events": _prune_events(active_segment_events),
+                    }
+                )
+                await self._finish_journal(
+                    active_journal_ref[0],
+                    active_message[0],
+                    {"type": "error", "data": {"message": failed_error}},
+                )
+                turn_persisted[0] = await self._persist_session(session)
+                try:
+                    next_seq = await self._publish(
+                        session,
+                        active_message_id[0],
+                        "error",
+                        {"message": failed_error},
+                        seq,
+                    )
+                    await self._publish(
+                        session,
+                        active_message_id[0],
+                        "message_completed",
+                        {
+                            "status": "error",
+                            "content": failed_content,
+                            "error": failed_error,
+                        },
+                        next_seq,
+                    )
+                except Exception:
+                    pass
+                self._turn_states[turn_id]["status"] = "error"
+                self._turn_states[turn_id]["error"] = str(exc)
             try:
                 session.cwd = await asyncio.to_thread(self._cwd, session.project_id)
                 prompt = await asyncio.to_thread(self._build_prompt, session)
@@ -1581,13 +1684,15 @@ class AssistantRuntime:
                 if images:
                     invoke_kwargs["images"] = images
                 try:
-                    raw, _events, resolved = await self._invoke(
+                    raw, _events, resolved = await self._invoke_with_idle_watchdog(
+                        session,
+                        turn_id,
+                        make_live_callback(journaled_events),
                         session.engine,
                         turn_model,
                         session.cwd,
                         prompt,
                         session.resolved_session_id,
-                        make_live_callback(journaled_events),
                         **invoke_kwargs,
                     )
                 except RuntimeError as exc:
@@ -1604,13 +1709,15 @@ class AssistantRuntime:
                         self._build_rebuild_prompt,
                         session,
                     )
-                    raw, _events, resolved = await self._invoke(
+                    raw, _events, resolved = await self._invoke_with_idle_watchdog(
+                        session,
+                        turn_id,
+                        make_live_callback(journaled_events),
                         session.engine,
                         turn_model,
                         session.cwd,
                         rebuild_prompt,
                         None,
-                        make_live_callback(journaled_events),
                         **invoke_kwargs,
                     )
                 # 回合结束：先冲刷聚合器里剩余的思考流，再补录非实时事件。
@@ -1715,6 +1822,14 @@ class AssistantRuntime:
                 )
                 self._turn_states[turn_id]["status"] = "completed"
             except asyncio.CancelledError:
+                idle_message = self._turn_states.get(turn_id, {}).pop(
+                    "idle_timeout_message", None
+                )
+                if idle_message is not None:
+                    # 空闲看门狗触发的取消：按 error（而非 stopped）终态处理，
+                    # 保留引擎会话 id，下次发送可原生 resume。
+                    await record_turn_error(RuntimeError(idle_message))
+                    return
                 ended_at = utc_now().isoformat()
                 stopped_content = streamed_reply
                 if self._shutting_down and not stopped_content:
@@ -1796,63 +1911,7 @@ class AssistantRuntime:
                         pass
                     self._turn_states[turn_id]["status"] = "stopped"
                     return
-                failed_error = str(exc)
-                # 保留已流式出来的正文（final_answer）。旧实现无条件把 content
-                # 覆盖成「（生成失败：…）」，会把真实回复吞掉：重开会话后正文
-                # 消失、只剩红色错误行。仅当没有任何正文时才用包装错误占位。
-                failed_content = (
-                    streamed_reply
-                    if streamed_reply
-                    else f"（生成失败：{failed_error}）"
-                )
-                logger.exception(
-                    "Assistant turn %s (%s) failed",
-                    turn_id,
-                    self._config.name,
-                )
-                active_message[0].update(
-                    {
-                        "role": "assistant",
-                        "content": failed_content,
-                        "id": active_message_id[0],
-                        "engine": session.engine,
-                        "model": session.model,
-                        "status": "error",
-                        "created_at": active_started_at[0],
-                        "ended_at": utc_now().isoformat(),
-                        "prompt": active_prompt[0],
-                        "events": _prune_events(active_segment_events),
-                    }
-                )
-                await self._finish_journal(
-                    active_journal_ref[0],
-                    active_message[0],
-                    {"type": "error", "data": {"message": failed_error}},
-                )
-                turn_persisted[0] = await self._persist_session(session)
-                try:
-                    seq = await self._publish(
-                        session,
-                        active_message_id[0],
-                        "error",
-                        {"message": failed_error},
-                        seq,
-                    )
-                    await self._publish(
-                        session,
-                        active_message_id[0],
-                        "message_completed",
-                        {
-                            "status": "error",
-                            "content": failed_content,
-                            "error": failed_error,
-                        },
-                        seq,
-                    )
-                except Exception:
-                    pass
-                self._turn_states[turn_id]["status"] = "error"
-                self._turn_states[turn_id]["error"] = str(exc)
+                await record_turn_error(exc)
             finally:
                 session.last_active = time.monotonic()
                 # 兜底：各终态分支已在对外可见前落库；只有终态保存失败
@@ -2026,6 +2085,94 @@ class AssistantRuntime:
                 return int(result[0]), list(result[1])
             return int(result), []
         return seq, []
+
+    async def _engine_idle_timeout_seconds(self) -> float:
+        """聊天回合引擎空闲超时（秒）；<=0 表示关闭看门狗。
+
+        复用工作流侧 ``engine_idle_timeout_seconds`` 配置（默认 600），
+        聊天助手之前没有接这个看门狗， stall 的连接会无限等下去。
+        """
+        getter = getattr(
+            config_store, "get_engine_idle_timeout_seconds", None
+        )
+        if callable(getter):
+            try:
+                return float(await asyncio.to_thread(getter))
+            except Exception:
+                logger.exception(
+                    "Failed to read engine idle timeout; watchdog disabled"
+                )
+                return 0
+        try:
+            return float(
+                await asyncio.to_thread(
+                    config_store.get, "engine_idle_timeout_seconds", 600
+                )
+            )
+        except Exception:
+            return 0
+
+    async def _invoke_with_idle_watchdog(
+        self,
+        session: "AssistantSession",
+        turn_id: str,
+        live_callback: Callable[[InternalEvent], Awaitable[None]],
+        *invoke_args: Any,
+        **invoke_kwargs: Any,
+    ) -> tuple[str, list[dict], str | None]:
+        """带空闲看门狗的 ``_invoke`` 包装。
+
+        看门狗只计量“引擎流事件间隔”（每次 on_event 到达即重置），
+        超时后 stop 引擎并取消回合任务，由回合异常处理统一落为
+        error 终态；引擎会话 id 保持不变，下次发送可原生 resume。
+        """
+        timeout = await self._engine_idle_timeout_seconds()
+        if not timeout or timeout <= 0:
+            return await self._invoke(
+                *invoke_args, live_callback, **invoke_kwargs
+            )
+        last_activity = time.monotonic()
+
+        async def watched_event(event: InternalEvent) -> None:
+            nonlocal last_activity
+            last_activity = time.monotonic()
+            await live_callback(event)
+
+        message = (
+            f"引擎空闲超时（{int(timeout)}s 无输出），"
+            "已停止执行并保留会话，可重新发送消息恢复"
+        )
+
+        async def _watch() -> None:
+            poll = min(IDLE_WATCHDOG_POLL_SECONDS, max(0.05, timeout / 4))
+            while True:
+                await asyncio.sleep(poll)
+                if time.monotonic() - last_activity >= timeout:
+                    self._turn_states.get(turn_id, {})[
+                        "idle_timeout_message"
+                    ] = message
+                    engine = self._running_engines.get(turn_id)
+                    if engine is not None:
+                        try:
+                            await engine.stop()
+                        except Exception:
+                            logger.exception(
+                                "Engine stop failed after chat idle timeout"
+                            )
+                    task = self._turn_tasks.get(turn_id)
+                    if task is not None:
+                        task.cancel()
+                    return
+
+        watcher = asyncio.create_task(
+            _watch(), name=f"assistant-idle-watch:{turn_id}"
+        )
+        try:
+            return await self._invoke(
+                *invoke_args, watched_event, **invoke_kwargs
+            )
+        finally:
+            watcher.cancel()
 
     async def _invoke(
         self,

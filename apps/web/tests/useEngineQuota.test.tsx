@@ -46,10 +46,37 @@ test('quota ignores stale engine results and refreshes after a run', async () =>
     await act(async () => requests[2].resolve({ quota: { engine_id: 'engine-b' } } as never))
 
     await act(async () => root.render(<QuotaHarness engine="engine-b" projectId="project-2" running />))
-    assert.equal(container.querySelector('[data-refreshing]')?.textContent, 'false')
+    assert.equal(container.querySelector('[data-refreshing]')?.textContent, 'true')
     await act(async () => root.render(<QuotaHarness engine="engine-b" projectId="project-2" running={false} />))
-    assert.equal(requests.length, 4)
+    assert.equal(requests.length, 5)
     await act(async () => requests[3].resolve({ quota: { engine_id: 'engine-b' } } as never))
+    assert.equal(container.querySelector('[data-refreshing]')?.textContent, 'true')
+    await act(async () => requests[4].resolve({ quota: { engine_id: 'engine-b' } } as never))
+  } finally {
+    engineApi.quota = originalQuota
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+test('quota loads when entering a running conversation and switching its engine', async () => {
+  const { window } = installDomEnvironment()
+  const container = window.document.body.appendChild(window.document.createElement('div'))
+  const root = createRoot(container as never)
+  const originalQuota = engineApi.quota
+  const requests: string[] = []
+  engineApi.quota = async (engine) => {
+    requests.push(engine)
+    return { quota: { engine_id: engine } } as never
+  }
+  try {
+    await act(async () => root.render(<QuotaHarness engine="engine-a" running />))
+    assert.deepEqual(requests, ['engine-a'])
+    assert.equal(container.querySelector('[data-quota]')?.textContent, 'engine-a')
+
+    await act(async () => root.render(<QuotaHarness engine="engine-b" running />))
+    assert.deepEqual(requests, ['engine-a', 'engine-b'])
+    assert.equal(container.querySelector('[data-quota]')?.textContent, 'engine-b')
   } finally {
     engineApi.quota = originalQuota
     await act(async () => root.unmount())

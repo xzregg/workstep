@@ -24,6 +24,7 @@ import { AdminGroupsPage } from './AdminGroupsPage'
 import { PublicSharePage } from './PublicSharePage'
 import { GatewayShareCreatePage } from './GatewayShareCreatePage'
 import { AdminSharesPage } from './AdminSharesPage'
+import { RegistrationPendingPage } from './RegistrationPendingPage'
 
 export function App({ deviceHost = typeof window !== 'undefined' && window.location.hostname.startsWith('d-') }: { deviceHost?: boolean }) {
   const location = useLocation()
@@ -75,9 +76,7 @@ function GatewayPortalApp() {
         <Route path="/desktop/login" element={<DesktopLoginPage />} />
         <Route path="/auth" element={<PortalAuthPage />} />
         <Route path="/account" element={<AccountPage />} />
-        <Route path="/auth/pending" element={<section className="gateway-auth-card">
-          <h2>账号等待审核</h2><p>管理员批准后，请重新登录。</p><Link to="/auth">返回登录</Link>
-        </section>} />
+        <Route path="/auth/pending" element={<RegistrationPendingPage />} />
         <Route path="*" element={<section><h2>页面不存在</h2><Link to="/">返回工作台</Link></section>} />
       </Routes>
     </main>

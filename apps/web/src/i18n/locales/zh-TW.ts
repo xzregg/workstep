@@ -594,6 +594,9 @@ export const zhTW: Messages = {
     progress: '第 {current}/{total} 步 · 已完成 {completed}',
   },
   goal: {
+    original: '目標原文',
+    resume: '繼續',
+    end: '結束',
     title: '目標',
     status: { active: '進行中', paused: '已暫停', blocked: '受阻', usageLimited: '用量受限', budgetLimited: '預算已用盡', complete: '已完成', cleared: '已清除' },
   },
@@ -627,6 +630,10 @@ export const zhTW: Messages = {
     mermaidZoomIn: '放大流程圖',
   },
   browser: {
+    uploadFiles: '上传文件',
+    uploadTarget: '上传文件到：{path}',
+    uploadFailed: '上传失败',
+    uploadTooLarge: '文件超过 25MB 上限',
     newFolder: '新增資料夾',
     folderName: '資料夾名稱',
     createFolder: '建立',

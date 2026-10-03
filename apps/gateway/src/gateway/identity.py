@@ -141,12 +141,27 @@ class IdentityService:
             password_hash=password_hash, password_changed_at=_now(),
             status="active" if mode == "open" else "pending", registration_source="local",
         )
-        auth_session, token = self._create_session(user.id) if mode == "open" else (None, None)
+        token = None
         try:
             async with self.database.session() as session:
                 async with session.begin():
+                    # Hashing runs outside the transaction. Acquire the policy
+                    # row's write lock and read its current value atomically so
+                    # closing registration cannot race an account commit.
+                    current_mode = await session.scalar(update(PlatformSetting).where(
+                        PlatformSetting.key == "registration_mode",
+                    ).values(value_json=PlatformSetting.value_json).returning(
+                        PlatformSetting.value_json,
+                    ))
+                    if current_mode is None:
+                        raise HTTPException(status_code=503, detail="Platform not initialized")
+                    mode = current_mode.strip('"')
+                    if mode == "closed":
+                        raise HTTPException(status_code=403, detail="Registration is closed")
+                    user.status = "active" if mode == "open" else "pending"
                     session.add(user)
-                    if auth_session is not None:
+                    if mode == "open":
+                        auth_session, token = self._create_session(user.id)
                         session.add(auth_session)
         except IntegrityError as exc:
             raise HTTPException(status_code=409, detail="Username unavailable") from exc

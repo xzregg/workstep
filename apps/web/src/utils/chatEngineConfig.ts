@@ -19,6 +19,8 @@ export interface ChatEngineConfigState {
   fastModel: string
   visionModel: string
   thinkingEffort: string
+  /** 用户显式选了供应商「跟随默认」（区别于“从未选过”），发送时发 '' 以持久化清空。 */
+  providerCleared?: boolean
 }
 
 const PREFIX = 'workstep-chat-engine-config'
@@ -43,6 +45,7 @@ export const EMPTY_ENGINE_CONFIG: ChatEngineConfigState = {
   fastModel: '',
   visionModel: '',
   thinkingEffort: '',
+  providerCleared: false,
 }
 
 function key(projectId: string, sessionId: string): string {
@@ -53,7 +56,8 @@ function key(projectId: string, sessionId: string): string {
 export function hasChatEngineConfig(config: ChatEngineConfigState): boolean {
   return Boolean(
     config.engine || config.providerId || config.model
-    || config.fastModel || config.visionModel || config.thinkingEffort,
+    || config.fastModel || config.visionModel || config.thinkingEffort
+    || config.providerCleared,
   )
 }
 
@@ -92,6 +96,7 @@ export function loadChatEngineConfig(projectId: string, sessionId: string): Chat
       fastModel: parsed_string(parsed.fastModel),
       visionModel: parsed_string(parsed.visionModel),
       thinkingEffort: parsed_string(parsed.thinkingEffort),
+      providerCleared: parsed.providerCleared === true,
     }
   } catch {
     return { ...EMPTY_ENGINE_CONFIG }
