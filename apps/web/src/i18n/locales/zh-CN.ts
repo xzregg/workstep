@@ -2193,6 +2193,8 @@ export const zhCN = {
     },
   },
   chatSession: {
+    channelSource: '渠道',
+    channelSourceHint: '通过企业微信或钉钉机器人建立的渠道对话',
     viewArchive: '查看归档',
     archive: '归档对话',
     archiveFailed: '归档失败，请重试',

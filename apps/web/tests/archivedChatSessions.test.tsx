@@ -24,7 +24,7 @@ test('archived conversations can be searched, selected and restored', async () =
   const deleted: string[] = []
   chatSessionApi.list = async (_projectId, archived) => {
     assert.equal(archived, true)
-    return { sessions: [row('one', '设计讨论'), row('two', '接口讨论')] }
+    return { sessions: [{ ...row('one', '设计讨论'), source: 'channel' }, row('two', '接口讨论')] }
   }
   chatSessionApi.setArchived = async (id, _projectId, archived) => {
     assert.equal(archived, false)
@@ -39,6 +39,7 @@ test('archived conversations can be searched, selected and restored', async () =
   const root = createRoot(container)
   try {
     await act(async () => root.render(<I18nProvider><ArchivedChatSessions projectId="p1" /></I18nProvider>))
+    assert.equal(container.querySelectorAll('.chat-session-source-badge').length, 1)
     const search = container.querySelector<HTMLInputElement>('input[placeholder="搜索已归档对话"]')!
     await act(async () => {
       Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(search, '设计')

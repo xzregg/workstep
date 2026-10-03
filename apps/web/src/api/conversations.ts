@@ -180,6 +180,7 @@ export interface ChatSessionSummary {
   workflow_id: string
   title: string
   archived?: boolean
+  source?: 'chat' | 'channel'
   engine: string
   model?: string | null
   fast_model?: string | null
