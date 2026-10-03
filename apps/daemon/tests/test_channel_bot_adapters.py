@@ -423,3 +423,31 @@ async def test_wecom_stop_card_is_attached_to_the_same_streaming_reply():
     assert call.kwargs['finish'] is False
     assert call.kwargs['template_card']['task_id'] == 'c'
     client.send_message.assert_not_awaited()
+
+
+async def test_wecom_long_choices_use_short_number_buttons_and_full_descriptions():
+    from services.channels.base import ChannelCard, ChannelButton
+    adapter=WeComAdapter({'id':'bot'},AsyncMock(),AsyncMock())
+    adapter._client=type('Client',(),{'send_message':AsyncMock()})()
+    choices=['复用原始任务输入','复用上一次阶段输入','我提供新的输入']
+    card=ChannelCard('card','请选择','为额外阶段提供什么输入？',tuple(ChannelButton(str(i),label) for i,label in enumerate(choices)))
+    await adapter.send_card(IncomingMessage('bot','m','group','group','u',''),card)
+    template=adapter._client.send_message.await_args.args[1]['template_card']
+    assert template['button_list']==[{'text':str(i+1),'key':str(i)} for i in range(3)]
+    assert template['main_title']=={'title':'请选择'}
+    assert template['sub_title_text']=='为额外阶段提供什么输入？\n\n1. 复用原始任务输入\n2. 复用上一次阶段输入\n3. 我提供新的输入'
+
+
+async def test_wecom_oversized_choice_explanation_is_complete_and_does_not_end_reply_stream():
+    from services.channels.base import ChannelCard, ChannelButton
+    adapter=WeComAdapter({'id':'bot'},AsyncMock(),AsyncMock())
+    adapter._client=type('Client',(),{'send_message':AsyncMock(),'reply_stream':AsyncMock()})()
+    choices=['方案甲：'+ '具体说明'*40,'方案乙：'+ '另一说明'*40]
+    card=ChannelCard('card','请选择','选择方案',tuple(ChannelButton(str(i),label) for i,label in enumerate(choices)))
+    await adapter.send_card(IncomingMessage('bot','m','group','group','u','',reply_context={'headers':{'req_id':'req'}}),card)
+    calls=adapter._client.send_message.await_args_list
+    assert [c.args[1]['msgtype'] for c in calls]==['markdown','template_card']
+    explanation=calls[0].args[1]['markdown']['content']
+    assert all(label in explanation for label in choices)
+    assert len(calls[1].args[1]['template_card']['sub_title_text'])<=112
+    adapter._client.reply_stream.assert_not_awaited()

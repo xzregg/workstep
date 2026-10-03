@@ -322,3 +322,5 @@ Gateway 后台布局由 `apps/gateway-web/src/AdminLayout.tsx` 持有按角色�
 任务渠道中止按钮由 `services/channels/task_forwarder.py` 在运行中创建、结束时收尾，复用 `controls.py` 的绑定校验和回调去重。自动执行／审核消息通过 `services/workflow_runtime.py::cancel_message` 绑定消息 ID 与当前引擎实例并调用现有阶段停止入口；协调回复仍使用 `CoordinatorModule.stop_current`。装配入口为 `main.py` → `BotManager`，行为、过期按钮与慢 SQL 健康检查测试见 `tests/test_channel_task_stop.py`、`tests/test_channel_controls.py`、`tests/test_channel_task_forwarder.py`。
 
 渠道引用消息入口为 `services/channels/wecom.py::_message_parts`，归一到 `base.py::ChannelQuote`；`bots.py::_route_message` 调用 `media.py::incoming_content` 将引用正文与附件合入当前用户消息，任务协调助手和项目渠道对话共用。官方引用帧、无引用兼容、两种路由和慢附件磁盘 I/O 测试在 `tests/test_channel_quotes.py`。
+
+企业微信长选项的展示适配由 `services/channels/wecom.py::send_card` 负责：编号按钮、完整选项正文和超长说明主动发送，控制回调仍由 `controls.py` 按原 key 处理；测试在 `tests/test_channel_bot_adapters.py`。
