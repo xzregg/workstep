@@ -3407,3 +3407,68 @@ async def test_explicit_engine_uses_its_own_provider_default(
     assert updated.status_code == 200
     assert updated.json()["configured"]["provider_id"] == ""
     assert updated.json()["resolved"]["provider_id"] == ""
+
+
+@pytest.mark.anyio
+async def test_coordinator_choice_questions_publish_live_and_persist(api_context, monkeypatch):
+    from engines.core.registry import ENGINE_REGISTRY
+    import main
+    client, tmp_path = api_context
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", CoordinatorFakeEngine)
+    project_id, task_id = await _create_task(client, tmp_path)
+    question = {"title":"现在启动实现阶段吗？", "options":["是","否"]}
+    CoordinatorFakeEngine.reply = {"version":1,"reply":question["title"],"intent":"clarify","questions":[question]}
+    queue = main.coordinator_module._event_bus.subscribe(lambda event: event.get('task_id') == task_id and event.get('name') == 'workstep.async_question')
+    try:
+        await client.post(f"/api/task/{task_id}/chat?project_id={project_id}", headers={"Idempotency-Key":"choice-question"}, json={"content":"是否开始？"})
+        assistant = await _wait_for_reply(client, project_id, task_id)
+        assert not queue.empty()
+        event = await queue.get()
+        assert event['value']['questions'] == [question]
+        assert any(item.get('type') == 'async_question' and item['data']['questions'] == [question] for item in assistant['events'])
+    finally:
+        main.coordinator_module._event_bus.unsubscribe(queue)
+        CoordinatorFakeEngine.reply = {"version":1,"reply":"ok","intent":"answer"}
+
+
+@pytest.mark.anyio
+async def test_channel_stop_targets_exact_coordinator_reply_and_slow_sql_keeps_health_responsive(api_context, monkeypatch):
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import CoordinatorTurn
+    from unittest.mock import AsyncMock
+    from services.channels.controls import ChannelControls
+    from services.channels.base import IncomingMessage, ChannelAction
+    import main
+    client, tmp_path = api_context
+    NonCooperativeStopEngine.reset()
+    monkeypatch.setitem(ENGINE_REGISTRY, 'claude', NonCooperativeStopEngine)
+    project_id, task_id = await _create_task(client, tmp_path)
+    accepted = (await client.post(f'/api/task/{task_id}/chat?project_id={project_id}',headers={'Idempotency-Key':'channel-stop'},json={'content':'开始'})).json()
+    for _ in range(100):
+        if await main.project_manager.run_db(project_id, lambda _: CoordinatorTurn.get_by_id(accepted['turn_id']).status) == 'running': break
+        await asyncio.sleep(.01)
+    adapter = SimpleNamespace(send_card=AsyncMock(), update_card=AsyncMock())
+    config = {'bots':[{'id':'b','platform':'wecom','enabled':True}], 'groups':[{'bot_id':'b','group_id':'g','project_id':project_id,'task_id':task_id}], 'sessions':{}}
+    broker = ChannelControls(MemoryConfigStore(),AsyncMock(return_value=config),{'b':adapter},main.coordinator_module,None,AsyncMock())
+    message = IncomingMessage('b','m','group','g','u','开始')
+    old = await broker.begin(message,project_id,task_id=task_id,assistant_message_id='old',turn_id='old')
+    card = adapter.send_card.await_args.args[1]
+    assert await broker.handle(ChannelAction('b',card.id,'0','u')) == '该回复已结束'
+    assert await main.project_manager.run_db(project_id,lambda _:CoordinatorTurn.get_by_id(accepted['turn_id']).status) == 'running'
+    scope = await broker.begin(message,project_id,task_id=task_id,assistant_message_id=accepted['assistant_message_id'],turn_id=accepted['turn_id'])
+    card = adapter.send_card.await_args.args[1]
+    entered, release = threading.Event(), threading.Event()
+    select = CoordinatorTurn.select
+    def slow(*args, **kwargs):
+        entered.set(); release.wait(2); return select(*args, **kwargs)
+    monkeypatch.setattr(CoordinatorTurn,'select',slow)
+    pending = asyncio.create_task(broker.handle(ChannelAction('b',card.id,'0','u')))
+    try:
+        assert await asyncio.to_thread(entered.wait,1)
+        assert (await asyncio.wait_for(client.get('/api/health'),.5)).status_code == 200
+    finally:
+        release.set()
+    assert await pending == '已停止'
+    assert await main.project_manager.run_db(project_id,lambda _:CoordinatorTurn.get_by_id(accepted['turn_id']).status) == 'stopped'
+    await broker.finish(scope)
+    await broker.finish(old)

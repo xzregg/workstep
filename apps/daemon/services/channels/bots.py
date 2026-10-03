@@ -78,6 +78,9 @@ class BotManager:
         self._message_sender = ChannelMessageSender(project_manager, self._load, self._adapters)
         self._config_lock = asyncio.Lock()
         self._chat_locks: WeakValueDictionary[tuple[str, str], asyncio.Lock] = WeakValueDictionary()
+        from services.channels.controls import ChannelControls
+        self._controls = ChannelControls(store, self._load, self._adapters, coordinator, responder, self._submit_card_answer)
+        self._card_answer_tasks = set()
 
     async def _ensure_factories(self) -> None:
         if self._registered_channels is None:
@@ -111,6 +114,7 @@ class BotManager:
                 "send": sorted(discover_channels()[bot["platform"]].CAPABILITIES.send),
                 "waiting": discover_channels()[bot["platform"]].CAPABILITIES.waiting,
                 "streaming": discover_channels()[bot["platform"]].CAPABILITIES.streaming,
+                "cards": discover_channels()[bot["platform"]].CAPABILITIES.cards,
                 "max_image_bytes": discover_channels()[bot["platform"]].CAPABILITIES.max_image_bytes,
                 "max_file_bytes": discover_channels()[bot["platform"]].CAPABILITIES.max_file_bytes,
                 "file_extensions": sorted(discover_channels()[bot["platform"]].CAPABILITIES.file_extensions or []),
@@ -182,6 +186,7 @@ class BotManager:
         bot = {
             "id": str(uuid.uuid4()), "platform": platform, "name": name,
             "app_id": app_id, "secret": secret,
+            "card_template_id": str(values.get("card_template_id") or "").strip(),
             "enabled": bool(values.get("enabled", False)),
             "default_target_type": kind,
             "default_project_id": project_id if kind else "",
@@ -204,7 +209,7 @@ class BotManager:
             if bot is None:
                 raise LookupError("机器人不存在")
             updated = dict(bot)
-            for key in ("name", "app_id", "default_target_type", "default_project_id", "default_task_id", "enabled"):
+            for key in ("name", "app_id", "default_target_type", "default_project_id", "default_task_id", "enabled", "card_template_id"):
                 if key in values:
                     updated[key] = values[key]
             if values.get("secret"):
@@ -215,6 +220,7 @@ class BotManager:
             updated["default_project_id"] = str(updated["default_project_id"] or "")
             updated["default_task_id"] = str(updated["default_task_id"] or "")
             updated["enabled"] = bool(updated["enabled"])
+            updated["card_template_id"] = str(updated.get("card_template_id") or "").strip()
             if not updated["default_target_type"]:
                 updated["default_project_id"] = ""
             if updated["default_target_type"] != "task":
@@ -327,6 +333,10 @@ class BotManager:
 
     async def shutdown(self) -> None:
         await self._reply_forwarder.shutdown()
+        for task in tuple(self._card_answer_tasks):
+            task.cancel()
+        if self._card_answer_tasks:
+            await asyncio.gather(*self._card_answer_tasks, return_exceptions=True)
         for bot_id in tuple(self._adapters):
             await self._stop_bot(bot_id)
         shutdown = getattr(self._responder, "shutdown", None)
@@ -342,6 +352,8 @@ class BotManager:
             lambda status, error, bot_id=bot_id: self._state_changed(bot_id, status, error),
         )
         self._adapters[bot_id] = adapter
+        if isinstance(adapter, ChannelAdapter):
+            adapter.set_action_handler(self._handle_card_action)
         await self._state_changed(bot_id, "connecting", "")
         try:
             await adapter.start()
@@ -362,6 +374,19 @@ class BotManager:
             "value": {"bot_id": bot_id, "status": status, "error": error},
             "channel": "channel_bots",
         })
+
+    async def _submit_card_answer(self, message):
+        # Ordinary answers may queue; platform callback ACKs must return first.
+        task = asyncio.create_task(self.handle_message(message))
+        self._card_answer_tasks.add(task)
+        task.add_done_callback(self._card_answer_tasks.discard)
+
+    async def _handle_card_action(self, click, on_claimed=None):
+        try:
+            return await self._controls.handle(click, on_claimed=on_claimed)
+        except Exception:
+            logger.exception("Channel button action failed")
+            return "操作失败，请重试，或到 WorkStep 查看当前状态。"
 
     async def handle_message(self, message: IncomingMessage) -> None:
         key = (message.bot_id, message.conversation_id)
@@ -411,6 +436,7 @@ class BotManager:
             isinstance(adapter, ChannelAdapter) and adapter.CAPABILITIES.streaming
             and message.reply_context is not None
         ) else None
+        control_scope = None
         try:
             async with lock:
                 if message.attachments:
@@ -458,12 +484,20 @@ class BotManager:
                             "type": "CUSTOM", "name": "channel.session_changed",
                             "channel": "channel_bots", "project_id": project_id,
                         })
+                    async def on_started(accepted_session_id, assistant_message_id, turn_id):
+                        nonlocal control_scope
+                        control_scope = await self._controls.begin(message, project_id,
+                            session_id=accepted_session_id, assistant_message_id=assistant_message_id, turn_id=turn_id)
+                    async def on_event(event):
+                        if control_scope:
+                            await self._controls.event(control_scope, event)
                     with actor_context(_sender_actor(message, bot["platform"])):
                         if isinstance(self._responder, ChatSessionResponder):
                             session_id, reply = await self._responder(
                                 project_id, session_id, _context_content(message, bot["platform"], include_session=False), "channel_chat", "",
                                 on_accepted=on_accepted,
                                 on_progress=stream.update if stream else None,
+                                on_started=on_started, on_event=on_event,
                                 title=(message.conversation_name if message.conversation_type == "group"
                                        else message.sender_name or message.sender_id),
                             )
@@ -491,6 +525,8 @@ class BotManager:
             except Exception:
                 logger.exception("Failed to send channel bot error response")
         finally:
+            if control_scope:
+                await self._controls.finish(control_scope)
             if stream:
                 await stream.close()
 
@@ -499,9 +535,11 @@ class BotManager:
         on_progress: Callable[[str], None] | None = None,
     ) -> str:
         queue = self._event_bus.subscribe(lambda event: (
-            event.get("task_id") == task_id
+            event.get("project_id") == project_id
+            and event.get("task_id") == task_id
             and event.get("channel") == "coordinator"
         ))
+        control_scope = None
         try:
             actor = _sender_actor(message, platform)
             with actor_context(actor):
@@ -510,11 +548,14 @@ class BotManager:
                     f"channel:{message.bot_id}:{message.message_id}",
                     author_name=actor.user_name,
                 )
+            control_scope = await self._controls.begin(message, project_id, task_id=task_id,
+                assistant_message_id=accepted.assistant_message_id, turn_id=getattr(accepted, "turn_id", ""))
             reply = ""
             while True:
                 event = await asyncio.wait_for(queue.get(), timeout=600)
                 if event.get("messageId") != accepted.assistant_message_id:
                     continue
+                await self._controls.event(control_scope, event)
                 if event.get("type") == "TEXT_MESSAGE_CHUNK":
                     reply += str(event.get("delta") or "")
                     if on_progress is not None:
@@ -524,6 +565,8 @@ class BotManager:
                     if on_progress is not None:
                         on_progress(reply)
                 elif event.get("type") == "TEXT_MESSAGE_END":
+                    if event.get("status") == "stopped":
+                        return "已停止。"
                     if event.get("status") != "succeeded":
                         raise RuntimeError(str(event.get("error") or "协调助手失败"))
                     if event.get("content") is not None:
@@ -532,4 +575,6 @@ class BotManager:
                 elif event.get("type") == "RUN_ERROR":
                     raise RuntimeError(str(event.get("error") or "协调助手失败"))
         finally:
+            if control_scope:
+                await self._controls.finish(control_scope)
             self._event_bus.unsubscribe(queue)

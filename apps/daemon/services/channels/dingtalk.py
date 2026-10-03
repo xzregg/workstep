@@ -10,13 +10,42 @@ from urllib.parse import quote_plus
 
 import aiohttp
 import websockets
-from dingtalk_stream import AckMessage, ChatbotHandler, ChatbotMessage, Credential, DingTalkStreamClient
+from dingtalk_stream import AckMessage, ChatbotHandler, ChatbotMessage, Credential, DingTalkStreamClient, CallbackHandler
 
-from services.channels.base import ChannelAdapter, ChannelCapabilities, ChannelAttachment, IncomingMessage, OutgoingMessage
+from services.channels.base import ChannelAdapter, ChannelCapabilities, ChannelAttachment, IncomingMessage, OutgoingMessage, ChannelCard, ChannelAction
 from services.channels.media import fetch_media
 
 
 logger = logging.getLogger(__name__)
+CARD_TOPIC = '/v1.0/card/instances/callback'
+# Public Markdown-button template shipped by the official DingTalk Python SDK.
+DEFAULT_CARD_TEMPLATE_ID = '1366a1eb-bc54-4859-ac88-517c56a9acb1.schema'
+
+
+class _CardHandler(CallbackHandler):
+    def __init__(self, adapter):
+        super().__init__()
+        self._adapter = adapter
+
+    async def process(self, callback):
+        raw = callback.data
+        content = raw.get('content') or {}
+        if isinstance(content, str):
+            try:
+                content = json.loads(content)
+            except ValueError:
+                return AckMessage.STATUS_OK, 'Invalid card payload'
+        private = content.get('cardPrivateData') or {}
+        ids = private.get('actionIds') or []
+        if ids:
+            click = ChannelAction(self._adapter._bot['id'], str(raw.get('outTrackId') or ''),
+                str(ids[0]), str(raw.get('userId') or ''), conversation_id=str(raw.get('spaceId') or ''))
+            task = asyncio.create_task(self._adapter._card_action(click))
+            self._adapter._action_tasks.add(task)
+            task.add_done_callback(self._adapter._action_tasks.discard)
+        # ACK immediately; never block the Stream reader on an LLM or workflow.
+        return AckMessage.STATUS_OK, 'OK'
+
 
 
 class _MessageHandler(ChatbotHandler):
@@ -64,7 +93,7 @@ class DingTalkAdapter(ChannelAdapter):
     CHANNEL_ID = 'dingtalk'
     DISPLAY_NAME = '钉钉'
     CAPABILITIES = ChannelCapabilities(receive=frozenset({'text','image','file'}), send=frozenset({'text','image','file'}),
-        file_extensions=frozenset({'xlsx','pdf','zip','rar','doc','docx'}))
+        file_extensions=frozenset({'xlsx','pdf','zip','rar','doc','docx'}), cards=True)
 
     def __init__(self, bot: dict, on_message, on_state):
         super().__init__(bot, on_message, on_state)
@@ -72,15 +101,21 @@ class DingTalkAdapter(ChannelAdapter):
         self._access_token = ""
         self._token_expires_at = 0.0
         self._token_lock = asyncio.Lock()
+        self._action_tasks = set()
         self._client = DingTalkStreamClient(Credential(bot["app_id"], bot["secret"]))
         self._client.register_callback_handler(
             ChatbotMessage.TOPIC, _MessageHandler(bot["id"], on_message),
         )
+        self._client.register_callback_handler(CARD_TOPIC, _CardHandler(self))
 
     async def start(self) -> None:
         self._task = asyncio.create_task(self._run())
 
     async def stop(self) -> None:
+        for task in tuple(self._action_tasks):
+            task.cancel()
+        if self._action_tasks:
+            await asyncio.gather(*self._action_tasks, return_exceptions=True)
         if self._task:
             self._task.cancel()
             try:
@@ -98,7 +133,7 @@ class DingTalkAdapter(ChannelAdapter):
                     async with session.post(self._client.OPEN_CONNECTION_API, json={
                         "clientId": self._bot["app_id"],
                         "clientSecret": self._bot["secret"],
-                        "subscriptions": [{"type": "CALLBACK", "topic": ChatbotMessage.TOPIC}],
+                        "subscriptions": [{"type": "CALLBACK", "topic": topic} for topic in (ChatbotMessage.TOPIC, CARD_TOPIC)],
                         "ua": "workstep-dingtalk-stream",
                         "localIp": "",
                     }) as response:
@@ -177,6 +212,60 @@ class DingTalkAdapter(ChannelAdapter):
             if result.get("errcode") not in (None, 0) or result.get("code") or result.get("invalidUserIdList"):
                 raise RuntimeError("钉钉主动消息发送失败")
 
+
+    @staticmethod
+    def _card_data(card: ChannelCard) -> dict:
+        return {"title":card.title, "markdown":card.text, "tips":"",
+                "sys_full_json_obj":json.dumps({"msgButtons":[{"text":b.label,"id":b.key,"request":True,"color":"blue"} for b in card.buttons]}, ensure_ascii=False)}
+
+    async def _card_api(self, method, payload):
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            token = await self._token(session)
+            url = 'https://api.dingtalk.com/v1.0/card/instances' + ('/createAndDeliver' if method == 'POST' else '')
+            async with session.request(method, url, json=payload, headers={'x-acs-dingtalk-access-token':token}) as response:
+                response.raise_for_status()
+                result = await response.json()
+            if result.get('code') or result.get('errcode') not in (None, 0):
+                raise RuntimeError('钉钉卡片操作失败，请检查卡片发送权限和模板配置')
+            return result
+
+    async def send_card(self, recipient: IncomingMessage, card: ChannelCard) -> None:
+        group = recipient.conversation_type == 'group'
+        space = 'IM_GROUP' if group else 'IM_ROBOT'
+        target = recipient.conversation_id if group else recipient.sender_id
+        payload = {
+            'cardTemplateId':self._bot.get('card_template_id') or DEFAULT_CARD_TEMPLATE_ID,
+            'outTrackId':card.id, 'callbackType':'STREAM', 'userIdType':1,
+            'cardData':{'cardParamMap':self._card_data(card)},
+            'openSpaceId':f'dtv1.card//{space}.{target}',
+            ('imGroupOpenSpaceModel' if group else 'imRobotOpenSpaceModel'):{'supportForward':False},
+            ('imGroupOpenDeliverModel' if group else 'imRobotOpenDeliverModel'):{'robotCode':self._bot['app_id'], **({} if group else {'spaceType':'IM_ROBOT'})},
+        }
+        await self._card_api('POST',payload)
+
+    async def update_card(self, recipient: IncomingMessage, card: ChannelCard) -> None:
+        await self._card_api('PUT', {'outTrackId':card.id,'cardData':{'cardParamMap':self._card_data(card)}})
+
+    async def _card_action(self, click):
+        if self._on_action is None:
+            return
+        claimed = False
+        async def acknowledge():
+            nonlocal claimed
+            claimed = True
+            try:
+                await self.update_card(None, ChannelCard(click.card_id,'正在处理你的选择','请稍候'))
+            except Exception:
+                logger.warning('Failed to update DingTalk card', exc_info=True)
+        try:
+            result = await self._on_action(click, on_claimed=acknowledge)
+            if claimed:
+                await self.update_card(None, ChannelCard(click.card_id, result, result))
+            elif click.sender_id:
+                await self._send_active(IncomingMessage(click.bot_id,'','single',click.sender_id,click.sender_id,''), result)
+        except Exception:
+            logger.exception('DingTalk card callback failed')
 
     async def send(self, recipient: IncomingMessage, message: OutgoingMessage) -> None:
         self.validate_outgoing(message)

@@ -43,6 +43,7 @@ export default function BotSettings() {
       platform: bot.platform, name: bot.name, app_id: bot.app_id, secret: '',
       enabled: bot.enabled, default_target_type: bot.default_target_type === 'task' ? 'project' : bot.default_target_type,
       default_project_id: bot.default_project_id, default_task_id: '',
+      ...(bot.platform === 'dingtalk' ? { card_template_id: bot.card_template_id || '' } : {}),
     })
     setError('')
   }
@@ -106,6 +107,7 @@ export default function BotSettings() {
       <label>{t('channelBot.name')}<Input value={draft.name} onChange={(event) => setField('name', event.target.value)} /></label>
       <label>{draft.platform === 'wecom' ? 'Bot ID' : 'Client ID'}<Input value={draft.app_id} onChange={(event) => setField('app_id', event.target.value)} /></label>
       <label>{draft.platform === 'wecom' ? 'Secret' : 'Client Secret'}<Input type="password" value={draft.secret} placeholder={editingId ? t('channelBot.keepSecret') : ''} onChange={(event) => setField('secret', event.target.value)} /></label>
+      {draft.platform === 'dingtalk' && <label>{t('channelBot.cardTemplate')}<Input value={draft.card_template_id || ''} placeholder={t('channelBot.cardTemplatePlaceholder')} onChange={(event) => setField('card_template_id', event.target.value)} /></label>}
       <label>{t('channelBot.defaultTarget')}<select value={draft.default_target_type} onChange={(event) => setDraft((current) => ({ ...current, default_target_type: event.target.value as BotTargetType, default_project_id: '', default_task_id: '' }))}>
         <option value="">{t('channelBot.none')}</option><option value="project">{t('channelBot.project')}</option>
       </select></label>
@@ -115,6 +117,7 @@ export default function BotSettings() {
       <label className="bot-settings-checkbox"><input type="checkbox" checked={draft.enabled} onChange={(event) => setField('enabled', event.target.checked)} />{t('channelBot.enabled')}</label>
     </div>
     <p className="bot-settings-hint">{t('channelBot.taskBindingHint')}</p>
+    {draft.platform === 'dingtalk' && <p className="bot-settings-hint">{t('channelBot.cardTemplateHint')}</p>}
     <p className="bot-settings-hint">{draft.platform === 'wecom' ? t('channelBot.wecomHint') : t('channelBot.dingtalkHint')}</p>
     {error && <p className="bot-settings-error" role="alert">{error}</p>}
     <div className="bot-settings-actions"><Button variant="primary" loading={busy} disabled={!valid} onClick={() => void save()}>{t('common.save')}</Button>{editingId && <Button variant="ghost" onClick={reset}>{t('common.cancel')}</Button>}</div>

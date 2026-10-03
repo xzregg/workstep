@@ -304,3 +304,119 @@ async def test_dingtalk_received_group_name_and_sender_are_normalized():
     assert received[0].conversation_name == '研发群'
     assert received[0].sender_name == '小王'
     assert received[0].sender_id == 'u1'
+
+
+async def test_wecom_card_buttons_and_callback_use_original_card_id(monkeypatch):
+    from services.channels.base import ChannelCard, ChannelButton
+    clients = []
+    class Client:
+        def __init__(self, options):
+            self.handlers = {}; self.connect = AsyncMock(); self.send_message = AsyncMock()
+            self.update_template_card = AsyncMock(); self.disconnect = lambda: None
+            clients.append(self)
+        def on(self, name):
+            def register(fn): self.handlers[name] = fn; return fn
+            return register
+    monkeypatch.setattr('services.channels.wecom.WSClient', Client)
+    adapter = WeComAdapter({'id':'b','app_id':'a','secret':'s'}, AsyncMock(), AsyncMock())
+    received = []
+    async def action(click, on_claimed=None):
+        received.append(click)
+        await on_claimed()
+        return '已停止'
+    adapter.set_action_handler(action)
+    await adapter.start()
+    client = clients[0]
+    message = IncomingMessage('b','m','group','g','u','hi')
+    await adapter.send_card(message, ChannelCard('card','处理中','请稍候',(ChannelButton('0','停止'),)))
+    payload = client.send_message.await_args.args[1]
+    assert payload['msgtype'] == 'template_card'
+    assert payload['template_card']['task_id'] == 'card'
+    assert payload['template_card']['button_list'] == [{'text':'停止','key':'0'}]
+    frame = {'headers':{'req_id':'callback'}, 'body':{'chatid':'g','from':{'userid':'u'},'event':{'task_id':'card','event_key':'0'}}}
+    await client.handlers['event.template_card_event'](frame)
+    assert (received[0].card_id,received[0].key,received[0].sender_id) == ('card','0','u')
+    client.update_template_card.assert_awaited_once()
+    assert client.update_template_card.await_args.args[1]['task_id'] == 'card'
+    await adapter.stop()
+
+async def test_dingtalk_card_callback_ack_does_not_wait_for_llm_action():
+    from services.channels.dingtalk import CARD_TOPIC
+    from services.channels.base import ChannelCard, ChannelButton
+    adapter = DingTalkAdapter({'id':'b','app_id':'a','secret':'s'}, AsyncMock(), AsyncMock())
+    entered, release = asyncio.Event(), asyncio.Event()
+    clicks = []
+    async def action(click, on_claimed=None):
+        clicks.append(click); entered.set(); await release.wait(); return '已停止'
+    adapter.set_action_handler(action)
+    adapter.update_card = AsyncMock()
+    adapter._card_api = AsyncMock(return_value={})
+    await adapter.send_card(IncomingMessage('b','m','group','g','u','hi'),ChannelCard('card','处理中','稍候',(ChannelButton('0','停止'),)))
+    payload = adapter._card_api.await_args.args[1]
+    assert payload['callbackType'] == 'STREAM'
+    assert payload['outTrackId'] == 'card'
+    assert payload['openSpaceId'] == 'dtv1.card//IM_GROUP.g'
+    buttons = json.loads(payload['cardData']['cardParamMap']['sys_full_json_obj'])['msgButtons']
+    assert buttons[0]['request'] is True and buttons[0]['id'] == '0'
+    class Socket:
+        def __init__(self): self.sent = []
+        async def send(self, data): self.sent.append(json.loads(data))
+    socket = Socket(); adapter._client.websocket = socket; adapter._client.pre_start()
+    try:
+        await asyncio.wait_for(adapter._client.route_message({'type':'CALLBACK','headers':{'topic':CARD_TOPIC,'messageId':'c'},'data':json.dumps({'outTrackId':'card','userId':'u','content':json.dumps({'cardPrivateData':{'actionIds':['0']}})})}), .5)
+        assert socket.sent[0]['headers']['messageId'] == 'c'
+        await asyncio.wait_for(entered.wait(), .5)
+        assert clicks[0].card_id == 'card' and clicks[0].key == '0'
+        release.set()
+        await asyncio.sleep(.01)
+    finally:
+        release.set(); await adapter.stop()
+
+
+async def test_dingtalk_card_http_is_async_and_checks_platform_error(monkeypatch):
+    from services.channels.base import ChannelCard, ChannelButton
+    adapter = DingTalkAdapter({'id':'b','app_id':'a','secret':'s'},AsyncMock(),AsyncMock())
+    adapter._token = AsyncMock(return_value='token')
+    entered, release = asyncio.Event(), asyncio.Event()
+    calls = []
+    result = {}
+    class Response:
+        async def __aenter__(self): entered.set(); await release.wait(); return self
+        async def __aexit__(self,*args): pass
+        def raise_for_status(self): pass
+        async def json(self): return result
+    class Session:
+        def __init__(self,**kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self,*args): pass
+        def request(self,method,url,**kwargs): calls.append((method,url,kwargs)); return Response()
+    monkeypatch.setattr('services.channels.dingtalk.aiohttp.ClientSession',Session)
+    card = ChannelCard('c','处理','等待',(ChannelButton('0','停止'),))
+    pending = asyncio.create_task(adapter.send_card(IncomingMessage('b','m','single','u','u','开始'),card))
+    await entered.wait()
+    try:
+        await asyncio.wait_for(asyncio.sleep(.01),.2)
+        assert not pending.done()
+    finally:
+        release.set(); await pending
+    assert calls[0][0:2] == ('POST','https://api.dingtalk.com/v1.0/card/instances/createAndDeliver')
+    assert calls[0][2]['json']['openSpaceId'] == 'dtv1.card//IM_ROBOT.u'
+    result.update(code='Forbidden')
+    with pytest.raises(RuntimeError,match='卡片操作失败'):
+        await adapter.update_card(None,card)
+
+
+async def test_wecom_stop_card_is_attached_to_the_same_streaming_reply():
+    from services.channels.base import ChannelCard, ChannelButton
+    adapter = WeComAdapter({'id':'b'},AsyncMock(),AsyncMock())
+    client = type('Client',(),{'reply_stream_with_card':AsyncMock(),'send_message':AsyncMock()})()
+    adapter._client = client
+    frame = {'headers':{'req_id':'request'}}
+    message = IncomingMessage('b','m','group','g','u','开始',reply_context=frame)
+    card = ChannelCard('c','正在处理','点击停止',(ChannelButton('0','停止'),), running=True)
+    await adapter.send_card(message,card)
+    call = client.reply_stream_with_card.await_args
+    assert call.args == (frame,adapter._stream_id(message),'')
+    assert call.kwargs['finish'] is False
+    assert call.kwargs['template_card']['task_id'] == 'c'
+    client.send_message.assert_not_awaited()
