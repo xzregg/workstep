@@ -316,9 +316,11 @@ async def test_run_agent_passes_conversation_id_when_harness_on(monkeypatch, tmp
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("system_prompt", [None, "Channel role"])
 async def test_run_agent_uses_harness_capabilities_without_private_memory(
     monkeypatch,
     tmp_path,
+    system_prompt,
 ):
     skill_dir = tmp_path / ".workstep" / "skills" / "demo"
     skill_dir.mkdir(parents=True)
@@ -345,6 +347,7 @@ async def test_run_agent_uses_harness_capabilities_without_private_memory(
         conversation_id=None,
     ):
         captured["agent"] = agent
+        captured["prompt"] = prompt
         captured["capabilities"] = agent.root_capability.capabilities
         captured["model_settings"] = model_settings
         return FakeResult()
@@ -359,6 +362,12 @@ async def test_run_agent_uses_harness_capabilities_without_private_memory(
         on_event=lambda event: None,
         session_id="sess-1",
         thinking_effort="high",
+        system_prompt=system_prompt,
+    )
+
+    assert captured["prompt"] == "问题"
+    assert [item.instruction for item in captured["agent"]._instructions] == (
+        [system_prompt] if system_prompt else []
     )
 
     capabilities = captured["capabilities"]
@@ -406,8 +415,9 @@ async def test_run_agent_uses_harness_capabilities_without_private_memory(
     assert captured["agent"]._max_tool_retries == 3
     assert captured["agent"]._max_output_retries == 1
     assert captured["model_settings"] is None
-    # 宿主不再注入 instructions；系统提示词由 harness capability（RepoContext 等）贡献
-    assert captured["agent"]._instructions == []
+    # Existing harness instructions remain; only opted-in callers add a role.
+    if not system_prompt:
+        assert captured["agent"]._instructions == []
 
 
 @pytest.mark.anyio

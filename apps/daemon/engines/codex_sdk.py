@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import tomllib
 import uuid
 from typing import Any, AsyncIterator
 
@@ -69,6 +70,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
     """
 
     ENGINE_ID = "codex_sdk"
+    SYSTEM_PROMPT_MODE = "developer"
     RUNTIME_PACKAGE = RuntimePackage('openai-codex', 'pypi', '0.147.0', None)
     UPDATE_PACKAGE = "openai-codex"
     QUOTA_TIMEOUT_SECONDS = 5
@@ -325,6 +327,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         plan_mode: bool | None = None,
         goal_action: str | None = None,
         config_overrides: dict | None = None,
+        system_prompt: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
         async for event in self._spawn_with_sandbox(
             prompt=prompt,
@@ -338,6 +341,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             plan_mode=plan_mode,
             goal_action=goal_action,
             config_overrides=config_overrides,
+            system_prompt=system_prompt,
         ):
             yield event
 
@@ -353,6 +357,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         thinking_effort: str | None = None,
         workstep_tools: bool = False,
         config_overrides: dict | None = None,
+        system_prompt: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
         # Codex SDK resumes context by native thread id.  Keep the common
         # coordinator signature, but do not round-trip host-managed history.
@@ -371,6 +376,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             read_only=not workstep_tools,
             thinking_effort=thinking_effort,
             config_overrides=config_overrides,
+            system_prompt=system_prompt,
         ):
             yield event
 
@@ -387,6 +393,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         plan_mode: bool | None = None,
         goal_action: str | None = None,
         config_overrides: dict | None = None,
+        system_prompt: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
         """Internal spawn with an explicit codex sandbox policy."""
         if not CodexSDKEngine._sdk_available():
@@ -451,6 +458,16 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             "sandbox": sandbox,
             "config": thread_config or None,
         }
+        if system_prompt:
+            existing = str(thread_config.pop("developer_instructions", "") or "")
+            if existing:
+                try:
+                    existing = str(tomllib.loads(f"value = {existing}")["value"])
+                except tomllib.TOMLDecodeError:
+                    pass
+            thread_kwargs["developer_instructions"] = "\n\n".join(
+                part for part in (existing, system_prompt) if part
+            )
         if approval_mode is not None:
             # thread_start 的 approval_mode 不接受 None（默认 auto_review）
             thread_kwargs["approval_mode"] = approval_mode

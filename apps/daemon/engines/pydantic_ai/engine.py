@@ -72,6 +72,7 @@ PYDANTIC_PLANNING_TOOL_NAMES = frozenset({
 
 class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
     ENGINE_ID = "pydantic_ai"
+    SYSTEM_PROMPT_MODE = "system"
 
     @classmethod
     def supported_provider_protocols(cls) -> set[str]:
@@ -754,6 +755,7 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
         workstep_tools: bool = False,
         session_id: str | None = None,
         sandbox: str = "workspace-write",
+        system_prompt: str | None = None,
     ) -> tuple[Any, Any]:
         """Run the agent, injecting queued live messages between rounds."""
         from pydantic_ai import Agent
@@ -804,6 +806,7 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
         capabilities.append(WebFetch(native=False, local=True))
         agent = Agent(
             model,
+            **({"instructions": system_prompt} if system_prompt else {}),
             capabilities=capabilities,
             retries={"tools": PYDANTIC_AI_TOOL_RETRIES, "output": 1},
         )
@@ -1105,6 +1108,7 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
         thinking_effort: str | None = None,
         config_overrides: dict | None = None,
         workstep_tools: bool = False,
+        system_prompt: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
         config = self.merge_config_overrides(
             await asyncio.to_thread(config_store.get_pydantic_ai_engine_config),
@@ -1162,6 +1166,8 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
             }
             if thinking_effort:
                 run_kwargs["thinking_effort"] = thinking_effort
+            if system_prompt:
+                run_kwargs["system_prompt"] = system_prompt
             if workstep_tools:
                 run_kwargs["workstep_tools"] = True
             agent_task = asyncio.create_task(

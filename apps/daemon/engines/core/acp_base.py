@@ -74,6 +74,9 @@ ACP_EVENTS: frozenset[str] = frozenset({
 
 
 class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
+    # WorkStep extension, not an ACP wire field. Native adapters preserve their
+    # base instructions; other engines receive a first-session text fallback.
+    SYSTEM_PROMPT_MODE = "body"
     EXECUTION_MAX_ATTEMPTS = 2
     ACP_COMMAND_DISCOVERY_TIMEOUT = 0.5
     ACP_COMMAND_CACHE_TTL = 30.0
@@ -126,6 +129,8 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
     async def _stream_with_retry(
         self,
         spawn_method,
+        *,
+        system_prompt: str | None = None,
         **kwargs,
     ) -> AsyncIterator[InternalEvent]:
         """Run one engine stream, retrying its first terminal failure once.
@@ -140,6 +145,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
             attempt_kwargs = dict(kwargs)
             if self.supports_resume:
                 attempt_kwargs["session_id"] = retry_session_id
+            attempt_kwargs = self._prepare_system_prompt(attempt_kwargs, system_prompt)
             failed_event: InternalEvent | None = None
             try:
                 iterator = spawn_method(**attempt_kwargs)
@@ -184,7 +190,20 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                 },
             )
 
-    async def spawn_with_retry(self, **kwargs) -> AsyncIterator[InternalEvent]:
+    def _prepare_system_prompt(self, kwargs: dict, system_prompt: str | None) -> dict:
+        kwargs = dict(kwargs)
+        instruction = (system_prompt or "").strip()
+        if not instruction or str(kwargs.get("prompt") or "").strip() == "/compact":
+            return kwargs
+        if self.SYSTEM_PROMPT_MODE != "body":
+            kwargs["system_prompt"] = instruction
+        elif not (kwargs.get("session_id") and self.supports_resume):
+            kwargs["prompt"] = f"{instruction}\n\n{kwargs.get('prompt') or ''}"
+        return kwargs
+
+    async def spawn_with_retry(
+        self, *, system_prompt: str | None = None, **kwargs,
+    ) -> AsyncIterator[InternalEvent]:
         """Run the normal execution entry point with one failure retry."""
         if str(kwargs.get("prompt") or "").strip() == "/compact":
             from engines.core.input_items import NO_MANUAL_COMPACTION
@@ -211,16 +230,18 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
                     "message": "引擎未返回压缩完成事件，无法确认上下文已压缩",
                 })
             return
-        async for event in self._stream_with_retry(self.spawn, **kwargs):
+        async for event in self._stream_with_retry(self.spawn, system_prompt=system_prompt, **kwargs):
             yield event
 
     async def spawn_coordinator_with_retry(
         self,
+        system_prompt: str | None = None,
         **kwargs,
     ) -> AsyncIterator[InternalEvent]:
         """Run the coordinator entry point with one failure retry."""
         async for event in self._stream_with_retry(
             self.spawn_coordinator,
+            system_prompt=system_prompt,
             **kwargs,
         ):
             yield event
@@ -1041,6 +1062,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         thinking_effort: str | None = None,
         workstep_tools: bool = False,
         config_overrides: dict | None = None,
+        system_prompt: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
         """Run a no-tools coordinator turn through this adapter seam."""
         guarded_prompt = (
@@ -1051,7 +1073,11 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
             guarded_prompt = await asyncio.to_thread(
                 self.render_image_prompt, guarded_prompt, images
             )
-        spawn_kwargs: dict[str, Any] = {}
+        spawn_kwargs = self._prepare_system_prompt(
+            {"prompt": guarded_prompt, "session_id": session_id}, system_prompt,
+        )
+        guarded_prompt = spawn_kwargs.pop("prompt")
+        spawn_kwargs.pop("session_id")
         if workstep_tools and self.capabilities.supports_workstep_tools:
             spawn_kwargs["workstep_tools"] = True
         if self.supports_message_history:

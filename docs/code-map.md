@@ -143,6 +143,8 @@ Gateway 审计工作台由 `apps/gateway-web/src/AdminAuditPage.tsx` 持有筛�
 
 修改功能时先找所属模块，再沿前端页面或组件 → API → 服务 → 数据模型追踪。行为测试放在实际拥有该行为的模块附近；不要把页面、`src/api/client.ts` 或通用服务文件作为新功能的默认落点。
 
+渠道会话系统指令由 `agent_assistants/channel_chat.py::_engine_system_prompt` 组装角色、项目指令和来源背景（平台、BOT、群／会话 ID、群名称、首次发起者），字段白名单排除凭证；`base.py` 在线程中读取并通过 `engine_invocation.py` 独立传递。`engines/core/acp_base.py` 的 `spawn_with_retry` / `spawn_coordinator_with_retry` 持有统一 `system_prompt` 入口及新会话正文回退，Codex、Claude、Qoder、Pydantic AI 适配器持有原生追加方式。`services/channels/bots.py` 在启动回合前保存来源，每轮正文只附当前发送者；其他助手和任务步骤不迁移。测试见 `tests/test_engine_system_prompt.py`、`tests/test_channel_bots.py`（持久恢复、会话隔离、慢配置健康检查）及 `tests/test_pydantic_ai_harness.py`；协议约束见 `docs/llm-engine-development-guide.md`。
+
 | 功能 | Web 入口 | Daemon 入口 | 深入阅读 |
 |---|---|---|---|
 | 任务列表、详情、执行 | `src/pages/TaskList.tsx`、`TaskDetail.tsx`，`src/components/TaskDetailView.tsx`；详情内部见下表，API 在 `src/api/task.ts` | `api/task.py`、`services/task.py`、`task_creation.py`、`task_runner.py` | `docs/workflow-engine-execution.md` |

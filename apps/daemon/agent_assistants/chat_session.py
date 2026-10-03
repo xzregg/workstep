@@ -887,9 +887,12 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
 
     # ── per-project system prompt ─────────────────────────────────────
 
+    def _prompt_system_instruction(self, session) -> str:
+        return self.get_system_prompt(session.project_id)
+
     def _build_prompt(self, session) -> str:
         """Use the project-configured system prompt ("" when unset, no default)."""
-        prompt = self.get_system_prompt(session.project_id)
+        prompt = self._prompt_system_instruction(session)
         pending_handoff = session.extra.get("pending_handoff")
         if isinstance(pending_handoff, dict):
             project = self._project_manager.get_project_by_id(session.project_id)
@@ -954,8 +957,8 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
             )
             tail = f"Conversation history:\n{history}\n\nContinue."
             prompt = (
-                f"{self.get_system_prompt(session.project_id)}\n\n{tail}"
-                if self.get_system_prompt(session.project_id)
+                f"{self._prompt_system_instruction(session)}\n\n{tail}"
+                if self._prompt_system_instruction(session)
                 else tail
             )
         return prompt
