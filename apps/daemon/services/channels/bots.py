@@ -67,6 +67,8 @@ class BotManager:
         self._reply_forwarder = ChannelReplyForwarder(
             event_bus, project_manager, self._load, self._adapters,
         )
+        from services.channels.sender import ChannelMessageSender
+        self._message_sender = ChannelMessageSender(project_manager, self._load, self._adapters)
         self._config_lock = asyncio.Lock()
         self._chat_locks: WeakValueDictionary[tuple[str, str], asyncio.Lock] = WeakValueDictionary()
 
@@ -92,6 +94,12 @@ class BotManager:
             "status": (status or {}).get("status", "disabled" if not bot["enabled"] else "connecting"),
             "error": (status or {}).get("error", ""),
         }
+
+    async def list_channel_sessions(self, project_id: str) -> dict:
+        return await self._message_sender.sessions(project_id)
+
+    async def send_message(self, **values) -> dict:
+        return await self._message_sender.send(**values)
 
     async def list_bots(self) -> list[dict]:
         data = await self._load()

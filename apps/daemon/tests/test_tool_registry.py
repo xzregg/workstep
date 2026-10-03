@@ -32,6 +32,9 @@ def test_registry_defines_expected_tool_set():
         "workstep_get_task_workspace",
         "workstep_add_task_worktree",
         "workstep_list_engines",
+        "workstep_list_channel_bots",
+        "workstep_list_channel_sessions",
+        "workstep_send_channel_message",
         "workstep_create_project",
         "workstep_create_task",
         "workstep_list_schedules",
@@ -280,3 +283,16 @@ async def test_client_surfaces_http_errors():
     })
     assert result["ok"] is False
     assert "任务名称不能为空" in result["error"]
+
+
+async def test_channel_notification_requires_explicit_tool_confirmation():
+    calls = []
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json={"ok": True, "sent": True})
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    arguments = {"project_id": "p", "session_id": "s", "text": "通知"}
+    result = await client.call("workstep_send_channel_message", arguments)
+    assert result["ok"] is False
+    assert not calls
+    assert (await client.call("workstep_send_channel_message", {**arguments, "confirm": "yes"}))["sent"] is True

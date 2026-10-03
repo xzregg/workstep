@@ -1,7 +1,10 @@
 """Enterprise chat bots and task discussion-group bindings."""
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/api/channel-bots", tags=["渠道机器人"])
@@ -33,6 +36,64 @@ class BindGroupRequest(BaseModel):
     project_id: str = Field(min_length=1)
     bot_id: str = Field(min_length=1)
     group_id: str = Field(min_length=1)
+
+
+class SendChannelMessageRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    text: str = Field(min_length=1)
+    session_id: str | None = None
+    bot_id: str | None = None
+    user_id: str | None = None
+    group_id: str | None = None
+
+    @model_validator(mode="after")
+    def validate_recipient(self):
+        if not self.text.strip() or not self.project_id.strip():
+            raise ValueError("消息和项目不能为空")
+        for value in (self.session_id, self.bot_id, self.user_id, self.group_id):
+            if value is not None and not value.strip():
+                raise ValueError("目标标识不能为空")
+        if self.session_id:
+            if any((self.bot_id, self.user_id, self.group_id)):
+                raise ValueError("会话目标不能同时指定机器人或收件人")
+        elif not self.bot_id or bool(self.user_id) == bool(self.group_id):
+            raise ValueError("必须指定会话，或者机器人和唯一的用户/群")
+        return self
+
+
+def _enforce_project_scope(project_id):
+    from services.remote_access import get_current_actor
+    actor = get_current_actor()
+    if actor is not None and actor.project_id is not None and actor.project_id != project_id:
+        raise HTTPException(status_code=403, detail="Project scope denied")
+
+
+@router.get("/sessions")
+async def channel_sessions(project_id: str = Query(..., min_length=1)):
+    _enforce_project_scope(project_id)
+    try:
+        return await _manager().list_channel_sessions(project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/send")
+async def send_channel_message(request: SendChannelMessageRequest):
+    _enforce_project_scope(request.project_id)
+    try:
+        return await _manager().send_message(**request.model_dump())
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except (LookupError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        if str(exc) in {"渠道会话已归档", "机器人未启用或尚未连接"}:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        logger.exception("Channel notification delivery failed")
+        raise HTTPException(status_code=502, detail="渠道消息发送失败，请检查机器人连接及发送权限") from exc
+    except Exception as exc:
+        logger.exception("Channel notification delivery failed")
+        raise HTTPException(status_code=502, detail="渠道消息发送失败，请检查机器人连接及发送权限") from exc
 
 
 def _manager():

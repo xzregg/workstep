@@ -21,7 +21,7 @@ async def test_reply_forwarding_isolated_deduplicated_and_async(tmp_path, monkey
     project = projects.init_project(tmp_path / 'forward')
     bus = EventBus()
     adapter = SimpleNamespace(send_text=AsyncMock())
-    data = {'bots': [{'id': 'bot', 'enabled': True}],
+    data = {'bots': [{'id': 'bot', 'enabled': True, 'name': 'Echo', 'platform': 'dingtalk'}],
             'sessions': {f'bot:{conversation_type}:chat:1': 'channel-session'},
             'session_sources': {}}
     async def load(): return data
@@ -69,7 +69,7 @@ async def test_reply_forwarding_isolated_deduplicated_and_async(tmp_path, monkey
         adapter.send_text.assert_awaited_once()
         destination, text = adapter.send_text.await_args.args
         assert isinstance(destination, IncomingMessage)
-        assert (destination.bot_id,destination.conversation_type,destination.conversation_id,destination.sender_id,text) == ('bot',conversation_type,'chat:1','user-1','完成回复')
+        assert (destination.bot_id,destination.conversation_type,destination.conversation_id,destination.sender_id,text) == ('bot',conversation_type,'chat:1','user-1' if conversation_type == 'single' else '', '完成回复')
         await bus.publish(event('local'))
         await bus.publish(event('inbound'))
         await bus.publish(event('ordinary-reply', session_id='ordinary'))

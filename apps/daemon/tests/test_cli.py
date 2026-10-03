@@ -373,3 +373,43 @@ def test_main_surfaces_errors_with_nonzero_exit(capsys):
     assert code == 1
     assert out["ok"] is False
     assert "boom" in out["error"]
+
+
+@pytest.mark.parametrize('target, body', [
+    (['--session', 's1'], {'session_id': 's1'}),
+    (['--bot', 'b1', '--user', 'u1'], {'bot_id': 'b1', 'user_id': 'u1'}),
+    (['--bot', 'b1', '--group', 'g1'], {'bot_id': 'b1', 'group_id': 'g1'}),
+])
+async def test_cli_channel_send_routes_target_without_triggering_llm(target, body):
+    def handler(request):
+        assert request.method == 'POST'
+        assert request.url.path == '/api/channel-bots/send'
+        assert json.loads(request.content) == {'project_id': 'p1', 'text': '任务完成', **body}
+        return httpx.Response(200, json={'ok': True, 'sent': True})
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    args = build_parser().parse_args(['channel', 'send', '--project', 'p1', '--text', '任务完成', *target, '--json'])
+    assert await dispatch(args, client) == {'ok': True, 'sent': True}
+
+
+async def test_cli_channel_discovery_and_send_failure(capsys):
+    def handler(request):
+        if request.url.path == '/api/channel-bots':
+            return httpx.Response(200,json=[{'id':'b1','name':'Echo'}])
+        if request.url.path == '/api/channel-bots/sessions':
+            assert request.url.params['project_id'] == 'p1'
+            return httpx.Response(200,json={'sessions':[]})
+        return httpx.Response(502,json={'detail':'发送失败'})
+    client = WorkstepClient(transport=httpx.MockTransport(handler))
+    assert await dispatch(build_parser().parse_args(['channel','list']),client) == [{'id':'b1','name':'Echo'}]
+    assert await dispatch(build_parser().parse_args(['channel','sessions','--project','p1']),client) == {'sessions':[]}
+    result = await dispatch(build_parser().parse_args(['channel','send','--project','p1','--session','s1','--text','消息']),client)
+    assert result['ok'] is False
+
+
+@pytest.mark.parametrize('target', [[], ['--user','u'], ['--session','s','--user','u'], ['--bot','b','--user','u','--group','g']])
+def test_cli_channel_send_rejects_ambiguous_targets(target, capsys):
+    try:
+        code = main(['channel','send','--project','p','--text','通知',*target])
+    except SystemExit as exc:
+        code = exc.code
+    assert code != 0

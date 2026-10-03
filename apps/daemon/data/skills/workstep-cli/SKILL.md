@@ -348,3 +348,40 @@ uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli schedule delet
 
 `--execution` accepts `workflow`, `immediate`, or `manual`. `--overlap` accepts
 `skip`, `parallel`, or `queue`.
+
+
+## Channel notifications
+
+List robots and active channel sessions to resolve the exact recipient first:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli channel list --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli channel sessions --project <project_id> --json
+```
+
+Send only when explicitly requested by the user or authorized by a scheduled
+instruction. This sends an external notification immediately, without starting
+an LLM turn or adding it to the conversation history. Never invent recipient IDs.
+Prefer a listed session to avoid confusing users, groups, or different robots:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli channel send \
+  --project <project_id> --session <session_id> --text "Task completed" --json
+```
+
+For an explicitly specified recipient, use one robot and exactly one platform
+user ID or group ID. The robot must belong to the project, or the group must be
+bound to a task in that project:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli channel send \
+  --project <project_id> --bot <bot_id> --user <platform_user_id> --text "Task completed" --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli channel send \
+  --project <project_id> --bot <bot_id> --group <platform_group_id> --text "Task completed" --json
+```
+
+Do not combine `--session` with `--bot`, `--user`, or `--group`. Archived or
+reset sessions and disabled robots cannot send. Native operations are
+`workstep_list_channel_bots`, `workstep_list_channel_sessions`, and
+`workstep_send_channel_message` (mutating, requires `confirm='yes'`). Check
+`sent: true` before reporting success; transport failures return non-zero.
