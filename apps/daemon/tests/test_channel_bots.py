@@ -49,6 +49,68 @@ class FakeAdapter:
         self.sent.append((message.conversation_id, text))
 
 
+@pytest.mark.parametrize('target', ['project', 'task'])
+async def test_wecom_streams_before_turn_completion_without_blocking_health(bots, target):
+    from unittest.mock import AsyncMock
+    from services.channels.wecom import WeComAdapter
+
+    manager, project, _, _, _, _ = bots
+    bot = await manager.create_bot({
+        'platform': 'wecom', 'name': '流式机器人', 'app_id': 'bot', 'secret': 'secret',
+        'enabled': True, 'default_target_type': target, 'default_project_id': project.id,
+        'default_task_id': 'task-1' if target == 'task' else '',
+    })
+    progress_sent, finish_turn = asyncio.Event(), asyncio.Event()
+    calls = []
+
+    async def reply_stream(frame, stream_id, text, finish):
+        calls.append((stream_id, text, finish))
+        if text and not finish:
+            progress_sent.set()
+            await finish_turn.wait()  # Simulate a slow platform acknowledgement.
+
+    adapter = WeComAdapter(bot, AsyncMock(), AsyncMock())
+    adapter._client = SimpleNamespace(reply_stream=reply_stream, send_message=AsyncMock(), disconnect=lambda: None)
+    manager._adapters[bot['id']] = adapter
+
+    async def produce():
+        scope = {'project_id': project.id, 'messageId': 'answer'}
+        scope.update({'task_id': 'task-1', 'channel': 'coordinator'} if target == 'task' else {'session_id': 'session', 'channel': 'session_chat'})
+        await manager._event_bus.publish({**scope, 'type': 'TEXT_MESSAGE_CHUNK', 'delta': '部分正文'})
+        await finish_turn.wait()
+        await manager._event_bus.publish({**scope, 'type': 'TEXT_MESSAGE_END', 'status': 'succeeded', 'content': '完整正文'})
+
+    if target == 'task':
+        async def submit(*args, **kwargs):
+            asyncio.create_task(produce())
+            return SimpleNamespace(assistant_message_id='answer')
+        manager._coordinator.submit_message = submit
+    else:
+        class Module:
+            def create_session(self, *args, **kwargs):
+                return {'id': 'session'}
+            def submit_message(self, *args, **kwargs):
+                return SimpleNamespace(turn_id='turn', assistant_message_id='answer')
+            def start_queued_turn(self, _turn):
+                asyncio.create_task(produce())
+        manager._responder = ChatSessionResponder(manager._event_bus, manager._project_manager, Module())
+
+    pending = asyncio.create_task(manager.handle_message(IncomingMessage(
+        bot['id'], 'incoming', 'single', 'user', 'user', '问题',
+        reply_context={'headers': {'req_id': 'req'}},
+    )))
+    try:
+        await asyncio.wait_for(progress_sent.wait(), 1)
+        assert not pending.done()
+        async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
+            assert (await asyncio.wait_for(client.get('/api/health'), 0.5)).status_code == 200
+    finally:
+        finish_turn.set()
+        await asyncio.wait_for(pending, 2)
+    assert [(text, finish) for _, text, finish in calls] == [('', False), ('部分正文', False), ('完整正文', True)]
+    assert len({stream_id for stream_id, _, _ in calls}) == 1
+
+
 @pytest.fixture
 async def bots(tmp_path, monkeypatch):
     projects = ProjectManager()

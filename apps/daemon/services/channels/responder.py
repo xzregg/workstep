@@ -47,6 +47,7 @@ class ChatSessionResponder:
         assistant_id: str,
         model: str,
         on_accepted: Callable[[str], Awaitable[None]] | None = None,
+        on_progress: Callable[[str], None] | None = None,
     ) -> tuple[str, str]:
         defaults = await asyncio.to_thread(
             config_store.get_assistant_defaults, assistant_id
@@ -112,8 +113,12 @@ class ChatSessionResponder:
                 event = await asyncio.wait_for(queue.get(), timeout=600)
                 if event.get("type") == "TEXT_MESSAGE_CHUNK":
                     reply += str(event.get("delta") or "")
+                    if on_progress is not None:
+                        on_progress(reply)
                 elif event.get("type") == "TEXT_MESSAGE_CONTENT":
                     reply = str(event.get("content") or "")
+                    if on_progress is not None:
+                        on_progress(reply)
                 elif event.get("type") == "TEXT_MESSAGE_END":
                     status = event.get("status") or "succeeded"
                     if status != "succeeded":

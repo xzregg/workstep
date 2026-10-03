@@ -93,6 +93,7 @@ class BotManager:
                 "receive": sorted(discover_channels()[bot["platform"]].CAPABILITIES.receive),
                 "send": sorted(discover_channels()[bot["platform"]].CAPABILITIES.send),
                 "waiting": discover_channels()[bot["platform"]].CAPABILITIES.waiting,
+                "streaming": discover_channels()[bot["platform"]].CAPABILITIES.streaming,
                 "max_image_bytes": discover_channels()[bot["platform"]].CAPABILITIES.max_image_bytes,
                 "max_file_bytes": discover_channels()[bot["platform"]].CAPABILITIES.max_file_bytes,
                 "file_extensions": sorted(discover_channels()[bot["platform"]].CAPABILITIES.file_extensions or []),
@@ -331,6 +332,11 @@ class BotManager:
                 await start_reply(message)
             except Exception:
                 logger.warning("Failed to start channel waiting reply", exc_info=True)
+        from services.channels.reply_stream import ChannelReplyStream
+        stream = ChannelReplyStream(lambda text: adapter.update_reply(message, text)) if (
+            isinstance(adapter, ChannelAdapter) and adapter.CAPABILITIES.streaming
+            and message.reply_context is not None
+        ) else None
         try:
             async with lock:
                 if message.attachments:
@@ -341,7 +347,10 @@ class BotManager:
                     message = replace(message, text=await incoming_content(project, adapter, message))
                 if kind == "task":
                     await self._validate_target("task", project_id, task_id)
-                    reply = await self._task_reply(project_id, task_id, message, bot["platform"])
+                    reply = await self._task_reply(
+                        project_id, task_id, message, bot["platform"],
+                        on_progress=stream.update if stream else None,
+                    )
                 else:
                     session_key = f"{message.bot_id}:{message.conversation_type}:{message.conversation_id}"
                     async with self._config_lock:
@@ -367,12 +376,15 @@ class BotManager:
                             session_id, reply = await self._responder(
                                 project_id, session_id, message.text, "channel_chat", "",
                                 on_accepted=on_accepted,
+                                on_progress=stream.update if stream else None,
                             )
                         else:
                             session_id, reply = await self._responder(
                                 project_id, session_id, message.text, "channel_chat", "",
                             )
                             await on_accepted(session_id)
+                if stream:
+                    await stream.close()
                 if reply or start_reply is not None:
                     text = reply or "处理完成，暂无回复内容。"
                     if isinstance(adapter, ChannelAdapter):
@@ -383,12 +395,20 @@ class BotManager:
                         await adapter.send_text(message, text)
         except Exception:
             logger.exception("Failed to handle channel bot message %s", message.message_id)
+            if stream:
+                await stream.close()
             try:
                 await adapter.send_text(message, "处理失败，请稍后重试。")
             except Exception:
                 logger.exception("Failed to send channel bot error response")
+        finally:
+            if stream:
+                await stream.close()
 
-    async def _task_reply(self, project_id: str, task_id: str, message: IncomingMessage, platform: str) -> str:
+    async def _task_reply(
+        self, project_id: str, task_id: str, message: IncomingMessage, platform: str,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> str:
         queue = self._event_bus.subscribe(lambda event: (
             event.get("task_id") == task_id
             and event.get("channel") == "coordinator"
@@ -408,11 +428,17 @@ class BotManager:
                     continue
                 if event.get("type") == "TEXT_MESSAGE_CHUNK":
                     reply += str(event.get("delta") or "")
+                    if on_progress is not None:
+                        on_progress(reply)
                 elif event.get("type") == "TEXT_MESSAGE_CONTENT":
                     reply = str(event.get("content") or "")
+                    if on_progress is not None:
+                        on_progress(reply)
                 elif event.get("type") == "TEXT_MESSAGE_END":
                     if event.get("status") != "succeeded":
                         raise RuntimeError(str(event.get("error") or "协调助手失败"))
+                    if event.get("content") is not None:
+                        reply = str(event["content"])
                     return reply
                 elif event.get("type") == "RUN_ERROR":
                     raise RuntimeError(str(event.get("error") or "协调助手失败"))

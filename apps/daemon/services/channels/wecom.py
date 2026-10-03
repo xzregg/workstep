@@ -15,10 +15,18 @@ from services.channels.media import fetch_media
 logger = logging.getLogger(__name__)
 
 
+def _utf8_parts(text: str, limit: int):
+    data = text.encode('utf-8')
+    while data:
+        part = data[:limit].decode('utf-8', errors='ignore')
+        yield part
+        data = data[len(part.encode('utf-8')):]
+
+
 class WeComAdapter(ChannelAdapter):
     CHANNEL_ID = 'wecom'
     DISPLAY_NAME = '企业微信'
-    CAPABILITIES = ChannelCapabilities(receive=frozenset({'text','image','file'}), send=frozenset({'text','image','file'}), waiting=True)
+    CAPABILITIES = ChannelCapabilities(receive=frozenset({'text','image','file'}), send=frozenset({'text','image','file'}), waiting=True, streaming=True)
 
     def __init__(self, bot: dict, on_message, on_state):
         super().__init__(bot, on_message, on_state)
@@ -140,13 +148,23 @@ class WeComAdapter(ChannelAdapter):
         frame = self._reply_frame(message)
         if frame:
             try:
-                await self._client.reply_stream(frame, self._stream_id(message), text, finish=True)
-                return
+                first = next(_utf8_parts(text, 20480), '')
+                await self._client.reply_stream(frame, self._stream_id(message), first, finish=True)
+                text = text[len(first):]
             except Exception:
                 logger.warning("Enterprise WeChat stream reply failed; using active send", exc_info=True)
-        await self._client.send_message(message.conversation_id, {
-            "msgtype": "markdown", "markdown": {"content": text},
-        })
+        for part in _utf8_parts(text, 4096):
+            await self._client.send_message(message.conversation_id, {
+                "msgtype": "markdown", "markdown": {"content": part},
+            })
+
+    async def update_reply(self, message: IncomingMessage, text: str) -> None:
+        if not self._client:
+            raise RuntimeError("企业微信机器人未连接")
+        frame = self._reply_frame(message)
+        if frame and text:
+            preview = next(_utf8_parts(text, 20480))
+            await self._client.reply_stream(frame, self._stream_id(message), preview, finish=False)
 
 
     async def send(self, recipient: IncomingMessage, message: OutgoingMessage) -> None:
@@ -158,6 +176,8 @@ class WeComAdapter(ChannelAdapter):
         media = [(attachment.kind, await upload_media(self._client, attachment)) for attachment in message.attachments]
         if message.text:
             await self._send_text(recipient, message.text)
+        elif self._reply_frame(recipient):
+            await self._send_text(recipient, '处理完成，附件如下。')
         for kind, media_id in media:
             await self._client.send_message(recipient.conversation_id, {'msgtype':kind, kind:{'media_id':media_id}})
 
