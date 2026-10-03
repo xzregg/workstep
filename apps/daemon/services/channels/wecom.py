@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from dataclasses import replace
 
 from aibot import WSClient, WSClientOptions
 
@@ -206,9 +207,18 @@ class WeComAdapter(ChannelAdapter):
     async def send_card(self, recipient: IncomingMessage, card: ChannelCard) -> None:
         if not self._client:
             raise RuntimeError("企业微信机器人未连接")
+        numbered = any(len(button.label) > 4 for button in card.buttons)
+        description = card.text
+        if numbered:
+            description += '\n\n' + '\n'.join(f'{index + 1}. {button.label}' for index, button in enumerate(card.buttons))
+        if len(description) > 112:
+            # Send complete explanations actively; never finalize the running reply.
+            await self._send_text(replace(recipient, reply_context=None), card.title + '\n\n' + description)
+            description = '完整说明见上一条消息。' + ('请按对应编号选择。' if numbered else '请点击下方按钮。')
         template = {"card_type":"button_interaction", "task_id":card.id,
-                    "main_title":{"title":card.title[:36], "desc":card.text[:1024]},
-                    "button_list":[{"text":button.label[:40],"key":button.key} for button in card.buttons]}
+                    "main_title":{"title":card.title[:36]}, "sub_title_text":description,
+                    "button_list":[{"text":str(index + 1) if numbered else button.label,"key":button.key}
+                                   for index, button in enumerate(card.buttons)]}
         frame = self._reply_frame(recipient)
         if card.running and frame:
             await self._client.reply_stream_with_card(frame, self._stream_id(recipient), "", finish=False, template_card=template)
