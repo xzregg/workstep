@@ -68,6 +68,40 @@ async def test_proposal_survives_finish_and_restart_and_binding_change_expires_i
     assert await broker.handle(ChannelAction('b',card.id,'0','u',conversation_id='g')) == '渠道绑定已改变，该操作已失效'
     assert coordinator.confirm_action.await_count == 1
 
+async def test_wecom_nested_callback_confirms_original_task_proposal(controls, monkeypatch):
+    from services.channels.wecom import WeComAdapter
+    broker, _, coordinator, _, scope, store, _ = controls
+    client = SimpleNamespace(connect=AsyncMock(), send_message=AsyncMock(),
+                             update_template_card=AsyncMock(), disconnect=lambda: None)
+    handlers = {}
+    def on(name):
+        def register(handler):
+            handlers[name] = handler
+            return handler
+        return register
+    client.on = on
+    monkeypatch.setattr('services.channels.wecom.WSClient', lambda options: client)
+    adapter = WeComAdapter({'id':'b','app_id':'a','secret':'s'}, AsyncMock(), AsyncMock())
+    adapter.set_action_handler(broker.handle)
+    broker._adapters['b'] = adapter
+    await adapter.start()
+    try:
+        await broker.event(scope, {'type':'CUSTOM','name':'workstep.action_proposal',
+                                  'value':{'id':'proposal','status':'pending'}})
+        card_id = client.send_message.await_args.args[1]['template_card']['task_id']
+        await broker.finish(scope)
+        frame = {'headers':{'req_id':'callback'}, 'body':{'chatid':'g','from':{'userid':'u'},
+                 'event':{'eventtype':'template_card_event',
+                          'template_card_event':{'task_id':card_id,'event_key':'0'}}}}
+        await handlers['event.template_card_event'](frame)
+        coordinator.confirm_action.assert_awaited_once_with('p','t','proposal',f'channel-card:{card_id}')
+        assert store.rows['channel_button_actions'][card_id]['status'] == 'completed'
+        assert client.send_message.await_args.args[1]['markdown']['content'] == '已确认'
+        await handlers['event.template_card_event'](frame)
+        assert coordinator.confirm_action.await_count == 1
+    finally:
+        await adapter.stop()
+
 async def test_async_question_choice_routes_answer_to_same_coordinator_with_sender(controls):
     broker, adapter, _, _, scope, *_ = controls
     await broker.event(scope, {'type':'CUSTOM','name':'workstep.async_question','value':{'source_item_id':'q','questions':[{'title':'启动阶段？','options':['是','否']}]}})
