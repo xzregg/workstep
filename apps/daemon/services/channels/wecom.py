@@ -212,15 +212,20 @@ class WeComAdapter(ChannelAdapter):
             raise RuntimeError("企业微信机器人未连接")
         numbered = any(len(button.label) > 4 for button in card.buttons)
         description = card.text
+        identifier = '消息 ID: ' + card.message_id if card.message_id else ''
+        if identifier and identifier not in description:
+            description += '\n' + identifier
         if numbered:
             description += '\n\n' + '\n'.join(f'{index + 1}. {button.label}' for index, button in enumerate(card.buttons))
         if len(description) > 112:
             # Send complete explanations actively; never finalize the running reply.
             await self._send_text(replace(recipient, reply_context=None), card.title + '\n\n' + description)
             description = '完整说明见上一条消息。' + ('请按对应编号选择。' if numbered else '请点击下方按钮。')
+            if identifier:
+                description += '\n' + identifier
         template = {"card_type":"button_interaction", "task_id":card.id,
                     "main_title":{"title":card.title[:36]}, "sub_title_text":description,
-                    "button_list":[{"text":str(index + 1) if numbered else button.label,"key":button.key}
+                    "button_list":[{"text":str(index + 1) if numbered else button.label,"key":button.key, **({'style':3} if button.danger else {})}
                                    for index, button in enumerate(card.buttons)]}
         # Keep controls independent of the streaming bubble so subsequent
         # text snapshots cannot replace or hide its buttons.

@@ -226,7 +226,7 @@ class DingTalkAdapter(ChannelAdapter):
     def _card_data(self, card: ChannelCard) -> dict:
         message_id = card.message_id or self._card_message_ids.get(card.id, '')
         return {"title":card.title, "markdown":card.text, "tips":'消息 ID: ' + message_id if message_id else '',
-                "sys_full_json_obj":json.dumps({"msgButtons":[{"text":b.label,"id":b.key,"request":True,"color":"blue"} for b in card.buttons]}, ensure_ascii=False)}
+                "sys_full_json_obj":json.dumps({"msgButtons":[{"text":b.label,"id":b.key,"request":True,"color":"red" if b.danger else "blue"} for b in card.buttons]}, ensure_ascii=False)}
 
     async def _card_api(self, method, payload):
         timeout = aiohttp.ClientTimeout(total=10)
