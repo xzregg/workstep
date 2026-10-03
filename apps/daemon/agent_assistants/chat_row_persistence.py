@@ -77,13 +77,15 @@ class ChatRowPersistence(PersistenceAdapter):
         if row.vision_model is not None:
             session.vision_model = row.vision_model
 
-    def _load_messages(self, row: ChatSession) -> list[dict]:
+    def _load_messages(self, row: ChatSession, *, limit: int | None = None, offset: int = 0) -> list[dict]:
         messages: list[dict] = []
         rows = (
             ChatMessage.select()
             .where(ChatMessage.session == row)
             .order_by(ChatMessage.created_at, ChatMessage.id)
         )
+        if limit is not None:
+            rows = rows.order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc()).limit(limit).offset(offset)
         for item in rows:
             message: dict = {
                 "role": item.role,
@@ -138,7 +140,7 @@ class ChatRowPersistence(PersistenceAdapter):
                 }
             message = repair_message_times(message)
             messages.append(message)
-        return messages
+        return list(reversed(messages)) if limit is not None else messages
 
     # ── save ───────────────────────────────────────────────────────────
 

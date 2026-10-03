@@ -3,6 +3,17 @@ import { chatSessionApi, type ChatSessionDetail } from '../api/client'
 import { useI18n } from '../i18n'
 import { useChatSessionStore } from '../stores/chatSessionStore'
 
+const PAGE_SIZE = 300
+
+function normalizeMessages(messages: ChatSessionDetail['messages']) {
+  return messages.map((message) => ({
+    ...message,
+    events: (message.events || []).map((event) => ({
+      ...event, type: event.type || '', data: event.data || {},
+    })),
+  }))
+}
+
 interface Options {
   /** Session selected by the URL; only this identity triggers history hydration. */
   sessionId: string | null
@@ -15,6 +26,7 @@ interface Options {
 
 /** Loads a selected session and its paged event details into the shared store. */
 export function useChatSessionHistory({ sessionId, messageSessionId, projectId, onLoaded, onMissing }: Options) {
+  const pageRef = useRef({ key: '', offset: 0, hasOlder: false, loading: false })
   const { t } = useI18n()
   const callbacks = useRef({ onLoaded, onMissing })
   callbacks.current = { onLoaded, onMissing }
@@ -22,49 +34,53 @@ export function useChatSessionHistory({ sessionId, messageSessionId, projectId, 
   useEffect(() => {
     if (!sessionId || !projectId) return
     let active = true
+    const page = { key: `${projectId}/${sessionId}`, offset: 0, hasOlder: false, loading: true }
+    pageRef.current = page
     const store = useChatSessionStore.getState()
     store.newSession(sessionId)
-    chatSessionApi.get(sessionId, projectId)
+    chatSessionApi.get(sessionId, projectId, PAGE_SIZE, 0)
       .then((detail) => {
         if (!active) return
+        page.offset = detail.messages?.length || 0
+        page.hasOlder = page.offset === PAGE_SIZE
+        page.loading = false
         callbacks.current.onLoaded(detail)
         store.newSession(detail.id)
         store.hydrateSession(
           detail.id,
-          (detail.messages || []).map((message) => ({
-            id: message.id,
-            role: message.role,
-            content: message.content,
-            status: message.status,
-            engine: message.engine,
-            model: message.model,
-            created_at: message.created_at,
-            ended_at: message.ended_at,
-            prompt: message.prompt,
-            author_id: message.author_id,
-            author_username: message.author_username,
-            author_name: message.author_name,
-            author_type: message.author_type,
-            initiated_by_user_id: message.initiated_by_user_id,
-            initiated_by_username: message.initiated_by_username,
-            author_device_id: message.author_device_id,
-            author_device_name: message.author_device_name,
-            event_summary: message.event_summary,
-            event_detail: message.event_detail,
-            events: (message.events || []).map((event) => ({
-              ...event,
-              type: event.type || '',
-              data: event.data || {},
-            })),
-          })),
+          normalizeMessages(detail.messages || []),
           detail.running,
         )
       })
       .catch(() => {
+        page.loading = false
         if (active) callbacks.current.onMissing()
       })
-    return () => { active = false }
+    return () => { active = false; pageRef.current = { key: '', offset: 0, hasOlder: false, loading: false } }
   }, [sessionId, projectId])
+
+  const loadOlderHistory = useCallback(async (beforePrepend?: () => void) => {
+    const currentSessionId = messageSessionId || sessionId
+    const page = pageRef.current
+    if (!currentSessionId || !projectId || page.key !== `${projectId}/${currentSessionId}`
+      || page.loading || !page.hasOlder) return
+    page.loading = true
+    try {
+      const detail = await chatSessionApi.get(currentSessionId, projectId, PAGE_SIZE, page.offset)
+      if (pageRef.current !== page) return
+      const messages = detail.messages || []
+      page.offset += messages.length
+      page.hasOlder = messages.length === PAGE_SIZE
+      if (messages.length) {
+        beforePrepend?.()
+        useChatSessionStore.getState().hydrateSession(currentSessionId, normalizeMessages(messages), false)
+      }
+    } catch {
+      // Keep the offset so another upward scroll can retry this page.
+    } finally {
+      page.loading = false
+    }
+  }, [sessionId, messageSessionId, projectId])
 
   const loadMessageEvents = useCallback(async (messageId: string) => {
     const currentSessionId = messageSessionId || sessionId
@@ -105,5 +121,5 @@ export function useChatSessionHistory({ sessionId, messageSessionId, projectId, 
     }
   }, [sessionId, messageSessionId, projectId, t])
 
-  return { loadMessageEvents }
+  return { loadMessageEvents, loadOlderHistory }
 }

@@ -24,3 +24,14 @@ export function latestGoalFromEvents(events: InteractionEvent[]): GoalSnapshot |
   }
   return null
 }
+
+/** Latest snapshot across the conversation, including terminal/cleared goals. */
+export function latestGoalFromMessages(
+  messages: readonly { events?: InteractionEvent[] }[],
+): GoalSnapshot | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const goal = latestGoalFromEvents(messages[index].events ?? [])
+    if (goal) return goal
+  }
+  return null
+}

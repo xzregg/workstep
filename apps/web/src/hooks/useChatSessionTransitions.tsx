@@ -41,6 +41,7 @@ export function useChatSessionTransitions({
   const [forkError, setForkError] = useState('')
   const [forkTargetEngine, setForkTargetEngine] = useState('')
   const [forkMessageId, setForkMessageId] = useState<string | null>(null)
+  const [forkPreferSmart, setForkPreferSmart] = useState(false)
   const [handoffOpen, setHandoffOpen] = useState(false)
   const [handingOff, setHandingOff] = useState(false)
   const [handoffError, setHandoffError] = useState('')
@@ -56,10 +57,11 @@ export function useChatSessionTransitions({
     setHandoffOpen(false)
   }, [project?.id, sessionId])
 
-  const openFork = useCallback((targetEngine = current.engine, messageId: string | null = null) => {
-    if (!sessionId || running) return
+  const openFork = useCallback((targetEngine = current.engine, messageId: string | null = null, preferSmart = false) => {
+    if (!sessionId || (running && !messageId)) return
     setForkTargetEngine(targetEngine || current.engine)
     setForkMessageId(messageId)
+    setForkPreferSmart(preferSmart || running)
     setForkError('')
     setForkOpen(true)
   }, [current.engine, running, sessionId])
@@ -140,7 +142,8 @@ export function useChatSessionTransitions({
       permissionMode={permissionMode}
       messageCount={forkMessageIndex >= 0 ? forkMessageIndex + 1 : messageCount}
       forkMessageId={forkMessageId}
-      forkAtTail={forkMessageIndex < 0 || forkMessageIndex === messageCount - 1}
+      preferSmart={forkPreferSmart}
+      forkAtTail={!running && (forkMessageIndex < 0 || forkMessageIndex === messageCount - 1)}
       engines={engines}
       providers={providers}
       defaultEngine={defaultEngine}

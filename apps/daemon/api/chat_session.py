@@ -273,10 +273,12 @@ async def create_session(req: ChatSessionCreateRequest):
 async def get_session(
     session_id: str,
     project_id: str = Query(..., alias="project_id"),
+    limit: int = Query(300, ge=1, le=300),
+    offset: int = Query(0, ge=0),
 ):
-    """Return one chat session with its full message history."""
+    """Return one chat session with a page of recent messages."""
     session = await _run_db(
-        project_id, lambda: _module().get_session(project_id, session_id)
+        project_id, lambda: _module().get_session(project_id, session_id, limit=limit, offset=offset)
     )
     if session is None:
         raise HTTPException(status_code=404, detail="Chat session not found")

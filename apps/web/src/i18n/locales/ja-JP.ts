@@ -594,6 +594,9 @@ export const jaJP: Messages = {
     progress: '第 {current}/{total} 步 · 已完成 {completed}',
   },
   goal: {
+    original: '目標の原文',
+    resume: '再開',
+    end: '終了',
     title: '目標',
     status: { active: '進行中', paused: '一時停止', blocked: 'ブロック', usageLimited: '使用量制限', budgetLimited: '予算上限', complete: '完了', cleared: 'クリア' },
   },
@@ -627,6 +630,10 @@ export const jaJP: Messages = {
     mermaidZoomIn: '図を拡大',
   },
   browser: {
+    uploadFiles: '上传文件',
+    uploadTarget: '上传文件到：{path}',
+    uploadFailed: '上传失败',
+    uploadTooLarge: '文件超过 25MB 上限',
     newFolder: '新しいフォルダ',
     folderName: 'フォルダ名',
     createFolder: '作成',

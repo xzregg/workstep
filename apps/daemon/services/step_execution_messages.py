@@ -14,7 +14,7 @@ from models.fields import utc_now
 from services.artifact_rounds import step_round_dir
 from services.intervention import seal_unanswered_interactions
 from services.messages import (
-    create_task_message, extract_usage_json, new_message_id,
+    attributed_actor_message_fields, create_task_message, extract_usage_json, new_message_id,
 )
 from services.pipeline import Step
 from services.prompt import (
@@ -163,7 +163,21 @@ class StepExecutionMessages:
         def create_message():
             out_dir.mkdir(parents=True, exist_ok=True)
             if retry_message_id:
-                message = Message.get_by_id(retry_message_id)
+                message = Message.get(
+                    (Message.id == retry_message_id) & (Message.task == task)
+                    & (Message.step_key == step_key) & (Message.channel == "execution")
+                    & (Message.role == "assistant")
+                )
+                actor_fields = attributed_actor_message_fields(
+                    task, channel="execution", step_key=step_key,
+                )
+                message.author_id = step.engine
+                message.author_username = step.engine
+                message.author_name = step.engine
+                message.author_type = "assistant"
+                for key in ("initiated_by_user_id", "initiated_by_username",
+                            "author_device_id", "author_device_name"):
+                    setattr(message, key, actor_fields.get(key))
                 message.engine = step.engine
                 message.model = resolved_model
                 message.step_run_id = (

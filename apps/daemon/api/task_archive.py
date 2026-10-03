@@ -78,6 +78,21 @@ def _load_archive_experience_draft(task_id: str, workstep_dir=None):
     }
 
 
+def _archive_draft_message(task_id: str, message_id: str):
+    """Validate a supplied draft ID inside the project's database executor."""
+    from models import Message, Task
+
+    if not Task.select().where(Task.id == task_id).exists():
+        raise ValueError("Task not found")
+    message = Message.get_or_none(Message.id == message_id)
+    if message is not None and (
+        message.task_id != task_id or message.channel != "archive_experience"
+        or message.role != "assistant"
+    ):
+        raise ValueError("Archive draft not found")
+    return message
+
+
 @router.get("/{task_id}/archive-experience/draft")
 async def get_archive_experience_draft(
     task_id: str,
@@ -145,6 +160,18 @@ async def prepare_archive_experience(
     await _require_scoped_task(pid, task_id)
     try:
         progress_message_id = message_id or str(uuid.uuid4())
+
+        def validate_and_snapshot():
+            from services.messages import current_actor_message_fields
+
+            _archive_draft_message(task_id, progress_message_id)
+            actor = current_actor_message_fields()
+            return {key: actor[key] for key in (
+                "initiated_by_user_id", "initiated_by_username",
+                "author_device_id", "author_device_name",
+            ) if actor.get(key)}
+
+        initiator_fields = await _run_db(pid, validate_and_snapshot)
         raw_experience = await coordinator_module.draft_archive_experience(
             pid,
             task_id,
@@ -175,7 +202,7 @@ async def prepare_archive_experience(
         summary = {"has_experience": has_experience}
         if journal_snapshot is not None:
             summary.update(journal_snapshot["summary"])
-        existing = Message.get_or_none(Message.id == progress_message_id)
+        existing = _archive_draft_message(task_id, progress_message_id)
         if existing is not None:
             existing.content = experience
             existing.run_status = "succeeded"
@@ -188,6 +215,13 @@ async def prepare_archive_experience(
                 existing.events_json = json.dumps(journal_snapshot["events"], ensure_ascii=False)
                 existing.event_count = journal_snapshot["summary"]["event_count"]
                 existing.last_event_seq = journal_snapshot["summary"]["last_event_seq"]
+            engine = existing.engine or "assistant"
+            existing.author_id = engine
+            existing.author_username = engine
+            existing.author_name = engine
+            existing.author_type = "assistant"
+            for key, value in initiator_fields.items():
+                setattr(existing, key, value)
             existing.save()
             return
         now = utc_now()
@@ -218,6 +252,7 @@ async def prepare_archive_experience(
             started_at=now,
             ended_at=now,
             created_at=now,
+            **initiator_fields,
         )
 
     try:

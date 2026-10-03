@@ -376,7 +376,16 @@ public final class MainActivity extends Activity {
                 Gravity.TOP | Gravity.START);
         root.addView(button, position);
         button.setOnClickListener(view -> {
-            PopupMenu menu = new PopupMenu(this, button);
+            if (webView != null) webView.evaluateJavascript(
+                    "(function(){var open=document.querySelector('button[aria-controls=\"workstep-navigation\"]');"
+                            + "var nav=document.getElementById('workstep-navigation');"
+                            + "var close=nav&&nav.querySelector('button.navigation-close');"
+                            + "if(open&&open.getAttribute('aria-expanded')==='true'){if(close)close.click()}"
+                            + "else if(open)open.click()})()",
+                    null);
+        });
+        button.setOnLongClickListener(view -> {
+            PopupMenu menu = new PopupMenu(this, view);
             menu.getMenu().add(R.string.change_address).setOnMenuItemClickListener(item -> {
                 showAddressScreen(server.origin());
                 return true;
@@ -394,6 +403,7 @@ public final class MainActivity extends Activity {
                 return true;
             });
             menu.show();
+            return true;
         });
         root.post(() -> {
             if (button.getParent() != root) return;
@@ -407,13 +417,15 @@ public final class MainActivity extends Activity {
             button.setY(clamp(y, height - button.getHeight()));
         });
         int touchSlop = ViewConfiguration.get(this).getScaledTouchSlop();
+        FloatingButtonGesture gesture = new FloatingButtonGesture();
+        Runnable longPress = () -> {
+            if (button.getParent() == root && gesture.longPress()) button.performLongClick();
+        };
         button.setOnTouchListener(new View.OnTouchListener() {
             private float startRawX;
             private float startRawY;
             private float startX;
             private float startY;
-            private boolean dragging;
-
             @Override
             public boolean onTouch(View view, MotionEvent event) {
                 switch (event.getActionMasked()) {
@@ -422,28 +434,33 @@ public final class MainActivity extends Activity {
                         startRawY = event.getRawY();
                         startX = view.getX();
                         startY = view.getY();
-                        dragging = false;
+                        gesture.down();
+                        view.postDelayed(longPress, ViewConfiguration.getLongPressTimeout());
                         return true;
                     case MotionEvent.ACTION_MOVE:
                         float dx = event.getRawX() - startRawX;
                         float dy = event.getRawY() - startRawY;
-                        if (!dragging && Math.hypot(dx, dy) > touchSlop) dragging = true;
-                        if (dragging) {
+                        if (gesture.move(dx, dy, touchSlop)) {
+                            view.removeCallbacks(longPress);
                             view.setX(clamp(startX + dx, root.getWidth() - view.getWidth()));
                             view.setY(clamp(startY + dy, root.getHeight() - view.getHeight()));
                         }
                         return true;
                     case MotionEvent.ACTION_UP:
-                        if (dragging) {
+                        view.removeCallbacks(longPress);
+                        FloatingButtonGesture.Release release = gesture.release();
+                        if (release == FloatingButtonGesture.Release.DRAG) {
                             getPreferences(MODE_PRIVATE).edit()
                                     .putFloat(MENU_X_KEY, view.getX() / Math.max(1, root.getWidth()))
                                     .putFloat(MENU_Y_KEY, view.getY() / Math.max(1, root.getHeight()))
                                     .apply();
-                        } else {
+                        } else if (release == FloatingButtonGesture.Release.TAP) {
                             view.performClick();
                         }
                         return true;
                     case MotionEvent.ACTION_CANCEL:
+                        view.removeCallbacks(longPress);
+                        gesture.cancel();
                         return true;
                     default:
                         return false;

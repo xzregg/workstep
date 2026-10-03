@@ -423,7 +423,7 @@ test('chat draft survives when activeProject is stale after a workflow switch', 
   }
 })
 
-test('restores the locally recorded engine selection over the session default', async () => {
+test('restores the persisted session engine over a conflicting local selection', async () => {
   const window = new Window({ url: 'http://localhost/' })
   Object.assign(globalThis, {
     window,
@@ -439,7 +439,7 @@ test('restores the locally recorded engine selection over the session default', 
     cancelAnimationFrame: (id: number) => window.clearTimeout(id),
     IS_REACT_ACT_ENVIRONMENT: true,
   })
-  // 模拟用户上次在该会话选过的引擎配置；后端 detail 仍是默认 claude。
+  // 模拟旧缓存与已保存会话引擎冲突。
   localStorage.setItem(
     'workstep-chat-engine-config:project-1:session-1',
     JSON.stringify({
@@ -455,8 +455,11 @@ test('restores the locally recorded engine selection over the session default', 
 
   try {
     const root = await renderChat(container)
-    // 本地记录优先于后端默认 → 胶囊按钮回显记录的引擎 id（未登记 id 原样回显，与 locale 无关）。
-    assert.match(document.body.textContent || '', /zz-resumed-engine/)
+    assert.match(document.body.textContent || '', /Claude Code CLI/)
+    assert.doesNotMatch(document.body.textContent || '', /zz-resumed-engine/)
+    assert.equal(JSON.parse(localStorage.getItem(
+      'workstep-chat-engine-config:project-1:session-1',
+    ) || '{}').engine, 'claude')
     await act(async () => root.unmount())
   } finally {
     restoreApis()

@@ -8,6 +8,48 @@ from services.task import TaskService
 from streaming.bus import EventBus
 from datetime import timedelta
 from types import SimpleNamespace
+import pytest
+
+
+@pytest.mark.parametrize("source_kind", ["reply", "active_run"])
+def test_attribution_never_inherits_another_tasks_identity(tmp_path, source_kind):
+    db = init_db(str(tmp_path / "workstep.db"))
+    try:
+        now = utc_now()
+        own = Task.create(
+            id="own", title="本任务", cwd=str(tmp_path),
+            creator_id="own-user", creator_username="own", creator_name="本人",
+            created_at=now, updated_at=now,
+        )
+        other = Task.create(id="other", title="其他任务", cwd=str(tmp_path),
+                            created_at=now, updated_at=now)
+        foreign = create_task_message(
+            task=other, channel="execution", step_key="do", role="user", content="私有消息",
+            author_id="foreign-user", author_username="foreign", author_name="其他人",
+            author_device_id="foreign-device", position=0, created_at=now,
+            snapshot_current_actor=False,
+        )
+        fields = {}
+        if source_kind == "reply":
+            fields["reply_to_message_id"] = foreign.id
+        else:
+            run = WorkflowRun.create(
+                id="foreign-run", task=other, workflow_schema_version=1,
+                status="running", started_at=now,
+                initiated_by_user_id="foreign-user", initiated_by_username="foreign",
+            )
+            own.active_workflow_run_id = run.id
+            own.save()
+        message = create_task_message(
+            task=own, channel="execution", step_key="do", role="assistant", content="本任务回复",
+            position=1, created_at=now, **fields,
+        )
+        assert (message.initiated_by_user_id, message.initiated_by_username) == (
+            "own-user", "own",
+        )
+        assert message.author_device_id != "foreign-device"
+    finally:
+        db.close()
 
 
 def test_scheduled_workflow_input_has_scheduler_author_and_creator_initiator(tmp_path):

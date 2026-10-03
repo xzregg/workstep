@@ -129,11 +129,14 @@ class ChatSessionTransitions:
             raise ValueError("Session title cannot be empty")
         if context_mode not in {"native", "smart", "full", "none"}:
             raise ValueError(f"Unsupported fork context mode: {context_mode}")
-        if any(
+        source_running = any(
             state.get("session_id") == source_session_id
             and state.get("status") in {"queued", "running", "stopping"}
             for state in self._turn_states.values()
-        ):
+        )
+        # A stable historical cutoff can be copied while the source keeps running.
+        # Native forks and tail snapshots require an idle source engine.
+        if source_running and (not fork_message_id or context_mode == "native"):
             raise ValueError("Chat session is running")
         def load_source():
             source = ChatSession.get_or_none(
@@ -141,10 +144,11 @@ class ChatSessionTransitions:
             )
             if source is None:
                 raise ValueError("Chat session not found")
-            if ChatMessage.select().where(
+            persisted_running = ChatMessage.select().where(
                 ChatMessage.session == source,
                 ChatMessage.status == "running",
-            ).exists():
+            ).exists()
+            if persisted_running and (not fork_message_id or context_mode == "native"):
                 raise ValueError("Chat session is running")
             messages = ChatRowPersistence()._load_messages(source)
             fork_at_tail = True
@@ -161,6 +165,8 @@ class ChatSessionTransitions:
                     raise ValueError("Fork message not found")
                 fork_at_tail = selected_index == len(messages) - 1
                 messages = messages[: selected_index + 1]
+            if any(item.get("status") == "running" for item in messages):
+                raise ValueError("Chat session is running")
             fork_point = messages[-1].get("id") if messages else None
             source_engine = source.engine
             source_engine_session_id = source.engine_session_id

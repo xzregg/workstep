@@ -36,27 +36,39 @@ export function useChatSessionEngineSelection({
       fastModel: defaults.fast_model || '',
       visionModel: defaults.vision_model || '',
       thinkingEffort: defaults.thinking_effort || '',
+      providerCleared: false,
     })
   }, [])
 
   const restoreSession = useCallback((detail: ChatSessionDetail) => {
     const saved = loadChatEngineConfig(projectId, detail.id)
-    if (hasChatEngineConfig(saved)) {
-      const restored = clearIncompatibleProvider(saved, engines, providers)
-      if (restored.providerId !== saved.providerId) {
-        saveChatEngineConfig(projectId, detail.id, restored)
-      }
-      setConfig(restored)
-    } else {
-      setConfig({
-        engine: detail.engine || '',
-        providerId: detail.provider_id || '',
-        model: detail.model || '',
-        fastModel: detail.fast_model || '',
-        visionModel: detail.vision_model || '',
-        thinkingEffort: '',
-      })
+    // 已持久化会话的引擎决定恢复与交接目标，旧缓存不能覆盖它。
+    const staleEngine = Boolean(detail.engine && saved.engine !== detail.engine)
+    const restored = hasChatEngineConfig(saved) && !staleEngine
+      ? clearIncompatibleProvider(saved, engines, providers)
+      : {
+          engine: detail.engine || '',
+          providerId: detail.provider_id || '',
+          model: detail.model || '',
+          fastModel: detail.fast_model || '',
+          visionModel: detail.vision_model || '',
+          thinkingEffort: '',
+        }
+    let next = restored
+    // 本地配置缺供应商但会话行有（状态不同步 / 换设备 / 兼容清理后）：
+    // 以会话行为准回填；若与当前引擎协议不兼容则仍按「跟随默认」清空。
+    if (!next.providerId && !next.providerCleared && detail.provider_id) {
+      const compatible = clearIncompatibleProvider(
+        { ...next, providerId: detail.provider_id },
+        engines,
+        providers,
+      )
+      next = { ...next, providerId: compatible.providerId }
     }
+    if (staleEngine || next.providerId !== saved.providerId) {
+      saveChatEngineConfig(projectId, detail.id, next)
+    }
+    setConfig(next)
   }, [projectId, engines, providers])
 
   useEffect(() => {
@@ -84,7 +96,9 @@ export function useChatSessionEngineSelection({
     setConfig({ ...EMPTY_ENGINE_CONFIG, engine })
   }, [])
   const chooseProvider = useCallback((providerId: string) => {
-    setConfig((current) => ({ ...EMPTY_ENGINE_CONFIG, engine: current.engine, providerId }))
+    setConfig((current) => ({
+      ...EMPTY_ENGINE_CONFIG, engine: current.engine, providerId, providerCleared: !providerId,
+    }))
   }, [])
   const setModel = useCallback((model: string) => {
     setConfig((current) => ({ ...current, model }))

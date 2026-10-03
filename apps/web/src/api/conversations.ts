@@ -416,9 +416,9 @@ export const chatSessionApi = {
       body: JSON.stringify(input),
       signal: AbortSignal.timeout(20_000),
     }),
-  get: (sessionId: string, projectId: string) =>
+  get: (sessionId: string, projectId: string, limit = 300, offset = 0) =>
     request<ChatSessionDetail>(
-      `/chat-sessions/${encodeURIComponent(sessionId)}?project_id=${encodeURIComponent(projectId)}`,
+      `/chat-sessions/${encodeURIComponent(sessionId)}?project_id=${encodeURIComponent(projectId)}&limit=${limit}&offset=${offset}`,
     ),
   messageEvents: (
     sessionId: string,

@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import AssistantChatPanel from '../components/AssistantChatPanel'
+import ChatSessionGoalBar from '../components/ChatSessionGoalBar'
+import { latestGoalFromMessages } from '../utils/goal'
 import { ProjectActionMessages } from '../components/ProjectActionMessages'
 import { useProjectActions } from '../components/useActionRuns'
 import Button from '../components/Button'
@@ -130,7 +132,7 @@ export default function ChatPage() {
     || assistantConfig?.resolved?.engine
     || 'pydantic_ai'
   const {
-    sendMessageNow, sendPendingContent, stop, sendError, setSendError, stopping,
+    sendMessageNow, sendPendingContent, stop, continueGoal, endGoal, sendError, setSendError, stopping,
   } = useChatSessionActions({
     sessionId, projectId: activeProject?.id, running, engineConfig,
     permissionMode, planMode, goalMode, effectiveEngine,
@@ -272,7 +274,7 @@ export default function ChatPage() {
     }
   }, [sessionParam, activeProject?.id, resetEnhance, setSendError])
 
-  const { loadMessageEvents } = useChatSessionHistory({
+  const { loadMessageEvents, loadOlderHistory } = useChatSessionHistory({
     sessionId: sessionParam,
     messageSessionId: sessionId,
     projectId: activeProject?.id,
@@ -375,8 +377,8 @@ export default function ChatPage() {
   const handleMessageEventsLoad = useCallback((messageId: string) => {
     void loadMessageEvents(messageId)
   }, [loadMessageEvents])
-  const handleForkMessage = useCallback((messageId: string) => {
-    openFork(selectedEngine, messageId)
+  const handleForkMessage = useCallback((messageId: string, preferSmart?: boolean) => {
+    openFork(selectedEngine, messageId, preferSmart)
   }, [openFork, selectedEngine])
 
   if (!activeProject) {
@@ -429,6 +431,10 @@ export default function ChatPage() {
         onStopAction={(runId) => { void projectActions.stop(runId) }}
         afterMessages={<ProjectActionMessages state={projectActions} />}
         availableCommands={session?.availableCommands}
+        composerStatus={effectiveEngine === 'codex_sdk' ? <ChatSessionGoalBar
+          key={sessionId} projectId={routeProjectId} goal={latestGoalFromMessages(messages)} running={running} stopping={stopping}
+          onResume={continueGoal} onEnd={endGoal}
+        /> : undefined}
         running={running}
         stopping={stopping}
         input={input}
@@ -442,6 +448,7 @@ export default function ChatPage() {
         onStop={() => void stop()}
         onAttachmentError={setSendError}
         onLoadMessageEvents={handleMessageEventsLoad}
+        onLoadOlderHistory={loadOlderHistory}
         onForkMessage={handleForkMessage}
         quickPromptsLabel={t('chatSession.quickPromptsLabel')}
         quickPrompts={quickPromptItems}

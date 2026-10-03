@@ -145,7 +145,8 @@ export interface AssistantSessionState {
 export interface AssistantStore {
   sessions: Record<string, AssistantSessionState>
   newSession: (sessionId: string) => void
-  addUserMessage: (sessionId: string, content: string) => void
+  addUserMessage: (sessionId: string, content: string) => string
+  removeMessage: (sessionId: string, messageId: string) => void
   hydrateSession: (
     sessionId: string,
     messages: AssistantChatMessage[],
@@ -304,11 +305,12 @@ export function createAssistantStore(
         }
       }),
 
-    addUserMessage: (sessionId, content) =>
+    addUserMessage: (sessionId, content) => {
+      const optimisticId = `user-${Date.now()}-${Math.random().toString(36).slice(2)}`
       set((s) => {
         const session = s.sessions[sessionId] || emptySession()
         const message: AssistantChatMessage = {
-          id: `user-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          id: optimisticId,
           role: 'user',
           content,
           status: 'succeeded',
@@ -319,6 +321,23 @@ export function createAssistantStore(
             ...session,
             messages: [...session.messages, message],
           }, maxSessions),
+        }
+      })
+      return optimisticId
+    },
+
+    removeMessage: (sessionId, messageId) =>
+      set((s) => {
+        const session = s.sessions[sessionId]
+        if (!session) return s
+        return {
+          sessions: {
+            ...s.sessions,
+            [sessionId]: {
+              ...session,
+              messages: session.messages.filter((m) => m.id !== messageId),
+            },
+          },
         }
       }),
 
@@ -415,7 +434,20 @@ export function createAssistantStore(
 
         const pushEvent = (id?: string) => {
           if (!id) return
-          const index = findIndex(id)
+          let index = findIndex(id)
+          if (index === -1) {
+            // Reconnects can miss START; process/goal events still own an assistant reply.
+            const processEvent = isReasoningEvent(event) || isToolEvent(event)
+            const goalEvent = isCustom(event, CUSTOM.goalUpdate)
+            if (!processEvent && !goalEvent) return
+            const active = processEvent || (goalEvent && customValue(event).status === 'active')
+            messages.push({
+              id, role: 'assistant', content: '', status: active ? 'running' : 'succeeded',
+              engine: event.engine, model: event.model, created_at: event.created_at, events: [],
+            })
+            index = messages.length - 1
+            if (active) running = true
+          }
           if (index !== -1) {
             // Live 事件封顶：子代理等异常回合可产生上万条事件，逐条整数组复制是
             // O(n²)（即便切走仍在后台跑，占满主线程），且 buildMessageTimeline /
@@ -526,12 +558,19 @@ export function createAssistantStore(
           if (event.role !== 'user') running = true
         } else if (event.type === 'TEXT_MESSAGE_CONTENT' && mid) {
           const index = findIndex(mid)
-          if (index !== -1) {
+          if (index === -1) {
+            messages.push({
+              id: mid, role: event.role === 'user' ? 'user' : 'assistant',
+              content: appendMessageContent('', event), status: 'running',
+              engine: event.engine, model: event.model, created_at: event.created_at, events: [],
+            })
+          } else {
             messages[index] = {
               ...messages[index],
               content: appendMessageContent(messages[index].content, event),
             }
           }
+          if (event.role !== 'user') running = true
         } else if (
           isCustom(event, config.proposalEvent ?? '')
           && config.proposalExtractor
@@ -555,24 +594,29 @@ export function createAssistantStore(
         } else if (isCustom(event, CUSTOM.error) || event.type === 'error') {
           running = false
           if (mid) {
+            const error = String((isCustom(event, CUSTOM.error)
+              ? customValue(event).message
+              : (event.data as Record<string, unknown> | undefined)?.message)
+              || fallbackFailed())
             const index = findIndex(mid)
-            if (index !== -1) {
+            if (index === -1) {
+              messages.push({
+                id: mid, role: 'assistant', content: '', status: 'error', error,
+                engine: event.engine, model: event.model, created_at: event.created_at,
+                events: [event],
+              })
+            } else {
               messages[index] = {
-                ...messages[index],
-                status: 'error',
-                error: String(
-                  isCustom(event, CUSTOM.error)
-                    ? customValue(event).message
-                    : (event.data as Record<string, unknown> | undefined)?.message
-                  || fallbackFailed(),
-                ),
+                ...messages[index], status: 'error', error,
+                events: appendCappedEvent(messages[index].events, event),
               }
             }
           }
         } else if (event.type === 'TEXT_MESSAGE_END' && mid) {
           running = false
           const index = findIndex(mid)
-          const status = event.status === 'error'
+          const status = event.status === 'error' || event.status === 'failed'
+            || (!event.status && index !== -1 && messages[index].status === 'error')
             ? 'error'
             : event.status === 'stopped'
               ? 'stopped'
@@ -590,7 +634,7 @@ export function createAssistantStore(
               status,
               engine: event.engine,
               model: event.model,
-              error: status === 'error' ? event.error ?? content : undefined,
+              error: status === 'error' ? event.error || content || fallbackFailed() : undefined,
               created_at: event.created_at,
               ended_at: event.ended_at ?? event.created_at,
               events: [],
@@ -600,7 +644,7 @@ export function createAssistantStore(
               ...messages[index],
               content,
               status,
-              error: status === 'error' ? event.error ?? content : messages[index].error,
+              error: status === 'error' ? event.error || messages[index].error || content || fallbackFailed() : messages[index].error,
               ended_at: event.ended_at ?? event.created_at,
             }
           }

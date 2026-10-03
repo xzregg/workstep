@@ -610,6 +610,9 @@ export const enUS: Messages = {
     progress: 'Step {current}/{total} · {completed} completed',
   },
   goal: {
+    original: 'Original goal',
+    resume: 'Continue',
+    end: 'End',
     title: 'Goal',
     status: { active: 'Active', paused: 'Paused', blocked: 'Blocked', usageLimited: 'Usage limited', budgetLimited: 'Budget limited', complete: 'Complete', cleared: 'Cleared' },
   },
@@ -643,6 +646,10 @@ export const enUS: Messages = {
     mermaidZoomIn: 'Zoom in diagram',
   },
   browser: {
+    uploadFiles: '上传文件',
+    uploadTarget: '上传文件到：{path}',
+    uploadFailed: '上传失败',
+    uploadTooLarge: '文件超过 25MB 上限',
     newDirectory: 'New folder',
     folderName: 'Folder name',
     createFolder: 'Create',

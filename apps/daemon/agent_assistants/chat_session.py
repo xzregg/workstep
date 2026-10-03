@@ -36,6 +36,7 @@ from agent_assistants.base import (
     assistant_registry,
     validate_provider_override,
 )
+from agent_assistants.history import default_history_message
 from agent_assistants.event_journal import TurnEventJournal
 from agent_assistants.chat_row_persistence import (
     ChatRowPersistence,
@@ -245,6 +246,74 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
 
     # ── session CRUD ───────────────────────────────────────────────────
 
+    async def stop_current(self, session_id: str, project_id: str | None = None) -> bool:
+        cutoff = utc_now()
+        accepted = await super().stop_current(session_id, project_id=project_id)
+        if any(
+            state.get("session_id") == session_id and self._turn_is_active(turn_id)
+            for turn_id, state in self._turn_states.items()
+        ):
+            return accepted
+        projects = (
+            [self._project_manager.get_project_by_id(project_id)]
+            if project_id is not None
+            else list(self._project_manager.iter_projects())
+        )
+        for project in projects:
+            if project is None:
+                continue
+            found, messages = await self._project_manager.run_db(
+                project.id,
+                lambda current: self._stop_orphaned_messages(current, session_id, cutoff),
+            )
+            if not found:
+                continue
+            for message in messages:
+                for event in _detail_agui_events(
+                    [{"type": "message_completed", "data": message, "seq": message["seq"]}],
+                    project_id=project.id,
+                    session_id=session_id,
+                    message_id=message["id"],
+                    engine=message["engine"],
+                ):
+                    await self._event_bus.publish(event)
+            return True
+        return accepted
+
+    def _stop_orphaned_messages(self, project, session_id: str, cutoff) -> tuple[bool, list[dict]]:
+        """Reconcile dead turns in the project DB worker, preserving journal output."""
+        if not ChatSession.select().where(ChatSession.id == session_id).exists():
+            return False, []
+        now = utc_now()
+        messages = []
+        for row in ChatMessage.select().where(
+            ChatMessage.session == session_id,
+            ChatMessage.role == "assistant",
+            ChatMessage.status == "running",
+            ChatMessage.created_at <= cutoff,
+        ):
+            if row.event_log_path:
+                ref = self._event_journal.reopen(project.workstep_dir, row.event_log_path)
+                self._event_journal.record(ref, {"type": "status", "data": {"status": "stopped"}})
+                snapshot = self._event_journal.snapshot(ref)
+                self._event_journal.finish(ref)
+                row.content = convert_visualize_markers(snapshot["content"] or row.content or "")
+                row.events_json = json.dumps(snapshot["events"], ensure_ascii=False)
+                row.event_summary_json = json.dumps(snapshot["summary"], ensure_ascii=False)
+                row.event_count = snapshot["summary"].get("event_count", row.event_count)
+                row.last_event_seq = snapshot["summary"].get("last_event_seq", row.last_event_seq)
+            row.status = "stopped"
+            row.ended_at = now
+            row.save()
+            messages.append({
+                "id": row.id, "engine": row.engine, "status": "stopped",
+                "content": row.content or "", "ended_at": now.isoformat(),
+                "seq": (row.last_event_seq or 0) + 1,
+            })
+        if messages:
+            ChatSession.update(updated_at=now).where(ChatSession.id == session_id).execute()
+        return True, messages
+
     def list_sessions(self, project_id: str, workflow_id: str | None = None, archived: bool = False) -> list[dict]:
         """The active project database owns sessions, including historical registry IDs."""
         if not project_id:
@@ -344,13 +413,20 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
             )
         return self.get_session(project_id, session_id)
 
-    def get_session(self, project_id: str, session_id: str) -> dict | None:
+    def get_session(self, project_id: str, session_id: str, *, limit: int | None = None, offset: int = 0) -> dict | None:
         with self._project_ctx(project_id):
             row = ChatSession.get_or_none(ChatSession.id == session_id)
             if row is None:
                 return None
             summary = self._session_summary(row, project_id)
-        history = self.history(project_id, session_id) or {}
+        if limit is None:
+            history = self.history(project_id, session_id) or {}
+        else:
+            with self._project_ctx(project_id):
+                normalize = self._config.history_message or default_history_message
+                history = {"messages": [normalize(item) for item in ChatRowPersistence()._load_messages(
+                    row, limit=limit, offset=offset,
+                )]}
         for message in history.get("messages", []):
             if message.get("status") != "running" or not message.get("event_log_path"):
                 continue
@@ -698,11 +774,39 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
                 )
             ):
                 raise ValueError("没有可压缩的当前引擎会话")
-            if requested_engine is None:
-                model = row.model if model is None else model
-                fast_model = row.fast_model if fast_model is None else fast_model
-                vision_model = row.vision_model if vision_model is None else vision_model
-                provider_id = row.provider_id if provider_id is None else provider_id
+            # 请求省略的字段一律沿用会话已存值：前端每条消息都带 engine
+            # （空才省略），不能再用「请求没带 engine」作为是否继承的判断，
+            # 否则第二条起会话绑定的供应商/模型丢失、回落引擎默认，
+            # 且回写还会把绑定抹掉。
+            engine_switched = (
+                requested_engine is not None
+                and requested_engine != (row.engine or "")
+            )
+            # 模型是引擎特有的：显式换引擎时不继承旧引擎的模型（回引擎默认）；
+            # 供应商跨引擎可继承，前提是协议兼容。
+            model = row.model if model is None and not engine_switched else model
+            fast_model = (
+                row.fast_model
+                if fast_model is None and not engine_switched
+                else fast_model
+            )
+            vision_model = (
+                row.vision_model
+                if vision_model is None and not engine_switched
+                else vision_model
+            )
+            provider_id = row.provider_id if provider_id is None else provider_id
+            if provider_id and engine_switched and requested_provider_id is None:
+                # 从旧引擎继承的供应商与新引擎协议不兼容（或已删除）：
+                # 本轮按「跟随引擎默认」执行，并在成功后的回写中清掉绑定
+                # （与 UI chooseEngine 重置语义一致）。
+                stored_provider = config_store.get_provider(provider_id)
+                target_engine = create_engine(engine)
+                if stored_provider is None or (
+                    target_engine is None
+                    or not target_engine.supports_provider(stored_provider)
+                ):
+                    provider_id = None
             if permission_mode:
                 ChatSession.update(permission_mode=permission_mode).where(
                     ChatSession.id == session_id
@@ -747,19 +851,25 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
             provider_id=provider_id,
             schedule=schedule,
         )
+        # 字段回写独立于 engine 是否在请求中出现；省略的字段不覆盖已有值。
+        # 换引擎时同时保存上面解析出的兼容配置，避免遗留旧引擎的模型/供应商。
+        updates: dict[str, Any] = {}
         if requested_engine is not None:
-            normalized_provider = validate_provider_override(
-                requested_provider_id,
-                engine,
-            )
+            updates["engine"] = engine
+        for field, requested, effective in (
+            ("model", requested_model, model),
+            ("fast_model", requested_fast_model, fast_model),
+            ("vision_model", requested_vision_model, vision_model),
+        ):
+            if requested is not None or engine_switched:
+                updates[field] = (effective or "").strip() or None
+        if requested_provider_id is not None or engine_switched:
+            updates["provider_id"] = validate_provider_override(provider_id, engine) or None
+        if updates:
             with self._project_ctx(project_id):
-                ChatSession.update(
-                    engine=engine,
-                    model=(requested_model or "").strip() or None,
-                    fast_model=(requested_fast_model or "").strip() or None,
-                    vision_model=(requested_vision_model or "").strip() or None,
-                    provider_id=normalized_provider or None,
-                ).where(ChatSession.id == session_id).execute()
+                ChatSession.update(**updates).where(
+                    ChatSession.id == session_id
+                ).execute()
         return ChatAccepted(
             session_id=accepted.session_id,
             turn_id=accepted.turn_id,

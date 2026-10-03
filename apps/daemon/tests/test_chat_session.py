@@ -927,6 +927,197 @@ async def test_existing_session_engine_switch_uses_target_engine_defaults(
 
 
 @pytest.mark.anyio
+async def test_followup_message_inherits_session_provider_binding(
+    chat_module,
+    monkeypatch,
+):
+    """第二条消息只带 engine 不传 provider 时，沿用会话绑定的供应商。
+
+    前端每条消息都携带 engine（空才省略），若后端以「请求没带 engine」
+    作为是否继承会话配置的条件，第二条消息会丢失会话供应商、回落引擎
+    默认，并且回写会把绑定抹掉。
+    """
+    module, _bus, _manager, project, config_store = chat_module
+    config_store.values.update({
+        "assistant_defaults": {
+            "chat_session": {
+                "engine": "pydantic_ai",
+                "provider_id": "chat-provider",
+                "model": "chat-model",
+            },
+        },
+        "providers": [{
+            "id": "chat-provider",
+            "protocol": "openai_compatible",
+            "enabled": True,
+        }],
+    })
+    captured: dict = {}
+
+    async def fake_invoke_engine(*args, **kwargs):
+        captured.setdefault("calls", []).append(
+            kwargs.get("config_overrides")
+        )
+        return "ok", [], None
+
+    monkeypatch.setattr("agent_assistants.base.invoke_engine", fake_invoke_engine)
+    created = module.create_session(project.id)
+    assert created["provider_id"] == "chat-provider"
+
+    first = module.submit_message(
+        project.id, created["id"], "第一条", "bind-provider-1",
+        engine="pydantic_ai", provider_id="chat-provider",
+    )
+    await _wait_turn(module, first.turn_id)
+
+    # 第二条：前端本地状态缺 provider 时只发 engine。
+    second = module.submit_message(
+        project.id, created["id"], "第二条", "bind-provider-2",
+        engine="pydantic_ai", provider_id=None,
+    )
+    assert await _wait_turn(module, second.turn_id) == "completed"
+
+    assert captured["calls"][0] == {"provider_id": "chat-provider"}
+    assert captured["calls"][1] == {"provider_id": "chat-provider"}
+    detail = module.get_session(project.id, created["id"])
+    assert detail["provider_id"] == "chat-provider"
+    assert detail["model"] == "chat-model"
+
+
+@pytest.mark.anyio
+async def test_explicit_empty_provider_clears_session_binding(
+    chat_module,
+    monkeypatch,
+):
+    """显式传空 provider（选择「跟随默认」）会清掉会话绑定，而不是被忽略。"""
+    module, _bus, _manager, project, config_store = chat_module
+    config_store.values.update({
+        "assistant_defaults": {
+            "chat_session": {
+                "engine": "pydantic_ai",
+                "provider_id": "chat-provider",
+            },
+        },
+        "providers": [{
+            "id": "chat-provider",
+            "protocol": "openai_compatible",
+            "enabled": True,
+        }],
+    })
+    captured: dict = {}
+
+    async def fake_invoke_engine(*args, **kwargs):
+        captured["config_overrides"] = kwargs.get("config_overrides")
+        return "ok", [], None
+
+    monkeypatch.setattr("agent_assistants.base.invoke_engine", fake_invoke_engine)
+    created = module.create_session(project.id)
+
+    accepted = module.submit_message(
+        project.id, created["id"], "跟随默认", "clear-provider",
+        engine="pydantic_ai", provider_id="",
+    )
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    assert captured["config_overrides"] is None
+    detail = module.get_session(project.id, created["id"])
+    assert detail["provider_id"] is None
+
+
+@pytest.mark.anyio
+async def test_engine_switch_inherits_compatible_provider(
+    chat_module,
+    monkeypatch,
+):
+    """显式换引擎且不传 provider：协议兼容的供应商跨引擎继承。"""
+    module, _bus, _manager, project, config_store = chat_module
+    config_store.values.update({
+        "assistant_defaults": {
+            "chat_session": {
+                "engine": "pydantic_ai",
+                "provider_id": "chat-provider",
+                "model": "chat-model",
+            },
+        },
+        "engine_default_models": {"claude": "claude-default"},
+        "providers": [{
+            "id": "chat-provider",
+            "protocol": "openai_compatible",
+            "enabled": True,
+        }],
+    })
+    captured: dict = {}
+
+    async def fake_invoke_engine(*args, **kwargs):
+        captured["model"] = args[1]
+        captured["config_overrides"] = kwargs.get("config_overrides")
+        return "ok", [], None
+
+    monkeypatch.setattr("agent_assistants.base.invoke_engine", fake_invoke_engine)
+    created = module.create_session(project.id)
+
+    accepted = module.submit_message(
+        project.id, created["id"], "换引擎", "switch-engine-keep-provider",
+        engine="claude", provider_id=None,
+    )
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    assert captured["config_overrides"] == {"provider_id": "chat-provider"}
+    detail = module.get_session(project.id, created["id"])
+    assert detail["engine"] == "claude"
+    assert detail["provider_id"] == "chat-provider"
+    # 模型是引擎特有的，不跨引擎继承。
+    assert detail["model"] is None
+    assert captured["model"] == "claude-default"
+
+
+@pytest.mark.anyio
+async def test_engine_switch_drops_incompatible_inherited_provider(
+    chat_module,
+    monkeypatch,
+):
+    """换引擎后继承的供应商协议不兼容：本轮跟随引擎默认并清掉绑定。"""
+    module, _bus, _manager, project, config_store = chat_module
+    config_store.values.update({
+        "assistant_defaults": {
+            "chat_session": {
+                "engine": "pydantic_ai",
+                "provider_id": "switched-provider",
+                "model": "chat-model",
+            },
+        },
+        "engine_default_models": {"claude": "claude-default"},
+        "providers": [{
+            "id": "switched-provider",
+            "protocol": "openai_compatible",
+            "enabled": True,
+        }],
+    })
+    captured: dict = {}
+
+    async def fake_invoke_engine(*args, **kwargs):
+        captured["model"] = args[1]
+        captured["config_overrides"] = kwargs.get("config_overrides")
+        return "ok", [], None
+
+    monkeypatch.setattr("agent_assistants.base.invoke_engine", fake_invoke_engine)
+    created = module.create_session(project.id)
+
+    # 供应商协议随后变更为与目标引擎不兼容（模拟供应商改协议 / 目标引擎
+    # 只支持其它协议），再换引擎且不传 provider。
+    config_store.values["providers"][0]["protocol"] = "anthropic_messages"
+
+    accepted = module.submit_message(
+        project.id, created["id"], "换引擎", "switch-engine-drop-provider",
+        engine="claude", provider_id=None,
+    )
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    assert captured["config_overrides"] is None
+    detail = module.get_session(project.id, created["id"])
+    assert detail["engine"] == "claude"
+    assert detail["provider_id"] is None
+    assert captured["model"] == "claude-default"
+
+
+@pytest.mark.anyio
 async def test_chat_assistant_default_effort_follows_engine_config(
     chat_module,
     monkeypatch,
@@ -1817,6 +2008,79 @@ async def test_live_insert_keeps_other_pending_messages_on_new_reply(
 
 
 @pytest.mark.anyio
+async def test_opencode_live_interrupt_seals_old_reply_before_new_output(chat_module, monkeypatch):
+    from .test_acp_live_interrupt import _FakeClient, _OpencodeProbe, _install_fake
+
+    module, bus, manager, project, _ = chat_module
+    engine = _OpencodeProbe()
+    client = _FakeClient()
+    _install_fake(monkeypatch, client)
+    monkeypatch.setattr(engine, "_map_notification", lambda event: event)
+    first_output = asyncio.Event()
+    replacement_output = asyncio.Event()
+    finish_replacement = asyncio.Event()
+    streamed = bus.subscribe()
+
+    async def prompt(session_id, prompt, **kwargs):
+        client.prompts.append(list(prompt))
+        first = len(client.prompts) == 1
+        await client.handler.updates.put(InternalEvent(
+            "agent_message_chunk", {"content": {"text": "旧回复" if first else "新回复"}},
+        ))
+        if first:
+            await client.cancel_event.wait()
+            return SimpleNamespace(stop_reason="cancelled")
+        await finish_replacement.wait()
+        return SimpleNamespace(stop_reason="end_turn")
+
+    client.prompt = prompt
+
+    async def invoke(engine_id, model, cwd, prompt, session_id, on_event=None, **kwargs):
+        state = next(state for state in module._turn_states.values() if state["status"] == "running")
+        events = []
+        async for event in engine.spawn(
+            prompt=prompt, cwd=cwd, live_message_queue=state["live_message_queue"],
+        ):
+            events.append(event.to_dict())
+            await on_event(event)
+            if event.type == "agent_message_chunk":
+                if event.data["content"]["text"] == "旧回复":
+                    first_output.set()
+                else:
+                    replacement_output.set()
+        return "旧回复新回复", events, None
+
+    monkeypatch.setattr(module, "_invoke", invoke)
+    session = module.create_session(project.id, "wf-opencode-order")
+    accepted = module.submit_message(project.id, session["id"], "原问题", "opencode-order")
+    try:
+        await asyncio.wait_for(first_output.wait(), timeout=2)
+        inserted = await module.send_live_message(session["id"], "新问题")
+        await asyncio.wait_for(replacement_output.wait(), timeout=2)
+        # 新回复仍在运行时，旧回复已经完成，且新输出拥有独立消息 ID。
+        events = []
+        while not streamed.empty():
+            events.append(streamed.get_nowait())
+        old_end = next(i for i, e in enumerate(events)
+                       if e["type"] == "TEXT_MESSAGE_END" and e["messageId"] == accepted.assistant_message_id)
+        new_chunk = next(i for i, e in enumerate(events)
+                         if e["type"] == "TEXT_MESSAGE_CHUNK" and e.get("delta") == "新回复")
+        new_start = next(i for i, e in enumerate(events)
+                         if e["type"] == "TEXT_MESSAGE_START" and e["messageId"] == events[new_chunk]["messageId"])
+        user_start = next(i for i, e in enumerate(events)
+                          if e["type"] == "TEXT_MESSAGE_START" and e["messageId"] == inserted["message_id"])
+        assert user_start < new_start < new_chunk
+        assert old_end < new_start
+        assert events[new_chunk]["messageId"] != accepted.assistant_message_id
+    finally:
+        finish_replacement.set()
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    detail = await manager.run_db(project.id, lambda _project: module.get_session(project.id, session["id"]))
+    assert [m["content"] for m in detail["messages"]] == ["原问题", "旧回复", "新问题", "新回复"]
+    assert [m["status"] for m in detail["messages"] if m["role"] == "assistant"] == ["succeeded", "succeeded"]
+
+
+@pytest.mark.anyio
 async def test_live_message_splits_chat_reply_around_inserted_user_message(
     chat_module,
     monkeypatch,
@@ -2479,6 +2743,155 @@ async def test_stop_finalizes_stale_running_turn(chat_module):
     assert module._turn_states[accepted.turn_id]["status"] == "stopped"
     detail = module.get_session(project.id, session["id"])
     assert detail["messages"][-1]["status"] == "stopped"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("prune_reason", ["ttl", "capacity", "turn_history"])
+async def test_pruning_keeps_long_running_session_stoppable(
+    chat_module, monkeypatch, prune_reason
+):
+    import main
+
+    module, _bus, manager, project, _ = chat_module
+    session = module.create_session(project.id)
+    started = asyncio.Event()
+
+    async def blocking_invoke(*args, **kwargs):
+        started.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(module, "_invoke", blocking_invoke)
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    accepted = module.submit_message(project.id, session["id"], "长任务", "prune-stop")
+    await asyncio.wait_for(started.wait(), timeout=2)
+    state = module._turn_states[accepted.turn_id]
+    memory_key = state["memory_key"]
+    turn_key = next(key for key, value in module._turn_keys.items() if value == accepted.turn_id)
+    task = module._turn_tasks[accepted.turn_id]
+    if prune_reason == "ttl":
+        module._sessions[memory_key].last_active -= module._config.session_ttl_seconds + 1
+    else:
+        module._config.max_sessions = 1
+        if prune_reason == "capacity":
+            module._sessions[("idle",)] = SimpleNamespace(last_active=time.monotonic())
+        else:
+            for index in range(5):
+                turn_id = f"finished-{index}"
+                module._turn_states[turn_id] = {"status": "completed"}
+                module._turn_keys[("finished", index)] = turn_id
+    try:
+        module._prune_sessions()
+        async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+            response = await client.post(
+                f"/api/chat-sessions/{session['id']}/stop",
+                params={"project_id": project.id},
+            )
+        assert response.status_code == 200
+        assert response.json() == {"stopped": True}
+        assert await _wait_turn(module, accepted.turn_id) == "stopped"
+        assert module._turn_keys[turn_key] == accepted.turn_id
+        detail = await manager.run_db(
+            project.id, lambda _project: module.get_session(project.id, session["id"])
+        )
+        assert detail["messages"][-1]["status"] == "stopped"
+        if prune_reason == "capacity":
+            assert ("idle",) not in module._sessions
+        if prune_reason == "turn_history":
+            assert len(module._turn_states) == len(module._turn_keys) == 5
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("failure", ["missing_memory", "hung_engine_stop"])
+async def test_stop_survives_missing_memory_and_hung_engine(chat_module, monkeypatch, failure):
+    module, _bus, _manager, project, _ = chat_module
+    session = module.create_session(project.id)
+    started = asyncio.Event()
+
+    async def blocked(*args, **kwargs):
+        started.set()
+        await asyncio.Event().wait()
+
+    class HungEngine:
+        async def stop(self):
+            await asyncio.Event().wait()
+
+    monkeypatch.setattr(module, "_invoke", blocked)
+    monkeypatch.setattr("agent_assistants.base.SHUTDOWN_DRAIN_TIMEOUT_SECONDS", 0.05)
+    accepted = module.submit_message(project.id, session["id"], "长任务", "force-stop")
+    await started.wait()
+    task = module._turn_tasks[accepted.turn_id]
+    if failure == "missing_memory":
+        module._sessions.pop(module._turn_states[accepted.turn_id]["memory_key"])
+    else:
+        module._running_engines[accepted.turn_id] = HungEngine()
+    try:
+        assert await module.stop_current(session["id"], project_id=project.id)
+        assert await _wait_turn(module, accepted.turn_id, timeout=1) == "stopped"
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        module._running_engines.clear()
+
+
+@pytest.mark.anyio
+async def test_stop_orphan_is_idempotent_preserves_content_and_keeps_health_responsive(chat_module, monkeypatch):
+    import main
+
+    module, bus, manager, project, _ = chat_module
+    session = module.create_session(project.id)
+    accepted = module.submit_message(project.id, session["id"], "长任务", "orphan", schedule=False)
+    ref = module._turn_states[accepted.turn_id]["journal_ref"]
+    await module._event_journal.arecord(ref, {"type": "agent_message_chunk", "data": {"content": {"text": "已生成的正文"}}})
+    module._sessions.clear()
+    module._turn_states.clear()
+    module._turn_keys.clear()
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    original = module._stop_orphaned_messages
+    entered = threading.Event()
+
+    def slow_cleanup(*args):
+        entered.set()
+        time.sleep(0.15)
+        return original(*args)
+
+    monkeypatch.setattr(module, "_stop_orphaned_messages", slow_cleanup)
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        url = f"/api/chat-sessions/{session['id']}/stop"
+        request = asyncio.create_task(client.post(url, params={"project_id": project.id}))
+        assert await asyncio.to_thread(entered.wait, 1)
+        health = await asyncio.wait_for(client.get("/api/health"), timeout=0.1)
+        assert health.status_code == 200
+        assert (await request).json() == {"stopped": True}
+        assert (await client.post(url, params={"project_id": project.id})).json() == {"stopped": True}
+        detail = await client.get(f"/api/chat-sessions/{session['id']}", params={"project_id": project.id})
+    last = detail.json()["messages"][-1]
+    assert last["status"] == "stopped"
+    assert last["content"] == "已生成的正文"
+    assert last["ended_at"]
+
+
+@pytest.mark.anyio
+async def test_stop_cancels_running_and_queued_turns(chat_module, monkeypatch):
+    module, _bus, _manager, project, _ = chat_module
+    session = module.create_session(project.id)
+    started = asyncio.Event()
+
+    async def blocked(*args, **kwargs):
+        started.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(module, "_invoke", blocked)
+    first = module.submit_message(project.id, session["id"], "运行", "first-stop-all")
+    await started.wait()
+    second = module.submit_message(project.id, session["id"], "排队", "second-stop-all")
+    assert await module.stop_current(session["id"], project_id=project.id)
+    assert await _wait_turn(module, first.turn_id, timeout=1) == "stopped"
+    assert await _wait_turn(module, second.turn_id, timeout=1) == "stopped"
 
 
 @pytest.mark.anyio
@@ -3149,10 +3562,10 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
             )
             assert resp.status_code == 404
 
-            # stop (no running turn → False, still 200)
+            # Stop is idempotent even when the session has no running turn.
             resp = await client.post(f"/api/chat-sessions/{session_id}/stop")
             assert resp.status_code == 200
-            assert resp.json()["stopped"] is False
+            assert resp.json()["stopped"] is True
 
             # quick buttons PUT with validation
             resp = await client.put(
@@ -3517,3 +3930,203 @@ async def test_invoke_engine_image_config_does_not_block_event_loop(monkeypatch)
         if not work.done():
             work.cancel()
             await asyncio.gather(work, return_exceptions=True)
+
+
+@pytest.mark.anyio
+async def test_chat_turn_idle_timeout_errors_and_preserves_session(
+    chat_module, monkeypatch
+):
+    """引擎流长时间无事件时，聊天回合应落为 error 而不是无限等待。"""
+    module, _bus, _manager, project, config_store = chat_module
+    config_store.values["engine_idle_timeout_seconds"] = 0.2
+    session = module.create_session(project.id)
+
+    async def stalled_invoke(
+        engine_id, model, cwd, prompt, session_id, on_event=None, **kwargs
+    ):
+        await asyncio.sleep(30)
+        return "", [], session_id or "never"
+
+    monkeypatch.setattr(module, "_invoke", stalled_invoke)
+    accepted = module.submit_message(project.id, session["id"], "hi", "idle-1")
+    assert await _wait_turn(module, accepted.turn_id, timeout=10.0) == "error"
+    detail = module.get_session(project.id, session["id"])
+    assert detail is not None
+    last = detail["messages"][-1]
+    assert last["status"] == "error"
+    assert "空闲超时" in (last.get("content") or "")
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("memory_running", [False, True])
+@pytest.mark.parametrize("prior_status", ["succeeded", "error"])
+async def test_running_chat_can_fork_prior_reply_via_api_with_slow_db_canary(
+    chat_module, monkeypatch, memory_running, prior_status,
+):
+    import main
+
+    module, _bus, manager, project, _ = chat_module
+    source = module.create_session(project.id, title="执行中的会话", engine="claude")
+    now = utc_now()
+    with module._project_ctx(project.id):
+        row = ChatSession.get_by_id(source["id"])
+        ChatMessage.create(id="prior-reply", session=row, role="assistant",
+                           content="已经完成的结论", status=prior_status, created_at=now)
+        ChatMessage.create(id="active-reply", session=row, role="assistant",
+                           content="正在执行", status="running", created_at=now + timedelta(seconds=1))
+    if memory_running:
+        module._turn_states["active-turn"] = {"session_id": source["id"], "status": "running"}
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    entered = threading.Event()
+    release = threading.Event()
+    original_execute = project.db.execute_sql
+
+    def slow_source_query(sql, params=None, commit=None):
+        if not entered.is_set() and 'SELECT' in sql and 'chat_messages' in sql:
+            entered.set()
+            release.wait(timeout=2)
+        return original_execute(sql, params)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_source_query)
+    transport = ASGITransport(app=main.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        request = asyncio.create_task(client.post(
+            f"/api/chat-sessions/{source['id']}/fork",
+            json={"project_id": project.id, "title": "历史分支", "engine": "claude",
+                  "context_mode": "smart", "fork_message_id": "prior-reply"},
+        ))
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+            assert health.status_code == 200
+        finally:
+            release.set()
+        response = await request
+        assert response.status_code == 200, response.text
+        branch = response.json()
+        assert branch["id"] != source["id"]
+        assert branch["fork_context_mode"] == "smart"
+        assert [item["content"] for item in branch["messages"]] == ["已经完成的结论"]
+        source_detail = await manager.run_db(project.id, lambda _project: module.get_session(project.id, source["id"]))
+        assert source_detail["running"] is True
+        assert source_detail["messages"][-1]["status"] == "running"
+        for cutoff, mode in [("active-reply", "smart"), ("prior-reply", "native"), (None, "smart")]:
+            refused = await client.post(
+                f"/api/chat-sessions/{source['id']}/fork",
+                json={"project_id": project.id, "title": "不稳定分支", "engine": "claude",
+                      "context_mode": mode, "fork_message_id": cutoff},
+            )
+            assert refused.status_code == 409, refused.text
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("overrides,expected_provider,expected_model,expected_resume", [
+    ({"engine": "claude"}, "provider-a", "stored-model", "existing-engine-session"),
+    ({"provider_id": "provider-b", "model": "new-model"}, "provider-b", "new-model", None),
+    ({"provider_id": "", "model": ""}, None, None, None),
+])
+async def test_chat_config_api_inheritance_and_explicit_updates_with_slow_sql(
+    chat_module, monkeypatch, overrides, expected_provider, expected_model, expected_resume,
+):
+    import main
+
+    module, _bus, manager, project, config = chat_module
+    config.values["providers"] = [
+        {"id": name, "protocol": "openai_compatible", "enabled": True}
+        for name in ("provider-a", "provider-b")
+    ]
+    source = module.create_session(
+        project.id, engine="claude", provider_id="provider-a",
+        model="stored-model", fast_model="stored-fast", vision_model="stored-vision",
+    )
+    with module._project_ctx(project.id):
+        ChatSession.update(engine_session_id="existing-engine-session").where(
+            ChatSession.id == source["id"],
+        ).execute()
+    captured = {}
+
+    async def fake_invoke_engine(*args, **kwargs):
+        captured["provider"] = (kwargs.get("config_overrides") or {}).get("provider_id")
+        captured["resume"] = args[4]
+        return "ok", [], args[4]
+
+    monkeypatch.setattr("agent_assistants.base.invoke_engine", fake_invoke_engine)
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    entered = threading.Event()
+    release = threading.Event()
+    original_execute = project.db.execute_sql
+
+    def slow_query(sql, *args, **kwargs):
+        if not entered.is_set() and sql.startswith('SELECT') and 'chat_sessions' in sql:
+            entered.set()
+            release.wait(timeout=2)
+        return original_execute(sql, *args, **kwargs)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_query)
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        request = asyncio.create_task(client.post(
+            f"/api/chat-sessions/{source['id']}/chat",
+            headers={"Idempotency-Key": "config-api"},
+            json={"project_id": project.id, "content": "hello", **overrides},
+        ))
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            assert not request.done()
+            health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+            assert health.status_code == 200
+        finally:
+            release.set()
+        response = await request
+    assert response.status_code == 200, response.text
+    assert await _wait_turn(module, response.json()["turn_id"]) == "completed"
+    detail = await manager.run_db(project.id, lambda _project: module.get_session(project.id, source["id"]))
+    assert captured == {"provider": expected_provider, "resume": expected_resume}
+    assert detail["provider_id"] == expected_provider
+    assert detail["model"] == expected_model
+    assert detail["fast_model"] == "stored-fast"
+    assert detail["vision_model"] == "stored-vision"
+
+
+@pytest.mark.anyio
+async def test_session_history_pages_and_slow_query_keep_health_responsive(chat_module, monkeypatch):
+    import main
+
+    module, _bus, manager, project, _ = chat_module
+    def seed(_project):
+        created = module.create_session(project.id, title="分页")
+        with module._project_ctx(project.id):
+            row = ChatSession.get_by_id(created["id"])
+            for index in range(305):
+                ChatMessage.create(id=f"page-{index:03}", session=row, role="user",
+                                   content=str(index), created_at=datetime(2026, 1, 1) + timedelta(seconds=index))
+        return created["id"]
+    session_id = await manager.run_db(project.id, seed)
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    entered, release = threading.Event(), threading.Event()
+    original = project.db.execute_sql
+    queries = []
+    def slow_query(sql, *args, **kwargs):
+        if sql.startswith('SELECT') and 'FROM "chat_messages"' in sql and 'ORDER BY' in sql:
+            queries.append(sql)
+            entered.set()
+            release.wait(timeout=2)
+        return original(sql, *args, **kwargs)
+    monkeypatch.setattr(project.db, "execute_sql", slow_query)
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        pending = asyncio.create_task(client.get(f"/api/chat-sessions/{session_id}", params={"project_id": project.id}))
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            assert (await asyncio.wait_for(client.get("/api/health"), .2)).status_code == 200
+        finally:
+            release.set()
+        first = (await pending).json()
+        assert len(first["messages"]) == 300
+        assert first["messages"][0]["content"] == "5"
+        assert first["messages"][-1]["content"] == "304"
+        assert all('LIMIT' in sql for sql in queries)
+        older = (await client.get(f"/api/chat-sessions/{session_id}", params={"project_id": project.id, "offset": 300})).json()
+        assert [m["content"] for m in older["messages"]] == [str(i) for i in range(5)]
+        assert (await client.get(f"/api/chat-sessions/{session_id}", params={"project_id": project.id, "limit": 301})).status_code == 422

@@ -30,7 +30,7 @@ export function useEngineQuota(projectId: string | undefined, engine: string, ru
   }, [engine, projectId])
 
   useEffect(() => {
-    if (running || !projectId) {
+    if (!projectId) {
       requestIdRef.current += 1
       setRefreshing(false)
       return

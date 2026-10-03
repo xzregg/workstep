@@ -675,6 +675,14 @@ class OpencodeEngine(AcpEngineBase):
                         injected = "\n\n".join(
                             content for _, content in live_items
                         )
+                        # 会话层收到 delivered 才封口旧回复并创建新回复。
+                        # 必须在新 prompt 产出任何事件前切段，不能等它结束。
+                        for message_id, _ in live_items:
+                            yield InternalEvent(type="live_message", data={
+                                "message_id": message_id,
+                                "status": "delivered",
+                                "detail": "",
+                            })
                         interrupt_state["requested"] = False
                         prompt_task = asyncio.create_task(
                             client.prompt(
@@ -684,13 +692,26 @@ class OpencodeEngine(AcpEngineBase):
                         )
                         async for event in _drain_prompt(prompt_task):
                             yield event
-                        await prompt_task
-                        for message_id, _ in live_items:
-                            yield InternalEvent(type="live_message", data={
-                                "message_id": message_id,
-                                "status": "delivered",
-                                "detail": "",
+                        prompt_response = await prompt_task
+                        usage_event = self._map_prompt_response_usage(prompt_response)
+                        if usage_event:
+                            yield usage_event
+                        stop_reason = str(
+                            getattr(prompt_response, "stop_reason", "end_turn")
+                            or "end_turn"
+                        )
+                        if stop_reason == "cancelled" and not (
+                            interrupt_state["requested"]
+                            and not live_message_queue.empty()
+                        ):
+                            yield InternalEvent(type="status", data={"status": "stopped"})
+                            return
+                        if stop_reason in {"max_tokens", "max_turn_requests", "refusal"}:
+                            yield InternalEvent(type="error", data={
+                                "message": f"ACP Agent 提前停止：{stop_reason}",
+                                "stop_reason": stop_reason,
                             })
+                            return
 
                 yield InternalEvent(type="status", data={"status": "done"})
 
