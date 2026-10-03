@@ -1,4 +1,3 @@
-import GatewayPlatformSettings from './GatewayPlatformSettings'
 import AgentAssistantSettings from './AgentAssistantSettings'
 import BotSettings from './BotSettings'
 import ResizablePanel from '../components/ResizablePanel'
@@ -6,7 +5,6 @@ import GitScanSettings from './GitScanSettings'
 import ProjectDirectorySetting from '../components/ProjectDirectorySetting'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useOverlay } from '../hooks/useOverlay'
-import { useManagedMode } from '../hooks/useManagedMode'
 import Icon from '../components/Icon'
 import { useEffect, useRef, useState } from 'react'
 import Button from '../components/Button'
@@ -17,7 +15,7 @@ import SettingsNavigation, { type SettingsSection } from '../components/Settings
 import EngineSettingsPanel from '../components/EngineSettingsPanel'
 import TemplateSettings from './TemplateSettings'
 import ProviderSettings from './ProviderSettings'
-import RemoteProjectSettings from './RemoteProjectSettings'
+import RemoteAccessSettings from './RemoteAccessSettings'
 import ModelPricingSettings from './ModelPricingSettings'
 import GlobalConcurrencySettings from './GlobalConcurrencySettings'
 import { useI18n } from '../i18n'
@@ -50,7 +48,6 @@ export default function SettingsPage({
   onConfigurationChanged,
 }: SettingsPageProps) {
   const { t, locale, setLocale } = useI18n()
-  const managedMode = useManagedMode()
   const compactLayout = useCompactLayout()
   const settingsDialogRef = useRef<HTMLDivElement>(null)
   useOverlay(true, onClose, settingsDialogRef, compactLayout)
@@ -70,9 +67,6 @@ export default function SettingsPage({
     setActiveSection(initialSection)
   }, [initialSection])
 
-  useEffect(() => {
-    if (managedMode === true && activeSection === 'remote') setActiveSection('providers')
-  }, [managedMode, activeSection])
 
   useEffect(() => {
     if (activeSection !== 'engines' || focusTarget !== 'execution-engine') return
@@ -145,16 +139,14 @@ export default function SettingsPage({
               onConfigurationChanged?.()
             }}
           />
-        ) : activeSection === 'gateway' ? (
-          <GatewayPlatformSettings />
         ) : activeSection === 'pricing' ? (
           <ModelPricingSettings />
         ) : activeSection === 'templates' ? (
           <TemplateSettings />
         ) : activeSection === 'channels' ? (
           <BotSettings />
-        ) : activeSection === 'remote' && managedMode !== true ? (
-          <RemoteProjectSettings />
+        ) : activeSection === 'remote' ? (
+          <RemoteAccessSettings />
         ) : activeSection === 'concurrency' ? (
           <GlobalConcurrencySettings />
         ) : activeSection === 'git' ? (

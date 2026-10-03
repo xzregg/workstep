@@ -1,3 +1,5 @@
+import { AdminUserGroupTree } from './AdminUserGroupTree'
+import { AdminGroupCreateDialog } from './AdminGroupCreateDialog'
 import { AdminRecordTable } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
@@ -10,13 +12,14 @@ export type AdminUser = {
   registration_source: string; must_change_password: boolean; created_at: string
 }
 
-type Filters = { q: string; status: string; sort: string; direction: string; page: number; pageSize: number }
+type Filters = { q: string; status: string; sort: string; direction: string; page: number; pageSize: number; groupId?: string }
 
 export function buildUserListQuery(filters: Filters): string {
   const params = new URLSearchParams({ sort: filters.sort, direction: filters.direction,
     page: String(filters.page), page_size: String(filters.pageSize) })
   if (filters.q.trim()) params.set('q', filters.q.trim())
   if (filters.status) params.set('status', filters.status)
+  if (filters.groupId) params.set('group_id', filters.groupId)
   return params.toString()
 }
 
@@ -33,6 +36,8 @@ export function AdminUsersPage() {
   const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
   const [createOpen, setCreateOpen] = useState(false)
+  const [groupCreateOpen, setGroupCreateOpen] = useState(false)
+  const [superAdmin, setSuperAdmin] = useState(false)
   const [action, setAction] = useState<{ user: AdminUser; kind: 'approve' | 'disable' } | null>(null)
 
   useEffect(() => {
@@ -42,7 +47,7 @@ export function AdminUsersPage() {
         if (response.status === 401) { navigate('/auth?next=%2Fadmin%2Fusers', { replace: true }); return }
         if (!response.ok) throw new Error('登录状态加载失败。')
         const session = await response.json()
-        if (!controller.signal.aborted) { setCsrf(session.csrf_token); setAccess('ready') }
+        if (!controller.signal.aborted) { setCsrf(session.csrf_token); setSuperAdmin((session.admin_roles ?? []).includes('super_admin')); setAccess('ready') }
       })
       .catch(reason => { if (reason?.name !== 'AbortError') setError('登录状态加载失败，请刷新重试。') })
     return () => controller.abort()
@@ -79,7 +84,10 @@ export function AdminUsersPage() {
     <h2>用户管理</h2>
     {access === 'checking' && <p role="status">正在检查登录状态…</p>}
     {access === 'forbidden' && <p role="alert">当前账号没有用户管理权限，或需要先<Link to="/account">修改初始密码</Link>。</p>}
-    {access === 'ready' && <>
+    {access === 'ready' && <div className="gateway-users-workspace">
+      <div className="gateway-users-tree-panel"><AdminUserGroupTree selected={filters.groupId ?? ''} revision={revision} onSelect={groupId => setFilters(current => ({ ...current, groupId, page: 1 }))} />
+       {superAdmin && <button type="button" onClick={() => setGroupCreateOpen(true)}>创建用户组</button>}
+      </div><div className="gateway-users-table-panel">
       <div className="gateway-admin-toolbar">
         <form onSubmit={search} className="gateway-admin-search">
           <label htmlFor="admin-user-search">搜索用户</label>
@@ -127,7 +135,8 @@ export function AdminUsersPage() {
         <button type="button" disabled={filters.page >= pages || loading} onClick={() => setFilters(current => (
           { ...current, page: current.page + 1 }))}>下一页</button>
       </div>
-    </>}
+    </div></div>}
+    {groupCreateOpen && <AdminGroupCreateDialog csrf={csrf} onClose={() => setGroupCreateOpen(false)} onDone={id => { setGroupCreateOpen(false); setFilters(current => ({ ...current, groupId: id, page: 1 })); refresh() }} />}
     {createOpen && <AdminCreateUserDialog csrf={csrf} onClose={() => setCreateOpen(false)}
       onSaved={() => { setCreateOpen(false); setFilters(current => ({ ...current, page: 1 })); refresh() }} />}
     {action && <AdminUserActionDialog user={action.user} action={action.kind} csrf={csrf}

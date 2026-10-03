@@ -35,7 +35,7 @@ export default function GatewayPlatformSettings() {
      if (data.authenticated) window.location.reload()
     }
    }
-  }).catch(reason => { if (!controller.signal.aborted) { refreshing.current = false; setError(reason.message) } })
+  }).catch(() => { if (!controller.signal.aborted) { refreshing.current = false; setError(t('gatewayPlatform.loadError')) } })
   return () => controller.abort()
  }, [revision, t])
  async function connect() {
@@ -48,7 +48,7 @@ export default function GatewayPlatformSettings() {
    const data = await response.json(); const target = new URL(data.authorization_url)
    if (target.origin !== new URL(url.trim()).origin || target.pathname !== '/desktop/login') throw Error(t('gatewayPlatform.connectError'))
    window.location.assign(target.href)
-  } catch (reason) { setError(reason instanceof Error ? reason.message : t('gatewayPlatform.connectError')); setBusy(false); submitting.current = false }
+  } catch { setError(t('gatewayPlatform.connectError')); setBusy(false); submitting.current = false }
  }
  return <section className="gateway-platform-settings">
   <h1>{t('gatewayPlatform.title')}</h1><p>{t('gatewayPlatform.intro')}</p>

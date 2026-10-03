@@ -24,7 +24,8 @@ from gateway.services.management_scope import organization_manager
 
 from gateway.services.identity_api import _check_csrf, _set_session_cookie, _super_admin_request
 
-from gateway.models import DirectoryEventReceipt, DirectorySyncState, IdentitySource
+from gateway.models import DirectoryEventReceipt, DirectorySyncState, IdentitySource, PlatformSetting
+from gateway.services.organization_settings import option_key, source_options
 
 
 """Enterprise identity setup, scan callbacks and directory import."""
@@ -34,7 +35,11 @@ class SourceInput(BaseModel):
     provider: Literal["dingtalk", "wecom"]
     tenant_id: str = Field(min_length=1, max_length=128)
     client_id: str = Field(min_length=1, max_length=256)
-    secret_env: str = Field(min_length=1, max_length=128)
+    secret_env: str | None = Field(default=None, min_length=1, max_length=128)
+    client_secret: str | None = Field(default=None, min_length=1, max_length=4096)
+    login_enabled: bool = True
+    sync_enabled: bool = True
+    enabled: bool = True
     agent_id: str | None = Field(default=None, max_length=128)
     callback_token_env: str | None = Field(default=None, max_length=128)
     callback_aes_key_env: str | None = Field(default=None, max_length=128)
@@ -127,13 +132,22 @@ async def _begin(request: Request, source_id: str, binding: bool, return_to: str
 
 async def create_source(request: Request, body: SourceInput):
     await _super_admin_request(request)
-    if not re.fullmatch(r"[A-Z][A-Z0-9_]*", body.secret_env):
+    if not body.client_secret and not body.secret_env:
+        raise HTTPException(status_code=422, detail="Application secret required")
+    if body.secret_env and not re.fullmatch(r"[A-Z][A-Z0-9_]*", body.secret_env):
         raise HTTPException(status_code=422, detail="Invalid secret environment variable")
     if body.provider == "wecom" and not body.agent_id:
         raise HTTPException(status_code=422, detail="WeCom agent ID required")
+    # Source ID is allocated before encryption so ciphertext is bound to its record.
+    from uuid import uuid4
+    credential_id = str(uuid4())
+    options = {"login_enabled": body.login_enabled, "sync_enabled": body.sync_enabled, "enabled": body.enabled}
+    if body.client_secret:
+        options["encrypted_secret"] = request.app.state.gateway_signer.encrypt_provider_secret(credential_id, body.client_secret)
+        options["credential_id"] = credential_id
     source = await _service(request).create_source(
-        body.provider, body.tenant_id, body.client_id, body.secret_env, body.agent_id,
-        body.callback_token_env, body.callback_aes_key_env,
+        body.provider, body.tenant_id, body.client_id, body.secret_env or "WORKSTEP_IDENTITY_SECRET", body.agent_id,
+        body.callback_token_env, body.callback_aes_key_env, options,
     )
     return {"id": source.id, "provider": source.provider, "tenant_id": source.tenant_id,
             "client_id": source.client_id, "enabled": bool(source.enabled),
@@ -175,10 +189,14 @@ async def list_sources(request: Request, q: str = Query('', max_length=128),
                 .where(DirectoryEventReceipt.source_id.in_(ids), DirectoryEventReceipt.status == 'pending')
                 .group_by(DirectoryEventReceipt.source_id)
             )).all()}
+        options = {row.key.removeprefix("identity-options:"): json.loads(row.value_json) for row in (await session.scalars(select(PlatformSetting).where(PlatformSetting.key.in_([option_key(id) for id in ids])))).all()}
         now = datetime.now(timezone.utc)
         sources = [{'id': source.id, 'provider': source.provider, 'tenant_id': source.tenant_id,
                     'client_id': source.client_id, 'agent_id': source.agent_id,
                     'enabled': bool(source.enabled),
+                    'login_enabled': options.get(source.id, {}).get('login_enabled', True),
+                    'sync_enabled': options.get(source.id, {}).get('sync_enabled', True),
+                    'secret_configured': bool(options.get(source.id, {}).get('encrypted_secret') or source.secret_env),
                     'callback_configured': bool(source.callback_token_env),
                     'created_at': source.created_at.isoformat(),
                     'sync_state': ({
@@ -226,7 +244,7 @@ async def sync_directory(request: Request, source_id: str, body: DirectorySnapsh
 async def reconcile_directory(request: Request, source_id: str):
     await organization_manager(request, source_id=source_id, mutation=True)
     service = _service(request)
-    source = await service.source(source_id)
+    source = await service.source(source_id, purpose="sync")
     try:
         snapshot = await _connector(request, source.provider).fetch_directory(source)
     except Exception as exc:
@@ -270,6 +288,7 @@ async def external_start(request: Request, source_id: str, body: ExternalStartIn
 
 async def identity_sources(request: Request):
     sources = await _service(request).enabled_sources()
+    sources = [source for source in sources if (await source_options(request.app.state.database, source.id)).get("login_enabled", True)]
     return {"sources": [{"id": source.id, "provider": source.provider,
                          "tenant_id": source.tenant_id} for source in sources]}
 
@@ -322,3 +341,28 @@ async def external_callback(request: Request, response: Response, source_id: str
     if user.status == "pending":
         response.status_code = 202
     return {"user": public_user(user), **({"csrf_token": csrf_token(new_token)} if new_token else {})}
+
+
+async def update_source(request: Request, source_id: str, body: SourceInput):
+    await _super_admin_request(request)
+    if body.provider == 'wecom' and not body.agent_id:
+        raise HTTPException(422, 'WeCom agent ID required')
+    if body.secret_env and not re.fullmatch(r'[A-Z][A-Z0-9_]*', body.secret_env):
+        raise HTTPException(422, 'Invalid secret environment variable')
+    async with request.app.state.database.session() as session:
+        async with session.begin():
+            source = await session.get(IdentitySource, source_id)
+            if source is None: raise HTTPException(404, 'Identity source not found')
+            if source.provider != body.provider or source.tenant_id != body.tenant_id:
+                raise HTTPException(422, 'Provider and tenant identity cannot change')
+            row = await session.get(PlatformSetting, option_key(source_id))
+            options = json.loads(row.value_json) if row else {}
+            if body.client_secret:
+                options['credential_id'] = option_key(source_id)
+                options['encrypted_secret'] = request.app.state.gateway_signer.encrypt_provider_secret(option_key(source_id), body.client_secret)
+            options.update(login_enabled=body.login_enabled, sync_enabled=body.sync_enabled)
+            if row: row.value_json = json.dumps(options)
+            else: session.add(PlatformSetting(key=option_key(source_id), value_json=json.dumps(options)))
+            source.client_id, source.agent_id, source.enabled = body.client_id, body.agent_id, int(body.enabled)
+            if body.secret_env: source.secret_env = body.secret_env
+    return {'id': source_id}

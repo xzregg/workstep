@@ -76,3 +76,15 @@ async def external_callback(request: Request, response: Response, source_id: str
                             state: str, code: str | None = None, authCode: str | None = None,
                             error: str | None = None):
     return await _handle_external_callback(request=request, response=response, source_id=source_id, state=state, code=code, authCode=authCode, error=error)
+
+
+@router.put('/admin/identity-sources/{source_id}')
+async def update_source(request: Request, source_id: str, body: SourceInput):
+    from gateway.services.external_identity_api import update_source as handle
+    return await handle(request, source_id, body)
+
+
+@router.get('/admin/user-groups/tree')
+async def user_group_tree(request: Request):
+    from gateway.services.organization_settings import user_group_tree as handle
+    return await handle(request)

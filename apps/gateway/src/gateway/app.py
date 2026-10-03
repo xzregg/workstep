@@ -87,7 +87,10 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.protocol_version = PROTOCOL_VERSION
     app.state.identity_rate_limiter = IdentityRateLimiter()
-    app.state.identity_connectors = {"dingtalk": DingTalkConnector(), "wecom": WeComConnector()}
+    async def resolve_identity_secret(source):
+        from gateway.services.organization_settings import application_secret
+        return await application_secret(app.state.database, app.state.gateway_signer, source)
+    app.state.identity_connectors = {"dingtalk": DingTalkConnector(secret_resolver=resolve_identity_secret), "wecom": WeComConnector(secret_resolver=resolve_identity_secret)}
     app.state.control_connections = ControlConnections()
     app.state.command_scheduler_lock = asyncio.Lock()
     app.state.usage_ledger_lock = asyncio.Lock()

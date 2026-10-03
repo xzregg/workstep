@@ -1,0 +1,5 @@
+.remote-access-settings { max-width: 960px; margin: 0 auto; }
+.remote-access-tabs { display: flex; gap: 8px; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 1px solid var(--border-soft); }
+.remote-access-tabs button { min-height: 32px; padding: 0 12px; border-radius: var(--radius-xs); background: transparent; color: var(--muted); }
+.remote-access-tabs button[aria-current="page"] { background: var(--bg); color: var(--fg); font-weight: 600; }
+@media (max-width: 1023px) { .remote-access-tabs button { min-height: var(--mobile-control-regular); } }
