@@ -5,8 +5,8 @@
 ## 域名、TLS 与进程
 
 1. 准备 `gateway.example.com` 与 `*.gateway.example.com` 的 DNS 记录，均指向同一反向代理。主域承载门户、公开任务分享及 `/api/control/ws`、`/api/data/ws`；`d-<device-id>.gateway.example.com` 承载设备工作台。反向代理必须保留原始 `Host`、HTTPS scheme、WebSocket Upgrade 及长连接，不应把设备子域改写为主域。
-2. 为主域和设备通配符域名配置可信 TLS 证书。浏览器与受管客户端只访问 HTTPS/WSS。反向代理至 Gateway 的监听地址应仅在可信网络可达；Gateway 默认监听 `127.0.0.1:8766`。
-3. 为服务进程设置持久数据目录和稳定配置：`WORKSTEP_GATEWAY_GATEWAY_ID`、`WORKSTEP_GATEWAY_PUBLIC_ORIGIN=https://gateway.example.com`、`WORKSTEP_GATEWAY_DATA_DIR`、`WORKSTEP_GATEWAY_WEB_DIST`。数据库默认是数据目录下的 `workstep_platform.db`；使用 PostgreSQL 时设置 `WORKSTEP_GATEWAY_DATABASE_URL=postgresql+asyncpg://...`。门户先在 `apps/gateway-web` 执行 `yarn build`，将 `dist` 部署到 `WEB_DIST` 指向的位置。
+2. 为主域和设备通配符域名配置可信 TLS 证书。正式部署的浏览器与受管客户端使用 HTTPS/WSS；本机验收允许回环地址和 `.localhost` 使用 HTTP/WS，例如 `http://localhost:8700`，不允许非回环 HTTP。反向代理至 Gateway 的监听地址应仅在可信网络可达；Gateway 默认监听 `127.0.0.1:8766`。
+3. 为服务进程设置持久数据目录和稳定配置：`WORKSTEP_GATEWAY_GATEWAY_ID`、`WORKSTEP_GATEWAY_PUBLIC_ORIGIN=https://gateway.example.com`、`WORKSTEP_GATEWAY_DATA_DIR`、`WORKSTEP_GATEWAY_WEB_DIST`、`WORKSTEP_GATEWAY_WORKSPACE_WEB_DIST`。数据库默认是数据目录下的 `workstep_platform.db`；使用 PostgreSQL 时设置 `WORKSTEP_GATEWAY_DATABASE_URL=postgresql+asyncpg://...`。门户先在 `apps/gateway-web` 执行 `yarn build`，将 `dist` 部署到 `WEB_DIST` 指向的位置；在 `apps/web` 执行 `yarn build:gateway-share`，将 `dist-gateway-share` 部署到 `WORKSPACE_WEB_DIST` 指向的位置，供公开分享复用原任务详情。
 4. 在仓库根目录以服务管理器运行 `uv run --project apps/gateway uvicorn gateway.app:app --host 127.0.0.1 --port 8766`。保持单实例；启动时执行 Alembic 迁移，未知迁移版本或数据库不可用会拒绝启动。检查主域 `/api/health` 返回 `{"status":"ok"}`，再验证门户登录、设备控制连接和设备子域工作台。
 
 反向代理应限制请求体大小并配置适合文件流和控制心跳的超时。不要将 daemon 的本机端口、数据库文件或设备直连地址暴露到公网。公开分享链接只使用 Gateway 主域。
