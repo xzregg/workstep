@@ -50,3 +50,6 @@ WorkStep 渠道消息协议 v1 是项目内部的收发契约。它采用与 LLM
 4. 补平台帧、媒体上传/下载、失败、收件人隔离和慢网络健康检查测试。适配器会自动发现；设置界面的平台选择与凭证表单按需增加。
 
 测试入口：`test_channel_protocol.py`、`test_channel_bot_adapters.py`、`test_channel_send.py`、`test_channel_media_cli.py`；原有会话/路由回归见 `test_channel_bots.py`、`test_channel_reply_forwarder.py`、`test_channel_chat_responder.py`。
+
+
+入站会话来源统一通过 `IncomingMessage.conversation_name`（可选群名称）、`conversation_id`、`conversation_type`、`sender_id/sender_name` 表示。没有群名时不假造平台名称，使用可重命名的渠道对话标题。名称仅用于显示和背景，路由始终使用机器人与平台会话 ID。

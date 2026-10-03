@@ -42,6 +42,7 @@ class IncomingMessage:
     sender_id: str
     text: str
     sender_name: str = ''
+    conversation_name: str = ''
     reply_context: object | None = field(default=None, repr=False)
     attachments: tuple[ChannelAttachment, ...] = ()
 

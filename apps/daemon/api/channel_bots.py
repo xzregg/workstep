@@ -37,6 +37,7 @@ class BindGroupRequest(BaseModel):
     project_id: str = Field(min_length=1)
     bot_id: str = Field(min_length=1)
     group_id: str = Field(min_length=1)
+    group_name: str | None = Field(default=None, max_length=200)
 
 
 class ChannelAttachmentRequest(BaseModel):
@@ -163,7 +164,7 @@ async def list_task_groups(task_id: str, project_id: str = Query(...)):
 async def bind_task_group(task_id: str, request: BindGroupRequest):
     try:
         return await _manager().bind_group(
-            request.project_id, task_id, request.bot_id, request.group_id,
+            request.project_id, task_id, request.bot_id, request.group_id, request.group_name,
         )
     except (ValueError, LookupError) as exc:
         _raise_error(exc)

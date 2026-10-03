@@ -51,6 +51,7 @@ class _MessageHandler(ChatbotHandler):
                 conversation_id=str(incoming.conversation_id or incoming.sender_staff_id or incoming.sender_id or ""),
                 sender_id=str(incoming.sender_staff_id or incoming.sender_id or ""),
                 sender_name=str(incoming.sender_nick or ""),
+                conversation_name=str(incoming.conversation_title or "") if is_group else "",
                 text="\n".join(texts),
                 attachments=tuple(attachments),
                 reply_context=incoming.session_webhook,

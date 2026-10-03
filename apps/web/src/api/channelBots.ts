@@ -31,6 +31,7 @@ export interface BotDraft {
 export interface DiscussionGroup {
   bot_id: string
   group_id: string
+  group_name?: string
   project_id: string
   task_id: string
 }
@@ -43,8 +44,8 @@ export const channelBotApi = {
   create: (draft: BotDraft) => request<ChannelBot>('/channel-bots', json(draft, 'POST')),
   update: (id: string, draft: Partial<BotDraft>) => request<ChannelBot>(`/channel-bots/${encodeURIComponent(id)}`, json(draft, 'PATCH')),
   remove: (id: string) => request<{ deleted: boolean }>(`/channel-bots/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  recentGroups: (id: string) => request<Array<{ bot_id: string; group_id: string }>>(`/channel-bots/${encodeURIComponent(id)}/recent-groups`),
+  recentGroups: (id: string) => request<Array<{ bot_id: string; group_id: string; group_name?: string; conversation_title?: string; sender_id?: string; sender_name?: string }>>(`/channel-bots/${encodeURIComponent(id)}/recent-groups`),
   taskGroups: (taskId: string, projectId: string) => request<DiscussionGroup[]>(`${taskPath(taskId)}?project_id=${encodeURIComponent(projectId)}`),
-  bindGroup: (taskId: string, projectId: string, botId: string, groupId: string) => request<DiscussionGroup>(taskPath(taskId), json({ project_id: projectId, bot_id: botId, group_id: groupId }, 'POST')),
+  bindGroup: (taskId: string, projectId: string, botId: string, groupId: string, groupName?: string) => request<DiscussionGroup>(taskPath(taskId), json({ project_id: projectId, bot_id: botId, group_id: groupId, group_name: groupName }, 'POST')),
   unbindGroup: (taskId: string, projectId: string, botId: string, groupId: string) => request<{ deleted: boolean }>(`${taskPath(taskId)}/${encodeURIComponent(botId)}/${encodeURIComponent(groupId)}?project_id=${encodeURIComponent(projectId)}`, { method: 'DELETE' }),
 }

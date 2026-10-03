@@ -102,6 +102,7 @@ export interface AssistantChatPanelProps {
   onAttachmentError?: (message: string) => void
   onClose?: () => void
   onA2uiAction?: (action: A2uiClientAction) => void
+  headerContext?: ReactNode
   headerActions?: ReactNode
   /** Assistant-specific controls rendered in the button row above the composer. */
   composerActions?: ReactNode
@@ -266,7 +267,7 @@ const MessageItem = memo(function MessageItem({
 export default function AssistantChatPanel({
   projectId, sessionId, title, messages, running, stopping, input, sendError, copy,
   locale, config, permission, enhance, context, quota, onRefreshQuota, quotaRefreshing, plan, goal, availableCommands, attachmentPrefix, onInputChange, onSend, onSendContent, onStop, onAttachmentError, onClose,
-  onA2uiAction, headerActions, composerActions, composerStatus, composerOverlay, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
+  onA2uiAction, headerContext, headerActions, composerActions, composerStatus, composerOverlay, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, onQuickPromptItemSelect, a2uiMessages, showUserTag = false,
   onLoadMessageEvents, onLoadOlderHistory, onForkMessage, allowSendWhileRunning = false,
 }: AssistantChatPanelProps) {
@@ -459,6 +460,8 @@ export default function AssistantChatPanel({
         {headerActions}
         {onClose && <Button variant="icon" aria-label={copy.closePrompt} onClick={onClose}>✕</Button>}
       </div>
+
+      {headerContext}
 
       {/* 输入区上方的悬浮面板（如「待插入消息」）会遮住会话底部：
           由包裹层留出「面板高度 + 10px」，滚动容器随之整体变矮。 */}

@@ -188,11 +188,11 @@ async def test_two_platforms_credentials_are_masked_and_groups_route_to_tasks(bo
         bot_id=dingtalk["id"], message_id="msg-2", conversation_type="group",
         conversation_id="group-b", sender_id="u2", text="状态？",
     ))
-    assert [(item[1], item[2]) for item in submissions] == [
+    assert [(item[1], item[2].rsplit("\n\n", 1)[-1]) for item in submissions] == [
         ("task-1", "进度？"), ("task-2", "状态？"),
     ]
-    assert adapters[wecom["id"]].sent == [("group-a", "任务回复：进度？")]
-    assert adapters[dingtalk["id"]].sent == [("group-b", "任务回复：状态？")]
+    assert adapters[wecom["id"]].sent == [("group-a", f"任务回复：{submissions[0][2]}")]
+    assert adapters[dingtalk["id"]].sent == [("group-b", f"任务回复：{submissions[1][2]}")]
 
 
 async def test_unbound_chat_uses_default_project_and_duplicate_is_ignored(bots):
@@ -208,8 +208,8 @@ async def test_unbound_chat_uses_default_project_and_duplicate_is_ignored(bots):
     )
     await adapters[bot["id"]].on_message(message)
     await adapters[bot["id"]].on_message(message)
-    assert project_chats == [(first.id, None, "你好")]
-    assert adapters[bot["id"]].sent == [("user-1", "项目回复：你好")]
+    assert [(pid, sid, content.rsplit("\n\n", 1)[-1]) for pid, sid, content in project_chats] == [(first.id, None, "你好")]
+    assert adapters[bot["id"]].sent == [("user-1", f"项目回复：{project_chats[0][2]}")]
 
 
 async def test_channel_messages_snapshot_sender_in_task_and_project_chat(bots):
@@ -403,6 +403,8 @@ async def test_channel_session_reset_replaces_mapping_and_reuses_new_session(bot
     assert replacement != old["id"]
     assert (await manager._load())["session_sources"][replacement] == {
         "conversation_type": "single", "conversation_id": "user-1", "peer_name": "user-1",
+        "project_id": project.id, "group_name": "", "sender_id": "user-1", "sender_name": "user-1",
+        "initiator_id": "user-1", "initiator_name": "user-1",
     }
     assert submitted == [replacement]
     assert adapters[bot["id"]].sent == [("user-1", "新对话回复")]
@@ -457,7 +459,10 @@ async def test_channel_source_survives_rename_and_archive_without_title_guessing
         assert archived["channel_platform"] == platform
         assert archived["channel_name"] == "Echo"
         assert archived["channel_conversation_type"] == conversation_type
-        assert archived["channel_peer_name"] == ("小王" if conversation_type == "single" else "group:123")
+        assert archived["channel_peer_name"] == ("小王" if conversation_type == "single" else "新名字")
+        assert archived["channel_conversation_id"] == ("group:123" if conversation_type == "group" else "user-1")
+        assert archived["channel_initiator_name"] == "小王"
+        assert archived["channel_initiator_id"] == "user-1"
         assert archived["title"] == "新名字"
         assert module.list_sessions(project.id, archived=True)[0]["source"] == "channel"
 
@@ -511,7 +516,7 @@ async def test_queued_channel_messages_show_waiting_and_reuse_latest_session(bot
     adapter.start_reply = start_reply
     async def respond(project_id, session_id, content, *args):
         sessions.append(session_id)
-        if content == "first":
+        if content.endswith("\n\nfirst"):
             first_running.set()
             await release.wait()
         return session_id or "new-session", "回答"
@@ -557,3 +562,81 @@ async def test_slow_channel_waiting_reply_does_not_block_health(bots):
     finally:
         release.set()
         await pending
+
+
+async def test_group_names_senders_and_initiator_are_retained_and_passed_to_assistant(bots):
+    manager, project, _, submissions, chats, _ = bots
+    bot = await manager.create_bot({
+        'platform': 'dingtalk', 'name': '研发机器人', 'app_id': 'bot', 'secret': 'secret',
+        'enabled': True, 'default_target_type': 'project', 'default_project_id': project.id,
+    })
+    await manager.handle_message(IncomingMessage(
+        bot_id=bot['id'], message_id='first', conversation_type='group', conversation_id='room',
+        conversation_name='研发群', sender_id='u1', sender_name='小王', text='你好',
+    ))
+    assert (await manager.recent_groups(bot['id']))[0]['group_name'] == '研发群'
+    source = (await manager._load())['session_sources']['session-1']
+    assert source['initiator_name'] == '小王'
+    assert source['sender_id'] == 'u1'
+    assert '研发群' in chats[-1][2] and 'room' in chats[-1][2] and '小王' in chats[-1][2]
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
+        response = await client.post('/api/task/task-1/discussion-groups', json={
+            'project_id': project.id, 'bot_id': bot['id'], 'group_id': 'room', 'group_name': '任务讨论群',
+        })
+        assert response.status_code == 200
+        assert response.json()['group_name'] == '任务讨论群'
+    await manager.handle_message(IncomingMessage(
+        bot_id=bot['id'], message_id='second', conversation_type='group', conversation_id='room',
+        sender_id='u2', sender_name='小李', text='继续',
+    ))
+    assert '任务讨论群' in submissions[-1][2] and '小李' in submissions[-1][2]
+    assert (await manager.recent_groups(bot['id']))[0]['group_name'] == '任务讨论群'
+
+
+async def test_private_source_preserves_initiator_and_updates_current_sender(bots):
+    manager, project, _, _, chats, _ = bots
+    bot = await manager.create_bot({
+        'platform': 'wecom', 'name': '机器人', 'app_id': 'bot', 'secret': 'secret',
+        'enabled': True, 'default_target_type': 'project', 'default_project_id': project.id,
+    })
+    for key, name in [('first', '小王'), ('second', '王同学')]:
+        await manager.handle_message(IncomingMessage(bot_id=bot['id'], message_id=key,
+            conversation_type='single', conversation_id='u1', sender_id='u1', sender_name=name, text='你好'))
+    source = (await manager._load())['session_sources']['session-1']
+    assert source['initiator_name'] == '小王'
+    assert source['sender_name'] == '王同学'
+    assert 'u1' in chats[-1][2] and '王同学' in chats[-1][2]
+
+
+async def test_recent_group_falls_back_to_renamed_conversation_and_db_does_not_block_health(bots, monkeypatch):
+    manager, project, *_ = bots
+    bot = await manager.create_bot({'platform': 'wecom', 'name': '机器人', 'app_id': 'bot', 'secret': 'secret',
+        'default_target_type': 'project', 'default_project_id': project.id})
+    module = ChannelChatModule(manager._event_bus, manager._project_manager)
+    monkeypatch.setattr(module, '_validate_engine', lambda _engine: None)
+    session = await manager._project_manager.run_db(project.id, lambda _project: module.create_session(project.id, title='我的测试群', engine='codex_sdk'))
+    data = await manager._load()
+    data['recent_groups'] = [{'bot_id': bot['id'], 'group_id': 'room', 'group_name': ''}]
+    data['sessions'][f"{bot['id']}:group:room"] = session['id']
+    await manager._save(data)
+    entered, release = threading.Event(), threading.Event()
+    original = ChatSession.select
+    def slow_select(*args, **kwargs):
+        entered.set()
+        assert release.wait(2)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(ChatSession, 'select', slow_select)
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
+        pending = asyncio.create_task(client.get(f"/api/channel-bots/{bot['id']}/recent-groups"))
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            assert (await asyncio.wait_for(client.get('/api/health'), 0.5)).status_code == 200
+        finally:
+            release.set()
+        response = await asyncio.wait_for(pending, 2)
+    assert response.status_code == 200
+    assert response.json()[0]['conversation_title'] == '我的测试群'
+    assert response.json()[0]['group_name'] == ''
+    monkeypatch.setattr(ChatSession, 'select', original)
+    await manager.bind_group(project.id, 'task-1', bot['id'], 'room')
+    assert (await manager.list_task_groups(project.id, 'task-1'))[0]['group_name'] == '我的测试群'

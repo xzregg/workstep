@@ -76,7 +76,8 @@ async def test_responder_ignores_other_message_completion(tmp_path, status):
         manager.close_all()
 
 
-async def test_responder_announces_accepted_and_finished_channel_turn(tmp_path):
+@pytest.mark.parametrize("title", ["研发群", "小王"])
+async def test_responder_announces_accepted_and_finished_channel_turn(tmp_path, title):
     bus = EventBus()
     manager = ProjectManager()
     project = manager.init_project(tmp_path / "live-channel-project")
@@ -84,6 +85,7 @@ async def test_responder_announces_accepted_and_finished_channel_turn(tmp_path):
 
     class FakeModule:
         def create_session(self, *args, **kwargs):
+            assert kwargs['title'] == title
             return {"id": "new-channel-session"}
 
         def submit_message(self, *args, **kwargs):
@@ -107,7 +109,7 @@ async def test_responder_announces_accepted_and_finished_channel_turn(tmp_path):
 
     try:
         responder = ChatSessionResponder(bus, manager, FakeModule())
-        assert await responder(project.id, None, "你好", "channel_chat", "", on_accepted=accepted) == (
+        assert await responder(project.id, None, "你好", "channel_chat", "", on_accepted=accepted, title=title) == (
             "new-channel-session", "回复",
         )
         events = []

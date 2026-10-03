@@ -655,7 +655,7 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
             "project_id": project_id,
             "workflow_id": row.workflow_id,
             "title": row.title or "未命名会话",
-            **channel_session_source(row.id),
+            **channel_session_source(row.id, row.title),
             "archived": bool(row.archived),
             "engine": row.engine,
             "model": row.model,

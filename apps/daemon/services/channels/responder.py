@@ -48,6 +48,7 @@ class ChatSessionResponder:
         model: str,
         on_accepted: Callable[[str], Awaitable[None]] | None = None,
         on_progress: Callable[[str], None] | None = None,
+        title: str = "渠道对话",
     ) -> tuple[str, str]:
         defaults = await asyncio.to_thread(
             config_store.get_assistant_defaults, assistant_id
@@ -56,14 +57,19 @@ class ChatSessionResponder:
         selected_model = model or defaults.get("model") or None
         module = self._module_for(assistant_id)
         if session_id:
-            reusable = await self._project_manager.run_db(
-                project_id,
-                lambda _project: ChatSession.select().where(
+            def reuse(_project):
+                row = ChatSession.select().where(
                     (ChatSession.id == session_id)
                     & (ChatSession.project_id == project_id)
                     & (ChatSession.archived == False)
-                ).exists(),
-            )
+                ).first()
+                if row is None:
+                    return False
+                if title and row.title == "渠道对话":
+                    row.title = title
+                    row.save(only=[ChatSession.title])
+                return True
+            reusable = await self._project_manager.run_db(project_id, reuse)
             if not reusable:
                 session_id = None
         if not session_id:
@@ -71,7 +77,7 @@ class ChatSessionResponder:
                 project_id,
                 lambda _project: module.create_session(
                     project_id,
-                    title="渠道对话",
+                    title=title or "渠道对话",
                     engine=engine,
                     model=selected_model,
                 ),
