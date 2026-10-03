@@ -419,7 +419,7 @@ class BotManager:
         await self._route_message(message, lock)
 
     async def _route_message(self, message: IncomingMessage, lock: asyncio.Lock) -> None:
-        if not message.message_id or not message.conversation_id or (not message.text.strip() and not message.attachments):
+        if not message.message_id or not message.conversation_id or (not message.text.strip() and not message.attachments and message.quote is None):
             return
         async with self._config_lock:
             data = await self._load()
@@ -464,12 +464,12 @@ class BotManager:
         control_scope = None
         try:
             async with lock:
-                if message.attachments:
+                if message.attachments or message.quote is not None:
                     from services.channels.media import incoming_content
                     project = self._project_manager.get_project_by_id(project_id)
                     if project is None:
                         raise ValueError("项目不存在")
-                    message = replace(message, text=await incoming_content(project, adapter, message))
+                    message = replace(message, text=await incoming_content(project, adapter, message), quote=None)
                 if kind == "task":
                     await self._validate_target("task", project_id, task_id)
                     reply = await self._task_reply(
