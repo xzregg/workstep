@@ -324,3 +324,5 @@ Gateway 后台布局由 `apps/gateway-web/src/AdminLayout.tsx` 持有按角色�
 渠道引用消息入口为 `services/channels/wecom.py::_message_parts`，归一到 `base.py::ChannelQuote`；`bots.py::_route_message` 调用 `media.py::incoming_content` 将引用正文与附件合入当前用户消息，任务协调助手和项目渠道对话共用。官方引用帧、无引用兼容、两种路由和慢附件磁盘 I/O 测试在 `tests/test_channel_quotes.py`。
 
 企业微信长选项的展示适配由 `services/channels/wecom.py::send_card` 负责：编号按钮、完整选项正文和超长说明主动发送，控制回调仍由 `controls.py` 按原 key 处理；测试在 `tests/test_channel_bot_adapters.py`。
+
+任务渠道终态判断由 `services/channels/bots.py::_task_reply` 负责，以协调助手的 `TEXT_MESSAGE_END` 为准，停止时的引擎退出事件不直接触发失败回复；有无任务转发器的回归在 `tests/test_channel_terminal_state.py`、`tests/test_channel_task_forwarder.py`。 企业微信中止卡片由 `wecom.py::send_card` 独立主动发送，避免正文流更新覆盖按钮；运行中卡片与流式正文隔离测试在 `tests/test_channel_bot_adapters.py`。

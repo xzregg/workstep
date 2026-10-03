@@ -219,11 +219,10 @@ class WeComAdapter(ChannelAdapter):
                     "main_title":{"title":card.title[:36]}, "sub_title_text":description,
                     "button_list":[{"text":str(index + 1) if numbered else button.label,"key":button.key}
                                    for index, button in enumerate(card.buttons)]}
-        frame = self._reply_frame(recipient)
-        if card.running and frame:
-            await self._client.reply_stream_with_card(frame, self._stream_id(recipient), "", finish=False, template_card=template)
-        else:
-            await self._client.send_message(recipient.conversation_id, {"msgtype":"template_card","template_card":template})
+        # Keep controls independent of the streaming bubble so subsequent
+        # text snapshots cannot replace or hide its buttons.
+        await self._client.send_message(recipient.conversation_id, {"msgtype":"template_card","template_card":template})
+
 
     async def send(self, recipient: IncomingMessage, message: OutgoingMessage) -> None:
         self.validate_outgoing(message)
