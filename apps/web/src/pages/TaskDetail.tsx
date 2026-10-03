@@ -90,6 +90,7 @@ interface StepData {
   engine?: string
   model?: string
   config?: Record<string, string>
+  review?: Record<string, any> | null
   prompt: string
   inputs: Array<{
     name: string
@@ -410,6 +411,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           model: node.model || '',
           prompt: node.prompt || '',
           config: node.config || {},
+          review: node.review,
           inputs: (node.inputs || []).map((input: any) => ({
             name: input.name,
             type: input.type,
@@ -434,6 +436,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       model: s.model || '',
       prompt: s.prompt || '',
       config: s.config || {},
+      review: s.review,
       inputs: (s.inputs || []).map((i: any) => ({
         name: i.name || i,
         type: i.type || 'any',
