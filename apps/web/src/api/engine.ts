@@ -1,4 +1,5 @@
 import { request, singleFlight } from './transport'
+import { workspaceCatalogPath } from './workspaceScope'
 import type { CoordinatorEngineSummary, EngineQuota } from './task'
 
 // --- Engine API ---
@@ -321,8 +322,8 @@ export interface ProviderImportResult {
 }
 
 export const providerApi = {
-  list: (projectId = '') => request<ProviderListResult>(
-    `/provider/list${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`,
+  list: async (projectId = '') => request<ProviderListResult>(
+    await workspaceCatalogPath('/provider/list', projectId),
   ),
   save: (input: ProviderSaveInput) =>
     request<ProviderSaveResult>('/provider', {
@@ -420,20 +421,20 @@ export function invalidateEngineModels(engineId: string): void {
 }
 
 export const engineApi = {
-  list: () => request<{ engines: EngineInfo[] }>('/engine/list'),
+  list: async () => request<{ engines: EngineInfo[] }>(await workspaceCatalogPath('/engine/list')),
   refresh: () =>
     request<{ engines: EngineInfo[] }>('/engine/refresh', { method: 'POST' }),
-  executionConfig: () =>
-    request<ExecutionDefaultConfig>('/engine/execution/config'),
+  executionConfig: async () =>
+    request<ExecutionDefaultConfig>(await workspaceCatalogPath('/engine/execution/config')),
   setExecutionConfig: (engine: string) =>
     request<ExecutionDefaultConfig & { saved: boolean }>('/engine/execution/config', {
       method: 'PUT',
       body: JSON.stringify({ engine }),
     }),
   coordinatorDefaults: (projectId = '') =>
-    singleFlight(`engine/coordinator/config::${projectId}`, () =>
+    singleFlight(`engine/coordinator/config::${projectId}`, async () =>
       request<CoordinatorDefaultConfig>(
-        `/engine/coordinator/config${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`,
+        await workspaceCatalogPath('/engine/coordinator/config', projectId),
       ),
     ),
   setCoordinatorDefaults: (engine: string, model: string, fastModel: string, visionModel: string, thinkingEffort: string) =>
@@ -482,15 +483,15 @@ export const engineApi = {
         `/engine/${encodeURIComponent(engineId)}/quota${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`,
       ),
     ),
-  models: (engineId: string, providerId = '', refresh = false, projectId = '') =>
+  models: async (engineId: string, providerId = '', refresh = false, projectId = '') =>
     request<EngineModelsResult>(
-      `/engine/${encodeURIComponent(engineId)}/models${
+      await workspaceCatalogPath(`/engine/${encodeURIComponent(engineId)}/models${
         providerId || refresh || projectId ? '?' : ''
       }${[
         providerId ? `provider_id=${encodeURIComponent(providerId)}` : '',
         refresh ? 'refresh=1' : '',
         projectId ? `project_id=${encodeURIComponent(projectId)}` : '',
-      ].filter(Boolean).join('&')}`,
+      ].filter(Boolean).join('&')}`, projectId),
     ),
   setDefaultModel: (engineId: string, model: string) =>
     request<{ engine_id: string; default_model: string; saved: boolean }>(

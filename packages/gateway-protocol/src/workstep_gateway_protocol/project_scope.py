@@ -53,6 +53,7 @@ _CHAT_SESSION_TRANSITION = re.compile(
     r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}/(?:fork|handoff)\Z")
 _UPLOAD_FILE = re.compile(r"/api/fs/serve/[A-Za-z0-9_.-]{1,256}\Z")
 _PROJECT_RAW = re.compile(r"/api/fs/project-raw/[A-Za-z0-9_-]{1,128}/.+\Z")
+_ENGINE_MODELS = re.compile(r"/api/engine/[A-Za-z0-9_-]{1,128}/models\Z")
 _WORKSPACE_ASSET = re.compile(
     r"/(?:assets|static)/[A-Za-z0-9][A-Za-z0-9._/-]*\.(?:js|css|svg|png|jpe?g|webp|gif|ico|woff2?|ttf)\Z")
 
@@ -148,6 +149,11 @@ def project_http_route_allowed(method: str, path: str,
     values = [value for key, value in query_pairs if key == "project_id"]
     if values != [project_id]:
         return False
+    if path in ("/api/engine/list", "/api/engine/execution/config",
+                "/api/engine/coordinator/config", "/api/assistant/list", "/api/provider/list"):
+        return len(query_pairs) == 1
+    if _ENGINE_MODELS.fullmatch(path):
+        return all(key in ("project_id", "provider_id") for key, _ in query_pairs) and len(query_pairs) == len(dict(query_pairs))
     if path == "/api/statistics/overview":
         return all(key in ("project_id", "workflow_id", "range", "start", "end", "timezone")
                    for key, _ in query_pairs)

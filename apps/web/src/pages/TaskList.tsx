@@ -1,3 +1,4 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import ResizablePanel from '../components/ResizablePanel'
 import ProjectGitButton from '../components/git/ProjectGitButton'
 import Select from '../components/Select'
@@ -92,6 +93,7 @@ export default function TaskList() {
     unarchiveTask, setActiveTask,
   } = useTaskStore()
   const activeProject = useProjectStore((s) => s.activeProject)
+  const { bound, canEdit, canCreateTask } = useGatewayProjectPermissions(activeProject?.id)
   const renameProject = useProjectStore((s) => s.renameProject)
   const activeWorkflowId = useProjectStore((s) => s.activeWorkflowId)
   const saveSteps = useProjectStore((s) => s.saveSteps)
@@ -100,6 +102,7 @@ export default function TaskList() {
   const [createRequest, setCreateRequest] = useState<{ stepKey?: string; id: number } | null>(null)
   const createRequestId = useRef(0)
   const openNewPanel = (stepKey?: string) => {
+    if (!canCreateTask) return
     setCreateRequest({ stepKey, id: ++createRequestId.current })
   }
   const { taskId: selectedTaskId, openTask, closeTask } = useTaskRoute()
@@ -159,7 +162,7 @@ export default function TaskList() {
     let cancelled = false
     const projectId = activeProject?.id
 
-    if (!projectId) {
+    if (!projectId || bound) {
       setScheduleCount(0)
       return () => {
         cancelled = true
@@ -178,7 +181,7 @@ export default function TaskList() {
     return () => {
       cancelled = true
     }
-  }, [activeProject?.id])
+  }, [activeProject?.id, bound])
 
   // Reset local state when project changes
   useEffect(() => {
@@ -334,7 +337,7 @@ export default function TaskList() {
       {/* Topbar */}
       {compact && <div className="mobile-task-toolbar">
         <strong>{activeWorkflowName || t('mobile.taskList')}</strong>
-        <Button className="mobile-task-new-button" variant="primary" onClick={() => openNewPanel()} disabled={!activeWorkflowId}>{t('taskList.new')}</Button>
+        {canCreateTask && <Button className="mobile-task-new-button" variant="primary" onClick={() => openNewPanel()} disabled={!activeWorkflowId}>{t('taskList.new')}</Button>}
         <button
           className="mobile-session-kebab mobile-toolbar-icon-button"
           aria-label={t('layout.moreActions')}
@@ -358,11 +361,11 @@ export default function TaskList() {
             <Icon name="workflow" size={16} />
             {t('taskList.stepEdit')}
           </Button>
-          <Button onClick={() => { setFiltersOpen(false); setShortcutSettingsOpen(true) }} disabled={!activeWorkflowId}>
+          <Button onClick={() => { setFiltersOpen(false); setShortcutSettingsOpen(true) }} disabled={!activeWorkflowId || !canEdit || bound}>
             <Icon name="zap" size={16} />
             {t('actionShortcuts.quickButtons')}
           </Button>
-          <Button onClick={() => { setFiltersOpen(false); setShowScheduleDialog(true) }}>
+          <Button onClick={() => { setFiltersOpen(false); setShowScheduleDialog(true) }} disabled={bound}>
             <Icon name="clock" size={16} />
             {t('schedules.title')}
           </Button>
@@ -397,7 +400,7 @@ export default function TaskList() {
           <Icon name="table" size={14} strokeWidth={2} />
           {t('taskList.stepEdit')}
         </Button>
-        {!showArchived && (
+        {canCreateTask && !showArchived && (
           <Button variant="primary" onClick={() => openNewPanel()} style={{ fontSize: 'calc(13px * var(--font-scale))', gap: 5 }}>
             <Icon name="plus" size={14} strokeWidth={2.5} />
             {t('taskList.new')}
@@ -459,7 +462,7 @@ export default function TaskList() {
         <Button
           variant="ghost"
           onClick={() => setShortcutSettingsOpen(true)}
-          disabled={!activeWorkflowId}
+          disabled={!activeWorkflowId || !canEdit || bound}
           style={{ fontSize: 'calc(13px * var(--font-scale))', gap: 5 }}
         >
           {t('actionShortcuts.quickButtons')}
@@ -467,7 +470,7 @@ export default function TaskList() {
         <Button
           variant="ghost"
           onClick={() => setShowScheduleDialog(true)}
-          disabled={!activeProject}
+          disabled={!activeProject || bound}
           title={t('schedules.openTitle')}
           style={{ fontSize: 'calc(13px * var(--font-scale))', gap: 5 }}
         >
@@ -477,7 +480,7 @@ export default function TaskList() {
         <Button
           variant="ghost"
           onClick={() => setMemoryOpen(true)}
-          disabled={!activeProject}
+          disabled={!activeProject || bound}
           title={t('taskList.memoryButtonTitle')}
           style={{ fontSize: 'calc(13px * var(--font-scale))', gap: 5 }}
         >
@@ -599,7 +602,7 @@ export default function TaskList() {
                   {lane.label}
                   <span className="task-board-lane-count">({laneTasks.length})</span>
                 </div>
-                {!showArchived && (
+                {canCreateTask && !showArchived && (
                   <Button
                     variant="ghost"
                     aria-label={t('taskList.addTaskToLane', { lane: lane.label })}
@@ -624,6 +627,7 @@ export default function TaskList() {
                   durationNowMs={durationNowMs}
                   showArchived={showArchived}
                   starting={startingTaskId === task.id}
+                  readOnly={!canEdit}
                   dragging={dragId === task.id}
                   onOpen={() => handleSelectTask(task.id)}
                   onStart={() => setConfirmStartTaskId(task.id)}
@@ -642,6 +646,8 @@ export default function TaskList() {
         {!loading && activeProject && boardView === 'table' && (
           <TaskTableView
             key={`${activeProject.id}:${showArchived}`}
+            readOnly={!canEdit}
+            canCreateTask={canCreateTask}
             lanes={lanes}
             tasksByLane={tasksByLane}
             showArchived={showArchived}
@@ -658,7 +664,7 @@ export default function TaskList() {
         )}
       </div>
 
-      {createRequest && activeProject && (
+      {canCreateTask && createRequest && activeProject && (
         <TaskCreatePanel
           key={createRequest.id}
           project={activeProject}

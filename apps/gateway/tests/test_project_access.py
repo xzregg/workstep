@@ -117,7 +117,7 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
                     return HTMLResponse('<main>Full WorkStep workspace</main>')
                 if request.method not in ("GET", "HEAD"):
                     assert access_level == "edit"
-                    assert task_create is (request.url.path == "/api/task/create")
+                    assert task_create is (request.url.path in ("/api/task/create", "/api/task/copy"))
                 else:
                     assert access_level == "read"
                     assert task_create is False
@@ -195,6 +195,8 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         create_url = f"{host}/api/task/create?project_id=host-1"
         edit_headers = {"Cookie": f"workstep_gateway_session={edit_cookie}", "Origin": host}
         assert client.post(create_url, headers=edit_headers, json={"title": "New task"}).status_code == 403
+        copy_url = f"{host}/api/task/copy?project_id=host-1"
+        assert client.post(copy_url, headers=edit_headers, json={"task_id": "task-1"}).status_code == 403
         assert client.post(f"{host}/api/task/run?project_id=host-1", headers=edit_headers,
                            json={"task_id": "task-1", "prompt": ""}).status_code == 200
         assert client.post(f"{host}/api/fs/upload/image?project_id=host-1",
@@ -225,6 +227,7 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         }, json={"title": "New task"}).status_code == 200
         assert client.post(create_url, headers=edit_headers,
                            json={"title": "New task"}).status_code == 200
+        assert client.post(copy_url, headers=edit_headers, json={"task_id": "task-1"}).status_code == 200
         assert client.get(f"{host}/api/remote/session", headers={
             "Cookie": f"workstep_gateway_session={edit_cookie}",
         }).json()["task_create"] is True

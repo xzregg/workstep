@@ -26,7 +26,7 @@ test('archive experience waiting state shows elapsed time', () => {
 
 test('every non-running active task can enter the archive experience flow', () => {
   assert.ok(
-    taskCardSource.includes("{!showArchived && status !== 'running' && ("),
+    taskCardSource.includes("{!readOnly && !showArchived && status !== 'running' && ("),
     'archive action should be available for every non-running active task',
   )
   assert.ok(

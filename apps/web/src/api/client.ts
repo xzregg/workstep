@@ -1,3 +1,4 @@
+import { workspaceCatalogPath } from './workspaceScope'
 import { browserActorHeaders } from '../utils/browserActor'
 import { BASE, fileDataUrl, request } from './transport'
 import type { Task } from './task'
@@ -200,7 +201,7 @@ export interface ProjectSettingsResult {
 }
 
 export const assistantApi = {
-  list: () => request<{ assistants: AssistantConfigInfo[] }>('/assistant/list'),
+  list: async () => request<{ assistants: AssistantConfigInfo[] }>(await workspaceCatalogPath('/assistant/list')),
   enhanceConfig: () => request<EnhanceConfigResult>('/assistant/enhance-config'),
   setEnhanceConfig: (config: { providerId: string; model: string; protocol: string }) =>
     request<{ saved: boolean; provider_id: string; model: string; protocol: string }>(

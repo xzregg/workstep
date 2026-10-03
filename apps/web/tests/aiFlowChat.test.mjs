@@ -42,7 +42,7 @@ test('AI flow chat keeps message-embedded apply-flow controls when proposals arr
 
 test('assistant panel forwards embedded A2UI actions and re-scrolls when A2UI mounts', () => {
   assert.match(panelSource, /messages\.length, lastContent, lastEventsCount, scrollKey, a2uiMessages\]/)
-  assert.match(panelSource, /onA2uiAction=\{onA2uiAction\}/)
+  assert.match(panelSource, /onA2uiAction=\{canEdit \? onA2uiAction : undefined\}/)
   assert.match(bubbleSource, /onAction=\{onA2uiAction\}/)
   assert.doesNotMatch(a2uiMessageSource, /withoutApplyFlowSurfaces/)
 })

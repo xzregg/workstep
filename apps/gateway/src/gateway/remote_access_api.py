@@ -195,7 +195,7 @@ async def proxy_remote_request(request: Request):
     user, device_id, auth_session, host_project_id = await _remote_identity(request)
     task_create = False
     if auth_session.project_id:
-        if request.method == "POST" and request.url.path == "/api/task/create":
+        if request.method == "POST" and request.url.path in ("/api/task/create", "/api/task/copy"):
             task_create = await _project_task_create_allowed(
                 request, device_id, user.id, host_project_id,
             )

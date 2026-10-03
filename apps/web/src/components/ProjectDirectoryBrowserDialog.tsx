@@ -1,3 +1,4 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useCompactLayout } from '../hooks/useCompactLayout'
@@ -70,13 +71,15 @@ export default function ProjectDirectoryBrowserDialog({
   rootPath,
   displayPath,
   browseDirectory,
-  readOnly = false,
+  readOnly: requestedReadOnly = false,
   initialFilePath,
   onSelectFile,
   headerActions,
   onClose,
 }: ProjectDirectoryBrowserDialogProps) {
   const { t } = useI18n()
+  const { canEdit } = useGatewayProjectPermissions(projectId)
+  const readOnly = requestedReadOnly || !canEdit
   const dialogRef = useRef<HTMLElement>(null)
   const resizeCleanupRef = useRef<(() => void) | null>(null)
   const [bounds, setBounds] = useState<DialogBounds | null>(null)

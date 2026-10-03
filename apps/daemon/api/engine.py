@@ -5,6 +5,8 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+from services.project_scope import require_catalog_project, workspace_engine_catalog
+
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -125,9 +127,11 @@ def _engine_info(engine_id: str) -> dict | None:
 
 
 @router.get("/list")
-async def list_engines():
+async def list_engines(project_id: str = ""):
     """Return every supported backend and its local availability."""
-    return {"engines": await asyncio.to_thread(_engine_summaries)}
+    scoped = require_catalog_project(project_id)
+    engines = await asyncio.to_thread(_engine_summaries)
+    return {"engines": workspace_engine_catalog(engines) if scoped else engines}
 
 
 @router.post("/refresh")
@@ -162,7 +166,8 @@ def _validate_engine(engine_id: str, *, coordinator: bool = False):
 
 
 @router.get("/execution/config")
-async def get_execution_default_config():
+async def get_execution_default_config(project_id: str = ""):
+    require_catalog_project(project_id)
     configured = await asyncio.to_thread(config_store.get_execution_default_engine)
     return {
         "engine": configured,
@@ -185,6 +190,7 @@ async def set_execution_default_config(req: DefaultEngineRequest):
 
 @router.get("/coordinator/config")
 async def get_coordinator_default_config(project_id: str = ""):
+    scoped = require_catalog_project(project_id)
     def load() -> dict:
         return {
             "engine": config_store.get_coordinator_default_engine(),
@@ -192,7 +198,8 @@ async def get_coordinator_default_config(project_id: str = ""):
             "fast_model": config_store.get_coordinator_default_fast_model(),
             "vision_model": config_store.get_coordinator_default_vision_model(),
             "thinking_effort": config_store.get_coordinator_default_thinking_effort(),
-            "available_engines": _coordinator_engine_options(),
+            "available_engines": (workspace_engine_catalog(_coordinator_engine_options())
+                                  if scoped else _coordinator_engine_options()),
         }
 
     return await asyncio.to_thread(load)
@@ -420,6 +427,9 @@ async def list_engine_models(
     project_id: str = "",
 ):
     """Return native models or the selected provider's cached model list."""
+    scoped = require_catalog_project(project_id)
+    if scoped and refresh:
+        raise HTTPException(status_code=403, detail="项目会话不能刷新宿主模型目录")
     engine = await asyncio.to_thread(
         lambda: (refresh_registry(invalidate_scan=False), create_engine(engine_id))[1]
     )
@@ -509,7 +519,7 @@ async def list_engine_models(
         error = "读取模型列表超时"
     except Exception as exc:
         models = []
-        error = str(exc) or "读取模型列表失败"
+        error = "读取模型列表失败" if scoped else (str(exc) or "读取模型列表失败")
     return {
         "engine_id": engine_id,
         "models": [asdict(model) for model in models],

@@ -44,6 +44,7 @@ interface Props {
   showArchived: boolean
   starting: boolean
   dragging?: boolean
+  readOnly?: boolean
   onOpen: () => void
   onStart: () => void
   onArchive: () => void
@@ -55,7 +56,7 @@ interface Props {
 
 /** One task board card owns its status, metadata, and action presentation. */
 export default function TaskBoardCard({
-  task, durationNowMs, showArchived, starting, dragging = false,
+  task, durationNowMs, showArchived, starting, dragging = false, readOnly = false,
   onOpen, onStart, onArchive, onRestore, onDelete, onDragStart, onDragEnd,
 }: Props) {
   const { t, locale } = useI18n()
@@ -95,7 +96,7 @@ export default function TaskBoardCard({
       className="task-board-card"
       data-task-status={status}
       data-dragging={dragging || undefined}
-      draggable={!showArchived}
+      draggable={!readOnly && !showArchived}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onClick={onOpen}
@@ -157,7 +158,7 @@ export default function TaskBoardCard({
           <span className="task-board-card-meta-spacer" />
         )}
         <div className="card-action-buttons task-board-card-buttons">
-          {taskNotStarted && status !== 'running' && (
+          {!readOnly && taskNotStarted && status !== 'running' && (
             <Button variant="icon" data-task-action="start"
               title={t('taskList.startTask')} aria-label={t('taskList.startTask')}
               disabled={starting} loading={starting}
@@ -170,7 +171,7 @@ export default function TaskBoardCard({
             onClick={(e) => { e.stopPropagation(); onOpen() }}>
             <Icon name="pencil" size={12} strokeWidth={2} />
           </Button>
-          {!showArchived && status !== 'running' && (
+          {!readOnly && !showArchived && status !== 'running' && (
             <Button variant="icon" data-task-action="archive"
               title={t('taskList.archiveTask')} aria-label={t('taskList.archiveTask')}
               onClick={(e) => { e.stopPropagation(); onArchive() }}
@@ -178,7 +179,7 @@ export default function TaskBoardCard({
               <Icon name="archive" size={12} strokeWidth={2} />
             </Button>
           )}
-          {showArchived && (
+          {!readOnly && showArchived && (
             <Button variant="icon" title={t('taskList.restoreToBoard')}
               aria-label={t('taskList.restoreToBoard')}
               onClick={(e) => { e.stopPropagation(); onRestore() }}
@@ -186,7 +187,7 @@ export default function TaskBoardCard({
               <Icon name="rotate-ccw" size={12} strokeWidth={2} />
             </Button>
           )}
-          {!isRunning && (
+          {!readOnly && !isRunning && (
             <Button variant="icon" className="task-board-card-icon task-board-card-icon--danger"
               data-task-action="delete" title={t('common.delete')}
               onClick={(e) => { e.stopPropagation(); onDelete() }}>

@@ -7,7 +7,7 @@ const storeSource = await readFile(new URL('../src/stores/projectStore.ts', impo
 const clientSource = await readFile(new URL('../src/api/project.ts', import.meta.url), 'utf8')
 
 test('workflow rows support drag-and-drop reordering', () => {
-  assert.match(source, /draggable=\{renameWfId !== wf\.id\}/)
+  assert.match(source, /draggable=\{canEdit && renameWfId !== wf\.id\}/)
   assert.match(source, /onDragStart=\{/)
   assert.match(source, /onDragOver=\{/)
   assert.match(source, /onDrop=\{/)

@@ -1,3 +1,4 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import SidebarConversationTabs from './SidebarConversationTabs'
 import ChatSessionSourceBadge from './ChatSessionSourceBadge'
 import { useVisualViewport } from '../hooks/useVisualViewport'
@@ -74,6 +75,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   // 鼠标悬停显示行操作；触屏点按时间只显示归档按钮。
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null)
   const { projects, activeProject, activeWorkflowId, fetchProjects, setActiveProject, renameProject, deleteProject, renameWorkflow, deleteWorkflow, restoreWorkflow, reorderProjects, reorderWorkflows, setActiveWorkflow } = useProjectStore()
+  const { canEdit } = useGatewayProjectPermissions(activeProject?.id)
   const [showInitModal, setShowInitModal] = useState(false)
   const [renameId, setRenameId] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
@@ -467,7 +469,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   return (
     <div className="app-shell">
       {/* Sidebar */}
-      <ResponsiveNavigation className="layout-sidebar" newDisabled={!activeProject} dismissSignal={`${showSettings}:${showInitModal}:${addWfProjectId}`} title={activeProject?.name || "WorkStep"} onNew={() => navigate(`/chat?project=${encodeURIComponent(activeProject?.name || "")}`)} style={{ width: sidebarWidth }}>
+      <ResponsiveNavigation className="layout-sidebar" newDisabled={!activeProject || !canEdit} dismissSignal={`${showSettings}:${showInitModal}:${addWfProjectId}`} title={activeProject?.name || "WorkStep"} onNew={() => navigate(`/chat?project=${encodeURIComponent(activeProject?.name || "")}`)} style={{ width: sidebarWidth }}>
         <div className="layout-sidebar-header">
           <div className="layout-sidebar-brand">
             <BrandIcon size={18} />
@@ -558,7 +560,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                 onPointerUp={cancelSidebarLongPress}
                 onPointerCancel={cancelSidebarLongPress}
                 onPointerLeave={cancelSidebarLongPress}
-                draggable={p.type === 'local' && renameId !== p.path}
+                draggable={canEdit && p.type === 'local' && renameId !== p.path}
                 onDragStart={(e) => {
                   e.stopPropagation()
                   e.dataTransfer.effectAllowed = 'move'
@@ -685,6 +687,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                 <Button
                   variant="icon"
                   className="ws-more-btn"
+                  disabled={!canEdit}
                   onClick={(e) => openMoreMenu(e, 'project', p.id)}
                   title={t('layout.moreActions')}
                   aria-label={t('layout.moreActions')}
@@ -715,7 +718,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             />
                             {t('chatSession.flowSection')}
                           </span>
-                          {flowOpen && (
+                          {canEdit && flowOpen && (
                             <SidebarAddButton
                               onClick={(e) => { e.stopPropagation(); void openAddWorkflow(p.id) }}
                               title={t('layout.addWorkflowTitle')}
@@ -756,7 +759,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                       data-active={workflowSelected}
                       data-dragging={isDragSource}
                       data-drop-target={isDropTarget}
-                      draggable={renameWfId !== wf.id}
+                      draggable={canEdit && renameWfId !== wf.id}
                       onDragStart={(e) => {
                         e.stopPropagation()
                         e.dataTransfer.effectAllowed = 'move'
@@ -828,6 +831,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                       <Button
                         variant="icon"
                         className="ws-more-btn"
+                        disabled={!canEdit}
                         onClick={(e) => openMoreMenu(e, 'workflow', wf.id)}
                         title={t('layout.moreActions')}
                         aria-label={t('layout.moreActions')}
@@ -863,7 +867,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                         {t('chatSession.navSection')}
                       </span>
                       {tabs}
-                      {open && tab === 'chat' && (
+                      {canEdit && open && tab === 'chat' && (
                         <SidebarAddButton
                           loading={creatingSession}
                           disabled={creatingSession}
@@ -883,7 +887,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             variant="ghost"
                             size="sm"
                             loading={bulkDeleting}
-                            disabled={bulkDeleting}
+                            disabled={bulkDeleting || !canEdit}
                             onClick={(e) => { e.stopPropagation(); setBulkDeleteError(''); setBulkDeleteConfirm(true) }}
                             title={t('chatSession.bulkDelete')}
                             className="layout-session-bulk-button layout-session-bulk-delete"
@@ -943,7 +947,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                           data-active={location.pathname === '/chat' && activeSessionId === session.id}
                           data-dragging={isDragSource}
                           data-drop-target={isDropTarget}
-                          draggable={renameSessionId !== session.id && !isMultiSelect}
+                          draggable={canEdit && renameSessionId !== session.id && !isMultiSelect}
                           onDragStart={(e) => {
                             e.stopPropagation()
                             e.dataTransfer.effectAllowed = 'move'
@@ -1015,13 +1019,13 @@ export default function Layout({ onSelectProject, children }: Props) {
                             failedTitle={t('layout.failedState')}
                             completedTitle={t('layout.completedUnread')}
                           />
-                          <SessionRowActions
+                          {canEdit && <SessionRowActions
                             session={session}
                             hovered={hoveredSessionId === session.id}
                             now={sidebarNow}
                             onArchive={() => { void handleArchiveSession(session.id, p.id) }}
                             onMore={(e) => openSessionMenu(e, p.id, session.id, session.title)}
-                          />
+                          />}
                         </div>
                         )
                       })}

@@ -5,6 +5,8 @@ import time
 import uuid
 from dataclasses import asdict
 
+from services.project_scope import require_catalog_project
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -134,10 +136,14 @@ def _require_provider(provider_id: str) -> dict:
 @router.get("/list")
 async def list_providers(project_id: str = ""):
     """Return all providers (masked) plus built-in type presets."""
+    scoped = require_catalog_project(project_id)
     def load() -> dict:
-        providers = config_store.get_providers()
+        providers = [_public_provider(item) for item in config_store.get_providers()]
+        if scoped:
+            providers = [{**item, "base_url": "", "protocol_base_urls": {},
+                          "api_key": "", "has_key": False} for item in providers]
         return {
-            "providers": [_public_provider(item) for item in providers],
+            "providers": providers,
             "types": provider_service.list_provider_types(),
         }
 

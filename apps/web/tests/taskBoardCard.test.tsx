@@ -120,3 +120,29 @@ test('scheduled time and description preview stay within the task card', async (
     await window.happyDOM.close()
   }
 })
+
+
+test('a readonly card retains viewing and metadata while hiding mutations and drag', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  let opened = false
+  try {
+    await act(async () => root.render(<I18nProvider><TaskBoardCard
+      task={task} durationNowMs={Date.now()} showArchived={false} starting={false} readOnly
+      onOpen={() => { opened = true }} onStart={() => assert.fail('start')}
+      onArchive={() => assert.fail('archive')} onRestore={() => assert.fail('restore')}
+      onDelete={() => assert.fail('delete')} onDragStart={() => {}} onDragEnd={() => {}}
+    /></I18nProvider>))
+    assert.match(container.textContent || '', /Alice/)
+    assert.equal(container.querySelector('[data-task-action]'), null)
+    const card = container.querySelector<HTMLElement>('.task-board-card')!
+    assert.equal(card.getAttribute('draggable'), 'false')
+    await act(async () => card.click())
+    assert.equal(opened, true)
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
