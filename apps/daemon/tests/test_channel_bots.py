@@ -384,3 +384,98 @@ async def test_channel_source_survives_rename_and_archive_without_title_guessing
         assert module.list_sessions(project.id, archived=True)[0]["source"] == "channel"
 
     await manager._project_manager.run_db(project.id, operation)
+
+
+@pytest.mark.parametrize("failure", [False, True])
+async def test_wecom_waiting_reply_precedes_work_and_finishes_on_error_or_empty_reply(bots, failure):
+    manager, project, *_rest, adapters = bots
+    bot = await manager.create_bot({
+        "platform": "wecom", "name": "机器人", "app_id": "wx-bot", "secret": "secret",
+        "enabled": True, "default_target_type": "project", "default_project_id": project.id,
+    })
+    adapter = adapters[bot["id"]]
+    progress = []
+    async def start_reply(message):
+        progress.append(message.message_id)
+    adapter.start_reply = start_reply
+
+    async def respond(*args):
+        assert progress == ["message"]
+        if failure:
+            raise RuntimeError("engine failed")
+        return "session", ""
+    manager._responder = respond
+    await manager.handle_message(IncomingMessage(
+        bot_id=bot["id"], message_id="message", conversation_type="single",
+        conversation_id="user", sender_id="user", text="hello",
+    ))
+    expected = "处理失败，请稍后重试。" if failure else "处理完成，暂无回复内容。"
+    assert adapter.sent == [("user", expected)]
+    await manager.handle_message(IncomingMessage(
+        bot_id=bot["id"], message_id="message", conversation_type="single",
+        conversation_id="user", sender_id="user", text="hello",
+    ))
+    assert progress == ["message"]
+
+
+async def test_queued_channel_messages_show_waiting_and_reuse_latest_session(bots):
+    manager, project, *_rest, adapters = bots
+    bot = await manager.create_bot({
+        "platform": "wecom", "name": "机器人", "app_id": "wx-bot", "secret": "secret",
+        "enabled": True, "default_target_type": "project", "default_project_id": project.id,
+    })
+    adapter = adapters[bot["id"]]
+    first_running, second_waiting, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    sessions = []
+    async def start_reply(message):
+        if message.message_id == "second":
+            second_waiting.set()
+    adapter.start_reply = start_reply
+    async def respond(project_id, session_id, content, *args):
+        sessions.append(session_id)
+        if content == "first":
+            first_running.set()
+            await release.wait()
+        return session_id or "new-session", "回答"
+    manager._responder = respond
+    def incoming(id):
+        return IncomingMessage(bot_id=bot["id"], message_id=id, conversation_type="single",
+            conversation_id="user", sender_id="user", text=id)
+    first = asyncio.create_task(manager.handle_message(incoming("first")))
+    second = None
+    try:
+        await asyncio.wait_for(first_running.wait(), 1)
+        second = asyncio.create_task(manager.handle_message(incoming("second")))
+        await asyncio.wait_for(second_waiting.wait(), 1)
+        assert sessions == [None]
+    finally:
+        release.set()
+        await first
+        if second:
+            await second
+    assert sessions == [None, "new-session"]
+
+
+async def test_slow_channel_waiting_reply_does_not_block_health(bots):
+    manager, project, *_rest, adapters = bots
+    bot = await manager.create_bot({
+        "platform": "wecom", "name": "机器人", "app_id": "wx-bot", "secret": "secret",
+        "enabled": True, "default_target_type": "project", "default_project_id": project.id,
+    })
+    entered, release = asyncio.Event(), asyncio.Event()
+    async def delayed_network_reply(message):
+        entered.set()
+        await release.wait()
+    adapters[bot["id"]].start_reply = delayed_network_reply
+    pending = asyncio.create_task(manager.handle_message(IncomingMessage(
+        bot_id=bot["id"], message_id="slow", conversation_type="single",
+        conversation_id="user", sender_id="user", text="hello",
+    )))
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+        async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+            response = await asyncio.wait_for(client.get("/api/health"), timeout=0.5)
+            assert response.status_code == 200
+    finally:
+        release.set()
+        await pending

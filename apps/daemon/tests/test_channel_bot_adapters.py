@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from services.channels.bots import IncomingMessage
 from services.channels.dingtalk import DingTalkAdapter
 from services.channels.wecom import WeComAdapter
 
@@ -17,6 +18,7 @@ async def test_wecom_group_message_and_reply_use_official_sdk_frame(monkeypatch)
             self.handlers = {}
             self.connect = AsyncMock()
             self.send_message = AsyncMock()
+            self.reply_stream = AsyncMock()
             self.disconnect = lambda: None
 
         def on(self, event):
@@ -40,15 +42,21 @@ async def test_wecom_group_message_and_reply_use_official_sdk_frame(monkeypatch)
     )
     await adapter.start()
     client = instances[0]
-    await client.handlers["message.text"]({"body": {
+    await client.handlers["message.text"]({"headers": {"req_id": "callback-1"}, "body": {
         "msgid": "m1", "chattype": "group", "chatid": "room-1",
         "from": {"userid": "u1"}, "text": {"content": "请处理"},
     }})
     assert (incoming[0].conversation_id, incoming[0].sender_id, incoming[0].text) == ("room-1", "u1", "请处理")
+    await adapter.start_reply(incoming[0])
     await adapter.send_text(incoming[0], "完成")
-    client.send_message.assert_awaited_once_with("room-1", {
-        "msgtype": "markdown", "markdown": {"content": "完成"},
-    })
+    first, last = client.reply_stream.await_args_list
+    assert first.args[0] == incoming[0].reply_context
+    assert first.args[1] == last.args[1]
+    assert first.args[2] == ""
+    assert first.kwargs == {"finish": False}
+    assert last.args[2] == "完成"
+    assert last.kwargs == {"finish": True}
+    client.send_message.assert_not_awaited()
     await adapter.stop()
 
 
@@ -128,3 +136,21 @@ async def test_dingtalk_stream_callback_ack_and_group_identity():
     assert (incoming[0].conversation_type, incoming[0].conversation_id, incoming[0].sender_name) == (
         "group", "room-1", "张三",
     )
+
+
+async def test_wecom_final_reply_falls_back_to_active_send_if_stream_expires():
+    adapter = WeComAdapter({"id": "bot"}, AsyncMock(), AsyncMock())
+    client = type("Client", (), {
+        "reply_stream": AsyncMock(side_effect=RuntimeError("stream expired")),
+        "send_message": AsyncMock(),
+    })()
+    adapter._client = client
+    message = IncomingMessage(
+        bot_id="bot", message_id="m1", conversation_type="single",
+        conversation_id="user", sender_id="user", text="hello",
+        reply_context={"headers": {"req_id": "callback"}},
+    )
+    await adapter.send_text(message, "最终回答")
+    client.send_message.assert_awaited_once_with("user", {
+        "msgtype": "markdown", "markdown": {"content": "最终回答"},
+    })
