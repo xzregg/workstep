@@ -20,7 +20,7 @@ async def test_gateway_upload_waits_for_pc_receive_window():
         async def send_json(self, message):
             sent.append(ProxyFrame.model_validate(message))
 
-    connection = DataConnection("device-1", Socket())
+    connection = DataConnection("device-1", Socket(), flow_control=True)
     connection._outbound_windows["stream-1"] = asyncio.BoundedSemaphore(32)
     body = ProxyFrame(stream_id="stream-1", type=FrameType.http_request,
                       payload={"phase": "body", "data": "eA=="})

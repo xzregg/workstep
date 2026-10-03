@@ -356,7 +356,8 @@ class ControlConnections:
             if pending and pending[0] == device_id and not pending[1].done():
                 pending[1].set_result(result)
 
-    async def attach_data(self, token: str, socket: WebSocket) -> "DataConnection | None":
+    async def attach_data(self, token: str, socket: WebSocket, *,
+                          flow_control: bool = False) -> "DataConnection | None":
         async with self._lock:
             pending = self._pending_data.pop(token, None)
             if not pending:
@@ -367,7 +368,7 @@ class ControlConnections:
                 if not future.done():
                     future.set_exception(ConnectionError("Data token expired"))
                 return None
-            connection = DataConnection(device_id, socket)
+            connection = DataConnection(device_id, socket, flow_control=flow_control)
             self._data_active[device_id] = connection
             connection.ready_future = future
             return connection
@@ -430,9 +431,11 @@ class ControlConnections:
 
 
 class DataConnection:
-    def __init__(self, device_id: str, socket: WebSocket):
+    def __init__(self, device_id: str, socket: WebSocket, *,
+                 flow_control: bool = False):
         self.device_id = device_id
         self.socket = socket
+        self.flow_control = flow_control
         self.ready_future: asyncio.Future | None = None
         self._send_lock = asyncio.Lock()
         self._streams: dict[str, asyncio.Queue] = {}
@@ -443,6 +446,9 @@ class DataConnection:
             await self.socket.send_json(frame.model_dump(mode="json"))
 
     async def send_stream_frame(self, frame: ProxyFrame) -> None:
+        if not self.flow_control:
+            await self.send_frame(frame)
+            return
         window = self._outbound_windows.get(frame.stream_id)
         if window is None:
             raise ConnectionError("Managed data stream closed")
@@ -450,7 +456,7 @@ class DataConnection:
         await self.send_frame(frame)
 
     def grant_credit(self, frame: ProxyFrame) -> None:
-        if frame.payload != {"credits": 1}:
+        if not self.flow_control or frame.payload != {"credits": 1}:
             raise ValueError("Invalid managed data window update")
         window = self._outbound_windows.get(frame.stream_id)
         if window is not None:
@@ -555,7 +561,7 @@ class DataConnection:
                     frame = await asyncio.wait_for(queue.get(), timeout=min(1, remaining))
                     if authorization_check is not None:
                         await authorization_check()
-                    if not isinstance(frame, Exception):
+                    if self.flow_control and not isinstance(frame, Exception):
                         await self.send_frame(ProxyFrame(
                             stream_id=stream_id, type=FrameType.window_update,
                             payload={"credits": 1},
@@ -717,7 +723,7 @@ class DataConnection:
                          "project_id": project_id, "access_level": access_level},
             ))
             opened = await asyncio.wait_for(queue.get(), timeout=15)
-            if not isinstance(opened, Exception):
+            if self.flow_control and not isinstance(opened, Exception):
                 await self.send_frame(ProxyFrame(
                     stream_id=stream_id, type=FrameType.window_update,
                     payload={"credits": 1},
@@ -754,7 +760,7 @@ class DataConnection:
                 assembler = WebSocketMessageAssembler()
                 while True:
                     frame = await queue.get()
-                    if not isinstance(frame, Exception):
+                    if self.flow_control and not isinstance(frame, Exception):
                         await self.send_frame(ProxyFrame(
                             stream_id=stream_id, type=FrameType.window_update,
                             payload={"credits": 1},
@@ -819,12 +825,18 @@ async def data_socket(ws: WebSocket):
                 or not isinstance(hello.get("token"), str)):
             await ws.close(code=4401)
             return
-        connection = await ws.app.state.control_connections.attach_data(hello["token"], ws)
+        flow_control = hello.get("flow_control") is True
+        connection = await ws.app.state.control_connections.attach_data(
+            hello["token"], ws, flow_control=flow_control,
+        )
         if connection is None:
             await ws.close(code=4401)
             return
-        await ws.send_json({"kind": "data_ready", "version": 1,
-                            "device_id": connection.device_id})
+        ready = {"kind": "data_ready", "version": 1,
+                 "device_id": connection.device_id}
+        if flow_control:
+            ready["flow_control"] = True
+        await ws.send_json(ready)
         ws.app.state.control_connections.data_ready(connection)
         while True:
             message = await ws.receive_json()
