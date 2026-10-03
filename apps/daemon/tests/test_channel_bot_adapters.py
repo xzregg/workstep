@@ -154,3 +154,65 @@ async def test_wecom_final_reply_falls_back_to_active_send_if_stream_expires():
     client.send_message.assert_awaited_once_with("user", {
         "msgtype": "markdown", "markdown": {"content": "最终回答"},
     })
+
+
+@pytest.mark.parametrize('conversation_type', ['single', 'group'])
+async def test_dingtalk_active_reply_uses_official_recipient_and_cached_token(monkeypatch, conversation_type):
+    calls = []
+    entered, release = asyncio.Event(), asyncio.Event()
+    class Response:
+        def __init__(self, body): self.body = body
+        async def __aenter__(self):
+            if "accessToken" not in self.body:
+                entered.set()
+                await release.wait()
+            return self
+        async def __aexit__(self, *args): pass
+        def raise_for_status(self): pass
+        async def json(self): return self.body
+    class Session:
+        def __init__(self, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        def post(self, url, **kwargs):
+            calls.append((url, kwargs))
+            return Response({'accessToken': 'token', 'expireIn': 7200} if url.endswith('/accessToken') else {'processQueryKey': 'sent'})
+    monkeypatch.setattr('services.channels.dingtalk.aiohttp.ClientSession', Session)
+    adapter = DingTalkAdapter({'id': 'bot', 'app_id': 'client', 'secret': 'secret'}, AsyncMock(), AsyncMock())
+    message = IncomingMessage(bot_id='bot', message_id='local-answer', conversation_type=conversation_type,
+                              conversation_id='chat-id', sender_id='staff-id', text='')
+    pending = asyncio.create_task(adapter.send_text(message, '回复'))
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+        from httpx import AsyncClient, ASGITransport
+        import main
+        async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
+            assert (await asyncio.wait_for(client.get('/api/health'), .5)).status_code == 200
+    finally:
+        release.set()
+    await pending
+    await adapter.send_text(message, '第二条')
+    assert len(calls) == 3
+    assert calls[0] == ('https://api.dingtalk.com/v1.0/oauth2/accessToken', {'json': {'appKey': 'client', 'appSecret': 'secret'}})
+    url, request = calls[1]
+    assert request['headers'] == {'x-acs-dingtalk-access-token': 'token'}
+    assert request['json']['robotCode'] == 'client'
+    assert request['json']['msgKey'] == 'sampleText'
+    assert json.loads(request['json']['msgParam']) == {'content': '回复'}
+    if conversation_type == 'group':
+        assert url.endswith('/robot/groupMessages/send')
+        assert request['json']['openConversationId'] == 'chat-id'
+        assert 'userIds' not in request['json']
+    else:
+        assert url.endswith('/robot/oToMessages/batchSend')
+        assert request['json']['userIds'] == ['staff-id']
+        assert 'openConversationId' not in request['json']
+
+
+async def test_wecom_local_reply_uses_active_send_without_old_callback():
+    adapter = WeComAdapter({'id': 'bot'}, AsyncMock(), AsyncMock())
+    adapter._client = type('Client', (), {'send_message': AsyncMock(), 'reply_stream': AsyncMock()})()
+    message = IncomingMessage(bot_id='bot',message_id='local-answer',conversation_type='group',conversation_id='room',sender_id='user',text='')
+    await adapter.send_text(message, '本地回复')
+    adapter._client.send_message.assert_awaited_once_with('room', {'msgtype': 'markdown', 'markdown': {'content': '本地回复'}})
+    adapter._client.reply_stream.assert_not_awaited()

@@ -32,3 +32,9 @@ WorkStep 使用平台官方长连接接收机器人消息。daemon 主动连出�
 - 企业微信使用系统代理连接时，若状态持续为「重连中」，设置页会显示最近一次连接错误。使用 SOCKS 代理需要安装项目依赖中的 `python-socks`；更新依赖后须重启 daemon，连接库才能重新加载代理支持。
 
 渠道会话列表标签显示平台及私聊对象（例如「钉钉 · 私聊 小王」），群聊显示群标识；平台未提供姓名时显示用户 ID。完整标签包含机器人名称，长标签截断显示。会话来源独立保存，归档或重置后仍保留原会话的来源。既有会话从当前渠道映射补全；无法确定私聊或群聊的历史记录只显示平台与机器人。
+
+### 在 WorkStep 内续聊并推送回复
+
+在左侧「渠道」Tab 打开会话并发送消息后，LLM 已完成的正文回复会主动推送到该会话当前映射的机器人私聊或群聊。普通会话、已归档或已被重置替换的会话不推送；渠道入站消息已有回复回调，不会重复发送。思考、工具调用与流式碎片不逐条推送。失败会记录日志并发布 `channel_bots.reply_error` 事件。
+
+企业微信使用长连接 SDK 的主动发送接口；钉钉使用 [机器人群聊发送](https://open.dingtalk.com/document/orgapp/the-robot-sends-a-group-message) 或 [机器人单聊发送](https://open.dingtalk.com/document/orgapp/chatbots-send-one-on-one-chat-messages-in-batches)，通过应用凭证获取并缓存 accessToken。钉钉应用需要具备相应主动发送权限。
