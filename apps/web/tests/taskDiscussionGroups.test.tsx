@@ -19,7 +19,7 @@ test('task discussion panel binds a received group ID to the current task', asyn
     const data = url === '/api/channel-bots'
       ? [{ id: 'bot-1', name: '企业微信', platform: 'wecom', enabled: true }]
       : url.endsWith('/recent-groups')
-        ? [{ bot_id: 'bot-1', group_id: 'group-1' }]
+        ? [{ bot_id: 'bot-1', group_id: 'group-1', group_name: '研发群' }]
         : method === 'POST'
           ? (groups = [{ bot_id: 'bot-1', group_id: 'group-1', project_id: 'project-1', task_id: 'task-1' }], groups[0])
           : groups
@@ -39,6 +39,7 @@ test('task discussion panel binds a received group ID to the current task', asyn
       select.dispatchEvent(new window.Event('change', { bubbles: true }))
     })
     assert.equal(input.value, 'group-1')
+    assert.match(select.textContent || '', /研发群/)
     assert.equal(bind.disabled, false)
     await act(async () => {
       Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, 'manual-group')
@@ -51,7 +52,7 @@ test('task discussion panel binds a received group ID to the current task', asyn
     })
     await act(async () => bind.click())
     assert.deepEqual(calls.find((call) => call.method === 'POST')?.body, {
-      project_id: 'project-1', bot_id: 'bot-1', group_id: 'group-1',
+      project_id: 'project-1', bot_id: 'bot-1', group_id: 'group-1', group_name: '研发群',
     })
     assert.match(document.querySelector('.task-discussion-groups-list')?.textContent || '', /group-1/)
     assert.equal(input.value, '')

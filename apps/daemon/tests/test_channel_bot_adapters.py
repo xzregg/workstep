@@ -283,3 +283,24 @@ async def test_dingtalk_native_media_upload_and_send(monkeypatch, kind):
     assert body['msgKey']==('sampleImageMsg' if kind=='image' else 'sampleFile')
     params=json.loads(body['msgParam'])
     assert params==({'photoURL':'@media'} if kind=='image' else {'mediaId':'@media','fileName':'report.pdf','fileType':'pdf'})
+
+
+@pytest.mark.asyncio
+async def test_dingtalk_received_group_name_and_sender_are_normalized():
+    from types import SimpleNamespace
+    from services.channels.dingtalk import _MessageHandler
+    received = []
+    done = asyncio.Event()
+    async def accept(message):
+        received.append(message)
+        done.set()
+    handler = _MessageHandler('bot', accept)
+    await handler.process(SimpleNamespace(data={
+        'msgId': 'm1', 'conversationType': '2', 'conversationId': 'room',
+        'conversationTitle': '研发群', 'senderStaffId': 'u1', 'senderNick': '小王',
+        'msgtype': 'text', 'text': {'content': '你好'},
+    }))
+    await asyncio.wait_for(done.wait(), 1)
+    assert received[0].conversation_name == '研发群'
+    assert received[0].sender_name == '小王'
+    assert received[0].sender_id == 'u1'

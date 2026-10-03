@@ -7,7 +7,7 @@ from models.chat_session import ChatMessage
 from services.config import config_store
 
 
-def channel_session_source(session_id: str) -> dict:
+def channel_session_source(session_id: str, title: str = "") -> dict:
     message = ChatMessage.select(ChatMessage.author_id, ChatMessage.author_device_id, ChatMessage.author_name).where(
         (ChatMessage.session == session_id)
         & (ChatMessage.role == "user")
@@ -32,6 +32,8 @@ def channel_session_source(session_id: str) -> dict:
     peer_name = identity.get("peer_name") or identity.get("conversation_id")
     if conversation_type == "single" and not identity.get("peer_name"):
         peer_name = (message.author_name or "").split(" · ", 1)[-1] or peer_name
+    if conversation_type == "group":
+        peer_name = identity.get("group_name") or title or peer_name
     bot = next((item for item in bots if item.get("id") == bot_id), {})
     return {
         "source": "channel",
@@ -39,4 +41,10 @@ def channel_session_source(session_id: str) -> dict:
         "channel_name": bot.get("name") or None,
         "channel_conversation_type": conversation_type,
         "channel_peer_name": peer_name,
+        "channel_conversation_id": identity.get("conversation_id"),
+        "channel_group_name": (identity.get("group_name") or title or None) if conversation_type == "group" else None,
+        "channel_sender_id": identity.get("sender_id"),
+        "channel_sender_name": identity.get("sender_name"),
+        "channel_initiator_id": identity.get("initiator_id") or message.author_id.split(":", 2)[-1],
+        "channel_initiator_name": identity.get("initiator_name") or (message.author_name or "").split(" · ", 1)[-1],
     }

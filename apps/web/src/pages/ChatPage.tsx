@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import AssistantChatPanel from '../components/AssistantChatPanel'
+import ChannelConversationContext from '../components/ChannelConversationContext'
 import ChatSessionGoalBar from '../components/ChatSessionGoalBar'
 import { latestGoalFromMessages } from '../utils/goal'
 import { ProjectActionMessages } from '../components/ProjectActionMessages'
@@ -425,6 +426,7 @@ export default function ChatPage() {
       <AssistantChatPanel
         projectId={activeProject.id}
         sessionId={sessionId}
+        headerContext={<ChannelConversationContext projectId={activeProject.id} sessionId={sessionId} />}
         title={sessionTitle || t('chatSession.title')}
         messages={messages}
         actionRuns={projectActions.runs}
