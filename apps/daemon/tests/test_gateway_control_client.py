@@ -17,6 +17,7 @@ from services.desktop_security import DesktopSecurityMiddleware
 from services.gateway_client import GatewayClientService
 from services.gateway_client.identity import ManagedActor
 from services.gateway_client.policy import ManagedPolicyCache
+from workstep_gateway_protocol import FrameType, ProxyFrame
 from types import SimpleNamespace
 
 
@@ -57,6 +58,68 @@ from services.gateway_client.control import GatewayControlClient, control_url, d
 def test_control_url_is_fixed_to_managed_gateway():
     assert control_url("https://gateway.example") == "wss://gateway.example/api/control/ws"
     assert data_url("https://gateway.example") == "wss://gateway.example/api/data/ws"
+
+
+@pytest.mark.asyncio
+async def test_completed_data_streams_release_the_connection_slot():
+    completed = asyncio.Event()
+
+    class Socket:
+        def __init__(self):
+            self.incoming = asyncio.Queue()
+            self.responses = 0
+
+        async def send(self, value):
+            message = json.loads(value)
+            if message.get("kind") == "data_hello":
+                self.incoming.put_nowait(json.dumps({
+                    "kind": "data_ready", "version": 1, "device_id": "device-1",
+                }))
+                self.next_request()
+                return
+            frame = ProxyFrame.model_validate(message)
+            if (frame.type == FrameType.http_response
+                    and frame.payload.get("phase") == "end"):
+                self.responses += 1
+                if self.responses == 33:
+                    completed.set()
+                else:
+                    asyncio.get_running_loop().call_later(0.001, self.next_request)
+
+        def next_request(self):
+            self.incoming.put_nowait(ProxyFrame(
+                stream_id=f"stream-{self.responses}", type=FrameType.http_request,
+                payload={"phase": "start", "method": "GET", "path": "/api/ping",
+                         "query": "", "headers": [], "user_id": "user-1",
+                         "username": "alice"},
+            ).model_dump_json())
+
+        async def recv(self):
+            return await self.incoming.get()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return None
+
+    async def app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    socket = Socket()
+    client = GatewayControlClient(
+        "https://gateway.example", gateway_id="gateway-test",
+        public_key_fingerprint="0" * 64, user_id="user-1",
+        policy_cache=ManagedPolicyCache(), asgi_app=app,
+        connector=lambda *_args, **_kwargs: socket,
+    )
+    task = asyncio.create_task(client._run_data("device-1", "data-token"))
+    try:
+        await asyncio.wait_for(completed.wait(), timeout=1)
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
 
 
 @pytest.mark.asyncio

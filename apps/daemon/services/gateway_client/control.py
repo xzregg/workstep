@@ -500,6 +500,11 @@ class GatewayControlClient:
 
     async def _run_data(self, device_id: str, token: str) -> None:
         streams: dict[str, ManagedHttpBridge | ManagedWebSocketBridge] = {}
+
+        def release_finished(stream_id: str, bridge) -> None:
+            if streams.get(stream_id) is bridge:
+                streams.pop(stream_id, None)
+
         try:
             async with self.connector(data_url(self.origin), origin=self.origin,
                                       open_timeout=10, max_size=1024 * 1024) as socket:
@@ -524,6 +529,10 @@ class GatewayControlClient:
                                                    gateway_id=self.gateway_id)
                         streams[frame.stream_id] = bridge
                         bridge.start_task()
+                        bridge._task.add_done_callback(
+                            lambda _task, stream_id=frame.stream_id, active=bridge:
+                            release_finished(stream_id, active)
+                        )
                     elif frame.type == FrameType.websocket_open and frame.payload.get("phase") == "start":
                         if self.asgi_app is None or bridge is not None or len(streams) >= 32:
                             raise ValueError("Invalid managed data stream")
@@ -531,6 +540,10 @@ class GatewayControlClient:
                                                         frame.payload, send_frame, device_id)
                         streams[frame.stream_id] = bridge
                         bridge.start_task()
+                        bridge._task.add_done_callback(
+                            lambda _task, stream_id=frame.stream_id, active=bridge:
+                            release_finished(stream_id, active)
+                        )
                     elif frame.type == FrameType.cancel:
                         if bridge:
                             bridge.cancel()
