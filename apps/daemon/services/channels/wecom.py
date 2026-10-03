@@ -8,7 +8,7 @@ import uuid
 
 from aibot import WSClient, WSClientOptions
 
-from services.channels.base import ChannelAdapter, ChannelCapabilities, ChannelAttachment, IncomingMessage, OutgoingMessage
+from services.channels.base import ChannelAdapter, ChannelCapabilities, ChannelAttachment, IncomingMessage, OutgoingMessage, ChannelCard, ChannelAction
 from services.channels.media import fetch_media
 
 
@@ -26,7 +26,7 @@ def _utf8_parts(text: str, limit: int):
 class WeComAdapter(ChannelAdapter):
     CHANNEL_ID = 'wecom'
     DISPLAY_NAME = '企业微信'
-    CAPABILITIES = ChannelCapabilities(receive=frozenset({'text','image','file'}), send=frozenset({'text','image','file'}), waiting=True, streaming=True)
+    CAPABILITIES = ChannelCapabilities(receive=frozenset({'text','image','file'}), send=frozenset({'text','image','file'}), waiting=True, streaming=True, cards=True)
 
     def __init__(self, bot: dict, on_message, on_state):
         super().__init__(bot, on_message, on_state)
@@ -100,6 +100,31 @@ class WeComAdapter(ChannelAdapter):
             )
             await self._on_message(message)
 
+        @client.on("event.template_card_event")
+        async def card_action(frame):
+            if self._on_action is None:
+                return
+            body = frame.get("body") or {}
+            event = body.get("event") or {}
+            click = ChannelAction(self._bot["id"], str(event.get("task_id") or ""),
+                str(event.get("event_key") or ""), str((body.get("from") or {}).get("userid") or ""),
+                conversation_id=str(body.get("chatid") or ""), reply_context=frame)
+            async def claimed():
+                # ACK the card callback within WeCom's five-second deadline.
+                # Only a validated click can change the shared card's state.
+                try:
+                    await asyncio.wait_for(client.update_template_card(frame, {
+                        "card_type":"text_notice", "task_id":click.card_id,
+                        "main_title":{"title":"选择已接收", "desc":"正在执行，请查看后续回复。"},
+                    }), 4)
+                except Exception:
+                    logger.warning("Failed to acknowledge WeCom card", exc_info=True)
+            result = await self._on_action(click, on_claimed=claimed)
+            if click.sender_id:
+                await client.send_message(click.conversation_id or click.sender_id, {
+                    "msgtype":"markdown", "markdown":{"content":result},
+                })
+
         self._task = asyncio.create_task(self._connect(client))
 
     async def _connect(self, client: WSClient) -> None:
@@ -166,6 +191,18 @@ class WeComAdapter(ChannelAdapter):
             preview = next(_utf8_parts(text, 20480))
             await self._client.reply_stream(frame, self._stream_id(message), preview, finish=False)
 
+
+    async def send_card(self, recipient: IncomingMessage, card: ChannelCard) -> None:
+        if not self._client:
+            raise RuntimeError("企业微信机器人未连接")
+        template = {"card_type":"button_interaction", "task_id":card.id,
+                    "main_title":{"title":card.title[:36], "desc":card.text[:1024]},
+                    "button_list":[{"text":button.label[:40],"key":button.key} for button in card.buttons]}
+        frame = self._reply_frame(recipient)
+        if card.running and frame:
+            await self._client.reply_stream_with_card(frame, self._stream_id(recipient), "", finish=False, template_card=template)
+        else:
+            await self._client.send_message(recipient.conversation_id, {"msgtype":"template_card","template_card":template})
 
     async def send(self, recipient: IncomingMessage, message: OutgoingMessage) -> None:
         self.validate_outgoing(message)

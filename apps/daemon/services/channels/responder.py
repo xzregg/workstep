@@ -39,6 +39,14 @@ class ChatSessionResponder:
                 await module.shutdown()
         self._modules = {"channel_chat": self._chat_module}
 
+    async def stop(self, project_id: str, session_id: str, assistant_message_id: str) -> bool:
+        module = self._module_for("channel_chat")
+        if not any(state.get("session_id") == session_id and state.get("assistant_message_id") == assistant_message_id
+                   and state.get("project_id") == project_id and state.get("status") in {"queued", "running", "stopping"}
+                   for state in module._turn_states.values()):
+            return False
+        return await module.stop_current(session_id, project_id=project_id)
+
     async def __call__(
         self,
         project_id: str,
@@ -49,6 +57,8 @@ class ChatSessionResponder:
         on_accepted: Callable[[str], Awaitable[None]] | None = None,
         on_progress: Callable[[str], None] | None = None,
         title: str = "渠道对话",
+        on_started=None,
+        on_event=None,
     ) -> tuple[str, str]:
         defaults = await asyncio.to_thread(
             config_store.get_assistant_defaults, assistant_id
@@ -113,10 +123,14 @@ class ChatSessionResponder:
                 raise RuntimeError("渠道助手响应缺少消息标识")
             if on_accepted is not None:
                 await on_accepted(session_id)
+            if on_started is not None:
+                await on_started(session_id, expected_message_id["value"], accepted.turn_id)
             module.start_queued_turn(accepted.turn_id)
             reply = ""
             while True:
                 event = await asyncio.wait_for(queue.get(), timeout=600)
+                if on_event is not None:
+                    await on_event(event)
                 if event.get("type") == "TEXT_MESSAGE_CHUNK":
                     reply += str(event.get("delta") or "")
                     if on_progress is not None:
@@ -127,6 +141,8 @@ class ChatSessionResponder:
                         on_progress(reply)
                 elif event.get("type") == "TEXT_MESSAGE_END":
                     status = event.get("status") or "succeeded"
+                    if status == "stopped":
+                        return session_id, "已停止。"
                     if status != "succeeded":
                         raise RuntimeError(str(
                             event.get("error")

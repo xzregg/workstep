@@ -126,6 +126,7 @@ def assemble_context(
         "intent": "answer | clarify | propose_action",
         "target_step_key": None,
         "artifact_requests": [],
+        "questions": [],
         "proposal": None,
     }
     context = {
@@ -178,7 +179,10 @@ def assemble_context(
         "from artifacts. A feedback round must contain a non-empty artifact on "
         "the edge into the target step. If active_workflow_run_id is "
         "null, rerun starts a new first workflow run from that step. Request artifacts only by "
-        "artifact_id. If the user's message references an image and your model "
+        "artifact_id. When asking the user to choose, include questions as "
+        "[{title, options:[string]}] so WorkStep and channel robots can render buttons. "
+        "Use a proposal for an executable stage action; do not duplicate its confirmation as a question. "
+        "If the user's message references an image and your model "
         "cannot accept image input, use coordinator_vision_model to analyze the "
         "image before replying. Return "
         f"JSON matching this shape: {json.dumps(schema, ensure_ascii=False)}"

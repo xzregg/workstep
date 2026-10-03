@@ -15,6 +15,7 @@ class ChannelCapabilities:
     send: frozenset[str] = frozenset({'text'})
     waiting: bool = False
     streaming: bool = False
+    cards: bool = False
     file_extensions: frozenset[str] | None = None
     max_image_bytes: int = 2 * 1024 * 1024
     max_file_bytes: int = 20 * 1024 * 1024
@@ -53,6 +54,32 @@ class OutgoingMessage:
     attachments: tuple[ChannelAttachment, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class ChannelButton:
+    key: str
+    label: str
+
+
+@dataclass(frozen=True, slots=True)
+class ChannelCard:
+    id: str
+    title: str
+    text: str
+    buttons: tuple[ChannelButton, ...] = ()
+    running: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ChannelAction:
+    bot_id: str
+    card_id: str
+    key: str
+    sender_id: str
+    conversation_id: str = ''
+    sender_name: str = ''
+    reply_context: object | None = field(default=None, repr=False)
+
+
 class ChannelAdapter(ABC):
     CHANNEL_ID: str = ''
     DISPLAY_NAME: str = ''
@@ -62,6 +89,7 @@ class ChannelAdapter(ABC):
         self._bot = bot
         self._on_message = on_message
         self._on_state = on_state
+        self._on_action = None
 
     @abstractmethod
     async def start(self) -> None: ...
@@ -81,6 +109,19 @@ class ChannelAdapter(ABC):
     async def update_reply(self, message: IncomingMessage, text: str) -> None:
         """Replace an in-progress reply with cumulative text when streaming is supported."""
         raise ValueError(f'{self.DISPLAY_NAME}不支持流式回复')
+
+    @property
+    def card_enabled(self) -> bool:
+        return self.CAPABILITIES.cards
+
+    def set_action_handler(self, handler) -> None:
+        self._on_action = handler
+
+    async def send_card(self, recipient: IncomingMessage, card: ChannelCard) -> None:
+        raise ValueError(f'{self.DISPLAY_NAME}不支持按钮卡片')
+
+    async def update_card(self, recipient: IncomingMessage, card: ChannelCard) -> None:
+        """Refresh a previously sent card when the platform supports active updates."""
 
     async def download(self, attachment: ChannelAttachment) -> tuple[bytes, str]:
         raise ValueError(f'{self.DISPLAY_NAME}不支持附件下载')

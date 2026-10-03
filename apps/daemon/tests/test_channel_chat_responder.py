@@ -67,8 +67,10 @@ async def test_responder_ignores_other_message_completion(tmp_path, status):
             session_id, reply = await asyncio.wait_for(response, timeout=1)
             assert session_id == "session-1"
             assert reply == "final reply"
+        elif status == "stopped":
+            assert await asyncio.wait_for(response, timeout=1) == ("session-1", "已停止。")
         else:
-            with pytest.raises(RuntimeError, match="response failed|渠道助手响应已停止"):
+            with pytest.raises(RuntimeError, match="response failed"):
                 await asyncio.wait_for(response, timeout=1)
         assert progress == ['right']
         assert not bus._subscribers

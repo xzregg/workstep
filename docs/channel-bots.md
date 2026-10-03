@@ -74,3 +74,12 @@ workstep channel send --project <项目ID> --bot <机器人ID> --user <用户ID>
 默认项目的渠道助手通过统一引擎入口独立传入会话背景：角色、项目指令、平台、机器人、群／会话 ID、群名称和首次发起者。支持的引擎使用原生系统指令追加（Codex 使用开发者指令），保留引擎内置指令；其他引擎在新会话时回退到正文。恢复会话由适配器保持指令生效，新建或重建会话重新提供；「查看提示词」包含这份背景。名称仅作为 JSON 来源数据，未知字段留空，机器人凭证不传给模型。每条入站正文另附当前发送者，群成员切换时不会把消息归给上一位用户；任务协调助手和其他助手保持现有提示词方式。
 
 设置页每个机器人卡片下显示「已绑定任务」，包含任务名称、所属项目和群名称（缺少群名时显示群 ID）。点击右侧叉号立即解除该群与任务的绑定；失败时保留该项并显示错误，可再次重试。创建群绑定仍从任务详情进入。
+
+
+## 渠道内停止与选择
+
+从渠道发起的助手回复会附带「停止」按钮卡片，点击与 WorkStep 输入框的停止入口复用同一停止逻辑。协调助手需要确认阶段操作时发送「确认／取消」提案卡片；普通选择题显示对应选项，选择作为用户消息回到原任务的协调助手。引擎权限和布尔／枚举问题则直接继续原等待请求。群里只有该条消息的发起者可以操作。
+
+企业微信使用现成按钮模板，无额外模板 ID。未点击的旧停止按钮在结束后可能仍显示，但已失效；用户点击后会收到提示。钉钉默认使用官方 SDK 的 Markdown 按钮模板 `1366a1eb-bc54-4859-ac88-517c56a9acb1.schema`；应用须开通互动卡片创建、投放、更新权限。若公共模板不可用，可在「设置 → 渠道助手 → 钉钉」填自己的兼容模板 ID，变量为 `title`、`markdown`、`tips`、`sys_full_json_obj`，后者包含 `msgButtons: [{text,id,request:true,color}]`。卡片或权限发送失败会提示转到 WorkStep 操作，普通回复仍正常运行。
+
+官方协议参考：[企业微信 SDK 卡片与回调](https://github.com/WecomTeam/aibot-node-sdk/blob/main/README.md)、[钉钉官方通用按钮模板](https://github.com/open-dingtalk/dingtalk-stream-sdk-python/blob/main/dingtalk_stream/card_instance.py)、[钉钉卡片创建／投放和更新](https://github.com/open-dingtalk/dingtalk-stream-sdk-python/blob/main/dingtalk_stream/card_replier.py)。

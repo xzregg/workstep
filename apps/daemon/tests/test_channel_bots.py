@@ -70,7 +70,7 @@ async def test_wecom_streams_before_turn_completion_without_blocking_health(bots
             await finish_turn.wait()  # Simulate a slow platform acknowledgement.
 
     adapter = WeComAdapter(bot, AsyncMock(), AsyncMock())
-    adapter._client = SimpleNamespace(reply_stream=reply_stream, send_message=AsyncMock(), disconnect=lambda: None)
+    adapter._client = SimpleNamespace(reply_stream=reply_stream, reply_stream_with_card=AsyncMock(), send_message=AsyncMock(), disconnect=lambda: None)
     manager._adapters[bot['id']] = adapter
 
     async def produce():
@@ -756,3 +756,48 @@ async def test_bot_list_exposes_task_bindings_and_unbinds_without_blocking_healt
         assert (await client.delete(path)).status_code == 200
         remaining = (await client.get("/api/channel-bots")).json()[0]["task_bindings"]
         assert [row["group_id"] for row in remaining] == ["group-b"]
+
+
+async def test_task_channel_stop_callback_bypasses_message_queue(bots):
+    from unittest.mock import AsyncMock
+    from services.channels.base import ChannelAction
+    manager, project, _, submissions, _, adapters = bots
+    bot = await manager.create_bot(dict(platform='wecom',name='助手',app_id='buttons',secret='secret',enabled=True))
+    await manager.bind_group(project.id,'task-1',bot['id'],'room')
+    adapter = adapters[bot['id']]
+    adapter.send_card = AsyncMock()
+    adapter.update_card = AsyncMock()
+    accepted = asyncio.Event()
+    async def submit(project_id, task_id, content, key, **kwargs):
+        submissions.append((project_id,task_id,content,key))
+        accepted.set()
+        return SimpleNamespace(assistant_message_id='answer',turn_id='turn')
+    async def stop(project_id, task_id, **kwargs):
+        assert kwargs == {'expected_message_id':'answer'}
+        await manager._event_bus.publish({'type':'TEXT_MESSAGE_END','project_id':project_id,'task_id':task_id,'channel':'coordinator','messageId':'answer','status':'stopped'})
+        return True
+    manager._coordinator.submit_message = submit
+    manager._coordinator.stop_current = stop
+    inbound = asyncio.create_task(manager.handle_message(IncomingMessage(bot['id'],'m','group','room','u','开始')))
+    await accepted.wait()
+    for _ in range(100):
+        if adapter.send_card.await_count: break
+        await asyncio.sleep(.01)
+    card = adapter.send_card.await_args.args[1]
+    assert not inbound.done()
+    assert await asyncio.wait_for(manager._handle_card_action(ChannelAction(bot['id'],card.id,'0','u',conversation_id='room')),.5) == '已停止'
+    await asyncio.wait_for(inbound,.5)
+    assert adapter.sent[-1] == ('room','已停止。')
+    assert await manager._handle_card_action(ChannelAction(bot['id'],card.id,'0','u')) == '该操作已处理或已失效'
+
+
+async def test_dingtalk_optional_card_template_is_saved_and_updated_through_api(bots):
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
+        response = await client.post('/api/channel-bots',json={'platform':'dingtalk','name':'卡片助手','app_id':'card-template','secret':'s','card_template_id':'own.schema'})
+        assert response.status_code == 200
+        bot = response.json()
+        assert bot['card_template_id'] == 'own.schema'
+        assert bot['capabilities']['cards'] is True
+        update = await client.patch('/api/channel-bots/'+bot['id'],json={'card_template_id':''})
+        assert update.status_code == 200
+        assert (await client.get('/api/channel-bots')).json()[0]['card_template_id'] == ''

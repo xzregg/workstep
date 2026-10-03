@@ -913,6 +913,22 @@ class CoordinatorModule:
                         events=events,
                     )
                     return
+                questions = []
+                for question in result.get("questions", []) if isinstance(result.get("questions"), list) else []:
+                    if not isinstance(question, dict) or not isinstance(question.get("title"), str):
+                        continue
+                    options = question.get("options")
+                    if question["title"].strip() and isinstance(options, list):
+                        choices = list(dict.fromkeys(value.strip() for value in options if isinstance(value, str) and value.strip()))
+                        if choices:
+                            questions.append({"title":question["title"].strip(), "options":choices})
+                if questions:
+                    question_data = {"source_item_id":assistant.id, "questions":questions}
+                    question_event = {"type":"async_question", "data":question_data}
+                    events.append(question_event)
+                    await self._event_journal.arecord(journal_ref, question_event)
+                    await self._publish_message_event(project_id, task_id, assistant, "async_question", question_data, live_event_sequence)
+                    live_event_sequence += 1
                 await self._event_journal.afinish(
                     journal_ref,
                     {"type": "status", "data": {"status": "succeeded"}},
@@ -1582,9 +1598,16 @@ class CoordinatorModule:
         for agui_event in to_agui_events(payload, ctx):
             await self._event_bus.publish(agui_event)
 
-    async def stop_current(self, project_id: str, task_id: str) -> bool:
+    async def stop_current(self, project_id: str, task_id: str, *, expected_message_id: str | None = None) -> bool:
         """Stop the running turn, falling back to the newest queued turn."""
         def find_turn_id():
+            if expected_message_id:
+                turn = CoordinatorTurn.select().where(
+                    (CoordinatorTurn.task == task_id)
+                    & (CoordinatorTurn.assistant_message == expected_message_id)
+                    & CoordinatorTurn.status.in_(["running", "queued"])
+                ).first()
+                return turn.id if turn is not None else None
             turn = (
                 CoordinatorTurn.select()
                 .where(

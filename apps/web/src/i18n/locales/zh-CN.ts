@@ -5,6 +5,8 @@ export const zhCN = {
   channelBot: {
     taskBindingHint: '任务群绑定请在任务详情「绑定 BOT」中设置。旧版默认任务配置在此保存后改为默认项目，已有群绑定保留。',
     title: '渠道机器人', intro: '通过官方长连接接入企业微信智能机器人或钉钉 Stream 机器人。群可绑定任务，消息会进入该任务的协调助手。',
+    cardTemplate: '按钮卡片模板 ID（可选）', cardTemplatePlaceholder: '留空使用钉钉官方通用模板',
+    cardTemplateHint: '需要开通钉钉互动卡片创建、投放和更新权限；自定义模板须兼容官方 Markdown 按钮模板的 title、markdown、tips、sys_full_json_obj 参数。',
     boundTasks: '已绑定任务', unbindTask: '解除绑定',
     wecom: '企业微信', dingtalk: '钉钉', platform: '平台', name: '机器人名称',
     add: '添加机器人', edit: '编辑机器人', empty: '尚未添加机器人',

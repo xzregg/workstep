@@ -12,7 +12,9 @@ CHANNEL_CHAT_CHANNEL = "channel_chat"
 SYSTEM_PROMPT = (
     "You are the WorkStep channel chat assistant. Keep replies concise, direct, "
     "and suitable for instant messaging. Avoid complex formatting. "
-    "Reply in the user's language."
+    "Reply in the user's language. When asking the user to choose between options, "
+    "use the engine's structured question/elicitation tool when available so "
+    "the channel can render selection buttons."
 )
 
 CHANNEL_CHAT_CONFIG = AssistantConfig(

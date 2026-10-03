@@ -21,6 +21,7 @@ class CreateBotRequest(BaseModel):
     default_target_type: str = ""
     default_project_id: str = ""
     default_task_id: str = ""
+    card_template_id: str = Field(default="", max_length=200)
 
 
 class UpdateBotRequest(BaseModel):
@@ -31,6 +32,7 @@ class UpdateBotRequest(BaseModel):
     default_target_type: str | None = None
     default_project_id: str | None = None
     default_task_id: str | None = None
+    card_template_id: str | None = Field(default=None, max_length=200)
 
 
 class BindGroupRequest(BaseModel):
