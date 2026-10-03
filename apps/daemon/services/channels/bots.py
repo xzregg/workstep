@@ -20,6 +20,7 @@ CONFIG_KEY = "channel_bots"
 
 from services.channels.base import IncomingMessage, ChannelAdapter
 from services.channels.registry import discover_channels
+from services.channels.responder import ChatSessionResponder
 
 
 def _sender_actor(message: IncomingMessage, platform: str) -> ActorSnapshot:
@@ -346,20 +347,32 @@ class BotManager:
                     async with self._config_lock:
                         latest = await self._load()
                     session_id = latest["sessions"].get(session_key)
+                    async def on_accepted(accepted_session_id: str) -> None:
+                        async with self._config_lock:
+                            current = await self._load()
+                            current["sessions"][session_key] = accepted_session_id
+                            current["session_sources"][accepted_session_id] = {
+                                "conversation_type": message.conversation_type,
+                                "conversation_id": message.conversation_id,
+                                "peer_name": (message.sender_name or message.sender_id)
+                                if message.conversation_type == "single" else message.conversation_id,
+                            }
+                            await self._save(current)
+                        await self._event_bus.publish({
+                            "type": "CUSTOM", "name": "channel.session_changed",
+                            "channel": "channel_bots", "project_id": project_id,
+                        })
                     with actor_context(_sender_actor(message, bot["platform"])):
-                        session_id, reply = await self._responder(
-                            project_id, session_id, message.text, "channel_chat", "",
-                        )
-                    async with self._config_lock:
-                        latest = await self._load()
-                        latest["sessions"][session_key] = session_id
-                        latest["session_sources"][session_id] = {
-                            "conversation_type": message.conversation_type,
-                            "conversation_id": message.conversation_id,
-                            "peer_name": (message.sender_name or message.sender_id)
-                            if message.conversation_type == "single" else message.conversation_id,
-                        }
-                        await self._save(latest)
+                        if isinstance(self._responder, ChatSessionResponder):
+                            session_id, reply = await self._responder(
+                                project_id, session_id, message.text, "channel_chat", "",
+                                on_accepted=on_accepted,
+                            )
+                        else:
+                            session_id, reply = await self._responder(
+                                project_id, session_id, message.text, "channel_chat", "",
+                            )
+                            await on_accepted(session_id)
                 if reply or start_reply is not None:
                     text = reply or "处理完成，暂无回复内容。"
                     if isinstance(adapter, ChannelAdapter):

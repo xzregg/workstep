@@ -59,7 +59,8 @@ interface ChatListState {
   /** True while a bulk-delete request is in flight. */
   bulkDeleting: boolean
 
-  fetchSessions: (projectId: string) => Promise<void>
+  fetchSessions: (projectId: string, preserveSelection?: boolean) => Promise<void>
+  refreshSessions: (projectId: string) => void
   reorderSessions: (projectId: string, orderedIds: string[]) => Promise<void>
   addSession: (session: ChatSessionSummary) => void
   removeSession: (sessionId: string) => void
@@ -76,6 +77,8 @@ interface ChatListState {
   saveQuickButtons: (projectId: string, buttons: ChatQuickButton[]) => Promise<ChatQuickButton[]>
 }
 
+const pendingSessionRefreshes = new Set<string>()
+
 export const useChatListStore = create<ChatListState>((set, get) => ({
   sessionsByProject: {},
   quickButtons: [],
@@ -86,13 +89,15 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
   selectAnchor: null,
   bulkDeleting: false,
 
-  fetchSessions: async (projectId) => {
+  fetchSessions: async (projectId, preserveSelection = false) => {
     if (!projectId || get().listLoadingByProject[projectId]) return
     set((state) => ({
       listLoadingByProject: { ...state.listLoadingByProject, [projectId]: true },
-      selectedIds: new Set(),
-      selectionProjectId: null,
-      selectAnchor: null,
+      ...(preserveSelection ? {} : {
+        selectedIds: new Set<string>(),
+        selectionProjectId: null,
+        selectAnchor: null,
+      }),
     }))
     try {
       const { sessions } = await chatSessionApi.list(projectId)
@@ -105,6 +110,18 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
       set((state) => ({
         listLoadingByProject: { ...state.listLoadingByProject, [projectId]: false },
       }))
+      if (pendingSessionRefreshes.delete(projectId)) {
+        void get().fetchSessions(projectId, true)
+      }
+    }
+  },
+
+  refreshSessions: (projectId) => {
+    if (!projectId) return
+    if (get().listLoadingByProject[projectId]) {
+      pendingSessionRefreshes.add(projectId)
+    } else {
+      void get().fetchSessions(projectId, true)
     }
   },
 

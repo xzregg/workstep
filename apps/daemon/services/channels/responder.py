@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import Awaitable, Callable
 
 from agent_assistants.base import assistant_registry
 from agent_assistants.channel_chat import ChannelChatModule
@@ -45,6 +46,7 @@ class ChatSessionResponder:
         content: str,
         assistant_id: str,
         model: str,
+        on_accepted: Callable[[str], Awaitable[None]] | None = None,
     ) -> tuple[str, str]:
         defaults = await asyncio.to_thread(
             config_store.get_assistant_defaults, assistant_id
@@ -102,6 +104,8 @@ class ChatSessionResponder:
             )
             if not expected_message_id["value"]:
                 raise RuntimeError("渠道助手响应缺少消息标识")
+            if on_accepted is not None:
+                await on_accepted(session_id)
             module.start_queued_turn(accepted.turn_id)
             reply = ""
             while True:
@@ -126,3 +130,7 @@ class ChatSessionResponder:
                     raise RuntimeError(str(event.get("error") or "渠道助手响应失败"))
         finally:
             self._event_bus.unsubscribe(queue)
+            await self._event_bus.publish({
+                "type": "CUSTOM", "name": "channel.session_changed",
+                "channel": "channel_bots", "project_id": project_id,
+            })

@@ -82,6 +82,7 @@ export function useWebSocket() {
       ...Object.keys(useChatSessionStore.getState().sessions),
       ...Object.values(useChatListStore.getState().sessionsByProject).flat().map((session) => session.id),
     ])],
+    channels: ['channel_bots'],
   }), [])
 
   const flushSubscription = useCallback(() => {
@@ -128,7 +129,10 @@ export function useWebSocket() {
         // A reconnect (e.g. daemon restart) may have changed persisted task
         // state; re-fetch so the board reflects recovered runs immediately.
         const projectId = useProjectStore.getState().activeProject?.id
-        if (isReconnect && projectId) void useTaskStore.getState().fetchTasks(projectId)
+        if (isReconnect && projectId) {
+          void useTaskStore.getState().fetchTasks(projectId)
+          useChatListStore.getState().refreshSessions(projectId)
+        }
       }
       ws.onmessage = (event) => {
         try {
@@ -138,6 +142,12 @@ export function useWebSocket() {
             const activeProjectId = useProjectStore.getState().activeProject?.id
             if (activeProjectId && activeProjectId === parsed.value?.project_id && parsed.value?.status === 'connected') {
               void useTaskStore.getState().fetchTasks(activeProjectId)
+            }
+          }
+          if (parsed.type === 'CUSTOM' && parsed.name === 'channel.session_changed') {
+            const projectId = useProjectStore.getState().activeProject?.id
+            if (projectId && parsed.project_id === projectId) {
+              useChatListStore.getState().refreshSessions(projectId)
             }
           }
           if (parsed.session_id && parsed.channel === 'flow_gen') handleGenEvent(parsed)

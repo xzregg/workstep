@@ -189,6 +189,59 @@ test('chat list store fetches projects concurrently without overwriting each oth
   }
 })
 
+test('channel refresh received during a list request fetches the latest session list', async () => {
+  useChatListStore.setState({ sessionsByProject: {}, listLoadingByProject: {} })
+  const originalFetch = globalThis.fetch
+  let resolveFirst: (value: Response) => void = () => {}
+  let calls = 0
+  globalThis.fetch = () => {
+    calls++
+    if (calls === 1) return new Promise<Response>((resolve) => { resolveFirst = resolve })
+    return Promise.resolve(new Response(JSON.stringify({ sessions: [
+      { ...summary('channel-1', '渠道对话', 2), source: 'channel' },
+    ] }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+  }
+  try {
+    const first = useChatListStore.getState().fetchSessions('p1')
+    useChatListStore.getState().refreshSessions('p1')
+    resolveFirst(new Response(JSON.stringify({ sessions: [] }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    }))
+    await first
+    for (let i = 0; i < 10 && useChatListStore.getState().listLoadingByProject.p1; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+    assert.equal(calls, 2)
+    assert.equal(useChatListStore.getState().sessionsByProject.p1[0].id, 'channel-1')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('channel refresh preserves sidebar selection', async () => {
+  useChatListStore.setState({
+    sessionsByProject: { p1: [summary('s1', '已选会话')] },
+    listLoadingByProject: {},
+    selectedIds: new Set(['s1']),
+    selectionProjectId: 'p1',
+    selectAnchor: 's1',
+  })
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(JSON.stringify({ sessions: [summary('s1', '已选会话')] }), {
+    status: 200, headers: { 'Content-Type': 'application/json' },
+  })
+  try {
+    useChatListStore.getState().refreshSessions('p1')
+    for (let i = 0; i < 10 && useChatListStore.getState().listLoadingByProject.p1; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+    assert.deepEqual([...useChatListStore.getState().selectedIds], ['s1'])
+    assert.equal(useChatListStore.getState().selectAnchor, 's1')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('chat list store reorders sessions optimistically and persists', async () => {
   useChatListStore.setState({ sessionsByProject: {}, listLoadingByProject: {} })
   useChatListStore.getState().addSession(summary('s1', '一'))
