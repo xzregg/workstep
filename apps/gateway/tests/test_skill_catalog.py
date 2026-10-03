@@ -14,9 +14,9 @@ from gateway.app import create_app
 from gateway.config import GatewaySettings
 from gateway.database import GatewayDatabase
 from gateway.models import Device, PlatformProject, UserDevice
-from gateway.skills_api import compile_skill_manifest
-from gateway.skill_packages import validate_archive
-from gateway import skills_api
+from gateway.services.skills_api import compile_skill_manifest
+from gateway.services.skill_packages import validate_archive
+from gateway.services import skills_api
 import pytest
 
 

@@ -16,6 +16,6 @@ test('desktop login route parses only complete PKCE request', () => {
   assert.equal(parseDesktopRequest('?gateway_id=gateway-test'), null)
   assert.equal(parseDesktopRequest(query.replace('A'.repeat(43), 'bad')), null)
   const html = renderToString(<MemoryRouter initialEntries={[`/desktop/login${query}`]}><App /></MemoryRouter>)
-  assert.match(html, /WorkStep 桌面端登录/)
+  assert.match(html, /WorkStep 平台认证/)
   assert.match(html, /正在检查登录状态/)
 })

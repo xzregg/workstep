@@ -1,11 +1,10 @@
 from fastapi.testclient import TestClient
 
 from gateway.app import create_app
-from gateway.capabilities import compiled_device_policy
+from gateway.services.capabilities import compiled_device_policy
 from gateway.config import GatewaySettings
-from gateway.external_identity import ExternalIdentityService
-from gateway.models import (Device, DirectoryDepartment, DirectoryPerson, GroupMembership,
-                            PlatformProject, UserGroup)
+from gateway.services.external_identity import ExternalIdentityService
+from gateway.models import Device, DirectoryDepartment, DirectoryPerson, GroupMembership, PlatformProject, UserGroup
 from sqlalchemy import select
 
 

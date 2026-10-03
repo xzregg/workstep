@@ -1,3 +1,4 @@
+import { AdminRecordTable, AdminRecordRow } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
 import { GatewayLoginForm } from './GatewayLoginForm'
 import { AdminDeviceActionDialog } from './AdminDeviceActionDialog'
@@ -106,7 +107,7 @@ export function DeviceAdminPage() {
       </select>
       </div>
       {loading && <p role="status">正在加载设备…</p>}
-      <ul className="gateway-device-list">{devices.map((device) => <li key={device.id}>
+      <AdminRecordTable>{devices.map((device) => <AdminRecordRow key={device.id}>
         <div><strong>{device.name}</strong><p>{device.id} · {device.version ?? '版本未知'} · {device.status}</p>
           <p>控制连接：{device.online ? '在线' : '离线'} · daemon 健康：{
             device.daemon_health === true ? '正常' : device.daemon_health === false ? '异常' : '未知'
@@ -118,7 +119,7 @@ export function DeviceAdminPage() {
           {device.status === 'active' && <button type="button" onClick={() => setSelected({ device, action: 'disable' })}>停用</button>}
           {device.status !== 'revoked' && <button type="button" onClick={() => setSelected({ device, action: 'revoke' })}>撤销</button>}
         </div>
-      </li>)}</ul>
+      </AdminRecordRow>)}</AdminRecordTable>
       {!loading && !error && devices.length === 0 && <p>当前筛选下没有设备。</p>}
       <div className="gateway-admin-pagination">
         <span>共 {total} 台设备 · 第 {filters.page}/{Math.max(1, Math.ceil(total / filters.pageSize))} 页</span>

@@ -132,8 +132,8 @@ test('device page distinguishes outdated and unknown client versions', async () 
   }
   render(<DeviceAdminPage />)
   fireEvent.change(await screen.findByLabelText('设备状态'), { target: { value: 'active' } })
-  const old = (await screen.findByText('Old PC')).closest('li')!
-  const legacy = screen.getByText('Legacy PC').closest('li')!
+  const old = (await screen.findByText('Old PC')).closest('tr')!
+  const legacy = screen.getByText('Legacy PC').closest('tr')!
   assert.match(old.textContent ?? '', /有新版本 1\.10\.0/)
   assert.match(legacy.textContent ?? '', /版本状态未知/)
 })
@@ -273,7 +273,7 @@ test('management navigation and module routes respect current roles', async () =
   }
   render(<MemoryRouter initialEntries={['/admin/users']}><App /></MemoryRouter>)
   await screen.findByRole('heading', { name: '用户管理' })
-  assert.ok(screen.getByRole('link', { name: '管理后台' }))
+  assert.ok(screen.getByRole('navigation', { name: '管理菜单' }))
   cleanup()
   render(<MemoryRouter initialEntries={['/admin/admins']}><App /></MemoryRouter>)
   await screen.findByText('当前账号没有访问该管理页面的权限。')
@@ -310,7 +310,7 @@ test('audit administrator can enter scoped ledger workbenches without broader ad
   cleanup()
   render(<MemoryRouter initialEntries={['/admin']}><App /></MemoryRouter>)
   await screen.findByRole('link', { name: '审计记录' })
-  assert.ok(screen.getByRole('link', { name: 'Token 用量' }))
+  assert.ok(screen.getByRole('link', { name: '用量与对账' }))
   assert.equal(screen.queryByRole('link', { name: '平台设置' }), null)
 })
 

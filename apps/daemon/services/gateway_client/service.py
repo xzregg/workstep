@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from .managed_config import InvalidManagedGatewayConfig, load_managed_config
+from .browser_login import configured_payload
 from .identity import ManagedAuthorizationVerifier, ManagedLocalSessions
 from .control import GatewayControlClient
 from .policy import ManagedPolicyCache
@@ -20,7 +21,7 @@ from .policy import require_managed_capability
 
 
 class GatewayClientService:
-    """Lifecycle placeholder for a future, explicitly configured managed client."""
+    """Lifecycle for a package-pinned or user-configured platform connection."""
 
     def __init__(self, control_client_factory=GatewayControlClient) -> None:
         self.managed_config = None
@@ -46,7 +47,7 @@ class GatewayClientService:
             await asyncio.to_thread(
                 load_managed_config, Path(bundle_dir), root_pin,
             )
-            if bundle_dir else None
+            if bundle_dir else await asyncio.to_thread(configured_payload)
         )
         if self.managed_config is not None:
             self.usage_outbox = await asyncio.to_thread(

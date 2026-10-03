@@ -155,3 +155,20 @@ test('network errors and rate limits allow retry without clearing the account', 
   fireEvent.click(screen.getByRole('button', { name: '注册' }))
   await screen.findByText('已进入我的电脑')
 })
+
+
+test('empty platform shows administrator setup using normal registration', async () => {
+ let submitted: object | undefined
+ globalThis.fetch = async (input, init) => {
+  const url = String(input)
+  if (url === '/api/platform/status') return Response.json({ initialized: false })
+  if (url === '/api/auth/register') { submitted = JSON.parse(String(init?.body)); return Response.json({}, { status: 201 }) }
+  throw new Error(`Unexpected request: ${url}`)
+ }
+ render(<MemoryRouter initialEntries={['/auth']}><Routes><Route path="/auth" element={<PortalAuthPage />} /><Route path="/admin" element={<p>进入管理后台</p>} /></Routes></MemoryRouter>)
+ await screen.findByRole('heading', { name: '设置超级管理员' })
+ assert.equal(screen.queryByLabelText('恢复账号用户名'), null)
+ fill(); fireEvent.click(screen.getByRole('button', { name: '注册' }))
+ await screen.findByText('进入管理后台')
+ assert.equal((submitted as { username: string }).username, 'alice')
+})

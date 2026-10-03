@@ -11,7 +11,7 @@ from httpx import ASGITransport, AsyncClient
 
 from gateway.app import create_app
 from gateway.config import GatewaySettings
-from gateway.identity import IdentityService
+from gateway.services.identity import IdentityService
 
 
 def _setup(client, mode="open"):
@@ -133,7 +133,7 @@ def test_slow_registration_hash_does_not_block_health(tmp_path, monkeypatch):
     with TestClient(app, base_url="https://gateway.test") as client:
         _setup(client)
         entered = threading.Event()
-        from gateway import identity
+        from gateway.services import identity
         original = type(identity._password_hasher).hash
 
         def slow_hash(self, password):
@@ -175,12 +175,12 @@ def test_concurrent_registration_commits_one_account_and_one_session(tmp_path):
                           "WHERE u.username='alice'").fetchone() == (1,)
 
 
-def test_uninitialized_platform_cannot_register(tmp_path):
+def test_uninitialized_platform_first_registration_is_allowed(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path))
     with TestClient(app, base_url="https://gateway.test") as client:
-        assert client.post("/api/auth/register", json=ACCOUNT).status_code == 503
+        assert client.post("/api/auth/register", json=ACCOUNT).status_code == 201
     with sqlite3.connect(tmp_path / "workstep_platform.db") as db:
-        assert db.execute("SELECT COUNT(*) FROM users").fetchone() == (0,)
+        assert db.execute("SELECT COUNT(*) FROM users").fetchone() == (1,)
 
 
 def test_registration_waiting_for_sqlite_write_lock_keeps_health_responsive(tmp_path):

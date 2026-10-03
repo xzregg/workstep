@@ -4,6 +4,7 @@ import { GatewayLoginForm } from './GatewayLoginForm'
 import { scanFailureMessage } from './scanFailure'
 
 type DesktopRequest = {
+  redirect_uri?: string
   gateway_id: string
   app_instance_id: string
   state: string
@@ -20,13 +21,18 @@ export function parseDesktopRequest(search: string): DesktopRequest | null {
     params.delete('scan_error')
   }
   const keys = ['gateway_id', 'app_instance_id', 'state', 'nonce', 'code_challenge'] as const
+  const redirect = params.get('redirect_uri')
+  if (redirect) {
+    try { const uri = new URL(redirect); if (uri.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(uri.hostname) || !uri.port || uri.pathname !== '/api/gateway-platform/callback' || uri.username || uri.password || uri.search || uri.hash) return null } catch { return null }
+    params.delete('redirect_uri')
+  }
   if ([...params].length !== keys.length) return null
   if (keys.some((key) => params.get(key) === null)) return null
   const values = Object.fromEntries(keys.map((key) => [key, params.get(key)])) as DesktopRequest
   if (!values.gateway_id || !values.app_instance_id
       || values.state.length < 32 || values.nonce.length < 32
       || !/^[A-Za-z0-9_-]{43}$/.test(values.code_challenge)) return null
-  return values
+  return redirect ? { ...values, redirect_uri: redirect } : values
 }
 
 export function DesktopLoginPage() {
@@ -74,7 +80,7 @@ export function DesktopLoginPage() {
       if (!response.ok) throw new Error('桌面端授权失败，请重新登录后再试。')
       const result = await response.json()
       if (typeof result.callback_url !== 'string'
-          || !result.callback_url.startsWith('workstep://auth/callback?')) {
+          || !result.callback_url.startsWith(`${request.redirect_uri ?? 'workstep://auth/callback'}?`)) {
         throw new Error('授权回调无效。')
       }
       window.location.assign(result.callback_url)
@@ -128,7 +134,7 @@ export function DesktopLoginPage() {
   if (!request) return (
     <section className="gateway-auth-card">
       <h2>登录请求无效</h2>
-      <p>请从 WorkStep 桌面端重新发起登录。</p>
+      <p>请从 WorkStep 设置重新发起认证。</p>
       <Link to="/">返回工作台</Link>
     </section>
   )
@@ -136,7 +142,7 @@ export function DesktopLoginPage() {
   return (
     <section className="gateway-auth-card">
       <span className="gateway-auth-eyebrow">WORKSTEP 平台</span>
-      <h2>WorkStep 桌面端登录</h2>
+      <h2>WorkStep 平台认证</h2>
       <p className="gateway-auth-description">登录后授权当前电脑访问所属工作空间。</p>
       {status === 'checking' && <p role="status">正在检查登录状态…</p>}
       {status === 'login' && (

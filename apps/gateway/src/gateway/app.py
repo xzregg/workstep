@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -8,43 +9,45 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException
 from workstep_gateway_protocol import PROTOCOL_VERSION
 
-from .config import GatewaySettings
-from .share_viewer import install_share_viewer
-from .database import GatewayDatabase
-from .identity_api import router as identity_router
-from .external_identity_api import router as external_identity_router
-from .directory_callbacks import router as directory_callbacks_router
-from .identity_connectors import DingTalkConnector, WeComConnector
-from .rate_limit import IdentityRateLimiter
-from .reconciliation import DirectoryReconciler
-from .signing import GatewaySigner
-from .desktop_authorization_api import router as desktop_authorization_router
-from .client_releases import router as client_releases_router
-from .control_connection import ControlConnections, router as control_router
-from .capabilities import router as capabilities_router
-from .user_devices_api import router as user_devices_router
-from .remote_access_api import (router as remote_access_router,
-                                websocket_router as remote_websocket_router,
-                                proxy_remote_request)
-from .providers_api import router as providers_router
-from .device_commands import router as device_commands_router
-from .usage_ledger import router as usage_router
-from .usage_rollups import run_periodic as run_usage_rollups
-from .audit_ledger import router as audit_router
-from .groups_api import router as groups_router
-from .skills_api import (router as skills_router,
-                         admin_group_router as admin_group_skills_router,
-                         project_skill_router, device_skill_router)
-from .project_access_api import router as project_access_router
-from .platform_shares import router as platform_shares_router
-from .admin_shares import router as admin_shares_router
-from .admin_overview import router as admin_overview_router
-from .org_api import router as org_router
-from .device_groups_api import router as device_groups_router
+from gateway.config import GatewaySettings
+from gateway.services.share_viewer import install_share_viewer
+from gateway.database import GatewayDatabase
+from gateway.api.identity_api import router as identity_router
+from gateway.api.external_identity_api import router as external_identity_router
+from gateway.api.directory_callbacks import router as directory_callbacks_router
+from gateway.services.identity_connectors import DingTalkConnector, WeComConnector
+from gateway.services.rate_limit import IdentityRateLimiter
+from gateway.services.reconciliation import DirectoryReconciler
+from gateway.services.signing import GatewaySigner
+from gateway.api.desktop_authorization_api import router as desktop_authorization_router
+from gateway.api.client_releases import router as client_releases_router
+from gateway.services.control_connection import ControlConnections
+from gateway.api.control_connection import router as control_router
+from gateway.api.capabilities import router as capabilities_router
+from gateway.api.user_devices_api import router as user_devices_router
+from gateway.api.remote_access_api import router as remote_access_router, websocket_router as remote_websocket_router
+from gateway.services.remote_access_api import proxy_remote_request
+from gateway.api.providers_api import router as providers_router
+from gateway.api.device_commands import router as device_commands_router
+from gateway.api.usage_ledger import router as usage_router
+from gateway.services.usage_rollups import run_periodic as run_usage_rollups
+from gateway.api.audit_ledger import router as audit_router
+from gateway.api.groups_api import router as groups_router
+from gateway.api.skills_api import router as skills_router, admin_group_router as admin_group_skills_router, project_skill_router, device_skill_router
+from gateway.api.project_access_api import router as project_access_router
+from gateway.api.platform_shares import router as platform_shares_router
+from gateway.api.admin_shares import router as admin_shares_router
+from gateway.api.admin_overview import router as admin_overview_router
+from gateway.api.org_api import router as org_router
+from gateway.api.device_groups_api import router as device_groups_router
 
 
 def create_app(settings: GatewaySettings | None = None) -> FastAPI:
-    settings = settings or GatewaySettings()
+    if settings is None:
+        settings = GatewaySettings()
+        apps_dir = Path(__file__).resolve().parents[3]
+        settings.web_dist = settings.web_dist or apps_dir / "gateway-web" / "dist"
+        settings.workspace_web_dist = settings.workspace_web_dist or apps_dir / "web" / "dist-gateway-share"
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -92,7 +95,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.state.share_upload_slots = asyncio.Semaphore(2)
     app.state.usage_batch_timeout_seconds = 10.0
 
-    from .request_audit import audit_admin_request
+    from gateway.services.request_audit import audit_admin_request
     app.middleware("http")(audit_admin_request)
 
     @app.middleware("http")

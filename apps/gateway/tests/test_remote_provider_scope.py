@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from gateway import remote_access_api as remote
+from gateway.services import remote_access_api as remote
 
 
 @pytest.mark.asyncio

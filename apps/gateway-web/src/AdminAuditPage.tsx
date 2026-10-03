@@ -1,3 +1,4 @@
+import { AdminRecordTable, AdminRecordRow } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { LedgerExportButton } from './LedgerExportButton'
@@ -96,7 +97,7 @@ export function AdminAuditPage() {
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
       onClick={() => setRevision(current => current + 1)}>重试</button></p>}
     {!loading && !error && events.length === 0 && <p>当前条件下没有审计记录。</p>}
-    <ul className="gateway-device-list">{events.map(item => <li key={item.id}><div>
+    <AdminRecordTable>{events.map(item => <AdminRecordRow key={item.id}><div>
       <strong>{item.action}</strong><p>{new Date(item.occurred_at).toLocaleString()} · {
         value(item.actor_name || item.actor_username || item.actor_id)} · {item.result}</p>
       <p>项目 {value(item.project_name || item.platform_project_id)} · 目标 {
@@ -110,7 +111,7 @@ export function AdminAuditPage() {
           value(item.metadata.review_run_id?.toString())} · 阶段 {value(item.metadata.step_key?.toString())}</p>
         <dl>{Object.entries(item.metadata).map(([key, data]) => <div key={key}><dt>{key}</dt><dd>{String(data)}</dd></div>)}</dl>
       </details>
-    </div></li>)}</ul>
+    </div></AdminRecordRow>)}</AdminRecordTable>
     <div className="gateway-admin-pagination"><span>共 {total} 条记录 · 第 {page}/{
       Math.max(1, Math.ceil(total / pageSize))} 页</span>
       <LedgerExportButton rows={events} filename={`audit-page-${page}.csv`} disabled={loading || !!error}

@@ -5,9 +5,9 @@ from sqlalchemy import select
 
 from gateway.config import GatewaySettings
 from gateway.database import GatewayDatabase
-from gateway.external_identity import ExternalIdentityService
+from gateway.services.external_identity import ExternalIdentityService
 from gateway.models import DirectoryEventReceipt, DirectoryPerson, DirectorySyncState
-from gateway.reconciliation import DirectoryReconciler
+from gateway.services.reconciliation import DirectoryReconciler
 
 
 @pytest.mark.asyncio

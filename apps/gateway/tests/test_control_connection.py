@@ -504,7 +504,7 @@ def test_locked_usage_ledger_does_not_delay_control_heartbeat(tmp_path):
 def test_usage_backpressure_is_global_and_preserves_control_health(tmp_path, monkeypatch):
     import asyncio
     from datetime import datetime, timezone
-    from gateway import control_connection
+    from gateway.services import control_connection
 
     started = threading.Event()
     release = threading.Event()
@@ -549,7 +549,7 @@ def test_usage_backpressure_is_global_and_preserves_control_health(tmp_path, mon
 def test_slow_usage_write_times_out_and_can_be_retried(tmp_path, monkeypatch):
     import asyncio
     from datetime import datetime, timezone
-    from gateway import control_connection
+    from gateway.services import control_connection
 
     original = control_connection.record_usage_batch
     calls = 0
@@ -578,6 +578,8 @@ def test_slow_usage_write_times_out_and_can_be_retried(tmp_path, monkeypatch):
             assert retry["kind"] == "usage_retry"
             assert retry["batch_id"] == "timeout"
             assert client.get("/api/health").status_code == 200
+            # The first write must time out; give the real SQLite retry its normal budget.
+            app.state.usage_batch_timeout_seconds = 1.0
             ws.send_json(batch)
             ack = ws.receive_json()
             assert ack["kind"] == "usage_ack"

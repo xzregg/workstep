@@ -3,9 +3,10 @@ import { useI18n } from '../i18n'
 import { useManagedMode } from '../hooks/useManagedMode'
 import './SettingsNavigation.css'
 
-export type SettingsSection = 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'channels' | 'remote' | 'concurrency' | 'git' | 'system'
+export type SettingsSection = 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'channels' | 'remote' | 'concurrency' | 'git' | 'system' | 'gateway'
 
 const sections: { id: SettingsSection; label: string; icon?: IconName; glyph?: string }[] = [
+  { id: 'gateway', label: 'gatewayPlatform.title', icon: 'share' },
   { id: 'providers', label: 'providerSettings.nav', icon: 'sliders-horizontal' },
   { id: 'engines', label: 'settings.enginesNav', icon: 'sliders-horizontal' },
   { id: 'pricing', label: 'settings.pricingNav', icon: 'layers' },

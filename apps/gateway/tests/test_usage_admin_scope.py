@@ -6,8 +6,8 @@ from fastapi.testclient import TestClient
 from gateway.app import create_app
 from gateway.config import GatewaySettings
 from gateway.models import Device
-from gateway.usage_ledger import record_usage_batch
-from gateway.usage_rollups import advance_rollups
+from gateway.services.usage_ledger import record_usage_batch
+from gateway.services.usage_rollups import advance_rollups
 from test_org_api import _setup, _directory
 
 

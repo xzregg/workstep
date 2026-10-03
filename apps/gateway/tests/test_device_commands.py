@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from gateway.app import create_app
 from gateway.config import GatewaySettings
 from gateway.models import Device, DeviceCommand, DeviceOperationBatch
-from gateway.device_commands import next_command_for_device, record_command_result
+from gateway.services.device_commands import next_command_for_device, record_command_result
 
 
 def test_batch_freezes_targets_and_dispatches_with_one_slot(tmp_path):

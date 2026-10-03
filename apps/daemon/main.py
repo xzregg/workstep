@@ -13,6 +13,8 @@ from fastapi.staticfiles import StaticFiles
 from settings import settings
 from services.engine_packages import prepare_engine_package_dir
 from services.gateway_client import GatewayClientService
+from services.gateway_client.browser_login import GatewayBrowserLogin
+from api.gateway_platform import router as gateway_platform_router
 from api.managed import router as managed_router
 from api.platform_share import router as platform_share_router
 
@@ -236,6 +238,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="WorkStep Daemon", lifespan=lifespan, favicon_url="/static/favicon.svg")
 app.state.gateway_client = gateway_client
+app.state.gateway_browser_login = GatewayBrowserLogin(gateway_client)
+app.include_router(gateway_platform_router)
 gateway_client.asgi_app = app
 app.include_router(managed_router)
 app.include_router(platform_share_router)

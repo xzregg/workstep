@@ -1,10 +1,10 @@
 from fastapi.testclient import TestClient
 
 from gateway.app import create_app
-from gateway.capabilities import compiled_device_policy
+from gateway.services.capabilities import compiled_device_policy
 from gateway.config import GatewaySettings
 from gateway.models import Device, PlatformProject
-from gateway.project_publication import record_project_publication
+from gateway.services.project_publication import record_project_publication
 
 
 def test_group_task_create_tracks_current_membership_and_denies_override(tmp_path):

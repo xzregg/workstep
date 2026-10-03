@@ -1,4 +1,5 @@
 import { Link, Route, Routes, useLocation } from 'react-router-dom'
+import { AdminLayout } from './AdminLayout'
 import { DesktopLoginPage } from './DesktopLoginPage'
 import { AdminDeviceGroupsPage } from './AdminDeviceGroupsPage'
 import { DeviceAdminPage } from './DeviceAdminPage'
@@ -35,12 +36,14 @@ export function App({ deviceHost = typeof window !== 'undefined' && window.locat
 }
 
 function GatewayPortalApp() {
+  const location = useLocation()
   const adminAccess = useAdminAccess()
   const hasAdminAccess = adminAccess.status === 'ready' && !!adminAccess.access?.roles.length &&
     !adminAccess.access.must_change_password
   return (
     <main>
-      <header><h1>WORKSTEP 平台</h1><nav><Link to="/">我的项目</Link> <Link to="/devices">我的电脑</Link> <Link to="/groups">用户组 Skills</Link> <Link to="/account">个人账户</Link> {hasAdminAccess && <Link to="/admin">管理后台</Link>} <Link to="/auth">登录 / 注册</Link></nav></header>
+      {!location.pathname.startsWith('/admin') && <header><h1>WORKSTEP 平台</h1><nav><Link to="/">我的项目</Link> <Link to="/devices">我的电脑</Link> <Link to="/groups">用户组 Skills</Link> <Link to="/account">个人账户</Link> {hasAdminAccess && <Link to="/admin">管理后台</Link>} <Link to="/auth">登录 / 注册</Link></nav></header>}
+      <AdminPortalRegion admin={location.pathname.startsWith('/admin')} roles={adminAccess.access?.roles ?? []}>
       <Routes>
         <Route path="/" element={<ProjectsPage />} />
         <Route path="/groups" element={<GroupSkillsPage />} />
@@ -83,6 +86,11 @@ function GatewayPortalApp() {
         <Route path="/auth/pending" element={<RegistrationPendingPage />} />
         <Route path="*" element={<section><h2>页面不存在</h2><Link to="/">返回工作台</Link></section>} />
       </Routes>
+      </AdminPortalRegion>
     </main>
   )
+}
+
+function AdminPortalRegion({ admin, roles, children }: { admin: boolean; roles: string[]; children: import('react').ReactNode }) {
+ return admin ? <AdminLayout roles={roles}>{children}</AdminLayout> : <>{children}</>
 }

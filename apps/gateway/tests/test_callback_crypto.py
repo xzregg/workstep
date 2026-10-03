@@ -2,7 +2,7 @@
 
 import pytest
 
-from gateway.callback_crypto import CallbackCrypto, InvalidCallback
+from gateway.services.callback_crypto import CallbackCrypto, InvalidCallback
 
 
 def test_official_dingtalk_callback_vector():

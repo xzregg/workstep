@@ -13,8 +13,8 @@ from gateway.app import create_app
 from gateway.config import GatewaySettings
 from gateway.database import GatewayDatabase, migration_config
 from gateway.models import UsageDailyRollup, UsageRollupQueue
-from gateway.usage_ledger import record_usage_batch
-from gateway.usage_rollups import advance_rollups, rebuild_rollups
+from gateway.services.usage_ledger import record_usage_batch
+from gateway.services.usage_rollups import advance_rollups, rebuild_rollups
 
 
 def _event(event_id: str, when: datetime, *, tokens: int | None = 10) -> dict:

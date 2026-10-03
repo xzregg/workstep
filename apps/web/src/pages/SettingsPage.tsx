@@ -1,3 +1,4 @@
+import GatewayPlatformSettings from './GatewayPlatformSettings'
 import AgentAssistantSettings from './AgentAssistantSettings'
 import BotSettings from './BotSettings'
 import ResizablePanel from '../components/ResizablePanel'
@@ -144,6 +145,8 @@ export default function SettingsPage({
               onConfigurationChanged?.()
             }}
           />
+        ) : activeSection === 'gateway' ? (
+          <GatewayPlatformSettings />
         ) : activeSection === 'pricing' ? (
           <ModelPricingSettings />
         ) : activeSection === 'templates' ? (

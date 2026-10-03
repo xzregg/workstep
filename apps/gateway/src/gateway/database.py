@@ -14,8 +14,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.engine import make_url
 
-from .config import GatewaySettings
-from .models import PlatformSetting
+from gateway.config import GatewaySettings
+from gateway.models import PlatformSetting
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 HEAD_REVISION = "0035_device_management_scopes"
