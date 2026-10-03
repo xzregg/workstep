@@ -28,7 +28,7 @@ async def setup(tmp_path):
     projects = ProjectManager()
     project = projects.init_project(tmp_path / 'task-forward')
     project.workflows = [{'id':'workflow', 'steps':{'nodes':[
-        {'id':'a','label':'编写'}, {'id':'b','label':'交付'},
+        {'id':1,'type':'a','title':'编写'}, {'id':2,'type':'b','title':'交付'},
     ]}}]
     def seed(_project):
         Task.create(id='task',title='任务',cwd=str(project.path),workflow_id='workflow',created_at='2026-10-03',updated_at='2026-10-03')

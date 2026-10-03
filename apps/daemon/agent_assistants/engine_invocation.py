@@ -42,6 +42,7 @@ async def run_engine_turn(
     config_overrides: dict | None = None,
     live_message_queue: asyncio.Queue | None = None,
     system_prompt: str | None = None,
+    system_prompt_each_turn: bool = False,
 ) -> tuple[str, list[dict], str | None]:
     """Run one engine turn; stream events; return (text, events, session_id).
 
@@ -118,6 +119,8 @@ async def run_engine_turn(
         spawn_kwargs: dict[str, object] = {}
         if system_prompt:
             spawn_kwargs["system_prompt"] = system_prompt
+        if system_prompt_each_turn:
+            spawn_kwargs["system_prompt_each_turn"] = True
         load_workstep_tools = bool(
             workstep_tools
             and getattr(
@@ -182,11 +185,13 @@ async def run_engine_turn(
                 workstep_tools=True,
                 config_overrides=merged_overrides or None,
                 **({"system_prompt": system_prompt} if system_prompt else {}),
+                **({"system_prompt_each_turn": True} if system_prompt_each_turn else {}),
             )
         else:
             iterator = spawner(
                 engine, config_overrides=merged_overrides or None,
                 **({"system_prompt": system_prompt} if system_prompt else {}),
+                **({"system_prompt_each_turn": True} if system_prompt_each_turn else {}),
             )
         async for event in iterator:
             normalize_event = getattr(

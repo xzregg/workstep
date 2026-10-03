@@ -570,6 +570,12 @@ async def test_group_names_senders_and_initiator_are_retained_and_passed_to_assi
         'platform': 'dingtalk', 'name': '研发机器人', 'app_id': 'bot', 'secret': 'secret',
         'enabled': True, 'default_target_type': 'project', 'default_project_id': project.id,
     })
+    received_sources = []
+    original_submit = manager._coordinator.submit_message
+    async def submit(*args, **kwargs):
+        received_sources.append(kwargs.get('channel_source'))
+        return await original_submit(*args, **kwargs)
+    manager._coordinator.submit_message = submit
     await manager.handle_message(IncomingMessage(
         bot_id=bot['id'], message_id='first', conversation_type='group', conversation_id='room',
         conversation_name='研发群', sender_id='u1', sender_name='小王', text='你好',
@@ -589,7 +595,9 @@ async def test_group_names_senders_and_initiator_are_retained_and_passed_to_assi
         bot_id=bot['id'], message_id='second', conversation_type='group', conversation_id='room',
         sender_id='u2', sender_name='小李', text='继续',
     ))
-    assert '任务讨论群' in submissions[-1][2] and '小李' in submissions[-1][2]
+    assert submissions[-1][2] == '继续'
+    assert received_sources[-1]['conversation_name'] == '任务讨论群'
+    assert received_sources[-1]['sender_name'] == '小李'
     assert (await manager.recent_groups(bot['id']))[0]['group_name'] == '任务讨论群'
 
 
