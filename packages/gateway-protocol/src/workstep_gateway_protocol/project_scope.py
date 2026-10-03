@@ -53,6 +53,8 @@ _CHAT_SESSION_TRANSITION = re.compile(
     r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}/(?:fork|handoff)\Z")
 _UPLOAD_FILE = re.compile(r"/api/fs/serve/[A-Za-z0-9_.-]{1,256}\Z")
 _PROJECT_RAW = re.compile(r"/api/fs/project-raw/[A-Za-z0-9_-]{1,128}/.+\Z")
+_WORKSPACE_ASSET = re.compile(
+    r"/(?:assets|static)/[A-Za-z0-9][A-Za-z0-9._/-]*\.(?:js|css|svg|png|jpe?g|webp|gif|ico|woff2?|ttf)\Z")
 
 
 def project_http_route_allowed(method: str, path: str,
@@ -131,6 +133,11 @@ def project_http_route_allowed(method: str, path: str,
         return path in ("/api/task/run", "/api/task/pause", "/api/task/cancel")
     if method != "GET":
         return False
+    if path in ("/", "/tasks", "/chat", "/canvas", "/statistics", "/file-preview"):
+        return True
+    if path == "/favicon.svg" or (_WORKSPACE_ASSET.fullmatch(path)
+            and not any(part in (".", "..") for part in path.split("/"))):
+        return not query_pairs
     if path == f"/api/project/{project_id}/summary":
         return not query_pairs
     if path == "/api/search/tasks":

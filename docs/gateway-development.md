@@ -48,7 +48,7 @@ uv run --project apps/gateway --no-sync uvicorn gateway.app:app --host 127.0.0.1
 
 控制 WSS 可按需发出 `open_data` 命令，PC 随即向 `/api/data/ws` 回连并一次性提交短期 token；控制断开时数据连接随之关闭。
 
-设备子域的 HTTP 和业务 WebSocket 请求现在由 Gateway 校验设备会话、当前分配和在线状态后，按流 ID 经数据 WSS 转发给 PC。PC 在进程内调用已有 FastAPI 应用，注入经过 Gateway 核验的用户身份；HTTP 正文和业务 WebSocket 消息分块传输，Gateway 不转发浏览器 Cookie 或伪造的操作者头。门户“打开电脑”会提交一次性票据，远程 Web 显示设备、用户、在线状态和返回入口。PC 拒绝远程用户执行原生目录/桌面动作及无项目作用域的 FS 浏览，门户给出本机操作提示。完整流控、受管包端到端验收和更多接口边界检查仍待完成，阶段 3C 不可用于生产。
+设备子域的 HTTP 和业务 WebSocket 请求现在由 Gateway 校验设备会话、当前分配和在线状态后，按流 ID 经数据 WSS 转发给 PC。PC 在进程内调用已有 FastAPI 应用，注入经过 Gateway 核验的用户身份；HTTP 正文和业务 WebSocket 消息分块传输，Gateway 不转发浏览器 Cookie 或伪造的操作者头。门户“打开电脑”会提交一次性票据，远程 Web 显示设备、用户、在线状态和返回入口。项目会话现在也经该数据通道加载宿主的完整 WorkStep Web，不再由门户复制任务列表/详情；首次只读取绑定项目摘要，进入原任务工作台，任务详情复用 `TaskDetailPage`，项目授权设置复用现有授权展示模块。PC 拒绝远程用户执行原生目录/桌面动作及无项目作用域的 FS 浏览，门户给出本机操作提示。完整流控、受管包端到端验收和更多接口边界检查仍待完成，阶段 3C 不可用于生产。
 
 阶段 4A 的供应商控制面 API 已接入：超级管理员先用 `/api/auth/step-up` 确认密码，再用 `POST /api/admin/providers` 创建供应商，`PUT /api/admin/providers/{id}` 更新配置及轮换密钥，`POST /api/admin/providers/{id}/assign` 给用户或设备分配，`POST /api/admin/providers/{id}/assign/revoke` 撤销，`POST /api/admin/providers/{id}/disable` 停用。`GET /api/admin/providers`、`/{id}/assignments`、`/applications` 只返回非敏感目录、分配和设备应用状态。供应商 Key 在 Gateway 数据库中加密，控制连接用设备临时 X25519 公钥封装配置包；PC 校验网关签名、设备、用户、版本与期限，写入本机 `config.json` 并回执。PC 本地文件系统权限持有人仍能读取已下发 Key。配置/策略失效时受管供应商不可用；配置落盘或引擎刷新失败保留上一版本。模型调用授权和管理页面尚未验收。
 

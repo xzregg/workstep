@@ -1,6 +1,6 @@
 import { BrandIcon } from './components/BrandIcon'
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useProjectStore } from './stores/projectStore'
 import Layout from './components/Layout'
 import TaskList from './pages/TaskList'
@@ -17,6 +17,8 @@ import FirstUseDialog from './components/FirstUseDialog'
 import RemoteAccessGate from './components/RemoteAccessGate'
 import GatewayRemoteFrame from './components/GatewayRemoteFrame'
 import { projectSelectionPath } from './utils/projectSelectionPath'
+import { isGatewayRemoteBrowser } from './utils/gatewayRemote'
+import { useGatewaySessionStore } from './stores/gatewaySessionStore'
 
 const GitPrototype = import.meta.env?.DEV
   ? lazy(() => import('./pages/prototype/GitPrototype'))
@@ -63,7 +65,9 @@ export function AppRoutes() {
   return (
     <Layout onSelectProject={handleSelectProject}>
       <Routes>
-        <Route path="/" element={<WelcomeView />} />
+        <Route path="/" element={activeProject && useGatewaySessionStore.getState().session?.host_project_id
+          ? <Navigate replace to={projectSelectionPath('/tasks', activeProject.name, useProjectStore.getState().activeWorkflowId)} />
+          : <WelcomeView />} />
         <Route path="/git" element={<GitWorkspace />} />
         <Route path="/tasks" element={activeProject ? <TaskList /> : <WelcomeView />} />
         <Route path="/canvas" element={<CanvasEditor />} />
@@ -101,6 +105,7 @@ function App() {
 
 function GatedApp() {
   const location = useLocation()
+  if (isGatewayRemoteBrowser()) return <AppRoutes />
   // Development-only mock surface: no daemon, project selection or Git operations.
   if (GitPrototype && location.pathname === '/prototype/git') {
     return <Suspense fallback={<div>…</div>}><GitPrototype /></Suspense>

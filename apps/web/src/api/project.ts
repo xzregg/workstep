@@ -1,5 +1,7 @@
 import { request } from './transport'
 import type { ProjectConcurrencyResult, ProjectSettingsResult } from './client'
+import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
+import { useGatewaySessionStore } from '../stores/gatewaySessionStore'
 
 // --- Project API ---
 
@@ -44,7 +46,17 @@ export interface ProjectPublicationStatus {
 }
 
 export const projectApi = {
-  list: () => request<{ projects: Project[] }>('/project/list'),
+  list: async (): Promise<{ projects: Project[] }> => {
+    if (isGatewayRemoteBrowser()) {
+      const session = await useGatewaySessionStore.getState().load()
+      if (session.host_project_id) {
+        const project = await request<Project>(`/project/${encodeURIComponent(session.host_project_id)}/summary`)
+        if (project.id !== session.host_project_id) throw new Error('远程项目响应与当前授权不匹配。')
+        return { projects: [{ ...project, path: '' }] }
+      }
+    }
+    return request<{ projects: Project[] }>('/project/list')
+  },
   init: (path: string, name?: string) =>
     request<Project>('/project/init', {
       method: 'POST',
@@ -69,9 +81,17 @@ export const projectApi = {
     request<{ deleted: boolean }>(`/project/${encodeURIComponent(projectId)}`, {
       method: 'DELETE',
     }),
-  publication: (projectId: string) => request<ProjectPublicationStatus>(
-    `/project/${encodeURIComponent(projectId)}/publication`,
-  ),
+  publication: async (projectId: string): Promise<ProjectPublicationStatus> => {
+    const session = useGatewaySessionStore.getState().session
+    if (session?.host_project_id) {
+      if (session.host_project_id !== projectId) throw new Error('项目不在当前授权范围内。')
+      const result = await request<Pick<ProjectPublicationStatus, 'grants'>>('/remote/project-grants')
+      return { ...result, project_id: session.project_id, status: 'published',
+        can_publish: false, can_manage: !!session.can_manage_project_access,
+        gateway_url: session.gateway_url.replace(/\/devices$/, '') }
+    }
+    return request<ProjectPublicationStatus>(`/project/${encodeURIComponent(projectId)}/publication`)
+  },
   setPublication: (projectId: string, published: boolean) => request<{
     project_id: string | null; status: 'published' | 'unpublished'
   }>(`/project/${encodeURIComponent(projectId)}/publication`, {

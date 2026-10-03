@@ -15,6 +15,14 @@
 
 .gateway-remote-content > .app-shell { height: 100%; }
 
+.gateway-remote-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 8px;
+}
+
 .gateway-remote-banner {
   display: flex;
   align-items: center;
