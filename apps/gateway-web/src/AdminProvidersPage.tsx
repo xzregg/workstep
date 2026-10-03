@@ -1,3 +1,4 @@
+import { AdminRecordTable, AdminRecordRow } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AdminProviderApplications } from './AdminProviderApplications'
@@ -85,7 +86,7 @@ export function AdminProvidersPage() {
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {!loading && !error && providers.length === 0 && <p>当前条件下没有供应商。</p>}
-    <ul className="gateway-device-list">{providers.map(provider => <li key={provider.id}>
+    <AdminRecordTable>{providers.map(provider => <AdminRecordRow key={provider.id}>
       <div><strong>{provider.name}</strong><p>{provider.type} · {provider.protocols.join('、')} · {
         provider.enabled ? '已启用' : '已停用'} · 配置版本 {provider.revision}</p>
         <p>{provider.model_count} 个模型 · 价格版本 {provider.price_version ?? '未设置'} · 用户授权 {
@@ -98,7 +99,7 @@ export function AdminProvidersPage() {
           <button type="button" onClick={() => setAssignmentsFor(provider)}>管理分配</button>
           {provider.enabled && <button type="button" onClick={() => setTestFor(provider)}>测试连接</button>}
           {provider.enabled && <button type="button" onClick={() => setDisable(provider)}>停用</button>}</div>}
-    </li>)}</ul>
+    </AdminRecordRow>)}</AdminRecordTable>
     <div className="gateway-admin-pagination"><span>共 {total} 个供应商 · 第 {filters.page}/{
       Math.max(1, Math.ceil(total / 25))} 页</span>
       <button type="button" disabled={filters.page <= 1 || loading}

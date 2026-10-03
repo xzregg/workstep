@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 from gateway.app import create_app
-from gateway.callback_crypto import CallbackCrypto
+from gateway.services.callback_crypto import CallbackCrypto
 from gateway.config import GatewaySettings
 
 AES_KEY = "Yue0EfdN5900c1ce5cf6A152c63DDe1808a60c5ecd7"

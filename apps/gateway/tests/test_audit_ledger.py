@@ -6,11 +6,8 @@ from fastapi.testclient import TestClient
 
 from gateway.app import create_app
 from gateway.config import GatewaySettings
-from gateway.models import (
-    AuditEvent, Device, DirectoryDepartment,
-    DirectoryMembership, DirectoryPerson, IdentitySource, PlatformProject,
-)
-from gateway.audit_ledger import record_audit_batch
+from gateway.models import AuditEvent, Device, DirectoryDepartment, DirectoryMembership, DirectoryPerson, IdentitySource, PlatformProject
+from gateway.services.audit_ledger import record_audit_batch
 
 
 def _event(event_id="audit-1"):

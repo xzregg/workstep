@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from gateway.app import create_app
 from gateway.config import GatewaySettings
 from gateway.models import Device, PlatformProject
-from gateway import platform_shares
+from gateway.services import platform_shares
 
 
 @pytest.mark.parametrize('origin', ['https://gateway.test', 'http://localhost:8700'])

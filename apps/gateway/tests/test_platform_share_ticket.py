@@ -4,7 +4,7 @@ import json
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from gateway.signing import GatewaySigner
+from gateway.services.signing import GatewaySigner
 
 
 def test_platform_share_ticket_is_short_lived_and_task_scoped():

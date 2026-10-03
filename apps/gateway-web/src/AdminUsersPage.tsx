@@ -1,3 +1,4 @@
+import { AdminRecordTable } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -109,15 +110,16 @@ export function AdminUsersPage() {
       {loading && <p role="status">正在加载用户…</p>}
       {error && <p className="gateway-auth-error" role="alert">{error} <button type="button" onClick={refresh}>重试</button></p>}
       {!loading && !error && users.length === 0 && <p>当前条件下没有用户。</p>}
-      {!error && <ul className="gateway-device-list gateway-admin-user-list">{users.map(user => <li key={user.id}>
-        <div><strong>{user.display_name}</strong><p>{user.username} · {user.registration_source} · {
-          user.status === 'pending' ? '待审核' : user.status === 'disabled' ? '已停用' : '已启用'
-        }</p>{user.must_change_password && <p>首次登录需修改密码</p>}</div>
-        <div className="gateway-device-actions">
+      {!error && <AdminRecordTable columns={['用户', '用户名', '状态', '注册来源', '操作']}>{users.map(user => <tr key={user.id}>
+        <td><strong>{user.display_name}</strong>{user.must_change_password && <p>首次登录需修改密码</p>}</td>
+        <td>{user.username}</td>
+        <td>{user.status === 'pending' ? '待审核' : user.status === 'disabled' ? '已停用' : '已启用'}</td>
+        <td>{user.registration_source}</td>
+        <td><div className="gateway-device-actions">
           {user.status === 'pending' && <button type="button" onClick={() => setAction({ user, kind: 'approve' })}>批准</button>}
           {user.status !== 'disabled' && <button type="button" onClick={() => setAction({ user, kind: 'disable' })}>停用</button>}
-        </div>
-      </li>)}</ul>}
+        </div></td>
+      </tr>)}</AdminRecordTable>}
       <div className="gateway-admin-pagination">
         <span>共 {total} 位用户 · 第 {filters.page}/{pages} 页</span>
         <button type="button" disabled={filters.page <= 1 || loading} onClick={() => setFilters(current => (

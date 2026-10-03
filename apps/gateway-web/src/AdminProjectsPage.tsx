@@ -1,3 +1,4 @@
+import { AdminRecordTable, AdminRecordRow } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AdminProjectGrantDialog, AdminProjectRevokeDialog } from './AdminProjectGrantDialog'
@@ -42,12 +43,12 @@ function ProjectGrants({ project, csrf, onChanged }: { project: Project; csrf: s
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {!loading && !error && grants.length === 0 && <p>尚无访问授权。</p>}
-    <ul className="gateway-device-list">{grants.map(grant => <li key={grant.id}>
+    <AdminRecordTable>{grants.map(grant => <AdminRecordRow key={grant.id}>
       <div><strong>{grant.subject_name}</strong><p>{grant.subject_type === 'user' ? '用户' : '用户组'} · {
         grant.access_level === 'edit' ? '可编辑' : '只读'}</p></div>
       <div className="gateway-device-actions"><button type="button" onClick={() => setEdit(grant)}>调整</button>
         <button type="button" onClick={() => setRevoke(grant)}>撤销</button></div>
-    </li>)}</ul>
+    </AdminRecordRow>)}</AdminRecordTable>
     {edit && <AdminProjectGrantDialog key={edit === 'new' ? 'new' : edit.id} projectId={project.id}
       grant={edit === 'new' ? undefined : edit} csrf={csrf} onClose={() => setEdit(null)} onSaved={saved} />}
     {revoke && <AdminProjectRevokeDialog grant={revoke} projectId={project.id} csrf={csrf}
@@ -122,7 +123,7 @@ export function AdminProjectsPage() {
           <option value="asc">升序</option><option value="desc">降序</option></select></div>
       {loading && <p role="status">正在加载项目…</p>}
       {!loading && !error && projects.length === 0 && <p>当前条件下没有已发布项目。</p>}
-      <ul className="gateway-device-list">{projects.map(project => <li key={project.id}>
+      <AdminRecordTable>{projects.map(project => <AdminRecordRow key={project.id}>
         <div><strong>{project.name}</strong><p>宿主电脑：{project.device_name} · {
           project.device_online ? '在线' : '离线'} · 发布者：{project.publisher ?? '未知'}</p>
           <p>用户授权 {project.grant_users} · 用户组授权 {project.grant_groups} · 只读 {
@@ -132,7 +133,7 @@ export function AdminProjectsPage() {
           setSelected(project); setSelectedTab('grants')
         }}>管理授权</button>
           <button type="button" onClick={() => setUnpublish(project)}>取消发布</button></div>
-      </li>)}</ul>
+      </AdminRecordRow>)}</AdminRecordTable>
       <div className="gateway-admin-pagination"><span>共 {total} 个已发布项目 · 第 {filters.page}/{
         Math.max(1, Math.ceil(total / 25))} 页</span>
         <button type="button" disabled={filters.page <= 1 || loading}

@@ -429,3 +429,37 @@ a {
   .gateway-org-directory { grid-template-columns: 1fr; }
   .gateway-device-list li { display: block; }
 }
+
+.gateway-admin-shell { display: grid; grid-template-columns: 224px minmax(0, 1fr); min-height: 100vh; }
+.gateway-admin-sidebar { position: sticky; top: 0; height: 100vh; box-sizing: border-box; display: flex; flex-direction: column; padding: 26px 16px; background: #17233b; color: #cbd5e1; overflow-y: auto; }
+.gateway-admin-brand { color: #fff; text-decoration: none; font-size: 17px; font-weight: 700; padding: 0 12px; }
+.gateway-admin-sidebar-label { color: #94a3b8; font-size: 12px; padding: 0 12px; margin-top: 28px; }
+.gateway-admin-sidebar nav { display: grid; gap: 4px; }
+.gateway-admin-sidebar nav a { color: #cbd5e1; text-decoration: none; padding: 11px 12px; border-radius: 6px; font-size: 14px; }
+.gateway-admin-sidebar nav a:hover { background: #24334f; color: #fff; }
+.gateway-admin-sidebar nav a.active { background: #2563eb; color: #fff; }
+.gateway-admin-return { margin-top: auto; padding: 20px 12px 0; color: #cbd5e1; }
+.gateway-admin-content { min-width: 0; }
+.gateway-admin-topbar { display: flex; justify-content: space-between; align-items: center; height: 60px; padding: 0 28px; background: #fff; border-bottom: 1px solid #e2e8f0; }
+.gateway-admin-content .gateway-admin-page { box-sizing: border-box; width: auto; max-width: none; margin: 24px; padding: 24px; border-radius: 8px; }
+.gateway-admin-content .gateway-auth-eyebrow { display: none; }
+.gateway-admin-table-scroll { overflow-x: auto; margin: 20px 0; border: 1px solid #e2e8f0; border-radius: 6px; }
+.gateway-admin-table { width: 100%; border-collapse: collapse; background: #fff; text-align: left; font-size: 14px; }
+.gateway-admin-table th { color: #475569; background: #f8fafc; font-weight: 600; }
+.gateway-admin-table th, .gateway-admin-table td { padding: 14px 16px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
+.gateway-admin-table tr:last-child td { border-bottom: 0; }
+.gateway-admin-table tbody tr:hover { background: #f8fafc; }
+.gateway-admin-table td:last-child { width: 180px; }
+.gateway-admin-table td p { margin: 5px 0; color: #64748b; }
+.gateway-admin-table td { overflow-wrap: anywhere; }
+.gateway-admin-table td button { margin: 4px; }
+@media (max-width: 767px) {
+ .gateway-admin-shell { grid-template-columns: minmax(0, 1fr); }
+ .gateway-admin-sidebar { position: static; height: auto; padding: 16px; }
+ .gateway-admin-sidebar nav { display: flex; overflow-x: auto; margin-top: 12px; }
+ .gateway-admin-sidebar nav a { flex-shrink: 0; }
+ .gateway-admin-sidebar-label, .gateway-admin-return { display: none; }
+ .gateway-admin-content .gateway-admin-page { margin: 12px; padding: 16px; }
+ .gateway-admin-topbar { padding: 0 16px; }
+ .gateway-admin-table { min-width: 480px; }
+}

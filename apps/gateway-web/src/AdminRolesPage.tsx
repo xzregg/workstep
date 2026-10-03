@@ -1,3 +1,4 @@
+import { AdminRecordTable, AdminRecordRow } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -110,12 +111,12 @@ export function AdminRolesPage({ delegated = false }: { delegated?: boolean }) {
       {loading && <p role="status">正在加载管理员…</p>}
       {error && <p className="gateway-auth-error" role="alert">{error} <button type="button" onClick={refresh}>重试</button></p>}
       {!loading && !error && roles.length === 0 && <p>当前条件下没有管理员。</p>}
-      {!error && <ul className="gateway-device-list gateway-admin-user-list">{roles.map(role => <li key={role.id}>
+      {!error && <AdminRecordTable>{roles.map(role => <AdminRecordRow key={role.id}>
         <div><strong>{role.display_name}</strong><p>{role.username} · {roleNames[role.role] ?? role.role} · {
           role.scope_type === 'platform' ? '全平台' : `${({ department: '部门', organization: '组织', device_group: '设备组' } as Record<string, string>)[role.scope_type]} ${role.scope_name ?? role.scope_id}${role.scope_type === 'department' && role.include_subdepartments ? '（含下级）' : ''}`
         }</p><p>{role.user_status === 'active' ? '已启用' : role.user_status} · {role.registration_source}</p></div>
         <button type="button" onClick={() => setRevoke(role)}>撤销</button>
-      </li>)}</ul>}
+      </AdminRecordRow>)}</AdminRecordTable>}
       <div className="gateway-admin-pagination">
         <span>共 {total} 项权限 · 第 {filters.page}/{pages} 页</span>
         <button type="button" disabled={filters.page <= 1 || loading} onClick={() => setFilters(current => (

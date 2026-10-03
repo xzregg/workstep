@@ -10,7 +10,8 @@ from contextlib import nullcontext
 from fastapi import WebSocket
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, RedirectResponse
+from services.gateway_client.browser_login import COOKIE as PLATFORM_COOKIE
 
 from services.remote_access import ActorSnapshot, actor_context
 from services.project_request_audit import record_remote_request_failure
@@ -107,13 +108,17 @@ def desktop_websocket_allowed(ws: WebSocket) -> bool:
 
     if not _valid_token(ws.headers.get(DESKTOP_TOKEN_HEADER)):
         return False
-    # 不做 Origin 同源校验：TLS 终结的逆向代理（nginx 等）把 wss 转发到本机
-    # daemon 后，连接是 ws:// 而 Origin 仍是 https://，scheme 对不上会把所有
-    # 合法的反代部署挡在门外。WS 访问控制由 desktop token + managed local
-    # session 承担。
+    # 显式 session header 兼容 TLS 终结反代；浏览器自动携带的 cookie
+    # 必须另行校验 Origin，避免跨站 WebSocket 使用本机会话。
     if gateway_client is None or getattr(gateway_client, "managed_config", None) is None:
         return True
-    actor = gateway_client.local_sessions.resolve(ws.headers.get(LOCAL_SESSION_HEADER))
+    if ws.cookies.get(PLATFORM_COOKIE) and not ws.headers.get(LOCAL_SESSION_HEADER):
+        expected_origin = f"{'https' if ws.url.scheme == 'wss' else 'http'}://{ws.url.netloc}"
+        if ws.headers.get('origin') != expected_origin:
+            return False
+    browser_login = getattr(ws.app.state, 'gateway_browser_login', None)
+    desktop_session = getattr(browser_login, 'desktop_local_session', None) if _desktop_token() and _valid_token(ws.headers.get(DESKTOP_TOKEN_HEADER)) else None
+    actor = gateway_client.local_sessions.resolve(ws.headers.get(LOCAL_SESSION_HEADER) or ws.cookies.get(PLATFORM_COOKIE) or desktop_session)
     if actor is None:
         return False
     ws.scope["managed_actor"] = actor
@@ -172,11 +177,22 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
             response = JSONResponse({"detail": "remote host filesystem access unavailable"}, status_code=403)
             response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
             return response
-        if managed and protected and not remote_bridge and request.url.path not in ("/api/managed/bootstrap", "/api/health"):
-            actor = gateway_client.local_sessions.resolve(request.headers.get(LOCAL_SESSION_HEADER))
+        if managed and protected and not remote_bridge and request.url.path not in ("/api/managed/bootstrap", "/api/health", "/api/gateway-platform/settings", "/api/gateway-platform/login", "/api/gateway-platform/callback"):
+            browser_login = getattr(request.app.state, 'gateway_browser_login', None)
+            desktop_session = getattr(browser_login, 'desktop_local_session', None) if _desktop_token() and _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)) else None
+            actor = gateway_client.local_sessions.resolve(request.headers.get(LOCAL_SESSION_HEADER) or request.cookies.get(PLATFORM_COOKIE) or desktop_session)
+        if (managed and actor is not None and request.cookies.get(PLATFORM_COOKIE)
+                and not request.headers.get(LOCAL_SESSION_HEADER) and request.method not in ("GET", "HEAD", "OPTIONS")
+                and request.headers.get("origin") != str(request.base_url).rstrip("/")):
+            return JSONResponse({"detail": "same-origin request required"}, status_code=403)
+        if (managed and not remote_bridge and request.url.path == "/"
+                and getattr(request.app.state, "gateway_browser_login", None) is not None
+                and gateway_client.local_sessions.resolve(request.headers.get(LOCAL_SESSION_HEADER) or request.cookies.get(PLATFORM_COOKIE)
+                    or (getattr(getattr(request.app.state, "gateway_browser_login", None), "desktop_local_session", None) if _desktop_token() and _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)) else None)) is None):
+            return RedirectResponse("/gateway/login", status_code=303)
         denied = protected and (
-            (not remote_bridge and not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)))
-            or (managed and not remote_bridge and request.url.path not in ("/api/managed/bootstrap", "/api/health") and actor is None)
+            (not remote_bridge and request.url.path != "/api/gateway-platform/callback" and not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)))
+            or (managed and not remote_bridge and request.url.path not in ("/api/managed/bootstrap", "/api/health", "/api/gateway-platform/settings", "/api/gateway-platform/login", "/api/gateway-platform/callback") and actor is None)
         )
         if denied:
             response = JSONResponse(

@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from workstep_gateway_protocol import (FrameType, ProxyFrame,
                                        WebSocketMessageAssembler, websocket_payloads)
 
-from gateway.control_connection import DataConnection
+from gateway.services.control_connection import DataConnection
 
 
 @pytest.mark.asyncio

@@ -12,7 +12,7 @@ from sqlalchemy import select
 from gateway.app import create_app
 from gateway.config import GatewaySettings
 from gateway.models import Device, DeviceProviderApplication, PlatformProvider, UserDevice
-from gateway.providers_api import compile_provider_bundle
+from gateway.services.providers_api import compile_provider_bundle
 
 
 def _claims(token):

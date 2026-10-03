@@ -212,3 +212,48 @@ def test_managed_runtime_rejects_legacy_share_credentials(monkeypatch):
         assert local_client.post('/api/remote-project/share', headers=headers).status_code == 200
         assert local_client.get('/api/task-share/public/old-token/meta',
                                 headers=headers).status_code == 200
+
+
+def _browser_managed_app():
+    from types import SimpleNamespace
+    from services.gateway_client.browser_login import COOKIE
+    app = _app()
+    sessions = ManagedLocalSessions()
+    token = sessions.create(ManagedActor('user-1', 'alice', 'device-1', 'instance-1', 1))
+    app.state.gateway_client = SimpleNamespace(managed_config=object(), local_sessions=sessions)
+    app.state.gateway_browser_login = SimpleNamespace(desktop_local_session=token)
+    @app.post('/api/private')
+    async def write(): return {'ok': True}
+    return app, token, COOKIE
+
+
+def test_browser_platform_cookie_requires_same_origin_writes_and_websocket(monkeypatch):
+    monkeypatch.delenv('WORKSTEP_DESKTOP_RUNTIME', raising=False)
+    app, token, cookie = _browser_managed_app()
+    with TestClient(app, base_url='http://localhost:8765') as client:
+        assert client.get('/', follow_redirects=False).headers['location'] == '/gateway/login'
+        client.cookies.set(cookie, token)
+        assert client.get('/').status_code == 200
+        assert client.get('/api/actor').json()['id'] == 'user-1'
+        assert client.post('/api/private').status_code == 403
+        assert client.post('/api/private', headers={'Origin': 'https://evil.test'}).status_code == 403
+        assert client.post('/api/private', headers={'Origin': 'http://localhost:8765'}).status_code == 200
+        with client.websocket_connect('ws://localhost:8765/ws', headers={'Origin': 'http://localhost:8765'}) as ws:
+            assert ws.receive_text() == 'ok'
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect('ws://localhost:8765/ws', headers={'Origin': 'https://evil.test'}): pass
+
+
+def test_normal_desktop_uses_correlated_browser_login_without_special_package(monkeypatch):
+    monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
+    monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')
+    app, _, _ = _browser_managed_app()
+    with TestClient(app) as client:
+        assert client.get('/api/private').status_code == 401
+        headers = {'X-WorkStep-Desktop-Token': 'runtime-secret'}
+        assert client.get('/api/actor', headers=headers).json()['id'] == 'user-1'
+        assert client.get('/', headers=headers).status_code == 200
+        with client.websocket_connect('/ws', headers=headers) as ws:
+            assert ws.receive_text() == 'ok'
+        app.state.gateway_client.local_sessions.clear()
+        assert client.get('/api/private', headers=headers).status_code == 401

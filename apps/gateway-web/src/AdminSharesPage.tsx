@@ -1,3 +1,4 @@
+import { AdminRecordTable, AdminRecordRow } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
@@ -91,8 +92,8 @@ export function AdminSharesPage() {
     {loading && <p role="status">正在加载分享…</p>}
     {!loading && listing && <>
       <p>共 {listing.total} 个分享</p>
-      {listing.shares.length === 0 ? <p>没有符合条件的分享。</p> : <ul className="gateway-share-admin-list">
-        {listing.shares.map(share => <li key={share.id}>
+      {listing.shares.length === 0 ? <p>没有符合条件的分享。</p> : <AdminRecordTable>
+        {listing.shares.map(share => <AdminRecordRow key={share.id}>
           <div className="gateway-share-admin-info">
             <strong>{share.title || share.task_id}</strong>
             <span>{statusLabel[share.status]} · {share.mode === 'interactive' ? '互动' : '只读'} · {share.visit_count} 次访问</span>
@@ -109,8 +110,8 @@ export function AdminSharesPage() {
             {share.status !== 'revoked' && <button type="button" disabled={busy}
               onClick={() => setRevokeTarget(share)}>撤销</button>}
           </div>
-        </li>)}
-      </ul>}
+        </AdminRecordRow>)}
+      </AdminRecordTable>}
       <div className="gateway-share-pagination">
         <button type="button" disabled={offset === 0 || loading}
           onClick={() => setOffset(value => Math.max(0, value - 20))}>上一页</button>

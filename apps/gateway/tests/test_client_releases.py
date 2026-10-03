@@ -9,9 +9,9 @@ import pytest
 from gateway.app import create_app
 from gateway.config import GatewaySettings
 from gateway.database import GatewayDatabase
-from gateway.signing import GatewaySigner
+from gateway.services.signing import GatewaySigner
 from gateway.models import Device
-from gateway import client_releases
+from gateway.services import client_releases
 
 
 def test_admin_publishes_gateway_scoped_release_and_all_users_share_download(tmp_path):

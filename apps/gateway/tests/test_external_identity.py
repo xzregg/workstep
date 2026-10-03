@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from gateway.app import create_app
 from gateway.config import GatewaySettings
-from gateway.external_identity import ExternalProfile
+from gateway.services.external_identity import ExternalProfile
 
 
 class FakeConnector:

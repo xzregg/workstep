@@ -7,7 +7,7 @@ import pytest
 from gateway.app import create_app
 from gateway.config import GatewaySettings
 from gateway.database import GatewayDatabase
-from gateway.identity_connectors import DingTalkConnector
+from gateway.services.identity_connectors import DingTalkConnector
 
 
 @pytest.mark.asyncio

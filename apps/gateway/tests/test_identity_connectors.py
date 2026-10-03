@@ -3,7 +3,7 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import pytest
 
-from gateway.identity_connectors import DingTalkConnector, WeComConnector
+from gateway.services.identity_connectors import DingTalkConnector, WeComConnector
 from gateway.models import IdentitySource
 
 

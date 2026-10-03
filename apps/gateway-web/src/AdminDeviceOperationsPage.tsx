@@ -1,3 +1,4 @@
+import { AdminRecordTable, AdminRecordRow } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
@@ -90,7 +91,7 @@ function OperationCreate({ csrf, onCreated }: { csrf: string; onCreated: () => v
     <label className="gateway-operation-checkbox"><input type="checkbox" checked={termsAccepted}
       onChange={event => setTermsAccepted(event.target.checked)} /> 已在引擎发行方查看并接受第三方安装条款</label>
     {loading && <p role="status">正在加载可选设备…</p>}
-    <ul className="gateway-device-list">{targets.map(target => <li key={target.id}>
+    <AdminRecordTable>{targets.map(target => <AdminRecordRow key={target.id}>
       <label className="gateway-operation-checkbox"><input type="checkbox" checked={!!chosen[target.id]}
         onChange={event => setChosen(current => {
           const next = { ...current }
@@ -98,7 +99,7 @@ function OperationCreate({ csrf, onCreated }: { csrf: string; onCreated: () => v
           else delete next[target.id]
           return next
         })} /> {target.name}（{target.id}）· {target.online ? '在线' : '离线'}</label>
-    </li>)}</ul>
+    </AdminRecordRow>)}</AdminRecordTable>
     <div className="gateway-admin-pagination"><span>共 {total} 台有效设备 · 第 {page}/{Math.max(1, Math.ceil(total / 25))} 页</span>
       <button type="button" disabled={page <= 1 || loading} onClick={() => setPage(value => value - 1)}>上一页</button>
       <button type="button" disabled={page >= Math.ceil(total / 25) || loading}
@@ -167,7 +168,7 @@ function OperationHistory({ csrf, revision }: { csrf: string; revision: number }
     {error && <p role="alert" className="gateway-auth-error">{error} {!retry &&
       <button type="button" onClick={() => setRefresh(value => value + 1)}>重试</button>}</p>}
     {!loading && !error && batches.length === 0 && <p>暂无批量作业。</p>}
-    <ul className="gateway-operation-list">{batches.map(batch => <li key={batch.id}>
+    <AdminRecordTable>{batches.map(batch => <AdminRecordRow key={batch.id}>
       <div className="gateway-admin-toolbar"><strong>{actionNames[batch.action] ?? batch.action} · {batch.engine_id} {
         batch.version ?? ''}</strong><span>{batch.status === 'finished' ? '已结束' : batch.status === 'queued' ? '排队' : '运行中'} · {batch.commands.length} 台</span></div>
       <p>创建时间：{new Date(batch.created_at).toLocaleString()} · 并发 {batch.max_concurrency}</p>
@@ -175,7 +176,7 @@ function OperationHistory({ csrf, revision }: { csrf: string; revision: number }
         statusNames[command.status] ?? command.status}{command.error ? ` · ${command.error}` : ''}</li>)}</ul>
       {batch.commands.some(command => command.status === 'failed' || command.status === 'expired') &&
         <button type="button" onClick={() => { setError(''); setRetry(batch) }}>只重试失败项</button>}
-    </li>)}</ul>
+    </AdminRecordRow>)}</AdminRecordTable>
     <div className="gateway-admin-pagination"><span>共 {total} 个作业 · 第 {page}/{Math.max(1, Math.ceil(total / 25))} 页</span>
       <button type="button" disabled={page <= 1 || loading} onClick={() => setPage(value => value - 1)}>上一页</button>
       <button type="button" disabled={page >= Math.ceil(total / 25) || loading}

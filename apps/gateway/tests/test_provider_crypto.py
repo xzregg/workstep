@@ -8,7 +8,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 
-from gateway.signing import GatewaySigner
+from gateway.services.signing import GatewaySigner
 
 
 def _decode(value):

@@ -14,9 +14,14 @@ export default defineConfig(({ mode }) => ({
         target: 'http://localhost:8765',
         changeOrigin: true,
       },
+      // Preserve the browser origin for platform callbacks and cookie CSRF checks.
+      '/gateway/login': {
+        target: 'http://localhost:8765',
+        changeOrigin: false,
+      },
       '/api': {
         target: 'http://localhost:8765',
-        changeOrigin: true,
+        changeOrigin: false,
       },
       '/ws': {
         target: 'ws://localhost:8765',
