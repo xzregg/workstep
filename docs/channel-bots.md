@@ -91,3 +91,6 @@ workstep channel send --project <项目ID> --bot <机器人ID> --user <用户ID>
 企业微信使用现成按钮模板，无额外模板 ID。未点击的旧停止按钮在结束后可能仍显示，但已失效；用户点击后会收到提示。钉钉默认使用官方 SDK 的 Markdown 按钮模板 `1366a1eb-bc54-4859-ac88-517c56a9acb1.schema`；应用须开通互动卡片创建、投放、更新权限。若公共模板不可用，可在「设置 → 渠道助手 → 钉钉」填自己的兼容模板 ID，变量为 `title`、`markdown`、`tips`、`sys_full_json_obj`，后者包含 `msgButtons: [{text,id,request:true,color}]`。卡片或权限发送失败会提示转到 WorkStep 操作，普通回复仍正常运行。
 
 官方协议参考：[企业微信 SDK 卡片与回调](https://github.com/WecomTeam/aibot-node-sdk/blob/main/README.md)、[钉钉官方通用按钮模板](https://github.com/open-dingtalk/dingtalk-stream-sdk-python/blob/main/dingtalk_stream/card_instance.py)、[钉钉卡片创建／投放和更新](https://github.com/open-dingtalk/dingtalk-stream-sdk-python/blob/main/dingtalk_stream/card_replier.py)。
+
+
+任务归档／删除后的渠道解绑由 `api/task_context.py::_release_task_channel_bindings` 统一调用 `services/channels/bots.py::remove_task_bindings`。`api/task_archive.py` 的直接归档、经验确认归档（有／无经验）及 `api/task.py` 的删除仅在任务操作成功后调用；解除该项目、该任务的全部群绑定，历史默认任务目标回到原默认项目，不删除渠道会话、来源或近期群。恢复归档不会恢复旧绑定。真实 HTTP、跨项目／跨任务隔离、失败保留及慢配置写入健康检查见 `tests/test_task_channel_unbinding.py`。
