@@ -183,6 +183,8 @@ export interface ChatSessionSummary {
   source?: 'chat' | 'channel'
   channel_platform?: string | null
   channel_name?: string | null
+  channel_conversation_type?: 'single' | 'group' | null
+  channel_peer_name?: string | null
   engine: string
   model?: string | null
   fast_model?: string | null

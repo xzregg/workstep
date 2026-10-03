@@ -2,7 +2,7 @@
   display: inline-block;
   vertical-align: middle;
   flex-shrink: 0;
-  max-width: 96px;
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
   padding: 1px 5px;

@@ -115,7 +115,7 @@ export default function ArchivedChatSessions({ projectId }: { projectId: string 
         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.title}</div>
         {session.preview && <div style={{ color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>{session.preview}</div>}
       </div>
-      <ChatSessionSourceBadge source={session.source} platform={session.channel_platform} botName={session.channel_name} />
+      <ChatSessionSourceBadge source={session.source} platform={session.channel_platform} botName={session.channel_name} conversationType={session.channel_conversation_type} peerName={session.channel_peer_name} />
       <Button variant="ghost" disabled={busy} onClick={() => void restore([session.id])}>{t('chatSession.restore')}</Button>
       <Button variant="ghost" disabled={busy} onClick={() => setDeleteIds([session.id])}>{t('common.delete')}</Button>
     </div>)}
