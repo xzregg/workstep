@@ -21,9 +21,11 @@ class WeComAdapter:
         self._client: WSClient | None = None
         self._task: asyncio.Task | None = None
         self._stopped = False
+        self._last_error = ""
 
     async def start(self) -> None:
         self._stopped = False
+        self._last_error = ""
         client = WSClient(WSClientOptions(
             bot_id=self._bot["app_id"], secret=self._bot["secret"],
             max_reconnect_attempts=-1,
@@ -33,22 +35,25 @@ class WeComAdapter:
         @client.on("authenticated")
         async def authenticated():
             if not self._stopped:
+                self._last_error = ""
                 await self._on_state("connected", "")
 
         @client.on("reconnecting")
         async def reconnecting(_attempt):
             if not self._stopped:
-                await self._on_state("reconnecting", "")
+                await self._on_state("reconnecting", self._last_error)
 
         @client.on("disconnected")
         async def disconnected(_reason):
             if not self._stopped:
-                await self._on_state("reconnecting", "")
+                self._last_error = str(_reason or "")
+                await self._on_state("reconnecting", self._last_error)
 
         @client.on("error")
         async def failed(_error):
             if not self._stopped:
-                await self._on_state("error", "企业微信连接失败")
+                self._last_error = str(_error or "") or "企业微信连接失败"
+                await self._on_state("error", self._last_error)
 
         @client.on("message.text")
         async def text_message(frame):
@@ -76,10 +81,11 @@ class WeComAdapter:
             await client.connect()
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.exception("Enterprise WeChat bot connection failed")
             if not self._stopped:
-                await self._on_state("error", "企业微信连接失败")
+                self._last_error = str(exc) or "企业微信连接失败"
+                await self._on_state("error", self._last_error)
 
     async def stop(self) -> None:
         self._stopped = True
