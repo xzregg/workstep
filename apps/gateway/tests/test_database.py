@@ -266,3 +266,28 @@ async def test_postgres_migration_and_core_transaction(tmp_path):
             assert (await session.scalar(select(User.id).where(User.username == "postgres-alice"))) == "postgres-u1"
     finally:
         await database.close()
+
+
+@pytest.mark.asyncio
+async def test_device_scope_upgrade_preserves_existing_device_and_project_grants(tmp_path):
+    from alembic import command
+    settings = GatewaySettings(data_dir=tmp_path)
+    await asyncio.to_thread(command.upgrade, migration_config(settings.effective_database_url), '0034_platform_shares')
+    path = tmp_path / 'workstep_platform.db'
+    def seed():
+        with sqlite3.connect(path) as db:
+            db.execute("INSERT INTO devices(id,name,public_key,status) VALUES('device-existing','Existing PC','key','active')")
+            db.execute("INSERT INTO platform_projects(id,device_id,host_project_id,name,status,access_mode) VALUES('project-existing','device-existing','host-id','Existing project','active','remote_published')")
+            db.execute("INSERT INTO project_access_grants(id,project_id,subject_type,subject_id,access_level,assigned_by_user_id) VALUES('grant-existing','project-existing','user','user-existing','read','owner')")
+    await asyncio.to_thread(seed)
+    database = GatewayDatabase(settings)
+    await database.start()
+    await database.close()
+    def verify():
+        with sqlite3.connect(path) as db:
+            assert db.execute('SELECT id,name,department_id FROM devices').fetchall() == [('device-existing', 'Existing PC', None)]
+            assert db.execute('SELECT device_id FROM platform_projects').fetchall() == [('device-existing',)]
+            assert db.execute('SELECT access_level FROM project_access_grants').fetchall() == [('read',)]
+            assert db.execute('SELECT * FROM device_groups').fetchall() == []
+            assert db.execute('PRAGMA foreign_key_check').fetchall() == []
+    await asyncio.to_thread(verify)

@@ -12,7 +12,7 @@ from sqlalchemy import and_, exists, func, or_, select
 from .identity_api import COOKIE_NAME, _identity
 from .models import (
     AdminAssignment, AuditEvent, AuditEventReceipt, DirectoryDepartment,
-    DirectoryMembership, DirectoryPerson, PlatformProject,
+    DirectoryMembership, DirectoryPerson, PlatformProject, Device, DeviceGroupMembership,
 )
 
 
@@ -169,34 +169,11 @@ async def _audit_scope(request: Request, session):
     ):
         return None
 
-    department_ids = {role.scope_id for role in assignments
-                      if role.scope_type == "department" and role.scope_id}
-    recursive_ids = {role.scope_id for role in assignments
-                     if role.scope_type == "department" and role.scope_id
-                     and role.include_subdepartments}
-    if recursive_ids:
-        departments = (await session.scalars(select(DirectoryDepartment).where(
-            DirectoryDepartment.active == 1,
-        ))).all()
-        by_id = {row.id: row for row in departments}
-        children: dict[tuple[str, str], list[str]] = {}
-        for row in departments:
-            if row.parent_external_id:
-                children.setdefault(
-                    (row.source_id, row.parent_external_id), [],
-                ).append(row.id)
-        pending = list(recursive_ids)
-        while pending:
-            parent = by_id.get(pending.pop())
-            if parent is None:
-                continue
-            for child_id in children.get((parent.source_id, parent.external_id), []):
-                if child_id not in department_ids:
-                    department_ids.add(child_id)
-                    pending.append(child_id)
-
-    if not department_ids:
-        raise HTTPException(status_code=403, detail="Audit administrator scope unavailable")
+    department_ids = await identity.manageable_department_ids(
+        session, user.id, roles=("audit_admin",)) if any(
+            role.scope_type in ("organization", "department") for role in assignments) else set()
+    group_ids = {role.scope_id for role in assignments if role.scope_type == "device_group"}
+    managed_devices = select(DeviceGroupMembership.device_id).where(DeviceGroupMembership.group_id.in_(group_ids))
     member_users = select(DirectoryPerson.user_id).join(
         DirectoryMembership,
         DirectoryMembership.person_id == DirectoryPerson.id,
@@ -205,6 +182,8 @@ async def _audit_scope(request: Request, session):
         DirectoryMembership.department_id.in_(department_ids),
     )
     return or_(
+        AuditEvent.device_id.in_(managed_devices),
+        AuditEvent.device_id.in_(select(Device.id).where(Device.department_id.in_(department_ids))),
         AuditEvent.user_id.in_(member_users),
         AuditEvent.initiated_by_user_id.in_(member_users),
     )

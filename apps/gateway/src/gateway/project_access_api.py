@@ -10,9 +10,10 @@ from sqlalchemy import func, or_, select
 
 from .identity import COOKIE_NAME
 from .identity import IdentityService
-from .identity_api import _identity, _super_admin_read, _super_admin_request
+from .identity_api import _identity
 from .models import (AuditEvent, Device, GroupMembership, PlatformProject,
                      ProjectAccessGrant, User, UserGroup)
+from .management_scope import project_manager, grant_subject_ids, require_grant_subject
 from .project_publication import record_project_publication
 
 router = APIRouter(prefix="/api")
@@ -24,17 +25,11 @@ class ProjectGrantInput(BaseModel):
     access_level: Literal["read", "edit"]
 
 
-async def _admin(request: Request):
-    identity, actor = await _super_admin_request(request)
-    _, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
-    await identity.require_step_up(auth_session)
-    return actor
-
-
 @router.post("/admin/projects/{project_id}/grants")
 async def set_project_grant(request: Request, project_id: str,
                             body: ProjectGrantInput):
-    actor = await _admin(request)
+    identity, actor, _ = await project_manager(request, project_id=project_id, mutation=True)
+    await require_grant_subject(request, identity, actor.id, body.subject_type, body.subject_id)
     async with request.app.state.database.session() as session:
         async with session.begin():
             project = await session.get(PlatformProject, project_id)
@@ -76,7 +71,8 @@ async def set_project_grant(request: Request, project_id: str,
 async def revoke_project_grant(request: Request, project_id: str,
                                subject_type: Literal["user", "group"],
                                subject_id: str):
-    actor = await _admin(request)
+    identity, actor, _ = await project_manager(request, project_id=project_id, mutation=True)
+    await require_grant_subject(request, identity, actor.id, subject_type, subject_id)
     async with request.app.state.database.session() as session:
         async with session.begin():
             grant = await session.scalar(select(ProjectAccessGrant).where(
@@ -187,9 +183,11 @@ async def list_admin_projects(request: Request, q: str = Query('', max_length=12
                               direction: Literal['asc', 'desc'] = 'asc',
                               page: int = Query(1, ge=1),
                               page_size: int = Query(25, ge=1, le=100)):
-    await _super_admin_read(request)
+    _, _, allowed = await project_manager(request)
     conditions = [PlatformProject.access_mode == 'remote_published',
                   PlatformProject.status == 'active']
+    if allowed is not None:
+        conditions.append(PlatformProject.device_id.in_(allowed))
     if q.strip():
         escaped = q.strip().replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
         pattern = f'%{escaped}%'
@@ -238,7 +236,7 @@ async def list_project_grant_subjects(request: Request,
                                       q: str = Query('', max_length=128),
                                       page: int = Query(1, ge=1),
                                       page_size: int = Query(25, ge=1, le=100)):
-    await _super_admin_read(request)
+    identity, actor, _ = await project_manager(request)
     model = User if subject_type == 'user' else UserGroup
     name = User.username if subject_type == 'user' else UserGroup.name
     conditions = [model.status == 'active']
@@ -246,6 +244,9 @@ async def list_project_grant_subjects(request: Request,
         escaped = q.strip().replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
         conditions.append(name.ilike(f'%{escaped}%', escape='\\'))
     async with request.app.state.database.session() as session:
+        allowed = await grant_subject_ids(session, identity, actor.id, subject_type)
+        if allowed is not None:
+            conditions.append(model.id.in_(allowed))
         total = await session.scalar(select(func.count()).select_from(model).where(*conditions))
         rows = (await session.scalars(select(model).where(*conditions).order_by(name, model.id)
             .offset((page - 1) * page_size).limit(page_size))).all()
@@ -258,7 +259,7 @@ async def list_publishable_projects(request: Request, device_id: str,
                                     q: str = Query('', max_length=128),
                                     page: int = Query(1, ge=1),
                                     page_size: int = Query(25, ge=1, le=100)):
-    await _super_admin_read(request)
+    await project_manager(request, device_id=device_id)
     async with request.app.state.database.session() as session:
         device = await session.get(Device, device_id)
     if device is None or device.status != 'active':
@@ -285,7 +286,7 @@ async def list_publishable_projects(request: Request, device_id: str,
 @router.post('/admin/devices/{device_id}/projects/{host_project_id}/publish')
 async def admin_publish_project(request: Request, device_id: str,
                                 host_project_id: str = Path(min_length=1, max_length=128)):
-    actor = await _admin(request)
+    _, actor, _ = await project_manager(request, device_id=device_id, mutation=True)
     async with request.app.state.database.session() as session:
         device = await session.get(Device, device_id)
     if device is None or device.status != 'active':
@@ -310,7 +311,7 @@ async def admin_publish_project(request: Request, device_id: str,
 
 @router.post('/admin/projects/{project_id}/unpublish')
 async def admin_unpublish_project(request: Request, project_id: str):
-    actor = await _admin(request)
+    _, actor, _ = await project_manager(request, project_id=project_id, mutation=True)
     async with request.app.state.database.session() as session:
         project = await session.get(PlatformProject, project_id)
         if (project is None or project.status != 'active'
@@ -325,7 +326,7 @@ async def admin_unpublish_project(request: Request, project_id: str):
 
 @router.get("/admin/projects/{project_id}/grants")
 async def list_project_grants(request: Request, project_id: str):
-    await _super_admin_read(request)
+    await project_manager(request, project_id=project_id)
     async with request.app.state.database.session() as session:
         project = await session.get(PlatformProject, project_id)
         if (project is None or project.access_mode != 'remote_published'

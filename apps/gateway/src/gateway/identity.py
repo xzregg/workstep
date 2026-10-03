@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError
 
 from .database import GatewayDatabase
 from .models import (AdminAssignment, AuditEvent, AuthSession, DirectoryDepartment,
-                     DirectoryMembership, DirectoryPerson, PlatformSetting, User)
+                     DirectoryMembership, DirectoryPerson, IdentitySource, PlatformSetting, User)
 
 SESSION_SECONDS = 24 * 60 * 60
 COOKIE_NAME = "workstep_gateway_session"
@@ -289,9 +289,10 @@ class IdentityService:
                 return
         raise HTTPException(status_code=403, detail="Administrator scope does not cover this user")
 
-    async def manageable_user_ids(self, session, actor_id: str) -> set[str] | None:
+    async def manageable_user_ids(self, session, actor_id: str, *,
+                                  roles=("super_admin", "identity_admin", "org_admin", "department_admin")) -> set[str] | None:
         """None means platform-wide; a set means department-scoped users."""
-        allowed_departments = await self.manageable_department_ids(session, actor_id)
+        allowed_departments = await self.manageable_department_ids(session, actor_id, roles=roles)
         if allowed_departments is None:
             return None
         if not allowed_departments:
@@ -301,20 +302,23 @@ class IdentityService:
         ).where(DirectoryPerson.active == 1,
                 DirectoryMembership.department_id.in_(allowed_departments)))).all())
 
-    async def manageable_department_ids(self, session, actor_id: str) -> set[str] | None:
+    async def manageable_department_ids(self, session, actor_id: str, *,
+                                        roles=("super_admin", "identity_admin", "org_admin", "department_admin")) -> set[str] | None:
         """None means platform-wide; a set contains readable department IDs."""
         assignments = (await session.scalars(select(AdminAssignment).where(
             AdminAssignment.user_id == actor_id,
             AdminAssignment.revoked_at.is_(None),
-            AdminAssignment.role.in_(("super_admin", "identity_admin")),
+            AdminAssignment.role.in_(roles),
         ))).all()
         if any(assignment.role == "super_admin" or (
-            assignment.role == "identity_admin" and assignment.scope_type == "platform"
+            assignment.role in ("identity_admin", "org_admin", "audit_admin") and assignment.scope_type == "platform"
         ) for assignment in assignments):
             return None
         scoped = [assignment for assignment in assignments
-                  if assignment.role == "identity_admin" and assignment.scope_type == "department"]
-        if not scoped:
+                  if assignment.role in ("identity_admin", "department_admin", "audit_admin") and assignment.scope_type == "department"]
+        organizations = {assignment.scope_id for assignment in assignments
+                         if assignment.role in ("org_admin", "audit_admin") and assignment.scope_type == "organization"}
+        if not scoped and not organizations:
             raise HTTPException(status_code=403, detail="User management denied")
         departments = (await session.scalars(select(DirectoryDepartment).where(
             DirectoryDepartment.active == 1,
@@ -324,16 +328,19 @@ class IdentityService:
         for department in departments:
             if department.parent_external_id:
                 children.setdefault((department.source_id, department.parent_external_id), []).append(department)
-        allowed_departments: set[str] = set()
+        allowed_departments: set[str] = {department.id for department in departments
+                                         if department.source_id in organizations}
         for assignment in scoped:
             root = by_id.get(assignment.scope_id)
             if root is None:
                 continue
             pending = [root]
+            visited: set[str] = set()
             while pending:
                 current = pending.pop()
-                if current.id in allowed_departments:
+                if current.id in visited:
                     continue
+                visited.add(current.id)
                 allowed_departments.add(current.id)
                 if assignment.include_subdepartments:
                     pending.extend(children.get((current.source_id, current.external_id), []))
@@ -352,6 +359,13 @@ class IdentityService:
                 if scope_type == "department":
                     if not scope_id or await session.get(DirectoryDepartment, scope_id) is None:
                         raise HTTPException(status_code=422, detail="Department scope not found")
+                elif scope_type == "organization":
+                    if not scope_id or await session.get(IdentitySource, scope_id) is None:
+                        raise HTTPException(status_code=422, detail="Organization scope not found")
+                elif scope_type == "device_group":
+                    from .models import DeviceGroup
+                    if not scope_id or await session.get(DeviceGroup, scope_id) is None:
+                        raise HTTPException(status_code=422, detail="Device group scope not found")
                 elif scope_id is not None:
                     raise HTTPException(status_code=422, detail="Platform scope cannot have an ID")
                 existing = await session.scalar(select(AdminAssignment).where(

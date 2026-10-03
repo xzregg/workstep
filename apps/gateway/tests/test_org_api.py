@@ -1,4 +1,5 @@
 import sqlite3
+import pytest
 
 from fastapi.testclient import TestClient
 
@@ -78,7 +79,8 @@ def test_super_admin_lists_sources_departments_and_direct_members_with_paginatio
         assert client.get('/api/admin/org/departments').status_code == 401
 
 
-def test_department_admin_cannot_read_outside_scope_or_deleted_directory_rows(tmp_path):
+@pytest.mark.parametrize("role", ["identity_admin", "department_admin"])
+def test_department_admin_cannot_read_outside_scope_or_deleted_directory_rows(tmp_path, role):
     app = create_app(GatewaySettings(data_dir=tmp_path))
     with TestClient(app, base_url='https://gateway.test') as client:
         csrf = _setup(client)
@@ -93,7 +95,7 @@ def test_department_admin_cannot_read_outside_scope_or_deleted_directory_rows(tm
         assert client.post('/api/auth/step-up', headers={'X-CSRF-Token': csrf},
                            json={'password': 'OwnerPassphrase-2026!'}).status_code == 200
         assert client.post(f"/api/admin/users/{alice['id']}/roles", headers={'X-CSRF-Token': csrf}, json={
-            'role': 'identity_admin', 'scope_type': 'department', 'scope_id': root,
+            'role': role, 'scope_type': 'department', 'scope_id': root,
             'include_subdepartments': False,
         }).status_code == 201
         client.cookies.clear()
@@ -113,3 +115,83 @@ def test_department_admin_cannot_read_outside_scope_or_deleted_directory_rows(tm
         assert client.get(f'/api/admin/org/departments/{child}/members').status_code == 403
         assert client.get(f'/api/admin/org/departments/{other}/members').status_code == 403
         assert client.get('/api/admin/identity-sources').status_code == 403
+
+
+def test_org_admin_directory_is_limited_to_its_identity_source(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        csrf = _setup(client)
+        source = _directory(client, csrf)
+        alice = client.post('/api/admin/users', headers={'X-CSRF-Token': csrf}, json={
+            'username': 'alice', 'display_name': 'Alice', 'password': 'AlicePassphrase-2026!',
+        }).json()
+        client.post('/api/auth/step-up', headers={'X-CSRF-Token': csrf},
+                    json={'password': 'OwnerPassphrase-2026!'})
+        response = client.post(f"/api/admin/users/{alice['id']}/roles", headers={'X-CSRF-Token': csrf}, json={
+            'role': 'org_admin', 'scope_type': 'organization', 'scope_id': source,
+        })
+        assert response.status_code == 201, response.text
+        # A second organization uses the same external department ID without inheriting scope.
+        with sqlite3.connect(tmp_path / 'workstep_platform.db') as connection:
+            connection.execute("INSERT INTO identity_sources(id,provider,tenant_id,client_id,secret_env) VALUES('private-source','wecom','private-tenant','app','SECRET')")
+            connection.execute("INSERT INTO directory_departments(id,source_id,external_id,display_name,active) VALUES('private-dept','private-source','root','Private',1)")
+        client.cookies.clear()
+        csrf = client.post('/api/auth/login', json={
+            'username': 'alice', 'password': 'AlicePassphrase-2026!',
+        }).json()['csrf_token']
+        client.post('/api/auth/password', headers={'X-CSRF-Token': csrf}, json={
+            'current_password': 'AlicePassphrase-2026!', 'new_password': 'AliceNewPassphrase-2026!',
+        })
+        result = client.get('/api/admin/org/departments')
+        assert result.status_code == 200, result.text
+        assert {row['source_id'] for row in result.json()['departments']} == {source}
+        assert client.get('/api/admin/org/departments/private-dept/members').status_code == 403
+        role_list = client.get('/api/admin/roles')
+        assert role_list.status_code == 200, role_list.text
+        assert role_list.json()['roles'] == []
+        with sqlite3.connect(tmp_path / 'workstep_platform.db') as db:
+            child = db.execute("SELECT id FROM directory_departments WHERE external_id='child'").fetchone()[0]
+            target = db.execute("SELECT user_id FROM directory_people WHERE subject='person-b'").fetchone()[0]
+        headers = {'X-CSRF-Token': csrf}
+        client.post('/api/auth/step-up', headers=headers, json={'password': 'AliceNewPassphrase-2026!'})
+        body = {'role': 'department_admin', 'scope_type': 'department', 'scope_id': child}
+        granted = client.post(f'/api/admin/users/{target}/roles', headers=headers, json=body)
+        assert granted.status_code == 201, granted.text
+        assert client.post(f'/api/admin/users/{target}/roles', headers=headers, json={**body, 'scope_id': 'private-dept'}).status_code == 403
+        assert client.post(f'/api/admin/users/{target}/roles', headers=headers, json={'role': 'super_admin', 'scope_type': 'platform'}).status_code == 403
+        listed = client.get('/api/admin/roles').json()
+        assert [row['id'] for row in listed['roles']] == [granted.json()['id']]
+        assert client.delete('/api/admin/roles/not-in-scope', headers=headers).status_code in (403, 404)
+        assert client.delete(f"/api/admin/roles/{granted.json()['id']}", headers=headers).status_code == 204
+        assert client.get('/api/devices').json() == {'devices': []}
+        assert client.get('/api/admin/overview').json()['users']['total'] == 3
+        sources = client.get('/api/admin/identity-sources')
+        assert sources.status_code == 200, sources.text
+        assert [row['id'] for row in sources.json()['sources']] == [source]
+        assert client.post('/api/admin/identity-sources/private-source/sync', headers={'X-CSRF-Token': csrf},
+                           json={'departments': [], 'people': []}).status_code == 403
+
+
+
+def test_overlapping_nonrecursive_and_recursive_department_roles_union_their_scope(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        csrf = _setup(client); headers = {'X-CSRF-Token': csrf}
+        _directory(client, csrf)
+        actor = client.post('/api/admin/users', headers=headers, json={
+            'username': 'combined', 'display_name': 'Combined', 'password': 'CombinedPassphrase-2026!',
+        }).json()
+        with sqlite3.connect(tmp_path / 'workstep_platform.db') as db:
+            root = db.execute("SELECT id FROM directory_departments WHERE external_id='root'").fetchone()[0]
+        client.post('/api/auth/step-up', headers=headers, json={'password': 'OwnerPassphrase-2026!'})
+        for role, recursive in [('identity_admin', False), ('department_admin', True)]:
+            assert client.post(f"/api/admin/users/{actor['id']}/roles", headers=headers, json={
+                'role': role, 'scope_type': 'department', 'scope_id': root, 'include_subdepartments': recursive,
+            }).status_code == 201
+        client.cookies.clear()
+        csrf = client.post('/api/auth/login', json={'username': 'combined', 'password': 'CombinedPassphrase-2026!'}).json()['csrf_token']
+        client.post('/api/auth/password', headers={'X-CSRF-Token': csrf}, json={
+            'current_password': 'CombinedPassphrase-2026!', 'new_password': 'CombinedNewPassphrase-2026!',
+        })
+        response = client.get('/api/admin/org/departments')
+        assert {row['external_id'] for row in response.json()['departments']} == {'root', 'child'}

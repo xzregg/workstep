@@ -11,8 +11,9 @@ from sqlalchemy import select, tuple_
 
 from .desktop_authorization import DesktopAuthorizationService
 from .identity import COOKIE_NAME, IdentityService, public_user
-from .identity_api import _check_csrf, _super_admin_read, _super_admin_request
+from .identity_api import _check_csrf
 from .models import ClientRelease
+from .management_scope import device_manager
 
 router = APIRouter(prefix="/api")
 
@@ -94,9 +95,7 @@ async def redeem_desktop_code(request: Request, body: DesktopTokenInput):
 
 @router.post("/admin/devices/{device_id}/approve", status_code=204)
 async def approve_device(request: Request, device_id: str):
-    identity, actor = await _super_admin_request(request)
-    _, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
-    await identity.require_step_up(auth_session)
+    _, actor, _ = await device_manager(request, device_ids=[device_id], mutation=True)
     await _service(request).approve_device(device_id, actor.id)
 
 
@@ -106,9 +105,9 @@ async def list_devices(request: Request, status: Literal["pending", "active", "d
                        sort: Literal['created_at', 'name', 'status'] = 'created_at',
                        direction: Literal['asc', 'desc'] = 'desc',
                        page: int = Query(default=1, ge=1), page_size: int = Query(default=25, ge=1, le=100)):
-    await _super_admin_read(request)
+    _, _, allowed = await device_manager(request)
     devices, total = await _service(request).list_devices(
-        status=status, q=q, sort=sort, direction=direction, page=page, page_size=page_size)
+        status=status, q=q, sort=sort, direction=direction, page=page, page_size=page_size, allowed_ids=allowed)
     platforms = {(device.os, device.arch) for device in devices if device.os and device.arch}
     latest: dict[tuple[str, str], tuple[Version, str]] = {}
     if platforms:
@@ -142,7 +141,7 @@ async def list_devices(request: Request, status: Literal["pending", "active", "d
     for device in devices:
         latest_version, update_available = release_status(device)
         result.append({
-            "id": device.id, "name": device.name, "status": device.status,
+            "id": device.id, "name": device.name, "status": device.status, "department_id": device.department_id,
             "online": request.app.state.control_connections.is_online(device.id),
             "daemon_health": request.app.state.control_connections.daemon_health(device.id),
             "version": device.version, "os": device.os, "arch": device.arch,
@@ -152,22 +151,15 @@ async def list_devices(request: Request, status: Literal["pending", "active", "d
     return {"devices": result, "total": total, "page": page, "page_size": page_size}
 
 
-async def _device_admin(request: Request):
-    identity, actor = await _super_admin_request(request)
-    _, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
-    await identity.require_step_up(auth_session)
-    return actor
-
-
 @router.post("/admin/devices/{device_id}/disable", status_code=204)
 async def disable_device(request: Request, device_id: str):
-    actor = await _device_admin(request)
+    _, actor, _ = await device_manager(request, device_ids=[device_id], mutation=True)
     await _service(request).change_device_status(device_id, actor.id, "disabled")
     await request.app.state.control_connections.disconnect(device_id)
 
 
 @router.post("/admin/devices/{device_id}/revoke", status_code=204)
 async def revoke_device(request: Request, device_id: str):
-    actor = await _device_admin(request)
+    _, actor, _ = await device_manager(request, device_ids=[device_id], mutation=True)
     await _service(request).change_device_status(device_id, actor.id, "revoked")
     await request.app.state.control_connections.disconnect(device_id)

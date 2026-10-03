@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Request
 from sqlalchemy import func, select
 
 from .identity import COOKIE_NAME, IdentityService
+from .management_scope import device_scope
 from .models import AdminAssignment, AuditEvent, Device, PlatformProject, ProjectAccessGrant, User
 
 router = APIRouter(prefix="/api/admin")
@@ -27,7 +28,7 @@ async def admin_overview(request: Request):
         super_admin = "super_admin" in roles
 
         users = None
-        if super_admin or "identity_admin" in roles:
+        if roles.intersection(("super_admin", "identity_admin", "org_admin", "department_admin")):
             scoped_ids = await identity.manageable_user_ids(session, actor.id)
             conditions = [User.id.in_(scoped_ids)] if scoped_ids is not None else []
             users = {
@@ -37,8 +38,11 @@ async def admin_overview(request: Request):
             }
 
         devices = projects = recent_actions = None
-        if super_admin:
-            device_rows = (await session.execute(select(Device.id, Device.status))).all()
+        manages_devices = bool(roles.intersection(("super_admin", "device_admin", "org_admin", "department_admin")))
+        if manages_devices:
+            allowed_devices = await device_scope(session, identity, actor.id)
+            device_conditions = [Device.id.in_(allowed_devices)] if allowed_devices is not None else []
+            device_rows = (await session.execute(select(Device.id, Device.status).where(*device_conditions))).all()
             control = request.app.state.control_connections
             active_devices = [device_id for device_id, status in device_rows if status == "active"]
             online_ids = {device_id for device_id in active_devices if control.is_online(device_id)}
@@ -55,12 +59,14 @@ async def admin_overview(request: Request):
             ).where(
                 PlatformProject.status == "active",
                 PlatformProject.access_mode == "remote_published",
+                *([PlatformProject.device_id.in_(allowed_devices)] if allowed_devices is not None else []),
             ))).all()
             shared = await session.scalar(select(func.count(func.distinct(ProjectAccessGrant.project_id)))
                 .join(PlatformProject, PlatformProject.id == ProjectAccessGrant.project_id).where(
                     ProjectAccessGrant.revoked_at.is_(None),
                     PlatformProject.status == "active",
                     PlatformProject.access_mode == "remote_published",
+                    *([PlatformProject.device_id.in_(allowed_devices)] if allowed_devices is not None else []),
                 )) or 0
             projects = {
                 "published": len(published), "shared": shared,
@@ -72,11 +78,12 @@ async def admin_overview(request: Request):
             tasks = {"running": (sum(count for count in running_counts if count is not None)
                                   if unknown_projects == 0 else None),
                      "unknown_projects": unknown_projects}
+        if super_admin:
             recent = (await session.scalars(select(AuditEvent).order_by(
                 AuditEvent.created_at.desc(), AuditEvent.id.desc()).limit(5))).all()
             recent_actions = [{"action": event.action, "result": event.result,
                                "created_at": event.created_at.isoformat()} for event in recent]
 
     return {"roles": sorted(roles), "users": users, "devices": devices, "projects": projects,
-            "tasks": tasks if super_admin else {"running": None, "unknown_projects": None},
+            "tasks": tasks if manages_devices else {"running": None, "unknown_projects": None},
             "recent_actions": recent_actions}

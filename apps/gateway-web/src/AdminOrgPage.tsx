@@ -10,7 +10,7 @@ export function AdminOrgPage({ roles }: { roles: string[] }) {
   return <section className="gateway-admin-page">
     <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>组织与同步</h2><Link to="/admin">返回管理概览</Link></div>
-    {superAdmin && <AdminIdentitySourcesPanel onSourceChange={setSourceId}
+    {(superAdmin || roles.includes('org_admin')) && <AdminIdentitySourcesPanel onSourceChange={setSourceId}
       onReconciled={() => setRevision(value => value + 1)} />}
     <AdminOrganizationDirectory key={sourceId} sourceId={sourceId} revision={revision} superAdmin={superAdmin} />
   </section>
