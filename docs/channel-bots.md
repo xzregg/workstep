@@ -6,7 +6,7 @@ WorkStep 使用平台官方长连接接收机器人消息。daemon 主动连出�
 
 1. 在企业微信管理端创建**智能机器人**，选择长连接方式，并取得 `Bot ID` 和 `Secret`。这里不是仅用于通知的群 Webhook 机器人。
 2. 打开 WorkStep「设置 → 渠道机器人」，选择「企业微信」，填写 Bot ID、Secret，选择默认项目，启用连接并保存。
-3. 将机器人加入企业微信群。群里发送一条文本消息后，在任务详情的「绑定BOT」里选机器人，并从最近群标识建议中选择该群，保存绑定。
+3. 将机器人加入企业微信群。群里发送一条文本消息后，在任务详情的「绑定BOT」里选机器人，并从「最近收到的群」中选择该群，保存绑定。
 
 接入使用[企业微信官方 Python SDK](https://github.com/WecomTeam/wecom-aibot-python-sdk)。群标识采用平台消息中的 `chatid`，不能用群名称代替。
 
@@ -16,7 +16,7 @@ WorkStep 使用平台官方长连接接收机器人消息。daemon 主动连出�
 
 1. 在钉钉开发者后台创建应用，启用机器人能力并选择 **Stream 模式**，取得应用的 `Client ID` 和 `Client Secret`。发布和安装应用所需的组织配置按钉钉后台提示完成。
 2. 在 WorkStep「设置 → 渠道机器人」选择「钉钉」，填写 Client ID、Client Secret，选择默认项目，启用连接并保存。
-3. 将应用机器人加入群并发送一条文本消息，然后在任务详情的「绑定BOT」中绑定最近收到的群标识。
+3. 将应用机器人加入群并发送一条文本消息，然后在任务详情的「绑定BOT」中从「最近收到的群」选择群标识，再点击「绑定群」保存。
 
 接入使用[钉钉官方 Stream SDK](https://github.com/open-dingtalk/dingtalk-stream-sdk-python) 的消息解析和回执协议；建连 HTTP 请求和 WebSocket 循环采用异步网络客户端，避免阻塞 daemon 事件循环。群标识采用 `conversationId`。
 

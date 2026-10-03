@@ -81,11 +81,16 @@ export default function TaskDiscussionGroups({ open, projectId, taskId, onClose 
           {!groups.length && <p>{t('channelBot.noGroups')}</p>}
         </div>
         {!bots.length && <p>{t('channelBot.noBots')}</p>}
-        <label>{t('channelBot.robot')}<select value={botId} onChange={(event) => { setBotId(event.target.value); setGroupId('') }}>
+        <label>{t('channelBot.robot')}<select value={botId} onChange={(event) => { setBotId(event.target.value); setGroupId(''); setRecent([]) }}>
           {bots.map((bot) => <option key={bot.id} value={bot.id}>{bot.name}</option>)}
         </select></label>
-        <label>{t('channelBot.groupId')}<Input value={groupId} list="task-discussion-recent-groups" onChange={(event) => setGroupId(event.target.value)} /></label>
-        <datalist id="task-discussion-recent-groups">{recent.map((id) => <option key={id} value={id} />)}</datalist>
+        <label>{t('channelBot.recentGroups')}<select aria-label={t('channelBot.recentGroups')}
+          value={recent.includes(groupId) ? groupId : ''} disabled={!recent.length || busy}
+          onChange={(event) => setGroupId(event.target.value)}>
+          <option value="">{t('channelBot.selectGroup')}</option>
+          {recent.map((id) => <option key={id} value={id}>{id}</option>)}
+        </select></label>
+        <label>{t('channelBot.groupId')}<Input value={groupId} onChange={(event) => setGroupId(event.target.value)} /></label>
         <p>{t('channelBot.groupIdHint')}</p>
         {error && <p className="task-discussion-groups-error" role="alert">{error}</p>}
       </div>
