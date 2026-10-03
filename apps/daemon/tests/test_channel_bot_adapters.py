@@ -52,6 +52,44 @@ async def test_wecom_group_message_and_reply_use_official_sdk_frame(monkeypatch)
     await adapter.stop()
 
 
+@pytest.mark.asyncio
+async def test_wecom_retry_keeps_connection_error_visible(monkeypatch):
+    class FakeClient:
+        def __init__(self, _options):
+            self.handlers = {}
+            self.connect = AsyncMock()
+            self.disconnect = lambda: None
+
+        def on(self, event):
+            def register(handler):
+                self.handlers[event] = handler
+                return handler
+            return register
+
+    clients = []
+
+    def factory(options):
+        client = FakeClient(options)
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr("services.channels.wecom.WSClient", factory)
+    on_state = AsyncMock()
+    adapter = WeComAdapter(
+        {"id": "bot", "app_id": "platform-bot", "secret": "secret"},
+        AsyncMock(), on_state,
+    )
+    await adapter.start()
+    client = clients[0]
+    reason = "connecting through a SOCKS proxy requires python-socks"
+    await client.handlers["error"](RuntimeError(reason))
+    await client.handlers["reconnecting"](1)
+    assert on_state.await_args_list[-1].args == ("reconnecting", reason)
+    await client.handlers["authenticated"]()
+    assert on_state.await_args_list[-1].args == ("connected", "")
+    await adapter.stop()
+
+
 async def _append(rows, item):
     rows.append(item)
 
