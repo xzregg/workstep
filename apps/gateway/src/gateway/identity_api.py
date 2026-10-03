@@ -97,10 +97,10 @@ async def _limit_public_action(request: Request, action: str) -> None:
     await request.app.state.identity_rate_limiter.check(action, ip)
 
 
-def _set_session_cookie(response: Response, token: str) -> None:
+def _set_session_cookie(response: Response, token: str, request: Request) -> None:
     response.set_cookie(
         COOKIE_NAME, token, max_age=SESSION_SECONDS,
-        secure=True, httponly=True, samesite="lax", path="/",
+        secure=request.app.state.settings.cookie_secure, httponly=True, samesite="lax", path="/",
     )
 
 
@@ -116,7 +116,7 @@ async def setup(request: Request, response: Response, body: SetupInput):
         body.username, body.display_name, body.password,
         body.recovery_username, body.recovery_password, body.registration_mode,
     )
-    _set_session_cookie(response, token)
+    _set_session_cookie(response, token, request)
     return {"user": public_user(user), "csrf_token": csrf_token(token)}
 
 
@@ -131,7 +131,7 @@ async def register(request: Request, response: Response, body: AccountInput):
     user, token = await _identity(request).register(body.username, body.display_name, body.password)
     response.status_code = 201 if token else 202
     if token:
-        _set_session_cookie(response, token)
+        _set_session_cookie(response, token, request)
         return {"user": public_user(user), "csrf_token": csrf_token(token)}
     return {"user": public_user(user)}
 
@@ -145,7 +145,7 @@ async def registration_policy(request: Request):
 async def login(request: Request, response: Response, body: LoginInput):
     await _limit_public_action(request, "login")
     user, token = await _identity(request).login(body.username, body.password)
-    _set_session_cookie(response, token)
+    _set_session_cookie(response, token, request)
     return {"user": public_user(user), "csrf_token": csrf_token(token)}
 
 
@@ -179,7 +179,7 @@ async def logout(request: Request, response: Response):
     await _identity(request).session_user(token)
     _check_csrf(request, token)
     await _identity(request).logout(token)
-    response.delete_cookie(COOKIE_NAME, path="/", secure=True, httponly=True, samesite="lax")
+    response.delete_cookie(COOKIE_NAME, path="/", secure=request.app.state.settings.cookie_secure, httponly=True, samesite="lax")
 
 
 @router.post("/auth/password", status_code=204)

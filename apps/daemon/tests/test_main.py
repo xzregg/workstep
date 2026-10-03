@@ -161,10 +161,18 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
         async def shutdown(self):
             events.append("chats-shutdown")
 
+    class BotStub:
+        async def start(self):
+            events.append("bots-start")
+
+        async def shutdown(self):
+            events.append("bots-shutdown")
+
     monkeypatch.setattr(main, "event_bus", BusStub())
     monkeypatch.setattr(main, "ensure_global_templates", lambda: None)
     monkeypatch.setattr(main, "project_manager", ProjectManagerStub())
     monkeypatch.setattr(main, "TaskService", lambda bus: object())
+    monkeypatch.setattr(main, "BotManager", lambda *args: BotStub())
     monkeypatch.setattr(
         main,
         "WorkflowRuntime",
@@ -188,10 +196,12 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
         "projects-load",
         "workflows-recover",
         "workflows-requeue",
+        "bots-start",
         "chats-recover",
         "schedules-start",
         "serving",
         "schedules-shutdown",
+        "bots-shutdown",
         "chats-shutdown",
         "runtime-shutdown",
         "bus-close",

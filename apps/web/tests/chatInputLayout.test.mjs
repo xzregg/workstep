@@ -17,7 +17,7 @@ test('shared chat input stays centered and leaves room on wide conversations', (
 })
 
 test('mobile chat input keeps the engine quota visible in the scrollable toolbar', () => {
-  assert.match(mobileCss, /\.chat-input-quota-refresh,/)
+  assert.match(mobileCss, /\.chat-input-quota-refresh\s*\{[^}]*min-height:\s*0/s)
   assert.doesNotMatch(mobileCss, /\.chat-input-quota\s*\{[^}]*display:\s*none/s)
 })
 

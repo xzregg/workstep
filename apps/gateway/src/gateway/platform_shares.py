@@ -8,7 +8,6 @@ import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Literal
-from urllib.parse import urlsplit
 from uuid import uuid4
 
 from argon2 import PasswordHasher
@@ -268,7 +267,7 @@ async def _authorized_visitor(request: Request, token: str, *, touch: bool = Fal
 @router.post("/platform-shares", status_code=201)
 async def create_platform_share(request: Request, body: CreateShareInput):
     origin = request.app.state.settings.public_origin
-    if origin is None or urlsplit(origin).scheme != "https":
+    if origin is None:
         raise HTTPException(status_code=503, detail="Public Gateway origin unavailable")
     auth_token = request.cookies.get(COOKIE_NAME)
     actor, _ = await IdentityService(request.app.state.database).session_user(auth_token)
@@ -411,7 +410,7 @@ async def unlock_public_share(request: Request, token: str, body: UnlockShareInp
     from fastapi.responses import JSONResponse
     response = JSONResponse({"unlocked": True, "csrf_token": _share_csrf(session_token)})
     response.set_cookie(SHARE_SESSION_COOKIE, session_token, max_age=3600,
-                        secure=True, httponly=True, samesite="lax", path="/")
+                        secure=request.app.state.settings.cookie_secure, httponly=True, samesite="lax", path="/")
     response.headers["Cache-Control"] = "no-store"
     return response
 

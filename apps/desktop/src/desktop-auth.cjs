@@ -1,5 +1,6 @@
 const { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, sign,
   timingSafeEqual, verify } = require('node:crypto')
+const { validateGatewayOrigin } = require('./gateway-origin.cjs')
 
 function createControlDelegation(authorization, devicePrivateKeyPem) {
   const { privateKey, publicKey } = generateKeyPairSync('ed25519')
@@ -15,10 +16,7 @@ function createControlDelegation(authorization, devicePrivateKeyPem) {
 }
 
 function createAuthorizationRequest(managed, appInstanceId) {
-  const origin = new URL(managed.gateway_origin)
-  if (origin.protocol !== 'https:' || origin.origin !== managed.gateway_origin) {
-    throw new Error('Invalid managed Gateway origin')
-  }
+  const origin = validateGatewayOrigin(managed.gateway_origin)
   if (!managed.gateway_id || !appInstanceId) throw new Error('Gateway and app instance required')
   const state = randomBytes(32).toString('base64url')
   const nonce = randomBytes(32).toString('base64url')

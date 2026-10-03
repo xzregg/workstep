@@ -13,6 +13,41 @@ from gateway.control_connection import DataConnection
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('scheme,host,ws_scheme', [
+    ('http', 'd-device-1.localhost:8700', 'ws'),
+    ('https', 'd-device-1.gateway.test:8700', 'wss'),
+])
+async def test_proxy_redirect_and_websocket_policy_preserve_public_scheme(scheme, host, ws_scheme):
+    class Socket:
+        async def send_json(self, message):
+            frame = ProxyFrame.model_validate(message)
+            if frame.type == FrameType.http_request and frame.payload['phase'] == 'end':
+                await connection.deliver(ProxyFrame(
+                    stream_id=frame.stream_id, type=FrameType.http_response,
+                    payload={'phase': 'start', 'status': 302,
+                             'headers': [['location', 'http://localhost:8765/login?next=project']]},
+                ))
+                await connection.deliver(ProxyFrame(
+                    stream_id=frame.stream_id, type=FrameType.http_response,
+                    payload={'phase': 'end'},
+                ))
+
+    connection = DataConnection('device-1', Socket())
+    async def receive():
+        return {'type': 'http.request', 'body': b'', 'more_body': False}
+    request = StarletteRequest({
+        'type': 'http', 'method': 'GET', 'scheme': scheme, 'path': '/',
+        'query_string': b'', 'headers': [(b'host', host.encode())],
+        'server': (host.split(':')[0], 8700),
+    }, receive)
+    response = await connection.proxy_http(request, user_id='user-1', username='alice')
+    assert response.headers['location'] == f'{scheme}://{host}/login?next=project'
+    assert f"connect-src 'self' {ws_scheme}://{host}" in response.headers['content-security-policy']
+    async for _ in response.body_iterator:
+        pass
+
+
+@pytest.mark.asyncio
 async def test_gateway_upload_waits_for_pc_receive_window():
     sent = []
 

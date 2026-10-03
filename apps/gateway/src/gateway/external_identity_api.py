@@ -304,10 +304,10 @@ async def external_callback(request: Request, response: Response, source_id: str
     if return_to:
         redirect = RedirectResponse(return_to if user.status == "active" else "/auth/pending", status_code=303)
         if new_token:
-            _set_session_cookie(redirect, new_token)
+            _set_session_cookie(redirect, new_token, request)
         return redirect
     if new_token:
-        _set_session_cookie(response, new_token)
+        _set_session_cookie(response, new_token, request)
     if user.status == "pending":
         response.status_code = 202
     return {"user": public_user(user), **({"csrf_token": csrf_token(new_token)} if new_token else {})}

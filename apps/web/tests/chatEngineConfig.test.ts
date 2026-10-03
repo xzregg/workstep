@@ -51,7 +51,7 @@ test('round-trips a selection per (project, session)', () => {
       thinkingEffort: 'high',
     }
     saveChatEngineConfig('proj-1', 'sess-1', config)
-    assert.deepEqual(loadChatEngineConfig('proj-1', 'sess-1'), config)
+    assert.deepEqual(loadChatEngineConfig('proj-1', 'sess-1'), { ...config, providerCleared: false })
     // Other sessions must stay isolated.
     assert.deepEqual(loadChatEngineConfig('proj-1', 'sess-2'), { ...EMPTY_ENGINE_CONFIG })
     assert.deepEqual(loadChatEngineConfig('proj-2', 'sess-1'), { ...EMPTY_ENGINE_CONFIG })
