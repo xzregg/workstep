@@ -269,27 +269,27 @@ async def test_proactive_dingtalk_updates_same_card_in_each_group(setup):
     assert not adapter._reply_cards
 
 
-async def test_task_broadcast_sends_stop_buttons_and_expires_them_on_end(setup):
+@pytest.mark.parametrize('message_id,channel', [('a','execution'), ('review','review'), ('coord','coordinator')])
+async def test_automatic_task_broadcast_does_not_send_stop_buttons(setup, message_id, channel):
     from services.channels.controls import ChannelControls
-    from services.channels.base import ChannelAction
     forwarder,bus,event,adapter,data,_,_ = setup
     values={}
     store=SimpleNamespace(get=lambda key,default=None:values.get(key,default),set=lambda key,value:values.__setitem__(key,value))
     runtime=SimpleNamespace(cancel_message=AsyncMock(return_value=True))
     adapter.send_card=AsyncMock()
     adapter.update_card=AsyncMock()
+    adapter.supports_streaming_reply=lambda recipient:True
+    adapter.update_reply=AsyncMock()
     controls=ChannelControls(store,forwarder._load,forwarder._adapters,SimpleNamespace(),SimpleNamespace(),AsyncMock(),workflow_runtime=runtime)
     forwarder._controls=controls
-    await bus.publish(event('a','TEXT_MESSAGE_START'))
-    await until(lambda:adapter.send_card.await_count==2)
-    card=adapter.send_card.await_args_list[0].args[1]
-    group=adapter.send_card.await_args_list[0].args[0].conversation_id
-    assert await controls.handle(ChannelAction('bot',card.id,'0','member',conversation_id=group))=='已停止'
-    runtime.cancel_message.assert_awaited_once_with(event('a','TEXT_MESSAGE_START')['project_id'],'task','a')
-    await bus.publish(event('a','TEXT_MESSAGE_END',status='stopped',content='部分正文'))
+    await bus.publish(event(message_id,'TEXT_MESSAGE_START',channel=channel))
+    await until(lambda:adapter.update_reply.await_count==2)
+    adapter.send_card.assert_not_awaited()
+    await bus.publish(event(message_id,'TEXT_MESSAGE_END',channel=channel,status='succeeded',content='完整正文'))
     await until(lambda:not forwarder._messages)
     assert not controls._active
-    assert await controls.handle(ChannelAction('bot',card.id,'0','member',conversation_id=group))=='该操作已处理或已失效'
+    adapter.send_card.assert_not_awaited()
+    runtime.cancel_message.assert_not_awaited()
     assert adapter.send_text.await_count==2
 
 

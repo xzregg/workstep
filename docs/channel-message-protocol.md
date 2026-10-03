@@ -75,14 +75,14 @@ WorkStep 渠道消息协议 v1 是项目内部的收发契约。它采用与 LLM
 
 统一层新增 `ChannelButton(key, label)`、`ChannelCard(id, title, text, buttons, running)` 和 `ChannelAction(bot_id, card_id, key, sender_id, conversation_id)`；`ChannelCapabilities.cards` 声明平台按钮能力，适配器实现 `send_card`、`update_card` 并通过 `set_action_handler` 注册独立回调。回调不进入普通消息的串行锁。
 
-`services/channels/controls.py::ChannelControls` 持有卡片与消息、项目、任务／会话、协调轮次及交互请求的对应关系，保存在全局配置 `channel_button_actions`，不含凭证与附件。停止及阻塞交互只在对应原始轮次仍活跃时有效；提案及普通选择题可在回复结束后点击，提案经过现有状态版本检查。机器人、发起用户、会话和最新绑定必须匹配；重复点击去重。用户发起的回复、确认和权限卡片仍仅发起者可点击；自动任务广播的中止卡片允许同一已绑定群的成员操作，回调必须携带匹配的群标识。
+`services/channels/controls.py::ChannelControls` 持有卡片与消息、项目、任务／会话、协调轮次及交互请求的对应关系，保存在全局配置 `channel_button_actions`，不含凭证与附件。停止及阻塞交互只在对应原始轮次仍活跃时有效；提案及普通选择题可在回复结束后点击，提案经过现有状态版本检查。机器人、发起用户、会话和最新绑定必须匹配；重复点击去重。用户发起的回复、确认和权限卡片仅发起者可点击。自动任务阶段和审核广播不发送中止卡片。
 
-- **中止**：自动执行／审核阶段复用 `WorkflowRuntime.cancel_message` → 当前阶段的 `TaskRunner.cancel_step`，数据库检查消息仍在运行，并核对读取期间引擎实例未替换；协调任务复用 `CoordinatorModule.stop_current(expected_message_id=...)`，项目对话复用 `ChatSessionResponder.stop` → 原聊天模块 `stop_current`。按钮只能针对原回复，不能停止随后创建的回复。
+- **中止**：仅为渠道收到用户消息后触发的本条回复发送，协调任务复用 `CoordinatorModule.stop_current(expected_message_id=...)`，项目对话复用 `ChatSessionResponder.stop` → 原聊天模块 `stop_current`。按钮只能针对原回复，不能停止随后创建的回复。
 - **提案确认／取消**：`CUSTOM workstep.action_proposal` 复用 `confirm_action`／`cancel_action`，维持原任务版本校验和执行幂等。
 - **阻塞问题／权限**：`CUSTOM workstep.interaction_request` 直接向 `intervention_manager` 的原轮次交付标准 ACP outcome／elicitation response，继续原引擎。支持权限选项及单字段枚举／布尔选择；多字段和自由输入表单提示用户在 WorkStep 回答，并提供取消按钮。
 - **普通选择题**：`CUSTOM workstep.async_question` 的选项作为带问题标题的用户消息回到原群／私聊和原协调助手。协调助手响应 JSON 可包含 `questions: [{title, options: [string]}]`，在通用事件日志与 WebSocket 中同步发布，任务详情也显示相同选项。较长选项列表拆分卡片，选择后其余分页失效。
 
-任务转发器在自动消息运行时为支持卡片的渠道发送 `@阶段名称` 中止卡片，结束、解绑或关闭时使对应操作失效；原渠道发起的协调回复沿用已有卡片，不重复发送。
+任务转发器仅在 `_origins` 登记的原渠道会话为用户发起的协调回复确保中止卡片存在，与接收入口按助手消息 ID 去重；任务阶段自动执行、审核及向其他绑定群转发正文均不附带中止按钮。结束、解绑或关闭时对应操作失效。行为测试见 `tests/test_channel_task_forwarder.py`、`tests/test_channel_origin_stop.py`。
 
 企业微信将运行中的中止卡片与选择题通过主动模板卡片独立发送，正文仍使用原始流式回复，防止正文快照覆盖按钮；使用 `button_interaction` 模板卡片与 `event.template_card_event`，通过原回调帧在五秒内确认更新；官方接口不能在没有卡片点击回调时主动更新旧卡片，因此回复结束后未点击的旧停止按钮可能仍可见，但服务端会拒绝其操作。钉钉订阅 `/v1.0/card/instances/callback`，立即 ACK，再异步处理与更新卡片；发送和更新使用原生异步 HTTP。
 
