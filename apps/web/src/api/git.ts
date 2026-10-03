@@ -77,3 +77,20 @@ export function createGitApi(client: typeof request = request) {
 
 export const gitApi = createGitApi()
 export type GitApi = typeof gitApi
+
+/** Keep every remote Git call on the selected project's daemon. */
+export function createProjectGitApi(projectId: string, client: typeof request = request): GitApi {
+  const scoped: typeof request = (path, options) => {
+    const url = new URL(path, 'http://workstep.local')
+    url.searchParams.set('project_id', projectId)
+    return client(url.pathname + url.search, options)
+  }
+  return {
+    ...createGitApi(scoped),
+    repositories: async () => {
+      const data = await scoped<GitDiscovery>(`/git/projects/${encodeURIComponent(projectId)}/repositories?refresh=true`)
+      return { ...data, projects: data.projects.map(project => ({ ...project, id: projectId })),
+        repositories: data.repositories.map(repo => ({ ...repo, projects: repo.projects.map(project => ({ ...project, id: projectId })) })) }
+    },
+  }
+}

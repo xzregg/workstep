@@ -294,17 +294,24 @@ class DingTalkAdapter(ChannelAdapter):
         if self._on_action is None:
             return
         claimed = False
+        running_reply = click.card_id in self._running_reply_cards
         async def acknowledge():
             nonlocal claimed
             claimed = True
             try:
-                await self.update_card(None, ChannelCard(click.card_id,'正在处理你的选择','请稍候'))
+                current = self._running_reply_cards.get(click.card_id)
+                card = replace(current, title='正在停止', buttons=(), running=False) if current else ChannelCard(click.card_id,'正在处理你的选择','请稍候')
+                await self.update_card(None, card)
             except Exception:
                 logger.warning('Failed to update DingTalk card', exc_info=True)
         try:
             result = await self._on_action(click, on_claimed=acknowledge)
             if claimed:
-                await self.update_card(None, ChannelCard(click.card_id, result, result))
+                current = self._running_reply_cards.get(click.card_id)
+                if current:
+                    await self.update_card(None, replace(current, title=result, buttons=(), running=False))
+                elif not running_reply:
+                    await self.update_card(None, ChannelCard(click.card_id, result, result))
             elif click.sender_id:
                 await self._send_active(IncomingMessage(click.bot_id,'','single',click.sender_id,click.sender_id,''), result)
         except Exception:

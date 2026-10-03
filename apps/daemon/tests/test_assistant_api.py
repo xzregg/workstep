@@ -616,11 +616,12 @@ async def test_assistant_runtime_injects_assistant_provider(monkeypatch):
     )
     runtime = base.AssistantRuntime.__new__(base.AssistantRuntime)
     runtime._config = SimpleNamespace(
-        name="task_create", engine_label="Test", workstep_tools=False
+        name="task_create", engine_label="Test", workstep_tools=False, system_prompt_transport=False
     )
     runtime._turn_states = {}
     runtime._turn_tasks = {}
     runtime._running_engines = {}
+    runtime._prompt_input_callbacks = {}
     await runtime._invoke("pydantic_ai", None, "/tmp", "hi", None)
     assert captured["config_overrides"] == {"provider_id": "p-b"}
     # 兼容性已在保存/排队 seam 校验；运行时对所有引擎统一注入覆盖。

@@ -36,7 +36,7 @@ class _RouteDescriptor:
     method: str
     path_template: str
     path_regex: Any
-    project_binding: Literal["query", "json_body"]
+    project_binding: Literal["query", "json_body", "path"]
 
 
 def _schema_properties(schema: dict[str, Any], document: dict[str, Any]) -> dict[str, Any]:
@@ -54,6 +54,11 @@ def _build_route_catalog(app: FastAPI) -> list[_RouteDescriptor]:
     for path_template, path_item in document.get("paths", {}).items():
         if path_template.startswith("/api/remote-project"):
             continue
+        if path_template.startswith('/api/git/') and (
+            not path_template.startswith(('/api/git/projects/', '/api/git/worktrees/'))
+            or path_template.endswith('/identity/global') or '/credentials' in path_template
+        ):
+            continue
         if not isinstance(path_item, dict):
             continue
         path_regex, _, _ = compile_path(path_template)
@@ -67,8 +72,10 @@ def _build_route_catalog(app: FastAPI) -> list[_RouteDescriptor]:
                 for item in operation.get("parameters", [])
                 if isinstance(item, dict) and item.get("in") == "query"
             }
-            binding: Literal["query", "json_body"] | None = None
-            if "project_id" in query_names:
+            binding: Literal["query", "json_body", "path"] | None = None
+            if path_template.startswith('/api/git/projects/{project_id}/'):
+                binding = 'path'
+            elif "project_id" in query_names:
                 binding = "query"
             else:
                 schema = (
@@ -116,8 +123,16 @@ class RemoteRouteDispatcher:
         route = self._resolve(request.method, request.path)
         query = dict(request.query)
         body = request.body
+        path = request.path
         if route.project_binding == "query":
             query["project_id"] = principal.project_id
+        elif route.project_binding == 'path':
+            from urllib.parse import quote
+
+            match = route.path_regex.fullmatch(path)
+            start, end = match.span('project_id')
+            path = path[:start] + quote(principal.project_id, safe='') + path[end:]
+            query['project_id'] = principal.project_id
         else:
             payload = json.loads(body or b"{}")
             if not isinstance(payload, dict):
@@ -129,7 +144,7 @@ class RemoteRouteDispatcher:
         try:
             response = await self._client.request(
                 request.method,
-                request.path,
+                path,
                 params=query,
                 content=body,
                 headers={

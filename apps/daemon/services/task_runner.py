@@ -22,6 +22,8 @@ from services.artifact_rounds import (
     write_round_manifest,
 )
 from services.pipeline import DAGScheduler, Step
+from services.prompt import SYSTEM_PROMPT
+from agent_assistants.prompt_input import format_prompt_input
 from services.task_step_start import start_step_state
 from services.step_execution_messages import StepExecutionMessages
 from services.step_interaction_messages import StepInteractionMessages
@@ -893,6 +895,9 @@ class TaskRunner:
             if live_queue is not None:
                 spawn_kwargs["live_message_queue"] = live_queue
             spawn = getattr(engine, "spawn_with_retry", engine.spawn)
+            if callable(getattr(engine, "spawn_with_retry", None)):
+                spawn_kwargs.update(system_prompt=SYSTEM_PROMPT, capture_prompt_input=True)
+            prompt_snapshots = []
             spawn_iter = spawn(**spawn_kwargs)
             idle_timeout = await asyncio.to_thread(
                 config_store.get_engine_idle_timeout_seconds
@@ -910,6 +915,18 @@ class TaskRunner:
                 if normalize_event is not None:
                     event = normalize_event(event)
                 if event is None:
+                    continue
+                if event.type == "prompt_input":
+                    prompt_snapshots.append(format_prompt_input(event.data))
+                    prompt_view = "\n\n".join(prompt_snapshots)
+                    await self._run_db(lambda: Message.update(
+                        prompt_json=json.dumps({"prompt": prompt_view, "input_prompt": prompt}, ensure_ascii=False)
+                    ).where(Message.id == msg_id).execute())
+                    await self._publish(task.id, step_key, {
+                        "channel": "execution", "message_id": msg_id,
+                        "engine": step.engine, "model": resolved_model,
+                        "type": "message_started", "data": {"prompt": prompt_view},
+                    })
                     continue
                 if pending_handoff and event.type != "error":
                     await consume_pending_handoff()

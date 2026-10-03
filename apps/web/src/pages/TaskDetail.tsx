@@ -1,7 +1,7 @@
 import { useTaskHistory } from '../hooks/useTaskHistory'
 import { useTaskCoordinatorConfig } from '../hooks/useTaskCoordinatorConfig'
 import { useTaskStepControls } from '../hooks/useTaskStepControls'
-import { gitApi } from '../api/git'
+import { gitApi, createProjectGitApi } from '../api/git'
 import { useSearchParams } from 'react-router-dom'
 import { useTaskRoute } from '../hooks/useTaskRoute'
 import { randomUuid } from '../utils/uuid'
@@ -150,6 +150,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const refreshTask = useTaskStore((s) => s.refreshTask)
 
   const projectId = detailProject?.id || ''
+  const taskGitApi = useMemo(() => detailProject?.type === 'remote' ? createProjectGitApi(projectId) : gitApi, [projectId, detailProject?.type])
   const ownerFilePreview = useMemo(() => ({
     load: (path: string) => fsApi.preview(path, projectId),
     rawUrl: (path: string) => fsApi.projectFileUrl(path, projectId),
@@ -897,7 +898,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         {({ inputConfig: stepEngineConfig, loading: stepEngineConfigLoading, error: stepEngineConfigError }) => <TaskDetailPage
         {...headerHandlers}
         task={task}
-        gitCapability={projectId && detailProject?.type !== 'remote' ? { api: gitApi, projectId } : undefined}
+        gitCapability={projectId ? { api: taskGitApi, projectId, projectScoped: detailProject?.type === 'remote' } : undefined}
         steps={steps}
         workflowConnections={detailProject?.steps?.connections || []}
         stepProgress={stepProgress}
@@ -998,7 +999,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             mergeRefreshedTaskHistory(current, res.messages || [])
           ))).catch(() => undefined)
         }}
-        headerActions={
+        navigationActions={
           <>
             <TaskDiscussionGroups projectId={projectId} taskId={taskId} />
             {managedMode !== true && <Button
@@ -1016,6 +1017,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               <span className="task-detail-share-label">{t('share.dialogTitle')}</span>
             </Button>}
             <GatewayTaskShareLink taskId={task.id} projectId={projectId || null} />
+          </>
+        }
+        headerActions={
             <Button
               className="task-detail-id-button"
               data-copied={taskIdCopied}
@@ -1029,13 +1033,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 window.setTimeout(() => setTaskIdCopied(false), 1500)
               }}
             >
-              <span className="task-detail-id-marquee">
-                <span className="task-detail-id-marquee-track">
-                  {taskIdCopied ? t('common.copied') : `ID: ${task.id}`}
-                </span>
+              <span className="task-detail-id-text">
+                {taskIdCopied ? t('common.copied') : `ID: ${task.id}`}
               </span>
             </Button>
-          </>
         }
         locale={locale}
         durationNowMs={durationNowMs}

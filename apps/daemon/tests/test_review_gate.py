@@ -580,8 +580,8 @@ async def test_automatic_review_message_is_visible_while_review_is_running(
         assert len(execution_messages) == 1
         assert execution_messages[0].run_status == "succeeded"
         running_prompt = json.loads(running_messages[0].prompt_json or "{}").get("prompt")
-        assert running_prompt
-        assert "You are the WorkStep step review agent." in running_prompt
+        assert running_prompt is None
+        assert "You are the WorkStep step review agent." in json.loads(running_messages[0].prompt_json)["input_prompt"]
         assert starts[0].get("prompt") == running_prompt
         history = await asyncio.to_thread(get_task_history, task.id)
         assert next(message for message in history if message["id"] == starts[0]["messageId"])["prompt"] == running_prompt
@@ -2416,3 +2416,119 @@ async def test_review_session_isolated_and_reused_per_step(tmp_path):
     # The second review receives the incremental execution contract too.
     assert "完成构建" not in review_prompts[1]
     db.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("transport", ["system", "developer", "body"])
+@pytest.mark.parametrize("retry_review", [False, True])
+async def test_pipeline_captures_actual_step_and_review_instructions(tmp_path, monkeypatch, transport, retry_review, slow_channel=None):
+    from engines.core.acp_base import AcpEngineBase
+
+    calls = []
+
+    class Engine(AcpEngineBase):
+        ENGINE_ID = "prompt-transport-test"
+        SYSTEM_PROMPT_MODE = transport
+
+        @staticmethod
+        def is_installed():
+            return True
+
+        @staticmethod
+        def get_version():
+            return "test"
+
+        @staticmethod
+        def resolve_binary():
+            return None
+
+        @property
+        def supports_resume(self):
+            return True
+
+        async def spawn(self, prompt, cwd, **kwargs):
+            calls.append({"prompt": prompt, **kwargs})
+            yield InternalEvent(type="session_started", data={"session_id": "execution-session" if len(calls) % 2 else "review-session"})
+            text = "execution result" if len(calls) % 2 else '{"passed":true,"score":100,"summary":"ok","issues":[]}'
+            if retry_review and len(calls) == 2:
+                text = '{"passed":false,"score":50,"summary":"revise document","issues":[]}'
+            yield InternalEvent(type="agent_message_chunk", data={"content": {"text": text}})
+
+    monkeypatch.setitem(ENGINE_REGISTRY, Engine.ENGINE_ID, Engine)
+    db = init_db(str(tmp_path / "workstep.db"))
+    try:
+        task = Task.create(id="prompt-task", title="transport task", cwd=str(tmp_path), engine=Engine.ENGINE_ID, created_at=1, updated_at=1)
+        run = WorkflowRun.create(id="prompt-run", task=task, status="running", workflow_schema_version=1, workflow_snapshot_json="{}", started_at=1)
+        runner = TaskRunner(EventBus())
+        release = threading.Event()
+        entered = threading.Event()
+        original_update = Message.update
+        if slow_channel:
+            def slow_update(*args, **kwargs):
+                payload = kwargs.get("prompt_json") or ""
+                is_review = "step review agent" in payload
+                if "###" in payload and is_review == (slow_channel == "review") and not release.is_set():
+                    entered.set()
+                    release.wait(3)
+                return original_update(*args, **kwargs)
+            monkeypatch.setattr(Message, "update", staticmethod(slow_update))
+        pipeline = asyncio.create_task(runner.run_pipeline(task, {"steps": [{
+            "key": "build", "label": "Build", "engine": Engine.ENGINE_ID,
+            "prompt": "write the document", "dependsOn": [],
+            "review": {"mode": "auto", "maxRetries": 1, "engine": Engine.ENGINE_ID, "prompt": "check the document"},
+        }]}, tmp_path / "artifacts", workflow_run=run))
+        try:
+            if slow_channel:
+                from httpx import ASGITransport, AsyncClient
+                from main import app
+                assert await asyncio.to_thread(entered.wait, 2)
+                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                    assert (await asyncio.wait_for(client.get("/api/health"), 0.3)).status_code == 200
+        finally:
+            release.set()
+            await pipeline
+        assert len(calls) == (4 if retry_review else 2)
+        messages = list(Message.select().where(Message.role == "assistant").order_by(Message.sequence))
+        assert len(messages) == len(calls)
+        for index, message in enumerate(messages):
+            checkpoint = json.loads(message.prompt_json)
+            assert "### 正文（user" in checkpoint["prompt"]
+            assert calls[index]["prompt"] in checkpoint["prompt"]
+            assert "### 正文" not in checkpoint["input_prompt"]
+            if transport != "body":
+                assert calls[index]["system_prompt"] in checkpoint["prompt"]
+                assert "### 独立指令" in checkpoint["prompt"]
+                assert "You are" not in calls[index]["prompt"]
+            elif index < 2:
+                assert "正文降级" in checkpoint["prompt"]
+                assert calls[index]["prompt"].startswith("You are")
+            else:
+                assert "正文降级" not in checkpoint["prompt"]
+                assert "### 独立指令" not in checkpoint["prompt"]
+                assert not calls[index]["prompt"].startswith("You are")
+        if retry_review:
+            assert calls[2]["session_id"] == "execution-session"
+            assert calls[3]["session_id"] == "review-session"
+            assert "revise document" in calls[2]["prompt"]
+            assert "### 正文" not in calls[3]["prompt"]
+        review = ReviewRun.select().where(ReviewRun.task == task).order_by(ReviewRun.attempt).first()
+        assert json.loads(review.prompt_json)["prompt"] == json.loads(messages[1].prompt_json)["prompt"]
+        assert "Return one JSON object" in (calls[1].get("system_prompt") or calls[1]["prompt"])
+        # Recovery reads the raw contract, never the formatted inspection record.
+        await runner._run_db(lambda: TaskStep.update(status="reviewing").where(TaskStep.task == task).execute())
+        checkpoint = await runner._review_messages.load_checkpoint(task, Step(key="build", label="Build"), run)
+        assert checkpoint is not None
+        assert "### 正文" not in checkpoint.execution_prompt
+        assert "### 正文" not in checkpoint.saved_review_prompt
+        assert "prompt_input" not in (messages[0].events_json or "")
+        await runner.close()
+    finally:
+        db.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("channel", ["execution", "review"])
+async def test_slow_pipeline_prompt_capture_keeps_health_responsive(tmp_path, monkeypatch, channel):
+    await test_pipeline_captures_actual_step_and_review_instructions(
+        tmp_path, monkeypatch, "system", False, slow_channel=channel,
+    )

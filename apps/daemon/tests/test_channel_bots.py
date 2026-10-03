@@ -69,8 +69,12 @@ async def test_wecom_streams_before_turn_completion_without_blocking_health(bots
             progress_sent.set()
             await finish_turn.wait()  # Simulate a slow platform acknowledgement.
 
+    async def reply_stream_with_card(frame, stream_id, text, finish, **kwargs):
+        if "template_card" not in kwargs:
+            await reply_stream(frame, stream_id, text, finish)
+
     adapter = WeComAdapter(bot, AsyncMock(), AsyncMock())
-    adapter._client = SimpleNamespace(reply_stream=reply_stream, reply_stream_with_card=AsyncMock(), send_message=AsyncMock(), disconnect=lambda: None)
+    adapter._client = SimpleNamespace(reply_stream=reply_stream, reply_stream_with_card=reply_stream_with_card, send_message=AsyncMock(), disconnect=lambda: None)
     manager._adapters[bot['id']] = adapter
 
     async def produce():
@@ -634,9 +638,15 @@ async def test_channel_background_uses_separate_instruction_and_survives_reload(
         "engine": "codex_sdk", "model": "gpt-6.1-sol",
     })
     calls = []
+    events_queue = manager._event_bus.subscribe()
 
     async def invoke(engine, model, cwd, prompt, session_id, on_event, **kwargs):
         calls.append((prompt, session_id, kwargs["system_prompt"]))
+        await on_event(InternalEvent(type="prompt_input", data={
+            "engine": engine, "attempt": 1, "session_id": session_id,
+            "instruction_transport": "developer", "prompt": prompt,
+            "system_prompt": kwargs["system_prompt"],
+        }))
         await on_event(InternalEvent(type="session_started", data={"session_id": "engine-session"}))
         return "回复", [], "engine-session"
 
@@ -678,17 +688,35 @@ async def test_channel_background_uses_separate_instruction_and_survives_reload(
         assert [call[1] for call in calls] == [None, "engine-session"]
         for prompt, _, instruction in calls:
             assert "group:123" not in prompt and "研发群" not in prompt
-            assert prompt.endswith("你好")
+            assert prompt == "你好"
             assert "group:123" in instruction and "研发群" in instruction
             assert "研发机器人" in instruction and "dingtalk" in instruction
             assert "Project role" in instruction and "小王" in instruction
             assert "never-inject-secret" not in instruction
-        assert "小李" in calls[1][0]
+        assert '"sender_name": "小李"' in calls[1][2]
         session_id = (await manager._load())["sessions"][f"{bot['id']}:group:group:123"]
         messages = await manager._project_manager.run_db(project.id, lambda _project: [
             message.prompt for message in ChatMessage.select().where(ChatMessage.session == session_id)
         ])
-        assert any("研发群" in (prompt or "") for prompt in messages)
+        assert len([prompt for prompt in messages if prompt]) == 2
+        detail = await manager._project_manager.run_db(project.id, lambda _project: module.get_session(project.id, session_id))
+        assert "研发群" in detail["messages"][-1]["prompt"]
+        assert "你好" in detail["messages"][-1]["prompt"]
+        module._sessions.clear()
+        reloaded = await manager._project_manager.run_db(project.id, lambda _project: module.get_session(project.id, session_id))
+        assert reloaded["messages"][-1]["prompt"] == detail["messages"][-1]["prompt"]
+        user_contents = await manager._project_manager.run_db(project.id, lambda _project: [
+            message.content for message in ChatMessage.select().where(
+                (ChatMessage.session == session_id) & (ChatMessage.role == "user")
+            )
+        ])
+        assert user_contents == ["你好", "你好"]
+        published = []
+        while not events_queue.empty():
+            published.append(events_queue.get_nowait())
+        starts = [event for event in published
+                  if event.get("type") == "TEXT_MESSAGE_START" and event.get("prompt")]
+        assert any("### 独立指令（developer）" in event["prompt"] for event in starts)
         await manager.handle_message(IncomingMessage(
             bot_id=bot["id"], message_id="another-room", conversation_type="group",
             conversation_id="another-group", sender_id="u3", text="新群",
@@ -697,6 +725,7 @@ async def test_channel_background_uses_separate_instruction_and_survives_reload(
         assert "another-group" in calls[-1][2] and "group:123" not in calls[-1][2]
         assert '"conversation_name": ""' in calls[-1][2]
     finally:
+        manager._event_bus.unsubscribe(events_queue)
         await module.shutdown()
 
 
@@ -809,6 +838,26 @@ async def test_dingtalk_optional_card_template_is_saved_and_updated_through_api(
         update = await client.patch('/api/channel-bots/'+bot['id'],json={'card_template_id':''})
         assert update.status_code == 200
         assert (await client.get('/api/channel-bots')).json()[0]['card_template_id'] == ''
+
+
+def test_channel_browser_turn_does_not_reuse_platform_sender(monkeypatch):
+    import agent_assistants.channel_chat as channel_module
+    module = ChannelChatModule(EventBus(), None, register=False)
+    store = MemoryStore()
+    store.set("channel_bots", {
+        "bots": [{"id": "bot", "platform": "wecom"}],
+        "sessions": {"bot:group:room": "chat"},
+        "session_sources": {"chat": {"sender_id": "u1", "sender_name": "渠道小王"}},
+    })
+    monkeypatch.setattr(channel_module, "config_store", store)
+    monkeypatch.setattr(module, "get_system_prompt", lambda _project: "")
+    session = SimpleNamespace(session_id="chat", project_id="project", messages=[{
+        "role": "user", "content": "继续", "author_id": "web-user", "author_name": "网页小李",
+    }])
+    instruction = module._engine_system_prompt(session)
+    assert '"sender_id": "web-user"' in instruction
+    assert '"sender_name": "网页小李"' in instruction
+    assert "渠道小王" not in instruction
 
 
 async def test_channel_session_binding_uses_actual_group_and_rejects_private_or_stale_session(bots):

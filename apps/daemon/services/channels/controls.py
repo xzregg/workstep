@@ -158,9 +158,10 @@ class ChannelControls:
             rows = await self._load()
             expired = []
             for key, row in rows.items():
-                if row['id'] != scope['id'] or row['status'] != 'pending':
-                    continue
                 actions = list(row['options'].values())
+                completed_stop = not interaction_id and row['status'] == 'completed' and any(a['kind'] == 'stop' for a in actions)
+                if row['id'] != scope['id'] or (row['status'] != 'pending' and not completed_stop):
+                    continue
                 if any(a['kind'] in {'stop','interaction'} and (not interaction_id or a.get('interaction_id') == interaction_id) for a in actions):
                     row['status'] = 'expired'
                     expired.append((key, row))

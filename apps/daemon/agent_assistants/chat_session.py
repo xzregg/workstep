@@ -246,9 +246,11 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
 
     # ── session CRUD ───────────────────────────────────────────────────
 
-    async def stop_current(self, session_id: str, project_id: str | None = None) -> bool:
+    async def stop_current(self, session_id: str, project_id: str | None = None, *, expected_message_id: str | None = None) -> bool:
         cutoff = utc_now()
-        accepted = await super().stop_current(session_id, project_id=project_id)
+        accepted = await super().stop_current(session_id, project_id=project_id, expected_message_id=expected_message_id)
+        if expected_message_id is not None:
+            return accepted
         if any(
             state.get("session_id") == session_id and self._turn_is_active(turn_id)
             for turn_id, state in self._turn_states.items()
@@ -424,7 +426,7 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
         else:
             with self._project_ctx(project_id):
                 normalize = self._config.history_message or default_history_message
-                history = {"messages": [normalize(item) for item in ChatRowPersistence()._load_messages(
+                history = {"messages": [normalize(item) for item in self._config.persistence._load_messages(
                     row, limit=limit, offset=offset,
                 )]}
         for message in history.get("messages", []):
@@ -458,7 +460,31 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
                 }
             except Exception:
                 logger.exception("Failed to restore running chat snapshot")
-        return {**summary, "messages": history.get("messages", [])}
+        messages = history.get("messages", [])
+        if self._config.name in {"chat_session", "channel_chat"}:
+            with self._project_ctx(project_id):
+                self._attach_prompt_views(summary, messages)
+        return {**summary, "messages": messages}
+
+    def _attach_prompt_views(self, summary: dict, messages: list[dict]) -> None:
+        """Prefer live captured input, retaining the stored snapshot after restart."""
+        runtime = self
+        if self._config.name == "chat_session" and summary.get("source") == "channel":
+            from main import channel_chat_module
+
+            if channel_chat_module is not None:
+                runtime = channel_chat_module
+        captured = {}
+        for session in list(runtime._sessions.values()):
+            if session.project_id != summary["project_id"] or session.session_id != summary["id"]:
+                continue
+            captured = {str(item.get("id")): item.get("prompt") for item in list(session.messages)}
+            break
+        for message in messages:
+            # Never substitute the latest config for an unknown past request.
+            prompt = captured.get(str(message.get("id")))
+            if prompt:
+                message["prompt"] = prompt
 
     def message_events(
         self,
@@ -888,10 +914,26 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
     # ── per-project system prompt ─────────────────────────────────────
 
     def _prompt_system_instruction(self, session) -> str:
+        if self._config.name == "chat_session" or self._config.system_prompt_transport:
+            return ""
         return self.get_system_prompt(session.project_id)
 
+    def _engine_system_prompt(self, session) -> str:
+        if self._config.name != "chat_session":
+            return super()._engine_system_prompt(session)
+        return self.get_system_prompt(session.project_id)
+
+    def _capture_prompt_input(self) -> bool:
+        return self._config.name in {"chat_session", "channel_chat"} or super()._capture_prompt_input()
+
+    def _display_prompt(self, session, prompt: str, system_prompt: str | None = None) -> str:
+        if self._config.name not in {"chat_session", "channel_chat"}:
+            return super()._display_prompt(session, prompt, system_prompt)
+        # No preview assembled from config: wait for actual prepared inputs.
+        return ""
+
     def _build_prompt(self, session) -> str:
-        """Use the project-configured system prompt ("" when unset, no default)."""
+        """Build user/context input; configured chat rules travel independently."""
         prompt = self._prompt_system_instruction(session)
         pending_handoff = session.extra.get("pending_handoff")
         if isinstance(pending_handoff, dict):

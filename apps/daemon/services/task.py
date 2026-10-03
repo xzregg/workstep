@@ -326,6 +326,9 @@ class TaskService:
                     entry["usage"] = json_mod.loads(msg.usage_json)
                 except Exception:
                     pass
+            if msg.channel in {"coordinator", "archive_experience"}:
+                from agent_assistants.prompt_input import get_prompt_view
+                entry["prompt"] = get_prompt_view(workstep_dir, msg.id) or entry["prompt"]
             entry["proposals"] = [
                 {
                     "id": proposal.id,

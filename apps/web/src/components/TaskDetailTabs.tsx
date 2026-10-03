@@ -11,13 +11,14 @@ interface TaskDetailTabsProps<T extends string | number> {
   onSelect: (tab: T) => void
   className: string
   ariaLabel?: string
+  actions?: ReactNode
 }
 
 /** Shared keyboard and selection semantics for detail, mobile, and artifact round tabs. */
 export default function TaskDetailTabs<T extends string | number>({
-  tabs, selected, onSelect, className, ariaLabel,
+  tabs, selected, onSelect, className, ariaLabel, actions,
 }: TaskDetailTabsProps<T>) {
-  return (
+  const tablist = (
     <div className={className} role="tablist" aria-label={ariaLabel}>
       {tabs.map(({ id, label }) => (
         <button
@@ -41,4 +42,8 @@ export default function TaskDetailTabs<T extends string | number>({
       ))}
     </div>
   )
+  return actions ? <div className={`${className}-row`}>
+    {tablist}
+    <div className={`${className}-actions`}>{actions}</div>
+  </div> : tablist
 }

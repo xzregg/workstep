@@ -323,7 +323,7 @@ export default function MessageMetaBar({
             {openMode && prompt && (
               <button
                 type="button"
-                className="meta-link-btn chat-message-action"
+                className="meta-link-btn chat-message-action chat-message-action--prompt"
                 title={t('meta.viewPromptTitle')}
                 onClick={() => onViewPrompt(prompt)}
                 style={{

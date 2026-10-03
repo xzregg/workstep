@@ -96,12 +96,11 @@ def test_harness_tiered_compaction_stack(tmp_path):
     tiered = next(c for c in caps if type(c).__name__ == "TieredCompaction")
     assert [type(t).__name__ for t in tiered.tiers] == [
         "ClearToolResults",
-        "SlidingWindowCompaction",
+        "SessionSlidingWindowCompaction",
         "SummarizingCompaction",
     ]
-    sliding = next(
-        t for t in tiered.tiers if type(t).__name__ == "SlidingWindowCompaction"
-    )
+    from pydantic_ai_harness.compaction import SlidingWindowCompaction
+    sliding = next(t for t in tiered.tiers if isinstance(t, SlidingWindowCompaction))
     assert sliding.keep_messages == 60
 
 
@@ -366,9 +365,8 @@ async def test_run_agent_uses_harness_capabilities_without_private_memory(
     )
 
     assert captured["prompt"] == "问题"
-    assert [item.instruction for item in captured["agent"]._instructions] == (
-        [system_prompt] if system_prompt else []
-    )
+    assert captured["agent"]._system_prompts == ((system_prompt,) if system_prompt else ())
+    assert captured["agent"]._instructions == []
 
     capabilities = captured["capabilities"]
     capability_names = [type(capability).__name__ for capability in capabilities]
@@ -957,3 +955,131 @@ async def test_harness_planning_tools_publish_plan_snapshot(tmp_path):
     assert first == {"实现功能": "pending", "补测试": "pending"}
     second = {e["content"]: e["status"] for e in plan_events[1].data["entries"]}
     assert second == {"实现功能": "in_progress", "补测试": "pending"}
+
+
+@pytest.mark.anyio
+async def test_session_system_rules_survive_restart_and_update_without_duplication(tmp_path):
+    from datetime import UTC, datetime
+    from pydantic_ai.messages import ModelRequest, SystemPromptPart, UserPromptPart
+    from pydantic_ai_harness.step_persistence import ContinuableSnapshot, RunRecord
+
+    engine = PydanticAIEngine()
+    initial = engine._with_session_system_prompt(None, "fixed rules")
+    assert initial[0].parts[0].content == "fixed rules"
+    assert initial[0].parts[0].dynamic_ref == "workstep.session.instructions"
+    initial.append(ModelRequest(parts=[UserPromptPart("previous question")]))
+    store = await asyncio.to_thread(engine._harness_store, tmp_path)
+    await store.register_run(RunRecord(run_id="rules-run", conversation_id="rules-session", started_at=datetime.now(UTC)))
+    await store.save_snapshot(ContinuableSnapshot(run_id="rules-run", step_index=1, conversation_id="rules-session", messages=initial))
+
+    restarted = PydanticAIEngine()
+    kwargs = {"prompt": "next question", "cwd": str(tmp_path), "session_id": "rules-session"}
+    prepared = await restarted._prepare_prompt_input(kwargs, "fixed rules")
+    assert "system_prompt" not in prepared
+    assert prepared["prompt"] == "next question"
+    assert (await restarted._prepare_prompt_input(kwargs, "new rules"))["system_prompt"] == "new rules"
+    assert (await restarted._prepare_prompt_input({**kwargs, "session_id": None}, "fixed rules"))["system_prompt"] == "fixed rules"
+    assert (await restarted._prepare_prompt_input(kwargs, "fixed rules", each_turn=True))["system_prompt"] == "fixed rules"
+    restored = await restarted._harness_continue_history(tmp_path, "rules-session")
+    updated = restarted._with_session_system_prompt(restored, "new rules")
+    own = [p for m in updated if isinstance(m, ModelRequest) for p in m.parts if isinstance(p, SystemPromptPart) and p.dynamic_ref == "workstep.session.instructions"]
+    assert [p.content for p in own] == ["new rules"]
+    assert restored[0].parts[0].content == "fixed rules"
+    assert (await restarted._prepare_prompt_input(kwargs, None))["system_prompt"] == ""
+    cleared = restarted._with_session_system_prompt(restored, "")
+    assert all(not isinstance(p, SystemPromptPart) for m in cleared if isinstance(m, ModelRequest) for p in m.parts)
+    assert "system_prompt" not in (await restarted._prepare_prompt_input(kwargs, "fixed rules"))
+    from engines.core.events import InternalEvent
+    class Recorder(PydanticAIEngine):
+        async def spawn(self, prompt, cwd, **values):
+            self.received = values
+            yield InternalEvent("done", {})
+    recorder = Recorder()
+    events = [event async for event in recorder.spawn_with_retry(
+        **kwargs, system_prompt="fixed rules", capture_prompt_input=True,
+    )]
+    assert events[0].type == "prompt_input"
+    assert events[0].data["system_prompt"] is None
+    assert "system_prompt" not in recorder.received
+
+
+
+@pytest.mark.anyio
+async def test_restored_session_rules_reach_model_without_new_instructions():
+    from pydantic_ai import Agent
+    from pydantic_ai.messages import ModelRequest, ModelResponse, SystemPromptPart, TextPart, UserPromptPart
+    from pydantic_ai.models.function import FunctionModel
+
+    seen = []
+    def respond(messages, info):
+        seen.extend(p.content for m in messages if isinstance(m, ModelRequest) for p in m.parts if isinstance(p, SystemPromptPart))
+        return ModelResponse(parts=[TextPart("ok")])
+    engine = PydanticAIEngine()
+    history = engine._with_session_system_prompt(None, "session rule")
+    first = await Agent(FunctionModel(respond)).run("first", message_history=history)
+    seen.clear()
+    await Agent(FunctionModel(respond)).run("second", message_history=first.all_messages())
+    assert seen == ["session rule"]
+
+
+@pytest.mark.anyio
+async def test_slow_session_rule_lookup_does_not_block_health(tmp_path, monkeypatch):
+    import threading
+    from httpx import ASGITransport, AsyncClient
+    from main import app
+
+    entered, release = threading.Event(), threading.Event()
+    original = PydanticAIEngine._harness_store
+    def slow_store(root):
+        entered.set()
+        release.wait(2)
+        return original(root)
+    monkeypatch.setattr(PydanticAIEngine, "_harness_store", staticmethod(slow_store))
+    engine = PydanticAIEngine()
+    task = asyncio.create_task(engine._prepare_prompt_input(
+        {"prompt": "hello", "cwd": str(tmp_path), "session_id": "session"}, "rules",
+    ))
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            assert (await asyncio.wait_for(client.get("/api/health"), .3)).status_code == 200
+    finally:
+        release.set()
+        await task
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("tier_name", ["sliding", "summary"])
+async def test_compaction_pins_saved_workstep_system_rules(tier_name, tmp_path):
+    from pydantic_ai import ModelRequestContext, RunContext, RunUsage
+    from pydantic_ai.messages import ModelRequest, SystemPromptPart, UserPromptPart
+    from pydantic_ai.models import ModelRequestParameters
+    from pydantic_ai.models.test import TestModel
+    from pydantic_ai_harness.compaction import TieredCompaction, SlidingWindowCompaction, SummarizingCompaction
+
+    engine = PydanticAIEngine()
+    history = engine._with_session_system_prompt(None, "fixed session rules")
+    history.extend([ModelRequest(parts=[UserPromptPart("a" * 500)]), ModelRequest(parts=[UserPromptPart("b" * 500)])])
+    model = TestModel()
+    request = ModelRequestContext(model=model, messages=history, model_settings=None, model_request_parameters=ModelRequestParameters())
+    if tier_name == "sliding":
+        harness = await asyncio.to_thread(engine._harness_capabilities, tmp_path, "session")
+        tier = harness[0].tiers[1]
+        tier.keep_messages = 1
+        tier.preserve_first_user_message = False
+    else:
+        tier = SummarizingCompaction(max_messages=2, keep_messages=1, model=model)
+    capability = TieredCompaction(tiers=[tier], target_tokens=10, tokenizer=lambda text: len(text))
+    compacted = await capability.before_model_request(RunContext(deps=None, model=model, usage=RunUsage()), request)
+    assert [p.content for m in compacted.messages if isinstance(m, ModelRequest) for p in m.parts if isinstance(p, SystemPromptPart) and p.dynamic_ref == "workstep.session.instructions"] == ["fixed session rules"]
+
+
+def test_session_rule_replacement_preserves_other_system_sources():
+    from pydantic_ai.messages import ModelRequest, SystemPromptPart
+    original = [ModelRequest(parts=[SystemPromptPart("engine-owned rule")])]
+    engine = PydanticAIEngine()
+    first = engine._with_session_system_prompt(original, "workstep rule")
+    updated = engine._with_session_system_prompt(first, "updated rule")
+    cleared = engine._with_session_system_prompt(updated, "")
+    assert [p.content for m in cleared for p in m.parts] == ["engine-owned rule"]
+    assert [p.content for m in updated for p in m.parts] == ["updated rule", "engine-owned rule"]

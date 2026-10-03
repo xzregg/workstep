@@ -33,6 +33,7 @@ export interface TaskDetailGitCapability {
   api: GitApi
   projectId: string
   shared?: boolean
+  projectScoped?: boolean
   readOnly?: boolean
   workspaceEditable?: boolean
   allowedActions?: readonly string[]
@@ -84,7 +85,7 @@ export default function TaskDetailPage({
   }
 
   return (
-    <GitApiContext.Provider value={{ api: gitCapability?.api || gitApi, shared: !!gitCapability?.shared, workspaceEditable: gitCapability?.workspaceEditable, allowedActions: gitCapability?.allowedActions, readOnly: !!gitCapability?.readOnly, browseWorkspace: readCapabilities.browseGitWorkspace }}>
+    <GitApiContext.Provider value={{ api: gitCapability?.api || gitApi, shared: !!gitCapability?.shared, projectScoped: gitCapability?.projectScoped, workspaceEditable: gitCapability?.workspaceEditable, allowedActions: gitCapability?.allowedActions, readOnly: !!gitCapability?.readOnly, browseWorkspace: readCapabilities.browseGitWorkspace }}>
     <MarkdownAssetUrlProvider resolver={readCapabilities.resolveAssetUrl} filePreview={readCapabilities.filePreview}>
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <TaskDetailView

@@ -64,7 +64,9 @@ class JsonRowPersistence:
         model,
         scope_field: str,
         make_id: Callable[[str, str], str],
+        persist_prompt: bool = True,
     ):
+        self._persist_prompt = persist_prompt
         self._model = model
         self._scope_field = scope_field
         self._make_id = make_id
@@ -81,7 +83,7 @@ class JsonRowPersistence:
         row = self._row(session.project_id, session.scope_key)
         if row is None:
             return
-        session.messages = _restore_messages(row.messages_json)
+        session.messages = _restore_messages(row.messages_json, persist_prompt=self._persist_prompt)
         session.resolved_session_id = row.engine_session_id
         if row.engine_state_json:
             try:
@@ -113,8 +115,19 @@ class JsonRowPersistence:
             return
         try:
             now = utc_now()
-            payload = json.dumps(session.messages, ensure_ascii=False)
             row = self._row(session.project_id, session.scope_key)
+            stored_prompts = {
+                item.get("id"): item.get("prompt")
+                for item in _restore_messages(row.messages_json) if item.get("prompt")
+            } if row is not None and self._persist_prompt else {}
+            messages = [
+                {key: value for key, value in item.items() if self._persist_prompt or key != "prompt"}
+                for item in session.messages
+            ]
+            for item in messages:
+                if not item.get("prompt") and stored_prompts.get(item.get("id")):
+                    item["prompt"] = stored_prompts[item["id"]]
+            payload = json.dumps(messages, ensure_ascii=False)
             if row is None:
                 self._model.create(
                     id=self._make_id(session.project_id, session.scope_key),
@@ -161,7 +174,7 @@ class JsonRowPersistence:
             row.fast_model,
             row.vision_model,
             row.engine_session_id,
-            _restore_messages(row.messages_json),
+            _restore_messages(row.messages_json, persist_prompt=self._persist_prompt),
         )
 
     def delete(self, project_id: str, scope_key: str) -> bool:
@@ -171,7 +184,7 @@ class JsonRowPersistence:
         return self._model.delete().where(query).execute() > 0
 
 
-def _restore_messages(raw: str | None) -> list[dict]:
+def _restore_messages(raw: str | None, *, persist_prompt: bool = True) -> list[dict]:
     if not raw:
         return []
     try:
@@ -181,7 +194,7 @@ def _restore_messages(raw: str | None) -> list[dict]:
     if not isinstance(parsed, list):
         return []
     return [
-        item
+        {key: value for key, value in item.items() if persist_prompt or key != "prompt"}
         for item in parsed
         if isinstance(item, dict) and item.get("role") in {"user", "assistant"}
     ]

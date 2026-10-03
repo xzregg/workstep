@@ -59,9 +59,8 @@ def start_step_state(
     previous_execution_prompt = None
     if previous_execution_message is not None:
         try:
-            previous_execution_prompt = json.loads(
-                previous_execution_message.prompt_json or "{}"
-            ).get("prompt")
+            prompt_data = json.loads(previous_execution_message.prompt_json or "{}")
+            previous_execution_prompt = prompt_data.get("input_prompt", prompt_data.get("prompt"))
         except (TypeError, json.JSONDecodeError):
             previous_execution_prompt = None
     session_engine = (

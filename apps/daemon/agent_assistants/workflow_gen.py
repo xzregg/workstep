@@ -86,6 +86,7 @@ class WorkflowGenModule(AssistantRuntime):
             name="workflow_gen",
             channel=GEN_CHANNEL,
             system_prompt=SYSTEM_PROMPT,
+            system_prompt_transport=True,
             scope=SCOPE_WORKFLOW,
             engine_label="Workflow generation engine",
             max_history_turns=MAX_HISTORY_TURNS,
@@ -316,8 +317,7 @@ class WorkflowGenModule(AssistantRuntime):
             )
         engine = create_engine(session.engine)
         if engine is not None and engine.supports_resume:
-            # 引擎侧维护会话上下文：历史不再拼进 prompt。首轮携带完整系统
-            # 提示，续轮只发当前画布与用户消息，避免重复污染引擎会话。
+            # 引擎侧维护历史；固定规则由统一指令入口提供，正文传当前画布和用户消息。
             user_message = next(
                 (
                     str(item.get("content") or "")
@@ -326,8 +326,7 @@ class WorkflowGenModule(AssistantRuntime):
                 ),
                 "",
             )
-            head = SYSTEM_PROMPT if not session.resolved_session_id else ""
-            return f"{head}{canvas_json}\n\n{user_message}"
+            return f"{canvas_json}\n\n{user_message}"
         # 无引擎侧会话的引擎（不支持 resume）：保留最近对话记录拼接，
         # 否则多轮对话将完全失去上下文。
         turns = session.messages[-(MAX_HISTORY_TURNS * 2):]
@@ -336,7 +335,6 @@ class WorkflowGenModule(AssistantRuntime):
             for item in turns
         )
         return (
-            f"{SYSTEM_PROMPT}"
             f"{canvas_json}\n\nConversation history:\n{history}\n\nContinue."
         )
 
@@ -505,6 +503,7 @@ class WorkflowGenModule(AssistantRuntime):
         raw: str,
     ) -> tuple[str, list[dict], list[dict]]:
         """Parse the model reply; validate/repair any flow proposals."""
+        repair_events = []
         try:
             reply, proposals = self._parse_reply(raw)
         except RuntimeError:
@@ -512,16 +511,17 @@ class WorkflowGenModule(AssistantRuntime):
                 session.engine,
                 session.fast_model,
                 session.cwd,
-                (
+                raw,
+                None,
+                system_prompt=(
                     "Repair the following response into valid workflow-generation "
                     'JSON of the form {"reply": "...", "flow_proposals": '
                     '[{"title": "...", "workflowName": "...", '
                     '"summary": "...", "steps": {...}}]}. '
-                    "Return JSON only.\n\n"
-                    f"{raw}"
+                    "Return JSON only."
                 ),
-                None,
             )
+            repair_events.extend(events)
             reply, proposals = self._parse_reply(repaired)
 
         # Merge incremental patches against the live canvas before validating so
@@ -539,23 +539,23 @@ class WorkflowGenModule(AssistantRuntime):
 
         # All proposals invalid → ask the fast model to repair them.
         if not valid and proposals and first_error:
-            repair_prompt = (
+            repair_system_prompt = (
                 "The proposed flows below are structurally invalid. Fix ONLY the "
                 "structural errors and return the complete corrected JSON "
                 '{"reply": "...", "flow_proposals": [{"title": "...", '
                 '"workflowName": "...", "summary": "...", "steps": {...}}]} '
                 "keeping the same number of proposals. "
-                "Return JSON only.\n\n"
-                f"Validation error: {first_error}\n\n"
-                f"Proposals:\n{json.dumps(proposals, ensure_ascii=False)}"
+                "Return JSON only."
             )
             repaired, events, _ = await self._invoke(
                 session.engine,
                 session.fast_model,
                 session.cwd,
-                repair_prompt,
+                f"Validation error: {first_error}\n\nProposals:\n{json.dumps(proposals, ensure_ascii=False)}",
                 None,
+                system_prompt=repair_system_prompt,
             )
+            events = repair_events + events
             try:
                 _reply, fixed_proposals = self._parse_reply(repaired)
             except RuntimeError:
@@ -580,7 +580,7 @@ class WorkflowGenModule(AssistantRuntime):
                 }
             ]
 
-        return reply, valid, []
+        return reply, valid, repair_events
 
     @staticmethod
     def _validate_proposal_steps(steps: dict) -> None:

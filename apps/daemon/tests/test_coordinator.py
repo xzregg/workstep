@@ -1043,7 +1043,8 @@ async def test_archive_experience_streams_visible_coordinator_progress(
         "has_experience": True,
         "cached": False,
     }
-    assert [event["type"] for event in events] == [
+    timeline_events = [event for event in events if not event.get("prompt")]
+    assert [event["type"] for event in timeline_events] == [
         "TEXT_MESSAGE_START",
         "REASONING_MESSAGE_CHUNK",
         "REASONING_MESSAGE_CHUNK",
@@ -1058,20 +1059,25 @@ async def test_archive_experience_streams_visible_coordinator_progress(
     assert all(event["channel"] == "archive_experience" for event in events)
     assert all(event["project_id"] == project_id and event["task_id"] == task_id
                for event in events)
-    assert "Task evidence" in events[0]["prompt"]
-    assert "must not be written to Memory now" in events[0]["prompt"]
+    prompt_event = next(event for event in events if event.get("prompt"))
+    assert "Task evidence" in prompt_event["prompt"]
+    assert "must not be written to Memory now" in prompt_event["prompt"]
     assert "not a task summary" in ArchiveProgressCoordinatorFakeEngine.calls[0]["prompt"]
     assert "at most 3" in ArchiveProgressCoordinatorFakeEngine.calls[0]["prompt"]
 
+    project = main.project_manager.get_project_by_id(project_id)
+    from agent_assistants import prompt_input
+    with prompt_input._prompt_views_lock:
+        prompt_input._prompt_views.pop((str(project.workstep_dir), message_id), None)
     reopened = await client.get(
         f"/api/task/{task_id}/archive-experience/draft?project_id={project_id}"
     )
     assert reopened.status_code == 200
     history = reopened.json()
     assert history["found"] is True
-    assert "Task evidence" in history["prompt"]
+    assert history["prompt"] == prompt_event["prompt"]
     assert [event["type"] for event in history["events"]] == [
-        event["type"] for event in events
+        event["type"] for event in timeline_events if event["type"] != "TEXT_MESSAGE_START"
     ]
     project = main.project_manager.get_project_by_id(project_id)
     assert (
@@ -1851,7 +1857,10 @@ async def test_coordinator_resume_engine_keeps_history_engine_side(
     }
     # 第二轮复用第一轮建立的引擎会话 id。
     assert ResumeCoordinatorFakeEngine.calls[1]["session_id"] == "engine-session-1"
-    assert ResumeCoordinatorFakeEngine.calls[1]["prompt"] == "第二问"
+    resumed_context = json.loads(ResumeCoordinatorFakeEngine.calls[1]["prompt"].split("Context:\n", 1)[1])
+    assert [m["content"] for m in resumed_context["recent_coordinator_messages"]] == ["第二问"]
+    assert resumed_context["task"]["id"] == task_id
+    assert "Understand the task" not in ResumeCoordinatorFakeEngine.calls[1]["prompt"]
 
     third = await client.post(
         f"/api/task/{task_id}/chat?project_id={project_id}",
@@ -3472,3 +3481,76 @@ async def test_channel_stop_targets_exact_coordinator_reply_and_slow_sql_keeps_h
     assert await main.project_manager.run_db(project_id,lambda _:CoordinatorTurn.get_by_id(accepted['turn_id']).status) == 'stopped'
     await broker.finish(scope)
     await broker.finish(old)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("transport", ["body", "system", "developer"])
+async def test_coordinator_actual_input_and_persisted_view(api_context, monkeypatch, transport):
+    import main
+    from models import Message
+    from engines.core.registry import ENGINE_REGISTRY
+    from agent_assistants.prompt_input import get_prompt_view
+    client, tmp_path = api_context
+    import threading
+    entered, release = threading.Event(), threading.Event()
+    original_update = Message.update
+    if transport == "system":
+        def slow_prompt_update(*args, **kwargs):
+            if kwargs.get("prompt_json") and not release.is_set():
+                entered.set()
+                assert release.wait(3)
+            return original_update(*args, **kwargs)
+        monkeypatch.setattr(Message, "update", staticmethod(slow_prompt_update))
+    calls = []
+    class Engine(CoordinatorFakeEngine):
+        SYSTEM_PROMPT_MODE = transport
+        @property
+        def supports_resume(self):
+            return True
+        async def spawn(self, **kwargs):
+            calls.append(kwargs)
+            yield InternalEvent("session_started", {"session_id":"native-coordinator"})
+            yield InternalEvent("agent_message_chunk", {"content":{"text":json.dumps(self.reply)}})
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", Engine)
+    project_id, task_id = await _create_task(client, tmp_path)
+    for index in range(2):
+        response = await client.post(f"/api/task/{task_id}/chat?project_id={project_id}",
+                                     headers={"Idempotency-Key":f"actual-{index}"}, json={"content":f"问题{index}"})
+        assert response.status_code == 200
+        message_id = response.json()["assistant_message_id"]
+        if transport == "system" and index == 0:
+            try:
+                assert await asyncio.to_thread(entered.wait, 2)
+                assert (await asyncio.wait_for(client.get("/api/health"), 0.3)).status_code == 200
+            finally:
+                release.set()
+        await _wait_for_reply(client, project_id, task_id, assistant_message_id=message_id)
+        project = main.project_manager.get_project_by_id(project_id)
+        view = get_prompt_view(project.workstep_dir, message_id)
+        assert calls[index]["prompt"] in view
+        assert f"问题{index}" in calls[index]["prompt"]
+        if transport == "body":
+            assert ("Understand the task" in calls[index]["prompt"]) == (index == 0)
+            assert "独立指令" not in view
+        else:
+            assert "Understand the task" in calls[index]["system_prompt"]
+            assert "Understand the task" not in calls[index]["prompt"]
+            assert calls[index]["system_prompt"] in view
+        def inspect_storage(_project):
+            row = Message.get_by_id(message_id)
+            return row.prompt_json, json.loads(row.events_json or "[]"), row.event_log_path
+        stored, events, path = await main.project_manager.run_db(project_id, inspect_storage)
+        assert json.loads(stored)["prompt"] == view
+        assert all(event["type"] != "prompt_input" for event in events)
+        project = main.project_manager.get_project_by_id(project_id)
+        log = await asyncio.to_thread((project.workstep_dir / path).read_text)
+        assert "prompt_input" not in log
+        assert "Understand the task" not in log
+        from agent_assistants import prompt_input
+        with prompt_input._prompt_views_lock:
+            prompt_input._prompt_views.pop((str(project.workstep_dir), message_id), None)
+        response = await client.get(f"/api/task/{task_id}/history?project_id={project_id}")
+        assert response.status_code == 200
+        payload = response.json()
+        rows = payload if isinstance(payload, list) else payload["messages"]
+        assert next(row for row in rows if row["id"] == message_id)["prompt"] == view

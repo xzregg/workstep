@@ -519,7 +519,7 @@ class BotManager:
                     with actor_context(_sender_actor(message, bot["platform"])):
                         if isinstance(self._responder, ChatSessionResponder):
                             session_id, reply = await self._responder(
-                                project_id, session_id, _context_content(message, bot["platform"], include_session=False), "channel_chat", "",
+                                project_id, session_id, message.text, "channel_chat", "",
                                 on_accepted=on_accepted,
                                 on_progress=stream.update if stream else None,
                                 on_started=on_started, on_event=on_event,

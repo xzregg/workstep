@@ -427,6 +427,15 @@ def test_assemble_prompt_task_worktrees_keep_project_cwd(tmp_path):
     assert "The engine still starts in the project root" in prompt
     assert "project-relative paths" in prompt
     assert "git worktree add --relative-paths" in prompt
+    from services.prompt import SYSTEM_PROMPT
+    body = assemble_prompt(task, Step(key="build", label="Build", prompt="Edit code"), artifacts, separate_instructions=True)
+    assert f"Workspace directory: .workstep/worktrees/{task.id}" in body
+    assert "Attached repositories: B." in body
+    assert "git worktree add --relative-paths" not in body
+    assert "Run Git commands" not in body
+    assert "git worktree add --relative-paths" in SYSTEM_PROMPT
+    assert "project-relative paths" in SYSTEM_PROMPT
+    assert task.id not in SYSTEM_PROMPT
     assert task.cwd == str(tmp_path)
     db.close()
 
@@ -1757,9 +1766,10 @@ async def test_task_runner_persists_usage_json(tmp_path):
             event for event in list(events._queue)
             if event.get("type") == "TEXT_MESSAGE_START"
         ]
-        assert len(started) == 1
-        assert started[0]["messageId"] == msg.id
-        assert started[0]["prompt"] == persisted_prompt
+        assert len(started) == 2
+        assert all(event["messageId"] == msg.id for event in started)
+        assert not started[0].get("prompt")
+        assert started[1]["prompt"] == persisted_prompt
         completed = [
             event for event in list(events._queue)
             if event.get("type") == "TEXT_MESSAGE_END"
@@ -1769,14 +1779,16 @@ async def test_task_runner_persists_usage_json(tmp_path):
         assert completed[0]["messageId"] == msg.id
         assert completed[0]["status"] == msg.run_status == "succeeded"
         assert msg.ended_at is not None
-        assert received_prompts == [persisted_prompt]
-        assert persisted_prompt.startswith("You are executing one step")
+        assert len(received_prompts) == 1
+        assert received_prompts[0] in persisted_prompt
+        assert "### 正文（user，包含指令正文降级）" in persisted_prompt
+        assert received_prompts[0].startswith("You are executing one step")
         assert "## Project memory\n统一使用公开消息边界" in persisted_prompt
         assert "## Task\n" in persisted_prompt
         assert "实现完整提示词展示" in persisted_prompt
-        assert persisted_prompt.endswith(
-            f"artifacts/default/{task.id}/a"
-        )
+        raw_input = _json.loads(msg.prompt_json)["input_prompt"]
+        assert raw_input.endswith(f"artifacts/default/{task.id}/a")
+        assert "### 正文" not in raw_input
         assert "## Step requirements\nDo A" in persisted_prompt
         assert msg.usage_json is not None
         usage = _json.loads(msg.usage_json)

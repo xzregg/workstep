@@ -22,7 +22,14 @@ _OUTPUT_GUIDANCE = (
 
 # System prompt injected at the start of every step
 SYSTEM_PROMPT = """You are executing one step in a WorkStep workflow.
-Work from the project root and follow the step requirements."""
+Work from the project root and follow the step requirements.
+
+When a Task Git workspace is provided:
+The engine still starts in the project root. Run Git commands inside the relevant
+worktree child directory; add only repositories needed by this task.
+Use project-relative paths in instructions and scripts, never container absolute paths.
+If creating a worktree with Git, place it under the provided workspace directory and use
+git worktree add --relative-paths so the checkout also works at the host path."""
 
 _STEP_TEMPLATE_VARIABLE = re.compile(
     r"\{([a-z][a-z0-9_]*)\}|｛([a-z][a-z0-9_]*)｝",
@@ -105,6 +112,7 @@ def assemble_prompt(
     input_rounds: dict[str, int] | None = None,
     input_snapshot: dict | None = None,
     trigger_name: str = "",
+    separate_instructions: bool = False,
 ) -> str:
     """Assemble the full prompt for a pipeline step.
 
@@ -114,7 +122,7 @@ def assemble_prompt(
     3. Step-specific prompt
     4. User supplementary input
     """
-    parts = [SYSTEM_PROMPT]
+    parts = [] if separate_instructions else [SYSTEM_PROMPT]
 
     workspace_context = _task_git_workspace_context(task, artifacts_dir)
     if workspace_context:
@@ -540,11 +548,6 @@ def _task_git_workspace_context(task: Task, artifacts_dir: Path) -> str:
     return (
         f"Workspace directory: {workspace_path}. Attached repositories: "
         f"{', '.join(aliases) if aliases else '(none yet)'}. "
-        "The engine still starts in the project root. Run Git commands inside the relevant "
-        "worktree child directory; add only repositories needed by this task. "
-        "Use project-relative paths in instructions and scripts, never container absolute paths. "
-        "If creating a worktree with Git, place it under this workspace directory and use "
-        "git worktree add --relative-paths so the checkout also works at the host path."
     )
 
 

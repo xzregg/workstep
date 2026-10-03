@@ -11,6 +11,7 @@ from agent_assistants.coordinator_context import (
 )
 from agent_assistants.event_journal import TurnEventJournal
 from engines.core.agui import AGUIContext, to_agui_events
+from agent_assistants.prompt_input import get_prompt_view
 from engines.core.events import InternalEvent, is_commentary
 from models import Message, ReviewRun, Task, TaskStep
 from models.fields import utc_now
@@ -83,7 +84,7 @@ class ArchiveExperienceDraftService:
             "artifact_requests": [],
             "proposal": None,
         }
-        prompt = (
+        system_prompt = (
             "Extract reusable error lessons for an archived task; this is not a task summary. "
             "Record only directly evidenced mistakes or pitfalls; omit successes, summaries, "
             "outcomes, and pleasantries. Use at most 3 one-line entries in the format "
@@ -91,9 +92,9 @@ class ArchiveExperienceDraftService:
             "characters equivalent; if there is no error evidence, reply "
             "\"- No reusable error lessons found.\" Do not guess or execute anything. "
             "The content will be reviewed by the user and must not be written to Memory now. "
-            f"Return JSON matching this shape: {json.dumps(schema, ensure_ascii=False)}\n\n"
-            f"Task evidence:\n{json.dumps(evidence, ensure_ascii=False, default=str)}"
+            f"Return JSON matching this shape: {json.dumps(schema, ensure_ascii=False)}"
         )
+        prompt = f"Task evidence:\n{json.dumps(evidence, ensure_ascii=False, default=str)}"
         run_key = self._archive_experience_run_key(
             project_id,
             task_id,
@@ -112,10 +113,11 @@ class ArchiveExperienceDraftService:
 
         async def publish(event_type: str, data: dict) -> None:
             nonlocal event_sequence
-            await self._event_journal.arecord(
-                journal_ref,
-                {"type": event_type, "data": data},
-            )
+            if event_type != "message_started":
+                await self._event_journal.arecord(
+                    journal_ref,
+                    {"type": event_type, "data": data},
+                )
             await self._publish_archive_experience_event(
                 project_id,
                 task_id,
@@ -130,7 +132,11 @@ class ArchiveExperienceDraftService:
 
         async def publish_engine_event(event: InternalEvent) -> None:
             nonlocal raw_content, streamed_reply
-            if is_commentary(event):
+            if event.type == "prompt_input":
+                from agent_assistants.prompt_input import append_prompt_view
+                view = append_prompt_view(loaded["workstep_dir"], progress_message_id, event.data)
+                await publish("message_started", {"role": "assistant", "prompt": view})
+            elif is_commentary(event):
                 await publish(event.type, event.data)
             elif event.type == "agent_message_chunk":
                 content = event.data.get("content") or {}
@@ -159,9 +165,13 @@ class ArchiveExperienceDraftService:
             }:
                 await publish(event.type, event.data)
 
+        async def capture_repair_input(event: InternalEvent) -> None:
+            if event.type == "prompt_input":
+                await publish_engine_event(event)
+
         await publish(
             "message_started",
-            {"role": "assistant", "prompt": prompt},
+            {"role": "assistant"},
         )
         await publish(
             "agent_thought_chunk",
@@ -191,6 +201,7 @@ class ArchiveExperienceDraftService:
                 turn_id=run_key,
                 thinking_effort=thinking_effort,
                 provider_id=provider_id,
+                system_prompt=system_prompt,
             )
             if run_key in self._cancelled_archive_experience_runs:
                 raise ArchiveExperienceStopped("Archive experience generation stopped")
@@ -200,10 +211,13 @@ class ArchiveExperienceDraftService:
                 coordinator_root,
                 raw,
                 run_key,
+                on_event=capture_repair_input,
             )
             for repair_event in repair_events:
                 event_type = str(repair_event.get("type") or "")
-                if event_type:
+                if event_type == "prompt_input":
+                    await publish_engine_event(InternalEvent(event_type, repair_event.get("data") or {}))
+                elif event_type:
                     await publish(event_type, repair_event.get("data") or {})
             experience = str(result.get("reply") or "").strip()
             if not experience:
@@ -217,9 +231,9 @@ class ArchiveExperienceDraftService:
             self._completed_archive_experience_journals[run_key] = {
                 "event_log_path": journal_ref.relative_path,
                 "snapshot": await self._event_journal.asnapshot(journal_ref),
-                "prompt": prompt,
                 "engine": engine_id,
                 "model": model,
+                "prompt": get_prompt_view(loaded["workstep_dir"], progress_message_id),
             }
             return experience
         except ArchiveExperienceStopped:

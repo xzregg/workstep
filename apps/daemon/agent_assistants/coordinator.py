@@ -84,6 +84,7 @@ COORDINATOR_CONFIG = AssistantConfig(
     name="task_coordinator",
     channel=COORDINATOR_CHANNEL,
     scope=SCOPE_TASK,
+    system_prompt_transport=True,
     system_prompt=(
         "You are the WorkStep task coordinator. Use task and workflow context to "
         "answer questions. When you need to inspect or operate on WorkStep workflows, "
@@ -409,7 +410,7 @@ class CoordinatorModule:
                     sequence=user_sequence,
                     role="user",
                     content=normalized,
-                    prompt_json=(json.dumps({"channel_source": source_snapshot(channel_source)}, ensure_ascii=False)
+                    prompt_json=(json.dumps({'channel_source': source_snapshot(channel_source)}, ensure_ascii=False)
                                  if channel_source else None),
                     run_id=turn_id,
                     run_status="completed",
@@ -750,7 +751,7 @@ class CoordinatorModule:
                     task_id,
                     assistant,
                     "message_started",
-                    {"prompt": prompt},
+                    {},
                     0,
                 )
                 live_event_sequence = 1
@@ -761,6 +762,15 @@ class CoordinatorModule:
 
                     async def publish_live_event(event: InternalEvent) -> None:
                         nonlocal raw_content, streamed_reply, live_event_sequence
+                        if event.type == "prompt_input":
+                            from agent_assistants.prompt_input import append_prompt_view
+                            view = append_prompt_view(prepared["workstep_dir"], assistant.id, event.data)
+                            await self._run_db(project_id, lambda: Message.update(
+                                prompt_json=json.dumps({"prompt": view}, ensure_ascii=False),
+                            ).where(Message.id == assistant.id).execute())
+                            await self._publish_message_event(project_id, task_id, assistant, "message_started", {"prompt": view}, live_event_sequence)
+                            live_event_sequence += 1
+                            return
                         event_dict = event.to_dict()
                         journaled_events.append(event_dict)
                         self._event_journal.record(
@@ -820,6 +830,10 @@ class CoordinatorModule:
 
                     return publish_live_event
 
+                async def capture_repair_input(event: InternalEvent) -> None:
+                    if event.type == "prompt_input":
+                        await make_live_callback([])(event)
+
                 journaled_events: list[dict] = []
                 raw, events, session_id = await self._invoke(
                     turn.engine or "",
@@ -833,7 +847,7 @@ class CoordinatorModule:
                     message_history=engine_state,
                     thinking_effort=thinking_effort,
                     provider_id=provider_id,
-                    system_prompt=prepared["channel_source_instruction"],
+                    system_prompt="\n\n".join(filter(None, [prepared["system_prompt"], prepared["channel_source_instruction"]])),
                     system_prompt_each_turn=bool(prepared["channel_source_instruction"]),
                 )
                 self._record_unstreamed_journal_events(
@@ -854,10 +868,14 @@ class CoordinatorModule:
                     coordinator_root,
                     raw,
                     turn_id,
+                    on_event=capture_repair_input,
                 )
                 events.extend(repair_events)
                 for event in repair_events:
-                    await self._event_journal.arecord(journal_ref, event)
+                    if event.get("type") == "prompt_input":
+                        await make_live_callback(journaled_events)(InternalEvent("prompt_input", event.get("data") or {}))
+                    else:
+                        await self._event_journal.arecord(journal_ref, event)
                 requested = [
                     artifact_id
                     for artifact_id in result.get("artifact_requests", [])
@@ -883,7 +901,7 @@ class CoordinatorModule:
                         turn_id,
                         thinking_effort=thinking_effort,
                         provider_id=provider_id,
-                        system_prompt=prepared["channel_source_instruction"],
+                        system_prompt="\n\n".join(filter(None, [prepared["system_prompt"], prepared["channel_source_instruction"]])),
                         system_prompt_each_turn=bool(prepared["channel_source_instruction"]),
                     )
                     self._record_unstreamed_journal_events(
@@ -905,10 +923,14 @@ class CoordinatorModule:
                         coordinator_root,
                         raw,
                         turn_id,
+                        on_event=capture_repair_input,
                     )
                     events.extend(repair_events)
                     for event in repair_events:
-                        await self._event_journal.arecord(journal_ref, event)
+                        if event.get("type") == "prompt_input":
+                            await make_live_callback(journaled_more_events)(InternalEvent("prompt_input", event.get("data") or {}))
+                        else:
+                            await self._event_journal.arecord(journal_ref, event)
                     result["artifact_requests"] = []
                 reply = str(result.get("reply", "")).strip()
                 if not reply:
@@ -1098,6 +1120,8 @@ class CoordinatorModule:
     ) -> None:
         unmatched = list(journaled_events)
         for event in returned_events:
+            if event.get("type") == "prompt_input":
+                continue
             if event in unmatched:
                 unmatched.remove(event)
             else:
@@ -1128,26 +1152,16 @@ class CoordinatorModule:
         user_message = Message.get_by_id(turn.user_message_id)
         previous_channel = Message.select(Message.id).where(
             (Message.task == task) & (Message.channel == COORDINATOR_CHANNEL)
-            & (Message.role == "user") & (Message.sequence <= user_message.sequence)
+            & (Message.role == 'user') & (Message.sequence <= user_message.sequence)
             & Message.prompt_json.contains('"channel_source"')
         ).exists()
-        source_instruction = request_source_prompt(user_message, previous_channel=previous_channel)
-        engine = create_engine(turn.engine) if turn.engine else None
-        if session.session_id and engine is not None and engine.supports_resume:
-            # The engine already has the bootstrap instructions and context.
-            prompt = user_message.content or ""
-            artifacts = artifact_index(project, task)
-        else:
-            prompt, artifacts = assemble_context(
-                project, task, turn, root_dir=coordinator_root
-            )
+        prompt, system_prompt, artifacts = assemble_context(
+            project, task, turn, root_dir=coordinator_root, separate_instructions=True
+        )
         images = extract_uploaded_images(
             project, task.cwd, user_message.content or ""
         )
         turn_model = (vision_model or turn.model) if images else turn.model
-        display_prompt = "\n\n".join(filter(None, [source_instruction, prompt]))
-        assistant.prompt_json = json.dumps({"prompt": display_prompt}, ensure_ascii=False)
-        assistant.save(only=[Message.prompt_json])
         journal_ref = self._event_journal.reopen(
             project.workstep_dir,
             assistant.event_log_path,
@@ -1155,6 +1169,7 @@ class CoordinatorModule:
         return {
             "turn": turn,
             "creator_id": task.creator_id,
+            "workstep_dir": project.workstep_dir,
             "assistant": assistant,
             "coordinator_root": coordinator_root,
             "session_id": session.session_id,
@@ -1163,7 +1178,8 @@ class CoordinatorModule:
             "provider_id": provider_id,
             "thinking_effort": thinking_effort,
             "prompt": prompt,
-            "channel_source_instruction": source_instruction,
+            "system_prompt": system_prompt,
+            "channel_source_instruction": request_source_prompt(user_message, previous_channel=previous_channel),
             "artifacts": artifacts,
             "images": images,
             "turn_model": turn_model,
@@ -1436,7 +1452,7 @@ class CoordinatorModule:
         direct_images = bool(
             images
             and (
-                model_supports_multimodal(
+                await asyncio.to_thread(model_supports_multimodal,
                     engine_id,
                     model or "",
                     provider_id or "",
@@ -1446,8 +1462,8 @@ class CoordinatorModule:
             )
         )
 
-        def spawn(engine, *, workstep_tools=False, config_overrides=None, system_prompt=None, system_prompt_each_turn=False):
-            spawn_kwargs = {}
+        def spawn(engine, *, workstep_tools=False, config_overrides=None, system_prompt=None, system_prompt_each_turn=False, capture_prompt_input=False):
+            spawn_kwargs = {"capture_prompt_input": capture_prompt_input}
             if system_prompt:
                 spawn_kwargs["system_prompt"] = system_prompt
             if system_prompt_each_turn:
@@ -1480,7 +1496,7 @@ class CoordinatorModule:
 
         get_defaults = getattr(config_store, "get_assistant_defaults", None)
         assistant_defaults = (
-            get_defaults("task_coordinator") if callable(get_defaults) else {}
+            await asyncio.to_thread(get_defaults, "task_coordinator") if callable(get_defaults) else {}
         )
         provider_id = provider_id or assistant_defaults.get("provider_id", "")
         config_overrides = (
@@ -1496,6 +1512,7 @@ class CoordinatorModule:
             spawner=spawn,
             system_prompt=system_prompt,
             system_prompt_each_turn=system_prompt_each_turn,
+            capture_prompt_input=True,
             error_prefix="Coordinator engine",
             run_key=turn_id,
             running_engines=self._running_engines,
@@ -1533,23 +1550,27 @@ class CoordinatorModule:
         cwd: str,
         raw: str,
         turn_id: str | None = None,
+        on_event: Callable[[InternalEvent], Awaitable[None]] | None = None,
     ) -> tuple[dict, list[dict]]:
         try:
             return self._parse_result(raw), []
         except RuntimeError:
-            repair_prompt = (
+            repair_system_prompt = (
                 "Repair the following response into valid coordinator JSON. "
-                "Do not add an action that was not present. Return JSON only.\n\n"
-                f"{raw}"
+                "Do not add an action that was not present. Return JSON only."
             )
             repaired, events, _ = await self._invoke(
                 engine_id,
                 model,
                 cwd,
-                repair_prompt,
+                raw,
                 None,
                 turn_id=turn_id,
+                on_event=on_event,
+                system_prompt=repair_system_prompt,
             )
+            if on_event is not None:
+                events = [event for event in events if event.get("type") != "prompt_input"]
             return self._parse_result(repaired), events
 
     def _read_artifacts(self, artifacts, requested: list[str]) -> str:

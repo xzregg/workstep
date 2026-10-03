@@ -228,3 +228,24 @@ async def test_channel_without_cards_does_not_send_stop_button(controls):
     scope=await broker.begin(message,'p',task_id='t',assistant_message_id='message')
     adapter.send_card.assert_not_awaited()
     await broker.finish(scope)
+
+
+async def test_ordinary_channel_stop_targets_reply_and_expires_after_finish(controls):
+    broker, adapter, coordinator, message, _, _, config = controls
+    config['groups'] = []
+    config['bots'][0]['default_project_id'] = 'p'
+    config['sessions']['b:group:g'] = 'session'
+    broker._responder.stop.return_value = True
+    scope = await broker.begin(message,'p',session_id='session',assistant_message_id='reply',turn_id='turn')
+    card = adapter.send_card.await_args.args[1]
+    assert [button.label for button in card.buttons] == ['中止']
+    click = ChannelAction('b',card.id,'0','u',conversation_id='g')
+    assert await broker.handle(click) == '已停止'
+    broker._responder.stop.assert_awaited_once_with('p','session','reply')
+    coordinator.stop_current.assert_not_awaited()
+    await broker.finish(scope)
+    closed = adapter.update_card.await_args.args[1]
+    assert closed.id == card.id and closed.running and not closed.buttons
+    await broker.begin(message,'p',session_id='session',assistant_message_id='next',turn_id='next-turn')
+    assert await broker.handle(click) == '该操作已处理或已失效'
+    assert broker._responder.stop.await_count == 1

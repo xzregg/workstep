@@ -358,10 +358,11 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         workstep_tools: bool = False,
         config_overrides: dict | None = None,
         system_prompt: str | None = None,
+        _coordinator_prepared: bool = False,
     ) -> AsyncIterator[InternalEvent]:
         # Codex SDK resumes context by native thread id.  Keep the common
         # coordinator signature, but do not round-trip host-managed history.
-        guarded_prompt = await asyncio.to_thread(
+        guarded_prompt = prompt if _coordinator_prepared else await asyncio.to_thread(
             self.render_image_prompt,
             prompt if session_id and self.supports_resume
             else self._coordinator_prompt(prompt, workstep_tools=workstep_tools),

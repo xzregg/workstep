@@ -218,7 +218,7 @@ export default function ChatMessageBubble({
     ...(isUser ? { marginLeft: 'auto' } : {}),
   }
   return (
-    <div {...rootProps} style={rootStyle} className="chat-message-row" data-thinking={!isUser && showLoading && streaming && interactions.length === 0 && asyncQuestions.length === 0 && !plan && !markdownPlan && !(visibleContent || hasToolActivity) ? '' : undefined}>
+    <div {...rootProps} style={rootStyle} className="chat-message-row" data-message-role={role} data-thinking={!isUser && showLoading && streaming && interactions.length === 0 && asyncQuestions.length === 0 && !plan && !markdownPlan && !(visibleContent || hasToolActivity) ? '' : undefined}>
       {isUser && header && (
         <div style={{
           fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', textAlign: 'right',

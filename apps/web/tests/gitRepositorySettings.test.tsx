@@ -109,3 +109,29 @@ test('Git settings suggest the HTTPS host for an HTTP remote', async () => {
     await window.happyDOM.close()
   }
 })
+
+test('remote project settings save repository identity without loading host credentials', async () => {
+  const { window } = installDomEnvironment()
+  const { GitApiContext } = await import('../src/components/git/GitApiContext')
+  let credentialReads = 0
+  let saved = 0
+  const api = { ...gitApi,
+    identity: async () => ({ name: 'Remote User', email: 'remote@example.test' }),
+    credentials: async () => { credentialReads++; return { remotes: [], hosts: [] } },
+    setIdentity: async (_id: string, value: { name: string; email: string }) => { saved++; return value },
+  }
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><GitApiContext.Provider value={{ api, shared: false, projectScoped: true, readOnly: false, browseWorkspace: async () => { throw new Error('unused') } }}><GitRepositorySettings id="remote-tree" /></GitApiContext.Provider></I18nProvider>))
+    assert.equal(credentialReads, 0)
+    assert.equal(container.querySelector('input[name="gitAuthHost"]'), null)
+    assert.equal(container.querySelectorAll('button').length, 1)
+    await act(async () => container.querySelector<HTMLButtonElement>('button')!.click())
+    assert.equal(saved, 1)
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
