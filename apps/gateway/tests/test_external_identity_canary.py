@@ -7,30 +7,29 @@ import pytest
 from gateway.app import create_app
 from gateway.config import GatewaySettings
 from gateway.database import GatewayDatabase
-from gateway.services.identity_connectors import DingTalkConnector
+from gateway.services.signing import GatewaySigner
 
 
 @pytest.mark.asyncio
-async def test_slow_identity_provider_does_not_block_health(tmp_path, monkeypatch):
-    monkeypatch.setenv("WORKSTEP_TEST_DINGTALK_SECRET", "server-secret")
+async def test_slow_identity_provider_with_encrypted_application_secret_does_not_block_health(tmp_path):
     settings = GatewaySettings(data_dir=tmp_path)
     app = create_app(settings)
     database = GatewayDatabase(settings)
     await database.start()
     app.state.database = database
+    app.state.gateway_signer = await asyncio.to_thread(GatewaySigner.load_or_create, tmp_path/'gateway-signing-key.pem')
     provider_started = asyncio.Event()
     release_provider = asyncio.Event()
 
     async def provider(request):
         if request.url.path.endswith("userAccessToken"):
+            assert __import__('json').loads(request.content)['clientSecret'] == 'server-secret'
             provider_started.set()
             await release_provider.wait()
             return httpx.Response(200, json={"corpId": "tenant-a", "accessToken": "user-token"})
         return httpx.Response(200, json={"unionId": "employee-1", "nick": "张三"})
 
-    app.state.identity_connectors = {"dingtalk": DingTalkConnector(
-        lambda: httpx.AsyncClient(transport=httpx.MockTransport(provider)),
-    )}
+    app.state.identity_connectors['dingtalk'].client_factory = lambda: httpx.AsyncClient(transport=httpx.MockTransport(provider))
     try:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
                                      base_url="https://gateway.test") as client:
@@ -44,7 +43,7 @@ async def test_slow_identity_provider_does_not_block_health(tmp_path, monkeypatc
                 "X-CSRF-Token": setup.json()["csrf_token"],
             }, json={
                 "provider": "dingtalk", "tenant_id": "tenant-a", "client_id": "test-client",
-                "secret_env": "WORKSTEP_TEST_DINGTALK_SECRET",
+                "client_secret": "server-secret",
             })
             source_id = source.json()["id"]
             start = await client.post(f"/api/auth/external/{source_id}/start")

@@ -10,7 +10,8 @@ from gateway.services.external_identity import ExternalProfile
 from gateway.models import IdentitySource
 
 
-def _secret(source: IdentitySource) -> str:
+async def _secret(source: IdentitySource, resolver=None) -> str:
+    if resolver: return await resolver(source)
     value = os.environ.get(source.secret_env)
     if not value:
         raise ValueError("Identity source secret is unavailable")
@@ -26,7 +27,8 @@ def _checked(response: httpx.Response) -> dict:
 
 
 class DingTalkConnector:
-    def __init__(self, client_factory=None):
+    def __init__(self, client_factory=None, secret_resolver=None):
+        self.secret_resolver = secret_resolver
         self.client_factory = client_factory or (lambda: httpx.AsyncClient(timeout=10))
 
     def authorization_url(self, source: IdentitySource, state: str, nonce: str, redirect_uri: str) -> str:
@@ -39,7 +41,7 @@ class DingTalkConnector:
     async def exchange_code(self, source: IdentitySource, code: str, nonce: str) -> ExternalProfile:
         async with self.client_factory() as client:
             token_response = await client.post("https://api.dingtalk.com/v1.0/oauth2/userAccessToken", json={
-                "clientId": source.client_id, "clientSecret": _secret(source),
+                "clientId": source.client_id, "clientSecret": await _secret(source, self.secret_resolver),
                 "code": code, "grantType": "authorization_code",
             })
             token_response.raise_for_status()
@@ -62,7 +64,7 @@ class DingTalkConnector:
     async def fetch_directory(self, source: IdentitySource) -> dict:
         async with self.client_factory() as client:
             token = _checked(await client.post("https://api.dingtalk.com/v1.0/oauth2/accessToken", json={
-                "appKey": source.client_id, "appSecret": _secret(source),
+                "appKey": source.client_id, "appSecret": await _secret(source, self.secret_resolver),
             })).get("accessToken")
             if not token:
                 raise ValueError("DingTalk app token missing")
@@ -119,7 +121,8 @@ class DingTalkConnector:
 
 
 class WeComConnector:
-    def __init__(self, client_factory=None):
+    def __init__(self, client_factory=None, secret_resolver=None):
+        self.secret_resolver = secret_resolver
         self.client_factory = client_factory or (lambda: httpx.AsyncClient(timeout=10))
 
     def authorization_url(self, source: IdentitySource, state: str, nonce: str, redirect_uri: str) -> str:
@@ -134,7 +137,7 @@ class WeComConnector:
     async def exchange_code(self, source: IdentitySource, code: str, nonce: str) -> ExternalProfile:
         async with self.client_factory() as client:
             token_response = await client.get("https://qyapi.weixin.qq.com/cgi-bin/gettoken", params={
-                "corpid": source.tenant_id, "corpsecret": _secret(source),
+                "corpid": source.tenant_id, "corpsecret": await _secret(source, self.secret_resolver),
             })
             token_response.raise_for_status()
             token = token_response.json()
@@ -153,7 +156,7 @@ class WeComConnector:
     async def fetch_directory(self, source: IdentitySource) -> dict:
         async with self.client_factory() as client:
             token = _checked(await client.get("https://qyapi.weixin.qq.com/cgi-bin/gettoken", params={
-                "corpid": source.tenant_id, "corpsecret": _secret(source),
+                "corpid": source.tenant_id, "corpsecret": await _secret(source, self.secret_resolver),
             })).get("access_token")
             if not token:
                 raise ValueError("WeCom app token missing")

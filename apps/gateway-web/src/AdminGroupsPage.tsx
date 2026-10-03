@@ -1,9 +1,10 @@
+import { AdminRecordTable } from './AdminRecordTable'
+import { AdminUserGroupTree } from './AdminUserGroupTree'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AdminGroupCreateDialog } from './AdminGroupCreateDialog'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 
-type Group = { id: string; name: string; slug: string; source_type: string }
 type Project = { id: string; name: string; device_name?: string; access_mode?: string }
 type User = { id: string; username: string; display_name: string }
 type Member = { user_id: string; username: string; display_name: string;
@@ -19,7 +20,6 @@ async function read<T>(url: string, signal?: AbortSignal): Promise<T> {
 
 export function AdminGroupsPage() {
   const [csrf, setCsrf] = useState('')
-  const [groups, setGroups] = useState<Group[]>([])
   const [groupId, setGroupId] = useState('')
   const [projects, setProjects] = useState<Project[]>([])
   const [members, setMembers] = useState<Member[]>([])
@@ -42,15 +42,6 @@ export function AdminGroupsPage() {
     return () => controller.abort()
   }, [])
 
-  useEffect(() => {
-    const controller = new AbortController()
-    void read<{ groups: Group[] }>('/api/groups', controller.signal)
-      .then(result => { if (!controller.signal.aborted) setGroups(result.groups) })
-      .catch(reason => {
-        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '加载失败。')
-      })
-    return () => controller.abort()
-  }, [revision])
 
   useEffect(() => {
     if (!groupId) return
@@ -103,12 +94,12 @@ export function AdminGroupsPage() {
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>用户组管理</h2><Link to="/admin">返回管理概览</Link></div>
     <p>项目关联仅用于 Skill 策略，不授予项目内容读取或整台电脑访问权。</p>
-    <div className="gateway-admin-toolbar"><label>用户组<select value={groupId} onChange={event => {
-      setGroupId(event.target.value); setProjects([]); setMembers([])
-      setProjectMatches([]); setUserMatches([]); setError('')
-    }}><option value="">选择用户组</option>{groups.map(group =>
-      <option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
-      <button type="button" disabled={!csrf} onClick={() => setCreateOpen(true)}>创建用户组</button></div>
+    <div className="gateway-users-workspace"><div className="gateway-users-tree-panel">
+      <AdminUserGroupTree selected={groupId} revision={revision} allUsers={false} onSelect={id => {
+       setGroupId(id); setProjects([]); setMembers([]); setProjectMatches([]); setUserMatches([]); setError('')
+      }} />
+      <button type="button" disabled={!csrf} onClick={() => setCreateOpen(true)}>创建用户组</button>
+    </div><div className="gateway-users-table-panel">
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在更新用户组…</p>}
@@ -145,13 +136,14 @@ export function AdminGroupsPage() {
             `/api/groups/${groupId}/members`, 'POST',
             { user_id: user.id, role: memberRole },
           )}>添加 {user.username} 为{memberRole === 'leader' ? '组长' : '成员'}</button></li>)}</ul>}
-        {members.length === 0 ? <p>尚无成员。</p> : <ul>{members.map(member =>
-          <li key={member.user_id}>{member.username} · {member.role === 'leader' ? '组长' : '成员'}
+        {members.length === 0 ? <p>尚无成员。</p> : <AdminRecordTable columns={['用户', '成员来源', '操作']}>{members.map(member =>
+          <tr key={member.user_id}><td>{member.display_name} · {member.username} · {member.role === 'leader' ? '组长' : '成员'}</td><td>{member.source === 'manual' ? '手工添加' : '组织同步'}</td><td>
             {member.source === 'manual' && <button type="button" disabled={busy}
               onClick={() => setRemove({ kind: 'member', item: member })}>
-              移除 {member.username}</button>}</li>)}</ul>}
+              移除 {member.username}</button>}</td></tr>)}</AdminRecordTable>}
       </section>
     </>}
+    </div></div>
     {createOpen && <AdminGroupCreateDialog csrf={csrf} onClose={() => setCreateOpen(false)}
       onDone={id => { setCreateOpen(false); setGroupId(id); setRevision(value => value + 1) }} />}
     {remove && <GatewayConfirmDialog title={remove.kind === 'project' ? '取消项目关联' : '移除成员'}

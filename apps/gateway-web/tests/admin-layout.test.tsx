@@ -9,6 +9,8 @@ test('administration shows a persistent sidebar and current content', () => {
  assert.match(html, /aria-label="管理菜单"/)
  assert.match(html, /aria-current="page"/)
  assert.match(html, /用户管理/)
+ assert.match(html, /<summary>用户与权限<\/summary>/)
+ assert.match(html, /<summary>设备管理<\/summary>/)
  assert.match(html, /Alice/)
 })
 

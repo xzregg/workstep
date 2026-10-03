@@ -27,7 +27,7 @@ test('super administrator creates a group, links a policy project and manages me
     if (method !== 'GET') writes.push({ url, method,
       body: init?.body ? JSON.parse(String(init.body)) : undefined })
     if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf-owner' })
-    if (url === '/api/groups' && method === 'GET') return Response.json({ groups: created
+    if (url === '/api/admin/user-groups/tree' && method === 'GET') return Response.json({ groups: created
       ? [{ id: 'group-1', name: '研发组', slug: 'dev', source_type: 'manual' }] : [] })
     if (url === '/api/auth/step-up') return Response.json({ expires_in_seconds: 300 })
     if (url === '/api/groups' && method === 'POST') {
@@ -71,8 +71,7 @@ test('super administrator creates a group, links a policy project and manages me
   fireEvent.change(getByLabelText(dialog, '标识'), { target: { value: 'dev' } })
   fireEvent.change(getByLabelText(dialog, '管理员密码'), { target: { value: 'secret' } })
   fireEvent.click(getByRole(dialog, 'button', { name: '确认创建' }))
-  await screen.findByRole('option', { name: '研发组' })
-  fireEvent.change(screen.getByLabelText('用户组'), { target: { value: 'group-1' } })
+  fireEvent.click(await screen.findByRole('button', { name: '研发组' }))
   fireEvent.change(screen.getByLabelText('搜索项目'), { target: { value: '策略' } })
   fireEvent.click(screen.getByRole('button', { name: '查找项目' }))
   await screen.findByRole('button', { name: '关联策略项目' })

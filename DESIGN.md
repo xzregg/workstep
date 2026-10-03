@@ -18,6 +18,14 @@ colors:
   warning: "#b45309"
   failure: "#dc2626"
 typography:
+  settings-heading:
+    fontSize: "20px"
+    fontWeight: 600
+    lineHeight: 1.4
+  admin-menu-group:
+    fontSize: "12px"
+    fontWeight: 600
+    lineHeight: 1.4
   display:
     fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, PingFang SC, sans-serif"
     fontSize: "clamp(40px, 5.2vw, 66px)"
@@ -209,3 +217,7 @@ Application previews combine neutral chrome, compact technical labels, real stat
 - **Don't** apply ambient shadows to every container.
 - **Don't** use monospace as a general-purpose technology aesthetic.
 - **Don't** invent performance, security, or adoption claims that the product cannot substantiate.
+
+## 平台管理后台
+
+管理后台使用紧凑规格：页面标题 24px、分区标题 16px、表单与表格 14px、导航项 13px、菜单分类 12px、辅助标记 11px；表单控件高度 36px、圆角 6px。该规格适用于 `apps/gateway-web` 的管理区域，登录及门户页面保留现有规格。颜色复用上述调色板，表格在窄空间内横向滚动，禁止把表头和状态挤成逐字换行。

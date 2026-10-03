@@ -19,14 +19,14 @@ test('settings navigation has one current section and changes sections by click'
       </I18nProvider>,
     ))
     const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-    assert.equal(buttons.length, 11)
+    assert.equal(buttons.length, 10)
     assert.equal(buttons.filter((button) => button.getAttribute('aria-current') === 'page').length, 1)
-    assert.equal(buttons[1].getAttribute('aria-current'), 'page')
+    assert.equal(buttons[0].getAttribute('aria-current'), 'page')
     assert.ok(buttons.every((button) => button.classList.contains('settings-nav-button')))
     assert.ok(buttons.every((button) => !button.hasAttribute('style')))
-    await act(async () => buttons[2].click())
+    await act(async () => buttons[1].click())
     assert.equal(selected, 'engines')
-    await act(async () => buttons[7].click())
+    await act(async () => buttons[6].click())
     assert.equal(selected, 'remote')
   } finally {
     await act(async () => root.unmount())
@@ -48,6 +48,8 @@ test('managed settings hide the legacy remote project section', async () => {
     ))
     assert.equal(container.querySelectorAll('button').length, 10)
     assert.doesNotMatch(container.textContent ?? '', /远程项目/)
+    assert.match(container.textContent ?? '', /远程访问|Remote access/)
+    assert.doesNotMatch(container.textContent ?? '', /网关平台/)
   } finally {
     await act(async () => root.unmount())
     useManagedModeStore.setState({ managed: null, loading: false })

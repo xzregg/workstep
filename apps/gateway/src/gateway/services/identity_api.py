@@ -294,6 +294,7 @@ async def admin_create_user(request: Request, body: AdminCreateInput):
 
 
 async def admin_list_users(request: Request, q: str = Query("", max_length=128),
+                           group_id: str | None = Query(None, max_length=64),
                            status: Literal["active", "pending", "disabled"] | None = None,
                            sort: Literal["username", "display_name", "created_at"] = "created_at",
                            direction: Literal["asc", "desc"] = "desc",
@@ -307,6 +308,11 @@ async def admin_list_users(request: Request, q: str = Query("", max_length=128),
         conditions = []
         if scoped_ids is not None:
             conditions.append(User.id.in_(scoped_ids))
+        if group_id:
+            from gateway.models import GroupMembership, UserGroup
+            group = await session.get(UserGroup, group_id)
+            if group is None or group.status != 'active': raise HTTPException(404, 'Group unavailable')
+            conditions.append(User.id.in_(select(GroupMembership.user_id).where(GroupMembership.group_id == group_id, GroupMembership.revoked_at.is_(None))))
         if status:
             conditions.append(User.status == status)
         if q.strip():

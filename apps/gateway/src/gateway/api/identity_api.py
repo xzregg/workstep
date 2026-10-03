@@ -72,11 +72,12 @@ async def admin_create_user(request: Request, body: AdminCreateInput):
 
 @router.get("/admin/users")
 async def admin_list_users(request: Request, q: str = Query("", max_length=128),
+                           group_id: str | None = Query(None, max_length=64),
                            status: Literal["active", "pending", "disabled"] | None = None,
                            sort: Literal["username", "display_name", "created_at"] = "created_at",
                            direction: Literal["asc", "desc"] = "desc",
                            page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100)):
-    return await _handle_admin_list_users(request=request, q=q, status=status, sort=sort, direction=direction, page=page, page_size=page_size)
+    return await _handle_admin_list_users(request=request, q=q, group_id=group_id, status=status, sort=sort, direction=direction, page=page, page_size=page_size)
 
 
 @router.post("/admin/users/{user_id}/approve", status_code=204)

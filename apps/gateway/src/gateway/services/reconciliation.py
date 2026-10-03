@@ -41,6 +41,8 @@ class DirectoryReconciler:
             ))).all()
         service = ExternalIdentityService(self.database)
         for source in sources:
+            from gateway.services.organization_settings import source_options
+            if not (await source_options(self.database, source.id)).get('sync_enabled', True): continue
             connector = self.connectors.get(source.provider)
             if connector is None:
                 await service.record_sync_failure(source.id, "connector_unavailable")
@@ -65,6 +67,8 @@ class DirectoryReconciler:
         service = ExternalIdentityService(self.database)
         for source_id, receipt_ids in by_source.items():
             source = sources.get(source_id)
+            from gateway.services.organization_settings import source_options
+            if source and not (await source_options(self.database, source.id)).get('sync_enabled', True): continue
             connector = self.connectors.get(source.provider) if source and source.enabled else None
             if source and source.enabled and connector is None:
                 await service.record_sync_failure(source_id, "connector_unavailable")

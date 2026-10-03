@@ -40,29 +40,39 @@ class ExternalIdentityService:
     async def create_source(self, provider: str, tenant_id: str, client_id: str,
                             secret_env: str, agent_id: str | None = None,
                             callback_token_env: str | None = None,
-                            callback_aes_key_env: str | None = None) -> IdentitySource:
+                            callback_aes_key_env: str | None = None, options: dict | None = None) -> IdentitySource:
         source = IdentitySource(
             id=str(uuid4()), provider=provider, tenant_id=tenant_id,
             client_id=client_id, secret_env=secret_env, agent_id=agent_id,
             callback_token_env=callback_token_env,
             callback_aes_key_env=callback_aes_key_env,
+            enabled=(options or {}).get("enabled", True),
         )
         try:
             async with self.database.session() as session:
                 async with session.begin():
                     session.add(source)
+                    if options is not None:
+                        await session.flush()
+                        from gateway.services.organization_settings import option_key
+                        session.add(PlatformSetting(key=option_key(source.id), value_json=json.dumps(options)))
         except IntegrityError as exc:
             raise HTTPException(status_code=409, detail="Identity source already exists") from exc
         return source
 
-    async def source(self, source_id: str) -> IdentitySource:
+    async def source(self, source_id: str, purpose: str | None = None) -> IdentitySource:
         async with self.database.session() as session:
             source = await session.get(IdentitySource, source_id)
             if source is None:
                 raise HTTPException(status_code=404, detail="Identity source not found")
             if not source.enabled:
                 raise HTTPException(status_code=403, detail="Identity source disabled")
-            return source
+        if purpose:
+            from gateway.services.organization_settings import source_options
+            options = await source_options(self.database, source_id)
+            if not options.get(purpose + '_enabled', True):
+                raise HTTPException(status_code=403, detail='Identity source option disabled')
+        return source
 
     async def enabled_sources(self) -> list[IdentitySource]:
         async with self.database.session() as session:
@@ -87,7 +97,7 @@ class ExternalIdentityService:
     async def begin(self, source_id: str, binding_user_id: str | None = None,
                     binding_session_id: str | None = None,
                     return_to: str | None = None) -> tuple[IdentitySource, str, str]:
-        source = await self.source(source_id)
+        source = await self.source(source_id, purpose="login")
         state = secrets.token_urlsafe(32)
         nonce = secrets.token_urlsafe(32)
         async with self.database.session() as session:
@@ -113,7 +123,7 @@ class ExternalIdentityService:
 
     async def complete(self, source_id: str, state: str, code: str, connector,
                        browser_session_id: str | None = None) -> tuple[User, str | None, str | None]:
-        source = await self.source(source_id)
+        source = await self.source(source_id, purpose="login")
         async with self.database.session() as session:
             attempt = await session.get(ExternalLoginAttempt, _state_digest(state))
             if attempt is None or attempt.source_id != source_id or _as_utc(attempt.expires_at) <= _now():
@@ -194,7 +204,7 @@ class ExternalIdentityService:
 
     async def full_sync(self, source_id: str, departments: list[dict], people: list[dict],
                         cursor: str | None = None) -> dict[str, int]:
-        await self.source(source_id)
+        await self.source(source_id, purpose="sync")
         if cursor is not None and (not isinstance(cursor, str) or len(cursor) > 256):
             raise HTTPException(status_code=422, detail="Invalid directory cursor")
         department_ids = [item["external_id"] for item in departments]
@@ -293,6 +303,9 @@ class ExternalIdentityService:
                     row.display_name = item["display_name"]
                     row.active = 1
                     await session.flush()
+                    user = await session.get(User, row.user_id)
+                    if user and user.registration_source == "directory_sync":
+                        user.display_name = item["display_name"]
                     await session.execute(DirectoryMembership.__table__.delete().where(
                         DirectoryMembership.person_id == row.id,
                     ))
@@ -337,7 +350,7 @@ class ExternalIdentityService:
     async def apply_person_event(self, source_id: str, event_id: str, kind: str,
                                  subject: str, display_name: str | None,
                                  department_ids: list[str]) -> bool:
-        await self.source(source_id)
+        await self.source(source_id, purpose="sync")
         try:
             async with self.database.session() as session:
                 async with session.begin():
@@ -389,6 +402,9 @@ class ExternalIdentityService:
                     person.display_name = display_name
                     person.active = 1
                     await session.flush()
+                    user = await session.get(User, person.user_id)
+                    if user and user.registration_source == "directory_sync":
+                        user.display_name = display_name
                     await session.execute(DirectoryMembership.__table__.delete().where(
                         DirectoryMembership.person_id == person.id,
                     ))

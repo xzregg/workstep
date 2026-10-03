@@ -1,3 +1,4 @@
+import { OrganizationSyncSettings } from './OrganizationSyncSettings'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AdminRegistrationPolicyDialog, registrationLabels } from './AdminRegistrationPolicyDialog'
@@ -52,8 +53,9 @@ export function AdminPlatformSettingsPage() {
       <section className="gateway-project-grants"><h3>注册与身份</h3>
         <p>当前策略：{registrationLabels[settings.registration_mode]}</p>
         <button type="button" onClick={() => setEditing(true)}>修改注册策略</button>
-        <p>钉钉、企业微信身份源与目录对账在<Link to="/admin/org">组织与同步</Link>管理。</p>
+
       </section>
+      <OrganizationSyncSettings csrf={csrf} />
       <section className="gateway-project-grants"><h3>客户端与数据</h3>
         <dl className="gateway-account-summary">
           <div><dt>网关协议版本</dt><dd>{settings.protocol_version}</dd></div>

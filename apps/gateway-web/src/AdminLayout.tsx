@@ -24,8 +24,21 @@ export function AdminLayout({ roles, children }: { roles: string[]; children: Re
    <aside className="gateway-admin-sidebar">
      <Link className="gateway-admin-brand" to="/admin">WORKSTEP 平台</Link>
      <p className="gateway-admin-sidebar-label">管理后台</p>
-     <nav aria-label="管理菜单">{modules.filter(item => roles.includes('super_admin') || item.roles.length === 0 || item.roles.some(role => roles.includes(role))).map(item =>
-       <NavLink key={item.path} to={item.path} end={item.path === '/admin'}>{item.label}</NavLink>)}</nav>
+     <nav aria-label="管理菜单">
+      <NavLink to="/admin" end>管理概览</NavLink>
+      {[
+       { title: '用户与权限', paths: ['/admin/users', '/admin/groups', '/admin/org', '/admin/admins'] },
+       { title: '设备管理', paths: ['/admin/devices', '/admin/device-groups', '/admin/device-operations'] },
+       { title: '资源管理', paths: ['/admin/projects', '/admin/shares', '/admin/providers', '/admin/skills'] },
+       { title: '统计与审计', paths: ['/admin/usage', '/admin/audit'] },
+       { title: '系统设置', paths: ['/admin/settings'] },
+      ].map(group => {
+       const visible = modules.filter(item => group.paths.includes(item.path) && (roles.includes('super_admin') || item.roles.some(role => roles.includes(role))))
+       return visible.length > 0 && <details className="gateway-admin-nav-group" key={group.title} open>
+        <summary>{group.title}</summary><div>{visible.map(item => <NavLink key={item.path} to={item.path}>{item.path === '/admin/org' ? '组织目录' : item.label}</NavLink>)}</div>
+       </details>
+      })}
+     </nav>
      <Link className="gateway-admin-return" to="/">返回工作台</Link>
    </aside>
    <div className="gateway-admin-content"><div className="gateway-admin-topbar"><span>平台管理</span><Link to="/account">个人账户</Link></div>{children}</div>
