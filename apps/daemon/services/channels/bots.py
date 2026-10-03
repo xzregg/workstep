@@ -63,6 +63,10 @@ class BotManager:
         self._factories = adapter_factories
         self._adapters: dict[str, object] = {}
         self._statuses: dict[str, dict] = {}
+        from services.channels.reply_forwarder import ChannelReplyForwarder
+        self._reply_forwarder = ChannelReplyForwarder(
+            event_bus, project_manager, self._load, self._adapters,
+        )
         self._config_lock = asyncio.Lock()
         self._chat_locks: WeakValueDictionary[tuple[str, str], asyncio.Lock] = WeakValueDictionary()
 
@@ -231,12 +235,14 @@ class BotManager:
         return [row for row in data["recent_groups"] if row["bot_id"] == bot_id]
 
     async def start(self) -> None:
+        await self._reply_forwarder.start()
         data = await self._load()
         for bot in data["bots"]:
             if bot["enabled"]:
                 await self._start_bot(bot)
 
     async def shutdown(self) -> None:
+        await self._reply_forwarder.shutdown()
         for bot_id in tuple(self._adapters):
             await self._stop_bot(bot_id)
         shutdown = getattr(self._responder, "shutdown", None)

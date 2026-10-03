@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from urllib.parse import quote_plus
 
 import aiohttp
@@ -47,6 +48,9 @@ class DingTalkAdapter:
         self._on_message = on_message
         self._on_state = on_state
         self._task: asyncio.Task | None = None
+        self._access_token = ""
+        self._token_expires_at = 0.0
+        self._token_lock = asyncio.Lock()
         self._client = DingTalkStreamClient(Credential(bot["app_id"], bot["secret"]))
         self._client.register_callback_handler(
             ChatbotMessage.TOPIC, _MessageHandler(bot["id"], on_message),
@@ -97,7 +101,8 @@ class DingTalkAdapter:
     async def send_text(self, message: IncomingMessage, text: str) -> None:
         webhook = str(message.reply_context or "")
         if not webhook:
-            raise RuntimeError("钉钉回复地址已失效")
+            await self._send_active(message, text)
+            return
         timeout = aiohttp.ClientTimeout(total=10)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(webhook, json={
@@ -111,3 +116,42 @@ class DingTalkAdapter:
                     result = {}
                 if isinstance(result, dict) and result.get("errcode") not in (None, 0):
                     raise RuntimeError("钉钉消息发送失败")
+
+    async def _token(self, session) -> str:
+        async with self._token_lock:
+            if self._access_token and time.monotonic() < self._token_expires_at:
+                return self._access_token
+            async with session.post("https://api.dingtalk.com/v1.0/oauth2/accessToken", json={
+                "appKey": self._bot["app_id"], "appSecret": self._bot["secret"],
+            }) as response:
+                response.raise_for_status()
+                result = await response.json()
+            token = result.get("accessToken")
+            if not token:
+                raise RuntimeError("钉钉主动发送鉴权失败")
+            self._access_token = token
+            self._token_expires_at = time.monotonic() + max(0, float(result.get("expireIn", 0)) - 60)
+            return token
+
+    async def _send_active(self, message: IncomingMessage, text: str) -> None:
+        payload = {
+            "robotCode": self._bot["app_id"], "msgKey": "sampleText",
+            "msgParam": json.dumps({"content": text}, ensure_ascii=False),
+        }
+        if message.conversation_type == "group":
+            endpoint = "groupMessages/send"
+            payload["openConversationId"] = message.conversation_id
+        else:
+            if not message.sender_id:
+                raise RuntimeError("钉钉主动私聊缺少用户标识")
+            endpoint = "oToMessages/batchSend"
+            payload["userIds"] = [message.sender_id]
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            token = await self._token(session)
+            async with session.post(f"https://api.dingtalk.com/v1.0/robot/{endpoint}", json=payload,
+                                    headers={"x-acs-dingtalk-access-token": token}) as response:
+                response.raise_for_status()
+                result = await response.json()
+            if result.get("errcode") not in (None, 0) or result.get("code") or result.get("invalidUserIdList"):
+                raise RuntimeError("钉钉主动消息发送失败")
