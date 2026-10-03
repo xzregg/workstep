@@ -436,6 +436,26 @@ class WorkflowRuntime:
             as_guidance=as_guidance,
         )
 
+    async def cancel_message(self, project_id: str, task_id: str, message_id: str) -> bool:
+        """Stop the engine of this live message, never a later stage attempt."""
+        runner = self._runners.get(task_id)
+        if runner is None:
+            return False
+        engines = dict(runner._live._running_engines)
+        def read(_project):
+            message = Message.get_or_none((Message.id == message_id) & (Message.task == task_id))
+            if message is None or message.role != 'assistant' or message.channel not in {'execution','review'} or message.run_status != 'running':
+                return None
+            return message.step_key
+        step_key = await self._run_db(project_id, read)
+        if step_key is None or self._runners.get(task_id) is not runner:
+            return False
+        key = f'{task_id}:{step_key}'
+        engine = engines.get(key)
+        if engine is None or runner._live._running_engines.get(key) is not engine:
+            return False
+        return await runner.cancel_step(task_id, step_key)
+
     async def cancel_step(
         self,
         project_id: str,

@@ -30,9 +30,10 @@ class _LiveMessage:
 
 
 class ChannelTaskForwarder:
-    def __init__(self, event_bus, project_manager, load_config, adapters, *, interval=2):
+    def __init__(self, event_bus, project_manager, load_config, adapters, *, interval=2, controls=None):
         self._bus, self._projects, self._load, self._adapters = event_bus, project_manager, load_config, adapters
         self._interval = interval
+        self._controls = controls
         self._queue = self._task = None
         self._messages: dict[tuple[str, str, str], _LiveMessage] = {}
         self._jobs = set()
@@ -145,7 +146,7 @@ class ChannelTaskForwarder:
                 title = step.get('label') or '未命名阶段'
                 if message.channel == 'review':
                     title += ' · 审核'
-            return str(title).replace('\n', ' ').replace('\r', ' ')
+            return str(title).replace('\n', ' ').replace('\r', ' '), ('' if message.channel == 'coordinator' else message.step_key)
         return await self._projects.run_db(project_id, read)
 
     async def _forward(self, state):
@@ -159,11 +160,12 @@ class ChannelTaskForwarder:
                 bindings.append({'bot_id':origin[0].bot_id, 'group_id':origin[0].conversation_id})
             if not bindings:
                 return
-            title = await self._metadata(state)
-            if title is None:
+            metadata = await self._metadata(state)
+            if metadata is None:
                 return
+            title, step_key = metadata
             destinations = {(row['bot_id'], row['group_id']) for row in bindings}
-            await asyncio.gather(*(self._deliver(state, title, bot_id, group_id) for bot_id, group_id in destinations))
+            await asyncio.gather(*(self._deliver(state, title, bot_id, group_id, step_key) for bot_id, group_id in destinations))
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -220,17 +222,22 @@ class ChannelTaskForwarder:
             logger.warning('Task channel progress failed; final delivery will retry %s', state.key, exc_info=True)
             return False
 
-    async def _deliver(self, state, title, bot_id, group_id):
+    async def _deliver(self, state, title, bot_id, group_id, step_key):
         wake = asyncio.Event()
         state.wakes.append(wake)
         sent = ''
-        adapter = recipient = None
+        adapter = recipient = scope = None
         prefix = '@' + title + '\n'
         try:
             destination = await self._recipient(state, bot_id, group_id)
             if destination is None:
                 return
             adapter, recipient = destination
+            origin = self._origins.get(state.key)
+            is_origin = origin and (origin[0].bot_id, origin[0].conversation_id) == (bot_id, group_id)
+            if self._controls and not is_origin and not state.status:
+                scope = await self._controls.begin(recipient, state.key[0], task_id=state.key[1],
+                    assistant_message_id=state.key[2], step_key=step_key, broadcast=True, title='@' + title)
             supports_streaming = getattr(adapter, 'supports_streaming_reply', None)
             streaming = supports_streaming(recipient) if supports_streaming else bool(recipient.reply_context and getattr(getattr(adapter, 'CAPABILITIES', None), 'streaming', False))
             progress_active = streaming and await self._progress(adapter, recipient, state, prefix + '正在执行…')
@@ -283,6 +290,8 @@ class ChannelTaskForwarder:
                                      'value':{'message_id':state.key[2], 'bot_id':bot_id, 'group_id':group_id,
                                               'error':'任务消息推送失败，请检查机器人连接及发送权限。'}})
         finally:
+            if scope:
+                await self._controls.finish(scope)
             if isinstance(adapter, ChannelAdapter) and recipient is not None:
                 adapter.release_reply(recipient)
             state.wakes.remove(wake)

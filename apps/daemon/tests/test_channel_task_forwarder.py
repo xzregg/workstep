@@ -267,3 +267,27 @@ async def test_proactive_dingtalk_updates_same_card_in_each_group(setup):
             '@编写\n部分', '@编写\n部分正文', '@编写\n完整正文\n\n已完成']
     adapter._send_text.assert_not_awaited()
     assert not adapter._reply_cards
+
+
+async def test_task_broadcast_sends_stop_buttons_and_expires_them_on_end(setup):
+    from services.channels.controls import ChannelControls
+    from services.channels.base import ChannelAction
+    forwarder,bus,event,adapter,data,_,_ = setup
+    values={}
+    store=SimpleNamespace(get=lambda key,default=None:values.get(key,default),set=lambda key,value:values.__setitem__(key,value))
+    runtime=SimpleNamespace(cancel_message=AsyncMock(return_value=True))
+    adapter.send_card=AsyncMock()
+    adapter.update_card=AsyncMock()
+    controls=ChannelControls(store,forwarder._load,forwarder._adapters,SimpleNamespace(),SimpleNamespace(),AsyncMock(),workflow_runtime=runtime)
+    forwarder._controls=controls
+    await bus.publish(event('a','TEXT_MESSAGE_START'))
+    await until(lambda:adapter.send_card.await_count==2)
+    card=adapter.send_card.await_args_list[0].args[1]
+    group=adapter.send_card.await_args_list[0].args[0].conversation_id
+    assert await controls.handle(ChannelAction('bot',card.id,'0','member',conversation_id=group))=='已停止'
+    runtime.cancel_message.assert_awaited_once_with(event('a','TEXT_MESSAGE_START')['project_id'],'task','a')
+    await bus.publish(event('a','TEXT_MESSAGE_END',status='stopped',content='部分正文'))
+    await until(lambda:not forwarder._messages)
+    assert not controls._active
+    assert await controls.handle(ChannelAction('bot',card.id,'0','member',conversation_id=group))=='该操作已处理或已失效'
+    assert adapter.send_text.await_count==2

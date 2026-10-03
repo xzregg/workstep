@@ -60,6 +60,7 @@ class BotManager:
     def __init__(
         self, store, project_manager, event_bus, coordinator, responder,
         adapter_factories: dict[str, AdapterFactory] | None = None,
+        *, workflow_runtime=None,
     ):
         self._store = store
         self._project_manager = project_manager
@@ -75,13 +76,13 @@ class BotManager:
             event_bus, project_manager, self._load, self._adapters,
         )
         from services.channels.task_forwarder import ChannelTaskForwarder
-        self._task_forwarder = ChannelTaskForwarder(event_bus, project_manager, self._load, self._adapters)
         from services.channels.sender import ChannelMessageSender
         self._message_sender = ChannelMessageSender(project_manager, self._load, self._adapters)
         self._config_lock = asyncio.Lock()
         self._chat_locks: WeakValueDictionary[tuple[str, str], asyncio.Lock] = WeakValueDictionary()
         from services.channels.controls import ChannelControls
-        self._controls = ChannelControls(store, self._load, self._adapters, coordinator, responder, self._submit_card_answer)
+        self._controls = ChannelControls(store, self._load, self._adapters, coordinator, responder, self._submit_card_answer, workflow_runtime=workflow_runtime)
+        self._task_forwarder = ChannelTaskForwarder(event_bus, project_manager, self._load, self._adapters, controls=self._controls)
         self._card_answer_tasks = set()
 
     async def _ensure_factories(self) -> None:

@@ -187,6 +187,7 @@ async def lifespan(app: FastAPI):
     channel_bot_manager = BotManager(
         config_store, project_manager, event_bus, coordinator_module,
         ChatSessionResponder(event_bus, project_manager, channel_chat_module),
+        workflow_runtime=workflow_runtime,
     )
     await channel_bot_manager.start()
     recovered_chats = await asyncio.to_thread(
