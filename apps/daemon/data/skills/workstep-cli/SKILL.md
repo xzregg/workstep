@@ -385,3 +385,27 @@ reset sessions and disabled robots cannot send. Native operations are
 `workstep_list_channel_bots`, `workstep_list_channel_sessions`, and
 `workstep_send_channel_message` (mutating, requires `confirm='yes'`). Check
 `sent: true` before reporting success; transport failures return non-zero.
+
+
+## Channel images and files
+
+`channel send` accepts repeatable `--image <local_path>` and `--file <local_path>`
+alongside optional `--text`. At least one text/image/file is required; the same
+session or bot/user/group selectors and authorization rules apply. The CLI
+uploads local files through the daemon into project uploads, then sends the
+project-relative references using the unified channel protocol:
+
+```bash
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli channel send \
+  --project <project_id> --session <session_id> --image /path/to/screenshot.png --json
+uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli channel send \
+  --project <project_id> --bot <bot_id> --user <user_id> --text "Report" --file /path/to/report.pdf --json
+```
+
+WorkStep currently limits images to 2 MiB and files to 20 MiB, with at most 10
+attachments per send. DingTalk native files support xlsx/pdf/zip/rar/doc/docx;
+unsupported file types return an error. Platform permissions and quotas still
+apply. Native callers can use `workstep_upload_channel_attachment` with
+`project_id/filename/data_url/confirm='yes'`, then pass
+`attachments: [{kind: 'image'|'file', path: '<returned project URL>'}]` to
+`workstep_send_channel_message`. Attachment-only sends do not require text.

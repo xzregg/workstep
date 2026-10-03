@@ -181,7 +181,9 @@ def build_parser() -> argparse.ArgumentParser:
     add_json(channel_sessions)
     channel_send = channel_sub.add_parser("send", help="send a notification without starting an LLM turn")
     channel_send.add_argument("--project", dest="project_id", required=True)
-    channel_send.add_argument("--text", required=True)
+    channel_send.add_argument("--text", default="")
+    channel_send.add_argument("--image", action="append", default=[], help="local image file (repeatable)")
+    channel_send.add_argument("--file", action="append", default=[], help="local file attachment (repeatable)")
     channel_send.add_argument("--bot", dest="bot_id")
     recipients = channel_send.add_mutually_exclusive_group(required=True)
     recipients.add_argument("--session", dest="session_id")
@@ -268,6 +270,34 @@ async def dispatch(args: argparse.Namespace, client: WorkstepClient | None = Non
             raise ValueError("按会话发送只需 --session；指定 --user 或 --group 时必须同时指定 --bot")
         arguments = {"project_id": args.project_id, "text": args.text, "confirm": "yes"}
         arguments.update({key: getattr(args, key) for key in ("session_id", "bot_id", "user_id", "group_id") if getattr(args, key)})
+        if not args.text.strip() and not args.image and not args.file:
+            raise ValueError("至少提供 --text、--image 或 --file")
+        if len(args.image) + len(args.file) > 10:
+            raise ValueError("单次最多发送 10 个附件")
+        attachments = []
+        for kind, paths in (("image", args.image), ("file", args.file)):
+            for path in paths:
+                import base64
+                def read_attachment():
+                    source = Path(path)
+                    limit = (2 if kind == "image" else 20) * 1024 * 1024
+                    with source.open("rb") as stream:
+                        data = stream.read(limit + 1)
+                    if not data or len(data) > limit:
+                        raise ValueError("附件为空或超过渠道大小限制")
+                    return source.name, base64.b64encode(data).decode("ascii")
+                name, encoded = await asyncio.to_thread(read_attachment)
+                uploaded = await client.call("workstep_upload_channel_attachment", {
+                    "project_id": args.project_id, "filename": name,
+                    "data_url": "data:application/octet-stream;base64," + encoded, "confirm": "yes",
+                })
+                if uploaded.get("ok") is False:
+                    return uploaded
+                if not uploaded.get("url"):
+                    return {"ok": False, "error": "附件上传没有返回路径"}
+                attachments.append({"kind": kind, "path": uploaded["url"]})
+        if attachments:
+            arguments["attachments"] = attachments
         return await client.call("workstep_send_channel_message", arguments)
     if command == "project":
         if args.subcommand == "list":

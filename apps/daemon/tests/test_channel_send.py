@@ -106,3 +106,33 @@ async def test_explicit_group_binding_grants_only_that_recipient(bots):
         assert (await client.post('/api/channel-bots/send',json={**body,'group_id':'other-group'})).status_code==403
         assert (await client.post('/api/channel-bots/send',json={**body,'user_id':'u'})).status_code==403
         assert adapters[bot['id']].sent==[('bound-group','任务通知')]
+
+
+@pytest.mark.parametrize('platform',['wecom','dingtalk'])
+@pytest.mark.parametrize('kind',['image','file'])
+async def test_media_send_api_uses_unified_outgoing_message(bots,platform,kind):
+    from unittest.mock import AsyncMock
+    from services.channels.registry import discover_channels
+    from services.channels.base import OutgoingMessage
+    from pathlib import Path
+    manager,project,*_rest,adapters=bots
+    bot=await manager.create_bot({'platform':platform,'name':'Echo','app_id':platform,'secret':'secret','enabled':True,
+        'default_target_type':'project','default_project_id':project.id})
+    adapter=discover_channels()[platform]({'id':bot['id'],'app_id':platform,'secret':'secret'},AsyncMock(),AsyncMock())
+    adapter.send=AsyncMock()
+    manager._adapters[bot['id']]=adapter
+    path=Path(project.path)/('image.png' if kind=='image' else 'report.pdf')
+    await asyncio.to_thread(path.write_bytes,b'media')
+    body={'project_id':project.id,'bot_id':bot['id'],'group_id':'g','attachments':[{'kind':kind,'path':path.name}]}
+    async with AsyncClient(transport=ASGITransport(app=main.app),base_url='http://test') as client:
+        response=await client.post('/api/channel-bots/send',json=body)
+        assert response.status_code==200,response.text
+        recipient,outgoing=adapter.send.await_args.args
+        assert recipient.conversation_id=='g'
+        assert isinstance(outgoing,OutgoingMessage)
+        assert outgoing.text==''
+        assert outgoing.attachments[0].data==b'media'
+        assert outgoing.attachments[0].kind==kind
+        bad=await client.post('/api/channel-bots/send',json={**body,'attachments':[{'kind':kind,'path':'../secret'}]})
+        assert bad.status_code==400
+        adapter.send.assert_awaited_once()

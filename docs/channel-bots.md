@@ -51,3 +51,15 @@ workstep channel send --project <项目ID> --bot <机器人ID> --group <平台�
 ```
 
 源码环境将 `workstep` 替换为 `uv run --no-sync --directory apps/daemon python -m cli`。按会话发送会自动识别机器人、私聊用户或群；直接指定目标时，机器人默认项目或群绑定的项目必须匹配。归档、重置后的旧会话和未启用机器人拒绝发送，项目范围凭据不能跨项目发送。消息直接发给渠道，不启动 LLM，也不写入聊天历史；返回 `sent: true` 表示平台发送接口成功，失败返回非零退出码，不能等同于用户已读。助手和定时任务须有明确的发送授权。
+
+
+### 图片和文件
+
+企业微信、钉钉适配器使用统一渠道消息协议接收和发送图片、文件。收到的附件保存到绑定项目 `.workstep/uploads/`，继续复用现有项目会话或任务助手；LLM 完成回复中的项目上传/产物附件会原生推送到渠道。
+
+```bash
+workstep channel send --project <项目ID> --session <会话ID> --image ./截图.png --json
+workstep channel send --project <项目ID> --bot <机器人ID> --user <用户ID> --file ./报告.pdf --text "报告已完成" --json
+```
+
+`--image/--file` 可重复，附件消息可省略 `--text`。当前图片限 2 MiB、文件限 20 MiB，单次最多 10 个附件。钉钉原生文件格式限 `xlsx/pdf/zip/rar/doc/docx`。发送仍受平台权限与配额约束；`sent: true` 表示接口成功，不表示用户已读。详见 [渠道消息协议与接入开发](channel-message-protocol.md)。

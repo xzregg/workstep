@@ -87,7 +87,7 @@ def extract_uploaded_images(project, cwd: str, content: str) -> list[EngineImage
         legacy_prefix = f"{project.name}/.workstep/uploads/"
         if target.startswith(legacy_prefix):
             candidate_paths.append(uploads / target[len(legacy_prefix):])
-        for base in (root, root.parent):
+        for base in (root, root.parent, uploads.parent.parent):
             candidate = Path(target)
             if not candidate.is_absolute():
                 candidate = base / candidate

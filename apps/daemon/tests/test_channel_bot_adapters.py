@@ -216,3 +216,70 @@ async def test_wecom_local_reply_uses_active_send_without_old_callback():
     await adapter.send_text(message, '本地回复')
     adapter._client.send_message.assert_awaited_once_with('room', {'msgtype': 'markdown', 'markdown': {'content': '本地回复'}})
     adapter._client.reply_stream.assert_not_awaited()
+
+
+@pytest.mark.parametrize('kind', ['image','file'])
+async def test_wecom_media_callback_normalizes_attachment_without_downloading(monkeypatch, kind):
+    class Client:
+        def __init__(self, options): self.handlers={}
+        def on(self,event):
+            def register(handler): self.handlers[event]=handler; return handler
+            return register
+        connect=AsyncMock()
+        disconnect=lambda self:None
+    client=Client(None)
+    monkeypatch.setattr('services.channels.wecom.WSClient',lambda options:client)
+    incoming=[]
+    adapter=WeComAdapter({'id':'b','app_id':'wx','secret':'secret'},lambda m:_append(incoming,m),AsyncMock())
+    await adapter.start()
+    try:
+        await client.handlers['message.'+kind]({'headers':{'req_id':'req'},'body':{'msgid':'m','msgtype':kind,'from':{'userid':'u'},
+            'chattype':'single',kind:{'url':'https://files.qq.com/a','aeskey':'key','filename':'name.pdf'}}})
+        assert len(incoming)==1
+        assert incoming[0].attachments[0].kind==kind
+        assert incoming[0].attachments[0].reference['aeskey']=='key'
+        assert incoming[0].text==''
+    finally: await adapter.stop()
+
+
+@pytest.mark.parametrize('kind', ['picture','file'])
+async def test_dingtalk_media_callback_normalizes_download_code(kind):
+    from services.channels.dingtalk import _MessageHandler
+    messages=[]
+    handler=_MessageHandler('b',lambda m:_append(messages,m))
+    callback=type('Callback',(),{'data':{'msgtype':kind,'msgId':'m','conversationType':'1','conversationId':'chat','senderStaffId':'u',
+        'content':{'downloadCode':'code','fileName':'report.pdf'},'robotCode':'robot'}})()
+    await handler.process(callback)
+    await asyncio.sleep(0)
+    assert messages[0].attachments[0].kind==('image' if kind=='picture' else 'file')
+    assert messages[0].attachments[0].reference=={'download_code':'code','robot_code':'robot'}
+
+
+@pytest.mark.parametrize('kind', ['image','file'])
+async def test_dingtalk_native_media_upload_and_send(monkeypatch, kind):
+    from services.channels.base import ChannelAttachment,OutgoingMessage
+    calls=[]
+    class Response:
+        def __init__(self,body):self.body=body
+        async def __aenter__(self):return self
+        async def __aexit__(self,*args):pass
+        def raise_for_status(self):pass
+        async def json(self):return self.body
+    class Session:
+        def __init__(self,**kwargs):pass
+        async def __aenter__(self):return self
+        async def __aexit__(self,*args):pass
+        def post(self,url,**kwargs):
+            calls.append((url,kwargs))
+            body={'accessToken':'token','expireIn':7200} if url.endswith('/accessToken') else ({'media_id':'@media','errcode':0} if url.endswith('/media/upload') else {'processQueryKey':'sent'})
+            return Response(body)
+    monkeypatch.setattr('services.channels.dingtalk.aiohttp.ClientSession',Session)
+    adapter=DingTalkAdapter({'id':'b','app_id':'ding','secret':'secret'},AsyncMock(),AsyncMock())
+    attachment=ChannelAttachment(kind,'photo.png' if kind=='image' else 'report.pdf',data=b'media')
+    await adapter.send(IncomingMessage('b','m','group','g','u',''),OutgoingMessage(attachments=(attachment,)))
+    assert calls[1][1]['params']=={'access_token':'token','type':kind}
+    body=calls[-1][1]['json']
+    assert body['openConversationId']=='g'
+    assert body['msgKey']==('sampleImageMsg' if kind=='image' else 'sampleFile')
+    params=json.loads(body['msgParam'])
+    assert params==({'photoURL':'@media'} if kind=='image' else {'mediaId':'@media','fileName':'report.pdf','fileType':'pdf'})

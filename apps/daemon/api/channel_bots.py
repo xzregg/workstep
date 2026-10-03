@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, model_validator
+from typing import Literal
 import logging
 
 logger = logging.getLogger(__name__)
@@ -38,9 +39,15 @@ class BindGroupRequest(BaseModel):
     group_id: str = Field(min_length=1)
 
 
+class ChannelAttachmentRequest(BaseModel):
+    kind: Literal['image', 'file']
+    path: str = Field(min_length=1)
+
+
 class SendChannelMessageRequest(BaseModel):
     project_id: str = Field(min_length=1)
-    text: str = Field(min_length=1)
+    text: str = ""
+    attachments: list[ChannelAttachmentRequest] = Field(default_factory=list, max_length=10)
     session_id: str | None = None
     bot_id: str | None = None
     user_id: str | None = None
@@ -48,7 +55,7 @@ class SendChannelMessageRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_recipient(self):
-        if not self.text.strip() or not self.project_id.strip():
+        if (not self.text.strip() and not self.attachments) or not self.project_id.strip():
             raise ValueError("消息和项目不能为空")
         for value in (self.session_id, self.bot_id, self.user_id, self.group_id):
             if value is not None and not value.strip():
@@ -84,8 +91,10 @@ async def send_channel_message(request: SendChannelMessageRequest):
         return await _manager().send_message(**request.model_dump())
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except (LookupError, ValueError) as exc:
+    except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         if str(exc) in {"渠道会话已归档", "机器人未启用或尚未连接"}:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
