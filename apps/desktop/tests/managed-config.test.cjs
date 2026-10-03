@@ -49,19 +49,22 @@ test('signed managed package is accepted and tampering is rejected', () => {
   } finally { fs.rmSync(resources, { recursive: true }) }
 })
 
-test('bundle creator pins Gateway key without copying its signing secret', () => {
+for (const origin of ['https://gateway.example.com', 'http://localhost:8700']) {
+test(`bundle creator pins Gateway key for ${origin} without copying its signing secret`, () => {
   const resources = fs.mkdtempSync(path.join(os.tmpdir(), 'workstep-managed-'))
   const { publicKey: gatewayPublic } = generateKeyPairSync('ed25519')
   const { privateKey: packagePrivate } = generateKeyPairSync('ed25519')
   const bundle = path.join(resources, 'managed-gateway')
   try {
     createManagedBundle({
-      outputDir: bundle, gatewayId: 'gateway-2', origin: 'https://gateway.example.com',
+      outputDir: bundle, gatewayId: 'gateway-2', origin,
       gatewayPublicKey: gatewayPublic, packageSigningKey: packagePrivate, channel: 'stable',
     })
     const rootPin = managedBuildConfig(bundle).extraMetadata.managedGatewayRootFingerprint
     assert.equal(readManagedConfig(resources, rootPin).gateway_id, 'gateway-2')
+    assert.equal(readManagedConfig(resources, rootPin).gateway_origin, origin)
     assert.equal(fs.readdirSync(bundle).sort().join(','), 'managed-gateway.json,managed-root.pem')
     assert.ok(!fs.readFileSync(path.join(bundle, 'managed-root.pem'), 'utf8').includes('PRIVATE KEY'))
   } finally { fs.rmSync(resources, { recursive: true }) }
 })
+}

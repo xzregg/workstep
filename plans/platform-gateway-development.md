@@ -4,6 +4,8 @@
 
 ## 执行约束与交付方式
 
+剩余工作按 [九批次开发与验收计划](platform-gateway-remaining-development.md) 收敛。批次 9 已启动 `http://localhost:8700` 本机网关；允许回环 HTTP，Gateway、Desktop、daemon 与受管包保持统一地址校验，企业微信／钉钉真实跳转仍暂缓。仅本机服务与相关自动化检查通过，不据此认定阶段 11 或批次 9 整体完成。
+
 - 每阶段先写失败的行为测试，再实现，再完成本阶段回归；阶段完成后独立提交。一个阶段内可拆多次提交，但不能把未通过验收的阶段标成完成。
 - `apps/gateway` 是独立 Python/FastAPI 服务；平台门户和管理后台位于独立 `apps/gateway-web`；`apps/daemon` 只增加受管设备客户端与必要的本机服务门禁；`apps/desktop` 处理登录回调。两端只共享版本化协议定义，不互相导入业务模块。
 - Gateway 首版单实例、SQLite 默认；保留 PostgreSQL 数据层兼容测试。PC 保留每项目 `.workstep/workstep.db`。Gateway 不读取项目数据库，也不规定本机项目目录。

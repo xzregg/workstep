@@ -1,6 +1,7 @@
 const { createHash, createPublicKey, verify } = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
+const { validateGatewayOrigin } = require('./gateway-origin.cjs')
 
 function rootFingerprint(publicKey) {
   return createHash('sha256').update(publicKey.export({ type: 'spki', format: 'der' })).digest('hex')
@@ -21,8 +22,7 @@ function readManagedConfig(resourcesPath, expectedRootFingerprint) {
     ]
     if (Object.keys(payload).sort().join(',') !== expectedFields.join(',')) throw new Error('invalid payload fields')
     if (Object.keys(signed).sort().join(',') !== 'payload,signature') throw new Error('invalid bundle fields')
-    const origin = new URL(payload.gateway_origin)
-    if (origin.protocol !== 'https:' || origin.origin !== payload.gateway_origin) throw new Error('invalid origin')
+    validateGatewayOrigin(payload.gateway_origin)
     if (typeof payload.gateway_id !== 'string' || !payload.gateway_id) throw new Error('invalid gateway ID')
     if (!/^[0-9a-f]{64}$/.test(payload.gateway_public_key_fingerprint)) throw new Error('invalid key pin')
     if (typeof payload.deployment_channel !== 'string' || !payload.deployment_channel) throw new Error('invalid channel')

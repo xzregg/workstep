@@ -20,5 +20,5 @@ test('project heading exposes a button that expands sidebar search', () => {
 test('sidebar search filters project workflows and conversations', () => {
   assert.match(source, /filterSidebarProject/)
   assert.match(source, /searchResult\.workflows\.map/)
-  assert.match(source, /searchResult\.sessions\.map/)
+  assert.match(source, /<SidebarConversationTabs sessions=\{searchResult\.sessions\}/)
 })

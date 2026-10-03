@@ -1,10 +1,10 @@
 const { createHash, createPublicKey, sign } = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
+const { validateGatewayOrigin } = require('../src/gateway-origin.cjs')
 
 function createManagedBundle({ outputDir, gatewayId, origin, gatewayPublicKey, packageSigningKey, channel }) {
-  const parsed = new URL(origin)
-  if (parsed.protocol !== 'https:' || parsed.origin !== origin) throw new Error('Gateway origin must be HTTPS')
+  validateGatewayOrigin(origin)
   if (!gatewayId || !channel) throw new Error('Gateway ID and release channel are required')
   const gatewayKey = gatewayPublicKey.type === 'public' ? gatewayPublicKey : createPublicKey(gatewayPublicKey)
   const packageKey = createPublicKey(packageSigningKey)

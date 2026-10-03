@@ -1,7 +1,6 @@
 """User access to whole managed PC workspaces."""
 
 from uuid import uuid4
-from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -62,12 +61,12 @@ async def device_access(request: Request, device_id: str):
     origin = request.app.state.settings.public_origin
     if origin is None:
         raise HTTPException(status_code=503, detail="Public Gateway origin is not configured")
-    host = f"d-{device_id}.{urlsplit(origin).hostname}"
+    host = request.app.state.settings.device_authority(device_id)
     ticket = request.app.state.gateway_signer.sign_device_access_ticket(
         gateway_id=request.app.state.settings.gateway_id, device_id=device_id,
         user_id=user.id, audience=host,
     )
-    return {"url": f"https://{host}/", "ticket": ticket, "expires_in": 60}
+    return {"url": request.app.state.settings.device_url(device_id), "ticket": ticket, "expires_in": 60}
 
 
 @router.post("/admin/devices/{device_id}/users")

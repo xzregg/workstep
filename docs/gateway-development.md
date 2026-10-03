@@ -27,9 +27,24 @@ Gateway 是独立 FastAPI 服务，`apps/gateway-web` 是独立门户。阶段 0
 
 SQLite 可在服务运行时执行 `uv run --project apps/gateway python apps/gateway/scripts/backup.py /安全位置/backup.db` 创建一致性备份；PostgreSQL 使用 `pg_dump`。数据库切换必须停机备份、迁移和校验。受管包可用 `apps/desktop` 的 `yarn bundle:managed` 生成签名配置，再用 `yarn dist:managed` 构建；前者需要 `WORKSTEP_GATEWAY_ID`、`WORKSTEP_GATEWAY_ORIGIN`、`WORKSTEP_GATEWAY_PUBLIC_KEY_FILE`、`WORKSTEP_MANAGED_SIGNING_KEY_FILE` 和 `WORKSTEP_MANAGED_BUNDLE_DIR`，后者需要最后一个变量。签名私钥只用于构建，不进入安装包。阶段 1 的受管设备实际连接仍待阶段 3B。
 
-生产环境应为 Gateway 提供独立 HTTPS 域名。阶段 3C 的设备子域代理需要 `d-<device-id>.<gateway-domain>` 的通配符 DNS 和 TLS；当前骨架尚不提供该代理，不应作为受管平台对外部署。
+生产环境应为 Gateway 提供独立 HTTPS 域名。阶段 3C 的设备子域代理需要 `d-<device-id>.<gateway-domain>` 的通配符 DNS 和 TLS；数据代理已实现，生产验收仍以逐阶段计划为准。
 
-阶段 3C 已提供整机分配的基础接口：超级管理员二次认证后可用 `POST /api/admin/devices/{device_id}/users` 分配用户，或用 `POST /api/admin/devices/{device_id}/users/{user_id}/revoke` 撤销；用户在 `/devices` 查看自己的有效设备。配置 `WORKSTEP_GATEWAY_PUBLIC_ORIGIN=https://gateway.example.com` 后，在线设备的 `GET /api/devices/{device_id}/access` 返回独立子域 URL 与 60 秒 Ed25519 票据，票据绑定用户、设备和目标主机。浏览器向设备子域 `POST /api/remote/redeem` 提交表单票据，一次性兑换主机限定、HttpOnly、Secure 的设备会话；`GET /api/remote/session` 每次重新核对分配和在线状态。迁移 `0012_remote_access` 记录已用票据。数据代理尚未实现，设备子域目前只开放兑换和会话检查，不能据此开放远程工作台。
+本机验收可使用 HTTP：`http://localhost:8700`、回环 IP（如 `http://127.0.0.1:8700`、`http://[::1]:8700`）及 `.localhost` 子域。Gateway、受管包构建/验签、Desktop 登录与 daemon 连接共用这一规则；非回环地址仍要求 HTTPS。HTTP 使用 HttpOnly、SameSite Cookie，保留 CSRF 校验；HTTPS 的 Cookie 保留 Secure。设备票据绑定完整主机和端口，回环 IP 对应的设备入口生成 `d-<device-id>.localhost:8700`，控制和数据连接使用 WS，页面跳转与返回链接保留端口。
+
+8700 本机服务使用独立数据目录 `~/.workstep-gateway-acceptance/8700`。先在 `apps/gateway-web` 执行 `yarn build`，再从仓库根目录启动：
+
+```bash
+WORKSTEP_GATEWAY_DATA_DIR="$HOME/.workstep-gateway-acceptance/8700" \
+WORKSTEP_GATEWAY_PUBLIC_ORIGIN=http://localhost:8700 \
+WORKSTEP_GATEWAY_GATEWAY_ID=local-acceptance-8700 \
+WORKSTEP_GATEWAY_PORT=8700 \
+WORKSTEP_GATEWAY_WEB_DIST="$PWD/apps/gateway-web/dist" \
+uv run --project apps/gateway --no-sync uvicorn gateway.app:app --host 127.0.0.1 --port 8700
+```
+
+打开 `http://localhost:8700/auth`；新数据目录需要先初始化管理员。相关行为测试：Gateway `test_local_gateway_origin.py` / `test_data_http.py`、daemon `test_gateway_local_origin.py`、Desktop `gateway-origin.test.cjs` / `managed-config.test.cjs`、Web `gatewayRemoteFrame.test.tsx`。
+
+阶段 3C 已提供整机分配的基础接口：超级管理员二次认证后可用 `POST /api/admin/devices/{device_id}/users` 分配用户，或用 `POST /api/admin/devices/{device_id}/users/{user_id}/revoke` 撤销；用户在 `/devices` 查看自己的有效设备。配置 `WORKSTEP_GATEWAY_PUBLIC_ORIGIN=https://gateway.example.com` 后，在线设备的 `GET /api/devices/{device_id}/access` 返回独立子域 URL 与 60 秒 Ed25519 票据，票据绑定用户、设备和目标主机。浏览器向设备子域 `POST /api/remote/redeem` 提交表单票据，一次性兑换主机限定、HttpOnly、Secure 的设备会话；`GET /api/remote/session` 每次重新核对分配和在线状态。迁移 `0012_remote_access` 记录已用票据。设备会话通过验证后才允许进入数据代理；完整远程工作台验收仍待完成。
 
 控制 WSS 可按需发出 `open_data` 命令，PC 随即向 `/api/data/ws` 回连并一次性提交短期 token；控制断开时数据连接随之关闭。
 

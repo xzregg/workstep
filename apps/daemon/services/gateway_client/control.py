@@ -14,6 +14,7 @@ from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
 from workstep_gateway_protocol import FrameType, ProxyFrame
+from workstep_gateway_protocol.origin import validate_gateway_origin
 
 from .policy import ManagedPolicyCache, verify_policy_snapshot
 from .bridge import ManagedHttpBridge, ManagedWebSocketBridge
@@ -25,10 +26,10 @@ logger = logging.getLogger(__name__)
 
 
 def control_url(origin: str) -> str:
+    validate_gateway_origin(origin)
     parsed = urlsplit(origin)
-    if parsed.scheme != "https" or not parsed.netloc or parsed.path or parsed.query or parsed.fragment:
-        raise ValueError("Invalid managed Gateway origin")
-    return f"wss://{parsed.netloc}/api/control/ws"
+    scheme = "wss" if parsed.scheme == "https" else "ws"
+    return f"{scheme}://{parsed.netloc}/api/control/ws"
 
 
 def data_url(origin: str) -> str:

@@ -3,7 +3,6 @@
 from datetime import datetime, timezone
 from typing import Literal
 from uuid import uuid4
-from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
@@ -132,13 +131,13 @@ async def project_access(request: Request, project_id: str):
     origin = request.app.state.settings.public_origin
     if origin is None:
         raise HTTPException(status_code=503, detail="Public Gateway origin is not configured")
-    host = f"d-{device_id}.{urlsplit(origin).hostname}"
+    host = request.app.state.settings.device_authority(device_id)
     ticket = request.app.state.gateway_signer.sign_project_access_ticket(
         gateway_id=request.app.state.settings.gateway_id, device_id=device_id,
         user_id=user.id, audience=host, project_id=project_id,
         host_project_id=host_project_id, access_level=level,
     )
-    return {"url": f"https://{host}/", "ticket": ticket, "expires_in": 60,
+    return {"url": request.app.state.settings.device_url(device_id), "ticket": ticket, "expires_in": 60,
             "project_id": project_id, "access_level": level}
 
 

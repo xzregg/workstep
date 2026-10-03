@@ -3,7 +3,7 @@
 import hashlib
 import asyncio
 from datetime import datetime, timezone
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket
 from fastapi.responses import RedirectResponse
@@ -25,9 +25,8 @@ def _device_host(request: Request) -> str:
     origin = request.app.state.settings.public_origin
     if origin is None:
         raise HTTPException(status_code=503, detail="Public Gateway origin is not configured")
-    suffix = f".{urlsplit(origin).hostname}"
     host = request.headers.get("host", "").lower()
-    if not host.startswith("d-") or not host.endswith(suffix) or ":" in host:
+    if not request.app.state.settings.is_device_authority(host):
         raise HTTPException(status_code=403, detail="Device host required")
     return host
 
@@ -92,7 +91,7 @@ async def redeem_device_ticket(request: Request):
     except (ValueError, KeyError, UnicodeDecodeError) as exc:
         raise HTTPException(status_code=403, detail="Invalid device access ticket") from exc
     device_id, user_id = claims["device_id"], claims["user_id"]
-    if host != f"d-{device_id}.{urlsplit(request.app.state.settings.public_origin).hostname}":
+    if host != request.app.state.settings.device_authority(device_id):
         raise HTTPException(status_code=403, detail="Ticket device mismatch")
     if claims["kind"] == "project.access":
         current_level = await _active_project_access(
@@ -123,7 +122,7 @@ async def redeem_device_ticket(request: Request):
     except IntegrityError as exc:
         raise HTTPException(status_code=409, detail="Ticket already used") from exc
     response = RedirectResponse("/", status_code=303)
-    response.set_cookie(COOKIE_NAME, token, max_age=3600, secure=True,
+    response.set_cookie(COOKIE_NAME, token, max_age=3600, secure=request.app.state.settings.cookie_secure,
                         httponly=True, samesite="lax", path="/")
     response.headers["Cache-Control"] = "no-store"
     return response
@@ -174,7 +173,7 @@ async def _remote_identity(request: Request):
         request.cookies.get(COOKIE_NAME), allow_device_session=True,
     )
     device_id = auth_session.device_id
-    if not device_id or host != f"d-{device_id}.{urlsplit(request.app.state.settings.public_origin).hostname}":
+    if not device_id or host != request.app.state.settings.device_authority(device_id):
         raise HTTPException(status_code=403, detail="Device session mismatch")
     if auth_session.project_id:
         async with request.app.state.database.session() as session:

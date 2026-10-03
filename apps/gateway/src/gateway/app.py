@@ -1,6 +1,5 @@
 import asyncio
 from contextlib import asynccontextmanager
-from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -95,8 +94,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     async def device_host_boundary(request: Request, call_next):
         if settings.public_origin:
             host = request.headers.get("host", "").lower()
-            suffix = f".{urlsplit(settings.public_origin).hostname}"
-            if host.startswith("d-") and host.endswith(suffix):
+            if settings.is_device_authority(host):
                 if request.url.path not in ("/api/remote/redeem", "/api/remote/session",
                                             "/api/remote/project-grants"):
                     try:

@@ -4,7 +4,6 @@ import base64
 import binascii
 from enum import StrEnum
 from typing import Any, Literal
-from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -123,14 +122,8 @@ class ManagedGatewayPayload(BaseModel):
     @field_validator("gateway_origin")
     @classmethod
     def secure_origin(cls, value: str) -> str:
-        parsed = urlsplit(value)
-        if (
-            parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
-            or parsed.path or parsed.query or parsed.fragment or not value.isascii()
-            or parsed.netloc != parsed.netloc.lower() or parsed.port == 443
-        ):
-            raise ValueError("gateway_origin must be an HTTPS origin")
-        return value
+        from .origin import validate_gateway_origin
+        return validate_gateway_origin(value)
 
 
 class SignedManagedGatewayConfig(BaseModel):

@@ -658,6 +658,10 @@ class DataConnection:
 
             response = StreamingResponse(body(), status_code=status)
             remote_host = request.headers.get("host", "")
+            settings = getattr(request.app.state, "settings", None) if "app" in request.scope else None
+            public_scheme = (urlsplit(settings.public_origin).scheme
+                             if settings and settings.public_origin else request.url.scheme)
+            websocket_scheme = "ws" if public_scheme == "http" else "wss"
             for pair in response_headers:
                 if (isinstance(pair, list) and len(pair) == 2
                         and all(isinstance(item, str) for item in pair)
@@ -669,13 +673,13 @@ class DataConnection:
                     if pair[0].lower() == "location":
                         parsed = urlsplit(value)
                         if parsed.hostname in ("127.0.0.1", "localhost"):
-                            value = urlunsplit(("https", remote_host, parsed.path,
+                            value = urlunsplit((public_scheme, remote_host, parsed.path,
                                                 parsed.query, parsed.fragment))
                     response.headers.append(pair[0], value)
             response.headers["Content-Security-Policy"] = "; ".join((
                 "default-src 'self'", "script-src 'self' 'unsafe-inline'",
                 "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob: https:",
-                "font-src 'self' data:", f"connect-src 'self' wss://{remote_host}",
+                "font-src 'self' data:", f"connect-src 'self' {websocket_scheme}://{remote_host}",
                 "object-src 'none'", "base-uri 'self'", "form-action 'self'",
                 "frame-ancestors 'none'",
             ))

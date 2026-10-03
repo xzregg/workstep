@@ -3,6 +3,7 @@ import json
 import sqlite3
 import threading
 import time
+import pytest
 from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
 
@@ -14,11 +15,12 @@ from gateway.models import Device, PlatformProject
 from gateway import platform_shares
 
 
-def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypatch):
+@pytest.mark.parametrize('origin', ['https://gateway.test', 'http://localhost:8700'])
+def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypatch, origin):
     app = create_app(GatewaySettings(
-        data_dir=tmp_path, public_origin="https://gateway.test",
+        data_dir=tmp_path, public_origin=origin,
     ))
-    with TestClient(app, base_url="https://gateway.test") as client:
+    with TestClient(app, base_url=origin) as client:
         setup = client.post("/api/platform/setup", json={
             "username": "owner", "display_name": "Owner",
             "password": "OwnerPassphrase-2026!",
@@ -51,7 +53,7 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         }, headers=headers)
         assert created.status_code == 201, created.text
         share = created.json()
-        assert share["url"].startswith("https://gateway.test/share/")
+        assert share["url"].startswith(f"{origin}/share/")
         token = share["url"].rsplit("/", 1)[1]
         assert share["status"] == "active"
         with sqlite3.connect(tmp_path / "workstep_platform.db") as db:
@@ -85,6 +87,7 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
             "password": "correct horse battery staple",
         })
         assert unlocked.status_code == 200, unlocked.text
+        assert ('secure' in unlocked.headers['set-cookie'].lower()) == origin.startswith('https:')
         assert "platform_share_session" in client.cookies
         visitor_cookie = client.cookies["platform_share_session"]
         assert client.get(f"/api/public/shares/{token}/session").json() == {
