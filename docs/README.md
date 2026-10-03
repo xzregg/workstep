@@ -18,3 +18,5 @@
 - [Product requirements](../PRODUCT.md) *(简体中文)* and [design system](../DESIGN.md) — product and visual decisions.
 
 Repository-agent instructions remain in [`AGENTS.md`](../AGENTS.md); they point back to these human-facing documents instead of duplicating them.
+
+- [渠道消息协议与接入开发](channel-message-protocol.md)：统一适配器、能力声明和图片/文件收发。

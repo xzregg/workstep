@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import replace
 import logging
 import uuid
 from typing import Awaitable, Callable
@@ -18,20 +18,12 @@ logger = logging.getLogger(__name__)
 CONFIG_KEY = "channel_bots"
 
 
-@dataclass(frozen=True, slots=True)
-class IncomingMessage:
-    bot_id: str
-    message_id: str
-    conversation_type: str
-    conversation_id: str
-    sender_id: str
-    text: str
-    sender_name: str = ""
-    reply_context: object | None = None
+from services.channels.base import IncomingMessage, ChannelAdapter
+from services.channels.registry import discover_channels
 
 
 def _sender_actor(message: IncomingMessage, platform: str) -> ActorSnapshot:
-    label = "企业微信" if platform == "wecom" else "钉钉"
+    label = discover_channels()[platform].DISPLAY_NAME
     sender_id = message.sender_id.strip() or message.conversation_id
     return ActorSnapshot(
         actor_id=f"channel:{platform}:{sender_id}",
@@ -56,11 +48,8 @@ class BotManager:
         self._event_bus = event_bus
         self._coordinator = coordinator
         self._responder = responder
-        if adapter_factories is None:
-            from services.channels.dingtalk import DingTalkAdapter
-            from services.channels.wecom import WeComAdapter
-            adapter_factories = {"wecom": WeComAdapter, "dingtalk": DingTalkAdapter}
         self._factories = adapter_factories
+        self._registered_channels = None
         self._adapters: dict[str, object] = {}
         self._statuses: dict[str, dict] = {}
         from services.channels.reply_forwarder import ChannelReplyForwarder
@@ -72,7 +61,14 @@ class BotManager:
         self._config_lock = asyncio.Lock()
         self._chat_locks: WeakValueDictionary[tuple[str, str], asyncio.Lock] = WeakValueDictionary()
 
+    async def _ensure_factories(self) -> None:
+        if self._registered_channels is None:
+            self._registered_channels = await asyncio.to_thread(discover_channels)
+            if self._factories is None:
+                self._factories = self._registered_channels
+
     async def _load(self) -> dict:
+        await self._ensure_factories()
         data = await asyncio.to_thread(self._store.get, CONFIG_KEY, {})
         return {
             "bots": list(data.get("bots", [])),
@@ -91,6 +87,15 @@ class BotManager:
         return {
             **{key: value for key, value in bot.items() if key != "secret"},
             "has_secret": bool(bot.get("secret")),
+            "protocol_version": 1,
+            "capabilities": {
+                "receive": sorted(discover_channels()[bot["platform"]].CAPABILITIES.receive),
+                "send": sorted(discover_channels()[bot["platform"]].CAPABILITIES.send),
+                "waiting": discover_channels()[bot["platform"]].CAPABILITIES.waiting,
+                "max_image_bytes": discover_channels()[bot["platform"]].CAPABILITIES.max_image_bytes,
+                "max_file_bytes": discover_channels()[bot["platform"]].CAPABILITIES.max_file_bytes,
+                "file_extensions": sorted(discover_channels()[bot["platform"]].CAPABILITIES.file_extensions or []),
+            },
             "status": (status or {}).get("status", "disabled" if not bot["enabled"] else "connecting"),
             "error": (status or {}).get("error", ""),
         }
@@ -123,6 +128,7 @@ class BotManager:
                 raise ValueError("任务不存在")
 
     async def create_bot(self, values: dict) -> dict:
+        await self._ensure_factories()
         platform = str(values.get("platform") or "")
         name = str(values.get("name") or "").strip()
         app_id = str(values.get("app_id") or "").strip()
@@ -293,7 +299,7 @@ class BotManager:
         await self._route_message(message, lock)
 
     async def _route_message(self, message: IncomingMessage, lock: asyncio.Lock) -> None:
-        if not message.message_id or not message.conversation_id or not message.text.strip():
+        if not message.message_id or not message.conversation_id or (not message.text.strip() and not message.attachments):
             return
         async with self._config_lock:
             data = await self._load()
@@ -318,7 +324,7 @@ class BotManager:
         adapter = self._adapters.get(message.bot_id)
         if not adapter:
             return
-        start_reply = getattr(adapter, "start_reply", None)
+        start_reply = (adapter.start_reply if adapter.CAPABILITIES.waiting else None) if isinstance(adapter, ChannelAdapter) else getattr(adapter, "start_reply", None)
         if start_reply is not None:
             try:
                 await start_reply(message)
@@ -326,6 +332,12 @@ class BotManager:
                 logger.warning("Failed to start channel waiting reply", exc_info=True)
         try:
             async with lock:
+                if message.attachments:
+                    from services.channels.media import incoming_content
+                    project = self._project_manager.get_project_by_id(project_id)
+                    if project is None:
+                        raise ValueError("项目不存在")
+                    message = replace(message, text=await incoming_content(project, adapter, message))
                 if kind == "task":
                     await self._validate_target("task", project_id, task_id)
                     reply = await self._task_reply(project_id, task_id, message, bot["platform"])
@@ -349,7 +361,13 @@ class BotManager:
                         }
                         await self._save(latest)
                 if reply or start_reply is not None:
-                    await adapter.send_text(message, reply or "处理完成，暂无回复内容。")
+                    text = reply or "处理完成，暂无回复内容。"
+                    if isinstance(adapter, ChannelAdapter):
+                        from services.channels.media import outgoing_content
+                        project = self._project_manager.get_project_by_id(project_id)
+                        await adapter.send(message, await outgoing_content(project, adapter, text))
+                    else:
+                        await adapter.send_text(message, text)
         except Exception:
             logger.exception("Failed to handle channel bot message %s", message.message_id)
             try:

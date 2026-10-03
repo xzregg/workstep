@@ -239,9 +239,16 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         parameters={key: {"type": "string", "description": description} for key, description in {
             "project_id": "project id", "text": "message text", "session_id": "existing channel session id",
             "bot_id": "bot id for explicit recipient", "user_id": "platform user id", "group_id": "platform group id",
-        }.items()},
-        required=("project_id", "text"), read_only=False, side_effect="send an external channel message",
-        body_params=("project_id", "text", "session_id", "bot_id", "user_id", "group_id"),
+        }.items()} | {"attachments": {"type": "array", "description": "image/file attachments with project-relative path and kind"}},
+        required=("project_id",), read_only=False, side_effect="send an external channel message",
+        body_params=("project_id", "text", "session_id", "bot_id", "user_id", "group_id", "attachments"),
+    ),
+    WorkstepTool(
+        name="workstep_upload_channel_attachment", description="Upload a user-authorized local attachment into a project for channel delivery.",
+        method="POST", path="/api/fs/upload/file",
+        parameters={key: {"type":"string"} for key in ("project_id", "filename", "data_url")},
+        required=("project_id", "filename", "data_url"), read_only=False, side_effect="save attachment to project uploads",
+        query_params=("project_id",), body_params=("filename", "data_url"),
     ),
     WorkstepTool(
         name="workstep_list_engines",

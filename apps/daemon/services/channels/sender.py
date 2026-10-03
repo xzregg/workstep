@@ -48,7 +48,7 @@ class ChannelMessageSender:
             return results
         return {'sessions': await self._projects.run_db(project_id, read)}
 
-    async def send(self, project_id, text, session_id=None, bot_id=None, user_id=None, group_id=None):
+    async def send(self, project_id, text, session_id=None, bot_id=None, user_id=None, group_id=None, attachments=None):
         from services.channels.bots import IncomingMessage
 
         if self._projects.get_project_by_id(project_id) is None:
@@ -86,10 +86,20 @@ class ChannelMessageSender:
         if not bot['enabled'] or adapter is None:
             raise RuntimeError('机器人未启用或尚未连接')
         message_id = str(uuid.uuid4())
-        await adapter.send_text(IncomingMessage(
+        recipient = IncomingMessage(
             bot_id=bot_id, message_id=message_id, conversation_type=conversation_type,
             conversation_id=conversation_id, sender_id=user_id or '', text='',
-        ), text)
+        )
+        from services.channels.base import ChannelAdapter
+        if isinstance(adapter, ChannelAdapter):
+            from services.channels.media import outgoing_content
+            project = self._projects.get_project_by_id(project_id)
+            outgoing = await outgoing_content(project, adapter, text, attachments or ())
+            await adapter.send(recipient, outgoing)
+        elif attachments:
+            raise ValueError('渠道不支持附件')
+        else:
+            await adapter.send_text(recipient, text)
         return {'ok': True, 'sent': True, 'message_id': message_id, 'bot_id': bot_id,
                 'platform': bot['platform'], 'conversation_type': conversation_type,
                 'conversation_id': conversation_id}

@@ -8,17 +8,20 @@ import uuid
 
 from aibot import WSClient, WSClientOptions
 
-from services.channels.bots import IncomingMessage
+from services.channels.base import ChannelAdapter, ChannelCapabilities, ChannelAttachment, IncomingMessage, OutgoingMessage
+from services.channels.media import fetch_media
 
 
 logger = logging.getLogger(__name__)
 
 
-class WeComAdapter:
+class WeComAdapter(ChannelAdapter):
+    CHANNEL_ID = 'wecom'
+    DISPLAY_NAME = '企业微信'
+    CAPABILITIES = ChannelCapabilities(receive=frozenset({'text','image','file'}), send=frozenset({'text','image','file'}), waiting=True)
+
     def __init__(self, bot: dict, on_message, on_state):
-        self._bot = bot
-        self._on_message = on_message
-        self._on_state = on_state
+        super().__init__(bot, on_message, on_state)
         self._client: WSClient | None = None
         self._task: asyncio.Task | None = None
         self._stopped = False
@@ -56,6 +59,9 @@ class WeComAdapter:
                 self._last_error = str(_error or "") or "企业微信连接失败"
                 await self._on_state("error", self._last_error)
 
+        @client.on("message.file")
+        @client.on("message.image")
+        @client.on("message.mixed")
         @client.on("message.text")
         async def text_message(frame):
             body = frame.get("body") or {}
@@ -63,6 +69,16 @@ class WeComAdapter:
             sender_id = str(sender.get("userid") or "")
             is_group = body.get("chattype") == "group"
             conversation_id = str(body.get("chatid") or "") if is_group else sender_id
+            items = (body.get('mixed') or {}).get('msg_item', []) if body.get('msgtype') == 'mixed' else [body]
+            attachments = []
+            texts = []
+            for item in items:
+                kind = item.get('msgtype') or ('text' if item.get('text') else '')
+                if kind == 'text':
+                    texts.append(str((item.get('text') or {}).get('content') or ''))
+                elif kind in {'image','file'}:
+                    media = item.get(kind) or {}
+                    attachments.append(ChannelAttachment(kind=kind, name=media.get('filename') or media.get('name') or '', reference=media))
             message = IncomingMessage(
                 bot_id=self._bot["id"],
                 message_id=str(body.get("msgid") or ""),
@@ -70,7 +86,8 @@ class WeComAdapter:
                 conversation_id=conversation_id,
                 sender_id=sender_id,
                 sender_name=sender_id,
-                text=str((body.get("text") or {}).get("content") or ""),
+                text="\n".join(texts),
+                attachments=tuple(attachments),
                 reply_context=frame,
             )
             await self._on_message(message)
@@ -117,7 +134,7 @@ class WeComAdapter:
         if frame:
             await self._client.reply_stream(frame, self._stream_id(message), "", finish=False)
 
-    async def send_text(self, message: IncomingMessage, text: str) -> None:
+    async def _send_text(self, message: IncomingMessage, text: str) -> None:
         if not self._client:
             raise RuntimeError("企业微信机器人未连接")
         frame = self._reply_frame(message)
@@ -130,3 +147,25 @@ class WeComAdapter:
         await self._client.send_message(message.conversation_id, {
             "msgtype": "markdown", "markdown": {"content": text},
         })
+
+
+    async def send(self, recipient: IncomingMessage, message: OutgoingMessage) -> None:
+        self.validate_outgoing(message)
+        if not self._client:
+            raise RuntimeError("企业微信机器人未连接")
+        # Upload every attachment before delivering any part of the message.
+        from services.channels.wecom_media import upload_media
+        media = [(attachment.kind, await upload_media(self._client, attachment)) for attachment in message.attachments]
+        if message.text:
+            await self._send_text(recipient, message.text)
+        for kind, media_id in media:
+            await self._client.send_message(recipient.conversation_id, {'msgtype':kind, kind:{'media_id':media_id}})
+
+    async def download(self, attachment: ChannelAttachment) -> tuple[bytes, str]:
+        reference = attachment.reference
+        data = await fetch_media(reference.get('url') or '', self.CAPABILITIES.limit(attachment.kind) + 32, ('qq.com','qpic.cn','weixin.qq.com','myqcloud.com'))
+        key = reference.get('aeskey')
+        if key:
+            from aibot.crypto_utils import decrypt_file
+            data = await asyncio.to_thread(decrypt_file, data, key)
+        return data, attachment.name

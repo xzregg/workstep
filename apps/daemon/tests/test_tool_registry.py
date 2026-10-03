@@ -35,6 +35,7 @@ def test_registry_defines_expected_tool_set():
         "workstep_list_channel_bots",
         "workstep_list_channel_sessions",
         "workstep_send_channel_message",
+        "workstep_upload_channel_attachment",
         "workstep_create_project",
         "workstep_create_task",
         "workstep_list_schedules",
