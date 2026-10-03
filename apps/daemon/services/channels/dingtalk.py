@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import time
+import uuid
 from urllib.parse import quote_plus
 
 import aiohttp
@@ -93,7 +94,7 @@ class DingTalkAdapter(ChannelAdapter):
     CHANNEL_ID = 'dingtalk'
     DISPLAY_NAME = '钉钉'
     CAPABILITIES = ChannelCapabilities(receive=frozenset({'text','image','file'}), send=frozenset({'text','image','file'}),
-        file_extensions=frozenset({'xlsx','pdf','zip','rar','doc','docx'}), cards=True)
+        file_extensions=frozenset({'xlsx','pdf','zip','rar','doc','docx'}), cards=True, streaming=True)
 
     def __init__(self, bot: dict, on_message, on_state):
         super().__init__(bot, on_message, on_state)
@@ -102,6 +103,7 @@ class DingTalkAdapter(ChannelAdapter):
         self._token_expires_at = 0.0
         self._token_lock = asyncio.Lock()
         self._action_tasks = set()
+        self._reply_cards = {}
         self._client = DingTalkStreamClient(Credential(bot["app_id"], bot["secret"]))
         self._client.register_callback_handler(
             ChatbotMessage.TOPIC, _MessageHandler(bot["id"], on_message),
@@ -112,6 +114,7 @@ class DingTalkAdapter(ChannelAdapter):
         self._task = asyncio.create_task(self._run())
 
     async def stop(self) -> None:
+        self._reply_cards.clear()
         for task in tuple(self._action_tasks):
             task.cancel()
         if self._action_tasks:
@@ -247,6 +250,22 @@ class DingTalkAdapter(ChannelAdapter):
     async def update_card(self, recipient: IncomingMessage, card: ChannelCard) -> None:
         await self._card_api('PUT', {'outTrackId':card.id,'cardData':{'cardParamMap':self._card_data(card)}})
 
+    def _reply_key(self, recipient: IncomingMessage) -> str:
+        return uuid.uuid5(uuid.NAMESPACE_URL, f'workstep:dingtalk:reply:{recipient.bot_id}:{recipient.conversation_id}:{recipient.message_id}').hex
+
+    def release_reply(self, message: IncomingMessage) -> None:
+        self._reply_cards.pop(self._reply_key(message), None)
+
+    async def update_reply(self, message: IncomingMessage, text: str) -> None:
+        key = self._reply_key(message)
+        card_id = self._reply_cards.get(key) or uuid.uuid4().hex
+        card = ChannelCard(card_id, 'WorkStep', text)
+        if key in self._reply_cards:
+            await self.update_card(message, card)
+        else:
+            await self.send_card(message, card)
+            self._reply_cards[key] = card_id
+
     async def _card_action(self, click):
         if self._on_action is None:
             return
@@ -289,7 +308,17 @@ class DingTalkAdapter(ChannelAdapter):
                     prepared.append(('sampleFile', {'mediaId':result['media_id'],'fileName':attachment.name,
                         'fileType':Path(attachment.name).suffix.lower().lstrip('.')}))
         if message.text:
-            await self._send_text(recipient, message.text)
+            card_id = self._reply_cards.get(self._reply_key(recipient))
+            if card_id:
+                try:
+                    await self.update_card(recipient, ChannelCard(card_id, 'WorkStep', message.text))
+                except Exception:
+                    logger.warning('DingTalk progress card update failed; sending full result', exc_info=True)
+                    await self._send_text(recipient, message.text)
+                finally:
+                    self.release_reply(recipient)
+            else:
+                await self._send_text(recipient, message.text)
         for msg_key, msg_param in prepared:
             await self._send_active(recipient, '', msg_key=msg_key, msg_param=msg_param)
 

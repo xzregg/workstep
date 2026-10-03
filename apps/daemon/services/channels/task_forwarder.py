@@ -212,10 +212,9 @@ class ChannelTaskForwarder:
             outgoing = replace(outgoing, text=text.replace(full_text, prepared.text, 1), attachments=prepared.attachments)
         await adapter.send(recipient, outgoing)
 
-    async def _progress(self, adapter, recipient, state, text, streaming):
+    async def _progress(self, adapter, recipient, state, text):
         try:
-            operation = adapter.update_reply(recipient, text) if streaming else self._send(adapter, recipient, state.key[0], text)
-            await asyncio.wait_for(operation, 5)
+            await asyncio.wait_for(adapter.update_reply(recipient, text), 5)
             return True
         except Exception:
             logger.warning('Task channel progress failed; final delivery will retry %s', state.key, exc_info=True)
@@ -225,18 +224,26 @@ class ChannelTaskForwarder:
         wake = asyncio.Event()
         state.wakes.append(wake)
         sent = ''
+        adapter = recipient = None
         prefix = '@' + title + '\n'
         try:
             destination = await self._recipient(state, bot_id, group_id)
             if destination is None:
                 return
             adapter, recipient = destination
-            streaming = bool(recipient.reply_context and getattr(getattr(adapter, 'CAPABILITIES', None), 'streaming', False))
-            progress_active = await self._progress(adapter, recipient, state, prefix + '正在执行…', streaming)
+            supports_streaming = getattr(adapter, 'supports_streaming_reply', None)
+            streaming = supports_streaming(recipient) if supports_streaming else bool(recipient.reply_context and getattr(getattr(adapter, 'CAPABILITIES', None), 'streaming', False))
+            progress_active = streaming and await self._progress(adapter, recipient, state, prefix + '正在执行…')
             interval = min(self._interval, .5) if streaming else self._interval
             last_sent = asyncio.get_running_loop().time() - interval if streaming else asyncio.get_running_loop().time()
             revision = 0
             while True:
+                if not progress_active and not state.status:
+                    # Platforms without editable replies receive only the final body.
+                    # Do not repeatedly reload disk configuration for every chunk.
+                    wake.clear()
+                    await wake.wait()
+                    continue
                 if not state.status and state.revision == revision:
                     wake.clear()
                     await wake.wait()
@@ -257,15 +264,13 @@ class ChannelTaskForwarder:
                 if state.status:
                     text = await self._final_text(state)
                     suffix = {'succeeded':'已完成', 'stopped':'已停止', 'cancelled':'已停止'}.get(state.status, '执行失败' + ('：' + state.error if state.error else ''))
-                    remainder = text if streaming or not text.startswith(sent) else text[len(sent):]
-                    final = prefix + (remainder + '\n\n' if remainder else '') + suffix
+                    final = prefix + (text + '\n\n' if text else '') + suffix
                     await asyncio.wait_for(self._send(adapter, recipient, state.key[0], final, full_text=text), 30)
                     return
                 text = state.text
                 revision = state.revision
                 if progress_active and text and text != sent:
-                    delta = text if streaming or not text.startswith(sent) else text[len(sent):]
-                    progress_active = await self._progress(adapter, recipient, state, prefix + delta, streaming)
+                    progress_active = await self._progress(adapter, recipient, state, prefix + text)
                     if progress_active:
                         sent = text
                     last_sent = asyncio.get_running_loop().time()
@@ -278,4 +283,6 @@ class ChannelTaskForwarder:
                                      'value':{'message_id':state.key[2], 'bot_id':bot_id, 'group_id':group_id,
                                               'error':'任务消息推送失败，请检查机器人连接及发送权限。'}})
         finally:
+            if isinstance(adapter, ChannelAdapter) and recipient is not None:
+                adapter.release_reply(recipient)
             state.wakes.remove(wake)
