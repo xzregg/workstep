@@ -324,9 +324,13 @@ async def _share_git_result(operation):
 @router.get("/git/workspace")
 async def read_platform_share_git_workspace(request: Request):
     workspace = await _share_git_workspace(_share_scope(request))
-    return {"worktrees": [{key: tree.get(key) for key in (
-        "id", "alias", "repository_name", "branch",
-    )} for tree in workspace["worktrees"] if _GIT_TREE_ID.fullmatch(str(tree.get("id", "")))]}
+    return {"path": "workspace:", "relative_path": "workspace:", "worktrees": [{
+        **{key: tree.get(key) for key in ("id", "alias", "repository_name", "branch", "head")},
+        "path": "workspace:" + str(tree.get("alias", "")),
+        "relative_path": "workspace:" + str(tree.get("alias", "")),
+        "available": True, "main": False, "locked": False, "prunable": False,
+    } for tree in workspace["worktrees"] if _GIT_TREE_ID.fullmatch(str(tree.get("id", "")))]}
+
 
 
 @router.get("/git/worktrees/{tree_id}/status")
@@ -473,24 +477,36 @@ async def sync_platform_share_git(request: Request, tree_id: str, action: str,
 @router.get("/task")
 async def read_platform_share_task(request: Request):
     scope = _share_scope(request)
-    from main import task_service
-    if task_service is None:
-        raise HTTPException(status_code=503, detail="Service not initialized")
+    from services.share import load_shared_task
     task = await _run_db(
         scope["host_project_id"],
-        lambda: task_service.get_task(scope["task_id"]),
+        lambda: load_shared_task(scope["task_id"]),
     )
     if task is None or task.get("id") != scope["task_id"]:
         raise HTTPException(status_code=404, detail="Task unavailable")
-    public = {key: task.get(key) for key in (
-        "id", "title", "description", "status", "created_at", "updated_at",
-        "creator_name",
-    )}
-    public["steps"] = [
-        {key: step.get(key) for key in ("step_key", "status", "has_history")}
-        for step in task.get("steps", [])
-    ]
-    return public
+    if task.get('workflow') and isinstance(task['workflow'].get('steps'), dict):
+        workflow = task['workflow']['steps']
+        # Preserve graph/prompt viewing without exposing engine configuration,
+        # credentials, task-dispatch target IDs or host filesystem paths.
+        workflow['nodes'] = [{key: node[key] for key in (
+            'id', 'key', 'type', 'title', 'label', 'color', 'prompt', 'engine', 'model', 'inputs', 'outputs',
+        ) if key in node} for node in workflow.get('nodes', [])]
+        workflow.pop('config', None)
+    return task
+
+
+@router.get('/execution-report')
+async def read_platform_share_execution_report(request: Request):
+    scope = _share_scope(request)
+    from main import project_manager
+    from services.config import config_store
+    from services.task_execution_report import build_task_execution_report
+    pricing = await asyncio.to_thread(config_store.get_model_pricing)
+    report = await project_manager.run_db(scope['host_project_id'], lambda project:
+        build_task_execution_report(scope['task_id'], pricing=pricing, project=project))
+    if report is None:
+        raise HTTPException(status_code=404, detail='Task unavailable')
+    return report
 
 
 @router.post("/steps/{step_key}/message")
@@ -550,7 +566,7 @@ async def read_platform_share_reviews(request: Request):
     def load(_project):
         rows = list(ReviewRun.select(
             ReviewRun.id, ReviewRun.step_key, ReviewRun.report_json,
-            ReviewRun.started_at,
+            ReviewRun.started_at, ReviewRun.mode, ReviewRun.status,
         ).where(
             (ReviewRun.task == scope["task_id"])
             & (ReviewRun.mode == "manual")
@@ -558,7 +574,7 @@ async def read_platform_share_reviews(request: Request):
         ).order_by(ReviewRun.started_at.desc(), ReviewRun.id.desc()).limit(100))
         return [{"id": row.id, "step_key": row.step_key,
                  "report": json.loads(row.report_json) if row.report_json else None,
-                 "started_at": row.started_at} for row in rows]
+                 "started_at": row.started_at, "mode": row.mode, "status": row.status} for row in rows]
 
     return {"reviews": await project_manager.run_db(scope["host_project_id"], load)}
 
@@ -615,30 +631,28 @@ async def read_platform_share_history_page(request: Request, offset: int):
 
 async def _history_page(request: Request, offset: int):
     scope = _share_scope(request)
-    from models import Message
+    from services.share import load_shared_history
 
     def load(_project):
-        rows = list(Message.select(
-            Message.id, Message.role, Message.content, Message.step_key,
-            Message.run_status, Message.created_at,
-        ).where(
-            (Message.task == scope["task_id"])
-            & (Message.channel == "execution")
-        ).order_by(Message.sequence.desc(), Message.created_at.desc()).limit(101).offset(offset))
-        has_more = len(rows) > 100
-        messages = [{
-            "id": message.id, "role": message.role,
-            "content": (message.content or "")[:65536],
-            "truncated": len(message.content or "") > 65536,
-            "step_key": message.step_key, "run_status": message.run_status,
-            "created_at": message.created_at,
-        } for message in reversed(rows[:100])]
-        return {"messages": messages, "next_offset": offset + 100 if has_more else None}
+        messages = load_shared_history(scope['task_id'], limit=101, offset=offset, mode=scope['mode'])
+        has_more = len(messages) > 100
+        # The loader returns chronological order; the extra row is oldest.
+        messages = messages[-100:]
+        for message in messages:
+            content = message.get('content') or ''
+            message['content'] = content[:65536]
+            message['truncated'] = len(content) > 65536
+            message['events'] = message.get('events', [])[-2000:]
+        return {'messages': messages, 'next_offset': offset + 100 if has_more else None}
 
     from main import project_manager
     if project_manager is None:
         raise HTTPException(status_code=503, detail="Service not initialized")
-    return await project_manager.run_db(scope["host_project_id"], load)
+    result = await project_manager.run_db(scope["host_project_id"], load)
+    if scope['mode'] == 'interactive':
+        from services.intervention import intervention_manager
+        result['interventions'] = intervention_manager.list_pending_for_task(scope['task_id'])
+    return result
 
 
 @router.get("/events/{message_id}/{cursor}")
@@ -670,3 +684,7 @@ async def read_platform_share_events(request: Request, message_id: str, cursor: 
         return page
 
     return await project_manager.run_db(scope["host_project_id"], load)
+
+from api.platform_share_git_read import router as git_read_router
+# The parent router already supplies /api/platform-share.
+router.include_router(git_read_router, prefix='')

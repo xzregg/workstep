@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import time
 from urllib.parse import unquote
 
 from workstep_gateway_protocol import (FrameType, ProxyFrame,
@@ -18,7 +19,7 @@ def _provider_scope(start: dict):
         return None, None
     if (not isinstance(ids, list) or len(ids) > 1000
             or any(not isinstance(item, str) or not 1 <= len(item) <= 128 for item in ids)
-            or type(expires) is not int):
+            or type(expires) is not int or expires > int(time.time()) + 300):
         raise ValueError("Invalid managed provider scope")
     return frozenset(ids), expires
 
@@ -83,7 +84,8 @@ class ManagedHttpBridge:
                         or not self.gateway_id
                         or any(self.start.get(name) is not None for name in (
                             "user_id", "username", "display_name", "project_id",
-                            "access_level")) or task_create is not False):
+                            "access_level", "provider_ids",
+                            "provider_grant_expires_at")) or task_create is not False):
                     raise ValueError("Invalid managed share request")
                 share_scope = verify_share_ticket(
                     share_ticket, self.gateway_key, self.gateway_fingerprint,
@@ -119,6 +121,11 @@ class ManagedHttpBridge:
                     continue
                 headers.append((name.encode("ascii"), pair[1].encode("latin1")))
             provider_ids, provider_expires = _provider_scope(self.start)
+            if share_scope is not None:
+                # Visitor authorization is task-scoped; supplier grants come
+                # from the pinned signed ticket, never from frame overrides.
+                provider_ids = frozenset(share_scope.get('provider_ids', []))
+                provider_expires = share_scope.get('provider_grant_expires_at')
             actor = ManagedActor(user_id, username, self.device_id, "gateway-remote", 0,
                                  project_id, access_level, task_create, display_name,
                                  provider_ids, provider_expires)

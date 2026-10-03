@@ -58,6 +58,8 @@ export interface SharedTask {
 }
 
 export const shareApi = {
+  gitRequest: <T,>(token: string, sessionToken: string, path: string, options?: RequestInit) =>
+    shareRequest<T>(path.replace(/^\/git/, `/task-share/public/${encodeURIComponent(token)}/git`), sessionToken, options),
   meta: (token: string) =>
     request<ShareMeta>(`/task-share/public/${encodeURIComponent(token)}/meta`),
   unlock: (token: string, password: string) =>
@@ -223,4 +225,11 @@ export const shareApi = {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     return `${protocol}//${window.location.host}/ws/share?session=${encodeURIComponent(sessionToken)}`
   },
+}
+
+export type SharedTaskApi = Omit<typeof shareApi, 'buildWsUrl'> & {
+  gitWorkspaceEditable?: boolean
+  gitAllowedActions?: readonly string[]
+  buildWsUrl: (sessionToken: string) => string | null
+  restoreSession?: (token: string) => Promise<{ session_token: string }>
 }

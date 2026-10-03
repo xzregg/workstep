@@ -46,7 +46,6 @@ test('task detail keeps review actions in content and has no duplicate footer ac
   assert.doesNotMatch(taskDetail, /resolveTaskDetailAdvanceState/)
   assert.doesNotMatch(sharedView, /resolveTaskDetailAdvanceState/)
   assert.doesNotMatch(sharedView, /primaryAction/)
-  assert.doesNotMatch(sharedView, /onReviewAction/)
   assert.match(sharedView, /chatEnabled=\{interactive\}/)
 })
 

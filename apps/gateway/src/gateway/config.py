@@ -13,6 +13,7 @@ class GatewaySettings(BaseSettings):
     port: int = Field(default=8766, ge=1, le=65535)
     data_dir: Path = Path.home() / ".workstep-gateway"
     web_dist: Path | None = None
+    workspace_web_dist: Path | None = None
     database_url: str | None = None
     directory_reconcile_seconds: int = Field(default=21600, ge=60)
     gateway_id: str = Field(default="local-development", min_length=1)

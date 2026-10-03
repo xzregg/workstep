@@ -241,8 +241,12 @@ async def proxy_remote_request(request: Request):
                 task_create=task_create,
                 authorization_check=authorize_stream,
             )
+        async def authorize_pc_stream():
+            await _check_provider_grants(request, device_id, user.id, provider_ids)
+            await _active_access(request, user.id, device_id)
+
         return await connection.proxy_http(
-            request, user_id=user.id, username=user.username,
+            request, authorization_check=authorize_pc_stream, user_id=user.id, username=user.username,
             display_name=user.display_name, provider_ids=provider_ids,
             provider_grant_expires_at=provider_grant_expires_at,
         )
@@ -284,8 +288,14 @@ async def proxy_remote_websocket(ws: WebSocket, path: str):
             )
             return
         connection = await ws.app.state.control_connections.request_data(device_id)
+        async def authorize_pc_stream():
+            await _check_provider_grants(ws, device_id, user.id, provider_ids)
+            current_user, current_device, current_session, _ = await _remote_identity(ws)
+            if current_user.id != user.id or current_device != device_id or current_session.project_id:
+                raise HTTPException(status_code=403, detail="Device session revoked")
+
         await connection.proxy_websocket(
-            ws, user_id=user.id, username=user.username,
+            ws, authorization_check=authorize_pc_stream, user_id=user.id, username=user.username,
             display_name=user.display_name, provider_ids=provider_ids,
             provider_grant_expires_at=provider_grant_expires_at,
         )

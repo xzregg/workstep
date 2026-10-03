@@ -1,4 +1,4 @@
-import { useGitApi } from './GitApiContext'
+import { useGitApi, useGitActionAllowed } from './GitApiContext'
 import { useEffect, useRef, useState } from 'react'
 import { type GitRemotes, type GitStatus } from '../../api/git'
 import { useGitStore } from '../../stores/gitStore'
@@ -9,6 +9,7 @@ import { usePanelGitWrites } from './gitPanelWrites'
 
 export default function GitRemoteActions({ status, readOnly, onRefresh, onBusy }: { status: GitStatus; readOnly: boolean; onRefresh: () => Promise<void>; onBusy: (busy: boolean) => void }) {
   const gitApi = useGitApi()
+  const can = useGitActionAllowed()
   const writes = usePanelGitWrites()
   const { t } = useI18n()
   const root = useRef<HTMLSpanElement>(null)
@@ -105,7 +106,7 @@ export default function GitRemoteActions({ status, readOnly, onRefresh, onBusy }
         <span className="git-remote-route"><small>{t('git.syncRoute')}</small><strong>{route}</strong>{inventory?.upstream && <small>{t('git.currentUpstream', { upstream: `${inventory.upstream.remote}/${inventory.upstream.branch}` })}</small>}</span>
         <label className="git-remote-track"><input type="checkbox" checked={setUpstream} onChange={event => setSetUpstream(event.target.checked)} /> <span>{t('git.setUpstream')}<small>{t('git.setUpstreamHint')}</small></span></label>
         {error && <span className="git-remote-error" role="alert">{error}</span>}
-        <span className="git-remote-panel__actions"><Button size="sm" loading={loading} disabled={!remote || !!busy || writes.busy} onClick={() => void refreshRemote()}><Icon name="refresh" size={13} />{t('git.fetchRemote')}</Button><Button size="sm" variant="primary" loading={!!busy} disabled={!remote || !targetBranch.trim() || !!loading || writes.busy} onClick={() => void run(mode)}>{mode === 'push' ? t('git.pushConfirm') : t('git.pullConfirm')}</Button></span>
+        <span className="git-remote-panel__actions">{can('fetchRemote') && <Button size="sm" loading={loading} disabled={!remote || !!busy || writes.busy} onClick={() => void refreshRemote()}><Icon name="refresh" size={13} />{t('git.fetchRemote')}</Button>}<Button size="sm" variant="primary" loading={!!busy} disabled={!remote || !targetBranch.trim() || !!loading || writes.busy} onClick={() => void run(mode)}>{mode === 'push' ? t('git.pushConfirm') : t('git.pullConfirm')}</Button></span>
       </>}
     </span>}
     {notice && <span className={`git-remote-toast git-remote-toast--${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'}><span className="git-remote-toast__icon"><Icon name={notice.kind === 'success' ? 'check' : 'x'} size={14} /></span><span><strong>{notice.title}</strong><small>{notice.detail}</small></span><Button variant="icon" aria-label={t('git.close')} onClick={() => setNotice(null)}><Icon name="x" size={13} /></Button></span>}

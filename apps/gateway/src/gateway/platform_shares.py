@@ -19,8 +19,9 @@ from sqlalchemy import select, update
 from .identity import COOKIE_NAME, IdentityService
 from .identity_api import _check_csrf
 from .models import (AdminAssignment, AuditEvent, CapabilityAssignment, Device,
-                     PlatformProject, PlatformShare, PlatformShareSession)
+                     PlatformProject, PlatformShare, PlatformShareSession, User)
 from .project_access_api import effective_project_access
+from .providers_api import compiled_provider_access
 
 router = APIRouter(prefix="/api")
 SHARE_SESSION_COOKIE = "platform_share_session"
@@ -427,6 +428,11 @@ async def public_share_task(request: Request, token: str):
     return await _proxy_share_request(request, token, "/api/platform-share/task")
 
 
+@router.get('/public/shares/{token}/execution-report')
+async def public_share_execution_report(request: Request, token: str):
+    return await _proxy_share_request(request, token, '/api/platform-share/execution-report')
+
+
 @router.get("/public/shares/{token}/host-status")
 async def public_share_host_status(request: Request, token: str):
     from fastapi.responses import JSONResponse
@@ -515,6 +521,13 @@ async def public_share_upload_content(request: Request, token: str, filename: st
     response.headers["Content-Security-Policy"] = "sandbox"
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response
+
+
+@router.get("/public/shares/{token}/git/read/{action}/{encoded}")
+async def public_share_git_read(request: Request, token: str, action: str, encoded: str):
+    if action not in {"repositories", "history", "changes", "diff", "blame", "remotes", "browse", "preview", "content"} or not re.fullmatch(r"[0-9a-f]{2,16384}", encoded):
+        raise HTTPException(404, "Git view unavailable")
+    return await _proxy_share_request(request, token, f"/api/platform-share/git/read/{action}/{encoded}")
 
 
 @router.get("/public/shares/{token}/git/workspace")
@@ -648,6 +661,15 @@ async def public_share_intervention_response(request: Request, token: str,
     )
 
 
+async def _interactive_provider_scope(request: Request, share: PlatformShare, project: PlatformProject) -> list[str]:
+    async with request.app.state.database.session() as session:
+        creator = await session.get(User, share.created_by_user_id)
+        if creator is None or creator.status != 'active' or not await can_create_platform_share(session, creator.id, project):
+            raise HTTPException(403, 'Share creator authorization revoked')
+    ids, _ = await compiled_provider_access(request.app.state.database, share.device_id, share.created_by_user_id)
+    return ids
+
+
 async def _proxy_share_request(request: Request, token: str, target_path: str,
                                *, write: bool = False,
                                interactive_read: bool = False,
@@ -677,12 +699,19 @@ async def _proxy_share_request(request: Request, token: str, target_path: str,
                 or current_project.host_project_id != project.host_project_id
                 or current.mode != share.mode):
             raise HTTPException(status_code=403, detail="Share changed")
+        if share.mode == 'interactive':
+            current_ids = await _interactive_provider_scope(request, current, current_project)
+            if set(provider_ids) - set(current_ids):
+                raise HTTPException(403, 'Share provider authorization revoked')
 
+    provider_ids = []
+    if share.mode == 'interactive':
+        provider_ids = await _interactive_provider_scope(request, share, project)
     ticket = request.app.state.gateway_signer.sign_platform_share_ticket(
         gateway_id=request.app.state.settings.gateway_id,
         device_id=share.device_id, share_id=share.id,
         project_id=share.project_id, host_project_id=project.host_project_id,
-        task_id=share.task_id, mode=share.mode,
+        task_id=share.task_id, mode=share.mode, provider_ids=provider_ids,
     )
     try:
         connection = await connections.request_data(share.device_id)

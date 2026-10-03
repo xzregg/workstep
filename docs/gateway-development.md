@@ -31,7 +31,7 @@ SQLite 可在服务运行时执行 `uv run --project apps/gateway python apps/ga
 
 本机验收可使用 HTTP：`http://localhost:8700`、回环 IP（如 `http://127.0.0.1:8700`、`http://[::1]:8700`）及 `.localhost` 子域。Gateway、受管包构建/验签、Desktop 登录与 daemon 连接共用这一规则；非回环地址仍要求 HTTPS。HTTP 使用 HttpOnly、SameSite Cookie，保留 CSRF 校验；HTTPS 的 Cookie 保留 Secure。设备票据绑定完整主机和端口，回环 IP 对应的设备入口生成 `d-<device-id>.localhost:8700`，控制和数据连接使用 WS，页面跳转与返回链接保留端口。
 
-8700 本机服务使用独立数据目录 `~/.workstep-gateway-acceptance/8700`。先在 `apps/gateway-web` 执行 `yarn build`，再从仓库根目录启动：
+8700 本机服务使用独立数据目录 `~/.workstep-gateway-acceptance/8700`。先在 `apps/gateway-web` 执行 `yarn build`，在 `apps/web` 执行 `yarn build:gateway-share`，再从仓库根目录启动：
 
 ```bash
 WORKSTEP_GATEWAY_DATA_DIR="$HOME/.workstep-gateway-acceptance/8700" \
@@ -39,6 +39,7 @@ WORKSTEP_GATEWAY_PUBLIC_ORIGIN=http://localhost:8700 \
 WORKSTEP_GATEWAY_GATEWAY_ID=local-acceptance-8700 \
 WORKSTEP_GATEWAY_PORT=8700 \
 WORKSTEP_GATEWAY_WEB_DIST="$PWD/apps/gateway-web/dist" \
+WORKSTEP_GATEWAY_WORKSPACE_WEB_DIST="$PWD/apps/web/dist-gateway-share" \
 uv run --project apps/gateway --no-sync uvicorn gateway.app:app --host 127.0.0.1 --port 8700
 ```
 
@@ -61,3 +62,11 @@ uv run --project apps/gateway --no-sync uvicorn gateway.app:app --host 127.0.0.1
 管理请求失败审计由 Gateway 统一记录认证用户、路由模板、方法与状态，不记录正文、查询或路径参数；持久化失败保留脱敏日志收据。项目任务创建、复制、归档、恢复与删除的审计同写操作事务提交；远程请求拒绝或失败归属可信票据绑定的项目。模型调用与报表等后续批次的验收仍按剩余计划推进。
 
 账本保留与归档：V1 默认不自动删除用量、账单、审计或幂等收据。日聚合队列处理完成后仅移除已处理队列项，原始账本仍保留，支持重建聚合和范围查询。归档使用一致性数据库备份并同时保存签名/加密密钥、配置和 Skills 文件；验明恢复可查询且可重建聚合后再按部署方明确保留期实施离线清理。不得直接以聚合完成为由删除明细或幂等收据。
+
+### 平台分享的任务详情复用
+
+`/share/{token}` 由 Gateway 提供原 WorkStep Web 的独立 `gateway-share` 构建；该构建以 `/workspace-assets/` 为资源基址，动态加载的 Markdown/Mermaid 资源也使用同一基址。配置 `WORKSTEP_GATEWAY_WORKSPACE_WEB_DIST` 指向 `apps/web/dist-gateway-share`，缺少构建时返回 503，不回退到重复的任务界面。门户内部导航到分享地址时重新加载这个服务端入口。
+
+实际查看模块仍为 `SharedTaskView → TaskDetailPage`；`gatewayShareApi` 只替换传输，使用 Gateway 访客 Cookie/CSRF，不获取宿主全局 API 或 WebSocket。会话可恢复；没有公开分享 WebSocket 时每两秒串行刷新任务、最近历史和审核，已翻页历史与展开事件保留，撤权立即清除内容。读取包括执行报告、产物、任务限定 Git 历史/差异/目录；目录路径使用 `workspace:` 虚拟前缀，不返回主机绝对路径，隐藏文件、路径穿越及越界符号链接拒绝。
+
+互动分享沿用原聊天、审核确认和交互表单；仅显示已接通的 Git 操作，工作区增删、凭据设置、合并恢复和文件编辑不在当前分享能力中。内部分享票据携带创建者当前授权的供应商范围与五分钟期限，宿主保留 `share:<id>` 访客身份；停用创建者、撤销分享权限或供应商授权会终止请求。整机与项目隧道均重新检查授权；授权等待后再次核对每台设备 32 条流的容量上限，防止并发请求越过限额。

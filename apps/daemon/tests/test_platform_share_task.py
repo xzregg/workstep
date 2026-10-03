@@ -107,8 +107,9 @@ async def test_platform_share_git_workspace_rechecks_task_and_hides_host_paths(a
     assert time.monotonic() - started < 0.5
     code, workspace = await pending
     assert code == 200
-    assert workspace == {"worktrees": [{"id": "a" * 24, "alias": "app",
-                                      "repository_name": "App", "branch": "feature"}]}
+    assert workspace["path"] == "workspace:"
+    assert workspace["worktrees"][0]["path"] == "workspace:app"
+    assert workspace["worktrees"][0]["alias"] == "app"
     assert "/private/host" not in json.dumps(workspace)
     path = f"/api/platform-share/git/worktrees/{'a' * 24}/status"
     code, result = await read(path)
@@ -117,6 +118,24 @@ async def test_platform_share_git_workspace_rechecks_task_and_hides_host_paths(a
     assert len(result["files"]) == 1 and result["files"][0]["old_path"] is None
     assert "/private/host" not in json.dumps(result)
     assert (await read(path, task_id=task_ids[1]))[0] == 404
+    async def history(tree_id, ref, offset):
+        assert (tree_id, ref, offset) == ('a' * 24, None, 0)
+        return {"commits": [{"hash": 'c' * 40, "author": "Viewer", "time": 1, "message": "Initial", "parents": []}], "has_more": False}
+    monkeypatch.setattr(git_service, "history", history)
+    encoded = json.dumps({"tree_id": 'a' * 24, "offset": "0"}).encode().hex()
+    code, history_result = await read(f"/api/platform-share/git/read/history/{encoded}")
+    assert code == 200
+    assert history_result["commits"][0]["message"] == "Initial"
+    assert (await read(f"/api/platform-share/git/read/history/{encoded}", task_id=task_ids[1]))[0] == 404
+    invalid = json.dumps({"tree_id": 'a' * 24, "path": "../private"}).encode().hex()
+    assert (await read(f"/api/platform-share/git/read/diff/{invalid}"))[0] == 404
+    async def remotes(tree_id):
+        return {"remotes": [{"name": "origin", "url": "https://secret@host/repo", "push_url": "/host/repo", "branches": [{"name": "main", "head": "a" * 40}]}], "upstream": {"remote": "origin", "branch": "main"}, "fetched_at": None}
+    monkeypatch.setattr(git_service, "remotes", remotes)
+    code, remote_result = await read(f"/api/platform-share/git/read/remotes/{encoded}")
+    assert code == 200
+    assert remote_result["remotes"][0]["name"] == "origin"
+    assert 'secret' not in json.dumps(remote_result) and '/host/repo' not in json.dumps(remote_result)
     branch_entered = threading.Event()
 
     async def branches(tree_id):
@@ -408,14 +427,14 @@ async def test_platform_share_task_read_scope_and_slow_db_health(api_context, mo
 
     monkeypatch.setattr(project.db, "execute_sql", slow_execute)
 
-    async def request_share(credential):
+    async def request_share(credential, path='/api/platform-share/task'):
         frames = []
 
         async def capture(frame):
             frames.append(frame)
 
         bridge = ManagedHttpBridge(main.app, "share-task", {
-            "method": "GET", "path": "/api/platform-share/task", "query": "",
+            "method": "GET", "path": path, "query": "",
             "headers": [], "share_ticket": credential,
         }, capture, "device-1", gateway_key=key,
             gateway_fingerprint=fingerprint, gateway_id="gateway-1")
@@ -441,10 +460,16 @@ async def test_platform_share_task_read_scope_and_slow_db_health(api_context, mo
     assert body["title"] == "Visible title"
     assert body["description"] == "Visible description"
     assert "cwd" not in body
-    assert "engine" not in body
+    assert body['engine'] == created.json()['engine']
+    assert body['workflow']['id'] == workflow_id
+    assert 'session_id' not in str(body['steps'])
+    assert all('config' not in node for node in body['workflow']['steps'].get('nodes', []))
     assert body["steps"]
-    assert all(set(step) == {"step_key", "status", "has_history"}
+    assert all({'step_key', 'status', 'has_history'}.issubset(step)
                for step in body["steps"])
+    report_status, report = await request_share(ticket, '/api/platform-share/execution-report')
+    assert report_status == 200
+    assert isinstance(report['summary']['run_count'], int)
 
 
 @pytest.mark.anyio
@@ -642,6 +667,8 @@ async def test_platform_share_review_is_task_scoped_and_slow_sql_keeps_health(ap
     status, reviews = await pending
     assert status == 200
     assert [review["id"] for review in reviews["reviews"]] == ["review-0"]
+    assert reviews["reviews"][0]["status"] == "pending"
+    assert reviews["reviews"][0]["mode"] == "manual"
     assert "summary-1" not in json.dumps(reviews)
 
     route = "/api/platform-share/steps/build/review/approve"
@@ -679,7 +706,7 @@ async def test_platform_share_history_excludes_private_channel_and_slow_sql(api_
                                         (2, "coordinator", "Private planning")):
             Message.create(id=f"message-{index}", task=task_id, step_key="step-1",
                            channel=channel, sequence=index, position=index,
-                           role="assistant", content=content, created_at=utc_now())
+                           role="assistant", content=content, event_summary_json=json.dumps([{"type": "agent_message_chunk", "data": {"content": {"text": "summary"}}}]), created_at=utc_now())
 
     await main.project_manager.run_db(project_id, seed)
     monkeypatch.setattr(main.gateway_client, "managed_config", object())
@@ -724,6 +751,8 @@ async def test_platform_share_history_excludes_private_channel_and_slow_sql(api_
     assert status == 200
     assert [item["content"] for item in body["messages"]] == ["Visible message"]
     assert "Private planning" not in json.dumps(body)
+    assert body["messages"][0]["channel"] == "execution"
+    assert body["messages"][0]["events"][0]["type"] == "TEXT_MESSAGE_CHUNK"
 
 
 @pytest.mark.anyio
@@ -920,3 +949,57 @@ async def test_platform_share_artifacts_are_task_scoped_and_hide_host_paths(api_
     assert (await client.get("/api/health")).status_code == 200
     assert time.monotonic() - started < 0.5
     assert (await pending_preview)[0] == 200
+
+@pytest.mark.anyio
+async def test_platform_share_git_files_are_virtual_bound_and_slow_disk_does_not_block(api_context, monkeypatch):
+    import main
+    from pathlib import Path
+    from api import platform_share
+    client, tmp_path = api_context
+    root = tmp_path / 'workspace'; root.mkdir()
+    (root / 'README.md').write_text('shared content')
+    (root / '.secret').write_text('secret')
+    outside = tmp_path / 'private.txt'; outside.write_text('private')
+    (root / 'escape').symlink_to(outside)
+    async def workspace(scope):
+        assert scope['task_id'] == 'task-1'
+        return {'path': str(root), 'worktrees': []}
+    monkeypatch.setattr(platform_share, '_share_git_workspace', workspace)
+    monkeypatch.setattr(main.gateway_client, 'managed_config', object())
+    ticket, key, pin = _ticket()
+    async def read(action, path):
+        frames = []
+        async def capture(frame): frames.append(frame)
+        encoded = json.dumps({'path': path}).encode().hex()
+        bridge = ManagedHttpBridge(main.app, 'virtual-file', {'method': 'GET',
+            'path': f'/api/platform-share/git/read/{action}/{encoded}', 'query': '', 'headers': [],
+            'share_ticket': ticket}, capture, 'device-1', gateway_key=key,
+            gateway_fingerprint=pin, gateway_id='gateway-1')
+        bridge.start_task()
+        await bridge.feed(ProxyFrame(stream_id='virtual-file', type=FrameType.http_request, payload={'phase': 'end'}))
+        await asyncio.wait_for(bridge._task, 3)
+        body = b''.join(base64.b64decode(frame.payload['data']) for frame in frames if frame.payload.get('phase') == 'body')
+        return frames[0].payload['status'], body
+    status, body = await read('browse', 'workspace:')
+    assert status == 200
+    listing = json.loads(body)
+    assert [item['name'] for item in listing['entries']] == ['README.md']
+    assert str(tmp_path).encode() not in body
+    status, body = await read('preview', 'workspace:README.md')
+    assert status == 200 and json.loads(body)['content'] == 'shared content'
+    assert str(tmp_path).encode() not in body
+    assert (await read('content', 'workspace:README.md')) == (200, b'shared content')
+    for path in ['workspace:../private.txt', 'workspace:.secret', 'workspace:escape', str(outside)]:
+        assert (await read('preview', path))[0] == 404
+    original = Path.iterdir; entered = threading.Event()
+    def slow_iterdir(path):
+        if path == root:
+            entered.set(); time.sleep(.7)
+        return original(path)
+    monkeypatch.setattr(Path, 'iterdir', slow_iterdir)
+    pending = asyncio.create_task(read('browse', 'workspace:'))
+    assert await asyncio.to_thread(entered.wait, 2)
+    started = time.monotonic()
+    assert (await client.get('/api/health')).status_code == 200
+    assert time.monotonic() - started < .5
+    assert (await pending)[0] == 200

@@ -1,4 +1,4 @@
-import { useGitApi, useGitWorkspaceBrowser, useReadOnlyGit, useSharedGit } from './GitApiContext'
+import { useGitApi, useGitWorkspaceBrowser, useReadOnlyGit, useSharedGit, useGitWorkspaceEditable } from './GitApiContext'
 import { useEffect, useMemo, useState } from 'react'
 import { type GitDiscovery, type TaskGitWorkspace as Workspace } from '../../api/git'
 import { useGitStore } from '../../stores/gitStore'
@@ -17,6 +17,7 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
   const gitApi = useGitApi()
   const shared = useSharedGit()
   const readOnly = useReadOnlyGit()
+  const workspaceEditable = useGitWorkspaceEditable()
   const browseWorkspace = useGitWorkspaceBrowser()
   const { t } = useI18n()
   const { data, scan } = useGitStore()
@@ -66,13 +67,13 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
     let active = true
     setLoading(true)
     setError('')
-    void refreshRepositories().then(() => readOnly ? gitApi.taskWorkspace(projectId, taskId) : gitApi.openTaskWorkspace(projectId, taskId)).then(result => {
+    void refreshRepositories().then(() => (readOnly || !workspaceEditable) ? gitApi.taskWorkspace(projectId, taskId) : gitApi.openTaskWorkspace(projectId, taskId)).then(result => {
       if (active) setWorkspace(result)
     }).catch(reason => {
       if (active) setError(reason instanceof Error ? reason.message : String(reason))
     }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [projectId, taskId, scan, shared, readOnly, gitApi])
+  }, [projectId, taskId, scan, shared, readOnly, workspaceEditable, gitApi])
 
   useEffect(() => {
     if (!sourceTreeId) {
@@ -203,18 +204,18 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
       <small title={workspace?.relative_path || workspace?.path}>{workspace?.relative_path || workspace?.path}</small>
       <span className="git-grow" />
       {workspace?.path && project && <span className="git-open-location"><OpenLocationButton activeProject={project} directoryPath={workspace.path} buttonLabel={t('git.taskOpenWorkspaceDirectory')} browserProjectId={shared ? '' : projectId} forceWebBrowser={shared} browseDirectory={shared ? browseWorkspace : undefined} readOnlyBrowser={shared} t={t} /></span>}
-      {!readOnly && repositories.length > 0 && <Button size="sm" onClick={() => setShowAdd(value => !value)}>{t('git.taskAddRepository')}</Button>}
-      {!readOnly && settingsId && <Button className="git-settings-toggle" size="sm" aria-label={t('git.settings')} aria-expanded={settings} onClick={() => setSettings(value => !value)}><Icon name="settings" size={14} /><span>{t('git.settings')}</span></Button>}
+      {!readOnly && workspaceEditable && repositories.length > 0 && <Button size="sm" onClick={() => setShowAdd(value => !value)}>{t('git.taskAddRepository')}</Button>}
+      {!readOnly && workspaceEditable && settingsId && <Button className="git-settings-toggle" size="sm" aria-label={t('git.settings')} aria-expanded={settings} onClick={() => setSettings(value => !value)}><Icon name="settings" size={14} /><span>{t('git.settings')}</span></Button>}
       <Button size="sm" loading={loading} onClick={() => void refresh()}>{t('git.refresh')}</Button>
-      {!readOnly && <Button className="task-git-delete-workspace" size="sm" variant="danger" loading={deleteWorkspaceChecking} disabled={loading} onClick={() => void inspectWorkspaceBeforeDelete()}>{t('git.taskDeleteWorkspace')}</Button>}
+      {!readOnly && workspaceEditable && <Button className="task-git-delete-workspace" size="sm" variant="danger" loading={deleteWorkspaceChecking} disabled={loading} onClick={() => void inspectWorkspaceBeforeDelete()}>{t('git.taskDeleteWorkspace')}</Button>}
     </header>
     {error && <div className="git-error" role="alert">{error}</div>}
-    {!loading && !shared && !readOnly && discovery && !hasRootRepository && <div className="task-git-initialize">
+    {!loading && !shared && !readOnly && workspaceEditable && discovery && !hasRootRepository && <div className="task-git-initialize">
       <span>{t('git.taskRootNotGit')}</span>
       <Button size="sm" variant="primary" loading={initializing} onClick={() => setInitializeOpen(true)}>{t('git.initialize')}</Button>
     </div>}
     {loading ? <div className="git-empty"><Icon name="loader-circle" className="git-spin" size={24} />{t('git.loading')}</div> : <>
-      {!readOnly && showAdd && repositories.length > 0 && <div className="task-git-add">
+      {!readOnly && workspaceEditable && showAdd && repositories.length > 0 && <div className="task-git-add">
         <label>{t('git.taskAddRepository')}
           <select value={repositoryId} onChange={event => {
             const id = event.target.value
@@ -264,13 +265,13 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
           <Button variant="primary" loading={adding} disabled={!alias || !baseRef || !branchName || branchLoading} onClick={() => void add()}>{t('git.taskCreateWorktree')}</Button>
         </>}
       </div>}
-      {!readOnly && settings && settingsId ? <main className="git-settings"><GitRepositorySettings key={settingsId} id={settingsId} /></main> : workspace?.worktrees.length ? <div className="git-page-body">
+      {!readOnly && workspaceEditable && settings && settingsId ? <main className="git-settings"><GitRepositorySettings key={settingsId} id={settingsId} /></main> : workspace?.worktrees.length ? <div className="git-page-body">
         <aside className="task-git-tree" style={{ width: treeWidth, flexBasis: treeWidth }}>
           {workspace.worktrees.map(tree => <div className="task-git-tree-row" key={tree.id}>
             <button type="button" className={tree.id === selectedTree?.id ? 'selected' : ''} onClick={() => setSelected(tree.id)} title={tree.relative_path || tree.path}>
               <Icon name="git-fork" size={16} /><span><strong>{tree.alias}</strong><small>{tree.branch}</small></span>
             </button>
-            {!readOnly && <button type="button" className="task-git-remove" title={t('git.taskRemove')} aria-label={`${t('git.taskRemove')} ${tree.alias}`} onClick={() => setRemoving(tree.alias)}><Icon name="trash" size={14} /></button>}
+            {!readOnly && workspaceEditable && <button type="button" className="task-git-remove" title={t('git.taskRemove')} aria-label={`${t('git.taskRemove')} ${tree.alias}`} onClick={() => setRemoving(tree.alias)}><Icon name="trash" size={14} /></button>}
           </div>)}
         </aside>
         <div className="git-tree-resizer" role="separator" aria-orientation="vertical" aria-label={t('git.resizeTree')} aria-valuemin={230} aria-valuemax={clampGitTreeWidth(Number.MAX_SAFE_INTEGER)} aria-valuenow={treeWidth} tabIndex={0} onPointerDown={startResize} onDoubleClick={resetResize} onKeyDown={resizeWithKeyboard} />

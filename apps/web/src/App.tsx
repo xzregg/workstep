@@ -10,6 +10,7 @@ import SchedulePage from './pages/SchedulePage'
 import ChatPage from './pages/ChatPage'
 import GitWorkspace from './pages/GitWorkspace'
 import SharedTaskView from './pages/SharedTaskView'
+import { gatewayShareApi, isGatewayPublicShare } from './api/gatewayShare'
 import FilePreviewPage from './pages/FilePreviewPage'
 import type { Project } from './api/client'
 import { useI18n } from './i18n'
@@ -49,7 +50,7 @@ export function AppRoutes() {
   if (location.pathname.startsWith('/share/')) {
     return (
       <Routes>
-        <Route path="/share/:token" element={<SharedTaskView />} />
+        <Route path="/share/:token" element={<SharedTaskView api={isGatewayPublicShare() ? gatewayShareApi : undefined} />} />
       </Routes>
     )
   }
@@ -117,6 +118,7 @@ function GatedApp() {
     location.pathname === '/file-preview'
 
   if (bypassGate) {
+    if (isGatewayPublicShare()) return <AppRoutes />
     return (
       <>
         <AppRoutes />

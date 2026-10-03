@@ -62,3 +62,18 @@ export function applySharedMessageEvent(messages: SharedMessage[], event: Shared
   next[index] = updated
   return next
 }
+
+/** Refresh the latest page while retaining earlier pages and expanded event details. */
+export function mergeSharedHistorySnapshot(previous: SharedMessage[], snapshot: SharedMessage[]): SharedMessage[] {
+  const incoming = new Map(snapshot.map(message => [message.id, capSharedHistoryEvents(message)]))
+  const merged = previous.filter(message => !message.id.startsWith('gateway-interaction:') || incoming.has(message.id))
+    .map(message => {
+      const fresh = incoming.get(message.id)
+      if (!fresh) return message
+      incoming.delete(message.id)
+      return message.event_detail?.loaded
+        ? { ...fresh, events: message.events, event_detail: message.event_detail }
+        : fresh
+    })
+  return [...merged, ...incoming.values()]
+}

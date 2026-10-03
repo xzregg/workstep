@@ -21,7 +21,7 @@ def _decode(part: str) -> bytes:
 
 def verify_share_ticket(ticket: str, public_key_pem: str,
                         expected_fingerprint: str, gateway_id: str,
-                        device_id: str) -> dict[str, str]:
+                        device_id: str) -> dict:
     """Return only the authorized scope; reject malformed or stale credentials."""
     try:
         if not isinstance(ticket, str) or len(ticket) > 8192:
@@ -64,6 +64,16 @@ def verify_share_ticket(ticket: str, public_key_pem: str,
                 raise ValueError("Invalid share ticket scope")
             scope[name] = value
         scope["mode"] = claims["mode"]
+        if 'provider_ids' in claims or 'provider_grant_expires_at' in claims:
+            ids = claims.get('provider_ids')
+            expiry = claims.get('provider_grant_expires_at')
+            if (not isinstance(ids, list) or len(ids) > 1000
+                    or any(not isinstance(item, str) or not 1 <= len(item) <= 128 for item in ids)
+                    or type(expiry) is not int or not now < expiry <= claims['iat'] + 300
+                    or (claims['mode'] == 'read_only' and ids)):
+                raise ValueError('Invalid share provider scope')
+            scope['provider_ids'] = ids
+            scope['provider_grant_expires_at'] = expiry
         return scope
     except (InvalidSignature, UnicodeError, TypeError, KeyError, json.JSONDecodeError,
             ValueError) as exc:
