@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../i18n'
 import { useTaskStore } from '../stores/taskStore'
 import Button from './Button'
@@ -9,6 +9,7 @@ interface TaskReviewConfigPanelProps {
   taskId: string
   stepKey: string
   projectId: string
+  workflowReview?: Record<string, any> | null
   reviewOverrides?: Record<string, any> | null
 }
 
@@ -22,10 +23,14 @@ function reviewDraft(config: Record<string, any> | undefined) {
 
 /** Owns the selected step's review draft, persistence, and save error. */
 export default function TaskReviewConfigPanel({ taskId, stepKey, projectId,
-  reviewOverrides }: TaskReviewConfigPanelProps) {
+  workflowReview, reviewOverrides }: TaskReviewConfigPanelProps) {
   const { t } = useI18n()
   const updateTaskDescription = useTaskStore((state) => state.updateTaskDescription)
-  const config = reviewOverrides?.[stepKey]
+  const override = reviewOverrides?.[stepKey]
+  const config = useMemo(() => ({
+    ...(workflowReview || { mode: 'skip' }),
+    ...override,
+  }), [workflowReview, override])
   const [draft, setDraft] = useState(() => reviewDraft(config))
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)

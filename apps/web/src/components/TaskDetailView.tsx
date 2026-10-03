@@ -100,6 +100,7 @@ export interface StepData {
   engine?: string
   model?: string
   config?: Record<string, string>
+  review?: Record<string, any> | null
   prompt: string
   inputs: Array<{
     name: string
@@ -606,9 +607,9 @@ export default function TaskDetailView({
           onAction={onReviewAction} containerRef={mobileReviewRef} />}
 
         {/* Review config drawer (edit mode only) */}
-        {reviewConfigEditable && task && projectId && <TaskReviewConfigPanel
+        {reviewConfigEditable && currentStep.review != null && task && projectId && <TaskReviewConfigPanel
           key={`${task.id}:${currentStep.key}`} taskId={task.id} stepKey={currentStep.key}
-          projectId={projectId} reviewOverrides={task.review_overrides} />}
+          projectId={projectId} workflowReview={currentStep.review} reviewOverrides={task.review_overrides} />}
 
       </div>
     )

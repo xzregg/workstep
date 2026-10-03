@@ -74,3 +74,51 @@ test('review settings expose save failures and allow retry', async () => {
     await window.happyDOM.close()
   }
 })
+
+for (const scenario of [
+  { name: 'inherits explicit workflow auto even when legacy auto is false',
+    workflowReview: { mode: 'auto', auto: false, maxRetries: 3, prompt: '流程审核要求' },
+    overrides: null, expected: 'auto', retries: 3 },
+  { name: 'inherits legacy workflow auto', workflowReview: { auto: true },
+    overrides: null, expected: 'auto', retries: 1 },
+  { name: 'task manual overrides workflow auto',
+    workflowReview: { mode: 'auto', auto: true, maxRetries: 3 },
+    overrides: { build: { mode: 'manual' } }, expected: 'manual', retries: 3 },
+  { name: 'partial task override keeps workflow mode',
+    workflowReview: { mode: 'auto', maxRetries: 3 },
+    overrides: { build: { prompt: '任务审核要求' } }, expected: 'auto', retries: 3 },
+  { name: 'workflow without review skips review',
+    workflowReview: null, overrides: null, expected: 'skip', retries: 1 },
+] as const) {
+  test(`review settings ${scenario.name} and persist a manual override`, async () => {
+    const { window } = installDomEnvironment()
+    const container = document.body.appendChild(document.createElement('div'))
+    const root = createRoot(container)
+    const original = useTaskStore.getState().updateTaskDescription
+    const calls: unknown[][] = []
+    useTaskStore.setState({ updateTaskDescription: async (...args) => {
+      calls.push(args)
+      return {} as never
+    } })
+    try {
+      await act(async () => root.render(<I18nProvider><TaskReviewConfigPanel
+        taskId="task-1" stepKey="build" projectId="project-1"
+        workflowReview={scenario.workflowReview} reviewOverrides={scenario.overrides}
+      /></I18nProvider>))
+      await act(async () => container.querySelector<HTMLButtonElement>('.task-review-config-toggle')!.click())
+      const modes = [...container.querySelectorAll<HTMLButtonElement>('.task-review-config-mode')]
+      assert.equal(modes[['skip', 'auto', 'manual'].indexOf(scenario.expected)].getAttribute('aria-pressed'), 'true')
+      await act(async () => modes[2].click())
+      await act(async () => container.querySelector<HTMLButtonElement>('.task-review-config-save')!.click())
+      assert.deepEqual(calls, [['task-1', undefined, 'project-1', { build: {
+        mode: 'manual', auto: false, maxRetries: scenario.retries,
+        prompt: scenario.overrides?.build?.prompt ?? scenario.workflowReview?.prompt ?? '',
+      } }]])
+    } finally {
+      await act(async () => root.unmount())
+      useTaskStore.setState({ updateTaskDescription: original })
+      container.remove()
+      await window.happyDOM.close()
+    }
+  })
+}
