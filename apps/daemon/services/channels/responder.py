@@ -98,6 +98,16 @@ class ChatSessionResponder:
                     reply += str(event.get("delta") or "")
                 elif event.get("type") == "TEXT_MESSAGE_CONTENT":
                     reply = str(event.get("content") or "")
+                elif event.get("type") == "TEXT_MESSAGE_END":
+                    status = event.get("status") or "succeeded"
+                    if status != "succeeded":
+                        raise RuntimeError(str(
+                            event.get("error")
+                            or ("渠道助手响应已停止" if status == "stopped" else "渠道助手响应失败")
+                        ))
+                    if event.get("content") is not None:
+                        reply = str(event["content"])
+                    return session_id, reply
                 elif event.get("type") == "RUN_FINISHED":
                     return session_id, reply
                 elif event.get("type") == "RUN_ERROR":
