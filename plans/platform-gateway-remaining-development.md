@@ -38,7 +38,7 @@
 ## 批次 9：本机 HTTP 验收记录
 
 - 地址：`http://localhost:8700`，监听 `127.0.0.1:8700`；Gateway ID：`local-acceptance-8700`。
-- 数据目录：`~/.workstep-gateway-acceptance/8700`；新库尚未初始化管理员。启动方式见 [Gateway 开发与部署](../docs/gateway-development.md)。
+- 数据目录：`~/.workstep-gateway-acceptance/8700`；本轮真实注册验收前已完成独立验收管理员初始化。启动方式见 [Gateway 开发与部署](../docs/gateway-development.md)。
 - 本机 HTTP 已接入 Gateway、共享协议、受管包构建/验签、Desktop 登录、daemon 控制/数据 WS，以及远程页面跳转和返回入口。支持回环 IP 与 `.localhost`；非回环 HTTP 仍拒绝。
 - HTTP 会话保留 HttpOnly、SameSite 与 CSRF 校验；HTTPS 保留 Secure。设备票据核对设备主机与端口，错误设备或端口不能兑换。
 - 已实际验证 `/api/health` 返回正常、`/api/platform/status` 返回未初始化、`/auth` 返回构建后的门户。
@@ -93,4 +93,12 @@
 - 产物：`~/.workstep-gateway-acceptance/artifacts-20261003/desktop/mac-arm64/WorkStep.app`；脱敏校验记录为同目录上两级的 `package-verification.json`。独立包签名私钥与备份只保存在权限为 0700 的验收目录，未进入仓库。
 - 8700 运行期间通过正式 `backup.py` 完成 SQLite 一致性备份，并在独立 `restore/` 目录用实际数据库初始化路径恢复。完整性检查为 `ok`，48 张表、迁移 `0035_device_management_scopes` 和签名密钥一致；记录为 `backup-verification.json`。源库未初始化，当前结果不包含已有账号、设备和发布项目的登录/重连恢复。
 - 数据库与自主注册专项 29 通过、1 跳过（无 PostgreSQL 地址）；Desktop 全量 34 通过。门户、原 Web 与独立分享构建和全量回归沿用批次 7 已通过证据，未重复计数。
-- 尚需用户在 8700 初始化管理员和恢复账号并开放自主注册；浏览器要求新凭据由用户亲自填写。实际受管桌面尚未启动：按全局 Agent 约束不得擅自启动项目进程，待取得启动授权后完成注册登录、设备审批、控制/数据连接、远程项目、分享窄屏、断线恢复、容量及有数据的备份恢复。企业微信/钉钉真实跳转继续暂缓。
+- 此次检查时，8700 管理员初始化与自主注册仍待完成；后续真实 API 验收已完成，见下节。实际受管桌面尚未启动：按全局 Agent 约束不得擅自启动项目进程，待取得启动授权后完成注册登录、设备审批、控制/数据连接、远程项目、分享窄屏、断线恢复、容量及有数据的备份恢复。企业微信/钉钉真实跳转继续暂缓。
+
+## 批次 9：8700 自主注册真实接口验收（2026-10-03）
+
+- 用户要求启动后自主注册检查。通过 `http://localhost:8700` 的实际 HTTP 接口初始化独立验收管理员、恢复账号并设置开放注册，随后注册普通用户 `acceptance_user`；未使用数据库直接写入或模拟服务。
+- 13 项实际检查通过：初始化 201、短密码 422、注册 201、HTTP Cookie 的 HttpOnly/SameSite 与回环 Secure 行为、注册后会话 200、普通用户管理接口 403、重复注册 409、无 CSRF 退出 403、正常退出 204、退出后会话 401、错误密码 401、正确密码重新登录 200、健康检查 200。注册请求夹带超管角色也只得到普通账号，`admin_roles=[]`。
+- Chrome 实际页面已从初始化页变为登录入口，点击“注册账号”显示用户名规则、显示名称、密码和确认密码，空表单提交按钮禁用。注册与登录提交成功证据来自真实 HTTP 接口；未将浏览器完整表单提交计作已验收。
+- 脱敏记录：`~/.workstep-gateway-acceptance/artifacts-20261003/registration-verification.json`。随机验收凭据保存在同目录 `registration-credentials.json`，权限 0600，未写入日志或仓库。
+- 此范围未发现注册故障。批次 8/9 的其他页面、受管包设备连接及有数据恢复仍需继续验收；之前的未初始化备份记录不代表当前账号的恢复已通过。
