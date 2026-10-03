@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { channelBotApi, type BotDraft, type ChannelBot, type BotPlatform, type BotTargetType } from '../api/channelBots'
-import { taskApi, type Task } from '../api/task'
 import Button from '../components/Button'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Input from '../components/Input'
@@ -20,7 +19,6 @@ export default function BotSettings() {
   const [bots, setBots] = useState<ChannelBot[]>([])
   const [draft, setDraft] = useState<BotDraft>(emptyDraft)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [tasks, setTasks] = useState<Task[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
@@ -34,17 +32,6 @@ export default function BotSettings() {
     }, 10000)
     return () => window.clearInterval(timer)
   }, [fetchProjects])
-  useEffect(() => {
-    if (draft.default_target_type !== 'task' || !draft.default_project_id) {
-      setTasks([])
-      return
-    }
-    let cancelled = false
-    void taskApi.list(draft.default_project_id).then(({ tasks: rows }) => {
-      if (!cancelled) setTasks(rows)
-    }).catch((reason) => { if (!cancelled) setError(String(reason)) })
-    return () => { cancelled = true }
-  }, [draft.default_project_id, draft.default_target_type])
 
   const setField = <K extends keyof BotDraft>(key: K, value: BotDraft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }))
@@ -53,15 +40,15 @@ export default function BotSettings() {
     setEditingId(bot.id)
     setDraft({
       platform: bot.platform, name: bot.name, app_id: bot.app_id, secret: '',
-      enabled: bot.enabled, default_target_type: bot.default_target_type,
-      default_project_id: bot.default_project_id, default_task_id: bot.default_task_id,
+      enabled: bot.enabled, default_target_type: bot.default_target_type === 'task' ? 'project' : bot.default_target_type,
+      default_project_id: bot.default_project_id, default_task_id: '',
     })
     setError('')
   }
   const reset = () => { setEditingId(null); setDraft(emptyDraft()); setError('') }
   const valid = draft.name.trim() && draft.app_id.trim() && (editingId || draft.secret.trim())
     && (draft.default_target_type === '' || draft.default_project_id)
-    && (draft.default_target_type !== 'task' || draft.default_task_id)
+
 
   const save = async () => {
     if (!valid) return
@@ -119,16 +106,14 @@ export default function BotSettings() {
       <label>{draft.platform === 'wecom' ? 'Bot ID' : 'Client ID'}<Input value={draft.app_id} onChange={(event) => setField('app_id', event.target.value)} /></label>
       <label>{draft.platform === 'wecom' ? 'Secret' : 'Client Secret'}<Input type="password" value={draft.secret} placeholder={editingId ? t('channelBot.keepSecret') : ''} onChange={(event) => setField('secret', event.target.value)} /></label>
       <label>{t('channelBot.defaultTarget')}<select value={draft.default_target_type} onChange={(event) => setDraft((current) => ({ ...current, default_target_type: event.target.value as BotTargetType, default_project_id: '', default_task_id: '' }))}>
-        <option value="">{t('channelBot.none')}</option><option value="project">{t('channelBot.project')}</option><option value="task">{t('channelBot.task')}</option>
+        <option value="">{t('channelBot.none')}</option><option value="project">{t('channelBot.project')}</option>
       </select></label>
       {draft.default_target_type && <label>{t('channelBot.project')}<select value={draft.default_project_id} onChange={(event) => setDraft((current) => ({ ...current, default_project_id: event.target.value, default_task_id: '' }))}>
         <option value="">{t('channelBot.selectProject')}</option>{projects.filter((project) => project.type !== 'remote').map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
       </select></label>}
-      {draft.default_target_type === 'task' && <label>{t('channelBot.task')}<select value={draft.default_task_id} onChange={(event) => setField('default_task_id', event.target.value)}>
-        <option value="">{t('channelBot.selectTask')}</option>{tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}
-      </select></label>}
       <label className="bot-settings-checkbox"><input type="checkbox" checked={draft.enabled} onChange={(event) => setField('enabled', event.target.checked)} />{t('channelBot.enabled')}</label>
     </div>
+    <p className="bot-settings-hint">{t('channelBot.taskBindingHint')}</p>
     <p className="bot-settings-hint">{draft.platform === 'wecom' ? t('channelBot.wecomHint') : t('channelBot.dingtalkHint')}</p>
     {error && <p className="bot-settings-error" role="alert">{error}</p>}
     <div className="bot-settings-actions"><Button variant="primary" loading={busy} disabled={!valid} onClick={() => void save()}>{t('common.save')}</Button>{editingId && <Button variant="ghost" onClick={reset}>{t('common.cancel')}</Button>}</div>

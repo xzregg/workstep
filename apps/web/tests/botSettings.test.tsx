@@ -29,6 +29,7 @@ test('bot settings requires credentials and sends the selected platform fields',
   })
   try {
     await act(async () => root.render(<I18nProvider><BotSettings /></I18nProvider>))
+    assert.equal(container.querySelector('option[value="task"]'), null, 'task binding belongs to task details')
     const fields = container.querySelectorAll<HTMLInputElement>('.bot-settings-form input:not([type="checkbox"])')
     const save = [...container.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === '保存')!
     assert.equal(save.disabled, true)
@@ -41,6 +42,47 @@ test('bot settings requires credentials and sends the selected platform fields',
       platform: 'wecom', name: '研发助手', app_id: 'bot-id', secret: 'secret-value',
       enabled: false, default_target_type: '', default_project_id: '', default_task_id: '',
     }])
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    globalThis.fetch = previousFetch
+    useProjectStore.setState(previousStore)
+    await window.happyDOM.close()
+  }
+})
+
+
+test('editing a legacy task default saves a project default and never fetches tasks', async () => {
+  const { window } = installDomEnvironment()
+  const previousFetch = globalThis.fetch
+  const previousStore = useProjectStore.getState()
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  useProjectStore.setState({ projects: [{ id: 'p1', name: '项目一', type: 'local' }] as any, fetchProjects: async () => {} })
+  const requests: string[] = []
+  let saved: any
+  const bot = { id: 'b1', platform: 'wecom', name: '机器人', app_id: 'app', enabled: false,
+    has_secret: true, status: 'disabled', error: '', default_target_type: 'task', default_project_id: 'p1', default_task_id: 't1' }
+  globalThis.fetch = async (input, init) => {
+    requests.push(String(input))
+    if (init?.method === 'PATCH') {
+      saved = JSON.parse(String(init.body))
+      return new Response(JSON.stringify({ ...bot, ...saved }))
+    }
+    return new Response(JSON.stringify([bot]))
+  }
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><BotSettings /></I18nProvider>))
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === '编辑')!.click())
+    assert.equal(container.querySelector('option[value="task"]'), null)
+    assert.equal(container.querySelectorAll<HTMLSelectElement>('.bot-settings-form select')[1].value, 'project')
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === '保存')!.click())
+    assert.equal(saved.default_target_type, 'project')
+    assert.equal(saved.default_project_id, 'p1')
+    assert.equal(saved.default_task_id, '')
+    assert.equal(requests.some((url) => url.includes('/task/')), false)
+    assert.equal('secret' in saved, false)
   } finally {
     await act(async () => root.unmount())
     container.remove()
