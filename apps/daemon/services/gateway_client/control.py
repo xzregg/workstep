@@ -535,6 +535,10 @@ class GatewayControlClient:
                         if bridge:
                             bridge.cancel()
                             streams.pop(frame.stream_id, None)
+                    elif frame.type == FrameType.window_update and bridge:
+                        if frame.payload != {"credits": 1}:
+                            raise ValueError("Invalid managed data window update")
+                        bridge.grant_credit()
                     elif frame.type in (FrameType.http_request, FrameType.websocket_data,
                                         FrameType.websocket_close) and bridge:
                         await bridge.feed(frame)

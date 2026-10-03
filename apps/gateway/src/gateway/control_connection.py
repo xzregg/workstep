@@ -436,10 +436,25 @@ class DataConnection:
         self.ready_future: asyncio.Future | None = None
         self._send_lock = asyncio.Lock()
         self._streams: dict[str, asyncio.Queue] = {}
+        self._outbound_windows: dict[str, asyncio.BoundedSemaphore] = {}
 
     async def send_frame(self, frame: ProxyFrame) -> None:
         async with self._send_lock:
             await self.socket.send_json(frame.model_dump(mode="json"))
+
+    async def send_stream_frame(self, frame: ProxyFrame) -> None:
+        window = self._outbound_windows.get(frame.stream_id)
+        if window is None:
+            raise ConnectionError("Managed data stream closed")
+        await window.acquire()
+        await self.send_frame(frame)
+
+    def grant_credit(self, frame: ProxyFrame) -> None:
+        if frame.payload != {"credits": 1}:
+            raise ValueError("Invalid managed data window update")
+        window = self._outbound_windows.get(frame.stream_id)
+        if window is not None:
+            window.release()
 
     async def deliver(self, frame: ProxyFrame) -> None:
         queue = self._streams.get(frame.stream_id)
@@ -526,6 +541,7 @@ class DataConnection:
         stream_id = uuid4().hex
         queue: asyncio.Queue = asyncio.Queue(maxsize=32)
         self._streams[stream_id] = queue
+        self._outbound_windows[stream_id] = asyncio.BoundedSemaphore(32)
 
         async def checked_get(timeout: float):
             deadline = asyncio.get_running_loop().time() + timeout
@@ -539,6 +555,11 @@ class DataConnection:
                     frame = await asyncio.wait_for(queue.get(), timeout=min(1, remaining))
                     if authorization_check is not None:
                         await authorization_check()
+                    if not isinstance(frame, Exception):
+                        await self.send_frame(ProxyFrame(
+                            stream_id=stream_id, type=FrameType.window_update,
+                            payload={"credits": 1},
+                        ))
                     return frame
                 except asyncio.TimeoutError:
                     continue
@@ -580,13 +601,13 @@ class DataConnection:
                 for offset in range(0, len(chunk), 16384):
                     if authorization_check is not None:
                         await authorization_check()
-                    await self.send_frame(ProxyFrame(
+                    await self.send_stream_frame(ProxyFrame(
                         stream_id=stream_id, type=FrameType.http_request,
                         payload={"phase": "body", "data": base64.b64encode(
                             chunk[offset:offset + 16384],
                         ).decode()},
                     ))
-            await self.send_frame(ProxyFrame(
+            await self.send_stream_frame(ProxyFrame(
                 stream_id=stream_id, type=FrameType.http_request, payload={"phase": "end"},
             ))
 
@@ -621,6 +642,7 @@ class DataConnection:
                 finally:
                     upload_task.cancel()
                     self._streams.pop(stream_id, None)
+                    self._outbound_windows.pop(stream_id, None)
                     try:
                         await self.send_frame(ProxyFrame(
                             stream_id=stream_id, type=FrameType.cancel, payload={},
@@ -655,6 +677,7 @@ class DataConnection:
         except Exception:
             upload_task.cancel()
             self._streams.pop(stream_id, None)
+            self._outbound_windows.pop(stream_id, None)
             raise
 
     async def proxy_websocket(self, browser: WebSocket, *, user_id: str,
@@ -677,6 +700,7 @@ class DataConnection:
         stream_id = uuid4().hex
         queue: asyncio.Queue = asyncio.Queue(maxsize=32)
         self._streams[stream_id] = queue
+        self._outbound_windows[stream_id] = asyncio.BoundedSemaphore(32)
         tasks: list[asyncio.Task] = []
         headers = [[key.decode("latin1"), value.decode("latin1")]
                    for key, value in browser.scope["headers"]
@@ -693,6 +717,11 @@ class DataConnection:
                          "project_id": project_id, "access_level": access_level},
             ))
             opened = await asyncio.wait_for(queue.get(), timeout=15)
+            if not isinstance(opened, Exception):
+                await self.send_frame(ProxyFrame(
+                    stream_id=stream_id, type=FrameType.window_update,
+                    payload={"credits": 1},
+                ))
             if (isinstance(opened, Exception) or opened.type != FrameType.websocket_open
                     or opened.payload.get("accepted") is not True):
                 await browser.close(code=4403)
@@ -704,7 +733,7 @@ class DataConnection:
                 while True:
                     message = await browser.receive()
                     if message["type"] == "websocket.disconnect":
-                        await self.send_frame(ProxyFrame(
+                        await self.send_stream_frame(ProxyFrame(
                             stream_id=stream_id, type=FrameType.websocket_close,
                             payload={"code": message.get("code", 1000)},
                         ))
@@ -716,7 +745,7 @@ class DataConnection:
                     else:
                         kind, data = "bytes", message.get("bytes") or b""
                     for payload in websocket_payloads(kind, data):
-                        await self.send_frame(ProxyFrame(
+                        await self.send_stream_frame(ProxyFrame(
                             stream_id=stream_id, type=FrameType.websocket_data,
                             payload=payload,
                         ))
@@ -725,6 +754,11 @@ class DataConnection:
                 assembler = WebSocketMessageAssembler()
                 while True:
                     frame = await queue.get()
+                    if not isinstance(frame, Exception):
+                        await self.send_frame(ProxyFrame(
+                            stream_id=stream_id, type=FrameType.window_update,
+                            payload={"credits": 1},
+                        ))
                     if isinstance(frame, Exception):
                         raise frame
                     if frame.type == FrameType.websocket_close:
@@ -766,6 +800,7 @@ class DataConnection:
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
             self._streams.pop(stream_id, None)
+            self._outbound_windows.pop(stream_id, None)
             try:
                 await self.send_frame(ProxyFrame(
                     stream_id=stream_id, type=FrameType.cancel, payload={},
@@ -801,6 +836,13 @@ async def data_socket(ws: WebSocket):
             except Exception:
                 await ws.close(code=4400)
                 return
+            if frame.type == FrameType.window_update:
+                try:
+                    connection.grant_credit(frame)
+                except ValueError:
+                    await ws.close(code=4400)
+                    return
+                continue
             if frame.type not in (FrameType.http_response, FrameType.websocket_open,
                                   FrameType.websocket_data, FrameType.websocket_close):
                 await ws.close(code=4400)
