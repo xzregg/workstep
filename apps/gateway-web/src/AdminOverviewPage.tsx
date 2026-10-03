@@ -45,11 +45,12 @@ export function AdminOverviewPage() {
       <nav className="gateway-admin-links" aria-label="管理模块">
         {overview.users && <Link to="/admin/users">用户管理</Link>}
         {overview.users && <Link to="/admin/org">组织与同步</Link>}
-        {overview.roles.includes('super_admin') && <Link to="/admin/admins">管理员权限</Link>}
+        {overview.roles.some(role => ['super_admin', 'org_admin'].includes(role)) && <Link to="/admin/admins">管理员权限</Link>}
         {overview.devices && <Link to="/admin/devices">设备管理</Link>}
-        {overview.roles.includes('super_admin') && <Link to="/admin/projects">项目管理</Link>}
+        {overview.roles.includes('super_admin') && <Link to="/admin/device-groups">设备组与部门归属</Link>}
+        {overview.roles.some(role => ['super_admin', 'org_admin', 'department_admin'].includes(role)) && <Link to="/admin/projects">项目管理</Link>}
         {overview.roles.includes('super_admin') && <Link to="/admin/shares">平台分享管理</Link>}
-        {overview.roles.includes('super_admin') && <Link to="/admin/providers">供应商管理</Link>}
+        {overview.roles.some(role => ['super_admin', 'org_admin', 'department_admin'].includes(role)) && <Link to="/admin/providers">供应商管理</Link>}
         {overview.roles.some(role => role === 'super_admin' || role === 'skill_admin') &&
           <Link to="/admin/skills">Skill 管理</Link>}
         {overview.roles.includes('super_admin') && <Link to="/admin/groups">用户组管理</Link>}

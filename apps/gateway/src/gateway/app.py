@@ -39,6 +39,7 @@ from .platform_shares import router as platform_shares_router
 from .admin_shares import router as admin_shares_router
 from .admin_overview import router as admin_overview_router
 from .org_api import router as org_router
+from .device_groups_api import router as device_groups_router
 
 
 def create_app(settings: GatewaySettings | None = None) -> FastAPI:
@@ -125,6 +126,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(identity_router)
     app.include_router(admin_overview_router)
     app.include_router(org_router)
+    app.include_router(device_groups_router)
     app.include_router(external_identity_router)
     app.include_router(directory_callbacks_router)
     app.include_router(desktop_authorization_router)

@@ -1,5 +1,6 @@
 import { Link, Route, Routes, useLocation } from 'react-router-dom'
 import { DesktopLoginPage } from './DesktopLoginPage'
+import { AdminDeviceGroupsPage } from './AdminDeviceGroupsPage'
 import { DeviceAdminPage } from './DeviceAdminPage'
 import { ClientDownloadPage } from './ClientDownloadPage'
 import { DeviceListPage } from './DeviceListPage'
@@ -14,6 +15,7 @@ import { AdminOrgPage } from './AdminOrgPage'
 import { AdminDeviceOperationsPage } from './AdminDeviceOperationsPage'
 import { AdminProjectsPage } from './AdminProjectsPage'
 import { AdminProvidersPage } from './AdminProvidersPage'
+import { AdminScopedProviderAssignmentsPage } from './AdminScopedProviderAssignmentsPage'
 import { AdminUsagePage } from './AdminUsagePage'
 import { AdminAuditPage } from './AdminAuditPage'
 import { AdminPlatformSettingsPage } from './AdminPlatformSettingsPage'
@@ -44,21 +46,24 @@ function GatewayPortalApp() {
         <Route path="/groups" element={<GroupSkillsPage />} />
         <Route path="/admin" element={<AdminAccessGate state={adminAccess}><AdminOverviewPage /></AdminAccessGate>} />
         <Route path="/admin/users" element={<AdminAccessGate state={adminAccess}
-          allow={['super_admin', 'identity_admin']}><AdminUsersPage /></AdminAccessGate>} />
+          allow={['super_admin', 'identity_admin', 'org_admin', 'department_admin']}><AdminUsersPage /></AdminAccessGate>} />
         <Route path="/admin/org" element={<AdminAccessGate state={adminAccess}
-          allow={['super_admin', 'identity_admin']}><AdminOrgPage roles={adminAccess.access?.roles ?? []} /></AdminAccessGate>} />
+          allow={['super_admin', 'identity_admin', 'org_admin', 'department_admin']}><AdminOrgPage roles={adminAccess.access?.roles ?? []} /></AdminAccessGate>} />
         <Route path="/admin/admins" element={<AdminAccessGate state={adminAccess}
-          allow={['super_admin']}><AdminRolesPage /></AdminAccessGate>} />
+          allow={['super_admin', 'org_admin']}><AdminRolesPage delegated={!adminAccess.access?.roles.includes('super_admin')} /></AdminAccessGate>} />
         <Route path="/admin/devices" element={<AdminAccessGate state={adminAccess}
-          allow={['super_admin']}><DeviceAdminPage /></AdminAccessGate>} />
+          allow={['super_admin', 'device_admin', 'org_admin', 'department_admin']}><DeviceAdminPage /></AdminAccessGate>} />
+        <Route path="/admin/device-groups" element={<AdminAccessGate state={adminAccess}
+          allow={['super_admin']}><AdminDeviceGroupsPage /></AdminAccessGate>} />
         <Route path="/admin/device-operations" element={<AdminAccessGate state={adminAccess}
-          allow={['super_admin']}><AdminDeviceOperationsPage /></AdminAccessGate>} />
+          allow={['super_admin', 'device_admin', 'org_admin', 'department_admin']}><AdminDeviceOperationsPage /></AdminAccessGate>} />
         <Route path="/admin/projects" element={<AdminAccessGate state={adminAccess}
-          allow={['super_admin']}><AdminProjectsPage /></AdminAccessGate>} />
+          allow={['super_admin', 'org_admin', 'department_admin']}><AdminProjectsPage /></AdminAccessGate>} />
         <Route path="/admin/shares" element={<AdminAccessGate state={adminAccess}
           allow={['super_admin']}><AdminSharesPage /></AdminAccessGate>} />
         <Route path="/admin/providers" element={<AdminAccessGate state={adminAccess}
-          allow={['super_admin']}><AdminProvidersPage /></AdminAccessGate>} />
+          allow={['super_admin', 'org_admin', 'department_admin']}>{adminAccess.access?.roles.includes('super_admin')
+            ? <AdminProvidersPage /> : <AdminScopedProviderAssignmentsPage />}</AdminAccessGate>} />
         <Route path="/admin/skills" element={<AdminAccessGate state={adminAccess}
           allow={['super_admin', 'skill_admin']}><AdminSkillsPage /></AdminAccessGate>} />
         <Route path="/admin/groups" element={<AdminAccessGate state={adminAccess}

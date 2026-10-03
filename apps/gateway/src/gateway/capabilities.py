@@ -8,7 +8,8 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select, update
 
 from .identity import COOKIE_NAME, _now
-from .identity_api import _super_admin_read, _super_admin_request
+from .identity_api import _super_admin_request
+from .management_scope import project_manager, require_grant_subject, grant_subject_ids
 from .models import (AuditEvent, CapabilityAssignment, Device, GroupCapabilityAssignment,
                      GroupMembership, PlatformProject, User, UserDevice, UserGroup)
 
@@ -126,18 +127,20 @@ class GroupProjectCapabilityInput(BaseModel):
 
 @router.get('/admin/projects/{project_id}/task-create-users')
 async def list_user_project_capabilities(request: Request, project_id: str):
-    await _super_admin_read(request)
+    identity, actor, _ = await project_manager(request, project_id=project_id)
     async with request.app.state.database.session() as session:
         project = await session.get(PlatformProject, project_id)
         if (project is None or project.status != 'active'
                 or project.access_mode != 'remote_published'):
             raise HTTPException(status_code=404, detail='Published project unavailable')
+        subjects = await grant_subject_ids(session, identity, actor.id, 'user')
         rows = (await session.execute(select(CapabilityAssignment, User.username).join(
             User, User.id == CapabilityAssignment.user_id,
         ).where(CapabilityAssignment.scope_type == 'project',
                 CapabilityAssignment.scope_id == project_id,
                 CapabilityAssignment.capability == 'task.create',
-                CapabilityAssignment.revoked_at.is_(None))
+                CapabilityAssignment.revoked_at.is_(None),
+                *([CapabilityAssignment.user_id.in_(subjects)] if subjects is not None else []))
             .order_by(User.username, CapabilityAssignment.id))).all()
     return {'assignments': [{'id': row.id, 'user_id': row.user_id,
                              'username': name, 'effect': row.effect} for row, name in rows]}
@@ -145,17 +148,19 @@ async def list_user_project_capabilities(request: Request, project_id: str):
 
 @router.get('/admin/projects/{project_id}/task-create-groups')
 async def list_group_project_capabilities(request: Request, project_id: str):
-    await _super_admin_read(request)
+    identity, actor, _ = await project_manager(request, project_id=project_id)
     async with request.app.state.database.session() as session:
         project = await session.get(PlatformProject, project_id)
         if (project is None or project.status != 'active'
                 or project.access_mode != 'remote_published'):
             raise HTTPException(status_code=404, detail='Published project unavailable')
+        subjects = await grant_subject_ids(session, identity, actor.id, 'group')
         rows = (await session.execute(select(GroupCapabilityAssignment, UserGroup.name).join(
             UserGroup, UserGroup.id == GroupCapabilityAssignment.group_id,
         ).where(GroupCapabilityAssignment.project_id == project_id,
                 GroupCapabilityAssignment.revoked_at.is_(None),
-                GroupCapabilityAssignment.capability == 'task.create')
+                GroupCapabilityAssignment.capability == 'task.create',
+                *([GroupCapabilityAssignment.group_id.in_(subjects)] if subjects is not None else []))
             .order_by(UserGroup.name, GroupCapabilityAssignment.id))).all()
     return {'assignments': [{'id': row.id, 'group_id': row.group_id,
                              'group_name': name, 'effect': row.effect} for row, name in rows]}
@@ -164,9 +169,8 @@ async def list_group_project_capabilities(request: Request, project_id: str):
 @router.post('/admin/projects/{project_id}/task-create-groups/{group_id}')
 async def set_group_project_capability(request: Request, project_id: str,
                                        group_id: str, body: GroupProjectCapabilityInput):
-    identity, actor = await _super_admin_request(request)
-    _, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
-    await identity.require_step_up(auth_session)
+    identity, actor, _ = await project_manager(request, project_id=project_id, mutation=True)
+    await require_grant_subject(request, identity, actor.id, 'group', group_id)
     async with request.app.state.database.session() as session:
         async with session.begin():
             project = await session.get(PlatformProject, project_id)
@@ -202,9 +206,8 @@ async def set_group_project_capability(request: Request, project_id: str,
 
 @router.delete('/admin/projects/{project_id}/task-create-groups/{group_id}', status_code=204)
 async def revoke_group_project_capability(request: Request, project_id: str, group_id: str):
-    identity, actor = await _super_admin_request(request)
-    _, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
-    await identity.require_step_up(auth_session)
+    identity, actor, _ = await project_manager(request, project_id=project_id, mutation=True)
+    await require_grant_subject(request, identity, actor.id, 'group', group_id)
     async with request.app.state.database.session() as session:
         async with session.begin():
             assignment = await session.scalar(select(GroupCapabilityAssignment).where(
@@ -223,11 +226,22 @@ async def revoke_group_project_capability(request: Request, project_id: str, gro
                                    action='admin.group_capability_revoked', result='success'))
 
 
+async def _capability_manager(request: Request, user_id: str, body: CapabilityTargetInput):
+    if body.scope_type == 'global':
+        identity, actor = await _super_admin_request(request)
+        _, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
+        await identity.require_step_up(auth_session)
+    else:
+        identity, actor, _ = await project_manager(request, mutation=True,
+            project_id=body.scope_id if body.scope_type == 'project' else None,
+            device_id=body.scope_id if body.scope_type == 'device' else None)
+        await require_grant_subject(request, identity, actor.id, 'user', user_id)
+    return identity, actor
+
+
 @router.post("/admin/capabilities/{user_id}")
 async def set_capability(request: Request, user_id: str, body: CapabilityInput):
-    identity, actor = await _super_admin_request(request)
-    _, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
-    await identity.require_step_up(auth_session)
+    identity, actor = await _capability_manager(request, user_id, body)
     database = request.app.state.database
     scope_id = body.scope_id or ""
     async with database.session() as session:
@@ -269,9 +283,7 @@ async def set_capability(request: Request, user_id: str, body: CapabilityInput):
 
 @router.post("/admin/capabilities/{user_id}/revoke", status_code=204)
 async def revoke_capability(request: Request, user_id: str, body: CapabilityTargetInput):
-    identity, actor = await _super_admin_request(request)
-    _, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
-    await identity.require_step_up(auth_session)
+    identity, actor = await _capability_manager(request, user_id, body)
     scope_id = body.scope_id or ""
     async with request.app.state.database.session() as session:
         async with session.begin():

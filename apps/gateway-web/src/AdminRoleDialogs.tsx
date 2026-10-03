@@ -1,38 +1,36 @@
 import { useState } from 'react'
+import { AdminRoleScopePicker, roleScopes } from './AdminRoleScopePicker'
 import type { FormEvent } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 import type { AdminRole } from './AdminRolesPage'
 
 type Choice = { id: string; display_name: string; username?: string; external_id?: string; provider?: string }
 
-export function AdminGrantRoleDialog({ csrf, onSaved, onClose }: {
-  csrf: string; onSaved: () => void; onClose: () => void
+export function AdminGrantRoleDialog({ csrf, onSaved, onClose, delegated = false }: {
+  csrf: string; onSaved: () => void; onClose: () => void; delegated?: boolean
 }) {
   const [userQuery, setUserQuery] = useState('')
   const [userChoices, setUserChoices] = useState<Choice[]>([])
   const [userId, setUserId] = useState('')
-  const [departmentQuery, setDepartmentQuery] = useState('')
-  const [departmentChoices, setDepartmentChoices] = useState<Choice[]>([])
-  const [departmentId, setDepartmentId] = useState('')
+  const [scopeId, setScopeId] = useState('')
   const [role, setRole] = useState('identity_admin')
-  const [scope, setScope] = useState('platform')
+  const [scope, setScope] = useState(delegated ? 'department' : 'platform')
   const [includeChildren, setIncludeChildren] = useState(true)
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [confirmClose, setConfirmClose] = useState(false)
-  const dirty = !!(userQuery || userId || departmentQuery || departmentId || password || role !== 'identity_admin' || scope !== 'platform')
-  const canSubmit = !!(userId && password && (scope === 'platform' || departmentId))
+  const dirty = !!(userQuery || userId || scopeId || password || role !== 'identity_admin' || scope !== (delegated ? 'department' : 'platform'))
+  const canSubmit = !!(userId && password && (scope === 'platform' || scopeId))
 
-  async function findChoices(kind: 'users' | 'departments', query: string) {
+  async function findChoices(kind: 'users', query: string) {
     setBusy(true); setError('')
     try {
       const response = await fetch(`/api/admin/${kind}?q=${encodeURIComponent(query.trim())}&page=1&page_size=10`,
         { credentials: 'same-origin' })
       if (!response.ok) throw new Error('搜索失败，请重试。')
       const result = await response.json()
-      if (kind === 'users') setUserChoices(result.users ?? [])
-      else setDepartmentChoices(result.departments ?? [])
+      setUserChoices(result.users ?? [])
     } catch (reason) { setError(reason instanceof Error ? reason.message : '搜索失败。') }
     finally { setBusy(false) }
   }
@@ -51,7 +49,7 @@ export function AdminGrantRoleDialog({ csrf, onSaved, onClose }: {
       const response = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/roles`, {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-        body: JSON.stringify({ role, scope_type: scope, scope_id: scope === 'department' ? departmentId : null,
+        body: JSON.stringify({ role, scope_type: scope, scope_id: scope === 'platform' ? null : scopeId,
           include_subdepartments: includeChildren }),
       })
       if (!response.ok) throw new Error(response.status === 403 ? '当前权限无法授予此角色。' : '授予角色失败，请重试。')
@@ -79,29 +77,16 @@ export function AdminGrantRoleDialog({ csrf, onSaved, onClose }: {
       <label htmlFor="role-kind">管理员角色</label>
       <select id="role-kind" value={role} onChange={event => {
         const next = event.target.value; setRole(next)
-        if (next === 'super_admin' || next === 'skill_admin') setScope('platform')
+        setScope(delegated ? 'department' : roleScopes[next][0].type); setScopeId('')
       }}>
-        <option value="identity_admin">用户与组织管理员</option><option value="skill_admin">Skill 管理员</option>
-        <option value="audit_admin">审计管理员</option><option value="super_admin">超级管理员</option>
+        <option value="identity_admin">用户与组织管理员</option>{!delegated && <option value="skill_admin">Skill 管理员</option>}
+        {!delegated && <option value="org_admin">组织管理员</option>}<option value="department_admin">部门管理员</option>
+        {!delegated && <option value="device_admin">设备管理员</option>}<option value="audit_admin">审计管理员</option>{!delegated && <option value="super_admin">超级管理员</option>}
       </select>
-      <label htmlFor="role-scope">管理范围</label>
-      <select id="role-scope" value={scope} disabled={role === 'super_admin' || role === 'skill_admin'}
-        onChange={event => { setScope(event.target.value); setDepartmentId('') }}>
-        <option value="platform">全平台</option><option value="department">部门</option>
-      </select>
-      {scope === 'department' && <>
-        <label htmlFor="role-department-search">搜索部门</label>
-        <div className="gateway-admin-search"><input id="role-department-search" value={departmentQuery}
-          onChange={event => { setDepartmentQuery(event.target.value); setDepartmentId(''); setDepartmentChoices([]) }} placeholder="部门名称" />
-          <button type="button" disabled={busy || !departmentQuery.trim()}
-            onClick={() => void findChoices('departments', departmentQuery)}>查找部门</button></div>
-        {departmentChoices.length > 0 && <select aria-label="选择部门" value={departmentId}
-          onChange={event => setDepartmentId(event.target.value)}><option value="">选择部门</option>
-          {departmentChoices.map(department => <option value={department.id} key={department.id}>
-            {department.display_name} · {department.provider} · {department.external_id}</option>)}</select>}
-        <label className="gateway-role-checkbox"><input type="checkbox" checked={includeChildren}
-          onChange={event => setIncludeChildren(event.target.checked)} /> 包含下级部门</label>
-      </>}
+      <AdminRoleScopePicker departmentOnly={delegated} role={role} scope={scope} scopeId={scopeId} disabled={busy}
+        onChange={(nextScope, id) => { setScope(nextScope); setScopeId(id) }} />
+      {scope === 'department' && <label className="gateway-role-checkbox"><input type="checkbox" checked={includeChildren}
+        onChange={event => setIncludeChildren(event.target.checked)} /> 包含下级部门</label>}
       <label htmlFor="role-step-password">输入你的密码确认</label>
       <input id="role-step-password" type="password" autoComplete="current-password" value={password}
         onChange={event => setPassword(event.target.value)} />

@@ -21,10 +21,11 @@ export function buildRoleListQuery(filters: Filters): string {
 
 const roleNames: Record<string, string> = {
   super_admin: '超级管理员', identity_admin: '用户与组织管理员',
+  org_admin: '组织管理员', department_admin: '部门管理员', device_admin: '设备管理员',
   skill_admin: 'Skill 管理员', audit_admin: '审计管理员',
 }
 
-export function AdminRolesPage() {
+export function AdminRolesPage({ delegated = false }: { delegated?: boolean }) {
   const navigate = useNavigate()
   const [access, setAccess] = useState<'checking' | 'ready' | 'forbidden'>('checking')
   const [csrf, setCsrf] = useState('')
@@ -94,7 +95,7 @@ export function AdminRolesPage() {
         <label htmlFor="admin-role-filter">角色</label>
         <select id="admin-role-filter" value={filters.role} onChange={event => setFilters(current => (
           { ...current, role: event.target.value, page: 1 }))}>
-          <option value="">全部</option>{Object.entries(roleNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          <option value="">全部</option>{Object.entries(roleNames).filter(([role]) => !delegated || ['identity_admin', 'department_admin', 'audit_admin'].includes(role)).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
         <label htmlFor="admin-role-sort">排序</label>
         <select id="admin-role-sort" value={filters.sort} onChange={event => setFilters(current => (
@@ -111,7 +112,7 @@ export function AdminRolesPage() {
       {!loading && !error && roles.length === 0 && <p>当前条件下没有管理员。</p>}
       {!error && <ul className="gateway-device-list gateway-admin-user-list">{roles.map(role => <li key={role.id}>
         <div><strong>{role.display_name}</strong><p>{role.username} · {roleNames[role.role] ?? role.role} · {
-          role.scope_type === 'department' ? `部门 ${role.scope_name ?? role.scope_id}${role.include_subdepartments ? '（含下级）' : ''}` : '全平台'
+          role.scope_type === 'platform' ? '全平台' : `${({ department: '部门', organization: '组织', device_group: '设备组' } as Record<string, string>)[role.scope_type]} ${role.scope_name ?? role.scope_id}${role.scope_type === 'department' && role.include_subdepartments ? '（含下级）' : ''}`
         }</p><p>{role.user_status === 'active' ? '已启用' : role.user_status} · {role.registration_source}</p></div>
         <button type="button" onClick={() => setRevoke(role)}>撤销</button>
       </li>)}</ul>}
@@ -123,7 +124,7 @@ export function AdminRolesPage() {
           { ...current, page: current.page + 1 }))}>下一页</button>
       </div>
     </>}
-    {grantOpen && <AdminGrantRoleDialog csrf={csrf} onClose={() => setGrantOpen(false)}
+    {grantOpen && <AdminGrantRoleDialog delegated={delegated} csrf={csrf} onClose={() => setGrantOpen(false)}
       onSaved={() => { setGrantOpen(false); setFilters(current => ({ ...current, page: 1 })); refresh() }} />}
     {revoke && <AdminRevokeRoleDialog role={revoke} csrf={csrf} onClose={() => setRevoke(null)}
       onComplete={() => { setRevoke(null); refresh() }} />}

@@ -158,10 +158,10 @@ test('grant dialog searches users and departments, validates scope, and submits 
   await screen.findByRole('option', { name: 'Alice（alice）' })
   fireEvent.change(screen.getByLabelText('选择用户'), { target: { value: 'user-1' } })
   fireEvent.change(screen.getByLabelText('管理范围'), { target: { value: 'department' } })
-  fireEvent.change(screen.getByLabelText('搜索部门'), { target: { value: 'Research' } })
-  fireEvent.click(screen.getByRole('button', { name: '查找部门' }))
+  fireEvent.change(screen.getByLabelText('搜索管理范围'), { target: { value: 'Research' } })
+  fireEvent.click(screen.getByRole('button', { name: '查找范围' }))
   await screen.findByRole('option', { name: /Research/ })
-  fireEvent.change(screen.getByLabelText('选择部门'), { target: { value: 'dept-1' } })
+  fireEvent.change(screen.getByLabelText('选择管理范围'), { target: { value: 'dept-1' } })
   fireEvent.change(screen.getByLabelText('输入你的密码确认'), { target: { value: 'OwnerPassphrase-2026!' } })
   fireEvent.click(screen.getByRole('button', { name: '授予权限' }))
   await waitFor(() => assert.equal(saved, 1))
@@ -444,4 +444,49 @@ test('department admin browses organization without loading source administratio
   render(<MemoryRouter><AdminOrgPage roles={['identity_admin']} /></MemoryRouter>)
   await screen.findByText('当前条件下没有部门。')
   assert.ok(requests.every(url => !url.startsWith('/api/admin/identity-sources')))
+})
+
+
+for (const [role, scopeType, endpoint, result] of [
+  ['org_admin', 'organization', 'identity-sources', { sources: [{ id: 'scope-1', provider: 'wecom', tenant_id: 'Org' }] }],
+  ['department_admin', 'department', 'departments', { departments: [{ id: 'scope-1', display_name: 'Dept' }] }],
+  ['device_admin', 'device_group', 'device-groups', { groups: [{ id: 'scope-1', name: 'PCs' }] }],
+] as const) test(`grant ${role} selects a valid scope and sends its identifier`, async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = []
+  globalThis.fetch = async (input, init) => {
+    const url = String(input); calls.push({ url, init })
+    if (url.startsWith('/api/admin/users?')) return Response.json({ users: [{ id: 'user-1', username: 'alice', display_name: 'Alice' }] })
+    if (url.startsWith(`/api/admin/${endpoint}?`)) return Response.json(result)
+    if (url === '/api/auth/step-up') return Response.json({})
+    if (url === '/api/admin/users/user-1/roles') return new Response(null, { status: 201 })
+    throw new Error(url)
+  }
+  let saved = false
+  render(<AdminGrantRoleDialog csrf="csrf" onSaved={() => { saved = true }} onClose={() => {}} />)
+  fireEvent.change(screen.getByLabelText('搜索用户'), { target: { value: 'alice' } })
+  fireEvent.click(screen.getByRole('button', { name: '查找用户' }))
+  await screen.findByRole('option', { name: 'Alice（alice）' })
+  fireEvent.change(screen.getByLabelText('选择用户'), { target: { value: 'user-1' } })
+  fireEvent.change(screen.getByLabelText('管理员角色'), { target: { value: role } })
+  if (scopeType !== 'department') fireEvent.change(screen.getByLabelText('管理范围'), { target: { value: scopeType } })
+  await waitFor(() => assert.ok(screen.getByRole('option', { name: /Org|Dept|PCs/ })))
+  fireEvent.change(screen.getByLabelText('选择管理范围'), { target: { value: 'scope-1' } })
+  fireEvent.change(screen.getByLabelText('输入你的密码确认'), { target: { value: 'OwnerPassphrase-2026!' } })
+  fireEvent.click(screen.getByRole('button', { name: '授予权限' }))
+  await waitFor(() => assert.equal(saved, true))
+  const body = JSON.parse(String(calls.find(call => call.url.endsWith('/user-1/roles'))?.init?.body))
+  assert.equal(body.role, role); assert.equal(body.scope_type, scopeType); assert.equal(body.scope_id, 'scope-1')
+})
+
+
+test('organization delegation form exposes department roles and scopes only', async () => {
+  globalThis.fetch = async input => {
+    assert.ok(String(input).startsWith('/api/admin/departments?'))
+    return Response.json({ departments: [] })
+  }
+  render(<AdminGrantRoleDialog delegated csrf="csrf" onSaved={() => {}} onClose={() => {}} />)
+  const role = screen.getByLabelText('管理员角色') as HTMLSelectElement
+  assert.deepEqual(Array.from(role.options).map(option => option.value).sort(), ['audit_admin', 'department_admin', 'identity_admin'])
+  const scope = screen.getByLabelText('管理范围') as HTMLSelectElement
+  assert.deepEqual(Array.from(scope.options).map(option => option.value), ['department'])
 })

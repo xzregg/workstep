@@ -10,8 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 
-from .identity import COOKIE_NAME, IdentityService
-from .identity_api import _super_admin_read, _super_admin_request
+from .management_scope import device_manager
 from .models import AuditEvent, Device, DeviceCommand, DeviceOperationBatch
 
 router = APIRouter(prefix="/api/admin/device-operations")
@@ -130,9 +129,7 @@ async def _create_batch(session, body: BatchInput, actor_id: str) -> DeviceOpera
 
 @router.post("")
 async def create_device_operation(request: Request, body: BatchInput):
-    identity, actor = await _super_admin_request(request)
-    _, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
-    await identity.require_step_up(auth_session)
+    _, actor, _ = await device_manager(request, device_ids=body.device_ids, mutation=True)
     async with request.app.state.database.session() as session:
         async with session.begin():
             batch = await _create_batch(session, body, actor.id)
@@ -143,12 +140,18 @@ async def create_device_operation(request: Request, body: BatchInput):
 async def list_device_operations(request: Request,
                                  limit: int = Query(default=50, ge=1, le=100),
                                  offset: int = Query(default=0, ge=0)):
-    await _super_admin_read(request)
+    _, _, allowed = await device_manager(request)
     async with request.app.state.database.session() as session:
         async with session.begin():
             await _expire_waiting(session)
-            total = await session.scalar(select(func.count()).select_from(DeviceOperationBatch))
-            batches = (await session.scalars(select(DeviceOperationBatch).order_by(
+            conditions = []
+            if allowed is not None:
+                # Never expose a mixed batch containing any out-of-scope device.
+                conditions.append(~select(DeviceCommand.id).where(
+                    DeviceCommand.batch_id == DeviceOperationBatch.id,
+                    DeviceCommand.device_id.not_in(allowed)).exists())
+            total = await session.scalar(select(func.count()).select_from(DeviceOperationBatch).where(*conditions))
+            batches = (await session.scalars(select(DeviceOperationBatch).where(*conditions).order_by(
                 DeviceOperationBatch.created_at.desc(), DeviceOperationBatch.id.desc(),
             ).limit(limit).offset(offset))).all()
             return {"total": total, "limit": limit, "offset": offset,
@@ -157,26 +160,32 @@ async def list_device_operations(request: Request,
 
 @router.get("/{batch_id}")
 async def get_device_operation(request: Request, batch_id: str):
-    await _super_admin_read(request)
+    _, _, allowed = await device_manager(request)
     async with request.app.state.database.session() as session:
         async with session.begin():
             batch = await session.get(DeviceOperationBatch, batch_id)
             if not batch:
                 raise HTTPException(status_code=404, detail="Operation batch unavailable")
+            targets = set((await session.scalars(select(DeviceCommand.device_id).where(
+                DeviceCommand.batch_id == batch_id))).all())
+            if allowed is not None and not targets.issubset(allowed):
+                raise HTTPException(status_code=403, detail="Device management scope denied")
             await _expire_waiting(session, batch_id)
             return await _batch_view(session, batch)
 
 
 @router.post("/{batch_id}/retry-failed")
 async def retry_failed_device_operation(request: Request, batch_id: str):
-    identity, actor = await _super_admin_request(request)
-    _, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
-    await identity.require_step_up(auth_session)
+    _, actor, allowed = await device_manager(request, mutation=True)
     async with request.app.state.database.session() as session:
         async with session.begin():
             original = await session.get(DeviceOperationBatch, batch_id)
             if not original:
                 raise HTTPException(status_code=404, detail="Operation batch unavailable")
+            targets = set((await session.scalars(select(DeviceCommand.device_id).where(
+                DeviceCommand.batch_id == batch_id))).all())
+            if allowed is not None and not targets.issubset(allowed):
+                raise HTTPException(status_code=403, detail="Device management scope denied")
             failed = (await session.scalars(select(DeviceCommand.device_id).where(
                 DeviceCommand.batch_id == batch_id,
                 DeviceCommand.status.in_(("failed", "expired")),

@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
+from .management_scope import project_manager, require_grant_subject
 from .identity import COOKIE_NAME, IdentityService
 from .identity_api import _super_admin_read, _super_admin_request
 from .models import (AuditEvent, Device, DeviceProviderApplication, PlatformProvider, ProviderAssignment,
@@ -122,6 +123,23 @@ def _public_provider(provider: PlatformProvider) -> dict:
             "models": json.loads(provider.models_json),
             "prices": json.loads(provider.prices_json),
             "has_key": bool(provider.secret_ciphertext)}
+
+
+async def _assignment_admin(request: Request, body: ProviderAssignInput):
+    identity, actor, _ = await project_manager(
+        request, device_id=body.subject_id if body.subject_type == "device" else None, mutation=True)
+    if body.subject_type == "user":
+        await require_grant_subject(request, identity, actor.id, "user", body.subject_id)
+    return actor
+
+
+@router.get("/assignment-catalog")
+async def list_assignment_catalog(request: Request):
+    await project_manager(request)
+    async with request.app.state.database.session() as session:
+        providers = (await session.scalars(select(PlatformProvider).order_by(PlatformProvider.name))).all()
+    return {"providers": [{"id": row.id, "name": row.name, "enabled": bool(row.enabled)}
+                          for row in providers]}
 
 
 @router.get("")
@@ -366,7 +384,7 @@ async def list_platform_provider_assignments(request: Request, provider_id: str,
                                              q: str = Query("", max_length=128),
                                              page: int = Query(1, ge=1),
                                              page_size: int = Query(25, ge=1, le=100)):
-    await _super_admin_read(request)
+    identity, actor, devices = await project_manager(request)
     base = select(ProviderAssignment, User.username, Device.name).outerjoin(
         User, and_(ProviderAssignment.subject_type == "user",
                    ProviderAssignment.subject_id == User.id),
@@ -381,6 +399,13 @@ async def list_platform_provider_assignments(request: Request, provider_id: str,
                               Device.name.ilike(pattern, escape="\\"),
                               ProviderAssignment.subject_id.ilike(pattern, escape="\\")))
     async with request.app.state.database.session() as session:
+        if devices is not None:
+            users = await identity.manageable_user_ids(
+                session, actor.id, roles=("super_admin", "org_admin", "department_admin"))
+            conditions.append(or_(
+                and_(ProviderAssignment.subject_type == "device", ProviderAssignment.subject_id.in_(devices)),
+                and_(ProviderAssignment.subject_type == "user", ProviderAssignment.subject_id.in_(users or set())),
+            ))
         if not await session.get(PlatformProvider, provider_id):
             raise HTTPException(status_code=404, detail="Provider unavailable")
         total = await session.scalar(select(func.count()).select_from(base.where(*conditions).subquery()))
@@ -398,7 +423,7 @@ async def list_platform_provider_assignments(request: Request, provider_id: str,
 
 @router.post("/{provider_id}/assign")
 async def assign_platform_provider(request: Request, provider_id: str, body: ProviderAssignInput):
-    actor = await _admin(request)
+    actor = await _assignment_admin(request, body)
     async with request.app.state.database.session() as session:
         async with session.begin():
             provider = await session.get(PlatformProvider, provider_id)
@@ -437,7 +462,7 @@ async def assign_platform_provider(request: Request, provider_id: str, body: Pro
 @router.put("/{provider_id}/assign/default")
 async def set_default_platform_provider(request: Request, provider_id: str,
                                         body: ProviderDefaultInput):
-    actor = await _admin(request)
+    actor = await _assignment_admin(request, body)
     async with request.app.state.database.session() as session:
         async with session.begin():
             provider = await session.get(PlatformProvider, provider_id)
@@ -473,7 +498,7 @@ async def set_default_platform_provider(request: Request, provider_id: str,
 @router.post("/{provider_id}/assign/revoke", status_code=204)
 async def revoke_platform_provider_assignment(request: Request, provider_id: str,
                                               body: ProviderAssignInput):
-    actor = await _admin(request)
+    actor = await _assignment_admin(request, body)
     async with request.app.state.database.session() as session:
         async with session.begin():
             assignment = await session.scalar(select(ProviderAssignment).where(

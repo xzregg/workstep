@@ -333,6 +333,7 @@ class Device(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(256))
+    department_id: Mapped[str | None] = mapped_column(ForeignKey("directory_departments.id"), index=True)
     public_key: Mapped[str] = mapped_column(Text)
     public_key_fingerprint: Mapped[str | None] = mapped_column(String(64))
     app_instance_id: Mapped[str | None] = mapped_column(String(128))
@@ -344,6 +345,19 @@ class Device(Base):
     provider_revision: Mapped[int] = mapped_column(Integer, server_default="0")
     created_at: Mapped[datetime] = timestamp()
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DeviceGroup(Base):
+    __tablename__ = "device_groups"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(256), unique=True)
+    created_at: Mapped[datetime] = timestamp()
+
+
+class DeviceGroupMembership(Base):
+    __tablename__ = "device_group_memberships"
+    group_id: Mapped[str] = mapped_column(ForeignKey("device_groups.id"), primary_key=True)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), primary_key=True)
 
 
 class DesktopAuthCode(Base):

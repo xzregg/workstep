@@ -13,7 +13,8 @@ from sqlalchemy import func, or_, select
 
 from .external_identity import ExternalIdentityService
 from .identity import COOKIE_NAME, IdentityService, csrf_token, public_user
-from .identity_api import _check_csrf, _set_session_cookie, _super_admin_read, _super_admin_request
+from .management_scope import organization_manager
+from .identity_api import _check_csrf, _set_session_cookie, _super_admin_request
 from .models import DirectoryEventReceipt, DirectorySyncState, IdentitySource
 
 router = APIRouter(prefix="/api")
@@ -121,8 +122,8 @@ async def list_sources(request: Request, q: str = Query('', max_length=128),
                        sort: Literal['created_at', 'tenant_id'] = 'created_at',
                        direction: Literal['asc', 'desc'] = 'desc',
                        page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100)):
-    await _super_admin_read(request)
-    conditions = []
+    _, allowed_sources = await organization_manager(request)
+    conditions = [IdentitySource.id.in_(allowed_sources)] if allowed_sources is not None else []
     if provider:
         conditions.append(IdentitySource.provider == provider)
     if status:
@@ -177,7 +178,7 @@ async def list_sources(request: Request, q: str = Query('', max_length=128),
 
 @router.post("/admin/identity-sources/{source_id}/sync")
 async def sync_directory(request: Request, source_id: str, body: DirectorySnapshot):
-    await _super_admin_request(request)
+    await organization_manager(request, source_id=source_id, mutation=True)
     service = _service(request)
     await service.source(source_id)
     try:
@@ -198,7 +199,7 @@ async def sync_directory(request: Request, source_id: str, body: DirectorySnapsh
 
 @router.post("/admin/identity-sources/{source_id}/reconcile")
 async def reconcile_directory(request: Request, source_id: str):
-    await _super_admin_request(request)
+    await organization_manager(request, source_id=source_id, mutation=True)
     service = _service(request)
     source = await service.source(source_id)
     try:
@@ -218,7 +219,7 @@ async def reconcile_directory(request: Request, source_id: str):
 
 @router.post("/admin/identity-sources/{source_id}/events")
 async def apply_directory_event(request: Request, source_id: str, body: PersonEvent):
-    await _super_admin_request(request)
+    await organization_manager(request, source_id=source_id, mutation=True)
     if body.kind == "person_upsert" and not body.display_name:
         raise HTTPException(status_code=422, detail="Display name required")
     applied = await _service(request).apply_person_event(

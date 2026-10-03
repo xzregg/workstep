@@ -188,9 +188,9 @@ class DesktopAuthorizationService:
                 ))
 
     async def list_devices(self, *, status: str | None = None, q: str = '', sort: str = 'created_at',
-                           direction: str = 'desc', page: int = 1, page_size: int = 25) -> tuple[list[Device], int]:
+                           direction: str = 'desc', page: int = 1, page_size: int = 25, allowed_ids: set[str] | None = None) -> tuple[list[Device], int]:
         async with self.database.session() as session:
-            conditions = []
+            conditions = [Device.id.in_(allowed_ids)] if allowed_ids is not None else []
             if status:
                 conditions.append(Device.status == status)
             if q.strip():

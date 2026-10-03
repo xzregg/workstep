@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func, or_, select
 
 from .identity import COOKIE_NAME, SESSION_SECONDS, IdentityService, csrf_token, public_user
-from .models import AdminAssignment, DirectoryDepartment, IdentitySource, User
+from .models import DeviceGroup, AdminAssignment, DirectoryDepartment, IdentitySource, User
 
 router = APIRouter(prefix="/api")
 USERNAME = re.compile(r"^[a-z][a-z0-9_-]{2,63}$")
@@ -72,8 +72,8 @@ class AdminCreateInput(AccountInput):
 
 
 class GrantRoleInput(BaseModel):
-    role: Literal["identity_admin", "skill_admin", "audit_admin", "super_admin"]
-    scope_type: Literal["platform", "department"] = "platform"
+    role: Literal["identity_admin", "org_admin", "department_admin", "device_admin", "skill_admin", "audit_admin", "super_admin"]
+    scope_type: Literal["platform", "organization", "department", "device_group"] = "platform"
     scope_id: str | None = None
     include_subdepartments: bool = True
 
@@ -81,6 +81,18 @@ class GrantRoleInput(BaseModel):
     def valid_scope(self):
         if self.role in ("super_admin", "skill_admin") and self.scope_type != "platform":
             raise ValueError("This administrator role requires platform scope")
+        allowed = {
+            "super_admin": {"platform"}, "skill_admin": {"platform"},
+            "identity_admin": {"platform", "department"},
+            "org_admin": {"platform", "organization"},
+            "department_admin": {"department"},
+            "device_admin": {"platform", "device_group"},
+            "audit_admin": {"platform", "organization", "department", "device_group"},
+        }
+        if self.scope_type not in allowed[self.role]:
+            raise ValueError("Invalid scope for administrator role")
+        if (self.scope_type == "platform") != (self.scope_id is None):
+            raise ValueError("Scope ID required only for a scoped assignment")
         return self
 
 
@@ -291,11 +303,43 @@ async def admin_disable_user(request: Request, user_id: str):
     await identity.disable_user(user_id)
 
 
+DELEGATED_ROLES = ("identity_admin", "department_admin", "audit_admin")
+
+
+async def _role_manager(request: Request, *, mutation=False):
+    from .management_scope import organization_manager
+    identity = _identity(request)
+    actor, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
+    if actor.must_change_password:
+        raise HTTPException(status_code=403, detail="Password change required")
+    if mutation:
+        _check_csrf(request, request.cookies.get(COOKIE_NAME))
+        await identity.require_step_up(auth_session)
+    try:
+        await identity.require_super_admin(actor.id)
+        return identity, actor, None, None
+    except HTTPException as exc:
+        if exc.status_code != 403:
+            raise
+    await organization_manager(request)
+    async with request.app.state.database.session() as session:
+        departments = await identity.manageable_department_ids(session, actor.id, roles=("org_admin",))
+        users = await identity.manageable_user_ids(session, actor.id, roles=("org_admin",))
+    return identity, actor, departments, users
+
+
+def _check_delegated_role(body, user_id, departments, users):
+    if (body.role not in DELEGATED_ROLES or body.scope_type != "department"
+            or (departments is not None and body.scope_id not in departments)
+            or (users is not None and user_id not in users)):
+        raise HTTPException(status_code=403, detail="Administrator delegation scope denied")
+
+
 @router.post("/admin/users/{user_id}/roles", status_code=201)
 async def admin_grant_role(request: Request, user_id: str, body: GrantRoleInput):
-    identity, actor = await _super_admin_request(request)
-    _, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
-    await identity.require_step_up(auth_session)
+    identity, actor, departments, users = await _role_manager(request, mutation=True)
+    if "super_admin" not in await _active_admin_roles(request, actor.id):
+        _check_delegated_role(body, user_id, departments, users)
     assignment = await identity.grant_role(
         actor.id, user_id, body.role, body.scope_type, body.scope_id,
         body.include_subdepartments,
@@ -307,12 +351,18 @@ async def admin_grant_role(request: Request, user_id: str, body: GrantRoleInput)
 
 @router.get("/admin/roles")
 async def admin_list_roles(request: Request, q: str = Query("", max_length=128),
-                           role: Literal["identity_admin", "skill_admin", "audit_admin", "super_admin"] | None = None,
+                           role: Literal["identity_admin", "org_admin", "department_admin", "device_admin", "skill_admin", "audit_admin", "super_admin"] | None = None,
                            sort: Literal["created_at", "username", "role"] = "created_at",
                            direction: Literal["asc", "desc"] = "desc",
                            page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100)):
-    await _super_admin_read(request)
+    identity, actor, departments, users = await _role_manager(request)
     conditions = [AdminAssignment.revoked_at.is_(None)]
+    if "super_admin" not in await _active_admin_roles(request, actor.id):
+        conditions.extend([AdminAssignment.role.in_(DELEGATED_ROLES), AdminAssignment.scope_type == "department"])
+        if departments is not None:
+            conditions.append(AdminAssignment.scope_id.in_(departments))
+        if users is not None:
+            conditions.append(AdminAssignment.user_id.in_(users))
     if role:
         conditions.append(AdminAssignment.role == role)
     if q.strip():
@@ -324,9 +374,11 @@ async def admin_list_roles(request: Request, q: str = Query("", max_length=128),
               "role": AdminAssignment.role}[sort]
     ordered = column.asc() if direction == "asc" else column.desc()
     async with request.app.state.database.session() as session:
-        joined = (select(AdminAssignment, User, DirectoryDepartment.display_name)
+        joined = (select(AdminAssignment, User, func.coalesce(DirectoryDepartment.display_name, DeviceGroup.name, IdentitySource.tenant_id))
                   .join(User).outerjoin(DirectoryDepartment,
-                                        DirectoryDepartment.id == AdminAssignment.scope_id).where(*conditions))
+                                        DirectoryDepartment.id == AdminAssignment.scope_id)
+                  .outerjoin(DeviceGroup, DeviceGroup.id == AdminAssignment.scope_id)
+                  .outerjoin(IdentitySource, IdentitySource.id == AdminAssignment.scope_id).where(*conditions))
         total = await session.scalar(select(func.count()).select_from(AdminAssignment).join(User).where(*conditions))
         rows = (await session.execute(joined.order_by(ordered, AdminAssignment.id)
             .offset((page - 1) * page_size).limit(page_size))).all()
@@ -343,9 +395,13 @@ async def admin_list_roles(request: Request, q: str = Query("", max_length=128),
 
 @router.delete("/admin/roles/{assignment_id}", status_code=204)
 async def admin_revoke_role(request: Request, assignment_id: str):
-    identity, actor = await _super_admin_request(request)
-    _, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
-    await identity.require_step_up(auth_session)
+    identity, actor, departments, users = await _role_manager(request, mutation=True)
+    if "super_admin" not in await _active_admin_roles(request, actor.id):
+        async with request.app.state.database.session() as session:
+            assignment = await session.get(AdminAssignment, assignment_id)
+            if not assignment:
+                raise HTTPException(status_code=404, detail="Assignment unavailable")
+            _check_delegated_role(assignment, assignment.user_id, departments, users)
     await identity.revoke_role(actor.id, assignment_id)
 
 

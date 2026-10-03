@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from .identity import COOKIE_NAME, IdentityService, _now
-from .identity_api import _super_admin_request
+from .management_scope import project_manager, require_grant_subject
 from .models import AuditEvent, Device, User, UserDevice
 
 router = APIRouter(prefix="/api")
@@ -17,10 +17,9 @@ class AssignUserInput(BaseModel):
     user_id: str
 
 
-async def _admin(request: Request):
-    identity, actor = await _super_admin_request(request)
-    _, session = await identity.session_user(request.cookies.get(COOKIE_NAME))
-    await identity.require_step_up(session)
+async def _admin(request: Request, device_id: str, user_id: str):
+    identity, actor, _ = await project_manager(request, device_id=device_id, mutation=True)
+    await require_grant_subject(request, identity, actor.id, "user", user_id)
     return actor
 
 
@@ -71,7 +70,7 @@ async def device_access(request: Request, device_id: str):
 
 @router.post("/admin/devices/{device_id}/users")
 async def assign_device_user(request: Request, device_id: str, body: AssignUserInput):
-    actor = await _admin(request)
+    actor = await _admin(request, device_id, body.user_id)
     async with request.app.state.database.session() as session:
         async with session.begin():
             device = await session.get(Device, device_id)
@@ -99,7 +98,7 @@ async def assign_device_user(request: Request, device_id: str, body: AssignUserI
 
 @router.post("/admin/devices/{device_id}/users/{user_id}/revoke", status_code=204)
 async def revoke_device_user(request: Request, device_id: str, user_id: str):
-    actor = await _admin(request)
+    actor = await _admin(request, device_id, user_id)
     async with request.app.state.database.session() as session:
         async with session.begin():
             assignment = await session.scalar(select(UserDevice).where(
