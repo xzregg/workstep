@@ -549,6 +549,7 @@ class _FakeProcess:
 async def test_codex_spawn_applies_bound_provider_to_command_and_child_env(
     provider_store,
     monkeypatch,
+    tmp_path,
 ):
     provider_store.save_provider(_provider("responses", "openai_responses"))
     provider_store.set_engine_provider("codex", "responses")
@@ -565,7 +566,7 @@ async def test_codex_spawn_applies_bound_provider_to_command_and_child_env(
     events = [
         event
         async for event in CodexEngine().spawn(
-            prompt="hello", cwd="/tmp", model="gpt-custom"
+            prompt="hello", cwd=str(tmp_path), model="gpt-custom"
         )
     ]
 

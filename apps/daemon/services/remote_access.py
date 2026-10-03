@@ -43,6 +43,8 @@ class ActorSnapshot:
     access_level: str | None = None
     remote_task_create: bool = False
     username: str | None = None
+    provider_ids: frozenset[str] | None = None
+    provider_grant_expires_at: int | None = None
 
 
 @dataclass(frozen=True)

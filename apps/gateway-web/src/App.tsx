@@ -69,7 +69,7 @@ function GatewayPortalApp() {
         <Route path="/admin/groups" element={<AdminAccessGate state={adminAccess}
           allow={['super_admin']}><AdminGroupsPage /></AdminAccessGate>} />
         <Route path="/admin/usage" element={<AdminAccessGate state={adminAccess}
-          allow={['super_admin']}><AdminUsagePage /></AdminAccessGate>} />
+          allow={['super_admin', 'audit_admin']}><AdminUsagePage readOnly={!adminAccess.access?.roles.includes('super_admin')} /></AdminAccessGate>} />
         <Route path="/admin/audit" element={<AdminAccessGate state={adminAccess}
           allow={['super_admin', 'audit_admin']}><AdminAuditPage /></AdminAccessGate>} />
         <Route path="/admin/settings" element={<AdminAccessGate state={adminAccess}

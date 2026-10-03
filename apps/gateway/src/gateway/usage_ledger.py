@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from sqlalchemy import case, func, select
 
+from .ledger_scope import ledger_scope
 from .identity import COOKIE_NAME
 from .identity_api import _super_admin_read, _super_admin_request
 from .models import (AuditEvent, UsageDailyRollup, UsageEvent,
@@ -256,16 +257,18 @@ async def usage_summary(request: Request,
                         group_by: Literal["user", "device", "project", "provider", "model", "day"] | None = None,
                         limit: int = Query(default=100, ge=1, le=1000),
                         offset: int = Query(default=0, ge=0)):
-    await _super_admin_read(request)
     conditions = _usage_conditions(device_id=device_id, user_id=user_id, project_id=project_id,
                                    provider_id=provider_id, model=model, source=source,
                                    metering_status=metering_status, from_time=from_time,
                                    to_time=to_time)
     async with request.app.state.database.session() as session:
+        scope = await ledger_scope(request, session, UsageEvent)
+        if scope is not None:
+            conditions.append(scope)
         pending = await session.scalar(select(UsageRollupQueue.id).limit(1))
         def aligned(value):
             return value is None or (value.astimezone(timezone.utc).time() == time.min)
-        use_rollups = pending is None and aligned(from_time) and aligned(to_time)
+        use_rollups = scope is None and pending is None and aligned(from_time) and aligned(to_time)
         if use_rollups:
             entity = UsageDailyRollup
             conditions = _usage_conditions(
@@ -452,12 +455,14 @@ async def usage_events(request: Request,
                        to_time: datetime | None = None,
                        page: int = Query(1, ge=1),
                        page_size: int = Query(25, ge=1, le=100)):
-    await _super_admin_read(request)
     conditions = _usage_conditions(device_id=device_id, user_id=user_id, project_id=project_id,
                                    provider_id=provider_id, model=model, source=source,
                                    metering_status=metering_status, from_time=from_time,
                                    to_time=to_time)
     async with request.app.state.database.session() as session:
+        scope = await ledger_scope(request, session, UsageEvent)
+        if scope is not None:
+            conditions.append(scope)
         total = await session.scalar(select(func.count()).select_from(UsageEvent).where(*conditions))
         rows = (await session.scalars(select(UsageEvent).where(*conditions).order_by(
             UsageEvent.occurred_at.desc(), UsageEvent.id.desc(),

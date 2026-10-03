@@ -2,12 +2,46 @@
 
 import json
 import sqlite3
+import asyncio
+import time
 
 import httpx
 import pytest
 
 from services import providers as provider_service
 from engines.core.base import EngineModel
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize('completion', ['text_completion', 'chat_completion'])
+async def test_managed_call_rechecks_current_authorization_without_blocking(completion, monkeypatch):
+    provider = {'id': 'supplier', 'managed': True, 'managed_gateway_id': 'gateway',
+                'api_key': 'old-secret', 'models': ['model'],
+                'protocols': ['openai_chat_completions'],
+                'base_url': 'https://api.example.test/v1'}
+    class Store:
+        managed_gateway_id = 'gateway'
+        current = None
+        def get_provider(self, _id):
+            time.sleep(.15)
+            return self.current
+    store = Store()
+    monkeypatch.setattr(provider_service, 'config_store', store)
+    calls = []
+    async def network(request):
+        calls.append(request)
+        return httpx.Response(200, json={})
+    call = getattr(provider_service, completion)
+    task = asyncio.create_task(call(provider, 'model', [], transport=httpx.MockTransport(network)))
+    await asyncio.sleep(.02)
+    assert not task.done()
+    await asyncio.wait_for(asyncio.sleep(.01), timeout=.05)
+    with pytest.raises(ValueError, match='供应商授权'):
+        await task
+    store.current = {**provider, 'api_key': 'new-secret'}
+    with pytest.raises(ValueError, match='供应商授权'):
+        await call(provider, 'model', [], transport=httpx.MockTransport(network))
+    assert calls == []
 
 
 def test_provider_type_presets():

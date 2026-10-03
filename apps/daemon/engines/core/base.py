@@ -465,6 +465,10 @@ class BaseLLMEngine(ABC):
         """
         return ProviderRuntimeConfig(model=model)
 
+    def require_native_credentials_allowed(self) -> None:
+        if getattr(self.provider_config_store(), 'managed_gateway_id', None):
+            raise ValueError('受管模式不支持使用该引擎的本机原生凭据')
+
     def resolve_provider_runtime(
         self,
         provider_id: str | None = None,
@@ -476,6 +480,8 @@ class BaseLLMEngine(ABC):
         if not model:
             model = config_store.get_engine_default_model(self.ENGINE_ID) or None
         if not selected:
+            if getattr(config_store, "managed_gateway_id", None):
+                raise ValueError("受管模式需要当前用户获授权的供应商")
             if self.provider_required():
                 raise ValueError("该引擎需要先选择供应商")
             return self.build_native_runtime(model)

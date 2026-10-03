@@ -107,9 +107,12 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         class ProjectData:
             async def proxy_http(self, request, *, user_id, username, display_name,
                                  project_id, access_level, task_create,
-                                 authorization_check):
+                                 authorization_check, provider_ids,
+                                 provider_grant_expires_at):
                 await authorization_check()
                 assert user_id == worker_id
+                assert provider_ids == []
+                assert provider_grant_expires_at > int(__import__('time').time())
                 assert display_name == "Worker"
                 assert project_id == "host-1"
                 if request.url.path in ('/', '/tasks', '/canvas', '/assets/app.js'):

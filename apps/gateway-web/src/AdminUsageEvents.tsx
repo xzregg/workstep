@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { LedgerExportButton } from './LedgerExportButton'
 
 type UsageEvent = { id: string; request_id: string | null; source: string;
   metering_status: string; occurred_at: string; user_id: string | null;
@@ -67,6 +68,15 @@ export function AdminUsageEvents({ filters }: { filters: string }) {
         </details></div></li>)}</ul>
     <div className="gateway-admin-pagination"><span>共 {total} 条事件 · 第 {page}/{
       Math.max(1, Math.ceil(total / 25))} 页</span>
+      <LedgerExportButton rows={events} filename={`usage-page-${page}.csv`} disabled={loading || !!error}
+        columns={[{ name: '事件 ID', key: 'id' }, { name: '时间', key: 'occurred_at' },
+          { name: '来源', key: 'source' }, { name: '计量状态', key: 'metering_status' },
+          { name: '用户 ID', key: 'user_id' }, { name: '发起人 ID', key: 'initiated_by_user_id' },
+          { name: '设备 ID', key: 'device_id' }, { name: '项目 ID', key: 'project_id' },
+          { name: '供应商 ID', key: 'provider_id' }, { name: '模型', key: 'model' },
+          { name: '输入 Token', key: 'input_tokens' }, { name: '输出 Token', key: 'output_tokens' },
+          { name: '总 Token', key: 'total_tokens' }, { name: '币种', key: 'currency' },
+          { name: '估算成本', key: 'estimated_cost' }, { name: '账单金额', key: 'billed_cost' }]} />
       <button type="button" disabled={page <= 1 || loading} onClick={() => setPage(value => value - 1)}>上一页</button>
       <button type="button" disabled={page >= Math.ceil(total / 25) || loading}
         onClick={() => setPage(value => value + 1)}>下一页</button></div>

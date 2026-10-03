@@ -9,10 +9,9 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 from sqlalchemy import and_, exists, func, or_, select
 
-from .identity_api import COOKIE_NAME, _identity
+from .ledger_scope import ledger_scope
 from .models import (
-    AdminAssignment, AuditEvent, AuditEventReceipt, DirectoryDepartment,
-    DirectoryMembership, DirectoryPerson, PlatformProject, Device, DeviceGroupMembership,
+    AuditEvent, AuditEventReceipt, PlatformProject,
 )
 
 
@@ -151,44 +150,6 @@ def _visible_metadata(raw: str | None) -> dict:
     }
 
 
-async def _audit_scope(request: Request, session):
-    identity = _identity(request)
-    user, _ = await identity.session_user(request.cookies.get(COOKIE_NAME))
-    if user.must_change_password:
-        raise HTTPException(status_code=403, detail="Password change required")
-    assignments = (await session.scalars(select(AdminAssignment).where(
-        AdminAssignment.user_id == user.id,
-        AdminAssignment.role.in_(("super_admin", "audit_admin")),
-        AdminAssignment.revoked_at.is_(None),
-    ))).all()
-    if not assignments:
-        raise HTTPException(status_code=403, detail="Audit administrator access required")
-    if any(
-        role.role == "super_admin" or role.scope_type == "platform"
-        for role in assignments
-    ):
-        return None
-
-    department_ids = await identity.manageable_department_ids(
-        session, user.id, roles=("audit_admin",)) if any(
-            role.scope_type in ("organization", "department") for role in assignments) else set()
-    group_ids = {role.scope_id for role in assignments if role.scope_type == "device_group"}
-    managed_devices = select(DeviceGroupMembership.device_id).where(DeviceGroupMembership.group_id.in_(group_ids))
-    member_users = select(DirectoryPerson.user_id).join(
-        DirectoryMembership,
-        DirectoryMembership.person_id == DirectoryPerson.id,
-    ).where(
-        DirectoryPerson.active == 1,
-        DirectoryMembership.department_id.in_(department_ids),
-    )
-    return or_(
-        AuditEvent.device_id.in_(managed_devices),
-        AuditEvent.device_id.in_(select(Device.id).where(Device.department_id.in_(department_ids))),
-        AuditEvent.user_id.in_(member_users),
-        AuditEvent.initiated_by_user_id.in_(member_users),
-    )
-
-
 @router.get("")
 async def query_audit(
     request: Request,
@@ -208,7 +169,7 @@ async def query_audit(
     if from_time and to_time and from_time >= to_time:
         raise HTTPException(422, "End time must be after start time")
     async with request.app.state.database.session() as session:
-        scope = await _audit_scope(request, session)
+        scope = await ledger_scope(request, session, AuditEvent)
         published = exists(select(PlatformProject.id).where(
             PlatformProject.device_id == AuditEvent.device_id,
             PlatformProject.host_project_id == AuditEvent.project_id,

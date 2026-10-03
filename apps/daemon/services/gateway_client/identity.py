@@ -30,6 +30,8 @@ class ManagedActor:
     project_access_level: str | None = None
     remote_task_create: bool = False
     display_name: str | None = None
+    provider_ids: frozenset[str] | None = None
+    provider_grant_expires_at: int | None = None
 
 
 class ManagedAuthorizationVerifier:

@@ -198,6 +198,8 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                 access_level=actor.project_access_level,
                 remote_task_create=actor.remote_task_create,
                 username=actor.username,
+                provider_ids=actor.provider_ids,
+                provider_grant_expires_at=actor.provider_grant_expires_at,
             )) if actor is not None else nullcontext()
             with context:
                 try:

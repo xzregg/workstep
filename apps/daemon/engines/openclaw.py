@@ -90,6 +90,7 @@ class OpenClawEngine(AcpEngineBase):
         OpenClaw does not expose token deltas on this headless interface, so
         the final assistant text is emitted as one ``text_delta`` event.
         """
+        self.require_native_credentials_allowed()
         prompt, binary = await asyncio.to_thread(
             lambda: (self.render_image_prompt(prompt, images), self.resolve_binary())
         )

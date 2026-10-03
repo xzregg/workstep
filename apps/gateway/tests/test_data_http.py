@@ -312,6 +312,8 @@ async def test_data_connection_multiplexes_large_http_body_and_streamed_response
                 stream["headers"] = frame.payload["headers"]
                 stream["user_id"] = frame.payload["user_id"]
                 stream["display_name"] = frame.payload.get("display_name")
+                stream["provider_ids"] = frame.payload.get("provider_ids")
+                stream["provider_grant_expires_at"] = frame.payload.get("provider_grant_expires_at")
                 stream["project_id"] = frame.payload.get("project_id")
                 stream["access_level"] = frame.payload.get("access_level")
                 stream["task_create"] = frame.payload.get("task_create")
@@ -346,7 +348,8 @@ async def test_data_connection_multiplexes_large_http_body_and_streamed_response
         return await connection.proxy_http(request, user_id="user-1", username="alice",
                                            display_name="Alice Display",
                                            project_id="host-1", access_level="edit",
-                                           task_create=True)
+                                           task_create=True, provider_ids=["provider-allowed"],
+                                           provider_grant_expires_at=1234567890)
 
     upload = b"x" * 70000
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
@@ -361,6 +364,8 @@ async def test_data_connection_multiplexes_large_http_body_and_streamed_response
     stream = next(iter(received.values()))
     assert stream["user_id"] == "user-1"
     assert stream["display_name"] == "Alice Display"
+    assert stream["provider_ids"] == ["provider-allowed"]
+    assert stream["provider_grant_expires_at"] == 1234567890
     assert stream["project_id"] == "host-1"
     assert stream["access_level"] == "edit"
     assert stream["task_create"] is True
