@@ -19,6 +19,12 @@ export const useChatSessionStore = createAssistantStore({
   channel: 'session_chat',
 })
 
+export function pinChannelSessions(sessions: ChatSessionSummary[]): ChatSessionSummary[] {
+  return [...sessions].sort((a, b) =>
+    Number(b.source === 'channel') - Number(a.source === 'channel'),
+  )
+}
+
 export function mergeChatSessionRunningState(
   sessions: ChatSessionSummary[],
   liveState: Record<string, boolean>,
@@ -91,7 +97,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
     try {
       const { sessions } = await chatSessionApi.list(projectId)
       set((state) => ({
-        sessionsByProject: { ...state.sessionsByProject, [projectId]: sessions },
+        sessionsByProject: { ...state.sessionsByProject, [projectId]: pinChannelSessions(sessions) },
       }))
     } catch {
       // Keep whatever is cached; the next navigation retries.
@@ -111,7 +117,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
           - (orderMap.get(b.id) ?? Number.MAX_SAFE_INTEGER),
       )
       return {
-        sessionsByProject: { ...state.sessionsByProject, [projectId]: sessions },
+        sessionsByProject: { ...state.sessionsByProject, [projectId]: pinChannelSessions(sessions) },
       }
     })
     try {
@@ -127,10 +133,10 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
       return {
         sessionsByProject: {
           ...state.sessionsByProject,
-          [session.project_id]: [
+          [session.project_id]: pinChannelSessions([
             session,
             ...projectSessions.filter((item) => item.id !== session.id),
-          ],
+          ]),
         },
       }
     }),

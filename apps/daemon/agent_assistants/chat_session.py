@@ -578,6 +578,12 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
             "project_id": project_id,
             "workflow_id": row.workflow_id,
             "title": row.title or "未命名会话",
+            "source": "channel" if ChatMessage.select().where(
+                (ChatMessage.session == row)
+                & (ChatMessage.role == "user")
+                & ChatMessage.author_id.startswith("channel:")
+                & ChatMessage.author_device_id.startswith("channel:")
+            ).exists() else "chat",
             "archived": bool(row.archived),
             "engine": row.engine,
             "model": row.model,

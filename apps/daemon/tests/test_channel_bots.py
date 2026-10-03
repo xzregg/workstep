@@ -10,7 +10,7 @@ from httpx import ASGITransport, AsyncClient
 
 import main
 from agent_assistants.channel_chat import ChannelChatModule
-from models.chat_session import ChatSession
+from models.chat_session import ChatMessage, ChatSession
 from models.task import Task
 from services.channels.bots import BotManager, IncomingMessage
 from services.channels.responder import ChatSessionResponder
@@ -351,3 +351,27 @@ async def test_channel_session_reset_replaces_mapping_and_reuses_new_session(bot
     if reset == "archive":
         archived = await projects.run_db(project.id, lambda _project: module.get_session(project.id, old["id"]))
         assert archived["archived"] is True
+
+
+async def test_channel_source_survives_rename_and_archive_without_title_guessing(bots, monkeypatch):
+    manager, project, *_ = bots
+    module = ChannelChatModule(manager._event_bus, manager._project_manager)
+    monkeypatch.setattr(module, "_validate_engine", lambda _engine: None)
+
+    def operation(_project):
+        channel = module.create_session(project.id, title="Echo", engine="codex_sdk")
+        ordinary = module.create_session(project.id, title="渠道对话", engine="codex_sdk")
+        ChatMessage.create(
+            id="channel-source", session=channel["id"], role="user", content="你好",
+            author_id="channel:wecom:user-1", author_device_id="channel:bot-1",
+            created_at="2026-10-03T00:00:00Z",
+        )
+        assert module.get_session(project.id, channel["id"])["source"] == "channel"
+        assert module.get_session(project.id, ordinary["id"])["source"] == "chat"
+        module.rename_session(project.id, channel["id"], "新名字")
+        archived = module.set_archived(project.id, channel["id"], True)
+        assert archived["source"] == "channel"
+        assert archived["title"] == "新名字"
+        assert module.list_sessions(project.id, archived=True)[0]["source"] == "channel"
+
+    await manager._project_manager.run_db(project.id, operation)

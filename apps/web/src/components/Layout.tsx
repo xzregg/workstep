@@ -1,3 +1,4 @@
+import ChatSessionSourceBadge from './ChatSessionSourceBadge'
 import { useVisualViewport } from '../hooks/useVisualViewport'
 import Icon from './Icon'
 import ResponsiveNavigation from './ResponsiveNavigation'
@@ -1000,6 +1001,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                           ) : (
                             <MarqueeText text={session.title} />
                           )}
+                          <ChatSessionSourceBadge source={session.source} />
                           <SidebarStatusIndicator
                             running={sessionRunning}
                             failed={failedChatSessions[session.id]}

@@ -1,0 +1,14 @@
+.chat-session-source-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent);
+  background: var(--accent-light);
+  font-size: calc(10px * var(--font-scale));
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}

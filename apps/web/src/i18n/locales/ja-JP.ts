@@ -2153,6 +2153,8 @@ export const jaJP: Messages = {
     },
   },
   chatSession: {
+    channelSource: '渠道',
+    channelSourceHint: '通过企业微信或钉钉机器人建立的渠道对话',
     viewArchive: 'アーカイブを表示',
     archive: '会話をアーカイブ',
     archiveFailed: 'アーカイブに失敗しました',
