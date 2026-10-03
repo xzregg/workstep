@@ -232,6 +232,8 @@ Gateway 平台分享控制面在 `apps/gateway/src/gateway/services/platform_sha
 
 任务群互斥选择由 `TaskDiscussionGroups.tsx` 使用机器人列表中的 `task_bindings` 判断：同一机器人已绑定其他任务的群在最近群列表置灰并显示项目、任务；手工输入同一标识时禁用提交。`BotTaskBindings.tsx` 始终显示绑定区，并在旧后端未返回 `task_bindings` 时提示重启。后端 `services/channels/bots.py::bind_group` 仍负责最终冲突校验；行为测试见 `tests/taskDiscussionGroups.test.tsx`、`tests/botSettings.test.tsx` 和 daemon `tests/test_channel_bots.py`。
 
+任务详情头部由 `TaskDiscussionGroups.tsx` 持有绑定 BOT 按钮与管理弹窗；组件进入任务时读取 `channelBotApi.taskGroups`，存在绑定显示「已绑定 BOT」，绑定或解绑后立即更新，弹窗关闭时及每 10 秒刷新外部绑定。`TaskDetail.tsx` 只组装入口；行为测试见 `tests/taskDiscussionGroups.test.tsx`。
+
 群内绑定任务：`agent_assistants/channel_chat.py` 把可信的当前项目与渠道会话 ID 放入系统背景并启用 WorkStep 工具；`cli.py::channel bind` 与 `services/tool_registry.py::workstep_bind_channel_group` 调用 `api/channel_bots.py`，由 `services/channels/bots.py::bind_session_group` 从仍有效的群会话反查机器人与群，再复用 `bind_group` 的任务验证和冲突校验。测试见 daemon `test_channel_bots.py`（真实 API、路由切换、慢查询健康检查）、`test_cli.py` 和 `test_tool_registry.py`；使用说明见 `apps/daemon/data/skills/workstep-cli/SKILL.md`。
 
 表中的前端路径均相对于 `apps/web/`，后端路径均相对于 `apps/daemon/`。后端请求模型在 `schemas/`，持久化模型在 `models/`；服务里的同步数据库工作单元通过 `services/project_database.py` 的项目执行器运行。实时事件从 `engines/core/events.py` 经 `engines/core/agui.py` 到前端 `src/utils/agui.ts`。

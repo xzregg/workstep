@@ -6,6 +6,26 @@ import { createRoot } from 'react-dom/client'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
 import TaskDiscussionGroups from '../src/components/TaskDiscussionGroups'
 
+test('task header shows the bound BOT label for an existing group', async () => {
+  const { window } = installDomEnvironment()
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  const previousFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(JSON.stringify([
+    { bot_id: 'bot-1', group_id: 'group-1', project_id: 'project-1', task_id: 'task-1' },
+  ]), { status: 200 })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><TaskDiscussionGroups projectId="project-1" taskId="task-1" /></I18nProvider>))
+    assert.equal(container.querySelector('.task-detail-discussion-button')?.textContent, '已绑定 BOT')
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    globalThis.fetch = previousFetch
+    await window.happyDOM.close()
+  }
+})
+
 test('task discussion panel binds a received group ID to the current task', async () => {
   const { window } = installDomEnvironment()
   useLocaleStore.setState({ locale: 'zh-CN' })
@@ -22,13 +42,16 @@ test('task discussion panel binds a received group ID to the current task', asyn
         ? [{ bot_id: 'bot-1', group_id: 'group-1', group_name: '研发群' }]
         : method === 'POST'
           ? (groups = [{ bot_id: 'bot-1', group_id: 'group-1', project_id: 'project-1', task_id: 'task-1' }], groups[0])
-          : groups
+          : method === 'DELETE' ? (groups = [], { deleted: true }) : groups
     return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
   try {
-    await act(async () => root.render(<I18nProvider><TaskDiscussionGroups open projectId="project-1" taskId="task-1" onClose={() => {}} /></I18nProvider>))
+    await act(async () => root.render(<I18nProvider><TaskDiscussionGroups projectId="project-1" taskId="task-1" /></I18nProvider>))
+    const trigger = container.querySelector<HTMLButtonElement>('.task-detail-discussion-button')!
+    assert.equal(trigger.textContent, '绑定BOT')
+    await act(async () => trigger.click())
     const input = document.querySelector<HTMLInputElement>('[role="dialog"] .task-discussion-groups input')!
     const select = document.querySelector<HTMLSelectElement>('[role="dialog"] select[aria-label="最近收到的群"]')!
     assert.ok(select, 'received groups must have an explicit selector')
@@ -58,6 +81,12 @@ test('task discussion panel binds a received group ID to the current task', asyn
     assert.equal(input.value, '')
     assert.equal(select.value, '')
     assert.equal(bind.disabled, true)
+    assert.equal(trigger.textContent, '已绑定 BOT')
+    const unbind = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find((button) => button.textContent === '解绑')!
+    await act(async () => unbind.click())
+    const confirm = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find((button) => button.textContent === '确认')!
+    await act(async () => confirm.click())
+    assert.equal(trigger.textContent, '绑定BOT')
   } finally {
     await act(async () => root.unmount())
     container.remove()
@@ -85,7 +114,8 @@ test('groups already bound to another task are disabled and cannot be submitted 
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
   try {
-    await act(async () => root.render(<I18nProvider><TaskDiscussionGroups open projectId="project-1" taskId="task-1" onClose={() => {}} /></I18nProvider>))
+    await act(async () => root.render(<I18nProvider><TaskDiscussionGroups projectId="project-1" taskId="task-1" /></I18nProvider>))
+    await act(async () => container.querySelector<HTMLButtonElement>('.task-detail-discussion-button')!.click())
     const select = document.querySelector<HTMLSelectElement>('[role="dialog"] select[aria-label="最近收到的群"]')!
     const used = select.querySelector<HTMLOptionElement>('option[value="used"]')!
     assert.equal(used.disabled, true)

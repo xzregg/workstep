@@ -17,7 +17,7 @@ export const zhCN = {
     wecomHint: '在企业微信智能机器人配置中选择长连接，复制 Bot ID 和 Secret；将机器人加入群后，在任务详情绑定群标识。',
     dingtalkHint: '在钉钉开发者后台创建应用并启用 Stream 模式机器人，复制 Client ID 和 Client Secret；将机器人加入群后绑定群标识。',
     deleteTitle: '删除机器人', deleteHint: '删除后，该机器人的群绑定也会移除。',
-    discussionGroups: '绑定BOT', discussionHint: '将群标识绑定到此任务。群内消息会交给此任务的协调助手。',
+    discussionGroups: '绑定BOT', boundButton: '已绑定 BOT', discussionHint: '将群标识绑定到此任务。群内消息会交给此任务的协调助手。',
     groupName: '群名称', unknownGroup: '未命名群',
     groupNameHint: '平台提供群名时自动填入；未提供时使用对话名称，可通过重命名对话修改。',
     conversationId: '会话 ID', initiator: '对话发起者', sender: '最近发送者',

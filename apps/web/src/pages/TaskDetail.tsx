@@ -243,7 +243,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [taskIdCopied, setTaskIdCopied] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const managedMode = useManagedMode()
-  const [discussionGroupsOpen, setDiscussionGroupsOpen] = useState(false)
   const [durationNowMs, setDurationNowMs] = useState(() => Date.now())
   const [selectedStep, setSelectedStep] = useState(0)
   const selectedStepTaskRef = useRef<string | null>(null)
@@ -1001,11 +1000,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         }}
         headerActions={
           <>
-            <Button className="task-detail-discussion-button" variant="ghost"
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={(event) => { event.stopPropagation(); setDiscussionGroupsOpen(true) }}>
-              {t('channelBot.discussionGroups')}
-            </Button>
+            <TaskDiscussionGroups projectId={projectId} taskId={taskId} />
             {managedMode !== true && <Button
               className="task-detail-share-button"
               variant="ghost"
@@ -1064,8 +1059,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onCloseViewingPrompt={() => setViewingPrompt(null)}
         artifactNotice={artifactNotice}
         overlays={<>
-          <TaskDiscussionGroups open={discussionGroupsOpen} projectId={projectId} taskId={taskId}
-            onClose={() => setDiscussionGroupsOpen(false)} />
           <ConfirmDialog
             open={pendingReviewCompletion !== null}
             title={t('taskDetail.setStepCompleteTitle')}

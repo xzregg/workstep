@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { channelBotApi, type ChannelBot, type DiscussionGroup } from '../api/channelBots'
 import { useI18n } from '../i18n'
 import Button from './Button'
@@ -6,12 +7,47 @@ import ConfirmDialog from './ConfirmDialog'
 import Input from './Input'
 import './TaskDiscussionGroups.css'
 
-interface Props { open: boolean; projectId: string; taskId: string; onClose: () => void }
+interface Props { projectId: string; taskId: string }
 
-export default function TaskDiscussionGroups({ open, projectId, taskId, onClose }: Props) {
+export default function TaskDiscussionGroups({ projectId, taskId }: Props) {
+  const { t } = useI18n()
+  const [open, setOpen] = useState(false)
+  const [bindingState, setBindingState] = useState<{ key: string; groups: DiscussionGroup[] }>({ key: '', groups: [] })
+  const key = `${projectId}:${taskId}`
+  const keyRef = useRef(key)
+  keyRef.current = key
+  const openRef = useRef(open)
+  openRef.current = open
+  const groups = bindingState.key === key ? bindingState.groups : []
+  const refreshGroups = useCallback(async () => {
+    const rows = await channelBotApi.taskGroups(taskId, projectId)
+    if (keyRef.current === key) setBindingState({ key, groups: rows })
+  }, [key, projectId, taskId])
+
+  useEffect(() => {
+    void refreshGroups().catch(() => undefined)
+    const timer = window.setInterval(() => {
+      if (!openRef.current) void refreshGroups().catch(() => undefined)
+    }, 10000)
+    return () => window.clearInterval(timer)
+  }, [refreshGroups])
+
+  return <>
+    <Button className="task-detail-discussion-button" variant="ghost"
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => { event.stopPropagation(); setOpen(true) }}>
+      {groups.length ? t('channelBot.boundButton') : t('channelBot.discussionGroups')}
+    </Button>
+    {createPortal(<TaskDiscussionGroupsDialog open={open} projectId={projectId} taskId={taskId}
+      groups={groups} onChanged={refreshGroups} onClose={() => { setOpen(false); void refreshGroups().catch(() => undefined) }} />, document.body)}
+  </>
+}
+
+interface DialogProps extends Props { open: boolean; groups: DiscussionGroup[]; onChanged: () => Promise<void>; onClose: () => void }
+
+function TaskDiscussionGroupsDialog({ open, projectId, taskId, groups, onChanged, onClose }: DialogProps) {
   const { t } = useI18n()
   const [bots, setBots] = useState<ChannelBot[]>([])
-  const [groups, setGroups] = useState<DiscussionGroup[]>([])
   const [recent, setRecent] = useState<Array<{ group_id: string; group_name?: string; conversation_title?: string }>>([])
   const [botId, setBotId] = useState('')
   const [groupId, setGroupId] = useState('')
@@ -31,14 +67,13 @@ export default function TaskDiscussionGroups({ open, projectId, taskId, onClose 
   useEffect(() => {
     if (!open) return
     let cancelled = false
-    void Promise.all([channelBotApi.list(), channelBotApi.taskGroups(taskId, projectId)]).then(([botRows, groupRows]) => {
+    void channelBotApi.list().then((botRows) => {
       if (cancelled) return
       setBots(botRows)
-      setGroups(groupRows)
       setBotId((current) => current || botRows[0]?.id || '')
     }).catch((reason) => { if (!cancelled) setError(String(reason)) })
     return () => { cancelled = true }
-  }, [open, projectId, taskId])
+  }, [open])
 
   useEffect(() => {
     if (!open || !botId) return
@@ -55,7 +90,7 @@ export default function TaskDiscussionGroups({ open, projectId, taskId, onClose 
     setError('')
     try {
       await channelBotApi.bindGroup(taskId, projectId, botId, groupId.trim(), groupName.trim())
-      setGroups(await channelBotApi.taskGroups(taskId, projectId))
+      await onChanged()
       setGroupId('')
       setGroupName('')
     } catch (reason) { setError(String(reason)) }
@@ -67,7 +102,7 @@ export default function TaskDiscussionGroups({ open, projectId, taskId, onClose 
     setBusy(true)
     try {
       await channelBotApi.unbindGroup(taskId, projectId, removeGroup.bot_id, removeGroup.group_id)
-      setGroups(await channelBotApi.taskGroups(taskId, projectId))
+      await onChanged()
       setRemoveGroup(null)
     } catch (reason) { setError(String(reason)) }
     finally { setBusy(false) }
