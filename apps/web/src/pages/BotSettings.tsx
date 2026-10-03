@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { channelBotApi, type BotDraft, type ChannelBot, type BotPlatform, type BotTargetType } from '../api/channelBots'
 import Button from '../components/Button'
+import BotTaskBindings from '../components/BotTaskBindings'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Input from '../components/Input'
 import { useI18n } from '../i18n'
@@ -89,12 +90,12 @@ export default function BotSettings() {
     <h1>{t('channelBot.title')}</h1>
     <p>{t('channelBot.intro')}</p>
     <div className="bot-settings-list">
-      {bots.map((bot) => <div className="bot-settings-row" key={bot.id}>
+      {bots.map((bot) => <div className="bot-settings-card" key={bot.id}><div className="bot-settings-row">
         <div><strong>{bot.name}</strong><span>{bot.platform === 'wecom' ? t('channelBot.wecom') : t('channelBot.dingtalk')} · {bot.app_id}</span></div>
         <span role="status">{t(`channelBot.status.${bot.status}` as 'channelBot.status.connected')}{bot.error ? ` · ${bot.error}` : ''}</span>
         <Button variant="ghost" onClick={() => edit(bot)}>{t('common.edit')}</Button>
         <Button variant="ghost" onClick={() => setDeleteId(bot.id)}>{t('common.delete')}</Button>
-      </div>)}
+      </div><BotTaskBindings bindings={bot.task_bindings || []} onChanged={reload} /></div>)}
       {!bots.length && <p>{t('channelBot.empty')}</p>}
     </div>
     <h2>{editingId ? t('channelBot.edit') : t('channelBot.add')}</h2>

@@ -127,7 +127,28 @@ class BotManager:
 
     async def list_bots(self) -> list[dict]:
         data = await self._load()
-        return [self._public(bot, self._statuses.get(bot["id"])) for bot in data["bots"]]
+        bindings = [dict(row) for row in data["groups"]]
+        by_project: dict[str, list[dict]] = {}
+        for row in bindings:
+            row["task_title"] = row["task_id"]
+            row["project_name"] = row["project_id"]
+            project = self._project_manager.get_project_by_id(row["project_id"])
+            if project:
+                row["project_name"] = project.name
+                by_project.setdefault(project.id, []).append(row)
+
+        async def load_tasks(project_id, rows):
+            ids = {row["task_id"] for row in rows}
+            def operation(_project):
+                return {task.id: task.title for task in Task.select(Task.id, Task.title).where(Task.id.in_(ids))}
+            titles = await self._project_manager.run_db(project_id, operation)
+            for row in rows:
+                row["task_title"] = titles.get(row["task_id"], row["task_id"])
+
+        await asyncio.gather(*(load_tasks(project_id, rows) for project_id, rows in by_project.items()))
+        return [{**self._public(bot, self._statuses.get(bot["id"])),
+                 "task_bindings": [row for row in bindings if row["bot_id"] == bot["id"]]}
+                for bot in data["bots"]]
 
     async def _validate_target(self, kind: str, project_id: str, task_id: str) -> None:
         if kind not in {"", "project", "task"}:

@@ -61,6 +61,7 @@ test('editing a legacy task default saves a project default and never fetches ta
   const requests: string[] = []
   let saved: any
   const bot = { id: 'b1', platform: 'wecom', name: '机器人', app_id: 'app', enabled: false,
+    task_bindings: [{ bot_id: 'b1', project_id: 'p1', task_id: 't1', task_title: '登录修复', project_name: '项目一', group_id: 'g1', group_name: '研发群' }],
     has_secret: true, status: 'disabled', error: '', default_target_type: 'task', default_project_id: 'p1', default_task_id: 't1' }
   globalThis.fetch = async (input, init) => {
     requests.push(String(input))
@@ -74,6 +75,7 @@ test('editing a legacy task default saves a project default and never fetches ta
   const root = createRoot(container)
   try {
     await act(async () => root.render(<I18nProvider><BotSettings /></I18nProvider>))
+    assert.match(container.querySelector('.bot-task-bindings')!.textContent!, /登录修复/ )
     await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === '编辑')!.click())
     assert.equal(container.querySelector('option[value="task"]'), null)
     assert.equal(container.querySelectorAll<HTMLSelectElement>('.bot-settings-form select')[1].value, 'project')

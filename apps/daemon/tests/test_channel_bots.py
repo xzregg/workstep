@@ -724,3 +724,35 @@ async def test_recent_group_falls_back_to_renamed_conversation_and_db_does_not_b
     monkeypatch.setattr(ChatSession, 'select', original)
     await manager.bind_group(project.id, 'task-1', bot['id'], 'room')
     assert (await manager.list_task_groups(project.id, 'task-1'))[0]['group_name'] == '我的测试群'
+
+
+async def test_bot_list_exposes_task_bindings_and_unbinds_without_blocking_health(bots, monkeypatch):
+    manager, first, second, *_ = bots
+    bot = await manager.create_bot(dict(platform="wecom", name="助手", app_id="binding-list", secret="secret"))
+    await manager.bind_group(first.id, "task-1", bot["id"], "group-a", "研发群")
+    await manager.bind_group(second.id, "task-2", bot["id"], "group-b")
+    entered, release = threading.Event(), threading.Event()
+    original = Task.select
+    def slow_select(*args, **kwargs):
+        entered.set()
+        release.wait(2)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(Task, "select", slow_select)
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        pending = asyncio.create_task(client.get("/api/channel-bots"))
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            assert (await asyncio.wait_for(client.get("/api/health"), .5)).status_code == 200
+        finally:
+            release.set()
+        response = await pending
+        assert response.status_code == 200
+        bindings = response.json()[0]["task_bindings"]
+        assert [(row["task_title"], row["group_id"]) for row in bindings] == [("task-1", "group-a"), ("task-2", "group-b")]
+        assert bindings[0]["group_name"] == "研发群"
+        assert bindings[0]["project_name"] == first.name
+        assert "secret" not in response.json()[0]
+        path = f"/api/task/task-1/discussion-groups/{bot['id']}/group-a?project_id={first.id}"
+        assert (await client.delete(path)).status_code == 200
+        remaining = (await client.get("/api/channel-bots")).json()[0]["task_bindings"]
+        assert [row["group_id"] for row in remaining] == ["group-b"]
