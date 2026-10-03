@@ -306,7 +306,8 @@ async def test_dingtalk_received_group_name_and_sender_are_normalized():
     assert received[0].sender_id == 'u1'
 
 
-async def test_wecom_card_buttons_and_callback_use_original_card_id(monkeypatch):
+@pytest.mark.parametrize('nested', [False, True])
+async def test_wecom_card_buttons_and_callback_use_original_card_id(monkeypatch, nested):
     from services.channels.base import ChannelCard, ChannelButton
     clients = []
     class Client:
@@ -333,7 +334,9 @@ async def test_wecom_card_buttons_and_callback_use_original_card_id(monkeypatch)
     assert payload['msgtype'] == 'template_card'
     assert payload['template_card']['task_id'] == 'card'
     assert payload['template_card']['button_list'] == [{'text':'停止','key':'0'}]
-    frame = {'headers':{'req_id':'callback'}, 'body':{'chatid':'g','from':{'userid':'u'},'event':{'task_id':'card','event_key':'0'}}}
+    details = {'task_id':'card','event_key':'0'}
+    event = {'eventtype':'template_card_event', 'template_card_event':details} if nested else {'eventtype':'template_card_event', **details}
+    frame = {'headers':{'req_id':'callback'}, 'body':{'chatid':'g','from':{'userid':'u'},'event':event}}
     await client.handlers['event.template_card_event'](frame)
     assert (received[0].card_id,received[0].key,received[0].sender_id) == ('card','0','u')
     client.update_template_card.assert_awaited_once()

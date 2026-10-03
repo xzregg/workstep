@@ -68,4 +68,6 @@ WorkStep 渠道消息协议 v1 是项目内部的收发契约。它采用与 LLM
 
 企业微信将运行中停止卡片通过 `reply_stream_with_card` 附加到同一流式回复，选择题使用主动模板卡片；使用 `button_interaction` 模板卡片与 `event.template_card_event`，通过原回调帧在五秒内确认更新；官方接口不能在没有卡片点击回调时主动更新旧卡片，因此回复结束后未点击的旧停止按钮可能仍可见，但服务端会拒绝其操作。钉钉订阅 `/v1.0/card/instances/callback`，立即 ACK，再异步处理与更新卡片；发送和更新使用原生异步 HTTP。
 
+企业微信卡片回调优先从 `body.event.template_card_event` 读取 `task_id` 和 `event_key`，兼容字段直接位于 `body.event` 的格式；这里的 `task_id` 是发送卡片时生成的卡片 ID，由持久化记录反查 WorkStep 任务与提案，不能作为 WorkStep 任务 ID 使用。格式兼容及回调确认原任务、重复点击去重见 `test_channel_bot_adapters.py` 和 `test_channel_controls.py::test_wecom_nested_callback_confirms_original_task_proposal`。
+
 协议及阻塞 canary：`tests/test_channel_controls.py`、`tests/test_channel_bot_adapters.py`、`test_channel_bots.py::test_task_channel_stop_callback_bypasses_message_queue`、`test_coordinator.py::test_channel_stop_targets_exact_coordinator_reply_and_slow_sql_keeps_health_responsive`。

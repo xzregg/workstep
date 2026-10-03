@@ -106,8 +106,9 @@ class WeComAdapter(ChannelAdapter):
                 return
             body = frame.get("body") or {}
             event = body.get("event") or {}
-            click = ChannelAction(self._bot["id"], str(event.get("task_id") or ""),
-                str(event.get("event_key") or ""), str((body.get("from") or {}).get("userid") or ""),
+            card_event = event.get("template_card_event") or event
+            click = ChannelAction(self._bot["id"], str(card_event.get("task_id") or ""),
+                str(card_event.get("event_key") or ""), str((body.get("from") or {}).get("userid") or ""),
                 conversation_id=str(body.get("chatid") or ""), reply_context=frame)
             async def claimed():
                 # ACK the card callback within WeCom's five-second deadline.
