@@ -52,6 +52,7 @@ from agent_assistants.context_handoff import (
 from agent_assistants.chat_session_transitions import ChatSessionTransitions
 from engines.core.agui import AGUIContext, to_agui_events
 from services.chat_permissions import is_valid_permission_mode
+from services.channels.session_source import channel_session_source
 from services.config import config_store, resolve_execution_engine
 
 logger = logging.getLogger(__name__)
@@ -578,12 +579,7 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
             "project_id": project_id,
             "workflow_id": row.workflow_id,
             "title": row.title or "未命名会话",
-            "source": "channel" if ChatMessage.select().where(
-                (ChatMessage.session == row)
-                & (ChatMessage.role == "user")
-                & ChatMessage.author_id.startswith("channel:")
-                & ChatMessage.author_device_id.startswith("channel:")
-            ).exists() else "chat",
+            **channel_session_source(row.id),
             "archived": bool(row.archived),
             "engine": row.engine,
             "model": row.model,

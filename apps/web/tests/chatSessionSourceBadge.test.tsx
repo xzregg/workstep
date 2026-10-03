@@ -5,10 +5,12 @@ import ChatSessionSourceBadge from '../src/components/ChatSessionSourceBadge'
 import { I18nProvider } from '../src/i18n'
 
 test('channel source shows a visible label while ordinary and legacy sessions do not', () => {
-  const render = (source?: 'channel' | 'chat') => renderToStaticMarkup(
-    <I18nProvider><ChatSessionSourceBadge source={source} /></I18nProvider>,
+  const render = (source?: 'channel' | 'chat', platform?: string, botName?: string) => renderToStaticMarkup(
+    <I18nProvider><ChatSessionSourceBadge source={source} platform={platform} botName={botName} /></I18nProvider>,
   )
-  assert.match(render('channel'), /渠道/)
+  assert.match(render('channel', 'wecom'), /企业微信/)
+  assert.match(render('channel', 'dingtalk'), /钉钉/)
+  assert.match(render('channel', 'wecom', 'Echo'), />Echo</)
   assert.match(render('channel'), /chat-session-source-badge/)
   assert.equal(render('chat'), '')
   assert.equal(render(), '')

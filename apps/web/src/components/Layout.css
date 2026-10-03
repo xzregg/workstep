@@ -72,10 +72,12 @@
   cursor: pointer;
 }
 .layout-sidebar-session-label {
+  gap: 6px;
   margin-top: 14px;
   padding: 10px 6px 0 0;
   border-top: 1px solid var(--border-soft);
 }
+.layout-sidebar-session-label .layout-sidebar-section-name { flex-shrink: 0; }
 
 .layout-project-row {
   position: relative;

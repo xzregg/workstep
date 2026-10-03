@@ -1,8 +1,13 @@
 .sidebar-conversation-tabs {
   display: flex;
-  gap: 4px;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
   padding: 2px;
-  margin-bottom: 6px;
+  margin: 0;
+  font-family: var(--font-sans, system-ui, sans-serif);
+  letter-spacing: normal;
+  text-transform: none;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--bg);

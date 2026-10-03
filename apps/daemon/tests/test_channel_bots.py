@@ -353,17 +353,24 @@ async def test_channel_session_reset_replaces_mapping_and_reuses_new_session(bot
         assert archived["archived"] is True
 
 
-async def test_channel_source_survives_rename_and_archive_without_title_guessing(bots, monkeypatch):
+@pytest.mark.parametrize("platform", ["wecom", "dingtalk"])
+async def test_channel_source_survives_rename_and_archive_without_title_guessing(bots, monkeypatch, platform):
     manager, project, *_ = bots
     module = ChannelChatModule(manager._event_bus, manager._project_manager)
     monkeypatch.setattr(module, "_validate_engine", lambda _engine: None)
+
+    from services.config import config_store
+    original_get = config_store.get
+    monkeypatch.setattr(config_store, "get", lambda key, default=None: {
+        "bots": [{"id": "bot-1", "name": "Echo", "platform": platform}],
+    } if key == "channel_bots" else original_get(key, default))
 
     def operation(_project):
         channel = module.create_session(project.id, title="Echo", engine="codex_sdk")
         ordinary = module.create_session(project.id, title="渠道对话", engine="codex_sdk")
         ChatMessage.create(
             id="channel-source", session=channel["id"], role="user", content="你好",
-            author_id="channel:wecom:user-1", author_device_id="channel:bot-1",
+            author_id=f"channel:{platform}:user-1", author_device_id="channel:bot-1",
             created_at="2026-10-03T00:00:00Z",
         )
         assert module.get_session(project.id, channel["id"])["source"] == "channel"
@@ -371,6 +378,8 @@ async def test_channel_source_survives_rename_and_archive_without_title_guessing
         module.rename_session(project.id, channel["id"], "新名字")
         archived = module.set_archived(project.id, channel["id"], True)
         assert archived["source"] == "channel"
+        assert archived["channel_platform"] == platform
+        assert archived["channel_name"] == "Echo"
         assert archived["title"] == "新名字"
         assert module.list_sessions(project.id, archived=True)[0]["source"] == "channel"
 

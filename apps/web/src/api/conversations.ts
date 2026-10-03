@@ -181,6 +181,8 @@ export interface ChatSessionSummary {
   title: string
   archived?: boolean
   source?: 'chat' | 'channel'
+  channel_platform?: string | null
+  channel_name?: string | null
   engine: string
   model?: string | null
   fast_model?: string | null

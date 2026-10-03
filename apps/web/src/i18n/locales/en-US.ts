@@ -2169,6 +2169,8 @@ export const enUS: Messages = {
     },
   },
   chatSession: {
+    ordinaryTabShort: '普通',
+    channelTabShort: '渠道',
     conversationTypes: '会话类型',
     ordinaryTab: '普通会话',
     channelTab: '渠道对话',
