@@ -27,6 +27,7 @@ async def test_coordinator_origin_gets_stop_card_without_relying_on_submitter(se
     await asyncio.sleep(.03)
     original_cards = [c.args[1] for c in adapter.send_card.await_args_list if c.args[0].conversation_id == 'one']
     assert len(original_cards) == 1
+    assert adapter.send_card.await_count == 1  # Only the inbound conversation has a stop control.
     card = original_cards[0]
     assert card.message_id == 'coord'
     assert card.buttons[0].label == '中止'
