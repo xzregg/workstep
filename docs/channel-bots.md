@@ -10,6 +10,8 @@ WorkStep 使用平台官方长连接接收机器人消息。daemon 主动连出�
 
 接入使用[企业微信官方 Python SDK](https://github.com/WecomTeam/wecom-aibot-python-sdk)。群标识采用平台消息中的 `chatid`，不能用群名称代替。
 
+企业微信收到有效消息后使用官方 `reply_stream` 创建未完成的回复气泡（空内容、`finish=false`），排队期间也先回执；回答、空结果或失败时使用同一 `stream.id` 结束并替换气泡。三点等待动画由企业微信客户端呈现，需实际租户验证。若最终流式回复失效，回退为主动发送最终回答。
+
 ## 钉钉 Stream 机器人
 
 1. 在钉钉开发者后台创建应用，启用机器人能力并选择 **Stream 模式**，取得应用的 `Client ID` 和 `Client Secret`。发布和安装应用所需的组织配置按钉钉后台提示完成。

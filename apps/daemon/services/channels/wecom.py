@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 
 from aibot import WSClient, WSClientOptions
 
@@ -100,9 +101,32 @@ class WeComAdapter:
                 pass
             self._task = None
 
+    def _stream_id(self, message: IncomingMessage) -> str:
+        return uuid.uuid5(uuid.NAMESPACE_URL, f"workstep:wecom:{message.bot_id}:{message.message_id}").hex
+
+    def _reply_frame(self, message: IncomingMessage) -> dict | None:
+        frame = message.reply_context
+        if isinstance(frame, dict) and (frame.get("headers") or {}).get("req_id"):
+            return frame
+        return None
+
+    async def start_reply(self, message: IncomingMessage) -> None:
+        if not self._client:
+            raise RuntimeError("企业微信机器人未连接")
+        frame = self._reply_frame(message)
+        if frame:
+            await self._client.reply_stream(frame, self._stream_id(message), "", finish=False)
+
     async def send_text(self, message: IncomingMessage, text: str) -> None:
         if not self._client:
             raise RuntimeError("企业微信机器人未连接")
+        frame = self._reply_frame(message)
+        if frame:
+            try:
+                await self._client.reply_stream(frame, self._stream_id(message), text, finish=True)
+                return
+            except Exception:
+                logger.warning("Enterprise WeChat stream reply failed; using active send", exc_info=True)
         await self._client.send_message(message.conversation_id, {
             "msgtype": "markdown", "markdown": {"content": text},
         })

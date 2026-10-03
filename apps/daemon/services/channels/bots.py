@@ -275,10 +275,9 @@ class BotManager:
     async def handle_message(self, message: IncomingMessage) -> None:
         key = (message.bot_id, message.conversation_id)
         lock = self._chat_locks.setdefault(key, asyncio.Lock())
-        async with lock:
-            await self._route_message(message)
+        await self._route_message(message, lock)
 
-    async def _route_message(self, message: IncomingMessage) -> None:
+    async def _route_message(self, message: IncomingMessage, lock: asyncio.Lock) -> None:
         if not message.message_id or not message.conversation_id or not message.text.strip():
             return
         async with self._config_lock:
@@ -304,23 +303,32 @@ class BotManager:
         adapter = self._adapters.get(message.bot_id)
         if not adapter:
             return
+        start_reply = getattr(adapter, "start_reply", None)
+        if start_reply is not None:
+            try:
+                await start_reply(message)
+            except Exception:
+                logger.warning("Failed to start channel waiting reply", exc_info=True)
         try:
-            if kind == "task":
-                await self._validate_target("task", project_id, task_id)
-                reply = await self._task_reply(project_id, task_id, message, bot["platform"])
-            else:
-                session_key = f"{message.bot_id}:{message.conversation_type}:{message.conversation_id}"
-                session_id = data["sessions"].get(session_key)
-                with actor_context(_sender_actor(message, bot["platform"])):
-                    session_id, reply = await self._responder(
-                        project_id, session_id, message.text, "channel_chat", "",
-                    )
-                async with self._config_lock:
-                    latest = await self._load()
-                    latest["sessions"][session_key] = session_id
-                    await self._save(latest)
-            if reply:
-                await adapter.send_text(message, reply)
+            async with lock:
+                if kind == "task":
+                    await self._validate_target("task", project_id, task_id)
+                    reply = await self._task_reply(project_id, task_id, message, bot["platform"])
+                else:
+                    session_key = f"{message.bot_id}:{message.conversation_type}:{message.conversation_id}"
+                    async with self._config_lock:
+                        latest = await self._load()
+                    session_id = latest["sessions"].get(session_key)
+                    with actor_context(_sender_actor(message, bot["platform"])):
+                        session_id, reply = await self._responder(
+                            project_id, session_id, message.text, "channel_chat", "",
+                        )
+                    async with self._config_lock:
+                        latest = await self._load()
+                        latest["sessions"][session_key] = session_id
+                        await self._save(latest)
+                if reply or start_reply is not None:
+                    await adapter.send_text(message, reply or "处理完成，暂无回复内容。")
         except Exception:
             logger.exception("Failed to handle channel bot message %s", message.message_id)
             try:
