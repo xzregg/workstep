@@ -1,28 +1,24 @@
 .sidebar-conversation-tabs {
-  display: flex;
-  gap: 2px;
-  flex: 1;
+  display: inline-flex;
+  gap: 8px;
+  flex-shrink: 0;
   min-width: 0;
-  padding: 2px;
-  margin: 0;
+  padding: 0;
+  margin: 0 0 0 auto;
   font-family: var(--font-sans, system-ui, sans-serif);
   letter-spacing: normal;
   text-transform: none;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--bg);
 }
 .sidebar-conversation-tab {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  flex: 1;
+  gap: 3px;
   min-width: 0;
-  height: 28px;
-  padding: 0 6px;
+  height: 24px;
+  padding: 0 2px;
   border: 0;
-  border-radius: 999px;
   color: var(--meta);
   background: transparent;
   font-size: calc(11px * var(--font-scale));
@@ -31,11 +27,19 @@
 }
 .sidebar-conversation-tab[aria-selected="true"] {
   color: var(--accent);
-  background: var(--accent-light);
   font-weight: 600;
 }
+.sidebar-conversation-tab[aria-selected="true"]::after {
+  content: '';
+  position: absolute;
+  inset-inline: 2px;
+  bottom: 2px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+}
 .sidebar-conversation-tab:focus-visible { outline: 2px solid var(--accent); }
-.sidebar-conversation-tab-count { font-size: calc(10px * var(--font-scale)); }
+.sidebar-conversation-tab-count { color: var(--meta); font-size: calc(10px * var(--font-scale)); font-weight: 400; }
 .sidebar-conversation-empty { padding: 8px; color: var(--meta); font-size: calc(12px * var(--font-scale)); }
 @media (max-width: 1023px) {
   .sidebar-conversation-tab { height: var(--mobile-control-regular); min-height: var(--mobile-control-regular); }
