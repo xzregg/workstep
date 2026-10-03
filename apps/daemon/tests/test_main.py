@@ -352,9 +352,15 @@ async def test_project_websocket_subscription_cannot_escape_project_or_send_comm
 
         await main._handle_client_message(json.dumps({
             "type": "subscribe", "project_id": "project-2", "task_ids": ["t"],
-            "session_ids": ["visible-chat"],
+            "session_ids": ["visible-chat"], "channels": ["channel_bots"],
         }), sub, q)
         assert sub.project_id == "project-1"
+        await event_bus.publish({"type": "CUSTOM", "name": "channel.session_changed",
+                                 "project_id": "project-2", "channel": "channel_bots"})
+        await event_bus.publish({"type": "CUSTOM", "name": "channel.session_changed",
+                                 "project_id": "project-1", "channel": "channel_bots"})
+        assert (await q.get())["name"] == "channel.session_changed"
+        assert q.empty()
         await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-1",
                                  "channel": "session_chat", "session_id": "visible-chat"})
         assert (await q.get())["session_id"] == "visible-chat"

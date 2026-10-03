@@ -72,3 +72,48 @@ async def test_responder_ignores_other_message_completion(tmp_path, status):
         assert not bus._subscribers
     finally:
         manager.close_all()
+
+
+async def test_responder_announces_accepted_and_finished_channel_turn(tmp_path):
+    bus = EventBus()
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / "live-channel-project")
+    observed = bus.subscribe()
+
+    class FakeModule:
+        def create_session(self, *args, **kwargs):
+            return {"id": "new-channel-session"}
+
+        def submit_message(self, *args, **kwargs):
+            return SimpleNamespace(turn_id="turn-1", assistant_message_id="answer-1")
+
+        def start_queued_turn(self, turn_id):
+            async def finish():
+                await bus.publish({
+                    "type": "TEXT_MESSAGE_END", "project_id": project.id,
+                    "session_id": "new-channel-session", "messageId": "answer-1",
+                    "status": "succeeded", "content": "回复",
+                })
+            asyncio.create_task(finish())
+
+    async def accepted(session_id):
+        assert session_id == "new-channel-session"
+        await bus.publish({
+            "type": "CUSTOM", "name": "channel.session_changed",
+            "channel": "channel_bots", "project_id": project.id,
+        })
+
+    try:
+        responder = ChatSessionResponder(bus, manager, FakeModule())
+        assert await responder(project.id, None, "你好", "channel_chat", "", on_accepted=accepted) == (
+            "new-channel-session", "回复",
+        )
+        events = []
+        while not observed.empty():
+            events.append(observed.get_nowait())
+        assert [event["name"] for event in events if event.get("name") == "channel.session_changed"] == [
+            "channel.session_changed", "channel.session_changed",
+        ]
+    finally:
+        bus.unsubscribe(observed)
+        manager.close_all()

@@ -52,7 +52,7 @@ def _local_project_summary(project_id: str) -> dict[str, Any] | None:
 
 _SUBSCRIBE_KEYS = ("task_ids", "status_only_task_ids", "session_ids", "channels")
 _PROJECT_EVENT_CHANNELS = frozenset({
-    "execution", "coordinator", "review", "archive_experience", "session_chat",
+    "execution", "coordinator", "review", "archive_experience", "session_chat", "channel_bots",
 })
 
 
