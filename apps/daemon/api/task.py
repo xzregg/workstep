@@ -772,9 +772,8 @@ async def delete_task(req: DeleteTaskRequest, pid: str = Query(..., alias="proje
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not deleted:
         raise HTTPException(status_code=404, detail="Task not found")
-    from main import channel_bot_manager
-    if channel_bot_manager is not None:
-        await channel_bot_manager.remove_task_bindings(pid, req.task_id)
+    from api.task_context import _release_task_channel_bindings
+    await _release_task_channel_bindings(pid, req.task_id)
     if req.delete_workspace is not False:
         for workspace_root in workspace_roots:
             if await asyncio.to_thread(workspace_root.is_dir):

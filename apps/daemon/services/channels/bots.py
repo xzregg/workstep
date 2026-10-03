@@ -317,7 +317,7 @@ class BotManager:
             for bot in data["bots"]:
                 if (bot["default_target_type"] == "task" and bot["default_project_id"] == project_id
                         and bot["default_task_id"] == task_id):
-                    bot.update(default_target_type="", default_project_id="", default_task_id="")
+                    bot.update(default_target_type="project", default_task_id="")
             await self._save(data)
 
     async def unbind_group(self, project_id: str, task_id: str, bot_id: str, group_id: str) -> None:

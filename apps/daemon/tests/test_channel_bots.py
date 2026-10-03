@@ -284,7 +284,8 @@ async def test_one_bot_routes_two_groups_across_projects_and_clears_deleted_task
     await manager.remove_task_bindings(first.id, "task-1")
     assert await manager.list_task_groups(first.id, "task-1") == []
     remaining = await manager.list_bots()
-    assert remaining[0]["default_target_type"] == ""
+    assert remaining[0]["default_target_type"] == "project"
+    assert remaining[0]["default_project_id"] == first.id
     assert len(await manager.list_task_groups(second.id, "task-2")) == 1
 
 

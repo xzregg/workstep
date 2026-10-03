@@ -6,7 +6,7 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, Query
 
-from api.task_context import _project, _require_scoped_task, _run_db
+from api.task_context import _project, _require_scoped_task, _run_db, _release_task_channel_bindings
 from schemas.base import BaseSchema
 
 router = APIRouter(prefix="/api/task")
@@ -142,6 +142,7 @@ async def archive_task(req: ArchiveTaskRequest, pid: str = Query(..., alias="pro
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not archived:
         raise HTTPException(status_code=404, detail="Task not found")
+    await _release_task_channel_bindings(pid, req.task_id)
     return {"archived": archived}
 
 
@@ -308,6 +309,7 @@ async def confirm_archive_experience(
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         if not archived:
             raise HTTPException(status_code=404, detail="Task not found")
+        await _release_task_channel_bindings(pid, task_id)
         return {"archived": True, "memory_saved": False}
     if len(experience) > 800:
         raise HTTPException(status_code=422, detail="Experience exceeds 800 characters")
@@ -361,6 +363,7 @@ async def confirm_archive_experience(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await _release_task_channel_bindings(pid, task_id)
     return {"archived": archived, "memory_saved": True}
 
 

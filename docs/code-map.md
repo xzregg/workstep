@@ -354,3 +354,6 @@ Pydantic AI 的会话系统规则生命周期由 `engines/pydantic_ai/harness_ru
 
 
 渠道运行卡片统一由 `controls.py::begin` 按项目、任务／会话、助手消息 ID 及渠道会话去重，接收入口与 `task_forwarder.py::_deliver` 共用，发起群也必须确保运行卡片存在；`finish` 幂等收尾。确认卡片优先取同条回复的正文摘要，所有企业微信按钮卡片由 `wecom.py::send_card` 显示助手消息 ID，超长说明分开发送后卡片仍保留 ID。中止按钮的通用 `ChannelButton.danger` 由操作类型决定，企业微信映射到[官方红色样式 3](https://developer.work.weixin.qq.com/document/path/101032)，钉钉映射为模板 `color=red`，确认／取消保持原色。入口隔离、去重、实际中止、卡片正文与 ID、颜色及慢发送健康检查见 `tests/test_channel_origin_stop.py`。
+
+
+任务归档／删除后的渠道解绑由 `api/task_context.py::_release_task_channel_bindings` 统一调用 `services/channels/bots.py::remove_task_bindings`。`api/task_archive.py` 的直接归档、经验确认归档（有／无经验）及 `api/task.py` 的删除仅在任务操作成功后调用；解除该项目、该任务的全部群绑定，历史默认任务目标回到原默认项目，不删除渠道会话、来源或近期群。恢复归档不会恢复旧绑定。真实 HTTP、跨项目／跨任务隔离、失败保留及慢配置写入健康检查见 `tests/test_task_channel_unbinding.py`。
