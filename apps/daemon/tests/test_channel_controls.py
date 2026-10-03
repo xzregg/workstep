@@ -26,7 +26,7 @@ async def controls():
 async def test_stop_is_scoped_to_original_message_and_old_card_cannot_stop_next_turn(controls):
     broker, adapter, coordinator, message, scope, *_ = controls
     card = adapter.send_card.await_args.args[1]
-    assert [b.label for b in card.buttons] == ['停止']
+    assert [b.label for b in card.buttons] == ['中止']
     click = ChannelAction('b', card.id, card.buttons[0].key, 'u', conversation_id='g')
     assert await broker.handle(click) == '已停止'
     coordinator.stop_current.assert_awaited_once_with('p','t',expected_message_id='a')
@@ -187,3 +187,44 @@ async def test_project_question_cannot_move_to_new_task_binding(controls):
     config['groups'] = [{'bot_id':'b','group_id':'g','project_id':'p','task_id':'t'}]
     assert await broker.handle(ChannelAction('b',card.id,'0','u')) == '渠道绑定已改变，该操作已失效'
     broker._on_message.assert_not_awaited()
+
+
+async def test_broadcast_stop_targets_stage_message_and_accepts_group_member(controls):
+    broker,adapter,coordinator,_,_,_,_ = controls
+    runtime = SimpleNamespace(cancel_message=AsyncMock(return_value=True))
+    broker._workflow_runtime = runtime
+    message = IncomingMessage('b','automatic','group','g','','')
+    scope = await broker.begin(message,'p',task_id='t',assistant_message_id='stage-message',step_key='build',broadcast=True)
+    card = adapter.send_card.await_args.args[1]
+    assert [b.label for b in card.buttons] == ['中止']
+    assert await broker.handle(ChannelAction('b',card.id,'0','member',conversation_id='elsewhere')) == '该操作不属于此会话'
+    assert await broker.handle(ChannelAction('b',card.id,'0','member')) == '该操作不属于此会话'
+    assert await broker.handle(ChannelAction('b',card.id,'0','member',conversation_id='g')) == '已停止'
+    runtime.cancel_message.assert_awaited_once_with('p','t','stage-message')
+    coordinator.stop_current.assert_not_awaited()
+    await broker.finish(scope)
+    assert await broker.handle(ChannelAction('b',card.id,'0','member',conversation_id='g')) == '该操作已处理或已失效'
+
+
+async def test_broadcast_completed_or_rebound_stop_does_not_cancel(controls):
+    broker,adapter,_,_,_,_,config = controls
+    runtime = SimpleNamespace(cancel_message=AsyncMock(return_value=True))
+    broker._workflow_runtime = runtime
+    scope = await broker.begin(IncomingMessage('b','auto','group','g','',''),'p',task_id='t',assistant_message_id='a',step_key='a',broadcast=True)
+    card = adapter.send_card.await_args.args[1]
+    await broker.finish(scope)
+    assert await broker.handle(ChannelAction('b',card.id,'0','member',conversation_id='g')) == '该操作已处理或已失效'
+    await broker.begin(IncomingMessage('b','auto2','group','g','',''),'p',task_id='t',assistant_message_id='a2',step_key='a',broadcast=True)
+    card = adapter.send_card.await_args.args[1]
+    config['groups'][0]['task_id']='different'
+    assert await broker.handle(ChannelAction('b',card.id,'0','member',conversation_id='g')) == '渠道绑定已改变，该操作已失效'
+    runtime.cancel_message.assert_not_awaited()
+
+
+async def test_channel_without_cards_does_not_send_stop_button(controls):
+    broker,adapter,_,message,_,_,_ = controls
+    adapter.card_enabled=False
+    adapter.send_card.reset_mock()
+    scope=await broker.begin(message,'p',task_id='t',assistant_message_id='message')
+    adapter.send_card.assert_not_awaited()
+    await broker.finish(scope)

@@ -5,6 +5,7 @@ import asyncio
 import logging
 import time
 import uuid
+from dataclasses import replace
 
 from services.channels.base import ChannelAction, ChannelButton, ChannelCard, IncomingMessage
 from services.intervention import intervention_manager
@@ -15,9 +16,10 @@ TTL = 24 * 60 * 60
 
 
 class ChannelControls:
-    def __init__(self, store, load_config, adapters, coordinator, responder, on_message):
+    def __init__(self, store, load_config, adapters, coordinator, responder, on_message, *, workflow_runtime=None):
         self._store, self._load_config, self._adapters = store, load_config, adapters
         self._coordinator, self._responder, self._on_message = coordinator, responder, on_message
+        self._workflow_runtime = workflow_runtime
         self._lock = asyncio.Lock()
         self._active = set()
         self._claims = set()
@@ -28,14 +30,14 @@ class ChannelControls:
     async def _save(self, rows):
         await asyncio.to_thread(self._store.set, CONFIG_KEY, rows)
 
-    async def begin(self, message, project_id, *, task_id='', session_id='', assistant_message_id='', turn_id=''):
+    async def begin(self, message, project_id, *, task_id='', session_id='', assistant_message_id='', turn_id='', step_key='', broadcast=False, title='正在处理'):
         scope = {
             'id': uuid.uuid4().hex, 'project_id': project_id, 'task_id': task_id,
             'session_id': session_id, 'assistant_message_id': assistant_message_id,
-            'turn_id': turn_id, 'message': {k: getattr(message, k) for k in ('bot_id','message_id','conversation_type','conversation_id','sender_id','text','sender_name','conversation_name')},
+            'turn_id': turn_id, 'step_key':step_key, 'broadcast':broadcast, 'message': {k: getattr(message, k) for k in ('bot_id','message_id','conversation_type','conversation_id','sender_id','text','sender_name','conversation_name')},
         }
         self._active.add(scope['id'])
-        await self._card(scope, '正在处理', '点击停止可中断本次回复。', [('停止', {'kind':'stop'})], recipient_override=message)
+        await self._card(scope, title, '点击中止可停止本次运行。', [('中止', {'kind':'stop'})], recipient_override=message)
         return scope
 
     async def _card(self, scope, title, text, options, recipient_override=None):
@@ -152,9 +154,12 @@ class ChannelControls:
             message = row['message']
             if message['bot_id'] != click.bot_id or (click.conversation_id and message['conversation_id'] != click.conversation_id):
                 return '该操作不属于此会话'
-            if not click.sender_id or message['sender_id'] != click.sender_id:
-                return '仅发起此消息的用户可以操作'
             action = row['options'].get(click.key)
+            broadcast_stop = row.get('broadcast') and action and action['kind'] == 'stop'
+            if broadcast_stop and click.conversation_id != message['conversation_id']:
+                return '该操作不属于此会话'
+            if not click.sender_id or (not broadcast_stop and message['sender_id'] != click.sender_id):
+                return '仅发起此消息的用户可以操作'
             if action is None:
                 return '无效的选项'
             identity = tuple(action.get(key) for key in ('kind','interaction_id','proposal_id','question_id'))
@@ -172,11 +177,15 @@ class ChannelControls:
             if on_claimed is not None:
                 await on_claimed()
             recipient = IncomingMessage(**message)
+            if broadcast_stop:
+                recipient = replace(recipient, sender_id=click.sender_id, sender_name=click.sender_name or click.sender_id)
             from services.channels.bots import _sender_actor
             from services.remote_access import actor_context
             with actor_context(_sender_actor(recipient, bot['platform'])):
                 if action['kind'] == 'stop':
-                    if row['task_id']:
+                    if row.get('step_key'):
+                        stopped = await self._workflow_runtime.cancel_message(row['project_id'], row['task_id'], row['assistant_message_id']) if self._workflow_runtime else False
+                    elif row['task_id']:
                         stopped = await self._coordinator.stop_current(row['project_id'], row['task_id'], expected_message_id=row['assistant_message_id'])
                     else:
                         stopped = await self._responder.stop(row['project_id'], row['session_id'], row['assistant_message_id'])
