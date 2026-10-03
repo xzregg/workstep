@@ -29,18 +29,34 @@ test('task discussion panel binds a received group ID to the current task', asyn
   const root = createRoot(container)
   try {
     await act(async () => root.render(<I18nProvider><TaskDiscussionGroups open projectId="project-1" taskId="task-1" onClose={() => {}} /></I18nProvider>))
-    const input = document.querySelector<HTMLInputElement>('[role="dialog"] input[list]')!
-    assert.ok(document.querySelector('datalist option[value="group-1"]'))
+    const input = document.querySelector<HTMLInputElement>('[role="dialog"] .task-discussion-groups input')!
+    const select = document.querySelector<HTMLSelectElement>('[role="dialog"] select[aria-label="最近收到的群"]')!
+    assert.ok(select, 'received groups must have an explicit selector')
+    const bind = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find((button) => button.textContent === '绑定群')!
+    assert.equal(bind.disabled, true)
     await act(async () => {
-      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, 'group-1')
+      select.value = 'group-1'
+      select.dispatchEvent(new window.Event('change', { bubbles: true }))
+    })
+    assert.equal(input.value, 'group-1')
+    assert.equal(bind.disabled, false)
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, 'manual-group')
       input.dispatchEvent(new window.Event('input', { bubbles: true }))
     })
-    const bind = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find((button) => button.textContent === '绑定群')!
+    assert.equal(select.value, '')
+    await act(async () => {
+      select.value = 'group-1'
+      select.dispatchEvent(new window.Event('change', { bubbles: true }))
+    })
     await act(async () => bind.click())
     assert.deepEqual(calls.find((call) => call.method === 'POST')?.body, {
       project_id: 'project-1', bot_id: 'bot-1', group_id: 'group-1',
     })
-    assert.match(document.querySelector('[role="dialog"]')?.textContent || '', /group-1/)
+    assert.match(document.querySelector('.task-discussion-groups-list')?.textContent || '', /group-1/)
+    assert.equal(input.value, '')
+    assert.equal(select.value, '')
+    assert.equal(bind.disabled, true)
   } finally {
     await act(async () => root.unmount())
     container.remove()
