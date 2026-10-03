@@ -4,7 +4,6 @@ import { DeviceAdminPage } from './DeviceAdminPage'
 import { ClientDownloadPage } from './ClientDownloadPage'
 import { DeviceListPage } from './DeviceListPage'
 import { ProjectsPage } from './ProjectsPage'
-import { ProjectWorkspacePage } from './ProjectWorkspacePage'
 import { PortalAuthPage } from './PortalAuthPage'
 import { AccountPage } from './AccountPage'
 import { AdminUsersPage } from './AdminUsersPage'
@@ -28,7 +27,7 @@ import { RegistrationPendingPage } from './RegistrationPendingPage'
 
 export function App({ deviceHost = typeof window !== 'undefined' && window.location.hostname.startsWith('d-') }: { deviceHost?: boolean }) {
   const location = useLocation()
-  if (deviceHost) return <main><header><h1>WorkStep 远程项目</h1></header><ProjectWorkspacePage /></main>
+  if (deviceHost) return <main><h1>WorkStep 远程项目</h1><p role="alert">请从平台重新打开远程项目。</p></main>
   if (location.pathname.startsWith('/share/')) return <Routes><Route path="/share/:token" element={<PublicSharePage />} /></Routes>
   return <GatewayPortalApp />
 }

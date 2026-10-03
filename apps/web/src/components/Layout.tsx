@@ -5,6 +5,7 @@ import Icon from './Icon'
 import ResponsiveNavigation from './ResponsiveNavigation'
 import { BrandIcon } from './BrandIcon'
 import { useState, useEffect, useMemo, useRef, type PointerEvent as ReactPointerEvent } from 'react'
+import { useGatewaySessionStore } from '../stores/gatewaySessionStore'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { useProjectStore } from '../stores/projectStore'
 import { useI18n } from '../i18n'
@@ -189,7 +190,9 @@ export default function Layout({ onSelectProject, children }: Props) {
     document.body.style.userSelect = ''
   }
 
-  useEffect(() => { fetchProjects() }, [fetchProjects])
+  useEffect(() => {
+    if (!useGatewaySessionStore.getState().session?.host_project_id) void fetchProjects()
+  }, [fetchProjects])
 
   useEffect(() => {
     saveSidebarSectionState({

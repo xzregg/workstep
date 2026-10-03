@@ -102,8 +102,6 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         assert grants.status_code == 200, grants.text
         assert grants.json() == {"grants": [{"subject_type": "group", "subject_id": group_id,
                                              "subject_name": "Backend", "access_level": "read"}]}
-        assert "Gateway project workspace" in client.get(f"{host}/").text
-        assert client.get(f"{host}/assets/app.js").status_code == 200
         assert client.get(f"{host}/admin").status_code == 403
         assert client.get(f"{host}/api/health").status_code == 403
         class ProjectData:
@@ -114,6 +112,9 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
                 assert user_id == worker_id
                 assert display_name == "Worker"
                 assert project_id == "host-1"
+                if request.url.path in ('/', '/tasks', '/canvas', '/assets/app.js'):
+                    from fastapi.responses import HTMLResponse
+                    return HTMLResponse('<main>Full WorkStep workspace</main>')
                 if request.method not in ("GET", "HEAD"):
                     assert access_level == "edit"
                     assert task_create is (request.url.path == "/api/task/create")
@@ -126,6 +127,11 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
             return ProjectData()
 
         monkeypatch.setattr(app.state.control_connections, "request_data", project_data)
+        for path in ('/', '/tasks?project=Project', '/canvas', '/assets/app.js'):
+            workspace = client.get(f'{host}{path}')
+            assert workspace.status_code == 200, workspace.text
+            assert 'Full WorkStep workspace' in workspace.text
+            assert 'Gateway project workspace' not in workspace.text
         assert client.get(f"{host}/api/task/list?project_id=host-1").json() == {
             "project_id": "host-1",
         }

@@ -31,6 +31,7 @@ import ShareDialog from '../components/ShareDialog'
 import TaskDiscussionGroups from '../components/TaskDiscussionGroups'
 import ConfirmDialog from '../components/ConfirmDialog'
 import TaskDetailPage, { type TaskDetailReadCapabilities } from '../components/TaskDetailPage'
+import GatewayTaskShareLink from '../components/GatewayTaskShareLink'
 import { resolveMarkdownImageSrc } from '../utils/markdownImages'
 import TaskStepConfigController from '../components/TaskStepConfigController'
 import {
@@ -1019,6 +1020,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               <Icon name="share" size={13} strokeWidth={1.75} />
               <span className="task-detail-share-label">{t('share.dialogTitle')}</span>
             </Button>}
+            <GatewayTaskShareLink taskId={task.id} projectId={projectId || null} />
             <Button
               className="task-detail-id-button"
               data-copied={taskIdCopied}

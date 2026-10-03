@@ -37,7 +37,8 @@ test('remote host keeps device context and return link above the workspace', () 
     </GatewayRemoteFrame></I18nProvider>)
     assert.match(html, /gateway-remote-banner/)
     assert.match(html, /https:\/\/gateway\.test\/devices/)
-    assert.match(html, /workspace/)
+    assert.doesNotMatch(html, />workspace</)
+    assert.match(html, /gateway-remote-loading/)
     const projectDialog = renderToString(<I18nProvider><ProjectConnectionDialog
       open onClose={() => undefined} onConnected={() => undefined}
     /></I18nProvider>)

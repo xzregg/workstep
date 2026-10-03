@@ -24,6 +24,8 @@ import RemoteDeviceAccessList from './RemoteDeviceAccessList'
 import Select from './Select'
 import SkillCenterSettings from '../pages/SkillCenterSettings'
 import ProjectPublicationSettings from './ProjectPublicationSettings'
+import GatewayProjectSettings from './GatewayProjectSettings'
+import { useGatewaySessionStore } from '../stores/gatewaySessionStore'
 
 interface ProjectSettingsPanelProps {
   project: Project | null
@@ -43,7 +45,15 @@ interface ConcurrencyDraft {
   scheduleExempt: boolean
 }
 
-export default function ProjectSettingsPanel({
+export default function ProjectSettingsPanel(props: ProjectSettingsPanelProps) {
+  const session = useGatewaySessionStore(state => state.session)
+  if (props.project && session?.host_project_id === props.project.id) {
+    return <GatewayProjectSettings projectId={props.project.id} projectName={props.project.name} onClose={props.onClose} />
+  }
+  return <LocalProjectSettingsPanel {...props} />
+}
+
+function LocalProjectSettingsPanel({
   project,
   onClose,
   onProjectRenamed,
