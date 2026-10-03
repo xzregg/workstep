@@ -615,6 +615,18 @@ def test_control_opens_one_time_data_connection_on_demand(tmp_path):
                     assert False, "Permission changes must close active data connection"
                 except WebSocketDisconnect as exc:
                     assert exc.code == 4003
+            negotiated = client.portal.start_task_soon(
+                app.state.control_connections.request_data, device_id,
+            )
+            next_command = control.receive_json()
+            assert next_command["kind"] == "open_data"
+            with client.websocket_connect("/api/data/ws") as data:
+                data.send_json({"kind": "data_hello", "token": next_command["token"],
+                                "flow_control": True})
+                assert data.receive_json() == {"kind": "data_ready", "version": 1,
+                                               "device_id": device_id,
+                                               "flow_control": True}
+                assert negotiated.result(timeout=3).flow_control is True
 
 
 def test_slow_data_connection_does_not_delay_gateway_health_or_control_heartbeat(tmp_path):

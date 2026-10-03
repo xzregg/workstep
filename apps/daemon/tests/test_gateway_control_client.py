@@ -61,7 +61,8 @@ def test_control_url_is_fixed_to_managed_gateway():
 
 
 @pytest.mark.asyncio
-async def test_completed_data_streams_release_the_connection_slot():
+@pytest.mark.parametrize("flow_control", [False, True])
+async def test_completed_data_streams_release_the_connection_slot(flow_control):
     completed = asyncio.Event()
 
     class Socket:
@@ -72,9 +73,13 @@ async def test_completed_data_streams_release_the_connection_slot():
         async def send(self, value):
             message = json.loads(value)
             if message.get("kind") == "data_hello":
-                self.incoming.put_nowait(json.dumps({
+                assert message.get("flow_control") is True
+                ready = {
                     "kind": "data_ready", "version": 1, "device_id": "device-1",
-                }))
+                }
+                if flow_control:
+                    ready["flow_control"] = True
+                self.incoming.put_nowait(json.dumps(ready))
                 self.next_request()
                 return
             frame = ProxyFrame.model_validate(message)

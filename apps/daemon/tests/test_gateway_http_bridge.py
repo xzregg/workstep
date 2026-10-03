@@ -32,7 +32,7 @@ async def test_large_response_waits_for_gateway_receive_window():
     bridge = ManagedHttpBridge(app, "stream-1", {
         "method": "GET", "path": "/api/large", "query": "", "headers": [],
         "user_id": "user-1", "username": "alice",
-    }, capture, "device-1")
+    }, capture, "device-1", flow_control=True)
     bridge.start_task()
     await asyncio.wait_for(window_full.wait(), timeout=1)
     await asyncio.sleep(0)
@@ -61,7 +61,7 @@ async def test_large_websocket_message_waits_for_gateway_receive_window():
     bridge = ManagedWebSocketBridge(app, "ws-1", {
         "path": "/ws", "query": "", "headers": [],
         "user_id": "user-1", "username": "alice",
-    }, capture, "device-1")
+    }, capture, "device-1", flow_control=True)
     bridge.start_task()
     await asyncio.wait_for(window_full.wait(), timeout=1)
     await asyncio.sleep(0)
@@ -158,7 +158,7 @@ async def test_gateway_bridge_streams_body_and_attaches_remote_actor_without_blo
         "headers": [["content-type", "text/plain"], ["x-workstep-actor-name", "spoof"]],
         "user_id": "user-remote", "username": "alice",
         "display_name": "Alice Display",
-    }, send_frame, "device-1")
+    }, send_frame, "device-1", flow_control=True)
     bridge.start_task()
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
                                  base_url="http://127.0.0.1") as client:

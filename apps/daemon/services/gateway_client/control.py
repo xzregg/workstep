@@ -508,10 +508,14 @@ class GatewayControlClient:
         try:
             async with self.connector(data_url(self.origin), origin=self.origin,
                                       open_timeout=10, max_size=1024 * 1024) as socket:
-                await socket.send(json.dumps({"kind": "data_hello", "token": token}))
+                await socket.send(json.dumps({"kind": "data_hello", "token": token,
+                                              "flow_control": True}))
                 ready = json.loads(await asyncio.wait_for(socket.recv(), timeout=10))
-                if ready != {"kind": "data_ready", "version": 1, "device_id": device_id}:
+                legacy_ready = {"kind": "data_ready", "version": 1,
+                                "device_id": device_id}
+                if ready not in (legacy_ready, {**legacy_ready, "flow_control": True}):
                     raise ValueError("Invalid Gateway data connection acknowledgment")
+                flow_control = ready.get("flow_control") is True
                 send_lock = asyncio.Lock()
                 async def send_frame(frame: ProxyFrame):
                     async with send_lock:
@@ -526,7 +530,8 @@ class GatewayControlClient:
                                                    frame.payload, send_frame, device_id,
                                                    gateway_key=self._verified_gateway_key,
                                                    gateway_fingerprint=self.public_key_fingerprint,
-                                                   gateway_id=self.gateway_id)
+                                                   gateway_id=self.gateway_id,
+                                                   flow_control=flow_control)
                         streams[frame.stream_id] = bridge
                         bridge.start_task()
                         bridge._task.add_done_callback(
@@ -537,7 +542,8 @@ class GatewayControlClient:
                         if self.asgi_app is None or bridge is not None or len(streams) >= 32:
                             raise ValueError("Invalid managed data stream")
                         bridge = ManagedWebSocketBridge(self.asgi_app, frame.stream_id,
-                                                        frame.payload, send_frame, device_id)
+                                                        frame.payload, send_frame, device_id,
+                                                        flow_control=flow_control)
                         streams[frame.stream_id] = bridge
                         bridge.start_task()
                         bridge._task.add_done_callback(
@@ -549,7 +555,7 @@ class GatewayControlClient:
                             bridge.cancel()
                             streams.pop(frame.stream_id, None)
                     elif frame.type == FrameType.window_update and bridge:
-                        if frame.payload != {"credits": 1}:
+                        if not flow_control or frame.payload != {"credits": 1}:
                             raise ValueError("Invalid managed data window update")
                         bridge.grant_credit()
                     elif frame.type in (FrameType.http_request, FrameType.websocket_data,
