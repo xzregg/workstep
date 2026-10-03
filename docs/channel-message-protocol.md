@@ -84,7 +84,7 @@ WorkStep 渠道消息协议 v1 是项目内部的收发契约。它采用与 LLM
 
 任务转发器在自动消息运行时为支持卡片的渠道发送 `@阶段名称` 中止卡片，结束、解绑或关闭时使对应操作失效；原渠道发起的协调回复沿用已有卡片，不重复发送。
 
-企业微信将运行中中止卡片通过 `reply_stream_with_card` 附加到同一流式回复，选择题使用主动模板卡片；使用 `button_interaction` 模板卡片与 `event.template_card_event`，通过原回调帧在五秒内确认更新；官方接口不能在没有卡片点击回调时主动更新旧卡片，因此回复结束后未点击的旧停止按钮可能仍可见，但服务端会拒绝其操作。钉钉订阅 `/v1.0/card/instances/callback`，立即 ACK，再异步处理与更新卡片；发送和更新使用原生异步 HTTP。
+企业微信将运行中的中止卡片与选择题通过主动模板卡片独立发送，正文仍使用原始流式回复，防止正文快照覆盖按钮；使用 `button_interaction` 模板卡片与 `event.template_card_event`，通过原回调帧在五秒内确认更新；官方接口不能在没有卡片点击回调时主动更新旧卡片，因此回复结束后未点击的旧停止按钮可能仍可见，但服务端会拒绝其操作。钉钉订阅 `/v1.0/card/instances/callback`，立即 ACK，再异步处理与更新卡片；发送和更新使用原生异步 HTTP。
 
 企业微信卡片回调优先从 `body.event.template_card_event` 读取 `task_id` 和 `event_key`，兼容字段直接位于 `body.event` 的格式；这里的 `task_id` 是发送卡片时生成的卡片 ID，由持久化记录反查 WorkStep 任务与提案，不能作为 WorkStep 任务 ID 使用。格式兼容及回调确认原任务、重复点击去重见 `test_channel_bot_adapters.py` 和 `test_channel_controls.py::test_wecom_nested_callback_confirms_original_task_proposal`。
 
@@ -95,3 +95,5 @@ WorkStep 渠道消息协议 v1 是项目内部的收发契约。它采用与 LLM
 统一入站消息可携带 `IncomingMessage.quote: ChannelQuote(text, attachments)`。企业微信适配器解析官方 `body.quote` 的文字、语音转文字、图文、图片和文件；机器人路由在提交给助手前通过 `media.py::incoming_content` 合成为用户正文：先是「引用消息」的 Markdown 引用区块，再是「本次消息」原文。引用附件复用异步下载、解密与项目上传目录持久化，正文只含项目相对路径，不含临时 URL 或密钥。没有引用时保持原文；平台未提供的原消息作者和消息 ID 不推测。此接入目前针对企业微信，钉钉适配器尚不提取引用字段。测试见 `tests/test_channel_quotes.py`，覆盖官方回调、两种助手路由、引用附件及慢磁盘健康检查。
 
 企业微信按钮文案较长（超过 4 字）时，适配器改用短编号按钮，并在 `sub_title_text` 列出编号与完整选项；确认／取消／中止等短按钮保持原文。说明超过官方建议的 112 字时，先主动发送完整说明，再发送对应卡片，不截断选项，也不结束正在运行的回复流。显示编号不改变按钮 key 或回调原选项，测试见 `tests/test_channel_bot_adapters.py`。
+
+任务渠道回复以协调助手持久化后的 `TEXT_MESSAGE_END` 状态为最终结果，忽略之前的引擎 `RUN_ERROR`，避免手动停止触发子进程退出后误发「处理失败」。`stopped/cancelled` 正常收尾为已停止，实际 `failed` 仍报告失败。测试见 `tests/test_channel_terminal_state.py` 与 `tests/test_channel_task_forwarder.py`。

@@ -291,3 +291,33 @@ async def test_task_broadcast_sends_stop_buttons_and_expires_them_on_end(setup):
     assert not controls._active
     assert await controls.handle(ChannelAction('bot',card.id,'0','member',conversation_id=group))=='该操作已处理或已失效'
     assert adapter.send_text.await_count==2
+
+
+async def test_stop_engine_error_does_not_send_failure_after_stopped_final(setup):
+    forwarder,bus,event,adapter,data,projects,project=setup
+    await forwarder.shutdown()
+    bot=data['bots'][0]
+    bot.update(default_target_type='project',default_project_id=project.id,default_task_id='')
+    values={'channel_bots':data}
+    store=SimpleNamespace(get=lambda key,default=None:values.get(key,default),set=lambda key,value:values.__setitem__(key,value))
+    async def submit(*args,**kwargs):
+        async def produce():
+            await bus.publish(event('coord','TEXT_MESSAGE_START',channel='coordinator'))
+            await bus.publish(event('coord','RUN_ERROR',channel='coordinator',status='cancelled'))
+            await bus.publish(event('coord','TEXT_MESSAGE_END',channel='coordinator',status='stopped',content=''))
+        asyncio.create_task(produce())
+        return SimpleNamespace(assistant_message_id='coord',turn_id='turn')
+    adapter.send_card=AsyncMock()
+    adapter.update_card=AsyncMock()
+    adapter.start=AsyncMock()
+    adapter.stop=AsyncMock()
+    manager=BotManager(store,projects,bus,SimpleNamespace(submit_message=submit),AsyncMock(),adapter_factories={'dingtalk':lambda *args:adapter})
+    try:
+        await manager.start()
+        await manager.handle_message(IncomingMessage('bot','incoming','group','one','u','继续'))
+        await until(lambda:not manager._task_forwarder._messages)
+        texts=[c.args[1] for c in adapter.send_text.await_args_list]
+        assert texts.count('@协调\n已停止')==2
+        assert not any('处理失败' in text for text in texts)
+    finally:
+        await manager.shutdown()

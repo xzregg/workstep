@@ -409,20 +409,25 @@ async def test_dingtalk_card_http_is_async_and_checks_platform_error(monkeypatch
         await adapter.update_card(None,card)
 
 
-async def test_wecom_stop_card_is_attached_to_the_same_streaming_reply():
+async def test_wecom_stop_card_is_sent_independently_of_stream_updates():
     from services.channels.base import ChannelCard, ChannelButton
     adapter = WeComAdapter({'id':'b'},AsyncMock(),AsyncMock())
-    client = type('Client',(),{'reply_stream_with_card':AsyncMock(),'send_message':AsyncMock()})()
+    client = type('Client',(),{'reply_stream':AsyncMock(),'reply_stream_with_card':AsyncMock(),'send_message':AsyncMock()})()
     adapter._client = client
     frame = {'headers':{'req_id':'request'}}
     message = IncomingMessage('b','m','group','g','u','开始',reply_context=frame)
-    card = ChannelCard('c','正在处理','点击停止',(ChannelButton('0','停止'),), running=True)
+    await adapter.start_reply(message)
+    card = ChannelCard('c','正在处理','点击中止',(ChannelButton('0','中止'),), running=True)
     await adapter.send_card(message,card)
-    call = client.reply_stream_with_card.await_args
-    assert call.args == (frame,adapter._stream_id(message),'')
-    assert call.kwargs['finish'] is False
-    assert call.kwargs['template_card']['task_id'] == 'c'
-    client.send_message.assert_not_awaited()
+    await adapter.update_reply(message,'部分正文')
+    await adapter.send_text(message,'已停止。')
+    client.reply_stream_with_card.assert_not_awaited()
+    client.send_message.assert_awaited_once()
+    template=client.send_message.await_args.args[1]['template_card']
+    assert template['task_id']=='c'
+    assert template['button_list']==[{'text':'中止','key':'0'}]
+    assert [c.args[2] for c in client.reply_stream.await_args_list]==['','部分正文','已停止。']
+
 
 
 async def test_wecom_long_choices_use_short_number_buttons_and_full_descriptions():

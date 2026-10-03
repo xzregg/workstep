@@ -598,15 +598,16 @@ class BotManager:
                     if forwarded:
                         await self._task_forwarder.wait(project_id, task_id, accepted.assistant_message_id)
                         return ""
-                    if event.get("status") == "stopped":
+                    if event.get("status") in {"stopped", "cancelled"}:
                         return "已停止。"
                     if event.get("status") != "succeeded":
                         raise RuntimeError(str(event.get("error") or "协调助手失败"))
                     if event.get("content") is not None:
                         reply = str(event["content"])
                     return reply
-                elif event.get("type") == "RUN_ERROR":
-                    raise RuntimeError(str(event.get("error") or "协调助手失败"))
+                # Engine cancellation may emit RUN_ERROR before the coordinator
+                # persists and publishes TEXT_MESSAGE_END(status="stopped").
+                # Only that final message status decides this request's outcome.
         finally:
             if control_scope:
                 await self._controls.finish(control_scope)
