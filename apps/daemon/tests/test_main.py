@@ -318,6 +318,25 @@ async def test_handle_client_message_subscribe_updates_filter(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_websocket_heartbeat_replies_only_to_originating_connection():
+    import json
+    import main
+    from main import WsSubscription
+
+    origin, other = event_bus.subscribe(), event_bus.subscribe()
+    try:
+        await main._handle_client_message(
+            json.dumps({'type': 'ping', 'nonce': 'heartbeat-1'}),
+            WsSubscription(active=True, project_id='project-1'), origin,
+        )
+        assert origin.get_nowait() == {'type': 'pong', 'nonce': 'heartbeat-1'}
+        assert other.empty()
+    finally:
+        event_bus.unsubscribe(origin)
+        event_bus.unsubscribe(other)
+
+
+@pytest.mark.anyio
 async def test_project_websocket_subscription_cannot_escape_project_or_send_commands(monkeypatch):
     import json
     import main

@@ -69,6 +69,21 @@ test('chat message store only accepts session_chat events', () => {
   assert.equal(session.messages[0].status, 'succeeded')
 })
 
+test('recovery replaces stale messages but preserves updates arriving during history fetch', () => {
+  useChatSessionStore.setState({ sessions: {} })
+  const store = useChatSessionStore.getState()
+  store.hydrateSession('recovery', [{ id: 'm', role: 'assistant', content: '旧正文', status: 'running' }])
+  const beforeRecovery = useChatSessionStore.getState().sessions.recovery.messages
+  store.hydrateSession('recovery', [{ id: 'm', role: 'assistant', content: '完整正文', status: 'succeeded' }], false, beforeRecovery)
+  assert.equal(useChatSessionStore.getState().sessions.recovery.messages[0].content, '完整正文')
+  assert.equal(useChatSessionStore.getState().sessions.recovery.running, false)
+
+  const beforeFetch = useChatSessionStore.getState().sessions.recovery.messages
+  store.handleWsEvent({ type: 'TEXT_MESSAGE_CHUNK', channel: 'session_chat', session_id: 'recovery', messageId: 'm', delta: '新的实时输出' })
+  store.hydrateSession('recovery', [{ id: 'm', role: 'assistant', content: '过时的快照', status: 'succeeded' }], false, beforeFetch)
+  assert.equal(useChatSessionStore.getState().sessions.recovery.messages[0].content, '完整正文新的实时输出')
+})
+
 test('chat session stays running when history or a stream chunk contains a running assistant message', () => {
   useChatSessionStore.setState({ sessions: {} })
   const store = useChatSessionStore.getState()

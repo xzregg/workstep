@@ -8,6 +8,60 @@ import { I18nProvider } from '../src/i18n'
 import { useChatSessionHistory } from '../src/hooks/useChatSessionHistory'
 import { useChatSessionStore } from '../src/stores/chatSessionStore'
 
+test('reconnect recovers missed conversation messages with no overlapping history requests', async () => {
+  const { window } = installDomEnvironment()
+  const originalGet = chatSessionApi.get
+  let requests = 0
+  let concurrent = 0
+  let maxConcurrent = 0
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => { release = resolve })
+  const messages = [
+    { id: 'u', role: 'user', content: '问题', status: 'succeeded' },
+    { id: 'm', role: 'assistant', content: '完整回复', status: 'succeeded' },
+    { id: 'next', role: 'user', content: '后台收到的新消息', status: 'succeeded' },
+  ]
+  let missing = 0
+  function Harness() {
+    useChatSessionHistory({ sessionId: 's', projectId: 'p', onLoaded: () => {}, onMissing: () => { missing++ } })
+    return null
+  }
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  try {
+    useChatSessionStore.setState({ sessions: {} })
+    chatSessionApi.get = (async () => {
+      const request = ++requests
+      concurrent++
+      maxConcurrent = Math.max(maxConcurrent, concurrent)
+      if (request === 2) await pending
+      concurrent--
+      return {
+        id: 's', project_id: 'p', title: '渠道对话',
+        running: request === 1,
+        messages: request === 1 ? [messages[0], { ...messages[1], content: '旧片段', status: 'running' }] : messages,
+      }
+    }) as never
+    await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
+    assert.equal(useChatSessionStore.getState().sessions.s.running, true)
+    await act(async () => window.dispatchEvent(new window.Event('workstep:reconnected')))
+    await act(async () => window.dispatchEvent(new window.Event('workstep:reconnected')))
+    assert.equal(requests, 2)
+    await act(async () => release())
+    assert.equal(requests, 3)
+    assert.equal(maxConcurrent, 1)
+    assert.equal(missing, 0)
+    const session = useChatSessionStore.getState().sessions.s
+    assert.equal(session.running, false)
+    assert.deepEqual(session.messages.map((message) => message.id), ['u', 'm', 'next'])
+    assert.equal(session.messages[1].content, '完整回复')
+  } finally {
+    await act(async () => root.unmount())
+    chatSessionApi.get = originalGet
+    useChatSessionStore.setState({ sessions: {} })
+    await window.happyDOM.close()
+  }
+})
+
 test('session history loads once when a caller updates its catalog callback', async () => {
   const { window } = installDomEnvironment()
   const originalGet = chatSessionApi.get
