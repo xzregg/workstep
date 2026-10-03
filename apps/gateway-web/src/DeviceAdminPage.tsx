@@ -73,7 +73,7 @@ export function DeviceAdminPage() {
   }
 
   return <section className="gateway-admin-page">
-    <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY</span>
+    <span className="gateway-auth-eyebrow">WORKSTEP 平台</span>
     <div className="gateway-admin-toolbar"><h2>设备管理</h2><a href="/admin/device-operations">批量作业</a></div>
     {status === 'checking' && <p role="status">正在检查登录状态…</p>}
     {status === 'login' && <div className="gateway-admin-login">

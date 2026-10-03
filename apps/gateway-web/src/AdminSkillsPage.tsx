@@ -97,7 +97,7 @@ export function AdminSkillsPage() {
   }
 
   return <section className="gateway-admin-page">
-    <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY · ADMIN</span>
+    <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>平台 Skill 管理</h2><Link to="/admin">返回管理概览</Link></div>
     <p>版本上传后需单独审核；只有已批准版本可授权用户组。撤销版本会使相关项目分配失效。</p>
     {error && <p role="alert" className="gateway-auth-error">{error} <button type="button"

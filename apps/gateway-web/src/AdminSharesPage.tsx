@@ -69,7 +69,7 @@ export function AdminSharesPage() {
   }
 
   return <section className="gateway-admin-page">
-    <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY · ADMIN</span>
+    <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>平台分享管理</h2><Link to="/admin">返回管理概览</Link></div>
     <form className="gateway-share-filters" onSubmit={event => {
       event.preventDefault(); setOffset(0); setSubmittedQuery(query.trim())

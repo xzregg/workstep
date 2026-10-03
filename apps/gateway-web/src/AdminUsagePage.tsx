@@ -37,7 +37,7 @@ export function AdminUsagePage({ readOnly = false }: { readOnly?: boolean }) {
   }
 
   return <section className="gateway-admin-page">
-    <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY · ADMIN</span>
+    <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>Token 用量</h2><Link to="/admin">返回管理概览</Link></div>
     <p>统计来自 PC 回传或供应商对账；未完成计量单独显示，缺失的 Token 和成本不会计为零。</p>
     <form className="gateway-usage-filters" onSubmit={event => { event.preventDefault(); apply() }}>

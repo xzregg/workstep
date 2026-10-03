@@ -59,7 +59,7 @@ export function AdminProvidersPage() {
   }, [filters, revision])
 
   return <section className="gateway-admin-page">
-    <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY · ADMIN</span>
+    <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>供应商管理</h2><Link to="/admin">返回管理概览</Link></div>
     <p>供应商密钥只在创建和轮换时提交；列表不返回密钥。</p>
     {csrf && <button type="button" onClick={() => setEdit('new')}>创建供应商</button>}

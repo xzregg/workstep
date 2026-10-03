@@ -35,7 +35,7 @@ export function AdminOverviewPage() {
   }, [navigate, revision])
 
   return <section className="gateway-admin-page">
-    <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY · ADMIN</span>
+    <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>管理概览</h2><Link to="/">返回工作台</Link></div>
     {access === 'checking' && !error && <p role="status">正在加载管理概览…</p>}
     {access === 'forbidden' && <p role="alert">当前账号没有管理后台权限，或需要先<Link to="/account">修改初始密码</Link>。</p>}

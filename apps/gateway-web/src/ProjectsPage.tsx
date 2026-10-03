@@ -81,7 +81,7 @@ export function ProjectsPage() {
   }
 
   return <section className="gateway-admin-page">
-    <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY</span>
+    <span className="gateway-auth-eyebrow">WORKSTEP 平台</span>
     <h2>我的项目</h2>
     {(location.state as { adminDenied?: boolean } | null)?.adminDenied &&
       <p role="alert">当前账号没有访问该管理页面的权限。</p>}

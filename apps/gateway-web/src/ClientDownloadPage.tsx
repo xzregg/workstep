@@ -53,7 +53,7 @@ export function ClientDownloadPage() {
 
   const selected = releases.filter((release) => release.os === os && release.arch === arch)
   return <section className="gateway-admin-page gateway-download-page">
-    <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY</span>
+    <span className="gateway-auth-eyebrow">WORKSTEP 平台</span>
     <h2>安装 WorkStep</h2>
     <p>你还没有获分配的在线电脑。设备上线后将自动进入“我的电脑”。<Link to="/devices">查看我的电脑</Link></p>
     <p>选择电脑的系统和架构，下载此网关统一提供的受管安装包。安装后在桌面端登录并登记这台电脑。</p>

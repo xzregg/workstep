@@ -208,7 +208,7 @@ export function AdminDeviceOperationsPage() {
     return () => controller.abort()
   }, [])
   return <section className="gateway-admin-page">
-    <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY · ADMIN</span>
+    <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>设备批量作业</h2><Link to="/admin/devices">返回设备管理</Link></div>
     {!csrf && !error && <p role="status">正在检查登录状态…</p>}
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}

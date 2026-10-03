@@ -100,7 +100,7 @@ export function AdminGroupsPage() {
   }
 
   return <section className="gateway-admin-page">
-    <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY · ADMIN</span>
+    <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>用户组管理</h2><Link to="/admin">返回管理概览</Link></div>
     <p>项目关联仅用于 Skill 策略，不授予项目内容读取或整台电脑访问权。</p>
     <div className="gateway-admin-toolbar"><label>用户组<select value={groupId} onChange={event => {

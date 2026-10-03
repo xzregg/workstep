@@ -90,7 +90,7 @@ export function GroupSkillsPage() {
   }
 
   return <section className="gateway-admin-page">
-    <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY · SKILLS</span>
+    <span className="gateway-auth-eyebrow">WORKSTEP 平台 · SKILLS</span>
     <div className="gateway-admin-toolbar"><h2>用户组 Skill 分配</h2><Link to="/">返回工作台</Link></div>
     <p>只可为本组关联项目分配已获授权的固定版本。撤销本组来源不会删除其他组仍在使用的版本。</p>
     <div className="gateway-usage-filters">

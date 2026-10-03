@@ -108,7 +108,7 @@ export function PortalAuthPage() {
       && recovery.username !== account.username && recovery.password !== account.password))
 
   return <section className="gateway-auth-card">
-    <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY</span>
+    <span className="gateway-auth-eyebrow">WORKSTEP 平台</span>
     <h2>{stage === 'setup' ? '初始化平台' : stage === 'register' ? '注册账号' : '登录工作台'}</h2>
     {stage === 'checking' && <p role="status">正在检查平台状态…</p>}
     {stage === 'checking' && error && <button type="button" onClick={() => { setError(''); setRetry(value => value + 1) }}>重试</button>}

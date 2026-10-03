@@ -74,7 +74,7 @@ export function AdminUsersPage() {
   const pages = Math.max(1, Math.ceil(total / filters.pageSize))
 
   return <section className="gateway-admin-page">
-    <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY · ADMIN</span>
+    <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <h2>用户管理</h2>
     {access === 'checking' && <p role="status">正在检查登录状态…</p>}
     {access === 'forbidden' && <p role="alert">当前账号没有用户管理权限，或需要先<Link to="/account">修改初始密码</Link>。</p>}

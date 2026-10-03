@@ -135,7 +135,7 @@ export function DesktopLoginPage() {
 
   return (
     <section className="gateway-auth-card">
-      <span className="gateway-auth-eyebrow">WORKSTEP GATEWAY</span>
+      <span className="gateway-auth-eyebrow">WORKSTEP 平台</span>
       <h2>WorkStep 桌面端登录</h2>
       <p className="gateway-auth-description">登录后授权当前电脑访问所属工作空间。</p>
       {status === 'checking' && <p role="status">正在检查登录状态…</p>}
