@@ -13,6 +13,31 @@ from gateway.control_connection import DataConnection
 
 
 @pytest.mark.asyncio
+async def test_gateway_upload_waits_for_pc_receive_window():
+    sent = []
+
+    class Socket:
+        async def send_json(self, message):
+            sent.append(ProxyFrame.model_validate(message))
+
+    connection = DataConnection("device-1", Socket())
+    connection._outbound_windows["stream-1"] = asyncio.BoundedSemaphore(32)
+    body = ProxyFrame(stream_id="stream-1", type=FrameType.http_request,
+                      payload={"phase": "body", "data": "eA=="})
+    for _ in range(32):
+        await connection.send_stream_frame(body)
+    pending = asyncio.create_task(connection.send_stream_frame(body))
+    await asyncio.sleep(0)
+    assert not pending.done()
+    connection.grant_credit(ProxyFrame(
+        stream_id="stream-1", type=FrameType.window_update,
+        payload={"credits": 1},
+    ))
+    await asyncio.wait_for(pending, timeout=1)
+    assert len(sent) == 33
+
+
+@pytest.mark.asyncio
 async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
     starts = []
     bodies = []
@@ -244,7 +269,7 @@ async def test_data_connection_multiplexes_large_http_body_and_streamed_response
     class Socket:
         async def send_json(self, message):
             frame = ProxyFrame.model_validate(message)
-            if frame.type == FrameType.cancel:
+            if frame.type in (FrameType.cancel, FrameType.window_update):
                 return
             stream = received.setdefault(frame.stream_id, {"body": bytearray()})
             phase = frame.payload["phase"]

@@ -16,6 +16,65 @@ from tests.test_gateway_share_ticket import _ticket
 
 
 @pytest.mark.asyncio
+async def test_large_response_waits_for_gateway_receive_window():
+    async def app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"x" * (16384 * 34)})
+
+    frames = []
+    window_full = asyncio.Event()
+
+    async def capture(frame):
+        frames.append(frame)
+        if len(frames) == 32:
+            window_full.set()
+
+    bridge = ManagedHttpBridge(app, "stream-1", {
+        "method": "GET", "path": "/api/large", "query": "", "headers": [],
+        "user_id": "user-1", "username": "alice",
+    }, capture, "device-1")
+    bridge.start_task()
+    await asyncio.wait_for(window_full.wait(), timeout=1)
+    await asyncio.sleep(0)
+    assert not bridge.done
+    for _ in range(4):
+        bridge.grant_credit()
+    await asyncio.wait_for(bridge._task, timeout=1)
+    assert frames[-1].payload == {"phase": "end"}
+
+
+@pytest.mark.asyncio
+async def test_large_websocket_message_waits_for_gateway_receive_window():
+    async def app(scope, receive, send):
+        await receive()
+        await send({"type": "websocket.accept"})
+        await send({"type": "websocket.send", "text": "x" * (16384 * 34)})
+
+    frames = []
+    window_full = asyncio.Event()
+
+    async def capture(frame):
+        frames.append(frame)
+        if len(frames) == 32:
+            window_full.set()
+
+    bridge = ManagedWebSocketBridge(app, "ws-1", {
+        "path": "/ws", "query": "", "headers": [],
+        "user_id": "user-1", "username": "alice",
+    }, capture, "device-1")
+    bridge.start_task()
+    await asyncio.wait_for(window_full.wait(), timeout=1)
+    await asyncio.sleep(0)
+    assert not bridge.done
+    for _ in range(4):
+        bridge.grant_credit()
+    await asyncio.wait_for(bridge._task, timeout=1)
+    assert frames[0].type == FrameType.websocket_open
+    assert sum(frame.type == FrameType.websocket_data for frame in frames) > 32
+    assert frames[-1].type == FrameType.websocket_close
+
+
+@pytest.mark.asyncio
 async def test_gateway_share_bridge_accepts_only_signed_task_scope():
     app = FastAPI()
     app.state.gateway_client = type("Client", (), {"managed_config": object()})()
@@ -112,7 +171,9 @@ async def test_gateway_bridge_streams_body_and_attaches_remote_actor_without_blo
     await bridge.feed(ProxyFrame(stream_id="stream-1", type=FrameType.http_request,
                                  payload={"phase": "end"}))
     await asyncio.wait_for(bridge._task, timeout=1)
-    assert frames[0].payload["status"] == 200
+    response_frames = [frame for frame in frames if frame.type == FrameType.http_response]
+    assert response_frames[0].payload["status"] == 200
+    assert sum(frame.type == FrameType.window_update for frame in frames) == 2
     body = b"".join(base64.b64decode(frame.payload["data"])
                     for frame in frames if frame.payload.get("phase") == "body")
     assert b'"user_id":"user-remote"' in body
@@ -120,7 +181,7 @@ async def test_gateway_bridge_streams_body_and_attaches_remote_actor_without_blo
     assert b'"source":"managed"' in body
     assert b'"author_username":"alice"' in body
     assert b'"author_name":"Alice Display"' in body
-    assert frames[-1].payload == {"phase": "end"}
+    assert response_frames[-1].payload == {"phase": "end"}
 
     for blocked_path in ("/api/fs/open-directory", "/api/fs/browse"):
         blocked_frames = []

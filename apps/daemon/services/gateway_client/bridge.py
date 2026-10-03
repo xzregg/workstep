@@ -18,7 +18,8 @@ class ManagedHttpBridge:
                  gateway_id: str | None = None):
         self.app = app
         self.stream_id = stream_id
-        self.send_frame = send_frame
+        self._send_frame = send_frame
+        self._outbound_credits = asyncio.BoundedSemaphore(32)
         self.device_id = device_id
         self.gateway_key = gateway_key
         self.gateway_fingerprint = gateway_fingerprint
@@ -26,6 +27,14 @@ class ManagedHttpBridge:
         self._inbound: asyncio.Queue = asyncio.Queue(maxsize=32)
         self._task: asyncio.Task | None = None
         self.start = start
+
+    async def send_frame(self, frame: ProxyFrame) -> None:
+        if frame.type == FrameType.http_response:
+            await self._outbound_credits.acquire()
+        await self._send_frame(frame)
+
+    def grant_credit(self) -> None:
+        self._outbound_credits.release()
 
     def start_task(self) -> None:
         self._task = asyncio.create_task(self._run())
@@ -116,13 +125,22 @@ class ManagedHttpBridge:
                     raise ValueError("Invalid managed HTTP body")
                 phase = frame.payload.get("phase")
                 if phase == "end":
+                    await self.send_frame(ProxyFrame(
+                        stream_id=self.stream_id, type=FrameType.window_update,
+                        payload={"credits": 1},
+                    ))
                     return {"type": "http.request", "body": b"", "more_body": False}
                 if phase != "body":
                     raise ValueError("Invalid managed HTTP body")
                 data = frame.payload.get("data")
                 if not isinstance(data, str) or len(data) > 32768:
                     raise ValueError("Invalid managed HTTP body size")
-                return {"type": "http.request", "body": base64.b64decode(data, validate=True),
+                body = base64.b64decode(data, validate=True)
+                await self.send_frame(ProxyFrame(
+                    stream_id=self.stream_id, type=FrameType.window_update,
+                    payload={"credits": 1},
+                ))
+                return {"type": "http.request", "body": body,
                         "more_body": True}
 
             async def send(message):
@@ -170,10 +188,20 @@ class ManagedWebSocketBridge:
         self.app = app
         self.stream_id = stream_id
         self.start = start
-        self.send_frame = send_frame
+        self._send_frame = send_frame
+        self._outbound_credits = asyncio.BoundedSemaphore(32)
         self.device_id = device_id
         self._inbound: asyncio.Queue = asyncio.Queue(maxsize=32)
         self._task: asyncio.Task | None = None
+
+    async def send_frame(self, frame: ProxyFrame) -> None:
+        if frame.type in (FrameType.websocket_open, FrameType.websocket_data,
+                          FrameType.websocket_close):
+            await self._outbound_credits.acquire()
+        await self._send_frame(frame)
+
+    def grant_credit(self) -> None:
+        self._outbound_credits.release()
 
     def start_task(self) -> None:
         self._task = asyncio.create_task(self._run())
@@ -246,10 +274,19 @@ class ManagedWebSocketBridge:
                 while True:
                     frame = await self._inbound.get()
                     if frame.type in (FrameType.websocket_close, FrameType.cancel):
+                        if frame.type == FrameType.websocket_close:
+                            await self.send_frame(ProxyFrame(
+                                stream_id=self.stream_id, type=FrameType.window_update,
+                                payload={"credits": 1},
+                            ))
                         return {"type": "websocket.disconnect", "code": frame.payload.get("code", 1000)}
                     if frame.type != FrameType.websocket_data:
                         raise ValueError("Invalid managed WebSocket data")
                     message = assembler.add(frame.payload)
+                    await self.send_frame(ProxyFrame(
+                        stream_id=self.stream_id, type=FrameType.window_update,
+                        payload={"credits": 1},
+                    ))
                     if message is None:
                         continue
                     kind, data = message
