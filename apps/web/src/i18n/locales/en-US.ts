@@ -2169,6 +2169,11 @@ export const enUS: Messages = {
     },
   },
   chatSession: {
+    conversationTypes: '会话类型',
+    ordinaryTab: '普通会话',
+    channelTab: '渠道对话',
+    noOrdinarySessions: '暂无普通会话',
+    noChannelSessions: '暂无渠道对话',
     channelSource: '渠道',
     channelSourceHint: '通过企业微信或钉钉机器人建立的渠道对话',
     viewArchive: 'View archive',

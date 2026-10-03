@@ -1,0 +1,37 @@
+.sidebar-conversation-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 2px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.sidebar-conversation-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--meta);
+  background: transparent;
+  font-size: calc(11px * var(--font-scale));
+  white-space: nowrap;
+  cursor: pointer;
+}
+.sidebar-conversation-tab[aria-selected="true"] {
+  color: var(--accent);
+  background: var(--accent-light);
+  font-weight: 600;
+}
+.sidebar-conversation-tab:focus-visible { outline: 2px solid var(--accent); }
+.sidebar-conversation-tab-count { font-size: calc(10px * var(--font-scale)); }
+.sidebar-conversation-empty { padding: 8px; color: var(--meta); font-size: calc(12px * var(--font-scale)); }
+@media (max-width: 1023px) {
+  .sidebar-conversation-tab { height: var(--mobile-control-regular); min-height: var(--mobile-control-regular); }
+}
