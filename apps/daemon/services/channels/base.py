@@ -35,6 +35,12 @@ class ChannelAttachment:
 
 
 @dataclass(frozen=True, slots=True)
+class ChannelQuote:
+    text: str = ''
+    attachments: tuple[ChannelAttachment, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class IncomingMessage:
     bot_id: str
     message_id: str
@@ -46,6 +52,7 @@ class IncomingMessage:
     conversation_name: str = ''
     reply_context: object | None = field(default=None, repr=False)
     attachments: tuple[ChannelAttachment, ...] = ()
+    quote: ChannelQuote | None = None
 
 
 @dataclass(frozen=True, slots=True)

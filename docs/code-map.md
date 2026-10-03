@@ -320,3 +320,5 @@ Gateway 后台布局由 `apps/gateway-web/src/AdminLayout.tsx` 持有按角色�
 渠道单条回复更新能力由 `services/channels/base.py::supports_streaming_reply` 按收件人声明：企业微信需要原始回调帧，钉钉通过 `dingtalk.py` 创建并更新同一 Markdown 卡片。`task_forwarder.py` 只向可更新的收件人推送累计正文，其他主动任务消息结束后发送完整结果；`bots.py` 复用该判断。行为与 I/O 响应测试见 `tests/test_channel_streaming.py`、`tests/test_channel_task_forwarder.py`、`tests/test_channel_protocol.py`。
 
 任务渠道中止按钮由 `services/channels/task_forwarder.py` 在运行中创建、结束时收尾，复用 `controls.py` 的绑定校验和回调去重。自动执行／审核消息通过 `services/workflow_runtime.py::cancel_message` 绑定消息 ID 与当前引擎实例并调用现有阶段停止入口；协调回复仍使用 `CoordinatorModule.stop_current`。装配入口为 `main.py` → `BotManager`，行为、过期按钮与慢 SQL 健康检查测试见 `tests/test_channel_task_stop.py`、`tests/test_channel_controls.py`、`tests/test_channel_task_forwarder.py`。
+
+渠道引用消息入口为 `services/channels/wecom.py::_message_parts`，归一到 `base.py::ChannelQuote`；`bots.py::_route_message` 调用 `media.py::incoming_content` 将引用正文与附件合入当前用户消息，任务协调助手和项目渠道对话共用。官方引用帧、无引用兼容、两种路由和慢附件磁盘 I/O 测试在 `tests/test_channel_quotes.py`。

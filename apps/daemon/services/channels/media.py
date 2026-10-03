@@ -57,9 +57,9 @@ async def load_outgoing_attachment(project, kind: str, path: str, limit: int) ->
     return await asyncio.to_thread(read)
 
 
-async def incoming_content(project, adapter, message) -> str:
-    parts = [message.text] if message.text else []
-    for attachment in message.attachments:
+async def _incoming_parts(project, adapter, text, attachments) -> str:
+    parts = [text] if text else []
+    for attachment in attachments:
         data, filename = await adapter.download(attachment)
         if not data or len(data) > adapter.CAPABILITIES.limit(attachment.kind):
             raise ValueError('附件为空或超过渠道大小限制')
@@ -77,6 +77,18 @@ async def incoming_content(project, adapter, message) -> str:
         # Generated storage names contain no URL-reserved characters except spaces.
         parts.append(f'{"!" if attachment.kind == "image" else ""}[{label}]({path})')
     return '\n\n'.join(parts)
+
+
+async def incoming_content(project, adapter, message) -> str:
+    current = await _incoming_parts(project, adapter, message.text, message.attachments)
+    if message.quote is None:
+        return current
+    quoted = await _incoming_parts(project, adapter, message.quote.text, message.quote.attachments)
+    if not quoted:
+        return current
+    # Quote every line so the UI and model can distinguish it from this request.
+    quoted = '\n'.join('> ' + line for line in quoted.splitlines())
+    return f'引用消息：\n{quoted}\n\n本次消息：\n{current}'
 
 
 async def outgoing_content(project, adapter, text: str, attachments=()):

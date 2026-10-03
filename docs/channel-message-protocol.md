@@ -89,3 +89,7 @@ WorkStep 渠道消息协议 v1 是项目内部的收发契约。它采用与 LLM
 企业微信卡片回调优先从 `body.event.template_card_event` 读取 `task_id` 和 `event_key`，兼容字段直接位于 `body.event` 的格式；这里的 `task_id` 是发送卡片时生成的卡片 ID，由持久化记录反查 WorkStep 任务与提案，不能作为 WorkStep 任务 ID 使用。格式兼容及回调确认原任务、重复点击去重见 `test_channel_bot_adapters.py` 和 `test_channel_controls.py::test_wecom_nested_callback_confirms_original_task_proposal`。
 
 协议及阻塞 canary：`tests/test_channel_controls.py`、`tests/test_channel_bot_adapters.py`、`test_channel_bots.py::test_task_channel_stop_callback_bypasses_message_queue`、`test_coordinator.py::test_channel_stop_targets_exact_coordinator_reply_and_slow_sql_keeps_health_responsive`。
+
+## 引用消息
+
+统一入站消息可携带 `IncomingMessage.quote: ChannelQuote(text, attachments)`。企业微信适配器解析官方 `body.quote` 的文字、语音转文字、图文、图片和文件；机器人路由在提交给助手前通过 `media.py::incoming_content` 合成为用户正文：先是「引用消息」的 Markdown 引用区块，再是「本次消息」原文。引用附件复用异步下载、解密与项目上传目录持久化，正文只含项目相对路径，不含临时 URL 或密钥。没有引用时保持原文；平台未提供的原消息作者和消息 ID 不推测。此接入目前针对企业微信，钉钉适配器尚不提取引用字段。测试见 `tests/test_channel_quotes.py`，覆盖官方回调、两种助手路由、引用附件及慢磁盘健康检查。

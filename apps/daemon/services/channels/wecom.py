@@ -8,7 +8,7 @@ import uuid
 
 from aibot import WSClient, WSClientOptions
 
-from services.channels.base import ChannelAdapter, ChannelCapabilities, ChannelAttachment, IncomingMessage, OutgoingMessage, ChannelCard, ChannelAction
+from services.channels.base import ChannelAdapter, ChannelCapabilities, ChannelAttachment, IncomingMessage, OutgoingMessage, ChannelCard, ChannelAction, ChannelQuote
 from services.channels.media import fetch_media
 
 
@@ -21,6 +21,19 @@ def _utf8_parts(text: str, limit: int):
         part = data[:limit].decode('utf-8', errors='ignore')
         yield part
         data = data[len(part.encode('utf-8')):]
+
+
+def _message_parts(body: dict) -> tuple[str, tuple[ChannelAttachment, ...]]:
+    items = (body.get('mixed') or {}).get('msg_item', []) if body.get('msgtype') == 'mixed' else [body]
+    texts, attachments = [], []
+    for item in items:
+        kind = item.get('msgtype') or ('text' if item.get('text') else '')
+        if kind in {'text','voice'}:
+            texts.append(str((item.get(kind) or {}).get('content') or ''))
+        elif kind in {'image','file'}:
+            media = item.get(kind) or {}
+            attachments.append(ChannelAttachment(kind=kind, name=media.get('filename') or media.get('name') or '', reference=media))
+    return '\n'.join(texts), tuple(attachments)
 
 
 class WeComAdapter(ChannelAdapter):
@@ -77,16 +90,9 @@ class WeComAdapter(ChannelAdapter):
             sender_id = str(sender.get("userid") or "")
             is_group = body.get("chattype") == "group"
             conversation_id = str(body.get("chatid") or "") if is_group else sender_id
-            items = (body.get('mixed') or {}).get('msg_item', []) if body.get('msgtype') == 'mixed' else [body]
-            attachments = []
-            texts = []
-            for item in items:
-                kind = item.get('msgtype') or ('text' if item.get('text') else '')
-                if kind == 'text':
-                    texts.append(str((item.get('text') or {}).get('content') or ''))
-                elif kind in {'image','file'}:
-                    media = item.get(kind) or {}
-                    attachments.append(ChannelAttachment(kind=kind, name=media.get('filename') or media.get('name') or '', reference=media))
+            text, attachments = _message_parts(body)
+            quoted = body.get('quote')
+            quote = ChannelQuote(*_message_parts(quoted)) if isinstance(quoted, dict) else None
             message = IncomingMessage(
                 bot_id=self._bot["id"],
                 message_id=str(body.get("msgid") or ""),
@@ -94,8 +100,9 @@ class WeComAdapter(ChannelAdapter):
                 conversation_id=conversation_id,
                 sender_id=sender_id,
                 sender_name=sender_id,
-                text="\n".join(texts),
-                attachments=tuple(attachments),
+                text=text,
+                attachments=attachments,
+                quote=quote,
                 reply_context=frame,
             )
             await self._on_message(message)
