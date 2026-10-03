@@ -1,3 +1,4 @@
+import SidebarConversationTabs from './SidebarConversationTabs'
 import ChatSessionSourceBadge from './ChatSessionSourceBadge'
 import { useVisualViewport } from '../hooks/useVisualViewport'
 import Icon from './Icon'
@@ -870,6 +871,8 @@ export default function Layout({ onSelectProject, children }: Props) {
                     </div>
                     {open && (
                     <div className="layout-session-list">
+                      <SidebarConversationTabs sessions={searchResult.sessions} activeSessionId={activeSessionId} onSwitch={clearSelection}>
+                        {visibleSessions => <>
                       {/* Bulk action bar (visible when 2+ sessions selected) */}
                       {selectionProjectId === p.id && selectedIds.size >= 2 && (
                         <div className="layout-session-bulk-actions">
@@ -896,7 +899,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                           </Button>
                         </div>
                       )}
-                      {searchResult.sessions.map(session => {
+                      {visibleSessions.map(session => {
                         const isDragSource = dragSessionId === session.id
                         const isDropTarget = dropSessionId === session.id
                         const sessionRunning = Boolean(runningChatSessions[session.id])
@@ -1020,6 +1023,8 @@ export default function Layout({ onSelectProject, children }: Props) {
                         </div>
                         )
                       })}
+                        </>}
+                      </SidebarConversationTabs>
                     </div>
                     )}
                   </>
