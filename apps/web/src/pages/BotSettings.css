@@ -4,7 +4,8 @@
 .bot-settings h2 { font-size: calc(16px * var(--font-scale)); margin-top: 12px; }
 .bot-settings > p, .bot-settings-hint { color: var(--muted); line-height: 1.5; }
 .bot-settings-list { display: flex; flex-direction: column; gap: 8px; }
-.bot-settings-row { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border-soft); border-radius: var(--radius-md); }
+.bot-settings-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border-soft); border-radius: var(--radius-md); }
+.bot-settings-row { display: flex; align-items: center; gap: 12px; }
 .bot-settings-row > div { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
 .bot-settings-row span { color: var(--muted); font-size: calc(12px * var(--font-scale)); overflow-wrap: anywhere; }
 .bot-settings-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }

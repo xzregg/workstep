@@ -3,12 +3,18 @@ import { request } from './transport'
 export type BotPlatform = 'wecom' | 'dingtalk'
 export type BotTargetType = '' | 'project' | 'task'
 
+export interface BotTaskBinding extends DiscussionGroup {
+  task_title: string
+  project_name: string
+}
+
 export interface ChannelBot {
   id: string
   platform: BotPlatform
   name: string
   app_id: string
   enabled: boolean
+  task_bindings?: BotTaskBinding[]
   has_secret: boolean
   status: string
   error: string
