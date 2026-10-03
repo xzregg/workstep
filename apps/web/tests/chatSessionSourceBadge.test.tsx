@@ -10,7 +10,7 @@ test('channel source shows a visible label while ordinary and legacy sessions do
   )
   assert.match(render('channel', 'wecom'), /企业微信/)
   assert.match(render('channel', 'dingtalk'), /钉钉/)
-  assert.match(render('channel', 'wecom', 'Echo'), /企业微信 · Echo/)
+  assert.match(render('channel', 'wecom', 'Echo'), />企业微信</)
   assert.match(render('channel'), /chat-session-source-badge/)
   assert.equal(render('chat'), '')
   assert.equal(render(), '')
@@ -43,13 +43,14 @@ test('channel conversations stay pinned when loading, adding and manually reorde
   }
 })
 
-test('channel badge identifies the platform and private recipient or group', () => {
+test('channel badge shows only the platform and conversation type', () => {
   const render = (conversationType: 'single' | 'group', peerName: string) => renderToStaticMarkup(
     <I18nProvider><ChatSessionSourceBadge source="channel" platform="dingtalk" botName="Echo"
       conversationType={conversationType} peerName={peerName} /></I18nProvider>,
   )
-  assert.match(render('single', '小王'), />钉钉 · 私聊 小王</)
-  assert.match(render('single', '小王'), /title="钉钉 · Echo · 私聊 小王"/)
-  assert.match(render('group', 'group-123'), />钉钉 · 群聊 group-123</)
-  assert.doesNotMatch(render('group', 'group-123'), /私聊/)
+  assert.match(render('single', '小王'), />钉钉 · 私聊</)
+  assert.match(render('single', '小王'), /title="钉钉 · 私聊"/)
+  assert.match(render('group', 'group-123'), />钉钉 · 群聊</)
+  assert.doesNotMatch(render('group', 'group-123'), /私聊|group-123|Echo/)
+  assert.doesNotMatch(render('single', '小王'), /小王|Echo/)
 })
