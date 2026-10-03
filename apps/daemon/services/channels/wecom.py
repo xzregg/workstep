@@ -161,6 +161,9 @@ class WeComAdapter(ChannelAdapter):
             return frame
         return None
 
+    def supports_streaming_reply(self, message: IncomingMessage) -> bool:
+        return self._reply_frame(message) is not None
+
     async def start_reply(self, message: IncomingMessage) -> None:
         if not self._client:
             raise RuntimeError("企业微信机器人未连接")

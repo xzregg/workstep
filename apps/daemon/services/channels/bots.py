@@ -457,8 +457,7 @@ class BotManager:
                 logger.warning("Failed to start channel waiting reply", exc_info=True)
         from services.channels.reply_stream import ChannelReplyStream
         stream = ChannelReplyStream(lambda text: adapter.update_reply(message, text)) if (
-            isinstance(adapter, ChannelAdapter) and adapter.CAPABILITIES.streaming
-            and message.reply_context is not None
+            isinstance(adapter, ChannelAdapter) and adapter.supports_streaming_reply(message)
             and (kind != "task" or not self._task_forwarder.running)
         ) else None
         control_scope = None
@@ -554,6 +553,8 @@ class BotManager:
                 await self._controls.finish(control_scope)
             if stream:
                 await stream.close()
+            if isinstance(adapter, ChannelAdapter):
+                adapter.release_reply(message)
 
     async def _task_reply(
         self, project_id: str, task_id: str, message: IncomingMessage, platform: str,

@@ -106,6 +106,13 @@ class ChannelAdapter(ABC):
     async def start_reply(self, message: IncomingMessage) -> None:
         """Optional waiting indicator; callers inspect CAPABILITIES.waiting."""
 
+    def supports_streaming_reply(self, message: IncomingMessage) -> bool:
+        """Whether this recipient can receive updates to one existing message."""
+        return self.CAPABILITIES.streaming
+
+    def release_reply(self, message: IncomingMessage) -> None:
+        """Release local progress bookkeeping after completion or cancellation."""
+
     async def update_reply(self, message: IncomingMessage, text: str) -> None:
         """Replace an in-progress reply with cumulative text when streaming is supported."""
         raise ValueError(f'{self.DISPLAY_NAME}不支持流式回复')

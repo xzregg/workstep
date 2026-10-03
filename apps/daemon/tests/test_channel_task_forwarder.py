@@ -51,13 +51,13 @@ async def setup(tmp_path):
     projects.close_all()
 
 
-async def test_stages_stream_to_every_group_with_titles_and_no_duplicate_final(setup):
+async def test_nonstreaming_stages_send_one_complete_message_per_group(setup):
     forwarder,bus,event,adapter,*_ = setup
     await bus.publish(event('a','TEXT_MESSAGE_START'))
-    await until(lambda: adapter.send_text.await_count == 2)
-    assert all(call.args[1] == '@编写\n正在执行…' for call in adapter.send_text.await_args_list)
+    await until(lambda: bool(forwarder._messages))
     await bus.publish(event('a','TEXT_MESSAGE_CHUNK',delta='部分正文'))
-    await until(lambda: adapter.send_text.await_count == 4)
+    await asyncio.sleep(.05)
+    adapter.send_text.assert_not_awaited()
     await bus.publish(event('a','TEXT_MESSAGE_END',status='succeeded',content='部分正文完成'))
     await until(lambda: not forwarder._messages)
     await bus.publish(event('b','TEXT_MESSAGE_START'))
@@ -66,8 +66,7 @@ async def test_stages_stream_to_every_group_with_titles_and_no_duplicate_final(s
     await until(lambda: not forwarder._messages)
     for group in ['one','two']:
         texts = [c.args[1] for c in adapter.send_text.await_args_list if c.args[0].conversation_id == group]
-        assert texts[:3] == ['@编写\n正在执行…','@编写\n部分正文','@编写\n完成\n\n已完成']
-        assert texts[-2:] == ['@交付\n正在执行…','@交付\n交付内容\n\n已完成']
+        assert texts == ['@编写\n部分正文完成\n\n已完成','@交付\n交付内容\n\n已完成']
     count = adapter.send_text.await_count
     await bus.publish(event('a','TEXT_MESSAGE_END',status='succeeded',content='部分正文完成'))
     await bus.publish(event('user','TEXT_MESSAGE_START',role='user'))
@@ -80,7 +79,7 @@ async def test_unbind_and_failure_are_isolated_while_parallel_messages_finish(se
     forwarder,bus,event,adapter,data,*_ = setup
     await bus.publish(event('a','TEXT_MESSAGE_START'))
     await bus.publish(event('review','TEXT_MESSAGE_START'))
-    await until(lambda: adapter.send_text.await_count == 4)
+    await until(lambda: len(forwarder._messages) == 2)
     data['groups'] = data['groups'][:1]
     await bus.publish(event('a','TEXT_MESSAGE_END',status='stopped',content='已生成'))
     await bus.publish(event('review','TEXT_MESSAGE_END',status='failed',content='审核正文',error='引擎失败'))
@@ -130,9 +129,9 @@ async def test_slow_database_and_slow_group_keep_health_and_other_group_responsi
         async with AsyncClient(transport=ASGITransport(app=main.app),base_url='http://test') as client:
             assert (await asyncio.wait_for(client.get('/api/health'),.5)).status_code == 200
         release.set()
+        await bus.publish(event('a','TEXT_MESSAGE_END',status='succeeded',content='结果'))
         await asyncio.wait_for(network_entered.wait(),1)
         await until(lambda: any(c.args[0].conversation_id == 'two' for c in adapter.send_text.await_args_list))
-        await bus.publish(event('a','TEXT_MESSAGE_END',status='succeeded',content='结果'))
         await until(lambda: any(c.args[0].conversation_id == 'two' and '结果' in c.args[1] for c in adapter.send_text.await_args_list))
     finally:
         release.set()
@@ -181,18 +180,18 @@ async def test_manager_routes_inbound_task_reply_once_and_keeps_button_controls(
 async def test_retried_message_id_is_forwarded_again_and_duplicate_chunks_are_ignored(setup):
     forwarder,bus,event,adapter,*_ = setup
     await bus.publish(event('a','TEXT_MESSAGE_START',sequence=0))
-    await until(lambda: adapter.send_text.await_count == 2)
+    await until(lambda: bool(forwarder._messages))
     await bus.publish(event('a','TEXT_MESSAGE_CHUNK',delta='正文',sequence=1))
     await bus.publish(event('a','TEXT_MESSAGE_CHUNK',delta='正文',sequence=1))
-    await until(lambda: adapter.send_text.await_count == 4)
-    assert adapter.send_text.await_args.args[1] == '@编写\n正文'
+    await asyncio.sleep(.05)
+    adapter.send_text.assert_not_awaited()
     await bus.publish(event('a','TEXT_MESSAGE_END',status='failed',content='正文',sequence=2))
     await until(lambda: not forwarder._messages)
     await bus.publish(event('a','TEXT_MESSAGE_START',retry=True,sequence=0))
-    await until(lambda: adapter.send_text.await_count == 8)
+    await until(lambda: bool(forwarder._messages))
     await bus.publish(event('a','TEXT_MESSAGE_END',status='succeeded',content='重试结果',sequence=1))
     await until(lambda: not forwarder._messages)
-    assert adapter.send_text.await_count == 10
+    assert adapter.send_text.await_count == 4
     assert adapter.send_text.await_args.args[1] == '@编写\n重试结果\n\n已完成'
 
 
@@ -216,26 +215,55 @@ async def test_final_loads_persisted_body_and_sends_project_attachments_once(set
     body = '结果 ![图片](.workstep/uploads/test.png) [文件](.workstep/uploads/test.txt)'
     await projects.run_db(project.id,lambda _project: Message.update(content=body).where(Message.id == 'a').execute())
     await bus.publish(event('a','TEXT_MESSAGE_START'))
-    await until(lambda: adapter.send.await_count == 1)
+    await until(lambda: bool(forwarder._messages))
     await bus.publish(event('a','TEXT_MESSAGE_END',status='succeeded'))
     await until(lambda: not forwarder._messages)
     final = adapter.send.await_args.args[1]
     assert final.text == '@编写\n结果 图片 文件\n\n已完成'
     assert [(a.kind,a.data) for a in final.attachments] == [('image',b'image'),('file',b'file')]
-    assert not adapter.send.await_args_list[0].args[1].attachments
+    assert adapter.send.await_count == 1
 
 
 async def test_failed_progress_still_retries_final_without_affecting_other_group(setup):
     forwarder,bus,event,adapter,*_ = setup
+    adapter.supports_streaming_reply = lambda recipient: True
+    adapter.update_reply = AsyncMock()
     failed = False
     async def send(recipient,text):
         nonlocal failed
         if recipient.conversation_id == 'one' and not failed:
             failed = True
             raise RuntimeError('temporary connection error')
-    adapter.send_text.side_effect = send
+    adapter.update_reply.side_effect = send
     await bus.publish(event('a','TEXT_MESSAGE_START'))
-    await until(lambda: adapter.send_text.await_count == 2)
+    await until(lambda: adapter.update_reply.await_count == 2)
     await bus.publish(event('a','TEXT_MESSAGE_END',status='succeeded',content='最终结果'))
     await until(lambda: not forwarder._messages)
     assert {c.args[0].conversation_id for c in adapter.send_text.await_args_list if '最终结果' in c.args[1]} == {'one','two'}
+
+
+async def test_proactive_dingtalk_updates_same_card_in_each_group(setup):
+    from services.channels.dingtalk import DingTalkAdapter
+    forwarder,bus,event,_,_,_,_ = setup
+    adapter = DingTalkAdapter({'id':'bot','app_id':'client','secret':'secret'}, AsyncMock(), AsyncMock())
+    adapter._card_api = AsyncMock(return_value={})
+    adapter._send_text = AsyncMock()
+    forwarder._adapters['bot'] = adapter
+    await bus.publish(event('a','TEXT_MESSAGE_START'))
+    await until(lambda: adapter._card_api.await_count == 2)
+    await bus.publish(event('a','TEXT_MESSAGE_CHUNK',delta='部分'))
+    await until(lambda: adapter._card_api.await_count == 4)
+    await bus.publish(event('a','TEXT_MESSAGE_CHUNK',delta='正文'))
+    await until(lambda: adapter._card_api.await_count == 6)
+    await bus.publish(event('a','TEXT_MESSAGE_END',status='succeeded',content='完整正文'))
+    await until(lambda: not forwarder._messages)
+    calls = adapter._card_api.await_args_list
+    creates = [c for c in calls if c.args[0] == 'POST']
+    assert len(creates) == 2
+    for created in creates:
+        card_id = created.args[1]['outTrackId']
+        updates = [c for c in calls if c.args[0] == 'PUT' and c.args[1]['outTrackId'] == card_id]
+        assert [c.args[1]['cardData']['cardParamMap']['markdown'] for c in updates] == [
+            '@编写\n部分', '@编写\n部分正文', '@编写\n完整正文\n\n已完成']
+    adapter._send_text.assert_not_awaited()
+    assert not adapter._reply_cards
