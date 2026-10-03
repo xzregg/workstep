@@ -14,6 +14,7 @@ class ChannelCapabilities:
     receive: frozenset[str] = frozenset({'text'})
     send: frozenset[str] = frozenset({'text'})
     waiting: bool = False
+    streaming: bool = False
     file_extensions: frozenset[str] | None = None
     max_image_bytes: int = 2 * 1024 * 1024
     max_file_bytes: int = 20 * 1024 * 1024
@@ -75,6 +76,10 @@ class ChannelAdapter(ABC):
 
     async def start_reply(self, message: IncomingMessage) -> None:
         """Optional waiting indicator; callers inspect CAPABILITIES.waiting."""
+
+    async def update_reply(self, message: IncomingMessage, text: str) -> None:
+        """Replace an in-progress reply with cumulative text when streaming is supported."""
+        raise ValueError(f'{self.DISPLAY_NAME}不支持流式回复')
 
     async def download(self, attachment: ChannelAttachment) -> tuple[bytes, str]:
         raise ValueError(f'{self.DISPLAY_NAME}不支持附件下载')

@@ -60,8 +60,9 @@ async def test_responder_ignores_other_message_completion(tmp_path, status):
 
     project = manager.init_project(tmp_path / "reply-filter-project")
     responder = ChatSessionResponder(bus, manager, FakeModule())
+    progress = []
     try:
-        response = responder(project.id, "session-1", "hello", "channel_chat", "")
+        response = responder(project.id, "session-1", "hello", "channel_chat", "", on_progress=progress.append)
         if status == "succeeded":
             session_id, reply = await asyncio.wait_for(response, timeout=1)
             assert session_id == "session-1"
@@ -69,6 +70,7 @@ async def test_responder_ignores_other_message_completion(tmp_path, status):
         else:
             with pytest.raises(RuntimeError, match="response failed|渠道助手响应已停止"):
                 await asyncio.wait_for(response, timeout=1)
+        assert progress == ['right']
         assert not bus._subscribers
     finally:
         manager.close_all()
