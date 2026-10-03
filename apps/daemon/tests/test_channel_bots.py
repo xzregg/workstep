@@ -3,13 +3,17 @@
 import asyncio
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 import main
+from agent_assistants.channel_chat import ChannelChatModule
+from models.chat_session import ChatSession
 from models.task import Task
 from services.channels.bots import BotManager, IncomingMessage
+from services.channels.responder import ChatSessionResponder
 from services.project import ProjectManager
 from services.remote_access import get_current_actor
 from streaming.bus import EventBus
@@ -267,3 +271,83 @@ async def test_bot_and_group_api_use_real_project_validation(bots):
             "project_id": first.id, "bot_id": bot["id"], "group_id": "group-2",
         })
         assert missing.status_code == 400
+
+
+@pytest.mark.parametrize("reset", ["delete", "archive"])
+async def test_channel_session_reset_replaces_mapping_and_reuses_new_session(bots, monkeypatch, reset):
+    manager, project, _second, _submissions, _chats, adapters = bots
+    projects, bus = manager._project_manager, manager._event_bus
+    module = ChannelChatModule(bus, projects)
+    monkeypatch.setattr(module, "_validate_engine", lambda _engine: None)
+    old = await projects.run_db(project.id, lambda _project: module.create_session(
+        project.id, title="渠道对话", engine="codex_sdk", model="gpt-6.1-sol",
+    ))
+    submitted = []
+
+    def submit(project_id, session_id, content, key, **kwargs):
+        assert ChatSession.get_by_id(session_id).archived is False
+        submitted.append(session_id)
+        return SimpleNamespace(turn_id="turn", assistant_message_id="answer")
+
+    def start(_turn_id):
+        async def finish():
+            await bus.publish({
+                "type": "TEXT_MESSAGE_END", "project_id": project.id,
+                "session_id": submitted[-1], "messageId": "answer",
+                "status": "succeeded", "content": "新对话回复",
+            })
+        asyncio.create_task(finish())
+
+    monkeypatch.setattr(module, "submit_message", submit)
+    monkeypatch.setattr(module, "start_queued_turn", start)
+    manager._responder = ChatSessionResponder(bus, projects, module)
+    bot = await manager.create_bot({
+        "platform": "wecom", "name": "默认项目", "app_id": "wx-bot",
+        "secret": "secret", "enabled": True,
+        "default_target_type": "project", "default_project_id": project.id,
+    })
+    session_key = f"{bot['id']}:single:user-1"
+    data = await manager._load()
+    data["sessions"][session_key] = old["id"]
+    await manager._save(data)
+    if reset == "delete":
+        await projects.run_db(project.id, lambda _project: module.delete_session(project.id, old["id"]))
+    else:
+        await projects.run_db(project.id, lambda _project: module.set_archived(project.id, old["id"], True))
+
+    # A slow session lookup must not block the daemon's health endpoint.
+    entered, release = threading.Event(), threading.Event()
+    original_select = ChatSession.select
+
+    def slow_select(*args, **kwargs):
+        entered.set()
+        assert release.wait(2)
+        return original_select(*args, **kwargs)
+
+    monkeypatch.setattr(ChatSession, "select", slow_select)
+    pending = asyncio.create_task(manager.handle_message(IncomingMessage(
+        bot_id=bot["id"], message_id="after-reset", conversation_type="single",
+        conversation_id="user-1", sender_id="user-1", text="你好",
+    )))
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+            health = await asyncio.wait_for(client.get("/api/health"), timeout=0.5)
+            assert health.status_code == 200
+    finally:
+        release.set()
+    await asyncio.wait_for(pending, timeout=2)
+    replacement = (await manager._load())["sessions"][session_key]
+    assert replacement != old["id"]
+    assert submitted == [replacement]
+    assert adapters[bot["id"]].sent == [("user-1", "新对话回复")]
+    monkeypatch.setattr(ChatSession, "select", original_select)
+    await manager.handle_message(IncomingMessage(
+        bot_id=bot["id"], message_id="continue", conversation_type="single",
+        conversation_id="user-1", sender_id="user-1", text="继续",
+    ))
+    assert submitted == [replacement, replacement]
+    assert (await manager._load())["sessions"][session_key] == replacement
+    if reset == "archive":
+        archived = await projects.run_db(project.id, lambda _project: module.get_session(project.id, old["id"]))
+        assert archived["archived"] is True

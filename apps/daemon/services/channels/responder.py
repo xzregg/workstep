@@ -7,6 +7,7 @@ import uuid
 
 from agent_assistants.base import assistant_registry
 from agent_assistants.channel_chat import ChannelChatModule
+from models.chat_session import ChatSession
 from services.config import config_store
 
 
@@ -51,6 +52,17 @@ class ChatSessionResponder:
         engine = defaults.get("engine") or None
         selected_model = model or defaults.get("model") or None
         module = self._module_for(assistant_id)
+        if session_id:
+            reusable = await self._project_manager.run_db(
+                project_id,
+                lambda _project: ChatSession.select().where(
+                    (ChatSession.id == session_id)
+                    & (ChatSession.project_id == project_id)
+                    & (ChatSession.archived == False)
+                ).exists(),
+            )
+            if not reusable:
+                session_id = None
         if not session_id:
             session = await self._project_manager.run_db(
                 project_id,
