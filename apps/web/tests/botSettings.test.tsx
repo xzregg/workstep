@@ -127,3 +127,60 @@ test('DingTalk can save an optional custom button card template', async () => {
     container.remove(); globalThis.fetch = fetch; useProjectStore.setState(store); await window.happyDOM.close()
   }
 })
+
+
+test('bot settings explains when the running backend omits task bindings', async () => {
+  const { window } = installDomEnvironment()
+  const previousFetch = globalThis.fetch
+  const previousStore = useProjectStore.getState()
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  useProjectStore.setState({ projects: [], fetchProjects: async () => {} })
+  globalThis.fetch = async () => new Response(JSON.stringify([{
+    id: 'b1', platform: 'wecom', name: '机器人', app_id: 'app', enabled: true,
+    has_secret: true, status: 'connected', error: '', default_target_type: 'project',
+    default_project_id: 'p1', default_task_id: '',
+  }]))
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><BotSettings /></I18nProvider>))
+    const bindings = container.querySelector('.bot-task-bindings')
+    assert.ok(bindings)
+    assert.match(bindings.textContent!, /已绑定任务/)
+    assert.match(bindings.textContent!, /重启后端/)
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    globalThis.fetch = previousFetch
+    useProjectStore.setState(previousStore)
+    await window.happyDOM.close()
+  }
+})
+
+test('bot settings shows an empty task binding state when the backend reports no bindings', async () => {
+  const { window } = installDomEnvironment()
+  const previousFetch = globalThis.fetch
+  const previousStore = useProjectStore.getState()
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  useProjectStore.setState({ projects: [], fetchProjects: async () => {} })
+  globalThis.fetch = async () => new Response(JSON.stringify([{
+    id: 'b1', platform: 'wecom', name: '机器人', app_id: 'app', enabled: true,
+    has_secret: true, status: 'connected', error: '', default_target_type: 'project',
+    default_project_id: 'p1', default_task_id: '', task_bindings: [],
+  }]))
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><BotSettings /></I18nProvider>))
+    const bindings = container.querySelector('.bot-task-bindings')
+    assert.ok(bindings)
+    assert.match(bindings.textContent!, /暂无绑定任务/)
+    assert.doesNotMatch(bindings.textContent!, /重启后端/)
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    globalThis.fetch = previousFetch
+    useProjectStore.setState(previousStore)
+    await window.happyDOM.close()
+  }
+})
