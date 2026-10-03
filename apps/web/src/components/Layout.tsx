@@ -1003,7 +1003,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                           ) : (
                             <MarqueeText text={session.title} />
                           )}
-                          <ChatSessionSourceBadge source={session.source} platform={session.channel_platform} botName={session.channel_name} />
+                          <ChatSessionSourceBadge source={session.source} platform={session.channel_platform} botName={session.channel_name} conversationType={session.channel_conversation_type} peerName={session.channel_peer_name} />
                           <SidebarStatusIndicator
                             running={sessionRunning}
                             failed={failedChatSessions[session.id]}

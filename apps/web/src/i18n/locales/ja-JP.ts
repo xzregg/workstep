@@ -2168,6 +2168,8 @@ export const jaJP: Messages = {
     noOrdinarySessions: '暂无普通会话',
     noChannelSessions: '暂无渠道对话',
     channelSource: '渠道',
+    channelPrivate: '私聊',
+    channelGroup: '群聊',
     channelSourceHint: '通过企业微信或钉钉机器人建立的渠道对话',
     viewArchive: 'アーカイブを表示',
     archive: '会話をアーカイブ',

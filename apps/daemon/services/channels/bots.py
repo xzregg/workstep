@@ -72,6 +72,7 @@ class BotManager:
             "bots": list(data.get("bots", [])),
             "groups": list(data.get("groups", [])),
             "sessions": dict(data.get("sessions", {})),
+            "session_sources": dict(data.get("session_sources", {})),
             "processed": list(data.get("processed", [])),
             "recent_groups": list(data.get("recent_groups", [])),
         }
@@ -326,6 +327,12 @@ class BotManager:
                     async with self._config_lock:
                         latest = await self._load()
                         latest["sessions"][session_key] = session_id
+                        latest["session_sources"][session_id] = {
+                            "conversation_type": message.conversation_type,
+                            "conversation_id": message.conversation_id,
+                            "peer_name": (message.sender_name or message.sender_id)
+                            if message.conversation_type == "single" else message.conversation_id,
+                        }
                         await self._save(latest)
                 if reply or start_reply is not None:
                     await adapter.send_text(message, reply or "处理完成，暂无回复内容。")

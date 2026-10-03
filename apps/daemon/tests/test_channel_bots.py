@@ -339,6 +339,9 @@ async def test_channel_session_reset_replaces_mapping_and_reuses_new_session(bot
     await asyncio.wait_for(pending, timeout=2)
     replacement = (await manager._load())["sessions"][session_key]
     assert replacement != old["id"]
+    assert (await manager._load())["session_sources"][replacement] == {
+        "conversation_type": "single", "conversation_id": "user-1", "peer_name": "user-1",
+    }
     assert submitted == [replacement]
     assert adapters[bot["id"]].sent == [("user-1", "新对话回复")]
     monkeypatch.setattr(ChatSession, "select", original_select)
@@ -354,23 +357,34 @@ async def test_channel_session_reset_replaces_mapping_and_reuses_new_session(bot
 
 
 @pytest.mark.parametrize("platform", ["wecom", "dingtalk"])
-async def test_channel_source_survives_rename_and_archive_without_title_guessing(bots, monkeypatch, platform):
+@pytest.mark.parametrize("conversation_type", ["single", "group"])
+@pytest.mark.parametrize("legacy", [False, True])
+async def test_channel_source_survives_rename_and_archive_without_title_guessing(bots, monkeypatch, platform, conversation_type, legacy):
     manager, project, *_ = bots
     module = ChannelChatModule(manager._event_bus, manager._project_manager)
     monkeypatch.setattr(module, "_validate_engine", lambda _engine: None)
 
     from services.config import config_store
+    metadata = {}
+    mappings = {}
     original_get = config_store.get
     monkeypatch.setattr(config_store, "get", lambda key, default=None: {
         "bots": [{"id": "bot-1", "name": "Echo", "platform": platform}],
+        "session_sources": metadata,
+        "sessions": mappings,
     } if key == "channel_bots" else original_get(key, default))
 
     def operation(_project):
         channel = module.create_session(project.id, title="Echo", engine="codex_sdk")
+        metadata[channel["id"]] = {"conversation_type": conversation_type, "conversation_id": "group:123" if conversation_type == "group" else "user-1", "peer_name": "小王" if conversation_type == "single" else "group:123"}
+        if legacy:
+            identity = metadata.pop(channel["id"])
+            mappings[f"bot-1:{conversation_type}:{identity['conversation_id']}"] = channel["id"]
         ordinary = module.create_session(project.id, title="渠道对话", engine="codex_sdk")
         ChatMessage.create(
             id="channel-source", session=channel["id"], role="user", content="你好",
             author_id=f"channel:{platform}:user-1", author_device_id="channel:bot-1",
+            author_name="平台 · 小王",
             created_at="2026-10-03T00:00:00Z",
         )
         assert module.get_session(project.id, channel["id"])["source"] == "channel"
@@ -380,6 +394,8 @@ async def test_channel_source_survives_rename_and_archive_without_title_guessing
         assert archived["source"] == "channel"
         assert archived["channel_platform"] == platform
         assert archived["channel_name"] == "Echo"
+        assert archived["channel_conversation_type"] == conversation_type
+        assert archived["channel_peer_name"] == ("小王" if conversation_type == "single" else "group:123")
         assert archived["title"] == "新名字"
         assert module.list_sessions(project.id, archived=True)[0]["source"] == "channel"
 
