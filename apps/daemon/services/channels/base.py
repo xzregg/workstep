@@ -74,6 +74,7 @@ class ChannelCard:
     text: str
     buttons: tuple[ChannelButton, ...] = ()
     running: bool = False
+    message_id: str = ''
 
 
 @dataclass(frozen=True, slots=True)

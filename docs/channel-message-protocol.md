@@ -97,3 +97,6 @@ WorkStep 渠道消息协议 v1 是项目内部的收发契约。它采用与 LLM
 企业微信按钮文案较长（超过 4 字）时，适配器改用短编号按钮，并在 `sub_title_text` 列出编号与完整选项；确认／取消／中止等短按钮保持原文。说明超过官方建议的 112 字时，先主动发送完整说明，再发送对应卡片，不截断选项，也不结束正在运行的回复流。显示编号不改变按钮 key 或回调原选项，测试见 `tests/test_channel_bot_adapters.py`。
 
 任务渠道回复以协调助手持久化后的 `TEXT_MESSAGE_END` 状态为最终结果，忽略之前的引擎 `RUN_ERROR`，避免手动停止触发子进程退出后误发「处理失败」。`stopped/cancelled` 正常收尾为已停止，实际 `failed` 仍报告失败。测试见 `tests/test_channel_terminal_state.py` 与 `tests/test_channel_task_forwarder.py`。
+
+
+群聊完成回复的发送人提醒由 `services/channels/wecom.py::_send_text` 和 `dingtalk.py::send` 持有，仅使用本条入站群消息的发送人及回复上下文；企业微信在最终正文追加 `<@userid>`，钉钉使用原始 sessionWebhook 的 `at.atUserIds`，流式卡片完成后单独提醒一次。广播群和私聊不自动提及。中止卡片由 `controls.py::begin` 展示助手消息 ID，`base.py::ChannelCard.message_id` 传递诊断标识，钉钉在卡片 tips 中保留 ID。行为、回退及慢网络健康检查见 `tests/test_channel_mentions.py`。

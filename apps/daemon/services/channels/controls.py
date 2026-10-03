@@ -37,7 +37,10 @@ class ChannelControls:
             'turn_id': turn_id, 'step_key':step_key, 'broadcast':broadcast, 'message': {k: getattr(message, k) for k in ('bot_id','message_id','conversation_type','conversation_id','sender_id','text','sender_name','conversation_name')},
         }
         self._active.add(scope['id'])
-        await self._card(scope, title, '点击中止可停止本次运行。', [('中止', {'kind':'stop'})], recipient_override=message)
+        text = '点击中止可停止本次运行。'
+        if assistant_message_id:
+            text += '\n消息 ID: ' + assistant_message_id
+        await self._card(scope, title, text, [('中止', {'kind':'stop'})], recipient_override=message)
         return scope
 
     async def _card(self, scope, title, text, options, recipient_override=None):
@@ -50,7 +53,7 @@ class ChannelControls:
         for offset in range(0, len(options), 6):
             items = options[offset:offset + 6]
             card_id = uuid.uuid4().hex
-            card = ChannelCard(card_id, title, text, tuple(ChannelButton(str(i), label) for i, (label, _) in enumerate(items)), running=all(action["kind"] == "stop" for _, action in items))
+            card = ChannelCard(card_id, title, text, tuple(ChannelButton(str(i), label) for i, (label, _) in enumerate(items)), running=all(action["kind"] == "stop" for _, action in items), message_id=scope.get('assistant_message_id', ''))
             row = {**scope, 'created_at':time.time(), 'status':'pending',
                    'title':title, 'text':text, 'options':{str(i): {'label':label, **action} for i, (label, action) in enumerate(items)}}
             async with self._lock:
@@ -137,7 +140,7 @@ class ChannelControls:
             adapter = self._adapters.get(row['message']['bot_id'])
             if adapter is not None:
                 try:
-                    await adapter.update_card(IncomingMessage(**row['message']), ChannelCard(key, '已结束', row['text']))
+                    await adapter.update_card(IncomingMessage(**row['message']), ChannelCard(key, '已结束', row['text'], running=any(a['kind'] == 'stop' for a in row['options'].values()), message_id=row.get('assistant_message_id', '')))
                 except Exception:
                     logger.warning('Failed to close channel card', exc_info=True)
 

@@ -7,6 +7,7 @@ import json
 import logging
 import time
 import uuid
+from dataclasses import replace
 from urllib.parse import quote_plus
 
 import aiohttp
@@ -104,6 +105,8 @@ class DingTalkAdapter(ChannelAdapter):
         self._token_lock = asyncio.Lock()
         self._action_tasks = set()
         self._reply_cards = {}
+        self._card_message_ids = {}
+        self._running_reply_cards = {}
         self._client = DingTalkStreamClient(Credential(bot["app_id"], bot["secret"]))
         self._client.register_callback_handler(
             ChatbotMessage.TOPIC, _MessageHandler(bot["id"], on_message),
@@ -115,6 +118,8 @@ class DingTalkAdapter(ChannelAdapter):
 
     async def stop(self) -> None:
         self._reply_cards.clear()
+        self._card_message_ids.clear()
+        self._running_reply_cards.clear()
         for task in tuple(self._action_tasks):
             task.cancel()
         if self._action_tasks:
@@ -163,10 +168,12 @@ class DingTalkAdapter(ChannelAdapter):
             await self._send_active(message, text)
             return
         timeout = aiohttp.ClientTimeout(total=10)
+        payload = {"msgtype": "text", "text": {"content": text}}
+        if message.conversation_type == 'group' and message.sender_id:
+            payload['at'] = {'atUserIds': [message.sender_id], 'isAtAll': False}
+            payload['text']['content'] = '@' + message.sender_id + '\n' + text
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(webhook, json={
-                "msgtype": "text", "text": {"content": text},
-            }) as response:
+            async with session.post(webhook, json=payload) as response:
                 response.raise_for_status()
                 body = await response.text()
                 try:
@@ -216,9 +223,9 @@ class DingTalkAdapter(ChannelAdapter):
                 raise RuntimeError("钉钉主动消息发送失败")
 
 
-    @staticmethod
-    def _card_data(card: ChannelCard) -> dict:
-        return {"title":card.title, "markdown":card.text, "tips":"",
+    def _card_data(self, card: ChannelCard) -> dict:
+        message_id = card.message_id or self._card_message_ids.get(card.id, '')
+        return {"title":card.title, "markdown":card.text, "tips":'消息 ID: ' + message_id if message_id else '',
                 "sys_full_json_obj":json.dumps({"msgButtons":[{"text":b.label,"id":b.key,"request":True,"color":"blue"} for b in card.buttons]}, ensure_ascii=False)}
 
     async def _card_api(self, method, payload):
@@ -246,20 +253,37 @@ class DingTalkAdapter(ChannelAdapter):
             ('imGroupOpenDeliverModel' if group else 'imRobotOpenDeliverModel'):{'robotCode':self._bot['app_id'], **({} if group else {'spaceType':'IM_ROBOT'})},
         }
         await self._card_api('POST',payload)
+        if card.message_id:
+            self._card_message_ids[card.id] = card.message_id
+        if card.running:
+            self._reply_cards[self._reply_key(recipient)] = card.id
+            self._running_reply_cards[card.id] = card
 
     async def update_card(self, recipient: IncomingMessage, card: ChannelCard) -> None:
+        previous = self._running_reply_cards.get(card.id)
+        closing = card.running and not card.buttons
+        if closing and previous is not None:
+            # Expiring the stop action must preserve the latest reply body.
+            card = replace(previous, buttons=(), running=False, message_id=card.message_id or previous.message_id)
         await self._card_api('PUT', {'outTrackId':card.id,'cardData':{'cardParamMap':self._card_data(card)}})
+        if previous is not None:
+            if closing:
+                self._running_reply_cards.pop(card.id, None)
+            else:
+                self._running_reply_cards[card.id] = card
 
     def _reply_key(self, recipient: IncomingMessage) -> str:
         return uuid.uuid5(uuid.NAMESPACE_URL, f'workstep:dingtalk:reply:{recipient.bot_id}:{recipient.conversation_id}:{recipient.message_id}').hex
 
     def release_reply(self, message: IncomingMessage) -> None:
-        self._reply_cards.pop(self._reply_key(message), None)
+        card_id = self._reply_cards.pop(self._reply_key(message), None)
+        self._card_message_ids.pop(card_id, None)
 
     async def update_reply(self, message: IncomingMessage, text: str) -> None:
         key = self._reply_key(message)
         card_id = self._reply_cards.get(key) or uuid.uuid4().hex
-        card = ChannelCard(card_id, 'WorkStep', text)
+        running = self._running_reply_cards.get(card_id)
+        card = ChannelCard(card_id, 'WorkStep', text, running.buttons if running else (), running=bool(running and running.buttons))
         if key in self._reply_cards:
             await self.update_card(message, card)
         else:
@@ -307,6 +331,8 @@ class DingTalkAdapter(ChannelAdapter):
                     from pathlib import Path
                     prepared.append(('sampleFile', {'mediaId':result['media_id'],'fileName':attachment.name,
                         'fileType':Path(attachment.name).suffix.lower().lstrip('.')}))
+        notify_completion = bool(prepared and not message.text and recipient.conversation_type == 'group'
+                                 and recipient.sender_id and recipient.reply_context)
         if message.text:
             card_id = self._reply_cards.get(self._reply_key(recipient))
             if card_id:
@@ -315,12 +341,20 @@ class DingTalkAdapter(ChannelAdapter):
                 except Exception:
                     logger.warning('DingTalk progress card update failed; sending full result', exc_info=True)
                     await self._send_text(recipient, message.text)
+                else:
+                    if recipient.conversation_type == 'group' and recipient.sender_id and recipient.reply_context:
+                        notify_completion = True
                 finally:
                     self.release_reply(recipient)
             else:
                 await self._send_text(recipient, message.text)
         for msg_key, msg_param in prepared:
             await self._send_active(recipient, '', msg_key=msg_key, msg_param=msg_param)
+        if notify_completion:
+            try:
+                await self._send_text(recipient, '回复已完成，请查看上方消息。')
+            except Exception:
+                logger.warning('DingTalk completion mention failed after result delivery', exc_info=True)
 
     async def download(self, attachment: ChannelAttachment) -> tuple[bytes, str]:
         timeout = aiohttp.ClientTimeout(total=15)
