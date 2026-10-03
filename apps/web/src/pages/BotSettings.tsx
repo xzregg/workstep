@@ -96,7 +96,7 @@ export default function BotSettings() {
         <span role="status">{t(`channelBot.status.${bot.status}` as 'channelBot.status.connected')}{bot.error ? ` · ${bot.error}` : ''}</span>
         <Button variant="ghost" onClick={() => edit(bot)}>{t('common.edit')}</Button>
         <Button variant="ghost" onClick={() => setDeleteId(bot.id)}>{t('common.delete')}</Button>
-      </div><BotTaskBindings bindings={bot.task_bindings || []} onChanged={reload} /></div>)}
+      </div><BotTaskBindings bindings={bot.task_bindings} onChanged={reload} /></div>)}
       {!bots.length && <p>{t('channelBot.empty')}</p>}
     </div>
     <h2>{editingId ? t('channelBot.edit') : t('channelBot.add')}</h2>

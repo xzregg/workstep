@@ -230,6 +230,8 @@ Gateway 平台分享控制面在 `apps/gateway/src/gateway/services/platform_sha
 | 定时规则编译、时区校验与下次运行预览 | `src/pages/SchedulePage.tsx` 提供规则编辑入口 | `services/schedule_rules.py` 持有纯规则计算，`services/schedule.py` 保留兼容导入并负责持久化与调度 | `apps/daemon/tests/test_schedule.py` |
 | 默认执行引擎的读取、选择和保存 | `src/components/ExecutionDefaultSettings.tsx` 持有请求、保存和反馈；`src/components/EngineSettingsPanel.tsx` 提供引擎目录和变更回调；固定样式在 `ExecutionDefaultSettings.css` | `api/engine.py`、`services/config.py` | `apps/web/tests/executionDefaultSettings.test.tsx` |
 
+任务群互斥选择由 `TaskDiscussionGroups.tsx` 使用机器人列表中的 `task_bindings` 判断：同一机器人已绑定其他任务的群在最近群列表置灰并显示项目、任务；手工输入同一标识时禁用提交。`BotTaskBindings.tsx` 始终显示绑定区，并在旧后端未返回 `task_bindings` 时提示重启。后端 `services/channels/bots.py::bind_group` 仍负责最终冲突校验；行为测试见 `tests/taskDiscussionGroups.test.tsx`、`tests/botSettings.test.tsx` 和 daemon `tests/test_channel_bots.py`。
+
 表中的前端路径均相对于 `apps/web/`，后端路径均相对于 `apps/daemon/`。后端请求模型在 `schemas/`，持久化模型在 `models/`；服务里的同步数据库工作单元通过 `services/project_database.py` 的项目执行器运行。实时事件从 `engines/core/events.py` 经 `engines/core/agui.py` 到前端 `src/utils/agui.ts`。
 
 ## 任务详情内部定位

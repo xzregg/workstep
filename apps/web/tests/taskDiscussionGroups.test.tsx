@@ -65,3 +65,49 @@ test('task discussion panel binds a received group ID to the current task', asyn
     await window.happyDOM.close()
   }
 })
+
+test('groups already bound to another task are disabled and cannot be submitted manually', async () => {
+  const { window } = installDomEnvironment()
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  const previousFetch = globalThis.fetch
+  const calls: string[] = []
+  globalThis.fetch = async (input, init) => {
+    const url = String(input)
+    calls.push(`${init?.method || 'GET'} ${url}`)
+    const data = url === '/api/channel-bots'
+      ? [{ id: 'bot-1', name: '企业微信', platform: 'wecom', enabled: true,
+          task_bindings: [{ bot_id: 'bot-1', group_id: 'used', group_name: '已占用群', project_id: 'other-project', task_id: 'other-task', project_name: '其他项目', task_title: '其他任务' }] }]
+      : url.endsWith('/recent-groups')
+        ? [{ bot_id: 'bot-1', group_id: 'used', group_name: '已占用群' }, { bot_id: 'bot-1', group_id: 'free', group_name: '空闲群' }]
+        : []
+    return new Response(JSON.stringify(data), { status: 200 })
+  }
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><TaskDiscussionGroups open projectId="project-1" taskId="task-1" onClose={() => {}} /></I18nProvider>))
+    const select = document.querySelector<HTMLSelectElement>('[role="dialog"] select[aria-label="最近收到的群"]')!
+    const used = select.querySelector<HTMLOptionElement>('option[value="used"]')!
+    assert.equal(used.disabled, true)
+    assert.match(used.textContent!, /其他项目.*其他任务/)
+    const input = document.querySelector<HTMLInputElement>('[role="dialog"] .task-discussion-groups input')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, 'used')
+      input.dispatchEvent(new window.Event('input', { bubbles: true }))
+    })
+    const bind = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find((button) => button.textContent === '绑定群')!
+    assert.equal(bind.disabled, true)
+    assert.match(document.querySelector('.task-discussion-groups')!.textContent!, /其他项目.*其他任务/)
+    assert.equal(calls.some((call) => call.startsWith('POST ')), false)
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, 'free')
+      input.dispatchEvent(new window.Event('input', { bubbles: true }))
+    })
+    assert.equal(bind.disabled, false)
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    globalThis.fetch = previousFetch
+    await window.happyDOM.close()
+  }
+})

@@ -20,6 +20,9 @@ export default function TaskDiscussionGroups({ open, projectId, taskId, onClose 
   const [error, setError] = useState('')
   const [removeGroup, setRemoveGroup] = useState<DiscussionGroup | null>(null)
   const [discardOpen, setDiscardOpen] = useState(false)
+  const boundGroup = bots.find((bot) => bot.id === botId)?.task_bindings?.find((group) => group.group_id === groupId.trim())
+    || groups.find((group) => group.bot_id === botId && group.group_id === groupId.trim())
+  const boundElsewhere = boundGroup && (boundGroup.project_id !== projectId || boundGroup.task_id !== taskId)
   const requestClose = () => {
     if (groupId.trim() || groupName.trim()) setDiscardOpen(true)
     else onClose()
@@ -47,7 +50,7 @@ export default function TaskDiscussionGroups({ open, projectId, taskId, onClose 
   }, [open, botId])
 
   const bind = async () => {
-    if (!botId || !groupId.trim()) return
+    if (!botId || !groupId.trim() || boundGroup) return
     setBusy(true)
     setError('')
     try {
@@ -72,7 +75,7 @@ export default function TaskDiscussionGroups({ open, projectId, taskId, onClose 
 
   return <>
     <ConfirmDialog open={open} title={t('channelBot.discussionGroups')} message={t('channelBot.discussionHint')}
-      confirmText={t('channelBot.bind')} confirmDisabled={!botId || !groupId.trim()} loading={busy}
+      confirmText={t('channelBot.bind')} confirmDisabled={!botId || !groupId.trim() || !!boundGroup} loading={busy}
       onCancel={requestClose} onConfirm={() => void bind()} width={540}>
       <div className="task-discussion-groups">
         <div className="task-discussion-groups-list">
@@ -90,9 +93,19 @@ export default function TaskDiscussionGroups({ open, projectId, taskId, onClose 
           value={recent.some((group) => group.group_id === groupId) ? groupId : ''} disabled={!recent.length || busy}
           onChange={(event) => { setGroupId(event.target.value); setGroupName(recent.find((group) => group.group_id === event.target.value)?.group_name || '') }}>
           <option value="">{t('channelBot.selectGroup')}</option>
-          {recent.map((group) => <option key={group.group_id} value={group.group_id}>{group.group_name || group.conversation_title || t('channelBot.unknownGroup')} · {group.group_id}</option>)}
+          {recent.map((group) => {
+            const binding = bots.find((bot) => bot.id === botId)?.task_bindings?.find((row) => row.group_id === group.group_id)
+              || groups.find((row) => row.bot_id === botId && row.group_id === group.group_id)
+            const destination = binding && 'project_name' in binding && 'task_title' in binding
+              ? `${binding.project_name} · ${binding.task_title}` : t('channelBot.currentTask')
+            return <option key={group.group_id} value={group.group_id} disabled={!!binding}>
+              {group.group_name || group.conversation_title || t('channelBot.unknownGroup')} · {group.group_id}{binding ? ` · ${t('channelBot.boundTo')} ${destination}` : ''}
+            </option>
+          })}
         </select></label>
         <label>{t('channelBot.groupId')}<Input value={groupId} onChange={(event) => { setGroupId(event.target.value); setGroupName(recent.find((group) => group.group_id === event.target.value)?.group_name || '') }} /></label>
+        {boundGroup && <p className="task-discussion-groups-error">{t('channelBot.boundTo')} {boundElsewhere && 'project_name' in boundGroup && 'task_title' in boundGroup
+          ? `${boundGroup.project_name} · ${boundGroup.task_title}` : t('channelBot.currentTask')}</p>}
         <p>{t('channelBot.groupIdHint')}</p>
         {error && <p className="task-discussion-groups-error" role="alert">{error}</p>}
       </div>
