@@ -74,6 +74,8 @@ class BotManager:
         self._reply_forwarder = ChannelReplyForwarder(
             event_bus, project_manager, self._load, self._adapters,
         )
+        from services.channels.task_forwarder import ChannelTaskForwarder
+        self._task_forwarder = ChannelTaskForwarder(event_bus, project_manager, self._load, self._adapters)
         from services.channels.sender import ChannelMessageSender
         self._message_sender = ChannelMessageSender(project_manager, self._load, self._adapters)
         self._config_lock = asyncio.Lock()
@@ -346,12 +348,14 @@ class BotManager:
 
     async def start(self) -> None:
         await self._reply_forwarder.start()
+        await self._task_forwarder.start()
         data = await self._load()
         for bot in data["bots"]:
             if bot["enabled"]:
                 await self._start_bot(bot)
 
     async def shutdown(self) -> None:
+        await self._task_forwarder.shutdown()
         await self._reply_forwarder.shutdown()
         for task in tuple(self._card_answer_tasks):
             task.cancel()
@@ -455,6 +459,7 @@ class BotManager:
         stream = ChannelReplyStream(lambda text: adapter.update_reply(message, text)) if (
             isinstance(adapter, ChannelAdapter) and adapter.CAPABILITIES.streaming
             and message.reply_context is not None
+            and (kind != "task" or not self._task_forwarder.running)
         ) else None
         control_scope = None
         try:
@@ -528,7 +533,7 @@ class BotManager:
                             await on_accepted(session_id)
                 if stream:
                     await stream.close()
-                if reply or start_reply is not None:
+                if reply or (start_reply is not None and kind != "task"):
                     text = reply or "处理完成，暂无回复内容。"
                     if isinstance(adapter, ChannelAdapter):
                         from services.channels.media import outgoing_content
@@ -568,6 +573,7 @@ class BotManager:
                     f"channel:{message.bot_id}:{message.message_id}",
                     author_name=actor.user_name,
                 )
+            forwarded = self._task_forwarder.register_origin(project_id, task_id, accepted.assistant_message_id, message)
             control_scope = await self._controls.begin(message, project_id, task_id=task_id,
                 assistant_message_id=accepted.assistant_message_id, turn_id=getattr(accepted, "turn_id", ""))
             reply = ""
@@ -585,6 +591,9 @@ class BotManager:
                     if on_progress is not None:
                         on_progress(reply)
                 elif event.get("type") == "TEXT_MESSAGE_END":
+                    if forwarded:
+                        await self._task_forwarder.wait(project_id, task_id, accepted.assistant_message_id)
+                        return ""
                     if event.get("status") == "stopped":
                         return "已停止。"
                     if event.get("status") != "succeeded":
