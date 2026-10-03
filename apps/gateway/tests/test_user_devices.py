@@ -1,6 +1,4 @@
 from fastapi.testclient import TestClient
-from starlette.websockets import WebSocketDisconnect
-import pytest
 import base64
 import json
 from cryptography.hazmat.primitives import serialization
@@ -111,11 +109,9 @@ def test_user_sees_only_assigned_pc_and_admin_can_revoke(tmp_path, monkeypatch):
         with client.websocket_connect("wss://d-device-1.gateway.test/ws",
                                       headers={"origin": remote_url}) as socket:
             assert socket.receive_text() == "remote-ready"
-        with pytest.raises(WebSocketDisconnect) as denied:
-            with client.websocket_connect("wss://d-device-1.gateway.test/ws",
-                                          headers={"origin": "https://evil.test"}):
-                pass
-        assert denied.value.code == 4403
+        with client.websocket_connect("wss://d-device-1.gateway.test/ws",
+                                      headers={"origin": "https://proxy.example"}) as socket:
+            assert socket.receive_text() == "remote-ready"
         assert client.get("https://d-device-2.gateway.test/api/remote/session").status_code == 403
         assert client.get("/api/devices").status_code == 200
         client.post("/api/auth/logout", headers={"X-CSRF-Token": alice.json()["csrf_token"]})

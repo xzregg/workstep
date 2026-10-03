@@ -6,7 +6,6 @@ import hmac
 import os
 import re
 from contextlib import nullcontext
-from urllib.parse import urlsplit
 
 from fastapi import WebSocket
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -88,18 +87,6 @@ def _valid_token(value: str | None) -> bool:
     return hmac.compare_digest(value, expected)
 
 
-def _same_origin(origin: str | None, scheme: str, host: str) -> bool:
-    if origin is None:
-        return True
-    try:
-        parsed = urlsplit(origin)
-        return (parsed.scheme in ("http", "https") and parsed.netloc == host
-                and parsed.scheme == scheme and not parsed.path and not parsed.query
-                and not parsed.fragment)
-    except ValueError:
-        return False
-
-
 def desktop_websocket_allowed(ws: WebSocket) -> bool:
     """Require the Electron main-process header in packaged desktop mode."""
 
@@ -121,7 +108,7 @@ def desktop_websocket_allowed(ws: WebSocket) -> bool:
     # 不做 Origin 同源校验：TLS 终结的逆向代理（nginx 等）把 wss 转发到本机
     # daemon 后，连接是 ws:// 而 Origin 仍是 https://，scheme 对不上会把所有
     # 合法的反代部署挡在门外。WS 访问控制由 desktop token + managed local
-    # session 承担（HTTP 面的 origin 校验只作用于 managed 模式，见中间件）。
+    # session 承担。
     if gateway_client is None or getattr(gateway_client, "managed_config", None) is None:
         return True
     actor = gateway_client.local_sessions.resolve(ws.headers.get(LOCAL_SESSION_HEADER))
@@ -179,44 +166,38 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
             response = JSONResponse({"detail": "remote host filesystem access unavailable"}, status_code=403)
             response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
             return response
-        invalid_origin = managed and protected and not _same_origin(
-            request.headers.get("origin"), request.url.scheme, request.headers.get("host", ""),
-        ) and not remote_bridge
-        if invalid_origin:
-            response = JSONResponse({"detail": "invalid desktop origin"}, status_code=403)
-        else:
-            if managed and protected and not remote_bridge and request.url.path not in ("/api/managed/bootstrap", "/api/health"):
-                actor = gateway_client.local_sessions.resolve(request.headers.get(LOCAL_SESSION_HEADER))
-            denied = protected and (
-                (not remote_bridge and not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)))
-                or (managed and not remote_bridge and request.url.path not in ("/api/managed/bootstrap", "/api/health") and actor is None)
+        if managed and protected and not remote_bridge and request.url.path not in ("/api/managed/bootstrap", "/api/health"):
+            actor = gateway_client.local_sessions.resolve(request.headers.get(LOCAL_SESSION_HEADER))
+        denied = protected and (
+            (not remote_bridge and not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)))
+            or (managed and not remote_bridge and request.url.path not in ("/api/managed/bootstrap", "/api/health") and actor is None)
+        )
+        if denied:
+            response = JSONResponse(
+                {"detail": "desktop authentication required"}, status_code=401,
             )
-            if denied:
-                response = JSONResponse(
-                    {"detail": "desktop authentication required"}, status_code=401,
-                )
-                if managed and protected and _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)):
-                    response.headers["X-WorkStep-Managed-Session-Expired"] = "1"
-            elif managed and request.url.path.startswith((
-                    "/api/remote-project/", "/api/task-share/")):
-                response = JSONResponse(
-                    {"detail": "legacy sharing is unavailable in managed mode"}, status_code=403,
-                )
-            else:
-                if actor is not None:
-                    request.state.managed_actor = actor
-                context = actor_context(ActorSnapshot(
-                    actor_id=actor.user_id,
-                    user_name=actor.display_name or actor.username,
-                    device_id=actor.device_id, device_name=actor.device_id,
-                    source="managed",
-                    project_id=actor.project_id,
-                    access_level=actor.project_access_level,
-                    remote_task_create=actor.remote_task_create,
-                    username=actor.username,
-                )) if actor is not None else nullcontext()
-                with context:
-                    response = await call_next(request)
+            if managed and protected and _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)):
+                response.headers["X-WorkStep-Managed-Session-Expired"] = "1"
+        elif managed and request.url.path.startswith((
+                "/api/remote-project/", "/api/task-share/")):
+            response = JSONResponse(
+                {"detail": "legacy sharing is unavailable in managed mode"}, status_code=403,
+            )
+        else:
+            if actor is not None:
+                request.state.managed_actor = actor
+            context = actor_context(ActorSnapshot(
+                actor_id=actor.user_id,
+                user_name=actor.display_name or actor.username,
+                device_id=actor.device_id, device_name=actor.device_id,
+                source="managed",
+                project_id=actor.project_id,
+                access_level=actor.project_access_level,
+                remote_task_create=actor.remote_task_create,
+                username=actor.username,
+            )) if actor is not None else nullcontext()
+            with context:
+                response = await call_next(request)
 
         response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
