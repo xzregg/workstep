@@ -43,7 +43,8 @@ test('conversation tabs isolate channel sessions, follow navigation and clear se
     await render('channel')
     assert.equal(tabs()[1].getAttribute('aria-selected'), 'true')
     await render('channel', [])
-    assert.match(container.querySelector('[role="tabpanel"]')!.textContent!, /暂无渠道对话/)
+    assert.equal(container.querySelector('[role="tablist"]'), null)
+    assert.match(container.textContent!, /暂无普通会话/)
   } finally {
     await act(async () => root.unmount())
     await window.happyDOM.close()

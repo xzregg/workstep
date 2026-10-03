@@ -73,7 +73,7 @@
 }
 .layout-sidebar-session-label {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-rows: 24px;
   gap: 6px;
   margin-top: 14px;
@@ -81,7 +81,7 @@
   border-top: 1px solid var(--border-soft);
 }
 .layout-sidebar-session-label .layout-sidebar-section-name { flex-shrink: 0; }
-.layout-sidebar-session-label .sidebar-conversation-tabs { grid-column: 2; justify-self: center; }
+.layout-sidebar-session-label .sidebar-conversation-tabs { grid-column: 2; justify-self: start; }
 .layout-sidebar-session-label .sidebar-add-button { grid-column: 3; justify-self: end; }
 @media (max-width: 1023px), (pointer: coarse) {
   .layout-sidebar-session-label { grid-template-rows: var(--mobile-control-touch); }
