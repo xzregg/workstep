@@ -270,7 +270,7 @@ class ChannelTaskForwarder:
                 adapter, recipient = destination
                 if state.status:
                     text = await self._final_text(state)
-                    suffix = {'succeeded':'已完成', 'stopped':'已停止', 'cancelled':'已停止'}.get(state.status, '执行失败' + ('：' + state.error if state.error else ''))
+                    suffix = {'succeeded':'已完成', 'completed':'已完成', 'stopped':'已停止', 'cancelled':'已停止'}.get(state.status, '执行失败' + ('：' + state.error if state.error else ''))
                     final = prefix + (text + '\n\n' if text else '') + suffix
                     await asyncio.wait_for(self._send(adapter, recipient, state.key[0], final, full_text=text), 30)
                     return

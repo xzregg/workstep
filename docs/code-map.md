@@ -357,3 +357,6 @@ Pydantic AI 的会话系统规则生命周期由 `engines/pydantic_ai/harness_ru
 
 
 任务归档／删除后的渠道解绑由 `api/task_context.py::_release_task_channel_bindings` 统一调用 `services/channels/bots.py::remove_task_bindings`。`api/task_archive.py` 的直接归档、经验确认归档（有／无经验）及 `api/task.py` 的删除仅在任务操作成功后调用；解除该项目、该任务的全部群绑定，历史默认任务目标回到原默认项目，不删除渠道会话、来源或近期群。恢复归档不会恢复旧绑定。真实 HTTP、跨项目／跨任务隔离、失败保留及慢配置写入健康检查见 `tests/test_task_channel_unbinding.py`。
+
+
+任务渠道完成标签由 `services/channels/task_forwarder.py::_deliver` 从消息终态生成：`succeeded` 与审核消息使用的 `completed` 均显示「已完成」，`stopped`／`cancelled` 显示「已停止」，真实失败保留错误信息。`review_messages.py` 发布 `message_completed(status=completed)`，经 `engines/core/agui.py::to_agui_events` 保留为 `TEXT_MESSAGE_END(status=completed)`；翻译后的执行／审核消息转发回归见 `tests/test_channel_task_forwarder.py::test_completed_status_from_real_message_translation_is_success`。

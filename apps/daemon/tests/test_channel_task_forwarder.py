@@ -108,6 +108,19 @@ async def test_origin_stream_receives_one_final_and_other_group_receives_broadca
     assert ('@协调\n协调回复') in [c.args[1] for c in adapter.update_reply.await_args_list]
 
 
+@pytest.mark.parametrize('message_id,channel,title', [('a','execution','编写'), ('review','review','编写 · 审核')])
+async def test_completed_status_from_real_message_translation_is_success(setup, message_id, channel, title):
+    from engines.core.agui import to_agui_events, AGUIContext
+    forwarder,bus,event,adapter,_,_,project = setup
+    await bus.publish(event(message_id,'TEXT_MESSAGE_START',channel=channel))
+    translated = to_agui_events({'type':'message_completed','data':{'status':'completed','content':'审核结果：通过。'}},
+        AGUIContext(project_id=project.id,task_id='task',message_id=message_id,channel=channel))
+    assert translated[0]['status'] == 'completed'
+    await bus.publish(translated[0])
+    await until(lambda: not forwarder._messages and adapter.send_text.await_count == 2)
+    assert all(c.args[1] == '@' + title + '\n审核结果：通过。\n\n已完成' for c in adapter.send_text.await_args_list)
+
+
 async def test_slow_database_and_slow_group_keep_health_and_other_group_responsive(setup,monkeypatch):
     forwarder,bus,event,adapter,_,_,_ = setup
     entered,release = threading.Event(),threading.Event()
