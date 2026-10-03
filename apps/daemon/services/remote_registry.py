@@ -3,6 +3,7 @@
 import hashlib
 import secrets
 import threading
+from copy import deepcopy
 from typing import Any
 from urllib.parse import urlparse
 
@@ -15,6 +16,7 @@ class RemoteProjectRegistry:
     A remote project gets a local identifier.  That identifier is the only one
     exposed to the browser; the host project identifier is resolved at the
     transport boundary and cannot be forged by callers.
+    Workflow snapshots live only in memory; config stores connection metadata.
     """
 
     CONFIG_KEY = "remote_projects"
@@ -22,15 +24,41 @@ class RemoteProjectRegistry:
     def __init__(self, config_store):
         self._config = config_store
         self._state_lock = threading.RLock()
+        self._project_cache: dict[str, dict[str, Any]] = {}
 
     def _load(self) -> list[dict[str, Any]]:
         raw = self._config.get(self.CONFIG_KEY, [])
         if not isinstance(raw, list):
             return []
-        return [dict(item) for item in raw if isinstance(item, dict)]
+        values = [dict(item) for item in raw if isinstance(item, dict)]
+        # Old versions persisted workflow snapshots alongside credentials.
+        # Discard stale snapshots; the next connection supplies fresh data.
+        migrated = False
+        for item in values:
+            for key in ("steps", "workflows"):
+                if key in item:
+                    item.pop(key)
+                    migrated = True
+        if migrated:
+            self._config.set(self.CONFIG_KEY, values)
+        return [
+            {**item, **deepcopy(self._project_cache.get(item.get("id"), {}))}
+            for item in values
+        ]
 
     def _save(self, values: list[dict[str, Any]]) -> None:
-        self._config.set(self.CONFIG_KEY, values)
+        persistent = []
+        cache = {}
+        for value in values:
+            item = dict(value)
+            snapshot = {
+                key: item.pop(key) for key in ("steps", "workflows") if key in item
+            }
+            cache[item["id"]] = deepcopy(snapshot)
+            persistent.append(item)
+        if persistent != self._config.get(self.CONFIG_KEY, []):
+            self._config.set(self.CONFIG_KEY, persistent)
+        self._project_cache = cache
 
     @staticmethod
     def _local_id(fingerprint: str, project_id: str) -> str:

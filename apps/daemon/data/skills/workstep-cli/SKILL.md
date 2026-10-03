@@ -110,7 +110,33 @@ writable, so later sessions use the proven route without repeating discovery.
 - For multiple task creations, apply a clear user-requested limit, deduplicate
   candidates, and report individual failures instead of retrying indefinitely.
 
+## List output
+
+All `list` commands return summaries by default. Add `--verbose` to retain the
+full response. `--json` controls formatting only. Missing summary fields are
+omitted; pagination metadata is preserved.
+
+| Command | Default summary |
+| --- | --- |
+| `project list` | ID, name, path, type, connection status |
+| `workflow list` | ID, name, default/deleted/running/failed flags, node count |
+| `task list` | ID, title, status, archived flag, workflow ID, creation/update times |
+| `engine list` | ID, installed/configured/verified/built-in flags, version, mode, default model |
+| `schedule list` | ID, name, workflow ID, status, rule summary, next/last run times |
+| `channel list` | ID, name, platform, enabled flag, connection status |
+
+Use `workflow get`, `task get`, or `schedule get` for one resource's details.
+For example, `engine list --verbose --json` includes configuration forms and
+capability declarations. Quick-button inspection returns full button settings
+because prompts and scripts are the purpose of that command.
+
 ## Projects
+
+`project list` returns only `id`, `name`, `path`, `type`, and
+`connection_status` when present. Add `--verbose` to retrieve the full project
+payload, including workflow definitions and settings. `--json` controls output
+formatting only; it does not change which fields are returned. Use
+`workflow list` / `workflow get` for workflow summaries and details.
 
 ```bash
 uv run --no-sync --directory "$WORKSTEP_DAEMON_DIR" python -m cli project list --json

@@ -138,6 +138,90 @@ class MemoryConfig:
         self.values[key] = value
 
 
+def test_remote_registry_keeps_workflow_data_only_in_memory():
+    config = MemoryConfig()
+    config.set("remote_projects", [{"id": "remote:a", "name": "demo"}])
+    registry = RemoteProjectRegistry(config)
+    steps = {"nodes": [{"key": "build", "prompt": "large prompt"}]}
+    workflows = [{"id": "flow", "steps": steps}]
+    public = registry.mark_authenticated(
+        "remote:a", credential="secret",
+        project={"name": "demo", "steps": steps, "workflows": workflows},
+    )
+    assert public["steps"] == steps
+    assert registry.list_public()[0]["workflows"] == workflows
+    assert "steps" not in config.get("remote_projects")[0]
+    assert "workflows" not in config.get("remote_projects")[0]
+    registry.set_status("remote:a", "disconnected")
+    assert registry.get("remote:a")["steps"] == steps
+    restarted = RemoteProjectRegistry(config)
+    assert restarted.get("remote:a")["credential"] == "secret"
+    assert restarted.list_public()[0]["steps"] == {}
+    assert restarted.list_public()[0]["workflows"] == []
+    assert registry.remove("remote:a")
+    config.set("remote_projects", [{"id": "remote:a", "name": "demo"}])
+    assert registry.list_public()[0]["steps"] == {}
+
+
+def test_remote_registry_workflow_refresh_does_not_write_config():
+    class CountingConfig(MemoryConfig):
+        writes = 0
+
+        def set(self, key, value):
+            self.writes += 1
+            super().set(key, value)
+
+    config = CountingConfig()
+    config.set("remote_projects", [{"id": "remote:a", "name": "demo"}])
+    registry = RemoteProjectRegistry(config)
+    registry.update("remote:a", name="demo", steps={"nodes": [1]}, workflows=[])
+    assert config.writes == 1
+    assert registry.list_public()[0]["steps"] == {"nodes": [1]}
+
+
+async def test_remote_project_list_migrates_legacy_cache_without_blocking(monkeypatch):
+    import threading
+    import api.project as project_api
+
+    started = threading.Event()
+
+    class SlowConfig(MemoryConfig):
+        def set(self, key, value):
+            started.set()
+            time.sleep(0.15)
+            super().set(key, value)
+
+    config = SlowConfig()
+    config.values["remote_projects"] = [{
+        "id": "remote:a", "name": "demo", "credential": "secret",
+        "steps": {"nodes": [1]}, "workflows": [{"id": "flow"}],
+    }]
+    registry = RemoteProjectRegistry(config)
+    monkeypatch.setattr(remote_project_api, "remote_project_registry", registry)
+    monkeypatch.setattr(project_api.project_manager, "list_projects", lambda: [])
+    app = FastAPI()
+    app.include_router(project_api.router)
+
+    @app.get("/health")
+    async def health():
+        return {"ok": True}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        listing = asyncio.create_task(client.get("/api/project/list"))
+        try:
+            assert await asyncio.to_thread(started.wait, 1)
+            assert (await client.get("/health")).json() == {"ok": True}
+            assert not listing.done()
+            response = await listing
+        finally:
+            await listing
+    assert response.status_code == 200
+    assert response.json()["projects"][0]["steps"] == {}
+    assert config.get("remote_projects") == [{
+        "id": "remote:a", "name": "demo", "credential": "secret",
+    }]
+
+
 def test_access_password_hashing_and_token_roundtrip():
     config = MemoryConfig()
     service = RemoteAccessService(config)
@@ -1580,6 +1664,10 @@ async def test_client_applies_remote_project_updates_and_forwards_status_events(
         await asyncio.sleep(0.001)
 
     assert registry.list_public()[0]["workflows"][0]["running"] is True
+    stored = next(item for item in config.get("remote_projects") if item["id"] == project["id"])
+    assert "steps" not in stored
+    assert "workflows" not in stored
+    assert stored["credential"] == "issued-secret"
     status_event = next(
         event for event in events if event.get("name") == "workstep.status"
     )

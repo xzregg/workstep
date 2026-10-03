@@ -10,6 +10,54 @@ import { useChatListStore } from '../src/stores/chatSessionStore'
 import { useProjectStore } from '../src/stores/projectStore'
 import { installDomEnvironment } from './helpers/domEnv'
 
+test('deleting a sidebar conversation only selects a remaining conversation of the same type', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const originalRemove = chatSessionApi.remove
+  const originalProjects = useProjectStore.getState()
+  const originalList = useChatListStore.getState()
+  const project: Project = { id: 'project-types', name: 'Types', path: '/tmp/types', steps: {}, workflows: [] }
+  let controls!: ReturnType<typeof useSidebarSessionActions>
+  let route = ''
+  function Harness() {
+    controls = useSidebarSessionActions()
+    const location = useLocation()
+    route = location.pathname + location.search
+    return null
+  }
+  chatSessionApi.remove = async () => ({ success: true }) as never
+  useProjectStore.setState({ projects: [project], activeProject: project })
+  try {
+    for (const scenario of [
+      { source: undefined, remaining: true, expected: 'same-type' },
+      { source: undefined, remaining: false, expected: null },
+      { source: 'channel', remaining: true, expected: 'same-type' },
+      { source: 'channel', remaining: false, expected: null },
+    ]) {
+      useChatListStore.setState({ sessionsByProject: { [project.id]: [
+        { id: 'other-type', project_id: project.id, title: 'Other', source: scenario.source === 'channel' ? undefined : 'channel' },
+        { id: 'deleted', project_id: project.id, title: 'Deleted', source: scenario.source },
+        ...(scenario.remaining ? [{ id: 'same-type', project_id: project.id, title: 'Same', source: scenario.source }] : []),
+      ] as never } })
+      await act(async () => root.render(
+        <MemoryRouter key={`${scenario.source}-${scenario.remaining}`} initialEntries={['/chat?project=Types&session=deleted']}>
+          <I18nProvider><Harness /></I18nProvider>
+        </MemoryRouter>,
+      ))
+      await act(async () => { assert.equal(await controls.deleteSession('deleted', project.id), true) })
+      assert.equal(new URLSearchParams(route.split('?')[1]).get('session'), scenario.expected)
+    }
+  } finally {
+    chatSessionApi.remove = originalRemove
+    await act(async () => root.unmount())
+    useProjectStore.setState({ projects: originalProjects.projects, activeProject: originalProjects.activeProject })
+    useChatListStore.setState({ sessionsByProject: originalList.sessionsByProject })
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
+
 test('sidebar session deletion keeps failure visible and redirects the active conversation after retry', async () => {
   const { window } = installDomEnvironment()
   const container = document.body.appendChild(document.createElement('div'))

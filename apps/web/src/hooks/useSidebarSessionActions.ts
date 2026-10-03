@@ -70,11 +70,14 @@ export function useSidebarSessionActions() {
   const deleteSession = async (sessionId: string, projectId: string): Promise<boolean> => {
     setSessionError('')
     try {
+      const deletedSession = useChatListStore.getState().sessionsByProject[projectId]?.find((session) => session.id === sessionId)
       await chatSessionApi.remove(sessionId, projectId)
       useChatListStore.getState().removeSession(sessionId)
       useChatSessionStore.getState().resetSession(sessionId)
       if (activeSessionId === sessionId) {
-        const next = useChatListStore.getState().sessionsByProject[projectId]?.[0]
+        const next = useChatListStore.getState().sessionsByProject[projectId]?.find(
+          (session) => (session.source === 'channel') === (deletedSession?.source === 'channel'),
+        )
         const ownerName = projects.find((project) => project.id === projectId)?.name || activeProject?.name || ''
         navigate(`/chat?project=${encodeURIComponent(ownerName)}${next ? `&session=${encodeURIComponent(next.id)}` : ''}`, {
           replace: true,
