@@ -15,11 +15,12 @@ NAMES = {'workstep.review_result', 'workstep.review_status',
 
 
 class ChannelTaskControls:
-    def __init__(self, bus, projects, load_config, controls):
+    def __init__(self, bus, projects, load_config, controls, *, forwarder=None):
         self._bus, self._projects, self._load, self._controls = bus, projects, load_config, controls
         self._queue = self._task = None
         self._jobs, self._tails, self._scopes = set(), {}, {}
         self._seen = deque(maxlen=2000)
+        self._forwarder = forwarder
 
     async def start(self):
         if self._task is not None:
@@ -113,6 +114,8 @@ class ChannelTaskControls:
         review_id = data.get('review_run_id')
         if name in {'workstep.review_result','workstep.review_status'} and data.get('status') != 'awaiting_review':
             return
+        if review_id and self._forwarder:
+            await self._forwarder.wait_for_completed(project_id, task_id)
         metadata = await self._metadata(event)
         if metadata is None:
             return

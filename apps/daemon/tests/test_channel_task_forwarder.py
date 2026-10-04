@@ -66,7 +66,7 @@ async def test_nonstreaming_stages_send_one_complete_message_per_group(setup):
     await until(lambda: not forwarder._messages)
     for group in ['one','two']:
         texts = [c.args[1] for c in adapter.send_text.await_args_list if c.args[0].conversation_id == group]
-        assert texts == ['@编写\n部分正文完成\n\n已完成','@交付\n交付内容\n\n已完成']
+        assert texts == ['@编写\n部分正文完成','@交付\n交付内容']
     count = adapter.send_text.await_count
     await bus.publish(event('a','TEXT_MESSAGE_END',status='succeeded',content='部分正文完成'))
     await bus.publish(event('user','TEXT_MESSAGE_START',role='user'))
@@ -87,7 +87,7 @@ async def test_unbind_and_failure_are_isolated_while_parallel_messages_finish(se
     finals = [c for c in adapter.send_text.await_args_list if c.args[1] != '@编写\n正在执行…' and c.args[1] != '@编写 · 审核\n正在执行…']
     assert len(finals) == 2
     assert all(c.args[0].conversation_id == 'one' for c in finals)
-    assert any('已停止' in c.args[1] for c in finals)
+    assert any(c.args[1] == '@编写\n已生成' for c in finals)
     assert any('@编写 · 审核\n审核正文\n\n执行失败：引擎失败' == c.args[1] for c in finals)
 
 
@@ -104,7 +104,7 @@ async def test_origin_stream_receives_one_final_and_other_group_receives_broadca
     await until(lambda: not forwarder._messages)
     origin_calls = [c for c in adapter.send_text.await_args_list if c.args[0].conversation_id == 'one']
     assert len(origin_calls) == 1
-    assert origin_calls[0].args == (origin,'@协调\n协调回复完成\n\n已完成')
+    assert origin_calls[0].args == (origin,'@协调\n协调回复完成')
     assert ('@协调\n协调回复') in [c.args[1] for c in adapter.update_reply.await_args_list]
 
 
@@ -118,7 +118,7 @@ async def test_completed_status_from_real_message_translation_is_success(setup, 
     assert translated[0]['status'] == 'completed'
     await bus.publish(translated[0])
     await until(lambda: not forwarder._messages and adapter.send_text.await_count == 2)
-    assert all(c.args[1] == '@' + title + '\n审核结果：通过。\n\n已完成' for c in adapter.send_text.await_args_list)
+    assert all(c.args[1] == '@' + title + '\n审核结果：通过。' for c in adapter.send_text.await_args_list)
 
 
 async def test_slow_database_and_slow_group_keep_health_and_other_group_responsive(setup,monkeypatch):
@@ -181,7 +181,7 @@ async def test_manager_routes_inbound_task_reply_once_and_keeps_button_controls(
         for group in ['one','two']:
             finals = [c for c in adapter.send_text.await_args_list if c.args[0].conversation_id == group and '协调回复' in c.args[1]]
             assert len(finals) == 1
-            assert finals[0].args[1] == '@协调\n协调回复\n\n已完成'
+            assert finals[0].args[1] == '@协调\n协调回复'
         from services.channels.base import ChannelAction
         card = next(call.args[1] for call in adapter.send_card.await_args_list if call.args[1].title == '请确认操作')
         assert await manager._handle_card_action(ChannelAction('bot',card.id,'0','u',conversation_id='one')) == '已确认'
@@ -205,7 +205,7 @@ async def test_retried_message_id_is_forwarded_again_and_duplicate_chunks_are_ig
     await bus.publish(event('a','TEXT_MESSAGE_END',status='succeeded',content='重试结果',sequence=1))
     await until(lambda: not forwarder._messages)
     assert adapter.send_text.await_count == 4
-    assert adapter.send_text.await_args.args[1] == '@编写\n重试结果\n\n已完成'
+    assert adapter.send_text.await_args.args[1] == '@编写\n重试结果'
 
 
 async def test_final_loads_persisted_body_and_sends_project_attachments_once(setup):
@@ -232,7 +232,7 @@ async def test_final_loads_persisted_body_and_sends_project_attachments_once(set
     await bus.publish(event('a','TEXT_MESSAGE_END',status='succeeded'))
     await until(lambda: not forwarder._messages)
     final = adapter.send.await_args.args[1]
-    assert final.text == '@编写\n结果 图片 文件\n\n已完成'
+    assert final.text == '@编写\n结果 图片 文件'
     assert [(a.kind,a.data) for a in final.attachments] == [('image',b'image'),('file',b'file')]
     assert adapter.send.await_count == 1
 
@@ -277,7 +277,7 @@ async def test_proactive_dingtalk_updates_same_card_in_each_group(setup):
         card_id = created.args[1]['outTrackId']
         updates = [c for c in calls if c.args[0] == 'PUT' and c.args[1]['outTrackId'] == card_id]
         assert [c.args[1]['cardData']['cardParamMap']['markdown'] for c in updates] == [
-            '@编写\n部分', '@编写\n部分正文', '@编写\n完整正文\n\n已完成']
+            '@编写\n部分', '@编写\n部分正文', '@编写\n完整正文']
     adapter._send_text.assert_not_awaited()
     assert not adapter._reply_cards
 
@@ -330,7 +330,64 @@ async def test_stop_engine_error_does_not_send_failure_after_stopped_final(setup
         await manager.handle_message(IncomingMessage('bot','incoming','group','one','u','继续'))
         await until(lambda:not manager._task_forwarder._messages)
         texts=[c.args[1] for c in adapter.send_text.await_args_list]
-        assert texts.count('@协调\n已停止')==2
+        assert texts.count('@协调\n已中止')==2
         assert not any('处理失败' in text for text in texts)
     finally:
         await manager.shutdown()
+
+
+async def test_final_delivery_keeps_terminal_event_order_despite_slow_metadata(setup):
+    forwarder, bus, event, adapter, *_ = setup
+    entered, release = asyncio.Event(), asyncio.Event()
+    original = forwarder._metadata
+    async def delayed(state):
+        if state.key[2] == 'a':
+            entered.set()
+            await release.wait()
+        return await original(state)
+    forwarder._metadata = delayed
+    await bus.publish(event('a', 'TEXT_MESSAGE_END', status='completed', content='执行正文'))
+    await entered.wait()
+    await bus.publish(event('review', 'TEXT_MESSAGE_END', status='completed', content='自动审核正文'))
+    try:
+        await asyncio.sleep(.05)
+        adapter.send_text.assert_not_awaited()
+    finally:
+        release.set()
+    await until(lambda: not forwarder._messages)
+    for group in ('one', 'two'):
+        texts = [call.args[1] for call in adapter.send_text.await_args_list if call.args[0].conversation_id == group]
+        assert texts == ['@编写\n执行正文', '@编写 · 审核\n自动审核正文']
+
+
+async def test_manual_review_system_notice_is_not_forwarded_as_completed_llm(setup):
+    forwarder, bus, event, adapter, _, projects, project = setup
+    await projects.run_db(project.id, lambda _p: Message.update(
+        author_type='system', content='等待你审核',
+    ).where(Message.id == 'review').execute())
+    await bus.publish(event('review', 'TEXT_MESSAGE_START', content='等待你审核'))
+    await bus.publish(event('review', 'TEXT_MESSAGE_END', status='completed', content='等待你审核'))
+    await until(lambda: bool(forwarder._completed))
+    adapter.send_text.assert_not_awaited()
+
+
+@pytest.mark.parametrize('status', ['succeeded', 'completed', 'stopped', 'cancelled'])
+async def test_only_failures_append_status_to_channel_body(setup, status):
+    forwarder, bus, event, adapter, *_ = setup
+    await bus.publish(event('a', 'TEXT_MESSAGE_END', status=status, content='正文'))
+    await until(lambda: bool(forwarder._completed))
+    assert all(c.args[1] == '@编写\n正文' for c in adapter.send_text.await_args_list)
+
+
+async def test_shutdown_cancels_ordered_delivery_without_hanging(setup):
+    forwarder, bus, event, adapter, *_ = setup
+    entered = asyncio.Event()
+    async def slow(*_args):
+        entered.set()
+        await asyncio.Event().wait()
+    adapter.send_text.side_effect = slow
+    await bus.publish(event('a', 'TEXT_MESSAGE_END', status='completed', content='正文'))
+    await entered.wait()
+    await bus.publish(event('review', 'TEXT_MESSAGE_END', status='completed', content='审核正文'))
+    await until(lambda: len(forwarder._messages) == 2)
+    await asyncio.wait_for(forwarder.shutdown(), .5)

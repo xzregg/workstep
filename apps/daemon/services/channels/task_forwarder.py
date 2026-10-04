@@ -4,11 +4,13 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 from dataclasses import dataclass, field, replace
+import json
 import logging
 import uuid
 
 from models.message import Message
 from models.task import Task
+from models import ReviewRun
 from services.channels.base import ChannelAdapter, IncomingMessage, OutgoingMessage
 from services.workflow_definition import WorkflowDefinition
 
@@ -27,6 +29,8 @@ class _LiveMessage:
     sequences: dict[str, int] = field(default_factory=dict)
     wakes: list[asyncio.Event] = field(default_factory=list)
     job: asyncio.Task | None = None
+    delivered: asyncio.Future | None = None
+    previous_delivery: asyncio.Future | None = None
 
 
 class ChannelTaskForwarder:
@@ -39,6 +43,7 @@ class ChannelTaskForwarder:
         self._jobs = set()
         self._origins = {}
         self._completed = deque(maxlen=2000)
+        self._delivery_tails = {}
 
     @property
     def running(self):
@@ -68,7 +73,17 @@ class ChannelTaskForwarder:
         self._origins.clear()
         self._messages.clear()
         self._jobs.clear()
+        self._delivery_tails.clear()
         self._queue = self._task = None
+
+    async def wait_for_completed(self, project_id, task_id):
+        """Fence prior terminal events without waiting on still-running LLMs."""
+        if self._queue is None:
+            return
+        barrier = asyncio.get_running_loop().create_future()
+        self._queue.put_nowait({'barrier': barrier, 'task_key': (project_id, task_id)})
+        deliveries = await barrier
+        await asyncio.gather(*(asyncio.shield(done) for done in deliveries))
 
     def register_origin(self, project_id, task_id, message_id, message):
         """Register before yielding after submit_message; preserve inbound stream context."""
@@ -89,6 +104,13 @@ class ChannelTaskForwarder:
             event = await self._queue.get()
             if event is None:
                 return
+            if 'barrier' in event:
+                if not event['barrier'].done():
+                    event['barrier'].set_result([
+                        state.delivered for state in self._messages.values()
+                        if state.key[:2] == event['task_key'] and state.status
+                    ])
+                continue
             key = tuple(event[name] for name in ('project_id', 'task_id', 'messageId'))
             retry = event['type'] == 'TEXT_MESSAGE_START' and event.get('retry')
             previous = self._messages.get(key)
@@ -103,6 +125,7 @@ class ChannelTaskForwarder:
             state = self._messages.get(key)
             if state is None:
                 state = self._messages[key] = _LiveMessage(key)
+                state.delivered = asyncio.get_running_loop().create_future()
                 state.job = asyncio.create_task(self._forward(state))
                 self._jobs.add(state.job)
                 state.job.add_done_callback(self._jobs.discard)
@@ -120,6 +143,8 @@ class ChannelTaskForwarder:
                 if event.get('content') is not None:
                     state.text = str(event['content'])
             elif kind == 'TEXT_MESSAGE_END':
+                state.previous_delivery = self._delivery_tails.get(key[:2])
+                self._delivery_tails[key[:2]] = state.delivered
                 state.status = event.get('status') or 'succeeded'
                 state.error = str(event.get('error') or '')
                 state.final_content = event.get('content') is not None
@@ -136,6 +161,16 @@ class ChannelTaskForwarder:
             task = Task.get_or_none(Task.id == task_id)
             if message is None or message.role != 'assistant' or task is None or task.archived:
                 return None
+            if message.channel == 'review':
+                # Manual review bubbles are system wait notices, not LLM output.
+                if message.author_type == 'system':
+                    return None
+                context = next((e.get('data', {}) for e in json.loads(message.events_json or '[]')
+                                if e.get('type') == 'review_context'), {})
+                review_id = context.get('review_run_id')
+                review = ReviewRun.get_or_none(ReviewRun.id == review_id) if review_id else None
+                if review and review.mode == 'manual':
+                    return None
             if message.channel == 'coordinator':
                 title = '协调'
             else:
@@ -171,12 +206,20 @@ class ChannelTaskForwarder:
         except Exception:
             logger.exception('Failed to route task channel message %s', state.key)
         finally:
-            if self._messages.get(state.key) is state:
-                self._messages.pop(state.key, None)
-                self._completed.append(state.key)
-                origin = self._origins.pop(state.key, None)
-                if origin and not origin[1].done():
-                    origin[1].set_result(None)
+            try:
+                if state.previous_delivery is not None:
+                    await asyncio.shield(state.previous_delivery)
+            finally:
+                if state.delivered is not None and not state.delivered.done():
+                    state.delivered.set_result(None)
+                if self._delivery_tails.get(state.key[:2]) is state.delivered:
+                    self._delivery_tails.pop(state.key[:2], None)
+                if self._messages.get(state.key) is state:
+                    self._messages.pop(state.key, None)
+                    self._completed.append(state.key)
+                    origin = self._origins.pop(state.key, None)
+                    if origin and not origin[1].done():
+                        origin[1].set_result(None)
 
     async def _recipient(self, state, bot_id, group_id):
         data = await self._load()
@@ -269,9 +312,13 @@ class ChannelTaskForwarder:
                     return
                 adapter, recipient = destination
                 if state.status:
+                    if state.previous_delivery is not None:
+                        await asyncio.shield(state.previous_delivery)
                     text = await self._final_text(state)
-                    suffix = {'succeeded':'已完成', 'completed':'已完成', 'stopped':'已停止', 'cancelled':'已停止'}.get(state.status, '执行失败' + ('：' + state.error if state.error else ''))
-                    final = prefix + (text + '\n\n' if text else '') + suffix
+                    if not text and state.status in {'stopped', 'cancelled'}:
+                        text = '已中止'
+                    suffix = {'succeeded':'', 'completed':'', 'stopped':'', 'cancelled':''}.get(state.status, '执行失败' + ('：' + state.error if state.error else ''))
+                    final = prefix + text + ('\n\n' + suffix if text and suffix else suffix)
                     await asyncio.wait_for(self._send(adapter, recipient, state.key[0], final, full_text=text), 30)
                     return
                 text = state.text

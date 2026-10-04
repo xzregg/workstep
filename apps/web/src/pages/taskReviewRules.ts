@@ -24,7 +24,8 @@ export function reviewActorLabel(review: MessageReview): string | undefined {
   const name = review.reviewer_name?.trim()
   if (!name) return undefined
   const deviceName = review.reviewer_device_name?.trim()
-  return deviceName ? `${name} · ${deviceName}` : name
+  return deviceName && name !== deviceName && !name.startsWith(`${deviceName} · `)
+    ? `${name} · ${deviceName}` : name
 }
 
 export function resolveMessageReview<T extends MessageReview>(
