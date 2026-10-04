@@ -8,6 +8,7 @@ import Button from '../Button'
 import ConfirmDialog from '../ConfirmDialog'
 import Icon from '../Icon'
 import OpenLocationButton from '../OpenLocationButton'
+import MarqueeText from '../MarqueeText'
 import GitWorktreePanel from './GitWorktreePanel'
 import GitRepositorySettings from './GitRepositorySettings'
 import { clampGitTreeWidth, useGitTreeResize } from './useGitTreeResize'
@@ -271,14 +272,13 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
       {!readOnly && workspaceEditable && settings && settingsId ? <main className="git-settings"><GitRepositorySettings key={settingsId} id={settingsId} /></main> : workspace?.worktrees.length ? <div className="git-page-body">
         <aside className="task-git-tree" style={{ width: treeWidth, flexBasis: treeWidth }}>
           {workspace.worktrees.map(tree => <div className="task-git-tree-row" key={tree.id}>
-            <button type="button" className={tree.id === selectedTree?.id ? 'selected' : ''} onClick={() => setSelected(tree.id)} title={tree.relative_path || tree.path}>
-              <Icon name="git-fork" size={16} /><span><strong>{tree.alias}</strong><small>{tree.branch}</small></span>
+            <button type="button" className={tree.id === selectedTree?.id ? 'selected' : ''} aria-pressed={tree.id === selectedTree?.id} onClick={() => setSelected(tree.id)} title={`${tree.alias} · ${tree.relative_path || tree.path}`}>
+              <Icon name="git-fork" size={16} /><span className="task-git-tree-label"><strong><MarqueeText text={tree.alias} forceActive={tree.id === selectedTree?.id} /></strong><small>{tree.branch}</small></span>
             </button>
-            {!readOnly && workspaceEditable && <button type="button" className="task-git-remove" title={t('git.taskRemove')} aria-label={`${t('git.taskRemove')} ${tree.alias}`} onClick={() => setRemoving(tree.alias)}><Icon name="trash" size={14} /></button>}
           </div>)}
         </aside>
         <div className="git-tree-resizer" role="separator" aria-orientation="vertical" aria-label={t('git.resizeTree')} aria-valuemin={230} aria-valuemax={clampGitTreeWidth(Number.MAX_SAFE_INTEGER)} aria-valuenow={treeWidth} tabIndex={0} onPointerDown={startResize} onDoubleClick={resetResize} onKeyDown={resizeWithKeyboard} />
-        {selectedTree && <GitWorktreePanel key={selectedTree.id} id={selectedTree.id} displayPath={selectedTree.relative_path} headerActions={project && <span className="git-open-location"><OpenLocationButton activeProject={project} directoryPath={selectedTree.path} buttonLabel={t('git.taskOpenRepositoryDirectory')} browserProjectId={shared ? '' : projectId} forceWebBrowser={scopedDiscovery} browseDirectory={scopedDiscovery ? browseWorkspace : undefined} readOnlyBrowser={shared} t={t} /></span>} onLocate={id => {
+        {selectedTree && <GitWorktreePanel key={selectedTree.id} id={selectedTree.id} displayPath={selectedTree.relative_path} headerActions={<>{project && <span className="git-open-location"><OpenLocationButton activeProject={project} directoryPath={selectedTree.path} buttonLabel={t('git.taskOpenRepositoryDirectory')} browserProjectId={shared ? '' : projectId} forceWebBrowser={scopedDiscovery} browseDirectory={scopedDiscovery ? browseWorkspace : undefined} readOnlyBrowser={shared} t={t} /></span>}{!readOnly && workspaceEditable && <Button className="task-git-remove" size="sm" variant="danger" aria-label={`${t('git.taskRemove')} ${selectedTree.alias}`} onClick={() => setRemoving(selectedTree.alias)}><Icon name="trash" size={14} />{t('git.taskRemove')}</Button>}</>} onLocate={id => {
           if (workspace.worktrees.some(tree => tree.id === id)) setSelected(id)
         }} onChanged={refresh} />}
       </div> : <div className="git-empty"><Icon name="git-fork" size={28} /><h2>{t('git.taskEmpty')}</h2><p>{t('git.taskEmptyHint')}</p></div>}

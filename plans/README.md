@@ -1,31 +1,28 @@
-# WorkStep implementation records
+# WorkStep 未完成方案与验收
 
-本目录保存已经落地的设计记录和明确标注的未来提案。它们用于解释决策背景，不替代当前代码、测试与 `docs/` 中的现行契约。
+本目录保留尚未完成的功能方案、持续演进的行为边界和待完成验收。已实现功能的现行说明归入 [docs/](../docs/README.md)，职责与测试入口以 [Code Map](../docs/code-map.md) 为准；已完成且被现行文档替代的实施记录不继续保留。
 
-## 已实现
+## 平台模式
 
-- [阶段审核与自动重跑](08-stage-review-and-auto-retry.md)
-- [阶段级引擎配置覆盖](09-stage-engine-config-overrides.md)
-- [ACP / AG-UI 事件统一](10-agui-event-unification.md)
-- [引擎基类拆分](11-engine-base-classes.md)
-- [产物轮次目录](artifacts-rounds.md)
-- [会话聊天模式](chat-session.md)
-- [并发限制与项目配置](concurrency-limit.md)
-- [Git 管理功能](git-management-implementation.md)
-- [Git 管理面板原型](git-panel-prototypes.md)
-- [移动端适配](mobile-adaptation.md)
-- [新手引导](onboarding.md)
-- [定时任务助手](schedule-agent.md)
-- [会话分叉与跨引擎交接](session-forking.md)
-- [任务协调 Agent](task-coordinator-agent.md)
+- [平台模式总方案](platform-mode.md) — 实施中，已有账号、设备授权、远程项目与分享能力，不能视为整体验收完成。
+- [逐阶段开发计划](platform-gateway-development.md) — 正式阶段交付与验收边界。
+- [剩余开发与验收](platform-gateway-remaining-development.md) — 批次 8/9 的页面、实际桌面联调、容量与恢复等剩余事项。
 
-## 提案
+总方案仍引用 [Gateway 门户原型](gateway-prototype.html) 和 [平台架构图](platform-gateway-architecture.html)，两者保留作为设计辅助，不代表当前功能已全部实现。
 
-- [助手提示词传输与查看方案](assistant-prompt-transport.md) — 渠道及普通对话全局指令已接入；其余助手的规则、每轮背景与用户输入拆分待确认。
+## 功能方案与待验收边界
 
-- [业务域代码优化路线图](codebase-optimization-roadmap.md) — 按任务、流程、助手、引擎和平台业务边界治理仍较大的源码文件。
-- [快捷按钮与 Action 执行方案](action-shortcuts.md) — 项目/流程快捷按钮、任务工作区、脚本执行与停止机制。
-- [平台模式](platform-mode.md) — 尚未实现，不属于当前产品能力。
-- [Gateway 平台模式逐阶段开发计划](platform-gateway-development.md) — 平台模式各阶段的开发任务、接口边界与验收门。
+- [Git 合并预览与三栏冲突解决](git-merge-conflict-resolution.md) — 尚未实现；现有 Git 行为见 [开发指南](../docs/development.md#git-管理的现行边界)。
+- [移动端适配与验收](mobile-adaptation.md) — 已实现的适配及仍待完成的 Safari/Chrome 真机检查；现行尺寸规范见 [前端设计](../docs/frontend-design.md)。
+- [助手提示词传输与查看](assistant-prompt-transport.md) — 已接入各入口，保留适配器恢复、指令更新及输入持久化边界。
+- [会话分叉与跨引擎交接](session-forking.md) — 首版已实现，保留交接约束和任意历史消息分叉的后续范围。
 
-每份记录开头必须声明状态。行为发生变化时，优先更新 `docs/` 的现行说明，并在对应记录中注明历史内容不再是当前契约。
+## 已实现功能的文档入口
+
+- [架构](../docs/architecture.md)：项目数据、并发、普通会话、定时助手与脚本 Action。
+- [工作流执行](../docs/workflow-engine-execution.md)：步骤、产物轮次、审核、协调提案、重跑和恢复。
+- [引擎开发](../docs/llm-engine-development-guide.md)：基类、配置覆盖及 ACP/AG-UI 事件契约。
+- [开发指南](../docs/development.md)：模块边界、Git 管理、新手引导与验证。
+- [渠道机器人](../docs/channel-bots.md)：默认项目、群绑定、收发、配置与真实租户验收边界。
+
+后续方案必须标明状态；行为落地后同步现行文档及测试，再移除已经被替代的计划。历史决策和实施过程可通过 Git 历史查看。

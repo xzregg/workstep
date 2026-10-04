@@ -267,7 +267,7 @@ Gateway 平台分享控制面在 `apps/gateway/src/gateway/services/platform_sha
 | 桌面、移动及产物轮次页签 | `TaskDetailTabs.tsx`；移动端主导航右侧通过 `actions` 显示绑定 BOT 和分享，`TaskDetailView.tsx` 按屏幕模式放置 `navigationActions`；任务 ID 保留在页头，移动端为无边框静态省略文本，点击复制完整 ID | `taskDetailTabs.test.tsx`、`chatInputLayout.test.mjs` |
 | 任务详情两栏分割比例、拖动与会话持久化 | `TaskDetailSplitLayout.tsx`；`TaskDetailView.tsx` 只装配步骤、对话和移动端产物内容 | `taskDetailSplitLayout.test.tsx` |
 | 任务消息发送目标、步骤可恢复状态提示 | `TaskChatTargetTabs.tsx`；任务详情 View 仅提供目标与步骤状态 | `taskChatTargetTabs.test.tsx`、`mobileTaskTargetTabs.test.mjs` |
-| 任务 Git 工作区目录打开与分享预览 | `git/TaskGitWorkspace.tsx` 在页头打开工作区根目录，在当前仓库面板打开所选仓库目录，两处复用 `OpenLocationButton.tsx`；`TaskDetailPage.tsx` 注入目录浏览能力，分享页只读 | `taskGitWorkspace.test.tsx`、`openLocationButton.test.tsx` |
+| 任务 Git 工作区目录打开与分享预览 | `git/TaskGitWorkspace.tsx` 在页头打开工作区根目录，在当前仓库面板打开所选仓库目录；仓库删除入口位于当前仓库操作行，移动端仓库 tab 每屏最多三个并支持横向滚动，选中的长名称复用 `MarqueeText` 跑马灯；两处目录入口复用 `OpenLocationButton.tsx`；`TaskDetailPage.tsx` 注入目录浏览能力，分享页只读 | `taskGitWorkspace.test.tsx`、`openLocationButton.test.tsx` |
 | 步骤进度图交互和渲染 | `TaskStepProgressGraph.tsx` | `taskStepProgressGraph.test.tsx`、`taskDetailProgressLayout.test.mjs` |
 | 步骤进度图的依赖布局、连线几何与轮次 | `taskStepProgressLayout.ts` | `taskStepProgressLayout.test.ts`、`taskStepProgressGraph.test.tsx` |
 | 步骤输入、输出、产物轮次及重新执行 | `TaskStepIoPanel.tsx` | `taskStepIoPanel.test.tsx`、`taskDetailProgressLayout.test.mjs` |

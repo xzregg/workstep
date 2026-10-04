@@ -46,7 +46,7 @@ test('task Git tab opens its directory and shows only attached worktrees', async
     assert.deepEqual([...container.querySelectorAll('.task-git-tree strong')].map(element => element.textContent), ['B'])
     assert.equal(container.querySelector('.git-context h2')?.textContent, 'workstep/t/B')
     assert.equal(container.querySelector('.git-page-header .git-open-location .open-location-label')?.textContent, 'Open Workspace')
-    assert.equal(container.querySelector('.git-context .git-open-location .open-location-label')?.textContent, 'Open Repository')
+    assert.equal(container.querySelector('.git-context .git-open-location .open-location-label')?.textContent, 'Open Directory')
     await act(async () => container.querySelector<HTMLButtonElement>('.git-page-header .git-open-location button')!.click())
     await act(async () => container.querySelector<HTMLButtonElement>('.git-context .git-open-location button')!.click())
     assert.deepEqual(openedPaths, ['/project/.workstep/worktrees/t', tree.path])
@@ -231,7 +231,7 @@ test('removing a task worktree confirms its feature branch and forces dirty clea
   const originalStore = useGitStore.getState()
   const tree = { id: 'task-tree', path: '/project/.workstep/worktrees/t/source', alias: 'source', repository_id: 'repo', repository_name: 'source', branch: 'unrelated', created_branch: 'task/owned', head: 'sha', main: false, available: true, locked: false, prunable: false }
   let removedArgs: unknown[] = []
-  gitApi.openTaskWorkspace = async () => ({ path: '/project/.workstep/worktrees/t', worktrees: [tree] })
+  gitApi.openTaskWorkspace = async () => ({ path: '/project/.workstep/worktrees/t', worktrees: [{ ...tree, id: 'other', alias: 'other' }, tree] })
   gitApi.removeTaskWorktree = async (...args) => { removedArgs = args; return { path: '/project/.workstep/worktrees/t', worktrees: [] } }
   gitApi.status = async () => { throw new Error('Status unavailable in this test') }
   useGitStore.setState({ data: { projects: [{ id: 'p', name: 'Project', path: '/project' }], repositories: [], depth: 5, scanned_at: 1, errors: [] }, scan: async () => {} })
@@ -239,7 +239,16 @@ test('removing a task worktree confirms its feature branch and forces dirty clea
   const root = createRoot(container)
   try {
     await act(async () => root.render(<I18nProvider><TaskGitWorkspace projectId="p" taskId="t" /></I18nProvider>))
-    await act(async () => container.querySelector<HTMLButtonElement>('.task-git-remove')!.click())
+    assert.equal(container.querySelector('.task-git-tree .task-git-remove'), null)
+    const tabs = container.querySelectorAll<HTMLButtonElement>('.task-git-tree-row button')
+    await act(async () => tabs[1].click())
+    assert.equal(tabs[1].getAttribute('aria-pressed'), 'true')
+    assert.equal(tabs[0].getAttribute('aria-pressed'), 'false')
+    assert.equal(tabs[1].querySelector('.ws-marquee__inner')?.textContent, 'source')
+    const remove = container.querySelector<HTMLButtonElement>('.git-context .task-git-remove')!
+    assert.ok(remove)
+    assert.match(remove.getAttribute('aria-label') || '', /source/)
+    await act(async () => remove.click())
     assert.match(document.querySelector('[role="dialog"]')?.textContent || '', /task\/owned/)
     await act(async () => [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].at(-1)!.click())
     assert.deepEqual(removedArgs, ['p', 't', 'source', true])

@@ -20,6 +20,44 @@
 
 组件新增请求前检查页面、父级和 store 是否已有同一请求；合并重叠 effect 或复用去重的 store action。行为测试跟随拥有状态和请求的组件，页面测试组装。
 
+## 任务详情的模块边界
+
+任务详情与分享页共用 `TaskDetailPage`、`TaskDetailReadCapabilities`。消息归并、排序和最新消息索引由 `components/taskConversationFeed.ts` 持有，未读、跟随、历史分页和内容尺寸变化由 `hooks/useTaskConversationScroll.ts` 管理；通用滚动规则位于 `utils/conversationScroll.ts`。请求、错误和交互跟随实际职责所有者测试，页面只验证组装。
+
+后续拆分消息卡片、审核或编辑器时，应先缩小稳定输入和回调，不透传整组页面 state/setter，也不把历史设计草图当成已实现接口。流程恢复的数据库工作单元及事件循环职责见[恢复线程边界](workflow-engine-execution.md#恢复决策的线程边界)。
+
+## Git 管理的现行边界
+
+生产 Git 工作区使用真实仓库，开发 `/prototype/git` 页面只使用模拟数据，不进入生产构建。项目头部入口复用 `ProjectGitButton`；点击分支浏览，显式切换才改变工作目录。工作区、提交草稿和选择按目录保存，文件对比打开独立弹窗，不把 Git 业务状态放进页面布局层。
+
+### 仓库发现与设置
+
+`git_scan_depth` 是全局设置，默认 5；项目根为第 0 层。扫描只从已注册的本地项目开始，在限深范围识别 `.git` 目录或文件，按规范化 Git common directory 去重，并加入 Git 登记的外置 Worktree。发现嵌套仓库后继续按深度扫描；不进入 `.git`、`.workstep`、`node_modules`、`.venv`，不跟随子目录符号链接，不隐式 prune。
+
+扫描异步、有界执行；配置及项目列表变化后刷新，旧代次不能覆盖新结果。不可访问目录独立报告，不让一个失败中断其它项目。文件 I/O 进入执行器，Git 使用受控异步子进程；同仓库写操作按 common directory 串行化，读取可并行。
+
+### 文件审阅与提交
+
+默认勾选已跟踪修改及已有暂存内容，新文件由用户明确选择。提交单位是所选文件的完整当前内容，重命名包含新旧路径，不提供按 hunk 提交。提交前检查 HEAD、状态和审阅快照；文件再次变化时重新审阅。
+
+后端用字面 pathspec、参数数组及 NUL 分隔文件列表处理特殊或大量路径，说明通过 UTF-8 文件传递。只暂存及提交所选路径，未选文件和既有暂存保持原状；保留 hooks、签名与身份检查。失败保留说明和选择，刷新真实状态，不隐式 reset；已有新提交时先核实 HEAD 再决定是否重试。
+
+差异提供行号、hunk、作者及日期，新增行不伪造历史归属。二进制、无 HEAD、删除文件及大文件有明确降级；当前文本预览上限为 2 MiB、差异 20,000 行，历史分页每页 50 条。历史内容只读，不能混入待提交选择。
+
+### 分支、远程与合并
+
+分支状态来自本地缓存；只有用户显式刷新远程时 fetch，并记录获取时间。切换、创建、删除、合并、恢复和远程写操作由服务验证目录权限、分支/HEAD、审阅快照、进行中的 Git 操作及活动任务，不信任客户端传入的任意 cwd 或参数。被其它 Worktree 检出的分支提供定位入口。
+
+Pull 检查真实远程和本地状态并只允许快进，不自动 stash、rebase 或强制覆盖。Push 指定目标远程与分支，保留 hooks，关闭 mirror、强制推送、自动标签及递归子模块推送；非快进由 Git 拒绝。
+
+普通合并发生冲突时自动中止；合并到未检出目标可使用临时 Worktree。三栏文本冲突预览及解决接口尚未实现，继续由[冲突解决计划](../plans/git-merge-conflict-resolution.md)管理，不能写成现行能力。共享任务仅获得任务限定的 Git 能力，不能使用宿主全局设置和任意仓库写操作。
+
+前端重复读取由 Git store/API 合并；页面隐藏时暂停状态轮询，操作后及恢复可见时统一刷新。实现入口为 `api/git.py`、`services/git/` 和 Web `components/git/`；职责及测试详见[Code Map](code-map.md)。关键回归包括 daemon `test_git_api.py`、`test_remote_git.py`，Web `gitPanelWrites.integration.test.tsx`、`gitDiffDialog.test.tsx`、`gitBranchPicker.test.tsx`、`gitWorkspaceScope.test.ts`。
+
+## 新手引导
+
+`OnboardingChecklist` 与工作区引导动作复用已有表单，引导按真实资源状态推进：供应商、兼容引擎、项目、示例流程和首个任务。状态存于 `workstep:onboarding:v1`，重新打开时核验资源，资源删除后回退；首任务创建即完成，不自动运行或调用模型。升级用户不自动弹出，引导可跳过、收起和从侧栏重新打开；入口和测试见[Code Map](code-map.md)。
+
 ## 环境与验证
 
 ```bash
