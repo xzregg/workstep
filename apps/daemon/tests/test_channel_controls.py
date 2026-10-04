@@ -26,6 +26,7 @@ async def controls():
 async def test_stop_is_scoped_to_original_message_and_old_card_cannot_stop_next_turn(controls):
     broker, adapter, coordinator, message, scope, *_ = controls
     card = adapter.send_card.await_args.args[1]
+    assert card.title == '回复控制'
     assert [b.label for b in card.buttons] == ['中止']
     click = ChannelAction('b', card.id, card.buttons[0].key, 'u', conversation_id='g')
     assert await broker.handle(click) == '已停止'

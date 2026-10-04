@@ -33,7 +33,7 @@ class ChannelControls:
     async def _save(self, rows):
         await asyncio.to_thread(self._store.set, CONFIG_KEY, rows)
 
-    async def begin(self, message, project_id, *, task_id='', session_id='', assistant_message_id='', turn_id='', step_key='', broadcast=False, title='正在处理', stop_button=True):
+    async def begin(self, message, project_id, *, task_id='', session_id='', assistant_message_id='', turn_id='', step_key='', broadcast=False, title='回复控制', stop_button=True):
         key = (project_id, task_id, session_id, assistant_message_id,
                message.bot_id, message.conversation_type, message.conversation_id)
         existing = self._running_scopes.get(key) if assistant_message_id else None
