@@ -371,7 +371,7 @@ Pydantic AI 的会话系统规则生命周期由 `engines/pydantic_ai/harness_ru
 
 任务渠道正文由 `services/channels/task_forwarder.py::_deliver` 按任务终态事件顺序发送：`succeeded` 与 `completed` 不追加「已完成」，`stopped`／`cancelled` 有正文时同样不追加状态，无正文时仅反馈「已中止」，真实失败追加错误说明；人工审核的系统等待消息不作为 LLM 正文推送。`review_messages.py` 发布 `message_completed(status=completed)`，经 `engines/core/agui.py::to_agui_events` 保留为 `TEXT_MESSAGE_END(status=completed)`；翻译后的执行／审核消息转发回归见 `tests/test_channel_task_forwarder.py::test_completed_status_from_real_message_translation_is_success`。
 
-自动步骤的渠道人工审核和提问由 `services/channels/task_controls.py::ChannelTaskControls` 订阅 AG-UI 审核及交互事件，通过项目数据库执行器读取当前审核和步骤正文，仅向仍绑定的群发送卡片；`BotManager` 管理订阅生命周期，每个任务按事件顺序处理，跨任务与群异步隔离。`controls.py::review/handle` 复用 `WorkflowRuntime.decide_review`，以实际点击者的 `ActorSnapshot` 持久化审核人及审核消息作者；自动群卡片允许本群成员操作，用户发起的停止和提问仍限定发起者。跨群点击去重、归档/解绑/新审核轮次失效、重启后的审核操作、真实 SQLite 审核落库及慢 SQL 健康检查见 `tests/test_channel_task_controls.py`。
+任务的渠道人工审核和提问由 `services/channels/task_controls.py::ChannelTaskControls` 订阅 AG-UI 审核及交互事件，同时转发 WorkStep 发起的协调回复 `workstep.async_question`，通过项目数据库执行器读取当前审核和步骤正文，仅向仍绑定的群发送卡片；`BotManager` 管理订阅生命周期，每个任务按事件顺序处理，跨任务与群异步隔离。`controls.py::review/handle` 复用 `WorkflowRuntime.decide_review`，以实际点击者的 `ActorSnapshot` 持久化审核人及审核消息作者；自动群卡片允许本群成员操作，用户发起的停止和提问仍限定发起者。协调选项按消息、问题、分页及渠道会话持久化去重，避免来源入口与群转发重复发送；跨群选择使用同一决定身份并记录实际点击者。跨群点击去重、归档/解绑/新审核轮次失效、重启后的审核操作、真实 SQLite 审核落库及慢 SQL 健康检查见 `tests/test_channel_task_controls.py`。
 
 
 原生 SDK 的固定规则恢复由各引擎 `_prepare_prompt_input` 持有：`engines/codex_sdk.py` 在 ACP 捕获前在线程中校验最新原生 `turn_context.developer_instructions`，匹配时不设置新的线程覆盖，缺失或规则变化继续设置；`claude_agent_sdk.py` / `qoder_sdk.py` 每轮创建进程并保留 preset append，当前不假定启动配置随 Session ID 恢复。Pydantic AI 的 Harness 系统消息恢复见上述入口。回归：`tests/test_engine_system_prompt.py`（SDK 实参、查看快照、重启／历史丢失、配置合并、动态背景、慢读取健康检查）。

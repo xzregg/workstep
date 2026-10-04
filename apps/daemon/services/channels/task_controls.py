@@ -1,4 +1,4 @@
-"""Forward automatic-step questions and manual reviews to bound discussion groups."""
+"""Forward task questions and manual reviews to bound discussion groups."""
 from __future__ import annotations
 
 import asyncio
@@ -26,7 +26,8 @@ class ChannelTaskControls:
         if self._task is not None:
             return
         self._queue = self._bus.subscribe(lambda e: bool(e.get('project_id') and e.get('task_id')) and (
-            (e.get('type') == 'CUSTOM' and e.get('name') in NAMES and e.get('channel') != 'coordinator')
+            (e.get('type') == 'CUSTOM' and e.get('name') in NAMES
+                and (e.get('channel') != 'coordinator' or e.get('name') == 'workstep.async_question'))
             or e.get('type') in {'TEXT_MESSAGE_END','RUN_ERROR'}))
         self._task = asyncio.create_task(self._run())
 
@@ -87,9 +88,11 @@ class ChannelTaskControls:
                     & (Message.role == 'assistant') & (Message.channel == 'execution')).order_by(Message.position.desc()).first())
             else:
                 message = Message.get_or_none((Message.id == event.get('messageId')) & (Message.task == task.id))
-                if message is None or message.channel not in {'execution','review'} or message.role != 'assistant':
+                if message is None or message.channel not in {'execution','review','coordinator'} or message.role != 'assistant':
                     return None
                 step_key = message.step_key
+            if message and message.channel == 'coordinator':
+                return step_key, '协调', message.id, message.content
             workflow = project.workflow_by_id(task.workflow_id)
             definition = workflow['steps'] if workflow else project.steps
             steps = WorkflowDefinition.load(definition).compile().steps
