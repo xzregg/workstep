@@ -19,7 +19,6 @@ import { useWorkflowGenStore } from '../stores/workflowGenStore'
 import { useTaskDraftStore } from '../stores/taskDraftStore'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
 import { useProjectStore } from '../stores/projectStore'
-import { useChannelStore } from '../stores/channelStore'
 
 const WS_RECONNECT_BASE_MS = 1000
 const WS_RECONNECT_MAX_MS = 30000
@@ -53,7 +52,6 @@ export function useWebSocket() {
   const handleGenEvent = useWorkflowGenStore((s) => s.handleWsEvent)
   const handleTaskDraftEvent = useTaskDraftStore((s) => s.handleWsEvent)
   const handleChatSessionEvent = useChatSessionStore((s) => s.handleWsEvent)
-  const handleChannelEvent = useChannelStore((s) => s.handleWsEvent)
 
   // Stable inputs for the subscription: only change when task ids / session
   // ids actually change (message chunks mutate session content, not keys).
@@ -84,7 +82,7 @@ export function useWebSocket() {
       ...Object.keys(useChatSessionStore.getState().sessions),
       ...Object.values(useChatListStore.getState().sessionsByProject).flat().map((session) => session.id),
     ])],
-    channels: useProjectStore.getState().activeProject?.id ? ['channel_wechat'] : [],
+    channels: ['channel_bots'],
   }), [])
 
   const flushSubscription = useCallback(() => {
@@ -109,6 +107,17 @@ export function useWebSocket() {
     let hasOpened = false
     let reconnectAttempt = 0
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let resumeTimer: ReturnType<typeof setTimeout> | null = null
+    let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+    let heartbeatTimeout: ReturnType<typeof setTimeout> | null = null
+    let connectTimeout: ReturnType<typeof setTimeout> | null = null
+    let heartbeatNonce = 0
+    const clearSocketTimers = () => {
+      if (heartbeatTimer) clearInterval(heartbeatTimer)
+      if (heartbeatTimeout) clearTimeout(heartbeatTimeout)
+      if (connectTimeout) clearTimeout(connectTimeout)
+      heartbeatTimer = heartbeatTimeout = connectTimeout = null
+    }
 
     const connect = () => {
       if (!active) return
@@ -120,8 +129,13 @@ export function useWebSocket() {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       const ws = new WebSocket(`${protocol}//${window.location.host}/ws`)
       wsRef.current = ws
+      connectTimeout = setTimeout(() => {
+        if (wsRef.current === ws && ws.readyState === WebSocket.CONNECTING) ws.close()
+      }, 10000)
 
       ws.onopen = () => {
+        if (!active || wsRef.current !== ws) return
+        clearSocketTimers()
         console.log('[WS] connected')
         const isReconnect = hasOpened
         hasOpened = true
@@ -131,11 +145,28 @@ export function useWebSocket() {
         // A reconnect (e.g. daemon restart) may have changed persisted task
         // state; re-fetch so the board reflects recovered runs immediately.
         const projectId = useProjectStore.getState().activeProject?.id
-        if (isReconnect && projectId) void useTaskStore.getState().fetchTasks(projectId)
+        if (isReconnect && projectId) {
+          void useTaskStore.getState().fetchTasks(projectId)
+          useChatListStore.getState().refreshSessions(projectId)
+          window.dispatchEvent(new Event('workstep:reconnected'))
+        }
+        heartbeatTimer = setInterval(() => {
+          if (document.visibilityState === 'hidden' || heartbeatTimeout) return
+          send({ type: 'ping', nonce: ++heartbeatNonce })
+          heartbeatTimeout = setTimeout(restart, 10000)
+        }, 20000)
       }
       ws.onmessage = (event) => {
+        if (!active || wsRef.current !== ws) return
         try {
           const parsed = JSON.parse(event.data)
+          if (parsed.type === 'pong') {
+            if (parsed.nonce === heartbeatNonce && heartbeatTimeout) {
+              clearTimeout(heartbeatTimeout)
+              heartbeatTimeout = null
+            }
+            return
+          }
           if (parsed.type === 'CUSTOM' && parsed.name === 'workstep.remote_project_status') {
             void useProjectStore.getState().fetchProjects()
             const activeProjectId = useProjectStore.getState().activeProject?.id
@@ -143,10 +174,15 @@ export function useWebSocket() {
               void useTaskStore.getState().fetchTasks(activeProjectId)
             }
           }
+          if (parsed.type === 'CUSTOM' && parsed.name === 'channel.session_changed') {
+            const projectId = useProjectStore.getState().activeProject?.id
+            if (projectId && parsed.project_id === projectId) {
+              useChatListStore.getState().refreshSessions(projectId)
+            }
+          }
           if (parsed.session_id && parsed.channel === 'flow_gen') handleGenEvent(parsed)
           if (parsed.session_id && parsed.channel === 'task_create') handleTaskDraftEvent(parsed)
           if (parsed.session_id && parsed.channel === 'session_chat') handleChatSessionEvent(parsed)
-          if (parsed.channel === 'channel_wechat') handleChannelEvent(parsed)
           handleEvent(parsed)
         } catch (error) {
           console.warn('[WS] invalid message:', error)
@@ -154,7 +190,9 @@ export function useWebSocket() {
       }
       ws.onerror = () => ws.close()
       ws.onclose = () => {
-        if (wsRef.current === ws) wsRef.current = null
+        if (wsRef.current !== ws) return
+        wsRef.current = null
+        clearSocketTimers()
         if (!active || reconnectTimer) return
         const delay = Math.min(
           WS_RECONNECT_BASE_MS * 2 ** reconnectAttempt,
@@ -168,15 +206,45 @@ export function useWebSocket() {
       }
     }
 
+    const restart = () => {
+      if (!active) return
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      reconnectTimer = null
+      clearSocketTimers()
+      const old = wsRef.current
+      wsRef.current = null
+      old?.close()
+      connect()
+    }
+    const resume = () => {
+      if (document.visibilityState === 'hidden' || resumeTimer) return
+      resumeTimer = setTimeout(() => {
+        resumeTimer = null
+        restart()
+      }, 0)
+    }
+    const pageShown = (event: PageTransitionEvent) => { if (event.persisted) resume() }
+    document.addEventListener('visibilitychange', resume)
+    window.addEventListener('online', resume)
+    window.addEventListener('focus', resume)
+    window.addEventListener('pageshow', pageShown)
+    window.addEventListener('workstep:resume', resume)
     connect()
     return () => {
       active = false
+      clearSocketTimers()
       if (reconnectTimer) clearTimeout(reconnectTimer)
+      if (resumeTimer) clearTimeout(resumeTimer)
+      document.removeEventListener('visibilitychange', resume)
+      window.removeEventListener('online', resume)
+      window.removeEventListener('focus', resume)
+      window.removeEventListener('pageshow', pageShown)
+      window.removeEventListener('workstep:resume', resume)
       const ws = wsRef.current
       wsRef.current = null
       ws?.close()
     }
-  }, [handleEvent, handleGenEvent, handleTaskDraftEvent, handleChatSessionEvent, handleChannelEvent, flushSubscription])
+  }, [handleEvent, handleGenEvent, handleTaskDraftEvent, handleChatSessionEvent, flushSubscription])
 
   return { send }
 }

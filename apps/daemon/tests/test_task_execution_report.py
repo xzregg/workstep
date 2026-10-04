@@ -110,6 +110,9 @@ def execution_report_fixture(tmp_path):
             model: str,
             author_id: str,
             author_name: str,
+            author_type: str | None = None,
+            initiated_by_user_id: str | None = None,
+            initiated_by_username: str | None = None,
         ) -> None:
             Message.create(
                 id=message_id,
@@ -122,6 +125,9 @@ def execution_report_fixture(tmp_path):
                 model=model,
                 author_id=author_id,
                 author_name=author_name,
+                author_type=author_type,
+                initiated_by_user_id=initiated_by_user_id,
+                initiated_by_username=initiated_by_username,
                 run_id=message_id,
                 run_status="succeeded",
                 usage_json=json.dumps(usage),
@@ -144,8 +150,11 @@ def execution_report_fixture(tmp_path):
             },
             engine="claude",
             model="sonnet",
-            author_id="user-a",
-            author_name="小王",
+            author_id="claude",
+            author_name="Claude",
+            author_type="assistant",
+            initiated_by_user_id="user-a",
+            initiated_by_username="小王",
         )
         message(
             "message-frontend-1",

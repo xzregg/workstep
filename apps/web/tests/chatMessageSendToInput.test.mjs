@@ -11,7 +11,7 @@ const assistantPanelSource = fs.readFileSync(
   'utf8',
 )
 const taskDetailSource = fs.readFileSync(
-  new URL('../src/components/TaskDetailView.tsx', import.meta.url),
+  new URL('../src/components/TaskConversationMessage.tsx', import.meta.url),
   'utf8',
 )
 

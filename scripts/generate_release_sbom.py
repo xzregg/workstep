@@ -31,7 +31,7 @@ def _component(ecosystem: str, name: str, version: str) -> dict[str, str]:
 def _python_components() -> list[dict[str, str]]:
     components = []
     backend = ROOT / "apps" / "desktop" / "backend"
-    for filename in ("requirements-prod.txt", "requirements-bootstrap.txt"):
+    for filename in ("requirements-prod.txt", "requirements-gateway.txt", "requirements-bootstrap.txt"):
         for line in (backend / filename).read_text(encoding="utf-8").splitlines():
             match = re.match(r"^([A-Za-z0-9_.-]+)==([^ ;]+)", line)
             if match:

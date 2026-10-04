@@ -11,6 +11,33 @@ import { I18nProvider } from '../src/i18n'
 const firstImage = '![one](.workstep/uploads/one.png)'
 const secondImage = '![two](.workstep/uploads/two.png)'
 
+test('image-only composer keeps empty caret segments compact and editable', async () => {
+  const { window } = installDomEnvironment()
+  const changes: string[] = []
+  let root!: Root
+  try {
+    const container = window.document.body.appendChild(window.document.createElement('div'))
+    await act(async () => {
+      root = createRoot(container as never)
+      root.render(<Harness initial={firstImage} onChange={(value) => changes.push(value)} />)
+    })
+    const textareas = Array.from(container.querySelectorAll('textarea')) as HTMLTextAreaElement[]
+    assert.equal(textareas.length, 2)
+    assert.ok(textareas.every((element) => element.classList.contains('chat-input-text-segment--empty')),
+      'empty caret targets must not reserve the default textarea width before or after an image')
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!.call(textareas[0], '说明')
+      textareas[0].dispatchEvent(new window.Event('input', { bubbles: true }))
+    })
+    assert.equal(changes.at(-1), `说明${firstImage}`)
+    assert.equal(textareas[0].classList.contains('chat-input-text-segment--empty'), false)
+    assert.equal(textareas[1].classList.contains('chat-input-text-segment--empty'), true)
+    await act(async () => { root.unmount() })
+  } finally {
+    await window.happyDOM.close()
+  }
+})
+
 function Harness({
   initial,
   onChange,
@@ -133,6 +160,53 @@ test('pasting an image inserts it at the caret without adding line breaks', asyn
     })
     assert.equal(changes.at(-1), '前后')
     assert.equal(container.querySelectorAll('.chat-input-image-block').length, 0)
+
+    await act(async () => { root.unmount() })
+  } finally {
+    await window.happyDOM.close()
+  }
+})
+
+test('pasting several attachments keeps successful uploads in order when one fails', async () => {
+  const { window } = installDomEnvironment()
+  const changes: string[] = []
+  const errors: string[] = []
+  let root!: Root
+
+  try {
+    const container = window.document.body.appendChild(window.document.createElement('div'))
+    await act(async () => {
+      root = createRoot(container as never)
+      root.render(<Harness initial="前后" onChange={(value) => changes.push(value)} imageAttach={{
+        upload: async (file) => {
+          if (file.name === 'broken.pdf') throw new Error('上传失败')
+          return { url: `.workstep/uploads/${file.name}`, filename: file.name, size: 1 }
+        },
+        onError: (message) => errors.push(message),
+      }} />)
+    })
+
+    const textarea = container.querySelector('textarea') as HTMLTextAreaElement
+    textarea.setSelectionRange(1, 1)
+    await act(async () => { textarea.dispatchEvent(new window.MouseEvent('click', { bubbles: true })) })
+    const files = [
+      new window.File(['pdf'], 'one.pdf', { type: 'application/pdf' }),
+      new window.File(['png'], 'shot.png', { type: 'image/png' }),
+      new window.File(['pdf'], 'broken.pdf', { type: 'application/pdf' }),
+    ]
+    const pasteEvent = new window.Event('paste', { bubbles: true, cancelable: true })
+    Object.defineProperty(pasteEvent, 'clipboardData', {
+      value: { items: files.map((file) => ({ kind: 'file', getAsFile: () => file })) },
+    })
+    await act(async () => {
+      textarea.dispatchEvent(pasteEvent)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    assert.equal(changes.at(-1), '前\n\n[one.pdf](.workstep/uploads/one.pdf)\n\n![shot.png](.workstep/uploads/shot.png)后')
+    assert.deepEqual(errors, ['', '上传失败'])
+    assert.equal(container.querySelector('.chat-input-attach')?.hasAttribute('disabled'), false)
 
     await act(async () => { root.unmount() })
   } finally {

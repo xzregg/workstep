@@ -1,9 +1,6 @@
 """Task API routes — all endpoints require project_id."""
 
 import asyncio
-import json
-import os
-import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Body, Header, HTTPException, Query
@@ -14,7 +11,6 @@ from schemas.task import (
     CoordinatorChatRequest,
     CoordinatorConfigRequest,
     FailedStepCompletionRequest,
-    ReviewDecisionRequest,
     RunTaskRequest,
     ScheduledStartRequest,
     StepMessageRequest,
@@ -22,44 +18,30 @@ from schemas.task import (
     StepResumeRequest,
     UpdateTaskRequest,
 )
+from services import config as config_service
 from services.config import DEFAULT_EXECUTION_ENGINE, config_store
 from services.workflow_definition import WorkflowValidationError
 from services.task_creation import create_project_task
 from services.messages import current_actor_task_fields
+from services.task_read_model import project_relative_task_cwd
 from services.artifacts import (
     list_task_artifact_input_snapshots,
     list_task_artifacts,
+    project_relative_artifact_listing,
 )
+from api.task_context import _project, _require_scoped_task, _run_db
 
 router = APIRouter(prefix="/api/task")
 
 
-def _project(project_id: str):
-    """Resolve project metadata without touching its SQLite connection."""
-    from main import project_manager
-    if not project_manager:
-        raise HTTPException(status_code=503, detail="Service not initialized")
-    try:
-        project = project_manager.get_project_by_id(project_id)
-        if project is None:
-            raise ValueError(f"Project not found: {project_id}")
-        return project
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+def _project_task_response(pid: str, task: dict) -> dict:
+    """Keep host working directories out of project-ticket task responses."""
+    from services.remote_access import get_current_actor
 
-
-async def _run_db(project_id: str, operation):
-    """Run task persistence on the selected project's DB executor."""
-    from main import project_manager
-
-    run_db = getattr(project_manager, "run_db", None)
-    if run_db is not None:
-        return await run_db(project_id, lambda _project: operation())
-    def execute():
-        with project_manager.activate_project_by_id(project_id):
-            return operation()
-
-    return await asyncio.to_thread(execute)
+    actor = get_current_actor()
+    if actor is None or actor.project_id is None:
+        return task
+    return {**task, "cwd": project_relative_task_cwd(task["cwd"], _project(pid).path)}
 
 
 @router.post("/create")
@@ -108,9 +90,11 @@ async def create_task(req: CreateTaskRequest, pid: str = Query(..., alias="proje
             scheduled_start_at=req.scheduled_start_at,
             creator_fields=creator_fields,
         )
-        return result.task
+        return _project_task_response(pid, result.task)
     except WorkflowValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         status = 422 if "scheduled_start_at" in str(exc) else 404
         raise HTTPException(status_code=status, detail=str(exc)) from exc
@@ -125,6 +109,7 @@ async def update_scheduled_start(
     from main import task_service, event_bus
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(pid, task_id)
     try:
         task = await _run_db(
             pid,
@@ -141,6 +126,7 @@ async def update_scheduled_start(
         raise HTTPException(status_code=404, detail="Task not found")
     await event_bus.publish({
         "type": "CUSTOM",
+        "project_id": pid,
         "name": "workstep.scheduled_start",
         "value": {
             "task_id": task_id,
@@ -150,7 +136,7 @@ async def update_scheduled_start(
         },
         "task_id": task_id,
     })
-    return task
+    return _project_task_response(pid, task)
 
 
 @router.get("/list")
@@ -167,7 +153,7 @@ async def list_tasks(
         pid,
         lambda: task_service.list_tasks(workflow_id=wf, archived=archived),
     )
-    return {"tasks": tasks}
+    return {"tasks": [_project_task_response(pid, task) for task in tasks]}
 
 
 @router.get("/{task_id}")
@@ -179,7 +165,7 @@ async def get_task(task_id: str, pid: str = Query(..., alias="project_id")):
     task = await _run_db(pid, lambda: task_service.get_task(task_id))
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    return task
+    return _project_task_response(pid, task)
 
 
 @router.get("/{task_id}/execution-report")
@@ -191,7 +177,7 @@ async def get_task_execution_report(
     from services.task_execution_report import build_task_execution_report
 
     project = _project(pid)
-    pricing = await asyncio.to_thread(config_store.get_model_pricing)
+    pricing = await asyncio.to_thread(config_service.config_store.get_model_pricing)
     report = await _run_db(
         pid,
         lambda: build_task_execution_report(
@@ -215,6 +201,7 @@ async def update_task(
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(pid, task_id)
     task = await _run_db(
         pid,
         lambda: task_service.update_task_description(
@@ -225,7 +212,7 @@ async def update_task(
     )
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    return task
+    return _project_task_response(pid, task)
 
 
 @router.get("/{task_id}/history")
@@ -266,6 +253,7 @@ async def chat_with_coordinator(
     from main import coordinator_module
     if not coordinator_module:
         raise HTTPException(status_code=503, detail="Coordinator is not initialized")
+    await _require_scoped_task(pid, task_id)
     try:
         accepted = await coordinator_module.submit_message(
             pid,
@@ -289,6 +277,7 @@ async def stop_coordinator(
     from main import coordinator_module
     if not coordinator_module:
         raise HTTPException(status_code=503, detail="Coordinator is not initialized")
+    await _require_scoped_task(pid, task_id)
     try:
         stopped = await coordinator_module.stop_current(pid, task_id)
     except ValueError as exc:
@@ -321,6 +310,7 @@ async def send_step_message(
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Workflow runtime not initialized")
+    await _require_scoped_task(pid, task_id)
     _project(pid)
     try:
         accepted = await workflow_runtime.send_step_message(
@@ -360,6 +350,7 @@ async def update_step_execution_config(
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Workflow runtime not initialized")
+    await _require_scoped_task(pid, task_id)
     try:
         return await workflow_runtime.update_step_execution_config(
             pid, task_id, step_key,
@@ -383,6 +374,7 @@ async def reset_step_execution_config(
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Workflow runtime not initialized")
+    await _require_scoped_task(pid, task_id)
     try:
         return await workflow_runtime.reset_step_execution_config(pid, task_id, step_key)
     except RuntimeError as exc:
@@ -401,6 +393,7 @@ async def cancel_step(
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Workflow runtime not initialized")
+    await _require_scoped_task(pid, task_id)
     _project(pid)
     try:
         cancelled = await workflow_runtime.cancel_step(pid, task_id, step_key)
@@ -420,6 +413,7 @@ async def resume_step(
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(pid, task_id)
     _project(pid)
     try:
         accepted = await workflow_runtime.resume_step_with_message(
@@ -444,6 +438,7 @@ async def restart_step_with_fresh_session(
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(pid, task_id)
     _project(pid)
     try:
         accepted = await workflow_runtime.restart_step_with_fresh_session(
@@ -466,6 +461,7 @@ async def retry_failed_message(
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(pid, task_id)
     _project(pid)
     try:
         return await workflow_runtime.retry_failed_message(pid, task_id, message_id)
@@ -484,6 +480,7 @@ async def set_failed_execution_complete(
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(pid, task_id)
     _project(pid)
     try:
         handle = await workflow_runtime.complete_failed_step(
@@ -508,6 +505,7 @@ async def update_coordinator_config(
     from main import coordinator_module
     if not coordinator_module:
         raise HTTPException(status_code=503, detail="Coordinator is not initialized")
+    await _require_scoped_task(pid, task_id)
     try:
         return await coordinator_module.update_config(
             pid,
@@ -534,6 +532,7 @@ async def confirm_coordinator_action(
     from main import coordinator_module
     if not coordinator_module:
         raise HTTPException(status_code=503, detail="Coordinator is not initialized")
+    await _require_scoped_task(pid, task_id)
     try:
         return await coordinator_module.confirm_action(
             pid,
@@ -559,6 +558,7 @@ async def cancel_coordinator_action(
     from main import coordinator_module
     if not coordinator_module:
         raise HTTPException(status_code=503, detail="Coordinator is not initialized")
+    await _require_scoped_task(pid, task_id)
     try:
         return await coordinator_module.cancel_action(pid, task_id, proposal_id)
     except ValueError as exc:
@@ -574,20 +574,26 @@ async def get_task_artifacts(
 ):
     """List files produced for a task, enriched by step manifests."""
     from main import task_service
+    from services.remote_access import get_current_actor
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
     project = _project(pid)
     exists = await _run_db(pid, lambda: task_service.get_task(task_id))
     if not exists:
         raise HTTPException(status_code=404, detail="Task not found")
-    artifacts, input_snapshots = await _run_db(
-        pid,
-        lambda: (
-            list_task_artifacts(project, task_id),
-            list_task_artifact_input_snapshots(task_id),
-        ),
-    )
+    project_scoped = (actor := get_current_actor()) is not None and actor.project_id is not None
+
+    def listing():
+        artifacts = list_task_artifacts(project, task_id)
+        snapshots = list_task_artifact_input_snapshots(task_id)
+        if project_scoped:
+            return project_relative_artifact_listing(project, artifacts, snapshots)
+        return artifacts, snapshots
+
+    artifacts, input_snapshots = await _run_db(pid, listing)
     artifact_directory = Path(project.workstep_dir) / "artifacts" / (exists["workflow_id"] or "default") / task_id
+    if project_scoped:
+        artifact_directory = artifact_directory.relative_to(project.path)
     return {
         "artifacts": artifacts,
         "input_snapshots": input_snapshots,
@@ -595,164 +601,63 @@ async def get_task_artifacts(
     }
 
 
-@router.get("/{task_id}/reviews")
-async def get_task_reviews(
-    task_id: str,
-    pid: str = Query(..., alias="project_id"),
-):
-    """Return persisted review history for a task."""
-    from models import ReviewRun
-    def load_reviews():
-        rows = (
-            ReviewRun.select()
-            .where(ReviewRun.task == task_id)
-            .order_by(ReviewRun.started_at.desc(), ReviewRun.id.desc())
-        )
-        return [{
-            "id": row.id,
-            "workflow_run_id": row.workflow_run_id,
-            "step_run_id": row.step_run_id,
-            "artifact_round": row.step_run.artifact_round,
-            "step_key": row.step_key,
-            "mode": row.mode,
-            "status": row.status,
-            "engine": row.engine,
-            "model": row.model,
-            "report": json.loads(row.report_json) if row.report_json else None,
-            "decision": row.decision,
-            "error": row.error,
-            "decision_comment": row.decision_comment,
-            "reviewer_id": row.reviewer_id,
-            "reviewer_name": row.reviewer_name,
-            "reviewer_device_id": row.reviewer_device_id,
-            "reviewer_device_name": row.reviewer_device_name,
-            "started_at": row.started_at,
-            "ended_at": row.ended_at,
-        } for row in rows]
-
-    return {"reviews": await _run_db(pid, load_reviews)}
-
-
-async def _decide_review(
-    task_id: str,
-    step_key: str,
-    req: ReviewDecisionRequest,
-    project_id: str,
-    decision: str,
-):
-    from main import workflow_runtime
-    if not workflow_runtime:
-        raise HTTPException(status_code=503, detail="Service not initialized")
-    try:
-        options = (
-            {"schedule_downstream": req.schedule_downstream}
-            if decision == "set_complete" else {}
-        )
-        handle = await workflow_runtime.decide_review(
-            project_id, task_id, step_key, req.review_run_id, decision, req.comment,
-            **options,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return {
-        "decision": decision,
-        "resumed": handle is not None,
-        "run_id": handle.id if handle else None,
-    }
-
-
-@router.post("/{task_id}/steps/{step_key}/review/approve")
-async def approve_review(
-    task_id: str,
-    step_key: str,
-    req: ReviewDecisionRequest,
-    pid: str = Query(..., alias="project_id"),
-):
-    return await _decide_review(task_id, step_key, req, pid, "approve")
-
-
-@router.post("/{task_id}/steps/{step_key}/review/reject")
-async def reject_review(
-    task_id: str,
-    step_key: str,
-    req: ReviewDecisionRequest,
-    pid: str = Query(..., alias="project_id"),
-):
-    return await _decide_review(task_id, step_key, req, pid, "reject")
-
-
-@router.post("/{task_id}/steps/{step_key}/review/force-approve")
-async def force_approve_review(
-    task_id: str,
-    step_key: str,
-    req: ReviewDecisionRequest,
-    pid: str = Query(..., alias="project_id"),
-):
-    return await _decide_review(task_id, step_key, req, pid, "force_approve")
-
-
-@router.post("/{task_id}/steps/{step_key}/review/terminate")
-async def terminate_review(
-    task_id: str,
-    step_key: str,
-    req: ReviewDecisionRequest,
-    pid: str = Query(..., alias="project_id"),
-):
-    return await _decide_review(task_id, step_key, req, pid, "terminate")
-
-
-@router.post("/{task_id}/steps/{step_key}/review/complete-task")
-async def complete_task_at_review(
-    task_id: str,
-    step_key: str,
-    req: ReviewDecisionRequest,
-    pid: str = Query(..., alias="project_id"),
-):
-    return await _decide_review(task_id, step_key, req, pid, "complete_task")
-
-
-@router.post("/{task_id}/steps/{step_key}/review/set-complete")
-async def set_terminated_review_complete(
-    task_id: str,
-    step_key: str,
-    req: ReviewDecisionRequest,
-    pid: str = Query(..., alias="project_id"),
-):
-    return await _decide_review(task_id, step_key, req, pid, "set_complete")
-
-
 @router.post("/run")
 async def run_task(req: RunTaskRequest, pid: str = Query(..., alias="project_id")):
     """Run a task (fire-and-forget, events come via WebSocket)."""
-    from main import workflow_runtime, task_service, event_bus
+    from main import workflow_runtime, task_service, event_bus, project_manager
+    from services.remote_access import UserIdentityRequired, get_effective_actor
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(pid, req.task_id)
+
+    async def audit_outcome(
+        reason_code: str, *, result: str = "denied", system_actor: bool = False,
+    ) -> None:
+        if await asyncio.to_thread(project_manager.get_project_by_id, pid) is None:
+            return
+        from services.project_audit import record_project_audit
+
+        actor = get_effective_actor()
+        await project_manager.run_db(
+            pid,
+            lambda _project: record_project_audit(
+                project_id=pid, task_id=req.task_id,
+                action="task.start", result=result,
+                mode="managed" if actor is not None and actor.source == "managed" else "local",
+                actor_type="system" if system_actor else None,
+                metadata={"reason_code": reason_code},
+            ),
+        )
+
     try:
         handle = await workflow_runtime.start(pid, req.task_id, req.prompt)
-        if task_service and hasattr(task_service, "clear_scheduled_start"):
-            await _run_db(
-                pid,
-                lambda: task_service.clear_scheduled_start(req.task_id),
-            )
-            await event_bus.publish({
-                "type": "CUSTOM",
-                "name": "workstep.scheduled_start",
-                "value": {
-                    "task_id": req.task_id,
-                    "scheduled_start_at": None,
-                    "scheduled_start_state": None,
-                    "scheduled_start_error": None,
-                },
-                "task_id": req.task_id,
-            })
+    except UserIdentityRequired as exc:
+        await audit_outcome("identity_required", system_actor=True)
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except WorkflowValidationError as exc:
+        await audit_outcome("workflow_invalid")
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
+        if str(exc) == f"Task is already queued or running: {req.task_id}":
+            await audit_outcome("already_active")
+        else:
+            await audit_outcome("run_error", result="failed")
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if task_service:
+        await event_bus.publish({
+            "type": "CUSTOM",
+            "project_id": pid,
+            "name": "workstep.scheduled_start",
+            "value": {
+                "task_id": req.task_id,
+                "scheduled_start_at": None,
+                "scheduled_start_state": None,
+                "scheduled_start_error": None,
+            },
+            "task_id": req.task_id,
+        })
     return {
         "status": "started",
         "task_id": req.task_id,
@@ -770,9 +675,27 @@ async def cancel_task(req: CancelTaskRequest, pid: str | None = Query(None, alia
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(pid, req.task_id)
     if pid:
         _project(pid)
     cancelled = await workflow_runtime.cancel(req.task_id)
+    if not cancelled and pid:
+        from models import Task
+        from services.project_audit import record_project_audit
+        from services.remote_access import get_effective_actor
+
+        actor = get_effective_actor()
+        def audit_idle_cancel():
+            if Task.get_or_none(Task.id == req.task_id) is not None:
+                record_project_audit(
+                    project_id=pid, task_id=req.task_id,
+                    action="task.cancel", result="denied",
+                    mode=("managed" if actor is not None and actor.source == "managed"
+                          else "local"),
+                    metadata={"reason_code": "not_running"},
+                )
+
+        await _run_db(pid, audit_idle_cancel)
     return {"cancelled": cancelled}
 
 
@@ -784,12 +707,13 @@ class PauseTaskRequest(BaseSchema):
 async def pause_task(req: PauseTaskRequest, pid: str = Query(..., alias="project_id")):
     """Pause a running task."""
     from main import task_service, workflow_runtime
-    if workflow_runtime and await workflow_runtime.cancel(req.task_id):
+    await _require_scoped_task(pid, req.task_id)
+    if workflow_runtime and await workflow_runtime.cancel(req.task_id, action="task.pause"):
         return {"paused": True}
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
     paused = await _run_db(
-        pid, lambda: task_service._pause_task_sync(req.task_id)
+        pid, lambda: task_service._pause_task_sync(req.task_id, pid)
     )
     if not paused:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -798,6 +722,7 @@ async def pause_task(req: PauseTaskRequest, pid: str = Query(..., alias="project
 
 class DeleteTaskRequest(BaseSchema):
     task_id: str
+    delete_workspace: bool | None = None
 
 
 @router.delete("/delete")
@@ -806,14 +731,38 @@ async def delete_task(req: DeleteTaskRequest, pid: str = Query(..., alias="proje
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    await _require_scoped_task(pid, req.task_id)
     project = _project(pid)
     from models import Task
-    workflow_id = await _run_db(pid, lambda: getattr(Task.get_or_none(Task.id == req.task_id), "workflow_id", None))
+    task = await _run_db(pid, lambda: (
+        {"workflow_id": found.workflow_id, "status": found.status}
+        if (found := Task.get_or_none(Task.id == req.task_id)) else None
+    ))
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task["status"] == "running":
+        raise HTTPException(status_code=409, detail="Running tasks cannot be deleted")
+    workflow_id = task["workflow_id"]
     workspace_roots = [project.workstep_dir / "worktrees" / req.task_id]
     if workflow_id:
         workspace_roots.append(project.workstep_dir / "artifacts" / workflow_id / req.task_id / ".worktrees")
-    if await asyncio.to_thread(lambda: any(root.is_dir() and any(root.iterdir()) for root in workspace_roots)):
+    has_workspace = await asyncio.to_thread(lambda: any(root.is_dir() and any(root.iterdir()) for root in workspace_roots))
+    if has_workspace and req.delete_workspace is None:
         raise HTTPException(status_code=409, detail="请先在任务 Git 标签中移除 Worktree，再删除任务。")
+    if has_workspace and req.delete_workspace:
+        from api.git import git_service
+        from services.git.command import GitError
+        from services.git.task_workspace import TaskGitWorkspace
+
+        workspace = TaskGitWorkspace(git_service, workflow_id)
+        try:
+            for _ in workspace_roots:
+                if await asyncio.to_thread(lambda: any(root.is_dir() and any(root.iterdir()) for root in workspace_roots)):
+                    result = await workspace.delete(project.path, req.task_id, force=True)
+                    if result["outcome"] == "partial":
+                        raise GitError("Git 工作区仅部分删除：" + result["failure"], 409)
+        except GitError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
     try:
         deleted = await _run_db(
             pid,
@@ -823,346 +772,16 @@ async def delete_task(req: DeleteTaskRequest, pid: str = Query(..., alias="proje
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not deleted:
         raise HTTPException(status_code=404, detail="Task not found")
-    for workspace_root in workspace_roots:
-        if await asyncio.to_thread(workspace_root.is_dir):
-            try:
-                await asyncio.to_thread(workspace_root.rmdir)
-            except OSError:
-                pass
+    from api.task_context import _release_task_channel_bindings
+    await _release_task_channel_bindings(pid, req.task_id)
+    if req.delete_workspace is not False:
+        for workspace_root in workspace_roots:
+            if await asyncio.to_thread(workspace_root.is_dir):
+                try:
+                    await asyncio.to_thread(workspace_root.rmdir)
+                except OSError:
+                    pass
     return {"deleted": deleted}
-
-
-class ArchiveTaskRequest(BaseSchema):
-    task_id: str
-
-
-class ConfirmArchiveExperienceRequest(BaseSchema):
-    experience: str
-
-
-def _normalize_archive_experience(experience: str) -> tuple[str, bool]:
-    normalized = experience.strip()
-    compact = normalized.lstrip("-•* ").rstrip("。.!！ ")
-    if compact in {
-        "未发现值得记录的错误经验",
-        "未发现值得提炼的错误经验",
-        "未发现值得提炼的内容",
-    }:
-        return "", False
-    return normalized, bool(normalized)
-
-
-def _load_archive_experience_draft(task_id: str, workstep_dir=None):
-    from models import Message
-
-    message = (
-        Message.select()
-        .where(
-            (Message.task == task_id)
-            & (Message.channel == "archive_experience")
-            & (Message.run_status == "succeeded")
-        )
-        .order_by(Message.sequence.desc(), Message.created_at.desc())
-        .first()
-    )
-    if message is None:
-        return None
-    summary = json.loads(message.event_summary_json or "{}")
-    events = []
-    if workstep_dir is not None and message.event_log_path:
-        from agent_assistants.event_journal import TurnEventJournal
-        from services.history import translate_events
-
-        journal = TurnEventJournal()
-        ref = journal.reopen(workstep_dir, message.event_log_path)
-        timeline = journal.timeline(ref, limit=30000)
-        events = translate_events(
-            timeline["events"],
-            task_id=task_id,
-            step_key=message.step_key,
-            message_id=message.id,
-            channel=message.channel,
-            engine=message.engine,
-            model=message.model,
-        )
-    prompt = ""
-    if message.prompt_json:
-        prompt = str(json.loads(message.prompt_json).get("prompt") or "")
-    return {
-        "found": True,
-        "message_id": message.id,
-        "experience": message.content or "",
-        "has_experience": bool(summary.get("has_experience", message.content.strip())),
-        "events": events,
-        "prompt": prompt,
-    }
-
-
-@router.get("/{task_id}/archive-experience/draft")
-async def get_archive_experience_draft(
-    task_id: str,
-    pid: str = Query(..., alias="project_id"),
-):
-    """Return the last generated draft so reopening does not call the LLM again."""
-    from main import project_manager
-    from models import Task
-
-    project = project_manager.get_project_by_id(pid)
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    def load():
-        if Task.get_or_none(Task.id == task_id) is None:
-            raise ValueError("Task not found")
-        return _load_archive_experience_draft(task_id, project.workstep_dir)
-
-    try:
-        draft = await _run_db(pid, load)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return draft or {
-        "found": False,
-        "message_id": None,
-        "experience": "",
-        "has_experience": False,
-        "events": [],
-        "prompt": "",
-    }
-
-
-@router.post("/archive")
-async def archive_task(req: ArchiveTaskRequest, pid: str = Query(..., alias="project_id")):
-    """Archive a task so it disappears from the active board."""
-    from main import task_service
-    if not task_service:
-        raise HTTPException(status_code=503, detail="Service not initialized")
-    try:
-        archived = await _run_db(
-            pid,
-            lambda: task_service.archive_task(req.task_id),
-        )
-    except RuntimeError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    if not archived:
-        raise HTTPException(status_code=404, detail="Task not found")
-    return {"archived": archived}
-
-
-@router.post("/{task_id}/archive-experience/prepare")
-async def prepare_archive_experience(
-    task_id: str,
-    pid: str = Query(..., alias="project_id"),
-    message_id: str | None = Query(None),
-):
-    """Generate and cache an experience draft without writing project Memory."""
-    from agent_assistants.coordinator import ArchiveExperienceStopped
-    from main import coordinator_module
-
-    if not coordinator_module:
-        raise HTTPException(status_code=503, detail="Coordinator is not initialized")
-    try:
-        progress_message_id = message_id or str(uuid.uuid4())
-        raw_experience = await coordinator_module.draft_archive_experience(
-            pid,
-            task_id,
-            progress_message_id,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ArchiveExperienceStopped as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    experience, has_experience = _normalize_archive_experience(raw_experience)
-    journal = coordinator_module.take_archive_experience_journal(
-        pid,
-        task_id,
-        progress_message_id,
-    )
-
-    def persist_draft():
-        from models import Message, Task
-        from models.fields import utc_now
-        from services.messages import create_task_message
-
-        task = Task.get_or_none(Task.id == task_id)
-        if task is None:
-            raise ValueError("Task not found")
-        journal_snapshot = journal["snapshot"] if journal is not None else None
-        summary = {"has_experience": has_experience}
-        if journal_snapshot is not None:
-            summary.update(journal_snapshot["summary"])
-        existing = Message.get_or_none(Message.id == progress_message_id)
-        if existing is not None:
-            existing.content = experience
-            existing.run_status = "succeeded"
-            existing.event_summary_json = json.dumps(summary)
-            if journal is not None:
-                existing.engine = journal["engine"]
-                existing.model = journal["model"]
-                existing.prompt_json = json.dumps({"prompt": journal["prompt"]}, ensure_ascii=False)
-                existing.event_log_path = journal["event_log_path"]
-                existing.events_json = json.dumps(journal_snapshot["events"], ensure_ascii=False)
-                existing.event_count = journal_snapshot["summary"]["event_count"]
-                existing.last_event_seq = journal_snapshot["summary"]["last_event_seq"]
-            existing.save()
-            return
-        now = utc_now()
-        create_task_message(
-            id=progress_message_id,
-            task=task,
-            channel="archive_experience",
-            step_key="archive",
-            role="assistant",
-            content=experience,
-            run_id=progress_message_id,
-            run_status="succeeded",
-            engine=journal["engine"] if journal is not None else None,
-            model=journal["model"] if journal is not None else None,
-            prompt_json=(
-                json.dumps({"prompt": journal["prompt"]}, ensure_ascii=False)
-                if journal is not None else None
-            ),
-            event_log_path=journal["event_log_path"] if journal is not None else None,
-            events_json=(
-                json.dumps(journal_snapshot["events"], ensure_ascii=False)
-                if journal_snapshot is not None else None
-            ),
-            event_summary_json=json.dumps(summary),
-            event_count=(journal_snapshot["summary"]["event_count"] if journal_snapshot else 0),
-            last_event_seq=(journal_snapshot["summary"]["last_event_seq"] if journal_snapshot else 0),
-            position=1,
-            started_at=now,
-            ended_at=now,
-            created_at=now,
-        )
-
-    try:
-        await _run_db(pid, persist_draft)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return {
-        "message_id": progress_message_id,
-        "experience": experience,
-        "has_experience": has_experience,
-        "cached": False,
-    }
-
-
-@router.post("/{task_id}/archive-experience/stop")
-async def stop_archive_experience(
-    task_id: str,
-    pid: str = Query(..., alias="project_id"),
-    message_id: str = Query(...),
-):
-    """Stop an in-flight archive experience draft."""
-    from main import coordinator_module
-
-    if not coordinator_module:
-        raise HTTPException(status_code=503, detail="Coordinator is not initialized")
-    stopped = await coordinator_module.stop_archive_experience(
-        pid,
-        task_id,
-        message_id,
-    )
-    return {"stopped": stopped}
-
-
-@router.post("/{task_id}/archive-experience/confirm")
-async def confirm_archive_experience(
-    task_id: str,
-    req: ConfirmArchiveExperienceRequest,
-    pid: str = Query(..., alias="project_id"),
-):
-    """Append the reviewed experience to project memory, then archive the task."""
-    from main import project_manager, task_service
-    from models import Task
-
-    if not project_manager or not task_service:
-        raise HTTPException(status_code=503, detail="Service not initialized")
-    experience = req.experience.strip()
-    if not experience:
-        draft = await _run_db(pid, lambda: _load_archive_experience_draft(task_id))
-        if draft is None or draft["has_experience"]:
-            raise HTTPException(status_code=422, detail="Experience cannot be empty")
-        try:
-            archived = await _run_db(pid, lambda: task_service.archive_task(task_id))
-        except RuntimeError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        if not archived:
-            raise HTTPException(status_code=404, detail="Task not found")
-        return {"archived": True, "memory_saved": False}
-    if len(experience) > 800:
-        raise HTTPException(status_code=422, detail="Experience exceeds 800 characters")
-    project = _project(pid)
-
-    def persist_and_archive():
-        task = Task.get_or_none(Task.id == task_id)
-        if task is None:
-            raise ValueError("Task not found")
-        if task.archived:
-            raise RuntimeError("Task is already archived")
-        if task.status == "running":
-            raise RuntimeError("Running tasks cannot be archived")
-
-        memory_path = project.workstep_dir / "MEMORY.md"
-        previous = memory_path.read_bytes() if memory_path.is_file() else None
-        existing = previous.decode("utf-8") if previous is not None else ""
-        separator = "\n\n" if existing.rstrip() else ""
-        content = (
-            f"{existing.rstrip()}{separator}"
-            f"## 错误经验：{task.title}\n\n{experience}\n"
-        )
-        if len(content.encode("utf-8")) > 500_000:
-            raise OverflowError("Memory content exceeds 500KB")
-
-        memory_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = memory_path.with_name(
-            f".{memory_path.name}.{uuid.uuid4().hex}.tmp"
-        )
-        try:
-            temporary.write_text(content, encoding="utf-8")
-            os.replace(temporary, memory_path)
-            archived = task_service.archive_task(task_id)
-            if not archived:
-                raise ValueError("Task not found")
-        except Exception:
-            if temporary.exists():
-                temporary.unlink()
-            if previous is None:
-                memory_path.unlink(missing_ok=True)
-            else:
-                memory_path.write_bytes(previous)
-            raise
-        return archived
-
-    try:
-        archived = await _run_db(pid, persist_and_archive)
-    except OverflowError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return {"archived": archived, "memory_saved": True}
-
-
-@router.post("/unarchive")
-async def unarchive_task(req: ArchiveTaskRequest, pid: str = Query(..., alias="project_id")):
-    """Restore an archived task back to the active board."""
-    from main import task_service
-    if not task_service:
-        raise HTTPException(status_code=503, detail="Service not initialized")
-    try:
-        unarchived = await _run_db(
-            pid,
-            lambda: task_service.unarchive_task(req.task_id),
-        )
-    except RuntimeError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    if not unarchived:
-        raise HTTPException(status_code=404, detail="Task not found")
-    return {"unarchived": unarchived}
 
 
 class CopyTaskRequest(BaseSchema):
@@ -1174,17 +793,30 @@ class CopyTaskRequest(BaseSchema):
 async def copy_task(req: CopyTaskRequest, pid: str = Query(..., alias="project_id")):
     """Copy a task with a new title."""
     from main import task_service
+    from services.gateway_client.policy import require_managed_capability
+    from services.remote_access import get_current_actor
+
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    creator_fields = await asyncio.to_thread(current_actor_task_fields)
+    try:
+        require_managed_capability("task.create", creator_fields=creator_fields,
+                                   project_id=pid)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    await _require_scoped_task(pid, req.task_id)
+    actor = get_current_actor()
+    cwd_override = str(_project(pid).path) if actor is not None and actor.project_id is not None else None
     copied = await _run_db(
         pid,
         lambda: task_service.copy_task(
             req.task_id,
             req.newTitle,
             pid,
-            creator_fields=current_actor_task_fields(),
+            creator_fields=creator_fields,
+            cwd_override=cwd_override,
         ),
     )
     if not copied:
         raise HTTPException(status_code=404, detail="Task not found")
-    return copied
+    return _project_task_response(pid, copied)

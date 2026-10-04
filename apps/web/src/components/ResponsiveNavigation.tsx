@@ -5,8 +5,8 @@ import { useOverlay } from '../hooks/useOverlay'
 import { useI18n } from '../i18n'
 import Icon from './Icon'
 
-export default function ResponsiveNavigation({ children, title, onNew, style, dismissSignal, newDisabled = false, headerRight }: {
-  children: ReactNode; title: string; onNew: () => void; style?: CSSProperties; dismissSignal?: string; newDisabled?: boolean; headerRight?: ReactNode
+export default function ResponsiveNavigation({ children, title, onNew, style, className, dismissSignal, newDisabled = false, headerRight }: {
+  children: ReactNode; title: string; onNew: () => void; style?: CSSProperties; className?: string; dismissSignal?: string; newDisabled?: boolean; headerRight?: ReactNode
 }) {
   const { t } = useI18n()
   const compact = useCompactLayout()
@@ -33,7 +33,7 @@ export default function ResponsiveNavigation({ children, title, onNew, style, di
       </div>
     </header>
     {compact && open && <div className="mobile-overlay-backdrop navigation-backdrop" onClick={() => setOpen(false)} />}
-    <aside id="workstep-navigation" ref={ref} style={style} className={`responsive-navigation${open ? ' is-open' : ''}`}
+    <aside id="workstep-navigation" ref={ref} style={style} className={`responsive-navigation${className ? ` ${className}` : ''}${open ? ' is-open' : ''}`}
       role={compact && open ? 'dialog' : undefined} aria-modal={compact && open ? true : undefined}
       aria-label={t('mobile.navigation')} inert={compact && !open ? true : undefined} tabIndex={-1}>
       {compact && <button className="navigation-close" aria-label={t('common.close')} onClick={() => setOpen(false)}><Icon name="x" size={20} /></button>}

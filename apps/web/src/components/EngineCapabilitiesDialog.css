@@ -1,0 +1,20 @@
+.engine-capabilities-overlay { padding: 24px; z-index: 60; }
+.engine-capabilities-panel { width: 640px; max-width: calc(100vw - 48px); max-height: calc(100vh - 48px); }
+.engine-capabilities-header { padding: 16px 20px; }
+.engine-capabilities-body { padding: 18px 20px 20px; overflow-y: auto; }
+.engine-capabilities-loading { padding: 24px; text-align: center; color: var(--meta); font-size: calc(13px * var(--font-scale)); }
+.engine-capabilities-error { color: var(--danger); font-size: calc(13px * var(--font-scale)); overflow-wrap: anywhere; }
+.engine-capabilities-content { display: flex; flex-direction: column; gap: 16px; }
+.engine-capabilities-project { color: var(--meta); font-size: calc(12px * var(--font-scale)); overflow-wrap: anywhere; }
+.engine-capabilities-heading { margin-bottom: 7px; font-size: calc(13px * var(--font-scale)); font-weight: 600; }
+.engine-capabilities-count { color: var(--meta); font-weight: 400; }
+.engine-capabilities-empty { color: var(--muted); font-size: calc(12px * var(--font-scale)); }
+.engine-capabilities-list { display: flex; flex-direction: column; gap: 6px; }
+.engine-capabilities-card { border: 1px solid var(--border-soft); border-radius: 8px; padding: 8px 10px; background: var(--surface); }
+.engine-capabilities-card-title { font-size: calc(12px * var(--font-scale)); font-weight: 600; }
+.engine-capabilities-description { margin-top: 2px; color: var(--muted); font-size: calc(12px * var(--font-scale)); }
+.engine-capabilities-source { margin-top: 4px; color: var(--meta); font-size: calc(11px * var(--font-scale)); overflow-wrap: anywhere; }
+.engine-capabilities-supported, .engine-capabilities-unsupported { margin-bottom: 6px; font-size: calc(12px * var(--font-scale)); }
+.engine-capabilities-supported { color: var(--success); }
+.engine-capabilities-unsupported { color: var(--warn); overflow-wrap: anywhere; }
+.engine-capabilities-command { margin-top: 2px; color: var(--muted); font-size: calc(11px * var(--font-scale)); overflow-wrap: anywhere; }

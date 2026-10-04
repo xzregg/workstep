@@ -1,0 +1,46 @@
+.sidebar-conversation-tabs {
+  display: inline-flex;
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  font-family: var(--font-sans, system-ui, sans-serif);
+  letter-spacing: normal;
+  text-transform: none;
+}
+.sidebar-conversation-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  height: 24px;
+  padding: 0 2px;
+  border: 0;
+  color: var(--meta);
+  background: transparent;
+  font-size: calc(11px * var(--font-scale));
+  white-space: nowrap;
+  cursor: pointer;
+}
+.sidebar-conversation-tab[aria-selected="true"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+.sidebar-conversation-tab[aria-selected="true"]::after {
+  content: '';
+  position: absolute;
+  inset-inline: 2px;
+  bottom: 2px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+.sidebar-conversation-tab:focus-visible { outline: 2px solid var(--accent); }
+.sidebar-conversation-tab-count { color: var(--meta); font-size: calc(10px * var(--font-scale)); font-weight: 400; }
+.sidebar-conversation-empty { padding: 8px; color: var(--meta); font-size: calc(12px * var(--font-scale)); }
+@media (max-width: 1023px) {
+  .sidebar-conversation-tab { height: var(--mobile-control-regular); min-height: var(--mobile-control-regular); }
+}

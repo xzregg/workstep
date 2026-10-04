@@ -47,6 +47,11 @@ test('running process stays closed and previews only the latest two timeline ite
     assert.match(container.querySelector('.process-trace-preview')!.textContent!, /Read latest/)
 
     await act(async () => render([first, second, third, fourth]))
+    assert.equal(container.querySelectorAll('.process-trace-preview-item').length, 3)
+    await act(async () => {
+      preview.querySelector('.process-trace-preview-track')!
+        .dispatchEvent(new window.Event('animationend', { bubbles: true }))
+    })
     assert.equal(container.querySelectorAll('.process-trace-preview-item').length, 2)
     assert.match(container.querySelector('.process-trace-preview')!.textContent!, /Read latest/)
     assert.match(container.querySelector('.process-trace-preview')!.textContent!, /Checking result/)
@@ -54,6 +59,7 @@ test('running process stays closed and previews only the latest two timeline ite
 
     const update = { ...fourth, delta: ' complete' }
     await act(async () => render([first, second, third, fourth, update]))
+    assert.equal(container.querySelectorAll('.process-trace-preview-item').length, 2)
     assert.match(container.querySelector('.process-trace-preview')!.textContent!, /Checking result complete/)
 
     await act(async () => {
@@ -107,6 +113,38 @@ test('running preview stays at two compact rows on mobile', async () => {
   }
 })
 
+test('a new process item scrolls the previous two rows upward', async () => {
+  const window = new Window({ width: 1280 })
+  Object.assign(globalThis, {
+    window, document: window.document, HTMLElement: window.HTMLElement,
+    IS_REACT_ACT_ENVIRONMENT: true,
+  })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const first = { type: 'thinking_delta', data: { delta: 'First' } }
+  const second = { type: 'TOOL_CALL_START', toolCallId: 'one', toolCallName: 'Second' }
+  const third = { type: 'TEXT_MESSAGE_CHUNK', phase: 'commentary', delta: 'Third' }
+  try {
+    await act(async () => root.render(<I18nProvider><ProcessTrace running events={[first, second]} /></I18nProvider>))
+    const preview = container.querySelector('.process-trace-preview')!
+    assert.equal(preview.querySelectorAll('.process-trace-preview-item').length, 2)
+
+    await act(async () => root.render(<I18nProvider><ProcessTrace running events={[first, second, third]} /></I18nProvider>))
+    assert.equal(preview.querySelectorAll('.process-trace-preview-item').length, 3)
+    assert.match(preview.textContent!, /First.*Second.*Third/)
+    const track = preview.querySelector('.process-trace-preview-track')!
+    assert.ok(track.classList.contains('is-scrolling'))
+
+    await act(async () => track.dispatchEvent(new window.Event('animationend', { bubbles: true })))
+    assert.equal(preview.querySelectorAll('.process-trace-preview-item').length, 2)
+    assert.doesNotMatch(preview.textContent!, /First/)
+    assert.match(preview.textContent!, /Second.*Third/)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
 test('reclosing the process aligns the preview sweep with the title', async () => {
   const window = new Window({ width: 390 })
   Object.assign(globalThis, {
@@ -147,6 +185,9 @@ test('the collapsed preview animates as a container and respects reduced motion'
   assert.equal(previewAnimation, titleAnimation)
   assert.match(previewRule, /-webkit-mask-image:\s*linear-gradient/)
   assert.match(css, /@keyframes process-trace-shine\s*\{[^}]*-webkit-mask-position:/s)
+  assert.match(css, /\.process-trace-preview-track\.is-scrolling\s*\{[^}]*animation:\s*process-trace-scroll-up/s)
+  assert.match(css, /@keyframes process-trace-scroll-up\s*\{[^}]*translateY\(-20px\)/s)
   assert.match(css, /\.process-trace-preview:not\(\[data-visible\]\)\s*\{[^}]*visibility:\s*hidden/s)
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.process-trace-preview\s*\{\s*animation:\s*none/s)
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{[^}]*\}[^}]*\.process-trace-preview-track\.is-scrolling\s*\{\s*animation:\s*none/s)
 })

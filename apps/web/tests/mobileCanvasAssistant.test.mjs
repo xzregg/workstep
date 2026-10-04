@@ -14,6 +14,10 @@ const flowCanvasSource = await readFile(
   new URL('../src/components/FlowCanvas.tsx', import.meta.url),
   'utf8',
 )
+const nodeConfigSource = await readFile(
+  new URL('../src/components/NodeConfigPanel.tsx', import.meta.url),
+  'utf8',
+)
 const taskListSource = await readFile(
   new URL('../src/pages/TaskList.tsx', import.meta.url),
   'utf8',
@@ -54,7 +58,7 @@ test('mobile workflow editor supports the same step editing panel as desktop', (
   assert.doesNotMatch(canvasEditorSource, /if \(!activeProject \|\| compact\) return/)
   assert.match(flowCanvasSource, /const readOnly = requestedReadOnly\b/)
   assert.match(flowCanvasSource, /onNodeClick=\{compactLayout && !readOnly/)
-  assert.match(flowCanvasSource, /className="flow-node-config-panel"/)
+  assert.match(nodeConfigSource, /className="flow-node-config-panel"/)
   assert.match(mobileCss, /\.flow-node-config-panel\s*\{[^}]*position: absolute[^}]*width: 100% !important/s)
 })
 

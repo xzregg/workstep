@@ -105,6 +105,7 @@ class QuickButtonItem(BaseSchema):
     script_path: str | None = None
     cwd_mode: str | None = None
     require_confirmation: bool | None = None
+    confirmation_input_prompt: str | None = None
 
 
 class QuickButtonsRequest(BaseSchema):
@@ -132,9 +133,18 @@ def _error_status(exc: ValueError) -> int:
     return 400
 
 
+def _enforce_project_scope(project_id: str | None) -> None:
+    from services.remote_access import get_current_actor
+
+    actor = get_current_actor()
+    if actor is not None and actor.project_id is not None and actor.project_id != project_id:
+        raise HTTPException(status_code=403, detail="Project scope denied")
+
+
 async def _run_db(project_id: str, operation):
     from main import project_manager
 
+    _enforce_project_scope(project_id)
     return await project_manager.run_db(
         project_id,
         lambda _project: operation(),
@@ -154,6 +164,7 @@ async def get_quick_buttons(project_id: str = Query(..., alias="project_id")):
 @router.put("/quick-buttons")
 async def set_quick_buttons(req: QuickButtonsRequest):
     """Persist the per-project chat quick buttons."""
+    _enforce_project_scope(req.project_id)
     try:
         buttons = await _run_db(
             req.project_id,
@@ -183,6 +194,7 @@ async def get_system_prompt(project_id: str = Query(..., alias="project_id")):
 @router.put("/system-prompt")
 async def set_system_prompt(req: SystemPromptRequest):
     """Persist the project's chat system prompt; empty clears it (no system prompt)."""
+    _enforce_project_scope(req.project_id)
     try:
         prompt = await _run_db(
             req.project_id,
@@ -196,6 +208,7 @@ async def set_system_prompt(req: SystemPromptRequest):
 @router.post("/enhance-prompt")
 async def enhance_prompt(req: EnhancePromptRequest):
     """Rewrite a draft prompt into a clearer version (default chat engine)."""
+    _enforce_project_scope(req.project_id)
     try:
         prompt = await _module().enhance_prompt(req.project_id, req.prompt)
     except ValueError as exc:
@@ -222,6 +235,7 @@ async def list_sessions(
 
 @router.patch("/{session_id}/archive")
 async def archive_session(session_id: str, req: ChatSessionArchiveRequest):
+    _enforce_project_scope(req.project_id)
     try:
         return await _run_db(
             req.project_id,
@@ -234,6 +248,7 @@ async def archive_session(session_id: str, req: ChatSessionArchiveRequest):
 @router.post("")
 async def create_session(req: ChatSessionCreateRequest):
     """Create one chat session for a project."""
+    _enforce_project_scope(req.project_id)
     try:
         session = await _run_db(
             req.project_id,
@@ -258,10 +273,12 @@ async def create_session(req: ChatSessionCreateRequest):
 async def get_session(
     session_id: str,
     project_id: str = Query(..., alias="project_id"),
+    limit: int = Query(300, ge=1, le=300),
+    offset: int = Query(0, ge=0),
 ):
-    """Return one chat session with its full message history."""
+    """Return one chat session with a page of recent messages."""
     session = await _run_db(
-        project_id, lambda: _module().get_session(project_id, session_id)
+        project_id, lambda: _module().get_session(project_id, session_id, limit=limit, offset=offset)
     )
     if session is None:
         raise HTTPException(status_code=404, detail="Chat session not found")
@@ -298,6 +315,7 @@ async def rename_session(
     req: ChatSessionRenameRequest,
 ):
     """Rename one chat session."""
+    _enforce_project_scope(req.project_id)
     try:
         session = await _run_db(
             req.project_id,
@@ -316,6 +334,7 @@ async def update_permission_mode(
     req: ChatSessionPermissionRequest,
 ):
     """Apply a permission mode to the current run and future turns."""
+    _enforce_project_scope(req.project_id)
     try:
         return await _module().update_permission_mode(
             req.project_id,
@@ -329,6 +348,7 @@ async def update_permission_mode(
 @router.post("/{session_id}/fork")
 async def fork_session(session_id: str, req: ChatSessionForkRequest):
     """Create an independent native or history-backed chat-session fork."""
+    _enforce_project_scope(req.project_id)
     try:
         return await _module().fork_session(
             req.project_id,
@@ -350,6 +370,7 @@ async def fork_session(session_id: str, req: ChatSessionForkRequest):
 @router.post("/{session_id}/handoff")
 async def handoff_session(session_id: str, req: ChatSessionHandoffRequest):
     """Switch engines without creating another visible chat session."""
+    _enforce_project_scope(req.project_id)
     try:
         return await _run_db(
             req.project_id,
@@ -375,6 +396,7 @@ async def delete_session(
     project_id: str = Query(..., alias="project_id"),
 ):
     """Delete one chat session and all of its messages."""
+    _enforce_project_scope(project_id)
     try:
         deleted = await _run_db(
             project_id, lambda: _module().delete_session(project_id, session_id)
@@ -393,6 +415,7 @@ async def chat_message(
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
 ):
     """Queue one chat turn for a session; events stream over WebSocket."""
+    _enforce_project_scope(req.project_id)
     try:
         accepted = await _run_db(
             req.project_id,
@@ -425,6 +448,7 @@ async def reorder_sessions(
     ordered_ids: list[str] = Body(..., embed=True),
 ):
     """Persist a new display order for a project's chat sessions."""
+    _enforce_project_scope(pid)
     try:
         await _run_db(pid, lambda: _module().reorder_sessions(pid, ordered_ids))
     except ValueError as exc:
@@ -438,6 +462,7 @@ async def bulk_delete_sessions(
     session_ids: list[str] = Body(..., embed=True),
 ):
     """Delete multiple chat sessions; running sessions are skipped."""
+    _enforce_project_scope(pid)
     try:
         result = await _run_db(
             pid, lambda: _module().bulk_delete_sessions(pid, session_ids)
@@ -450,12 +475,22 @@ async def bulk_delete_sessions(
 @router.post("/{session_id}/stop")
 async def stop_session(session_id: str, project_id: str | None = Query(None)):
     """Stop the running turn of one chat session."""
-    return {"stopped": await _module().stop_current(session_id)}
+    _enforce_project_scope(project_id)
+    if project_id is not None:
+        from models.chat_session import ChatSession
+
+        exists = await _run_db(project_id, lambda: ChatSession.select().where(
+            ChatSession.id == session_id,
+        ).exists())
+        if not exists:
+            raise HTTPException(status_code=404, detail="Chat session not found")
+    return {"stopped": await _module().stop_current(session_id, project_id=project_id)}
 
 
 @router.post("/{session_id}/live-message")
 async def send_live_message(session_id: str, req: ChatLiveMessageRequest):
     """Insert a user message into the session's currently running turn."""
+    _enforce_project_scope(req.project_id)
     try:
         return await _module().send_live_message(
             session_id,

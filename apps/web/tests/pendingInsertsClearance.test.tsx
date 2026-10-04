@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { Window } from 'happy-dom'
 import { act } from 'react'
@@ -63,8 +64,12 @@ test('pending-insert panel reserves space on the wrapper, not the scroller', asy
     sessionStorage: window.sessionStorage,
     Event: window.Event,
     HTMLElement: window.HTMLElement,
+    getComputedStyle: window.getComputedStyle.bind(window),
     IS_REACT_ACT_ENVIRONMENT: true,
   })
+  const styles = window.document.createElement('style')
+  styles.textContent = await readFile(new URL('../src/index.css', import.meta.url), 'utf8')
+  window.document.head.appendChild(styles)
   const restoreApis = installApiStubs()
   useProjectStore.setState({ projects: [project] as never, activeProject: project as never, loading: false })
   useChatListStore.setState({ sessionsByProject: {}, quickButtons: [], listLoadingByProject: {} })

@@ -11,6 +11,14 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from settings import settings
+from services.engine_packages import prepare_engine_package_dir
+from services.gateway_client import GatewayClientService
+from services.gateway_client.browser_login import GatewayBrowserLogin
+from api.gateway_platform import router as gateway_platform_router
+from api.managed import router as managed_router
+from api.platform_share import router as platform_share_router
+
+prepare_engine_package_dir()
 
 os.environ.setdefault("WORKSTEP_DAEMON_DIR", str(Path(__file__).resolve().parent))
 os.environ.setdefault("WORKSTEP_CLI_PYTHON", sys.executable)
@@ -21,6 +29,8 @@ os.environ.setdefault(
 from streaming.bus import EventBus
 from api.project import router as project_router
 from api.task import router as task_router
+from api.task_archive import router as task_archive_router
+from api.task_reviews import router as task_reviews_router
 from api.action import task_router as action_task_router, run_router as action_run_router, project_router as action_project_router, session_router as action_session_router
 from api.history import router as history_router
 from api.fs import router as fs_router
@@ -45,7 +55,8 @@ from services.git import git_service
 from api.skills import router as skills_router
 from api.project_settings import router as project_settings_router
 from api.pending_message_inserts import router as pending_message_inserts_router
-from api.channels import router as channels_router
+from api.project_audit import router as project_audit_router
+from api.channel_bots import router as channel_bots_router, task_group_router
 import api.remote_project as remote_project_api
 from api.remote_project import router as remote_project_router
 from services.project import project_manager
@@ -61,7 +72,8 @@ from services.schedule import ScheduleModule
 from services.observability import configure_observability, instrument_fastapi
 from agent_assistants.chat_session import ChatSessionModule
 from agent_assistants.channel_chat import ChannelChatModule
-from services.channels.manager import ChannelManager
+from services.channels.bots import BotManager
+from services.channels.responder import ChatSessionResponder
 from streaming.ws import (
     WsSubscription,
     _handle_client_message,
@@ -118,13 +130,14 @@ task_draft_module: TaskDraftModule | None = None
 schedule_module: ScheduleModule | None = None
 chat_session_module: ChatSessionModule | None = None
 channel_chat_module: ChannelChatModule | None = None
-channel_manager: ChannelManager | None = None
+channel_bot_manager: BotManager | None = None
+gateway_client = GatewayClientService()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
-    global task_service, workflow_runtime, coordinator_module, workflow_gen_module, task_draft_module, schedule_module, chat_session_module, channel_chat_module, channel_manager
+    global task_service, workflow_runtime, coordinator_module, workflow_gen_module, task_draft_module, schedule_module, chat_session_module, channel_chat_module, channel_bot_manager
     logger.info("WorkStep Daemon starting on %s:%d", settings.host, settings.port)
     await asyncio.to_thread(config_store.migrate_legacy_config)
     await asyncio.to_thread(ensure_global_templates)
@@ -140,6 +153,7 @@ async def lifespan(app: FastAPI):
     await sync_all_project_configs(project_manager)
     task_service = TaskService(event_bus)
     workflow_runtime = WorkflowRuntime(event_bus, project_manager)
+    gateway_client.workflow_runtime = workflow_runtime
     recovered = await workflow_runtime.recover_running_workflows()
     if recovered:
         logger.info(
@@ -170,13 +184,12 @@ async def lifespan(app: FastAPI):
     )
     chat_session_module = ChatSessionModule(event_bus, project_manager)
     channel_chat_module = ChannelChatModule(event_bus, project_manager)
-    from services.channels.responder import ChatSessionResponder
-    channel_manager = ChannelManager(
-        event_bus,
-        project_manager,
+    channel_bot_manager = BotManager(
+        config_store, project_manager, event_bus, coordinator_module,
         ChatSessionResponder(event_bus, project_manager, channel_chat_module),
+        workflow_runtime=workflow_runtime,
     )
-    await channel_manager.start()
+    await channel_bot_manager.start()
     recovered_chats = await asyncio.to_thread(
         chat_session_module.recover_interrupted_messages
     )
@@ -186,12 +199,19 @@ async def lifespan(app: FastAPI):
             recovered_chats,
         )
     await schedule_module.start()
+    await gateway_client.start()
     try:
         yield
     finally:
+        await gateway_client.close()
         await git_service.close()
         from services.engine_runtime import runtime_manager
         await runtime_manager.shutdown()
+        try:
+            from engines.deepseek_harness import DeepSeekHarnessEngine
+            await asyncio.to_thread(DeepSeekHarnessEngine.shutdown_pool)
+        except Exception:
+            logger.warning("DeepSeek Harness pool shutdown failed", exc_info=True)
         logger.info("WorkStep Daemon shutting down")
         if workflow_gen_module is not None:
             await workflow_gen_module.shutdown()
@@ -199,8 +219,8 @@ async def lifespan(app: FastAPI):
             await task_draft_module.shutdown()
         if schedule_module is not None:
             await schedule_module.shutdown()
-        if channel_manager is not None:
-            await channel_manager.shutdown()
+        if channel_bot_manager is not None:
+            await channel_bot_manager.shutdown()
         if channel_chat_module is not None:
             await channel_chat_module.shutdown()
         if chat_session_module is not None:
@@ -218,6 +238,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="WorkStep Daemon", lifespan=lifespan, favicon_url="/static/favicon.svg")
+app.state.gateway_client = gateway_client
+app.state.gateway_browser_login = GatewayBrowserLogin(gateway_client)
+app.include_router(gateway_platform_router)
+gateway_client.asgi_app = app
+app.include_router(managed_router)
+app.include_router(platform_share_router)
 instrument_fastapi(app)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.add_middleware(DesktopSecurityMiddleware)
@@ -235,6 +261,8 @@ app.add_middleware(BrowserActorMiddleware)
 # Register routers
 app.include_router(project_router)
 app.include_router(task_router)
+app.include_router(task_archive_router)
+app.include_router(task_reviews_router)
 app.include_router(action_task_router)
 app.include_router(action_run_router)
 app.include_router(action_project_router)
@@ -253,11 +281,13 @@ app.include_router(task_dispatch_router)
 app.include_router(schedule_router)
 app.include_router(chat_session_router)
 app.include_router(pending_message_inserts_router)
+app.include_router(project_audit_router)
+app.include_router(channel_bots_router)
+app.include_router(task_group_router)
 app.include_router(statistics_router)
 app.include_router(share_router)
 app.include_router(assistant_router)
 app.include_router(project_settings_router)
-app.include_router(channels_router)
 app.include_router(system_settings_router)
 app.include_router(git_router)
 app.include_router(skills_router)

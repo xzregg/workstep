@@ -346,20 +346,59 @@ async def test_base_engine_acp_session_defaults_are_safe_noops(tmp_path):
 
 
 def test_registry_has_claude():
-    """Registry includes the claude engine."""
-    assert "claude" in ENGINE_REGISTRY
+    """Codex/Claude CLI modules are retained but not registered."""
+    from engines.codex import CodexEngine
+    from engines.claude_code import ClaudeCodeEngine
+    from engines.core.registry import _ALL_ENGINES
+
+    assert CodexEngine.ENGINE_ID == "codex"
+    assert ClaudeCodeEngine.ENGINE_ID == "claude"
+    assert "claude" not in _ALL_ENGINES
+    assert "codex" not in _ALL_ENGINES
+    assert "claude" not in ENGINE_REGISTRY
+    assert "codex" not in ENGINE_REGISTRY
 
 
 def test_create_engine():
     """create_engine returns a BaseLLMEngine instance."""
     from engines.core.base import BaseLLMEngine
-    engine = create_engine("claude")
+    from engines.core.registry import _ALL_ENGINES as _AE2, ENGINE_REGISTRY as _ER2
+    engine = create_engine(next(iter(_ER2)) if _ER2 else next(iter(_AE2)))
+    if engine is None:
+        from engines.core.registry import _ALL_ENGINES as _AE3
+        cls = next(iter(_AE3.values()))
+        engine = cls()
     assert isinstance(engine, BaseLLMEngine)
 
 
 def test_create_engine_unknown():
     """create_engine returns None for unknown backend."""
     assert create_engine("unknown") is None
+
+
+def test_create_engine_rechecks_engine_missing_from_startup_registry(monkeypatch):
+    class RecoveredEngine(StubEngine):
+        def __init__(self):
+            super().__init__([])
+
+    monkeypatch.setattr(engine_registry, "_ALL_ENGINES", {"recovered": RecoveredEngine})
+    monkeypatch.setattr(engine_registry, "ENGINE_REGISTRY", {})
+    monkeypatch.setattr(engine_registry, "_SCAN_CACHE", [{"id": "recovered", "installed": False}])
+    assert isinstance(create_engine("recovered"), RecoveredEngine)
+    assert engine_registry.ENGINE_REGISTRY["recovered"] is RecoveredEngine
+    assert engine_registry._SCAN_CACHE is None
+
+
+def test_create_engine_does_not_register_uninstalled_engine(monkeypatch):
+    class MissingEngine(StubEngine):
+        @staticmethod
+        def is_installed():
+            return False
+
+    monkeypatch.setattr(engine_registry, "_ALL_ENGINES", {"missing": MissingEngine})
+    monkeypatch.setattr(engine_registry, "ENGINE_REGISTRY", {})
+    assert create_engine("missing") is None
+    assert "missing" not in engine_registry.ENGINE_REGISTRY
 
 
 def test_create_engine_waits_for_registry_refresh(monkeypatch):
@@ -423,7 +462,7 @@ def test_engine_install_base_defaults():
     assert result.already_installed is True
 
 
-def test_python_sdk_update_upgrades_in_daemon_environment(monkeypatch):
+def test_python_sdk_update_upgrades_in_user_runtime(monkeypatch, tmp_path):
     captured = []
 
     async def fake_run(cmd, *, timeout=600):
@@ -431,6 +470,9 @@ def test_python_sdk_update_upgrades_in_daemon_environment(monkeypatch):
         return 0, "updated"
 
     monkeypatch.setattr(engine_base.shutil, "which", lambda _name: "/usr/bin/uv")
+    package_dir = tmp_path / "python-packages"
+    monkeypatch.setenv("WORKSTEP_ENGINE_PACKAGE_DIR", str(package_dir))
+    monkeypatch.setattr(engine_base, "_has_pip", lambda: False)
     monkeypatch.setattr(engine_base, "run_install_command", fake_run)
 
     result = asyncio.run(
@@ -438,11 +480,43 @@ def test_python_sdk_update_upgrades_in_daemon_environment(monkeypatch):
     )
 
     assert captured == [[
-        "uv", "pip", "install", "--upgrade", "--python", sys.executable,
+        "uv", "pip", "install", "--upgrade", "--target", str(package_dir),
         "openai-codex",
     ]]
     assert result.success is True
     assert "重启 daemon" in result.message
+
+
+@pytest.mark.anyio
+async def test_python_sdk_install_slow_directory_keeps_event_loop_responsive(monkeypatch, tmp_path):
+    import threading
+    import time
+
+    package_dir = tmp_path / "python-packages"
+    monkeypatch.setenv("WORKSTEP_ENGINE_PACKAGE_DIR", str(package_dir))
+    main_thread = threading.get_ident()
+    worker_threads = []
+    original_makedirs = engine_base.os.makedirs
+
+    def slow_makedirs(*args, **kwargs):
+        worker_threads.append(threading.get_ident())
+        time.sleep(0.2)
+        return original_makedirs(*args, **kwargs)
+
+    async def fake_run(cmd, *, timeout=600):
+        return 0, "installed"
+
+    monkeypatch.setattr(engine_base.os, "makedirs", slow_makedirs)
+    monkeypatch.setattr(engine_base, "_has_pip", lambda: False)
+    monkeypatch.setattr(engine_base.shutil, "which", lambda _name: "/usr/bin/uv")
+    monkeypatch.setattr(engine_base, "run_install_command", fake_run)
+
+    started = asyncio.get_running_loop().time()
+    task = asyncio.create_task(engine_base.install_python_package("openai-codex"))
+    await asyncio.sleep(0.02)
+    assert asyncio.get_running_loop().time() - started < 0.1
+    assert (await task).success
+    assert worker_threads and all(thread != main_thread for thread in worker_threads)
 
 
 def test_python_sdk_install_targets_desktop_user_runtime(monkeypatch, tmp_path):
@@ -454,12 +528,35 @@ def test_python_sdk_install_targets_desktop_user_runtime(monkeypatch, tmp_path):
 
     package_dir = tmp_path / "python-packages"
     monkeypatch.setenv("WORKSTEP_ENGINE_PACKAGE_DIR", str(package_dir))
+    monkeypatch.setattr(engine_base, "_has_pip", lambda: True)
     monkeypatch.setattr(engine_base, "run_install_command", fake_run)
 
     result = asyncio.run(engine_base.install_python_package("openai-codex"))
 
     assert captured == [[
         sys.executable, "-m", "pip", "install", "--target", str(package_dir),
+        "openai-codex",
+    ]]
+    assert result.success is True
+
+
+def test_python_sdk_install_targets_user_runtime_without_pip(monkeypatch, tmp_path):
+    captured = []
+
+    async def fake_run(cmd, *, timeout=600):
+        captured.append(cmd)
+        return 0, "installed"
+
+    package_dir = tmp_path / "python-packages"
+    monkeypatch.setenv("WORKSTEP_ENGINE_PACKAGE_DIR", str(package_dir))
+    monkeypatch.setattr(engine_base, "_has_pip", lambda: False)
+    monkeypatch.setattr(engine_base.shutil, "which", lambda name: "/usr/bin/uv" if name == "uv" else None)
+    monkeypatch.setattr(engine_base, "run_install_command", fake_run)
+
+    result = asyncio.run(engine_base.install_python_package("openai-codex", upgrade=True))
+
+    assert captured == [[
+        "uv", "pip", "install", "--upgrade", "--target", str(package_dir),
         "openai-codex",
     ]]
     assert result.success is True
@@ -476,7 +573,8 @@ def test_get_available_engines():
     """get_available_engines returns list with install status."""
     engines = get_available_engines()
     assert len(engines) >= 1
-    claude_entry = next(e for e in engines if e["id"] == "claude")
+    assert not any(e["id"] in ("claude", "codex") for e in engines)
+    claude_entry = next(e for e in engines if e["id"] == "hermes")
     assert "installed" in claude_entry
     assert isinstance(claude_entry["installed"], bool)
     assert "installable" in claude_entry
@@ -498,10 +596,16 @@ def test_registry_marks_python_sdk_engines_as_updatable():
 
 
 def test_claude_resolve_binary():
-    """resolve_binary returns a path or None."""
+    """Hidden CLI modules stay importable but unregistered."""
+    from engines.core.registry import _ALL_ENGINES, ENGINE_REGISTRY, get_available_engines
+    ClaudeCodeEngine._binary_override = getattr(ClaudeCodeEngine, '_binary_override', None)
     binary = ClaudeCodeEngine.resolve_binary()
     # May be None if claude not installed — that's OK
     assert binary is None or isinstance(binary, str)
+    assert "claude" not in _ALL_ENGINES
+    assert "codex" not in _ALL_ENGINES
+    assert "claude" not in ENGINE_REGISTRY
+    assert all(e["id"] not in ("claude", "codex") for e in get_available_engines())
 
 
 def test_claude_supports_resume():

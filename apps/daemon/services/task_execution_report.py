@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from models import Message, ReviewRun, StepRun, Task, WorkflowRun
-from services.statistics import _parse_usage, _usage_cost
+from services.usage_accounting import parse_usage, usage_cost
 
 
 REPORT_CHANNELS = {"execution", "review"}
@@ -186,7 +186,7 @@ def build_task_execution_report(
                 target = ("execution", step.id)
         if target is None:
             continue
-        usage = _parse_usage(message.usage_json, message.engine)
+        usage = parse_usage(message.usage_json, message.engine)
         if usage is None:
             continue
         reported_calls += 1
@@ -196,7 +196,7 @@ def build_task_execution_report(
             "cache_write_tokens", "total_tokens",
         ):
             bucket[key] += usage[key]
-        cost = _usage_cost(
+        cost = usage_cost(
             usage,
             message.model or "",
             pricing,
@@ -211,8 +211,12 @@ def build_task_execution_report(
             bucket["sources"].add(source)
         bucket["cost"] += cost
         bucket["message_count"] += 1
-        author_name = str(message.author_name or "").strip() or "未知用户"
-        author_id = str(message.author_id or "").strip()
+        if message.author_type in {"assistant", "system", "scheduler"}:
+            author_id = str(message.initiated_by_user_id or "").strip()
+            author_name = str(message.initiated_by_username or "").strip() or "未知用户"
+        else:
+            author_id = str(message.author_id or "").strip()
+            author_name = str(message.author_name or "").strip() or "未知用户"
         user_key = author_id or f"name:{author_name}"
         user_bucket = usage_by_user.setdefault(user_key, {
             "author_id": author_id,

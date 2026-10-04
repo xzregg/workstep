@@ -11,7 +11,6 @@ from services.pending_message_inserts import (
     reorder_pending_inserts,
     update_pending_insert,
 )
-from services.remote_project import get_effective_actor
 
 router = APIRouter(prefix="/api/pending-message-inserts", tags=["待插入消息"])
 
@@ -54,14 +53,13 @@ async def get_pending_inserts(
 
 @router.post("")
 async def add_pending_insert(req: PendingInsertCreateRequest):
-    actor = get_effective_actor()
     try:
         return await _run_db(
             req.project_id,
             lambda: create_pending_insert(
                 req.target_message_id,
                 req.content,
-                actor.user_name if actor is not None else "",
+                None,
             ),
         )
     except ValueError as exc:

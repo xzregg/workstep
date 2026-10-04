@@ -37,6 +37,10 @@ test('drawer opens, keeps a single navigation tree, closes after selection, and 
   assert.ok(menu)
   await act(async () => menu.click())
   assert.equal(menu.getAttribute('aria-expanded'), 'true')
+  const close = container.querySelector<HTMLButtonElement>('#workstep-navigation button.navigation-close')!
+  await act(async () => close.click())
+  assert.equal(menu.getAttribute('aria-expanded'), 'false')
+  await act(async () => menu.click())
   const session = [...container.querySelectorAll('button')].find(x => x.textContent === '会话一')!
   await act(async () => session.click())
   assert.equal(container.querySelector('output')!.textContent, '/chat')

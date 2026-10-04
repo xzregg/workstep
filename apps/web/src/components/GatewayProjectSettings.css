@@ -1,0 +1,17 @@
+.gateway-project-settings {
+  width: min(720px, calc(100vw - 32px));
+  height: min(560px, calc(100dvh - 32px));
+}
+
+.gateway-project-settings-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.gateway-project-settings .modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}

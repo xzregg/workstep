@@ -7,14 +7,12 @@ const settingsSource = await readFile(new URL('../src/pages/SettingsPage.tsx', i
 const remoteProjectsSource = await readFile(new URL('../src/pages/RemoteProjectSettings.tsx', import.meta.url), 'utf8')
 const remoteDeviceAccessSource = await readFile(new URL('../src/components/RemoteDeviceAccessList.tsx', import.meta.url), 'utf8')
 
-test('remote projects is a dedicated category inside settings', () => {
+test('remote access is assembled as a dedicated settings category', () => {
   assert.doesNotMatch(layoutSource, /RemoteProjectsPage/)
   assert.doesNotMatch(layoutSource, /showRemoteProjects/)
-  assert.match(settingsSource, /import RemoteProjectSettings from '\.\/RemoteProjectSettings'/)
+  assert.match(settingsSource, /import RemoteAccessSettings from '\.\/RemoteAccessSettings'/)
   assert.match(settingsSource, /activeSection === 'remote'/)
-  assert.match(settingsSource, /setActiveSection\('remote'\)/)
-  assert.match(settingsSource, /t\('nav\.remoteProjects'\)/)
-  assert.match(settingsSource, /<RemoteProjectSettings \/>/)
+  assert.match(settingsSource, /<RemoteAccessSettings \/>/)
 })
 
 test('remote access controls stay separate from the system category', () => {

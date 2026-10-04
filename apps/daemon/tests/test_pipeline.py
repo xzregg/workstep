@@ -337,13 +337,69 @@ def test_assemble_prompt_basic(tmp_path):
     assert "MEMORY" not in SYSTEM_PROMPT
     assert "You are" in SYSTEM_PROMPT
     assert all(ord(char) < 128 for char in SYSTEM_PROMPT)
-    assert "## Task description\nCurrent task context" in prompt
-    assert "## Task title\nTest" in prompt
+    assert "## Task\nTest\nCurrent task context" in prompt
     assert "You are executing one step in a WorkStep workflow." in prompt
     assert "## Step requirements\nWrite a PRD" in prompt
     assert not re.search(r"\bstage\b", prompt, re.IGNORECASE)
     assert "Write a PRD" in prompt
     assert f"artifacts/default/{task.id}/req" in prompt
+    db.close()
+
+
+def test_previous_outputs_are_available_to_new_and_resumed_sessions(tmp_path):
+    from models import Task, init_db
+    import time
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id="task", title="Revise", cwd=str(tmp_path), workflow_id="flow",
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    artifacts = tmp_path / ".workstep" / "artifacts"
+    previous = artifacts / "flow" / task.id / "a" / "1"
+    previous.mkdir(parents=True)
+    (previous / "plan.md").write_text("first version", encoding="utf-8")
+    step = Step(key="a", label="A", prompt="Revise the plan", outputs=[
+        {"name": "plan", "type": "md"},
+    ])
+    snapshot = {"execution_type": "feedback", "ports": [{
+        "port": 0, "name": "Review feedback", "status": "ready",
+        "sources": [{
+            "kind": "dashed", "step": "b", "round": 1,
+            "name": "feedback", "path": str(tmp_path / "feedback.md"),
+        }],
+    }]}
+
+    first = assemble_prompt(task, step, artifacts, artifact_round=1)
+    fresh = assemble_prompt(
+        task, step, artifacts, artifact_round=2, input_snapshot=snapshot,
+    )
+    resumed = assemble_retry_prompt(
+        task, step, artifacts, snapshot, artifact_round=2,
+    )
+    followup = assemble_followup_prompt(
+        task, step, artifacts, "Continue", artifact_round=2,
+        input_snapshot=snapshot,
+    )
+    expected = f".workstep/artifacts/flow/{task.id}/a/1/"
+    for prompt in (fresh, resumed, followup):
+        assert f"## Previous outputs\n`{expected}`" in prompt
+        assert "copy the file verbatim from the previous round" in prompt
+        assert "write the revised full file (not a diff)" in prompt
+        assert "do not create empty/placeholder files" in prompt
+        assert "Never modify files in the previous round directory." in prompt
+        assert "must be self-contained" in prompt
+        assert "plan.md" not in prompt.split("## Previous outputs", 1)[1].split("\n\n", 1)[0]
+        assert "Execution reason:" not in prompt
+        assert "Source step:" not in prompt
+        assert "Source round:" not in prompt
+        assert "Artifact: feedback" not in prompt
+    assert "feedback.md" in fresh
+    assert "feedback.md" in resumed
+    assert "## User message\nContinue" in followup
+    assert "## Inputs\n- Review feedback: `feedback.md`" in followup
+    assert "Use this feedback to revise the affected outputs." in followup
+    assert "## Previous outputs" not in first
     db.close()
 
 
@@ -363,13 +419,58 @@ def test_assemble_prompt_task_worktrees_keep_project_cwd(tmp_path):
     artifacts = tmp_path / ".workstep" / "artifacts"
     artifacts.mkdir()
 
-    prompt = assemble_prompt(task, Step(key="build", label="Build", prompt="Edit code"), artifacts)
+    prompt = assemble_prompt(task, Step(key="build", label="Build", prompt="Edit code in {worktrees}"), artifacts)
     assert f"Workspace directory: .workstep/worktrees/{task.id}" in prompt
+    assert f"Edit code in .workstep/worktrees/{task.id}" in prompt
     assert "Attached repositories: B." in prompt
     assert "Attached repositories: B, unrelated" not in prompt
     assert "The engine still starts in the project root" in prompt
     assert "project-relative paths" in prompt
     assert "git worktree add --relative-paths" in prompt
+    from services.prompt import SYSTEM_PROMPT
+    body = assemble_prompt(task, Step(key="build", label="Build", prompt="Edit code"), artifacts, separate_instructions=True)
+    assert "Workspace directory:" not in body
+    assert f".workstep/worktrees/{task.id}" not in body
+    assert "Attached repositories: B." in body
+    assert "git worktree add --relative-paths" not in body
+    assert "Run Git commands" not in body
+    assert "git worktree add --relative-paths" in SYSTEM_PROMPT
+    assert "project-relative paths" in SYSTEM_PROMPT
+    assert task.id not in SYSTEM_PROMPT
+    from services.prompt import assemble_step_system_prompt
+    system = assemble_step_system_prompt(task, artifacts)
+    assert f"Workspace directory: .workstep/worktrees/{task.id}" in system
+    assert str(tmp_path) not in system
+    assert "git worktree add --relative-paths" in system
+    (workspace / "C").mkdir()
+    (workspace / "C" / ".git").write_text("gitdir: elsewhere")
+    assert assemble_step_system_prompt(task, artifacts) == system
+    assert "Attached repositories" not in system
+    snapshot = {"execution_type": "feedback", "ports": []}
+    unchanged_body = assemble_prompt(task, Step(key="build", label="Build", prompt="Edit code"), artifacts, separate_instructions=True)
+    retry = assemble_retry_prompt(
+        task, Step(key="build", label="Build", prompt="Edit code"), artifacts, snapshot,
+        previous_prompt=unchanged_body, separate_instructions=True,
+    )
+    assert "Task Git workspace" not in retry
+    # Old DB snapshots may still have the workspace path. Do not report it as
+    # a changed workspace just because new bodies omit that stable information.
+    legacy_retry = assemble_retry_prompt(
+        task, Step(key="build", label="Build", prompt="Edit code"), artifacts, snapshot,
+        previous_prompt=unchanged_body.replace(
+            "Attached repositories:", f"Workspace directory: .workstep/worktrees/{task.id}. Attached repositories:",
+        ), separate_instructions=True,
+    )
+    assert "Task Git workspace" not in legacy_retry
+    (workspace / "D").mkdir()
+    (workspace / "D" / ".git").write_text("gitdir: elsewhere")
+    changed_retry = assemble_retry_prompt(
+        task, Step(key="build", label="Build", prompt="Edit code"), artifacts, snapshot,
+        previous_prompt=unchanged_body, separate_instructions=True,
+    )
+    assert "Attached repositories: B, C, D." in changed_retry
+    assert "Workspace directory:" not in changed_retry
+    assert assemble_step_system_prompt(task, artifacts) == system
     assert task.cwd == str(tmp_path)
     db.close()
 
@@ -616,17 +717,17 @@ def test_assemble_prompt_renders_dynamic_input_port_snapshot(tmp_path):
         input_snapshot=snapshot,
     )
 
-    assert "## Step execution context" in prompt
-    assert "Execution reason: `feedback_revision`" in prompt
-    assert "### Input: PRD" in prompt
-    assert "### Input: Bug列表" in prompt
+    assert "## Inputs" in prompt
+    assert "Execution reason:" not in prompt
+    assert "- PRD: `prd.md`" in prompt
+    assert "- Bug列表: `bugs.md`" in prompt
     assert "Input port" not in prompt
     assert "connection-0" not in prompt
     assert "connection-3" not in prompt
     assert "kind `solid`" not in prompt
     assert "kind `dashed`" not in prompt
-    assert "Path: `prd.md`" in prompt
-    assert "Path: `bugs.md`" in prompt
+    assert "Source step:" not in prompt
+    assert "Source round:" not in prompt
     assert "当前是首次开发" not in prompt
     assert "不是缺陷返工" not in prompt
     db.close()
@@ -671,8 +772,8 @@ def test_assemble_prompt_omits_inactive_feedback_input_and_its_outputs(tmp_path)
 
     prompt = assemble_prompt(task, step, tmp_path / "artifacts", input_snapshot=snapshot)
 
-    assert "### Input: 功能开发" in prompt
-    assert "### Input: 前端BUG 修复" not in prompt
+    assert "- 功能开发: `design.html`" in prompt
+    assert "前端BUG 修复" not in prompt
     assert "No artifact is available" not in prompt
     assert "开发文档" in prompt
     assert "分支名" in prompt
@@ -709,8 +810,8 @@ def test_assemble_prompt_feedback_includes_only_feedback_port_outputs(tmp_path):
 
     prompt = assemble_prompt(task, step, tmp_path / "artifacts", input_snapshot=snapshot)
 
-    assert "### Input: 前端BUG 修复" in prompt
-    assert "### Input: 功能开发" not in prompt
+    assert "- 前端BUG 修复: `bugs.md`" in prompt
+    assert "功能开发" not in prompt
     assert "修复列表" in prompt
     assert "开发文档" not in prompt
     retry_prompt = assemble_retry_prompt(
@@ -748,8 +849,8 @@ def test_assemble_prompt_with_only_inactive_input_has_no_artifact_contract(tmp_p
 
     prompt = assemble_prompt(task, step, tmp_path / "artifacts", input_snapshot=snapshot)
 
-    assert "## Step execution context" not in prompt
-    assert "## Output specification" not in prompt
+    assert "## Inputs" not in prompt
+    assert "## Outputs" not in prompt
     assert "## Artifact output directory" not in prompt
     assert "## Step requirements\n处理任务" in prompt
     db.close()
@@ -791,8 +892,8 @@ def test_assemble_prompt_tells_agent_to_inspect_directory_input(tmp_path):
         input_snapshot=snapshot,
     )
 
-    assert "- Directory: `solution-package`" in prompt
-    assert "Inspect this directory and read the files required for this step." in prompt
+    assert "- 方案包 (directory): `solution-package`" in prompt
+    assert "inspect the files needed for this step." in prompt
     db.close()
 
 
@@ -866,7 +967,7 @@ def test_assemble_followup_prompt_only_contains_message_and_output_requirements(
     assert SYSTEM_PROMPT not in prompt
     assert "交付文档.md" in prompt
     assert "必须生成或更新" not in prompt
-    assert "you may omit artifacts or leave them empty" in prompt
+    assert "## Current outputs" in prompt
     db.close()
 
 
@@ -910,12 +1011,45 @@ def test_assemble_retry_prompt_only_contains_current_inputs_and_output_contract(
     )
 
     assert "## Step execution update" in prompt
-    assert "Execution reason: `feedback_revision`" in prompt
-    assert "Path: `feedback.md`" in prompt
+    assert "Execution reason:" not in prompt
+    assert "- 修改意见: `feedback.md`" in prompt
     assert "交付文档.md" in prompt
     assert "不应重复的任务说明" not in prompt
     assert "不应重复的步骤要求" not in prompt
     assert "internal-edge" not in prompt
+    db.close()
+
+
+def test_retry_prompt_recognizes_task_in_legacy_saved_prompt(tmp_path):
+    from models import Task, init_db
+    import time
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id="task", title="Original title", description="Original description",
+        cwd=str(tmp_path), created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    previous_prompt = (
+        "## Task title\nOriginal title\n\n"
+        "## Task description\nOriginal description\n\n"
+        "## Step requirements\nBuild it"
+    )
+    step = Step(key="build", label="Build", prompt="Build it")
+
+    unchanged = assemble_retry_prompt(
+        task, step, tmp_path / "artifacts",
+        {"execution_type": "feedback", "ports": []},
+        previous_prompt=previous_prompt,
+    )
+    assert "## Updated Task" not in unchanged
+
+    task.description = "Revised description"
+    changed = assemble_retry_prompt(
+        task, step, tmp_path / "artifacts",
+        {"execution_type": "feedback", "ports": []},
+        previous_prompt=previous_prompt,
+    )
+    assert "## Updated Task\nOriginal title\nRevised description" in changed
     db.close()
 
 
@@ -936,9 +1070,9 @@ def test_assemble_prompt_unknown_output_type_uses_default_constraint(tmp_path):
     artifacts_dir.mkdir()
 
     prompt = assemble_prompt(task, step, artifacts_dir)
-    assert "## Output specification" in prompt
+    assert "## Outputs" in prompt
     assert "mystery" in prompt
-    assert "format requirement" in prompt
+    assert "Generic UTF-8 text" in prompt
     db.close()
 
 
@@ -961,7 +1095,7 @@ def test_assemble_prompt_empty_constraints_does_not_crash(tmp_path, monkeypatch)
     artifacts_dir.mkdir()
 
     prompt = assemble_prompt(task, step, artifacts_dir)
-    assert "## Output specification" in prompt
+    assert "## Outputs" in prompt
     db.close()
 
 
@@ -983,11 +1117,11 @@ def test_assemble_prompt_multi_output_avoids_generic_delegation_noise(tmp_path):
     artifacts_dir.mkdir()
 
     prompt = assemble_prompt(task, step, artifacts_dir)
-    assert "## Output specification" in prompt
+    assert "## Outputs" in prompt
     assert "b1" in prompt and "b2" in prompt
     assert "subagent" not in prompt
     assert "Delegation" not in prompt
-    assert "you may omit artifacts or leave them empty" in prompt
+    assert "If an output is not ready, omit it and explain why" in prompt
     assert "every artifact has been written" not in prompt
     assert "produce exactly the following list" not in prompt
     assert "strictly follow the declared output specification" not in prompt
@@ -1067,11 +1201,11 @@ def test_assemble_prompt_formats_dispatched_inputs_once_without_source_ids(tmp_p
 
     prompt = assemble_prompt(task, step, tmp_path / "artifacts")
 
-    assert "## Task description\n原始任务说明" in prompt
+    assert "## Task\nChild\n原始任务说明" in prompt
     assert "## Upstream task inputs" in prompt
     assert "brief.md" in prompt
-    assert "Source step: `design`" in prompt
-    assert "Source round: 2" in prompt
+    assert "Source step:" not in prompt
+    assert "Source round:" not in prompt
     assert prompt.count(f"task-inputs/opaque-dispatch-id/design/brief.md") == 1
     assert "project-secret" not in prompt
     assert "task-secret" not in prompt
@@ -1097,7 +1231,7 @@ def test_assemble_prompt_single_output_no_subagent_section(tmp_path):
     artifacts_dir.mkdir()
 
     prompt = assemble_prompt(task, step, artifacts_dir)
-    assert "## Output specification" in prompt
+    assert "## Outputs" in prompt
     assert "subagent" not in prompt
     db.close()
 
@@ -1153,7 +1287,7 @@ def test_assemble_prompt_directory_output_allows_multiple_files(tmp_path):
     prompt = assemble_prompt(task, step, artifacts_dir)
 
     output_path = f"artifacts/default/{task.id}/design/原型集合/"
-    assert "type: `directory`" in prompt
+    assert "— directory;" in prompt
     assert "Directory artifact" in prompt
     assert "multiple files and subdirectories" in prompt
     assert "do not merge everything into one file" in prompt
@@ -1403,10 +1537,13 @@ async def test_task_runner_persists_detailed_step_events_to_jsonl(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_task_runner_pauses_and_persists_interaction_round_trip(tmp_path):
+async def test_task_runner_pauses_and_persists_interaction_round_trip(
+    tmp_path, monkeypatch,
+):
     from models import init_db, Message, Task
     from engines.core.registry import ENGINE_REGISTRY
     from services.intervention import intervention_manager
+    import threading
     import time
     import uuid
 
@@ -1420,6 +1557,16 @@ async def test_task_runner_pauses_and_persists_interaction_round_trip(tmp_path):
         updated_at=int(time.time()),
     )
     engine = PipelineInteractionEngine()
+    saving_pending = threading.Event()
+    original_save = Message.save
+
+    def slow_pending_save(message, *args, **kwargs):
+        if message.run_status == "running" and message.events_json and "interaction_request" in message.events_json:
+            saving_pending.set()
+            time.sleep(0.2)
+        return original_save(message, *args, **kwargs)
+
+    monkeypatch.setattr(Message, "save", slow_pending_save)
     original = ENGINE_REGISTRY.copy()
     ENGINE_REGISTRY["interaction"] = lambda: engine
     try:
@@ -1435,6 +1582,12 @@ async def test_task_runner_pauses_and_persists_interaction_round_trip(tmp_path):
             }]},
             tmp_path / "artifacts",
         ))
+        assert await asyncio.wait_for(asyncio.to_thread(saving_pending.wait), 2)
+        assert "ask-pipeline" not in intervention_manager.list_pending()
+        heartbeat_started = time.perf_counter()
+        await asyncio.wait_for(asyncio.sleep(0), 0.1)
+        assert time.perf_counter() - heartbeat_started < 0.1
+        await asyncio.wait_for(asyncio.sleep(0.01), 0.1)
         for _ in range(100):
             if "ask-pipeline" in intervention_manager.list_pending():
                 break
@@ -1628,6 +1781,7 @@ async def test_task_runner_persists_usage_json(tmp_path):
     ENGINE_REGISTRY["claude"] = lambda: CapturingUsageEngine("output")
     try:
         bus = EventBus()
+        events = bus.subscribe()
         runner = TaskRunner(bus)
 
         steps_config = {
@@ -1643,13 +1797,33 @@ async def test_task_runner_persists_usage_json(tmp_path):
 
         msg = Message.select().where(Message.task == task).get()
         persisted_prompt = _json.loads(msg.prompt_json)["prompt"]
-        assert received_prompts == [persisted_prompt]
-        assert persisted_prompt.startswith("You are executing one step")
+        started = [
+            event for event in list(events._queue)
+            if event.get("type") == "TEXT_MESSAGE_START"
+        ]
+        assert len(started) == 2
+        assert all(event["messageId"] == msg.id for event in started)
+        assert not started[0].get("prompt")
+        assert started[1]["prompt"] == persisted_prompt
+        completed = [
+            event for event in list(events._queue)
+            if event.get("type") == "TEXT_MESSAGE_END"
+            and event.get("channel") == "execution"
+        ]
+        assert len(completed) == 1
+        assert completed[0]["messageId"] == msg.id
+        assert completed[0]["status"] == msg.run_status == "succeeded"
+        assert msg.ended_at is not None
+        assert len(received_prompts) == 1
+        assert received_prompts[0] in persisted_prompt
+        assert "### 正文（user，包含指令正文降级）" in persisted_prompt
+        assert received_prompts[0].startswith("You are executing one step")
         assert "## Project memory\n统一使用公开消息边界" in persisted_prompt
-        assert "## Task description\n实现完整提示词展示" in persisted_prompt
-        assert persisted_prompt.endswith(
-            f"artifacts/default/{task.id}/a"
-        )
+        assert "## Task\n" in persisted_prompt
+        assert "实现完整提示词展示" in persisted_prompt
+        raw_input = _json.loads(msg.prompt_json)["input_prompt"]
+        assert raw_input.endswith(f"artifacts/default/{task.id}/a")
+        assert "### 正文" not in raw_input
         assert "## Step requirements\nDo A" in persisted_prompt
         assert msg.usage_json is not None
         usage = _json.loads(msg.usage_json)
@@ -1660,6 +1834,160 @@ async def test_task_runner_persists_usage_json(tmp_path):
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_execution_message_start_slow_insert_keeps_loop_responsive(
+    tmp_path, monkeypatch,
+):
+    """A slow execution-message insert must not stall the event loop."""
+    import threading
+    import time
+    import uuid
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import Task, init_db
+
+    db = init_db(str(tmp_path / "slow-start.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Slow start", cwd=str(tmp_path),
+        engine="claude", created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    insert_started = threading.Event()
+    original_execute_sql = db.execute_sql
+
+    def slow_execution_insert(sql, params=None, commit=None):
+        if (
+            'INSERT INTO "message"' in sql
+            and params is not None
+            and "execution" in params
+            and not insert_started.is_set()
+        ):
+            insert_started.set()
+            time.sleep(0.35)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(db, "execute_sql", slow_execution_insert)
+    original_engines = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = lambda: PipelineUsageEngine("output")
+    pipeline_task = asyncio.create_task(TaskRunner(EventBus()).run_pipeline(
+        task,
+        {"steps": [{
+            "key": "a", "label": "A", "engine": "claude", "prompt": "Do A",
+        }]},
+        tmp_path / "artifacts",
+    ))
+    try:
+        assert await asyncio.to_thread(insert_started.wait, 2)
+        assert not pipeline_task.done()
+        started = time.perf_counter()
+        await asyncio.wait_for(asyncio.sleep(0), timeout=0.2)
+        assert time.perf_counter() - started < 0.2
+        await pipeline_task
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original_engines)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_previous_outputs_slow_scan_keeps_loop_responsive(
+    tmp_path, monkeypatch,
+):
+    import threading
+    import time
+    import uuid
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import Task, WorkflowRun, init_db
+    import services.prompt as prompt_module
+
+    db = init_db(str(tmp_path / "slow-previous-round.db"))
+    task = Task.create(
+        id="slow-previous-round", title="Revise", cwd=str(tmp_path),
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    previous = tmp_path / "artifacts" / "default" / task.id / "a" / "1"
+    previous.mkdir(parents=True)
+    (previous / "plan.md").write_text("first version", encoding="utf-8")
+    scan_started = threading.Event()
+    original_scan = prompt_module.iter_artifact_rounds
+
+    def slow_scan(*args, **kwargs):
+        scan_started.set()
+        time.sleep(0.3)
+        return original_scan(*args, **kwargs)
+
+    monkeypatch.setattr(prompt_module, "iter_artifact_rounds", slow_scan)
+    original_engines = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = lambda: PipelineUsageEngine("output")
+    workflow_run = WorkflowRun.create(
+        id=str(uuid.uuid4()), task=task, workflow_schema_version=1,
+        workflow_snapshot_json="{}", started_at=int(time.time()),
+    )
+    pipeline_task = asyncio.create_task(TaskRunner(EventBus()).run_pipeline(
+        task,
+        {"steps": [{
+            "key": "a", "label": "A", "engine": "claude", "prompt": "Revise",
+        }]},
+        tmp_path / "artifacts",
+        workflow_run=workflow_run,
+    ))
+    try:
+        assert await asyncio.to_thread(scan_started.wait, 2)
+        assert not pipeline_task.done()
+        await asyncio.wait_for(asyncio.sleep(0.01), 0.1)
+        await pipeline_task
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original_engines)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_execution_message_finish_slow_save_keeps_loop_responsive(
+    tmp_path, monkeypatch,
+):
+    """Finalizing an execution message runs outside the event loop."""
+    import threading
+    import time
+    import uuid
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import Message, Task, init_db
+
+    db = init_db(str(tmp_path / "slow-finish.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Slow finish", cwd=str(tmp_path),
+        engine="claude", created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    save_started = threading.Event()
+    original_save = Message.save
+
+    def slow_execution_save(message, *args, **kwargs):
+        if message.channel == "execution" and message.run_status == "succeeded":
+            save_started.set()
+            time.sleep(0.35)
+        return original_save(message, *args, **kwargs)
+
+    monkeypatch.setattr(Message, "save", slow_execution_save)
+    original_engines = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = lambda: PipelineUsageEngine("output")
+    pipeline_task = asyncio.create_task(TaskRunner(EventBus()).run_pipeline(
+        task,
+        {"steps": [{
+            "key": "a", "label": "A", "engine": "claude", "prompt": "Do A",
+        }]},
+        tmp_path / "artifacts",
+    ))
+    try:
+        assert await asyncio.to_thread(save_started.wait, 2)
+        assert not pipeline_task.done()
+        heartbeat_started = time.perf_counter()
+        await asyncio.wait_for(asyncio.sleep(0), timeout=0.2)
+        assert time.perf_counter() - heartbeat_started < 0.2
+        await pipeline_task
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original_engines)
         db.close()
 
 
@@ -1832,6 +2160,46 @@ async def test_task_runner_linear_pipeline(tmp_path):
         assert "a" in step_keys_in_events
         assert "b" in step_keys_in_events
 
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_task_runner_slow_engine_factory_keeps_event_loop_responsive(tmp_path):
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import Task, init_db
+    import threading
+    import time
+    import uuid
+
+    db = init_db(str(tmp_path / "factory.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Slow engine factory", cwd=str(tmp_path),
+        created_at=1, updated_at=1,
+    )
+    started = threading.Event()
+
+    def slow_factory():
+        started.set()
+        time.sleep(0.3)
+        return PipelineFakeEngine()
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["slow-factory"] = slow_factory
+    try:
+        running = asyncio.create_task(TaskRunner(EventBus()).run_pipeline(
+            task,
+            {"steps": [{"key": "do", "label": "执行", "engine": "slow-factory"}]},
+            tmp_path / "artifacts",
+        ))
+        waiting_since = time.perf_counter()
+        assert await asyncio.wait_for(asyncio.to_thread(started.wait), 1)
+        assert time.perf_counter() - waiting_since < 0.2
+        await asyncio.wait_for(asyncio.sleep(0.01), 0.1)
+        await running
+        assert Task.get_by_id(task.id).status == "ready"
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
@@ -2182,7 +2550,7 @@ async def test_task_runner_cancel_step_finalizes_pipeline_records(tmp_path):
         assert step.status == "cancelled"
         assert step.error == "手动停止"
         assert message.run_status == "cancelled"
-        assert f"{task.id}:a" not in runner._running_engines
+        assert not runner._live.has_running_engine(f"{task.id}:a")
         assert events[-1]["type"] == "RUN_ERROR"
         assert events[-1]["status"] == "cancelled"
 

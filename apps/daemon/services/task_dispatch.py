@@ -146,6 +146,7 @@ class TaskDispatchService:
             existing = Task.get_or_none(Task.source_dispatch_id == dispatch_id)
             if existing is None:
                 created = self._task_service.create_task(
+                    project_id=target_project_id,
                     title=task.title,
                     cwd=str(target_project.path),
                     description=description,

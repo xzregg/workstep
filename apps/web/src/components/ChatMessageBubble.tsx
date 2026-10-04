@@ -24,7 +24,10 @@ import {
 import { useI18n } from '../i18n'
 import { latestMarkdownPlanFromEvents, latestPlanFromEvents } from '../utils/plan'
 import { latestGoalFromEvents } from '../utils/goal'
-import { visibleAssistantContent } from '../utils/chatMessageDisplay'
+import {
+  assistantBodyFallback,
+  visibleAssistantContent,
+} from '../utils/chatMessageDisplay'
 import { asyncQuestionAnswer, asyncQuestionsFromEvents } from '../utils/asyncQuestion'
 
 /* ══════════════════════════════════════════
@@ -113,6 +116,24 @@ function MessageAvatar({
   return (
     <span
       className="chat-message-avatar-anchor"
+      role={showTooltip ? 'button' : undefined}
+      tabIndex={showTooltip ? 0 : undefined}
+      aria-label={showTooltip ? label : undefined}
+      onClick={showTooltip ? (event) => {
+        event.stopPropagation()
+        setHovered(true)
+      } : undefined}
+      onFocus={showTooltip ? () => setHovered(true) : undefined}
+      onBlur={showTooltip ? () => setHovered(false) : undefined}
+      onKeyDown={showTooltip ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          event.stopPropagation()
+          setHovered(true)
+        } else if (event.key === 'Escape') {
+          setHovered(false)
+        }
+      } : undefined}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -198,7 +219,12 @@ export default function ChatMessageBubble({
     || isToolEvent(event)
   ))
   if (isUser && isHiddenA2uiActionMessage(content)) return null
-  const visibleContent = isUser ? content : visibleAssistantContent(content, error)
+  const dedupedContent = isUser ? content : visibleAssistantContent(content, error)
+  // 兜底：正文为空、或被覆盖成「（生成失败：…）」包装文案时，从事件里的
+  // final_answer 正文重建，避免失败消息只剩红色错误行、正文消失。
+  const visibleContent = isUser
+    ? content
+    : dedupedContent || assistantBodyFallback(content, events)
   const rootStyle: CSSProperties = {
     width: isUser ? 'fit-content' : '100%',
     maxWidth: '100%', minWidth: 0,
@@ -210,7 +236,7 @@ export default function ChatMessageBubble({
     ...(isUser ? { marginLeft: 'auto' } : {}),
   }
   return (
-    <div {...rootProps} style={rootStyle} className="chat-message-row" data-thinking={!isUser && showLoading && streaming && interactions.length === 0 && asyncQuestions.length === 0 && !plan && !markdownPlan && !(visibleContent || hasToolActivity) ? '' : undefined}>
+    <div {...rootProps} style={rootStyle} className="chat-message-row" data-message-role={role} data-thinking={!isUser && showLoading && streaming && interactions.length === 0 && asyncQuestions.length === 0 && !plan && !markdownPlan && !(visibleContent || hasToolActivity) ? '' : undefined}>
       {isUser && header && (
         <div style={{
           fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', textAlign: 'right',

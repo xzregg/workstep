@@ -4,8 +4,9 @@ import test from 'node:test'
 
 const shareSource = await readFile(new URL('../src/components/ProjectShareDialog.tsx', import.meta.url), 'utf8')
 const settingsSource = await readFile(new URL('../src/pages/RemoteProjectSettings.tsx', import.meta.url), 'utf8')
-const clientSource = await readFile(new URL('../src/api/client.ts', import.meta.url), 'utf8')
+const projectApiSource = await readFile(new URL('../src/api/project.ts', import.meta.url), 'utf8')
 const layoutSource = await readFile(new URL('../src/components/Layout.tsx', import.meta.url), 'utf8')
+const layoutCss = await readFile(new URL('../src/components/Layout.css', import.meta.url), 'utf8')
 
 test('share dialog defaults device access to permanent and sends the selected expiry', () => {
   assert.match(shareSource, /useState<AccessDurationPreset>\('permanent'\)/)
@@ -16,14 +17,15 @@ test('share dialog defaults device access to permanent and sends the selected ex
 
 test('owner surfaces reuse one device access list with expiry and revoke actions', () => {
   assert.match(settingsSource, /<RemoteDeviceAccessList/)
-  assert.match(clientSource, /updateDeviceAccess/)
-  assert.match(clientSource, /\/remote-project\/devices\/access/)
-  assert.match(clientSource, /expires_at: number \| null/)
+  assert.match(projectApiSource, /updateDeviceAccess/)
+  assert.match(projectApiSource, /\/remote-project\/devices\/access/)
+  assert.match(projectApiSource, /expires_at: number \| null/)
 })
 
 test('remote project rows expose revoked and expired authorization states', () => {
-  assert.match(layoutSource, /p\.access_status === 'revoked'/)
-  assert.match(layoutSource, /p\.access_status === 'expired'/)
+  assert.match(layoutSource, /data-access-status=\{p\.access_status\}/)
+  assert.match(layoutCss, /\.layout-project-remote-badge\[data-access-status="revoked"\]/)
+  assert.match(layoutCss, /\.layout-project-remote-badge\[data-access-status="expired"\]/)
   assert.match(layoutSource, /layout\.remoteAccessRevoked/)
   assert.match(layoutSource, /layout\.remoteAccessExpired/)
 })

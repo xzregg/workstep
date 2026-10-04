@@ -1,6 +1,8 @@
 """Global config store — single ~/.workstep/config.json for all settings."""
 
 import json
+import hashlib
+import copy
 import logging
 import os
 import platform
@@ -8,6 +10,7 @@ from functools import wraps
 import threading
 import uuid
 from pathlib import Path
+from urllib.parse import urlsplit
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -29,231 +32,29 @@ def resolve_execution_engine(engine_id: str | None) -> str:
         or DEFAULT_EXECUTION_ENGINE
     )
 
-CLAUDE_PERMISSION_MODES = {
-    "acceptEdits",
-    "auto",
-    "bypassPermissions",
-    "manual",
-    "dontAsk",
-    "plan",
-}
-
-CODEX_SANDBOX_MODES = {"read-only", "workspace-write", "danger-full-access"}
-CODEX_REASONING_EFFORTS = {"auto", "minimal", "low", "medium", "high", "xhigh"}
-CODEX_APPROVAL_POLICIES = {"never", "on-failure", "on-request", "full-auto"}
-CODEX_SDK_APPROVAL_MODES = {"auto_review", "deny_all"}
-
-QODER_PERMISSION_MODES = {
-    "default",
-    "acceptEdits",
-    "bypassPermissions",
-    "plan",
-    "dontAsk",
-    "auto",
-}
-
-PROVIDER_PROTOCOLS = {
-    "anthropic_messages",
-    "openai_responses",
-    "openai_chat_completions",
-}
-
-# Claude Code 内部的四个模型档位。CLI 用 ANTHROPIC_DEFAULT_{档位}_MODEL 解析
-# `--model sonnet` 这类档位名，绑定第三方中转后必须把它们映射到真实模型 id。
-CLAUDE_MODEL_MAP_ALIASES = ("fable", "haiku", "opus", "sonnet")
-CLAUDE_MODEL_MAP_MAX_LEN = 256
-
-
-def normalize_claude_model_map(raw: Any) -> dict[str, dict[str, str]]:
-    """把任意输入规范化为 ``{档位: {"model": 模型 id, "name": 显示名}}``。
-
-    入参可以是 API 传输层的 JSON 字符串，也可以是存储/cc-switch 的 dict。
-    显示名为空时补成模型 id —— 「默认同值」这一语义只在存储层固化一次，
-    env 生成、UI 回显和导入预填都直接复用规范化结果。
-    """
-    if raw is None:
-        return {}
-    if isinstance(raw, str):
-        text = raw.strip()
-        if not text:
-            return {}
-        try:
-            raw = json.loads(text)
-        except ValueError:
-            raise ValueError("模型映射格式不正确")
-    if isinstance(raw, dict) is False:
-        raise ValueError("模型映射格式不正确")
-    normalized: dict[str, dict[str, str]] = {}
-    for alias, entry in raw.items():
-        key = str(alias or "").strip().lower()
-        if key not in CLAUDE_MODEL_MAP_ALIASES:
-            # 未知档位静默丢弃：CLI 新增档位时旧版本不至于保存失败。
-            continue
-        if not isinstance(entry, dict):
-            raise ValueError("模型映射格式不正确")
-        model = str(entry.get("model") or "").strip()
-        if not model:
-            continue
-        name = str(entry.get("name") or "").strip() or model
-        for value in (model, name):
-            if len(value) > CLAUDE_MODEL_MAP_MAX_LEN:
-                raise ValueError("模型映射内容过长")
-        normalized[key] = {"model": model, "name": name}
-    return normalized
-
-
-def claude_model_map_env(
-    model_map: dict[str, dict[str, str]],
-) -> dict[str, str]:
-    """把规范化后的映射展开为 Claude Code 识别的环境变量。"""
-    env: dict[str, str] = {}
-    for alias, entry in model_map.items():
-        model = str((entry or {}).get("model") or "").strip()
-        if not model:
-            continue
-        prefix = f"ANTHROPIC_DEFAULT_{alias.upper()}_MODEL"
-        env[prefix] = model
-        env[f"{prefix}_NAME"] = str(entry.get("name") or "").strip() or model
-    return env
-
-
-def claude_sandbox_env(permission_mode: str | None) -> dict[str, str]:
-    """Claude Code 在 root 下用 bypassPermissions 需要显式声明沙盒环境。
-
-    CLI 的 ``isRootOutsideDeliberateSandbox()`` 会把「root + 未声明沙盒」判定为
-    危险组合并直接 exit 1（``--dangerously-skip-permissions cannot be used with
-    root/sudo privileges``）。容器化部署正是 root + 隔离文件系统，注入
-    ``IS_SANDBOX=1`` 后 CLI 认可这是刻意沙盒，bypassPermissions 才能生效。
-    """
-    if str(permission_mode or "").strip() != "bypassPermissions":
-        return {}
-    return {"IS_SANDBOX": "1"}
-
-
-def claude_model_map_json(
-    model_map: dict[str, dict[str, str]],
-) -> str:
-    """序列化为稳定的 JSON 字符串（配置快照按字符串全等比较，键序必须固定）。"""
-    if not model_map:
-        return ""
-    return json.dumps(model_map, sort_keys=True, ensure_ascii=False)
-
-
-def normalize_claude_custom_settings(raw: Any) -> str:
-    """校验引擎自定义配置并返回要存储的 JSON 文本。
-
-    接受 JSON 字符串或 dict；必须是对象，``env``（若有）必须是
-    ``{字符串: 字符串}``。空输入返回空串，表示不注入任何自定义配置。
-
-    传入字符串时只做校验、不做格式化：原样保留用户输入的空格与换行，
-    避免保存后回显被重排。传入 dict（测试或程序化调用）才序列化。
-    """
-    if raw is None:
-        return ""
-    original_text: str | None = None
-    if isinstance(raw, str):
-        original_text = raw
-        text = raw.strip()
-        if not text:
-            return ""
-        try:
-            raw = json.loads(text)
-        except ValueError:
-            raise ValueError("自定义配置必须是合法 JSON")
-    if isinstance(raw, dict) is False:
-        raise ValueError("自定义配置必须是 JSON 对象")
-    env = raw.get("env")
-    if env is not None:
-        if isinstance(env, dict) is False:
-            raise ValueError("env 必须是 JSON 对象")
-        for key, value in env.items():
-            if not isinstance(key, str) or isinstance(value, (dict, list)):
-                raise ValueError("env 的值必须是字符串")
-    if original_text is not None:
-        return original_text
-    return json.dumps(raw, sort_keys=True, ensure_ascii=False)
-
-
-def claude_custom_settings_json(raw: Any) -> str:
-    """读取路径的容错版本：存储值非法时返回空串而不抛错。"""
-    try:
-        return normalize_claude_custom_settings(raw)
-    except ValueError:
-        return ""
-
-
-def claude_custom_settings_payload(raw: Any) -> dict[str, Any]:
-    """解析自定义配置为 dict；无配置或存储值非法时返回空 dict。"""
-    normalized = claude_custom_settings_json(raw)
-    return json.loads(normalized) if normalized else {}
-
-
-def claude_custom_settings_env(
-    raw: Any,
-    exclude: set[str] | None = None,
-) -> dict[str, str]:
-    """提取自定义配置里的 ``env``，值统一转为字符串。
-
-    ``exclude`` 用于保护供应商管理的变量：绑定供应商后 base url 与鉴权
-    由供应商决定，自定义 JSON 不得覆盖，也不得重新加回供应商显式清理的键
-    （例如 ``ANTHROPIC_AUTH_TOKEN``）。
-    """
-    env = claude_custom_settings_payload(raw).get("env")
-    if not isinstance(env, dict):
-        return {}
-    blocked = exclude or set()
-    return {
-        str(key): str(value)
-        for key, value in env.items()
-        if str(key) not in blocked
-    }
-
-
-def claude_custom_settings_rest(raw: Any) -> dict[str, Any]:
-    """自定义配置去掉 ``env`` 后的部分，用于合并进 Claude Code settings。"""
-    payload = claude_custom_settings_payload(raw)
-    payload.pop("env", None)
-    return payload
-
-
-def normalize_codex_custom_config(raw: Any) -> str:
-    """校验 Codex 自定义 config 覆盖并返回要存储的文本。
-
-    Codex 的配置不是 JSON，而是 ``key=value`` 形式（对应 CLI 的 ``-c``）。
-    接受多行文本；空行与 ``#`` 注释行忽略。只校验、不格式化，原样保留
-    用户输入的空格与换行。
-    """
-    if raw is None:
-        return ""
-    text = str(raw)
-    if not text.strip():
-        return ""
-    for index, line in enumerate(text.splitlines(), 1):
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        if "=" not in stripped:
-            raise ValueError(f"第 {index} 行不是 key=value 格式")
-        key, _value = stripped.split("=", 1)
-        if not key.strip():
-            raise ValueError(f"第 {index} 行缺少配置键")
-    return text
-
-
-def parse_codex_custom_config(raw: Any) -> list[tuple[str, str]]:
-    """把自定义覆盖解析为 ``[(key, value), ...]``；无配置返回空列表。"""
-    normalized = normalize_codex_custom_config(raw)
-    entries: list[tuple[str, str]] = []
-    if not normalized:
-        return entries
-    for line in normalized.splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        key, value = stripped.split("=", 1)
-        entries.append((key.strip(), value.strip()))
-    return entries
-
+from services.engine_config_rules import (
+    CLAUDE_MODEL_MAP_ALIASES,
+    CLAUDE_MODEL_MAP_MAX_LEN,
+    CLAUDE_PERMISSION_MODES,
+    CODEX_APPROVAL_POLICIES,
+    CODEX_REASONING_EFFORTS,
+    CODEX_SANDBOX_MODES,
+    CODEX_SDK_APPROVAL_MODES,
+    PROVIDER_PROTOCOLS,
+    QODER_PERMISSION_MODES,
+    OPENCODE_PERMISSION_MODES,
+    claude_custom_settings_env,
+    claude_custom_settings_json,
+    claude_custom_settings_payload,
+    claude_custom_settings_rest,
+    claude_model_map_env,
+    claude_model_map_json,
+    claude_sandbox_env,
+    normalize_claude_custom_settings,
+    normalize_claude_model_map,
+    normalize_codex_custom_config,
+    parse_codex_custom_config,
+)
 
 def default_provider_protocols(type_id: str) -> list[str]:
     """Return the default wire-protocol list for one provider preset.
@@ -289,6 +90,8 @@ class ConfigStore:
     def __init__(self):
         self._cache: dict[str, Any] | None = None
         self._lock = threading.RLock()
+        self._managed_gateway_id: str | None = None
+        self._managed_provider_guard = None
 
     def _load(self) -> dict:
         with self._lock:
@@ -588,13 +391,14 @@ class ConfigStore:
         The task coordinator keeps its legacy explicit coordinator settings,
         but an empty coordinator engine follows the same global default.
         """
+        managed_default = self.get_managed_default_provider()
         merged = {
             "engine": self.get_execution_default_engine() or DEFAULT_EXECUTION_ENGINE,
             "model": "",
             "fast_model": "",
             "vision_model": "",
             "thinking_effort": "",
-            "provider_id": "",
+            "provider_id": managed_default,
         }
         if name == "task_coordinator":
             coordinator = {
@@ -621,6 +425,8 @@ class ConfigStore:
             "thinking_effort",
             "provider_id",
         ):
+            if key == "provider_id" and managed_default:
+                continue
             value = overlay.get(key)
             if isinstance(value, str) and value.strip():
                 merged[key] = value.strip()
@@ -1100,6 +906,26 @@ class ConfigStore:
         raw["include_partial_messages"] = bool(include_partial_messages)
         self.set("qoder_sdk_engine", raw)
 
+    # --- OpenCode engine config ---
+
+    def get_opencode_config(self) -> dict[str, Any]:
+        raw = self.get("opencode_engine", {})
+        if not isinstance(raw, dict):
+            raw = {}
+        mode = str(raw.get("permission_mode") or "").strip() or "ask"
+        if mode not in OPENCODE_PERMISSION_MODES:
+            mode = "ask"
+        return {"permission_mode": mode}
+
+    def set_opencode_config(self, permission_mode: str = "ask") -> None:
+        mode = str(permission_mode or "").strip() or "ask"
+        if mode not in OPENCODE_PERMISSION_MODES:
+            raise ValueError(f"Unsupported OpenCode permission mode: {mode}")
+        raw = self.get("opencode_engine", {})
+        raw = dict(raw) if isinstance(raw, dict) else {}
+        raw["permission_mode"] = mode
+        self.set("opencode_engine", raw)
+
     # --- Codex Agent SDK config ---
 
     def get_codex_sdk_config(self) -> dict[str, str]:
@@ -1142,7 +968,83 @@ class ConfigStore:
 
     # --- Providers (global LLM API suppliers) ---
 
-    def get_providers(self) -> list[dict[str, Any]]:
+    def set_managed_gateway_id(self, gateway_id: str | None, provider_guard=None) -> None:
+        with self._lock:
+            self._managed_gateway_id = gateway_id
+            self._managed_provider_guard = provider_guard
+
+    @property
+    def managed_gateway_id(self) -> str | None:
+        return self._managed_gateway_id
+
+    def _provider_allowed_for_actor(self, provider_id: str) -> bool:
+        from services.remote_access import get_current_actor
+        import time
+        actor = get_current_actor()
+        if actor is None or actor.source != "managed":
+            return True
+        if actor.provider_ids is not None:
+            return (actor.provider_grant_expires_at is not None
+                    and actor.provider_grant_expires_at > time.time()
+                    and provider_id in actor.provider_ids)
+        return actor.actor_id == self.get("managed_provider_state", {}).get("user_id")
+
+    def get_managed_default_provider(self) -> str:
+        if not self._managed_gateway_id:
+            return ""
+        state = self.get("managed_provider_state", {})
+        if not isinstance(state, dict) or state.get("gateway_id") != self._managed_gateway_id:
+            return ""
+        provider_id = state.get("default_provider_id", "")
+        if not isinstance(provider_id, str) or not provider_id:
+            return ""
+        return provider_id if any(provider.get("id") == provider_id
+                                  for provider in self.get_providers()) else ""
+
+    def claim_managed_command(self, command_id: str, idempotency_key: str,
+                              replay_only: bool = False) -> tuple[dict, bool]:
+        with self._lock:
+            data = self._load()
+            receipts = data.get("managed_command_receipts", {})
+            if not isinstance(receipts, dict):
+                receipts = {}
+            current = receipts.get(command_id)
+            if current is not None:
+                if current.get("idempotency_key") != idempotency_key:
+                    raise ValueError("Managed command identity conflict")
+                return dict(current), False
+            if replay_only:
+                return {"status": "failed", "error": "Previous execution not found"}, False
+            receipts = dict(receipts)
+            for old_id, old_receipt in list(receipts.items()):
+                if len(receipts) < 1000:
+                    break
+                if old_receipt.get("status") in ("succeeded", "failed"):
+                    receipts.pop(old_id)
+            if len(receipts) >= 1000:
+                raise RuntimeError("Managed command receipt store is full")
+            receipt = {"idempotency_key": idempotency_key, "status": "running",
+                       "error": None}
+            receipts[command_id] = receipt
+            data["managed_command_receipts"] = receipts
+            self._save()
+            return dict(receipt), True
+
+    def finish_managed_command(self, command_id: str, idempotency_key: str,
+                               status: str, error: str | None) -> None:
+        if status not in ("succeeded", "failed"):
+            raise ValueError("Invalid managed command result")
+        with self._lock:
+            data = self._load()
+            receipts = data.get("managed_command_receipts", {})
+            current = receipts.get(command_id) if isinstance(receipts, dict) else None
+            if not current or current.get("idempotency_key") != idempotency_key:
+                raise ValueError("Managed command receipt missing")
+            current["status"] = status
+            current["error"] = error[:512] if error else None
+            self._save()
+
+    def get_providers(self, *, include_unmanaged: bool = False) -> list[dict[str, Any]]:
         raw = self.get("providers", [])
         if not isinstance(raw, list):
             return []
@@ -1196,6 +1098,12 @@ class ConfigStore:
         if changed:
             self._load()["providers"] = providers
             self._save()
+        if self._managed_gateway_id and not include_unmanaged:
+            return [item for item in providers
+                    if item.get("managed_gateway_id") == self._managed_gateway_id
+                    and self._managed_provider_guard is not None
+                    and self._managed_provider_guard(str(item.get("id")))
+                    and self._provider_allowed_for_actor(str(item.get("id")))]
         return providers
 
     def get_provider(self, provider_id: str) -> dict[str, Any] | None:
@@ -1205,7 +1113,9 @@ class ConfigStore:
         return None
 
     def save_provider(self, provider: dict[str, Any]) -> dict[str, Any]:
-        providers = self.get_providers()
+        if self._managed_gateway_id:
+            raise PermissionError("Managed providers cannot be changed locally")
+        providers = self.get_providers(include_unmanaged=True)
         provider_id = str(provider.get("id") or "")
         replaced = False
         for index, item in enumerate(providers):
@@ -1276,12 +1186,105 @@ class ConfigStore:
         })
 
     def delete_provider(self, provider_id: str) -> bool:
-        providers = self.get_providers()
+        if self._managed_gateway_id:
+            raise PermissionError("Managed providers cannot be changed locally")
+        providers = self.get_providers(include_unmanaged=True)
         remaining = [item for item in providers if item.get("id") != provider_id]
         if len(remaining) == len(providers):
             return False
         self.set("providers", remaining)
         return True
+
+    def apply_managed_providers(self, gateway_id: str, revision: int,
+                                desired: list[dict[str, Any]],
+                                after_apply=None, *, user_id: str = "",
+                                default_provider_id: str = "") -> bool:
+        """Replace only this Gateway's managed entries in one config-file write."""
+        if (not gateway_id or self._managed_gateway_id != gateway_id
+                or type(revision) is not int or revision < 0
+                or not isinstance(user_id, str)
+                or not isinstance(desired, list) or len(desired) > 100):
+            raise ValueError("Invalid managed provider scope")
+        ids: set[str] = set()
+        names: set[str] = set()
+        normalized: list[dict[str, Any]] = []
+        for item in desired:
+            if not isinstance(item, dict):
+                raise ValueError("Invalid managed provider")
+            provider_id, name = item.get("id"), item.get("name")
+            protocols = item.get("protocols")
+            urls = item.get("protocol_base_urls")
+            api_key = item.get("api_key")
+            models = item.get("models", [])
+            if (not isinstance(provider_id, str) or not provider_id or provider_id in ids
+                    or not isinstance(name, str) or not name or name in names
+                    or not isinstance(item.get("type"), str)
+                    or not isinstance(protocols, list) or not protocols or len(protocols) > 8
+                    or any(not isinstance(protocol, str) or protocol not in PROVIDER_PROTOCOLS
+                           for protocol in protocols)
+                    or not isinstance(urls, dict) or set(urls) != set(protocols)
+                    or not isinstance(api_key, str) or not api_key or len(api_key) > 4096
+                    or not isinstance(models, list) or len(models) > 1000
+                    or any(not isinstance(model, str) or not model or len(model) > 128
+                           for model in models)
+                    or len(set(models)) != len(models)):
+                raise ValueError("Invalid managed provider")
+            for url in urls.values():
+                parsed = urlsplit(url) if isinstance(url, str) else None
+                if (parsed is None or parsed.scheme != "https" or not parsed.hostname
+                        or parsed.username or parsed.password or parsed.fragment):
+                    raise ValueError("Invalid managed provider endpoint")
+            ids.add(provider_id)
+            names.add(name)
+            normalized.append({**item, "managed": True, "managed_gateway_id": gateway_id,
+                               "managed_revision": revision, "enabled": True})
+        if (not isinstance(default_provider_id, str)
+                or default_provider_id and default_provider_id not in ids):
+            raise ValueError("Invalid managed default provider")
+        canonical = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+        if default_provider_id:
+            canonical += ":" + default_provider_id
+        digest = hashlib.sha256(canonical.encode()).hexdigest()
+        with self._lock:
+            data = self._load()
+            state = data.get("managed_provider_state", {})
+            if isinstance(state, dict) and state.get("gateway_id") == gateway_id:
+                current_revision = state.get("revision", -1)
+                if revision < current_revision:
+                    raise ValueError("Stale managed provider revision")
+                if revision == current_revision and state.get("user_id", "") == user_id:
+                    if state.get("digest") != digest:
+                        raise ValueError("Managed provider revision conflict")
+                    return False
+            existing = self.get_providers(include_unmanaged=True)
+            retained = [item for item in existing
+                        if item.get("managed_gateway_id") != gateway_id]
+            if any(item.get("id") in ids or item.get("name") in names for item in retained):
+                raise ValueError("Managed provider conflicts with a local provider")
+            previous = copy.deepcopy(data)
+            cache = data.get("provider_models", {})
+            cache = dict(cache) if isinstance(cache, dict) else {}
+            for item in existing:
+                if item.get("managed_gateway_id") == gateway_id:
+                    cache.pop(str(item.get("id")), None)
+            for item in normalized:
+                cache[item["id"]] = {"models": [{"id": model} for model in item.get("models", [])],
+                                     "fetched_at": "managed"}
+            data["providers"] = retained + normalized
+            data["provider_models"] = cache
+            data["managed_provider_state"] = {"gateway_id": gateway_id,
+                                               "user_id": user_id,
+                                               "revision": revision, "digest": digest,
+                                               "default_provider_id": default_provider_id}
+            try:
+                self._save()
+                if after_apply is not None:
+                    after_apply()
+            except Exception:
+                self._cache = previous
+                self._save()
+                raise
+            return True
 
     def is_provider_in_use(self, provider_id: str) -> bool:
         """Whether an API-driven engine currently uses this provider."""

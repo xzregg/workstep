@@ -269,7 +269,7 @@ class SkillCenter:
         for skill_id, entry in manifest["entries"].items():
             if not entry.get("enabled"):
                 continue
-            if entry.get("source") == "project":
+            if entry.get("source") in ("project", "gateway"):
                 local = skills_root / str(entry.get("destination") or entry.get("name"))
                 if local.is_dir():
                     entry["sync_status"] = SkillSyncStatus.SYNCED.value
@@ -398,6 +398,8 @@ class SkillCenter:
             entry = manifest["entries"].get(skill_id)
             if entry is None:
                 raise KeyError("未知技能")
+            if entry.get("source") == "gateway":
+                raise PermissionError("受管技能由 Gateway 管理")
             if enabled and not entry.get("valid"):
                 raise ValueError("无效技能不能启用")
             skills_root, manifest_path, disabled_root = self._paths(root)
@@ -487,6 +489,8 @@ class SkillCenter:
                 entry = manifest["entries"].get(skill_id)
                 if entry is None:
                     raise KeyError(f"未知技能：{skill_id}")
+                if entry.get("source") == "gateway":
+                    raise PermissionError("受管技能由 Gateway 管理")
                 if enabled and not entry.get("valid"):
                     raise ValueError(f"无效技能不能启用：{entry.get('name') or skill_id}")
                 if (

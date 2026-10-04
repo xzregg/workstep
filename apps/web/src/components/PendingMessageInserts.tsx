@@ -102,42 +102,18 @@ export default function PendingMessageInserts({
       role="region"
       aria-label={title}
       aria-live="polite"
-      style={{
-        position: 'absolute',
-        bottom: '100%',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        width: 'calc(100% - 40px)',
-        maxWidth: 900,
-        marginBottom: 6,
-        zIndex: 30,
-        borderRadius: 8,
-        border: '1px solid var(--border-soft)',
-        background: 'var(--bg)',
-        boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
-        padding: '6px 10px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 4,
-      }}
+      className="pending-insert-panel"
     >
       <div
         title={titleTooltip}
-        style={{
-          fontSize: 'calc(11px * var(--font-scale))',
-          fontWeight: 600,
-          color: 'var(--meta)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-        }}
+        className="pending-insert-heading"
       >
         {title}
-        <span style={{ fontWeight: 400, color: 'var(--muted)' }}>
+        <span className="pending-insert-heading-detail">
           {t('taskDetail.itemCount', { count: items.length })}
         </span>
         {reorderable && reorderHint && (
-          <span style={{ fontWeight: 400, color: 'var(--muted)', opacity: 0.8 }}>
+          <span className="pending-insert-heading-detail pending-insert-reorder-hint">
             {reorderHint}
           </span>
         )}
@@ -158,20 +134,11 @@ export default function PendingMessageInserts({
             onDragOver={reorderable ? (event) => handleDragOver(event, index) : undefined}
             onDrop={reorderable ? (event) => handleDrop(event, index) : undefined}
             onDragEnd={reorderable ? handleDragEnd : undefined}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '4px 6px',
-              borderRadius: 6,
-              opacity: isSending ? 0.65 : isDragging ? 0.45 : 1,
-              cursor: reorderable && !isEditing
-                ? (isDragging ? 'grabbing' : 'grab')
-                : 'default',
-              background: isDropTarget ? 'var(--accent-light)' : undefined,
-              outline: isDropTarget ? '1px dashed var(--accent)' : undefined,
-              outlineOffset: -1,
-            }}
+            className="pending-insert-row"
+            data-sending={isSending || undefined}
+            data-dragging={isDragging || undefined}
+            data-drop-target={isDropTarget || undefined}
+            data-reorderable={reorderable && !isEditing || undefined}
           >
             {isEditing ? (
               <Textarea
@@ -188,20 +155,7 @@ export default function PendingMessageInserts({
                   }
                 }}
                 rows={2}
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  fontSize: 'calc(11px * var(--font-scale))',
-                  lineHeight: 1.4,
-                  color: 'var(--fg)',
-                  background: 'var(--bg)',
-                  border: '1px solid var(--accent)',
-                  borderRadius: 6,
-                  padding: '4px 6px',
-                  outline: 'none',
-                  resize: 'none',
-                  fontFamily: 'var(--font-body)',
-                }}
+                className="pending-insert-editor"
               />
             ) : (
               <>
@@ -212,33 +166,19 @@ export default function PendingMessageInserts({
                     name={reorderable ? 'grip-vertical' : 'list'}
                     size={12}
                     strokeWidth={1.6}
-                    color={reorderable ? 'var(--meta)' : 'var(--muted)'}
-                    style={{
-                      flexShrink: 0,
-                      opacity: reorderable ? 0.85 : 0.7,
-                      cursor: reorderable ? 'grab' : 'default',
-                    }}
+                    className={`pending-insert-icon${reorderable ? ' is-reorderable' : ''}`}
                   />
                 )}
                 <div
                   title={item.content}
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                    fontSize: 'calc(13px * var(--font-scale))',
-                    lineHeight: 1.4,
-                    color: 'var(--fg)',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
+                  className="pending-insert-content"
                 >
                   {item.content}
                 </div>
               </>
             )}
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+            <div className="pending-insert-actions">
               {isEditing ? (
                 <>
                   <button
@@ -246,15 +186,7 @@ export default function PendingMessageInserts({
                     onClick={() => onEditSave?.(item.id)}
                     disabled={!editingContent.trim()}
                     title={t('taskDetail.saveEditTitle')}
-                    style={{
-                      padding: '2px 8px',
-                      borderRadius: 6,
-                      fontSize: 'calc(11px * var(--font-scale))',
-                      border: 'none',
-                      background: 'var(--accent)',
-                      color: 'var(--accent-fg)',
-                      cursor: editingContent.trim() ? 'pointer' : 'not-allowed',
-                    }}
+                    className="pending-insert-button pending-insert-button--primary"
                   >
                     {t('common.save')}
                   </button>
@@ -262,15 +194,7 @@ export default function PendingMessageInserts({
                     type="button"
                     onClick={onEditCancel}
                     title={t('taskDetail.cancelEditTitle')}
-                    style={{
-                      padding: '2px 8px',
-                      borderRadius: 6,
-                      fontSize: 'calc(11px * var(--font-scale))',
-                      border: '1px solid var(--border)',
-                      background: 'transparent',
-                      color: 'var(--meta)',
-                      cursor: 'pointer',
-                    }}
+                    className="pending-insert-button pending-insert-button--outline"
                   >
                     {t('common.cancel')}
                   </button>
@@ -283,14 +207,7 @@ export default function PendingMessageInserts({
                       onClick={() => onSend(item)}
                       disabled={isSending}
                       title={t('taskDetail.sendInsertTitle')}
-                      style={{
-                        padding: '2px 6px',
-                        fontSize: 'calc(11px * var(--font-scale))',
-                        border: 'none',
-                        background: 'transparent',
-                        color: 'var(--accent)',
-                        cursor: isSending ? 'not-allowed' : 'pointer',
-                      }}
+                      className="pending-insert-button pending-insert-button--send"
                     >
                       {t('chatInput.send')}
                     </button>
@@ -300,16 +217,7 @@ export default function PendingMessageInserts({
                     onClick={() => onEditStart?.(item)}
                     disabled={isSending}
                     title={t('taskDetail.editInsertTitle')}
-                    style={{
-                      padding: 4,
-                      border: 'none',
-                      background: 'transparent',
-                      color: 'var(--muted)',
-                      cursor: isSending ? 'not-allowed' : 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      borderRadius: 4,
-                    }}
+                    className="pending-insert-button pending-insert-button--icon"
                   >
                     <Icon name="pencil" size={12} strokeWidth={2} />
                   </button>
@@ -318,16 +226,7 @@ export default function PendingMessageInserts({
                     onClick={() => onRemove?.(item.id)}
                     disabled={isSending}
                     title={t('taskDetail.deleteInsertTitle')}
-                    style={{
-                      padding: 4,
-                      border: 'none',
-                      background: 'transparent',
-                      color: 'var(--muted)',
-                      cursor: isSending ? 'not-allowed' : 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      borderRadius: 4,
-                    }}
+                    className="pending-insert-button pending-insert-button--icon"
                   >
                     <Icon name="trash" size={12} strokeWidth={2} />
                   </button>
@@ -339,30 +238,14 @@ export default function PendingMessageInserts({
       })}
 
       {items.length > 1 && (onSendAll || onClear) && (
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: 6,
-            paddingTop: 4,
-            borderTop: '1px solid var(--border-soft)',
-          }}
-        >
+        <div className="pending-insert-footer">
           {onSendAll && (
             <button
               type="button"
               onClick={onSendAll}
               disabled={sendingIds.length > 0}
               title={t('taskDetail.sendAllTitle')}
-              style={{
-                padding: '2px 8px',
-                fontSize: 'calc(11px * var(--font-scale))',
-                borderRadius: 6,
-                border: 'none',
-                background: 'var(--accent)',
-                color: 'var(--accent-fg)',
-                cursor: sendingIds.length > 0 ? 'not-allowed' : 'pointer',
-              }}
+              className="pending-insert-button pending-insert-button--primary"
             >
               {allSending ? t('chatInput.generating') : t('taskDetail.sendAll', { count: items.length })}
             </button>
@@ -373,15 +256,7 @@ export default function PendingMessageInserts({
               onClick={onClear}
               disabled={sendingIds.length > 0}
               title={t('taskDetail.clearAllTitle')}
-              style={{
-                padding: '2px 8px',
-                fontSize: 'calc(11px * var(--font-scale))',
-                borderRadius: 6,
-                border: '1px solid var(--border)',
-                background: 'transparent',
-                color: 'var(--meta)',
-                cursor: sendingIds.length > 0 ? 'not-allowed' : 'pointer',
-              }}
+              className="pending-insert-button pending-insert-button--outline"
             >
               {t('taskDetail.clearAll')}
             </button>

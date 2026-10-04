@@ -4,7 +4,6 @@ import asyncio
 import functools
 import json
 import logging
-import uuid
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,29 +16,39 @@ from models import (
     TaskStep,
     WorkflowRun,
 )
-from models.fields import utc_now
 from models.base import db_proxy
+from models.fields import utc_now
 from services.task_runner import TaskRunner
 from services.task_dispatch import TaskDispatchService
-from services.workflow_definition import WorkflowDefinition
-from services.config import resolve_execution_engine
-from services.messages import create_task_message, new_message_id
-from services.intervention import seal_unanswered_interactions
-from agent_assistants.event_journal import TurnEventJournal
-from agent_assistants.context_handoff import append_handoff_log
-from services.pipeline import DAGScheduler, Step
-from services.artifact_rounds import (
-    ArtifactRound,
-    discard_artifact_round,
-    iter_artifact_rounds,
-    step_round_dir,
-    update_round_manifest_status,
+from services.review_decision import persist_review_decision
+from services.failed_step_completion import persist_failed_step_completion
+from services.orphan_step_stop import persist_orphan_stop
+from services.pending_message_inserts import (
+    oldest_task_pending_batch, pending_insert_actor,
 )
+from services.remote_access import replayed_actor_context
+from services.step_message_restart import (
+    inspect_failed_message_retry,
+    persist_step_followup,
+)
+from services.workflow_restart import create_restart_run, inspect_restart_run
+from services.workflow_start import (
+    PreparedWorkflowRun,
+    prepare_start_from_step_without_parent,
+    prepare_start_in_project,
+)
+from services.workflow_lease import WorkflowLeaseManager
+from services.step_execution_config import (
+    ACTIVE_STEP_CONFIG_STATUSES as _ACTIVE_STEP_CONFIG_STATUSES,
+    StepExecutionConfigService,
+)
+from services.workflow_recovery import (
+    heal_task_cwd,
+    prepare_project_recovery,
+)
+from services.pipeline import DAGScheduler, Step
 from services.artifact_routing import (
-    empty_routing_state,
     normalize_routing_state,
-    route_artifact_round,
-    source_for_connection,
 )
 from engines.core.agui import AGUIContext, to_agui_events
 from streaming.bus import EventBus
@@ -47,66 +56,6 @@ from streaming.bus import EventBus
 logger = logging.getLogger(__name__)
 
 _VALID_TASK_SOURCES = {"manual", "schedule", "scheduled_start"}
-_ACTIVE_STEP_CONFIG_STATUSES = {"running", "retrying", "rework"}
-
-# WorkflowRun 租约：一个 run 同时只能被一个 daemon 实例执行。心跳按固定周期续约，
-# 启动恢复只接管租约已失效（或来自无租约旧库）的 run，避免重复派发把任务状态写脏。
-RUN_LEASE_HEARTBEAT_SECONDS = 5.0
-RUN_LEASE_STALE_SECONDS = 30.0
-ORPHAN_RECONCILE_SECONDS = 15.0
-
-
-def heal_task_cwd(task, project) -> bool:
-    """Persist the project root when a task's cwd no longer exists.
-
-    Tasks created inside the containerized layout store ``/data/projects/<name>``
-    paths that never exist on the host. Engines spawn with this cwd, so the
-    first write (skill plugin materialization) fails with a read-only filesystem
-    error. Repairing it here keeps every run path consistent.
-    """
-    cwd = str(task.cwd or "").strip()
-    if cwd and Path(cwd).is_dir():
-        return False
-    root = str(project.path)
-    if cwd == root:
-        return False
-    task.cwd = root
-    task.save(only=[Task.cwd])
-    logger.warning(
-        "Task %s cwd %r is unavailable; fell back to project root %s",
-        task.id,
-        cwd,
-        root,
-    )
-    return True
-
-
-def resolve_message_step_key(
-    steps_config: dict,
-    step_statuses: dict[str, str],
-) -> str:
-    ordered_keys = [
-        step["key"]
-        for step in steps_config.get("steps", [])
-        if step.get("key")
-    ]
-    for statuses in (
-        {"running", "reviewing", "awaiting_review", "retrying", "rework", "rework_waiting"},
-        {"failed", "rejected"},
-        {"pending"},
-    ):
-        current = next(
-            (
-                step_key
-                for step_key in ordered_keys
-                if step_statuses.get(step_key) in statuses
-            ),
-            None,
-        )
-        if current:
-            return current
-    return ordered_keys[-1] if ordered_keys else "do"
-
 
 @dataclass(frozen=True, slots=True)
 class WorkflowRunHandle:
@@ -114,19 +63,6 @@ class WorkflowRunHandle:
 
     id: str
     _completion: asyncio.Task[str] = field(repr=False, compare=False)
-
-
-@dataclass(frozen=True, slots=True)
-class _PreparedWorkflowRun:
-    project_id: str
-    database_executor: object
-    task: Task
-    workflow_run: WorkflowRun
-    steps_config: dict
-    artifacts_dir: Path
-    user_message: Message | None
-    entry_step_key: str | None = None
-    execution_scope: frozenset[str] | None = None
 
 
 class WorkflowRuntime:
@@ -138,15 +74,25 @@ class WorkflowRuntime:
         self._runners: dict[str, TaskRunner] = {}
         self._active_tasks: set[asyncio.Task[str]] = set()
         self._operation_locks: dict[str, asyncio.Lock] = {}
+        self._step_config = StepExecutionConfigService(
+            self._run_db, self._current_workflow_steps, self._operation_locks
+        )
         self._graceful_shutdown = False
-        # 每个 runtime 实例拥有独立身份，用于 WorkflowRun 租约归属判定与心跳续约。
-        self._instance_id = uuid.uuid4().hex
-        self._leased_runs: dict[str, str] = {}
-        self._lease_task: asyncio.Task | None = None
-        self._lease_retry_tasks: set[asyncio.Task] = set()
-        self._last_orphan_reconcile = 0.0
+        self._leases = WorkflowLeaseManager(
+            self._run_db,
+            self.reconcile_orphaned_workflows,
+            self._recover_project_runs,
+        )
         self._dispatch_service = TaskDispatchService(
             project_manager, event_bus, self
+        )
+
+    def project_has_active_runs(self, project_id: str) -> bool:
+        return any(
+            runner._source_project_id == project_id
+            or getattr(getattr(runner, "_database_executor", None), "project_id", None)
+            == project_id
+            for runner in self._runners.values()
         )
 
     async def run(
@@ -181,42 +127,58 @@ class WorkflowRuntime:
 
         if source not in _VALID_TASK_SOURCES:
             raise ValueError(f"Invalid task source: {source}")
+        if source == "manual":
+            from services.remote_access import require_user_actor
+
+            await asyncio.to_thread(require_user_actor)
         acquired = await concurrency_gate.acquire_task(project_id, task_id, source)
         if acquired == ALREADY_ACTIVE:
             raise RuntimeError(f"Task is already queued or running: {task_id}")
         if acquired == QUEUED:
-            await self._mark_task_status(project_id, task_id, "queued")
+            await self._mark_task_status(
+                project_id, task_id, "queued",
+                queue_source=source, queued_input=user_input,
+            )
             try:
                 await concurrency_gate.wait_task_slot(project_id, task_id)
             except asyncio.CancelledError:
                 concurrency_gate.cancel_queued_task(project_id, task_id)
                 await self._mark_task_status(project_id, task_id, "ready")
                 raise
-        return await self._start_after_slot(project_id, task_id, user_input)
+        return await self._start_after_slot(
+            project_id, task_id, user_input, source=source,
+        )
 
     async def _start_after_slot(
         self,
         project_id: str,
         task_id: str,
         user_input: str = "",
+        *,
+        source: str = "manual",
     ) -> WorkflowRunHandle:
         """Launch a workflow when the caller already holds a concurrency slot."""
         lock = self._operation_locks.setdefault(task_id, asyncio.Lock())
         async with lock:
             if task_id in self._runners:
                 raise RuntimeError(f"Task is already running: {task_id}")
-            prepared = await self._run_db(
-                project_id,
-                lambda project: self._prepare_start_in_project(
-                    project,
-                    task_id,
-                    user_input,
-                ),
-            )
-            handle = self._launch_prepared_run(prepared, user_input)
-            normalized_input = user_input.strip()
+            def persist_start(project):
+                with db_proxy.atomic("IMMEDIATE"):
+                    return prepare_start_in_project(
+                        project,
+                        task_id,
+                        user_input,
+                        instance_id=self._leases.instance_id,
+                        current_workflow_steps=self._current_workflow_steps,
+                        source=source,
+                    )
+
+            prepared = await self._run_db(project_id, persist_start)
+            handle = self._launch_prepared_run(prepared, prepared.user_input)
+            normalized_input = prepared.user_input.strip()
             if normalized_input and prepared.user_message is not None:
                 await self._publish_user_message(
+                    project_id,
                     task_id,
                     prepared.user_message,
                     "message_started",
@@ -229,6 +191,10 @@ class WorkflowRuntime:
         project_id: str,
         task_id: str,
         status: str,
+        *,
+        queue_source: str = "manual",
+        queued_input: str = "",
+        audit_action: str | None = None,
     ) -> None:
         """Persist a task status change and broadcast it as a status event."""
         from engines.core.agui import AGUIContext, to_agui_events
@@ -239,13 +205,60 @@ class WorkflowRuntime:
             if task is None:
                 return
             task.status = status
+            if status == "queued":
+                from services.messages import current_actor_message_fields
+
+                actor_fields = (
+                    current_actor_message_fields()
+                    if queue_source == "manual" else {}
+                )
+                task.queued_run_json = json.dumps({
+                    "source": queue_source,
+                    "input": queued_input,
+                    "actor": actor_fields,
+                }, ensure_ascii=False)
+            elif status == "ready":
+                task.queued_run_json = None
             task.updated_at = utc_now()
             task.save()
+            if status == "queued":
+                from services.project_audit import record_project_audit
+                from services.remote_access import get_effective_actor
 
-        await self._run_db(project_id, lambda _project: persist())
+                actor = get_effective_actor()
+                scheduled = queue_source in {"schedule", "scheduled_start"}
+                record_project_audit(
+                    project_id=project_id, task_id=task_id,
+                    action="task.queue", result="succeeded",
+                    mode="managed" if actor is not None and actor.source == "managed" else "local",
+                    actor_type="scheduler" if scheduled else None,
+                    initiated_by_user_id=task.creator_id if scheduled else None,
+                    initiated_by_username=(
+                        task.creator_username or task.creator_name if scheduled else None
+                    ),
+                    metadata={"source": queue_source},
+                )
+            elif audit_action is not None:
+                from services.project_audit import record_project_audit
+                from services.remote_access import get_effective_actor
+
+                actor = get_effective_actor()
+                record_project_audit(
+                    project_id=project_id, task_id=task_id,
+                    action=audit_action, result="succeeded",
+                    mode="managed" if actor is not None and actor.source == "managed" else "local",
+                    metadata={"status": status},
+                )
+
+        def persist_atomically(_project):
+            with db_proxy.atomic("IMMEDIATE"):
+                persist()
+
+        await self._run_db(project_id, persist_atomically)
         from services.concurrency import concurrency_gate
 
         payload = {
+            "project_id": project_id,
             "task_id": task_id,
             "step_key": "",
             "type": "status",
@@ -260,14 +273,18 @@ class WorkflowRuntime:
         for agui_event in to_agui_events(payload, ctx):
             await self._event_bus.publish(agui_event)
 
-    async def cancel_queued(self, project_id: str, task_id: str) -> bool:
+    async def cancel_queued(
+        self, project_id: str, task_id: str, *, action: str = "task.cancel",
+    ) -> bool:
         """Cancel a queued (waiting for a slot) task and return it to ready."""
         from services.concurrency import concurrency_gate
 
         if concurrency_gate.task_queue_position(project_id, task_id) == 0:
             return False
         concurrency_gate.cancel_queued_task(project_id, task_id)
-        await self._mark_task_status(project_id, task_id, "ready")
+        await self._mark_task_status(
+            project_id, task_id, "ready", audit_action=action,
+        )
         return True
 
     async def _run_db(self, project_id: str, operation):
@@ -291,135 +308,16 @@ class WorkflowRuntime:
         """Create persistent run state while its project context is active."""
         if task_id in self._runners:
             raise RuntimeError(f"Task is already running: {task_id}")
-        prepared = self._prepare_start_in_project(project, task_id, user_input)
-        return self._launch_prepared_run(prepared, user_input)
-
-    def _prepare_start_in_project(
-        self,
-        project,
-        task_id: str,
-        user_input: str,
-    ) -> _PreparedWorkflowRun:
-        """Persist a new run while executing on the project's DB thread."""
-        try:
-            task = Task.get_by_id(task_id)
-        except Task.DoesNotExist as exc:
-            raise ValueError(f"Task not found: {task_id}") from exc
-        heal_task_cwd(task, project)
-
-        workflow_data = self._current_workflow_steps(project, task)
-        workflow = WorkflowDefinition.load(workflow_data)
-        compiled = workflow.compile()
-        steps_config = compiled.to_steps_config()
-        entry_step_key, execution_scope = self._infer_entry_scope(
-            task,
-            steps_config,
+        prepared = prepare_start_in_project(
+            project, task_id, user_input,
+            instance_id=self._leases.instance_id,
+            current_workflow_steps=self._current_workflow_steps,
         )
-        routing_state = empty_routing_state()
-        routing_state["entry_step_key"] = entry_step_key
-        routing_state["execution_scope"] = (
-            sorted(execution_scope) if execution_scope is not None else None
-        )
-        now = utc_now()
-        workflow_run = WorkflowRun.create(
-            id=str(uuid.uuid4()),
-            task=task,
-            status="running",
-            workflow_schema_version=compiled.schema_version,
-            workflow_snapshot_json="{}",
-            routing_state_json=json.dumps(routing_state, ensure_ascii=False),
-            restart_from_step_key=entry_step_key,
-            owner_id=self._instance_id,
-            heartbeat_at=now,
-            started_at=now,
-        )
-
-        artifacts_dir = Path(project.workstep_dir) / "artifacts"
-        artifacts_dir.mkdir(parents=True, exist_ok=True)
-        task.status = "running"
-        task.active_workflow_run_id = workflow_run.id
-        task.state_version += 1
-        task.updated_at = now
-        task.save()
-
-        normalized_input = user_input.strip()
-        user_message = None
-        if normalized_input:
-            step_statuses = {
-                task_step.step_key: task_step.status
-                for task_step in TaskStep.select().where(TaskStep.task == task)
-            }
-            message_step_key = resolve_message_step_key(
-                steps_config,
-                step_statuses,
-            )
-            user_message = create_task_message(
-                id=new_message_id(),
-                task=task,
-                channel="execution",
-                step_key=message_step_key,
-                role="user",
-                content=normalized_input,
-                run_id=workflow_run.id,
-                run_status="completed",
-                position=0,
-                started_at=now,
-                ended_at=now,
-                created_at=now,
-            )
-
-        return _PreparedWorkflowRun(
-            project_id=project.id,
-            database_executor=getattr(project, "database_executor", None),
-            task=task,
-            workflow_run=workflow_run,
-            steps_config=steps_config,
-            artifacts_dir=artifacts_dir,
-            user_message=user_message,
-            entry_step_key=entry_step_key,
-            execution_scope=(
-                frozenset(execution_scope)
-                if execution_scope is not None else None
-            ),
-        )
-
-    @staticmethod
-    def _infer_entry_scope(
-        task: Task,
-        steps_config: dict,
-    ) -> tuple[str | None, set[str] | None]:
-        """Infer a deliberately selected entry from initial step statuses."""
-        if WorkflowRun.select().where(WorkflowRun.task == task).exists():
-            return None, None
-        scheduler = DAGScheduler([
-            Step.from_dict(item) for item in steps_config.get("steps", [])
-        ])
-        statuses = {
-            row.step_key: row.status
-            for row in TaskStep.select().where(TaskStep.task == task)
-        }
-        if not any(
-            statuses.get(step_key) == "skipped"
-            for step_key in scheduler.steps
-        ):
-            return None, None
-        scope = {
-            step_key
-            for step_key in scheduler.steps
-            if statuses.get(step_key) != "skipped"
-        }
-        roots = [
-            step_key
-            for step_key in scope
-            if not (set(scheduler.steps[step_key].depends_on) & scope)
-        ]
-        if len(roots) != 1:
-            return None, None
-        return roots[0], scope
+        return self._launch_prepared_run(prepared, prepared.user_input)
 
     def _launch_prepared_run(
         self,
-        prepared: _PreparedWorkflowRun,
+        prepared: PreparedWorkflowRun,
         user_input: str,
         step_followups: dict[str, str] | None = None,
         input_rounds_by_step: dict[str, dict[str, int]] | None = None,
@@ -458,7 +356,7 @@ class WorkflowRuntime:
             ),
         )
         self._runners[task.id] = runner
-        self._register_lease(workflow_run.id, prepared.project_id)
+        self._leases.register(workflow_run.id, prepared.project_id)
 
         completion = asyncio.create_task(
             self._execute(
@@ -490,6 +388,7 @@ class WorkflowRuntime:
 
     async def _publish_user_message(
         self,
+        project_id: str,
         task_id: str,
         message: Message,
         event_type: str,
@@ -500,6 +399,7 @@ class WorkflowRuntime:
 
         data = {**data, "role": "user"}
         payload = {
+            "project_id": project_id,
             "task_id": task_id,
             "channel": message.channel,
             "message_id": message.id,
@@ -536,6 +436,26 @@ class WorkflowRuntime:
             as_guidance=as_guidance,
         )
 
+    async def cancel_message(self, project_id: str, task_id: str, message_id: str) -> bool:
+        """Stop the engine of this live message, never a later stage attempt."""
+        runner = self._runners.get(task_id)
+        if runner is None:
+            return False
+        engines = dict(runner._live._running_engines)
+        def read(_project):
+            message = Message.get_or_none((Message.id == message_id) & (Message.task == task_id))
+            if message is None or message.role != 'assistant' or message.channel not in {'execution','review'} or message.run_status != 'running':
+                return None
+            return message.step_key
+        step_key = await self._run_db(project_id, read)
+        if step_key is None or self._runners.get(task_id) is not runner:
+            return False
+        key = f'{task_id}:{step_key}'
+        engine = engines.get(key)
+        if engine is None or runner._live._running_engines.get(key) is not engine:
+            return False
+        return await runner.cancel_step(task_id, step_key)
+
     async def cancel_step(
         self,
         project_id: str,
@@ -558,117 +478,29 @@ class WorkflowRuntime:
                 return await runner.cancel_step(task_id, step_key)
 
             now = utc_now()
-
-            def persist_orphan_stop(_project):
-                task = Task.get_or_none(Task.id == task_id)
-                if task is None:
-                    raise ValueError(f"Task not found: {task_id}")
-                step = TaskStep.get_or_none(
-                    (TaskStep.task == task) & (TaskStep.step_key == step_key)
-                )
-                if step is None:
-                    raise ValueError(f"Step does not exist: {step_key}")
-                if step.status == "cancelled":
-                    return task.active_workflow_run_id, None, True
-                if step.status not in {
-                    *_ACTIVE_STEP_CONFIG_STATUSES,
-                    "reviewing",
-                    "rework_waiting",
-                }:
-                    raise ValueError(f"步骤未在运行: {step_key}")
-
-                workflow_run = None
-                if task.active_workflow_run_id:
-                    workflow_run = WorkflowRun.get_or_none(
-                        (WorkflowRun.id == task.active_workflow_run_id)
-                        & (WorkflowRun.task == task)
+            def persist_stop(_project):
+                with db_proxy.atomic("IMMEDIATE"):
+                    result = persist_orphan_stop(
+                        task_id, step_key, now, self._leases.instance_id,
                     )
-                if (
-                    workflow_run is not None
-                    and self._lease_held_by_live_owner(workflow_run, now)
-                ):
-                    raise ValueError("任务仍由其他运行器执行，请稍后再试")
+                    if not result[2]:
+                        from services.project_audit import record_project_audit
+                        from services.remote_access import get_effective_actor
 
-                active_message = (
-                    Message.select()
-                    .where(
-                        (Message.task == task)
-                        & (Message.step_key == step_key)
-                        & (Message.channel == "execution")
-                        & (Message.role == "assistant")
-                        & (Message.run_status == "running")
-                    )
-                    .order_by(Message.sequence.desc(), Message.created_at.desc())
-                    .first()
-                )
-                # The journal is moved under its resolved engine session as
-                # soon as session_started arrives. If the later DB write was
-                # lost, recover that already-established id without changing
-                # or rebuilding the engine session.
-                if not step.session_id and active_message is not None:
-                    event_path = Path(active_message.event_log_path or "")
-                    if (
-                        event_path.parent.parent.name == f"task-{task.id}"
-                        and event_path.parent.name
-                    ):
-                        step.session_id = event_path.parent.name
-
-                stop_reason = "手动停止（运行器已不存在）"
-                step.status = "cancelled"
-                step.error = stop_reason
-                step.ended_at = now
-                step.save()
-
-                Message.update(
-                    run_status="cancelled",
-                    ended_at=now,
-                ).where(
-                    (Message.task == task)
-                    & (Message.step_key == step_key)
-                    & (Message.channel.in_(["execution", "review"]))
-                    & (Message.run_status == "running")
-                ).execute()
-
-                if workflow_run is not None:
-                    StepRun.update(
-                        status="failed",
-                        error=stop_reason,
-                        ended_at=now,
-                    ).where(
-                        (StepRun.run == workflow_run)
-                        & (StepRun.step_key == step_key)
-                        & (StepRun.status == "running")
-                    ).execute()
-                    ReviewRun.update(
-                        status="failed",
-                        error=stop_reason,
-                        ended_at=now,
-                    ).where(
-                        (ReviewRun.workflow_run == workflow_run)
-                        & (ReviewRun.step_key == step_key)
-                        & (ReviewRun.status == "running")
-                    ).execute()
-                    workflow_run.status = "failed"
-                    workflow_run.ended_at = now
-                    workflow_run.owner_id = None
-                    workflow_run.heartbeat_at = None
-                    workflow_run.save()
-
-                task.status = "paused"
-                task.state_version += 1
-                task.updated_at = now
-                task.save()
-                return (
-                    workflow_run.id if workflow_run is not None else None,
-                    active_message.id if active_message is not None else None,
-                    False,
-                )
+                        actor = get_effective_actor()
+                        record_project_audit(
+                            project_id=project_id, task_id=task_id,
+                            action="step.cancel", result="succeeded",
+                            mode="managed" if actor is not None and actor.source == "managed" else "local",
+                            metadata={"step_key": step_key, "status": "paused"},
+                        )
+                    return result
 
             run_id, message_id, already_stopped = await self._run_db(
-                project_id, persist_orphan_stop
+                project_id, persist_stop,
             )
             if run_id:
-                self._release_lease(run_id)
+                self._leases.release(run_id)
 
             from services.concurrency import concurrency_gate
 
@@ -677,6 +509,7 @@ class WorkflowRuntime:
                 return True
 
             status_event = {
+                "project_id": project_id,
                 "task_id": task_id,
                 "step_key": step_key,
                 "type": "status",
@@ -691,6 +524,7 @@ class WorkflowRuntime:
                 await self._event_bus.publish(agui_event)
             if message_id:
                 message_event = {
+                    "project_id": project_id,
                     "task_id": task_id,
                     "step_key": step_key,
                     "channel": "execution",
@@ -713,6 +547,7 @@ class WorkflowRuntime:
         author_name: str | None = None,
         pending_insert_ids: list[str] | None = None,
         reset_session: bool = False,
+        replay_pending: bool = False,
     ) -> dict:
         """Persist a user message and re-run a stopped or completed step.
 
@@ -725,98 +560,14 @@ class WorkflowRuntime:
         normalized = content.strip()
         if not normalized:
             raise ValueError("消息内容不能为空")
-        def persist_message():
-            task = Task.get_or_none(Task.id == task_id)
-            if task is None:
-                raise ValueError(f"Task not found: {task_id}")
-            step = TaskStep.get_or_none(
-                (TaskStep.task == task) & (TaskStep.step_key == step_key)
-            )
-            if step is None:
-                raise ValueError(f"Step does not exist: {step_key}")
-            allowed_statuses = {
-                "cancelled",
-                "failed",
-                "rejected",
-                "awaiting_review",
-                "passed",
-                "skipped",
-            }
-            # 正在执行的步骤不接受 @ 重跑：实时注入走 message 接口。
-            if step.status in _ACTIVE_STEP_CONFIG_STATUSES or step.status in (
-                "reviewing",
-                "rework_waiting",
-            ):
-                raise ValueError(
-                    f"步骤当前不可重新执行: {step_key}（当前状态 {step.status}）"
-                )
-            # `pending` 通常代表从未启动；但只要有执行历史（曾经跑过又回到
-            # 待执行，例如上游重跑把下游重置），就按「执行过一次」处理，允许 @。
-            has_history = (
-                Message.select()
-                .where(
-                    (Message.task == task)
-                    & (Message.step_key == step_key)
-                    & (Message.channel == "execution")
-                    & (Message.role.in_(["user", "assistant"]))
-                )
-                .exists()
-                or step.started_at is not None
-            )
-            if step.status not in allowed_statuses and not has_history:
-                raise ValueError(
-                    f"步骤当前不可重新执行: {step_key}（当前状态 {step.status}）"
-                )
-            pending_review = None
-            if step.status == "awaiting_review":
-                pending_review = (
-                    ReviewRun.select()
-                    .where(
-                        (ReviewRun.task == task)
-                        & (ReviewRun.step_key == step_key)
-                    )
-                    .order_by(ReviewRun.started_at.desc(), ReviewRun.id.desc())
-                    .first()
-                )
-                if (
-                    pending_review is None
-                    or pending_review.mode != "manual"
-                    or pending_review.status != "pending"
-                ):
-                    raise ValueError("步骤没有可跳过的人工审核")
-            now = utc_now()
-            message_id = new_message_id()
-            user_message = create_task_message(
-                id=message_id,
-                task=task,
-                channel="execution",
-                step_key=step_key,
-                role="user",
-                content=normalized,
-                run_id=message_id,
-                run_status="completed",
-                position=0,
-                started_at=now,
-                ended_at=now,
-                created_at=now,
-                **({"author_name": author_name} if author_name else {}),
-            )
-            if pending_insert_ids:
-                from services.pending_message_inserts import (
-                    delete_pending_insert_batch,
-                )
+        if not replay_pending:
+            from services.remote_access import require_user_actor
 
-                delete_pending_insert_batch(pending_insert_ids)
-            task.state_version += 1
-            task.save()
-            return (
-                user_message,
-                pending_review.id if pending_review else None,
-                user_message.author_name or task.creator_name or "",
-            )
-
+            await asyncio.to_thread(require_user_actor)
         user_message, pending_review_id, trigger_name = await self._run_db(
-            project_id, lambda _project: persist_message()
+            project_id, lambda _project: persist_step_followup(
+                task_id, step_key, normalized, author_name, pending_insert_ids
+            )
         )
         message_id = user_message.id
         handle = await self.restart_from_step(
@@ -826,8 +577,10 @@ class WorkflowRuntime:
             step_followup=normalized,
             trigger_name=trigger_name,
             reset_session=reset_session,
+            audit_action="task.resume",
         )
         await self._publish_user_message(
+            project_id,
             task_id,
             user_message,
             "message_started",
@@ -856,40 +609,33 @@ class WorkflowRuntime:
     ) -> None:
         """Start one merged follow-up for the oldest completed step target."""
         def load_batch(_project):
+            batch = oldest_task_pending_batch(task_id)
+            if batch is None:
+                return None
+            step_key, ids, content, username = batch
             from models import PendingMessageInsert
-            from services.pending_message_inserts import pending_insert_batch
 
-            first = (
-                PendingMessageInsert.select(PendingMessageInsert, Message)
-                .join(
-                    Message,
-                    on=(PendingMessageInsert.target_message_id == Message.id),
-                )
-                .where(Message.task == task_id)
-                .order_by(PendingMessageInsert.created_at, PendingMessageInsert.position)
-                .first()
+            first = PendingMessageInsert.get_by_id(ids[0])
+            return (
+                step_key, ids, content, username,
+                pending_insert_actor(first.target_message_id),
             )
-            if first is None:
-                return None
-            target = Message.get_by_id(first.target_message_id)
-            ids, content, username = pending_insert_batch(target.id)
-            if not ids or not content:
-                return None
-            return target.step_key, ids, content, username
 
         batch = await self._run_db(project_id, load_batch)
         if batch is None:
             return
-        step_key, ids, content, username = batch
+        step_key, ids, content, username, actor = batch
         try:
-            await self.resume_step_with_message(
-                project_id,
-                task_id,
-                step_key,
-                content,
-                author_name=username,
-                pending_insert_ids=ids,
-            )
+            with replayed_actor_context(actor):
+                await self.resume_step_with_message(
+                    project_id,
+                    task_id,
+                    step_key,
+                    content,
+                    author_name=username,
+                    pending_insert_ids=ids,
+                    replay_pending=True,
+                )
         except Exception:
             logger.exception(
                 "Failed to consume pending inserts for task %s step %s",
@@ -938,82 +684,15 @@ class WorkflowRuntime:
             "status": "queued",
         }
 
-    def _inspect_failed_message_retry(self, task_id: str, message_id: str) -> tuple[str, str]:
-        task = Task.get_or_none(Task.id == task_id)
-        message = Message.get_or_none(Message.id == message_id)
-        if task is None or message is None or message.task_id != task_id:
-            raise ValueError("失败消息不存在")
-        if (
-            message.role != "assistant"
-            or message.channel != "execution"
-            or message.run_status != "failed"
-            or not message.step_run_id
-        ):
-            raise ValueError("只能重启失败的阶段执行消息")
-        step_run = StepRun.get_or_none(StepRun.id == message.step_run_id)
-        if (
-            step_run is None
-            or step_run.step_key != message.step_key
-            or step_run.status != "failed"
-            or step_run.run_id != task.active_workflow_run_id
-        ):
-            raise ValueError("只能重启当前流程的最新失败消息")
-        latest_step_message = (
-            Message.select()
-            .where((Message.task == task) & (Message.step_key == step_run.step_key))
-            .order_by(Message.sequence.desc(), Message.created_at.desc())
-            .first()
-        )
-        if latest_step_message is None or latest_step_message.id != message_id:
-            raise ValueError("只能重启该步骤最后一条失败消息")
-        if not (step_run.error or "").strip():
-            raise ValueError("只有异常错误导致的失败消息可以重启")
-        latest_step_run = (
-            StepRun.select()
-            .where(
-                (StepRun.run == step_run.run)
-                & (StepRun.step_key == step_run.step_key)
-            )
-            .order_by(StepRun.attempt.desc(), StepRun.started_at.desc())
-            .first()
-        )
-        latest_message = (
-            Message.select()
-            .where(
-                (Message.task == task)
-                & (Message.step_run_id == step_run.id)
-                & (Message.channel == "execution")
-                & (Message.role == "assistant")
-            )
-            .order_by(Message.sequence.desc(), Message.created_at.desc())
-            .first()
-        )
-        step = TaskStep.get_or_none(
-            (TaskStep.task == task) & (TaskStep.step_key == step_run.step_key)
-        )
-        if (
-            latest_step_run is None or latest_step_run.id != step_run.id
-            or latest_message is None or latest_message.id != message_id
-            or step is None or step.status != "failed"
-        ):
-            raise ValueError("只能重启当前阶段最新的失败消息")
-        active_steps = TaskStep.select().where(
-            (TaskStep.task == task)
-            & (TaskStep.status.in_([
-                *_ACTIVE_STEP_CONFIG_STATUSES,
-                "reviewing", "awaiting_review", "rework_waiting",
-            ]))
-        )
-        if active_steps.exists() or task_id in self._runners:
-            raise ValueError("其他步骤正在执行或等待审核，请先处理后再重启")
-        return step_run.step_key, step_run.run_id
-
     async def retry_failed_message(
         self, project_id: str, task_id: str, message_id: str,
     ) -> dict:
+        active_runner = task_id in self._runners
         step_key, run_id = await self._run_db(
             project_id,
-            lambda _project: self._inspect_failed_message_retry(task_id, message_id),
+            lambda _project: inspect_failed_message_retry(
+                task_id, message_id, active_runner
+            ),
         )
         handle = await self.restart_from_step(
             project_id, task_id, step_key,
@@ -1040,172 +719,22 @@ class WorkflowRuntime:
         """Accept an existing output after its execution message failed."""
         lock = self._operation_locks.setdefault(task_id, asyncio.Lock())
         async with lock:
+            active_runner = task_id in self._runners
             decision_data = await self._run_db(
                 project_id,
-                lambda project: self._persist_failed_step_completion_sync(
+                lambda project: persist_failed_step_completion(
                     project, task_id, message_id, artifact_round,
                     schedule_downstream=schedule_downstream,
+                    active_runner=active_runner,
+                    instance_id=self._leases.instance_id,
+                    current_workflow_steps=self._current_workflow_steps,
                 ),
             )
             if decision_data is None:
                 return None
             task, workflow_run, steps_config = decision_data
             project = await self._run_db(project_id, lambda project: project)
-            return self._resume_in_project(project, task, workflow_run, steps_config)
-
-    def _persist_failed_step_completion_sync(
-        self, project, task_id, message_id, artifact_round, *, schedule_downstream,
-    ):
-        with db_proxy.atomic():
-            return self._persist_failed_step_completion_transaction(
-                project, task_id, message_id, artifact_round,
-                schedule_downstream=schedule_downstream,
-            )
-
-    def _persist_failed_step_completion_transaction(
-        self, project, task_id, message_id, artifact_round, *, schedule_downstream,
-    ):
-        from services.artifacts import list_task_artifacts
-
-        task = Task.get_or_none(Task.id == task_id)
-        message = Message.get_or_none(Message.id == message_id)
-        if (
-            task is None or message is None or message.task_id != task_id
-            or message.channel != "execution" or message.role != "assistant"
-            or message.run_status not in {"failed", "cancelled", "stopped"}
-            or not message.step_run_id
-        ):
-            raise ValueError("失败执行消息不存在")
-        source = StepRun.get_or_none(StepRun.id == message.step_run_id)
-        workflow_run = WorkflowRun.get_or_none(
-            WorkflowRun.id == task.active_workflow_run_id
-        )
-        task_step = TaskStep.get_or_none(
-            (TaskStep.task == task) & (TaskStep.step_key == message.step_key)
-        )
-        if (
-            source is None or source.step_key != message.step_key
-            or source.run.task_id != task_id or source.status != "failed"
-            or workflow_run is None or workflow_run.task_id != task_id
-            or workflow_run.status not in {"failed", "paused", "stopped"}
-            or task.status not in {"paused", "stopped"}
-            or task_step is None or task_step.status not in {"failed", "pending", "cancelled"}
-            or task_id in self._runners
-        ):
-            raise RuntimeError("只有已停止且未完成的失败步骤可以设置完成")
-        active_steps = TaskStep.select().where(
-            (TaskStep.task == task) &
-            (TaskStep.status.in_(["running", "retrying", "rework", "reviewing", "awaiting_review"]))
-        )
-        if schedule_downstream and active_steps.exists():
-            raise RuntimeError("其他步骤正在执行或等待审核，暂不能调度下游；可选择只设置完成当前步骤")
-        if artifact_round < 1 or not any(
-            artifact["step_key"] == message.step_key
-            and artifact["round"] == artifact_round
-            for artifact in list_task_artifacts(project, task_id)
-        ):
-            raise RuntimeError("该步骤没有已产生的产物，不能设置完成")
-
-        steps_config = None
-        if schedule_downstream:
-            steps_config = (
-                WorkflowDefinition.load(self._current_workflow_steps(project, task))
-                .compile().to_steps_config()
-            )
-            if message.step_key not in {
-                str(item.get("key") or "") for item in steps_config["steps"]
-            }:
-                raise ValueError(f"Step does not exist in latest workflow: {message.step_key}")
-        now = utc_now()
-        latest_attempt = (
-            StepRun.select()
-            .where((StepRun.run == workflow_run) & (StepRun.step_key == message.step_key))
-            .order_by(StepRun.attempt.desc())
-            .first()
-        )
-        StepRun.create(
-            id=str(uuid.uuid4()), run=workflow_run, step_key=message.step_key,
-            attempt=latest_attempt.attempt + 1 if latest_attempt else 1,
-            artifact_round=artifact_round, status="reused",
-            engine=source.engine, model=source.model,
-            source_step_run_id=source.id, started_at=now, ended_at=now,
-        )
-        task_step.status = "passed"
-        task_step.error = None
-        task_step.review_feedback = None
-        task_step.rework_feedback = None
-        task_step.ended_at = now
-        task_step.save()
-        manifest = update_round_manifest_status(
-            artifacts_root=Path(project.workstep_dir) / "artifacts",
-            workflow_id=task.workflow_id, task_id=task.id,
-            step_key=message.step_key, artifact_round=artifact_round,
-            status="passed", eligible_for_downstream=True,
-        )
-        task.state_version += 1
-        task.updated_at = now
-        task.save()
-        if not schedule_downstream:
-            return None
-        assert steps_config is not None
-        if manifest is not None:
-            scheduler = DAGScheduler([
-                Step.from_dict(item) for item in steps_config["steps"]
-            ])
-            state = normalize_routing_state(
-                json.loads(workflow_run.routing_state_json)
-                if workflow_run.routing_state_json else None
-            )
-            result = route_artifact_round(
-                step=scheduler.steps[message.step_key],
-                artifact_round=ArtifactRound(
-                    round=artifact_round,
-                    path=step_round_dir(
-                        Path(project.workstep_dir) / "artifacts",
-                        task.workflow_id, task.id, message.step_key, artifact_round,
-                    ),
-                    manifest=manifest,
-                ),
-                routing_state=state,
-            )
-            if result.conflict or result.exhausted_edges:
-                reason = (
-                    "同一轮同时产生了正常输出和返回输出，路由冲突"
-                    if result.conflict else "返回线已达到配置上限"
-                )
-                raise RuntimeError(reason)
-            if result.feedback_edges:
-                targets = {str(edge.get("to")) for edge in result.feedback_edges}
-                rewind: set[str] = set()
-                for target in targets:
-                    rewind.add(target)
-                    rewind.update(scheduler.get_all_downstream(target))
-                scope = result.state.get("execution_scope")
-                if isinstance(scope, list):
-                    result.state["execution_scope"] = sorted(
-                        {str(key) for key in scope} | rewind
-                    )
-                for key in rewind:
-                    row = TaskStep.get_or_none(
-                        (TaskStep.task == task) & (TaskStep.step_key == key)
-                    )
-                    if row is None:
-                        continue
-                    row.status = "rework_waiting" if key == message.step_key else "rework"
-                    row.error = None
-                    row.ended_at = None
-                    row.save()
-            workflow_run.routing_state_json = json.dumps(
-                result.state, ensure_ascii=False, sort_keys=True,
-            )
-        task.status = "running"
-        task.save()
-        workflow_run.status = "running"
-        workflow_run.ended_at = None
-        workflow_run.owner_id = self._instance_id
-        workflow_run.heartbeat_at = now
-        workflow_run.save()
-        return task, workflow_run, steps_config
+            return await self._resume_in_project(project, task, workflow_run, steps_config)
 
     async def _skip_manual_review(
         self,
@@ -1258,6 +787,7 @@ class WorkflowRuntime:
         await self._run_db(project_id, lambda _project: persist_skip())
 
         event = {
+            "project_id": project_id,
             "task_id": task_id,
             "step_key": step_key,
             "type": "review_status",
@@ -1295,21 +825,28 @@ class WorkflowRuntime:
                     break
                 await asyncio.sleep(0.01)
         actor_fields = current_actor_message_fields()
+        def persist_decision(project):
+            with db_proxy.atomic("IMMEDIATE"):
+                return persist_review_decision(
+                    project,
+                    task_id,
+                    step_key,
+                    review_run_id,
+                    decision,
+                    comment,
+                    actor_fields,
+                    schedule_downstream,
+                    active_runners=self._runners,
+                    instance_id=self._leases.instance_id,
+                    current_workflow_steps=self._current_workflow_steps,
+                )
+
         decision_data = await self._run_db(
-            project_id,
-            lambda project: self._persist_review_decision_sync(
-                project,
-                task_id,
-                step_key,
-                review_run_id,
-                decision,
-                comment,
-                actor_fields,
-                schedule_downstream,
-            ),
+            project_id, persist_decision,
         )
         if decision in {"terminate", "complete_task", "set_complete"}:
             event = {
+                "project_id": project_id,
                 "task_id": task_id,
                 "step_key": step_key,
                 "type": "review_status",
@@ -1327,6 +864,7 @@ class WorkflowRuntime:
                 from services.remote_project import current_actor_event_fields
 
                 status_event = {
+                    "project_id": project_id,
                     "task_id": task_id,
                     "step_key": "",
                     "type": "status",
@@ -1346,354 +884,14 @@ class WorkflowRuntime:
         if task.id in self._runners:
             raise RuntimeError("Task is still finishing the current step")
         project = await self._run_db(project_id, lambda project: project)
-        return self._resume_in_project(
+        return await self._resume_in_project(
             project,
             task,
             workflow_run,
             steps_config,
         )
 
-    def _persist_review_decision_sync(
-        self,
-        project,
-        task_id,
-        step_key,
-        review_run_id,
-        decision,
-        comment,
-        actor_fields,
-        schedule_downstream,
-    ):
-        review = ReviewRun.get_or_none(ReviewRun.id == review_run_id)
-        if (
-            review is None
-            or review.task_id != task_id
-            or review.step_key != step_key
-        ):
-            raise ValueError("Review not found for the requested task step")
-        if review.status == "skipped":
-            raise RuntimeError("Review has been skipped by a newer step message")
-        latest = (
-            ReviewRun.select()
-            .where(
-                (ReviewRun.task == task_id)
-                & (ReviewRun.step_key == step_key)
-            )
-            .order_by(ReviewRun.started_at.desc(), ReviewRun.id.desc())
-            .first()
-        )
-        setting_complete = decision == "set_complete"
-        if not setting_complete and (latest is None or latest.id != review.id):
-            raise RuntimeError("Review has been superseded by a newer attempt")
-        if review.decision:
-            if review.decision == decision:
-                return None
-            if not (setting_complete and review.decision == "terminate"):
-                raise RuntimeError("Review already has a different decision")
-
-        now = utc_now()
-        completed_task = decision == "complete_task"
-        approved = decision in {"approve", "force_approve", "complete_task", "set_complete"}
-        terminated = decision == "terminate"
-        task = Task.get_by_id(task_id)
-        workflow_run = (
-            WorkflowRun.get_or_none(WorkflowRun.id == task.active_workflow_run_id)
-            if setting_complete else review.workflow_run
-        )
-        if setting_complete:
-            current_step = TaskStep.get_or_none(
-                (TaskStep.task == task) & (TaskStep.step_key == step_key)
-            )
-            stopped_manual_review = (
-                review.mode == "manual" and review.status == "terminated"
-            )
-            stopped_auto_review = (
-                review.mode == "auto" and review.status == "failed"
-                and review.error == "手动停止"
-                and review.step_run.status == "succeeded"
-            )
-            if (
-                not (stopped_manual_review or stopped_auto_review)
-                or workflow_run is None or workflow_run.task_id != task_id
-                or task.status not in {"stopped", "paused"}
-                or workflow_run.status not in {"stopped", "failed", "paused"}
-                or current_step is None
-                or current_step.status not in {"cancelled", "failed", "pending"}
-                or task_id in self._runners
-            ):
-                raise RuntimeError("只有任务已停止、步骤未完成时，已停止的审核才能设置完成")
-            from services.artifacts import list_task_artifacts
-
-            if review.step_run.artifact_round is None or not any(
-                artifact["step_key"] == step_key
-                and artifact["round"] == review.step_run.artifact_round
-                for artifact in list_task_artifacts(project, task_id)
-            ):
-                raise RuntimeError("该审核轮次没有已产生的产物，不能设置完成")
-        if completed_task:
-            if review.mode != "manual" or review.status not in {"pending", "rejected"}:
-                raise RuntimeError("只有待处理的人工审核可以完成任务")
-            if task.active_workflow_run_id != workflow_run.id:
-                raise RuntimeError("审核不属于当前执行轮次")
-            current_step = TaskStep.get_or_none(
-                (TaskStep.task == task) & (TaskStep.step_key == step_key)
-            )
-            if current_step is None or current_step.status != "awaiting_review":
-                raise RuntimeError("当前阶段已不再等待人工审核")
-            other_running = TaskStep.select().where(
-                (TaskStep.task == task)
-                & (TaskStep.step_key != step_key)
-                & (TaskStep.status.in_(["running", "retrying", "rework", "reviewing"]))
-            )
-            if other_running.exists() or task_id in self._runners:
-                raise RuntimeError("其他阶段仍在执行，不能完成任务")
-        steps_config = None
-        if not terminated and not completed_task:
-            steps_config = (
-                WorkflowDefinition.load(self._current_workflow_steps(project, task))
-                .compile()
-                .to_steps_config()
-            )
-            if step_key not in {
-                str(item.get("key") or "") for item in steps_config["steps"]
-            }:
-                raise ValueError(f"Step does not exist in latest workflow: {step_key}")
-        review.decision = decision
-        review.decision_comment = comment
-        review.reviewer_id = actor_fields.get("author_id")
-        review.reviewer_name = actor_fields.get("author_name")
-        review.reviewer_device_id = actor_fields.get("author_device_id")
-        review.reviewer_device_name = actor_fields.get("author_device_name")
-        review.decided_at = now
-        review.ended_at = review.ended_at or now
-        review.status = (
-            "terminated" if terminated else "passed" if approved else "rejected"
-        )
-        review.save()
-
-        # 人工审核完成后，同步审核消息的结束时间，前端据此显示审核耗时。
-        Message.update(
-            ended_at=review.ended_at,
-            run_status="completed",
-            **actor_fields,
-        ).where(
-            (Message.task == task_id)
-            & (Message.channel == "review")
-            & (Message.step_key == step_key)
-            & (Message.ended_at.is_null())
-        ).execute()
-
-        task_step = TaskStep.get(
-            (TaskStep.task == task_id) & (TaskStep.step_key == step_key)
-        )
-        if terminated:
-            task_step.status = "cancelled"
-            task_step.error = comment or "用户终止"
-            task_step.ended_at = now
-            task_step.review_feedback = None
-        elif approved:
-            task_step.status = "passed"
-            task_step.error = None
-            task_step.ended_at = now
-            task_step.review_feedback = None
-        else:
-            # 人工审核不通过：保存原因，带反馈自动重跑当前步骤。
-            task_step.status = "retrying"
-            task_step.error = comment or "用户驳回审核"
-            task_step.review_feedback = comment or ""
-            task_step.ended_at = None
-        task_step.save()
-        if setting_complete and review.workflow_run_id != workflow_run.id:
-            latest_attempt = (
-                StepRun.select()
-                .where((StepRun.run == workflow_run) & (StepRun.step_key == step_key))
-                .order_by(StepRun.attempt.desc())
-                .first()
-            )
-            StepRun.create(
-                id=str(uuid.uuid4()),
-                run=workflow_run,
-                step_key=step_key,
-                attempt=(latest_attempt.attempt + 1) if latest_attempt else 1,
-                artifact_round=review.step_run.artifact_round,
-                status="reused",
-                engine=review.step_run.engine,
-                model=review.step_run.model,
-                source_step_run_id=review.step_run_id,
-                started_at=now,
-                ended_at=now,
-            )
-        if completed_task:
-            if review.step_run.artifact_round is not None:
-                update_round_manifest_status(
-                    artifacts_root=Path(project.workstep_dir) / "artifacts",
-                    workflow_id=task.workflow_id,
-                    task_id=task.id,
-                    step_key=step_key,
-                    artifact_round=review.step_run.artifact_round,
-                    status="passed",
-                    eligible_for_downstream=True,
-                )
-            TaskStep.update(
-                status="skipped", error=None, ended_at=now,
-            ).where(
-                (TaskStep.task == task)
-                & (TaskStep.step_key != step_key)
-                & (TaskStep.status != "passed")
-            ).execute()
-            ReviewRun.update(status="skipped", ended_at=now).where(
-                (ReviewRun.workflow_run == workflow_run)
-                & (ReviewRun.id != review.id)
-                & (ReviewRun.status.in_(["pending", "running"]))
-            ).execute()
-            current_step_run_ids = StepRun.select(StepRun.id).where(
-                StepRun.run == workflow_run
-            )
-            Message.update(run_status="completed", ended_at=now).where(
-                (Message.task == task)
-                & (Message.channel == "review")
-                & (Message.run_status == "running")
-                & (Message.step_run_id.in_(current_step_run_ids))
-            ).execute()
-            task.status = "ready"
-            task.state_version += 1
-            task.updated_at = now
-            task.save()
-            workflow_run.status = "succeeded"
-            workflow_run.ended_at = now
-            workflow_run.owner_id = None
-            workflow_run.heartbeat_at = None
-            workflow_run.save()
-            return None
-        if terminated:
-            task.status = "stopped"
-            task.state_version += 1
-            task.updated_at = now
-            task.save()
-            workflow_run.status = "stopped"
-            workflow_run.ended_at = now
-            workflow_run.owner_id = None
-            workflow_run.heartbeat_at = now
-            workflow_run.save()
-            return None
-        if setting_complete and not schedule_downstream:
-            if review.step_run.artifact_round is not None:
-                update_round_manifest_status(
-                    artifacts_root=Path(project.workstep_dir) / "artifacts",
-                    workflow_id=task.workflow_id,
-                    task_id=task.id,
-                    step_key=step_key,
-                    artifact_round=review.step_run.artifact_round,
-                    status="passed",
-                    eligible_for_downstream=True,
-                )
-            task.state_version += 1
-            task.updated_at = now
-            task.save()
-            return None
-        assert steps_config is not None
-        halt_after_routing = False
-        if approved and review.step_run.artifact_round is not None:
-            manifest = update_round_manifest_status(
-                artifacts_root=Path(project.workstep_dir) / "artifacts",
-                workflow_id=task.workflow_id,
-                task_id=task.id,
-                step_key=step_key,
-                artifact_round=review.step_run.artifact_round,
-                status="passed",
-                eligible_for_downstream=True,
-            )
-            if manifest is not None:
-                scheduler = DAGScheduler([
-                    Step.from_dict(item)
-                    for item in steps_config["steps"]
-                ])
-                routed_step = scheduler.steps[step_key]
-                state = normalize_routing_state(
-                    json.loads(workflow_run.routing_state_json)
-                    if workflow_run.routing_state_json else None
-                )
-                result = route_artifact_round(
-                    step=routed_step,
-                    artifact_round=ArtifactRound(
-                        round=review.step_run.artifact_round,
-                        path=step_round_dir(
-                            Path(project.workstep_dir) / "artifacts",
-                            task.workflow_id,
-                            task.id,
-                            step_key,
-                            review.step_run.artifact_round,
-                        ),
-                        manifest=manifest,
-                    ),
-                    routing_state=state,
-                )
-                if result.conflict or result.exhausted_edges:
-                    halt_after_routing = True
-                    task_step.status = "failed"
-                    task_step.error = (
-                        "同一轮同时产生了正常输出和返回输出，路由冲突"
-                        if result.conflict else
-                        f"返回线已达到配置上限 {routed_step.max_return_rounds} 次"
-                    )
-                    task_step.ended_at = now
-                    task_step.save()
-                elif result.feedback_edges:
-                    targets = {
-                        str(connection.get("to"))
-                        for connection in result.feedback_edges
-                    }
-                    rewind: set[str] = set()
-                    for target in targets:
-                        rewind.add(target)
-                        rewind.update(scheduler.get_all_downstream(target))
-                    persisted_scope = result.state.get("execution_scope")
-                    if isinstance(persisted_scope, list):
-                        result.state["execution_scope"] = sorted(
-                            {str(key) for key in persisted_scope} | rewind
-                        )
-                    elif result.state.get("entry_step_key") in scheduler.steps:
-                        entry_key = result.state["entry_step_key"]
-                        result.state["execution_scope"] = sorted(
-                            {entry_key, *scheduler.get_all_downstream(entry_key)}
-                            | rewind
-                        )
-                    for key in rewind:
-                        row = TaskStep.get(
-                            (TaskStep.task == task) & (TaskStep.step_key == key)
-                        )
-                        row.status = (
-                            "rework_waiting" if key == step_key else "rework"
-                        )
-                        row.error = None
-                        row.ended_at = None
-                        row.save()
-                workflow_run.routing_state_json = json.dumps(
-                    result.state, ensure_ascii=False, sort_keys=True
-                )
-        if halt_after_routing:
-            task.status = "paused"
-            task.state_version += 1
-            task.updated_at = now
-            task.save()
-            workflow_run.status = "paused"
-            workflow_run.ended_at = now
-            workflow_run.owner_id = None
-            workflow_run.heartbeat_at = now
-            workflow_run.save()
-            return None
-        task.status = "running"
-        task.state_version += 1
-        task.updated_at = now
-        task.save()
-        workflow_run.status = "running"
-        workflow_run.ended_at = None
-        workflow_run.owner_id = self._instance_id
-        workflow_run.heartbeat_at = now
-        workflow_run.save()
-        return task, workflow_run, steps_config
-
-    def _resume_in_project(
+    async def _resume_in_project(
         self,
         project,
         task: Task,
@@ -1703,7 +901,7 @@ class WorkflowRuntime:
         """Resume downstream scheduling with the latest workflow."""
         if task.id in self._runners:
             raise RuntimeError(f"Task is already running: {task.id}")
-        heal_task_cwd(task, project)
+        await self._run_db(project.id, lambda _project: heal_task_cwd(task, project))
         routing_state = normalize_routing_state(
             json.loads(workflow_run.routing_state_json)
             if workflow_run.routing_state_json else None
@@ -1735,7 +933,7 @@ class WorkflowRuntime:
             entry_step_key=entry_step_key,
         )
         self._runners[task.id] = runner
-        self._register_lease(workflow_run.id, project.id)
+        self._leases.register(workflow_run.id, project.id)
         completion = asyncio.create_task(
             self._execute(
                 project_id=project.id,
@@ -1815,13 +1013,21 @@ class WorkflowRuntime:
             rows = await self._run_db(
                 project.id,
                 lambda _p: list(
-                    Task.select(Task.id).where(Task.status == "queued").dicts()
+                    Task.select(Task.id, Task.queued_run_json)
+                    .where(Task.status == "queued").dicts()
                 ),
             )
             for row in rows:
                 task_id = row["id"]
+                try:
+                    queued = json.loads(row["queued_run_json"] or "{}")
+                except (TypeError, ValueError):
+                    queued = {}
+                source = queued.get("source") if isinstance(queued, dict) else None
+                if source not in _VALID_TASK_SOURCES:
+                    source = "manual"
                 acquired = await concurrency_gate.acquire_task(
-                    project.id, task_id, "manual"
+                    project.id, task_id, source
                 )
                 if acquired == GRANTED:
                     completion = asyncio.create_task(
@@ -1863,21 +1069,54 @@ class WorkflowRuntime:
         *,
         schedule_contended: bool = True,
     ) -> int:
-        prepared, contended = await self._run_db(
-            project.id,
-            lambda _project: self._prepare_project_recovery_sync(project),
+        active_task_ids = frozenset(self._runners)
+        def persist_recovery(_project):
+            from services.project_audit import record_project_audit
+            from services.remote_access import replayed_actor_context
+
+            with db_proxy.atomic("IMMEDIATE"):
+                decision = prepare_project_recovery(
+                    project,
+                    active_task_ids=active_task_ids,
+                    owner_id=self._leases.instance_id,
+                    current_workflow_steps=self._current_workflow_steps,
+                )
+                for candidate in decision.runs:
+                    run = WorkflowRun.get_by_id(candidate.run_id)
+                    with replayed_actor_context(None):
+                        record_project_audit(
+                            project_id=project.id,
+                            task_id=candidate.task_id,
+                            action="task.recover",
+                            result="succeeded",
+                            actor_type="system",
+                            initiated_by_user_id=run.initiated_by_user_id,
+                            initiated_by_username=run.initiated_by_username,
+                            metadata={"workflow_run_id": run.id},
+                        )
+                return decision
+
+        decision = await self._run_db(
+            project.id, persist_recovery,
         )
         if schedule_contended:
-            for run_id in contended:
-                self._schedule_recovery_retry(project, run_id)
+            for run_id in decision.contended_run_ids:
+                self._leases.schedule_recovery_retry(project, run_id)
         recovered = 0
-        for task, workflow_run, stale_keys, now, steps_config in prepared:
+        for candidate in decision.runs:
+            task, workflow_run = await self._run_db(
+                project.id,
+                lambda _project: (
+                    Task.get_by_id(candidate.task_id),
+                    WorkflowRun.get_by_id(candidate.run_id),
+                ),
+            )
             try:
-                self._resume_in_project(
+                await self._resume_in_project(
                     project,
                     task,
                     workflow_run,
-                    steps_config,
+                    candidate.steps_config,
                 )
             except RuntimeError:
                 logger.warning(
@@ -1887,14 +1126,15 @@ class WorkflowRuntime:
                 )
                 continue
             recovered_event = {
+                "project_id": project.id,
                 "task_id": task.id,
-                "step_key": next(iter(stale_keys), None),
+                "step_key": next(iter(candidate.step_keys), None),
                 "type": "run_recovered",
                 "data": {
                     "task_id": task.id,
                     "workflow_run_id": workflow_run.id,
-                    "recovered_at": now,
-                    "recovered_count": workflow_run.recovered_count,
+                    "recovered_at": candidate.recovered_at,
+                    "recovered_count": candidate.recovered_count,
                 },
             }
             ctx = AGUIContext.from_event(recovered_event)
@@ -1902,228 +1142,6 @@ class WorkflowRuntime:
                 await self._event_bus.publish(agui_event)
             recovered += 1
         return recovered
-
-    def _prepare_project_recovery_sync(self, project):
-        prepared = []
-        contended = []
-        interrupted = list(
-            WorkflowRun.select().where(WorkflowRun.status == "running")
-        )
-        for workflow_run in interrupted:
-            task = Task.get_by_id(workflow_run.task_id)
-            if task.id in self._runners:
-                continue
-            heal_task_cwd(task, project)
-            now = utc_now()
-            if self._lease_held_by_live_owner(workflow_run, now):
-                # Another daemon still holds a fresh lease. Do NOT touch the run
-                # (that would clobber the live instance's status writes); retry
-                # recovery once the lease is expected to have gone stale.
-                logger.warning(
-                    "Skipping recovery of run %s: lease still held by live daemon %s",
-                    workflow_run.id,
-                    workflow_run.owner_id,
-                )
-                contended.append(workflow_run.id)
-                continue
-            steps_config = (
-                WorkflowDefinition.load(self._current_workflow_steps(project, task))
-                .compile()
-                .to_steps_config()
-            )
-            stale_keys = set()
-            review_keys = set()
-            review_step_runs = {}
-            review_passed_keys = set()
-            for step_run in StepRun.select().where(
-                (StepRun.run == workflow_run)
-                & (StepRun.status == "running")
-            ):
-                if step_run.artifact_round is not None:
-                    discard_artifact_round(
-                        Path(project.workstep_dir) / "artifacts",
-                        task.workflow_id,
-                        task.id,
-                        step_run.step_key,
-                        step_run.artifact_round,
-                    )
-                    step_run.artifact_round = None
-                    step_run.input_rounds_json = None
-                step_run.status = "failed"
-                step_run.error = "进程重启中断，等待自动恢复"
-                step_run.ended_at = now
-                step_run.save()
-                stale_keys.add(step_run.step_key)
-            for ts in TaskStep.select().where(
-                (TaskStep.task == task) & (TaskStep.status == "running")
-            ):
-                latest_step_run = (
-                    StepRun.select()
-                    .where(
-                        (StepRun.run == workflow_run)
-                        & (StepRun.step_key == ts.step_key)
-                    )
-                    .order_by(StepRun.attempt.desc())
-                    .first()
-                )
-                if latest_step_run is not None and latest_step_run.status == "succeeded":
-                    # The process may have died between committing execution
-                    # success and moving the step into review.
-                    ts.status = "reviewing"
-                    ts.save()
-                    continue
-                ts.status = "pending"
-                ts.ended_at = None
-                ts.error = None
-                ts.save()
-                stale_keys.add(ts.step_key)
-            for ts in TaskStep.select().where(
-                (TaskStep.task == task) & (TaskStep.status == "reviewing")
-            ):
-                latest_step_run = (
-                    StepRun.select()
-                    .where(
-                        (StepRun.run == workflow_run)
-                        & (StepRun.step_key == ts.step_key)
-                    )
-                    .order_by(StepRun.attempt.desc())
-                    .first()
-                )
-                if latest_step_run is None or latest_step_run.status != "succeeded":
-                    continue
-                review_keys.add(ts.step_key)
-                review_step_runs[ts.step_key] = latest_step_run
-                latest_review = (
-                    ReviewRun.select()
-                    .where(ReviewRun.step_run == latest_step_run)
-                    .order_by(ReviewRun.attempt.desc())
-                    .first()
-                )
-                if latest_review is not None and latest_review.status == "passed":
-                    review_passed_keys.add(ts.step_key)
-                ReviewRun.update(
-                    status="failed",
-                    error="进程重启中断，等待自动恢复审核",
-                    ended_at=now,
-                ).where(
-                    (ReviewRun.step_run == latest_step_run)
-                    & (ReviewRun.mode == "auto")
-                    & (ReviewRun.status == "running")
-                ).execute()
-            current_step_run_ids = [
-                row.id for row in StepRun.select(StepRun.id).where(
-                    StepRun.run == workflow_run
-                )
-            ]
-            current_message_run = Message.step_run_id.in_(current_step_run_ids)
-            if workflow_run.started_at is not None:
-                current_message_run |= (
-                    Message.step_run_id.is_null(True)
-                    & (Message.created_at >= workflow_run.started_at)
-                )
-            if stale_keys or review_keys:
-                # Close in-flight execution messages so the UI does not keep
-                # an eternally-running spinner for the interrupted attempt.
-                stale_messages = Message.select().where(
-                    (Message.task == task)
-                    & (Message.channel == "execution")
-                    & (Message.run_status == "running")
-                    & current_message_run
-                    & (Message.step_key.in_(stale_keys | review_keys))
-                )
-                for stale_message in stale_messages:
-                    review_execution_finished = stale_message.step_key in review_keys
-                    stale_message.run_status = (
-                        "succeeded" if review_execution_finished else "failed"
-                    )
-                    stale_message.ended_at = (
-                        review_step_runs[stale_message.step_key].ended_at or now
-                        if review_execution_finished else now
-                    )
-                    if stale_message.event_log_path:
-                        journal = TurnEventJournal()
-                        ref = journal.reopen(
-                            project.workstep_dir,
-                            stale_message.event_log_path,
-                        )
-                        snapshot = journal.snapshot(ref)
-                        summary_events = snapshot["events"]
-                        sealed_json = seal_unanswered_interactions(
-                            json.dumps(summary_events, ensure_ascii=False)
-                        )
-                        sealed_events = json.loads(sealed_json or "[]")
-                        for response_event in sealed_events[len(summary_events):]:
-                            journal.record(ref, response_event)
-                        journal.finish(ref)
-                        snapshot = journal.snapshot(ref)
-                        stale_message.content = snapshot["content"]
-                        stale_message.events_json = json.dumps(
-                            snapshot["events"], ensure_ascii=False
-                        ) if snapshot["events"] else None
-                        stale_message.event_summary_json = json.dumps(
-                            snapshot["summary"], ensure_ascii=False
-                        )
-                        stale_message.event_count = snapshot["summary"]["event_count"]
-                        stale_message.last_event_seq = snapshot["summary"]["last_event_seq"]
-                    else:
-                        stale_message.events_json = seal_unanswered_interactions(
-                            stale_message.events_json
-                        )
-                    stale_message.save()
-            if review_keys:
-                review_messages = Message.select().where(
-                    (Message.task == task)
-                    & (Message.channel == "review")
-                    & (Message.run_status == "running")
-                    & current_message_run
-                    & (Message.step_key.in_(review_keys))
-                )
-                for review_message in review_messages:
-                    passed = review_message.step_key in review_passed_keys
-                    review_message.run_status = "completed" if passed else "failed"
-                    review_message.content = (
-                        "审核已通过" if passed else "审核因服务重启中断，正在自动重试"
-                    )
-                    review_message.ended_at = now
-                    if review_message.event_log_path:
-                        journal = TurnEventJournal()
-                        ref = journal.reopen(
-                            project.workstep_dir,
-                            review_message.event_log_path,
-                        )
-                        snapshot = journal.snapshot(ref)
-                        sealed_json = seal_unanswered_interactions(
-                            json.dumps(snapshot["events"], ensure_ascii=False)
-                        )
-                        for response_event in json.loads(sealed_json or "[]")[
-                            len(snapshot["events"]):
-                        ]:
-                            journal.record(ref, response_event)
-                        journal.finish(ref)
-                        snapshot = journal.snapshot(ref)
-                        review_message.events_json = json.dumps(
-                            snapshot["events"], ensure_ascii=False
-                        ) if snapshot["events"] else None
-                        review_message.event_summary_json = json.dumps(
-                            snapshot["summary"], ensure_ascii=False
-                        )
-                        review_message.event_count = snapshot["summary"]["event_count"]
-                        review_message.last_event_seq = snapshot["summary"]["last_event_seq"]
-                    review_message.save()
-            task.status = "running"
-            task.updated_at = now
-            task.save()
-            workflow_run.recovered_at = now
-            workflow_run.recovered_count = (
-                workflow_run.recovered_count or 0
-            ) + 1
-            workflow_run.owner_id = self._instance_id
-            workflow_run.heartbeat_at = now
-            workflow_run.save()
-            prepared.append((
-                task, workflow_run, stale_keys | review_keys, now, steps_config,
-            ))
-        return prepared, contended
 
     def _current_workflow_steps(self, project, task: Task) -> dict:
         """Return the project's latest workflow steps for ``task``.
@@ -2165,90 +1183,10 @@ class WorkflowRuntime:
             target["config"] = dict(override.get("config") or {})
         return merged
 
-    @staticmethod
-    def _find_step(workflow_data: dict, step_key: str) -> dict | None:
-        is_nodes = bool(workflow_data.get("nodes"))
-        for item in workflow_data.get("nodes") or workflow_data.get("steps") or []:
-            key = str(
-                (item.get("type") or item.get("key") or item.get("id"))
-                if is_nodes
-                else (item.get("key") or item.get("id") or item.get("type"))
-                or ""
-            )
-            if key == step_key:
-                return item
-        return None
-
     async def get_step_execution_config(
-        self,
-        project_id: str,
-        task_id: str,
-        step_key: str,
+        self, project_id: str, task_id: str, step_key: str,
     ) -> dict:
-        from engines.core.registry import get_available_engines
-
-        def load(project):
-            task = Task.get_or_none(Task.id == task_id)
-            if task is None:
-                raise ValueError(f"Task not found: {task_id}")
-            step = TaskStep.get_or_none(
-                (TaskStep.task == task) & (TaskStep.step_key == step_key)
-            )
-            if step is None:
-                raise ValueError(f"Step does not exist: {step_key}")
-            workflow = self._current_workflow_steps(project, task)
-            resolved_step = self._find_step(workflow, step_key)
-            if resolved_step is None:
-                raise ValueError(f"Step does not exist: {step_key}")
-            configured = None
-            if step.execution_config_json:
-                try:
-                    value = json.loads(step.execution_config_json)
-                    configured = value if isinstance(value, dict) else None
-                except (TypeError, json.JSONDecodeError):
-                    configured = None
-            resolved = {
-                "engine": resolve_execution_engine(resolved_step.get("engine")),
-                "model": str(resolved_step.get("model") or ""),
-                "config": dict(resolved_step.get("config") or {}),
-            }
-            execution_messages = Message.select().where(
-                (Message.task == task)
-                & (Message.step_key == step_key)
-                & (Message.channel == "execution")
-                & (Message.role.in_(["user", "assistant"]))
-            )
-            latest_response = (
-                execution_messages.where(
-                    (Message.role == "assistant")
-                    & (Message.run_status.in_(["succeeded", "completed"]))
-                )
-                .order_by(Message.sequence.desc())
-                .first()
-            )
-            return {
-                "configured": configured,
-                "resolved": resolved,
-                "source": "task_override" if configured is not None else "workflow",
-                "editable": step.status not in _ACTIVE_STEP_CONFIG_STATUSES,
-                "status": step.status,
-                "has_history": execution_messages.exists(),
-                "message_count": execution_messages.count(),
-                "session_engine": str(
-                    (latest_response.engine if latest_response is not None else None)
-                    or step.engine
-                    or resolved["engine"]
-                ),
-                # 当前引擎会话建立时绑定的供应商；null = 无可复用会话。
-                # 同引擎换供应商时需要交接（旧会话端点与新供应商不匹配）。
-                "session_provider": (
-                    str(step.session_provider or "").strip()
-                    if step.session_id else None
-                ),
-                "available_engines": get_available_engines(),
-            }
-
-        return await self._run_db(project_id, load)
+        return await self._step_config.get(project_id, task_id, step_key)
 
     async def update_step_execution_config(
         self,
@@ -2261,148 +1199,15 @@ class WorkflowRuntime:
         config: dict[str, str],
         context_mode: str | None = None,
     ) -> dict:
-        from engines.core.registry import create_engine
-
-        normalized_engine = engine.strip()
-        if not normalized_engine:
-            raise ValueError("引擎不能为空")
-        if context_mode not in {None, "smart", "full", "none"}:
-            raise ValueError("不支持的交接方式")
-        if any(not isinstance(key, str) or not isinstance(value, str) for key, value in config.items()):
-            raise ValueError("步骤配置必须为字符串键值")
-        target_engine = create_engine(normalized_engine)
-        if target_engine is None:
-            raise ValueError(f"未知引擎: {normalized_engine}")
-        allowed_fields = {
-            field.key for field in target_engine.full_step_config_schema()
-        }
-        unknown_fields = sorted(set(config) - allowed_fields)
-        if unknown_fields:
-            raise ValueError(f"不支持的步骤配置字段: {', '.join(unknown_fields)}")
-
-        def save(_project):
-            task = Task.get_or_none(Task.id == task_id)
-            if task is None:
-                raise ValueError(f"Task not found: {task_id}")
-            step = TaskStep.get_or_none(
-                (TaskStep.task == task) & (TaskStep.step_key == step_key)
-            )
-            if step is None:
-                raise ValueError(f"Step does not exist: {step_key}")
-            if step.status in _ACTIVE_STEP_CONFIG_STATUSES:
-                raise RuntimeError("步骤执行中，不能修改引擎配置")
-            previous = (
-                Message.select()
-                .where(
-                    (Message.task == task)
-                    & (Message.step_key == step_key)
-                    & (Message.channel == "execution")
-                    & (Message.role == "assistant")
-                    & (Message.run_status.in_(["succeeded", "completed"]))
-                )
-                .order_by(Message.sequence.desc())
-                .first()
-            )
-            source_engine = str(
-                (previous.engine if previous is not None else None)
-                or step.engine
-                or ""
-            )
-            current_workflow = self._current_workflow_steps(_project, task)
-            current_step = self._find_step(current_workflow, step_key) or {}
-            current_provider = str(
-                (current_step.get("config") or {}).get("provider_id") or ""
-            ).strip()
-            new_provider = str((config or {}).get("provider_id") or "").strip()
-            # 同引擎但供应商变更也属于端点切换：只要步骤已有历史，就要生成
-            # 交接数据。是否存在可复用 session 仅决定后续能否 resume，不影响
-            # 用户对上下文交接方式的选择。
-            provider_changed = (
-                bool(source_engine)
-                and source_engine == normalized_engine
-                and current_provider != new_provider
-            )
-            previous_provider = current_provider if provider_changed else ""
-            step.execution_config_json = json.dumps({
-                "engine": normalized_engine,
-                "model": (model or "").strip(),
-                "config": dict(config),
-            }, ensure_ascii=False, sort_keys=True)
-            if source_engine and (
-                source_engine != normalized_engine or provider_changed
-            ):
-                history = [
-                    {
-                        "id": row.id,
-                        "role": row.role,
-                        "content": row.content,
-                        "status": row.run_status,
-                        "created_at": (
-                            row.created_at.isoformat() if row.created_at else None
-                        ),
-                    }
-                    for row in (
-                        Message.select()
-                        .where(
-                            (Message.task == task)
-                            & (Message.step_key == step_key)
-                            & (Message.channel == "execution")
-                            & (Message.role.in_(["user", "assistant"]))
-                        )
-                        .order_by(Message.sequence.asc())
-                    )
-                ]
-                if history:
-                    metadata = append_handoff_log(
-                        _project.workstep_dir,
-                        f"task-{task.id}:{step_key}",
-                        history,
-                        source_engine=source_engine,
-                        target_engine=normalized_engine,
-                        mode=context_mode or "smart",
-                        source_provider=previous_provider,
-                        target_provider=new_provider,
-                    )
-                    step.pending_handoff_json = json.dumps(
-                        metadata, ensure_ascii=False, sort_keys=True
-                    )
-            else:
-                step.pending_handoff_json = None
-            step.save(only=[
-                TaskStep.execution_config_json,
-                TaskStep.pending_handoff_json,
-            ])
-
-        lock = self._operation_locks.setdefault(task_id, asyncio.Lock())
-        async with lock:
-            await self._run_db(project_id, save)
-        return await self.get_step_execution_config(project_id, task_id, step_key)
+        return await self._step_config.update(
+            project_id, task_id, step_key,
+            engine=engine, model=model, config=config, context_mode=context_mode,
+        )
 
     async def reset_step_execution_config(
-        self,
-        project_id: str,
-        task_id: str,
-        step_key: str,
+        self, project_id: str, task_id: str, step_key: str,
     ) -> dict:
-        def reset(_project):
-            task = Task.get_or_none(Task.id == task_id)
-            if task is None:
-                raise ValueError(f"Task not found: {task_id}")
-            step = TaskStep.get_or_none(
-                (TaskStep.task == task) & (TaskStep.step_key == step_key)
-            )
-            if step is None:
-                raise ValueError(f"Step does not exist: {step_key}")
-            if step.status in _ACTIVE_STEP_CONFIG_STATUSES:
-                raise RuntimeError("步骤执行中，不能修改引擎配置")
-            step.execution_config_json = None
-            step.pending_handoff_json = None
-            step.save(only=[TaskStep.execution_config_json, TaskStep.pending_handoff_json])
-
-        lock = self._operation_locks.setdefault(task_id, asyncio.Lock())
-        async with lock:
-            await self._run_db(project_id, reset)
-        return await self.get_step_execution_config(project_id, task_id, step_key)
+        return await self._step_config.reset(project_id, task_id, step_key)
 
     async def restart_from_step(
         self,
@@ -2416,6 +1221,7 @@ class WorkflowRuntime:
         input_rounds: dict[str, int] | None = None,
         reset_session: bool = False,
         expected_failed_message_id: str | None = None,
+        audit_action: str = "task.restart",
     ) -> WorkflowRunHandle:
         """Stop the current runner and start a child run from one DAG step.
 
@@ -2426,53 +1232,18 @@ class WorkflowRuntime:
         """
         lock = self._operation_locks.setdefault(task_id, asyncio.Lock())
         async with lock:
-            def inspect_restart(project):
-                task = Task.get_or_none(Task.id == task_id)
-                if task is None:
-                    raise ValueError(f"Task not found: {task_id}")
-                feedback_inputs = self._validate_input_rounds(
-                    project,
-                    task,
-                    step_key,
-                    input_rounds,
-                )
-                parent_run_id = expected_run_id or task.active_workflow_run_id
-                if not parent_run_id:
-                    return {"without_parent": True, "feedback_inputs": feedback_inputs}
-                parent = WorkflowRun.get_or_none(
-                    (WorkflowRun.id == parent_run_id)
-                    & (WorkflowRun.task == task)
-                )
-                if parent is None:
-                    raise RuntimeError("The referenced workflow run no longer exists")
-                if expected_run_id and task.active_workflow_run_id != expected_run_id:
-                    raise RuntimeError("The active workflow run has changed")
-                if expected_failed_message_id:
-                    retry_step_key, retry_run_id = self._inspect_failed_message_retry(
-                        task_id, expected_failed_message_id,
-                    )
-                    if retry_step_key != step_key or retry_run_id != parent_run_id:
-                        raise ValueError("失败消息已不属于当前阶段")
-                # Re-run from the workflow as it is now, not the parent run's
-                # snapshot, so flow edits (e.g. engine changes) apply.
-                workflow_data = self._current_workflow_steps(project, task)
-                compiled = WorkflowDefinition.load(workflow_data).compile()
-                steps_config = compiled.to_steps_config()
-                step_list = [Step.from_dict(item) for item in steps_config["steps"]]
-                scheduler = DAGScheduler(step_list)
-                if step_key not in scheduler.steps:
-                    raise ValueError(f"Step does not exist: {step_key}")
-                affected = {step_key, *scheduler.get_all_downstream(step_key)}
-                return {
-                    "without_parent": False,
-                    "parent_run_id": parent_run_id,
-                    "compiled": compiled,
-                    "steps_config": steps_config,
-                    "affected": affected,
-                    "feedback_inputs": feedback_inputs,
-                }
-
-            inspected = await self._run_db(project_id, inspect_restart)
+            active_runner = task_id in self._runners
+            inspected = await self._run_db(
+                project_id,
+                lambda project: inspect_restart_run(
+                    project, task_id, step_key,
+                    input_rounds=input_rounds,
+                    expected_run_id=expected_run_id,
+                    expected_failed_message_id=expected_failed_message_id,
+                    active_runner=active_runner,
+                    current_workflow_steps=self._current_workflow_steps,
+                ),
+            )
             if inspected["without_parent"]:
                 return await self._start_from_step_without_parent_async(
                     project_id,
@@ -2499,20 +1270,36 @@ class WorkflowRuntime:
                     raise RuntimeError("Task runner did not stop in time")
 
             def persist_restart(project):
-                task = Task.get_by_id(task_id)
-                heal_task_cwd(task, project)
-                parent = WorkflowRun.get_by_id(parent_run_id)
-                execution_keys = affected
-                task, child = self._create_restart_run(
-                    task,
-                    parent,
-                    compiled.schema_version,
-                    step_key,
-                    execution_keys,
-                    reset_session_step_key=(step_key if reset_session else None),
-                    feedback_inputs=inspected["feedback_inputs"],
-                )
-                return _PreparedWorkflowRun(
+                from services.project_audit import record_project_audit
+                from services.remote_project import get_effective_actor
+
+                with db_proxy.atomic():
+                    task = Task.get_by_id(task_id)
+                    heal_task_cwd(task, project)
+                    parent = WorkflowRun.get_by_id(parent_run_id)
+                    execution_keys = affected
+                    task, child = create_restart_run(
+                        task,
+                        parent,
+                        compiled.schema_version,
+                        step_key,
+                        execution_keys,
+                        instance_id=self._leases.instance_id,
+                        reset_session_step_key=(step_key if reset_session else None),
+                        feedback_inputs=inspected["feedback_inputs"],
+                    )
+                    actor = get_effective_actor()
+                    record_project_audit(
+                        project_id=project.id, task_id=task.id,
+                        action=audit_action, result="succeeded",
+                        mode=("managed" if actor is not None and actor.source == "managed"
+                              else "local"),
+                        initiated_by_user_id=child.initiated_by_user_id,
+                        initiated_by_username=child.initiated_by_username,
+                        metadata={"step_key": step_key, "workflow_run_id": child.id},
+                        event_id=f"workflow-restart:{child.id}",
+                    )
+                return PreparedWorkflowRun(
                     project_id=project.id,
                     database_executor=getattr(project, "database_executor", None),
                     task=task,
@@ -2541,66 +1328,6 @@ class WorkflowRuntime:
                 ),
             )
 
-    def _validate_input_rounds(
-        self,
-        project,
-        task: Task,
-        step_key: str,
-        input_rounds: dict[str, int] | None,
-    ) -> dict[str, dict]:
-        """Validate explicit upstream artifact rounds before starting a run."""
-        if not input_rounds:
-            return {}
-        workflow_data = self._current_workflow_steps(project, task)
-        steps_config = WorkflowDefinition.load(workflow_data).compile().to_steps_config()
-        step_list = [Step.from_dict(item) for item in steps_config["steps"]]
-        scheduler = DAGScheduler(step_list)
-        if step_key not in scheduler.steps:
-            raise ValueError(f"Step does not exist: {step_key}")
-        dependencies = set(scheduler.steps[step_key].depends_on)
-        feedback_connections = {}
-        for connection in scheduler.steps[step_key].incoming_connections:
-            if connection.get("kind") == "dashed":
-                feedback_connections.setdefault(str(connection.get("from")), []).append(
-                    connection
-                )
-        artifacts_root = Path(project.workstep_dir) / "artifacts"
-        feedback_inputs: dict[str, dict] = {}
-        for dep_key, requested_round in input_rounds.items():
-            if dep_key not in dependencies and dep_key not in feedback_connections:
-                raise ValueError(
-                    f"产物轮次 {dep_key} 不是目标步骤 {step_key} 的输入来源"
-                )
-            rounds = iter_artifact_rounds(
-                artifacts_root,
-                task.workflow_id,
-                task.id,
-                dep_key,
-            )
-            selected = next(
-                (item for item in rounds if item.round == int(requested_round)),
-                None,
-            )
-            if selected is None or not selected.eligible_for_downstream:
-                raise ValueError(
-                    f"产物轮次 {dep_key} 第 {requested_round} 轮不可沿用"
-                )
-            if dep_key in feedback_connections:
-                for connection in feedback_connections[dep_key]:
-                    source = source_for_connection(
-                        connection, selected, connection.get("output")
-                    )
-                    if source is not None:
-                        feedback_inputs[str(connection.get("id"))] = source
-                if not any(
-                    str(connection.get("id")) in feedback_inputs
-                    for connection in feedback_connections[dep_key]
-                ):
-                    raise ValueError(
-                        f"产物轮次 {dep_key} 第 {requested_round} 轮没有可用的返工产物"
-                    )
-        return feedback_inputs
-
     async def _start_from_step_without_parent_async(
         self,
         project_id: str,
@@ -2612,16 +1339,19 @@ class WorkflowRuntime:
         feedback_inputs: dict[str, dict] | None = None,
         reset_session: bool = False,
     ) -> WorkflowRunHandle:
-        prepared = await self._run_db(
-            project_id,
-            lambda project: self._prepare_start_from_step_without_parent(
-                project,
-                task_id,
-                step_key,
-                reset_session=reset_session,
-                feedback_inputs=feedback_inputs,
-            ),
-        )
+        def persist_start(project):
+            with db_proxy.atomic("IMMEDIATE"):
+                return prepare_start_from_step_without_parent(
+                    project,
+                    task_id,
+                    step_key,
+                    instance_id=self._leases.instance_id,
+                    current_workflow_steps=self._current_workflow_steps,
+                    reset_session=reset_session,
+                    feedback_inputs=feedback_inputs,
+                )
+
+        prepared = await self._run_db(project_id, persist_start)
         return self._launch_prepared_run(
             prepared,
             "",
@@ -2634,354 +1364,6 @@ class WorkflowRuntime:
             entry_step_key=prepared.entry_step_key,
             step_trigger_names={step_key: trigger_name} if trigger_name else None,
         )
-
-    def _prepare_start_from_step_without_parent(
-        self,
-        project,
-        task_id: str,
-        step_key: str,
-        *,
-        reset_session: bool = False,
-        feedback_inputs: dict[str, dict] | None = None,
-    ) -> _PreparedWorkflowRun:
-        task = Task.get_by_id(task_id)
-        heal_task_cwd(task, project)
-        workflow_data = self._current_workflow_steps(project, task)
-        compiled = WorkflowDefinition.load(workflow_data).compile()
-        steps_config = compiled.to_steps_config()
-        scheduler = DAGScheduler([
-            Step.from_dict(item) for item in steps_config["steps"]
-        ])
-        if step_key not in scheduler.steps:
-            raise ValueError(f"Step does not exist: {step_key}")
-        execution_keys = {step_key, *scheduler.get_all_downstream(step_key)}
-        reusable_keys = {
-            row.step_key
-            for row in TaskStep.select().where(
-                (TaskStep.task == task)
-                & (TaskStep.status == "passed")
-                & (~(TaskStep.step_key.in_(execution_keys)))
-            )
-            if row.step_key in scheduler.steps
-        }
-
-        with db_proxy.atomic():
-            TaskStep.update(
-                status="pending",
-                started_at=None,
-                ended_at=None,
-                error=None,
-            ).where(
-                (TaskStep.task == task)
-                & (TaskStep.step_key.in_(execution_keys))
-            ).execute()
-            TaskStep.update(
-                status="skipped",
-                started_at=None,
-                ended_at=None,
-                error=None,
-            ).where(
-                (TaskStep.task == task)
-                & (~(TaskStep.step_key.in_(execution_keys)))
-                & (TaskStep.status != "passed")
-            ).execute()
-            task.status = "ready"
-            task.updated_at = utc_now()
-            task.save()
-
-        prepared = self._prepare_start_in_project(project, task.id, "")
-        now = utc_now()
-        workflow_run = prepared.workflow_run
-        workflow_run.restart_from_step_key = step_key
-        routing_state = normalize_routing_state(
-            json.loads(workflow_run.routing_state_json)
-            if workflow_run.routing_state_json else None
-        )
-        routing_state["entry_step_key"] = step_key
-        routing_state["execution_scope"] = sorted(execution_keys)
-        if feedback_inputs:
-            routing_state["feedback_inputs"][step_key] = feedback_inputs
-            routing_state["active_edges"] = sorted(
-                set(routing_state["active_edges"]) | set(feedback_inputs)
-            )
-        workflow_run.routing_state_json = json.dumps(
-            routing_state,
-            ensure_ascii=False,
-        )
-        workflow_run.save(only=[
-            WorkflowRun.restart_from_step_key,
-            WorkflowRun.routing_state_json,
-        ])
-        if reset_session:
-            TaskStep.update(
-                session_id=None,
-                session_provider=None,
-                pending_handoff_json=None,
-            ).where(
-                (TaskStep.task == task)
-                & (TaskStep.step_key == step_key)
-            ).execute()
-        prepared = _PreparedWorkflowRun(
-            project_id=prepared.project_id,
-            database_executor=prepared.database_executor,
-            task=prepared.task,
-            workflow_run=prepared.workflow_run,
-            steps_config=prepared.steps_config,
-            artifacts_dir=prepared.artifacts_dir,
-            user_message=prepared.user_message,
-            entry_step_key=step_key,
-            execution_scope=frozenset(execution_keys),
-        )
-        for reusable_key in reusable_keys:
-            step = scheduler.steps[reusable_key]
-            StepRun.create(
-                id=str(uuid.uuid4()),
-                run=workflow_run,
-                step_key=reusable_key,
-                attempt=1,
-                status="reused",
-                engine=step.engine,
-                model=step.model or None,
-                started_at=now,
-                ended_at=now,
-            )
-        return prepared
-
-    def _create_restart_run(
-        self,
-        task: Task,
-        parent: WorkflowRun,
-        schema_version: int,
-        step_key: str,
-        execution_keys: set[str],
-        reset_session_step_key: str | None = None,
-        feedback_inputs: dict[str, dict] | None = None,
-    ) -> tuple[Task, WorkflowRun]:
-        now = utc_now()
-        with db_proxy.atomic():
-            parent.status = "superseded"
-            parent.ended_at = parent.ended_at or now
-            parent.save()
-            StepRun.update(
-                status="cancelled",
-                ended_at=now,
-            ).where(
-                (StepRun.run == parent)
-                & (StepRun.status == "running")
-            ).execute()
-            ReviewRun.update(
-                status="cancelled",
-                ended_at=now,
-                error="流程运行已被新的入口替代",
-            ).where(
-                (ReviewRun.workflow_run == parent)
-                & (ReviewRun.status.in_(["pending", "running"]))
-            ).execute()
-            # A review can be interrupted after its StepRun has succeeded.
-            # Close both bubbles from this parent run before launching the
-            # replacement; otherwise their old "running" state survives.
-            from services.history import project_terminal_message_state
-
-            parent_step_run_ids = [
-                row.id for row in StepRun.select(StepRun.id).where(StepRun.run == parent)
-            ]
-            if parent_step_run_ids:
-                stale_messages = Message.select().where(
-                    (Message.task == task)
-                    & (Message.step_run_id.in_(parent_step_run_ids))
-                    & (Message.role == "assistant")
-                    & (Message.channel.in_(["execution", "review"]))
-                    & (Message.run_status == "running")
-                )
-                for message in stale_messages:
-                    projection = {}
-                    project_terminal_message_state(projection, message)
-                    if projection.get("run_status"):
-                        message.run_status = projection["run_status"]
-                        message.ended_at = projection["ended_at"] or now
-                        message.save(only=[Message.run_status, Message.ended_at])
-            routing_state = empty_routing_state()
-            routing_state["entry_step_key"] = step_key
-            routing_state["execution_scope"] = sorted(execution_keys)
-            if feedback_inputs:
-                routing_state["feedback_inputs"][step_key] = feedback_inputs
-                routing_state["active_edges"] = sorted(feedback_inputs)
-            child = WorkflowRun.create(
-                id=str(uuid.uuid4()),
-                task=task,
-                status="running",
-                workflow_schema_version=schema_version,
-                workflow_snapshot_json="{}",
-                parent_run_id=parent.id,
-                restart_from_step_key=step_key,
-                routing_state_json=json.dumps(routing_state, ensure_ascii=False),
-                owner_id=self._instance_id,
-                heartbeat_at=now,
-                started_at=now,
-            )
-            reusable = {
-                row.step_key
-                for row in TaskStep.select().where(
-                    (TaskStep.task == task)
-                    & (TaskStep.status == "passed")
-                    & (~(TaskStep.step_key.in_(execution_keys)))
-                )
-            }
-            for reusable_key in reusable:
-                source = (
-                    StepRun.select()
-                    .where(
-                        (StepRun.run == parent)
-                        & (StepRun.step_key == reusable_key)
-                        & (StepRun.status.in_(["succeeded", "reused"]))
-                    )
-                    .order_by(StepRun.attempt.desc())
-                    .first()
-                )
-                if source is None:
-                    continue
-                StepRun.create(
-                    id=str(uuid.uuid4()),
-                    run=child,
-                    step_key=reusable_key,
-                    attempt=1,
-                    artifact_round=source.artifact_round,
-                    status="reused",
-                    engine=source.engine,
-                    model=source.model,
-                    source_step_run_id=source.id,
-                    started_at=now,
-                    ended_at=now,
-                )
-            TaskStep.update(
-                status="pending",
-                started_at=None,
-                ended_at=None,
-                error=None,
-            ).where(
-                (TaskStep.task == task)
-                & (TaskStep.step_key.in_(execution_keys))
-            ).execute()
-            if reset_session_step_key:
-                TaskStep.update(
-                    session_id=None,
-                    session_provider=None,
-                    pending_handoff_json=None,
-                ).where(
-                    (TaskStep.task == task)
-                    & (TaskStep.step_key == reset_session_step_key)
-                ).execute()
-            TaskStep.update(
-                status="cancelled",
-                ended_at=now,
-                error="已切换到其他流程入口",
-            ).where(
-                (TaskStep.task == task)
-                & (~(TaskStep.step_key.in_(execution_keys)))
-                & (TaskStep.status.in_([
-                    "running", "reviewing", "awaiting_review", "retrying",
-                    "rework", "rework_waiting",
-                ]))
-            ).execute()
-            task.status = "running"
-            task.active_workflow_run_id = child.id
-            task.state_version += 1
-            task.updated_at = now
-            task.save()
-        return task, child
-
-    def _register_lease(self, run_id: str, project_id: str) -> None:
-        """Record that this instance owns a run and start the heartbeat loop."""
-        self._leased_runs[run_id] = project_id
-        self._ensure_lease_task()
-
-    def _release_lease(self, run_id: str) -> None:
-        self._leased_runs.pop(run_id, None)
-
-    def _ensure_lease_task(self) -> None:
-        if self._lease_task is None or self._lease_task.done():
-            self._lease_task = asyncio.create_task(self._lease_heartbeat_loop())
-
-    def _lease_held_by_live_owner(
-        self, workflow_run: WorkflowRun, now
-    ) -> bool:
-        """Return True when another live daemon still holds this run's lease.
-
-        An empty ``owner_id`` or ``heartbeat_at`` means the row predates leasing
-        (or was released), so it is treated as unowned and safely recovered.
-        """
-        owner = getattr(workflow_run, "owner_id", None)
-        heartbeat = getattr(workflow_run, "heartbeat_at", None)
-        if not owner or heartbeat is None:
-            return False
-        if owner == self._instance_id:
-            return False
-        return (now - heartbeat).total_seconds() < RUN_LEASE_STALE_SECONDS
-
-    def _schedule_recovery_retry(self, project, run_id: str) -> None:
-        """Retry a run skipped by a live lease after the lease should expire.
-
-        Without this, a daemon that restarts within the stale window of a
-        genuinely crashed predecessor would orphan the run forever, since
-        startup recovery only sweeps once.
-        """
-
-        async def _retry():
-            try:
-                await asyncio.sleep(RUN_LEASE_STALE_SECONDS)
-                current = await self._run_db(
-                    project.id, lambda _project: project
-                )
-                await self._recover_project_runs(current)
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.exception(
-                    "Deferred recovery retry failed for run %s", run_id
-                )
-
-        task = asyncio.create_task(
-            _retry(), name=f"workflow-lease-retry:{run_id}"
-        )
-        self._lease_retry_tasks.add(task)
-        task.add_done_callback(self._lease_retry_tasks.discard)
-
-    async def _lease_heartbeat_loop(self) -> None:
-        """Periodically renew this instance's run leases via the project DB."""
-        while True:
-            try:
-                await asyncio.sleep(RUN_LEASE_HEARTBEAT_SECONDS)
-            except asyncio.CancelledError:
-                raise
-            loop_now = asyncio.get_running_loop().time()
-            if (
-                loop_now - self._last_orphan_reconcile
-                >= ORPHAN_RECONCILE_SECONDS
-            ):
-                self._last_orphan_reconcile = loop_now
-                try:
-                    await self.reconcile_orphaned_workflows()
-                except Exception:
-                    logger.exception("Failed to run workflow orphan reconciliation")
-            leased = dict(self._leased_runs)
-            if not leased:
-                continue
-            by_project: dict[str, list[str]] = {}
-            for run_id, project_id in leased.items():
-                by_project.setdefault(project_id, []).append(run_id)
-            for project_id, run_ids in by_project.items():
-                def refresh(_project, run_ids=tuple(run_ids)):
-                    WorkflowRun.update(heartbeat_at=utc_now()).where(
-                        (WorkflowRun.id.in_(run_ids))
-                        & (WorkflowRun.owner_id == self._instance_id)
-                    ).execute()
-
-                try:
-                    await self._run_db(project_id, refresh)
-                except Exception:
-                    logger.exception(
-                        "Failed to renew run leases for project %s", project_id
-                    )
 
     async def shutdown(self) -> None:
         """Stop every workflow owned by this runtime.
@@ -3005,19 +1387,7 @@ class WorkflowRuntime:
             completion.cancel()
         if active:
             await asyncio.gather(*active, return_exceptions=True)
-        # Stop the heartbeat loop and release any leases that outlived the runs
-        # so a restarting daemon can recover them immediately.
-        if self._lease_task is not None:
-            self._lease_task.cancel()
-            try:
-                await self._lease_task
-            except asyncio.CancelledError:
-                pass
-            self._lease_task = None
-        for retry_task in tuple(self._lease_retry_tasks):
-            retry_task.cancel()
-        self._lease_retry_tasks.clear()
-        self._leased_runs.clear()
+        await self._leases.shutdown()
 
     def _consume_completion(
         self,
@@ -3090,7 +1460,7 @@ class WorkflowRuntime:
                 workflow_run.save()
 
             await runner._run_db(finalize_run)
-            self._release_lease(workflow_run.id)
+            self._leases.release(workflow_run.id)
             try:
                 await runner.close()
             except Exception:
@@ -3110,7 +1480,7 @@ class WorkflowRuntime:
 
         return workflow_run.id
 
-    async def cancel(self, task_id: str) -> bool:
+    async def cancel(self, task_id: str, *, action: str = "task.cancel") -> bool:
         """Cancel every active step owned by a task's pipeline.
 
         A task that is still waiting for a concurrency slot (status ``queued``)
@@ -3129,7 +1499,7 @@ class WorkflowRuntime:
                 )
             )
             if project is not None:
-                if await self.cancel_queued(project.id, task_id):
+                if await self.cancel_queued(project.id, task_id, action=action):
                     return True
 
                 active_step_keys = await self._run_db(
@@ -3154,4 +1524,4 @@ class WorkflowRuntime:
                     )
                 return stopped
             return False
-        return await runner.cancel_task(task_id)
+        return await runner.cancel_task(task_id, action=action)

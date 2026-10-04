@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises'
 
 const appSource = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8')
 const settingsSource = await readFile(new URL('../src/pages/SettingsPage.tsx', import.meta.url), 'utf8')
+const engineSettingsSource = await readFile(new URL('../src/components/EngineSettingsPanel.tsx', import.meta.url), 'utf8')
+const promptEnhanceSource = await readFile(new URL('../src/pages/PromptEnhanceSettings.tsx', import.meta.url), 'utf8')
 const firstUseSource = await readFile(new URL('../src/components/FirstUseDialog.tsx', import.meta.url), 'utf8')
 
 test('the app presents first-use user-name setup', () => {
@@ -20,7 +22,6 @@ test('first-use setup can start or skip the guided checklist after saving a name
 
 test('language and user name live together under system settings', () => {
   assert.match(settingsSource, /activeSection === 'system'/)
-  assert.match(settingsSource, /settings\.systemNav/)
   assert.match(settingsSource, /settings\.userName/)
   assert.match(settingsSource, /settings\.fontSize/)
   assert.match(settingsSource, /<SegmentedControl/)
@@ -28,10 +29,11 @@ test('language and user name live together under system settings', () => {
 })
 
 test('execution engine settings show the saved model and only refresh from the refresh button', () => {
-  const modelSelect = settingsSource.match(/<Select\s+id=\{`default-model-\$\{engine\.id\}`\}[\s\S]*?<\/Select>/)?.[0] || ''
-  assert.match(settingsSource, /engine\.default_model/)
+  assert.match(settingsSource, /<EngineSettingsPanel/)
+  const modelSelect = engineSettingsSource.match(/<Select\s+id=\{`default-model-\$\{engine\.id\}`\}[\s\S]*?<\/Select>/)?.[0] || ''
+  assert.match(engineSettingsSource, /engine\.default_model/)
   assert.doesNotMatch(modelSelect, /loadEngineModels/)
-  assert.match(settingsSource, /onClick=\{\(\) => void loadEngineModels\(engine\.id, true\)\}/)
-  assert.match(settingsSource, /if \(!isExpanded\) void loadEngineModels\(engineId, false\)/)
-  assert.match(settingsSource, /providerApi\.models\(providerId, true, protocol\)/)
+  assert.match(engineSettingsSource, /onClick=\{\(\) => void loadEngineModels\(engine\.id, true\)\}/)
+  assert.match(engineSettingsSource, /if \(!isExpanded\) void loadEngineModels\(engineId, false\)/)
+  assert.match(promptEnhanceSource, /providerApi\.models\(providerId, true, protocol\)/)
 })

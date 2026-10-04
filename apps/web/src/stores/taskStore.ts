@@ -80,7 +80,11 @@ export interface LiveMessage {
   restarted?: boolean
   role?: 'user' | 'assistant'
   author_id?: string
+  author_username?: string
   author_name?: string
+  author_type?: 'user' | 'assistant' | 'system' | 'scheduler'
+  initiated_by_user_id?: string
+  initiated_by_username?: string
   author_device_id?: string
   author_device_name?: string
   proposals: Array<Record<string, unknown>>
@@ -133,7 +137,7 @@ interface TaskState {
     reviewOverrides?: Record<string, any> | null,
   ) => Promise<Task>
   updateScheduledStart: (taskId: string, scheduledStartAt: string | null, projectId: string) => Promise<Task>
-  deleteTask: (taskId: string, projectId: string) => Promise<void>
+  deleteTask: (taskId: string, projectId: string, deleteWorkspace?: boolean) => Promise<void>
   archiveTask: (taskId: string, projectId: string) => Promise<void>
   getArchiveExperienceDraft: (taskId: string, projectId: string) => Promise<ArchiveExperienceDraft>
   prepareArchiveExperience: (taskId: string, projectId: string, messageId: string) => Promise<ArchiveExperienceDraft>
@@ -275,8 +279,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     return updated
   },
 
-  deleteTask: async (taskId, projectId) => {
-    await taskApi.delete(taskId, projectId)
+  deleteTask: async (taskId, projectId, deleteWorkspace) => {
+    await taskApi.delete(taskId, projectId, deleteWorkspace)
     set((s) => ({
       tasks: s.tasks.filter((t) => t.id !== taskId),
       activeTaskId: s.activeTaskId === taskId ? null : s.activeTaskId,

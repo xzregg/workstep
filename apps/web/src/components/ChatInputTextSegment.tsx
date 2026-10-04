@@ -179,7 +179,7 @@ export default function ChatInputTextSegment({
   return (
     <textarea
       ref={attachRef}
-      className={`chat-input-text-segment${inlineWithImage ? ' chat-input-text-segment--inline' : ''}`}
+      className={`chat-input-text-segment${inlineWithImage ? ' chat-input-text-segment--inline' : ''}${inlineWithImage && (draft ?? markdown) === '' ? ' chat-input-text-segment--empty' : ''}`}
       value={draft ?? markdown}
       onChange={handleChange}
       onCompositionStart={handleCompositionStart}

@@ -1,0 +1,14 @@
+.flow-template-overlay { z-index: 400; }
+.flow-template-dialog { width: min(520px, calc(100vw - 32px)); max-height: 80vh; }
+.flow-template-body { padding: 8px 16px 16px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.flow-template-search { margin-bottom: 10px; }
+.flow-template-save-form { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 10px; background: var(--surface); }
+.flow-template-save-title { font-size: calc(13px * var(--font-scale)); font-weight: 600; margin-bottom: 8px; }
+.flow-template-description { margin-top: 8px; }
+.flow-template-save-actions { display: flex; gap: 8px; margin-top: 10px; }
+.flow-template-empty { padding: 12px 4px; font-size: calc(13px * var(--font-scale)); color: var(--meta); }
+.flow-template-choice { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; text-align: left; padding: 10px 12px; margin-bottom: 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--fg); cursor: pointer; font-family: var(--font-body); font-size: calc(13px * var(--font-scale)); }
+.flow-template-choice-text { flex: 1; min-width: 0; }
+.flow-template-choice-name { font-weight: 500; }
+.flow-template-choice-description { display: block; font-size: calc(13px * var(--font-scale)); color: var(--meta); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-template-choice-count { font-size: calc(11px * var(--font-scale)); color: var(--meta); flex-shrink: 0; }

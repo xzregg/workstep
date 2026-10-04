@@ -657,6 +657,40 @@ async def test_run_task_success(subscriber, tmp_path):
 
 
 @pytest.mark.anyio
+async def test_run_task_slow_engine_factory_keeps_loop_responsive(
+    subscriber, tmp_path,
+):
+    import threading
+    from engines import registry
+
+    _q, service, _bus = subscriber
+    original = registry.ENGINE_REGISTRY.copy()
+    factory_started = threading.Event()
+    started_at: list[float] = []
+
+    def slow_factory():
+        started_at.append(time.perf_counter())
+        factory_started.set()
+        time.sleep(0.35)
+        return MockEngine(events=[
+            InternalEvent(type="agent_message_chunk", data={"content": {"text": "done"}}),
+        ])
+
+    registry.ENGINE_REGISTRY["pydantic_ai"] = slow_factory
+    task = service.create_task(title="Slow factory", cwd=str(tmp_path))
+    running = asyncio.create_task(service.run_task(task["id"], "go"))
+    try:
+        assert await asyncio.to_thread(factory_started.wait, 2)
+        assert time.perf_counter() - started_at[0] < 0.2
+        await running
+    finally:
+        if not running.done():
+            await running
+        registry.ENGINE_REGISTRY.clear()
+        registry.ENGINE_REGISTRY.update(original)
+
+
+@pytest.mark.anyio
 async def test_run_task_failure(subscriber):
     """run_task handles engine failure gracefully."""
     q, service, bus = subscriber

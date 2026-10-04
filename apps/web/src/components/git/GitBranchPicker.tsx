@@ -1,4 +1,4 @@
-import { useGitApi } from './GitApiContext'
+import { useGitApi, useGitActionAllowed } from './GitApiContext'
 import { useCallback, useEffect, useState } from 'react'
 import { type GitBranch, type GitStatus, type GitTrackedRemoteBranch } from '../../api/git'
 import { useI18n } from '../../i18n'
@@ -9,6 +9,7 @@ import GitBranchStatus, { branchMatchScore } from './GitBranchStatus'
 import GitBranchPushPanel from './GitBranchPushPanel'
 import ConfirmDialog from '../ConfirmDialog'
 import type { GitMergeRequest } from './GitMergeActions'
+import { usePanelGitWrites } from './gitPanelWrites'
 
 function rankMatches<T>(items: T[], query: string, getScore: (item: T) => number | null) {
   if (!query.trim()) return items
@@ -21,6 +22,8 @@ function rankMatches<T>(items: T[], query: string, getScore: (item: T) => number
 
 export default function GitBranchPicker({ status, onLocate, onChanged, onRefresh, onMerge }: { status: GitStatus; onLocate: (id: string) => void; onChanged: () => Promise<void>; onRefresh?: () => Promise<void>; onMerge?: (direction: GitMergeRequest['direction'], branch: string) => void }) {
   const gitApi = useGitApi()
+  const can = useGitActionAllowed()
+  const writes = usePanelGitWrites()
   const { t } = useI18n()
   const [branches, setBranches] = useState<GitBranch[]>([])
   const [remoteBranches, setRemoteBranches] = useState<GitTrackedRemoteBranch[]>([])
@@ -59,19 +62,23 @@ export default function GitBranchPicker({ status, onLocate, onChanged, onRefresh
     await onRefresh?.()
   }
   async function deleteSelectedBranch() {
-    if (!deleteBranch || busy) return
+    if (!deleteBranch || busy || writes.busy) return
     setBusy('delete'); setDeleteError('')
     try {
-      const result = await gitApi.deleteBranch(status.id, deleteBranch.name, deleteBranch.head, status.snapshot)
-      setBranches(result.branches); setRemoteBranches(result.remote_branches || [])
-      setDeleteBranch(null); setNotice(t('git.deleteBranchSuccess', { branch: deleteBranch.name }))
-      useGitStore.getState().referencesChanged()
-      await onRefresh?.()
+      await writes.run(async () => {
+        try {
+          const result = await gitApi.deleteBranch(status.id, deleteBranch.name, deleteBranch.head, status.snapshot)
+          setBranches(result.branches); setRemoteBranches(result.remote_branches || [])
+          setDeleteBranch(null); setNotice(t('git.deleteBranchSuccess', { branch: deleteBranch.name }))
+          useGitStore.getState().referencesChanged()
+          await onRefresh?.()
+        } catch (reason) { setDeleteError(reason instanceof Error ? reason.message : String(reason)) }
+      })
     } catch (reason) { setDeleteError(reason instanceof Error ? reason.message : String(reason)) }
     finally { setBusy(null) }
   }
   async function createBranch() {
-    if (busy || blocked || invalidName || !baseAvailable) return
+    if (busy || writes.busy || blocked || invalidName || !baseAvailable) return
     const [kind, first, second] = baseRef.split('\0')
     const base = kind === 'remote'
       ? remoteBranches.find(item => item.remote === first && item.branch === second)
@@ -79,38 +86,46 @@ export default function GitBranchPicker({ status, onLocate, onChanged, onRefresh
     if (!base) { setError(t('git.createBranchBaseMissing')); return }
     setBusy('create'); setError('')
     try {
-      const result = await gitApi.createBranch(status.id, newName, kind === 'remote' ? second : first, base.head, status.snapshot, kind === 'remote' ? first : undefined)
-      setBranches(result.branches); setRemoteBranches(result.remote_branches || [])
-      setCreateOpen(false); setNewName(''); setQuery('')
-      useGitStore.getState().referencesChanged()
-      await onRefresh?.()
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); await onRefresh?.() }
+      await writes.run(async () => {
+        try {
+          const result = await gitApi.createBranch(status.id, newName, kind === 'remote' ? second : first, base.head, status.snapshot, kind === 'remote' ? first : undefined)
+          setBranches(result.branches); setRemoteBranches(result.remote_branches || [])
+          setCreateOpen(false); setNewName(''); setQuery('')
+          useGitStore.getState().referencesChanged()
+          await onRefresh?.()
+        } catch (e) { setError(e instanceof Error ? e.message : String(e)); await onRefresh?.() }
+      })
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
     finally { setBusy(null) }
   }
   async function run(action: 'fetch' | 'pull' | 'switch' | 'update', branch?: string, remote?: string) {
-    if (busy) return
+    if (busy || writes.busy) return
     setBusy(action); setError('')
     try {
-      if (action === 'fetch') {
-        const result = await gitApi.fetch(status.id)
-        setBranches(result.branches); setRemoteBranches(result.remote_branches || []); setShowRemote(true); setFetchedAt(result.fetched_at || null)
-        useGitStore.getState().referencesChanged()
-        await onRefresh?.()
-      } else if (action === 'pull') {
-        await gitApi.pull(status.id, branch!, status.snapshot)
-        await onChanged()
-      } else if (action === 'update') {
-        if (branch === status.branch) {
-          await gitApi.pull(status.id, branch, status.snapshot)
-          await onChanged()
-        } else {
-          const result = await gitApi.advance(status.id, branch!, status.snapshot)
-          setBranches(result.branches); setFetchedAt(result.fetched_at || null)
-          useGitStore.getState().referencesChanged()
-          await onRefresh?.()
-        }
-      } else { await gitApi.switch(status.id, branch!, status.snapshot, remote); await onChanged() }
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); await onRefresh?.() }
+      await writes.run(async () => {
+        try {
+          if (action === 'fetch') {
+            const result = await gitApi.fetch(status.id)
+            setBranches(result.branches); setRemoteBranches(result.remote_branches || []); setShowRemote(true); setFetchedAt(result.fetched_at || null)
+            useGitStore.getState().referencesChanged()
+            await onRefresh?.()
+          } else if (action === 'pull') {
+            await gitApi.pull(status.id, branch!, status.snapshot)
+            await onChanged()
+          } else if (action === 'update') {
+            if (branch === status.branch) {
+              await gitApi.pull(status.id, branch, status.snapshot)
+              await onChanged()
+            } else {
+              const result = await gitApi.advance(status.id, branch!, status.snapshot)
+              setBranches(result.branches); setFetchedAt(result.fetched_at || null)
+              useGitStore.getState().referencesChanged()
+              await onRefresh?.()
+            }
+          } else { await gitApi.switch(status.id, branch!, status.snapshot, remote); await onChanged() }
+        } catch (e) { setError(e instanceof Error ? e.message : String(e)); await onRefresh?.() }
+      })
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
     finally { setBusy(null) }
   }
   const filtered = rankMatches(branches, query, branch => branchMatchScore(branch.name, `${branch.upstream || ''} ${branch.path || ''}`, query))
@@ -126,8 +141,8 @@ export default function GitBranchPicker({ status, onLocate, onChanged, onRefresh
     <div className="git-branch-list" role="listbox" aria-label={t('git.branches')}>
       {loading ? <p><Icon name="loader-circle" className="git-spin" size={14} /> {t('git.loading')}</p> : !filtered.length && !filteredRemote.length ? <p>{t('git.noBranches')}</p> : <><div className="git-branch-section">{t('git.localBranches')}</div>{filtered.map(b => <div className="git-branch-row" role="option" aria-selected={b.name === status.branch} key={b.name}>
         <span className="git-branch-name">{b.name}<small>{b.upstream || b.path}</small></span><GitBranchStatus branch={b} />
-        {!!b.behind && !b.ahead && !b.upstream_gone && !(b.worktree_id && b.worktree_id !== status.id) && <Button variant="icon" className="git-branch-update" aria-label={t('git.pullBranchUpdates', { branch: b.name, count: b.behind })} title={t('git.pullBranchUpdates', { branch: b.name, count: b.behind })} disabled={!!busy || !!blocked} loading={busy === 'update'} onClick={() => void run('update', b.name)}><Icon name="download" size={13} /></Button>}
-        <Button size="sm" className="git-branch-push-button" disabled={!!busy || !!blocked} onClick={() => { setPushBranch(b); setNotice(''); setCreateOpen(false) }}>{t('git.pushButton')}</Button>
+        {can('advance') && !!b.behind && !b.ahead && !b.upstream_gone && !(b.worktree_id && b.worktree_id !== status.id) && <Button variant="icon" className="git-branch-update" aria-label={t('git.pullBranchUpdates', { branch: b.name, count: b.behind })} title={t('git.pullBranchUpdates', { branch: b.name, count: b.behind })} disabled={!!busy || !!blocked} loading={busy === 'update'} onClick={() => void run('update', b.name)}><Icon name="download" size={13} /></Button>}
+        {can('pushBranch') && <Button size="sm" className="git-branch-push-button" disabled={!!busy || !!blocked} onClick={() => { setPushBranch(b); setNotice(''); setCreateOpen(false) }}>{t('git.pushButton')}</Button>}
         <Button variant="icon" className="git-branch-delete" aria-label={t('git.deleteBranchTitle', { branch: b.name })} title={b.worktree_id ? t('git.deleteBranchOccupied') : t('git.deleteBranchTitle', { branch: b.name })} disabled={!!busy || !!blocked || !!b.worktree_id} onClick={() => { setDeleteBranch(b); setDeleteError('') }}><Icon name="trash" size={13} /></Button>
         {onMerge && <span className="git-branch-merge">{b.name !== status.branch && <><Button size="sm" disabled={!!busy || !!blocked || !status.head} onClick={() => onMerge('intoCurrent', b.name)}>{t('git.mergeToCurrentButton')}</Button><Button size="sm" disabled={!!busy || !!blocked || !status.head} onClick={() => onMerge('intoTarget', b.name)}>{t('git.mergeToBranchButton')}</Button></>}</span>}
         <span className="git-branch-final">{b.name === status.branch ? <small>{t('git.current')}</small> : b.worktree_id && b.worktree_id !== status.id ? <Button size="sm" disabled={!!busy} onClick={() => onLocate(b.worktree_id!)}>{t('git.locate')}</Button> : <Button size="sm" loading={busy === 'switch'} disabled={!!busy || !!blocked} onClick={() => void run('switch', b.name)}>{t('git.switch')}</Button>}</span>

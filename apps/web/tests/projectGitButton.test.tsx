@@ -16,13 +16,13 @@ test('project Git entry carries project context and is hidden for remote project
   const { window } = installDomEnvironment()
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   const project = { id: 'project a', name: 'Project', path: '/repo', workflows: [], steps: {} } as Project
-  const render = (p: Project) => <I18nProvider><MemoryRouter initialEntries={['/chat?project=Project&session=session-1']}><ProjectGitButton project={p} /><Location /></MemoryRouter></I18nProvider>
+  const render = (p: Project) => <I18nProvider><MemoryRouter initialEntries={['/chat?project=Project&session=session-1#latest']}><ProjectGitButton project={p} /><Location /></MemoryRouter></I18nProvider>
   try {
     await act(async () => root.render(render(project)))
     await act(async () => document.querySelector<HTMLButtonElement>('button')!.click())
     assert.deepEqual(JSON.parse(document.querySelector('output')?.textContent || '{}'), {
       url: '/git?project_id=project%20a',
-      state: { returnTo: '/chat?project=Project&session=session-1' },
+      state: { returnTo: '/chat?project=Project&session=session-1#latest' },
     })
     await act(async () => root.render(render({ ...project, type: 'remote' })))
     assert.equal(document.querySelector('button'), null)

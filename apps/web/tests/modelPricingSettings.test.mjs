@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises'
 const settingsSource = await readFile(new URL('../src/pages/SettingsPage.tsx', import.meta.url), 'utf8')
 const pricingSource = await readFile(new URL('../src/pages/ModelPricingSettings.tsx', import.meta.url), 'utf8')
 const apiSource = await readFile(new URL('../src/api/client.ts', import.meta.url), 'utf8')
+const statisticsApiSource = await readFile(new URL('../src/api/statistics.ts', import.meta.url), 'utf8')
 const statisticsSource = await readFile(new URL('../src/pages/StatisticsPage.tsx', import.meta.url), 'utf8')
 
 test('settings exposes model settings backed by global config APIs', () => {
@@ -62,8 +63,8 @@ test('model pricing table filters by provider or model and selects visible rows 
 })
 
 test('statistics displays the calculated total and per-model cost', () => {
-  assert.match(apiSource, /currency: 'USD' \| 'CNY'/)
-  assert.match(apiSource, /cost: number/)
+  assert.match(statisticsApiSource, /currency: 'USD' \| 'CNY'/)
+  assert.match(statisticsApiSource, /cost: number/)
   assert.match(statisticsSource, /statistics\.totalCost/)
   assert.match(statisticsSource, /row\.cost/)
 })

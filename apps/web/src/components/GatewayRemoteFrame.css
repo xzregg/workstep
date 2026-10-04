@@ -1,0 +1,56 @@
+.gateway-remote-frame {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+}
+
+.gateway-remote-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.gateway-remote-content > .app-shell { height: 100%; }
+
+.gateway-remote-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 8px;
+}
+
+.gateway-remote-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 42px;
+  padding: 6px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-caption);
+}
+
+.gateway-remote-banner strong {
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gateway-remote-banner > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gateway-remote-banner a { margin-left: auto; white-space: nowrap; }
+
+@media (max-width: 390px) {
+  .gateway-remote-banner { gap: 6px; padding-inline: 8px; }
+  .gateway-remote-banner strong { max-width: 30%; }
+}

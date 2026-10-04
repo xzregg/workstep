@@ -30,6 +30,16 @@ public class ServerAddressTest {
     }
 
     @Test
+    public void restoresLastPageOnlyForCurrentServer() {
+        ServerAddress server = ServerAddress.parse("https://workstep.example.com");
+        String page = "https://workstep.example.com/tasks/42?tab=chat#latest";
+        assertEquals(page, server.pageOrRoot(page));
+        assertEquals("https://workstep.example.com/", server.pageOrRoot("https://other.example.com/tasks/42"));
+        assertEquals("https://workstep.example.com/", server.pageOrRoot("not a URL"));
+        assertEquals("https://workstep.example.com/", server.pageOrRoot(null));
+    }
+
+    @Test
     public void resolvesOnlySameOriginDownloadRedirects() {
         ServerAddress server = ServerAddress.parse("https://workstep.example.com");
         assertEquals("https://workstep.example.com/api/fs/file?id=1",

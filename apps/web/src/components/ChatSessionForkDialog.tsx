@@ -25,6 +25,7 @@ interface Props {
   messageCount: number
   forkMessageId?: string | null
   forkAtTail?: boolean
+  preferSmart?: boolean
   engines: CoordinatorEngineSummary[]
   providers: ProviderInfo[]
   defaultEngine: string
@@ -50,6 +51,7 @@ export default function ChatSessionForkDialog({
   messageCount,
   forkMessageId,
   forkAtTail = true,
+  preferSmart = false,
   engines,
   providers,
   defaultEngine,
@@ -87,13 +89,13 @@ export default function ChatSessionForkDialog({
     setModel(targetEngine === sourceEngine ? sourceModel : '')
     setFastModel(targetEngine === sourceEngine ? sourceFastModel : '')
     setVisionModel(targetEngine === sourceEngine ? sourceVisionModel : '')
-    setMode(resolveForkContextMode(
+    setMode(preferSmart ? 'smart' : resolveForkContextMode(
       sourceEngine,
       targetEngine,
       Boolean(target?.supports_session_fork),
       forkAtTail,
     ))
-  }, [open, initialTargetEngine, sourceEngine, sourceTitle, sourceProviderId, sourceModel, sourceFastModel, sourceVisionModel, engines, forkAtTail, t])
+  }, [open, initialTargetEngine, sourceEngine, sourceTitle, sourceProviderId, sourceModel, sourceFastModel, sourceVisionModel, engines, forkAtTail, preferSmart, t])
 
   const availableModes = useMemo(
     () => modeOrder.filter((item) => item !== 'native' || nativeAvailable),

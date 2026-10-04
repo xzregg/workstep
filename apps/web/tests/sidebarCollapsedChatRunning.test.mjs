@@ -4,7 +4,8 @@ import test from 'node:test'
 
 const source = await readFile(new URL('../src/components/Layout.tsx', import.meta.url), 'utf8')
 const activityHook = await readFile(new URL('../src/hooks/useSidebarActivity.ts', import.meta.url), 'utf8')
-const client = await readFile(new URL('../src/api/client.ts', import.meta.url), 'utf8')
+const projectApi = await readFile(new URL('../src/api/project.ts', import.meta.url), 'utf8')
+const conversationsApi = await readFile(new URL('../src/api/conversations.ts', import.meta.url), 'utf8')
 
 test('collapsed project row derives its spinner from per-project running chat sessions', () => {
   // Session → project ownership is accumulated from loaded session lists.
@@ -35,10 +36,10 @@ test('sidebar session lists have one initialization owner', () => {
 })
 
 test('project type declares the backend running aggregate', () => {
-  assert.match(client, /has_running_tasks\?: boolean/)
+  assert.match(projectApi, /has_running_tasks\?: boolean/)
 })
 
 test('session rows restore their spinner from the API after refresh', () => {
-  assert.match(client, /running\?: boolean/)
+  assert.match(conversationsApi, /running\?: boolean/)
   assert.match(source, /const sessionRunning = Boolean\(runningChatSessions\[session\.id\]\)/)
 })

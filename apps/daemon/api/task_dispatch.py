@@ -94,4 +94,6 @@ async def receive_dispatch(req: ReceiveDispatchRequest, project_id: str = Query(
         )
         return result.task
     except Exception as exc:
+        if isinstance(exc, PermissionError):
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
         raise HTTPException(status_code=422, detail=str(exc)) from exc

@@ -38,6 +38,7 @@ ORCHESTRATION_EVENT_TYPES = frozenset({
     "session_started",
     "live_message",
     "engine_state",
+    "prompt_input",
     "subagent",
     "compacted",
     "error",

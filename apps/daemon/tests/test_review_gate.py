@@ -3,6 +3,7 @@
 import asyncio
 import json
 import re
+import threading
 import time
 from types import SimpleNamespace
 
@@ -23,8 +24,21 @@ from models import (
 from services.task_runner import TaskRunner
 from services.pipeline import Step
 from services.review_gate import ReviewGate
-from services.history import get_message_events, get_task_history
+from services.review_messages import resolve_review_config
+from services.history import get_message_events, get_step_history, get_task_history
 from streaming.bus import EventBus
+
+
+@pytest.fixture(autouse=True)
+def review_test_actor():
+    """Review commands in this module represent a named local operator."""
+    from services.remote_access import ActorSnapshot, actor_context
+
+    with actor_context(ActorSnapshot(
+        actor_id="reviewer-1", user_name="Reviewer", device_id="device-1",
+        device_name="Test device", source="local", username="reviewer",
+    )):
+        yield
 
 
 def test_review_prompt_uses_step_as_the_product_term(tmp_path):
@@ -56,6 +70,21 @@ def test_review_prompt_uses_step_as_the_product_term(tmp_path):
     assert prompt.count("完成构建") == 1
     assert "declared outputs" not in prompt
     assert not re.search(r"\bstage\b", prompt, re.IGNORECASE)
+
+
+def test_review_config_task_override_and_invalid_metadata():
+    step = Step(key="build", label="构建", review={"mode": "auto", "maxRetries": 2})
+    task = SimpleNamespace(review_overrides_json=json.dumps({
+        "build": {"mode": "skip", "maxRetries": 0},
+    }))
+    config, mode = resolve_review_config(task, step)
+    assert config == {"mode": "skip", "maxRetries": 0}
+    assert mode == "skip"
+
+    task.review_overrides_json = "[]"
+    config, mode = resolve_review_config(task, step)
+    assert config == {"mode": "auto", "maxRetries": 2}
+    assert mode == "auto"
 
 
 class SequencedReviewEngine:
@@ -403,7 +432,7 @@ async def test_automatic_review_accepts_live_message_and_splits_output(tmp_path)
 
             return await original_run_db(slow_operation)
 
-        runner._run_db = slow_live_message_write
+        runner._live._run_db = slow_live_message_write
         sending = asyncio.create_task(
             runner.send_live_message(task.id, "build", "补充审核要求")
         )
@@ -437,7 +466,9 @@ async def test_automatic_review_accepts_live_message_and_splits_output(tmp_path)
 
 
 @pytest.mark.anyio
-async def test_automatic_review_message_is_visible_while_review_is_running(tmp_path):
+async def test_automatic_review_message_is_visible_while_review_is_running(
+    tmp_path, monkeypatch
+):
     """自动审核开始后，刷新历史和实时事件都应立即得到同一条审核消息。"""
     db = init_db(str(tmp_path / "workstep.db"))
     task = Task.create(
@@ -463,6 +494,32 @@ async def test_automatic_review_message_is_visible_while_review_is_running(tmp_p
     ENGINE_REGISTRY["review-test"] = lambda: engine
     bus = EventBus()
     event_queue = bus.subscribe()
+    original_execute_sql = db.execute_sql
+    review_insert_started = threading.Event()
+    review_factory_started = threading.Event()
+    factory_started_at: list[float] = []
+
+    def slow_review_factory(engine_id):
+        assert engine_id == "review-test"
+        factory_started_at.append(time.perf_counter())
+        review_factory_started.set()
+        time.sleep(0.35)
+        return engine
+
+    monkeypatch.setattr("services.review_gate.create_engine", slow_review_factory)
+
+    def slow_review_insert(sql, params=None, commit=None):
+        if (
+            'INSERT INTO "message"' in sql
+            and params is not None
+            and "review" in params
+            and not review_insert_started.is_set()
+        ):
+            review_insert_started.set()
+            time.sleep(0.35)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(db, "execute_sql", slow_review_insert)
     pipeline_task = asyncio.create_task(TaskRunner(bus).run_pipeline(
         task,
         {
@@ -482,6 +539,13 @@ async def test_automatic_review_message_is_visible_while_review_is_running(tmp_p
         workflow_run=workflow_run,
     ))
     try:
+        assert await asyncio.to_thread(review_insert_started.wait, 1)
+        assert not pipeline_task.done()
+        heartbeat_started = time.perf_counter()
+        await asyncio.wait_for(asyncio.sleep(0), timeout=0.2)
+        assert time.perf_counter() - heartbeat_started < 0.2
+        assert await asyncio.to_thread(review_factory_started.wait, 2)
+        assert time.perf_counter() - factory_started_at[0] < 0.2
         await asyncio.wait_for(review_started.wait(), timeout=2)
         published = []
         while not event_queue.empty():
@@ -516,8 +580,8 @@ async def test_automatic_review_message_is_visible_while_review_is_running(tmp_p
         assert len(execution_messages) == 1
         assert execution_messages[0].run_status == "succeeded"
         running_prompt = json.loads(running_messages[0].prompt_json or "{}").get("prompt")
-        assert running_prompt
-        assert "You are the WorkStep step review agent." in running_prompt
+        assert running_prompt is None
+        assert "You are the WorkStep step review agent." in json.loads(running_messages[0].prompt_json)["input_prompt"]
         assert starts[0].get("prompt") == running_prompt
         history = await asyncio.to_thread(get_task_history, task.id)
         assert next(message for message in history if message["id"] == starts[0]["messageId"])["prompt"] == running_prompt
@@ -701,7 +765,7 @@ async def test_automatic_review_history_restores_running_output(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_execution_message_ends_before_its_automatic_review(tmp_path):
+async def test_execution_message_ends_before_its_automatic_review(tmp_path, monkeypatch):
     """执行消息的 ended_at 不能晚于其审核消息，否则前端会把审核排到执行上方。"""
     db = init_db(str(tmp_path / "workstep.db"))
     task = Task.create(
@@ -721,10 +785,35 @@ async def test_execution_message_ends_before_its_automatic_review(tmp_path):
         started_at=1,
     )
     calls: list[str] = []
+    recorded_usage: list[dict] = []
+
+    async def record_usage(**kwargs):
+        recorded_usage.append(kwargs)
+
+    monkeypatch.setattr("main.gateway_client.record_message_usage", record_usage)
+    from services.config import config_store
+    monkeypatch.setattr(SequencedReviewEngine, "resolve_provider_id",
+                        lambda self, _provider_id=None: "managed-review", raising=False)
+    loop = asyncio.get_running_loop()
+    read_started, read_finished = asyncio.Event(), asyncio.Event()
+    release_read = threading.Event()
+    provider_reads = 0
+
+    def load_provider(provider_id):
+        nonlocal provider_reads
+        provider_reads += 1
+        if provider_reads == 2:
+            loop.call_soon_threadsafe(read_started.set)
+            release_read.wait(timeout=1)
+            loop.call_soon_threadsafe(read_finished.set)
+        return {"id": provider_id, "managed_revision": 4,
+                "prices": {"version": "v4", "models": {}}}
+
+    monkeypatch.setattr(config_store, "get_provider", load_provider)
     original = ENGINE_REGISTRY.copy()
     ENGINE_REGISTRY["review-test"] = lambda: SequencedReviewEngine(calls)
     try:
-        await TaskRunner(EventBus()).run_pipeline(
+        pipeline = asyncio.create_task(TaskRunner(EventBus()).run_pipeline(
             task,
             {
                 "steps": [{
@@ -741,7 +830,14 @@ async def test_execution_message_ends_before_its_automatic_review(tmp_path):
             },
             tmp_path / "artifacts",
             workflow_run=workflow_run,
-        )
+        ))
+        try:
+            await asyncio.wait_for(read_started.wait(), timeout=2)
+            assert not read_finished.is_set()
+            await asyncio.wait_for(asyncio.sleep(0.01), timeout=0.05)
+        finally:
+            release_read.set()
+            await pipeline
         messages = list(
             Message.select()
             .where((Message.task == task) & (Message.step_key == "req"))
@@ -753,6 +849,16 @@ async def test_execution_message_ends_before_its_automatic_review(tmp_path):
         assert execution.ended_at is not None
         assert review.ended_at is not None
         assert execution.ended_at <= review.ended_at
+        assert len(recorded_usage) == 2
+        by_message = {item["message_id"]: item for item in recorded_usage}
+        assert json.loads(by_message[execution.id]["usage_json"])["input_tokens"] == 101
+        assert json.loads(by_message[review.id]["usage_json"])["input_tokens"] == 102
+        assert by_message[review.id]["run_id"] == review.step_run_id
+        assert by_message[review.id]["provider_id"] == "managed-review"
+        assert by_message[review.id]["provider"] == {
+            "id": "managed-review", "managed_revision": 4,
+            "prices": {"version": "v4", "models": {}},
+        }
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
@@ -888,8 +994,12 @@ async def test_manual_review_waits_for_user(tmp_path):
         status="running",
         workflow_schema_version=1,
         workflow_snapshot_json="{}",
+        initiated_by_user_id="review-user",
+        initiated_by_username="reviewer",
         started_at=1,
     )
+    task.active_workflow_run_id = workflow_run.id
+    task.save()
     calls: list[str] = []
     original = ENGINE_REGISTRY.copy()
     ENGINE_REGISTRY["review-test"] = lambda: SequencedReviewEngine(calls)
@@ -926,6 +1036,21 @@ async def test_manual_review_waits_for_user(tmp_path):
         assert len(review_messages) == 1
         # 人工审核不展示「审核结果：未通过」，直接提示等待用户审核
         assert review_messages[0].content == "等待你审核"
+        assert review_messages[0].author_type == "system"
+        assert review_messages[0].author_username == "system"
+        assert review_messages[0].initiated_by_user_id == "review-user"
+        assert review_messages[0].initiated_by_username == "reviewer"
+        history = get_task_history(task.id, tmp_path / ".workstep")
+        visible_review = next(
+            item for item in history if item["id"] == review_messages[0].id
+        )
+        assert visible_review["author_type"] == "system"
+        assert visible_review["initiated_by_username"] == "reviewer"
+        step_review = next(
+            item for item in get_step_history(task.id, "build", tmp_path / ".workstep")
+            if item["id"] == review_messages[0].id
+        )
+        assert step_review["author_username"] == "system"
         # 人工审核没有运行引擎：无提示词、无 token、无引擎/模型
         assert review_messages[0].prompt_json is None
         assert review_messages[0].usage_json is None
@@ -1300,14 +1425,32 @@ async def test_manual_reject_injects_feedback_into_next_attempt(tmp_path):
         assert review.mode == "manual"
         assert review.status == "pending"
 
-        reject_handle = await runtime.decide_review(
-            project.id,
-            task.id,
-            "build",
-            review.id,
-            "reject",
-            comment="请检查 {worktrees} 和 ｛step_name｝，保留 {custom_value}",
-        )
+        import threading
+        from unittest.mock import patch
+
+        lookup_started = threading.Event()
+        original_lookup = ReviewRun.get_or_none
+
+        def slow_review_lookup(*args, **kwargs):
+            lookup_started.set()
+            time.sleep(0.2)
+            return original_lookup(*args, **kwargs)
+
+        with patch.object(ReviewRun, "get_or_none", side_effect=slow_review_lookup):
+            deciding = asyncio.create_task(runtime.decide_review(
+                project.id,
+                task.id,
+                "build",
+                review.id,
+                "reject",
+                comment="请检查 {worktrees} 和 ｛step_name｝，保留 {custom_value}",
+            ))
+            assert await asyncio.to_thread(lookup_started.wait, 1)
+            heartbeat = asyncio.get_running_loop().time()
+            await asyncio.sleep(0.02)
+            assert asyncio.get_running_loop().time() - heartbeat < 0.1
+            assert not deciding.done()
+            reject_handle = await deciding
         await runtime.wait(reject_handle)
 
         # 阶段被自动重跑，第二次提示词包含人工驳回原因
@@ -1337,7 +1480,7 @@ async def test_manual_reject_injects_feedback_into_next_attempt(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_manual_review_can_terminate_until_user_reruns_step(tmp_path):
+async def test_manual_review_can_terminate_until_user_reruns_step(tmp_path, monkeypatch):
     """终止人工审核后不再调度；只有用户 @ 当前步骤才重新执行。"""
     from contextlib import nullcontext
     from types import SimpleNamespace
@@ -1385,6 +1528,21 @@ async def test_manual_review_can_terminate_until_user_reruns_step(tmp_path):
         await runtime.wait(handle)
         review = ReviewRun.get(ReviewRun.task == task)
 
+        from models import ProjectAuditEvent
+        from services import project_audit
+
+        with monkeypatch.context() as patcher:
+            patcher.setattr(
+                project_audit, "record_project_audit",
+                lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("audit unavailable")),
+            )
+            with pytest.raises(RuntimeError, match="audit unavailable"):
+                await runtime.decide_review(
+                    project.id, task.id, "build", review.id, "terminate",
+                )
+        assert ReviewRun.get_by_id(review.id).decision is None
+        assert Task.get_by_id(task.id).status != "stopped"
+
         resumed = await runtime.decide_review(
             project.id,
             task.id,
@@ -1407,6 +1565,17 @@ async def test_manual_review_can_terminate_until_user_reruns_step(tmp_path):
         assert task_step.status == "cancelled"
         assert task_step.error == "无需继续"
         assert WorkflowRun.get_by_id(handle.id).status == "stopped"
+        events = list(ProjectAuditEvent.select().where(
+            (ProjectAuditEvent.task_id == task.id)
+            & (ProjectAuditEvent.action == "review.terminate"),
+        ))
+        assert len(events) == 1
+        assert events[0].action == "review.terminate"
+        assert events[0].result == "succeeded"
+        assert events[0].metadata_json == (
+            '{"review_run_id": "' + review.id + '", "step_key": "build", '
+            '"workflow_run_id": "' + handle.id + '"}'
+        )
 
         accepted = await runtime.resume_step_with_message(
             project.id,
@@ -1728,6 +1897,76 @@ async def test_failed_execution_with_existing_artifact_can_be_set_complete(
         if not schedule_downstream:
             assert Task.get_by_id(task.id).status == "paused"
             assert WorkflowRun.get_by_id(run.id).status == "failed"
+    finally:
+        await runtime.shutdown()
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("schedule_downstream", [True, False])
+async def test_pending_manual_review_set_complete_preserves_downstream(tmp_path, schedule_downstream):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="manual-step-complete", title="Complete reviewed step",
+        cwd=str(tmp_path), engine="claude", created_at=1, updated_at=1,
+    )
+    project = SimpleNamespace(
+        id="project-manual-step-complete", path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={"nodes": [
+            {"id": 1, "type": "build", "key": "build", "title": "构建",
+             "engine": "review-test", "prompt": "完成构建",
+             "review": {"mode": "manual", "auto": False, "maxRetries": 1}},
+            {"id": 2, "type": "publish", "key": "publish", "title": "发布",
+             "engine": "review-test", "prompt": "完成发布",
+             "review": {"mode": "skip", "auto": True, "maxRetries": 1}},
+        ], "connections": [{"from": 1, "to": 2}]},
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    calls: list[str] = []
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["review-test"] = lambda: SequencedReviewEngine(calls)
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, ProjectManagerStub())
+    try:
+        first = await runtime.start(project.id, task.id, "")
+        await runtime.wait(first)
+        review = ReviewRun.get(ReviewRun.task == task)
+        assert review.status == "pending"
+        assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "publish")).status == "pending"
+
+        resumed = await runtime.decide_review(
+            project.id, task.id, "build", review.id, "set_complete",
+            schedule_downstream=schedule_downstream,
+        )
+        assert (resumed is not None) is schedule_downstream
+        if resumed is not None:
+            await runtime.wait(resumed)
+        assert ReviewRun.get_by_id(review.id).decision == "set_complete"
+        assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "build")).status == "passed"
+        assert TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "publish")).status == (
+            "passed" if schedule_downstream else "pending"
+        )
+        assert WorkflowRun.get_by_id(first.id).status == (
+            "succeeded" if schedule_downstream else "paused"
+        )
+        assert Task.get_by_id(task.id).status == (
+            "ready" if schedule_downstream else "paused"
+        )
+        assert len(calls) == (2 if schedule_downstream else 1)
     finally:
         await runtime.shutdown()
         await bus.close()
@@ -2177,3 +2416,149 @@ async def test_review_session_isolated_and_reused_per_step(tmp_path):
     # The second review receives the incremental execution contract too.
     assert "完成构建" not in review_prompts[1]
     db.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("transport", ["system", "developer", "body"])
+@pytest.mark.parametrize("retry_review", [False, True])
+async def test_pipeline_captures_actual_step_and_review_instructions(tmp_path, monkeypatch, transport, retry_review, slow_channel=None):
+    from engines.core.acp_base import AcpEngineBase
+
+    calls = []
+
+    class Engine(AcpEngineBase):
+        ENGINE_ID = "prompt-transport-test"
+        SYSTEM_PROMPT_MODE = transport
+
+        @staticmethod
+        def is_installed():
+            return True
+
+        @staticmethod
+        def get_version():
+            return "test"
+
+        @staticmethod
+        def resolve_binary():
+            return None
+
+        @property
+        def supports_resume(self):
+            return True
+
+        async def spawn(self, prompt, cwd, **kwargs):
+            calls.append({"prompt": prompt, **kwargs})
+            yield InternalEvent(type="session_started", data={"session_id": "execution-session" if len(calls) % 2 else "review-session"})
+            text = "execution result" if len(calls) % 2 else '{"passed":true,"score":100,"summary":"ok","issues":[]}'
+            if retry_review and len(calls) == 2:
+                text = '{"passed":false,"score":50,"summary":"revise document","issues":[]}'
+            yield InternalEvent(type="agent_message_chunk", data={"content": {"text": text}})
+
+    monkeypatch.setitem(ENGINE_REGISTRY, Engine.ENGINE_ID, Engine)
+    db = init_db(str(tmp_path / "workstep.db"))
+    try:
+        task = Task.create(id="prompt-task", title="transport task", cwd=str(tmp_path), engine=Engine.ENGINE_ID, created_at=1, updated_at=1)
+        run = WorkflowRun.create(id="prompt-run", task=task, status="running", workflow_schema_version=1, workflow_snapshot_json="{}", started_at=1)
+        runner = TaskRunner(EventBus())
+        release = threading.Event()
+        entered = threading.Event()
+        original_update = Message.update
+        if slow_channel:
+            def slow_update(*args, **kwargs):
+                payload = kwargs.get("prompt_json") or ""
+                is_review = "step review agent" in payload
+                if "###" in payload and is_review == (slow_channel == "review") and not release.is_set():
+                    entered.set()
+                    release.wait(3)
+                return original_update(*args, **kwargs)
+            monkeypatch.setattr(Message, "update", staticmethod(slow_update))
+        pipeline = asyncio.create_task(runner.run_pipeline(task, {"steps": [{
+            "key": "build", "label": "Build", "engine": Engine.ENGINE_ID,
+            "prompt": "write the document", "dependsOn": [],
+            "review": {"mode": "auto", "maxRetries": 1, "engine": Engine.ENGINE_ID, "prompt": "check the document"},
+        }]}, tmp_path / "artifacts", workflow_run=run))
+        try:
+            if slow_channel:
+                from httpx import ASGITransport, AsyncClient
+                from main import app
+                assert await asyncio.to_thread(entered.wait, 2)
+                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                    assert (await asyncio.wait_for(client.get("/api/health"), 0.3)).status_code == 200
+        finally:
+            release.set()
+            await pipeline
+        from services.prompt import step_worktrees_prompt_path
+        workspace_path = step_worktrees_prompt_path(task, tmp_path / "artifacts")
+        assert f"Workspace directory: {workspace_path}" in (calls[0].get("system_prompt") or calls[0]["prompt"])
+        if retry_review and transport != "body":
+            assert f"Workspace directory: {workspace_path}" in calls[2]["system_prompt"]
+        assert len(calls) == (4 if retry_review else 2)
+        messages = list(Message.select().where(Message.role == "assistant").order_by(Message.sequence))
+        assert len(messages) == len(calls)
+        for index, message in enumerate(messages):
+            checkpoint = json.loads(message.prompt_json)
+            assert "### 正文（user" in checkpoint["prompt"]
+            assert calls[index]["prompt"] in checkpoint["prompt"]
+            assert "### 正文" not in checkpoint["input_prompt"]
+            if transport != "body":
+                assert calls[index]["system_prompt"] in checkpoint["prompt"]
+                assert "### 独立指令" in checkpoint["prompt"]
+                assert "You are" not in calls[index]["prompt"]
+            elif index < 2:
+                assert "正文降级" in checkpoint["prompt"]
+                assert calls[index]["prompt"].startswith("You are")
+            else:
+                assert "正文降级" not in checkpoint["prompt"]
+                assert "### 独立指令" not in checkpoint["prompt"]
+                assert not calls[index]["prompt"].startswith("You are")
+        if retry_review:
+            assert calls[2]["session_id"] == "execution-session"
+            assert calls[3]["session_id"] == "review-session"
+            assert "revise document" in calls[2]["prompt"]
+            assert "### 正文" not in calls[3]["prompt"]
+        review = ReviewRun.select().where(ReviewRun.task == task).order_by(ReviewRun.attempt).first()
+        assert json.loads(review.prompt_json)["prompt"] == json.loads(messages[1].prompt_json)["prompt"]
+        assert "Return one JSON object" in (calls[1].get("system_prompt") or calls[1]["prompt"])
+        # Recovery reads the raw contract, never the formatted inspection record.
+        await runner._run_db(lambda: TaskStep.update(status="reviewing").where(TaskStep.task == task).execute())
+        checkpoint = await runner._review_messages.load_checkpoint(task, Step(key="build", label="Build"), run)
+        assert checkpoint is not None
+        assert "### 正文" not in checkpoint.execution_prompt
+        assert "### 正文" not in checkpoint.saved_review_prompt
+        assert "prompt_input" not in (messages[0].events_json or "")
+        await runner.close()
+    finally:
+        db.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("channel", ["execution", "review"])
+async def test_slow_pipeline_prompt_capture_keeps_health_responsive(tmp_path, monkeypatch, channel):
+    await test_pipeline_captures_actual_step_and_review_instructions(
+        tmp_path, monkeypatch, "system", False, slow_channel=channel,
+    )
+
+
+@pytest.mark.anyio
+async def test_step_workspace_system_path_lookup_keeps_health_responsive(tmp_path, monkeypatch):
+    import services.task_runner as runner_module
+    from httpx import ASGITransport, AsyncClient
+    from main import app
+
+    entered, release = threading.Event(), threading.Event()
+    original = runner_module.assemble_step_system_prompt
+    def slow_path(task, artifacts_dir):
+        entered.set()
+        release.wait(2)
+        return original(task, artifacts_dir)
+    monkeypatch.setattr(runner_module, "assemble_step_system_prompt", slow_path)
+    pipeline = asyncio.create_task(test_pipeline_captures_actual_step_and_review_instructions(
+        tmp_path, monkeypatch, "system", False,
+    ))
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            assert (await asyncio.wait_for(client.get("/api/health"), .3)).status_code == 200
+    finally:
+        release.set()
+        await pipeline

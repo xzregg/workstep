@@ -5,7 +5,9 @@ import time
 import uuid
 from dataclasses import asdict
 
-from fastapi import APIRouter, HTTPException
+from services.project_scope import require_catalog_project
+
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -15,6 +17,16 @@ from services.config import config_store, default_provider_protocol
 from services.project import project_manager
 
 router = APIRouter(prefix="/api/provider")
+
+
+def _managed_mode(request: Request) -> bool:
+    service = getattr(request.app.state, "gateway_client", None)
+    return bool(service is not None and service.managed_config is not None)
+
+
+def _reject_managed_mutation(request: Request) -> None:
+    if _managed_mode(request):
+        raise HTTPException(status_code=403, detail="供应商由 Gateway 管理")
 
 
 class ProviderSaveRequest(BaseModel):
@@ -38,6 +50,11 @@ class ProviderTestRequest(BaseModel):
 
 class ProviderImportRequest(BaseModel):
     provider_ids: list[str] = Field(default_factory=list, max_length=64)
+
+
+class ProviderModelsSelectRequest(BaseModel):
+    protocol: str = Field(default="", max_length=64)
+    models: list[dict] = Field(default_factory=list, max_length=1000)
 
 
 def _public_provider(provider: dict) -> dict:
@@ -119,10 +136,14 @@ def _require_provider(provider_id: str) -> dict:
 @router.get("/list")
 async def list_providers(project_id: str = ""):
     """Return all providers (masked) plus built-in type presets."""
+    scoped = require_catalog_project(project_id)
     def load() -> dict:
-        providers = config_store.get_providers()
+        providers = [_public_provider(item) for item in config_store.get_providers()]
+        if scoped:
+            providers = [{**item, "base_url": "", "protocol_base_urls": {},
+                          "api_key": "", "has_key": False} for item in providers]
         return {
-            "providers": [_public_provider(item) for item in providers],
+            "providers": providers,
             "types": provider_service.list_provider_types(),
         }
 
@@ -130,8 +151,9 @@ async def list_providers(project_id: str = ""):
 
 
 @router.post("")
-async def save_provider(req: ProviderSaveRequest):
+async def save_provider(req: ProviderSaveRequest, request: Request):
     """Create or update a provider; API keys keep engine-style masking."""
+    _reject_managed_mutation(request)
     name = str(req.name or "").strip()
     type_id = str(req.type or "").strip().lower()
     base_url = provider_service.normalize_provider_base_url(req.base_url)
@@ -249,8 +271,10 @@ async def save_provider(req: ProviderSaveRequest):
 
 
 @router.get("/import/sources")
-async def import_sources():
+async def import_sources(request: Request):
     """Discover third-party sources that can feed providers into WorkStep."""
+    if _managed_mode(request):
+        return {"sources": []}
     candidates = await asyncio.to_thread(lambda: [
         candidate
         for candidate in provider_service.scan_cc_switch_providers()
@@ -278,7 +302,8 @@ async def import_sources():
 
 
 @router.post("/import/cc-switch")
-async def import_cc_switch(req: ProviderImportRequest):
+async def import_cc_switch(req: ProviderImportRequest, request: Request):
+    _reject_managed_mutation(request)
     """Import selected CC Switch provider configurations into WorkStep."""
     candidates, existing_names = await asyncio.to_thread(
         lambda: (
@@ -357,8 +382,9 @@ async def import_cc_switch(req: ProviderImportRequest):
 
 
 @router.delete("/{provider_id}")
-async def delete_provider(provider_id: str):
+async def delete_provider(provider_id: str, request: Request):
     """Delete a provider; refuse while any engine or project still references it."""
+    _reject_managed_mutation(request)
     provider = await asyncio.to_thread(config_store.get_provider, provider_id)
     if provider is None:
         raise HTTPException(status_code=404, detail="供应商不存在")
@@ -393,7 +419,7 @@ async def delete_provider(provider_id: str):
 
 
 @router.post("/{provider_id}/test")
-async def test_provider(provider_id: str, req: ProviderTestRequest):
+async def test_provider(provider_id: str, req: ProviderTestRequest, request: Request):
     """Probe connectivity by fetching the provider's model list."""
     provider = await asyncio.to_thread(_require_provider, provider_id)
     try:
@@ -432,16 +458,88 @@ async def test_provider(provider_id: str, req: ProviderTestRequest):
         })
         refresh_registry()
 
-    await asyncio.to_thread(save_result)
+    if not _managed_mode(request):
+        await asyncio.to_thread(save_result)
     return {
         "provider_id": provider_id,
         **asdict(result),
     }
 
 
+@router.get("/{provider_id}/models/preview")
+async def provider_models_preview(provider_id: str, protocol: str = ""):
+    """Fetch the remote model list without persisting (selection dialog preview)."""
+    provider = await asyncio.to_thread(_require_provider, provider_id)
+    try:
+        selected_protocol = provider_service.select_provider_protocol(
+            provider, protocol or None
+        )
+    except ValueError as exc:
+        return {"provider_id": provider_id, "models": [], "error": str(exc)}
+    try:
+        models = await asyncio.wait_for(
+            provider_service.fetch_models(provider, protocol=selected_protocol),
+            timeout=15,
+        )
+        error = None
+    except asyncio.TimeoutError:
+        models = []
+        error = "读取模型列表超时"
+    except Exception as exc:
+        models = []
+        error = str(exc) or "读取模型列表失败"
+    return {
+        "provider_id": provider_id,
+        "models": [asdict(model) for model in models],
+        "error": error,
+    }
+
+
+@router.post("/{provider_id}/models/selection")
+async def provider_models_selection(
+    provider_id: str, body: ProviderModelsSelectRequest, request: Request
+):
+    """Persist the user-selected subset of models (checked in the dialog)."""
+    if _managed_mode(request):
+        raise HTTPException(status_code=403, detail="供应商模型目录由 Gateway 管理")
+    provider = await asyncio.to_thread(_require_provider, provider_id)
+    try:
+        selected_protocol = provider_service.select_provider_protocol(
+            provider, body.protocol or None
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    cleaned: list[dict] = []
+    seen: set[str] = set()
+    for item in body.models:
+        if not isinstance(item, dict):
+            continue
+        model_id = str(item.get("id") or "").strip()
+        if not model_id or model_id in seen:
+            continue
+        seen.add(model_id)
+        cleaned.append({
+            "id": model_id,
+            "label": str(item.get("label") or model_id),
+            "description": item.get("description"),
+        })
+    if len(cleaned) > 1000:
+        raise HTTPException(status_code=400, detail="模型数量超出上限")
+    from datetime import datetime, timezone
+
+    await asyncio.to_thread(
+        config_store.set_provider_models,
+        provider_id,
+        cleaned,
+        datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        selected_protocol,
+    )
+    return {"provider_id": provider_id, "count": len(cleaned)}
+
+
 @router.get("/{provider_id}/models")
 async def provider_models(
-    provider_id: str, refresh: bool = False, protocol: str = ""
+    provider_id: str, request: Request, refresh: bool = False, protocol: str = ""
 ):
     """Return the provider's selectable models.
 
@@ -450,6 +548,8 @@ async def provider_models(
     解析地址（缺省取供应商默认协议）。
     """
     provider = await asyncio.to_thread(_require_provider, provider_id)
+    if refresh and _managed_mode(request):
+        raise HTTPException(status_code=403, detail="供应商模型目录由 Gateway 管理")
     try:
         selected_protocol = provider_service.select_provider_protocol(
             provider, protocol or None
@@ -523,8 +623,10 @@ async def provider_balance(provider_id: str):
 
 
 @router.post("/{provider_id}/reveal")
-async def reveal_provider_key(provider_id: str):
+async def reveal_provider_key(provider_id: str, request: Request):
     """Return the stored API key after an explicit reveal action."""
+    if _managed_mode(request):
+        raise HTTPException(status_code=403, detail="受管供应商密钥不可显示")
     provider = await asyncio.to_thread(_require_provider, provider_id)
     return JSONResponse(
         {"key": "api_key", "value": provider.get("api_key") or None},

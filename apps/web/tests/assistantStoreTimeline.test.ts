@@ -323,3 +323,31 @@ test('hydrateSession restores a2ui surfaces from internal and CUSTOM shapes', ()
   assert.equal(session.a2uiMessages?.['message-2']?.length, 1)
   assert.deepEqual(session.a2uiMessages?.['message-2']?.[0], customPayload)
 })
+
+
+test('channel prompt snapshot updates the existing message without replacing its streamed text', () => {
+  const store = createAssistantStore({ channel: 'channel_chat' })
+  store.getState().newSession('channel-session')
+  const scope = { channel: 'channel_chat', session_id: 'channel-session', messageId: 'reply' }
+  store.getState().handleWsEvent({ ...scope, type: 'TEXT_MESSAGE_START', prompt: 'pending' })
+  store.getState().handleWsEvent({ ...scope, type: 'TEXT_MESSAGE_CHUNK', delta: '部分回复' })
+  store.getState().handleWsEvent({ ...scope, type: 'TEXT_MESSAGE_START', prompt: 'actual developer input' })
+  const messages = store.getState().sessions['channel-session'].messages
+  assert.equal(messages.length, 1)
+  assert.equal(messages[0].content, '部分回复')
+  assert.equal(messages[0].prompt, 'actual developer input')
+})
+
+
+test('history backfills a saved prompt into a cached message without replacing live text', () => {
+  const store = createAssistantStore({ channel: 'session_chat' })
+  const base = { id: 'old-answer', role: 'assistant' as const, content: '旧回答', status: 'succeeded' }
+  store.getState().hydrateSession('old-session', [base])
+  store.getState().hydrateSession('old-session', [{ ...base, prompt: '数据库保存的当轮完整输入' }])
+  assert.equal(store.getState().sessions['old-session'].messages[0].prompt, '数据库保存的当轮完整输入')
+  assert.equal(store.getState().sessions['old-session'].messages[0].content, '旧回答')
+  store.getState().handleWsEvent({ type: 'TEXT_MESSAGE_START', channel: 'session_chat',
+    session_id: 'old-session', messageId: 'old-answer', prompt: '较新的实传输入' })
+  store.getState().hydrateSession('old-session', [{ ...base, prompt: '数据库保存的当轮完整输入' }])
+  assert.equal(store.getState().sessions['old-session'].messages[0].prompt, '较新的实传输入')
+})

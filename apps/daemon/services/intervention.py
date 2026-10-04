@@ -74,6 +74,7 @@ class InterventionManager:
         self._tasks: dict[str, str] = {}
         # intervention_id → step_key, used to unblock a stopped step only.
         self._steps: dict[str, str] = {}
+        self._questions: dict[str, dict[str, Any]] = {}
 
     async def request_response(
         self,
@@ -91,6 +92,7 @@ class InterventionManager:
         self._pending[intervention_id] = future
         self._tasks[intervention_id] = task_id
         self._steps[intervention_id] = step_key
+        self._questions[intervention_id] = question
 
         logger.info(
             "Intervention requested: id=%s task=%s step=%s",
@@ -107,6 +109,7 @@ class InterventionManager:
             self._pending.pop(intervention_id, None)
             self._tasks.pop(intervention_id, None)
             self._steps.pop(intervention_id, None)
+            self._questions.pop(intervention_id, None)
 
     def deliver_response(
         self,
@@ -143,6 +146,7 @@ class InterventionManager:
         future = self._pending.pop(intervention_id, None)
         self._tasks.pop(intervention_id, None)
         self._steps.pop(intervention_id, None)
+        self._questions.pop(intervention_id, None)
         if future and not future.done():
             future.set_result({"error": "cancelled"})
             return True
@@ -173,6 +177,16 @@ class InterventionManager:
 
     def list_pending(self) -> list[str]:
         return list(self._pending.keys())
+
+    def list_pending_for_task(self, task_id: str) -> list[dict[str, Any]]:
+        """Return only unresolved questions for one task's interactive viewer."""
+        return [
+            {"interaction_id": interaction_id,
+             "step_key": self._steps[interaction_id],
+             "request": self._questions[interaction_id]}
+            for interaction_id, future in self._pending.items()
+            if self._tasks.get(interaction_id) == task_id and not future.done()
+        ]
 
 
 # Global singleton

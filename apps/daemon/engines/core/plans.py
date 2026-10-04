@@ -85,8 +85,6 @@ class NativePlanTracker:
     def __init__(self) -> None:
         self._tasks: dict[str, dict[str, Any]] = {}
         self._create_calls: dict[str, str] = {}
-        self._create_names: dict[str, str] = {}
-        self._subagent_calls: set[str] = set()
         self._list_calls: set[str] = set()
 
     def _snapshot(self) -> InternalEvent:
@@ -116,13 +114,7 @@ class NativePlanTracker:
                     for index, entry in enumerate(entries)
                 }
                 return self._snapshot()
-            raw_prompt = tool_input.get("prompt")
-            prompt_text = str(raw_prompt or "").strip() if isinstance(raw_prompt, str) else ""
-            looks_like_subagent = (
-                "command" not in tool_input
-                and bool(prompt_text)
-            )
-            if name in ("taskcreate", "task", "spawnagent") or looks_like_subagent:
+            if name == "taskcreate":
                 call_id = str(
                     event.data.get("tool_call_id")
                     or event.data.get("id")
@@ -132,7 +124,6 @@ class NativePlanTracker:
                 content = (
                     tool_input.get("subject")
                     or tool_input.get("description")
-                    or (prompt_text[:157] + "…" if len(prompt_text) > 157 else prompt_text)
                     or "新任务"
                 )
                 self._tasks[key] = {
@@ -145,9 +136,6 @@ class NativePlanTracker:
                     self._tasks[key]["detail"] = description
                 if call_id:
                     self._create_calls[call_id] = key
-                    self._create_names[call_id] = name
-                    if looks_like_subagent and name not in ("task", "spawnagent"):
-                        self._subagent_calls.add(call_id)
                 return self._snapshot()
             if name == "taskupdate":
                 task_id = str(
@@ -217,9 +205,6 @@ class NativePlanTracker:
             provisional = self._create_calls.pop(call_id, None)
             if provisional is None:
                 return None
-            create_name = self._create_names.pop(call_id, "")
-            is_subagent_call = call_id in self._subagent_calls
-            self._subagent_calls.discard(call_id)
             current = self._tasks.pop(provisional, None) or {}
             metadata = event.data.get("_meta")
             provider_result = (
@@ -248,13 +233,8 @@ class NativePlanTracker:
                     current["content"] = description
             if task.get("status"):
                 current["status"] = task["status"]
-            elif create_name in ("task", "spawnagent") or is_subagent_call:
-                # 子代理工具（Claude Task / Codex spawnAgent / ACP 委托工具）
-                # 的 tool_result 即完成信号；TaskCreate 仅表示任务已建，保持 pending。
-                current["status"] = "completed"
             existing = self._tasks.get(task_id)
             if existing is not None:
-                # 子代理生命周期帧可能已把该任务写为终态，保留更完整的信息。
                 merged = dict(existing)
                 for key, value in current.items():
                     if value:
@@ -264,35 +244,7 @@ class NativePlanTracker:
                 self._tasks[task_id] = current
             return self._snapshot()
 
-        if event.type == "subagent":
-            return self._observe_subagent(event)
         return None
-
-    def _observe_subagent(self, event: InternalEvent) -> InternalEvent | None:
-        """Fold subagent lifecycle frames into the plan snapshot state."""
-        data = event.data if isinstance(event.data, Mapping) else {}
-        task_id = str(data.get("task_id") or "").strip()
-        tool_use_id = str(data.get("tool_use_id") or "").strip()
-        if not task_id:
-            return None
-        if tool_use_id:
-            # 同一 spawn 工具的占位条目由该任务 ID 接管，避免重复展示。
-            self._tasks.pop(f"pending:{tool_use_id}", None)
-        entry = self._tasks.get(task_id)
-        if entry is None:
-            entry = {"content": "", "priority": "medium", "status": "pending"}
-        description = data.get("description") or data.get("subject")
-        if description:
-            entry["content"] = str(description)
-        status = str(data.get("status") or "").lower()
-        if status in ("running", "paused"):
-            entry["status"] = "in_progress"
-        elif status in _TERMINAL_SUBAGENT_STATUSES:
-            entry["status"] = "completed"
-        elif status == "pending":
-            entry["status"] = "pending"
-        self._tasks[task_id] = entry
-        return self._snapshot()
 
 
 # Subagent lifecycle stages surfaced by Claude/Qoder SDK ``system`` frames.

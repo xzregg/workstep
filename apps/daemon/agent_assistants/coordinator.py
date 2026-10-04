@@ -6,7 +6,6 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Awaitable, Callable
 
 from engines.core.agui import AGUIContext, to_agui_events
@@ -25,15 +24,24 @@ from agent_assistants.base import (
     extract_streaming_reply,  # re-exported for back-compat
     invoke_engine,
 )
+from agent_assistants.archive_experience import (
+    ArchiveExperienceDraftService,
+    ArchiveExperienceStopped,
+)
+from agent_assistants.coordinator_actions import CoordinatorActionService
 from agent_assistants.event_journal import JournalRef, TurnEventJournal
+from agent_assistants.coordinator_context import (
+    COORDINATOR_CHANNEL,
+    artifact_index,
+    assemble_context,
+    coordinator_root as project_coordinator_root,
+)
 from models import (
     ActionProposal,
     CoordinatorSession,
     CoordinatorTurn,
     Message,
     PendingMessageInsert,
-    ReviewRun,
-    StepSupplement,
     Task,
     TaskStep,
 )
@@ -51,19 +59,19 @@ from services.messages import (
 )
 from services.pending_message_inserts import (
     delete_pending_insert_batch,
+    pending_insert_actor,
     pending_insert_batch,
 )
+from services.remote_access import replayed_actor_context
+from services.remote_access import require_user_actor
 from services.intervention import intervention_manager
-from services.task_runner import extract_usage_json
+from services.messages import extract_usage_json
+from services.channels.source_prompt import request_source_prompt, source_snapshot
 from services.remote_project import current_actor_event_fields
-from services.workflow_definition import WorkflowDefinition
-from services.artifact_rounds import artifact_id_for, iter_artifact_rounds
-from services.workflow_actions import create_workflow_action, normalize_action_payload
 from streaming.bus import EventBus
 
 logger = logging.getLogger(__name__)
 
-COORDINATOR_CHANNEL = "coordinator"
 COORDINATOR_RECONCILE_SECONDS = 15.0
 COORDINATOR_STOP_TIMEOUT_SECONDS = 10.0
 
@@ -76,6 +84,7 @@ COORDINATOR_CONFIG = AssistantConfig(
     name="task_coordinator",
     channel=COORDINATOR_CHANNEL,
     scope=SCOPE_TASK,
+    system_prompt_transport=True,
     system_prompt=(
         "You are the WorkStep task coordinator. Use task and workflow context to "
         "answer questions. When you need to inspect or operate on WorkStep workflows, "
@@ -91,26 +100,6 @@ COORDINATOR_CONFIG = AssistantConfig(
     workstep_tools=True,
 )
 assistant_registry.register(COORDINATOR_CONFIG)
-LEGACY_ACTION_TYPE_ALIASES = {
-    "supplement_stage": "supplement_step",
-    "rerun_from_stage": "rerun_from_step",
-}
-ALLOWED_ACTIONS = {
-    "supplement_step",
-    "rerun_from_step",
-    "review_decision",
-    "create_workflow_action",
-}
-
-
-def _canonical_action_type(value: str) -> str:
-    """Expose Step terminology while accepting rows created by older versions."""
-    return LEGACY_ACTION_TYPE_ALIASES.get(value, value)
-
-
-class ArchiveExperienceStopped(RuntimeError):
-    """Raised when the user stops an in-flight archive experience draft."""
-
 
 @dataclass(frozen=True, slots=True)
 class ChatAccepted:
@@ -136,17 +125,18 @@ class CoordinatorModule:
         self._project_manager = project_manager
         self._workflow_runtime = workflow_runtime
         self._turn_locks: dict[tuple[str, str], asyncio.Lock] = {}
-        self._operation_locks: dict[tuple[str, str], asyncio.Lock] = {}
+        self._actions = CoordinatorActionService(project_manager, workflow_runtime)
         self._active_tasks: set[asyncio.Task] = set()
         self._scheduled_turns: set[str] = set()
         self._turn_tasks: dict[str, asyncio.Task] = {}
-        self._executing_actions: set[str] = set()
         self._running_engines: dict[str, object] = {}
         self._cancelled_turns: set[str] = set()
-        self._active_archive_experience_runs: set[str] = set()
-        self._cancelled_archive_experience_runs: set[str] = set()
-        self._completed_archive_experience_journals: dict[str, dict] = {}
         self._event_journal = TurnEventJournal()
+        self._archive_drafts = ArchiveExperienceDraftService(
+            project_manager, event_bus, self._event_journal,
+            self._archive_settings, self._invoke, self._parse_or_repair,
+            self._running_engines,
+        )
         self._reconcile_task: asyncio.Task | None = None
 
     async def start(self) -> int:
@@ -174,7 +164,7 @@ class CoordinatorModule:
         recovered = 0
         scheduled = set(self._scheduled_turns)
         running = set(self._running_engines)
-        executing_actions = set(self._executing_actions)
+        executing_actions = set(self._actions.executing_actions)
         for project in self._project_manager.iter_projects():
             turn_ids, failed_actions = await self._run_db(
                 project.id,
@@ -269,342 +259,25 @@ class CoordinatorModule:
         )
 
     async def draft_archive_experience(
-        self,
-        project_id: str,
-        task_id: str,
-        message_id: str | None = None,
+        self, project_id: str, task_id: str, message_id: str | None = None,
     ) -> str:
-        """Generate a reviewable task-experience draft without persisting it."""
-        progress_message_id = message_id or str(uuid.uuid4())
-        loaded = await self._run_db(
-            project_id,
-            lambda: self._load_archive_evidence_sync(project_id, task_id),
+        return await self._archive_drafts.draft_archive_experience(
+            project_id, task_id, message_id,
         )
-        engine_id = loaded["engine_id"]
-        model = loaded["model"]
-        fast_model = loaded["fast_model"]
-        thinking_effort = loaded["thinking_effort"]
-        provider_id = loaded["provider_id"]
-        coordinator_root = loaded["coordinator_root"]
-        steps = loaded["steps"]
-        reviews = loaded["reviews"]
-        messages = loaded["messages"]
-        evidence = loaded["evidence"]
-
-        schema = {
-            "version": 1,
-            "reply": "Markdown experience draft",
-            "intent": "answer",
-            "target_step_key": None,
-            "artifact_requests": [],
-            "proposal": None,
-        }
-        prompt = (
-            "Extract reusable error lessons for an archived task; this is not a task summary. "
-            "Record only directly evidenced mistakes or pitfalls; omit successes, summaries, "
-            "outcomes, and pleasantries. Use at most 3 one-line entries in the format "
-            "\"- Error: ...; Cause: ...; Fix: ...\". Keep the total under 600 Chinese "
-            "characters equivalent; if there is no error evidence, reply "
-            "\"- No reusable error lessons found.\" Do not guess or execute anything. "
-            "The content will be reviewed by the user and must not be written to Memory now. "
-            f"Return JSON matching this shape: {json.dumps(schema, ensure_ascii=False)}\n\n"
-            f"Task evidence:\n{json.dumps(evidence, ensure_ascii=False, default=str)}"
-        )
-        run_key = self._archive_experience_run_key(
-            project_id,
-            task_id,
-            progress_message_id,
-        )
-        journal_ref = await self._event_journal.astart(
-            loaded["workstep_dir"],
-            f"task-{task_id}",
-            progress_message_id,
-        )
-        journal_finished = False
-        self._active_archive_experience_runs.add(run_key)
-        event_sequence = 0
-        raw_content = ""
-        streamed_reply = ""
-
-        async def publish(event_type: str, data: dict) -> None:
-            nonlocal event_sequence
-            await self._event_journal.arecord(
-                journal_ref,
-                {"type": event_type, "data": data},
-            )
-            await self._publish_archive_experience_event(
-                project_id,
-                task_id,
-                progress_message_id,
-                engine_id,
-                model,
-                event_type,
-                data,
-                event_sequence,
-            )
-            event_sequence += 1
-
-        async def publish_engine_event(event: InternalEvent) -> None:
-            nonlocal raw_content, streamed_reply
-            if is_commentary(event):
-                await publish(event.type, event.data)
-            elif event.type == "agent_message_chunk":
-                content = event.data.get("content") or {}
-                raw_content += str(content.get("text", ""))
-                partial_reply = extract_streaming_reply(raw_content)
-                if not partial_reply.startswith(streamed_reply):
-                    return
-                delta = partial_reply[len(streamed_reply):]
-                if not delta:
-                    return
-                streamed_reply = partial_reply
-                await publish(
-                    "agent_message_chunk",
-                    {**event.data, "content": {"text": delta}},
-                )
-            elif event.type in {
-                "agent_thought_chunk",
-                "tool_call",
-                "tool_call_update",
-                "plan",
-                "plan_update",
-                "plan_removed",
-                "usage_update",
-                "subagent",
-                "compacted",
-            }:
-                await publish(event.type, event.data)
-
-        await publish(
-            "message_started",
-            {"role": "assistant", "prompt": prompt},
-        )
-        await publish(
-            "agent_thought_chunk",
-            {
-                "content": {
-                    "text": (
-                        f"Read task record: {len(steps)} steps, "
-                        f"{len(reviews)} reviews, {len(messages)} messages."
-                    )
-                }
-            },
-        )
-        await publish(
-            "agent_thought_chunk",
-            {"content": {"text": "Submitted to the coordinator; waiting for a response."}},
-        )
-        try:
-            if run_key in self._cancelled_archive_experience_runs:
-                raise ArchiveExperienceStopped("Archive experience generation stopped")
-            raw, _, _ = await self._invoke(
-                engine_id,
-                model,
-                coordinator_root,
-                prompt,
-                None,
-                on_event=publish_engine_event,
-                turn_id=run_key,
-                thinking_effort=thinking_effort,
-                provider_id=provider_id,
-            )
-            if run_key in self._cancelled_archive_experience_runs:
-                raise ArchiveExperienceStopped("Archive experience generation stopped")
-            result, repair_events = await self._parse_or_repair(
-                engine_id,
-                fast_model,
-                coordinator_root,
-                raw,
-                run_key,
-            )
-            for repair_event in repair_events:
-                event_type = str(repair_event.get("type") or "")
-                if event_type:
-                    await publish(event_type, repair_event.get("data") or {})
-            experience = str(result.get("reply") or "").strip()
-            if not experience:
-                raise RuntimeError("Coordinator returned an empty experience draft")
-            if len(experience) > 800:
-                raise RuntimeError("Coordinator experience draft exceeds 800 characters")
-            await publish("message_snapshot", {"content": experience})
-            await publish("message_completed", {"status": "succeeded"})
-            await self._event_journal.afinish(journal_ref)
-            journal_finished = True
-            self._completed_archive_experience_journals[run_key] = {
-                "event_log_path": journal_ref.relative_path,
-                "snapshot": await self._event_journal.asnapshot(journal_ref),
-                "prompt": prompt,
-                "engine": engine_id,
-                "model": model,
-            }
-            return experience
-        except ArchiveExperienceStopped:
-            await publish("message_completed", {"status": "stopped"})
-            raise
-        except Exception as exc:
-            if run_key in self._cancelled_archive_experience_runs:
-                await publish("message_completed", {"status": "stopped"})
-                raise ArchiveExperienceStopped(
-                    "Archive experience generation stopped"
-                ) from exc
-            await publish(
-                "message_completed",
-                {"status": "failed", "error": str(exc)},
-            )
-            raise
-        finally:
-            if not journal_finished:
-                await self._event_journal.afinish(journal_ref)
-            self._active_archive_experience_runs.discard(run_key)
-            self._cancelled_archive_experience_runs.discard(run_key)
-
-    def _load_archive_evidence_sync(self, project_id: str, task_id: str) -> dict:
-        project = self._project_manager.get_project_by_id(project_id)
-        task = Task.get_or_none(Task.id == task_id)
-        if task is None:
-            raise ValueError(f"Task not found: {task_id}")
-        engine_id, model, fast_model, _ = self._resolve_engine_models(task)
-        thinking_effort = self._resolve_thinking_effort(task)
-        provider_id = self._resolve_provider_id(task)
-        coordinator_root = self._coordinator_root(project, task)
-        steps = [
-            {
-                "step_key": step.step_key,
-                "status": step.status,
-                "engine": step.engine,
-                "error": step.error,
-                "rework_feedback": step.rework_feedback,
-                "review_feedback": step.review_feedback,
-            }
-            for step in TaskStep.select().where(TaskStep.task == task)
-        ]
-        reviews = [
-            {
-                "step_key": review.step_key,
-                "attempt": review.attempt,
-                "status": review.status,
-                "decision": review.decision,
-                "decision_comment": review.decision_comment,
-                "error": review.error,
-                "report": review.report_json,
-            }
-            for review in ReviewRun.select()
-            .where(ReviewRun.task == task)
-            .order_by(ReviewRun.started_at)
-        ]
-        messages = [
-            {
-                "step_key": message.step_key,
-                "channel": message.channel,
-                "role": message.role,
-                "run_status": message.run_status,
-                "content": (message.content or "")[:8000],
-                "event_summary": message.event_summary_json,
-            }
-            for message in Message.select()
-            .where(Message.task == task)
-            .order_by(Message.sequence, Message.created_at)
-            .limit(200)
-        ]
-        evidence = {
-            "task": {
-                "id": task.id,
-                "title": task.title,
-                "description": task.description,
-                "status": task.status,
-            },
-            "steps": steps,
-            "reviews": reviews,
-            "messages": messages,
-            "artifacts": [
-                metadata[0]
-                for metadata in self._artifact_index(project, task).values()
-            ],
-        }
-        return {
-            "engine_id": engine_id,
-            "model": model,
-            "fast_model": fast_model,
-            "thinking_effort": thinking_effort,
-            "provider_id": provider_id,
-            "coordinator_root": coordinator_root,
-            "steps": steps,
-            "reviews": reviews,
-            "messages": messages,
-            "evidence": evidence,
-            "workstep_dir": project.workstep_dir,
-        }
-
-    @staticmethod
-    def _archive_experience_run_key(
-        project_id: str,
-        task_id: str,
-        message_id: str,
-    ) -> str:
-        return f"archive-experience:{project_id}:{task_id}:{message_id}"
 
     def take_archive_experience_journal(
-        self,
-        project_id: str,
-        task_id: str,
-        message_id: str,
+        self, project_id: str, task_id: str, message_id: str,
     ) -> dict | None:
-        """Take the completed journal metadata for durable draft persistence."""
-        return self._completed_archive_experience_journals.pop(
-            self._archive_experience_run_key(project_id, task_id, message_id),
-            None,
+        return self._archive_drafts.take_archive_experience_journal(
+            project_id, task_id, message_id,
         )
 
     async def stop_archive_experience(
-        self,
-        project_id: str,
-        task_id: str,
-        message_id: str,
+        self, project_id: str, task_id: str, message_id: str,
     ) -> bool:
-        """Stop a visible archive experience draft without persisting anything."""
-        run_key = self._archive_experience_run_key(project_id, task_id, message_id)
-        if run_key not in self._active_archive_experience_runs:
-            return False
-        self._cancelled_archive_experience_runs.add(run_key)
-        engine = self._running_engines.get(run_key)
-        if engine is not None:
-            try:
-                await engine.stop()
-            except Exception:
-                logger.exception(
-                    "Engine stop raised while stopping archive experience %s",
-                    run_key,
-                )
-        return True
-
-    async def _publish_archive_experience_event(
-        self,
-        project_id: str,
-        task_id: str,
-        message_id: str,
-        engine: str,
-        model: str | None,
-        event_type: str,
-        data: dict,
-        event_sequence: int,
-    ) -> None:
-        payload = {
-            "event_id": str(uuid.uuid4()),
-            "project_id": project_id,
-            "task_id": task_id,
-            "channel": "archive_experience",
-            "message_id": message_id,
-            "engine": engine,
-            "model": model,
-            "event_sequence": event_sequence,
-            "type": event_type,
-            "data": data,
-            "created_at": utc_now().isoformat(),
-            **current_actor_event_fields(),
-        }
-        context = AGUIContext.from_event(payload)
-        for agui_event in to_agui_events(payload, context):
-            await self._event_bus.publish(agui_event)
+        return await self._archive_drafts.stop_archive_experience(
+            project_id, task_id, message_id,
+        )
 
     async def submit_message(
         self,
@@ -616,6 +289,8 @@ class CoordinatorModule:
         author_name: str = "",
         pending_insert_ids: list[str] | None = None,
         reset_session: bool = False,
+        replay_pending: bool = False,
+        channel_source: dict | None = None,
     ) -> ChatAccepted:
         normalized = content.strip()
         if not normalized:
@@ -633,12 +308,15 @@ class CoordinatorModule:
                 author_name=author_name,
                 pending_insert_ids=pending_insert_ids,
                 reset_session=reset_session,
+                replay_pending=replay_pending,
+                channel_source=channel_source,
             ),
         )
         accepted, user_message, created = persisted
         if not created:
             return accepted
         await self._publish_message_event(
+            project_id,
             task_id,
             user_message,
             "message_started",
@@ -658,7 +336,11 @@ class CoordinatorModule:
         author_name: str = "",
         pending_insert_ids: list[str] | None = None,
         reset_session: bool = False,
+        replay_pending: bool = False,
+        channel_source: dict | None = None,
     ):
+        if not replay_pending:
+            require_user_actor()
         with self._project_manager.activate_project_by_id(project_id) as project:
             existing = CoordinatorTurn.get_or_none(
                 (CoordinatorTurn.task == task_id)
@@ -728,6 +410,8 @@ class CoordinatorModule:
                     sequence=user_sequence,
                     role="user",
                     content=normalized,
+                    prompt_json=(json.dumps({'channel_source': source_snapshot(channel_source)}, ensure_ascii=False)
+                                 if channel_source else None),
                     run_id=turn_id,
                     run_status="completed",
                     position=0,
@@ -736,6 +420,16 @@ class CoordinatorModule:
                     created_at=now,
                     **actor_fields,
                 )
+                assistant_fields = {
+                    "author_id": engine,
+                    "author_username": engine,
+                    "author_name": engine,
+                    "author_type": "assistant",
+                    "initiated_by_user_id": actor_fields.get("author_id"),
+                    "initiated_by_username": actor_fields.get("author_username"),
+                    "author_device_id": actor_fields.get("author_device_id"),
+                    "author_device_name": actor_fields.get("author_device_name"),
+                }
                 assistant_message = Message.create(
                     id=assistant_message_id,
                     task=current,
@@ -753,7 +447,7 @@ class CoordinatorModule:
                     event_log_path=journal_ref.relative_path,
                     position=1,
                     created_at=now,
-                    **actor_fields,
+                    **assistant_fields,
                 )
                 CoordinatorTurn.create(
                     id=turn_id,
@@ -1000,84 +694,14 @@ class CoordinatorModule:
         idempotency_key: str,
         overwrite: bool = False,
     ) -> dict:
-        if not idempotency_key.strip():
-            raise ValueError("Idempotency-Key is required")
-        lock = self._operation_locks.setdefault(
-            (project_id, task_id),
-            asyncio.Lock(),
+        return await self._actions.confirm_action(
+            project_id, task_id, proposal_id, idempotency_key, overwrite,
         )
-        async with lock:
-            self._executing_actions.add(proposal_id)
-            try:
-                action = await self._run_db(
-                    project_id,
-                    lambda: self._begin_action_sync(
-                        task_id, proposal_id, idempotency_key, overwrite
-                    ),
-                )
-                if "completed" in action:
-                    return action["completed"]
-                proposal_type = action["type"]
-                payload = action["payload"]
-
-                try:
-                    if proposal_type == "supplement_step":
-                        result = await self._run_db(
-                            project_id,
-                            lambda: self._execute_supplement(
-                                project_id, task_id, proposal_id, payload
-                            ),
-                        )
-                    elif proposal_type == "review_decision":
-                        result = await self._execute_review_decision(
-                            project_id,
-                            task_id,
-                            action,
-                            payload,
-                        )
-                    elif proposal_type == "rerun_from_step":
-                        result = await self._execute_rerun_from_step(
-                            project_id,
-                            task_id,
-                            proposal_id,
-                            action,
-                            payload,
-                        )
-                    elif proposal_type == "create_workflow_action":
-                        result = await self._project_manager.run_db(
-                            project_id,
-                            lambda project: self._execute_create_workflow_action_sync(
-                                project, task_id, payload
-                            ),
-                        )
-                    else:
-                        raise RuntimeError(f"Unsupported action: {proposal_type}")
-                except Exception as exc:
-                    await self._run_db(
-                        project_id,
-                        lambda: self._mark_action_failed_sync(
-                            proposal_id, str(exc)
-                        ),
-                    )
-                    raise
-
-                return await self._run_db(
-                    project_id,
-                    lambda: self._complete_action_sync(proposal_id, result),
-                )
-            finally:
-                self._executing_actions.discard(proposal_id)
 
     async def cancel_action(
-        self,
-        project_id: str,
-        task_id: str,
-        proposal_id: str,
+        self, project_id: str, task_id: str, proposal_id: str,
     ) -> dict:
-        return await self._run_db(
-            project_id,
-            lambda: self._cancel_action_sync(task_id, proposal_id),
-        )
+        return await self._actions.cancel_action(project_id, task_id, proposal_id)
 
     async def shutdown(self) -> None:
         if self._reconcile_task is not None:
@@ -1092,10 +716,8 @@ class CoordinatorModule:
         self._cancelled_turns.clear()
         self._scheduled_turns.clear()
         self._turn_tasks.clear()
-        self._executing_actions.clear()
-        self._active_archive_experience_runs.clear()
-        self._cancelled_archive_experience_runs.clear()
-        self._completed_archive_experience_journals.clear()
+        self._actions.executing_actions.clear()
+        self._archive_drafts.clear()
         self._running_engines.clear()
         await self._event_journal.aclose()
 
@@ -1125,10 +747,11 @@ class CoordinatorModule:
 
             try:
                 await self._publish_message_event(
+                    project_id,
                     task_id,
                     assistant,
                     "message_started",
-                    {"prompt": prompt},
+                    {},
                     0,
                 )
                 live_event_sequence = 1
@@ -1139,6 +762,15 @@ class CoordinatorModule:
 
                     async def publish_live_event(event: InternalEvent) -> None:
                         nonlocal raw_content, streamed_reply, live_event_sequence
+                        if event.type == "prompt_input":
+                            from agent_assistants.prompt_input import append_prompt_view
+                            view = append_prompt_view(prepared["workstep_dir"], assistant.id, event.data)
+                            await self._run_db(project_id, lambda: Message.update(
+                                prompt_json=json.dumps({"prompt": view}, ensure_ascii=False),
+                            ).where(Message.id == assistant.id).execute())
+                            await self._publish_message_event(project_id, task_id, assistant, "message_started", {"prompt": view}, live_event_sequence)
+                            live_event_sequence += 1
+                            return
                         event_dict = event.to_dict()
                         journaled_events.append(event_dict)
                         self._event_journal.record(
@@ -1148,6 +780,7 @@ class CoordinatorModule:
                         )
                         if is_commentary(event):
                             await self._publish_message_event(
+                                project_id,
                                 task_id, assistant, event.type, event.data, live_event_sequence,
                             )
                             live_event_sequence += 1
@@ -1162,6 +795,7 @@ class CoordinatorModule:
                                 return
                             streamed_reply = partial_reply
                             await self._publish_message_event(
+                                project_id,
                                 task_id,
                                 assistant,
                                 "agent_message_chunk",
@@ -1185,6 +819,7 @@ class CoordinatorModule:
                             "session_started",
                         }:
                             await self._publish_message_event(
+                                project_id,
                                 task_id,
                                 assistant,
                                 event.type,
@@ -1194,6 +829,10 @@ class CoordinatorModule:
                             live_event_sequence += 1
 
                     return publish_live_event
+
+                async def capture_repair_input(event: InternalEvent) -> None:
+                    if event.type == "prompt_input":
+                        await make_live_callback([])(event)
 
                 journaled_events: list[dict] = []
                 raw, events, session_id = await self._invoke(
@@ -1208,6 +847,8 @@ class CoordinatorModule:
                     message_history=engine_state,
                     thinking_effort=thinking_effort,
                     provider_id=provider_id,
+                    system_prompt="\n\n".join(filter(None, [prepared["system_prompt"], prepared["channel_source_instruction"]])),
+                    system_prompt_each_turn=bool(prepared["channel_source_instruction"]),
                 )
                 self._record_unstreamed_journal_events(
                     journal_ref, events, journaled_events
@@ -1227,10 +868,14 @@ class CoordinatorModule:
                     coordinator_root,
                     raw,
                     turn_id,
+                    on_event=capture_repair_input,
                 )
                 events.extend(repair_events)
                 for event in repair_events:
-                    await self._event_journal.arecord(journal_ref, event)
+                    if event.get("type") == "prompt_input":
+                        await make_live_callback(journaled_events)(InternalEvent("prompt_input", event.get("data") or {}))
+                    else:
+                        await self._event_journal.arecord(journal_ref, event)
                 requested = [
                     artifact_id
                     for artifact_id in result.get("artifact_requests", [])
@@ -1256,6 +901,8 @@ class CoordinatorModule:
                         turn_id,
                         thinking_effort=thinking_effort,
                         provider_id=provider_id,
+                        system_prompt="\n\n".join(filter(None, [prepared["system_prompt"], prepared["channel_source_instruction"]])),
+                        system_prompt_each_turn=bool(prepared["channel_source_instruction"]),
                     )
                     self._record_unstreamed_journal_events(
                         journal_ref, more_events, journaled_more_events
@@ -1276,10 +923,14 @@ class CoordinatorModule:
                         coordinator_root,
                         raw,
                         turn_id,
+                        on_event=capture_repair_input,
                     )
                     events.extend(repair_events)
                     for event in repair_events:
-                        await self._event_journal.arecord(journal_ref, event)
+                        if event.get("type") == "prompt_input":
+                            await make_live_callback(journaled_more_events)(InternalEvent("prompt_input", event.get("data") or {}))
+                        else:
+                            await self._event_journal.arecord(journal_ref, event)
                     result["artifact_requests"] = []
                 reply = str(result.get("reply", "")).strip()
                 if not reply:
@@ -1294,11 +945,41 @@ class CoordinatorModule:
                         events=events,
                     )
                     return
+                questions = []
+                for question in result.get("questions", []) if isinstance(result.get("questions"), list) else []:
+                    if not isinstance(question, dict) or not isinstance(question.get("title"), str):
+                        continue
+                    options = question.get("options")
+                    if question["title"].strip() and isinstance(options, list):
+                        choices = list(dict.fromkeys(value.strip() for value in options if isinstance(value, str) and value.strip()))
+                        if choices:
+                            questions.append({"title":question["title"].strip(), "options":choices})
+                if questions:
+                    question_data = {"source_item_id":assistant.id, "questions":questions}
+                    question_event = {"type":"async_question", "data":question_data}
+                    events.append(question_event)
+                    await self._event_journal.arecord(journal_ref, question_event)
+                    await self._publish_message_event(project_id, task_id, assistant, "async_question", question_data, live_event_sequence)
+                    live_event_sequence += 1
                 await self._event_journal.afinish(
                     journal_ref,
                     {"type": "status", "data": {"status": "succeeded"}},
                 )
                 journal_snapshot = await self._event_journal.asnapshot(journal_ref)
+                usage_provider_id = provider_id
+                usage_provider = None
+                if turn.engine:
+                    usage_engine = await asyncio.to_thread(create_engine, turn.engine)
+                    resolve_provider_id = getattr(usage_engine, "resolve_provider_id", None)
+                    if callable(resolve_provider_id):
+                        usage_provider_id = await asyncio.to_thread(resolve_provider_id, provider_id)
+                if usage_provider_id:
+                    def load_usage_provider():
+                        provider = config_store.get_provider(usage_provider_id)
+                        return ({key: provider.get(key) for key in
+                                 ("id", "prices", "managed_revision")}
+                                if provider else None)
+                    usage_provider = await asyncio.to_thread(load_usage_provider)
                 assistant, proposal = await self._run_db(
                     project_id,
                     lambda: self._finish_turn_sync(
@@ -1313,7 +994,17 @@ class CoordinatorModule:
                     ),
                 )
 
+                from main import gateway_client
+                await gateway_client.record_message_usage(
+                    project_id=project_id, task_id=task_id, message_id=assistant.id,
+                    run_id=turn_id, model=turn_model, occurred_at=assistant.ended_at,
+                    provider=usage_provider, provider_id=usage_provider_id or None,
+                    usage_json=extract_usage_json(events),
+                    user_id=prepared["creator_id"], session_id=session_id,
+                )
+
                 await self._publish_message_event(
+                    project_id,
                     task_id,
                     assistant,
                     "message_snapshot",
@@ -1331,6 +1022,7 @@ class CoordinatorModule:
                 next_event_sequence = live_event_sequence
                 if usage_event is not None:
                     await self._publish_message_event(
+                        project_id,
                         task_id,
                         assistant,
                         "usage",
@@ -1340,6 +1032,7 @@ class CoordinatorModule:
                     next_event_sequence += 1
                 if proposal is not None:
                     await self._publish_message_event(
+                        project_id,
                         task_id,
                         assistant,
                         "action_proposal",
@@ -1348,6 +1041,7 @@ class CoordinatorModule:
                     )
                     next_event_sequence += 1
                 await self._publish_message_event(
+                    project_id,
                     task_id,
                     assistant,
                     "message_completed",
@@ -1373,6 +1067,7 @@ class CoordinatorModule:
                     ),
                 )
                 await self._publish_message_event(
+                    project_id,
                     task_id,
                     assistant,
                     "message_snapshot",
@@ -1380,6 +1075,7 @@ class CoordinatorModule:
                     1,
                 )
                 await self._publish_message_event(
+                    project_id,
                     task_id,
                     assistant,
                     "message_completed",
@@ -1398,20 +1094,23 @@ class CoordinatorModule:
         task_id: str,
         target_message_id: str,
     ) -> None:
-        ids, content, username = await self._run_db(
-            project_id,
-            lambda: pending_insert_batch(target_message_id),
-        )
+        def load_batch():
+            ids, content, username = pending_insert_batch(target_message_id)
+            return ids, content, username, pending_insert_actor(target_message_id)
+
+        ids, content, username, actor = await self._run_db(project_id, load_batch)
         if not ids or not content:
             return
-        await self.submit_message(
-            project_id,
-            task_id,
-            content,
-            f"pending-inserts:{target_message_id}",
-            author_name=username,
-            pending_insert_ids=ids,
-        )
+        with replayed_actor_context(actor):
+            await self.submit_message(
+                project_id,
+                task_id,
+                content,
+                f"pending-inserts:{target_message_id}",
+                author_name=username,
+                pending_insert_ids=ids,
+                replay_pending=True,
+            )
 
     def _record_unstreamed_journal_events(
         self,
@@ -1421,6 +1120,8 @@ class CoordinatorModule:
     ) -> None:
         unmatched = list(journaled_events)
         for event in returned_events:
+            if event.get("type") == "prompt_input":
+                continue
             if event in unmatched:
                 unmatched.remove(event)
             else:
@@ -1431,7 +1132,7 @@ class CoordinatorModule:
         turn = CoordinatorTurn.get_by_id(turn_id)
         task = Task.get_by_id(task_id)
         assistant = Message.get_by_id(turn.assistant_message_id)
-        coordinator_root = self._coordinator_root(project, task)
+        coordinator_root = project_coordinator_root(project, task)
         turn.status = "running"
         turn.started_at = utc_now()
         turn.save()
@@ -1449,27 +1150,26 @@ class CoordinatorModule:
         provider_id = self._resolve_provider_id(task)
         thinking_effort = self._resolve_thinking_effort(task)
         user_message = Message.get_by_id(turn.user_message_id)
-        engine = create_engine(turn.engine) if turn.engine else None
-        if session.session_id and engine is not None and engine.supports_resume:
-            # The engine already has the bootstrap instructions and context.
-            prompt = user_message.content or ""
-            artifacts = self._artifact_index(project, task)
-        else:
-            prompt, artifacts = self._assemble_context(
-                project, task, turn, root_dir=coordinator_root
-            )
+        previous_channel = Message.select(Message.id).where(
+            (Message.task == task) & (Message.channel == COORDINATOR_CHANNEL)
+            & (Message.role == 'user') & (Message.sequence <= user_message.sequence)
+            & Message.prompt_json.contains('"channel_source"')
+        ).exists()
+        prompt, system_prompt, artifacts = assemble_context(
+            project, task, turn, root_dir=coordinator_root, separate_instructions=True
+        )
         images = extract_uploaded_images(
             project, task.cwd, user_message.content or ""
         )
         turn_model = (vision_model or turn.model) if images else turn.model
-        assistant.prompt_json = json.dumps({"prompt": prompt}, ensure_ascii=False)
-        assistant.save(only=[Message.prompt_json])
         journal_ref = self._event_journal.reopen(
             project.workstep_dir,
             assistant.event_log_path,
         )
         return {
             "turn": turn,
+            "creator_id": task.creator_id,
+            "workstep_dir": project.workstep_dir,
             "assistant": assistant,
             "coordinator_root": coordinator_root,
             "session_id": session.session_id,
@@ -1478,6 +1178,8 @@ class CoordinatorModule:
             "provider_id": provider_id,
             "thinking_effort": thinking_effort,
             "prompt": prompt,
+            "system_prompt": system_prompt,
+            "channel_source_instruction": request_source_prompt(user_message, previous_channel=previous_channel),
             "artifacts": artifacts,
             "images": images,
             "turn_model": turn_model,
@@ -1531,8 +1233,8 @@ class CoordinatorModule:
         session.updated_at = assistant.ended_at
         session.save()
         self._refresh_summary(task, session)
-        proposal = self._create_proposal(task, turn, assistant, result)
-        return assistant, self._proposal_to_dict(proposal) if proposal else None
+        proposal = self._actions.create_proposal(task, turn, assistant, result)
+        return assistant, self._actions.proposal_to_dict(proposal) if proposal else None
 
     @staticmethod
     def _fail_turn_sync(turn_id, error, journal_snapshot):
@@ -1557,6 +1259,16 @@ class CoordinatorModule:
         assistant.ended_at = turn.ended_at
         assistant.save()
         return assistant
+
+    def _archive_settings(self, task: Task) -> dict:
+        engine_id, model, fast_model, _ = self._resolve_engine_models(task)
+        return {
+            "engine_id": engine_id,
+            "model": model,
+            "fast_model": fast_model,
+            "thinking_effort": self._resolve_thinking_effort(task),
+            "provider_id": self._resolve_provider_id(task),
+        }
 
     def _resolve_engine_models(
         self,
@@ -1686,228 +1398,6 @@ class CoordinatorModule:
             session.save()
         return session
 
-    @staticmethod
-    def _coordinator_root(project, task: Task) -> str:
-        """Run the coordinator from the project root, never the artifacts tree."""
-        return str(project.path)
-
-    def _assemble_context(
-        self,
-        project,
-        task: Task,
-        turn: CoordinatorTurn,
-        root_dir: str | None = None,
-    ):
-        workflow_data = project.steps
-        if task.workflow_id:
-            workflow = project.workflow_by_id(task.workflow_id)
-            if workflow is not None:
-                workflow_data = workflow["steps"]
-        compiled = WorkflowDefinition.load(workflow_data).compile()
-        review_configs: dict[str, dict | None] = {}
-        if task.review_overrides_json:
-            try:
-                overrides = json.loads(task.review_overrides_json)
-                overrides = overrides if isinstance(overrides, dict) else {}
-            except (json.JSONDecodeError, TypeError):
-                overrides = {}
-        else:
-            overrides = {}
-        for compiled_step in compiled.steps:
-            key = str(compiled_step.get("key", ""))
-            base = compiled_step.get("review") or {}
-            step_ov = overrides.get(key, {})
-            if not base and not step_ov:
-                review_configs[key] = None
-                continue
-            cfg = dict(base)
-            if isinstance(step_ov, dict):
-                cfg.update(step_ov)
-            review_configs[key] = cfg
-        steps = [
-            {
-                "step_key": step.step_key,
-                "status": step.status,
-                "engine": step.engine,
-                "error": step.error,
-                "review_mode": (
-                    "auto"
-                    if (review_configs.get(step.step_key) or {}).get("auto", False)
-                    else "manual"
-                )
-                if review_configs.get(step.step_key) is not None
-                else None,
-            }
-            for step in TaskStep.select().where(TaskStep.task == task)
-        ]
-        active_step_keys = [
-            step["step_key"]
-            for step in steps
-            if step["status"]
-            in {
-                "running",
-                "reviewing",
-                "awaiting_review",
-                "retrying",
-                "rework",
-                "rework_waiting",
-            }
-        ]
-        reviews = [
-            {
-                "id": review.id,
-                "step_key": review.step_key,
-                "mode": review.mode,
-                "status": review.status,
-                "decision": review.decision,
-                "step_run_id": review.step_run_id,
-                "workflow_run_id": review.workflow_run_id,
-            }
-            for review in ReviewRun.select()
-            .where(ReviewRun.task == task)
-            .order_by(ReviewRun.started_at.desc())
-            .limit(10)
-        ]
-        messages = [
-            {"role": item.role, "content": item.content}
-            for item in Message.select()
-            .where(
-                (Message.task == task)
-                & (Message.channel == COORDINATOR_CHANNEL)
-                & (Message.id != turn.assistant_message_id)
-            )
-            .order_by(Message.sequence.desc())
-            .limit(20)
-        ]
-        messages.reverse()
-        session = CoordinatorSession.get_or_none(CoordinatorSession.task == task)
-        engine = create_engine(turn.engine) if turn.engine else None
-        engine_manages_context = engine is not None and engine.supports_resume
-        if engine_manages_context:
-            # 引擎侧恢复历史；队列中可能已有后续消息，必须取当前 turn。
-            current_message = Message.get_by_id(turn.user_message_id)
-            recent_messages = [{
-                "role": current_message.role,
-                "content": current_message.content,
-            }]
-            summary = None
-        else:
-            recent_messages = messages
-            summary = session.summary if session else None
-        artifacts = self._artifact_index(project, task)
-        artifact_views = [metadata[0] for metadata in artifacts.values()]
-        schema = {
-            "version": 1,
-            "reply": "natural language answer",
-            "intent": "answer | clarify | propose_action",
-            "target_step_key": None,
-            "artifact_requests": [],
-            "proposal": None,
-        }
-        context = {
-            "coordinator_root_dir": root_dir or self._coordinator_root(project, task),
-            "project_id": getattr(project, "id", None),
-            "project_name": getattr(project, "name", None),
-            "task": {
-                "id": task.id,
-                "title": task.title,
-                "description": (
-                    (task.description or "")[:4000]
-                    if engine_manages_context else task.description
-                ),
-                "status": task.status,
-                "state_version": task.state_version,
-                "active_workflow_run_id": task.active_workflow_run_id,
-                "workflow_id": task.workflow_id,
-            },
-            "coordinator_vision_model": (
-                task.coordinator_vision_model
-                or config_store.get_coordinator_default_vision_model()
-                or None
-            ),
-            "steps": (
-                [{**step, "error": (step["error"] or "")[:500]} for step in steps]
-                if engine_manages_context else steps
-            ),
-            "active_step_keys": active_step_keys,
-            "recent_coordinator_messages": recent_messages,
-            "coordinator_summary": summary,
-        }
-        if not engine_manages_context:
-            context.update({
-                "workflow": compiled,
-                "reviews": reviews,
-                "artifacts": artifact_views,
-            })
-        instructions = (
-            "Understand the task and answer the user. You may propose at most one "
-            "action, but never execute it. Allowed proposal types are "
-            "supplement_step, rerun_from_step, review_decision, create_workflow_action. For a proposal "
-            "return {type, target_step_key, payload}. supplement payload requires "
-            "content; review_decision requires review_run_id and decision. For rerun, "
-            "choose the earliest target step that should execute; that step and its "
-            "DAG downstream steps will run. Decide whether the target step needs "
-            "new user context. If it does, include a concise step-specific instruction "
-            "in rerun payload.content; otherwise omit content. To reuse a specific "
-            "direct input artifact round (forward or feedback), rerun payload may "
-            "include input_rounds mapping source step keys to eligible round numbers "
-            "from artifacts. A feedback round must contain a non-empty artifact on "
-            "the edge into the target step. If active_workflow_run_id is "
-            "null, rerun starts a new first workflow run from that step. Request artifacts only by "
-            "artifact_id. If the user's message references an image and your model "
-            "cannot accept image input, use coordinator_vision_model to analyze the "
-            "image before replying. Return "
-            f"JSON matching this shape: {json.dumps(schema, ensure_ascii=False)}"
-        )
-        instructions += (
-            " For create_workflow_action, use only when asked to create a task workflow "
-            "shortcut. Payload must contain action_id (stable slug), title, "
-            "script_path (relative filename, usually start.sh), script_content, "
-            "cwd_mode (task/project/worktrees), and require_confirmation. "
-            "If execution needs user text such as a Commit message, also set "
-            "confirmation_input_prompt; the confirmed text is passed to the script "
-            "unchanged as WORKSTEP_ACTION_INPUT, so quote that variable in shell. "
-            "When replacing an existing workflow Action, inspect current shortcuts, "
-            "reuse its action_id and script filename, set overwrite=true, and clearly "
-            "tell the user the confirmation will replace that script and button. "
-            "This is a preview: do not write the script before user confirmation. "
-            "For task Git worktrees, read WORKSTEP_WORKTREES_FILE JSON and select "
-            "paths by repository_id or alias, never branch name. Use relative_path "
-            "in saved scripts and path only for runtime execution. For long-running "
-            "services keep child processes in the foreground process group, print "
-            "actual URLs, wait for children and trap TERM/INT to stop them; do not "
-            "daemonize, nohup, setsid, or disown. The Action stop button then stops "
-            "the whole process group."
-        )
-        instructions += (
-            " For code work that needs an isolated Git branch, inspect this project's "
-            "repositories and create task worktrees only for repositories relevant to "
-            "the task when needed. If no repository is needed, "
-            "leave the task workspace empty. Git worktree setup is separate from "
-            "workflow action proposals. Use project-relative paths in generated scripts; "
-            "when creating Git worktrees manually, use git worktree add --relative-paths "
-            "inside the task workspace, never container absolute paths."
-        )
-        if engine_manages_context:
-            instructions += (
-                " Context contains only the current task snapshot and this user message. "
-                "For workflow details, review history, or artifacts, use available "
-                "WorkStep tools to inspect current state."
-            )
-        if engine is not None and not getattr(
-            engine.capabilities, "supports_workstep_tools", False
-        ):
-            instructions += (
-                " For WorkStep CLI access, inspect the workstep-cli skill first. "
-                "For example, use workstep project list or workstep task list "
-                "to locate current records, then read details as needed."
-            )
-        prompt = (
-            f"{instructions}\n\n"
-            f"Context:\n{json.dumps(context, ensure_ascii=False, default=str)}"
-        )
-        return prompt, artifacts
-
     def _refresh_summary(
         self,
         task: Task,
@@ -1951,6 +1441,8 @@ class CoordinatorModule:
         message_history: list | None = None,
         thinking_effort: str | None = None,
         provider_id: str | None = None,
+        system_prompt: str | None = None,
+        system_prompt_each_turn: bool = False,
     ) -> tuple[str, list[dict], str | None]:
         model_supports_multimodal = getattr(
             config_store,
@@ -1960,7 +1452,7 @@ class CoordinatorModule:
         direct_images = bool(
             images
             and (
-                model_supports_multimodal(
+                await asyncio.to_thread(model_supports_multimodal,
                     engine_id,
                     model or "",
                     provider_id or "",
@@ -1970,8 +1462,12 @@ class CoordinatorModule:
             )
         )
 
-        def spawn(engine, *, workstep_tools=False, config_overrides=None):
-            spawn_kwargs = {}
+        def spawn(engine, *, workstep_tools=False, config_overrides=None, system_prompt=None, system_prompt_each_turn=False, capture_prompt_input=False):
+            spawn_kwargs = {"capture_prompt_input": capture_prompt_input}
+            if system_prompt:
+                spawn_kwargs["system_prompt"] = system_prompt
+            if system_prompt_each_turn:
+                spawn_kwargs["system_prompt_each_turn"] = True
             if workstep_tools:
                 spawn_kwargs["workstep_tools"] = True
             if config_overrides:
@@ -2000,7 +1496,7 @@ class CoordinatorModule:
 
         get_defaults = getattr(config_store, "get_assistant_defaults", None)
         assistant_defaults = (
-            get_defaults("task_coordinator") if callable(get_defaults) else {}
+            await asyncio.to_thread(get_defaults, "task_coordinator") if callable(get_defaults) else {}
         )
         provider_id = provider_id or assistant_defaults.get("provider_id", "")
         config_overrides = (
@@ -2014,6 +1510,9 @@ class CoordinatorModule:
             session_id,
             on_event,
             spawner=spawn,
+            system_prompt=system_prompt,
+            system_prompt_each_turn=system_prompt_each_turn,
+            capture_prompt_input=True,
             error_prefix="Coordinator engine",
             run_key=turn_id,
             running_engines=self._running_engines,
@@ -2051,116 +1550,28 @@ class CoordinatorModule:
         cwd: str,
         raw: str,
         turn_id: str | None = None,
+        on_event: Callable[[InternalEvent], Awaitable[None]] | None = None,
     ) -> tuple[dict, list[dict]]:
         try:
             return self._parse_result(raw), []
         except RuntimeError:
-            repair_prompt = (
+            repair_system_prompt = (
                 "Repair the following response into valid coordinator JSON. "
-                "Do not add an action that was not present. Return JSON only.\n\n"
-                f"{raw}"
+                "Do not add an action that was not present. Return JSON only."
             )
             repaired, events, _ = await self._invoke(
                 engine_id,
                 model,
                 cwd,
-                repair_prompt,
+                raw,
                 None,
                 turn_id=turn_id,
+                on_event=on_event,
+                system_prompt=repair_system_prompt,
             )
+            if on_event is not None:
+                events = [event for event in events if event.get("type") != "prompt_input"]
             return self._parse_result(repaired), events
-
-    def _artifact_index(self, project, task: Task):
-        root = (Path(project.workstep_dir) / "artifacts").resolve()
-        result: dict[str, tuple[dict, Path]] = {}
-        if not root.is_dir():
-            return result
-        for workflow_dir in root.iterdir():
-            if not workflow_dir.is_dir():
-                continue
-            task_dir = workflow_dir / task.id
-            if not task_dir.is_dir():
-                continue
-            for step_dir in task_dir.iterdir():
-                if not step_dir.is_dir():
-                    continue
-                rounds = iter_artifact_rounds(
-                    root,
-                    workflow_dir.name,
-                    task.id,
-                    step_dir.name,
-                )
-                latest_round = max((item.round for item in rounds), default=0)
-                latest_success_round = max(
-                    (
-                        item.round
-                        for item in rounds
-                        if item.eligible_for_downstream
-                    ),
-                    default=-1,
-                )
-                for artifact_round in rounds:
-                    round_dir = artifact_round.path.resolve()
-                    for path in artifact_round.path.rglob("*"):
-                        if not path.is_file() or path.is_symlink():
-                            continue
-                        relative = path.relative_to(artifact_round.path)
-                        if artifact_round.legacy and relative.parts and relative.parts[0].isdigit():
-                            continue
-                        if path.name == "manifest.json":
-                            continue
-                        resolved = path.resolve()
-                        try:
-                            resolved.relative_to(round_dir)
-                        except ValueError:
-                            continue
-                        artifact_id = artifact_id_for(
-                            workflow_dir.name,
-                            step_dir.name,
-                            artifact_round.round,
-                            str(relative),
-                        )
-                        result[artifact_id] = (
-                            {
-                                "artifact_id": artifact_id,
-                                "step_key": step_dir.name,
-                                "workflow": workflow_dir.name,
-                                "round": artifact_round.round,
-                                "is_latest_success": (
-                                    artifact_round.eligible_for_downstream
-                                    and artifact_round.round == latest_success_round
-                                ),
-                                "is_selected": (
-                                    artifact_round.round == latest_success_round
-                                ),
-                                "eligible_for_downstream": artifact_round.eligible_for_downstream,
-                                "relative_path": str(relative),
-                                "size": resolved.stat().st_size,
-                            },
-                            resolved,
-                        )
-        return result
-
-    @staticmethod
-    def _normalize_input_rounds(
-        value,
-        target_step_key: str,
-    ) -> dict[str, int]:
-        if not isinstance(value, dict):
-            return {}
-        normalized: dict[str, int] = {}
-        for raw_step, raw_round in value.items():
-            step_key = str(raw_step).strip()
-            if not step_key or step_key == target_step_key:
-                continue
-            try:
-                round_number = int(raw_round)
-            except (TypeError, ValueError):
-                raise ValueError(f"非法产物轮次: {raw_step}={raw_round}")
-            if round_number < 1:
-                raise ValueError(f"非法产物轮次: {raw_step}={raw_round}")
-            normalized[step_key] = round_number
-        return normalized
 
     def _read_artifacts(self, artifacts, requested: list[str]) -> str:
         blocks = []
@@ -2181,293 +1592,6 @@ class CoordinatorModule:
                 f"{content}\n</artifact>"
             )
         return "\n\n".join(blocks)
-
-    def _create_proposal(self, task, turn, assistant, result):
-        proposal_data = result.get("proposal")
-        if not isinstance(proposal_data, dict):
-            return None
-        proposal_type = _canonical_action_type(str(proposal_data.get("type") or ""))
-        if proposal_type not in ALLOWED_ACTIONS:
-            return None
-        target_step_key = (
-            proposal_data.get("target_step_key")
-            or result.get("target_step_key")
-        )
-        payload = proposal_data.get("payload")
-        if not isinstance(payload, dict):
-            payload = {}
-        step_keys = {
-            row.step_key for row in TaskStep.select().where(TaskStep.task == task)
-        }
-        if proposal_type not in {"review_decision", "create_workflow_action"} and target_step_key not in step_keys:
-            return None
-        expected_review_run_id = None
-        expected_step_run_id = None
-        expected_workflow_run_id = task.active_workflow_run_id
-        if proposal_type == "supplement_step":
-            content = str(payload.get("content", "")).strip()
-            if not content:
-                return None
-            payload = {"content": content}
-        elif proposal_type == "rerun_from_step":
-            content = str(payload.get("content", "")).strip()
-            payload = {
-                "input_rounds": self._normalize_input_rounds(
-                    payload.get("input_rounds"),
-                    target_step_key or "",
-                )
-            }
-            if content:
-                payload["content"] = content
-        elif proposal_type == "review_decision":
-            review_id = str(payload.get("review_run_id", ""))
-            decision = str(payload.get("decision", "")).replace("-", "_")
-            if decision not in {"approve", "reject", "force_approve"}:
-                return None
-            review = ReviewRun.get_or_none(
-                (ReviewRun.id == review_id) & (ReviewRun.task == task)
-            )
-            if review is None or review.decision:
-                return None
-            target_step_key = review.step_key
-            expected_review_run_id = review.id
-            expected_step_run_id = review.step_run_id
-            expected_workflow_run_id = review.workflow_run_id
-            payload = {
-                "review_run_id": review.id,
-                "decision": decision,
-                "comment": payload.get("comment"),
-            }
-        elif proposal_type == "create_workflow_action":
-            if not task.workflow_id:
-                return None
-            try:
-                payload = self._normalize_workflow_action_payload(payload)
-            except ValueError:
-                return None
-            payload["workflow_id"] = task.workflow_id
-            target_step_key = None
-        impact = {
-            "target_step_key": target_step_key,
-            "summary": self._impact_summary(proposal_type, target_step_key),
-        }
-        now = utc_now()
-        return ActionProposal.create(
-            id=str(uuid.uuid4()),
-            task=task,
-            source_turn=turn,
-            source_message=assistant,
-            type=proposal_type,
-            target_step_key=target_step_key,
-            payload_json=json.dumps(payload, ensure_ascii=False),
-            impact_json=json.dumps(impact, ensure_ascii=False),
-            expected_task_version=task.state_version,
-            expected_workflow_run_id=expected_workflow_run_id,
-            expected_step_run_id=expected_step_run_id,
-            expected_review_run_id=expected_review_run_id,
-            status="pending",
-            created_at=now,
-            updated_at=now,
-        )
-
-    @staticmethod
-    def _normalize_workflow_action_payload(payload: dict) -> dict:
-        return normalize_action_payload(payload)
-
-    @staticmethod
-    def _execute_create_workflow_action_sync(project, task_id: str, payload: dict) -> dict:
-        task = Task.get_by_id(task_id)
-        if not task.workflow_id:
-            raise ValueError("任务没有关联流程")
-        return create_workflow_action(project, task.workflow_id, payload)
-
-    def _execute_supplement(self, project_id, task_id, proposal_id, payload):
-        with self._project_manager.activate_project_by_id(project_id):
-            proposal = ActionProposal.get_by_id(proposal_id)
-            task = Task.get_by_id(task_id)
-            content = str(payload.get("content", "")).strip()
-            if not content:
-                raise RuntimeError("Supplement content cannot be empty")
-            supplement = StepSupplement.create(
-                id=str(uuid.uuid4()),
-                task=task,
-                step_key=proposal.target_step_key,
-                content=content,
-                source_proposal=proposal,
-                created_sequence=proposal.source_message.sequence or 0,
-                created_at=utc_now(),
-            )
-            task.state_version += 1
-            task.updated_at = utc_now()
-            task.save()
-            return {"supplement_id": supplement.id, "status": "saved"}
-
-    async def _execute_rerun_from_step(
-        self,
-        project_id: str,
-        task_id: str,
-        proposal_id: str,
-        action: dict,
-        payload: dict,
-    ) -> dict:
-        target_step_key = action["target_step_key"] or ""
-        content = str(payload.get("content", "")).strip()
-        input_rounds = self._normalize_input_rounds(
-            payload.get("input_rounds"),
-            target_step_key,
-        )
-        supplement_id = None
-        if content:
-            supplement_id = await self._run_db(
-                project_id,
-                lambda: self._ensure_rerun_supplement_sync(
-                    task_id,
-                    proposal_id,
-                    content,
-                ),
-            )
-        handle = await self._workflow_runtime.restart_from_step(
-            project_id,
-            task_id,
-            target_step_key,
-            expected_run_id=action["expected_workflow_run_id"],
-            step_followup=content or None,
-            input_rounds=input_rounds or None,
-        )
-        return {
-            "run_id": handle.id,
-            "status": "started",
-            "supplement_id": supplement_id,
-        }
-
-    @staticmethod
-    def _ensure_rerun_supplement_sync(
-        task_id: str,
-        proposal_id: str,
-        content: str,
-    ) -> str:
-        proposal = ActionProposal.get_by_id(proposal_id)
-        existing = StepSupplement.get_or_none(
-            StepSupplement.source_proposal == proposal
-        )
-        if existing is not None:
-            return existing.id
-        task = Task.get_by_id(task_id)
-        supplement = StepSupplement.create(
-            id=str(uuid.uuid4()),
-            task=task,
-            step_key=proposal.target_step_key,
-            content=content,
-            source_proposal=proposal,
-            created_sequence=proposal.source_message.sequence or 0,
-            created_at=utc_now(),
-        )
-        task.state_version += 1
-        task.updated_at = utc_now()
-        task.save()
-        # The proposal itself caused this version change. Keep failed reruns
-        # retryable while still expiring other proposals based on the old state.
-        proposal.expected_task_version = task.state_version
-        proposal.updated_at = task.updated_at
-        proposal.save(
-            only=[ActionProposal.expected_task_version, ActionProposal.updated_at]
-        )
-        return supplement.id
-
-    def _begin_action_sync(self, task_id, proposal_id, idempotency_key, overwrite=False):
-        proposal = ActionProposal.get_or_none(
-            (ActionProposal.id == proposal_id)
-            & (ActionProposal.task == task_id)
-        )
-        if proposal is None:
-            raise ValueError("Action proposal not found")
-        if proposal.status == "succeeded":
-            if proposal.confirm_idempotency_key == idempotency_key:
-                return {"completed": self._proposal_to_dict(proposal)}
-            raise RuntimeError("Action proposal has already executed")
-        proposal_type = _canonical_action_type(proposal.type)
-        if overwrite and (proposal.status != "failed" or proposal_type != "create_workflow_action"):
-            raise RuntimeError("Only a failed workflow Action proposal can be retried with overwrite")
-        if proposal.status == "failed" and proposal_type in {"rerun_from_step", "create_workflow_action"}:
-            proposal.status = "pending"
-            proposal.error = None
-        if proposal.status != "pending":
-            raise RuntimeError(f"Action proposal is not pending: {proposal.status}")
-        task = Task.get_by_id(task_id)
-        if task.state_version != proposal.expected_task_version:
-            proposal.status = "expired"
-            proposal.error = "Task state changed after this proposal"
-            proposal.updated_at = utc_now()
-            proposal.save()
-            raise RuntimeError(proposal.error)
-        proposal.status = "executing"
-        payload = json.loads(proposal.payload_json)
-        if overwrite:
-            payload["overwrite"] = True
-            proposal.payload_json = json.dumps(payload, ensure_ascii=False)
-        proposal.confirm_idempotency_key = idempotency_key
-        proposal.confirmed_at = utc_now()
-        proposal.updated_at = proposal.confirmed_at
-        proposal.save()
-        return {
-            "type": proposal_type,
-            "payload": payload,
-            "target_step_key": proposal.target_step_key,
-            "expected_workflow_run_id": proposal.expected_workflow_run_id,
-        }
-
-    @staticmethod
-    def _mark_action_failed_sync(proposal_id, error):
-        failed = ActionProposal.get_by_id(proposal_id)
-        failed.status = "failed"
-        failed.error = error
-        failed.updated_at = utc_now()
-        failed.save()
-
-    def _complete_action_sync(self, proposal_id, result):
-        completed = ActionProposal.get_by_id(proposal_id)
-        completed.status = "succeeded"
-        completed.result_json = json.dumps(result, ensure_ascii=False)
-        completed.executed_at = utc_now()
-        completed.updated_at = completed.executed_at
-        completed.error = None
-        completed.save()
-        return self._proposal_to_dict(completed)
-
-    def _cancel_action_sync(self, task_id, proposal_id):
-        proposal = ActionProposal.get_or_none(
-            (ActionProposal.id == proposal_id)
-            & (ActionProposal.task == task_id)
-        )
-        if proposal is None:
-            raise ValueError("Action proposal not found")
-        if proposal.status != "pending":
-            raise RuntimeError(f"Action proposal is not pending: {proposal.status}")
-        proposal.status = "cancelled"
-        proposal.updated_at = utc_now()
-        proposal.save()
-        return self._proposal_to_dict(proposal)
-
-    async def _execute_review_decision(
-        self,
-        project_id,
-        task_id,
-        proposal,
-        payload,
-    ):
-        handle = await self._workflow_runtime.decide_review(
-            project_id,
-            task_id,
-            proposal["target_step_key"] or "",
-            payload["review_run_id"],
-            payload["decision"],
-            payload.get("comment"),
-        )
-        return {
-            "decision": payload["decision"],
-            "resumed": handle is not None,
-            "run_id": handle.id if handle else None,
-        }
 
     def _single_active_step(self, task: Task) -> str | None:
         keys = [
@@ -2490,35 +1614,11 @@ class CoordinatorModule:
         ]
         return keys[0] if len(keys) == 1 else None
 
-    def _impact_summary(self, proposal_type, step_key):
-        if proposal_type == "create_workflow_action":
-            return "确认后创建流程快捷 Action 脚本和按钮，不会立即执行"
-        if proposal_type == "supplement_step":
-            return f"Save context for future attempts of step '{step_key}'"
-        if proposal_type == "review_decision":
-            return f"Apply the review decision for step '{step_key}'"
-        return f"Restart step '{step_key}' and its downstream steps"
 
-    def _proposal_to_dict(self, proposal: ActionProposal) -> dict:
-        return {
-            "id": proposal.id,
-            "type": _canonical_action_type(proposal.type),
-            "target_step_key": proposal.target_step_key,
-            "payload": json.loads(proposal.payload_json),
-            "impact": (
-                json.loads(proposal.impact_json) if proposal.impact_json else None
-            ),
-            "status": proposal.status,
-            "result": (
-                json.loads(proposal.result_json) if proposal.result_json else None
-            ),
-            "error": proposal.error,
-            "created_at": proposal.created_at,
-            "updated_at": proposal.updated_at,
-        }
 
     async def _publish_message_event(
         self,
+        project_id: str,
         task_id: str,
         message: Message,
         event_type: str,
@@ -2528,6 +1628,7 @@ class CoordinatorModule:
         """发布出口：内部事件 → AG-UI 标准事件后推送。"""
         payload = {
             "event_id": str(uuid.uuid4()),
+            "project_id": project_id,
             "task_id": task_id,
             "channel": message.channel,
             "message_id": message.id,
@@ -2544,9 +1645,16 @@ class CoordinatorModule:
         for agui_event in to_agui_events(payload, ctx):
             await self._event_bus.publish(agui_event)
 
-    async def stop_current(self, project_id: str, task_id: str) -> bool:
+    async def stop_current(self, project_id: str, task_id: str, *, expected_message_id: str | None = None) -> bool:
         """Stop the running turn, falling back to the newest queued turn."""
         def find_turn_id():
+            if expected_message_id:
+                turn = CoordinatorTurn.select().where(
+                    (CoordinatorTurn.task == task_id)
+                    & (CoordinatorTurn.assistant_message == expected_message_id)
+                    & CoordinatorTurn.status.in_(["running", "queued"])
+                ).first()
+                return turn.id if turn is not None else None
             turn = (
                 CoordinatorTurn.select()
                 .where(
@@ -2659,6 +1767,7 @@ class CoordinatorModule:
         if assistant is None:
             return
         await self._publish_message_event(
+            project_id,
             task_id,
             assistant,
             "message_snapshot",
@@ -2666,6 +1775,7 @@ class CoordinatorModule:
             1,
         )
         await self._publish_message_event(
+            project_id,
             task_id,
             assistant,
             "message_completed",

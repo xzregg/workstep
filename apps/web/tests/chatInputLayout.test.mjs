@@ -5,6 +5,7 @@ import test from 'node:test'
 const source = await readFile(new URL('../src/components/ChatInput.tsx', import.meta.url), 'utf8')
 const assistantPanel = await readFile(new URL('../src/components/AssistantChatPanel.tsx', import.meta.url), 'utf8')
 const taskDetail = await readFile(new URL('../src/components/TaskDetailView.tsx', import.meta.url), 'utf8')
+const taskDetailHeader = await readFile(new URL('../src/components/TaskDetailHeader.tsx', import.meta.url), 'utf8')
 const taskDetailPage = await readFile(new URL('../src/pages/TaskDetail.tsx', import.meta.url), 'utf8')
 const chatPage = await readFile(new URL('../src/pages/ChatPage.tsx', import.meta.url), 'utf8')
 const css = await readFile(new URL('../src/index.css', import.meta.url), 'utf8')
@@ -15,36 +16,9 @@ test('shared chat input stays centered and leaves room on wide conversations', (
   assert.match(css, /\.chat-input-root,\s*\.chat-quick-prompts\s*\{[^}]*width:\s*100%/s)
 })
 
-test('chat input renders optional account quota separately from context usage', () => {
-  assert.match(source, /quota\?: ChatEngineQuota \| null/)
-  assert.match(source, /className="[^"]*chat-input-quota[^"]*"/)
-  assert.match(source, /quota\.primary\.remaining_percent/)
-  assert.match(source, /className="chat-input-context-tip chat-input-quota-tip"/)
-  assert.match(source, /quota\.secondary/)
-  assert.match(source, /quota\.individual_limit/)
-})
-
-test('context usage is a circular progress indicator without visible percent text', () => {
-  assert.match(source, /className="chat-input-context-ring"/)
-  assert.match(source, /strokeDasharray=\{`\$\{Math\.min\(100, Math\.max\(0, context\.percent\)\)\} 100`\}/)
-  assert.doesNotMatch(source, /\{Math\.round\(context\.percent\)\}%\s*<span className="chat-input-context-tip/)
-})
-
-test('quota is rendered to the left of context usage', () => {
-  assert.ok(source.indexOf('{quota?.primary && (') < source.indexOf('{context && ('))
-})
-
 test('mobile chat input keeps the engine quota visible in the scrollable toolbar', () => {
-  assert.match(source, /chat-input-context chat-input-quota/)
-  assert.match(mobileCss, /\.chat-input-quota-refresh,/)
+  assert.match(mobileCss, /\.chat-input-quota-refresh\s*\{[^}]*min-height:\s*0/s)
   assert.doesNotMatch(mobileCss, /\.chat-input-quota\s*\{[^}]*display:\s*none/s)
-})
-
-test('engine quota opens its detail panel on click like context usage', () => {
-  assert.match(source, /ref=\{quotaRef\}/)
-  assert.match(source, /chat-input-quota\$\{quotaTipOpen \? ' is-tip-open' : ''\}/)
-  assert.match(source, /setQuotaTipOpen\(\(open\) => !open\)/)
-  assert.match(source, /chat-input-context-tip chat-input-quota-tip" style=\{quotaTipStyle\}/)
 })
 
 test('chat input toolbar wraps controls instead of overflowing narrow composers', () => {
@@ -68,20 +42,33 @@ test('mobile chat input controls scroll only within the space before the send bu
   assert.match(mobileCss, /\.chat-input-send\s*\{[^}]*flex:\s*0 0 var\(--mobile-control-composer\)/s)
   assert.doesNotMatch(mobileCss, /\.chat-input-send\s*\{[^}]*position:\s*sticky/s)
 })
-test('mobile task header keeps the compact id beside the share action', () => {
+test('mobile task header keeps a plain compact id and moves bot and share to navigation', () => {
+  assert.match(taskDetailPage, /navigationActions=\{[\s\S]*<TaskDiscussionGroups/)
   assert.match(taskDetailPage, /className="task-detail-share-button"/)
   assert.match(taskDetailPage, /className="task-detail-id-button"/)
-  assert.match(mobileCss, /\.task-detail-id-button\s*\{[^}]*max-width:\s*180px[^}]*text-overflow:\s*ellipsis/s)
+  assert.match(taskDetailPage, /className="task-detail-share-label"/)
+  assert.match(taskDetailPage, /className="task-detail-id-text"/)
+  assert.match(taskDetailPage, /await copyMessageText\(task\.id\)/)
+  assert.match(taskDetail, /actions=\{compact\s*\?\s*navigationActions\s*:\s*undefined\}/)
+  assert.match(mobileCss, /\.task-detail-discussion-button,\s*\.task-detail-share-button\s*\{[^}]*height:\s*var\(--mobile-control-regular\)/s)
+  assert.match(mobileCss, /\.task-detail-id-button\s*\{[^}]*height:\s*var\(--task-detail-badge-height\)[^}]*border:\s*0[^}]*background:\s*transparent/s)
+  assert.match(mobileCss, /\.task-detail-share-label\s*\{[^}]*display:\s*none/s)
+  assert.match(mobileCss, /\.task-detail-id-button\s*\{[^}]*width:\s*84px[^}]*max-width:\s*84px/s)
+  assert.doesNotMatch(mobileCss, /task-detail-id-scroll|task-detail-id-marquee/)
+  assert.match(css, /\.task-detail-id-text\s*\{[^}]*text-overflow:\s*ellipsis/s)
+  assert.match(taskDetailHeader, /className="task-detail-header-meta"/)
+  assert.match(taskDetailHeader, /task\.created_at/)
+  assert.match(taskDetailHeader, /task\.creator_name\s*\?\s*`\$\{t\('taskDetail\.creator'\)\}/)
+  assert.match(taskDetailHeader, /className="task-detail-header-primary"/)
+  assert.match(taskDetailHeader, /className="task-detail-header-secondary"/)
+  assert.match(taskDetailHeader, /className="task-detail-header-actions"/)
+  assert.match(mobileCss, /\.task-detail-header-fields\s*\{[^}]*display:\s*flex[^}]*flex-direction:\s*column/s)
+  assert.match(mobileCss, /\.task-detail-header-primary,\s*\.task-detail-header-secondary\s*\{[^}]*display:\s*flex/s)
+  assert.match(mobileCss, /\.task-detail-header-meta\s*\{[^}]*min-width:\s*0/s)
 })
 
-test('session chat requests quota on entry and after an engine run finishes', () => {
-  assert.match(chatPage, /engineApi\.quota/)
-  assert.match(chatPage, /if \(running \|\| !activeProject\?\.id\) \{/)
-  assert.match(chatPage, /\[running, activeProject\?\.id, refreshQuota\]/)
-})
-
-test('session chat wires an explicit loading-aware quota refresh action', () => {
-  assert.match(chatPage, /const refreshQuota = useCallback\(async \(\) =>/)
+test('session chat composes engine quota with its shared input', () => {
+  assert.match(chatPage, /useEngineQuota\(\s*activeProject\?\.id, effectiveEngine, running/)
   assert.match(chatPage, /onRefreshQuota=\{\(\) => \{ void refreshQuota\(\) \}\}/)
   assert.match(chatPage, /quotaRefreshing=\{quotaRefreshing\}/)
   assert.match(assistantPanel, /onRefreshQuota=\{onRefreshQuota\}/)

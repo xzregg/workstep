@@ -6,6 +6,7 @@ import Button from '../Button'
 import ConfirmDialog from '../ConfirmDialog'
 import Icon from '../Icon'
 import { useGitApi } from './GitApiContext'
+import { usePanelGitWrites } from './gitPanelWrites'
 
 export default function GitRecoveryActions({ status, disabled, request, onCloseRequest, onRefresh }: {
   status: GitStatus
@@ -15,6 +16,7 @@ export default function GitRecoveryActions({ status, disabled, request, onCloseR
   onRefresh: () => Promise<void>
 }) {
   const gitApi = useGitApi()
+  const writes = usePanelGitWrites()
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -50,15 +52,17 @@ export default function GitRecoveryActions({ status, disabled, request, onCloseR
   }
 
   async function apply() {
-    if (!preview || busy) return
+    if (!preview || busy || writes.busy) return
     setBusy(true); setError('')
     try {
-      const result = await gitApi.recoveryApply(status.id, { ...preview.request, expected_head: preview.head })
-      setNotice(t('git.recoverySuccess'))
-      setPushTarget(result.push_available ? { branch: result.target, head: result.head } : null)
-      setOpen(false); setPreview(null); onCloseRequest()
-      useGitStore.getState().referencesChanged()
-      await onRefresh()
+      await writes.run(async () => {
+        try {
+          const result = await gitApi.recoveryApply(status.id, { ...preview.request, expected_head: preview.head })
+          setNotice(t('git.recoverySuccess'))
+          setPushTarget(result.push_available ? { branch: result.target, head: result.head } : null)
+          setOpen(false); setPreview(null); onCloseRequest()
+        } finally { useGitStore.getState().referencesChanged(); await onRefresh() }
+      })
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
     } finally { setBusy(false) }
@@ -70,22 +74,25 @@ export default function GitRecoveryActions({ status, disabled, request, onCloseR
   }
 
   async function pushRecoveredTarget() {
-    if (!pushTarget || busy) return
+    if (!pushTarget || busy || writes.busy) return
     setBusy(true)
     try {
-      await gitApi.pushBranch(status.id, pushTarget.branch, pushTarget.head)
-      setNotice(t('git.mergePushSuccess', { branch: pushTarget.branch }))
-      setPushTarget(null)
-      await onRefresh()
+      await writes.run(async () => {
+        try {
+          await gitApi.pushBranch(status.id, pushTarget.branch, pushTarget.head)
+          setNotice(t('git.mergePushSuccess', { branch: pushTarget.branch }))
+          setPushTarget(null)
+        } finally { useGitStore.getState().referencesChanged(); await onRefresh() }
+      })
     } catch (reason) {
       setNotice(reason instanceof Error ? reason.message : String(reason))
     } finally { setBusy(false) }
   }
 
   return <>
-    <Button size="sm" disabled={disabled || !status.branch || !status.head} onClick={() => void show()}>{t('git.recoveryButton')}</Button>
-    {notice && <span role="status" className="git-remote-toast git-remote-toast--success">{notice}{pushTarget && <Button size="sm" loading={busy} onClick={() => void pushRecoveredTarget()}>{t('git.mergePushTarget', { branch: pushTarget.branch })}</Button>}<Button variant="icon" aria-label={t('git.close')} onClick={() => { setNotice(''); setPushTarget(null) }}><Icon name="x" size={13} /></Button></span>}
-    <ConfirmDialog open={open} title={t('git.recoveryTitle')} message={preview ? t('git.recoveryPreviewHint', { branch: preview.request.target, head: preview.head.slice(0, 8) }) : t('git.recoveryChooseHint')} confirmText={t('git.recoveryApply')} loading={busy} confirmDisabled={!preview || busy} onConfirm={() => void apply()} onCancel={close} width={600}>
+    <Button size="sm" disabled={disabled || writes.busy || !status.branch || !status.head} onClick={() => void show()}>{t('git.recoveryButton')}</Button>
+    {notice && <span role="status" className="git-remote-toast git-remote-toast--success">{notice}{pushTarget && <Button size="sm" loading={busy} disabled={writes.busy} onClick={() => void pushRecoveredTarget()}>{t('git.mergePushTarget', { branch: pushTarget.branch })}</Button>}<Button variant="icon" aria-label={t('git.close')} onClick={() => { setNotice(''); setPushTarget(null) }}><Icon name="x" size={13} /></Button></span>}
+    <ConfirmDialog open={open} title={t('git.recoveryTitle')} message={preview ? t('git.recoveryPreviewHint', { branch: preview.request.target, head: preview.head.slice(0, 8) }) : t('git.recoveryChooseHint')} confirmText={t('git.recoveryApply')} loading={busy} confirmDisabled={!preview || busy || writes.busy} onConfirm={() => void apply()} onCancel={close} width={600}>
       {busy && <p><Icon name="loader-circle" className="git-spin" size={14} />{t('git.loading')}</p>}
       {error && <p className="git-error" role="alert">{error}</p>}
       {!preview && !request && <div className="git-recovery-list">

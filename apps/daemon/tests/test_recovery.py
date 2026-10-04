@@ -7,6 +7,8 @@ over, and a graceful shutdown leaves runs recoverable for the next start.
 
 import asyncio
 import json
+import threading
+import time
 from datetime import timedelta
 from types import SimpleNamespace
 
@@ -182,6 +184,152 @@ async def _wait_until(condition, timeout=5.0):
 
 
 @pytest.mark.anyio
+async def test_slow_recovery_database_work_does_not_block_event_loop(tmp_path, monkeypatch):
+    import services.workflow_runtime as runtime_module
+    from engines.core.registry import ENGINE_REGISTRY
+
+    original, pm, _project, _run_id = _project_with_run(tmp_path)
+    entered = threading.Event()
+    entered_at = [0.0]
+    prepare = runtime_module.prepare_project_recovery
+
+    def slow_prepare(*args, **kwargs):
+        entered_at[0] = time.monotonic()
+        entered.set()
+        time.sleep(0.2)
+        return prepare(*args, **kwargs)
+
+    monkeypatch.setattr(runtime_module, "prepare_project_recovery", slow_prepare)
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, pm)
+    try:
+        recovery = asyncio.create_task(runtime.recover_running_workflows())
+        assert await asyncio.to_thread(entered.wait, 2)
+        await asyncio.sleep(0.02)
+        assert time.monotonic() - entered_at[0] < 0.17
+        assert await recovery == 1
+    finally:
+        await runtime.shutdown()
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+
+
+@pytest.mark.anyio
+async def test_recovered_execution_message_keeps_persisted_run_initiator(tmp_path, monkeypatch):
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import ProjectAuditEvent
+    from services import project_audit
+
+    original, manager, project, run_id = _project_with_run(tmp_path)
+
+    def attribute_run(_project):
+        run = WorkflowRun.get_by_id(run_id)
+        run.initiated_by_user_id = "user-1"
+        run.initiated_by_username = "alice"
+        run.initiated_by_name = "Alice Display"
+        run.initiated_by_device_id = "device-1"
+        run.initiated_by_device_name = "Office PC"
+        run.save()
+
+    await manager.run_db(project.id, attribute_run)
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, manager)
+    try:
+        with monkeypatch.context() as patcher:
+            patcher.setattr(
+                project_audit, "record_project_audit",
+                lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("audit unavailable")),
+            )
+            assert await runtime.recover_running_workflows() == 0
+        def rollback_state(_project):
+            return (
+                WorkflowRun.get_by_id(run_id).recovered_count,
+                ProjectAuditEvent.select().where(
+                    ProjectAuditEvent.action == "task.recover",
+                ).count(),
+            )
+        assert await manager.run_db(project.id, rollback_state) == (0, 0)
+        assert await runtime.recover_running_workflows() == 1
+
+        def recovery_audit(_project):
+            return ProjectAuditEvent.get(
+                (ProjectAuditEvent.task_id == "task-rec")
+                & (ProjectAuditEvent.action == "task.recover")
+            )
+
+        audit = await manager.run_db(project.id, recovery_audit)
+        assert audit.actor_type == "system"
+        assert audit.initiated_by_user_id == "user-1"
+        assert audit.initiated_by_username == "alice"
+        assert audit.metadata_json == '{"workflow_run_id": "' + run_id + '"}'
+
+        async def finished():
+            return await manager.run_db(
+                project.id, lambda _project: Task.get_by_id("task-rec").status == "ready",
+            )
+
+        for _ in range(250):
+            if await finished():
+                break
+            await asyncio.sleep(0.02)
+        else:
+            raise AssertionError("Recovered workflow did not finish")
+
+        def read_messages(_project):
+            return [
+                (row.initiated_by_user_id, row.initiated_by_username,
+                 row.author_device_id)
+                for row in Message.select().where(
+                    (Message.task == "task-rec")
+                    & (Message.role == "assistant")
+                    & (Message.channel == "execution")
+                )
+            ]
+
+        assert ("user-1", "alice", "device-1") in await manager.run_db(
+            project.id, read_messages,
+        )
+    finally:
+        await runtime.shutdown()
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+
+
+@pytest.mark.anyio
+async def test_slow_resume_path_check_does_not_block_event_loop(tmp_path, monkeypatch):
+    import services.workflow_runtime as runtime_module
+    from engines.core.registry import ENGINE_REGISTRY
+
+    original, pm, _project, _run_id = _project_with_run(tmp_path)
+    entered = threading.Event()
+    entered_at = [0.0]
+    heal = runtime_module.heal_task_cwd
+
+    def slow_heal(*args, **kwargs):
+        entered_at[0] = time.monotonic()
+        entered.set()
+        time.sleep(0.2)
+        return heal(*args, **kwargs)
+
+    monkeypatch.setattr(runtime_module, "heal_task_cwd", slow_heal)
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, pm)
+    try:
+        recovery = asyncio.create_task(runtime.recover_running_workflows())
+        assert await asyncio.to_thread(entered.wait, 2)
+        await asyncio.sleep(0.02)
+        assert time.monotonic() - entered_at[0] < 0.17
+        assert await recovery == 1
+    finally:
+        await runtime.shutdown()
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+
+
+@pytest.mark.anyio
 async def test_recovery_resumes_from_last_completed_node(tmp_path):
     original, pm, project, run_id = _project_with_run(tmp_path)
     bus = EventBus()
@@ -280,6 +428,8 @@ async def test_recovery_restarts_only_review_after_execution_succeeded(
         run = WorkflowRun.create(
             id="run-review-rec", task=task, status="running",
             workflow_schema_version=1, workflow_snapshot_json="{}",
+            initiated_by_user_id="review-user",
+            initiated_by_username="reviewer",
             started_at=now,
         )
         step_run = StepRun.create(
@@ -331,7 +481,8 @@ async def test_recovery_restarts_only_review_after_execution_succeeded(
             )
             assert Message.get_by_id("exec-a-1").run_status == "succeeded"
             if review_status == "running":
-                assert Message.get_by_id("review-message-a-1").run_status == "failed"
+                interrupted_message = Message.get_by_id("review-message-a-1")
+                assert interrupted_message.run_status == "failed"
                 interrupted = next(
                     item for item in get_task_history(task.id, project.workstep_dir)
                     if item["id"] == "review-message-a-1"
@@ -339,6 +490,11 @@ async def test_recovery_restarts_only_review_after_execution_succeeded(
                 assert interrupted["session_id"] == "interrupted-review-session"
             else:
                 assert Message.get_by_id("review-message-a-1").run_status == "completed"
+            system_message = Message.get_by_id("review-message-a-1")
+            assert system_message.author_type == "system"
+            assert system_message.author_username == "system"
+            assert system_message.initiated_by_user_id == "review-user"
+            assert system_message.initiated_by_username == "reviewer"
         assert len(RecoveryFakeEngine.prompts) == (1 if review_status == "running" else 0)
         if review_status == "running":
             assert "step review agent" in RecoveryFakeEngine.prompts[0]
@@ -471,7 +627,7 @@ async def test_online_reconciler_recovers_own_running_run_without_runner(tmp_pat
     try:
         with pm.activate_project(project.path):
             WorkflowRun.update(
-                owner_id=runtime._instance_id,
+                owner_id=runtime._leases.instance_id,
                 heartbeat_at=utc_now(),
             ).where(WorkflowRun.id == run_id).execute()
 
@@ -703,7 +859,7 @@ async def test_graceful_shutdown_leaves_run_recoverable(tmp_path):
 async def test_e2e_three_step_run_resumes_after_crash(tmp_path):
     """A three-stage workflow survives a simulated daemon crash."""
     from engines.core.registry import ENGINE_REGISTRY
-    from services.task import TaskService
+    from services.task_read_model import task_to_dict
 
     class CrashStepEngine(RecoveryFakeEngine):
         """Hangs on the first invocation of stage b (an in-flight crash)."""
@@ -773,7 +929,14 @@ async def test_e2e_three_step_run_resumes_after_crash(tmp_path):
     runtime2 = WorkflowRuntime(bus2, pm)
     recovered_queue = bus2.subscribe()
     try:
-        handle = await runtime1.start(project.id, task_id, "")
+        from services.remote_access import ActorSnapshot, actor_context
+
+        with actor_context(ActorSnapshot(
+            actor_id="recovery-user", user_name="Recovery User",
+            device_id="recovery-device", device_name="Test Device",
+            source="local", username="recovery-user",
+        )):
+            handle = await runtime1.start(project.id, task_id, "")
         await asyncio.wait_for(started.wait(), timeout=2)
         run_id = handle.id
 
@@ -782,11 +945,11 @@ async def test_e2e_three_step_run_resumes_after_crash(tmp_path):
         # flight. A dead process stops renewing its run lease, so expire the
         # heartbeat (and halt runtime1's lease loop) before a fresh daemon
         # instance recovers it.
-        if runtime1._lease_task is not None:
-            runtime1._lease_task.cancel()
+        if runtime1._leases._heartbeat_task is not None:
+            runtime1._leases._heartbeat_task.cancel()
         from datetime import timedelta
 
-        from services.workflow_runtime import RUN_LEASE_STALE_SECONDS
+        from services.workflow_lease import RUN_LEASE_STALE_SECONDS
 
         with pm.activate_project(project.path):
             WorkflowRun.update(
@@ -834,9 +997,7 @@ async def test_e2e_three_step_run_resumes_after_crash(tmp_path):
             assert a_run.status == "succeeded"
             assert c_run.status == "succeeded"
             # The task API surfaces the recovery marker for the UI hint.
-            task_dict = TaskService(EventBus())._task_to_dict(
-                Task.get_by_id(task_id)
-            )
+            task_dict = task_to_dict(Task.get_by_id(task_id))
             assert task_dict["recovered_count"] == 1
             assert task_dict["recovered_at"] is not None
 
@@ -887,7 +1048,7 @@ async def test_recovery_skips_run_leased_by_live_daemon(tmp_path):
             assert Task.get_by_id("task-rec").status == "running"
         # A stale-lease retry is scheduled so a genuinely crashed peer is
         # still recovered instead of orphaned.
-        assert runtime._lease_retry_tasks
+        assert runtime._leases._retry_tasks
     finally:
         await runtime.shutdown()
         await bus.close()
@@ -901,7 +1062,7 @@ async def test_recovery_takes_over_expired_lease(tmp_path):
     """An expired lease from a crashed peer is recovered as before."""
     from datetime import timedelta
 
-    from services.workflow_runtime import RUN_LEASE_STALE_SECONDS
+    from services.workflow_lease import RUN_LEASE_STALE_SECONDS
 
     original, pm, project, run_id = _project_with_run(tmp_path)
     bus = EventBus()
@@ -962,10 +1123,17 @@ async def test_run_lease_claimed_on_start_and_released_on_finish(tmp_path):
     bus = EventBus()
     runtime = WorkflowRuntime(bus, pm)
     try:
-        handle = await runtime.start(project.id, "task-lease", "")
+        from services.remote_access import ActorSnapshot, actor_context
+
+        with actor_context(ActorSnapshot(
+            actor_id="lease-user", user_name="Lease User",
+            device_id="lease-device", device_name="Test Device",
+            source="local", username="lease-user",
+        )):
+            handle = await runtime.start(project.id, "task-lease", "")
         with pm.activate_project(project.path):
             run = WorkflowRun.get_by_id(handle.id)
-            assert run.owner_id == runtime._instance_id
+            assert run.owner_id == runtime._leases.instance_id
             assert run.heartbeat_at is not None
         await asyncio.wait_for(runtime.wait(handle), timeout=5)
         with pm.activate_project(project.path):
@@ -973,7 +1141,7 @@ async def test_run_lease_claimed_on_start_and_released_on_finish(tmp_path):
             assert run.owner_id is None
             assert run.heartbeat_at is None
             assert run.status == "succeeded"
-        assert handle.id not in runtime._leased_runs
+        assert handle.id not in runtime._leases._leased_runs
     finally:
         await runtime.shutdown()
         await bus.close()

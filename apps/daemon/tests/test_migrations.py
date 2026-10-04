@@ -30,8 +30,10 @@ def test_init_db_creates_latest_schema_for_fresh_projects(tmp_path):
         assert "coordinator_thinking_effort" in tasks
         assert "archived" in tasks
         assert "next_message_sequence" in tasks
+        assert "queued_run_json" in tasks
         assert {
             "creator_id",
+            "creator_username",
             "creator_name",
             "creator_device_id",
             "creator_device_name",
@@ -52,6 +54,11 @@ def test_init_db_creates_latest_schema_for_fresh_projects(tmp_path):
             column.name for column in db.get_columns("workflow_runs")
         }
         assert "routing_state_json" in workflow_runs
+        assert "trigger_source" in workflow_runs
+        assert {
+            "initiated_by_user_id", "initiated_by_username", "initiated_by_name",
+            "initiated_by_device_id", "initiated_by_device_name",
+        }.issubset(workflow_runs)
         step_runs = {column.name for column in db.get_columns("step_runs")}
         assert "input_snapshot_json" in step_runs
         assert "io_contract_json" in step_runs
@@ -69,9 +76,42 @@ def test_init_db_creates_latest_schema_for_fresh_projects(tmp_path):
             "content",
             "position",
             "username",
+            "author_id",
+            "author_username",
+            "author_name",
+            "author_device_id",
+            "author_device_name",
+            "author_source",
             "created_at",
             "updated_at",
         }
+    finally:
+        db.close()
+
+
+def test_legacy_pending_insert_keeps_unknown_author_after_migration(tmp_path):
+    import peewee
+    from models.migrations import migrate_database
+
+    db = peewee.SqliteDatabase(str(tmp_path / "legacy-pending.db"))
+    db.connect()
+    try:
+        db.execute_sql(
+            'CREATE TABLE "pending_message_inserts" ('
+            '"id" TEXT PRIMARY KEY, "target_message_id" TEXT, "content" TEXT, '
+            '"position" INTEGER, "username" TEXT, '
+            '"created_at" DATETIME, "updated_at" DATETIME)'
+        )
+        db.execute_sql(
+            'INSERT INTO "pending_message_inserts" '
+            '("id", "target_message_id", "content", "position", "username") '
+            'VALUES ("legacy", "reply", "old", 0, "Old Name")'
+        )
+        migrate_database(db)
+        assert db.execute_sql(
+            'SELECT username, author_id, author_username '
+            'FROM "pending_message_inserts" WHERE id = ?', ("legacy",),
+        ).fetchone() == ("Old Name", None, None)
     finally:
         db.close()
 
@@ -236,6 +276,8 @@ def test_migrate_database_adds_remote_actor_columns_to_existing_message_tables(t
     db.connect()
     db.execute_sql('CREATE TABLE "message" ("id" TEXT PRIMARY KEY, "started_at" DATETIME)')
     db.execute_sql('CREATE TABLE "chat_messages" ("id" TEXT PRIMARY KEY)')
+    db.execute_sql('INSERT INTO "message" ("id") VALUES (?)', ("legacy-task",))
+    db.execute_sql('INSERT INTO "chat_messages" ("id") VALUES (?)', ("legacy-chat",))
 
     migrate_database(db)
 
@@ -244,6 +286,10 @@ def test_migrate_database_adds_remote_actor_columns_to_existing_message_tables(t
         "author_name",
         "author_device_id",
         "author_device_name",
+        "author_username",
+        "author_type",
+        "initiated_by_user_id",
+        "initiated_by_username",
     }
     assert expected.issubset({column.name for column in db.get_columns("message")})
     assert {
@@ -256,6 +302,12 @@ def test_migrate_database_adds_remote_actor_columns_to_existing_message_tables(t
     }.issubset({column.name for column in db.get_columns("message")})
     chat_columns = {column.name for column in db.get_columns("chat_messages")}
     assert expected.issubset(chat_columns)
+    for table_name in ("message", "chat_messages"):
+        legacy = db.execute_sql(
+            f'SELECT author_username, author_type, initiated_by_user_id, '
+            f'initiated_by_username FROM "{table_name}"'
+        ).fetchone()
+        assert legacy == (None, None, None, None)
     assert {
         "event_log_path",
         "event_summary_json",
@@ -309,12 +361,20 @@ def test_migrate_database_adds_dispatch_columns_before_unique_index(tmp_path):
 
     columns = {column.name for column in db.get_columns("tasks")}
     assert "source_dispatch_id" in columns
+    assert "queued_run_json" in columns
     assert {
         "creator_id",
+        "creator_username",
         "creator_name",
         "creator_device_id",
         "creator_device_name",
     }.issubset(columns)
+    assert db.execute_sql(
+        'SELECT creator_username FROM "tasks" WHERE id = ?', ("task-1",)
+    ).fetchone()[0] is None
+    assert db.execute_sql(
+        'SELECT queued_run_json FROM "tasks" WHERE id = ?', ("task-1",)
+    ).fetchone()[0] is None
     indexes = {index.name for index in db.get_indexes("tasks")}
     assert "task_source_dispatch_id" in indexes
     assert db.execute_sql('SELECT COUNT(*) FROM "tasks"').fetchone()[0] == 2
@@ -395,6 +455,7 @@ def test_migrate_database_adds_hot_query_indexes_to_existing_tables(tmp_path):
                    ' "project_id" TEXT, "sort_order" INTEGER)')
     db.execute_sql('CREATE TABLE "workflow_runs" ("id" TEXT PRIMARY KEY,'
                    ' "status" TEXT, "started_at" DATETIME)')
+    db.execute_sql('INSERT INTO "workflow_runs" ("id") VALUES ("legacy-run")')
     db.execute_sql('CREATE TABLE "schedules" ("id" TEXT PRIMARY KEY,'
                    ' "status" TEXT, "next_run_at" DATETIME)')
     db.execute_sql('CREATE TABLE "schedule_runs" ("id" TEXT PRIMARY KEY,'
@@ -402,6 +463,15 @@ def test_migrate_database_adds_hot_query_indexes_to_existing_tables(tmp_path):
 
     migrate_database(db)
     migrate_database(db)  # second pass must stay idempotent
+
+    assert db.execute_sql(
+        'SELECT initiated_by_username FROM "workflow_runs" WHERE id = ?',
+        ("legacy-run",),
+    ).fetchone()[0] is None
+    assert db.execute_sql(
+        'SELECT trigger_source FROM "workflow_runs" WHERE id = ?',
+        ("legacy-run",),
+    ).fetchone()[0] is None
 
     for table, expected in _HOT_QUERY_INDEXES.items():
         names = {index.name for index in db.get_indexes(table)}

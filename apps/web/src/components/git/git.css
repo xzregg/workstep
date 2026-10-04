@@ -1,5 +1,6 @@
 .git-page { display:flex; flex:1; min-height:0; min-width:0; flex-direction:column; background:var(--bg); color:var(--fg); font-size:calc(13px * var(--font-scale)); }
 .task-git-page .git-page-header small { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); }
+.task-git-initialize { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:12px 20px; border-bottom:1px solid var(--border); color:var(--muted); }
 .task-git-add { display:flex; align-items:end; gap:10px; flex-wrap:wrap; padding:10px 16px; border-bottom:1px solid var(--border); }
 .task-git-add label { display:flex; flex-direction:column; gap:4px; min-width:150px; color:var(--muted); font-size:11px; }
 .task-git-name-fields { display:flex; flex:1 1 320px; min-width:min(100%, 320px); gap:10px; }
@@ -20,6 +21,8 @@
 .git-page button:focus-visible, .git-diff-dialog button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .git-page-header { display:flex; align-items:center; gap:12px; padding:12px 20px; border-bottom:1px solid var(--border); flex-shrink:0; }
 .git-page-header h1 { font-size:15px; margin:0; font-weight:600; }
+.git-open-location { display:inline-flex; flex-shrink:0; align-items:center; }
+.git-open-location .btn { white-space:nowrap; }
 .git-grow { flex:1; }
 .git-page-body { display:flex; flex:1; min-height:0; overflow:hidden; }
 .git-tree { flex:0 0 280px; min-width:230px; max-width:42%; overflow:auto; display:flex; flex-direction:column; }
@@ -196,6 +199,8 @@
  .git-page-header>.git-grow { display:none; }
  .git-page-header>small { display:none; }
  .git-page-header>.btn { height:var(--mobile-control-regular); min-height:var(--mobile-control-regular); white-space:nowrap; }
+ .git-open-location .btn { height:var(--mobile-control-regular); min-height:var(--mobile-control-regular); }
+ .task-git-page>.git-page-header .git-open-location .open-location-label { display:none; }
  .git-page-header .git-back-button { width:var(--mobile-control-regular); height:var(--mobile-control-regular); min-height:var(--mobile-control-regular); flex:0 0 var(--mobile-control-regular); padding:0; }
  .git-back-button>span { display:none; }
  .git-page-header .git-settings-toggle { width:var(--mobile-control-regular); height:var(--mobile-control-regular); min-height:var(--mobile-control-regular); flex:0 0 var(--mobile-control-regular); padding:0; }

@@ -10,6 +10,10 @@ const taskDetailSource = await readFile(
   new URL('../src/components/TaskDetailView.tsx', import.meta.url),
   'utf8',
 )
+const messageSource = await readFile(
+  new URL('../src/components/TaskConversationMessage.tsx', import.meta.url),
+  'utf8',
+)
 const layoutSource = await readFile(
   new URL('../src/components/Layout.tsx', import.meta.url),
   'utf8',
@@ -31,14 +35,14 @@ test('a running task keeps the composer editable for live message insertion and 
 })
 
 test('the last completed step response renders its output artifacts', () => {
-  assert.match(taskDetailSource, /isLastExecutionResponse/)
-  assert.match(taskDetailSource, /\['succeeded', 'completed'\]\.includes/)
-  assert.match(taskDetailSource, /renderMessageArtifacts\(\s*msgArtifacts/)
-  assert.match(taskDetailSource, /artifact\.step_key === stepKey/)
+  assert.match(messageSource, /isLastExecutionResponse/)
+  assert.match(messageSource, /\['succeeded', 'completed'\]\.includes/)
+  assert.match(messageSource, /<TaskMessageArtifacts artifacts=\{msgArtifacts\}/)
+  assert.match(messageSource, /artifact\.step_key === stepKey/)
 })
 
 test('historical step messages display their own engine session id', () => {
-  assert.match(taskDetailSource, /messageSessionId\(/)
+  assert.match(messageSource, /messageSessionId\(/)
   assert.equal(taskDetailChat.messageSessionId(
     { session_id: 'review-session', run_status: 'failed' }, true, 'step-session',
   ), 'review-session')

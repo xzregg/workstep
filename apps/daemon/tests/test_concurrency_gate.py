@@ -3,10 +3,14 @@
 from contextlib import nullcontext
 from types import SimpleNamespace
 import asyncio
+import json
+import threading
+import time
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 
-from models import Task, TaskStep, init_db
+from models import ProjectAuditEvent, Task, TaskStep, init_db
 from streaming.bus import EventBus
 
 
@@ -235,6 +239,7 @@ def _make_runtime(tmp_path, gate_config: dict):
 @pytest.mark.anyio
 async def test_runtime_queues_task_when_channel_full(tmp_path):
     from services.concurrency import concurrency_gate
+    from services.remote_access import ActorSnapshot, actor_context
 
     runtime, project, db, original, _bus = _make_runtime(tmp_path, {})
     concurrency_gate.configure(max_tasks=1, max_chats=1, schedule_exempt=False)
@@ -247,14 +252,36 @@ async def test_runtime_queues_task_when_channel_full(tmp_path):
         created_at=1, updated_at=1,
     )
     try:
-        handle_a = await runtime.start(project.id, "task-a")
+        with actor_context(ActorSnapshot(
+            actor_id="user-a", user_name="Alice Display", username="alice",
+            device_id="device-a", device_name="Laptop", source="managed",
+        )):
+            handle_a = await runtime.start(project.id, "task-a")
         assert Task.get_by_id("task-a").status == "running"
         # Second task must queue while the channel is full. start() blocks
         # until the slot is granted, so drive it in a task and observe the
         # queued state while it waits.
-        handle_b_task = asyncio.create_task(runtime.start(project.id, "task-b"))
+        with actor_context(ActorSnapshot(
+            actor_id="user-b", user_name="Bob Display", username="bob",
+            device_id="device-b", device_name="Laptop", source="managed",
+        )):
+            handle_b_task = asyncio.create_task(runtime.start(
+                project.id, "task-b", "排队输入",
+            ))
         await asyncio.sleep(0.1)
         assert Task.get_by_id("task-b").status == "queued"
+        queued = json.loads(Task.get_by_id("task-b").queued_run_json)
+        assert (queued["source"], queued["input"],
+                queued["actor"]["author_username"]) == (
+                    "manual", "排队输入", "bob",
+                )
+        audit = ProjectAuditEvent.get(
+            (ProjectAuditEvent.task_id == "task-b")
+            & (ProjectAuditEvent.action == "task.queue")
+        )
+        assert (audit.actor_username, audit.initiated_by_username) == (
+            "bob", "bob",
+        )
         assert concurrency_gate.task_queue_position(project.id, "task-b") == 1
         handle_b = await handle_b_task
         # Task A finishes -> B is woken and runs to completion.
@@ -270,8 +297,10 @@ async def test_runtime_queues_task_when_channel_full(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_cancel_queued_task_returns_to_ready(tmp_path):
+async def test_cancel_queued_task_returns_to_ready(tmp_path, monkeypatch):
     from services.concurrency import concurrency_gate
+    from services.remote_access import ActorSnapshot, actor_context
+    from models import ProjectAuditEvent
 
     runtime, project, db, original, _bus = _make_runtime(tmp_path, {})
     concurrency_gate.configure(max_tasks=1, max_chats=1, schedule_exempt=False)
@@ -284,13 +313,49 @@ async def test_cancel_queued_task_returns_to_ready(tmp_path):
         created_at=1, updated_at=1,
     )
     try:
-        handle_a = await runtime.start(project.id, "task-a")
-        handle_b_task = asyncio.create_task(runtime.start(project.id, "task-b"))
+        with actor_context(ActorSnapshot(
+            actor_id="user-a", user_name="Alice Display", username="alice",
+            device_id="device-a", device_name="Laptop", source="managed",
+        )):
+            handle_a = await runtime.start(project.id, "task-a")
+            handle_b_task = asyncio.create_task(runtime.start(project.id, "task-b"))
         await asyncio.sleep(0.1)
         assert Task.get_by_id("task-b").status == "queued"
-        assert await runtime.cancel("task-b") is True
+        assert Task.get_by_id("task-b").queued_run_json
+        write_started = threading.Event()
+        original_execute_sql = db.execute_sql
+
+        def slow_cancel_write(sql, *args, **kwargs):
+            if "UPDATE" in sql and "tasks" in sql and not write_started.is_set():
+                write_started.set()
+                time.sleep(0.35)
+            return original_execute_sql(sql, *args, **kwargs)
+
+        monkeypatch.setattr(db, "execute_sql", slow_cancel_write)
+        with actor_context(ActorSnapshot(
+            actor_id="user-b", user_name="Bob Display", username="bob",
+            device_id="device-b", device_name="Desktop", source="managed",
+        )):
+            cancellation = asyncio.create_task(runtime.cancel("task-b"))
+        assert await asyncio.to_thread(write_started.wait, 1)
+        import main
+
+        async with AsyncClient(
+            transport=ASGITransport(app=main.app), base_url="http://test",
+        ) as client:
+            health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+        assert health.status_code == 200
+        assert await cancellation is True
         await asyncio.sleep(0.1)
         assert Task.get_by_id("task-b").status == "ready"
+        assert Task.get_by_id("task-b").queued_run_json is None
+        cancelled = ProjectAuditEvent.get(
+            (ProjectAuditEvent.task_id == "task-b")
+            & (ProjectAuditEvent.action == "task.cancel")
+        )
+        assert cancelled.actor_username == "bob"
+        assert cancelled.mode == "managed"
+        assert cancelled.metadata_json == '{"status": "ready"}'
         with pytest.raises(asyncio.CancelledError):
             await handle_b_task
         await runtime.wait(handle_a)
@@ -326,6 +391,103 @@ async def test_restart_requeue_starts_immediately_when_slot_is_available(tmp_pat
                 raise AssertionError("requeued task did not start")
             await asyncio.sleep(0.02)
         assert Task.get_by_id("task-requeued").active_workflow_run_id
+    finally:
+        await runtime.shutdown()
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_restart_requeue_preserves_starting_user_and_input(tmp_path):
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import Message, WorkflowRun
+    from services.concurrency import concurrency_gate
+    from services.remote_access import ActorSnapshot, actor_context
+
+    runtime, project, db, original, bus = _make_runtime(tmp_path, {})
+    concurrency_gate.configure(max_tasks=1, max_chats=1, schedule_exempt=False)
+    Task.create(
+        id="task-queued-actor", title="Queued", cwd=str(tmp_path),
+        engine="claude", status="ready", created_at=1, updated_at=1,
+    )
+    actor = ActorSnapshot(
+        actor_id="user-2", user_name="Alice Display", username="alice",
+        device_id="device-2", device_name="Office PC", source="managed",
+    )
+    try:
+        with actor_context(actor):
+            await runtime._mark_task_status(
+                project.id, "task-queued-actor", "queued",
+                queue_source="manual", queued_input="恢复后执行",
+            )
+        assert Task.get_by_id("task-queued-actor").queued_run_json
+        assert await runtime.requeue_queued_tasks() == 1
+        deadline = asyncio.get_running_loop().time() + 3
+        while Task.get_by_id("task-queued-actor").status != "ready":
+            if asyncio.get_running_loop().time() > deadline:
+                raise AssertionError("queued task did not start")
+            await asyncio.sleep(0.02)
+        task = Task.get_by_id("task-queued-actor")
+        run = WorkflowRun.get_by_id(task.active_workflow_run_id)
+        assert (run.initiated_by_user_id, run.initiated_by_username,
+                run.initiated_by_name, run.trigger_source) == (
+                    "user-2", "alice", "Alice Display", "manual",
+                )
+        user = Message.get((Message.task == task) & (Message.role == "user"))
+        assert (user.content, user.author_id, user.author_username) == (
+            "恢复后执行", "user-2", "alice",
+        )
+        assert task.queued_run_json is None
+    finally:
+        await runtime.shutdown()
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_scheduled_requeue_keeps_scheduler_source_and_creator(tmp_path):
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import WorkflowRun
+    from services.concurrency import concurrency_gate
+    from services.remote_access import ActorSnapshot, actor_context
+
+    runtime, project, db, original, bus = _make_runtime(tmp_path, {})
+    concurrency_gate.configure(max_tasks=1, max_chats=1, schedule_exempt=False)
+    Task.create(
+        id="task-queued-schedule", title="Scheduled", cwd=str(tmp_path),
+        engine="claude", status="ready", created_at=1, updated_at=1,
+        creator_id="creator-1", creator_username="creator",
+        creator_name="Creator Display",
+    )
+    current = ActorSnapshot(
+        actor_id="wrong-user", user_name="Wrong", username="wrong",
+        device_id="wrong-device", device_name="Wrong Device", source="managed",
+    )
+    try:
+        with actor_context(current):
+            await runtime._mark_task_status(
+                project.id, "task-queued-schedule", "queued",
+                queue_source="schedule",
+            )
+        assert json.loads(Task.get_by_id("task-queued-schedule").queued_run_json)[
+            "actor"
+        ] == {}
+        assert await runtime.requeue_queued_tasks() == 1
+        deadline = asyncio.get_running_loop().time() + 3
+        while Task.get_by_id("task-queued-schedule").status != "ready":
+            if asyncio.get_running_loop().time() > deadline:
+                raise AssertionError("scheduled queued task did not start")
+            await asyncio.sleep(0.02)
+        task = Task.get_by_id("task-queued-schedule")
+        run = WorkflowRun.get_by_id(task.active_workflow_run_id)
+        assert (run.trigger_source, run.initiated_by_user_id,
+                run.initiated_by_username) == (
+                    "schedule", "creator-1", "creator",
+                )
     finally:
         await runtime.shutdown()
         await bus.close()

@@ -69,7 +69,7 @@ def normalize_quick_buttons(buttons: list, *, max_buttons: int = 20) -> list[dic
                 "script_path": script_path,
                 "cwd_mode": cwd_mode,
                 "require_confirmation": require_confirmation,
-                "confirmation_input_prompt": confirmation_input_prompt if require_confirmation else "",
+                "confirmation_input_prompt": confirmation_input_prompt,
             })
         cleaned.append(result)
     return cleaned

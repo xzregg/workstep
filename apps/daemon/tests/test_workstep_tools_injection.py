@@ -352,14 +352,13 @@ def test_assemble_context_never_injects_workstep_docs_even_when_capable(
 ):
     """The coordinator prompt is assembled without WorkStep tool docs;
     with Pydantic AI the tools are loaded natively, not via prompt text."""
-    from agent_assistants import coordinator as coordinator_module
-    from agent_assistants.coordinator import CoordinatorModule
+    from agent_assistants import coordinator_context as coordinator_module
+    from agent_assistants.coordinator_context import assemble_context
 
     monkeypatch.setattr(coordinator_module, "create_engine", lambda _id: _capable_engine())
-    coordinator = CoordinatorModule(EventBus(), None, None)
     db, task, turn = _make_turn(tmp_path, "pydantic_ai")
     try:
-        prompt, _ = coordinator._assemble_context(
+        prompt, _ = assemble_context(
             _context_project(tmp_path), task, turn
         )
         assert "workstep_list_projects" not in prompt
@@ -374,14 +373,13 @@ def test_assemble_context_injects_cli_instruction_without_capability(
 ):
     """无原生工具能力的引擎（Codex CLI / Claude Code 等）拿到 workstep CLI
     用法，协调器不再被限制为只读。"""
-    from agent_assistants import coordinator as coordinator_module
-    from agent_assistants.coordinator import CoordinatorModule
+    from agent_assistants import coordinator_context as coordinator_module
+    from agent_assistants.coordinator_context import assemble_context
 
     monkeypatch.setattr(coordinator_module, "create_engine", lambda _id: _plain_engine())
-    coordinator = CoordinatorModule(EventBus(), None, None)
     db, task, turn = _make_turn(tmp_path, "claude")
     try:
-        prompt, _ = coordinator._assemble_context(
+        prompt, _ = assemble_context(
             _context_project(tmp_path), task, turn
         )
         assert "WorkStep CLI" in prompt

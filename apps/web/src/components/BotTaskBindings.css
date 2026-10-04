@@ -1,0 +1,10 @@
+.bot-task-bindings { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.bot-task-bindings-label { color: var(--muted); font-size: calc(12px * var(--font-scale)); }
+.bot-task-bindings ul { display: flex; flex-direction: column; gap: 6px; list-style: none; padding: 0; margin: 0; }
+.bot-task-bindings li { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border-soft); border-radius: var(--radius-sm); padding: 6px 8px; }
+.bot-task-bindings li > div { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.bot-task-bindings strong { font-size: calc(13px * var(--font-scale)); }
+.bot-task-bindings li span { color: var(--muted); font-size: calc(12px * var(--font-scale)); }
+.bot-task-binding-remove { padding: 0; flex-shrink: 0; }
+.bot-task-bindings-error { color: var(--danger); font-size: calc(12px * var(--font-scale)); }
+@media (max-width: 1023px) { .bot-task-binding-remove { min-width: var(--mobile-control-regular); min-height: var(--mobile-control-regular); } }

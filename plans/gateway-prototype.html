@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WorkStep Gateway · 注册与设备接入原型</title>
+  <style>
+    :root {
+      --blue: #0071e3;
+      --blue-hover: #0077ed;
+      --violet: #7c3aed;
+      --bg: #f5f5f7;
+      --paper: #ffffff;
+      --lifted: #fbfbfd;
+      --ink: #1d1d1f;
+      --secondary: #424245;
+      --muted: #6e6e73;
+      --quiet: #86868b;
+      --line: #d2d2d7;
+      --soft-line: #e8e8ed;
+      --green: #16a34a;
+      --green-bg: #ecfdf3;
+      --amber: #b45309;
+      --amber-bg: #fff7ed;
+      --red: #dc2626;
+      --red-bg: #fff1f2;
+      --sidebar: 236px;
+      --radius: 14px;
+      --font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      --mono: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      color: var(--ink);
+      background: var(--bg);
+      font-family: var(--font);
+      font-size: 15px;
+      -webkit-font-smoothing: antialiased;
+    }
+    button { font: inherit; }
+    button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+    .app { min-height: 100vh; display: grid; grid-template-columns: var(--sidebar) 1fr; }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 20px 14px 16px;
+      background: rgba(251, 251, 253, .92);
+      border-right: 1px solid var(--soft-line);
+      display: flex;
+      flex-direction: column;
+      backdrop-filter: saturate(180%) blur(18px);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; padding: 0 10px 22px; font-weight: 700; font-size: 15px; }
+    .brand-mark { width: 28px; height: 28px; border-radius: 12px; background: linear-gradient(135deg, var(--blue), var(--violet)); position: relative; }
+    .brand-mark::after { content: ""; position: absolute; inset: 8px; border: 2px solid white; border-radius: 12px; }
+    .brand small { display: block; margin-top: 1px; color: var(--quiet); font: 10px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .nav-label { padding: 16px 10px 7px; color: var(--quiet); font: 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+    .nav-item { width: 100%; border: 0; background: transparent; color: var(--muted); padding: 9px 10px; border-radius: 12px; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px; }
+    .nav-item:hover { color: var(--ink); background: #f0f0f2; }
+    .nav-item.active { color: var(--ink); background: var(--paper); box-shadow: inset 0 0 0 1px var(--soft-line); font-weight: 600; }
+    .nav-icon { width: 18px; text-align: center; color: inherit; }
+    .nav-count { margin-left: auto; min-width: 22px; padding: 2px 6px; border-radius: 999px; background: #ececf0; color: var(--muted); font-size: 11px; text-align: center; }
+    .sidebar-spacer { flex: 1; }
+    .profile { display: flex; gap: 10px; align-items: center; padding: 12px 10px 2px; border-top: 1px solid var(--soft-line); }
+    .avatar { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--blue) 10%, white); color: var(--blue); font-weight: 700; }
+    .profile strong { display: block; font-size: 11px; }
+    .profile span { color: var(--quiet); font-size: 11px; }
+
+    .main { min-width: 0; }
+    .topbar {
+      height: 64px;
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 0 28px;
+      background: rgba(245, 245, 247, .86);
+      border-bottom: 1px solid var(--soft-line);
+      backdrop-filter: saturate(180%) blur(18px);
+    }
+    .topbar-title { font-weight: 650; }
+    .topbar-path { color: var(--quiet); }
+    .topbar-spacer { flex: 1; }
+    .workspace-switch { display: inline-flex; gap: 3px; padding: 3px; border: 1px solid var(--soft-line); border-radius: 10px; background: rgba(255,255,255,.72); }
+    .workspace-switch button { border: 0; border-radius: 7px; padding: 6px 10px; background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; }
+    .workspace-switch button.active { background: var(--ink); color: white; }
+    .live { display: inline-flex; align-items: center; gap: 7px; color: var(--green); font-size: 11px; }
+    .live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 4px rgba(22,163,74,.10); }
+    .content { max-width: 1460px; margin: 0 auto; padding: 28px; }
+
+    .scenario-shell { background: var(--paper); border: 1px solid var(--soft-line); border-radius: 14px; padding: 7px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+    .scenario-button { border: 0; background: transparent; border-radius: 12px; padding: 14px 16px; text-align: left; cursor: pointer; color: var(--muted); }
+    .scenario-button:hover { background: var(--bg); color: var(--ink); }
+    .scenario-button.active { background: var(--ink); color: white; }
+    .scenario-button .scenario-top { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+    .scenario-letter { width: 23px; height: 23px; display: grid; place-items: center; border-radius: 12px; background: rgba(255,255,255,.16); font: 600 11px var(--mono); }
+    .scenario-button:not(.active) .scenario-letter { color: var(--blue); background: color-mix(in srgb, var(--blue) 8%, white); }
+    .scenario-button strong { font-size: 15px; }
+    .scenario-button p { margin: 0; font-size: 11px; line-height: 1.5; color: inherit; opacity: .84; }
+
+    .hero { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(310px, .8fr); gap: 22px; margin: 22px 0; }
+    .hero-main, .decision-card { border: 1px solid var(--soft-line); border-radius: 18px; background: var(--paper); }
+    .hero-main { padding: 30px; position: relative; overflow: hidden; }
+    .hero-main::after { content: ""; position: absolute; width: 240px; height: 240px; right: -100px; top: -120px; border-radius: 50%; background: radial-gradient(circle, rgba(0,113,227,.13), rgba(124,58,237,.02) 68%, transparent 69%); }
+    .eyebrow { color: var(--blue); font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .hero h1 { margin: 10px 0 10px; font-size: clamp(30px, 3.2vw, 44px); letter-spacing: -.035em; line-height: 1.08; }
+    .hero-copy { max-width: 720px; margin: 0; color: var(--muted); font-size: 15px; line-height: 1.7; }
+    .hero-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 22px; }
+    .tag { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--soft-line); border-radius: 999px; background: var(--lifted); color: var(--secondary); font-size: 11px; }
+    .tag.primary { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 20%, white); background: color-mix(in srgb, var(--blue) 5%, white); }
+    .decision-card { padding: 22px; display: flex; flex-direction: column; }
+    .decision-head { display: flex; align-items: center; justify-content: space-between; }
+    .decision-head strong { font-size: 15px; }
+    .recommend { color: var(--green); background: var(--green-bg); border-radius: 999px; padding: 4px 8px; font-size: 11px; font-weight: 600; }
+    .decision-score { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; margin-top: 16px; color: var(--muted); font-size: 11px; }
+    .bar { height: 6px; border-radius: 999px; background: #ededf0; overflow: hidden; }
+    .bar i { display: block; height: 100%; border-radius: inherit; background: var(--blue); }
+    .decision-note { margin-top: auto; padding-top: 18px; color: var(--muted); font-size: 11px; line-height: 1.55; border-top: 1px solid var(--soft-line); }
+
+    .view-tabs { display: flex; gap: 5px; margin: 0 0 14px; padding: 5px; width: fit-content; max-width: 100%; overflow-x: auto; background: #eaeaee; border-radius: 12px; }
+    .view-tab { white-space: nowrap; border: 0; background: transparent; color: var(--muted); padding: 8px 13px; border-radius: 12px; cursor: pointer; }
+    .view-tab.active { color: var(--ink); background: var(--paper); font-weight: 600; }
+    .workspace { min-height: 625px; border: 1px solid var(--soft-line); border-radius: 18px; background: var(--paper); overflow: hidden; }
+    .workspace-head { min-height: 68px; padding: 17px 22px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--soft-line); }
+    .workspace-head h2 { margin: 0; font-size: 1.25rem; }
+    .workspace-head p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+    .workspace-head .head-actions { margin-left: auto; display: flex; gap: 8px; }
+    .button { border: 1px solid var(--line); border-radius: 12px; padding: 9px 13px; background: var(--paper); color: var(--ink); cursor: pointer; font-weight: 550; }
+    .button:hover { background: var(--bg); }
+    .button.primary { border-color: var(--blue); color: white; background: var(--blue); }
+    .button.primary:hover { background: var(--blue-hover); }
+    .workspace-body { padding: 22px; }
+
+    .flow { display: grid; grid-template-columns: repeat(6, minmax(130px, 1fr)); gap: 26px; align-items: stretch; overflow-x: auto; padding: 8px 2px 20px; }
+    .flow-step { min-width: 130px; min-height: 174px; padding: 16px; border: 1px solid var(--soft-line); border-radius: 14px; background: var(--lifted); position: relative; }
+    .flow-step::after { content: "→"; position: absolute; left: calc(100% + 8px); top: 70px; color: var(--quiet); font: 20px var(--mono); }
+    .flow-step:last-child::after { display: none; }
+    .step-index { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 12px; color: var(--blue); background: color-mix(in srgb, var(--blue) 9%, white); font: 650 11px var(--mono); }
+    .flow-step.active { border-color: color-mix(in srgb, var(--blue) 25%, white); background: #f5faff; }
+    .flow-step.active .step-index { color: white; background: var(--blue); }
+    .flow-step h3 { margin: 15px 0 7px; font-size: 15px; }
+    .flow-step p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+    .flow-owner { display: inline-flex; margin-top: 14px; padding: 3px 7px; border-radius: 12px; background: white; border: 1px solid var(--soft-line); color: var(--quiet); font: 10px var(--mono); }
+    .rule-grid { display: grid; grid-template-columns: 1.1fr 1fr .9fr; gap: 14px; margin-top: 10px; }
+    .rule-card { padding: 17px; border: 1px solid var(--soft-line); border-radius: 14px; background: var(--paper); }
+    .rule-card h3 { margin: 0 0 7px; font-size: 11px; }
+    .rule-card p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .rule-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; background: var(--blue); }
+    .rule-card:nth-child(2) .rule-dot { background: var(--violet); }
+    .rule-card:nth-child(3) .rule-dot { background: var(--green); }
+
+    .login-layout { display: grid; grid-template-columns: minmax(330px, .8fr) minmax(420px, 1.2fr); gap: 20px; }
+    .auth-preview { min-height: 485px; display: grid; place-items: center; padding: 30px; border-radius: 14px; background: linear-gradient(145deg, #f8fbff, #f8f7ff); border: 1px solid var(--soft-line); }
+    .auth-card { width: 100%; max-width: 370px; padding: 26px; border-radius: 14px; background: white; border: 1px solid var(--soft-line); box-shadow: 0 22px 55px rgba(0, 0, 0, .07); }
+    .auth-logo { display: flex; gap: 9px; align-items: center; margin-bottom: 22px; font-weight: 700; }
+    .mini-mark { width: 25px; height: 25px; border-radius: 12px; background: linear-gradient(135deg, var(--blue), var(--violet)); }
+    .auth-card h3 { margin: 0; font-size: 1.25rem; letter-spacing: -.02em; }
+    .auth-card > p { color: var(--muted); margin: 8px 0 20px; line-height: 1.55; }
+    .auth-field { display: grid; gap: 6px; margin-top: 12px; }
+    .auth-field span { color: var(--secondary); font-size: 11px; font-weight: 650; }
+    .auth-field input { width: 100%; height: 38px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--ink); outline: none; }
+    .auth-field input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 10%, transparent); }
+    .auth-separator { display: flex; align-items: center; gap: 10px; margin: 15px 0 5px; color: var(--quiet); font-size: 11px; }
+    .auth-separator::before, .auth-separator::after { content: ""; flex: 1; height: 1px; background: var(--soft-line); }
+    .auth-links { display: flex; justify-content: space-between; gap: 12px; margin-top: 11px; color: var(--blue); font-size: 11px; font-weight: 600; }
+    .qr { width: 148px; height: 148px; margin: 0 auto 16px; padding: 10px; display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; background: white; border: 1px solid var(--line); border-radius: 12px; }
+    .qr i { background: #e8e8ed; border-radius: 0; }
+    .qr i:nth-child(2n), .qr i:nth-child(5n), .qr i:nth-child(11n) { background: var(--ink); }
+    .auth-option { width: 100%; border: 1px solid var(--line); border-radius: 12px; background: white; padding: 11px; margin-top: 8px; color: var(--secondary); font-weight: 600; }
+    .auth-option.primary { color: white; border-color: var(--blue); background: var(--blue); }
+    .auth-fine { margin-top: 16px; text-align: center; color: var(--quiet); font-size: 11px; }
+    .policy-panel { padding: 22px; border: 1px solid var(--soft-line); border-radius: 14px; }
+    .policy-panel h3 { margin: 0 0 6px; font-size: 15px; }
+    .policy-panel > p { margin: 0 0 18px; color: var(--muted); line-height: 1.6; }
+    .policy-row { display: flex; gap: 12px; align-items: flex-start; padding: 14px 0; border-top: 1px solid var(--soft-line); }
+    .policy-icon { flex: 0 0 auto; width: 31px; height: 31px; display: grid; place-items: center; border-radius: 12px; background: color-mix(in srgb, var(--blue) 7%, white); color: var(--blue); font-weight: 700; }
+    .policy-row strong { display: block; margin: 1px 0 4px; font-size: 11px; }
+    .policy-row span { color: var(--muted); font-size: 11px; line-height: 1.5; }
+
+    .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-bottom: 14px; }
+    .search { min-width: 260px; flex: 1; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; color: var(--quiet); background: var(--paper); }
+    .filter { padding: 9px 11px; border: 1px solid var(--line); border-radius: 12px; background: white; color: var(--secondary); }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--soft-line); border-radius: 14px; }
+    table { width: 100%; border-collapse: collapse; min-width: 820px; }
+    th { padding: 11px 14px; text-align: left; background: var(--lifted); color: var(--quiet); font: 600 10px var(--mono); letter-spacing: .05em; text-transform: uppercase; }
+    td { padding: 14px; border-top: 1px solid var(--soft-line); vertical-align: middle; color: var(--secondary); }
+    .person { display: flex; align-items: center; gap: 10px; }
+    .person .avatar { width: 32px; height: 32px; font-size: 11px; }
+    .person strong { display: block; color: var(--ink); font-size: 11px; }
+    .person span { color: var(--quiet); font-size: 11px; }
+    .status { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 8px; font-size: 11px; font-weight: 600; background: #f1f1f3; color: var(--muted); }
+    .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .status.ok { color: var(--green); background: var(--green-bg); }
+    .status.wait { color: var(--amber); background: var(--amber-bg); }
+    .status.off { color: var(--red); background: var(--red-bg); }
+    .provider { display: inline-flex; align-items: center; gap: 6px; }
+    .provider i { width: 8px; height: 8px; border-radius: 12px; background: var(--blue); }
+    .row-action { border: 0; background: transparent; color: var(--blue); cursor: pointer; font-weight: 600; }
+    .batch-bar { margin-top: 14px; padding: 13px 15px; display: flex; gap: 12px; align-items: center; border-radius: 12px; color: var(--secondary); background: #f6f9fc; border: 1px solid color-mix(in srgb, var(--blue) 15%, white); }
+    .batch-bar strong { color: var(--blue); }
+    .batch-bar .button { margin-left: auto; }
+
+    .device-layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(310px, .65fr); gap: 18px; }
+    .device-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .device-card { padding: 17px; border: 1px solid var(--soft-line); border-radius: 14px; background: var(--paper); }
+    .device-head { display: flex; align-items: center; gap: 11px; }
+    .device-glyph { width: 40px; height: 34px; border: 2px solid var(--muted); border-radius: 12px; position: relative; }
+    .device-glyph::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -7px; height: 2px; background: var(--muted); box-shadow: 0 4px 0 -0.5px var(--muted); }
+    .device-head strong { display: block; font-size: 15px; }
+    .device-head span { color: var(--quiet); font: 10px var(--mono); }
+    .device-meta { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 18px; }
+    .device-meta div { padding: 10px; border-radius: 12px; background: var(--bg); }
+    .device-meta small { display: block; color: var(--quiet); margin-bottom: 4px; }
+    .device-meta strong { font-size: 11px; }
+    .device-actions { display: flex; gap: 7px; margin-top: 14px; }
+    .enroll-panel { border: 1px solid var(--soft-line); border-radius: 14px; overflow: hidden; }
+    .enroll-head { padding: 17px; background: var(--ink); color: white; }
+    .enroll-head small { display: block; opacity: .6; font: 10px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+    .enroll-head strong { display: block; margin-top: 5px; font-size: 15px; }
+    .enroll-body { padding: 17px; }
+    .code-box { padding: 14px; text-align: center; border: 1px dashed var(--line); border-radius: 12px; background: var(--lifted); font: 700 21px var(--mono); letter-spacing: .15em; }
+    .enroll-list { margin: 17px 0 0; padding: 0; list-style: none; }
+    .enroll-list li { display: flex; gap: 9px; margin-top: 11px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .enroll-list b { width: 20px; height: 20px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--blue) 8%, white); color: var(--blue); font: 600 10px var(--mono); }
+
+    .comparison { margin-top: 22px; background: var(--paper); border: 1px solid var(--soft-line); border-radius: 18px; overflow: hidden; }
+    .comparison-head { padding: 20px 22px; border-bottom: 1px solid var(--soft-line); }
+    .comparison-head h2 { margin: 0 0 4px; font-size: 15px; }
+    .comparison-head p { margin: 0; color: var(--muted); font-size: 11px; }
+    .comparison-grid { display: grid; grid-template-columns: 170px repeat(3, 1fr); }
+    .comparison-grid > div { padding: 13px 15px; border-top: 1px solid var(--soft-line); border-left: 1px solid var(--soft-line); }
+    .comparison-grid > div:nth-child(-n+4) { border-top: 0; background: var(--lifted); font-weight: 650; }
+    .comparison-grid > div:nth-child(4n+1) { border-left: 0; color: var(--muted); }
+    .comparison-grid .best { color: var(--blue); background: #f6faff; }
+
+    .mobile-menu { display: none; }
+    @media (max-width: 1050px) {
+      :root { --sidebar: 82px; }
+      .brand-name, .nav-item > span:not(.nav-icon), .nav-label, .nav-count, .profile > div:last-child { display: none; }
+      .brand { justify-content: center; padding-left: 0; padding-right: 0; }
+      .nav-item { justify-content: center; }
+      .profile { justify-content: center; padding-left: 0; padding-right: 0; }
+      .hero { grid-template-columns: 1fr; }
+      .login-layout, .device-layout { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 740px) {
+      .app { display: block; }
+      .sidebar { display: none; }
+      .topbar { padding: 0 16px; }
+      .workspace-switch { margin-left: auto; }
+      .topbar-spacer { display: none; }
+      .mobile-menu { display: inline-grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 12px; background: white; }
+      .content { padding: 16px; }
+      .scenario-shell { display: flex; overflow-x: auto; }
+      .scenario-button { flex: 0 0 250px; }
+      .hero-main, .decision-card { padding: 20px; }
+      .workspace-head { align-items: flex-start; flex-direction: column; }
+      .workspace-head .head-actions { margin-left: 0; width: 100%; }
+      .workspace-head .head-actions .button { flex: 1; }
+      .workspace-body { padding: 14px; }
+      .rule-grid, .device-cards { grid-template-columns: 1fr; }
+      .login-layout { grid-template-columns: 1fr; }
+      .auth-preview { min-height: auto; padding: 18px; }
+      .comparison { overflow-x: auto; }
+      .comparison-grid { min-width: 760px; }
+      .live { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="平台导航">
+      <div class="brand"><span class="brand-mark" aria-hidden="true"></span><div class="brand-name">WorkStep<small>Gateway</small></div></div>
+      <div class="nav-label">工作区</div>
+      <button class="nav-item"><span class="nav-icon">⌂</span><span>概览</span></button>
+      <button class="nav-item"><span class="nav-icon">▣</span><span>我的 PC</span><span class="nav-count">2</span></button>
+      <div class="nav-label">平台管理</div>
+      <button class="nav-item active"><span class="nav-icon">◎</span><span>接入预设</span></button>
+      <button class="nav-item"><span class="nav-icon">♙</span><span>用户</span><span class="nav-count">28</span></button>
+      <button class="nav-item"><span class="nav-icon">◫</span><span>用户组</span><span class="nav-count">6</span></button>
+      <button class="nav-item"><span class="nav-icon">✦</span><span>Skills</span><span class="nav-count">18</span></button>
+      <button class="nav-item"><span class="nav-icon">⌘</span><span>部门与组织</span><span class="nav-count">9</span></button>
+      <button class="nav-item"><span class="nav-icon">▰</span><span>设备</span><span class="nav-count">16</span></button>
+      <button class="nav-item"><span class="nav-icon">♜</span><span>管理员</span><span class="nav-count">5</span></button>
+      <button class="nav-item"><span class="nav-icon">◇</span><span>身份源</span></button>
+      <button class="nav-item"><span class="nav-icon">↓</span><span>客户端发布</span></button>
+      <button class="nav-item"><span class="nav-icon">⌁</span><span>操作记录</span></button>
+      <div class="sidebar-spacer"></div>
+      <div class="profile"><span class="avatar">管</span><div><strong>平台管理员</strong><span>admin@workstep</span></div></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="mobile-menu" aria-label="打开导航">☰</button>
+        <span class="topbar-title">Gateway 原型</span><span class="topbar-path">/ 注册与设备接入</span>
+        <span class="topbar-spacer"></span>
+        <span class="workspace-switch" aria-label="工作区切换"><button>工作台</button><button class="active">管理后台</button></span>
+        <span class="live">网关运行正常</span>
+      </header>
+
+      <div class="content">
+        <section class="scenario-shell" aria-label="接入预设选择">
+          <button class="scenario-button active" data-scenario="a"><span class="scenario-top"><span class="scenario-letter">A</span><strong>启动即扫码 · 自动归属</strong></span><p>统一受管包固定网关，扫码回调客户端后自动登记当前用户和设备。</p></button>
+          <button class="scenario-button" data-scenario="b"><span class="scenario-top"><span class="scenario-letter">B</span><strong>双重审批 · 企业受控</strong></span><p>用户和设备分别等待管理员审核，适合强管控环境。</p></button>
+          <button class="scenario-button" data-scenario="c"><span class="scenario-top"><span class="scenario-letter">C</span><strong>统一预装 · 首次登录认领</strong></span><p>IT 预装同一个网关包，员工首次扫码成功后自动认领当前 PC。</p></button>
+        </section>
+
+        <section class="hero">
+          <div class="hero-main">
+            <span class="eyebrow" id="heroEyebrow">推荐预设 · 自助接入</span>
+            <h1 id="heroTitle">先有用户，再自然获得自己的 WorkStep PC</h1>
+            <p class="hero-copy" id="heroCopy">客户端入口只借 Gateway 完成认证和拿权限，随后直接访问本机 daemon；从 Gateway 门户点击 PC 时才使用远程代理。</p>
+            <div class="hero-tags" id="heroTags"></div>
+          </div>
+          <aside class="decision-card">
+            <div class="decision-head"><strong>预设适配度</strong><span class="recommend" id="recommendLabel">推荐</span></div>
+            <div id="scores"></div>
+            <p class="decision-note" id="decisionNote"></p>
+          </aside>
+        </section>
+
+        <nav class="view-tabs" aria-label="原型视图">
+          <button class="view-tab active" data-view="journey">完整流程</button>
+          <button class="view-tab" data-view="login">注册与登录</button>
+          <button class="view-tab" data-view="org">组织同步</button>
+          <button class="view-tab" data-view="users">用户管理</button>
+          <button class="view-tab" data-view="groups">用户组与 Skills</button>
+          <button class="view-tab" data-view="devices">设备注册</button>
+          <button class="view-tab" data-view="admins">管理员权限</button>
+        </nav>
+
+        <section class="workspace" id="workspace" aria-live="polite"></section>
+
+        <section class="comparison">
+          <div class="comparison-head"><h2>三种接入预设</h2><p>它们共用同一套网关协议，只调整注册、审批和部署策略。</p></div>
+          <div class="comparison-grid">
+            <div>评估项</div><div>预设 A · 自动归属</div><div>预设 B · 双重审批</div><div>预设 C · 统一预装</div>
+            <div>最适合</div><div class="best">个人自助、一般企业</div><div>安全敏感组织</div><div>IT 批量装机</div>
+            <div>用户注册</div><div>开放注册 / 扫码建号</div><div>注册后等待审核</div><div>预导入或已有账号</div>
+            <div>设备注册</div><div>首次登录自动归属</div><div>登录和设备分别审批</div><div>预装后首次登录认领</div>
+            <div>首次使用步骤</div><div class="best">最少</div><div>最多</div><div>中等</div>
+            <div>管理员工作量</div><div class="best">低</div><div>高</div><div>中</div>
+            <div>主要风险</div><div>自定义协议劫持</div><div>审批等待过长</div><div>预装设备误领</div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const scenarios = {
+      a: {
+        eyebrow: "推荐预设 · 自助接入",
+        title: "打开客户端登录，认证完成后直接使用 WorkStep",
+        copy: "所有用户下载同一个网关受管包。直接打开客户端时，Gateway 登录完成后由 workstep:// 回调客户端，后续界面通过 loopback 直连本机 daemon。",
+        tags: ["统一安装包", "Gateway 自有账户", "可选企业扫码", "PKCE 授权回调"],
+        recommend: "推荐",
+        scores: [["用户体验", 94], ["管控强度", 72], ["部署效率", 90]],
+        note: "建议作为默认模式。管理员可独立设置开放注册、注册后审核和第三方首次登录建号策略。",
+        registrationOpen: true,
+        registrationLabel: "注册 Gateway 账户",
+        flow: [
+          ["安装统一受管包", "包内固定 gateway_origin、gateway_id 和网关公钥 pin。", "用户 / IT"],
+          ["客户端发起登录", "生成 state、nonce、PKCE challenge 和 app_instance_id。", "Desktop"],
+          ["Gateway 登录", "使用平台账号登录；也可选择钉钉或企业微信快捷认证。", "用户"],
+          ["私有协议唤醒", "网关用一次性 code 跳转 workstep://auth/callback。", "Gateway"],
+          ["兑换会话并登记", "客户端校验 state，以 PKCE 换会话并登记设备公钥。", "Daemon"],
+          ["打开本机工作台", "Desktop 访问 127.0.0.1，本机 HTTP 与 WebSocket 不经过 Gateway。", "Desktop"],
+        ],
+        loginTitle: "登录 Gateway",
+        loginCopy: "Gateway 账户是主身份；钉钉和企业微信只是可选的快捷入口。",
+        loginButton: "使用钉钉扫码",
+        loginHint: "登录成功后，如果没有 PC，将进入客户端下载页面。",
+        policies: [
+          ["1", "开放注册", "用户可直接创建 Gateway 用户名和密码。"],
+          ["2", "外部身份", "扫码只创建或关联同一个 Gateway 用户，不替代用户主表。"],
+          ["3", "桌面授权", "authorization code 绑定 state、PKCE 和 app_instance_id。"],
+          ["4", "默认归属", "首次成功兑换后，当前设备自动归属登录用户。"],
+        ],
+        users: [
+          ["张三", "zhangsan-a83f", "钉钉", "正常", "2", "刚刚", "查看"],
+          ["李四", "lisi-c091", "企业微信", "正常", "1", "12 分钟前", "查看"],
+          ["王芳", "wangfang", "平台注册", "无设备", "0", "今天 09:22", "查看安装说明"],
+          ["赵明", "zhaoming-6c20", "钉钉", "已禁用", "1", "9 月 26 日", "查看"],
+        ],
+        userBanner: "2 个用户尚未登录过受管客户端，可发送统一安装包说明。",
+        devices: [
+          ["张三的 MacBook Pro", "在线", "张三", "macOS 15.6", "3 个项目", "v0.18.2"],
+          ["研发工作站 07", "在线", "李四", "Windows 11", "5 个项目", "v0.18.2"],
+          ["设计组 Mac mini", "离线", "张三", "macOS 15.5", "2 个项目", "v0.18.1"],
+        ],
+        enrollTitle: "桌面授权回调",
+        enrollCode: "workstep://auth",
+        enrollSteps: ["安装包读取固定网关配置", "客户端打开 Gateway 登录页", "私有协议返回一次性授权码", "PKCE 兑换会话并登记设备"],
+      },
+      b: {
+        eyebrow: "强管控预设 · 双重审批",
+        title: "账号和设备都经过管理员确认后才进入平台",
+        copy: "身份验证只证明这个人来自企业，不代表立即获得平台访问权。新用户进入待审核；客户端连接后设备也进入待审批，管理员确认归属和策略后才开放。",
+        tags: ["用户审批", "设备审批", "最小默认权限", "适合敏感环境"],
+        recommend: "强管控",
+        scores: [["用户体验", 58], ["管控强度", 97], ["部署效率", 55]],
+        note: "适合金融、政企或设备必须登记资产编号的环境。需要设置审批 SLA，避免用户安装后长时间无法使用。",
+        registrationOpen: true,
+        registrationLabel: "提交注册申请",
+        flow: [
+          ["注册或扫码验证", "本地注册与外部扫码都先创建或找到 Gateway 用户。", "用户"],
+          ["用户等待审核", "管理员确认组织、角色和可用供应商。", "管理员"],
+          ["启动受管客户端", "审核通过后客户端重新发起网关扫码登录。", "用户"],
+          ["设备登记待审", "授权回调后设备上报系统、版本、公钥和资产信息。", "Daemon"],
+          ["管理员批准设备", "指定使用者、远程项目、供应商和 task.create 权限。", "管理员"],
+          ["开放受管能力", "网关下发权限快照；客户端在本机按策略开放功能。", "Gateway"],
+        ],
+        loginTitle: "注册申请与登录",
+        loginCopy: "本地注册或首次扫码都会创建待审核的 Gateway 用户。",
+        loginButton: "使用钉钉提交申请",
+        loginHint: "申请状态会保留；审核通过后再次扫码即可登录。",
+        policies: [
+          ["1", "注册不是授权", "本地注册或首次扫码只创建 pending 用户，不签发业务会话。"],
+          ["2", "用户审批", "管理员确认部门、角色、设备额度和供应商范围。"],
+          ["3", "设备独立审批", "设备凭据有效前保持 quarantine，不能代理业务请求。"],
+          ["4", "完整审计", "申请、批准、拒绝和重新提交均形成不可变审计事件。"],
+        ],
+        users: [
+          ["陈晨", "chenchen-b203", "钉钉", "待审核", "0", "2 分钟前", "审核"],
+          ["周琪", "zhouqi-22ad", "企业微信", "待审核", "0", "18 分钟前", "审核"],
+          ["张三", "zhangsan-a83f", "钉钉", "正常", "2", "刚刚", "查看"],
+          ["赵明", "zhaoming-6c20", "钉钉", "已拒绝", "0", "昨天", "查看"],
+        ],
+        userBanner: "2 个用户申请等待审核；最长已等待 18 分钟。",
+        devices: [
+          ["DESKTOP-8FN2", "待审批", "陈晨", "Windows 11", "未扫描", "v0.18.2"],
+          ["MacBook-Pro-29", "待审批", "周琪", "macOS 15.6", "未扫描", "v0.18.2"],
+          ["研发工作站 07", "在线", "张三", "Ubuntu 24.04", "5 个项目", "v0.18.2"],
+        ],
+        enrollTitle: "授权完成，等待设备审批",
+        enrollCode: "PENDING",
+        enrollSteps: ["安装统一网关受管包", "登录授权回调当前客户端", "设备上报公钥和资产信息", "管理员批准后本机按策略开放功能"],
+      },
+      c: {
+        eyebrow: "批量部署预设 · 设备先行",
+        title: "IT 统一预装网关包，员工首次登录自动认领",
+        copy: "适合公司统一采购或机房工作站。IT 给所有 PC 安装同一个固定网关的受管包；员工在这台机器打开客户端并扫码，授权回调天然绑定当前 app_instance_id，无需手工输入认领码。",
+        tags: ["IT 预部署", "统一安装包", "当前设备挑战", "共享工作站友好"],
+        recommend: "批量部署",
+        scores: [["用户体验", 76], ["管控强度", 88], ["部署效率", 96]],
+        note: "这是预设 A 的企业部署变体，不是另一套协议。区别只是由 IT 提前安装，登录和 workstep:// 回调完全复用同一条链路。",
+        registrationOpen: false,
+        registrationLabel: "账号由组织预先同步",
+        flow: [
+          ["IT 获取统一安装包", "网关包固定地址、公钥 pin 和发布通道。", "管理员"],
+          ["批量预装客户端", "设备生成 app_instance_id 和设备密钥，尚无用户归属。", "IT"],
+          ["员工打开客户端", "Desktop 生成与当前设备绑定的 PKCE 登录挑战。", "用户"],
+          ["Gateway 登录", "使用已有平台账号，也可用已绑定的企业身份快捷登录。", "用户"],
+          ["回调当前客户端", "workstep:// 携带一次性 code，不能在另一台设备兑换。", "Gateway"],
+          ["自动认领设备", "兑换成功后把当前 PC 分配给登录用户。", "Gateway"],
+        ],
+        loginTitle: "登录并认领当前设备",
+        loginCopy: "登录完成后，网关会自动唤醒当前 WorkStep 客户端，无需输入认领码。",
+        loginButton: "使用企业微信扫码",
+        loginHint: "授权码仅能由发起登录的当前客户端兑换一次。",
+        policies: [
+          ["1", "关闭自注册", "用户和外部身份由钉钉/企微通讯录预同步创建。"],
+          ["2", "扫码即匹配", "按外部稳定 ID 找到 Gateway 用户后直接登录，不再注册。"],
+          ["3", "待认领隔离", "设备可以心跳和更新，但未分配前不能使用受管能力。"],
+          ["4", "共享设备", "可由管理员预先分配多个用户，而非固定唯一所有者。"],
+        ],
+        users: [
+          ["张三", "zhangsan-a83f", "钉钉", "正常", "1", "刚刚", "查看"],
+          ["李四", "lisi-c091", "企业微信", "待认领", "0", "8 分钟前", "打开客户端登录"],
+          ["王芳", "wangfang-f116", "钉钉", "正常", "2", "今天 09:22", "查看"],
+          ["共享测试账号", "qa-shared", "管理员创建", "正常", "3", "昨天", "查看"],
+        ],
+        userBanner: "4 台预部署设备等待认领，1 个用户已登录但尚未认领设备。",
+        devices: [
+          ["研发工作站 11", "待认领", "—", "Ubuntu 24.04", "批次 RD-09", "v0.18.2"],
+          ["研发工作站 12", "待认领", "—", "Ubuntu 24.04", "批次 RD-09", "v0.18.2"],
+          ["测试机 04", "在线", "共享测试账号", "Windows 11", "7 个项目", "v0.18.2"],
+        ],
+        enrollTitle: "当前设备授权挑战",
+        enrollCode: "workstep://auth",
+        enrollSteps: ["IT 预装统一网关受管包", "设备生成 app_instance_id", "用户扫码后回调当前客户端", "PKCE 兑换成功后完成分配"],
+      }
+    };
+
+    let currentScenario = "a";
+    let currentView = "journey";
+    const workspace = document.getElementById("workspace");
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>'"]/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"})[ch]);
+    }
+
+    function statusClass(status) {
+      if (["正常", "在线"].includes(status)) return "ok";
+      if (["待审核", "待审批", "待认领", "无设备"].includes(status)) return "wait";
+      return "off";
+    }
+
+    function renderHero() {
+      const data = scenarios[currentScenario];
+      document.getElementById("heroEyebrow").textContent = data.eyebrow;
+      document.getElementById("heroTitle").textContent = data.title;
+      document.getElementById("heroCopy").textContent = data.copy;
+      document.getElementById("heroTags").innerHTML = data.tags.map((tag, i) => `<span class="tag ${i === 0 ? "primary" : ""}">${escapeHtml(tag)}</span>`).join("");
+      document.getElementById("recommendLabel").textContent = data.recommend;
+      document.getElementById("decisionNote").textContent = data.note;
+      document.getElementById("scores").innerHTML = data.scores.map(([label, value]) => `<div class="decision-score"><span>${escapeHtml(label)}</span><span class="bar"><i style="width:${value}%"></i></span><strong>${value}</strong></div>`).join("");
+    }
+
+    function renderJourney(data) {
+      return `
+        <div class="workspace-head"><div><h2>端到端接入流程</h2><p>同一次 Gateway 认证，按进入位置选择本机直连或门户远程代理。</p></div><div class="head-actions"><button class="button">查看状态机</button><button class="button primary">应用此预设</button></div></div>
+        <div class="workspace-body">
+          <div class="flow">${data.flow.map((step, i) => `<article class="flow-step ${i === 1 || i === 4 ? "active" : ""}"><span class="step-index">0${i + 1}</span><h3>${escapeHtml(step[0])}</h3><p>${escapeHtml(step[1])}</p><span class="flow-owner">${escapeHtml(step[2])}</span></article>`).join("")}</div>
+          <div class="rule-grid">
+            <article class="rule-card"><h3><span class="rule-dot"></span>身份是稳定关联，不是姓名</h3><p>姓名可直接展示；账号唯一性使用身份源、企业租户和 external subject，避免同名覆盖。</p></article>
+            <article class="rule-card"><h3><span class="rule-dot"></span>本机项目保持原样</h3><p>Gateway 不设置项目根目录；只分配平台远程项目，并通过 task.create 控制是否能新建任务。</p></article>
+            <article class="rule-card"><h3><span class="rule-dot"></span>入口决定数据链路</h3><p>客户端入口认证后走本机 loopback；Gateway 门户点击 PC 才走远程 HTTP/WebSocket 隧道。</p></article>
+          </div>
+        </div>`;
+    }
+
+    function makeQr() {
+      return `<div class="qr" aria-label="扫码登录二维码示意">${Array.from({length: 49}, () => "<i></i>").join("")}</div>`;
+    }
+
+    function renderLogin(data) {
+      return `
+        <div class="workspace-head"><div><h2>注册与登录页面</h2><p>Gateway 维护自己的用户和密码；钉钉、企业微信只是可选快捷入口。</p></div><div class="head-actions"><button class="button">注册策略</button><button class="button primary">配置身份源</button></div></div>
+        <div class="workspace-body login-layout">
+          <div class="auth-preview"><section class="auth-card"><div class="auth-logo"><span class="mini-mark"></span>WorkStep Gateway</div><h3>${escapeHtml(data.loginTitle)}</h3><p>${escapeHtml(data.loginCopy)}</p><label class="auth-field"><span>用户名</span><input value="zhangsan" readonly></label><label class="auth-field"><span>密码</span><input value="••••••••••••" readonly></label><button class="auth-option primary">登录</button><div class="auth-links"><span>${escapeHtml(data.registrationLabel)}</span><span>忘记密码</span></div><div class="auth-separator">或使用企业身份</div><button class="auth-option">${escapeHtml(data.loginButton)}</button><button class="auth-option">使用企业微信扫码</button><div class="auth-fine">${escapeHtml(data.registrationOpen ? data.loginHint : "扫码只匹配已同步账号；未同步用户不能登录。")}</div></section></div>
+          <aside class="policy-panel"><h3>该预设的注册策略</h3><p>页面交互与后台状态必须保持一致，不能只改变提示文字。</p>${data.policies.map(row => `<div class="policy-row"><span class="policy-icon">${escapeHtml(row[0])}</span><div><strong>${escapeHtml(row[1])}</strong><span>${escapeHtml(row[2])}</span></div></div>`).join("")}</aside>
+        </div>`;
+    }
+
+    function renderUsers(data) {
+      return `
+        <div class="workspace-head"><div><h2>用户管理</h2><p>Gateway 用户是权威账户；本地注册、管理员创建和外部身份都汇入同一用户表。</p></div><div class="head-actions"><button class="button">导入企业用户</button><button class="button primary">创建 Gateway 用户</button></div></div>
+        <div class="workspace-body">
+          <div class="toolbar"><div class="search">⌕&nbsp;&nbsp;搜索姓名、用户名或已绑定身份</div><button class="filter">状态：全部⌄</button><button class="filter">注册来源：全部⌄</button><button class="filter">设备：全部⌄</button></div>
+          <div class="table-wrap"><table><thead><tr><th>Gateway 用户</th><th>用户名</th><th>注册 / 绑定来源</th><th>状态</th><th>设备</th><th>最近登录</th><th>操作</th></tr></thead><tbody>${data.users.map(row => `<tr><td><div class="person"><span class="avatar">${escapeHtml(row[0].slice(0, 1))}</span><div><strong>${escapeHtml(row[0])}</strong><span>Gateway 账户 · 可绑定多个身份</span></div></div></td><td><code>${escapeHtml(row[1])}</code></td><td><span class="provider"><i></i>${escapeHtml(row[2])}</span></td><td><span class="status ${statusClass(row[3])}">${escapeHtml(row[3])}</span></td><td>${escapeHtml(row[4])}</td><td>${escapeHtml(row[5])}</td><td><button class="row-action">${escapeHtml(row[6])}</button></td></tr>`).join("")}</tbody></table></div>
+          <div class="batch-bar"><strong>待处理</strong><span>${escapeHtml(data.userBanner)}</span><button class="button">立即处理</button></div>
+        </div>`;
+    }
+
+    function renderOrg() {
+      return `
+        <div class="workspace-head"><div><h2>部门与第三方组织同步</h2><p>第三方只负责外部组织投影；Gateway 用户、状态、角色和授权仍由平台维护。</p></div><div class="head-actions"><button class="button">同步设置</button><button class="button primary">立即全量对账</button></div></div>
+        <div class="workspace-body device-layout">
+          <div>
+            <div class="toolbar"><div class="search">⌕&nbsp;&nbsp;搜索部门或成员</div><button class="filter">来源：钉钉⌄</button><button class="filter">状态：已同步⌄</button></div>
+            <div class="table-wrap"><table><thead><tr><th>组织结构</th><th>负责人</th><th>直属成员</th><th>子部门</th><th>同步状态</th><th>操作</th></tr></thead><tbody>
+              <tr><td><strong>▾ 星河科技</strong><div style="color:var(--quiet);font-size:11px;margin-top:3px">根部门 · ding-corp-4f21</div></td><td>王敏</td><td>28</td><td>4</td><td><span class="status ok">已同步</span></td><td><button class="row-action">查看</button></td></tr>
+              <tr><td><span style="padding-left:20px">├─ 研发中心</span></td><td>周扬</td><td>12</td><td>3</td><td><span class="status ok">已同步</span></td><td><button class="row-action">授权范围</button></td></tr>
+              <tr><td><span style="padding-left:40px">├─ 平台研发组</span></td><td>张三</td><td>6</td><td>0</td><td><span class="status ok">已同步</span></td><td><button class="row-action">查看成员</button></td></tr>
+              <tr><td><span style="padding-left:40px">└─ AI 工程组</span></td><td>李四</td><td>4</td><td>0</td><td><span class="status wait">1 项变更</span></td><td><button class="row-action">核对</button></td></tr>
+              <tr><td><span style="padding-left:20px">├─ 产品设计部</span></td><td>王芳</td><td>7</td><td>1</td><td><span class="status ok">已同步</span></td><td><button class="row-action">授权范围</button></td></tr>
+              <tr><td><span style="padding-left:20px">└─ 综合管理部</span></td><td>陈晨</td><td>5</td><td>0</td><td><span class="status ok">已同步</span></td><td><button class="row-action">查看成员</button></td></tr>
+            </tbody></table></div>
+            <div class="batch-bar"><strong>最近同步</strong><span>10:32:18 · 新增 2 人，调岗 1 人，离职停用 1 人，部门更名 1 项</span><button class="button">查看明细</button></div>
+          </div>
+          <aside class="policy-panel">
+            <h3>连接器能力</h3><p>“扫码登录”和“通讯录同步”分别开关；只需要取用户名时无需开放完整通讯录权限。</p>
+            <div class="policy-row"><span class="policy-icon">登</span><div><strong>登录能力</strong><span>取得稳定外部 ID 和姓名，并创建或关联 Gateway 用户。</span></div></div>
+            <div class="policy-row"><span class="policy-icon">全</span><div><strong>首次全量同步</strong><span>拉取部门树、用户、用户—部门关系、在职状态和负责人。</span></div></div>
+            <div class="policy-row"><span class="policy-icon">增</span><div><strong>事件增量同步</strong><span>处理人员新增、修改、离职以及部门创建、移动、删除事件。</span></div></div>
+            <div class="policy-row"><span class="policy-icon">核</span><div><strong>每日全量对账</strong><span>修复事件丢失和顺序错乱；按 external ID 幂等更新。</span></div></div>
+            <div class="policy-row"><span class="policy-icon">离</span><div><strong>离职不物理删除</strong><span>立即禁用登录、撤销会话和设备访问，保留消息与审计快照。</span></div></div>
+          </aside>
+        </div>`;
+    }
+
+    function renderGroups() {
+      return `
+        <div class="workspace-head"><div><h2>用户组与项目 Skills</h2><p>组长管理本组成员与项目 Skills；项目仍使用现有 Skill Center 加载。</p></div><div class="head-actions"><button class="button">Skills 目录</button><button class="button primary">创建用户组</button></div></div>
+        <div class="workspace-body">
+          <div class="rule-grid">
+            <article class="rule-card"><h3><span class="rule-dot"></span>安卓组</h3><p>组长：张三 · 8 名成员 · 4 个关联项目 · 6 个受管 Skills</p></article>
+            <article class="rule-card"><h3><span class="rule-dot"></span>后端组</h3><p>组长：李四、王芳 · 12 名成员 · 7 个关联项目 · 9 个受管 Skills</p></article>
+            <article class="rule-card"><h3><span class="rule-dot"></span>权限边界</h3><p>加入组只允许管理 Skills，不自动获得项目内容访问权或远程访问权。</p></article>
+          </div>
+          <div class="toolbar" style="margin-top:18px"><div class="search">⌕&nbsp;&nbsp;搜索用户组、项目或 Skill</div><button class="filter">来源：全部⌄</button><button class="filter">同步状态：全部⌄</button></div>
+          <div class="table-wrap"><table><thead><tr><th>用户组</th><th>来源</th><th>组长</th><th>成员</th><th>关联项目</th><th>受管 Skills</th><th>同步状态</th><th>操作</th></tr></thead><tbody>
+            <tr><td><strong>安卓组</strong></td><td>企业微信 · 移动研发部</td><td>张三</td><td>8</td><td>4</td><td>android-build@2.3<br>mobile-review@1.8</td><td><span class="status ok">全部已应用</span></td><td><button class="row-action">管理</button></td></tr>
+            <tr><td><strong>后端组</strong></td><td>手工组</td><td>李四、王芳</td><td>12</td><td>7</td><td>api-review@3.1<br>db-migration@1.4</td><td><span class="status wait">1 个冲突</span></td><td><button class="row-action">处理冲突</button></td></tr>
+            <tr><td><strong>测试组</strong></td><td>钉钉 · 质量中心</td><td>周琪</td><td>6</td><td>3</td><td>test-plan@2.0</td><td><span class="status off">1 台 PC 离线</span></td><td><button class="row-action">查看</button></td></tr>
+          </tbody></table></div>
+          <div class="batch-bar"><strong>项目加载规则</strong><span>Gateway Skill 写入项目 .workstep/skills，固定版本并标记平台受管；下一次任务运行时由现有引擎加载。</span><button class="button">查看同步明细</button></div>
+        </div>`;
+    }
+
+    function renderAdmins() {
+      return `
+        <div class="workspace-head"><div><h2>管理员与管理范围</h2><p>超级管理员负责全局平台配置；其他管理员只在被授权的组织或能力范围内操作。</p></div><div class="head-actions"><button class="button">角色说明</button><button class="button primary">添加管理员</button></div></div>
+        <div class="workspace-body">
+          <div class="rule-grid" style="grid-template-columns:1.15fr 1fr 1fr 1fr 1fr">
+            <article class="rule-card" style="background:color-mix(in srgb, var(--blue) 4%, white);border-color:color-mix(in srgb, var(--blue) 20%, white)"><h3><span class="rule-dot"></span>超级管理员</h3><p>身份源、管理员、全局平台设置、全局供应商、恢复与迁移。至少保留两名。</p></article>
+            <article class="rule-card"><h3><span class="rule-dot"></span>组织管理员</h3><p>同步组织、审核用户，并管理授权组织范围内的人员。</p></article>
+            <article class="rule-card"><h3><span class="rule-dot"></span>部门管理员</h3><p>仅管理指定部门及其子部门的用户、设备与项目访问授权。</p></article>
+            <article class="rule-card"><h3><span class="rule-dot"></span>设备管理员</h3><p>审批设备、批量安装引擎和下发供应商，不管理身份源。</p></article>
+            <article class="rule-card"><h3><span class="rule-dot"></span>审计管理员</h3><p>只读访问审计、用量和登录记录，不能改变平台状态。</p></article>
+          </div>
+          <div class="toolbar" style="margin-top:18px"><div class="search">⌕&nbsp;&nbsp;搜索管理员</div><button class="filter">角色：全部⌄</button><button class="filter">范围：全部⌄</button></div>
+          <div class="table-wrap"><table><thead><tr><th>管理员</th><th>角色</th><th>管理范围</th><th>来源</th><th>最近操作</th><th>状态</th><th>操作</th></tr></thead><tbody>
+            <tr><td><div class="person"><span class="avatar">王</span><div><strong>王敏</strong><span>wangmin-01ab</span></div></div></td><td>超级管理员</td><td>全平台</td><td>钉钉</td><td>配置身份源 · 10:21</td><td><span class="status ok">正常</span></td><td><button class="row-action">查看</button></td></tr>
+            <tr><td><div class="person"><span class="avatar">周</span><div><strong>周扬</strong><span>zhouyang-78d1</span></div></div></td><td>组织管理员</td><td>研发中心</td><td>钉钉</td><td>审核用户 · 09:54</td><td><span class="status ok">正常</span></td><td><button class="row-action">编辑范围</button></td></tr>
+            <tr><td><div class="person"><span class="avatar">张</span><div><strong>张三</strong><span>zhangsan-a83f</span></div></div></td><td>部门管理员</td><td>平台研发组</td><td>钉钉</td><td>分配设备 · 昨天</td><td><span class="status ok">正常</span></td><td><button class="row-action">编辑范围</button></td></tr>
+            <tr><td><div class="person"><span class="avatar">陈</span><div><strong>陈晨</strong><span>chenchen-b203</span></div></div></td><td>设备管理员</td><td>全部 PC</td><td>企业微信</td><td>升级引擎 · 昨天</td><td><span class="status ok">正常</span></td><td><button class="row-action">查看</button></td></tr>
+            <tr><td><div class="person"><span class="avatar">审</span><div><strong>审计专员</strong><span>audit-312f</span></div></div></td><td>审计管理员</td><td>全平台只读</td><td>预导入</td><td>导出审计 · 9 月 27 日</td><td><span class="status ok">正常</span></td><td><button class="row-action">查看</button></td></tr>
+          </tbody></table></div>
+          <div class="batch-bar"><strong>安全规则</strong><span>最后一名超级管理员不可移除；超级管理员变更要求二次认证并记录审计。</span><button class="button">查看权限矩阵</button></div>
+        </div>`;
+    }
+
+    function renderDevices(data) {
+      return `
+        <div class="workspace-head"><div><h2>设备注册与绑定</h2><p>设备身份由本机密钥确定；页面名称、所有者和在线状态来自网关登记。</p></div><div class="head-actions"><button class="button">客户端发布</button><button class="button primary">创建设备入口</button></div></div>
+        <div class="workspace-body device-layout">
+          <div><div class="toolbar"><div class="search">⌕&nbsp;&nbsp;搜索 PC、设备 ID 或所有者</div><button class="filter">状态：全部⌄</button></div><div class="device-cards">${data.devices.map(device => `<article class="device-card"><div class="device-head"><span class="device-glyph"></span><div><strong>${escapeHtml(device[0])}</strong><span>DEVICE · ${Math.random().toString(16).slice(2, 10).toUpperCase()}</span></div><span style="margin-left:auto" class="status ${statusClass(device[1])}">${escapeHtml(device[1])}</span></div><div class="device-meta"><div><small>分配用户</small><strong>${escapeHtml(device[2])}</strong></div><div><small>系统</small><strong>${escapeHtml(device[3])}</strong></div><div><small>项目</small><strong>${escapeHtml(device[4])}</strong></div><div><small>客户端</small><strong>${escapeHtml(device[5])}</strong></div></div><div class="device-actions"><button class="button">查看详情</button><button class="button">打开 PC</button></div></article>`).join("")}</div></div>
+          <aside class="enroll-panel"><div class="enroll-head"><small>Desktop authorization</small><strong>${escapeHtml(data.enrollTitle)}</strong></div><div class="enroll-body"><div class="code-box">${escapeHtml(data.enrollCode)}</div><ol class="enroll-list">${data.enrollSteps.map((step, i) => `<li><b>${i + 1}</b><span>${escapeHtml(step)}</span></li>`).join("")}</ol><button class="button primary" style="width:100%;margin-top:17px">打开客户端登录</button><p style="color:var(--quiet);font-size:11px;line-height:1.5;margin:11px 0 0">自定义协议只传递短期授权码和 state；会话与设备私钥不会出现在 URL 中。</p></div></aside>
+        </div>`;
+    }
+
+    function renderWorkspace() {
+      const data = scenarios[currentScenario];
+      const renderers = { journey: renderJourney, login: renderLogin, org: renderOrg, users: renderUsers, groups: renderGroups, devices: renderDevices, admins: renderAdmins };
+      workspace.innerHTML = renderers[currentView](data);
+    }
+
+    document.querySelectorAll("[data-scenario]").forEach(button => button.addEventListener("click", () => {
+      currentScenario = button.dataset.scenario;
+      document.querySelectorAll("[data-scenario]").forEach(item => item.classList.toggle("active", item === button));
+      renderHero();
+      renderWorkspace();
+    }));
+
+    document.querySelectorAll("[data-view]").forEach(button => button.addEventListener("click", () => {
+      currentView = button.dataset.view;
+      document.querySelectorAll("[data-view]").forEach(item => item.classList.toggle("active", item === button));
+      renderWorkspace();
+    }));
+
+    renderHero();
+    renderWorkspace();
+  </script>
+</body>
+</html>

@@ -1,12 +1,21 @@
-"""Persistent task message creation and ordering."""
+"""Persistent task message creation, ordering, and usage projection."""
 
+import json
 import secrets
 import threading
 import time
 import uuid
 
-from models import Message, Task
+from models import Message, Task, WorkflowRun
 from models.base import db_proxy
+
+
+def extract_usage_json(events_collected: list[dict]) -> str | None:
+    """Extract the last usage event's data as JSON for message.usage_json."""
+    for event in reversed(events_collected):
+        if event.get("type") in {"usage", "usage_update"}:
+            return json.dumps(event.get("data", {}))
+    return None
 
 
 def current_actor_message_fields() -> dict[str, str]:
@@ -18,7 +27,11 @@ def current_actor_message_fields() -> dict[str, str]:
         return {}
     return {
         "author_id": actor.actor_id,
+        "author_username": actor.username or actor.user_name,
         "author_name": actor.user_name,
+        "author_type": "user",
+        "initiated_by_user_id": actor.actor_id,
+        "initiated_by_username": actor.username or actor.user_name,
         "author_device_id": actor.device_id,
         "author_device_name": actor.device_name,
     }
@@ -33,28 +46,26 @@ def current_actor_task_fields() -> dict[str, str]:
         return {}
     return {
         "creator_id": actor.actor_id,
+        "creator_username": actor.username or actor.user_name,
         "creator_name": actor.user_name,
         "creator_device_id": actor.device_id,
         "creator_device_name": actor.device_name,
     }
 
 
-_AUTHOR_FIELDS = (
-    "author_id",
-    "author_name",
-    "author_device_id",
-    "author_device_name",
-)
-
-
 def _message_author_fields(message: Message | None) -> dict[str, str]:
     if message is None:
         return {}
-    return {
-        field: value
-        for field in _AUTHOR_FIELDS
-        if (value := getattr(message, field, None))
-    }
+    automated = message.author_type in {"assistant", "system", "scheduler"}
+    user_id = (message.initiated_by_user_id if automated else message.author_id)
+    username = (message.initiated_by_username if automated else
+                (message.author_username or message.author_name))
+    return {key: value for key, value in {
+        "initiated_by_user_id": user_id,
+        "initiated_by_username": username,
+        "author_device_id": message.author_device_id,
+        "author_device_name": message.author_device_name,
+    }.items() if value}
 
 
 def attributed_actor_message_fields(
@@ -73,7 +84,10 @@ def attributed_actor_message_fields(
     """
     source = None
     if reply_to_message_id:
-        source = Message.get_or_none(Message.id == reply_to_message_id)
+        source = Message.get_or_none(
+            (Message.id == reply_to_message_id) & (Message.task == task)
+        )
+    explicit_source = source is not None
     if source is None:
         base_predicate = (
             (Message.task == task)
@@ -103,12 +117,32 @@ def attributed_actor_message_fields(
                 .order_by(Message.sequence.desc(), Message.created_at.desc())
                 .first()
             )
+    run = (
+        WorkflowRun.get_or_none(
+            (WorkflowRun.id == task.active_workflow_run_id) & (WorkflowRun.task == task)
+        )
+        if task.active_workflow_run_id else None
+    )
+    if run is not None and not explicit_source and (
+        source is None or (
+            run.started_at is not None and source.created_at is not None
+            and source.created_at < run.started_at
+        )
+    ):
+        run_fields = {key: value for key, value in {
+            "initiated_by_user_id": run.initiated_by_user_id,
+            "initiated_by_username": run.initiated_by_username,
+            "author_device_id": run.initiated_by_device_id,
+            "author_device_name": run.initiated_by_device_name,
+        }.items() if value}
+        if run_fields.get("initiated_by_user_id") or run_fields.get("initiated_by_username"):
+            return run_fields
     fields = _message_author_fields(source)
-    if fields:
+    if fields.get("initiated_by_user_id") or fields.get("initiated_by_username"):
         return fields
     return {
-        "author_id": task.creator_id,
-        "author_name": task.creator_name,
+        "initiated_by_user_id": task.creator_id,
+        "initiated_by_username": task.creator_username or task.creator_name,
         "author_device_id": task.creator_device_id,
         "author_device_name": task.creator_device_name,
     } if task.creator_name else {}
@@ -173,18 +207,41 @@ def allocate_message_sequences(task_id: str, count: int = 1) -> int:
     return int(row[0]) - count
 
 
-def create_task_message(*, task: Task, channel: str, **fields) -> Message:
+def create_task_message(
+    *, task: Task, channel: str, snapshot_current_actor: bool = True, **fields,
+) -> Message:
     """Create a message with a task-local monotonic sequence."""
     sequence = allocate_message_sequences(task.id)
     task.next_message_sequence = sequence + 1
     if "id" not in fields:
         fields["id"] = new_message_id()
     if fields.get("role") == "user":
-        actor_fields = current_actor_message_fields()
+        actor_fields = current_actor_message_fields() if snapshot_current_actor else {}
         provided_name = str(fields.get("author_name") or "").strip()
         if not provided_name or provided_name == actor_fields.get("author_name"):
             for key, value in actor_fields.items():
                 fields.setdefault(key, value)
+        fields.setdefault("author_type", "user")
+        fields.setdefault("initiated_by_user_id", fields.get("author_id"))
+        fields.setdefault("initiated_by_username", fields.get("author_username"))
+    elif fields.get("author_type") == "system":
+        actor_fields = attributed_actor_message_fields(
+            task,
+            reply_to_message_id=fields.get("reply_to_message_id"),
+            channel=channel,
+            step_key=fields.get("step_key"),
+        )
+        for key in ("initiated_by_user_id", "initiated_by_username"):
+            if actor_fields.get(key):
+                fields.setdefault(key, actor_fields[key])
+        fields.update(
+            author_id="system",
+            author_username="system",
+            author_name="系统",
+            author_type="system",
+            author_device_id=None,
+            author_device_name=None,
+        )
     elif fields.get("role") == "assistant":
         actor_fields = attributed_actor_message_fields(
             task,
@@ -194,6 +251,13 @@ def create_task_message(*, task: Task, channel: str, **fields) -> Message:
         )
         for key, value in actor_fields.items():
             fields.setdefault(key, value)
+        engine = str(fields.get("engine") or "assistant")
+        fields.update(
+            author_id=engine,
+            author_username=engine,
+            author_name=engine,
+            author_type="assistant",
+        )
     return Message.create(
         task=task,
         channel=channel,

@@ -20,6 +20,20 @@
 
 ## 0. 基类层次（先读）
 
+### 会话系统指令追加
+
+`AcpEngineBase.spawn_with_retry` 和 `spawn_coordinator_with_retry` 接受独立的可选 `system_prompt`。这是 WorkStep 的基类扩展，不是 ACP `session/prompt` 的协议字段；语义是补充会话角色和来源背景，保留引擎内置指令。每轮调用可提供同一份配置，由适配器管理创建、恢复和重新创建会话时的传输，不能把配置重复追加成历史消息。`/compact` 不接收该指令。
+
+原生适配器声明 `SYSTEM_PROMPT_MODE`：Codex SDK 使用 `developer`，映射为线程的 `developer_instructions`，保留 `base_instructions`；Claude/Qoder SDK 使用 `system`，分别通过 `claude_code` / `qodercli` 预设的 `append` 追加；Pydantic AI 使用 `system`，通过持久化的 `SystemPromptPart` 与现有 harness 能力指令共同生效，固定规则随会话历史恢复；相同规则不重新注入，变更／清空只替换 WorkStep 自己的系统消息，历史缺失时重新初始化。未声明的引擎默认为 `body`，基类只在新会话或无恢复能力时前置正文，恢复与恢复重试不重复前置。
+
+`agent_assistants/chat_session.py` 将项目设置中的「全局提示词」（`project_settings.chat_system_prompt`，不是跨项目的系统设置）作为独立 `system_prompt` 提供；正文仅保留用户输入及必要交接/重建背景，空配置不补默认角色。普通对话使用默认首次正文降级策略，固定规则不在恢复轮次重复插入；原生适配器按自身 system/developer 配置追加。
+
+`agent_assistants/channel_chat.py` 也选择该入口，独立提供角色、项目配置、渠道会话背景和当前发送者。它通过 `system_prompt_each_turn=True` 要求正文降级引擎在恢复会话时也传递最新背景。
+
+`capture_prompt_input=True` 在统一入口的降级与重试选择后捕获本轮实际适配器输入，不改变首次／每轮降级策略；参数由统一入口消费，不传给 SDK。`agent_assistants/prompt_input.py` 只展示实传独立指令、正文及明确传入的历史／图片；没有独立指令时不显示该区块。持久化助手复用原字段保存格式化输入：普通／渠道对话为 `chat_messages.prompt`，流程为 `gen_sessions.messages_json` 内消息的 `prompt`，协调与经验归档为 `messages.prompt_json` 的 `prompt`。用户正文仍独立保存在 `content`；内部 `prompt_input` 不进入过程日志。历史读取优先使用对应当轮记录，不使用当前配置重新组合；重启或缓存清除后已存输入仍可查看，未捕获的历史不补造。固定角色／输出规则通过独立指令提供，变化画布／草稿／任务状态作为本轮正文背景；协调恢复轮次刷新任务快照，权限和角色规则由协调助手上下文层统一提供，捕获路径不再由 ACP 追加第二套 guard。任务创建／定时生成等创建态会话仍默认仅内存；步骤／审核的固定角色与结果格式也通过此入口传入，任务要求留在正文；`messages.prompt_json` 和 `review_runs.prompt_json` 中 `prompt` 保存实际查看记录、`input_prompt` 保存恢复用原始输入，恢复读取兼容仅有 `prompt` 的旧记录。回归见 `tests/test_prompt_input.py`、`tests/test_engine_system_prompt.py`、`tests/test_chat_session.py`（真实 API、恢复后的实际输入、配置修改不改变历史、慢读取健康检查）、`tests/test_channel_bots.py`、`tests/test_workflow_gen.py`、`tests/test_coordinator.py`、`tests/test_review_gate.py`（执行与审核的原生／正文降级、同会话重跑、检查点恢复、慢输入保存健康检查）和 `tests/test_pydantic_ai_harness.py`。
+
+缓存取决于实际发送的稳定前缀、模型及服务商策略，独立 system/developer 指令不会自动关闭缓存。固定规则保持内容和顺序稳定；规则修改或每轮变化的背景若位于历史前，会缩短可复用前缀。WorkStep 不在这次迁移中配置缓存断点，也不承诺缓存命中率。参考 [OpenAI 提示词缓存](https://developers.openai.com/api/docs/guides/prompt-caching)、[Claude 提示词缓存](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)。
+
 **所有引擎都必须继承 `AcpEngineBase`**；`AcpEngineBase` 继承 `BaseLLMEngine`。上层调用（`task_runner` / `coordinator` / `assistant_base` / API）只依赖 `AcpEngineBase`，不感知引擎类型。
 
 接入任何 CLI、HTTP Agent 或 Agent SDK，本质上只做两件事：
@@ -54,6 +68,12 @@ AcpEngineBase(BaseLLMEngine)              # 通用 ACP 协议调用（所有引�
 - **ACP 原生引擎**（如 Hermes）：声明 `COMMAND` / `ENGINE_ID`，`get_command()` 非空（`_is_acp_native = True`），基类直接提供全部协议实现（ACP 客户端、会话、审批、elicitation）。
 - **非 ACP 原生传输适配器**（Codex / CodexSDK / Claude Code / ClaudeAgentSDK / QoderSDK / DeepSeek Harness / PydanticAI / OpenClaw）：继承 `AcpEngineBase`，用下游传输覆盖 `spawn`，并**实现我方 ACP 接口的等价会话 / 审批语义**（无原生入口的如实声明能力并安全降级），事件统一产出 ACP 词汇。
 - 新引擎 = 新增一个文件：继承 `AcpEngineBase`，实现 `BaseLLMEngine` 的抽象自定义函数，声明 `acp_events`，按第 2、3 节覆盖协议方法。
+
+> **禁动 base 规则：为接入单个 LLM 引擎，不得修改 `engines/core/` 下的基类
+> （`base.py` / `acp_base.py` 等共享协议实现）。引擎侧的服务端 quirk、恢复
+> 失败形态、历史重播、事件形状差异，一律在引擎自己的适配器文件内部兼容
+> （覆写 `spawn` / 事件映射 / 能力声明，或在引擎内加兜底与重试），并附
+> 引擎级回归测试。基类只承载全引擎通用的协议语义。
 
 > **统一接口不等于底层必须使用 ACP 传输。** `AcpEngineBase` 是 WorkStep
 > 面向上层的通用协议接口和事件语义；CLI、HTTP、厂商 SDK、JSONL、JSON-RPC
@@ -200,7 +220,7 @@ SDK 可以封装子进程、JSONL、JSON-RPC 或进程内消息流；这些都�
 
 ### 3.5 `acp_events` 能力声明
 
-**声明 = 实际**：每个引擎声明自己实际产出的 ACP 词汇事件集合（`frozenset[str]`），有原生等价就映射，无来源不发、不合成默认值。契约测试（`tests/test_engine_base_hierarchy.py`）保证：
+**声明 = 实际**：每个引擎声明自己实际产出的 ACP 词汇事件集合（`frozenset[str]`），有原生等价就映射，无来源不发、不合成默认值。**能力覆盖原则**：引擎原生支持某类语义（子代理/后台任务、计划、思考、审批等），就必须映射为对应的 ACP/编排事件，不得降级为普通 `tool_call` 或丢弃；`acp_events` 缺席某类型即承诺“本引擎无此来源”。新引擎接入时先列出下游原生能力清单，对照 `ACP_EVENTS` 逐项打勾。契约测试（`tests/test_engine_base_hierarchy.py`）保证：
 
 - `acp_events ⊆ ACP_EVENTS`（`engines/core/acp_base.py` 定义完整词汇，25 种）。
 - ACP 原生引擎继承即声明全集。
@@ -260,7 +280,7 @@ SDK 与 CLI 引擎不在项目内预装依赖，而是在设置页检测到未�
 
 ### 4.5 `spawn_coordinator` / `coordinator_guard`
 
-协调 Agent 使用只读 turn：基类 `spawn_coordinator` 自动加读保护指令并透传 `spawn`；支持 `message_history`（Pydantic AI）的引擎通过 `report_engine_state` 上报可序列化状态。一般无需覆盖。
+协调助手通过 `spawn_coordinator_with_retry` 提供自己的角色、权限与提案规则，ACP 捕获路径只做适配与传输，不追加规范。旧的未启用输入捕获的 `spawn_coordinator` 调用仍保留 guard 兼容。Pydantic AI 的历史及系统消息由 Harness store 恢复，不由宿主回传 `message_history`。
 
 WorkStep 内部工具（`workstep_call`）不是引擎层能力：由助手在
 `AssistantConfig.workstep_tools` 声明是否加载，引擎仅按 `workstep_tools`
@@ -402,7 +422,7 @@ WorkStep 因此定义一个 SDK 可独立启动的 `standard` preset，基于官
 | `live_message` | `message_id`、`status` | 执行中补充消息的送达状态（`delivered` / `error`）。 |
 | `interaction_request` | `interaction_id`、`method` | 暂停执行并请求用户确认或输入；载荷采用 ACP `session/request_permission` 或 `elicitation/create` 形状。 |
 | `interaction_response` | `interaction_id`、`method`、`response` | 用户响应已送回引擎；与请求一起持久化，供消息历史恢复交互状态。 |
-| `subagent` | `task_id`、`status`、`stage` | 子代理 / 后台任务生命周期（Claude/Qoder SDK `task_started`/`task_progress`/`task_updated`/`task_notification`）；`status` 为语义状态（`running`/`paused`/`completed`/`failed`/`stopped`/`killed`），`stage` 保留原始帧类型，可选 `description`、`summary`、`usage`、`tool_use_id`。同时并入 `plan` 快照条目。 |
+| `subagent` | `task_id`、`status`、`stage` | 子代理 / 后台任务生命周期（Claude/Qoder SDK `task_started`/`task_progress`/`task_updated`/`task_notification`）；`status` 为语义状态（`running`/`paused`/`completed`/`failed`/`stopped`/`killed`），`stage` 保留原始帧类型，可选 `description`、`summary`、`usage`、`tool_use_id`。独立于 `plan` 展示。 |
 | `compacted` | `summary`（可选） | 引擎上下文已自动压缩（Claude `compacted`/`compact_boundary`、Codex `thread/compacted`、Qoder `compact_boundary`、Pydantic AI harness `TieredCompaction` 接收）；`summary` 为压缩摘要。 |
 | `engine_state` | `state` | 进程内引擎可序列化的恢复状态；仅支持该能力的引擎产出（Pydantic AI `report_engine_state`）。 |
 | `error` | `message` | 可展示的错误；可附加 `detail`、`stderr`。 |
@@ -415,8 +435,9 @@ WorkStep 因此定义一个 SDK 可独立启动的 `standard` preset，基于官
 - 下游发起工具调用时，必须在工具开始执行前映射为 `tool_call`；参数分片可额外映射为 `tool_call_update(status=in_progress, raw_input=...)`。
 - 适配器或 Agent 实际执行工具时，必须在执行结束后映射为 `tool_call_update`（`completed` / `failed`），并保持相同的 `tool_call_id`。
 - 引擎发布执行计划时必须映射为 `plan`；这是当前 LLM run 的展示状态，不得修改 WorkStep 工作流 DAG。
-- 引擎产生子代理 / 后台任务生命周期事件（如 Claude/Qoder 的 `task_started` / `task_progress` / `task_updated` / `task_notification`）时必须映射为 `subagent`，并同步进 `plan` 快照（`NativePlanTracker` 自动消费，适配器无需自建快照逻辑）。
-- 协议没有独立子代理事件（ACP、Codex）时，委托类工具调用（`Task` / `spawnAgent` / input 含 `prompt` 且非命令类）由 `NativePlanTracker` 统一兜底并入 `plan`：`tool_call` 时置 `pending`，对应 `tool_call_update` 时置 `completed`；适配器只需如实映射 `tool_call` / `tool_call_update`，不要伪造 `subagent` 事件。
+- 引擎产生子代理 / 后台任务生命周期事件（如 Claude/Qoder 的 `task_started` / `task_progress` / `task_updated` / `task_notification`）时必须映射为 `subagent`，不得因子代理状态生成 `plan`。
+- 协议没有独立子代理事件、且无任何子代理语义来源时，委托类工具调用（`Task` / `spawnAgent` 等）保持为 `tool_call` / `tool_call_update`；不要将委托提示词当作计划条目，也不要伪造 `subagent` 事件。Codex 的原生协作快照可以映射为 `subagent`。
+- 有委托语义来源（`Task` / `task` / `spawnAgent` / `background` 工具、child session、可恢复 `task_id` 句柄）时必须提升为 `subagent`（原工具事件嵌 `data.event`，`stage` 保留原始帧，`status` 用语义状态）；如 OpenCode 的 `task` 工具创建 child session 即属此类，不得降级为普通 `tool_call`。
 - Provider 没有返回思考内容，或当前模式没有工具能力时，可以不产生对应事件，但不得伪造思考、工具调用或工具结果。
 - 只提供最终完整消息的协议也必须完成相同映射，只是无法承诺增量实时性；引擎说明和测试中必须明确该降级（如 OpenClaw 一次性信封只产出单个 `agent_message_chunk`）。
 
@@ -932,3 +953,26 @@ corepack yarn build
 - [ ] 已加入 Registry、配置和前端元数据。
 - [ ] 设置页连接测试通过。
 - [ ] 单元测试、ACP 契约测试、三步骤场景的工作流测试和前端构建通过。
+
+Pydantic AI 的 `_prepare_prompt_input` 在输入捕获前异步检查持久化历史，只有匹配的 WorkStep 系统消息存在时才省略新注入；不只依赖 Session ID。`harness_runtime.py::_with_session_system_prompt` 用独立来源标记保存／替换规则，系统消息位于历史前部滑动窗口通过 WorkStep 包装保留该消息，摘要压缩继续保留系统消息。渠道的 `system_prompt_each_turn` 仍显式刷新来源背景，但不累积多份消息。查看记录仍显示本次传给引擎的新输入参数，不补造恢复历史；模型请求仍包含恢复的系统规则。测试见 `test_pydantic_ai_harness.py`（真实 SQLite 重启恢复、规则更新／清空、压缩、模型输入和慢读取健康检查）。
+
+
+### 原生系统指令的恢复与重复设置
+
+ACP 统一接受固定配置，是否省略本轮设置由引擎依据原生持久化状态判断，不能仅根据 `SYSTEM_PROMPT_MODE` 或 Session ID 判断。
+
+| 引擎 | 同会话固定规则的处理 |
+|---|---|
+| Pydantic AI | 从 Harness 的系统消息恢复；规则相同不新增，变更／清空替换自己的消息 |
+| Codex SDK | 从原生 rollout 最新 `turn_context.developer_instructions` 验证规则及自定义 developer 配置；匹配才省略线程覆盖。旧版本不保存该字段、记录不完整、工作目录不匹配或历史丢失时继续设置 |
+| Claude Agent SDK | 当前适配器每轮创建新进程；保持 preset append，不凭 ID 省略。SDK 未设置 system_prompt 时可生成空 `--system-prompt`；较新 Claude 的 snapshot 是版本相关能力，尚未在本适配器接入 |
+| Qoder SDK | 每轮创建新进程，当前接口未验证系统配置随 resume 恢复；继续设置 preset append，不能将聊天历史恢复视作系统配置恢复 |
+
+Codex 的恢复检查在 `codex_sdk.py::_prepare_prompt_input` 中、输入捕获之前完成，所有配置／原生日志读取均在线程中。确认恢复时内部空字符串标记表示不重新覆盖 developer 配置，实际 SDK 的 `thread_resume` 不携带新的 `developer_instructions`，`config` 中也不携带旧自定义覆盖；原生历史继续提供规则。变更、首次和 `system_prompt_each_turn=True` 仍传递独立规则。此优化不另建数据库字段，不写入原生会话文件。
+
+Claude/Qoder 的 append 是本次进程启动配置，不是向历史追加多条系统消息。实际设置时，「查看提示词」继续显示它；不得为了让查看变短而隐藏实际参数。渠道动态来源仍按每轮策略传递。回归见 `test_engine_system_prompt.py`，覆盖实际 SDK 参数、首次／恢复／重建、自定义规则合并、原生记录缺失／不完整、规则变更、每轮策略和慢读取健康检查。
+
+依据：[Claude 系统提示词及 snapshot 版本语义](https://code.claude.com/docs/en/agent-sdk/modifying-system-prompts#change-the-prompt-of-an-existing-session)、[Qoder 会话恢复](https://docs.qoder.com/cli/sdk/session-control)、[Codex 原生会话与配置](https://github.com/openai/codex/blob/main/codex-rs/core/src/session/turn_context.rs)。
+
+
+任务 Git 工作区的自动背景在独立系统注入模式下，固定规则与任务路径由 `assemble_step_system_prompt` 提供；正文的 `Task Git workspace` 只列已挂载仓库，避免同轮重复路径。`assemble_retry_prompt(..., separate_instructions=True)` 只比较仓库变动，兼容旧 `input_prompt` 仍带路径的快照，不把格式迁移误判为工作区变化。旧无独立系统入口的调用保持完整正文路径。查看仍记录实际输入，已有 DB 提示词不改写。

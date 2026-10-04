@@ -14,8 +14,10 @@ test('workflow-domain source files and exported symbols use Step names', () => {
   ]
   for (const file of expectedFiles) assert.equal(existsSync(file), true, file)
 
-  const client = readFileSync('src/api/client.ts', 'utf8')
-  assert.match(client, /interface StatisticsStepRow/)
-  assert.match(client, /interface StepExecutionConfig/)
-  assert.doesNotMatch(client, /interface (?:StatisticsStageRow|StageExecutionConfig)/)
+  const task = readFileSync('src/api/task.ts', 'utf8')
+  const statistics = readFileSync('src/api/statistics.ts', 'utf8')
+  assert.match(statistics, /interface StatisticsStepRow/)
+  assert.match(task, /interface StepExecutionConfig/)
+  assert.doesNotMatch(statistics, /interface StatisticsStageRow/)
+  assert.doesNotMatch(task, /interface StageExecutionConfig/)
 })

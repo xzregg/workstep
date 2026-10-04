@@ -5,7 +5,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import MarkdownMessage from '../src/components/MarkdownMessage.tsx'
 import { I18nProvider } from '../src/i18n/index.tsx'
-import { hasActiveSelectionWithin } from '../src/pages/taskDetailChat.ts'
+import { hasActiveSelectionWithin } from '../src/utils/conversationScroll.ts'
 
 test('streaming markdown keeps the selected DOM text stable until selection ends', async () => {
   const host = document.body.appendChild(document.createElement('div'))

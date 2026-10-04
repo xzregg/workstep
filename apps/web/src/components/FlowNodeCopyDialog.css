@@ -1,0 +1,23 @@
+.flow-node-copy-overlay { z-index: 400; }
+.flow-node-copy-dialog { width: min(780px, calc(100vw - 32px)); height: min(66vh, 620px); }
+.flow-node-copy-body { padding: 8px 16px 16px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.flow-node-copy-notice, .flow-node-copy-placeholder { padding: 12px 4px; font-size: calc(13px * var(--font-scale)); color: var(--meta); }
+.flow-node-copy-loading, .flow-node-copy-notice:has(.task-status-spinner) { display: flex; align-items: center; gap: 6px; }
+.flow-node-copy-error { color: var(--danger); }
+.flow-node-copy-hint { font-size: calc(12px * var(--font-scale)); color: var(--meta); margin-bottom: 6px; }
+.flow-node-copy-lanes { display: flex; gap: 10px; align-items: stretch; flex: 1; min-height: 0; overflow-x: auto; }
+.flow-node-copy-lane { flex: 1; min-width: 170px; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); overflow: hidden; }
+.flow-node-copy-steps { flex: 1.2; min-width: 205px; }
+.flow-node-copy-lane-heading { padding: 7px 10px; font-size: calc(12px * var(--font-scale)); font-weight: 600; color: var(--meta); border-bottom: 1px solid var(--border-soft); background: var(--bg); }
+.flow-node-copy-list { flex: 1; overflow-y: auto; min-height: 0; }
+.flow-node-copy-item { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; text-align: left; padding: 7px 10px; border: none; border-bottom: 1px solid var(--border-soft); background: transparent; color: var(--fg); cursor: pointer; font-family: var(--font-body); font-size: calc(13px * var(--font-scale)); }
+.flow-node-copy-item[aria-pressed="true"] { background: color-mix(in oklab, var(--accent), transparent 92%); }
+.flow-node-copy-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-node-copy-item-count { font-size: calc(11px * var(--font-scale)); color: var(--meta); flex-shrink: 0; }
+.flow-node-copy-color { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.flow-node-copy-step-details { display: block; font-size: calc(12px * var(--font-scale)); color: var(--meta); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 760px) {
+  .flow-node-copy-dialog { width: calc(100vw - 16px); height: min(86vh, 620px); }
+  .flow-node-copy-item { min-height: 44px; }
+}

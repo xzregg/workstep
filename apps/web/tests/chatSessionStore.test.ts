@@ -69,6 +69,21 @@ test('chat message store only accepts session_chat events', () => {
   assert.equal(session.messages[0].status, 'succeeded')
 })
 
+test('recovery replaces stale messages but preserves updates arriving during history fetch', () => {
+  useChatSessionStore.setState({ sessions: {} })
+  const store = useChatSessionStore.getState()
+  store.hydrateSession('recovery', [{ id: 'm', role: 'assistant', content: '旧正文', status: 'running' }])
+  const beforeRecovery = useChatSessionStore.getState().sessions.recovery.messages
+  store.hydrateSession('recovery', [{ id: 'm', role: 'assistant', content: '完整正文', status: 'succeeded' }], false, beforeRecovery)
+  assert.equal(useChatSessionStore.getState().sessions.recovery.messages[0].content, '完整正文')
+  assert.equal(useChatSessionStore.getState().sessions.recovery.running, false)
+
+  const beforeFetch = useChatSessionStore.getState().sessions.recovery.messages
+  store.handleWsEvent({ type: 'TEXT_MESSAGE_CHUNK', channel: 'session_chat', session_id: 'recovery', messageId: 'm', delta: '新的实时输出' })
+  store.hydrateSession('recovery', [{ id: 'm', role: 'assistant', content: '过时的快照', status: 'succeeded' }], false, beforeFetch)
+  assert.equal(useChatSessionStore.getState().sessions.recovery.messages[0].content, '完整正文新的实时输出')
+})
+
 test('chat session stays running when history or a stream chunk contains a running assistant message', () => {
   useChatSessionStore.setState({ sessions: {} })
   const store = useChatSessionStore.getState()
@@ -184,6 +199,59 @@ test('chat list store fetches projects concurrently without overwriting each oth
 
     assert.deepEqual(useChatListStore.getState().sessionsByProject.p1.map((session) => session.id), ['p1-s1'])
     assert.deepEqual(useChatListStore.getState().sessionsByProject.p2.map((session) => session.id), ['p2-s1'])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('channel refresh received during a list request fetches the latest session list', async () => {
+  useChatListStore.setState({ sessionsByProject: {}, listLoadingByProject: {} })
+  const originalFetch = globalThis.fetch
+  let resolveFirst: (value: Response) => void = () => {}
+  let calls = 0
+  globalThis.fetch = () => {
+    calls++
+    if (calls === 1) return new Promise<Response>((resolve) => { resolveFirst = resolve })
+    return Promise.resolve(new Response(JSON.stringify({ sessions: [
+      { ...summary('channel-1', '渠道对话', 2), source: 'channel' },
+    ] }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+  }
+  try {
+    const first = useChatListStore.getState().fetchSessions('p1')
+    useChatListStore.getState().refreshSessions('p1')
+    resolveFirst(new Response(JSON.stringify({ sessions: [] }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    }))
+    await first
+    for (let i = 0; i < 10 && useChatListStore.getState().listLoadingByProject.p1; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+    assert.equal(calls, 2)
+    assert.equal(useChatListStore.getState().sessionsByProject.p1[0].id, 'channel-1')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('channel refresh preserves sidebar selection', async () => {
+  useChatListStore.setState({
+    sessionsByProject: { p1: [summary('s1', '已选会话')] },
+    listLoadingByProject: {},
+    selectedIds: new Set(['s1']),
+    selectionProjectId: 'p1',
+    selectAnchor: 's1',
+  })
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(JSON.stringify({ sessions: [summary('s1', '已选会话')] }), {
+    status: 200, headers: { 'Content-Type': 'application/json' },
+  })
+  try {
+    useChatListStore.getState().refreshSessions('p1')
+    for (let i = 0; i < 10 && useChatListStore.getState().listLoadingByProject.p1; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+    assert.deepEqual([...useChatListStore.getState().selectedIds], ['s1'])
+    assert.equal(useChatListStore.getState().selectAnchor, 's1')
   } finally {
     globalThis.fetch = originalFetch
   }

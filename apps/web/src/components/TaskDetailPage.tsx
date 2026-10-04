@@ -1,5 +1,7 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useI18n } from '../i18n'
 import type { Project, TaskArtifact } from '../api/client'
+import type { GitWorkspaceBrowser } from './git/GitApiContext'
 import Button from './Button'
 import PromptViewerDialog from './PromptViewerDialog'
 import TaskDetailView, { type TaskDetailViewProps } from './TaskDetailView'
@@ -24,13 +26,17 @@ export interface TaskDetailReadCapabilities {
   loadMessageEvents: NonNullable<TaskDetailViewProps['onLoadMessageEvents']>
   openArtifact: TaskDetailViewProps['onOpenArtifact']
   loadExecutionReport: NonNullable<TaskDetailViewProps['executionReportLoader']>
+  browseGitWorkspace: GitWorkspaceBrowser
 }
 
 export interface TaskDetailGitCapability {
   api: GitApi
   projectId: string
   shared?: boolean
+  projectScoped?: boolean
   readOnly?: boolean
+  workspaceEditable?: boolean
+  allowedActions?: readonly string[]
 }
 
 export interface TaskDetailPageProps extends Omit<
@@ -68,9 +74,18 @@ export default function TaskDetailPage({
   ...viewProps
 }: TaskDetailPageProps) {
   const { t } = useI18n()
+  const { canEdit } = useGatewayProjectPermissions(viewProps.projectId)
+  if (!canEdit) {
+    viewProps = { ...viewProps, chatEnabled: false, descriptionEditable: false, reviewConfigEditable: false,
+      onSend: undefined, onSendPrompt: undefined, onStop: undefined, onStopStep: undefined,
+      onOpenPromptEditor: undefined, onRestartStepWithFreshSession: undefined,
+      onRetryFailedMessage: undefined, onSetFailedExecutionComplete: undefined,
+      onReviewAction: undefined, onA2uiAction: undefined, onInteractionRespond: undefined,
+      onProposalOverride: undefined }
+  }
 
   return (
-    <GitApiContext.Provider value={{ api: gitCapability?.api || gitApi, shared: !!gitCapability?.shared, readOnly: !!gitCapability?.readOnly }}>
+    <GitApiContext.Provider value={{ api: gitCapability?.api || gitApi, shared: !!gitCapability?.shared, projectScoped: gitCapability?.projectScoped, workspaceEditable: gitCapability?.workspaceEditable, allowedActions: gitCapability?.allowedActions, readOnly: !!gitCapability?.readOnly, browseWorkspace: readCapabilities.browseGitWorkspace }}>
     <MarkdownAssetUrlProvider resolver={readCapabilities.resolveAssetUrl} filePreview={readCapabilities.filePreview}>
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <TaskDetailView

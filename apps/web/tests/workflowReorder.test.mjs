@@ -4,10 +4,10 @@ import test from 'node:test'
 
 const source = await readFile(new URL('../src/components/Layout.tsx', import.meta.url), 'utf8')
 const storeSource = await readFile(new URL('../src/stores/projectStore.ts', import.meta.url), 'utf8')
-const clientSource = await readFile(new URL('../src/api/client.ts', import.meta.url), 'utf8')
+const clientSource = await readFile(new URL('../src/api/project.ts', import.meta.url), 'utf8')
 
 test('workflow rows support drag-and-drop reordering', () => {
-  assert.match(source, /draggable=\{renameWfId !== wf\.id\}/)
+  assert.match(source, /draggable=\{canEdit && renameWfId !== wf\.id\}/)
   assert.match(source, /onDragStart=\{/)
   assert.match(source, /onDragOver=\{/)
   assert.match(source, /onDrop=\{/)

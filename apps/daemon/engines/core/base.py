@@ -280,8 +280,16 @@ async def install_python_package(
     success_hint = "请重启 daemon 后重新扫描引擎" if upgrade else "请重新扫描引擎"
     package_dir = os.environ.get("WORKSTEP_ENGINE_PACKAGE_DIR", "").strip()
     if package_dir:
-        os.makedirs(package_dir, exist_ok=True)
-        cmd = [sys.executable, "-m", "pip", "install"]
+        await asyncio.to_thread(os.makedirs, package_dir, exist_ok=True)
+        if await asyncio.to_thread(_has_pip):
+            cmd = [sys.executable, "-m", "pip", "install"]
+        elif await asyncio.to_thread(shutil.which, "uv"):
+            cmd = ["uv", "pip", "install"]
+        else:
+            return EngineInstallResult(
+                success=False,
+                message="未找到 uv 或 pip，无法安装 Python SDK 包",
+            )
         if upgrade:
             cmd.append("--upgrade")
         cmd.extend(["--target", package_dir, package])
@@ -291,7 +299,7 @@ async def install_python_package(
             action=action,
             success_hint=success_hint,
         )
-    if shutil.which("uv"):
+    if await asyncio.to_thread(shutil.which, "uv"):
         cmd = ["uv", "pip", "install"]
         if upgrade:
             cmd.append("--upgrade")
@@ -302,7 +310,7 @@ async def install_python_package(
             action=action,
             success_hint=success_hint,
         )
-    if _has_pip():
+    if await asyncio.to_thread(_has_pip):
         cmd = [sys.executable, "-m", "pip", "install"]
         if upgrade:
             cmd.append("--upgrade")
@@ -457,6 +465,10 @@ class BaseLLMEngine(ABC):
         """
         return ProviderRuntimeConfig(model=model)
 
+    def require_native_credentials_allowed(self) -> None:
+        if getattr(self.provider_config_store(), 'managed_gateway_id', None):
+            raise ValueError('受管模式不支持使用该引擎的本机原生凭据')
+
     def resolve_provider_runtime(
         self,
         provider_id: str | None = None,
@@ -468,6 +480,8 @@ class BaseLLMEngine(ABC):
         if not model:
             model = config_store.get_engine_default_model(self.ENGINE_ID) or None
         if not selected:
+            if getattr(config_store, "managed_gateway_id", None):
+                raise ValueError("受管模式需要当前用户获授权的供应商")
             if self.provider_required():
                 raise ValueError("该引擎需要先选择供应商")
             return self.build_native_runtime(model)
@@ -478,12 +492,21 @@ class BaseLLMEngine(ABC):
             raise ValueError("所选供应商已停用")
         if not self.supports_provider(provider):
             raise ValueError("所选供应商协议与该引擎不兼容")
+        if provider.get("managed") and (
+            not model or model not in provider.get("models", [])
+        ):
+            raise ValueError("所选模型未获平台供应商授权")
         protocol = self.pick_protocol(provider)
         return self.build_provider_runtime(provider, model, protocol)
 
     def resolve_provider_id(self, provider_id: str | None = None) -> str:
         """Resolve an explicit provider override against the engine default."""
         selected = str(provider_id or "").strip()
+        if not selected:
+            config_store = self.provider_config_store()
+            get_managed_default = getattr(config_store, "get_managed_default_provider", None)
+            if callable(get_managed_default):
+                selected = str(get_managed_default() or "").strip()
         if not selected:
             selected = str(
                 self.get_config_values().get("provider_id") or ""
@@ -546,10 +569,14 @@ class BaseLLMEngine(ABC):
 
     def get_full_config_values(self) -> dict[str, Any]:
         values = dict(self.get_config_values())
-        if self.supported_provider_protocols() and "provider_id" not in values:
+        if self.supported_provider_protocols():
             config_store = self.provider_config_store()
-
-            values["provider_id"] = config_store.get_engine_provider(self.ENGINE_ID)
+            get_managed_default = getattr(config_store, "get_managed_default_provider", None)
+            managed_default = get_managed_default() if callable(get_managed_default) else ""
+            if managed_default:
+                values["provider_id"] = managed_default
+            elif "provider_id" not in values:
+                values["provider_id"] = config_store.get_engine_provider(self.ENGINE_ID)
         return values
 
     def clear_provider_default_model(self) -> None:
@@ -878,54 +905,6 @@ class BaseLLMEngine(ABC):
     @property
     def supports_goal_mode(self) -> bool:
         """Whether ``spawn`` implements native goal lifecycle commands."""
-        return False
-
-
-    @property
-    def capabilities(self) -> EngineCapabilities:
-        return EngineCapabilities(
-            supports_coordinator=self.is_configured(),
-            supports_resume=self.supports_resume,
-            supports_tool_disable=True,
-            supports_native_schema=False,
-            supports_live_step_message=self.supports_live_step_message,
-            supports_sessions=self.supports_sessions,
-            supports_session_fork=self.supports_session_fork,
-            supports_tool_approval=self.supports_tool_approval,
-            supports_vision=self.supports_vision,
-            supports_workstep_tools=self.supports_workstep_tools,
-            supports_thinking_effort=self.supports_thinking_effort,
-            supports_plan_mode=self.supports_plan_mode,
-            supports_goal_mode=self.supports_goal_mode,
-        )
-
-    @property
-    def supports_session_fork(self) -> bool:
-        """Whether the engine can create an independent native session fork."""
-        return False
-
-
-    @property
-    def supports_workstep_tools(self) -> bool:
-        """Whether this engine can host the native ``workstep_call`` tool.
-
-        This is a transport mechanism only: whether an assistant loads the
-        WorkStep internal tools is decided by assistant config, not here.
-        """
-        return False
-
-
-    @property
-    def supports_vision(self) -> bool:
-        """Whether the engine can accept image content for multimodal models."""
-        return False
-
-        return False
-
-
-    @property
-    def supports_thinking_effort(self) -> bool:
-        """Whether ``spawn`` accepts a per-turn thinking effort override."""
         return False
 
 

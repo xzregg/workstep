@@ -1,3 +1,4 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useCompactLayout } from '../hooks/useCompactLayout'
@@ -7,12 +8,15 @@ import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
 import Icon from './Icon'
 import ProjectDirectoryBrowser from './ProjectDirectoryBrowser'
+import type { DirectoryBrowseResult } from '../api/client'
 
 interface ProjectDirectoryBrowserDialogProps {
   projectId: string
   title: string
   rootPath?: string
   displayPath?: string
+  browseDirectory?: (path: string, includeHidden: boolean) => Promise<DirectoryBrowseResult>
+  readOnly?: boolean
   initialFilePath?: string
   onSelectFile?: (path: string) => void
   headerActions?: ReactNode
@@ -66,12 +70,16 @@ export default function ProjectDirectoryBrowserDialog({
   title,
   rootPath,
   displayPath,
+  browseDirectory,
+  readOnly: requestedReadOnly = false,
   initialFilePath,
   onSelectFile,
   headerActions,
   onClose,
 }: ProjectDirectoryBrowserDialogProps) {
   const { t } = useI18n()
+  const { canEdit } = useGatewayProjectPermissions(projectId)
+  const readOnly = requestedReadOnly || !canEdit
   const dialogRef = useRef<HTMLElement>(null)
   const resizeCleanupRef = useRef<(() => void) | null>(null)
   const [bounds, setBounds] = useState<DialogBounds | null>(null)
@@ -233,6 +241,7 @@ export default function ProjectDirectoryBrowserDialog({
         <div className="project-directory-dialog-body">
           <ProjectDirectoryBrowser
             projectId={projectId} rootPath={rootPath} initialFilePath={initialFilePath}
+            browseDirectory={browseDirectory} readOnly={readOnly}
             onSelectedFileChange={setSelectedFile} onDirtyChange={setDirty}
           />
         </div>

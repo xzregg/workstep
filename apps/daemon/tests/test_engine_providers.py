@@ -106,9 +106,7 @@ def test_engine_protocol_declarations_are_adapter_owned():
     }
     assert CodexEngine.supported_provider_protocols() == {"openai_responses"}
     assert CodexSDKEngine.supported_provider_protocols() == {"openai_responses"}
-    assert HermesEngine.supported_provider_protocols() == {
-        "openai_chat_completions"
-    }
+    assert HermesEngine.supported_provider_protocols() == set()
     assert PydanticAIEngine.supported_provider_protocols() == {
         "anthropic_messages",
         "openai_responses",
@@ -374,28 +372,49 @@ def test_multi_protocol_provider_uses_each_engines_own_base_url(provider_store):
     codex = CodexEngine().resolve_provider_runtime(
         provider_id="multi", model="gpt-test"
     )
-    hermes = HermesEngine().resolve_provider_runtime(
-        provider_id="multi", model="chat-test"
-    )
     claude = ClaudeCodeEngine().resolve_provider_runtime(
         provider_id="multi", model="claude-test"
     )
 
     assert 'model_providers.workstep.base_url="https://responses.example.com/api/v2"' in codex.engine_config
-    assert hermes.env["OPENAI_BASE_URL"] == "https://chat.example.com/root"
     assert claude.env["ANTHROPIC_BASE_URL"] == "https://anthropic.example.com/proxy/v1"
 
 
-def test_hermes_provider_runtime_uses_openai_compatible_environment(provider_store):
+def test_hermes_ignores_workstep_provider_bindings(provider_store, tmp_path, monkeypatch):
+    """Hermes 不消费 WorkStep 供应商：选择器隐藏，绑定一律忽略走 native。
+
+    显式 provider_id 不再解析（旧契约已废弃），凭据只镜像 Hermes 自身
+    默认供应商配置。
+    """
     provider_store.save_provider(_provider("hermes", "openai_chat_completions"))
+
+    assert HermesEngine.supported_provider_protocols() == set()
+    assert not HermesEngine().supports_provider(
+        _provider("hermes", "openai_chat_completions")
+    )
+
+    home = tmp_path / "home"
+    (home / ".hermes").mkdir(parents=True)
+    (home / ".hermes" / "config.yaml").write_text(
+        "model:\n"
+        "  provider: custom:teamplan\n"
+        "  default: qwen3.7-plus\n"
+        "custom_providers:\n"
+        "  - name: teamplan\n"
+        "    base_url: https://teamplan.example.com/v1\n"
+        "    api_key: secret-teamplan\n"
+        "    model: qwen3.7-plus\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
 
     runtime = HermesEngine().resolve_provider_runtime(
         provider_id="hermes", model="qwen-custom"
     )
-
+    assert runtime.provider_id == ""
     assert runtime.env == {
-        "OPENAI_BASE_URL": "https://hermes.example.com/v1",
-        "OPENAI_API_KEY": "secret-hermes",
+        "OPENAI_BASE_URL": "https://teamplan.example.com/v1",
+        "OPENAI_API_KEY": "secret-teamplan",
     }
 
 
@@ -530,6 +549,7 @@ class _FakeProcess:
 async def test_codex_spawn_applies_bound_provider_to_command_and_child_env(
     provider_store,
     monkeypatch,
+    tmp_path,
 ):
     provider_store.save_provider(_provider("responses", "openai_responses"))
     provider_store.set_engine_provider("codex", "responses")
@@ -546,7 +566,7 @@ async def test_codex_spawn_applies_bound_provider_to_command_and_child_env(
     events = [
         event
         async for event in CodexEngine().spawn(
-            prompt="hello", cwd="/tmp", model="gpt-custom"
+            prompt="hello", cwd=str(tmp_path), model="gpt-custom"
         )
     ]
 

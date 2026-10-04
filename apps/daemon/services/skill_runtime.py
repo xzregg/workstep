@@ -223,12 +223,6 @@ def _write_text_if_changed(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def _copy_if_size_changed(source: Path, target: Path) -> None:
-    if target.is_file() and target.stat().st_size == source.stat().st_size:
-        return
-    shutil.copy2(source, target)
-
-
 def prepare_claude_plugin(selection: ProjectSkillSelection) -> tuple[Path, list[str]]:
     plugin = selection.project_root / ".workstep" / "runtime" / "claude-plugin"
     sources = [
@@ -261,55 +255,6 @@ def prepare_qoder_plugin(selection: ProjectSkillSelection) -> tuple[Path, list[s
         json.dumps({"name": "workstep", "version": "1.0.0"}, indent=2) + "\n",
     )
     return plugin, [skill.name for skill in selection.enabled]
-
-
-def prepare_hermes_home(
-    selection: ProjectSkillSelection,
-    project_id: str,
-    *,
-    source_home: Path | None = None,
-    runtime_root: Path | None = None,
-) -> Path:
-    runtime_root = runtime_root or (Path.home() / ".workstep" / "runtime" / "skills" / "hermes")
-    home = runtime_root / project_id
-    sources = [
-        (f"skills/{skill.name}", source)
-        for skill in selection.enabled
-        if (source := _projection_source(skill))
-    ]
-    _replace_tree_if_sizes_changed(
-        sources, home, ignored_roots={"auth.json", "config.yaml"}
-    )
-    home.chmod(0o700)
-    source_home = source_home or (Path.home() / ".hermes")
-    auth = source_home / "auth.json"
-    if auth.is_file():
-        _copy_if_size_changed(auth, home / "auth.json")
-        (home / "auth.json").chmod(0o600)
-    config = source_home / "config.yaml"
-    if config.is_file():
-        try:
-            import yaml
-
-            payload = yaml.safe_load(config.read_text(encoding="utf-8")) or {}
-            if not isinstance(payload, dict):
-                payload = {}
-            skill_config = payload.get("skills")
-            if not isinstance(skill_config, dict):
-                skill_config = {}
-            skill_config["external_dirs"] = []
-            payload["skills"] = skill_config
-            derived = home / "config.yaml"
-            _write_text_if_changed(
-                derived,
-                yaml.safe_dump(payload, allow_unicode=True, sort_keys=False),
-            )
-            derived.chmod(0o600)
-        except (OSError, ValueError, TypeError):
-            # Authentication remains available, but a malformed user config is
-            # never copied into the isolated runtime.
-            pass
-    return home
 
 
 def write_openclaw_config(selection: ProjectSkillSelection) -> Path:
@@ -349,4 +294,26 @@ def prepare_deepseek_composition(
     if marker not in text:
         raise ValueError("DeepSeek Harness composition lacks agent-spine config seam")
     _write_text_if_changed(target, text.replace(marker, replacement, 1))
+    return target
+
+
+def prepare_deepseek_patch(
+    selection: ProjectSkillSelection, base_patch: Path
+) -> Path:
+    """Derive a project-local Cordis patch for the ``sdk`` profile (SDK >= 0.1.5).
+
+    The new-generation runtime no longer accepts a full composition file
+    (``DSH_CORDIS_CONFIG`` was removed); WorkStep instead layers a patch list
+    above the profile's base tree, overriding the ``skill-filesystem`` entry
+    so the harness only loads WorkStep-controlled project skills.
+    """
+    runtime = selection.project_root / ".workstep" / "runtime" / "deepseek"
+    runtime.mkdir(parents=True, exist_ok=True)
+    target = runtime / "controlled-skills.workstep-patch.yml"
+    text = base_patch.read_text(encoding="utf-8")
+    marker = "<WORKSTEP_SKILL_DIRS>"
+    if marker not in text:
+        raise ValueError("DeepSeek Harness patch lacks skill dirs seam")
+    dirs = json.dumps(deepseek_skill_provider_config(selection)["customSkillDirs"][0])
+    _write_text_if_changed(target, text.replace(marker, dirs, 1))
     return target

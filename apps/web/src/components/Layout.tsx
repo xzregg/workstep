@@ -1,19 +1,24 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
+import SidebarConversationTabs from './SidebarConversationTabs'
+import ChatSessionSourceBadge from './ChatSessionSourceBadge'
 import { useVisualViewport } from '../hooks/useVisualViewport'
 import Icon from './Icon'
 import ResponsiveNavigation from './ResponsiveNavigation'
 import { BrandIcon } from './BrandIcon'
 import { useState, useEffect, useMemo, useRef, type PointerEvent as ReactPointerEvent } from 'react'
+import { useGatewaySessionStore } from '../stores/gatewaySessionStore'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { useProjectStore } from '../stores/projectStore'
 import { useI18n } from '../i18n'
-import { formatRelativeTime, formatConversationDateTime } from '../utils/datetime'
+import SessionRowActions from './SessionRowActions'
 import { useTaskStore } from '../stores/taskStore'
-import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
+import { useChatListStore } from '../stores/chatSessionStore'
 import { useSidebarActivityStore } from '../stores/sidebarActivityStore'
 import { useSidebarActivity } from '../hooks/useSidebarActivity'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { taskListPath } from '../hooks/useTaskRoute'
 import { useProjectRouteSelection } from '../hooks/useProjectRouteSelection'
+import { useManagedMode } from '../hooks/useManagedMode'
 import Button, { type ButtonProps } from './Button'
 import MarqueeText from './MarqueeText'
 import Input from './Input'
@@ -25,16 +30,17 @@ import ProjectShareDialog from './ProjectShareDialog'
 import WorkflowCreateDialog from './WorkflowCreateDialog'
 import SidebarStatusIndicator from './SidebarStatusIndicator'
 import { loadSidebarSectionState, saveSidebarSectionState } from '../utils/sidebarSectionState'
-import OnboardingChecklist from './OnboardingChecklist'
+import LayoutOnboardingActions from './LayoutOnboardingActions'
+import SidebarRenameField from './SidebarRenameField'
+import { SidebarActionItem, SidebarActionMenu } from './SidebarActionMenu'
 import { useOnboardingStore } from '../stores/onboardingStore'
-import { buildStarterWorkflow } from '../utils/onboarding'
 import { filterSidebarProject } from '../utils/sidebarSearch'
+import { useSidebarSessionActions } from '../hooks/useSidebarSessionActions'
 import {
   engineApi,
-  fetchEngineModels,
-  chatSessionApi,
   type Project,
 } from '../api/client'
+import './Layout.css'
 
 function SidebarAddButton(props: ButtonProps) {
   return (
@@ -44,56 +50,6 @@ function SidebarAddButton(props: ButtonProps) {
   )
 }
 
-const sidebarStyle: React.CSSProperties = {
-  width: 280, minWidth: 280,
-  background: 'var(--bg)',
-  borderRight: '1px solid var(--border-soft)',
-  display: 'flex', flexDirection: 'column',
-  overflow: 'hidden',
-}
-
-const sectionLabel: React.CSSProperties = {
-  padding: '14px 14px 6px',
-  fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600,
-  color: 'var(--muted)',
-  fontFamily: 'var(--font-mono)',
-  textTransform: 'uppercase' as const,
-  letterSpacing: '0.08em',
-  display: 'flex', alignItems: 'center',
-  justifyContent: 'space-between',
-}
-
-const nestedSectionLabel: React.CSSProperties = {
-  margin: '10px 12px 2px 28px',
-  fontSize: 'calc(14px * var(--font-scale))', fontWeight: 600,
-  color: 'var(--muted)',
-  fontFamily: 'var(--font-mono)',
-  textTransform: 'uppercase' as const,
-  letterSpacing: '0.08em',
-  display: 'flex', alignItems: 'center',
-  justifyContent: 'space-between',
-  paddingRight: 6,
-}
-
-const projectItemStyle = (active: boolean): React.CSSProperties => ({
-  display: 'flex', alignItems: 'center', gap: 10,
-  padding: '9px 12px', borderRadius: 10,
-  cursor: 'pointer', fontSize: 'calc(14px * var(--font-scale))',
-  color: active ? 'var(--fg)' : 'var(--fg-2)',
-  background: active ? 'var(--surface)' : 'transparent',
-  fontWeight: active ? 500 : 400,
-  marginBottom: 2,
-  transition: 'all var(--motion-fast)',
-})
-
-const addButtonStyle: React.CSSProperties = {
-  margin: '10px 12px 0', width: 'calc(100% - 24px)', height: 36,
-  padding: '0 10px', justifyContent: 'flex-start', gap: 9,
-  borderRadius: 9, fontSize: 'calc(13px * var(--font-scale))',
-  color: 'var(--fg-2)', background: 'transparent',
-}
-
-const hasWhitespace = (s: string) => /\s/.test(s)
 const SIDEBAR_LONG_PRESS_MS = 500
 const SIDEBAR_LONG_PRESS_MOVE_PX = 10
 
@@ -103,7 +59,8 @@ interface Props {
 }
 
 export default function Layout({ onSelectProject, children }: Props) {
-  const { t, locale } = useI18n()
+  const { t } = useI18n()
+  const managedMode = useManagedMode()
   useWebSocket()
   useVisualViewport()
   const navigate = useNavigate()
@@ -115,22 +72,18 @@ export default function Layout({ onSelectProject, children }: Props) {
     const timer = window.setInterval(() => setSidebarNow(Date.now()), 60_000)
     return () => window.clearInterval(timer)
   }, [])
-  // 悬停会话行时，右侧的相对时间就地切换为 ⋯ 菜单按钮
+  // 鼠标悬停显示行操作；触屏点按时间只显示归档按钮。
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null)
-  const { projects, activeProject, activeWorkflowId, fetchProjects, setActiveProject, renameProject, deleteProject, renameWorkflow, createWorkflow, deleteWorkflow, restoreWorkflow, reorderProjects, reorderWorkflows, setActiveWorkflow } = useProjectStore()
+  const { projects, activeProject, activeWorkflowId, fetchProjects, setActiveProject, renameProject, deleteProject, renameWorkflow, deleteWorkflow, restoreWorkflow, reorderProjects, reorderWorkflows, setActiveWorkflow } = useProjectStore()
+  const { canEdit } = useGatewayProjectPermissions(activeProject?.id)
   const [showInitModal, setShowInitModal] = useState(false)
   const [renameId, setRenameId] = useState<string | null>(null)
-  const [renameName, setRenameName] = useState('')
-  const [renameError, setRenameError] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('providers')
   const [settingsFocus, setSettingsFocus] = useState<SettingsFocusTarget | undefined>()
-  const [onboardingWorkflowBusy, setOnboardingWorkflowBusy] = useState(false)
-  const [onboardingError, setOnboardingError] = useState('')
   const [addWfProjectId, setAddWfProjectId] = useState<string | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(280)
   const [renameWfId, setRenameWfId] = useState<string | null>(null)
-  const [renameWfName, setRenameWfName] = useState('')
   const [deleteWf, setDeleteWf] = useState<{ id: string; projectId: string; name: string; soft: boolean } | null>(null)
   const [deleteProjectTarget, setDeleteProjectTarget] = useState<Project | null>(null)
   const [deleteProjectError, setDeleteProjectError] = useState('')
@@ -168,8 +121,6 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [dragSessionId, setDragSessionId] = useState<string | null>(null)
   const [dropSessionId, setDropSessionId] = useState<string | null>(null)
   const [pendingWfSwitch, setPendingWfSwitch] = useState<{ project: Project; workflowId: string } | null>(null)
-  const renameInputRef = useRef<HTMLInputElement>(null)
-  const renameWfInputRef = useRef<HTMLInputElement>(null)
   const renameSessionInputRef = useRef<HTMLInputElement>(null)
   const moreMenuRef = useRef<HTMLDivElement>(null)
   const sessionMenuRef = useRef<HTMLDivElement>(null)
@@ -185,12 +136,15 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [renameSessionProjectId, setRenameSessionProjectId] = useState<string | null>(null)
   const [renameSessionValue, setRenameSessionValue] = useState('')
   const [deleteSessionTarget, setDeleteSessionTarget] = useState<{ sessionId: string; projectId: string; title: string } | null>(null)
-  const [sessionDeleteError, setSessionDeleteError] = useState('')
-  useEffect(() => {
-    if (!sessionDeleteError) return
-    const timer = window.setTimeout(() => setSessionDeleteError(''), 5000)
-    return () => window.clearTimeout(timer)
-  }, [sessionDeleteError])
+  const {
+    creatingSession,
+    sessionError: sessionDeleteError,
+    clearSessionError,
+    createSession,
+    renameSession,
+    deleteSession,
+    archiveSession,
+  } = useSidebarSessionActions()
   const [storedSidebarSections] = useState(loadSidebarSectionState)
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>(
     storedSidebarSections.expandedProjectIds,
@@ -201,7 +155,6 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [flowSectionOpen, setFlowSectionOpen] = useState<Record<string, boolean>>(
     storedSidebarSections.flowsByProject,
   )
-  const [creatingSession, setCreatingSession] = useState(false)
   const sidebarSearchResults = useMemo(() => new Map(projects.map((project) => [
     project.id,
     filterSidebarProject(project, sessionsByProject[project.id] || [], sidebarSearchQuery),
@@ -239,7 +192,9 @@ export default function Layout({ onSelectProject, children }: Props) {
     document.body.style.userSelect = ''
   }
 
-  useEffect(() => { fetchProjects() }, [fetchProjects])
+  useEffect(() => {
+    if (!useGatewaySessionStore.getState().session?.host_project_id) void fetchProjects()
+  }, [fetchProjects])
 
   useEffect(() => {
     saveSidebarSectionState({
@@ -248,21 +203,6 @@ export default function Layout({ onSelectProject, children }: Props) {
       conversationsByProject: sessionSectionOpen,
     })
   }, [expandedProjectIds, flowSectionOpen, sessionSectionOpen])
-
-  // Re-focus inputs each time they open (autoFocus only fires on first mount)
-  useEffect(() => {
-    if (renameId) {
-      const t = setTimeout(() => renameInputRef.current?.focus(), 0)
-      return () => clearTimeout(t)
-    }
-  }, [renameId])
-
-  useEffect(() => {
-    if (renameWfId) {
-      const t = setTimeout(() => renameWfInputRef.current?.focus(), 0)
-      return () => clearTimeout(t)
-    }
-  }, [renameWfId])
 
   useEffect(() => {
     if (renameSessionId) {
@@ -424,8 +364,8 @@ export default function Layout({ onSelectProject, children }: Props) {
     setMoreMenu({
       kind,
       id,
-      x: Math.min(x, window.innerWidth - 176),
-      y: Math.min(y, window.innerHeight - 128),
+      x: Math.max(8, Math.min(x, window.innerWidth - 176)),
+      y: Math.max(8, Math.min(y, window.innerHeight - (kind === 'project' ? 236 : 104))),
     })
   }
 
@@ -464,69 +404,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   const openOnboardingSettings = (section: SettingsSection, focus: SettingsFocusTarget) => {
     setSettingsSection(section)
     setSettingsFocus(focus)
-    setOnboardingError('')
     setShowSettings(true)
-  }
-
-  const openOnboardingProject = () => {
-    setOnboardingError('')
-    openLocalProjectModal()
-  }
-
-  const createOnboardingWorkflow = async () => {
-    const onboarding = useOnboardingStore.getState()
-    const project = projects.find((item) => item.id === onboarding.projectId && item.type !== 'remote')
-      ?? (activeProject?.type !== 'remote' ? activeProject : undefined)
-    if (onboardingWorkflowBusy) return
-    if (!project) {
-      setOnboardingError(t('onboarding.projectRequired'))
-      return
-    }
-    setOnboardingWorkflowBusy(true)
-    setOnboardingError('')
-    try {
-      const execution = await engineApi.executionConfig()
-      const engineId = onboarding.engineId || execution.engine
-      if (!engineId) throw new Error(t('onboarding.engineRequired'))
-      if (onboarding.engineId !== engineId) onboarding.recordEngine(engineId)
-      let model = ''
-      try {
-        const result = await fetchEngineModels(engineId, false, onboarding.providerId || '', project.id)
-        model = result.default_model || ''
-      } catch {
-        // The engine may validly use its own implicit default model.
-      }
-      setActiveProject(project)
-      const workflow = await createWorkflow(
-        project.id,
-        '分析与执行',
-        undefined,
-        buildStarterWorkflow(engineId, model),
-      )
-      onboarding.recordWorkflow(workflow.id)
-      await fetchProjects()
-      const refreshedProject = useProjectStore.getState().projects.find((item) => item.id === project.id)
-      if (refreshedProject) setActiveProject(refreshedProject)
-      await setActiveWorkflow(workflow.id)
-      navigate(`/canvas?project=${encodeURIComponent(project.name)}&workflow=${encodeURIComponent(workflow.id)}&onboarding=1`)
-    } catch (reason) {
-      setOnboardingError(reason instanceof Error ? reason.message : t('onboarding.createWorkflowFailed'))
-    } finally {
-      setOnboardingWorkflowBusy(false)
-    }
-  }
-
-  const openOnboardingTask = () => {
-    const onboarding = useOnboardingStore.getState()
-    const project = projects.find((item) => item.id === onboarding.projectId) ?? activeProject
-    const workflowId = onboarding.workflowId || activeWorkflowId
-    if (!project || !workflowId) {
-      setOnboardingError(t('onboarding.workflowRequired'))
-      return
-    }
-    setActiveProject(project)
-    void setActiveWorkflow(workflowId)
-    navigate(`/tasks?project=${encodeURIComponent(project.name)}&onboarding=create-task`)
   }
 
   const handleDeleteProject = async () => {
@@ -548,8 +426,8 @@ export default function Layout({ onSelectProject, children }: Props) {
   const openSessionMenuAt = (projectId: string, sessionId: string, title: string, x: number, y: number) => {
     setMoreMenu(null)
     setSessionMenu({
-      x: Math.min(x, window.innerWidth - 176),
-      y: Math.min(y, window.innerHeight - 128),
+      x: Math.max(8, Math.min(x, window.innerWidth - 176)),
+      y: Math.max(8, Math.min(y, window.innerHeight - 148)),
       sessionId,
       projectId,
       title,
@@ -570,125 +448,35 @@ export default function Layout({ onSelectProject, children }: Props) {
     )
   }
 
-  const handleCreateSession = async (project: Project) => {
-    if (creatingSession) return
-    setCreatingSession(true)
-    try {
-      const detail = await chatSessionApi.create({
-        project_id: project.id,
-      })
-      useChatListStore.getState().addSession({
-        id: detail.id,
-        project_id: detail.project_id,
-        workflow_id: detail.workflow_id,
-        title: detail.title,
-        engine: detail.engine,
-        model: detail.model,
-        message_count: detail.message_count,
-        created_at: detail.created_at,
-        updated_at: detail.updated_at,
-      })
-      navigate(`/chat?project=${encodeURIComponent(project.name)}&session=${encodeURIComponent(detail.id)}`)
-    } catch {
-      // Errors surface on the chat page itself.
-    } finally {
-      setCreatingSession(false)
-    }
-  }
-
   const handleRenameSession = async (sessionId: string, title: string, projectId?: string) => {
-    const trimmed = title.trim()
-    if (!trimmed) { setRenameSessionId(null); return }
     const ownerProjectId = projectId || renameSessionProjectId || activeProject?.id
-    if (!ownerProjectId) { setRenameSessionId(null); return }
-    try {
-      const updated = await chatSessionApi.rename(sessionId, ownerProjectId, trimmed)
-      useChatListStore.getState().renameSession(sessionId, updated.title)
-    } catch {
-      // Keep the old title on failure.
-    }
+    if (ownerProjectId) await renameSession(sessionId, ownerProjectId, title)
     setRenameSessionId(null)
     setRenameSessionProjectId(null)
   }
 
   const handleDeleteSession = async () => {
     if (!deleteSessionTarget) return
-    setSessionDeleteError('')
-    try {
-      await chatSessionApi.remove(deleteSessionTarget.sessionId, deleteSessionTarget.projectId)
-      useChatListStore.getState().removeSession(deleteSessionTarget.sessionId)
-      useChatSessionStore.getState().resetSession(deleteSessionTarget.sessionId)
-      if (activeSessionId === deleteSessionTarget.sessionId) {
-        const remaining = useChatListStore.getState().sessionsByProject[deleteSessionTarget.projectId] || []
-        const next = remaining[0]
-        const owner = projects.find((project) => project.id === deleteSessionTarget.projectId)
-        const ownerName = owner?.name || activeProject?.name || ''
-        if (next) {
-          navigate(`/chat?project=${encodeURIComponent(ownerName)}&session=${encodeURIComponent(next.id)}`, {
-            replace: true,
-            state: { preserveNavigationDrawer: true },
-          })
-        } else {
-          navigate(`/chat?project=${encodeURIComponent(ownerName)}`, {
-            replace: true,
-            state: { preserveNavigationDrawer: true },
-          })
-        }
-      }
-      setDeleteSessionTarget(null)
-    } catch (reason) {
-      setSessionDeleteError(reason instanceof Error ? reason.message : t('chatSession.deleteFailed'))
-    }
+    const { sessionId, projectId } = deleteSessionTarget
+    if (await deleteSession(sessionId, projectId)) setDeleteSessionTarget(null)
   }
 
-  const handleArchiveSession = async (sessionId: string, projectId: string) => {
+  const handleArchiveSession = (sessionId: string, projectId: string) => {
     setSessionMenu(null)
-    setSessionDeleteError('')
-    try {
-      await chatSessionApi.setArchived(sessionId, projectId, true)
-      useChatListStore.getState().removeSession(sessionId)
-      if (activeSessionId === sessionId) {
-        const next = useChatListStore.getState().sessionsByProject[projectId]?.[0]
-        const ownerName = projects.find((project) => project.id === projectId)?.name || activeProject?.name || ''
-        navigate(`/chat?project=${encodeURIComponent(ownerName)}${next ? `&session=${encodeURIComponent(next.id)}` : ''}`, {
-          replace: true,
-          state: { preserveNavigationDrawer: true },
-        })
-      }
-    } catch (reason) {
-      setSessionDeleteError(reason instanceof Error ? reason.message : t('chatSession.archiveFailed'))
-    }
+    void archiveSession(sessionId, projectId)
   }
 
   return (
     <div className="app-shell">
       {/* Sidebar */}
-      <ResponsiveNavigation newDisabled={!activeProject} dismissSignal={`${showSettings}:${showInitModal}:${addWfProjectId}`} title={activeProject?.name || "WorkStep"} onNew={() => navigate(`/chat?project=${encodeURIComponent(activeProject?.name || "")}`)} style={{ ...sidebarStyle, width: sidebarWidth, minWidth: 180 }}>
-        <div style={{ padding: '12px 14px 8px', borderBottom: '1px solid var(--border-soft)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', fontWeight: 600, fontSize: 'calc(13px * var(--font-scale))', fontFamily: 'var(--font-display)' }}>
+      <ResponsiveNavigation className="layout-sidebar" newDisabled={!activeProject || !canEdit} dismissSignal={`${showSettings}:${showInitModal}:${addWfProjectId}`} title={activeProject?.name || "WorkStep"} onNew={() => navigate(`/chat?project=${encodeURIComponent(activeProject?.name || "")}`)} style={{ width: sidebarWidth }}>
+        <div className="layout-sidebar-header">
+          <div className="layout-sidebar-brand">
             <BrandIcon size={18} />
             WorkStep
             <a
               href="/landing"
-              style={{
-                marginLeft: 'auto',
-                padding: '2px 8px',
-                fontSize: 'calc(11px * var(--font-scale))',
-                fontWeight: 500,
-                borderRadius: 6,
-                color: 'var(--fg-2)',
-                textDecoration: 'none',
-                fontFamily: 'var(--font-body)',
-                whiteSpace: 'nowrap',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = 'var(--accent)'
-                e.currentTarget.style.background = 'var(--surface)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = 'var(--fg-2)'
-                e.currentTarget.style.background = 'transparent'
-              }}
+              className="layout-sidebar-intro"
             >
               {t('layout.intro')}
             </a>
@@ -699,24 +487,18 @@ export default function Layout({ onSelectProject, children }: Props) {
           variant="ghost"
           onClick={() => navigate('/statistics')}
           aria-current={location.pathname === '/statistics' ? 'page' : undefined}
-          style={{
-            margin: '10px 12px 0', width: 'calc(100% - 24px)', height: 36,
-            padding: '0 10px', justifyContent: 'flex-start', gap: 9,
-            borderRadius: 9, fontSize: 'calc(13px * var(--font-scale))',
-            color: location.pathname === '/statistics' ? 'var(--fg)' : 'var(--fg-2)',
-            background: location.pathname === '/statistics' ? 'var(--surface)' : 'transparent',
-          }}
+          className="layout-sidebar-nav-button"
         >
           <Icon name="bar-chart" size={17} strokeWidth={2} />
           {t('nav.statistics')}
         </Button>
 
-        <Button variant="ghost" style={addButtonStyle} onClick={openLocalProjectModal}>
+        <Button variant="ghost" className="layout-sidebar-nav-button" onClick={openLocalProjectModal}>
           <Icon name="plus" size={17} strokeWidth={2} />
           {t('nav.addProject')}
         </Button>
 
-        <div style={sectionLabel}>
+        <div className="layout-sidebar-section-label">
           <span>{t('layout.projects')}</span>
           <Button
             variant="icon"
@@ -729,19 +511,19 @@ export default function Layout({ onSelectProject, children }: Props) {
                 return !open
               })
             }}
-            style={{ width: 24, height: 24, padding: 0, color: sidebarSearchOpen ? 'var(--accent)' : 'var(--meta)' }}
+            className="layout-sidebar-search-button"
           >
             <Icon name="search" size={14} strokeWidth={2} />
           </Button>
         </div>
 
         {sidebarSearchOpen && (
-          <div style={{ position: 'relative', margin: '2px 12px 6px' }}>
+          <div className="layout-sidebar-search">
             <Icon
               name="search"
               size={14}
               strokeWidth={2}
-              style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--meta)', pointerEvents: 'none' }}
+              className="layout-sidebar-search-icon"
             />
             <Input
               ref={sidebarSearchInputRef}
@@ -756,12 +538,12 @@ export default function Layout({ onSelectProject, children }: Props) {
                   setSidebarSearchOpen(false)
                 }
               }}
-              style={{ width: '100%', height: 32, paddingLeft: 30, fontSize: 'calc(12px * var(--font-scale))' }}
+              className="layout-sidebar-search-input"
             />
           </div>
         )}
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px 8px' }}>
+        <div className="layout-sidebar-projects">
           {visibleProjects.map((p) => {
             const searchResult = sidebarSearchResults.get(p.id)!
             return (
@@ -778,7 +560,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                 onPointerUp={cancelSidebarLongPress}
                 onPointerCancel={cancelSidebarLongPress}
                 onPointerLeave={cancelSidebarLongPress}
-                draggable={p.type === 'local' && renameId !== p.path}
+                draggable={canEdit && p.type === 'local' && renameId !== p.path}
                 onDragStart={(e) => {
                   e.stopPropagation()
                   e.dataTransfer.effectAllowed = 'move'
@@ -817,14 +599,10 @@ export default function Layout({ onSelectProject, children }: Props) {
                 }}
                 onDragEnd={() => { setDragProjectId(null); setDropProjectId(null) }}
                 onContextMenu={(e) => openMoreMenu(e, 'project', p.id)}
-                className="ws-row"
-                style={{
-                  ...projectItemStyle(activeProject?.id === p.id),
-                  position: 'relative',
-                  opacity: dragProjectId === p.id ? 0.4 : 1,
-                  outline: dropProjectId === p.id ? '1px solid var(--accent)' : 'none',
-                  ...(dropProjectId === p.id ? { background: 'var(--accent-light)' } : {}),
-                }}
+                className="layout-project-row ws-row"
+                data-active={activeProject?.id === p.id}
+                data-dragging={dragProjectId === p.id}
+                data-drop-target={dropProjectId === p.id}
               >
 
                 <Button
@@ -839,45 +617,21 @@ export default function Layout({ onSelectProject, children }: Props) {
                   aria-controls={`sidebar-project-${p.id}`}
                   aria-label={t(isProjectExpanded(p.id) ? 'layout.collapseProject' : 'layout.expandProject', { name: p.name })}
                   title={t(isProjectExpanded(p.id) ? 'layout.collapseProject' : 'layout.expandProject', { name: p.name })}
-                  style={{ width: 20, height: 20, padding: 0, flexShrink: 0, color: isProjectExpanded(p.id) ? 'var(--accent)' : 'var(--meta)' }}
+                  className="layout-project-expand-button"
                 >
                   <Icon
                     name={p.type === 'remote' ? 'external-link' : isProjectExpanded(p.id) ? 'folder-open' : 'folder'} size={16.4} strokeWidth={2}
                   />
                 </Button>
                 {renameId === p.path ? (
-                  <Input
-                    ref={renameInputRef}
-                    value={renameName}
-                    onChange={(e) => setRenameName(e.target.value)}
-                    onKeyDown={async (e) => {
-                      if (e.key === 'Enter' && renameName.trim()) {
-                        if (hasWhitespace(renameName)) {
-                          setRenameError(t('layout.nameWhitespace'))
-                          return
-                        }
-                        await renameProject(p.path, renameName.trim())
-                        setRenameId(null)
-                      }
-                      if (e.key === 'Escape') { setRenameId(null); setRenameError('') }
-                    }}
-                    onBlur={async () => {
-                      if (renameName.trim() && renameName !== p.name) {
-                        if (hasWhitespace(renameName)) {
-                          setRenameError(t('layout.nameWhitespace'))
-                          setRenameId(null)
-                          return
-                        }
-                        await renameProject(p.path, renameName.trim())
-                      }
-                      setRenameId(null)
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    onDoubleClick={(e) => e.stopPropagation()}
-                    style={{ flex: 1, height: 30, fontSize: 'calc(14px * var(--font-scale))', padding: '0 4px', border: '1px solid var(--accent)', borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
+                  <SidebarRenameField
+                    kind="project"
+                    initialName={p.name}
+                    onSave={(name) => renameProject(p.path, name)}
+                    onClose={() => setRenameId(null)}
                   />
                 ) : (
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span className="layout-project-name">
                     {p.name}
                     {p.type === 'remote' && (
                       <span
@@ -886,21 +640,8 @@ export default function Layout({ onSelectProject, children }: Props) {
                           : p.access_status === 'expired'
                             ? t('layout.remoteAccessExpired')
                             : p.endpoint}
-                        style={{
-                          display: 'inline-block',
-                          marginLeft: 6,
-                          padding: '0 4px',
-                          borderRadius: 3,
-                          background: 'var(--surface)',
-                          color: p.access_status === 'revoked'
-                            ? 'var(--danger)'
-                            : p.access_status === 'expired'
-                              ? 'var(--status-paused)'
-                              : 'var(--meta)',
-                          fontSize: 'calc(10px * var(--font-scale))',
-                          lineHeight: '16px',
-                          verticalAlign: 1,
-                        }}
+                        className="layout-project-remote-badge"
+                        data-access-status={p.access_status}
                       >
                         {p.access_status === 'revoked'
                           ? t('layout.remoteAccessRevoked')
@@ -946,16 +687,12 @@ export default function Layout({ onSelectProject, children }: Props) {
                 <Button
                   variant="icon"
                   className="ws-more-btn"
+                  disabled={!canEdit}
                   onClick={(e) => openMoreMenu(e, 'project', p.id)}
                   title={t('layout.moreActions')}
                   aria-label={t('layout.moreActions')}
-                  style={{ width: 20, height: 20, borderRadius: 4, background: 'transparent', color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))', lineHeight: '18px', padding: 0, flexShrink: 0 }}
                 >⋯</Button>
               </div>
-
-              {renameId === p.path && renameError && (
-                <div style={{ marginLeft: 38, marginBottom: 4, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}>{renameError}</div>
-              )}
 
               {/* Workflow list + sessions under the selected project */}
               {isProjectExpanded(p.id) && (
@@ -967,20 +704,21 @@ export default function Layout({ onSelectProject, children }: Props) {
                     return (
                       <>
                         <div
-                          style={{ ...nestedSectionLabel, cursor: 'pointer' }}
+                          className="layout-sidebar-nested-label"
+                          data-open={flowOpen}
                           onClick={(e) => {
                             e.stopPropagation()
                             setFlowSectionOpen((prev) => ({ ...prev, [p.id]: !flowOpen }))
                           }}
                         >
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span className="layout-sidebar-section-name">
                             <Icon
                               name={flowOpen ? 'folder-open' : 'folder'} size={14} strokeWidth={2}
-                              style={{ flexShrink: 0, color: flowOpen ? 'var(--accent)' : 'var(--meta)' }}
+                              className="layout-sidebar-section-icon"
                             />
                             {t('chatSession.flowSection')}
                           </span>
-                          {flowOpen && (
+                          {canEdit && flowOpen && (
                             <SidebarAddButton
                               onClick={(e) => { e.stopPropagation(); void openAddWorkflow(p.id) }}
                               title={t('layout.addWorkflowTitle')}
@@ -1016,8 +754,12 @@ export default function Layout({ onSelectProject, children }: Props) {
                         e.preventDefault()
                         openMoreMenu(e, 'workflow', wf.id)
                       }}
-                      className="ws-row"
-                      draggable={renameWfId !== wf.id}
+                      className="layout-workflow-row ws-row"
+                      data-deleted={deleted}
+                      data-active={workflowSelected}
+                      data-dragging={isDragSource}
+                      data-drop-target={isDropTarget}
+                      draggable={canEdit && renameWfId !== wf.id}
                       onDragStart={(e) => {
                         e.stopPropagation()
                         e.dataTransfer.effectAllowed = 'move'
@@ -1054,46 +796,20 @@ export default function Layout({ onSelectProject, children }: Props) {
                       }}
                       onDragEnd={() => { setDragWfId(null); setDropWfId(null) }}
                       title={t('layout.dragToReorder')}
-                      style={{
-                        marginLeft: 28, padding: '4px 10px', borderRadius: 6,
-                        cursor: deleted ? 'default' : 'pointer',
-                        fontSize: 'calc(14px * var(--font-scale))',
-                        color: deleted ? 'var(--meta)' : workflowSelected ? 'var(--accent)' : 'var(--meta)',
-                        background: isDropTarget
-                          ? 'var(--accent-light)'
-                          : workflowSelected ? 'var(--accent-light)' : 'transparent',
-                        opacity: isDragSource ? 0.4 : 1,
-                        outline: isDropTarget ? '1px solid var(--accent)' : 'none',
-                        display: 'flex', alignItems: 'center', gap: 6, marginBottom: 1,
-                      }}
                     >
                       <Icon name="workflow" size={12.8} strokeWidth={2} />
                       {renameWfId === wf.id ? (
-                        <Input
-                          ref={renameWfInputRef}
-                          value={renameWfName}
-                          onChange={(e) => setRenameWfName(e.target.value)}
-                          onKeyDown={async (e) => {
-                            if (e.key === 'Enter' && renameWfName.trim() && !hasWhitespace(renameWfName)) {
-                              try { await renameWorkflow(wf.id, p.id, renameWfName.trim()) } catch {}
-                              setRenameWfId(null)
-                            }
-                            if (e.key === 'Escape') setRenameWfId(null)
-                          }}
-                          onBlur={async () => {
-                            if (renameWfName.trim() && renameWfName !== wf.name && !hasWhitespace(renameWfName)) {
-                              try { await renameWorkflow(wf.id, p.id, renameWfName.trim()) } catch {}
-                            }
-                            setRenameWfId(null)
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          style={{ flex: 1, height: 28, fontSize: 'calc(14px * var(--font-scale))', padding: '0 4px', border: `1px solid ${hasWhitespace(renameWfName) ? 'var(--danger)' : 'var(--accent)'}`, borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
+                        <SidebarRenameField
+                          kind="workflow"
+                          initialName={wf.name}
+                          onSave={(name) => renameWorkflow(wf.id, p.id, name)}
+                          onClose={() => setRenameWfId(null)}
                         />
                       ) : (
                         <MarqueeText
                           text={wf.name}
-                          onDoubleClick={(e) => { e.stopPropagation(); if (!deleted) { setRenameWfId(wf.id); setRenameWfName(wf.name) } }}
-                          style={{ textDecoration: deleted ? 'line-through' : 'none', opacity: deleted ? 0.6 : 1, cursor: deleted ? 'default' : 'pointer' }}
+                          onDoubleClick={(e) => { e.stopPropagation(); if (!deleted) setRenameWfId(wf.id) }}
+                          className="layout-workflow-name"
                         />
                       )}
                       {!deleted && (
@@ -1109,16 +825,16 @@ export default function Layout({ onSelectProject, children }: Props) {
                           completedTitle={t('layout.completedUnread')}
                         />
                       )}
-                      {deleted && <span style={{ fontSize: 'calc(11.6px * var(--font-scale))', color: 'var(--danger)', opacity: 0.8 }}>{t('layout.trash')}</span>}
-                      {wf.is_default ? <span style={{ fontSize: 'calc(11.6px * var(--font-scale))', opacity: 0.6 }}>{t('layout.default')}</span> : null}
-                      <span style={{ fontSize: 'calc(11.6px * var(--font-scale))', opacity: 0.5 }}>{t('flow.nodeCount', { count: wf.nodeCount })}</span>
+                      {deleted && <span className="layout-workflow-trash">{t('layout.trash')}</span>}
+                      {wf.is_default ? <span className="layout-workflow-default">{t('layout.default')}</span> : null}
+                      <span className="layout-workflow-node-count">{t('flow.nodeCount', { count: wf.nodeCount })}</span>
                       <Button
                         variant="icon"
                         className="ws-more-btn"
+                        disabled={!canEdit}
                         onClick={(e) => openMoreMenu(e, 'workflow', wf.id)}
                         title={t('layout.moreActions')}
                         aria-label={t('layout.moreActions')}
-                        style={{ width: 28, height: 28, borderRadius: 4, border: 'none', background: 'transparent', color: 'var(--meta)', fontSize: 'calc(14px * var(--font-scale))', lineHeight: '26px', padding: 0, flexShrink: 0 }}
                       >⋯</Button>
                     </div>
                     </div>
@@ -1134,57 +850,47 @@ export default function Layout({ onSelectProject, children }: Props) {
                   : sessionSectionOpen[p.id]
                     ?? (location.pathname === '/chat' && !!activeSessionId)
                 return (
-                  <>
+                  <SidebarConversationTabs sessions={searchResult.sessions} activeSessionId={activeSessionId} onSwitch={clearSelection} open={open} header={(tabs, tab) => (
                     <div
-                      style={{
-                        ...nestedSectionLabel,
-                        cursor: 'pointer',                        margin: '14px 12px 2px 28px',
-                        padding: '10px 6px 0 0',
-                        borderTop: '1px solid var(--border-soft)',
-                      }}
+                      className="layout-sidebar-nested-label layout-sidebar-session-label"
+                      data-open={open}
                       onClick={(e) => {
                         e.stopPropagation()
                         setSessionSectionOpen((prev) => ({ ...prev, [p.id]: !open }))
                       }}
                     >
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span className="layout-sidebar-section-name">
                         <Icon
                           name={open ? 'folder-open' : 'folder'} size={14} strokeWidth={2}
-                          style={{ flexShrink: 0, color: open ? 'var(--accent)' : 'var(--meta)' }}
+                          className="layout-sidebar-section-icon"
                         />
                         {t('chatSession.navSection')}
                       </span>
-                      {open && (
+                      {tabs}
+                      {canEdit && open && tab === 'chat' && (
                         <SidebarAddButton
                           loading={creatingSession}
                           disabled={creatingSession}
-                          onClick={(e) => { e.stopPropagation(); void handleCreateSession(p) }}
+                          onClick={(e) => { e.stopPropagation(); void createSession(p) }}
                           title={t('chatSession.newSession')}
                           aria-label={t('chatSession.newSession')}
                             />
                       )}
                     </div>
-                    {open && (
-                    <div style={{ margin: '0 12px 6px 28px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    )}>
+                      {visibleSessions => <div className="layout-session-list">
                       {/* Bulk action bar (visible when 2+ sessions selected) */}
                       {selectionProjectId === p.id && selectedIds.size >= 2 && (
-                        <div
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 6,
-                            padding: '4px 8px', marginBottom: 2,
-                            background: 'var(--accent-light)', borderRadius: 6,
-                            fontSize: 'calc(11.6px * var(--font-scale))', color: 'var(--accent)',
-                          }}
-                        >
-                          <span style={{ flex: 1 }}>{t('chatSession.selectedCount', { count: selectedIds.size })}</span>
+                        <div className="layout-session-bulk-actions">
+                          <span className="layout-session-bulk-count">{t('chatSession.selectedCount', { count: selectedIds.size })}</span>
                           <Button
                             variant="ghost"
                             size="sm"
                             loading={bulkDeleting}
-                            disabled={bulkDeleting}
+                            disabled={bulkDeleting || !canEdit}
                             onClick={(e) => { e.stopPropagation(); setBulkDeleteError(''); setBulkDeleteConfirm(true) }}
                             title={t('chatSession.bulkDelete')}
-                            style={{ width: 20, height: 20, padding: '4px', borderRadius: 4, background: 'transparent', color: 'var(--danger)', flexShrink: 0 }}
+                            className="layout-session-bulk-button layout-session-bulk-delete"
                           >
                             <Icon name="trash" size={10} strokeWidth={2} />
                           </Button>
@@ -1193,13 +899,13 @@ export default function Layout({ onSelectProject, children }: Props) {
                             size="sm"
                             onClick={(e) => { e.stopPropagation(); clearSelection() }}
                             title={t('chatSession.deselectAll')}
-                            style={{ width: 20, height: 20, padding: '4px', borderRadius: 4, background: 'transparent', color: 'var(--meta)', flexShrink: 0 }}
+                            className="layout-session-bulk-button"
                           >
                             <Icon name="x" size={10} strokeWidth={2} />
                           </Button>
                         </div>
                       )}
-                      {searchResult.sessions.map(session => {
+                      {visibleSessions.map(session => {
                         const isDragSource = dragSessionId === session.id
                         const isDropTarget = dropSessionId === session.id
                         const sessionRunning = Boolean(runningChatSessions[session.id])
@@ -1230,12 +936,18 @@ export default function Layout({ onSelectProject, children }: Props) {
                           onPointerMove={moveSidebarLongPress}
                           onPointerUp={cancelSidebarLongPress}
                           onPointerCancel={cancelSidebarLongPress}
-                          onPointerLeave={cancelSidebarLongPress}
+                          onPointerLeave={(e) => {
+                            cancelSidebarLongPress()
+                            if (e.pointerType === 'mouse') setHoveredSessionId(null)
+                          }}
                           onContextMenu={(e) => openSessionMenu(e, p.id, session.id, session.title)}
-                          onMouseEnter={() => setHoveredSessionId(session.id)}
-                          onMouseLeave={() => setHoveredSessionId(null)}
-                          className="ws-row"
-                          draggable={renameSessionId !== session.id && !isMultiSelect}
+                          onPointerEnter={(e) => { if (e.pointerType === 'mouse') setHoveredSessionId(session.id) }}
+                          className="layout-session-row ws-row"
+                          data-selected={isSelected}
+                          data-active={location.pathname === '/chat' && activeSessionId === session.id}
+                          data-dragging={isDragSource}
+                          data-drop-target={isDropTarget}
+                          draggable={canEdit && renameSessionId !== session.id && !isMultiSelect}
                           onDragStart={(e) => {
                             e.stopPropagation()
                             e.dataTransfer.effectAllowed = 'move'
@@ -1274,36 +986,14 @@ export default function Layout({ onSelectProject, children }: Props) {
                           }}
                           onDragEnd={() => { setDragSessionId(null); setDropSessionId(null) }}
                           title={isMultiSelect ? t('chatSession.multiSelectHint') : t('layout.dragToReorder')}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 6,
-                            padding: '3px 8px', borderRadius: 6,
-                            cursor: 'pointer', fontSize: 'calc(12.8px * var(--font-scale))',
-                            color: isSelected
-                              ? 'var(--accent)'
-                              : location.pathname === '/chat' && activeSessionId === session.id ? 'var(--accent)' : 'var(--meta)',
-                            background: isDropTarget
-                              ? 'var(--accent-light)'
-                              : isSelected ? 'var(--accent-light)'
-                              : location.pathname === '/chat' && activeSessionId === session.id ? 'var(--accent-light)' : 'transparent',
-                            opacity: isDragSource ? 0.4 : 1,
-                            outline: isDropTarget || isSelected ? '1px solid var(--accent)' : 'none',
-                            overflow: 'hidden',
-                          }}
                         >
                           {/* Checkbox indicator (always shown in multi-select mode) */}
                           {isMultiSelect && (
-                            <span
-                              style={{
-                                width: 14, height: 14, borderRadius: 3, flexShrink: 0,
-                                border: isSelected ? '1.5px solid var(--accent)' : '1px solid var(--border)',
-                                background: isSelected ? 'var(--accent)' : 'transparent',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              }}
-                            >
-                              {isSelected && <Icon name="check" size={9} strokeWidth={3} style={{ color: 'var(--bg)' }} />}
+                            <span className="layout-session-checkbox" data-selected={isSelected}>
+                              {isSelected && <Icon name="check" size={9} strokeWidth={3} className="layout-session-check" />}
                             </span>
                           )}
-                          <Icon name="bot" size={11.6} strokeWidth={2} style={{ flexShrink: 0 }} />
+                          <Icon name="bot" size={11.6} strokeWidth={2} className="layout-session-bot" />
                           {renameSessionId === session.id ? (
                             <Input
                               ref={renameSessionInputRef}
@@ -1315,11 +1005,12 @@ export default function Layout({ onSelectProject, children }: Props) {
                               }}
                               onBlur={() => { if (renameSessionId === session.id) void handleRenameSession(session.id, renameSessionValue, p.id) }}
                               onClick={(e) => e.stopPropagation()}
-                              style={{ flex: 1, height: 25, fontSize: 'calc(12.8px * var(--font-scale))', padding: '0 4px', border: '1px solid var(--accent)', borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)', minWidth: 0 }}
+                              className="layout-session-rename-input"
                             />
                           ) : (
                             <MarqueeText text={session.title} />
                           )}
+                          <ChatSessionSourceBadge source={session.source} platform={session.channel_platform} botName={session.channel_name} conversationType={session.channel_conversation_type} peerName={session.channel_peer_name} />
                           <SidebarStatusIndicator
                             running={sessionRunning}
                             failed={failedChatSessions[session.id]}
@@ -1328,46 +1019,18 @@ export default function Layout({ onSelectProject, children }: Props) {
                             failedTitle={t('layout.failedState')}
                             completedTitle={t('layout.completedUnread')}
                           />
-                          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0, height: 24 }}>
-                            {hoveredSessionId === session.id && (
-                              <Button
-                                variant="icon"
-                                className="ws-more-btn"
-                                onClick={(e) => { e.stopPropagation(); void handleArchiveSession(session.id, p.id) }}
-                                title={t('chatSession.archive')}
-                                aria-label={t('chatSession.archive')}
-                                style={{ width: 24, height: 24, borderRadius: 4, border: 'none', background: 'transparent', color: 'var(--meta)', padding: 0, flexShrink: 0 }}
-                              ><Icon name="archive" size={13} /></Button>
-                            )}
-                            {hoveredSessionId === session.id || !(session.updated_at || session.created_at) ? (
-                              <Button
-                                variant="icon"
-                                className="ws-more-btn"
-                                onClick={(e) => openSessionMenu(e, p.id, session.id, session.title)}
-                                title={t('layout.moreActions')}
-                                aria-label={t('layout.moreActions')}
-                                style={{ width: 24, height: 24, borderRadius: 4, border: 'none', background: 'transparent', color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))', lineHeight: '22px', padding: 0, flexShrink: 0 }}
-                              >⋯</Button>
-                            ) : (
-                              <time
-                                dateTime={session.updated_at || session.created_at}
-                                title={formatConversationDateTime(session.updated_at || session.created_at, Date.now(), locale)}
-                                style={{
-                                  flexShrink: 0, whiteSpace: 'nowrap', padding: '0 6px',
-                                  display: 'inline-flex', alignItems: 'center', height: '100%',
-                                  fontSize: 'calc(10.5px * var(--font-scale))', color: 'var(--meta)', opacity: 0.8,
-                                }}
-                              >
-                                {formatRelativeTime(session.updated_at || session.created_at, sidebarNow, t)}
-                              </time>
-                            )}
-                          </div>
+                          {canEdit && <SessionRowActions
+                            session={session}
+                            hovered={hoveredSessionId === session.id}
+                            now={sidebarNow}
+                            onArchive={() => { void handleArchiveSession(session.id, p.id) }}
+                            onMore={(e) => openSessionMenu(e, p.id, session.id, session.title)}
+                          />}
                         </div>
                         )
                       })}
-                    </div>
-                    )}
-                  </>
+                      </div>}
+                  </SidebarConversationTabs>
                 )
               })()}
                 </div>
@@ -1376,12 +1039,12 @@ export default function Layout({ onSelectProject, children }: Props) {
             )
           })}
           {projects.length === 0 && (
-            <div style={{ padding: '12px 14px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)', fontStyle: 'italic' }}>
+            <div className="layout-sidebar-empty">
               {t('nav.noProjects')}
             </div>
           )}
           {projects.length > 0 && visibleProjects.length === 0 && (
-            <div style={{ padding: '12px 14px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)', fontStyle: 'italic' }}>
+            <div className="layout-sidebar-empty">
               {t('layout.noSidebarMatches')}
             </div>
           )}
@@ -1391,13 +1054,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           variant="ghost"
           onClick={() => { setSettingsSection('providers'); setSettingsFocus(undefined); setShowSettings(true) }}
           aria-current={showSettings ? 'page' : undefined}
-          style={{
-            margin: '0 12px 12px', width: 'calc(100% - 24px)', height: 36,
-            padding: '0 10px', justifyContent: 'flex-start', gap: 9,
-            borderRadius: 9, fontSize: 'calc(13px * var(--font-scale))',
-            color: showSettings ? 'var(--fg)' : 'var(--fg-2)',
-            background: showSettings ? 'var(--surface)' : 'transparent',
-          }}
+          className="layout-sidebar-nav-button layout-sidebar-settings-button"
         >
           <Icon name="settings" size={17} strokeWidth={2} />
           {t('nav.settings')}
@@ -1418,172 +1075,122 @@ export default function Layout({ onSelectProject, children }: Props) {
       />
 
       {moreMenu && (
-        <div
-          ref={moreMenuRef}
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            position: 'fixed', left: moreMenu.x, top: moreMenu.y,
-            minWidth: 148, padding: '4px 0', zIndex: 1302,
-            background: 'var(--bg)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-sm)', boxShadow: 'var(--elev-raised)',
-          }}
-        >
+        <SidebarActionMenu ref={moreMenuRef} x={moreMenu.x} y={moreMenu.y}>
           {moreMenu.kind === 'project' && menuTarget && 'path' in menuTarget && (
             <>
-              {menuTarget.type !== 'remote' && (
-                <div
-                  onClick={() => { setRenameId(menuTarget.path); setRenameName(menuTarget.name); setRenameError(''); setMoreMenu(null) }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                  style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
+              {managedMode !== true && menuTarget.type !== 'remote' && (
+                <SidebarActionItem
+                  icon="pencil"
+                  onClick={() => { setRenameId(menuTarget.path); setMoreMenu(null) }}
                 >
-                  <Icon name="pencil" size={14} />
                   {t('common.rename')}
-                </div>
+                </SidebarActionItem>
               )}
-              <div
+              <SidebarActionItem
+                icon="plus"
                 onClick={() => { openAddWorkflow(menuTarget.id); setMoreMenu(null) }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
               >
-                <Icon name="plus" size={14} />
                 {t('layout.addWorkflowTitle')}
-              </div>
-              <div
+              </SidebarActionItem>
+              <SidebarActionItem
+                icon="bot"
                 onClick={() => {
                   setMoreMenu(null)
-                  void handleCreateSession(menuTarget)
+                  void createSession(menuTarget)
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
               >
-                <Icon name="bot" size={14} />
                 {t('chatSession.addSessionTitle')}
-              </div>
+              </SidebarActionItem>
               {menuTarget.type !== 'remote' && (
-                <div
+                <SidebarActionItem
+                  icon="share"
                   onClick={() => { setShareProject(menuTarget); setMoreMenu(null) }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                  style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
                 >
-                  <Icon name="share" size={14} />
                   {t('layout.remoteShareTitle')}
-                </div>
+                </SidebarActionItem>
               )}
-              <div
+              <SidebarActionItem
+                icon="trash"
+                danger
                 onClick={() => { setDeleteProjectError(''); setDeleteProjectTarget(menuTarget); setMoreMenu(null) }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer', color: 'var(--danger)' }}
               >
-                <Icon name="trash" size={14} />
                 {t('layout.deleteProjectTitle')}
-              </div>
+              </SidebarActionItem>
             </>
           )}
           {moreMenu.kind === 'workflow' && menuTarget && 'workflow' in menuTarget && (
             menuTarget.workflow.deleted ? (
               <>
-                <div
-                  onClick={() => { restoreWorkflow(menuTarget.workflow.id, menuTarget.project.id); setMoreMenu(null) }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                  style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
+                <SidebarActionItem
+                  icon="rotate-ccw"
+                  onClick={() => { void restoreWorkflow(menuTarget.workflow.id, menuTarget.project.id); setMoreMenu(null) }}
                 >
-                  <Icon name="rotate-ccw" size={14} />
                   {t('layout.restoreFlow')}
-                </div>
+                </SidebarActionItem>
                 {!menuTarget.workflow.is_default && (
-                  <div
+                  <SidebarActionItem
+                    icon="trash"
+                    danger
                     onClick={() => { setDeleteWf({ id: menuTarget.workflow.id, projectId: menuTarget.project.id, name: menuTarget.workflow.name, soft: true }); setMoreMenu(null) }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                    style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer', color: 'var(--danger)' }}
                   >
-                    <Icon name="trash" size={14} />
                     {t('nav.deletePermanent')}
-                  </div>
+                  </SidebarActionItem>
                 )}
               </>
             ) : (
               <>
-                <div
-                  onClick={() => { setRenameWfId(menuTarget.workflow.id); setRenameWfName(menuTarget.workflow.name); setMoreMenu(null) }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                  style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
+                <SidebarActionItem
+                  icon="pencil"
+                  onClick={() => { setRenameWfId(menuTarget.workflow.id); setMoreMenu(null) }}
                 >
-                  <Icon name="pencil" size={14} />
                   {t('common.rename')}
-                </div>
+                </SidebarActionItem>
                 {!menuTarget.workflow.is_default && menuTarget.project.workflows.filter((w) => !w.deleted).length > 1 && (
-                  <div
+                  <SidebarActionItem
+                    icon="trash"
+                    danger
                     onClick={() => { setDeleteWf({ id: menuTarget.workflow.id, projectId: menuTarget.project.id, name: menuTarget.workflow.name, soft: false }); setMoreMenu(null) }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                    style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer', color: 'var(--danger)' }}
                   >
-                    <Icon name="trash" size={14} />
                     {t('common.delete')}
-                  </div>
+                  </SidebarActionItem>
                 )}
               </>
             )
           )}
-        </div>
+        </SidebarActionMenu>
       )}
 
       {sessionMenu && (
-        <div
-          ref={sessionMenuRef}
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            position: 'fixed', left: sessionMenu.x, top: sessionMenu.y,
-            minWidth: 148, padding: '4px 0', zIndex: 1302,
-            background: 'var(--bg)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-sm)', boxShadow: 'var(--elev-raised)',
-          }}
-        >
-          <div
+        <SidebarActionMenu ref={sessionMenuRef} x={sessionMenu.x} y={sessionMenu.y}>
+          <SidebarActionItem
+            icon="archive"
             onClick={() => { void handleArchiveSession(sessionMenu.sessionId, sessionMenu.projectId) }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-            style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
           >
-            <Icon name="archive" size={14} />
             {t('chatSession.archive')}
-          </div>
-          <div
+          </SidebarActionItem>
+          <SidebarActionItem
+            icon="pencil"
             onClick={() => {
               setRenameSessionId(sessionMenu.sessionId)
               setRenameSessionProjectId(sessionMenu.projectId)
               setRenameSessionValue(sessionMenu.title)
               setSessionMenu(null)
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-            style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
           >
-            <Icon name="pencil" size={14} />
             {t('common.rename')}
-          </div>
-          <div
+          </SidebarActionItem>
+          <SidebarActionItem
+            icon="trash"
+            danger
             onClick={() => {
-              setSessionDeleteError('')
+              clearSessionError()
               setDeleteSessionTarget(sessionMenu)
               setSessionMenu(null)
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-            style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer', color: 'var(--danger)' }}
           >
-            <Icon name="trash" size={14} />
             {t('common.delete')}
-          </div>
-        </div>
+          </SidebarActionItem>
+        </SidebarActionMenu>
       )}
 
 
@@ -1596,23 +1203,18 @@ export default function Layout({ onSelectProject, children }: Props) {
         onConfirm={() => void handleDeleteSession()}
         onCancel={() => {
           setDeleteSessionTarget(null)
-          setSessionDeleteError('')
+          clearSessionError()
         }}
       />
       {sessionDeleteError && (
-        <div role="alert" style={{
-          position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 2200,
-          padding: '8px 8px 8px 14px', borderRadius: 8, fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)',
-          background: 'var(--bg)', border: '1px solid var(--danger)', boxShadow: 'var(--elev-raised)',
-          display: 'flex', alignItems: 'center', gap: 8,
-        }}>
+        <div role="alert" className="layout-session-delete-error">
           <span>{sessionDeleteError}</span>
           <Button
             variant="icon"
             size="sm"
             aria-label={t('common.close')}
-            onClick={() => setSessionDeleteError('')}
-            style={{ padding: 0, color: 'var(--danger)' }}
+            onClick={clearSessionError}
+            className="layout-session-delete-error-close"
           >
             <Icon name="x" size={13} />
           </Button>
@@ -1620,7 +1222,7 @@ export default function Layout({ onSelectProject, children }: Props) {
       )}
 
       {/* Main content */}
-      <main className="app-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <main className="app-main layout-main">
         {children}
       </main>
 
@@ -1641,21 +1243,9 @@ export default function Layout({ onSelectProject, children }: Props) {
         />
       )}
 
-      <OnboardingChecklist
-        creatingWorkflow={onboardingWorkflowBusy}
-        error={onboardingError}
-        onOpenProvider={() => {
-          useOnboardingStore.getState().chooseSetupMode('provider')
-          openOnboardingSettings('providers', 'provider-create')
-        }}
-        onOpenLocalAgent={() => {
-          useOnboardingStore.getState().chooseSetupMode('local')
-          openOnboardingSettings('engines', 'execution-engine')
-        }}
-        onOpenEngine={() => openOnboardingSettings('engines', 'execution-engine')}
-        onOpenProject={openOnboardingProject}
-        onCreateWorkflow={() => void createOnboardingWorkflow()}
-        onCreateTask={openOnboardingTask}
+      <LayoutOnboardingActions
+        onOpenSettings={openOnboardingSettings}
+        onOpenProject={openLocalProjectModal}
       />
 
       <ProjectConnectionDialog
@@ -1664,7 +1254,8 @@ export default function Layout({ onSelectProject, children }: Props) {
         onConnected={handleProjectConnected}
       />
 
-      <ProjectShareDialog project={shareProject} onClose={() => setShareProject(null)} />
+      <ProjectShareDialog project={managedMode !== true ? shareProject : null}
+        onClose={() => setShareProject(null)} />
 
       <WorkflowCreateDialog
         projectId={addWfProjectId}
@@ -1735,7 +1326,7 @@ export default function Layout({ onSelectProject, children }: Props) {
         onCancel={() => { setBulkDeleteConfirm(false); setBulkDeleteError('') }}
       >
         {bulkDeleteError && (
-          <div style={{ padding: '8px 0', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--danger)' }}>
+          <div className="layout-bulk-delete-error">
             {bulkDeleteError}
           </div>
         )}

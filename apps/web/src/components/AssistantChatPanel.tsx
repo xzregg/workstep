@@ -1,10 +1,12 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useCompactLayout } from '../hooks/useCompactLayout'
+import { useChatComposerResize } from '../hooks/useChatComposerResize'
+import { useAssistantPendingInserts } from '../hooks/useAssistantPendingInserts'
 import {
   ComposerOverlayHostContext,
   useComposerOverlayClearance,
 } from '../hooks/useComposerOverlayClearance'
-import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { useShallow } from 'zustand/react/shallow'
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import MobileSheet from './MobileSheet'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 
@@ -18,7 +20,7 @@ import {
   conversationBottomScrollTop,
   observeContentResize,
   shouldPauseConversationFollow,
-} from '../pages/taskDetailChat'
+} from '../utils/conversationScroll'
 import Button from './Button'
 import ChatInput, {
   type ChatContextUsage,
@@ -40,30 +42,10 @@ import { useUserSettingsStore } from '../stores/userSettingsStore'
 import { shouldShowAssistantThinking } from '../utils/assistantThinking'
 import { displayUserDetail, displayUserSender } from '../utils/actorDisplay'
 import { useI18n } from '../i18n'
-import PendingMessageInserts from './PendingMessageInserts'
+import { resolveMessageError } from '../pages/taskDetailChat'
 import QuickPromptButton from './QuickPromptButton'
 import { ActionConversationMessage } from './TaskActionShortcuts'
 import { mergeActionMessages } from '../utils/actionConversation'
-import {
-  pendingInsertQueueKey,
-  usePendingMessageInsertStore,
-} from '../stores/pendingMessageInsertStore'
-
-const COMPOSER_HEIGHT_KEY = 'workstep-chat-composer-height'
-const MIN_COMPOSER_HEIGHT = 220
-const MAX_COMPOSER_FRACTION = 0.85
-const EMPTY_PENDING_INSERTS: never[] = []
-
-function loadChatComposerHeight(): number | null {
-  try {
-    const raw = window.localStorage.getItem(COMPOSER_HEIGHT_KEY)
-    if (!raw) return null
-    const value = Number(raw)
-    return Number.isFinite(value) && value > 0 ? value : null
-  } catch {
-    return null
-  }
-}
 
 export interface AssistantChatCopy {
   emptyIntro: string
@@ -120,11 +102,13 @@ export interface AssistantChatPanelProps {
   onAttachmentError?: (message: string) => void
   onClose?: () => void
   onA2uiAction?: (action: A2uiClientAction) => void
+  headerContext?: ReactNode
   headerActions?: ReactNode
   /** Assistant-specific controls rendered in the button row above the composer. */
   composerActions?: ReactNode
   /** Floating content anchored immediately above the composer. */
   composerOverlay?: ReactNode
+  composerStatus?: ReactNode
   afterMessages?: ReactNode
   actionRuns?: ActionRun[]
   onStopAction?: (runId: string) => void
@@ -139,8 +123,10 @@ export interface AssistantChatPanelProps {
   showUserTag?: boolean
   /** Load one persisted message's JSONL process timeline on demand. */
   onLoadMessageEvents?: (messageId: string) => void
+  /** Fetch older messages; capture the scroll position immediately before prepending. */
+  onLoadOlderHistory?: (beforePrepend?: () => void) => Promise<void>
   /** Optional message-level fork action, shown on completed assistant replies. */
-  onForkMessage?: (messageId: string) => void
+  onForkMessage?: (messageId: string, preferSmart?: boolean) => void
 }
 
 interface MessageItemProps {
@@ -159,7 +145,7 @@ interface MessageItemProps {
   ) => Promise<void>
   onViewPrompt: (value: string | null) => void
   onLoadMessageEvents?: (messageId: string) => void
-  onForkMessage?: (messageId: string) => void
+  onForkMessage?: (messageId: string, preferSmart?: boolean) => void
   onSendToInput: (content: string) => void
   onAsyncQuestionSubmit: (content: string) => Promise<boolean>
   onA2uiAction?: (action: A2uiClientAction) => void
@@ -180,27 +166,37 @@ const MessageItem = memo(function MessageItem({
   onForkMessage, onSendToInput, onAsyncQuestionSubmit, onA2uiAction,
 }: MessageItemProps) {
   const { t } = useI18n()
+  const { canEdit } = useGatewayProjectPermissions(projectId)
   const ownUserMessage = !message.author_device_id || message.author_device_id === deviceId
-  const userSender = displayUserSender(message.author_name, userName, copy.me)
+  const userSender = displayUserSender(
+    message.author_name, userName, copy.me, t('aiFlow.historicalUser'),
+  )
   return (
     <ChatMessageBubble
       role={message.role}
       sender={message.role === 'user' ? userSender : copy.agent}
       senderTitle={
         message.role === 'user'
-          ? displayUserDetail(message.author_name, message.author_device_name, copy.me)
+          ? displayUserDetail(
+              message.author_name, message.author_device_name,
+              t('aiFlow.historicalUser'), message.author_username,
+            )
           : undefined
       }
       initials={message.role === 'user' ? (ownUserMessage ? copy.meInitials : userSender.slice(0, 2)) : copy.agentInitials}
       color={message.role === 'user' ? 'var(--accent)' : 'var(--ai-assistant)'}
       content={message.content}
       events={message.events}
-      interactionsEnabled={message.status === 'running'}
+      interactionsEnabled={canEdit && message.status === 'running'}
       a2uiMessages={a2uiEntry}
-      onInteractionRespond={respondInteraction}
+      onInteractionRespond={canEdit ? respondInteraction : undefined}
       streaming={message.status === 'running'}
       projectId={projectId}
-      error={message.role === 'assistant' ? message.error : undefined}
+      error={
+        message.role === 'assistant'
+          ? message.error || resolveMessageError(message.events)
+          : undefined
+      }
       showLoading={message.role === 'assistant' && message.status === 'running'}
       loading={message.role === 'assistant'
         ? <StreamingStatusText label={t('bubble.thinking')} />
@@ -242,9 +238,8 @@ const MessageItem = memo(function MessageItem({
         />
       )}
       footer={
-        message.role === 'assistant' &&
-        // 思考中（尚无正文）也展示 Token / t/s / 引擎 * 模型
-        (message.content || message.status === 'running' || message.status === 'stopped') ? (
+        // 无正文、失败或停止的助手回复也保留元信息与分叉操作。
+        message.role === 'assistant' ? (
           <MessageResponseFooter
             content={stripA2uiBlocks(message.content)}
             usage={usageFromEvents(message.events ?? [])}
@@ -255,15 +250,15 @@ const MessageItem = memo(function MessageItem({
             startedAt={message.created_at}
             running={message.status === 'running'}
             stopped={message.status === 'stopped'}
-            onFork={message.status === 'succeeded' && onForkMessage
-              ? () => onForkMessage(message.id)
+            onFork={message.status !== 'running' && onForkMessage
+              ? () => onForkMessage(message.id, message.status === 'error')
               : undefined}
           />
         ) : undefined
       }
       onSendToInput={onSendToInput}
       onAsyncQuestionSubmit={onAsyncQuestionSubmit}
-      onA2uiAction={onA2uiAction}
+      onA2uiAction={canEdit ? onA2uiAction : undefined}
     />
   )
 })
@@ -272,78 +267,18 @@ const MessageItem = memo(function MessageItem({
 export default function AssistantChatPanel({
   projectId, sessionId, title, messages, running, stopping, input, sendError, copy,
   locale, config, permission, enhance, context, quota, onRefreshQuota, quotaRefreshing, plan, goal, availableCommands, attachmentPrefix, onInputChange, onSend, onSendContent, onStop, onAttachmentError, onClose,
-  onA2uiAction, headerActions, composerActions, composerOverlay, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
+  onA2uiAction, headerContext, headerActions, composerActions, composerStatus, composerOverlay, afterMessages, actionRuns, onStopAction, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, onQuickPromptItemSelect, a2uiMessages, showUserTag = false,
-  onLoadMessageEvents, onForkMessage, allowSendWhileRunning = false,
+  onLoadMessageEvents, onLoadOlderHistory, onForkMessage, allowSendWhileRunning = false,
 }: AssistantChatPanelProps) {
   const deviceId = useUserSettingsStore((state) => state.deviceId)
   const userName = useUserSettingsStore((state) => state.userName)
   const { t } = useI18n()
+  const { canEdit } = useGatewayProjectPermissions(projectId)
   const engineMessages = messages.filter((message) => message.engine !== 'action')
-  const activeMessageId = [...engineMessages].reverse().find((message) => (
-    message.role === 'assistant' && message.status === 'running'
-  ))?.id || ''
-  const pendingKey = pendingInsertQueueKey(projectId, activeMessageId)
-  const pendingInserts = usePendingMessageInsertStore((state) => (
-    activeMessageId ? state.queues[pendingKey] || EMPTY_PENDING_INSERTS : EMPTY_PENDING_INSERTS
-  ))
-  const pendingActions = usePendingMessageInsertStore(useShallow((state) => ({
-    loadPending: state.load,
-    addPending: state.add,
-    updatePending: state.update,
-    removePending: state.remove,
-    clearPending: state.clear,
-    reorderPending: state.reorder,
-  })))
-  const [pendingError, setPendingError] = useState('')
-  const [editingInsertId, setEditingInsertId] = useState<string | null>(null)
-  const [editingInsertContent, setEditingInsertContent] = useState('')
-  const [pendingSendingIds, setPendingSendingIds] = useState<string[]>([])
-
-  useEffect(() => {
-    if (!activeMessageId) return
-    void pendingActions.loadPending(projectId, activeMessageId).catch((reason) => {
-      setPendingError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
-    })
-  }, [activeMessageId, pendingActions, projectId, t])
-
-  const queueCurrentInput = useCallback(async () => {
-    const content = input.trim()
-    if (!content || !activeMessageId) return
-    setPendingError('')
-    try {
-      await pendingActions.addPending(projectId, activeMessageId, content)
-      onInputChange('')
-    } catch (reason) {
-      setPendingError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
-    }
-  }, [activeMessageId, input, onInputChange, pendingActions, projectId, t])
-
-  const queueEnabled = Boolean(sessionId && activeMessageId)
-
-  const sendPendingInserts = useCallback(async (
-    items: Array<{ id: string; content: string }>,
-  ) => {
-    if (!activeMessageId || items.length === 0) return
-    const content = items.map((item) => item.content.trim()).filter(Boolean).join('\n\n')
-    if (!content) return
-    const ids = items.map((item) => item.id)
-    setPendingError('')
-    setPendingSendingIds((current) => [...new Set([...current, ...ids])])
-    try {
-      const sent = await onSendContent(content, ids)
-      if (!sent) return
-      await Promise.all(items.map((item) => pendingActions.removePending(
-        projectId,
-        activeMessageId,
-        item.id,
-      )))
-    } catch (reason) {
-      setPendingError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
-    } finally {
-      setPendingSendingIds((current) => current.filter((id) => !ids.includes(id)))
-    }
-  }, [activeMessageId, onSendContent, pendingActions, projectId, t])
+  const { panel: pendingPanel, error: pendingError, queueEnabled, queueCurrentInput } = useAssistantPendingInserts({
+    projectId, sessionId, messages, input, onInputChange, onSendContent,
+  })
 
   const effectiveAllowSendWhileRunning = Boolean(allowSendWhileRunning || queueEnabled)
   const compactLayout = useCompactLayout()
@@ -359,10 +294,13 @@ export default function AssistantChatPanel({
   const lastProgrammaticScrollTopRef = useRef(0)
   const lastScrollTopRef = useRef(0)
   const lastScrollHeightRef = useRef(0)
-  const rootRef = useRef<HTMLDivElement>(null)
-  const composerRef = useRef<HTMLDivElement>(null)
-  const composerInnerRef = useRef<HTMLDivElement>(null)
-  const [composerHeight, setComposerHeight] = useState<number | null>(loadChatComposerHeight)
+  const prependHeightRef = useRef<number | null>(null)
+  const prependedRef = useRef(false)
+  const {
+    rootRef, composerRef, composerInnerRef, height: composerHeight,
+    startResize: startComposerResize, resetHeight: resetComposerHeight,
+    handleResizeKey: handleComposerResizeKey,
+  } = useChatComposerResize()
   const lastContent = messages.at(-1)?.content ?? ''
   const lastEventsCount = messages.at(-1)?.events?.length ?? 0
   // 输入区上方的悬浮面板（如「待插入消息」）会遮住会话底部：
@@ -392,7 +330,24 @@ export default function AssistantChatPanel({
     onSendContent(content, [])
   ), [onSendContent])
 
+  useLayoutEffect(() => {
+    const list = listRef.current
+    const previousHeight = prependHeightRef.current
+    if (!list || previousHeight === null) return
+    const target = list.scrollTop + list.scrollHeight - previousHeight
+    list.scrollTop = target
+    lastProgrammaticScrollTopRef.current = target
+    lastScrollTopRef.current = target
+    lastScrollHeightRef.current = list.scrollHeight
+    prependHeightRef.current = null
+    prependedRef.current = true
+  }, [messages])
+
   useEffect(() => {
+    if (prependedRef.current) {
+      prependedRef.current = false
+      return
+    }
     const list = listRef.current
     if (!followRef.current) {
       if (list) lastScrollHeightRef.current = list.scrollHeight
@@ -472,64 +427,6 @@ export default function AssistantChatPanel({
     })
   }, [])
 
-  // 持久化输入区高度；双击重置（null）会清除存储值。
-  useEffect(() => {
-    try {
-      if (composerHeight === null) window.localStorage.removeItem(COMPOSER_HEIGHT_KEY)
-      else window.localStorage.setItem(COMPOSER_HEIGHT_KEY, String(Math.round(composerHeight)))
-    } catch { /* localStorage 不可用 */ }
-  }, [composerHeight])
-
-  const clampComposerHeight = (height: number) => {
-    const containerHeight = rootRef.current?.getBoundingClientRect().height
-    const max = containerHeight
-      ? Math.max(MIN_COMPOSER_HEIGHT, Math.round(containerHeight * MAX_COMPOSER_FRACTION))
-      : height
-    return Math.min(Math.max(MIN_COMPOSER_HEIGHT, height), max)
-  }
-
-  // 拖动中直接写 DOM 高度，避免每帧重渲染整个消息列表；松开时提交状态。
-  const startComposerResize = (event: React.MouseEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    const startY = event.clientY
-    const startHeight = composerRef.current?.getBoundingClientRect().height
-      ?? composerHeight ?? MIN_COMPOSER_HEIGHT
-    let latest = startHeight
-    const onMove = (moveEvent: MouseEvent) => {
-      latest = clampComposerHeight(startHeight + (startY - moveEvent.clientY))
-      if (composerRef.current) composerRef.current.style.height = `${latest}px`
-      if (composerInnerRef.current) {
-        composerInnerRef.current.style.height = '100%'
-        composerInnerRef.current.style.overflowY = 'auto'
-      }
-    }
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-      setComposerHeight(latest)
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    document.body.style.cursor = 'row-resize'
-    document.body.style.userSelect = ''
-  }
-
-  const resetComposerHeight = () => setComposerHeight(null)
-
-  const handleComposerResizeKey = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    const base = composerRef.current?.getBoundingClientRect().height
-      ?? composerHeight ?? MIN_COMPOSER_HEIGHT
-    let next: number | null
-    if (event.key === 'ArrowUp') next = base + 8
-    else if (event.key === 'ArrowDown') next = base - 8
-    else if (event.key === 'Escape' || event.key === 'Home') next = null
-    else return
-    event.preventDefault()
-    setComposerHeight(next === null ? null : clampComposerHeight(next))
-  }
-
   const conversationMessages = actionRuns
     ? mergeActionMessages(
       messages,
@@ -548,7 +445,7 @@ export default function AssistantChatPanel({
     : messages
 
   return (
-    <div className="assistant-chat-panel" ref={rootRef} style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+    <div className="assistant-chat-panel" ref={rootRef}>
       <div style={{
         height: 40, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8,
         padding: '0 12px', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)',
@@ -564,11 +461,13 @@ export default function AssistantChatPanel({
         {onClose && <Button variant="icon" aria-label={copy.closePrompt} onClick={onClose}>✕</Button>}
       </div>
 
+      {headerContext}
+
       {/* 输入区上方的悬浮面板（如「待插入消息」）会遮住会话底部：
           由包裹层留出「面板高度 + 10px」，滚动容器随之整体变矮。 */}
       <div className={`chat-history-wrapper${scrolledToBottom ? ' is-at-bottom' : ''}`} style={{ flex: 1, minHeight: 0, position: 'relative', paddingBottom: overlayPaddingBottom(5) }}>
         <div
-          className="chat-history-scroll"
+          className={`chat-history-scroll${onLoadOlderHistory ? ' chat-history-scroll--paged' : ''}`}
           ref={listRef}
           onWheelCapture={(event) => {
             if (shouldPauseConversationFollow({ type: 'wheel', deltaY: event.deltaY })) {
@@ -633,6 +532,12 @@ export default function AssistantChatPanel({
             setScrolledToBottom(nearBottom)
             lastScrollTopRef.current = list.scrollTop
             lastScrollHeightRef.current = list.scrollHeight
+            if (list.scrollTop <= 40 && onLoadOlderHistory) {
+              void onLoadOlderHistory(() => {
+                followRef.current = false
+                prependHeightRef.current = list.scrollHeight
+              })
+            }
           }}
           style={{
             height: '100%', minHeight: 0, overflowY: 'auto', paddingBlock: 10,
@@ -655,7 +560,7 @@ export default function AssistantChatPanel({
               key={message.id}
               message={message}
               run={(message as AssistantChatMessage & { actionRun?: ActionRun }).actionRun}
-              onStop={onStopAction}
+              onStop={canEdit ? onStopAction : undefined}
             />
           ) : (
             <MessageItem
@@ -672,10 +577,10 @@ export default function AssistantChatPanel({
               respondInteraction={respondInteraction}
               onViewPrompt={setViewingPrompt}
               onLoadMessageEvents={onLoadMessageEvents}
-              onForkMessage={onForkMessage}
+              onForkMessage={canEdit ? onForkMessage : undefined}
               onSendToInput={handleSendToInput}
               onAsyncQuestionSubmit={handleAsyncQuestionSubmit}
-              onA2uiAction={onA2uiAction}
+              onA2uiAction={canEdit ? onA2uiAction : undefined}
             />
           ))}
           {showThinkingReply && (
@@ -712,7 +617,8 @@ export default function AssistantChatPanel({
         />
       </div>
 
-      {(sendError || pendingError) && <div style={{ padding: '6px 12px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)', background: 'var(--bg)' }}>{sendError || pendingError}</div>}
+      {(sendError || pendingError) && <div className="assistant-chat-error">{sendError || pendingError}</div>}
+      {canEdit && <>
       <div
         role="separator"
         aria-orientation="horizontal"
@@ -723,86 +629,22 @@ export default function AssistantChatPanel({
         onDoubleClick={resetComposerHeight}
         onKeyDown={handleComposerResizeKey}
         className="chat-composer-resize-handle"
-        style={{
-          height: 2, flexShrink: 0, cursor: 'row-resize',
-          background: 'var(--border-soft)',        }}
       />
 
       <div
         ref={composerRef}
-        style={{
-          position: 'relative', flexShrink: 0,
-          height: compactLayout ? 'auto' : composerHeight ?? 'auto',
-          background: 'var(--bg)',
-        }}
+        className="chat-composer-outer"
+        style={!compactLayout && composerHeight !== null ? { height: composerHeight } : undefined}
       >
         <ComposerOverlayHostContext.Provider value={registerOverlay}>
-          {activeMessageId && pendingInserts.length > 0 && (
-            <PendingMessageInserts
-              items={pendingInserts}
-              title={t('chatSession.pendingInsertTitle')}
-              titleTooltip={t('chatSession.pendingInsertHint')}
-              editingId={editingInsertId}
-              editingContent={editingInsertContent}
-              sendingIds={pendingSendingIds}
-              onEditingContentChange={setEditingInsertContent}
-              onEditStart={(item) => {
-                setEditingInsertId(item.id)
-                setEditingInsertContent(item.content)
-              }}
-              onEditSave={(id) => {
-                const content = editingInsertContent.trim()
-                if (!content) return
-                void pendingActions.updatePending(projectId, activeMessageId, id, content)
-                  .then(() => {
-                    setEditingInsertId(null)
-                    setEditingInsertContent('')
-                  })
-                  .catch((reason) => setPendingError(
-                    reason instanceof Error ? reason.message : t('chatSession.sendFailed'),
-                  ))
-              }}
-              onEditCancel={() => {
-                setEditingInsertId(null)
-                setEditingInsertContent('')
-              }}
-              onSend={(item) => void sendPendingInserts([item])}
-              onSendAll={() => void sendPendingInserts(pendingInserts)}
-              onRemove={(id) => void pendingActions.removePending(
-                projectId,
-                activeMessageId,
-                id,
-              ).catch((reason) => setPendingError(
-                reason instanceof Error ? reason.message : t('chatSession.sendFailed'),
-              ))}
-              onClear={() => void pendingActions.clearPending(
-                projectId,
-                activeMessageId,
-              ).catch((reason) => setPendingError(
-                reason instanceof Error ? reason.message : t('chatSession.sendFailed'),
-              ))}
-              onReorder={(fromIndex, toIndex) => void pendingActions.reorderPending(
-                projectId,
-                activeMessageId,
-                fromIndex,
-                toIndex,
-              ).catch((reason) => setPendingError(
-                reason instanceof Error ? reason.message : t('chatSession.sendFailed'),
-              ))}
-              reorderHint={t('chatSession.pendingInsertReorderHint')}
-            />
-          )}
+          {pendingPanel}
           {composerOverlay}
         </ComposerOverlayHostContext.Provider>
         <div
           ref={composerInnerRef}
-          style={{
-            height: compactLayout ? 'auto' : composerHeight ?? 'auto',
-            overflowY: 'visible',
-            display: 'flex', flexDirection: 'column',
-            padding: compactLayout ? '0' : '12px 12px',
-          }}
+          className={`chat-composer-inner${!compactLayout && composerHeight !== null ? ' is-resized' : ''}${compactLayout ? ' is-compact' : ''}`}
         >
+          {composerStatus}
           {(composerActions || (quickPrompts && quickPrompts.length > 0)) && !compactLayout && (
               <div
                 className="chat-quick-prompts"
@@ -822,7 +664,7 @@ export default function AssistantChatPanel({
                     onSelect={(prompt) => {
                       if (onQuickPromptItemSelect) onQuickPromptItemSelect(item)
                       else onQuickPromptSelect?.(prompt)
-                      requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }))
+                      if (item.kind !== 'action') requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }))
                     }}
                     style={{ flexShrink: 0, borderRadius: 999, whiteSpace: 'nowrap' }}
                   />
@@ -888,7 +730,7 @@ export default function AssistantChatPanel({
                         setQuickPromptsOpen(false)
                         if (onQuickPromptItemSelect) onQuickPromptItemSelect(item)
                         else onQuickPromptSelect?.(prompt)
-                        requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }))
+                        if (item.kind !== 'action') requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }))
                       }}
                       style={{ justifyContent: 'flex-start', width: '100%' }}
                     />
@@ -899,6 +741,8 @@ export default function AssistantChatPanel({
           />
         </div>
       </div>
+
+      </>}
 
       {viewingPrompt && (
         <PromptViewerDialog

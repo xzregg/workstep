@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import time
-import uuid
 from inspect import isawaitable
 from contextlib import suppress
 from typing import Any, AsyncIterator
@@ -15,6 +14,9 @@ import acp
 from acp import schema
 from settings import settings
 
+from engines.core.acp_event_mapper import ACPEventMapper
+from engines.core.acp_sessions import ACPSessionProtocol
+from engines.core.acp_streaming_client import ACPStreamingClient as _StreamingClient
 from engines.core.base import (
     BaseLLMEngine,
     EngineModel,
@@ -24,24 +26,18 @@ from engines.core.base import (
 from engines.core.schema import EngineImage
 from engines.core.events import (
     InternalEvent,
-    acp_raw_event,
-    agent_message_chunk,
-    agent_thought_chunk,
     compacted_event,
     normalize_token_usage,
     tool_call_event,
     tool_call_update_event,
-    usage_update_event,
-    user_message_chunk,
 )
 from engines.core.interactions import (
     claude_ask_user_request,
-    elicitation_request,
     interaction_from_tool_use,
     permission_request,
     permission_signature,
 )
-from engines.core.plans import NativePlanTracker, plan_event
+from engines.core.plans import NativePlanTracker
 
 logger = logging.getLogger(__name__)
 
@@ -77,259 +73,10 @@ ACP_EVENTS: frozenset[str] = frozenset({
 })
 
 
-class _StreamingClient:
-    """Receive ACP notifications and apply the configured permission policy."""
-
-    def __init__(self, permission_mode: str | None = None):
-        self.updates: asyncio.Queue = asyncio.Queue()
-        self.permission_mode = permission_mode
-        # tool_call_id → Future[option_id | None], parked until the UI responds.
-        self._approval_futures: dict[str, asyncio.Future[str | None]] = {}
-        self._default_allow_options: dict[str, str | None] = {}
-        self._elicitation_futures: dict[str, asyncio.Future[dict]] = {}
-        self.pending_permissions: list[dict] = []
-
-    @property
-    def needs_approval(self) -> bool:
-        """Human-in-the-loop mode: every tool call waits for an explicit decision."""
-        return self.permission_mode == "ask"
-
-    def resolve_approval(self, tool_call_id: str, approved: bool) -> bool:
-        """Resolve a parked permission request; returns False if none is pending."""
-        option_id = self._default_allow_options.get(tool_call_id) if approved else None
-        return self.resolve_permission(tool_call_id, option_id)
-
-    def resolve_permission(self, tool_call_id: str, option_id: str | None) -> bool:
-        """Resolve a parked permission with the exact ACP option selected."""
-        future = self._approval_futures.get(tool_call_id)
-        if future is None or future.done():
-            return False
-        future.set_result(option_id)
-        return True
-
-    async def session_update(self, session_id, update, **kwargs):
-        await self.updates.put(update)
-
-    def resolve_elicitation(
-        self,
-        interaction_id: str,
-        response: dict,
-    ) -> bool:
-        future = self._elicitation_futures.get(interaction_id)
-        if future is None or future.done():
-            return False
-        future.set_result(response)
-        return True
-
-    async def create_elicitation(self, message, mode, **kwargs):
-        """Surface ACP form elicitation and await the user's structured input."""
-        mode = getattr(mode, "root", mode)
-        requested_schema = getattr(mode, "requested_schema", None)
-        url = getattr(mode, "url", None)
-        elicitation_id = getattr(mode, "elicitation_id", None)
-        if requested_schema is None and url is None:
-            return schema.DeclineElicitationResponse(action="decline")
-        interaction_id = str(elicitation_id or uuid.uuid4())
-        future = asyncio.get_running_loop().create_future()
-        self._elicitation_futures[interaction_id] = future
-        if url is not None:
-            await self.updates.put(InternalEvent(
-                type="interaction_request",
-                data={
-                    "interaction_id": interaction_id,
-                    "method": "elicitation/create",
-                    "mode": "url",
-                    "message": str(message),
-                    "url": str(url),
-                    "elicitation_id": interaction_id,
-                    "session_id": getattr(mode, "session_id", None),
-                    "tool_call_id": getattr(mode, "tool_call_id", None),
-                },
-            ))
-        else:
-            dump = getattr(requested_schema, "model_dump", None)
-            schema_data = (
-                dump(by_alias=False, exclude_none=True)
-                if callable(dump)
-                else requested_schema
-            )
-            await self.updates.put(elicitation_request(
-                interaction_id=interaction_id,
-                message=str(message),
-                requested_schema=schema_data,
-                session_id=getattr(mode, "session_id", None),
-                tool_call_id=getattr(mode, "tool_call_id", None),
-            ))
-        try:
-            response = await future
-        finally:
-            self._elicitation_futures.pop(interaction_id, None)
-        action = response.get("action")
-        if action == "accept":
-            content = response.get("content")
-            return schema.AcceptElicitationResponse(
-                action="accept",
-                content=content if isinstance(content, dict) else {},
-            )
-        if action == "decline":
-            return schema.DeclineElicitationResponse(action="decline")
-        return schema.CancelElicitationResponse(action="cancel")
-
-    async def request_permission(self, session_id, tool_call, options, **kwargs):
-        tool_call_id = getattr(tool_call, "tool_call_id", None) or getattr(tool_call, "id", None)
-        if self.needs_approval and tool_call_id is not None:
-            # Park the request until the client calls approve_tool(...).
-            future = asyncio.get_running_loop().create_future()
-            self._approval_futures[tool_call_id] = future
-            allow_option = next(
-                (option for option in options if option.kind == "allow_once"),
-                None,
-            )
-            self._default_allow_options[tool_call_id] = getattr(
-                allow_option, "option_id", None
-            )
-            self.pending_permissions.append({
-                "tool_call_id": tool_call_id,
-                "name": getattr(tool_call, "title", "") or "",
-                "kind": getattr(tool_call, "kind", None),
-                "input": getattr(tool_call, "raw_input", None) or {},
-            })
-            await self.updates.put(permission_request(
-                interaction_id=tool_call_id,
-                session_id=str(session_id),
-                tool_call={
-                    "tool_call_id": tool_call_id,
-                    "title": getattr(tool_call, "title", "") or "",
-                    "kind": getattr(tool_call, "kind", None),
-                    "raw_input": getattr(tool_call, "raw_input", None) or {},
-                },
-                options=[{
-                    "option_id": str(getattr(option, "option_id", "")),
-                    "name": str(
-                        getattr(option, "name", "")
-                        or getattr(option, "kind", "")
-                    ),
-                    "kind": str(getattr(option, "kind", "")),
-                } for option in options],
-            ))
-            selected_option_id = await future
-            self.pending_permissions = [
-                pending
-                for pending in self.pending_permissions
-                if pending.get("tool_call_id") != tool_call_id
-            ]
-            self._approval_futures.pop(tool_call_id, None)
-            self._default_allow_options.pop(tool_call_id, None)
-            if not selected_option_id:
-                return schema.RequestPermissionResponse(
-                    outcome=schema.DeniedOutcome(outcome="cancelled")
-                )
-            selected = next(
-                (
-                    option for option in options
-                    if option.option_id == selected_option_id
-                ),
-                None,
-            )
-            if selected is None or str(selected.kind).startswith("reject"):
-                return schema.RequestPermissionResponse(
-                    outcome=schema.DeniedOutcome(outcome="cancelled")
-                )
-            return schema.RequestPermissionResponse(
-                outcome=schema.AllowedOutcome(
-                    outcome="selected",
-                    option_id=selected.option_id,
-                )
-            )
-
-        tool_kind = getattr(tool_call, "kind", None)
-        should_allow = (
-            self.permission_mode is None
-            or self.permission_mode in {
-                "auto",
-                "bypassPermissions",
-                "workspace-write",
-                "danger-full-access",
-            }
-            or (
-                self.permission_mode == "acceptEdits"
-                and tool_kind == "edit"
-            )
-            or (
-                self.permission_mode in {"plan", "read-only"}
-                and tool_kind in {"read", "search", "think", "fetch"}
-            )
-        )
-        preferred_kinds = (
-            ("allow_always", "allow_once")
-            if self.permission_mode == "bypassPermissions"
-            else ("allow_once", "allow_always")
-        ) if should_allow else ("reject_once", "reject_always")
-        selected = next(
-            (
-                option
-                for preferred_kind in preferred_kinds
-                for option in options
-                if option.kind == preferred_kind
-            ),
-            None,
-        )
-        if selected is None or not should_allow:
-            return schema.RequestPermissionResponse(
-                outcome=schema.DeniedOutcome(outcome="cancelled")
-            )
-        return schema.RequestPermissionResponse(
-            outcome=schema.AllowedOutcome(
-                outcome="selected",
-                option_id=selected.option_id,
-            )
-        )
-
-    async def write_text_file(self, session_id, path, content, **kwargs):
-        raise acp.RequestError.method_not_found("fs/write_text_file")
-
-    async def read_text_file(self, session_id, path, line=None, limit=None, **kwargs):
-        raise acp.RequestError.method_not_found("fs/read_text_file")
-
-    async def complete_elicitation(self, elicitation_id: str, **kwargs):
-        """Agent 通知 elicitation 已完成（独立于 session/update 通道）。
-
-        进入 session update 队列，由 ``_map_notification`` 翻译为
-        ``elicitation_completed`` 事件。
-        """
-        await self.updates.put(schema.CompleteElicitationNotification(
-            elicitation_id=elicitation_id,
-        ))
-
-    async def create_terminal(self, session_id, command, **kwargs):
-        raise acp.RequestError.method_not_found("terminal/create")
-
-    async def kill_terminal(self, session_id, terminal_id, **kwargs):
-        raise acp.RequestError.method_not_found("terminal/kill")
-
-    async def release_terminal(self, session_id, terminal_id, **kwargs):
-        raise acp.RequestError.method_not_found("terminal/release")
-
-    async def terminal_output(self, session_id, terminal_id, **kwargs):
-        raise acp.RequestError.method_not_found("terminal/output")
-
-    async def wait_for_terminal_exit(self, session_id, terminal_id, **kwargs):
-        raise acp.RequestError.method_not_found("terminal/wait_for_exit")
-
-    async def ext_method(self, method: str, params: dict) -> dict:
-        raise acp.RequestError.method_not_found(f"_{method}")
-
-    async def ext_notification(self, method: str, params: dict) -> None:
-        await self.updates.put(acp_raw_event({
-            "method": method,
-            "params": params,
-        }))
-
-    def on_connect(self, conn) -> None:
-        return None
-
-
-class AcpEngineBase(BaseLLMEngine):
+class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
+    # WorkStep extension, not an ACP wire field. Native adapters preserve their
+    # base instructions; other engines receive a first-session text fallback.
+    SYSTEM_PROMPT_MODE = "body"
     EXECUTION_MAX_ATTEMPTS = 2
     ACP_COMMAND_DISCOVERY_TIMEOUT = 0.5
     ACP_COMMAND_CACHE_TTL = 30.0
@@ -382,6 +129,10 @@ class AcpEngineBase(BaseLLMEngine):
     async def _stream_with_retry(
         self,
         spawn_method,
+        *,
+        system_prompt: str | None = None,
+        system_prompt_each_turn: bool = False,
+        capture_prompt_input: bool = False,
         **kwargs,
     ) -> AsyncIterator[InternalEvent]:
         """Run one engine stream, retrying its first terminal failure once.
@@ -396,6 +147,19 @@ class AcpEngineBase(BaseLLMEngine):
             attempt_kwargs = dict(kwargs)
             if self.supports_resume:
                 attempt_kwargs["session_id"] = retry_session_id
+            attempt_kwargs = await self._prepare_prompt_input(
+                attempt_kwargs, system_prompt, each_turn=system_prompt_each_turn,
+            )
+            if capture_prompt_input or system_prompt_each_turn:
+                # Snapshot the real adapter arguments after fallback and retry
+                # selection. This is not the provider's hidden conversation.
+                yield self._prompt_input_event(
+                    attempt_kwargs, attempt_index + 1,
+                    instruction_in_body=(
+                        self.SYSTEM_PROMPT_MODE == "body"
+                        and attempt_kwargs.get("prompt") != kwargs.get("prompt")
+                    ),
+                )
             failed_event: InternalEvent | None = None
             try:
                 iterator = spawn_method(**attempt_kwargs)
@@ -440,7 +204,40 @@ class AcpEngineBase(BaseLLMEngine):
                 },
             )
 
-    async def spawn_with_retry(self, **kwargs) -> AsyncIterator[InternalEvent]:
+    def _prompt_input_event(
+        self, kwargs: dict, attempt: int = 1, *, instruction_in_body: bool = False,
+    ) -> InternalEvent:
+        return InternalEvent(type="prompt_input", data={
+            "engine": self.ENGINE_ID,
+            "attempt": attempt,
+            "session_id": kwargs.get("session_id"),
+            "instruction_transport": self.SYSTEM_PROMPT_MODE,
+            "prompt": kwargs.get("prompt") or "",
+            "system_prompt": kwargs.get("system_prompt"),
+            "system_prompt_in_body": instruction_in_body,
+            "images": [image.reference for image in kwargs.get("images") or []],
+            "message_history": kwargs.get("message_history"),
+        })
+
+    def _prepare_system_prompt(self, kwargs: dict, system_prompt: str | None, *, each_turn: bool = False) -> dict:
+        kwargs = dict(kwargs)
+        instruction = (system_prompt or "").strip()
+        if not instruction or str(kwargs.get("prompt") or "").strip() == "/compact":
+            return kwargs
+        if self.SYSTEM_PROMPT_MODE != "body":
+            kwargs["system_prompt"] = instruction
+        elif each_turn or not (kwargs.get("session_id") and self.supports_resume):
+            kwargs["prompt"] = f"{instruction}\n\n{kwargs.get('prompt') or ''}"
+        return kwargs
+
+    async def _prepare_prompt_input(self, kwargs: dict, system_prompt: str | None, *, each_turn: bool = False) -> dict:
+        """Let an adapter resolve persisted instructions before input capture."""
+        return self._prepare_system_prompt(kwargs, system_prompt, each_turn=each_turn)
+
+    async def spawn_with_retry(
+        self, *, system_prompt: str | None = None, system_prompt_each_turn: bool = False,
+        capture_prompt_input: bool = False, **kwargs,
+    ) -> AsyncIterator[InternalEvent]:
         """Run the normal execution entry point with one failure retry."""
         if str(kwargs.get("prompt") or "").strip() == "/compact":
             from engines.core.input_items import NO_MANUAL_COMPACTION
@@ -456,6 +253,8 @@ class AcpEngineBase(BaseLLMEngine):
                 })
                 return
             # Compaction changes the current session. Never retry it blindly.
+            if capture_prompt_input or system_prompt_each_turn:
+                yield self._prompt_input_event(kwargs)
             confirmed = False
             failed = False
             async for event in self.spawn(**kwargs):
@@ -467,16 +266,32 @@ class AcpEngineBase(BaseLLMEngine):
                     "message": "引擎未返回压缩完成事件，无法确认上下文已压缩",
                 })
             return
-        async for event in self._stream_with_retry(self.spawn, **kwargs):
+        async for event in self._stream_with_retry(
+            self.spawn, system_prompt=system_prompt,
+            system_prompt_each_turn=system_prompt_each_turn,
+            capture_prompt_input=capture_prompt_input, **kwargs,
+        ):
             yield event
 
     async def spawn_coordinator_with_retry(
         self,
+        system_prompt: str | None = None,
+        system_prompt_each_turn: bool = False,
+        capture_prompt_input: bool = False,
         **kwargs,
     ) -> AsyncIterator[InternalEvent]:
         """Run the coordinator entry point with one failure retry."""
+        if capture_prompt_input:
+            # Assistant-owned rules are already supplied; do not add a second role.
+            kwargs["_coordinator_prepared"] = True
+            if kwargs.get("images") and not self.capabilities.supports_vision:
+                kwargs["prompt"] = await asyncio.to_thread(self.render_image_prompt, kwargs["prompt"], kwargs["images"])
+                kwargs["images"] = None
         async for event in self._stream_with_retry(
             self.spawn_coordinator,
+            system_prompt=system_prompt,
+            system_prompt_each_turn=system_prompt_each_turn,
+            capture_prompt_input=capture_prompt_input,
             **kwargs,
         ):
             yield event
@@ -782,287 +597,6 @@ class AcpEngineBase(BaseLLMEngine):
                 self._running = False
                 self._process = None
 
-    # --- ACP-aligned session lifecycle (session/*) ---
-
-    @property
-    def supports_sessions(self) -> bool:
-        """Whether this engine exposes ACP-style sessions (ACP native only)."""
-        return self._is_acp_native
-
-    @property
-    def supports_tool_approval(self) -> bool:
-        """Whether pending tool calls can be approved (ACP native only)."""
-        return self._is_acp_native
-
-    async def create_session(
-        self,
-        cwd: str,
-        add_dirs: list[str] | None = None,
-        mcp_servers: list | None = None,
-    ) -> str | None:
-        """session/new — create a fresh session, return its session id."""
-        if not self._is_acp_native:
-            return None
-
-        async def action(client):
-            self._validate_session_inputs(
-                self._initialize_response, add_dirs or [], mcp_servers or []
-            )
-            session = await client.new_session(
-                cwd=cwd,
-                additional_directories=add_dirs or [],
-                mcp_servers=mcp_servers or [],
-            )
-            return session.session_id
-
-        return await self._with_agent(cwd, action)
-
-    async def load_session(
-        self,
-        session_id: str,
-        cwd: str,
-        add_dirs: list[str] | None = None,
-        mcp_servers: list | None = None,
-    ) -> bool:
-        """session/load — restore a persisted session's context/memory/config."""
-        if not self._is_acp_native:
-            return False
-
-        async def action(client):
-            if not self._agent_capability(
-                self._initialize_response, "load_session"
-            ):
-                return False
-            self._validate_session_inputs(
-                self._initialize_response, add_dirs or [], mcp_servers or []
-            )
-            response = await client.load_session(
-                cwd=cwd,
-                session_id=session_id,
-                additional_directories=add_dirs or [],
-                mcp_servers=mcp_servers or [],
-            )
-            return response is not None
-
-        return await self._with_agent(cwd, action)
-
-    async def list_sessions(self, cwd: str | None = None) -> list[str]:
-        """session/list — list local archived session ids."""
-        if not self._is_acp_native:
-            return []
-        if not cwd:
-            return []
-
-        async def action(client):
-            if not self._agent_capability(
-                self._initialize_response, "session_capabilities", "list"
-            ):
-                return []
-            response = await client.list_sessions(cwd=cwd)
-            return [item.session_id for item in (response.sessions or [])]
-
-        return await self._with_agent(cwd, action)
-
-    async def resume_session(
-        self,
-        session_id: str,
-        cwd: str,
-        add_dirs: list[str] | None = None,
-        mcp_servers: list | None = None,
-    ) -> bool:
-        """session/resume — restore a session and replay its history."""
-        if not self._is_acp_native:
-            return False
-
-        async def action(client):
-            if not self._agent_capability(
-                self._initialize_response, "session_capabilities", "resume"
-            ):
-                return False
-            self._validate_session_inputs(
-                self._initialize_response, add_dirs or [], mcp_servers or []
-            )
-            response = await client.resume_session(
-                session_id=session_id,
-                cwd=cwd,
-                additional_directories=add_dirs or [],
-                mcp_servers=mcp_servers or [],
-            )
-            return response is not None
-
-        return await self._with_agent(cwd, action)
-
-    async def fork_session(
-        self,
-        session_id: str,
-        cwd: str,
-        *,
-        fork_point: str | None = None,
-        model: str | None = None,
-        provider_id: str | None = None,
-    ) -> str | None:
-        """Create an independent native ACP session fork when advertised."""
-        if not self._is_acp_native:
-            return None
-
-        async def action(client):
-            if not self._agent_capability(
-                self._initialize_response, "session_capabilities", "fork"
-            ):
-                return None
-            response = await client.fork_session(
-                session_id=session_id,
-                cwd=cwd,
-                additional_directories=[],
-                mcp_servers=[],
-            )
-            return response.session_id if response is not None else None
-
-        return await self._with_agent(cwd, action)
-
-    async def close_session(self, session_id: str, cwd: str | None = None) -> None:
-        """session/close — close a session and release its resources."""
-        if not self._is_acp_native:
-            return None
-        cwd = cwd or self._last_cwd or "."
-
-        async def action(client):
-            if not self._agent_capability(
-                self._initialize_response, "session_capabilities", "close"
-            ):
-                return None
-            await client.close_session(session_id=session_id)
-
-        await self._with_agent(cwd, action)
-
-    def delete_session_persistence(self, session_id: str, cwd: str) -> None:
-        """Delete engine-side durable session storage for a conversation.
-
-        No-op by default: most engines keep no WorkStep-owned store keyed by
-        session id. Overridden by engines that do (e.g. Pydantic AI's
-        ``harness_runs.db``) so deleting a chat session also reclaims those
-        bytes instead of orphaning them on disk.
-        """
-        return None
-
-    async def cancel_session(self, session_id: str, cwd: str | None = None) -> None:
-        """session/cancel — force-stop current reasoning / tool execution."""
-        if not self._is_acp_native:
-            return None
-        cwd = cwd or self._last_cwd or "."
-
-        async def action(client):
-            await client.cancel(session_id=session_id)
-
-        await self._with_agent(cwd, action)
-
-    async def set_config_option(
-        self,
-        config_id: str,
-        value: str | bool,
-        session_id: str | None = None,
-    ) -> None:
-        """session/set_config_option — change model / cwd / max turns / permission mode."""
-        if not self._is_acp_native:
-            return None
-        if not session_id:
-            logger.warning(
-                "ACP set_config_option(%s) requires session_id; ignored", config_id
-            )
-            return None
-
-        async def action(client):
-            await client.set_config_option(
-                config_id=config_id,
-                session_id=session_id,
-                value=value,
-            )
-
-        await self._with_agent(self._last_cwd or ".", action)
-
-    async def set_session_mode(
-        self,
-        mode_id: str,
-        session_id: str | None = None,
-    ) -> None:
-        """Call the ACP session mode compatibility endpoint."""
-        if not self._is_acp_native or not session_id:
-            return None
-
-        async def action(client):
-            await client.set_session_mode(session_id=session_id, mode_id=mode_id)
-
-        await self._with_agent(self._last_cwd or ".", action)
-
-    async def authenticate(self, method_id: str, cwd: str | None = None) -> bool:
-        """Run one of the authentication methods returned by initialize."""
-        if not self._is_acp_native or not method_id:
-            return False
-
-        async def action(client):
-            response = await client.authenticate(method_id=method_id)
-            return response is not None
-
-        return await self._with_agent(cwd or self._last_cwd or ".", action)
-
-    async def call_acp_extension(
-        self,
-        method: str,
-        params: dict[str, Any],
-        cwd: str | None = None,
-    ) -> dict[str, Any]:
-        """Call an ACP extension method, including draft NES methods."""
-        if not self._is_acp_native:
-            raise RuntimeError(f"{self.ENGINE_ID}: ACP 扩展不可用")
-
-        async def action(client):
-            return await client.ext_method(method, params)
-
-        return await self._with_agent(cwd or self._last_cwd or ".", action)
-
-    async def notify_acp_extension(
-        self,
-        method: str,
-        params: dict[str, Any],
-        cwd: str | None = None,
-    ) -> None:
-        """Send an ACP extension notification without silently discarding it."""
-        if not self._is_acp_native:
-            raise RuntimeError(f"{self.ENGINE_ID}: ACP 扩展不可用")
-
-        async def action(client):
-            await client.ext_notification(method, params)
-
-        await self._with_agent(cwd or self._last_cwd or ".", action)
-
-    async def nes_start(self, params: dict[str, Any], cwd: str | None = None) -> dict[str, Any]:
-        return await self.call_acp_extension("nes/start", params, cwd)
-
-    async def nes_suggest(self, params: dict[str, Any], cwd: str | None = None) -> dict[str, Any]:
-        return await self.call_acp_extension("nes/suggest", params, cwd)
-
-    async def nes_accept(self, params: dict[str, Any], cwd: str | None = None) -> None:
-        await self.notify_acp_extension("nes/accept", params, cwd)
-
-    async def nes_reject(self, params: dict[str, Any], cwd: str | None = None) -> None:
-        await self.notify_acp_extension("nes/reject", params, cwd)
-
-    async def nes_close(self, params: dict[str, Any], cwd: str | None = None) -> dict[str, Any]:
-        return await self.call_acp_extension("nes/close", params, cwd)
-
-    async def reset_options(self, session_id: str | None = None) -> None:
-        """session/reset-options — restore process-global defaults.
-
-        ACP has no native reset primitive; agents start from process-global
-        defaults with a fresh session (session/new), so this is a no-op.
-        """
-        if not self._is_acp_native:
-            return None
-        logger.info(
-            "ACP reset_options: not supported natively (start a new session instead)"
-        )
-        return None
-
     async def approve_tool(self, tool_use_id: str, approved: bool = True) -> None:
         """tool_approve — accept or reject a pending tool_call (request_permission)."""
         event = self._pending_approvals_dict().get(tool_use_id)
@@ -1195,7 +729,14 @@ class AcpEngineBase(BaseLLMEngine):
         live_message_queue: asyncio.Queue | None = None,
         config_overrides: dict | None = None,
         thinking_effort: str | None = None,
+        plan_mode: bool | None = None,
+        goal_action: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
+        if goal_action and not self.supports_goal_mode:
+            yield InternalEvent(type="error", data={
+                "message": f"当前引擎不支持目标模式：{self.ENGINE_ID}",
+            })
+            return
         if prompt.strip() == "/compact":
             if not session_id:
                 yield InternalEvent(type="error", data={
@@ -1337,6 +878,18 @@ class AcpEngineBase(BaseLLMEngine):
                         )
                     except Exception:
                         logger.warning("Failed to set model %s", model)
+
+                if plan_mode is not None and self.supports_plan_mode:
+                    # 原生计划模式：经 session config `mode` 切换
+                    #（如 OpenCode 的 build/plan）；不支持的 agent 忽略。
+                    try:
+                        await client.set_config_option(
+                            config_id="mode",
+                            session_id=active_session_id,
+                            value="plan" if plan_mode else "build",
+                        )
+                    except Exception:
+                        logger.warning("Failed to set plan_mode %s", plan_mode)
 
                 effort = resolve_thinking_effort(thinking_effort)
                 if effort:
@@ -1559,17 +1112,23 @@ class AcpEngineBase(BaseLLMEngine):
         thinking_effort: str | None = None,
         workstep_tools: bool = False,
         config_overrides: dict | None = None,
+        system_prompt: str | None = None,
+        _coordinator_prepared: bool = False,
     ) -> AsyncIterator[InternalEvent]:
         """Run a no-tools coordinator turn through this adapter seam."""
         guarded_prompt = (
-            prompt if session_id and self.supports_resume
+            prompt if _coordinator_prepared or (session_id and self.supports_resume)
             else self._coordinator_prompt(prompt, workstep_tools=workstep_tools)
         )
         if images and not self.capabilities.supports_vision:
             guarded_prompt = await asyncio.to_thread(
                 self.render_image_prompt, guarded_prompt, images
             )
-        spawn_kwargs: dict[str, Any] = {}
+        spawn_kwargs = self._prepare_system_prompt(
+            {"prompt": guarded_prompt, "session_id": session_id}, system_prompt,
+        )
+        guarded_prompt = spawn_kwargs.pop("prompt")
+        spawn_kwargs.pop("session_id")
         if workstep_tools and self.capabilities.supports_workstep_tools:
             spawn_kwargs["workstep_tools"] = True
         if self.supports_message_history:
@@ -1642,11 +1201,6 @@ class AcpEngineBase(BaseLLMEngine):
         if tracker is None:
             tracker = NativePlanTracker()
             setattr(self, "_native_plan_tracker", tracker)
-        if event.type == "subagent":
-            # 子代理生命周期事件透传给前端；同时把状态并入 plan 快照，
-            # 供后续 plan 工具事件（TaskCreate/TaskUpdate/TaskList）携带。
-            tracker.observe(event)
-            return event
         return tracker.observe(event) or event
 
     def normalize_interaction_event(self, event: InternalEvent) -> InternalEvent:
@@ -1779,193 +1333,6 @@ class AcpEngineBase(BaseLLMEngine):
         also advertise ``supports_live_step_message`` in their capabilities.
         """
         return False
-
-    def _map_notification(self, update) -> InternalEvent | None:
-        """Map one ACP session update to the internal (ACP-vocabulary) event.
-
-        13 种 session update 全量映射；未知 update 透传 ``acp_raw`` 不再静默丢弃。
-        """
-        if isinstance(update, InternalEvent):
-            return update
-        if isinstance(update, schema.AgentMessageChunk):
-            text = self._content_text(update.content)
-            if text is not None:
-                return agent_message_chunk(text)
-        if isinstance(update, schema.AgentThoughtChunk):
-            text = self._content_text(update.content)
-            if text is not None:
-                return agent_thought_chunk(text)
-        if isinstance(update, schema.UserMessageChunk):
-            text = self._content_text(update.content)
-            if text is not None:
-                return user_message_chunk(text)
-        if isinstance(update, schema.ToolCallStart):
-            data = {
-                "tool_call_id": update.tool_call_id,
-                "title": update.title or "tool",
-            }
-            if update.kind:
-                data["kind"] = update.kind
-            if update.status:
-                data["status"] = update.status
-            if update.content is not None:
-                data["content"] = self._json_value(update.content)
-            if update.locations is not None:
-                data["locations"] = self._json_value(update.locations)
-            if update.raw_input is not None:
-                data["raw_input"] = update.raw_input
-            if update.raw_output is not None:
-                data["raw_output"] = update.raw_output
-            if update.field_meta is not None:
-                data["_meta"] = self._json_value(update.field_meta)
-            if (self.runtime_permission_mode() or self.get_permission_mode()) == "ask":
-                data["needs_approval"] = True
-            return InternalEvent(type="tool_call", data=data)
-        if isinstance(update, schema.ToolCallProgress):
-            data = {"tool_call_id": update.tool_call_id}
-            if update.status:
-                data["status"] = update.status
-            if update.title:
-                data["title"] = update.title
-            if update.kind:
-                data["kind"] = update.kind
-            if update.content is not None:
-                data["content"] = self._json_value(update.content)
-            if update.locations is not None:
-                data["locations"] = self._json_value(update.locations)
-            if update.raw_input is not None:
-                data["raw_input"] = update.raw_input
-            if update.raw_output is not None:
-                data["raw_output"] = update.raw_output
-            if update.field_meta is not None:
-                data["_meta"] = self._json_value(update.field_meta)
-            return InternalEvent(type="tool_call_update", data=data)
-        if isinstance(update, (schema.AgentPlanUpdate, schema.Plan)):
-            return plan_event([
-                {
-                    "content": entry.content,
-                    "priority": entry.priority,
-                    "status": entry.status,
-                }
-                for entry in update.entries
-            ])
-        if isinstance(update, schema.AgentPlanContentUpdate):
-            return self._map_plan_update(update)
-        if isinstance(update, schema.AgentPlanRemovedUpdate):
-            return InternalEvent(type="plan_removed", data={"id": update.id})
-        if isinstance(update, schema.UsageUpdate):
-            usage: dict[str, Any] = {
-                "used": update.used,
-                "size": update.size,
-            }
-            if update.cost is not None:
-                usage["cost"] = {
-                    "amount": update.cost.amount,
-                    "currency": update.cost.currency,
-                }
-            event = usage_update_event(usage, used=update.used, size=update.size)
-            event.data["context_window"] = update.size
-            return event
-        if isinstance(update, schema.SessionInfoUpdate):
-            data: dict[str, Any] = {}
-            if update.title is not None:
-                data["title"] = update.title
-            if update.updatedAt is not None:
-                data["updated_at"] = update.updatedAt
-            return InternalEvent(type="session_info_update", data=data)
-        if isinstance(update, schema.AvailableCommandsUpdate):
-            return InternalEvent(
-                type="available_commands_update",
-                data={"available_commands": [
-                    self._json_value(command)
-                    for command in (update.availableCommands or [])
-                ]},
-            )
-        if isinstance(update, schema.ConfigOptionUpdate):
-            return InternalEvent(
-                type="config_option_update",
-                data={"config_options": [
-                    self._json_value(option)
-                    for option in (update.configOptions or [])
-                ]},
-            )
-        if isinstance(update, schema.CurrentModeUpdate):
-            return InternalEvent(
-                type="current_mode_update",
-                data={"current_mode_id": update.currentModeId},
-            )
-        if isinstance(update, schema.MessageMcpNotification):
-            data: dict[str, Any] = {
-                "connection_id": update.connectionId,
-                "method": update.method,
-            }
-            if update.params is not None:
-                data["params"] = update.params
-            return InternalEvent(type="mcp_message", data=data)
-        if isinstance(update, schema.CompleteElicitationNotification):
-            return InternalEvent(
-                type="elicitation_completed",
-                data={"elicitation_id": update.elicitationId},
-            )
-        # 未知 update：透传 acp_raw，不再静默丢弃。
-        return acp_raw_event(update)
-
-    @staticmethod
-    def _content_text(content) -> str | None:
-        if isinstance(content, schema.TextContentBlock):
-            return content.text
-        return None
-
-    @staticmethod
-    def _json_value(value):
-        dump = getattr(value, "model_dump", None)
-        if callable(dump):
-            return dump(by_alias=False, exclude_none=True)
-        if isinstance(value, (list, tuple)):
-            return [AcpEngineBase._json_value(item) for item in value]
-        if isinstance(value, dict):
-            return {str(key): AcpEngineBase._json_value(item) for key, item in value.items()}
-        return value
-
-    @staticmethod
-    def _map_plan_update(update) -> InternalEvent:
-        plan = update.plan
-        data: dict[str, Any] = {"id": getattr(plan, "id", "")}
-        update_type = getattr(plan, "type", None)
-        if update_type:
-            data["type"] = update_type
-        if update_type == "markdown" and getattr(plan, "content", None) is not None:
-            data["content"] = plan.content
-        elif update_type == "file" and getattr(plan, "uri", None) is not None:
-            data["uri"] = plan.uri
-        else:
-            entries = getattr(plan, "entries", None)
-            if entries is not None:
-                data["entries"] = [
-                    {
-                        "content": entry.content,
-                        "priority": entry.priority,
-                        "status": entry.status,
-                    }
-                    for entry in entries
-                ]
-        return InternalEvent(type="plan_update", data=data)
-
-    @staticmethod
-    def _map_prompt_response_usage(response) -> InternalEvent | None:
-        usage = getattr(response, "usage", None)
-        if usage is None:
-            return None
-        data = {
-            "input_tokens": usage.input_tokens,
-            "output_tokens": usage.output_tokens,
-            "total_tokens": usage.total_tokens,
-            "cached_read_tokens": usage.cached_read_tokens,
-            "cached_write_tokens": usage.cached_write_tokens,
-        }
-        if usage.thought_tokens is not None:
-            data["thought_tokens"] = usage.thought_tokens
-        return usage_update_event(data)
 
     async def stop(self) -> None:
         if self._process:

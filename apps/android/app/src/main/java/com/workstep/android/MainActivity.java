@@ -8,6 +8,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Message;
+import android.os.SystemClock;
 import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.view.Gravity;
@@ -50,6 +51,7 @@ import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private static final String SERVER_KEY = "server_origin";
+    private static final String PAGE_KEY = "last_page_url";
     private static final String MENU_X_KEY = "connection_menu_x";
     private static final String MENU_Y_KEY = "connection_menu_y";
     private static final int FILE_REQUEST = 1001;
@@ -68,6 +70,7 @@ public final class MainActivity extends Activity {
     }
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ForegroundRefresh foregroundRefresh = new ForegroundRefresh();
     private FrameLayout root;
     private WebView webView;
     private ServerAddress server;
@@ -98,6 +101,7 @@ public final class MainActivity extends Activity {
     }
 
     private void clearPage() {
+        if (webView != null) rememberPage(webView.getUrl());
         root.removeAllViews();
         if (webView != null) {
             webView.stopLoading();
@@ -235,6 +239,11 @@ public final class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(view, false);
         view.setWebViewClient(new WebViewClient() {
             @Override
+            public void doUpdateVisitedHistory(WebView source, String url, boolean isReload) {
+                if (source == webView) rememberPage(url);
+            }
+
+            @Override
             public boolean shouldOverrideUrlLoading(WebView source, WebResourceRequest request) {
                 String url = request.getUrl().toString();
                 if (server.contains(url)) return false;
@@ -263,6 +272,7 @@ public final class MainActivity extends Activity {
                 try {
                     Intent picker = createFileChooserIntent(params);
                     startActivityForResult(picker, FILE_REQUEST);
+                    foregroundRefresh.externalPickerStarted();
                     return true;
                 } catch (Exception error) {
                     fileCallback = null;
@@ -305,8 +315,13 @@ public final class MainActivity extends Activity {
         });
         view.setDownloadListener(downloadListener);
         root.addView(view, new FrameLayout.LayoutParams(-1, -1));
-        view.loadUrl(server.origin() + "/");
+        view.loadUrl(server.pageOrRoot(getPreferences(MODE_PRIVATE).getString(PAGE_KEY, "")));
         addConnectionMenu();
+    }
+
+    private void rememberPage(String url) {
+        if (server != null && url != null && server.contains(url))
+            getPreferences(MODE_PRIVATE).edit().putString(PAGE_KEY, url).apply();
     }
 
     private Intent createFileChooserIntent(WebChromeClient.FileChooserParams params) {
@@ -361,7 +376,16 @@ public final class MainActivity extends Activity {
                 Gravity.TOP | Gravity.START);
         root.addView(button, position);
         button.setOnClickListener(view -> {
-            PopupMenu menu = new PopupMenu(this, button);
+            if (webView != null) webView.evaluateJavascript(
+                    "(function(){var open=document.querySelector('button[aria-controls=\"workstep-navigation\"]');"
+                            + "var nav=document.getElementById('workstep-navigation');"
+                            + "var close=nav&&nav.querySelector('button.navigation-close');"
+                            + "if(open&&open.getAttribute('aria-expanded')==='true'){if(close)close.click()}"
+                            + "else if(open)open.click()})()",
+                    null);
+        });
+        button.setOnLongClickListener(view -> {
+            PopupMenu menu = new PopupMenu(this, view);
             menu.getMenu().add(R.string.change_address).setOnMenuItemClickListener(item -> {
                 showAddressScreen(server.origin());
                 return true;
@@ -379,6 +403,7 @@ public final class MainActivity extends Activity {
                 return true;
             });
             menu.show();
+            return true;
         });
         root.post(() -> {
             if (button.getParent() != root) return;
@@ -392,13 +417,15 @@ public final class MainActivity extends Activity {
             button.setY(clamp(y, height - button.getHeight()));
         });
         int touchSlop = ViewConfiguration.get(this).getScaledTouchSlop();
+        FloatingButtonGesture gesture = new FloatingButtonGesture();
+        Runnable longPress = () -> {
+            if (button.getParent() == root && gesture.longPress()) button.performLongClick();
+        };
         button.setOnTouchListener(new View.OnTouchListener() {
             private float startRawX;
             private float startRawY;
             private float startX;
             private float startY;
-            private boolean dragging;
-
             @Override
             public boolean onTouch(View view, MotionEvent event) {
                 switch (event.getActionMasked()) {
@@ -407,28 +434,33 @@ public final class MainActivity extends Activity {
                         startRawY = event.getRawY();
                         startX = view.getX();
                         startY = view.getY();
-                        dragging = false;
+                        gesture.down();
+                        view.postDelayed(longPress, ViewConfiguration.getLongPressTimeout());
                         return true;
                     case MotionEvent.ACTION_MOVE:
                         float dx = event.getRawX() - startRawX;
                         float dy = event.getRawY() - startRawY;
-                        if (!dragging && Math.hypot(dx, dy) > touchSlop) dragging = true;
-                        if (dragging) {
+                        if (gesture.move(dx, dy, touchSlop)) {
+                            view.removeCallbacks(longPress);
                             view.setX(clamp(startX + dx, root.getWidth() - view.getWidth()));
                             view.setY(clamp(startY + dy, root.getHeight() - view.getHeight()));
                         }
                         return true;
                     case MotionEvent.ACTION_UP:
-                        if (dragging) {
+                        view.removeCallbacks(longPress);
+                        FloatingButtonGesture.Release release = gesture.release();
+                        if (release == FloatingButtonGesture.Release.DRAG) {
                             getPreferences(MODE_PRIVATE).edit()
                                     .putFloat(MENU_X_KEY, view.getX() / Math.max(1, root.getWidth()))
                                     .putFloat(MENU_Y_KEY, view.getY() / Math.max(1, root.getHeight()))
                                     .apply();
-                        } else {
+                        } else if (release == FloatingButtonGesture.Release.TAP) {
                             view.performClick();
                         }
                         return true;
                     case MotionEvent.ACTION_CANCEL:
+                        view.removeCallbacks(longPress);
+                        gesture.cancel();
                         return true;
                     default:
                         return false;
@@ -477,6 +509,7 @@ public final class MainActivity extends Activity {
             save.putExtra(Intent.EXTRA_TITLE, filename);
             pendingDownload = new PendingDownload(server, url, userAgent);
             startActivityForResult(save, SAVE_REQUEST);
+            foregroundRefresh.externalPickerStarted();
         } catch (Exception error) {
             pendingDownload = null;
             Toast.makeText(this, "无法打开保存位置选择器", Toast.LENGTH_LONG).show();
@@ -576,6 +609,23 @@ public final class MainActivity extends Activity {
         if (requestCode == FILE_REQUEST && fileCallback != null) {
             fileCallback.onReceiveValue(selectedFiles(resultCode, data));
             fileCallback = null;
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        if (webView != null) rememberPage(webView.getUrl());
+        foregroundRefresh.onStop(SystemClock.elapsedRealtime());
+        super.onStop();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        boolean reload = foregroundRefresh.onResume(SystemClock.elapsedRealtime());
+        if (webView != null) {
+            if (reload) webView.reload();
+            else webView.evaluateJavascript("window.dispatchEvent(new Event('workstep:resume'))", null);
         }
     }
 

@@ -14,7 +14,7 @@ test('mobile visible buttons use one shared height', () => {
   assert.match(mobileCss, /--mobile-control-composer:\s*var\(--mobile-button-height\)/)
   assert.match(mobileCss, /--mobile-control-regular:\s*var\(--mobile-button-height\)/)
   assert.match(mobileCss, /--mobile-control-touch:\s*44px/)
-  assert.match(mobileCss, /--mobile-control-menu:\s*48px/)
+  assert.match(mobileCss, /--mobile-control-menu:\s*44px/)
   assert.match(mobileCss, /--mobile-toolbar-control-height:\s*var\(--mobile-control-regular\)/)
   assert.match(mobileCss, /--mobile-control-font-size:\s*calc\(13px \* var\(--font-scale\)\)/)
   assert.match(mobileCss, /--mobile-control-icon-size:\s*16px/)
@@ -25,6 +25,11 @@ test('mobile form and sheet controls share height and typography', () => {
   assert.match(mobileCss, /\.btn:not\(\.btn-icon\)\s*\{[^}]*font-size:\s*var\(--mobile-control-font-size\)\s*!important/s)
   assert.match(mobileCss, /\.mobile-sheet-body > button,[\s\S]*?\.mobile-sheet-body > select\s*\{[^}]*height:\s*var\(--mobile-control-regular\)\s*!important[^}]*padding:\s*0 12px\s*!important/s)
   assert.match(mobileCss, /\.mobile-sheet-body > button svg\s*\{[^}]*width:\s*var\(--mobile-control-icon-size\)\s*!important/s)
+})
+
+test('quota refresh keeps its round visual size on mobile', () => {
+  assert.match(mobileCss, /\.chat-input-quota-refresh\s*\{[^}]*min-height:\s*0\s*;/s)
+  assert.doesNotMatch(mobileCss, /\.chat-input-quota-refresh\s*,[^{}]*\{[^}]*min-height:\s*var\(--mobile-control-compact\)/s)
 })
 
 test('mobile workflow chrome uses explicit compact visual heights', () => {

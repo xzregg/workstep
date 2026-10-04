@@ -19,6 +19,12 @@ export const useChatSessionStore = createAssistantStore({
   channel: 'session_chat',
 })
 
+export function pinChannelSessions(sessions: ChatSessionSummary[]): ChatSessionSummary[] {
+  return [...sessions].sort((a, b) =>
+    Number(b.source === 'channel') - Number(a.source === 'channel'),
+  )
+}
+
 export function mergeChatSessionRunningState(
   sessions: ChatSessionSummary[],
   liveState: Record<string, boolean>,
@@ -53,7 +59,8 @@ interface ChatListState {
   /** True while a bulk-delete request is in flight. */
   bulkDeleting: boolean
 
-  fetchSessions: (projectId: string) => Promise<void>
+  fetchSessions: (projectId: string, preserveSelection?: boolean) => Promise<void>
+  refreshSessions: (projectId: string) => void
   reorderSessions: (projectId: string, orderedIds: string[]) => Promise<void>
   addSession: (session: ChatSessionSummary) => void
   removeSession: (sessionId: string) => void
@@ -70,6 +77,8 @@ interface ChatListState {
   saveQuickButtons: (projectId: string, buttons: ChatQuickButton[]) => Promise<ChatQuickButton[]>
 }
 
+const pendingSessionRefreshes = new Set<string>()
+
 export const useChatListStore = create<ChatListState>((set, get) => ({
   sessionsByProject: {},
   quickButtons: [],
@@ -80,18 +89,20 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
   selectAnchor: null,
   bulkDeleting: false,
 
-  fetchSessions: async (projectId) => {
+  fetchSessions: async (projectId, preserveSelection = false) => {
     if (!projectId || get().listLoadingByProject[projectId]) return
     set((state) => ({
       listLoadingByProject: { ...state.listLoadingByProject, [projectId]: true },
-      selectedIds: new Set(),
-      selectionProjectId: null,
-      selectAnchor: null,
+      ...(preserveSelection ? {} : {
+        selectedIds: new Set<string>(),
+        selectionProjectId: null,
+        selectAnchor: null,
+      }),
     }))
     try {
       const { sessions } = await chatSessionApi.list(projectId)
       set((state) => ({
-        sessionsByProject: { ...state.sessionsByProject, [projectId]: sessions },
+        sessionsByProject: { ...state.sessionsByProject, [projectId]: pinChannelSessions(sessions) },
       }))
     } catch {
       // Keep whatever is cached; the next navigation retries.
@@ -99,6 +110,18 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
       set((state) => ({
         listLoadingByProject: { ...state.listLoadingByProject, [projectId]: false },
       }))
+      if (pendingSessionRefreshes.delete(projectId)) {
+        void get().fetchSessions(projectId, true)
+      }
+    }
+  },
+
+  refreshSessions: (projectId) => {
+    if (!projectId) return
+    if (get().listLoadingByProject[projectId]) {
+      pendingSessionRefreshes.add(projectId)
+    } else {
+      void get().fetchSessions(projectId, true)
     }
   },
 
@@ -111,7 +134,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
           - (orderMap.get(b.id) ?? Number.MAX_SAFE_INTEGER),
       )
       return {
-        sessionsByProject: { ...state.sessionsByProject, [projectId]: sessions },
+        sessionsByProject: { ...state.sessionsByProject, [projectId]: pinChannelSessions(sessions) },
       }
     })
     try {
@@ -127,10 +150,10 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
       return {
         sessionsByProject: {
           ...state.sessionsByProject,
-          [session.project_id]: [
+          [session.project_id]: pinChannelSessions([
             session,
             ...projectSessions.filter((item) => item.id !== session.id),
-          ],
+          ]),
         },
       }
     }),

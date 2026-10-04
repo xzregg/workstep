@@ -6,6 +6,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query
 
 from services.project import project_manager
+from services.remote_access import get_current_actor
 from services.statistics import StatisticsModule, StatisticsQuery
 
 
@@ -22,6 +23,9 @@ async def overview(
     timezone: str = Query("UTC"),
 ):
     """Return one global, project, or workflow statistics report."""
+    actor = get_current_actor()
+    if actor is not None and actor.project_id is not None and project_id != actor.project_id:
+        raise HTTPException(status_code=403, detail="Project scope denied")
     try:
         return await asyncio.to_thread(
             StatisticsModule(project_manager).overview,
