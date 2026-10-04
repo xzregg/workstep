@@ -118,6 +118,17 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
     """Daemon shutdown drains owned workflow tasks before DB and event teardown."""
     import main
 
+    # Lifespan assigns these globals directly; restore them after this test.
+    for name in (
+        "task_service", "workflow_runtime", "coordinator_module",
+        "workflow_gen_module", "task_draft_module", "schedule_module",
+        "chat_session_module", "channel_chat_module", "channel_bot_manager",
+    ):
+        monkeypatch.setattr(main, name, getattr(main, name))
+    monkeypatch.setattr(
+        main.gateway_client, "workflow_runtime", main.gateway_client.workflow_runtime,
+    )
+
     events = []
 
     class RuntimeStub:

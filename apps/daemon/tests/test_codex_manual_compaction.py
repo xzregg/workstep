@@ -263,7 +263,7 @@ async def test_compact_codex_thread_requires_native_notification():
 
 
 @pytest.mark.anyio
-async def test_codex_cli_compact_uses_native_sdk_without_starting_exec(monkeypatch):
+async def test_codex_cli_compact_uses_native_sdk_without_starting_exec(tmp_path, monkeypatch):
     import openai_codex
 
     calls = []
@@ -311,7 +311,7 @@ async def test_codex_cli_compact_uses_native_sdk_without_starting_exec(monkeypat
     monkeypatch.setattr("engines.codex.asyncio.create_subprocess_exec", unexpected_exec)
 
     events = [event async for event in CodexEngine().spawn(
-        prompt="/compact", cwd="/tmp", session_id="thread-1",
+        prompt="/compact", cwd=str(tmp_path), session_id="thread-1",
     )]
 
     assert ("resume", "thread-1") in calls
@@ -321,7 +321,7 @@ async def test_codex_cli_compact_uses_native_sdk_without_starting_exec(monkeypat
 
 
 @pytest.mark.anyio
-async def test_codex_sdk_compact_does_not_start_a_model_turn(monkeypatch):
+async def test_codex_sdk_compact_does_not_start_a_model_turn(tmp_path, monkeypatch):
     import openai_codex
 
     calls = []
@@ -368,7 +368,7 @@ async def test_codex_sdk_compact_does_not_start_a_model_turn(monkeypatch):
 
     monkeypatch.setattr(openai_codex, "AsyncCodex", Client)
     events = [event async for event in CodexSDKEngine().spawn(
-        prompt="/compact", cwd="/tmp", session_id="thread-1",
+        prompt="/compact", cwd=str(tmp_path), session_id="thread-1",
     )]
 
     assert calls == [("resume", "thread-1"), "compact"]

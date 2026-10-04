@@ -433,7 +433,7 @@ def test_codex_map_sandbox_denial_to_interaction_request():
 
 
 @pytest.mark.anyio
-async def test_codex_denial_round_trip_escalates_sandbox(monkeypatch):
+async def test_codex_denial_round_trip_escalates_sandbox(tmp_path, monkeypatch):
     """被拒命令 → 弹窗 → 批准 → 提升沙箱并以 resume 重启会话重试。"""
     spawned: list[list[str]] = []
 
@@ -508,7 +508,7 @@ async def test_codex_denial_round_trip_escalates_sandbox(monkeypatch):
     async def consume():
         async for event in engine.spawn(
             prompt="hello",
-            cwd="/tmp",
+            cwd=str(tmp_path),
             live_message_queue=asyncio.Queue(),
         ):
             if event.type == "interaction_request":
@@ -538,7 +538,7 @@ async def test_codex_denial_round_trip_escalates_sandbox(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_codex_denial_reject_injects_decision_without_escalation(monkeypatch):
+async def test_codex_denial_reject_injects_decision_without_escalation(tmp_path, monkeypatch):
     """拒绝时不提升沙箱，仅以 resume 把用户决定带给模型。"""
     spawned: list[list[str]] = []
 
@@ -612,7 +612,7 @@ async def test_codex_denial_reject_injects_decision_without_escalation(monkeypat
     async def consume():
         async for event in engine.spawn(
             prompt="hello",
-            cwd="/tmp",
+            cwd=str(tmp_path),
             live_message_queue=asyncio.Queue(),
         ):
             if event.type == "interaction_request":
@@ -633,7 +633,7 @@ async def test_codex_denial_reject_injects_decision_without_escalation(monkeypat
     assert "sandbox_mode=" not in " ".join(resume_cmd)
 
 
-async def test_codex_denial_reject_for_session_auto_denies(monkeypatch):
+async def test_codex_denial_reject_for_session_auto_denies(tmp_path, monkeypatch):
     """选择「拒绝本次运行」后，本次运行内相同命令不再弹窗，自动注入拒绝决定。"""
     spawned: list[list[str]] = []
 
@@ -712,7 +712,7 @@ async def test_codex_denial_reject_for_session_auto_denies(monkeypatch):
         nonlocal interaction_count
         async for event in engine.spawn(
             prompt="hello",
-            cwd="/tmp",
+            cwd=str(tmp_path),
             live_message_queue=asyncio.Queue(),
         ):
             if event.type == "interaction_request":
@@ -1473,7 +1473,7 @@ class _FakeCodexProcess:
 
 
 @pytest.mark.anyio
-async def test_codex_spawn_emits_session_started_with_thread_id(monkeypatch):
+async def test_codex_spawn_emits_session_started_with_thread_id(tmp_path, monkeypatch):
     """codex JSONL 的 thread.started 携带 thread_id，须产出 session_started。"""
     stdout = (
         b'{"type":"thread.started","thread_id":"019f-codex-test-1"}\n'
@@ -1491,7 +1491,7 @@ async def test_codex_spawn_emits_session_started_with_thread_id(monkeypatch):
 
     events = [
         event
-        async for event in CodexEngine().spawn(prompt="hello", cwd="/tmp")
+        async for event in CodexEngine().spawn(prompt="hello", cwd=str(tmp_path))
     ]
 
     sessions = [event for event in events if event.type == "session_started"]
@@ -1500,7 +1500,7 @@ async def test_codex_spawn_emits_session_started_with_thread_id(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_codex_spawn_resume_builds_resume_command(monkeypatch):
+async def test_codex_spawn_resume_builds_resume_command(tmp_path, monkeypatch):
     """带 session_id 时走 `codex exec resume <id> <prompt>`，不再带沙箱/工作目录参数。"""
     captured = {}
 
@@ -1514,7 +1514,7 @@ async def test_codex_spawn_resume_builds_resume_command(monkeypatch):
     events = [
         event
         async for event in CodexEngine().spawn(
-            prompt="继续上次的任务", cwd="/tmp", session_id="019f-resume-1"
+            prompt="继续上次的任务", cwd=str(tmp_path), session_id="019f-resume-1"
         )
     ]
 
@@ -1530,7 +1530,7 @@ async def test_codex_spawn_resume_builds_resume_command(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_codex_spawn_passes_compaction_overrides_for_new_and_resume(monkeypatch):
+async def test_codex_spawn_passes_compaction_overrides_for_new_and_resume(tmp_path, monkeypatch):
     captured = []
 
     async def fake_create_subprocess_exec(program, *args, **kwargs):
@@ -1542,7 +1542,7 @@ async def test_codex_spawn_passes_compaction_overrides_for_new_and_resume(monkey
 
     async for _event in CodexEngine().spawn(
         prompt="hello",
-        cwd="/tmp",
+        cwd=str(tmp_path),
         session_id="resume-1",
         config_overrides={
             "model_auto_compact_token_limit": 8000,
@@ -1633,7 +1633,7 @@ async def test_claude_spawn_injects_custom_settings_env_and_flags(monkeypatch, t
 
 
 @pytest.mark.anyio
-async def test_codex_spawn_injects_custom_config_and_skips_managed_keys(monkeypatch):
+async def test_codex_spawn_injects_custom_config_and_skips_managed_keys(tmp_path, monkeypatch):
     """自定义 config 覆盖按 key=value 透传 -c；已托管的键不重复注入。"""
     captured = {}
 
@@ -1658,7 +1658,7 @@ async def test_codex_spawn_injects_custom_config_and_skips_managed_keys(monkeypa
         },
     )
 
-    async for _event in CodexEngine().spawn(prompt="hello", cwd="/tmp"):
+    async for _event in CodexEngine().spawn(prompt="hello", cwd=str(tmp_path)):
         pass
 
     cmd = captured["cmd"]
@@ -1672,7 +1672,7 @@ async def test_codex_spawn_injects_custom_config_and_skips_managed_keys(monkeypa
 
 
 @pytest.mark.anyio
-async def test_codex_spawn_reports_stderr_when_silent_exit_zero(monkeypatch):
+async def test_codex_spawn_reports_stderr_when_silent_exit_zero(tmp_path, monkeypatch):
     """codex exits 0 with empty stdout: stderr diagnostics must surface."""
     process = _FakeCodexProcess(
         stdout=b"",
@@ -1687,7 +1687,7 @@ async def test_codex_spawn_reports_stderr_when_silent_exit_zero(monkeypatch):
 
     events = [
         event
-        async for event in CodexEngine().spawn(prompt="hello", cwd="/tmp")
+        async for event in CodexEngine().spawn(prompt="hello", cwd=str(tmp_path))
     ]
 
     errors = [event for event in events if event.type == "error"]
@@ -1697,7 +1697,7 @@ async def test_codex_spawn_reports_stderr_when_silent_exit_zero(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_codex_spawn_ignores_stderr_when_output_present(monkeypatch):
+async def test_codex_spawn_ignores_stderr_when_output_present(tmp_path, monkeypatch):
     """Benign stderr warnings must not shadow real text output."""
     stdout = (
         b'{"type":"item.completed","item":{"type":"agent_message",'
@@ -1713,7 +1713,7 @@ async def test_codex_spawn_ignores_stderr_when_output_present(monkeypatch):
 
     events = [
         event
-        async for event in CodexEngine().spawn(prompt="hello", cwd="/tmp")
+        async for event in CodexEngine().spawn(prompt="hello", cwd=str(tmp_path))
     ]
 
     assert [event.type for event in events] == ["status", "agent_message_chunk", "status"]
@@ -1721,7 +1721,7 @@ async def test_codex_spawn_ignores_stderr_when_output_present(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_codex_spawn_applies_configured_sandbox_effort_policy(monkeypatch):
+async def test_codex_spawn_applies_configured_sandbox_effort_policy(tmp_path, monkeypatch):
     captured = {}
 
     async def fake_create_subprocess_exec(program, *args, **kwargs):
@@ -1741,7 +1741,7 @@ async def test_codex_spawn_applies_configured_sandbox_effort_policy(monkeypatch)
 
     events = [
         event
-        async for event in CodexEngine().spawn(prompt="hello", cwd="/tmp")
+        async for event in CodexEngine().spawn(prompt="hello", cwd=str(tmp_path))
     ]
 
     cmd = captured["cmd"]
@@ -4051,7 +4051,7 @@ def test_codex_sdk_reconnect_notice_does_not_fail_completed_turn():
 
 
 @pytest.mark.anyio
-async def test_codex_sdk_reconnect_then_completion_does_not_retry_turn(monkeypatch):
+async def test_codex_sdk_reconnect_then_completion_does_not_retry_turn(tmp_path, monkeypatch):
     import openai_codex as codex_module
 
     turns_started = 0
@@ -4092,7 +4092,7 @@ async def test_codex_sdk_reconnect_then_completion_does_not_retry_turn(monkeypat
     monkeypatch.setattr(codex_module, "AsyncCodex", FakeClient)
     events = [
         event async for event in CodexSDKEngine().spawn_with_retry(
-            prompt="hi", cwd="/tmp",
+            prompt="hi", cwd=str(tmp_path),
         )
     ]
 
@@ -4103,7 +4103,7 @@ async def test_codex_sdk_reconnect_then_completion_does_not_retry_turn(monkeypat
 
 
 @pytest.mark.anyio
-async def test_codex_sdk_unfinished_turn_after_error_remains_failure(monkeypatch):
+async def test_codex_sdk_unfinished_turn_after_error_remains_failure(tmp_path, monkeypatch):
     import openai_codex as codex_module
 
     class FakeTurn:
@@ -4134,7 +4134,7 @@ async def test_codex_sdk_unfinished_turn_after_error_remains_failure(monkeypatch
     monkeypatch.setattr(codex_module, "AsyncCodex", FakeClient)
     events = [
         event async for event in CodexSDKEngine().spawn(
-            prompt="hi", cwd="/tmp",
+            prompt="hi", cwd=str(tmp_path),
         )
     ]
 
@@ -4173,7 +4173,7 @@ def test_codex_sdk_spawn_error_without_sdk(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_codex_sdk_spawn_injects_custom_config_and_skips_managed_keys(monkeypatch):
+async def test_codex_sdk_spawn_injects_custom_config_and_skips_managed_keys(tmp_path, monkeypatch):
     """自定义 config 写入 thread config；已托管的键不被覆盖。"""
     import openai_codex as codex_module
 
@@ -4217,7 +4217,7 @@ async def test_codex_sdk_spawn_injects_custom_config_and_skips_managed_keys(monk
         },
     )
 
-    async for _event in CodexSDKEngine().spawn(prompt="hi", cwd="/tmp"):
+    async for _event in CodexSDKEngine().spawn(prompt="hi", cwd=str(tmp_path)):
         pass
 
     config = captured["start_kwargs"]["config"]
@@ -4227,7 +4227,7 @@ async def test_codex_sdk_spawn_injects_custom_config_and_skips_managed_keys(monk
 
 
 @pytest.mark.anyio
-async def test_codex_sdk_spawn_omits_approval_mode_when_unset(monkeypatch):
+async def test_codex_sdk_spawn_omits_approval_mode_when_unset(tmp_path, monkeypatch):
     """thread_start 不接受 approval_mode=None；未配置时不传该参数（用 SDK 默认）。"""
     import openai_codex as codex_module
 
@@ -4271,7 +4271,7 @@ async def test_codex_sdk_spawn_omits_approval_mode_when_unset(monkeypatch):
 
     engine = CodexSDKEngine()
     events = [
-        event async for event in engine.spawn(prompt="hi", cwd="/tmp")
+        event async for event in engine.spawn(prompt="hi", cwd=str(tmp_path))
     ]
 
     assert "approval_mode" not in captured["start_kwargs"]
@@ -4288,7 +4288,7 @@ async def test_codex_sdk_spawn_omits_approval_mode_when_unset(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_codex_sdk_spawn_passes_configured_approval_mode(monkeypatch):
+async def test_codex_sdk_spawn_passes_configured_approval_mode(tmp_path, monkeypatch):
     """配置了 approval_mode 时以 SDK 枚举传入 thread_start。"""
     import openai_codex as codex_module
     from openai_codex import ApprovalMode
@@ -4331,7 +4331,7 @@ async def test_codex_sdk_spawn_passes_configured_approval_mode(monkeypatch):
 
     engine = CodexSDKEngine()
     events = [
-        event async for event in engine.spawn(prompt="hi", cwd="/tmp")
+        event async for event in engine.spawn(prompt="hi", cwd=str(tmp_path))
     ]
 
     assert captured["start_kwargs"]["approval_mode"] is ApprovalMode.deny_all
@@ -4349,7 +4349,7 @@ async def test_codex_sdk_spawn_passes_configured_approval_mode(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_codex_sdk_spawn_registers_approval_handler(monkeypatch):
+async def test_codex_sdk_spawn_registers_approval_handler(tmp_path, monkeypatch):
     """AsyncCodex 的底层 CodexClient 必须注册审批回调，禁止默认自动放行。"""
     import openai_codex as codex_module
 
@@ -4395,11 +4395,11 @@ async def test_codex_sdk_spawn_registers_approval_handler(monkeypatch):
     )
 
     events = [
-        event async for event in CodexSDKEngine().spawn(prompt="hi", cwd="/tmp")
+        event async for event in CodexSDKEngine().spawn(prompt="hi", cwd=str(tmp_path))
     ]
     handler = captured["sync_client"]._approval_handler
     assert callable(handler)
-    assert captured["config"].cwd == "/tmp"
+    assert captured["config"].cwd == str(tmp_path)
     assert [event.type for event in events] == [
         "status",
         "session_started",
