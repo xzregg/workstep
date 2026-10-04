@@ -85,7 +85,7 @@ class ChannelControls:
                 and task.active_workflow_run_id == latest.workflow_run_id)
         return await self._projects.run_db(row['project_id'], read)
 
-    async def _card(self, scope, title, text, options, recipient_override=None):
+    async def _card(self, scope, title, text, options, recipient_override=None, dedup_key=None):
         recipient = recipient_override or IncomingMessage(**scope['message'])
         adapter = self._adapters.get(recipient.bot_id)
         if adapter is None or not getattr(adapter, 'card_enabled', True) or not hasattr(adapter, 'send_card'):
@@ -96,11 +96,20 @@ class ChannelControls:
             items = options[offset:offset + 6]
             card_id = uuid.uuid4().hex
             card = ChannelCard(card_id, title, text, tuple(ChannelButton(str(i), label, danger=action['kind'] == 'stop') for i, (label, action) in enumerate(items)), running=all(action["kind"] == "stop" for _, action in items), message_id=scope.get('assistant_message_id', ''))
-            row = {**scope, 'created_at':time.time(), 'status':'pending',
+            page_key = f'{dedup_key}:{offset}' if dedup_key else None
+            row = {**scope, 'created_at':time.time(), 'status':'pending', 'event_key':page_key,
                    'title':title, 'text':text, 'options':{str(i): {'label':label, **action} for i, (label, action) in enumerate(items)}}
             async with self._lock:
                 rows = await self._load()
                 rows = {k:v for k,v in rows.items() if v.get('status') == 'pending' or v.get('created_at', 0) > time.time() - TTL}
+                if page_key and any(
+                    other.get('event_key') == page_key and
+                    (other['project_id'], other['task_id'], other['assistant_message_id'],
+                     other['message']['bot_id'], other['message']['conversation_type'], other['message']['conversation_id']) ==
+                    (scope['project_id'], scope['task_id'], scope['assistant_message_id'],
+                     recipient.bot_id, recipient.conversation_type, recipient.conversation_id)
+                    for other in rows.values()):
+                    continue
                 rows[card_id] = row
                 await self._save(rows)
             try:
@@ -139,7 +148,8 @@ class ChannelControls:
                 title = str(question['title'])
                 options = [(str(value), {'kind':'answer','question_id':f"{data.get('source_item_id', '')}:{index}",'text':f'{title}：{value}'}) for value in question.get('options', []) if isinstance(value, str)]
                 if options:
-                    await self._card(scope, '请选择', title, options)
+                    await self._card(scope, '请选择', title, options,
+                        dedup_key=f"question:{data.get('source_item_id') or scope['assistant_message_id']}:{index}")
         elif name == 'workstep.interaction_request':
             await self._interaction(scope, data)
         elif name == 'workstep.interaction_response':
@@ -229,7 +239,8 @@ class ChannelControls:
             if action is None:
                 return '无效的选项'
             identity = tuple(action.get(key) for key in ('kind','interaction_id','proposal_id','question_id','review_id'))
-            claim_scope = (row['project_id'], row['task_id'], row['assistant_message_id']) if broadcast_action else row['id']
+            shared_answer = action and action['kind'] == 'answer' and bool(row['task_id'])
+            claim_scope = (row['project_id'], row['task_id'], row['assistant_message_id']) if broadcast_action or shared_answer else row['id']
             claim = (claim_scope, identity)
             if claim in self._claims:
                 return '该操作已处理或已失效'
@@ -286,7 +297,7 @@ class ChannelControls:
                 for other in rows.values():
                     matches = any(tuple(option.get(key) for key in ('kind','interaction_id','proposal_id','question_id','review_id')) == identity
                                   for option in other['options'].values())
-                    same_scope = other['id'] == row['id'] or (broadcast_action and other.get('broadcast') and
+                    same_scope = other['id'] == row['id'] or ((shared_answer or (broadcast_action and other.get('broadcast'))) and
                         (other['project_id'],other['task_id'],other['assistant_message_id']) == claim_scope)
                     if same_scope and matches:
                         other['status'] = 'completed'

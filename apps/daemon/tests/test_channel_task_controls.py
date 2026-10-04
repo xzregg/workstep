@@ -286,3 +286,92 @@ async def test_manual_review_lookup_after_author_change_keeps_health_responsive(
     finally:
         release.set()
         await forwarder.shutdown()
+
+
+@pytest.mark.parametrize('channel', ['coordinator','execution','review'])
+async def test_task_question_is_forwarded_and_click_records_member(setup, channel):
+    relay,bus,event,adapter,controls,_,projects,project,data,store = setup
+    step_key = 'coordinator' if channel == 'coordinator' else 'build'
+    def seed(_project):
+        Message.create(id='coord', task='task', step_key=step_key, role='assistant',
+            channel=channel, content='任务全部完成', position=3, created_at='2026-10-04')
+    await projects.run_db(project.id, seed)
+    question = {**event('workstep.async_question', source_item_id='coord', questions=[{
+        'title':'任务已全部完成，你想做什么？',
+        'options':['查看最终成品文档内容','重跑主链（从编写开始）','无需操作，任务已完成']}]),
+        'channel':channel, 'step_key':step_key, 'messageId':'coord'}
+    await bus.publish(question)
+    await bus.publish({**question, 'type':'TEXT_MESSAGE_END', 'status':'succeeded'})
+    await until(lambda: adapter.send_card.await_count == 2)
+    await until(lambda: not relay._scopes)
+    recipient,card = adapter.send_card.await_args_list[0].args
+    assert [b.label for b in card.buttons] == question['value']['questions'][0]['options']
+    assert not card.running
+    assert card.message_id == 'coord'
+    assert await controls.handle(ChannelAction('bot',card.id,'1','member',
+        conversation_id=recipient.conversation_id,sender_name='小李')) == '已选择：重跑主链（从编写开始）'
+    submitted = controls._on_message.await_args.args[0]
+    assert submitted.sender_id == 'member' and submitted.sender_name == '小李'
+    assert submitted.text == '任务已全部完成，你想做什么？：重跑主链（从编写开始）'
+
+
+async def test_coordinator_origin_and_broadcast_do_not_duplicate_question_cards(setup):
+    from services.channels.base import IncomingMessage
+    relay,bus,event,adapter,controls,_,projects,project,*_ = setup
+    def seed(_project):
+        Message.create(id='coord', task='task', step_key='coordinator', role='assistant',
+            channel='coordinator', content='选择', position=3, created_at='2026-10-04')
+    await projects.run_db(project.id, seed)
+    scope = await controls.begin(IncomingMessage('bot','incoming','group','one','user','开始'),
+        project.id, task_id='task',assistant_message_id='coord')
+    question = {**event('workstep.async_question', source_item_id='coord', questions=[{
+        'title':'下一步？','options':[str(i) for i in range(8)]}]),
+        'channel':'coordinator', 'step_key':'coordinator', 'messageId':'coord'}
+    await controls.event(scope, question)
+    await controls.finish(scope)  # Origin may finish before the broadcast DB read completes.
+    await bus.publish(question)
+    await until(lambda: adapter.send_card.await_count >= 5)
+    await bus.publish(question)
+    await asyncio.sleep(.03)
+    assert adapter.send_card.await_count == 5  # One stop, two pages for each group.
+    assert len([c for c in adapter.send_card.await_args_list
+        if c.args[0].conversation_id == 'one' and not c.args[1].running]) == 2
+
+    origin_recipient,origin_card = next(c.args for c in adapter.send_card.await_args_list
+        if c.args[0].conversation_id == 'one' and not c.args[1].running)
+    other_recipient,other_card = next(c.args for c in adapter.send_card.await_args_list
+        if c.args[0].conversation_id == 'two' and not c.args[1].running)
+    assert await controls.handle(ChannelAction('bot',other_card.id,'0','member',
+        conversation_id='two',sender_name='小李')) == '已选择：0'
+    assert await controls.handle(ChannelAction('bot',origin_card.id,'1','user',
+        conversation_id='one')) == '该操作已处理或已失效（操作人：小李）'
+    controls._on_message.assert_awaited_once()
+
+
+async def test_coordinator_question_slow_sql_keeps_health_responsive(setup, monkeypatch):
+    import threading
+    from httpx import ASGITransport, AsyncClient
+    import main
+    relay,bus,event,adapter,controls,_,projects,project,*_ = setup
+    await projects.run_db(project.id, lambda _p: Message.create(id='coord', task='task',
+        step_key='coordinator',role='assistant',channel='coordinator',content='选择',
+        position=3,created_at='2026-10-04'))
+    entered,release = threading.Event(),threading.Event()
+    execute = project.db.execute_sql
+    def slow(sql,*args,**kwargs):
+        if sql.startswith('SELECT') and 'FROM "message"' in sql:
+            entered.set()
+            assert release.wait(2)
+        return execute(sql,*args,**kwargs)
+    monkeypatch.setattr(project.db,'execute_sql',slow)
+    try:
+        await bus.publish({**event('workstep.async_question',source_item_id='coord',
+            questions=[{'title':'继续？','options':['是','否']}]),
+            'channel':'coordinator','step_key':'coordinator','messageId':'coord'})
+        assert await asyncio.to_thread(entered.wait,1)
+        async with AsyncClient(transport=ASGITransport(app=main.app),base_url='http://test') as client:
+            assert (await asyncio.wait_for(client.get('/api/health'),.3)).status_code == 200
+        adapter.send_card.assert_not_awaited()
+    finally:
+        release.set()
+    await until(lambda: adapter.send_card.await_count == 2)
