@@ -702,6 +702,9 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 }
 .task-message-target-tag--coordinator { background: rgba(124,58,237,0.08); color: var(--ai-assistant); }
 .task-message-target-tag--insert { border: 0; background: var(--accent); color: var(--accent-fg); }
+.review-decision-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.review-decision-actions > .btn { flex-shrink: 0; }
+.review-decision-complete { margin-right: auto; }
 .task-message-review-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 2px; }
 .step-prompt-editor-overlay {
   position: fixed; inset: 0; z-index: 1275; background: rgba(0,0,0,0.35);

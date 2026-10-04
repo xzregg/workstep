@@ -81,8 +81,10 @@ class BotManager:
         self._config_lock = asyncio.Lock()
         self._chat_locks: WeakValueDictionary[tuple[str, str], asyncio.Lock] = WeakValueDictionary()
         from services.channels.controls import ChannelControls
-        self._controls = ChannelControls(store, self._load, self._adapters, coordinator, responder, self._submit_card_answer, workflow_runtime=workflow_runtime)
+        self._controls = ChannelControls(store, self._load, self._adapters, coordinator, responder, self._submit_card_answer, workflow_runtime=workflow_runtime, projects=project_manager)
         self._task_forwarder = ChannelTaskForwarder(event_bus, project_manager, self._load, self._adapters, controls=self._controls)
+        from services.channels.task_controls import ChannelTaskControls
+        self._task_controls = ChannelTaskControls(event_bus, project_manager, self._load, self._controls)
         self._card_answer_tasks = set()
 
     async def _ensure_factories(self) -> None:
@@ -350,12 +352,14 @@ class BotManager:
     async def start(self) -> None:
         await self._reply_forwarder.start()
         await self._task_forwarder.start()
+        await self._task_controls.start()
         data = await self._load()
         for bot in data["bots"]:
             if bot["enabled"]:
                 await self._start_bot(bot)
 
     async def shutdown(self) -> None:
+        await self._task_controls.shutdown()
         await self._task_forwarder.shutdown()
         await self._reply_forwarder.shutdown()
         for task in tuple(self._card_answer_tasks):

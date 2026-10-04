@@ -2487,6 +2487,11 @@ async def test_pipeline_captures_actual_step_and_review_instructions(tmp_path, m
         finally:
             release.set()
             await pipeline
+        from services.prompt import step_worktrees_prompt_path
+        workspace_path = step_worktrees_prompt_path(task, tmp_path / "artifacts")
+        assert f"Workspace directory: {workspace_path}" in (calls[0].get("system_prompt") or calls[0]["prompt"])
+        if retry_review and transport != "body":
+            assert f"Workspace directory: {workspace_path}" in calls[2]["system_prompt"]
         assert len(calls) == (4 if retry_review else 2)
         messages = list(Message.select().where(Message.role == "assistant").order_by(Message.sequence))
         assert len(messages) == len(calls)
@@ -2532,3 +2537,28 @@ async def test_slow_pipeline_prompt_capture_keeps_health_responsive(tmp_path, mo
     await test_pipeline_captures_actual_step_and_review_instructions(
         tmp_path, monkeypatch, "system", False, slow_channel=channel,
     )
+
+
+@pytest.mark.anyio
+async def test_step_workspace_system_path_lookup_keeps_health_responsive(tmp_path, monkeypatch):
+    import services.task_runner as runner_module
+    from httpx import ASGITransport, AsyncClient
+    from main import app
+
+    entered, release = threading.Event(), threading.Event()
+    original = runner_module.assemble_step_system_prompt
+    def slow_path(task, artifacts_dir):
+        entered.set()
+        release.wait(2)
+        return original(task, artifacts_dir)
+    monkeypatch.setattr(runner_module, "assemble_step_system_prompt", slow_path)
+    pipeline = asyncio.create_task(test_pipeline_captures_actual_step_and_review_instructions(
+        tmp_path, monkeypatch, "system", False,
+    ))
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            assert (await asyncio.wait_for(client.get("/api/health"), .3)).status_code == 200
+    finally:
+        release.set()
+        await pipeline

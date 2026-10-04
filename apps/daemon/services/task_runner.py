@@ -22,7 +22,7 @@ from services.artifact_rounds import (
     write_round_manifest,
 )
 from services.pipeline import DAGScheduler, Step
-from services.prompt import SYSTEM_PROMPT
+from services.prompt import assemble_step_system_prompt
 from agent_assistants.prompt_input import format_prompt_input
 from services.task_step_start import start_step_state
 from services.step_execution_messages import StepExecutionMessages
@@ -896,7 +896,10 @@ class TaskRunner:
                 spawn_kwargs["live_message_queue"] = live_queue
             spawn = getattr(engine, "spawn_with_retry", engine.spawn)
             if callable(getattr(engine, "spawn_with_retry", None)):
-                spawn_kwargs.update(system_prompt=SYSTEM_PROMPT, capture_prompt_input=True)
+                spawn_kwargs.update(
+                    system_prompt=await asyncio.to_thread(assemble_step_system_prompt, task, artifacts_dir),
+                    capture_prompt_input=True,
+                )
             prompt_snapshots = []
             spawn_iter = spawn(**spawn_kwargs)
             idle_timeout = await asyncio.to_thread(

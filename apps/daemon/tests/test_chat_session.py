@@ -567,6 +567,77 @@ async def test_create_session_slow_engine_setup_keeps_health_responsive(chat_mod
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("engine_id", ["pydantic_ai", "codex_sdk"])
+async def test_restarted_chat_rechecks_missing_engine_without_blocking_health(chat_module, monkeypatch, engine_id):
+    import main
+    import engines.core.registry as registry
+    from engines.codex_sdk import CodexSDKEngine
+
+    module, bus, manager, project, store = chat_module
+    session = module.create_session(project.id, engine=engine_id)
+    with module._project_ctx(project.id):
+        ChatSession.update(engine_session_id="persisted-engine-session").where(
+            ChatSession.id == session["id"]
+        ).execute()
+    await module.shutdown()
+    restored = ChatSessionModule(bus, manager)
+    entered = threading.Event()
+    release = threading.Event()
+    calls = []
+
+    class RecoveredEngine(FakeEngine):
+        supports_resume = True
+
+        @staticmethod
+        def is_installed():
+            entered.set()
+            assert release.wait(timeout=2)
+            return True
+
+    engine_class = RecoveredEngine
+    if engine_id == "codex_sdk":
+        # Exercise the real SDK engine's startup availability check and
+        # capabilities, with a delayed import probe instead of an SDK process.
+        monkeypatch.setattr(CodexSDKEngine, "_sdk_available", RecoveredEngine.is_installed)
+        engine_class = CodexSDKEngine
+
+    async def invoke(engine_id, model, cwd, prompt, session_id, on_event=None, **kwargs):
+        calls.append((engine_id, session_id))
+        return "继续成功", [], session_id
+
+    store.values["execution_default_engine"] = engine_id
+    monkeypatch.setattr(registry, "_ALL_ENGINES", {engine_id: engine_class})
+    monkeypatch.setattr(registry, "ENGINE_REGISTRY", {})
+    monkeypatch.setattr(registry, "_SCAN_CACHE", None)
+    monkeypatch.setattr("agent_assistants.chat_session.create_engine", registry.create_engine)
+    monkeypatch.setattr("agent_assistants.base.create_engine", registry.create_engine)
+    monkeypatch.setattr(restored, "_invoke", invoke)
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", restored)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+            request = asyncio.create_task(client.post(
+                f"/api/chat-sessions/{session['id']}/chat",
+                json={"project_id": project.id, "content": "继续"},
+                headers={"Idempotency-Key": "restart-engine-recheck"},
+            ))
+            try:
+                assert await asyncio.to_thread(entered.wait, 1)
+                assert not request.done()
+                health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+                assert health.status_code == 200
+            finally:
+                release.set()
+            response = await request
+            assert response.status_code == 200, response.text
+            assert await _wait_turn(restored, response.json()["turn_id"]) == "completed"
+            assert calls == [(engine_id, "persisted-engine-session")]
+    finally:
+        release.set()
+        await restored.shutdown()
+
+
+@pytest.mark.anyio
 async def test_create_session_slow_sql_keeps_health_responsive(chat_module, monkeypatch):
     import main
 

@@ -13,11 +13,11 @@ interface ReviewDecisionActionsProps {
 export default function ReviewDecisionActions({ status, pending, onAction, canCompleteStep = true }: ReviewDecisionActionsProps) {
   const { t } = useI18n()
   return (
-    <div style={{ display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8 }}>
+    <div className="review-decision-actions">
       <Button variant="danger" disabled={pending} onClick={() => onAction('terminate')}>
         {t('taskDetail.terminate')}
       </Button>
-      {canCompleteStep && <Button variant="ghost" disabled={pending} style={{ marginRight: 'auto' }} onClick={() => onAction('set-complete')}>
+      {canCompleteStep && <Button variant="ghost" disabled={pending} className="review-decision-complete" onClick={() => onAction('set-complete')}>
         {t('taskDetail.setStepComplete')}
       </Button>}
       {status === 'pending' ? (

@@ -30,7 +30,7 @@ async def test_stop_is_scoped_to_original_message_and_old_card_cannot_stop_next_
     click = ChannelAction('b', card.id, card.buttons[0].key, 'u', conversation_id='g')
     assert await broker.handle(click) == '已停止'
     coordinator.stop_current.assert_awaited_once_with('p','t',expected_message_id='a')
-    assert await broker.handle(click) == '该操作已处理或已失效'
+    assert await broker.handle(click) == '该操作已处理或已失效（操作人：小王）'
     await broker.finish(scope)
     await broker.begin(message,'p',task_id='t',assistant_message_id='next',turn_id='next-turn')
     await broker.handle(click)
@@ -61,7 +61,7 @@ async def test_proposal_survives_finish_and_restart_and_binding_change_expires_i
     fresh = ChannelControls(store, broker._load_config, broker._adapters, coordinator, broker._responder, broker._on_message)
     assert await fresh.handle(ChannelAction('b',card.id,'0','u',conversation_id='g')) == '已确认'
     coordinator.confirm_action.assert_awaited_once_with('p','t','proposal',f'channel-card:{card.id}')
-    assert await fresh.handle(ChannelAction('b',card.id,'1','u',conversation_id='g')) == '该操作已处理或已失效'
+    assert await fresh.handle(ChannelAction('b',card.id,'1','u',conversation_id='g')) == '该操作已处理或已失效（操作人：小王）'
     await broker.event(scope, {'type':'CUSTOM','name':'workstep.action_proposal','value':{'id':'other','status':'pending'}})
     card = adapter.send_card.await_args.args[1]
     config['groups'] = []
@@ -110,6 +110,41 @@ async def test_async_question_choice_routes_answer_to_same_coordinator_with_send
     answer = broker._on_message.await_args.args[0]
     assert (answer.bot_id,answer.conversation_id,answer.sender_id,answer.text) == ('b','g','u','启动阶段？：是')
 
+
+async def test_wecom_stop_callback_keeps_one_terminal_reply_without_active_duplicate(controls, monkeypatch):
+    from services.channels.wecom import WeComAdapter
+    broker,_,coordinator,_,scope,*_ = controls
+    client = SimpleNamespace(connect=AsyncMock(),send_message=AsyncMock(),reply_stream=AsyncMock(),
+        reply_stream_with_card=AsyncMock(),update_template_card=AsyncMock(),disconnect=lambda: None)
+    handlers = {}
+    def on(name):
+        def register(handler):
+            handlers[name] = handler
+            return handler
+        return register
+    client.on = on
+    monkeypatch.setattr('services.channels.wecom.WSClient', lambda options: client)
+    adapter = WeComAdapter({'id':'b','app_id':'a','secret':'s'},AsyncMock(),AsyncMock())
+    adapter.set_action_handler(broker.handle)
+    await adapter.start()
+    try:
+        rows = await broker._load()
+        card_id = next(key for key,row in rows.items() if row['id'] == scope['id'])
+        original = IncomingMessage('b','m','group','g','u','开始',reply_context={'headers':{'req_id':'original'}})
+        async def stop(*args, **kwargs):
+            await adapter.send_text(original, '@协调 已停止')
+            return True
+        coordinator.stop_current.side_effect = stop
+        await handlers['event.template_card_event']({'headers':{'req_id':'callback'},'body':{
+            'chatid':'g','from':{'userid':'u'},'event':{'template_card_event':{'task_id':card_id,'event_key':'0'}}}})
+        client.update_template_card.assert_awaited_once()
+        client.reply_stream.assert_awaited_once()
+        assert client.reply_stream.await_args.args[2] == '@协调 已停止\n\n<@u>'
+        assert client.reply_stream.await_args.kwargs['finish'] is True
+        client.send_message.assert_not_awaited()
+    finally:
+        await adapter.stop()
+
 async def test_slow_platform_send_does_not_block_event_loop(controls):
     broker, adapter, _, _, scope, *_ = controls
     entered, release = asyncio.Event(), asyncio.Event()
@@ -149,7 +184,7 @@ async def test_long_question_keeps_every_option_and_invalidates_sibling_cards(co
     cards = [call.args[1] for call in adapter.send_card.await_args_list[before:]]
     assert [button.label for card in cards for button in card.buttons] == options
     await broker.handle(ChannelAction('b',cards[1].id,'0','u'))
-    assert await broker.handle(ChannelAction('b',cards[0].id,'0','u')) == '该操作已处理或已失效'
+    assert await broker.handle(ChannelAction('b',cards[0].id,'0','u')) == '该操作已处理或已失效（操作人：小王）'
     assert broker._on_message.await_count == 1
 
 async def test_finished_permission_card_cannot_answer_a_later_engine_request(controls):
@@ -203,7 +238,7 @@ async def test_broadcast_stop_targets_stage_message_and_accepts_group_member(con
     runtime.cancel_message.assert_awaited_once_with('p','t','stage-message')
     coordinator.stop_current.assert_not_awaited()
     await broker.finish(scope)
-    assert await broker.handle(ChannelAction('b',card.id,'0','member',conversation_id='g')) == '该操作已处理或已失效'
+    assert await broker.handle(ChannelAction('b',card.id,'0','member',conversation_id='g')) == '该操作已处理或已失效（操作人：member）'
 
 
 async def test_broadcast_completed_or_rebound_stop_does_not_cancel(controls):
@@ -230,6 +265,20 @@ async def test_channel_without_cards_does_not_send_stop_button(controls):
     await broker.finish(scope)
 
 
+async def test_processed_card_operator_falls_back_to_id_and_is_hidden_from_other_sources(controls):
+    broker,adapter,_,_,_,store,_ = controls
+    card = adapter.send_card.await_args.args[1]
+    rows = store.rows['channel_button_actions']
+    rows[card.id]['status'] = 'completed'
+    rows[card.id]['clicked_by'] = {'user_id':'u'}
+    click = ChannelAction('b',card.id,'0','u',conversation_id='g')
+    assert await broker.handle(click) == '该操作已处理或已失效（操作人：u）'
+    assert await broker.handle(ChannelAction('b',card.id,'0','u',conversation_id='other')) == '该操作已处理或已失效'
+    assert await broker.handle(ChannelAction('other-bot',card.id,'0','u',conversation_id='g')) == '该操作已处理或已失效'
+    rows[card.id].pop('clicked_by')
+    assert await broker.handle(click) == '该操作已处理或已失效'
+
+
 async def test_ordinary_channel_stop_targets_reply_and_expires_after_finish(controls):
     broker, adapter, coordinator, message, _, _, config = controls
     config['groups'] = []
@@ -247,5 +296,5 @@ async def test_ordinary_channel_stop_targets_reply_and_expires_after_finish(cont
     closed = adapter.update_card.await_args.args[1]
     assert closed.id == card.id and closed.running and not closed.buttons
     await broker.begin(message,'p',session_id='session',assistant_message_id='next',turn_id='next-turn')
-    assert await broker.handle(click) == '该操作已处理或已失效'
+    assert await broker.handle(click) == '该操作已处理或已失效（操作人：小王）'
     assert broker._responder.stop.await_count == 1

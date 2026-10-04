@@ -16,10 +16,11 @@ TTL = 24 * 60 * 60
 
 
 class ChannelControls:
-    def __init__(self, store, load_config, adapters, coordinator, responder, on_message, *, workflow_runtime=None):
+    def __init__(self, store, load_config, adapters, coordinator, responder, on_message, *, workflow_runtime=None, projects=None):
         self._store, self._load_config, self._adapters = store, load_config, adapters
         self._coordinator, self._responder, self._on_message = coordinator, responder, on_message
         self._workflow_runtime = workflow_runtime
+        self._projects = projects
         self._lock = asyncio.Lock()
         self._active = set()
         self._running_scopes = {}
@@ -32,7 +33,7 @@ class ChannelControls:
     async def _save(self, rows):
         await asyncio.to_thread(self._store.set, CONFIG_KEY, rows)
 
-    async def begin(self, message, project_id, *, task_id='', session_id='', assistant_message_id='', turn_id='', step_key='', broadcast=False, title='正在处理'):
+    async def begin(self, message, project_id, *, task_id='', session_id='', assistant_message_id='', turn_id='', step_key='', broadcast=False, title='正在处理', stop_button=True):
         key = (project_id, task_id, session_id, assistant_message_id,
                message.bot_id, message.conversation_type, message.conversation_id)
         existing = self._running_scopes.get(key) if assistant_message_id else None
@@ -55,7 +56,8 @@ class ChannelControls:
         if assistant_message_id:
             text += '\n消息 ID: ' + assistant_message_id
         try:
-            await self._card(scope, title, text, [('中止', {'kind':'stop'})], recipient_override=message)
+            if stop_button:
+                await self._card(scope, title, text, [('中止', {'kind':'stop'})], recipient_override=message)
         except BaseException:
             ready.cancel()
             self._running_scopes.pop(key, None)
@@ -63,6 +65,25 @@ class ChannelControls:
             raise
         ready.set_result(None)
         return scope
+
+    async def review(self, scope, review_id, title, text):
+        await self._card(scope, title + ' · 等待审核', text + '\n需要填写审核意见时，请到 WorkStep 审核表单操作。',
+            [('通过', {'kind':'review', 'review_id':review_id, 'decision':'approve'}),
+             ('不通过', {'kind':'review', 'review_id':review_id, 'decision':'reject'})])
+
+    async def _review_pending(self, row, action):
+        if self._projects is None:
+            return False
+        from models import ReviewRun, Task
+        def read(_project):
+            task = Task.get_or_none(Task.id == row['task_id'])
+            latest = (ReviewRun.select().where((ReviewRun.task == row['task_id']) &
+                (ReviewRun.step_key == row['step_key']))
+                .order_by(ReviewRun.started_at.desc(), ReviewRun.id.desc()).first())
+            return bool(task and not task.archived and latest and latest.id == action['review_id']
+                and latest.mode == 'manual' and latest.status == 'pending' and not latest.decision
+                and task.active_workflow_run_id == latest.workflow_run_id)
+        return await self._projects.run_db(row['project_id'], read)
 
     async def _card(self, scope, title, text, options, recipient_override=None):
         recipient = recipient_override or IncomingMessage(**scope['message'])
@@ -189,20 +210,27 @@ class ChannelControls:
             rows = await self._load()
             row = rows.get(click.card_id)
             if not row or row.get('status') != 'pending':
+                if row and row['message']['bot_id'] == click.bot_id and (
+                    not click.conversation_id or row['message']['conversation_id'] == click.conversation_id):
+                    actor = row.get('clicked_by') or {}
+                    name = actor.get('user_name') or actor.get('user_id')
+                    if name:
+                        return f'该操作已处理或已失效（操作人：{name}）'
                 return '该操作已处理或已失效'
             message = row['message']
             if message['bot_id'] != click.bot_id or (click.conversation_id and message['conversation_id'] != click.conversation_id):
                 return '该操作不属于此会话'
             action = row['options'].get(click.key)
-            broadcast_stop = row.get('broadcast') and action and action['kind'] == 'stop'
-            if broadcast_stop and click.conversation_id != message['conversation_id']:
+            broadcast_action = row.get('broadcast') and action and action['kind'] in {'stop','review','interaction','answer'}
+            if broadcast_action and click.conversation_id != message['conversation_id']:
                 return '该操作不属于此会话'
-            if not click.sender_id or (not broadcast_stop and message['sender_id'] != click.sender_id):
+            if not click.sender_id or (not broadcast_action and message['sender_id'] != click.sender_id):
                 return '仅发起此消息的用户可以操作'
             if action is None:
                 return '无效的选项'
-            identity = tuple(action.get(key) for key in ('kind','interaction_id','proposal_id','question_id'))
-            claim = (row['id'], identity)
+            identity = tuple(action.get(key) for key in ('kind','interaction_id','proposal_id','question_id','review_id'))
+            claim_scope = (row['project_id'], row['task_id'], row['assistant_message_id']) if broadcast_action else row['id']
+            claim = (claim_scope, identity)
             if claim in self._claims:
                 return '该操作已处理或已失效'
             self._claims.add(claim)
@@ -213,11 +241,13 @@ class ChannelControls:
                 return '渠道绑定已改变，该操作已失效'
             if action['kind'] in {'stop','interaction'} and row['id'] not in self._active:
                 return '该操作已处理或已失效'
+            if action['kind'] == 'review' and not await self._review_pending(row, action):
+                return '该审核已处理或已失效'
             if on_claimed is not None:
                 await on_claimed()
             recipient = IncomingMessage(**message)
-            if broadcast_stop:
-                recipient = replace(recipient, sender_id=click.sender_id, sender_name=click.sender_name or click.sender_id)
+            recipient = replace(recipient, sender_id=click.sender_id,
+                sender_name=click.sender_name or (message.get('sender_name') if message['sender_id'] == click.sender_id else '') or click.sender_id)
             from services.channels.bots import _sender_actor
             from services.remote_access import actor_context
             with actor_context(_sender_actor(recipient, bot['platform'])):
@@ -229,6 +259,12 @@ class ChannelControls:
                     else:
                         stopped = await self._responder.stop(row['project_id'], row['session_id'], row['assistant_message_id'])
                     result = '已停止' if stopped else '该回复已结束'
+                elif action['kind'] == 'review':
+                    if self._workflow_runtime is None:
+                        return '审核服务不可用，请到 WorkStep 操作'
+                    await self._workflow_runtime.decide_review(row['project_id'], row['task_id'], row['step_key'],
+                        action['review_id'], action['decision'])
+                    result = recipient.sender_name + (' 审核通过' if action['decision'] == 'approve' else ' 审核不通过')
                 elif action['kind'] == 'interaction':
                     if not intervention_manager.deliver_response(action['interaction_id'], action['response'], task_id=row['turn_id']):
                         return '该问题已回答或已失效'
@@ -240,18 +276,21 @@ class ChannelControls:
                         await self._coordinator.cancel_action(row['project_id'],row['task_id'],action['proposal_id'])
                     result = '已确认' if action['confirm'] else '已取消'
                 else:
-                    answer = IncomingMessage(**{**message,'message_id':'card-' + click.card_id, 'text':action['text']})
+                    answer = replace(recipient, message_id='card-' + click.card_id, text=action['text'])
                     await self._on_message(answer)
                     result = '已选择：' + action['label']
             async with self._lock:
                 rows = await self._load()
                 # All pages of one question share a decision identity.
-                identity = tuple(action.get(key) for key in ('kind','interaction_id','proposal_id','question_id'))
+                identity = tuple(action.get(key) for key in ('kind','interaction_id','proposal_id','question_id','review_id'))
                 for other in rows.values():
-                    matches = any(tuple(option.get(key) for key in ('kind','interaction_id','proposal_id','question_id')) == identity
+                    matches = any(tuple(option.get(key) for key in ('kind','interaction_id','proposal_id','question_id','review_id')) == identity
                                   for option in other['options'].values())
-                    if other['id'] == row['id'] and matches:
+                    same_scope = other['id'] == row['id'] or (broadcast_action and other.get('broadcast') and
+                        (other['project_id'],other['task_id'],other['assistant_message_id']) == claim_scope)
+                    if same_scope and matches:
                         other['status'] = 'completed'
+                        other['clicked_by'] = {'user_id':click.sender_id, 'user_name':recipient.sender_name, 'at':time.time()}
                 await self._save(rows)
             return result
         finally:

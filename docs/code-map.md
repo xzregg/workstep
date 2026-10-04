@@ -1,5 +1,7 @@
 # 按功能查找代码
 
+重启后会话的引擎查找由 `apps/daemon/engines/core/registry.py::create_engine` 持有：启动注册表缺少已知引擎时，在调用线程重新检测该引擎的安装状态，成功后补入注册表并失效列表缓存。聊天入口 `api/chat_session.py::chat_message` 通过项目数据库执行器提交，恢复持久化的引擎会话标识；异步引擎调用通过工作线程构造引擎。行为见 `tests/test_engines.py` 和 `tests/test_chat_session.py::test_restarted_chat_rechecks_missing_engine_without_blocking_health`，覆盖漏检恢复、真实未安装、原会话续聊及慢检测健康检查。
+
 WebSocket 前台恢复由 `apps/web/src/hooks/useWebSocket.ts` 持有：页面可见、重新联网、历史缓存恢复和 Android `MainActivity.onResume` 的 `workstep:resume` 通知会替换旧连接，重新订阅并补拉列表；20 秒心跳与 10 秒超时检测失效连接，daemon `streaming/ws.py::_handle_client_message` 仅向发起连接回复 pong。`useChatSessionHistory.ts` 串行补拉当前对话，`assistantStore.ts::hydrateSession` 仅替换请求开始后未变化的消息，保留并发实时更新及消息顺序。行为见 Web `websocketRecovery.test.tsx`、`useChatSessionHistory.test.tsx`、`chatSessionStore.test.ts` 和 daemon `test_main.py`。
 
 企业微信入站回复的正文流式更新由 `apps/daemon/services/channels/reply_stream.py::ChannelReplyStream` 合并、节流和隔离网络发送；`responder.py` 与 `bots.py::_task_reply` 提供累计 LLM 正文，`BotManager` 管理更新任务的生命周期，`wecom.py::update_reply` 更新同一气泡，最终回复按 UTF-8 限长分段。统一能力与接口在 `base.py`，协议说明见 `docs/channel-message-protocol.md`；行为及慢网络健康检查见 `tests/test_channel_streaming.py`、`test_channel_bots.py` 和 `test_channel_chat_responder.py`。
@@ -345,7 +347,7 @@ Gateway 工作台顶部导航由 `apps/gateway-web/src/PortalHeader.tsx` 持有�
 Pydantic AI 的会话系统规则生命周期由 `engines/pydantic_ai/harness_runtime.py` 持有：`_prepare_prompt_input` 在 ACP 捕获前检查历史，`_with_session_system_prompt` 保存带来源标记的系统消息；`engine.py` 恢复该历史后运行 Agent。固定规则相同则不重新注入，更新／清空仅替换 WorkStep 消息，`SessionSlidingWindowCompaction` 补齐滑动窗口裁剪后的系统消息保留，摘要压缩也保留系统消息。协调规范归 `agent_assistants/coordinator_context.py`，`acp_base.py` 的捕获路径不再添加第二套角色。回归入口为 `tests/test_pydantic_ai_harness.py`、`tests/test_engine_system_prompt.py`、`tests/test_coordinator.py`。
 
 
-渠道运行中回复的「终止」按钮由 `services/channels/controls.py` 关联项目、任务／会话与消息 ID；普通渠道会话通过 `responder.py::stop` 调用 `AssistantRuntime.stop_current(expected_message_id=...)`，仅停止匹配回复。钉钉 `dingtalk.py` 将运行按钮注册到正文的同一卡片，更新保留按钮，收尾保留最终正文；企业微信 `wecom.py` 在附加按钮后持续使用组合流式协议，模板只发送一次。回归入口为 `tests/test_channel_streaming.py`、`test_channel_controls.py`、`test_channel_chat_responder.py`，覆盖普通渠道停止、旧按钮失效、后续排队消息隔离及慢网络健康检查。
+渠道运行中回复的「终止」按钮由 `services/channels/controls.py` 关联项目、任务／会话与消息 ID；普通渠道会话通过 `responder.py::stop` 调用 `AssistantRuntime.stop_current(expected_message_id=...)`，仅停止匹配回复。钉钉 `dingtalk.py` 将运行按钮注册到正文的同一卡片，更新保留按钮，收尾保留最终正文；企业微信 `wecom.py` 将用户回复的中止按钮附加到同一流式消息，在每条流的异步锁内保留最新正文并串行更新，持续使用组合协议且模板只发送一次；组合发送失败回退独立主动卡片，后续选择题仍主动发送。回归入口为 `tests/test_channel_streaming.py`、`test_channel_controls.py`、`test_channel_chat_responder.py`，覆盖普通渠道停止、旧按钮失效、后续排队消息隔离及慢网络健康检查。
 
 任务渠道终态判断由 `services/channels/bots.py::_task_reply` 负责，以协调助手的 `TEXT_MESSAGE_END` 为准，停止时的引擎退出事件不直接触发失败回复；有无任务转发器的回归在 `tests/test_channel_terminal_state.py`、`tests/test_channel_task_forwarder.py`。
 
@@ -358,5 +360,9 @@ Pydantic AI 的会话系统规则生命周期由 `engines/pydantic_ai/harness_ru
 
 任务归档／删除后的渠道解绑由 `api/task_context.py::_release_task_channel_bindings` 统一调用 `services/channels/bots.py::remove_task_bindings`。`api/task_archive.py` 的直接归档、经验确认归档（有／无经验）及 `api/task.py` 的删除仅在任务操作成功后调用；解除该项目、该任务的全部群绑定，历史默认任务目标回到原默认项目，不删除渠道会话、来源或近期群。恢复归档不会恢复旧绑定。真实 HTTP、跨项目／跨任务隔离、失败保留及慢配置写入健康检查见 `tests/test_task_channel_unbinding.py`。
 
+步骤执行的任务工作区路径由 `services/prompt.py::assemble_step_system_prompt` 与固定 Git 规则组成系统输入，`task_runner.py` 在线程中解析项目相对路径后交给 ACP。首次、续聊和重置会话均提供相同任务路径；Pydantic AI 依据持久化规则去重，挂载仓库仍在正文背景中更新。回归为 `test_pipeline.py` 的工作区提示词测试与 `test_review_gate.py` 的首轮／恢复输入、慢路径解析健康检查。
+
 
 任务渠道完成标签由 `services/channels/task_forwarder.py::_deliver` 从消息终态生成：`succeeded` 与审核消息使用的 `completed` 均显示「已完成」，`stopped`／`cancelled` 显示「已停止」，真实失败保留错误信息。`review_messages.py` 发布 `message_completed(status=completed)`，经 `engines/core/agui.py::to_agui_events` 保留为 `TEXT_MESSAGE_END(status=completed)`；翻译后的执行／审核消息转发回归见 `tests/test_channel_task_forwarder.py::test_completed_status_from_real_message_translation_is_success`。
+
+自动步骤的渠道人工审核和提问由 `services/channels/task_controls.py::ChannelTaskControls` 订阅 AG-UI 审核及交互事件，通过项目数据库执行器读取当前审核和步骤正文，仅向仍绑定的群发送卡片；`BotManager` 管理订阅生命周期，每个任务按事件顺序处理，跨任务与群异步隔离。`controls.py::review/handle` 复用 `WorkflowRuntime.decide_review`，以实际点击者的 `ActorSnapshot` 持久化审核人及审核消息作者；自动群卡片允许本群成员操作，用户发起的停止和提问仍限定发起者。跨群点击去重、归档/解绑/新审核轮次失效、重启后的审核操作、真实 SQLite 审核落库及慢 SQL 健康检查见 `tests/test_channel_task_controls.py`。
