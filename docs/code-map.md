@@ -363,6 +363,8 @@ Pydantic AI 的会话系统规则生命周期由 `engines/pydantic_ai/harness_ru
 步骤执行的任务工作区路径由 `services/prompt.py::assemble_step_system_prompt` 与固定 Git 规则组成系统输入，`task_runner.py` 在线程中解析项目相对路径后交给 ACP。首次、续聊和重置会话均提供相同任务路径；Pydantic AI 依据持久化规则去重，挂载仓库仍在正文背景中更新。回归为 `test_pipeline.py` 的工作区提示词测试与 `test_review_gate.py` 的首轮／恢复输入、慢路径解析健康检查。
 
 
-任务渠道完成标签由 `services/channels/task_forwarder.py::_deliver` 从消息终态生成：`succeeded` 与审核消息使用的 `completed` 均显示「已完成」，`stopped`／`cancelled` 显示「已停止」，真实失败保留错误信息。`review_messages.py` 发布 `message_completed(status=completed)`，经 `engines/core/agui.py::to_agui_events` 保留为 `TEXT_MESSAGE_END(status=completed)`；翻译后的执行／审核消息转发回归见 `tests/test_channel_task_forwarder.py::test_completed_status_from_real_message_translation_is_success`。
+任务渠道正文由 `services/channels/task_forwarder.py::_deliver` 按任务终态事件顺序发送：`succeeded` 与 `completed` 不追加「已完成」，`stopped`／`cancelled` 有正文时同样不追加状态，无正文时仅反馈「已中止」，真实失败追加错误说明；人工审核的系统等待消息不作为 LLM 正文推送。`review_messages.py` 发布 `message_completed(status=completed)`，经 `engines/core/agui.py::to_agui_events` 保留为 `TEXT_MESSAGE_END(status=completed)`；翻译后的执行／审核消息转发回归见 `tests/test_channel_task_forwarder.py::test_completed_status_from_real_message_translation_is_success`。
 
 自动步骤的渠道人工审核和提问由 `services/channels/task_controls.py::ChannelTaskControls` 订阅 AG-UI 审核及交互事件，通过项目数据库执行器读取当前审核和步骤正文，仅向仍绑定的群发送卡片；`BotManager` 管理订阅生命周期，每个任务按事件顺序处理，跨任务与群异步隔离。`controls.py::review/handle` 复用 `WorkflowRuntime.decide_review`，以实际点击者的 `ActorSnapshot` 持久化审核人及审核消息作者；自动群卡片允许本群成员操作，用户发起的停止和提问仍限定发起者。跨群点击去重、归档/解绑/新审核轮次失效、重启后的审核操作、真实 SQLite 审核落库及慢 SQL 健康检查见 `tests/test_channel_task_controls.py`。
+
+渠道审核卡片由 `task_controls.py` 在 `task_forwarder.py::wait_for_completed` 的终态事件栅栏后发送，确保阶段正文先发送；栅栏不等待仍在运行的 LLM，跨任务保持异步。`taskReviewRules.ts::reviewActorLabel` 对渠道审核人名称中已带的来源去重（如「企业微信 · 用户」不再次拼接企业微信）。顺序、人工审核通知过滤、慢审核查询健康检查和标签回归见 `test_channel_task_forwarder.py`、`test_channel_task_controls.py`、`taskReviewRules.test.ts`。

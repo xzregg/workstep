@@ -84,7 +84,8 @@ class BotManager:
         self._controls = ChannelControls(store, self._load, self._adapters, coordinator, responder, self._submit_card_answer, workflow_runtime=workflow_runtime, projects=project_manager)
         self._task_forwarder = ChannelTaskForwarder(event_bus, project_manager, self._load, self._adapters, controls=self._controls)
         from services.channels.task_controls import ChannelTaskControls
-        self._task_controls = ChannelTaskControls(event_bus, project_manager, self._load, self._controls)
+        self._task_controls = ChannelTaskControls(event_bus, project_manager, self._load, self._controls,
+                                                  forwarder=self._task_forwarder)
         self._card_answer_tasks = set()
 
     async def _ensure_factories(self) -> None:

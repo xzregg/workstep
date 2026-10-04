@@ -105,7 +105,7 @@ WorkStep 渠道消息协议 v1 是项目内部的收发契约。它采用与 LLM
 渠道运行卡片统一由 `controls.py::begin` 按项目、任务／会话、助手消息 ID 及渠道会话去重，接收入口与 `task_forwarder.py::_deliver` 共用，发起群也必须确保运行卡片存在；`finish` 幂等收尾。确认卡片优先取同条回复的正文摘要，所有企业微信按钮卡片由 `wecom.py::send_card` 显示助手消息 ID，超长说明分开发送后卡片仍保留 ID。中止按钮的通用 `ChannelButton.danger` 由操作类型决定，企业微信映射到[官方红色样式 3](https://developer.work.weixin.qq.com/document/path/101032)，钉钉映射为模板 `color=red`，确认／取消保持原色。入口隔离、去重、实际中止、卡片正文与 ID、颜色及慢发送健康检查见 `tests/test_channel_origin_stop.py`。
 
 
-任务渠道完成标签由 `services/channels/task_forwarder.py::_deliver` 从消息终态生成：`succeeded` 与审核消息使用的 `completed` 均显示「已完成」，`stopped`／`cancelled` 显示「已停止」，真实失败保留错误信息。`review_messages.py` 发布 `message_completed(status=completed)`，经 `engines/core/agui.py::to_agui_events` 保留为 `TEXT_MESSAGE_END(status=completed)`；翻译后的执行／审核消息转发回归见 `tests/test_channel_task_forwarder.py::test_completed_status_from_real_message_translation_is_success`。
+任务渠道正文由 `services/channels/task_forwarder.py::_deliver` 按任务终态事件顺序发送：`succeeded` 与 `completed` 不追加「已完成」，`stopped`／`cancelled` 有正文时同样不追加状态，无正文时仅反馈「已中止」，真实失败追加错误说明；人工审核的系统等待消息不作为 LLM 正文推送。`review_messages.py` 发布 `message_completed(status=completed)`，经 `engines/core/agui.py::to_agui_events` 保留为 `TEXT_MESSAGE_END(status=completed)`；翻译后的执行／审核消息转发回归见 `tests/test_channel_task_forwarder.py::test_completed_status_from_real_message_translation_is_success`。
 
 ### 自动步骤的人工审核与提问
 
@@ -114,3 +114,5 @@ WorkStep 渠道消息协议 v1 是项目内部的收发契约。它采用与 LLM
 `ChannelTaskControls` 单独订阅 `workstep.review_result/review_status`、`workstep.interaction_request/response` 与阶段问题事件，复用 `ChannelControls` 而不创建停止按钮。人工审核等待时发送「通过／不通过」卡片；通过继续下游，不通过复用原审核服务的反馈重跑逻辑。卡片没有原生自由文本输入框，需要填写意见的用户仍在 WorkStep 审核表单提交。枚举、布尔问题和工具权限请求转换为按钮，复杂表单提示回 WorkStep。
 
 自动群卡片通过机器人 ID、群 ID 和当前任务绑定验证来源，允许该群成员点击；用户消息触发的卡片继续限定原发起者。审核决定和消息作者使用实际点击者身份，昵称缺失时显示用户 ID；卡片操作记录另保存 `clicked_by`。审核按钮每次点击检查项目数据库中的当前轮次、归档状态和已有决定，跨群并发点击仅接受一个决定；持久化人工审核按钮可以跨重启操作，临时引擎问题仍受活跃会话约束。测试及慢 SQL 健康检查见 `tests/test_channel_task_controls.py`。
+
+渠道审核卡片由 `task_controls.py` 在 `task_forwarder.py::wait_for_completed` 的终态事件栅栏后发送，确保阶段正文先发送；栅栏不等待仍在运行的 LLM，跨任务保持异步。`taskReviewRules.ts::reviewActorLabel` 对渠道审核人名称中已带的来源去重（如「企业微信 · 用户」不再次拼接企业微信）。顺序、人工审核通知过滤、慢审核查询健康检查和标签回归见 `test_channel_task_forwarder.py`、`test_channel_task_controls.py`、`taskReviewRules.test.ts`。

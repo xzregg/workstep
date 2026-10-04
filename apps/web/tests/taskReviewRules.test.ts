@@ -184,3 +184,12 @@ test('flags manual review messages so they render without a thinking trace', () 
     channel: 'review', step_key: 'unknown', engine: 'codex',
   }, reviews), false)
 })
+
+
+test('channel reviewer source is displayed once for persisted channel identities', () => {
+  for (const source of ['企业微信', '钉钉']) {
+    assert.equal(reviewActorLabel({ id: 'review', step_key: 'build',
+      reviewer_name: `${source} · 小陈`, reviewer_device_name: source,
+    }), `${source} · 小陈`)
+  }
+})

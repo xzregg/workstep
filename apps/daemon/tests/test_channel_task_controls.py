@@ -218,3 +218,71 @@ async def test_wecom_review_callback_from_group_member_persists_source_user(setu
         assert client.send_message.await_args.args[1]['markdown']['content'] == 'XieZhaoRong 审核通过'
     finally:
         await adapter.stop()
+
+
+async def test_manual_review_card_waits_for_execution_delivery(setup):
+    from services.channels.task_forwarder import ChannelTaskForwarder
+    relay, bus, event, adapter, controls, _, projects, project, data, _ = setup
+    entered, release = asyncio.Event(), asyncio.Event()
+    order = []
+    async def send_text(recipient, text):
+        entered.set()
+        await release.wait()
+        order.append((recipient.conversation_id, 'text'))
+    async def send_card(recipient, card):
+        order.append((recipient.conversation_id, 'card'))
+    adapter.send_text = AsyncMock(side_effect=send_text)
+    adapter.send_card.side_effect = send_card
+    forwarder = ChannelTaskForwarder(bus, projects, controls._load_config, {'bot': adapter})
+    relay._forwarder = forwarder
+    await forwarder.start()
+    try:
+        await bus.publish({'type': 'TEXT_MESSAGE_END', 'project_id': project.id,
+            'task_id': 'task', 'messageId': 'message', 'status': 'completed', 'content': '执行正文'})
+        await entered.wait()
+        await bus.publish(event('workstep.review_result', review_run_id='review', status='awaiting_review'))
+        await asyncio.sleep(.05)
+        adapter.send_card.assert_not_awaited()
+        release.set()
+        await until(lambda: adapter.send_card.await_count == 2)
+        for group in ('one', 'two'):
+            assert [kind for dest, kind in order if dest == group] == ['text', 'card']
+    finally:
+        release.set()
+        await forwarder.shutdown()
+
+
+async def test_manual_review_lookup_after_author_change_keeps_health_responsive(setup, monkeypatch):
+    import json
+    import threading
+    from httpx import ASGITransport, AsyncClient
+    import main
+    from services.channels.task_forwarder import ChannelTaskForwarder
+    _, bus, _, adapter, controls, _, projects, project, *_ = setup
+    await projects.run_db(project.id, lambda _p: Message.update(
+        author_type='user', events_json=json.dumps([
+            {'type': 'review_context', 'data': {'review_run_id': 'review'}},
+        ]),
+    ).where(Message.id == 'review-message').execute())
+    entered, release = threading.Event(), threading.Event()
+    original = ReviewRun.get_or_none
+    def slow(*args, **kwargs):
+        entered.set()
+        assert release.wait(2)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(ReviewRun, 'get_or_none', slow)
+    adapter.send_text = AsyncMock()
+    forwarder = ChannelTaskForwarder(bus, projects, controls._load_config, {'bot': adapter})
+    await forwarder.start()
+    try:
+        await bus.publish({'type': 'TEXT_MESSAGE_END', 'project_id': project.id,
+            'task_id': 'task', 'messageId': 'review-message', 'status': 'completed', 'content': '等待你审核'})
+        assert await asyncio.to_thread(entered.wait, 1)
+        async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
+            assert (await asyncio.wait_for(client.get('/api/health'), .3)).status_code == 200
+        release.set()
+        await until(lambda: bool(forwarder._completed))
+        adapter.send_text.assert_not_awaited()
+    finally:
+        release.set()
+        await forwarder.shutdown()
