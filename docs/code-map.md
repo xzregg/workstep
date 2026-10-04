@@ -347,7 +347,7 @@ Gateway 工作台顶部导航由 `apps/gateway-web/src/PortalHeader.tsx` 持有�
 Pydantic AI 的会话系统规则生命周期由 `engines/pydantic_ai/harness_runtime.py` 持有：`_prepare_prompt_input` 在 ACP 捕获前检查历史，`_with_session_system_prompt` 保存带来源标记的系统消息；`engine.py` 恢复该历史后运行 Agent。固定规则相同则不重新注入，更新／清空仅替换 WorkStep 消息，`SessionSlidingWindowCompaction` 补齐滑动窗口裁剪后的系统消息保留，摘要压缩也保留系统消息。协调规范归 `agent_assistants/coordinator_context.py`，`acp_base.py` 的捕获路径不再添加第二套角色。回归入口为 `tests/test_pydantic_ai_harness.py`、`tests/test_engine_system_prompt.py`、`tests/test_coordinator.py`。
 
 
-渠道运行中回复的「终止」按钮由 `services/channels/controls.py` 关联项目、任务／会话与消息 ID；普通渠道会话通过 `responder.py::stop` 调用 `AssistantRuntime.stop_current(expected_message_id=...)`，仅停止匹配回复。钉钉 `dingtalk.py` 将运行按钮注册到正文的同一卡片，更新保留按钮，收尾保留最终正文；企业微信 `wecom.py` 将用户回复的中止按钮附加到同一流式消息，在每条流的异步锁内保留最新正文并串行更新，持续使用组合协议且模板只发送一次；组合发送失败回退独立主动卡片，后续选择题仍主动发送。回归入口为 `tests/test_channel_streaming.py`、`test_channel_controls.py`、`test_channel_chat_responder.py`，覆盖普通渠道停止、旧按钮失效、后续排队消息隔离及慢网络健康检查。
+渠道运行中回复的「终止」按钮由 `services/channels/controls.py` 关联项目、任务／会话与消息 ID；普通渠道会话通过 `responder.py::stop` 调用 `AssistantRuntime.stop_current(expected_message_id=...)`，仅停止匹配回复。钉钉 `dingtalk.py` 将运行按钮注册到正文的同一卡片，更新保留按钮，收尾保留最终正文；企业微信 `wecom.py` 使用普通流式气泡更新等待、正文与最终状态（私聊空首帧恢复原生等待气泡，群聊显示等待文字），并独立主动发送中止模板卡片，私聊与群聊一致；卡片发送不阻塞正文更新，后续选择题也独立发送。官方组合协议在当前接入的实际移动客户端中未显示按钮，原因待查。回归入口为 `tests/test_channel_streaming.py`、`test_channel_controls.py`、`test_channel_chat_responder.py`，覆盖普通渠道停止、旧按钮失效、后续排队消息隔离及慢网络健康检查。
 
 任务渠道终态判断由 `services/channels/bots.py::_task_reply` 负责，以协调助手的 `TEXT_MESSAGE_END` 为准，停止时的引擎退出事件不直接触发失败回复；有无任务转发器的回归在 `tests/test_channel_terminal_state.py`、`tests/test_channel_task_forwarder.py`。
 
