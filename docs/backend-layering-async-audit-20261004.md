@@ -100,3 +100,13 @@ PostgreSQL 专用集成测试保留；已按用户指示删除的旧工作流测
 用户随后明确要求删除两条旧测试：`test_concurrency_gate.py::test_stopping_queued_chat_persists_stopped_message`（停止完成后仍从内部任务表读取已清理协程）和 `test_live_step_message.py::test_runner_splits_step_message_on_live_insert`（将开始事件数量等同于消息数量）。已删除这两条用例，以及仅供后一用例使用的 `SplitLiveFakeEngine`；其余测试保留。删除后的验证结果另行记录，不复用此前全量测试数量。
 
 删除后验证：`uv run --no-sync pytest tests/test_concurrency_gate.py tests/test_live_step_message.py -q --tb=short --timeout=30`，**31 passed**；`git diff --check` 通过。
+
+用户进一步要求删除 `test_workstep_tools_injection.py::test_assemble_context_never_injects_workstep_docs_even_when_capable`：该用例把通用角色说明中的 `WorkStep internal tools` 字样当成工具文档注入。已删除，文件其余测试 **13 passed**，`git diff --check` 通过。
+
+## 合并前测试环境修正
+
+- 安装仓库已声明的可选 Qoder 依赖组：`uv sync --frozen --dev --group qoder`，未修改依赖声明或锁文件。
+- Codex CLI/SDK 的测试及共用参数收集辅助函数改用 pytest `tmp_path`，避免共享 `/tmp/.agents/skills` 与已有非受管目录冲突；保留事件、审批、恢复、压缩、参数及超长行断言，生产目录保护逻辑未改动。
+- 生命周期测试恢复其直接赋值的服务全局变量与 Gateway 客户端的运行时引用，避免残留 `BotStub` 污染后续任务归档测试。生命周期和归档按顺序验证 **19 passed**；参数辅助函数涉及的三条用例 **3 passed**。
+
+最终合并前完整验证：daemon `uv run --no-sync pytest -q --tb=short --timeout=60`，**2327 passed / 0 failed**（251.75 秒）；Gateway `uv run --no-sync pytest -q --tb=short`，**232 passed / 1 skipped / 0 failed**（44.17 秒）。Gateway 唯一跳过项仍为未配置 `WORKSTEP_TEST_POSTGRES_URL` 的 PostgreSQL 集成测试。两端输出仅余依赖弃用警告；`git diff --check` 通过。

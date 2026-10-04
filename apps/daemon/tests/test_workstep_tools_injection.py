@@ -347,27 +347,6 @@ def _plain_engine():
     )
 
 
-def test_assemble_context_never_injects_workstep_docs_even_when_capable(
-    monkeypatch, tmp_path
-):
-    """The coordinator prompt is assembled without WorkStep tool docs;
-    with Pydantic AI the tools are loaded natively, not via prompt text."""
-    from agent_assistants import coordinator_context as coordinator_module
-    from agent_assistants.coordinator_context import assemble_context
-
-    monkeypatch.setattr(coordinator_module, "create_engine", lambda _id: _capable_engine())
-    db, task, turn = _make_turn(tmp_path, "pydantic_ai")
-    try:
-        prompt, _ = assemble_context(
-            _context_project(tmp_path), task, turn
-        )
-        assert "workstep_list_projects" not in prompt
-        assert "WorkStep internal tools" not in prompt
-        assert "WorkStep CLI" not in prompt
-    finally:
-        db.close()
-
-
 def test_assemble_context_injects_cli_instruction_without_capability(
     monkeypatch, tmp_path
 ):

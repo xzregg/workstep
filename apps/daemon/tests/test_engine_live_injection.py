@@ -67,7 +67,7 @@ def _codex_config():
 
 
 @pytest.mark.anyio
-async def test_codex_cli_preserves_explicit_phase_and_unmarked_answers(monkeypatch):
+async def test_codex_cli_preserves_explicit_phase_and_unmarked_answers(tmp_path, monkeypatch):
     frames = [
         {"type": "item.completed", "item": {"type": "agent_message", "id": "p", "phase": "commentary", "text": "检查中"}},
         {"type": "item.completed", "item": {"type": "agent_message", "id": "f", "phase": "final_answer", "text": "完成"}},
@@ -81,7 +81,7 @@ async def test_codex_cli_preserves_explicit_phase_and_unmarked_answers(monkeypat
     monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
     monkeypatch.setattr(CodexEngine, "resolve_binary", staticmethod(lambda: "/fake/codex"))
     monkeypatch.setattr("engines.codex.config_store.get_codex_config", _codex_config)
-    events = [event async for event in CodexEngine().spawn(prompt="检查", cwd="/tmp")]
+    events = [event async for event in CodexEngine().spawn(prompt="检查", cwd=str(tmp_path))]
     assert [(event.data.get("phase"), event.data.get("source_item_id"), event.data["content"]["text"])
             for event in events if event.type == "agent_message_chunk"] == [
         ("commentary", "p", "检查中"), ("final_answer", "f", "完成"), (None, "old", "普通回复"),
@@ -89,7 +89,7 @@ async def test_codex_cli_preserves_explicit_phase_and_unmarked_answers(monkeypat
 
 
 @pytest.mark.anyio
-async def test_codex_cli_marks_intermediate_unphased_messages_as_commentary(monkeypatch):
+async def test_codex_cli_marks_intermediate_unphased_messages_as_commentary(tmp_path, monkeypatch):
     """Codex CLI 旧协议不带 phase：只有最后一个未标记消息应作为结果。"""
     frames = [
         {"type": "item.completed", "item": {
@@ -126,7 +126,7 @@ async def test_codex_cli_marks_intermediate_unphased_messages_as_commentary(monk
     monkeypatch.setattr(CodexEngine, "resolve_binary", staticmethod(lambda: "/fake/codex"))
     monkeypatch.setattr("engines.codex.config_store.get_codex_config", _codex_config)
 
-    events = [event async for event in CodexEngine().spawn(prompt="检查", cwd="/tmp")]
+    events = [event async for event in CodexEngine().spawn(prompt="检查", cwd=str(tmp_path))]
 
     assert [
         (event.data.get("phase"), event.data.get("source_item_id"), event.data["content"]["text"])
@@ -140,7 +140,7 @@ async def test_codex_cli_marks_intermediate_unphased_messages_as_commentary(monk
 
 
 @pytest.mark.anyio
-async def test_codex_spawn_restarts_with_resume_on_live_message(monkeypatch):
+async def test_codex_spawn_restarts_with_resume_on_live_message(tmp_path, monkeypatch):
     """codex exec 无注入协议：插入消息时终止当前进程，用新消息 resume 重启会话。"""
     first = _LiveFakeCodexProcess(
         stdout=b'{"type":"thread.started","thread_id":"thread-1"}\n',
@@ -177,7 +177,7 @@ async def test_codex_spawn_restarts_with_resume_on_live_message(monkeypatch):
     async def consume():
         async for event in CodexEngine().spawn(
             prompt="hello",
-            cwd="/tmp",
+            cwd=str(tmp_path),
             live_message_queue=queue,
         ):
             events.append(event)
@@ -242,7 +242,7 @@ def test_acp_base_engine_advertises_live_support():
     assert engine.supports_interactive is True
 
 
-async def _collect_codex_args(monkeypatch, config_overrides, model=None):
+async def _collect_codex_args(monkeypatch, tmp_path, config_overrides, model=None):
     """Run one codex spawn and return the subprocess argv."""
     process = _LiveFakeCodexProcess(
         stdout=b'{"type":"thread.started","thread_id":"thread-1"}\n'
@@ -269,7 +269,7 @@ async def _collect_codex_args(monkeypatch, config_overrides, model=None):
     async def consume():
         async for event in CodexEngine().spawn(
             prompt="hello",
-            cwd="/tmp",
+            cwd=str(tmp_path),
             model=model,
             config_overrides=config_overrides,
         ):
@@ -280,10 +280,11 @@ async def _collect_codex_args(monkeypatch, config_overrides, model=None):
 
 
 @pytest.mark.anyio
-async def test_codex_spawn_applies_config_overrides(monkeypatch):
+async def test_codex_spawn_applies_config_overrides(monkeypatch, tmp_path):
     """阶段级 config 覆盖 sandbox/推理强度/审批策略并拼入 CLI 参数。"""
     args = await _collect_codex_args(
         monkeypatch,
+        tmp_path,
         {
             "sandbox_mode": "danger-full-access",
             "model_reasoning_effort": "high",
@@ -298,17 +299,18 @@ async def test_codex_spawn_applies_config_overrides(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_codex_spawn_empty_overrides_fall_back_to_global(monkeypatch):
+async def test_codex_spawn_empty_overrides_fall_back_to_global(monkeypatch, tmp_path):
     """空覆盖项回退全局配置。"""
-    args = await _collect_codex_args(monkeypatch, {})
+    args = await _collect_codex_args(monkeypatch, tmp_path, {})
     assert args[args.index("--sandbox") + 1] == "workspace-write"
 
 
 @pytest.mark.anyio
-async def test_codex_spawn_explicit_model_wins_over_override(monkeypatch):
+async def test_codex_spawn_explicit_model_wins_over_override(monkeypatch, tmp_path):
     """显式 model 参数优先于覆盖项中的 model。"""
     args = await _collect_codex_args(
         monkeypatch,
+        tmp_path,
         {"model": "override-model"},
         model="explicit-model",
     )
@@ -722,7 +724,7 @@ def _patch_codex_sdk(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_codex_sdk_preserves_message_phases_per_item(monkeypatch):
+async def test_codex_sdk_preserves_message_phases_per_item(tmp_path, monkeypatch):
     _patch_codex_sdk(monkeypatch)
 
     class PhasedTurn(_FakeSdkTurn):
@@ -747,7 +749,7 @@ async def test_codex_sdk_preserves_message_phases_per_item(monkeypatch):
         return PhasedTurn("turn-phases", [])
 
     monkeypatch.setattr(_FakeSdkThread, "turn", turn)
-    events = [event async for event in CodexSDKEngine().spawn(prompt="开始", cwd="/tmp")]
+    events = [event async for event in CodexSDKEngine().spawn(prompt="开始", cwd=str(tmp_path))]
     messages = [event.data for event in events if event.type == "agent_message_chunk"]
     assert [(data.get("phase"), data.get("source_item_id"), data["content"]["text"])
             for data in messages] == [
@@ -763,6 +765,7 @@ async def test_codex_sdk_preserves_message_phases_per_item(monkeypatch):
     [(True, "plan"), (False, "default")],
 )
 async def test_codex_sdk_sends_native_collaboration_mode(
+    tmp_path,
     monkeypatch,
     plan_mode,
     expected_mode,
@@ -794,7 +797,7 @@ async def test_codex_sdk_sends_native_collaboration_mode(
         event
         async for event in CodexSDKEngine().spawn(
             prompt="处理请求",
-            cwd="/tmp",
+            cwd=str(tmp_path),
             model="gpt-5.6-codex",
             thinking_effort="high",
             plan_mode=plan_mode,
@@ -842,17 +845,17 @@ async def test_codex_sdk_native_plan_keeps_legacy_sdk_compatibility():
 
 
 @pytest.mark.anyio
-async def test_codex_sdk_forks_to_an_independent_thread(monkeypatch):
+async def test_codex_sdk_forks_to_an_independent_thread(tmp_path, monkeypatch):
     _patch_codex_sdk(monkeypatch)
 
-    forked = await CodexSDKEngine().fork_session("thread-source", "/tmp")
+    forked = await CodexSDKEngine().fork_session("thread-source", str(tmp_path))
 
     assert forked == "thread-source-fork"
     assert _FakeAsyncCodex.instances[0].closed is True
 
 
 @pytest.mark.anyio
-async def test_codex_sdk_acks_live_message_before_response_events(monkeypatch):
+async def test_codex_sdk_acks_live_message_before_response_events(tmp_path, monkeypatch):
     """CodexSDK：插入消息的 delivered ack 必须先于响应事件，runner 才能
     在收到 ack 时封口插入前的输出段并开启新的响应段。"""
     _patch_codex_sdk(monkeypatch)
@@ -863,7 +866,7 @@ async def test_codex_sdk_acks_live_message_before_response_events(monkeypatch):
 
     async for event in CodexSDKEngine().spawn(
         prompt="开始任务",
-        cwd="/tmp",
+        cwd=str(tmp_path),
         live_message_queue=queue,
     ):
         events.append(event)
@@ -887,7 +890,7 @@ async def test_codex_sdk_acks_live_message_before_response_events(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_codex_sdk_steers_the_active_turn_before_it_completes(monkeypatch):
+async def test_codex_sdk_steers_the_active_turn_before_it_completes(tmp_path, monkeypatch):
     """执行中的插入消息必须 steer 当前 turn，不能等当前 turn 完成后再开新 turn。"""
     _patch_codex_sdk(monkeypatch)
     queue: asyncio.Queue = asyncio.Queue()
@@ -924,7 +927,7 @@ async def test_codex_sdk_steers_the_active_turn_before_it_completes(monkeypatch)
     async def consume():
         async for event in CodexSDKEngine().spawn(
             prompt="开始任务",
-            cwd="/tmp",
+            cwd=str(tmp_path),
             live_message_queue=queue,
         ):
             events.append(event)

@@ -212,7 +212,7 @@ async def test_claude_code_parses_assistant_line_larger_than_64kib(monkeypatch):
     assert long_text in _message_text(events)
 
 
-async def test_codex_parses_agent_message_line_larger_than_64kib(monkeypatch):
+async def test_codex_parses_agent_message_line_larger_than_64kib(tmp_path, monkeypatch):
     from engines.codex import CodexEngine
 
     long_text = "codex " * 30000
@@ -235,7 +235,7 @@ async def test_codex_parses_agent_message_line_larger_than_64kib(monkeypatch):
     )
 
     engine = CodexEngine()
-    events = [event async for event in engine.spawn("开始任务", cwd="/tmp")]
+    events = [event async for event in engine.spawn("开始任务", cwd=str(tmp_path))]
 
     assert not [event for event in events if event.type == "error"]
     assert long_text in _message_text(events)
