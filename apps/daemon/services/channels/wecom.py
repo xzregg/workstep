@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 
 from aibot import WSClient, WSClientOptions
 
@@ -14,15 +14,6 @@ from services.channels.media import fetch_media
 
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class _ReplyStream:
-    text: str = ''
-    combined: bool = False
-    card_sent: bool = False
-    finished: bool = False
-    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 def _utf8_parts(text: str, limit: int):
@@ -57,7 +48,6 @@ class WeComAdapter(ChannelAdapter):
         self._task: asyncio.Task | None = None
         self._stopped = False
         self._last_error = ""
-        self._reply_streams: dict[str, _ReplyStream] = {}
 
     async def start(self) -> None:
         self._stopped = False
@@ -161,7 +151,6 @@ class WeComAdapter(ChannelAdapter):
 
     async def stop(self) -> None:
         self._stopped = True
-        self._reply_streams.clear()
         if self._client:
             self._client.disconnect()
             self._client = None
@@ -190,7 +179,9 @@ class WeComAdapter(ChannelAdapter):
             raise RuntimeError("企业微信机器人未连接")
         frame = self._reply_frame(message)
         if frame:
-            await self._reply_stream(message, '正在处理…', finish=False, combined=True)
+            # An empty initial stream restores the native private-chat waiting bubble.
+            waiting = '' if message.conversation_type == 'single' else '正在处理…'
+            await self._reply_stream(message, waiting, finish=False)
 
     async def _send_text(self, message: IncomingMessage, text: str) -> None:
         if not self._client:
@@ -220,19 +211,8 @@ class WeComAdapter(ChannelAdapter):
             await self._reply_stream(message, preview, finish=False)
 
 
-    async def _reply_stream(self, message: IncomingMessage, text: str, *, finish: bool, combined: bool = False) -> None:
-        stream_id = self._stream_id(message)
-        state = self._reply_streams.setdefault(stream_id, _ReplyStream())
-        async with state.lock:
-            use_combined = combined or state.combined or state.card_sent
-            method = self._client.reply_stream_with_card if use_combined else self._client.reply_stream
-            # The template is sent once; subsequent updates retain the combined type.
-            await method(self._reply_frame(message), stream_id, text, finish=finish)
-            state.combined = use_combined
-            state.text, state.finished = text, finish
-
-    def release_reply(self, message: IncomingMessage) -> None:
-        self._reply_streams.pop(self._stream_id(message), None)
+    async def _reply_stream(self, message: IncomingMessage, text: str, *, finish: bool) -> None:
+        await self._client.reply_stream(self._reply_frame(message), self._stream_id(message), text, finish=finish)
 
 
     async def send_card(self, recipient: IncomingMessage, card: ChannelCard) -> None:
@@ -258,23 +238,8 @@ class WeComAdapter(ChannelAdapter):
                     "main_title":{"title":title}, "sub_title_text":description,
                     "button_list":[{"text":str(index + 1) if numbered else button.label,"key":button.key, **({'style':3} if button.danger else {})}
                                    for index, button in enumerate(card.buttons)]}
-        if card.running and self._reply_frame(recipient):
-            stream_id = self._stream_id(recipient)
-            state = self._reply_streams.setdefault(stream_id, _ReplyStream())
-            # Serialize attachment with text updates so they cannot revert
-            # the combined type or erase the latest body while awaiting ACK.
-            async with state.lock:
-                if not state.card_sent and not state.finished:
-                    try:
-                        await self._client.reply_stream_with_card(self._reply_frame(recipient),
-                            stream_id, state.text, finish=False, template_card=template)
-                    except Exception:
-                        logger.warning('WeCom combined card failed; using active card', exc_info=True)
-                    else:
-                        state.card_sent = True
-                        return
-        # Only one template can attach to a stream. Later interactions and
-        # automatic-step cards use active delivery without a reply frame.
+        # Send controls independently: successful combined-reply ACKs did not
+        # produce visible buttons in the tested WeCom mobile client.
         await self._client.send_message(recipient.conversation_id, {"msgtype":"template_card","template_card":template})
 
 

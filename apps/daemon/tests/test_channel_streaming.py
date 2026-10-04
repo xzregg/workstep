@@ -58,7 +58,7 @@ async def test_wecom_progress_uses_same_bubble_and_final_body_is_complete():
     await adapter.update_reply(message, '部分正文')
     await adapter.send_text(message, '完整正文')
     calls = adapter._client.reply_stream.await_args_list
-    assert [call.args[2] for call in calls] == ['正在处理…', '部分正文', '完整正文']
+    assert [call.args[2] for call in calls] == ['', '部分正文', '完整正文']
     assert len({call.args[1] for call in calls}) == 1
     assert [call.kwargs['finish'] for call in calls] == [False, False, True]
 
@@ -211,7 +211,7 @@ async def test_wecom_running_reply_uses_independent_stop_card(conversation_type)
     assert bodies[1]['template_card']['main_title']['title'] == '处理中'
     assert bodies[1]['template_card']['button_list'][0]['style'] == 3
     assert '消息 ID: assistant' in bodies[1]['template_card']['sub_title_text']
-    assert bodies[0]['stream']['content'] == '正在处理…'
+    assert bodies[0]['stream']['content'] == ('' if conversation_type == 'single' else '正在处理…')
     assert bodies[4]['stream']['content'] == '完整正文' + ('\n\n<@user>' if conversation_type == 'group' else '')
     assert bodies[4]['stream']['finish'] is True
     assert len({b['stream']['id'] for b in bodies if 'stream' in b}) == 1
@@ -243,7 +243,7 @@ async def test_wecom_slow_independent_card_does_not_block_text_or_health():
     finally:
         release.set()
         await pending
-    assert [c.args[2] for c in adapter._client.reply_stream.await_args_list] == ['正在处理…','最新正文']
+    assert [c.args[2] for c in adapter._client.reply_stream.await_args_list] == ['','最新正文']
     adapter._client.reply_stream_with_card.assert_not_awaited()
 
 

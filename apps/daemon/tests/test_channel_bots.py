@@ -111,7 +111,7 @@ async def test_wecom_streams_before_turn_completion_without_blocking_health(bots
     finally:
         finish_turn.set()
         await asyncio.wait_for(pending, 2)
-    assert [(text, finish) for _, text, finish in calls] == [('正在处理…', False), ('部分正文', False), ('完整正文', True)]
+    assert [(text, finish) for _, text, finish in calls] == [('', False), ('部分正文', False), ('完整正文', True)]
     assert len({stream_id for stream_id, _, _ in calls}) == 1
 
 

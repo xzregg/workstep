@@ -84,7 +84,7 @@ WorkStep 渠道消息协议 v1 是项目内部的收发契约。它采用与 LLM
 
 任务转发器仅在 `_origins` 登记的原渠道会话为用户发起的协调回复确保中止卡片存在，与接收入口按助手消息 ID 去重；任务阶段自动执行、审核及向其他绑定群转发正文均不附带中止按钮。结束、解绑或关闭时对应操作失效。行为测试见 `tests/test_channel_task_forwarder.py`、`tests/test_channel_origin_stop.py`。
 
-企业微信对用户消息触发的回复，将运行中的中止按钮通过 `stream_with_template_card` 附加到原流式消息，用户回复从等待首帧起统一使用组合协议，等待正文为「正在处理…」，避免普通流式与组合流式中途切换；模板只发送一次，后续正文与终态继续使用组合协议且不重复模板；每条流在异步锁内串行发送，附加按钮时保留最新正文，组合卡片发送失败时回退主动卡片，正文继续沿用已建立的流式协议。后续选择题和确认卡片独立主动发送，因为同一消息只能回复一次模板。自动步骤不发送中止按钮；无原始回调帧时，主动接口没有 `stream` 类型，只在结束时推送完整正文；使用 `button_interaction` 模板卡片与 `event.template_card_event`，通过原回调帧在五秒内确认更新；官方接口不能在没有卡片点击回调时主动更新旧卡片，因此回复结束后未点击的旧停止按钮可能仍可见，但服务端会拒绝其操作。钉钉订阅 `/v1.0/card/instances/callback`，立即 ACK，再异步处理与更新卡片；发送和更新使用原生异步 HTTP。
+企业微信对用户消息触发的回复，使用普通 `stream` 气泡持续更新正文与最终状态；私聊以空首帧恢复原生等待气泡，群聊首帧显示「正在处理…」，并通过主动发送的 `template_card` 独立提供中止按钮，私聊与群聊使用相同路径。官方协议支持 `stream_with_template_card` 组合回复，但当前接入在实际企业微信移动客户端中出现接口回执成功、按钮不显示的情况，原因尚未确认，因此恢复独立按钮卡片。卡片发送不阻塞正文更新；后续选择题和确认卡片也独立主动发送。自动步骤不发送中止按钮；无原始回调帧时，主动接口没有 `stream` 类型，只在结束时推送完整正文；使用 `button_interaction` 模板卡片与 `event.template_card_event`，通过原回调帧在五秒内确认更新；官方接口不能在没有卡片点击回调时主动更新旧卡片，因此回复结束后未点击的旧停止按钮可能仍可见，但服务端会拒绝其操作。钉钉订阅 `/v1.0/card/instances/callback`，立即 ACK，再异步处理与更新卡片；发送和更新使用原生异步 HTTP。
 
 企业微信卡片回调优先从 `body.event.template_card_event` 读取 `task_id` 和 `event_key`，兼容字段直接位于 `body.event` 的格式；这里的 `task_id` 是发送卡片时生成的卡片 ID，由持久化记录反查 WorkStep 任务与提案，不能作为 WorkStep 任务 ID 使用。格式兼容及回调确认原任务、重复点击去重见 `test_channel_bot_adapters.py` 和 `test_channel_controls.py::test_wecom_nested_callback_confirms_original_task_proposal`。
 
