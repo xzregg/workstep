@@ -12,26 +12,12 @@ from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 from pydantic import BaseModel
 
-from services.remote_project import (
-    ACCESS_COOKIE_NAME,
-    REMOTE_REQUEST_BODY_LIMIT,
-    ActorSnapshot,
-    BrowserActorMiddleware,
-    RemoteAccessService,
-    RemoteAccessGuardMiddleware,
-    RemoteHttpRequest,
-    RemotePrincipal,
-    RemoteRouteDispatcher,
-    RemoteProjectRegistry,
-    RemoteProjectProxyMiddleware,
-    RemoteProjectClientManager,
-    RemoteHttpResponse,
-    serve_remote_project_socket,
-    get_current_actor,
-    current_actor_event_fields,
-    _select_network_ipv4,
-    _is_loopback,
-)
+from services.remote_project import ACCESS_COOKIE_NAME, REMOTE_REQUEST_BODY_LIMIT, ActorSnapshot, RemoteAccessService, RemoteHttpRequest, RemotePrincipal, RemoteProjectRegistry, RemoteProjectClientManager, RemoteHttpResponse, get_current_actor, current_actor_event_fields, _select_network_ipv4, _is_loopback
+from api.remote_access_guard import BrowserActorMiddleware
+from api.remote_access_guard import RemoteAccessGuardMiddleware
+from streaming.remote_host import RemoteRouteDispatcher
+from api.remote_project_proxy import RemoteProjectProxyMiddleware
+from streaming.remote_host import serve_remote_project_socket
 from services.messages import current_actor_message_fields
 from streaming.bus import EventBus
 import api.remote_project as remote_project_api
@@ -52,7 +38,7 @@ def test_remote_project_registry_has_one_owner():
 
 
 def test_remote_host_dispatch_and_protocol_have_owners():
-    from services.remote_host import RemoteRouteDispatcher as HostDispatcher
+    from streaming.remote_host import RemoteRouteDispatcher as HostDispatcher
     from services.remote_protocol import RemoteHttpRequest as ProtocolRequest
 
     assert RemoteRouteDispatcher is HostDispatcher

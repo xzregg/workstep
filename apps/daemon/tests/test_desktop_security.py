@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 import pytest
 
-from services.desktop_security import (
+from api.desktop_security import (
     DesktopSecurityMiddleware,
     desktop_websocket_allowed,
 )

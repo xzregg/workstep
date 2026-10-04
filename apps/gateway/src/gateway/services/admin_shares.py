@@ -1,10 +1,11 @@
+from gateway.services.errors import GatewayError
+from gateway.contracts import GatewayCall
 import json
 
 from datetime import datetime, timezone
 
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query, Request
 
 from sqlalchemy import case, func, select, update
 
@@ -18,34 +19,33 @@ from gateway.models import AdminAssignment, AuditEvent, Device, PlatformProject,
 """Platform share inventory and administrator lifecycle controls."""
 
 
-async def _admin(request: Request, *, mutation: bool = False) -> User:
-    token = request.cookies.get(COOKIE_NAME)
-    actor, _ = await IdentityService(request.app.state.database).session_user(token)
+async def _admin(call: GatewayCall, *, mutation: bool = False) -> User:
+    token = call.tokens.get(COOKIE_NAME)
+    actor, _ = await IdentityService(call.database).session_user(token)
     if mutation:
-        _check_csrf(request, token)
+        _check_csrf(call, token)
     if actor.status != "active" or actor.must_change_password:
-        raise HTTPException(status_code=403, detail="Administrator access required")
-    async with request.app.state.database.session() as session:
+        raise GatewayError('forbidden', 'Administrator access required')
+    async with call.database.session() as session:
         assigned = await session.scalar(select(AdminAssignment.id).where(
             AdminAssignment.user_id == actor.id,
             AdminAssignment.role == "super_admin",
             AdminAssignment.revoked_at.is_(None),
         ))
     if assigned is None:
-        raise HTTPException(status_code=403, detail="Administrator access required")
+        raise GatewayError('forbidden', 'Administrator access required')
     return actor
 
 
-
-async def list_admin_shares(request: Request,
+async def list_admin_shares(call: GatewayCall,
                             project_id: str | None = None,
                             device_id: str | None = None,
-                            status: str | None = Query(None, pattern="^(active|paused|revoked|expired)$"),
-                            mode: str | None = Query(None, pattern="^(read_only|interactive)$"),
-                            q: str = Query("", max_length=100),
-                            offset: int = Query(0, ge=0),
-                            limit: int = Query(20, ge=1, le=100)):
-    await _admin(request)
+                            status: str | None = None,
+                            mode: str | None = None,
+                            q: str = '',
+                            offset: int = 0,
+                            limit: int = 20):
+    await _admin(call)
     now = datetime.now(timezone.utc)
     state = case(
         (PlatformShare.revoked_at.is_not(None), "revoked"),
@@ -71,7 +71,7 @@ async def list_admin_shares(request: Request,
         func.max(func.coalesce(PlatformShareSession.last_seen_at,
                                PlatformShareSession.created_at)).label("last_seen_at"),
     ).group_by(PlatformShareSession.share_id).subquery()
-    async with request.app.state.database.session() as session:
+    async with call.database.session() as session:
         total = await session.scalar(select(func.count()).select_from(PlatformShare)
                                      .where(*conditions)) or 0
         rows = (await session.execute(select(
@@ -96,24 +96,23 @@ async def list_admin_shares(request: Request,
         visit_count, last_seen_at in rows]}
 
 
-
-async def change_admin_share(request: Request, share_id: str, action: str):
+async def change_admin_share(call: GatewayCall, share_id: str, action: str):
     if action not in ("pause", "resume", "revoke"):
-        raise HTTPException(status_code=404, detail="Share action unavailable")
-    actor = await _admin(request, mutation=True)
-    async with request.app.state.database.session() as session:
+        raise GatewayError('not_found', 'Share action unavailable')
+    actor = await _admin(call, mutation=True)
+    async with call.database.session() as session:
         async with session.begin():
             share = await session.get(PlatformShare, share_id)
             if share is None:
-                raise HTTPException(status_code=404, detail="Share unavailable")
+                raise GatewayError('not_found', 'Share unavailable')
             if share.revoked_at is not None:
                 if action == "revoke":
                     return
-                raise HTTPException(status_code=409, detail="Share revoked")
+                raise GatewayError('conflict', 'Share revoked')
             if action != "revoke" and share.expires_at is not None:
                 expiry = share.expires_at.replace(tzinfo=timezone.utc) if share.expires_at.tzinfo is None else share.expires_at
                 if expiry <= datetime.now(timezone.utc):
-                    raise HTTPException(status_code=409, detail="Share expired")
+                    raise GatewayError('conflict', 'Share expired')
             project = await session.get(PlatformProject, share.project_id)
             if action == "pause":
                 share.status = "paused"
@@ -122,7 +121,7 @@ async def change_admin_share(request: Request, share_id: str, action: str):
                 if (device is None or device.status != "active" or project is None
                         or project.status != "active"
                         or project.access_mode != "remote_published"):
-                    raise HTTPException(status_code=409, detail="Share host unavailable")
+                    raise GatewayError('conflict', 'Share host unavailable')
                 share.status = "active"
             else:
                 share.status = "revoked"

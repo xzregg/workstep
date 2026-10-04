@@ -1,7 +1,9 @@
 """Encrypted enterprise application options and scoped user-group tree."""
+from gateway.services.errors import GatewayError
+from gateway.contracts import GatewayCall
 import json
 import os
-from fastapi import HTTPException, Request
+
 from sqlalchemy import select, func
 from gateway.models import PlatformSetting, IdentitySource, UserGroup, DirectoryDepartment, GroupMembership
 from gateway.services.identity import IdentityService, COOKIE_NAME
@@ -25,11 +27,11 @@ async def application_secret(database, signer, source):
     return value
 
 
-async def user_group_tree(request: Request):
-    identity = IdentityService(request.app.state.database)
-    actor, _ = await identity.session_user(request.cookies.get(COOKIE_NAME))
-    if actor.must_change_password: raise HTTPException(403, 'Password change required')
-    async with request.app.state.database.session() as session:
+async def user_group_tree(call: GatewayCall):
+    identity = IdentityService(call.database)
+    actor, _ = await identity.session_user(call.tokens.get(COOKIE_NAME))
+    if actor.must_change_password: raise GatewayError('forbidden', 'Password change required')
+    async with call.database.session() as session:
         users = await identity.manageable_user_ids(session, actor.id)
         departments = await identity.manageable_department_ids(session, actor.id)
         query = select(UserGroup, DirectoryDepartment).outerjoin(DirectoryDepartment, DirectoryDepartment.id == UserGroup.external_department_id).where(UserGroup.status == 'active')

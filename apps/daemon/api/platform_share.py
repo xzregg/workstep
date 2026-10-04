@@ -264,15 +264,13 @@ async def upload_platform_share_attachment(request: Request):
     if not content:
         raise HTTPException(status_code=422, detail="Attachment is empty")
     from main import project_manager
-    from models import Task
     if project_manager is None:
         raise HTTPException(status_code=503, detail="Service not initialized")
     project = project_manager.get_project_by_id(scope["host_project_id"])
     if project is None:
         raise HTTPException(status_code=404, detail="Task unavailable")
-    exists = await _run_db(scope["host_project_id"], lambda: Task.select().where(
-        Task.id == scope["task_id"],
-    ).exists())
+    from services.task_queries import task_exists
+    exists = await _run_db(scope["host_project_id"], lambda: task_exists(scope["task_id"]))
     if not exists:
         raise HTTPException(status_code=404, detail="Task unavailable")
     filename = f"{_upload_prefix(scope['task_id'])}{uuid.uuid4().hex}{extension}"
@@ -558,23 +556,13 @@ async def cancel_platform_share_step(request: Request, step_key: str):
 async def read_platform_share_reviews(request: Request):
     scope = _share_scope(request)
     from main import project_manager
-    from models import ReviewRun
 
     if project_manager is None:
         raise HTTPException(status_code=503, detail="Service not initialized")
 
+    from services.task_queries import pending_reviews
     def load(_project):
-        rows = list(ReviewRun.select(
-            ReviewRun.id, ReviewRun.step_key, ReviewRun.report_json,
-            ReviewRun.started_at, ReviewRun.mode, ReviewRun.status,
-        ).where(
-            (ReviewRun.task == scope["task_id"])
-            & (ReviewRun.mode == "manual")
-            & (ReviewRun.status == "pending")
-        ).order_by(ReviewRun.started_at.desc(), ReviewRun.id.desc()).limit(100))
-        return [{"id": row.id, "step_key": row.step_key,
-                 "report": json.loads(row.report_json) if row.report_json else None,
-                 "started_at": row.started_at, "mode": row.mode, "status": row.status} for row in rows]
+        return pending_reviews(scope["task_id"])
 
     return {"reviews": await project_manager.run_db(scope["host_project_id"], load)}
 
@@ -588,19 +576,13 @@ async def decide_platform_share_review(request: Request, step_key: str,
     if not _MESSAGE_ID.fullmatch(body.review_run_id):
         raise HTTPException(status_code=404, detail="Review unavailable")
     from main import project_manager, workflow_runtime
-    from models import ReviewRun
 
     if project_manager is None or workflow_runtime is None:
         raise HTTPException(status_code=503, detail="Workflow runtime unavailable")
 
+    from services.task_queries import pending_review_exists
     def review_exists(_project):
-        return ReviewRun.select(ReviewRun.id).where(
-            (ReviewRun.id == body.review_run_id)
-            & (ReviewRun.task == scope["task_id"])
-            & (ReviewRun.step_key == step_key)
-            & (ReviewRun.mode == "manual")
-            & (ReviewRun.status == "pending")
-        ).exists()
+        return pending_review_exists(scope["task_id"], step_key, body.review_run_id)
 
     if not await project_manager.run_db(scope["host_project_id"], review_exists):
         raise HTTPException(status_code=404, detail="Review unavailable")
@@ -661,27 +643,19 @@ async def read_platform_share_events(request: Request, message_id: str, cursor: 
     if not _MESSAGE_ID.fullmatch(message_id) or not 0 <= cursor <= 999999999:
         raise HTTPException(status_code=404, detail="Message events unavailable")
     from main import project_manager
-    from models import Message
     from services.history import get_message_events
     from services.share import _scrub_events
 
     if project_manager is None:
         raise HTTPException(status_code=503, detail="Service not initialized")
 
+    from services.task_queries import shared_message_events
     def load(project):
-        message = Message.get_or_none(
-            (Message.id == message_id)
-            & (Message.task == scope["task_id"])
-            & (Message.channel == "execution")
-        )
-        if message is None:
-            raise HTTPException(status_code=404, detail="Message events unavailable")
-        page = get_message_events(
-            scope["task_id"], message_id, project.workstep_dir,
-            cursor=cursor, limit=100,
-        )
-        page["events"] = _scrub_events(page["events"], mode=scope["mode"])
-        return page
+        try:
+            return shared_message_events(project, scope["task_id"], message_id,
+                                         cursor=cursor, limit=100, mode=scope["mode"])
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="Message events unavailable") from exc
 
     return await project_manager.run_db(scope["host_project_id"], load)
 

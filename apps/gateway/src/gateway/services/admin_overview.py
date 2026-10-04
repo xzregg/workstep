@@ -1,4 +1,6 @@
-from fastapi import APIRouter, HTTPException, Request
+from gateway.services.errors import GatewayError
+from gateway.contracts import GatewayCall
+
 
 from sqlalchemy import func, select
 
@@ -12,20 +14,19 @@ from gateway.models import AdminAssignment, AuditEvent, Device, PlatformProject,
 """Scoped summary for the Gateway management landing page."""
 
 
-
-async def admin_overview(request: Request):
-    identity = IdentityService(request.app.state.database)
-    actor, _ = await identity.session_user(request.cookies.get(COOKIE_NAME))
+async def admin_overview(call: GatewayCall):
+    identity = IdentityService(call.database)
+    actor, _ = await identity.session_user(call.tokens.get(COOKIE_NAME))
     if actor.must_change_password:
-        raise HTTPException(status_code=403, detail="Password change required")
+        raise GatewayError('forbidden', 'Password change required')
 
-    async with request.app.state.database.session() as session:
+    async with call.database.session() as session:
         assignments = (await session.scalars(select(AdminAssignment).where(
             AdminAssignment.user_id == actor.id,
             AdminAssignment.revoked_at.is_(None),
         ))).all()
         if not assignments:
-            raise HTTPException(status_code=403, detail="Administrator access required")
+            raise GatewayError('forbidden', 'Administrator access required')
         roles = {assignment.role for assignment in assignments}
         super_admin = "super_admin" in roles
 
@@ -45,7 +46,7 @@ async def admin_overview(request: Request):
             allowed_devices = await device_scope(session, identity, actor.id)
             device_conditions = [Device.id.in_(allowed_devices)] if allowed_devices is not None else []
             device_rows = (await session.execute(select(Device.id, Device.status).where(*device_conditions))).all()
-            control = request.app.state.control_connections
+            control = call.control_connections
             active_devices = [device_id for device_id, status in device_rows if status == "active"]
             online_ids = {device_id for device_id in active_devices if control.is_online(device_id)}
             devices = {

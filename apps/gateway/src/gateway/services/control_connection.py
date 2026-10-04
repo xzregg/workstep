@@ -1,3 +1,4 @@
+from gateway.contracts import GatewaySocket, SocketClosed, StreamPayload
 import asyncio
 
 import base64
@@ -32,11 +33,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PublicKey
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from sqlalchemy import select
 
-from fastapi.responses import StreamingResponse
 
 from workstep_gateway_protocol import (FrameType, ProxyFrame,
                                        WebSocketMessageAssembler, websocket_payloads)
@@ -71,8 +70,8 @@ def _decode(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + "===")
 
 
-async def binding_active(ws: WebSocket, device_id: str, user_id: str) -> bool:
-    async with ws.app.state.database.session() as session:
+async def binding_active(ws: GatewaySocket, device_id: str, user_id: str) -> bool:
+    async with ws.database.session() as session:
         device = await session.get(Device, device_id)
         user = await session.get(User, user_id)
         assignment = await session.scalar(select(UserDevice).where(
@@ -84,20 +83,16 @@ async def binding_active(ws: WebSocket, device_id: str, user_id: str) -> bool:
                 and assignment)
 
 
-async def _signed_command(ws: WebSocket, device_id: str) -> dict | None:
-    command = await next_command_for_device(
-        ws.app.state.database, ws.app.state.command_scheduler_lock, device_id,
-    )
+async def _signed_command(ws: GatewaySocket, device_id: str) -> dict | None:
+    command = await next_command_for_device(ws.database, ws.command_scheduler_lock, device_id)
     if command is None:
         return None
-    token = ws.app.state.gateway_signer.sign_device_command(
-        gateway_id=ws.app.state.settings.gateway_id, **command,
-    )
+    token = ws.gateway_signer.sign_device_command(gateway_id=ws.settings.gateway_id, **command)
     return {"kind": "device_command", "version": 1, "device_id": device_id,
             "token": token}
 
 
-async def authenticate_device(ws: WebSocket, message: dict, nonce: str) -> tuple[str, str, str]:
+async def authenticate_device(ws: GatewaySocket, message: dict, nonce: str) -> tuple[str, str, str]:
     token = message.get("authorization")
     delegation = message.get("control_delegation_signature")
     challenge_proof = message.get("control_challenge_proof")
@@ -114,12 +109,12 @@ async def authenticate_device(ws: WebSocket, message: dict, nonce: str) -> tuple
         header, payload, signature = token.split(".")
         if json.loads(_decode(header)) != {"alg": "EdDSA", "typ": "JWT"}:
             raise ValueError("Invalid control credential header")
-        signer = ws.app.state.gateway_signer
+        signer = ws.gateway_signer
         signer.private_key.public_key().verify(_decode(signature), f"{header}.{payload}".encode())
         claims = json.loads(_decode(payload))
         now = int(time.time())
-        if (claims.get("gateway_id") != ws.app.state.settings.gateway_id
-                or claims.get("iss") != ws.app.state.settings.gateway_id
+        if (claims.get('gateway_id') != ws.settings.gateway_id
+                or claims.get('iss') != ws.settings.gateway_id
                 or not isinstance(claims.get("iat"), int)
                 or not isinstance(claims.get("exp"), int)
                 or claims["iat"] > now + 60 or claims["exp"] <= now
@@ -154,7 +149,7 @@ async def authenticate_device(ws: WebSocket, message: dict, nonce: str) -> tuple
     except (KeyError, TypeError, ValueError, binascii.Error, InvalidSignature,
             UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("Invalid control credential") from exc
-    async with ws.app.state.database.session() as session:
+    async with ws.database.session() as session:
         device = await session.get(Device, device_id)
         user = await session.get(User, claims.get("user_id"))
         assignment = await session.scalar(select(UserDevice).where(
@@ -171,7 +166,7 @@ async def authenticate_device(ws: WebSocket, message: dict, nonce: str) -> tuple
 
 class ControlConnections:
     def __init__(self):
-        self._active: dict[str, tuple[str, WebSocket, asyncio.Task]] = {}
+        self._active: dict[str, tuple[str, GatewaySocket, asyncio.Task]] = {}
         self._data_active: dict[str, DataConnection] = {}
         self._pending_data: dict[str, tuple[str, float, asyncio.Future]] = {}
         self._device_pending: dict[str, str] = {}
@@ -223,7 +218,7 @@ class ControlConnections:
             time.monotonic(), {item["id"]: item["running_tasks"] for item in projects},
         )
 
-    async def claim(self, device_id: str, user_id: str, connection_id: str, ws: WebSocket,
+    async def claim(self, device_id: str, user_id: str, connection_id: str, ws: GatewaySocket,
                     config_public_key_pem: str,
                     send_json: Callable[[dict], Awaitable[None]]) -> None:
         async with self._lock:
@@ -382,7 +377,7 @@ class ControlConnections:
             if pending and pending[0] == device_id and not pending[1].done():
                 pending[1].set_result(result)
 
-    async def attach_data(self, token: str, socket: WebSocket, *,
+    async def attach_data(self, token: str, socket: GatewaySocket, *,
                           flow_control: bool = False) -> "DataConnection | None":
         async with self._lock:
             pending = self._pending_data.pop(token, None)
@@ -457,7 +452,7 @@ class ControlConnections:
 
 
 class DataConnection:
-    def __init__(self, device_id: str, socket: WebSocket, *,
+    def __init__(self, device_id: str, socket: GatewaySocket, *,
                  flow_control: bool = False):
         self.device_id = device_id
         self.socket = socket
@@ -501,7 +496,7 @@ class DataConnection:
                 queue.get_nowait()
                 queue.put_nowait(error)
 
-    async def proxy_http(self, request, *, user_id: str | None = None,
+    async def proxy_http(self, call, *, user_id: str | None = None,
                          username: str | None = None,
                          display_name: str | None = None,
                          project_id: str | None = None,
@@ -556,8 +551,8 @@ class DataConnection:
             max_share_body = (25_000_000 if target_path == "/api/platform-share/uploads"
                               else 262144)
             if (not isinstance(share_ticket, str) or not share_ticket
-                    or not ((request.method == "GET" and read_path and share_body is None)
-                            or (request.method == "POST" and write_path
+                    or not ((call.operation == 'GET' and read_path and share_body is None)
+                            or (call.operation == 'POST' and write_path
                                 and isinstance(share_body, bytes)
                                 and len(share_body) <= max_share_body))
                     or user_id is not None or username is not None
@@ -609,21 +604,11 @@ class DataConnection:
                 if share_body is not None:
                     yield share_body
                 else:
-                    async for chunk in request.stream():
+                    async for chunk in call.payload():
                         yield chunk
 
-            headers = [[key.decode("latin1"), value.decode("latin1")]
-                       for key, value in request.scope["headers"]
-                       if key.lower() not in (b"host", b"cookie", b"connection",
-                                              b"x-share-csrf",
-                                              b"x-workstep-actor-id", b"x-workstep-actor-name",
-                                              b"x-workstep-actor-device-id", b"x-workstep-actor-device-name")
-                       and not (share_body is not None and key.lower() in (
-                           b"content-length", b"transfer-encoding"))]
-            start_payload = {"phase": "start", "method": request.method,
-                             "path": target_path or request.url.path,
-                             "query": "" if share_ticket else request.url.query,
-                             "headers": headers}
+            headers = [[key.decode('latin1'), value.decode('latin1')] for key, value in call.wire_headers if key.lower() not in (b'host', b'cookie', b'connection', b'x-share-csrf', b'x-workstep-actor-id', b'x-workstep-actor-name', b'x-workstep-actor-device-id', b'x-workstep-actor-device-name') and (not (share_body is not None and key.lower() in (b'content-length', b'transfer-encoding')))]
+            start_payload = {'phase': 'start', 'method': call.operation, 'path': target_path or call.target.path, 'query': '' if share_ticket else call.target.query, 'headers': headers}
             if share_ticket is not None:
                 start_payload["share_ticket"] = share_ticket
             else:
@@ -692,11 +677,10 @@ class DataConnection:
                     except Exception:
                         pass
 
-            response = StreamingResponse(body(), status_code=status)
-            remote_host = request.headers.get("host", "")
-            settings = getattr(request.app.state, "settings", None) if "app" in request.scope else None
-            public_scheme = (urlsplit(settings.public_origin).scheme
-                             if settings and settings.public_origin else request.url.scheme)
+            response = StreamPayload(body(), status=status)
+            remote_host = call.proofs.get('host', '')
+            settings = getattr(call, 'settings', None) if call.settings is not None else None
+            public_scheme = urlsplit(settings.public_origin).scheme if settings and settings.public_origin else call.target.scheme
             websocket_scheme = "ws" if public_scheme == "http" else "wss"
             for pair in response_headers:
                 if (isinstance(pair, list) and len(pair) == 2
@@ -726,7 +710,7 @@ class DataConnection:
             self._outbound_windows.pop(stream_id, None)
             raise
 
-    async def proxy_websocket(self, browser: WebSocket, *, user_id: str,
+    async def proxy_websocket(self, browser: GatewaySocket, *, user_id: str,
                               username: str, display_name: str | None = None,
                               project_id: str | None = None,
                               access_level: str | None = None,
@@ -754,22 +738,9 @@ class DataConnection:
         self._streams[stream_id] = queue
         self._outbound_windows[stream_id] = asyncio.BoundedSemaphore(32)
         tasks: list[asyncio.Task] = []
-        headers = [[key.decode("latin1"), value.decode("latin1")]
-                   for key, value in browser.scope["headers"]
-                   if key.lower() not in (b"host", b"cookie", b"connection",
-                                          b"sec-websocket-key", b"sec-websocket-version")
-                   and not key.lower().startswith(b"x-workstep-")]
+        headers = [[key.decode('latin1'), value.decode('latin1')] for key, value in browser.wire_headers if key.lower() not in (b'host', b'cookie', b'connection', b'sec-websocket-key', b'sec-websocket-version') and (not key.lower().startswith(b'x-workstep-'))]
         try:
-            await self.send_frame(ProxyFrame(
-                stream_id=stream_id, type=FrameType.websocket_open,
-                payload={"phase": "start", "path": browser.url.path,
-                         "query": browser.url.query, "headers": headers,
-                         "user_id": user_id, "username": username,
-                         "display_name": display_name or username,
-                         "project_id": project_id, "access_level": access_level,
-                         "provider_ids": provider_ids,
-                         "provider_grant_expires_at": provider_grant_expires_at},
-            ))
+            await self.send_frame(ProxyFrame(stream_id=stream_id, type=FrameType.websocket_open, payload={'phase': 'start', 'path': browser.target.path, 'query': browser.target.query, 'headers': headers, 'user_id': user_id, 'username': username, 'display_name': display_name or username, 'project_id': project_id, 'access_level': access_level, 'provider_ids': provider_ids, 'provider_grant_expires_at': provider_grant_expires_at}))
             opened = await asyncio.wait_for(queue.get(), timeout=15)
             if self.flow_control and not isinstance(opened, Exception):
                 await self.send_frame(ProxyFrame(
@@ -863,8 +834,7 @@ class DataConnection:
                 pass
 
 
-
-async def data_socket(ws: WebSocket):
+async def data_socket(ws: GatewaySocket):
     await ws.accept()
     connection = None
     try:
@@ -874,9 +844,7 @@ async def data_socket(ws: WebSocket):
             await ws.close(code=4401)
             return
         flow_control = hello.get("flow_control") is True
-        connection = await ws.app.state.control_connections.attach_data(
-            hello["token"], ws, flow_control=flow_control,
-        )
+        connection = await ws.control_connections.attach_data(hello['token'], ws, flow_control=flow_control)
         if connection is None:
             await ws.close(code=4401)
             return
@@ -885,7 +853,7 @@ async def data_socket(ws: WebSocket):
         if flow_control:
             ready["flow_control"] = True
         await ws.send_json(ready)
-        ws.app.state.control_connections.data_ready(connection)
+        ws.control_connections.data_ready(connection)
         while True:
             message = await ws.receive_json()
             if isinstance(message, dict) and message.get("kind") == "heartbeat":
@@ -908,15 +876,14 @@ async def data_socket(ws: WebSocket):
                 await ws.close(code=4400)
                 return
             await connection.deliver(frame)
-    except (asyncio.TimeoutError, WebSocketDisconnect):
+    except (asyncio.TimeoutError, SocketClosed):
         pass
     finally:
         if connection:
-            await ws.app.state.control_connections.release_data(connection)
+            await ws.control_connections.release_data(connection)
 
 
-
-async def control_socket(ws: WebSocket):
+async def control_socket(ws: GatewaySocket):
     await ws.accept()
     device_id = None
     user_id = None
@@ -932,11 +899,8 @@ async def control_socket(ws: WebSocket):
 
     async def apply_usage_batch(batch_id: str, events: list[dict]) -> None:
         try:
-            async with ws.app.state.usage_ledger_lock:
-                result = await asyncio.wait_for(
-                    record_usage_batch(ws.app.state.database, device_id, batch_id, events),
-                    timeout=ws.app.state.usage_batch_timeout_seconds,
-                )
+            async with ws.usage_ledger_lock:
+                result = await asyncio.wait_for(record_usage_batch(ws.database, device_id, batch_id, events), timeout=ws.usage_batch_timeout_seconds)
             await send_json({"kind": "usage_ack", "version": 1,
                              "device_id": device_id, **result})
         except ValueError:
@@ -950,13 +914,11 @@ async def control_socket(ws: WebSocket):
                              "device_id": device_id, "batch_id": batch_id,
                              "retry_after": 5})
         finally:
-            ws.app.state.usage_batch_slots.release()
+            ws.usage_batch_slots.release()
 
     async def apply_audit_batch(batch_id: str, events: list[dict]) -> None:
         try:
-            result = await record_audit_batch(
-                ws.app.state.database, device_id, batch_id, events,
-            )
+            result = await record_audit_batch(ws.database, device_id, batch_id, events)
             await send_json({"kind": "audit_ack", "version": 1,
                              "device_id": device_id, **result})
         except ValueError:
@@ -982,37 +944,16 @@ async def control_socket(ws: WebSocket):
             await ws.close(code=4401)
             return
         connection_id = uuid4().hex
-        async with ws.app.state.database.session() as session:
+        async with ws.database.session() as session:
             async with session.begin():
                 session.add(DeviceConnection(id=connection_id, device_id=device_id))
-        await ws.app.state.control_connections.claim(
-            device_id, user_id, connection_id, ws, config_public_key_pem, send_json,
-        )
-        signer = ws.app.state.gateway_signer
-        (policy_revision, task_create, project_publish,
-         task_create_projects, task_create_denied_projects) = await compiled_device_policy(
-            ws.app.state.database, device_id, user_id,
-        )
-        provider_ids, models = await compiled_provider_access(
-            ws.app.state.database, device_id, user_id,
-        )
-        policy = signer.sign_policy_snapshot(
-            gateway_id=ws.app.state.settings.gateway_id,
-            device_id=device_id, user_id=user_id, revision=policy_revision,
-            task_create=task_create,
-            project_publish=project_publish,
-            task_create_project_ids=task_create_projects,
-            task_create_denied_project_ids=task_create_denied_projects,
-            allowed_provider_ids=provider_ids, allowed_models=models,
-        )
-        provider_bundle = await compile_provider_bundle(
-            ws.app.state.database, signer, ws.app.state.settings.gateway_id,
-            device_id, user_id, config_public_key_pem,
-        )
-        skill_manifest = await compile_skill_manifest(
-            ws.app.state.database, signer, ws.app.state.settings.gateway_id,
-            device_id, user_id,
-        )
+        await ws.control_connections.claim(device_id, user_id, connection_id, ws, config_public_key_pem, send_json)
+        signer = ws.gateway_signer
+        policy_revision, task_create, project_publish, task_create_projects, task_create_denied_projects = await compiled_device_policy(ws.database, device_id, user_id)
+        provider_ids, models = await compiled_provider_access(ws.database, device_id, user_id)
+        policy = signer.sign_policy_snapshot(gateway_id=ws.settings.gateway_id, device_id=device_id, user_id=user_id, revision=policy_revision, task_create=task_create, project_publish=project_publish, task_create_project_ids=task_create_projects, task_create_denied_project_ids=task_create_denied_projects, allowed_provider_ids=provider_ids, allowed_models=models)
+        provider_bundle = await compile_provider_bundle(ws.database, signer, ws.settings.gateway_id, device_id, user_id, config_public_key_pem)
+        skill_manifest = await compile_skill_manifest(ws.database, signer, ws.settings.gateway_id, device_id, user_id)
         await send_json({"kind": "hello", "version": 1, "device_id": device_id,
                             "gateway_public_key_pem": signer.public_key_pem,
                             "policy_snapshot": policy,
@@ -1033,7 +974,7 @@ async def control_socket(ws: WebSocket):
                 if type(revision) is not int or revision < 0 or revision > policy_revision:
                     await ws.close(code=4400, reason="Invalid policy revision")
                     return
-                async with ws.app.state.database.session() as session:
+                async with ws.database.session() as session:
                     connection = await session.get(DeviceConnection, connection_id)
                     if connection:
                         connection.applied_policy_revision = revision
@@ -1050,7 +991,7 @@ async def control_socket(ws: WebSocket):
                         or (error is not None and (not isinstance(error, str) or len(error) > 512))):
                     await ws.close(code=4400, reason="Invalid provider application")
                     return
-                async with ws.app.state.database.session() as session:
+                async with ws.database.session() as session:
                     async with session.begin():
                         device = await session.get(Device, device_id)
                         if not device or revision > device.provider_revision:
@@ -1091,7 +1032,7 @@ async def control_socket(ws: WebSocket):
                         or len({item["project_id"] for item in projects}) != len(projects)):
                     await ws.close(code=4400, reason="Invalid Skill application")
                     return
-                async with ws.app.state.database.session() as session:
+                async with ws.database.session() as session:
                     async with session.begin():
                         rows = {row.id: row for row in (await session.scalars(
                             select(PlatformProject).where(
@@ -1146,10 +1087,7 @@ async def control_socket(ws: WebSocket):
                         or (status == "failed" and error_code is None)):
                     await ws.close(code=4400, reason="Invalid provider test result")
                     return
-                await ws.app.state.control_connections.complete_provider_test(
-                    device_id, request_id, {"status": status,
-                                            "duration_ms": duration_ms,
-                                            "error_code": error_code})
+                await ws.control_connections.complete_provider_test(device_id, request_id, {'status': status, 'duration_ms': duration_ms, 'error_code': error_code})
                 continue
             if message.get("kind") == "project_catalog_response":
                 request_id = message.get("request_id")
@@ -1172,9 +1110,7 @@ async def control_socket(ws: WebSocket):
                         or len({item["id"] for item in projects}) != len(projects)):
                     await ws.close(code=4400, reason="Invalid project catalog")
                     return
-                await ws.app.state.control_connections.complete_project_catalog(
-                    device_id, request_id, projects if message["status"] == "ok" else None,
-                )
+                await ws.control_connections.complete_project_catalog(device_id, request_id, projects if message['status'] == 'ok' else None)
                 continue
             if message.get("kind") == "project_publish":
                 if (message.get("version") != 1
@@ -1189,7 +1125,7 @@ async def control_socket(ws: WebSocket):
                             or any(char in host_project_id for char in ("/", "\\", " "))):
                         await ws.close(code=4400, reason="Invalid project publication")
                         return
-                    async with ws.app.state.database.session() as session:
+                    async with ws.database.session() as session:
                         project = await session.scalar(select(PlatformProject).where(
                             PlatformProject.device_id == device_id,
                             PlatformProject.host_project_id == host_project_id,
@@ -1197,11 +1133,8 @@ async def control_socket(ws: WebSocket):
                         published = bool(project and project.status == "active"
                                          and project.access_mode == "remote_published")
                         grants = await project_grant_rows(session, project.id) if published else []
-                    can_manage = await IdentityService(
-                        ws.app.state.database).is_super_admin(user_id)
-                    _, _, can_publish, _, _ = await compiled_device_policy(
-                        ws.app.state.database, device_id, user_id,
-                    )
+                    can_manage = await IdentityService(ws.database).is_super_admin(user_id)
+                    _, _, can_publish, _, _ = await compiled_device_policy(ws.database, device_id, user_id)
                     await send_json({"kind": "project_publish_ack", "version": 1,
                                      "device_id": device_id,
                                      "host_project_id": host_project_id,
@@ -1214,9 +1147,7 @@ async def control_socket(ws: WebSocket):
                                      "can_manage": can_manage,
                                      "can_publish": can_publish})
                     continue
-                _, _, may_publish, _, _ = await compiled_device_policy(
-                    ws.app.state.database, device_id, user_id,
-                )
+                _, _, may_publish, _, _ = await compiled_device_policy(ws.database, device_id, user_id)
                 if not may_publish:
                     await send_json({"kind": "project_publish_ack", "version": 1,
                                      "device_id": device_id,
@@ -1224,11 +1155,7 @@ async def control_socket(ws: WebSocket):
                                      "project_id": None, "status": "denied"})
                     continue
                 try:
-                    result = await record_project_publication(
-                        ws.app.state.database, device_id=device_id, user_id=user_id,
-                        host_project_id=message["host_project_id"],
-                        name=message["name"], action=message["action"],
-                    )
+                    result = await record_project_publication(ws.database, device_id=device_id, user_id=user_id, host_project_id=message['host_project_id'], name=message['name'], action=message['action'])
                 except ValueError:
                     result = {"host_project_id": message["host_project_id"],
                               "project_id": None, "status": "failed"}
@@ -1244,9 +1171,7 @@ async def control_socket(ws: WebSocket):
                         or (error is not None and (not isinstance(error, str) or len(error) > 512))):
                     await ws.close(code=4400, reason="Invalid command status")
                     return
-                accepted = await record_command_result(
-                    ws.app.state.database, command_id, device_id, status, error,
-                )
+                accepted = await record_command_result(ws.database, command_id, device_id, status, error)
                 await send_json({"kind": "command_status_ack", "version": 1,
                                     "device_id": device_id, "command_id": command_id,
                                     "accepted": accepted})
@@ -1264,12 +1189,12 @@ async def control_socket(ws: WebSocket):
                                      "device_id": device_id, "batch_id": batch_id,
                                      "retry_after": 5})
                     continue
-                if ws.app.state.usage_batch_slots.locked():
+                if ws.usage_batch_slots.locked():
                     await send_json({"kind": "usage_retry", "version": 1,
                                      "device_id": device_id, "batch_id": batch_id,
                                      "retry_after": 5})
                     continue
-                await ws.app.state.usage_batch_slots.acquire()
+                await ws.usage_batch_slots.acquire()
                 task = asyncio.create_task(apply_usage_batch(batch_id, events))
                 usage_tasks.add(task)
                 task.add_done_callback(usage_tasks.discard)
@@ -1307,9 +1232,7 @@ async def control_socket(ws: WebSocket):
                             or len({item["id"] for item in projects}) != len(projects)):
                         await ws.close(code=4400, reason="Invalid project runtime")
                         return
-                    ws.app.state.control_connections.update_project_runtime(
-                        device_id, connection_id, projects,
-                    )
+                    ws.control_connections.update_project_runtime(device_id, connection_id, projects)
                     continue
                 await ws.close(code=4400, reason="Invalid control message")
                 return
@@ -1317,40 +1240,21 @@ async def control_socket(ws: WebSocket):
             if daemon_health is not None and type(daemon_health) is not bool:
                 await ws.close(code=4400, reason="Invalid daemon health")
                 return
-            ws.app.state.control_connections.update_daemon_health(device_id, daemon_health)
+            ws.control_connections.update_daemon_health(device_id, daemon_health)
             if not await binding_active(ws, device_id, user_id):
                 await ws.close(code=4003, reason="Device access revoked")
                 return
-            (policy_revision, task_create, project_publish,
-             task_create_projects, task_create_denied_projects) = await compiled_device_policy(
-                ws.app.state.database, device_id, user_id,
-            )
-            provider_ids, models = await compiled_provider_access(
-                ws.app.state.database, device_id, user_id,
-            )
-            policy = signer.sign_policy_snapshot(
-                gateway_id=ws.app.state.settings.gateway_id,
-                device_id=device_id, user_id=user_id, revision=policy_revision,
-                task_create=task_create,
-                project_publish=project_publish,
-                task_create_project_ids=task_create_projects,
-                task_create_denied_project_ids=task_create_denied_projects,
-                allowed_provider_ids=provider_ids, allowed_models=models,
-            )
-            provider_bundle = await compile_provider_bundle(
-                ws.app.state.database, signer, ws.app.state.settings.gateway_id,
-                device_id, user_id, config_public_key_pem,
-            )
-            skill_manifest = await compile_skill_manifest(
-                ws.app.state.database, signer, ws.app.state.settings.gateway_id,
-                device_id, user_id,
-            )
+            policy_revision, task_create, project_publish, task_create_projects, task_create_denied_projects = await compiled_device_policy(ws.database, device_id, user_id)
+            provider_ids, models = await compiled_provider_access(ws.database, device_id, user_id)
+            policy = signer.sign_policy_snapshot(gateway_id=ws.settings.gateway_id, device_id=device_id, user_id=user_id, revision=policy_revision, task_create=task_create, project_publish=project_publish, task_create_project_ids=task_create_projects, task_create_denied_project_ids=task_create_denied_projects, allowed_provider_ids=provider_ids, allowed_models=models)
+            provider_bundle = await compile_provider_bundle(ws.database, signer, ws.settings.gateway_id, device_id, user_id, config_public_key_pem)
+            skill_manifest = await compile_skill_manifest(ws.database, signer, ws.settings.gateway_id, device_id, user_id)
             await send_json({"kind": "heartbeat_ack", "version": 1,
                                 "device_id": device_id, "policy_snapshot": policy,
                                 "provider_bundle": provider_bundle,
                                 "skill_manifest": skill_manifest,
                                 "command": await _signed_command(ws, device_id)})
-    except WebSocketDisconnect:
+    except SocketClosed:
         pass
     finally:
         for task in usage_tasks:
@@ -1363,10 +1267,10 @@ async def control_socket(ws: WebSocket):
             await asyncio.gather(*audit_tasks, return_exceptions=True)
         if device_id and connection_id:
             with anyio.CancelScope(shield=True):
-                async with ws.app.state.database.session() as session:
+                async with ws.database.session() as session:
                     connection = await session.get(DeviceConnection, connection_id)
                     if connection:
                         connection.disconnected_at = datetime.now(timezone.utc)
                         connection.close_reason = "closed"
                         await session.commit()
-                await ws.app.state.control_connections.release(device_id, connection_id)
+                await ws.control_connections.release(device_id, connection_id)

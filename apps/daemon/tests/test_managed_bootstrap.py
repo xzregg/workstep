@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from api.managed import router as managed_router
-from services.desktop_security import DesktopSecurityMiddleware
+from api.desktop_security import DesktopSecurityMiddleware
 from services.gateway_client import GatewayClientService
 from services.gateway_client.identity import ManagedActor
 from services.gateway_client.identity import ManagedAuthorizationVerifier

@@ -22,12 +22,11 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.encoders import jsonable_encoder
 
 from engines.core.agui import is_status_event
-from services.remote_project import (
-    RemoteRouteDispatcher,
-    serve_remote_project_socket,
-    websocket_access_allowed,
-)
-from services.desktop_security import desktop_websocket_allowed
+
+from streaming.remote_host import RemoteRouteDispatcher
+from streaming.remote_host import serve_remote_project_socket
+from api.remote_access_guard import websocket_access_allowed
+from api.desktop_security import desktop_websocket_allowed
 
 logger = logging.getLogger(__name__)
 

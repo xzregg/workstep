@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 import pytest
 import httpx
 
-from services.desktop_security import DesktopSecurityMiddleware
+from api.desktop_security import DesktopSecurityMiddleware
 from services.gateway_client.bridge import ManagedHttpBridge
 
 

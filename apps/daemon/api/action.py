@@ -52,16 +52,16 @@ async def run_session_action(session_id: str, request: RunProjectActionRequest, 
 @project_router.post("/{project_id}/actions/{action_id}/directory")
 async def ensure_action_directory(project_id: str, action_id: str, workflow_id: str | None = Query(None)):
     from main import project_manager
-    from models import Workflow
 
     if not ACTION_ID.fullmatch(action_id):
         raise HTTPException(400, "Action ID 无效")
     project = project_manager.get_project_by_id(project_id)
     if project is None:
         raise HTTPException(404, "项目不存在")
+    from services.task_queries import workflow_exists
     if workflow_id:
         exists = await project_manager.run_db(
-            project_id, lambda _project: Workflow.get_or_none(Workflow.id == workflow_id) is not None,
+            project_id, lambda _project: workflow_exists(workflow_id),
         )
         if not exists:
             raise HTTPException(404, "流程不存在")

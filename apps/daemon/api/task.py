@@ -680,22 +680,12 @@ async def cancel_task(req: CancelTaskRequest, pid: str | None = Query(None, alia
         _project(pid)
     cancelled = await workflow_runtime.cancel(req.task_id)
     if not cancelled and pid:
-        from models import Task
-        from services.project_audit import record_project_audit
         from services.remote_access import get_effective_actor
 
         actor = get_effective_actor()
-        def audit_idle_cancel():
-            if Task.get_or_none(Task.id == req.task_id) is not None:
-                record_project_audit(
-                    project_id=pid, task_id=req.task_id,
-                    action="task.cancel", result="denied",
-                    mode=("managed" if actor is not None and actor.source == "managed"
-                          else "local"),
-                    metadata={"reason_code": "not_running"},
-                )
+        from services.task_queries import audit_idle_cancel
 
-        await _run_db(pid, audit_idle_cancel)
+        await _run_db(pid, lambda: audit_idle_cancel(pid, req.task_id, actor))
     return {"cancelled": cancelled}
 
 
@@ -733,11 +723,8 @@ async def delete_task(req: DeleteTaskRequest, pid: str = Query(..., alias="proje
         raise HTTPException(status_code=503, detail="Service not initialized")
     await _require_scoped_task(pid, req.task_id)
     project = _project(pid)
-    from models import Task
-    task = await _run_db(pid, lambda: (
-        {"workflow_id": found.workflow_id, "status": found.status}
-        if (found := Task.get_or_none(Task.id == req.task_id)) else None
-    ))
+    from services.task_queries import task_workspace_state
+    task = await _run_db(pid, lambda: task_workspace_state(req.task_id))
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     if task["status"] == "running":

@@ -1,3 +1,5 @@
+from gateway.services.errors import GatewayError
+from gateway.contracts import GatewayCall, ReplyEffects, RedirectTarget
 import json
 
 import re
@@ -8,9 +10,6 @@ from typing import Literal
 
 from urllib.parse import parse_qs, urlsplit
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response
-
-from fastapi.responses import RedirectResponse
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -18,6 +17,7 @@ from sqlalchemy import func, or_, select
 
 from gateway.services.external_identity import ExternalIdentityService
 
+from gateway.services.identity_errors import IdentityError
 from gateway.services.identity import COOKIE_NAME, IdentityService, csrf_token, public_user
 
 from gateway.services.management_scope import organization_manager
@@ -103,65 +103,58 @@ class ExternalStartInput(BaseModel):
         return value
 
 
-def _service(request: Request) -> ExternalIdentityService:
-    return ExternalIdentityService(request.app.state.database)
+def _service(call: GatewayCall) -> ExternalIdentityService:
+    return ExternalIdentityService(call.database)
 
 
-def _connector(request: Request, provider: str):
-    connector = request.app.state.identity_connectors.get(provider)
+def _connector(call: GatewayCall, provider: str):
+    connector = call.identity_connectors.get(provider)
     if connector is None:
-        raise HTTPException(status_code=503, detail="Identity connector unavailable")
+        raise GatewayError('unavailable', 'Identity connector unavailable')
     return connector
 
 
-async def _begin(request: Request, source_id: str, binding: bool, return_to: str | None = None):
-    identity = IdentityService(request.app.state.database)
+async def _begin(call: GatewayCall, source_id: str, binding: bool, return_to: str | None = None):
+    identity = IdentityService(call.database)
     user_id = session_id = None
     if binding:
-        token = request.cookies.get(COOKIE_NAME)
+        token = call.tokens.get(COOKIE_NAME)
         user, auth_session = await identity.session_user(token)
-        _check_csrf(request, token)
+        _check_csrf(call, token)
         user_id, session_id = user.id, auth_session.id
-    source, state, nonce = await _service(request).begin(source_id, user_id, session_id, return_to)
-    redirect_uri = str(request.url_for("external_callback", source_id=source_id))
-    return {"authorization_url": _connector(request, source.provider).authorization_url(
-        source, state, nonce, redirect_uri,
-    )}
+    source, state, nonce = await _service(call).begin(source_id, user_id, session_id, return_to)
+    redirect_uri = str(call.callback_url('external_callback', source_id=source_id))
+    return {"authorization_url": _connector(call, source.provider).authorization_url(source, state, nonce, redirect_uri)}
 
 
-
-async def create_source(request: Request, body: SourceInput):
-    await _super_admin_request(request)
+async def create_source(call: GatewayCall, body: SourceInput):
+    await _super_admin_request(call)
     if not body.client_secret and not body.secret_env:
-        raise HTTPException(status_code=422, detail="Application secret required")
+        raise GatewayError('invalid', 'Application secret required')
     if body.secret_env and not re.fullmatch(r"[A-Z][A-Z0-9_]*", body.secret_env):
-        raise HTTPException(status_code=422, detail="Invalid secret environment variable")
+        raise GatewayError('invalid', 'Invalid secret environment variable')
     if body.provider == "wecom" and not body.agent_id:
-        raise HTTPException(status_code=422, detail="WeCom agent ID required")
+        raise GatewayError('invalid', 'WeCom agent ID required')
     # Source ID is allocated before encryption so ciphertext is bound to its record.
     from uuid import uuid4
     credential_id = str(uuid4())
     options = {"login_enabled": body.login_enabled, "sync_enabled": body.sync_enabled, "enabled": body.enabled}
     if body.client_secret:
-        options["encrypted_secret"] = request.app.state.gateway_signer.encrypt_provider_secret(credential_id, body.client_secret)
+        options['encrypted_secret'] = call.gateway_signer.encrypt_provider_secret(credential_id, body.client_secret)
         options["credential_id"] = credential_id
-    source = await _service(request).create_source(
-        body.provider, body.tenant_id, body.client_id, body.secret_env or "WORKSTEP_IDENTITY_SECRET", body.agent_id,
-        body.callback_token_env, body.callback_aes_key_env, options,
-    )
+    source = await _service(call).create_source(body.provider, body.tenant_id, body.client_id, body.secret_env or 'WORKSTEP_IDENTITY_SECRET', body.agent_id, body.callback_token_env, body.callback_aes_key_env, options)
     return {"id": source.id, "provider": source.provider, "tenant_id": source.tenant_id,
             "client_id": source.client_id, "enabled": bool(source.enabled),
             "callback_configured": bool(source.callback_token_env)}
 
 
-
-async def list_sources(request: Request, q: str = Query('', max_length=128),
+async def list_sources(call: GatewayCall, q: str = '',
                        provider: Literal['dingtalk', 'wecom'] | None = None,
                        status: Literal['enabled', 'disabled'] | None = None,
                        sort: Literal['created_at', 'tenant_id'] = 'created_at',
                        direction: Literal['asc', 'desc'] = 'desc',
-                       page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100)):
-    _, allowed_sources = await organization_manager(request)
+                       page: int = 1, page_size: int = 25):
+    _, allowed_sources = await organization_manager(call)
     conditions = [IdentitySource.id.in_(allowed_sources)] if allowed_sources is not None else []
     if provider:
         conditions.append(IdentitySource.provider == provider)
@@ -174,7 +167,7 @@ async def list_sources(request: Request, q: str = Query('', max_length=128),
                               IdentitySource.client_id.ilike(pattern, escape='\\')))
     column = {'created_at': IdentitySource.created_at, 'tenant_id': IdentitySource.tenant_id}[sort]
     ordered = column.asc() if direction == 'asc' else column.desc()
-    async with request.app.state.database.session() as session:
+    async with call.database.session() as session:
         total = await session.scalar(select(func.count()).select_from(IdentitySource).where(*conditions))
         rows = (await session.scalars(select(IdentitySource).where(*conditions)
             .order_by(ordered, IdentitySource.id).offset((page - 1) * page_size).limit(page_size))).all()
@@ -219,10 +212,9 @@ async def list_sources(request: Request, q: str = Query('', max_length=128),
     return {'sources': sources, 'total': total, 'page': page, 'page_size': page_size}
 
 
-
-async def sync_directory(request: Request, source_id: str, body: DirectorySnapshot):
-    await organization_manager(request, source_id=source_id, mutation=True)
-    service = _service(request)
+async def sync_directory(call: GatewayCall, source_id: str, body: DirectorySnapshot):
+    await organization_manager(call, source_id=source_id, mutation=True)
+    service = _service(call)
     await service.source(source_id)
     try:
         return await service.full_sync(
@@ -231,8 +223,8 @@ async def sync_directory(request: Request, source_id: str, body: DirectorySnapsh
             [item.model_dump() for item in body.people],
             body.cursor,
         )
-    except HTTPException as exc:
-        if exc.status_code == 422:
+    except GatewayError as exc:
+        if exc.reason == 'invalid':
             await service.record_sync_failure(source_id, 'snapshot_invalid')
         raise
     except Exception:
@@ -240,126 +232,110 @@ async def sync_directory(request: Request, source_id: str, body: DirectorySnapsh
         raise
 
 
-
-async def reconcile_directory(request: Request, source_id: str):
-    await organization_manager(request, source_id=source_id, mutation=True)
-    service = _service(request)
+async def reconcile_directory(call: GatewayCall, source_id: str):
+    await organization_manager(call, source_id=source_id, mutation=True)
+    service = _service(call)
     source = await service.source(source_id, purpose="sync")
     try:
-        snapshot = await _connector(request, source.provider).fetch_directory(source)
+        snapshot = await _connector(call, source.provider).fetch_directory(source)
     except Exception as exc:
         await service.record_sync_failure(source_id, 'provider_unavailable')
-        raise HTTPException(status_code=502, detail="Directory provider unavailable") from exc
+        raise GatewayError('upstream_failed', 'Directory provider unavailable') from exc
     try:
         return await service.full_sync(source_id, snapshot["departments"], snapshot["people"],
                                        snapshot.get('cursor'))
     except Exception as exc:
-        await service.record_sync_failure(source_id,
-                                          'snapshot_invalid' if isinstance(exc, HTTPException)
-                                          and exc.status_code == 422 else 'snapshot_apply_failed')
+        await service.record_sync_failure(source_id, 'snapshot_invalid' if isinstance(exc, GatewayError) and exc.reason == 'invalid' else 'snapshot_apply_failed')
         raise
 
 
-
-async def apply_directory_event(request: Request, source_id: str, body: PersonEvent):
-    await organization_manager(request, source_id=source_id, mutation=True)
+async def apply_directory_event(call: GatewayCall, source_id: str, body: PersonEvent):
+    await organization_manager(call, source_id=source_id, mutation=True)
     if body.kind == "person_upsert" and not body.display_name:
-        raise HTTPException(status_code=422, detail="Display name required")
-    applied = await _service(request).apply_person_event(
-        source_id, body.event_id, body.kind, body.subject, body.display_name, body.department_ids,
-    )
+        raise GatewayError('invalid', 'Display name required')
+    applied = await _service(call).apply_person_event(source_id, body.event_id, body.kind, body.subject, body.display_name, body.department_ids)
     return {"applied": applied}
 
 
-
-async def disable_source(request: Request, source_id: str):
-    await _super_admin_request(request)
-    await _service(request).disable_source(source_id)
-
+async def disable_source(call: GatewayCall, source_id: str):
+    await _super_admin_request(call)
+    await _service(call).disable_source(source_id)
 
 
-async def external_start(request: Request, source_id: str, body: ExternalStartInput | None = None):
-    await request.app.state.identity_rate_limiter.check(
-        "external_start", request.client.host if request.client else "unknown",
-    )
-    return await _begin(request, source_id, False, body.return_to if body else None)
+async def external_start(call: GatewayCall, source_id: str, body: ExternalStartInput | None = None):
+    await call.identity_rate_limiter.check('external_start', call.peer.host if call.peer else 'unknown')
+    return await _begin(call, source_id, False, body.return_to if body else None)
 
 
-
-async def identity_sources(request: Request):
-    sources = await _service(request).enabled_sources()
-    sources = [source for source in sources if (await source_options(request.app.state.database, source.id)).get("login_enabled", True)]
+async def identity_sources(call: GatewayCall):
+    sources = await _service(call).enabled_sources()
+    sources = [source for source in sources if (await source_options(call.database, source.id)).get('login_enabled', True)]
     return {"sources": [{"id": source.id, "provider": source.provider,
                          "tenant_id": source.tenant_id} for source in sources]}
 
 
-
-async def external_bind_start(request: Request, source_id: str):
-    return await _begin(request, source_id, True)
-
+async def external_bind_start(call: GatewayCall, source_id: str):
+    return await _begin(call, source_id, True)
 
 
-async def external_callback(request: Request, response: Response, source_id: str,
+async def external_callback(call: GatewayCall, response: ReplyEffects, source_id: str,
                             state: str, code: str | None = None, authCode: str | None = None,
                             error: str | None = None):
     authorization_code = code or authCode
     if error or not authorization_code:
-        return_to = await _service(request).failure_return_to(source_id, state)
+        return_to = await _service(call).failure_return_to(source_id, state)
         if return_to:
             failure = "cancelled" if error in (None, "access_denied") else "unavailable"
             separator = "&" if "?" in return_to else "?"
-            return RedirectResponse(f"{return_to}{separator}scan_error={failure}", status_code=303)
-        raise HTTPException(status_code=400, detail="Authorization code missing")
-    source = await _service(request).source(source_id)
+            return RedirectTarget(f'{return_to}{separator}scan_error={failure}')
+        raise GatewayError('bad_input', 'Authorization code missing')
+    source = await _service(call).source(source_id)
     browser_session_id = None
-    token = request.cookies.get(COOKIE_NAME)
+    token = call.tokens.get(COOKIE_NAME)
     if token:
         try:
-            _, auth_session = await IdentityService(request.app.state.database).session_user(token)
+            _, auth_session = await IdentityService(call.database).session_user(token)
             browser_session_id = auth_session.id
-        except HTTPException:
+        except IdentityError:
             pass
     try:
-        user, new_token, return_to = await _service(request).complete(
-            source_id, state, authorization_code, _connector(request, source.provider), browser_session_id,
-        )
-    except HTTPException as exc:
-        return_to = await _service(request).failure_return_to(source_id, state)
+        user, new_token, return_to = await _service(call).complete(source_id, state, authorization_code, _connector(call, source.provider), browser_session_id)
+    except GatewayError as exc:
+        return_to = await _service(call).failure_return_to(source_id, state)
         if return_to:
-            failure = ("expired" if exc.status_code in (400, 401, 409) else
-                       "denied" if exc.status_code == 403 else "unavailable")
+            failure = 'expired' if exc.reason in ('bad_input', 'unauthenticated', 'conflict') else 'denied' if exc.reason == 'forbidden' else 'unavailable'
             separator = "&" if "?" in return_to else "?"
-            return RedirectResponse(f"{return_to}{separator}scan_error={failure}", status_code=303)
+            return RedirectTarget(f'{return_to}{separator}scan_error={failure}')
         raise
     if return_to:
-        redirect = RedirectResponse(return_to if user.status == "active" else "/auth/pending", status_code=303)
+        redirect = RedirectTarget(return_to if user.status == 'active' else '/auth/pending')
         if new_token:
-            _set_session_cookie(redirect, new_token, request)
+            _set_session_cookie(redirect, new_token, call)
         return redirect
     if new_token:
-        _set_session_cookie(response, new_token, request)
+        _set_session_cookie(response, new_token, call)
     if user.status == "pending":
-        response.status_code = 202
+        response.phase = 'pending'
     return {"user": public_user(user), **({"csrf_token": csrf_token(new_token)} if new_token else {})}
 
 
-async def update_source(request: Request, source_id: str, body: SourceInput):
-    await _super_admin_request(request)
+async def update_source(call: GatewayCall, source_id: str, body: SourceInput):
+    await _super_admin_request(call)
     if body.provider == 'wecom' and not body.agent_id:
-        raise HTTPException(422, 'WeCom agent ID required')
+        raise GatewayError('invalid', 'WeCom agent ID required')
     if body.secret_env and not re.fullmatch(r'[A-Z][A-Z0-9_]*', body.secret_env):
-        raise HTTPException(422, 'Invalid secret environment variable')
-    async with request.app.state.database.session() as session:
+        raise GatewayError('invalid', 'Invalid secret environment variable')
+    async with call.database.session() as session:
         async with session.begin():
             source = await session.get(IdentitySource, source_id)
-            if source is None: raise HTTPException(404, 'Identity source not found')
+            if source is None: raise GatewayError('not_found', 'Identity source not found')
             if source.provider != body.provider or source.tenant_id != body.tenant_id:
-                raise HTTPException(422, 'Provider and tenant identity cannot change')
+                raise GatewayError('invalid', 'Provider and tenant identity cannot change')
             row = await session.get(PlatformSetting, option_key(source_id))
             options = json.loads(row.value_json) if row else {}
             if body.client_secret:
                 options['credential_id'] = option_key(source_id)
-                options['encrypted_secret'] = request.app.state.gateway_signer.encrypt_provider_secret(option_key(source_id), body.client_secret)
+                options['encrypted_secret'] = call.gateway_signer.encrypt_provider_secret(option_key(source_id), body.client_secret)
             options.update(login_enabled=body.login_enabled, sync_enabled=body.sync_enabled)
             if row: row.value_json = json.dumps(options)
             else: session.add(PlatformSetting(key=option_key(source_id), value_json=json.dumps(options)))

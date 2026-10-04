@@ -1,10 +1,11 @@
+from gateway.services.errors import GatewayError
+from gateway.contracts import GatewayCall
 import re
 
 from datetime import datetime, timezone
 
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query, Request
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -12,6 +13,7 @@ from sqlalchemy import func, or_, select
 
 from sqlalchemy.exc import IntegrityError
 
+from gateway.services.identity_errors import IdentityError
 from gateway.services.identity import COOKIE_NAME
 
 from gateway.services.identity_api import _check_csrf, _identity, _super_admin_read, _super_admin_request
@@ -50,14 +52,14 @@ class GroupProjectInput(BaseModel):
     project_id: str = Field(min_length=1, max_length=64)
 
 
-async def _actor(request: Request, *, write: bool):
-    token = request.cookies.get(COOKIE_NAME)
-    service = _identity(request)
+async def _actor(call: GatewayCall, *, write: bool):
+    token = call.tokens.get(COOKIE_NAME)
+    service = _identity(call)
     user, _ = await service.session_user(token)
     if user.must_change_password:
-        raise HTTPException(status_code=403, detail="Password change required")
+        raise GatewayError('forbidden', 'Password change required')
     if write:
-        _check_csrf(request, token)
+        _check_csrf(call, token)
     return service, user
 
 
@@ -65,7 +67,7 @@ async def _can_manage_group(session, service, user: User, group_id: str) -> bool
     try:
         await service.require_super_admin(user.id)
         return True
-    except HTTPException:
+    except IdentityError:
         pass
     return await session.scalar(select(GroupMembership.id).where(
         GroupMembership.group_id == group_id,
@@ -75,27 +77,26 @@ async def _can_manage_group(session, service, user: User, group_id: str) -> bool
     )) is not None
 
 
-
-async def create_group(request: Request, body: GroupInput):
-    service, actor = await _super_admin_request(request)
-    _, auth_session = await service.session_user(request.cookies.get(COOKIE_NAME))
+async def create_group(call: GatewayCall, body: GroupInput):
+    service, actor = await _super_admin_request(call)
+    _, auth_session = await service.session_user(call.tokens.get(COOKIE_NAME))
     await service.require_step_up(auth_session)
     if (body.name != body.name.strip() or not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", body.slug)):
-        raise HTTPException(status_code=422, detail="Invalid group name or slug")
+        raise GatewayError('invalid', 'Invalid group name or slug')
     if (body.source_type == "external_department") != (body.external_department_id is not None):
-        raise HTTPException(status_code=422, detail="Department mapping required")
+        raise GatewayError('invalid', 'Department mapping required')
     group = UserGroup(id=str(uuid4()), name=body.name, slug=body.slug,
                       description=body.description, source_type=body.source_type,
                       external_department_id=body.external_department_id,
                       created_by_user_id=actor.id)
     try:
-        async with request.app.state.database.session() as session:
+        async with call.database.session() as session:
             async with session.begin():
                 if body.external_department_id:
                     department = await session.get(DirectoryDepartment,
                                                    body.external_department_id)
                     if department is None or department.active != 1:
-                        raise HTTPException(status_code=404, detail="Department unavailable")
+                        raise GatewayError('not_found', 'Department unavailable')
                 session.add(group)
                 await session.flush()
                 if body.external_department_id:
@@ -104,21 +105,20 @@ async def create_group(request: Request, body: GroupInput):
                                        action="group.created", result="success",
                                        metadata_json=f'{{"group_id":"{group.id}"}}'))
     except IntegrityError as exc:
-        raise HTTPException(status_code=409, detail="Group slug already exists") from exc
+        raise GatewayError('conflict', 'Group slug already exists') from exc
     return {"id": group.id, "name": group.name, "slug": group.slug,
             "description": group.description, "source_type": group.source_type}
 
 
-
-async def list_groups(request: Request):
-    service, actor = await _actor(request, write=False)
-    async with request.app.state.database.session() as session:
+async def list_groups(call: GatewayCall):
+    service, actor = await _actor(call, write=False)
+    async with call.database.session() as session:
         try:
             await service.require_super_admin(actor.id)
             rows = (await session.scalars(select(UserGroup).where(
                 UserGroup.status == "active",
             ).order_by(UserGroup.name, UserGroup.id))).all()
-        except HTTPException:
+        except IdentityError:
             rows = (await session.scalars(select(UserGroup).join(GroupMembership).where(
                 GroupMembership.user_id == actor.id,
                 GroupMembership.revoked_at.is_(None),
@@ -128,19 +128,18 @@ async def list_groups(request: Request):
                         "source_type": row.source_type} for row in rows]}
 
 
-
-async def list_linkable_group_projects(request: Request,
-                                       q: str = Query("", max_length=128),
-                                       page: int = Query(1, ge=1),
-                                       page_size: int = Query(25, ge=1, le=100)):
-    await _super_admin_read(request)
+async def list_linkable_group_projects(call: GatewayCall,
+                                       q: str = '',
+                                       page: int = 1,
+                                       page_size: int = 25):
+    await _super_admin_read(call)
     conditions = [PlatformProject.status == "active"]
     if q.strip():
         escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
         conditions.append(or_(PlatformProject.name.ilike(pattern, escape="\\"),
                               Device.name.ilike(pattern, escape="\\")))
-    async with request.app.state.database.session() as session:
+    async with call.database.session() as session:
         base = select(PlatformProject, Device).join(Device, Device.id == PlatformProject.device_id)
         total = await session.scalar(select(func.count()).select_from(PlatformProject).join(
             Device, Device.id == PlatformProject.device_id,
@@ -155,22 +154,21 @@ async def list_linkable_group_projects(request: Request,
             "total": total, "page": page, "page_size": page_size}
 
 
-
-async def add_group_member(request: Request, group_id: str, body: MemberInput):
-    service, actor = await _actor(request, write=True)
-    async with request.app.state.database.session() as session:
+async def add_group_member(call: GatewayCall, group_id: str, body: MemberInput):
+    service, actor = await _actor(call, write=True)
+    async with call.database.session() as session:
         async with session.begin():
             group = await session.get(UserGroup, group_id)
             if group is None or group.status != "active":
-                raise HTTPException(status_code=404, detail="Group unavailable")
+                raise GatewayError('not_found', 'Group unavailable')
             if not await _can_manage_group(session, service, actor, group_id):
-                raise HTTPException(status_code=403, detail="Group management denied")
+                raise GatewayError('forbidden', 'Group management denied')
             if body.role == "leader":
                 await service.require_super_admin(actor.id)
             user = (await session.get(User, body.user_id) if body.user_id else
                     await session.scalar(select(User).where(User.username == body.username)))
             if user is None or user.status != "active":
-                raise HTTPException(status_code=404, detail="User unavailable")
+                raise GatewayError('not_found', 'User unavailable')
             membership = await session.scalar(select(GroupMembership).where(
                 GroupMembership.group_id == group_id,
                 GroupMembership.user_id == user.id,
@@ -183,7 +181,7 @@ async def add_group_member(request: Request, group_id: str, body: MemberInput):
                 session.add(membership)
             else:
                 if membership.source != "manual":
-                    raise HTTPException(status_code=409, detail="Directory membership is read-only")
+                    raise GatewayError('conflict', 'Directory membership is read-only')
                 if membership.role == "leader":
                     await service.require_super_admin(actor.id)
                 membership.role = body.role
@@ -196,12 +194,11 @@ async def add_group_member(request: Request, group_id: str, body: MemberInput):
     return {"group_id": group_id, "user_id": user.id, "role": body.role}
 
 
-
-async def list_group_members(request: Request, group_id: str):
-    service, actor = await _actor(request, write=False)
-    async with request.app.state.database.session() as session:
+async def list_group_members(call: GatewayCall, group_id: str):
+    service, actor = await _actor(call, write=False)
+    async with call.database.session() as session:
         if not await _can_manage_group(session, service, actor, group_id):
-            raise HTTPException(status_code=403, detail="Group management denied")
+            raise GatewayError('forbidden', 'Group management denied')
         rows = (await session.execute(select(GroupMembership, User).join(
             User, User.id == GroupMembership.user_id,
         ).where(GroupMembership.group_id == group_id,
@@ -213,24 +210,23 @@ async def list_group_members(request: Request, group_id: str):
                         for membership, user in rows]}
 
 
-
-async def remove_group_member(request: Request, group_id: str, user_id: str):
-    service, actor = await _actor(request, write=True)
-    async with request.app.state.database.session() as session:
+async def remove_group_member(call: GatewayCall, group_id: str, user_id: str):
+    service, actor = await _actor(call, write=True)
+    async with call.database.session() as session:
         async with session.begin():
             if not await _can_manage_group(session, service, actor, group_id):
-                raise HTTPException(status_code=403, detail="Group management denied")
+                raise GatewayError('forbidden', 'Group management denied')
             membership = await session.scalar(select(GroupMembership).where(
                 GroupMembership.group_id == group_id,
                 GroupMembership.user_id == user_id,
                 GroupMembership.revoked_at.is_(None),
             ))
             if membership is None:
-                raise HTTPException(status_code=404, detail="Group member unavailable")
+                raise GatewayError('not_found', 'Group member unavailable')
             if membership.role == "leader":
                 await service.require_super_admin(actor.id)
             if membership.source != "manual":
-                raise HTTPException(status_code=409, detail="Directory membership is read-only")
+                raise GatewayError('conflict', 'Directory membership is read-only')
             membership.revoked_at = datetime.now(timezone.utc)
             await bump_group_capability_revisions(session, group_id)
             session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,
@@ -238,15 +234,14 @@ async def remove_group_member(request: Request, group_id: str, user_id: str):
                                    metadata_json=f'{{"group_id":"{group_id}"}}'))
 
 
-
-async def link_group_project(request: Request, group_id: str, body: GroupProjectInput):
-    _, actor = await _super_admin_request(request)
-    async with request.app.state.database.session() as session:
+async def link_group_project(call: GatewayCall, group_id: str, body: GroupProjectInput):
+    _, actor = await _super_admin_request(call)
+    async with call.database.session() as session:
         async with session.begin():
             group = await session.get(UserGroup, group_id)
             project = await session.get(PlatformProject, body.project_id)
             if group is None or group.status != "active" or project is None:
-                raise HTTPException(status_code=404, detail="Group or project unavailable")
+                raise GatewayError('not_found', 'Group or project unavailable')
             relation = await session.scalar(select(GroupProject).where(
                 GroupProject.group_id == group_id,
                 GroupProject.platform_project_id == body.project_id,
@@ -264,12 +259,11 @@ async def link_group_project(request: Request, group_id: str, body: GroupProject
             "purpose": "skill_management"}
 
 
-
-async def list_group_projects(request: Request, group_id: str):
-    service, actor = await _actor(request, write=False)
-    async with request.app.state.database.session() as session:
+async def list_group_projects(call: GatewayCall, group_id: str):
+    service, actor = await _actor(call, write=False)
+    async with call.database.session() as session:
         if not await _can_manage_group(session, service, actor, group_id):
-            raise HTTPException(status_code=403, detail="Group management denied")
+            raise GatewayError('forbidden', 'Group management denied')
         rows = (await session.scalars(select(PlatformProject).join(
             GroupProject, GroupProject.platform_project_id == PlatformProject.id,
         ).where(GroupProject.group_id == group_id,
@@ -278,10 +272,9 @@ async def list_group_projects(request: Request, group_id: str):
                           "purpose": "skill_management"} for project in rows]}
 
 
-
-async def unlink_group_project(request: Request, group_id: str, project_id: str):
-    _, actor = await _super_admin_request(request)
-    async with request.app.state.database.session() as session:
+async def unlink_group_project(call: GatewayCall, group_id: str, project_id: str):
+    _, actor = await _super_admin_request(call)
+    async with call.database.session() as session:
         async with session.begin():
             relation = await session.scalar(select(GroupProject).where(
                 GroupProject.group_id == group_id,
@@ -289,7 +282,7 @@ async def unlink_group_project(request: Request, group_id: str, project_id: str)
                 GroupProject.revoked_at.is_(None),
             ))
             if relation is None:
-                raise HTTPException(status_code=404, detail="Group project link unavailable")
+                raise GatewayError('not_found', 'Group project link unavailable')
             now = datetime.now(timezone.utc)
             relation.revoked_at = now
             assignments = (await session.scalars(select(ProjectSkillAssignment).where(

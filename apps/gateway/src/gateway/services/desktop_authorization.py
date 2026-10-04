@@ -1,4 +1,5 @@
 """PKCE-protected, single-use Desktop login and device registration."""
+from gateway.services.errors import GatewayError
 
 import base64
 import hashlib
@@ -10,7 +11,7 @@ from uuid import uuid4
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.exceptions import InvalidSignature
-from fastapi import HTTPException
+
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
@@ -28,9 +29,9 @@ def _device_key(public_pem: str) -> tuple[str, str]:
     try:
         public_key = serialization.load_pem_public_key(public_pem.encode())
     except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=422, detail="Invalid device public key") from exc
+        raise GatewayError('invalid', 'Invalid device public key') from exc
     if not isinstance(public_key, Ed25519PublicKey):
-        raise HTTPException(status_code=422, detail="Device key must be Ed25519")
+        raise GatewayError('invalid', 'Device key must be Ed25519')
     der = public_key.public_bytes(
         serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo,
     )
@@ -49,7 +50,7 @@ class DesktopAuthorizationService:
     async def authorize(self, user_id: str, gateway_id: str, state: str, nonce: str,
                         challenge: str, app_instance_id: str) -> str:
         if gateway_id != self.gateway_id:
-            raise HTTPException(status_code=403, detail="Wrong Gateway")
+            raise GatewayError('forbidden', 'Wrong Gateway')
         code = secrets.token_urlsafe(32)
         async with self.database.session() as session:
             async with session.begin():
@@ -67,17 +68,17 @@ class DesktopAuthorizationService:
                      arch: str | None = None,
                      rotation_signature: str | None = None) -> tuple[User, Device, str | None]:
         if gateway_id != self.gateway_id:
-            raise HTTPException(status_code=403, detail="Wrong Gateway")
+            raise GatewayError('forbidden', 'Wrong Gateway')
         canonical_key, fingerprint = _device_key(device_public_key)
         async with self.database.session() as session:
             async with session.begin():
                 auth_code = await session.get(DesktopAuthCode, _digest(code))
                 if auth_code is None:
-                    raise HTTPException(status_code=401, detail="Unknown desktop code")
+                    raise GatewayError('unauthenticated', 'Unknown desktop code')
                 if auth_code.used_at is not None:
-                    raise HTTPException(status_code=409, detail="Desktop code already used")
+                    raise GatewayError('conflict', 'Desktop code already used')
                 if _as_utc(auth_code.expires_at) <= _now():
-                    raise HTTPException(status_code=410, detail="Desktop code expired")
+                    raise GatewayError('gone', 'Desktop code expired')
                 if not (
                     hmac.compare_digest(auth_code.state_hash, _digest(state))
                     and hmac.compare_digest(auth_code.nonce_hash, _digest(nonce))
@@ -85,17 +86,17 @@ class DesktopAuthorizationService:
                     and hmac.compare_digest(auth_code.app_instance_id, app_instance_id)
                     and hmac.compare_digest(auth_code.gateway_id, gateway_id)
                 ):
-                    raise HTTPException(status_code=403, detail="Desktop authorization mismatch")
+                    raise GatewayError('forbidden', 'Desktop authorization mismatch')
                 user = await session.get(User, auth_code.user_id)
                 if user is None or user.status != "active" or user.must_change_password:
-                    raise HTTPException(status_code=403, detail="Account unavailable")
+                    raise GatewayError('forbidden', 'Account unavailable')
                 claimed = await session.execute(update(DesktopAuthCode).where(
                     DesktopAuthCode.code_hash == auth_code.code_hash,
                     DesktopAuthCode.used_at.is_(None),
                     DesktopAuthCode.expires_at > _now(),
                 ).values(used_at=_now()).execution_options(synchronize_session=False))
                 if claimed.rowcount != 1:
-                    raise HTTPException(status_code=409, detail="Desktop code already used")
+                    raise GatewayError('conflict', 'Desktop code already used')
                 existing_key = await session.scalar(select(Device).where(
                     Device.public_key_fingerprint == fingerprint,
                 ))
@@ -103,20 +104,20 @@ class DesktopAuthorizationService:
                     Device.app_instance_id == app_instance_id,
                 ))
                 if existing_key and device and existing_key.id != device.id:
-                    raise HTTPException(status_code=409, detail="Device key belongs to another installation")
+                    raise GatewayError('conflict', 'Device key belongs to another installation')
                 if existing_key and not device:
-                    raise HTTPException(status_code=409, detail="Device key belongs to another installation")
+                    raise GatewayError('conflict', 'Device key belongs to another installation')
                 if device and device.status in ("disabled", "revoked"):
-                    raise HTTPException(status_code=403, detail="Device unavailable")
+                    raise GatewayError('forbidden', 'Device unavailable')
                 if device and device.public_key_fingerprint != fingerprint:
                     if not rotation_signature:
-                        raise HTTPException(status_code=403, detail="Old device key proof required")
+                        raise GatewayError('forbidden', 'Old device key proof required')
                     try:
                         signature = base64.urlsafe_b64decode(rotation_signature + "===")
                         old_key = serialization.load_pem_public_key(device.public_key.encode())
                         old_key.verify(signature, f"workstep-device-rotate-v1:{code}:{fingerprint}".encode())
                     except (ValueError, InvalidSignature) as exc:
-                        raise HTTPException(status_code=403, detail="Invalid rotation proof") from exc
+                        raise GatewayError('forbidden', 'Invalid rotation proof') from exc
                     device.public_key = canonical_key
                     device.public_key_fingerprint = fingerprint
                     device.status = "pending"
@@ -147,7 +148,7 @@ class DesktopAuthorizationService:
                         access_level="edit",
                     ))
                 elif linkage.revoked_at is not None:
-                    raise HTTPException(status_code=403, detail="User device access revoked")
+                    raise GatewayError('forbidden', 'User device access revoked')
                 await session.flush()
                 signed = self.signer.sign_device_authorization(
                     gateway_id=gateway_id, device_id=device.id, user_id=user.id,
@@ -162,9 +163,9 @@ class DesktopAuthorizationService:
             async with session.begin():
                 device = await session.get(Device, device_id)
                 if device is None:
-                    raise HTTPException(status_code=404, detail="Device not found")
+                    raise GatewayError('not_found', 'Device not found')
                 if device.status == "revoked":
-                    raise HTTPException(status_code=409, detail="Device unavailable")
+                    raise GatewayError('conflict', 'Device unavailable')
                 device.status = "active"
                 session.add(AuditEvent(
                     id=str(uuid4()), user_id=actor_id, device_id=device_id,
@@ -176,9 +177,9 @@ class DesktopAuthorizationService:
             async with session.begin():
                 device = await session.get(Device, device_id)
                 if device is None:
-                    raise HTTPException(status_code=404, detail="Device not found")
+                    raise GatewayError('not_found', 'Device not found')
                 if device.status == "revoked":
-                    raise HTTPException(status_code=409, detail="Device already revoked")
+                    raise GatewayError('conflict', 'Device already revoked')
                 device.status = status
                 if status == "revoked":
                     device.revoked_at = _now()

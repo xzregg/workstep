@@ -1,3 +1,5 @@
+from gateway.services.errors import GatewayError
+from gateway.contracts import GatewayCall
 import hashlib
 
 import json
@@ -6,7 +8,6 @@ from datetime import datetime, timedelta, timezone
 
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query, Request
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
@@ -152,26 +153,25 @@ def _visible_metadata(raw: str | None) -> dict:
     }
 
 
-
 async def query_audit(
-    request: Request,
-    project_id: str | None = Query(default=None, max_length=64),
-    device_id: str | None = Query(default=None, max_length=64),
-    action: str | None = Query(default=None, max_length=128),
-    user_id: str | None = Query(default=None, max_length=64),
-    result: str | None = Query(default=None, max_length=16),
-    q: str | None = Query(default=None, max_length=128),
+    call: GatewayCall,
+    project_id: str | None = None,
+    device_id: str | None = None,
+    action: str | None = None,
+    user_id: str | None = None,
+    result: str | None = None,
+    q: str | None = None,
     from_time: datetime | None = None,
     to_time: datetime | None = None,
-    limit: int = Query(default=100, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    limit: int = 100,
+    offset: int = 0,
 ):
     if (from_time and from_time.tzinfo is None) or (to_time and to_time.tzinfo is None):
-        raise HTTPException(422, "Audit time must include timezone")
+        raise GatewayError('invalid', 'Audit time must include timezone')
     if from_time and to_time and from_time >= to_time:
-        raise HTTPException(422, "End time must be after start time")
-    async with request.app.state.database.session() as session:
-        scope = await ledger_scope(request, session, AuditEvent)
+        raise GatewayError('invalid', 'End time must be after start time')
+    async with call.database.session() as session:
+        scope = await ledger_scope(call, session, AuditEvent)
         published = exists(select(PlatformProject.id).where(
             PlatformProject.device_id == AuditEvent.device_id,
             PlatformProject.host_project_id == AuditEvent.project_id,
@@ -185,7 +185,7 @@ async def query_audit(
             project = await session.get(PlatformProject, project_id)
             if (project is None or project.access_mode != "remote_published"
                     or project.status != "active"):
-                raise HTTPException(404, "Published project unavailable")
+                raise GatewayError('not_found', 'Published project unavailable')
             conditions.extend((
                 AuditEvent.project_id == project.host_project_id,
                 AuditEvent.device_id == project.device_id,

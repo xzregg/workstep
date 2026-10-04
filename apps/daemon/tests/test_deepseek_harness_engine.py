@@ -15,6 +15,54 @@ def notification(method: str, payload: dict):
     return SimpleNamespace(method=method, payload=payload)
 
 
+async def test_spawn_slow_project_resolution_keeps_event_loop_responsive(
+    monkeypatch, tmp_path, deepseek_provider,
+):
+    import threading
+    import time
+
+    class Harness:
+        def run(self, *args, **kwargs):
+            return SimpleNamespace(finish_reason="completed")
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(DeepSeekHarnessEngine, "is_installed", staticmethod(lambda: True))
+    monkeypatch.setattr("engines.deepseek_harness.config_store.get_deepseek_harness_config",
+                        lambda: {"provider_id": deepseek_provider["id"]})
+    monkeypatch.setattr("engines.deepseek_harness.config_store.get_provider", lambda _: deepseek_provider)
+    monkeypatch.setattr(DeepSeekHarnessEngine, "_build_harness", lambda *a, **kw: Harness())
+    original = Path.resolve
+    entered, release = threading.Event(), threading.Event()
+    loop_thread = threading.get_ident()
+    threads = []
+
+    def slow_resolve(path, *args, **kwargs):
+        if path == tmp_path and not entered.is_set():
+            threads.append(threading.get_ident())
+            entered.set()
+            release.wait(2)
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", slow_resolve)
+
+    async def collect():
+        return [event async for event in DeepSeekHarnessEngine().spawn("go", str(tmp_path))]
+
+    started = time.monotonic()
+    pending = asyncio.create_task(collect())
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        await asyncio.sleep(0.01)
+        assert time.monotonic() - started < 0.5
+        assert threads[0] != loop_thread
+    finally:
+        release.set()
+        events = await pending
+    assert not any(event.type == "error" for event in events)
+
+
 @pytest.fixture(autouse=True)
 def _clean_harness_pool():
     DeepSeekHarnessEngine.shutdown_pool()

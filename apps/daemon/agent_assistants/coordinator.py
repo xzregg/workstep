@@ -773,7 +773,7 @@ class CoordinatorModule:
                             return
                         event_dict = event.to_dict()
                         journaled_events.append(event_dict)
-                        self._event_journal.record(
+                        await self._event_journal.arecord(
                             journal_ref,
                             event_dict,
                             force=event.type in {"interaction_request", "session_started"},

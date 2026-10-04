@@ -120,19 +120,19 @@ async def test_archive_draft_records_current_operator_on_create_and_regenerate(a
 async def test_slow_archive_message_validation_keeps_health_responsive(
     archive_context, monkeypatch,
 ):
-    import api.task_archive as archive_api
+    import services.task_archive as archive_service
     import main
 
     prepare, _, _, _ = archive_context
     entered = threading.Event()
-    original = archive_api._archive_draft_message
+    original = archive_service._archive_draft_message
 
     def delayed(*args):
         entered.set()
         time.sleep(0.7)
         return original(*args)
 
-    monkeypatch.setattr(archive_api, "_archive_draft_message", delayed)
+    monkeypatch.setattr(archive_service, "_archive_draft_message", delayed)
     pending = asyncio.create_task(prepare("slow-draft"))
     assert await asyncio.to_thread(entered.wait, 2)
     started = time.monotonic()

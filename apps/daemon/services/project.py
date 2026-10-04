@@ -168,7 +168,7 @@ class ProjectContext:
             db_proxy.reset(token)
 
     async def __aenter__(self) -> Project:
-        return self.__enter__()
+        raise RuntimeError("Async database activation is unsafe; use project_manager.run_db")
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         self.__exit__(exc_type, exc_val, exc_tb)

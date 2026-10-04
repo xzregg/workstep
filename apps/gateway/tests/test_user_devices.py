@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 import base64
 import json
 from cryptography.hazmat.primitives import serialization
-from fastapi.responses import JSONResponse
+from gateway.contracts import JsonValue as JSONResponse
 
 from gateway.app import create_app
 from gateway.config import GatewaySettings
@@ -95,7 +95,7 @@ def test_user_sees_only_assigned_pc_and_admin_can_revoke(tmp_path, monkeypatch):
                 assert display_name == "Alice"
                 assert user_id == claims["user_id"]
                 assert username == "alice"
-                return JSONResponse({"proxied": request.url.path})
+                return JSONResponse({"proxied": request.target.path})
             async def proxy_websocket(self, ws, *, user_id, username, display_name,
                                       provider_ids, provider_grant_expires_at, authorization_check):
                 await authorization_check()

@@ -54,11 +54,9 @@ async def _require_scoped_task(project_id: str | None, task_id: str) -> None:
         return
     _require_project_scope(project_id)
 
-    from models import Task
 
-    exists = await _run_db(project_id, lambda: Task.select().where(
-        Task.id == task_id,
-    ).exists())
+    from services.task_queries import task_exists
+    exists = await _run_db(project_id, lambda: task_exists(task_id))
     if not exists:
         raise HTTPException(status_code=404, detail="Task not found")
 

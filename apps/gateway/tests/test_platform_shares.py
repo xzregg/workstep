@@ -100,7 +100,7 @@ def test_gateway_owns_public_share_credentials_and_revocation(tmp_path, monkeypa
         with sqlite3.connect(tmp_path / "workstep_platform.db") as db:
             assert db.execute("SELECT last_seen_at FROM platform_share_sessions WHERE share_id=?",
                               (share["id"],)).fetchone()[0] is not None
-        from fastapi.responses import JSONResponse
+        from gateway.contracts import JsonValue as JSONResponse
         captured = {}
 
         class ShareConnection:
@@ -292,14 +292,14 @@ def test_interactive_platform_share_requires_session_csrf_and_mode(tmp_path, mon
                                  authorization_check, share_body=None):
                 await authorization_check()
                 captured.append((target_path, share_body))
-                from fastapi.responses import JSONResponse
+                from gateway.contracts import JsonValue as JSONResponse
                 if target_path == "/api/platform-share/reviews":
                     return JSONResponse({"reviews": [{"id": "review-1", "step_key": "build",
                                                       "report": {"summary": "Check output"}}]})
                 if target_path == "/api/platform-share/interventions":
                     return JSONResponse({"interventions": [{"interaction_id": "interaction-1",
                         "step_key": "build", "request": {"method": "session/request_permission"}}]})
-                if target_path == "/api/platform-share/uploads" and request.method == "POST":
+                if target_path == "/api/platform-share/uploads" and request.operation == "POST":
                     return JSONResponse({"filename": upload_name, "size": len(share_body),
                                          "url": f".workstep/uploads/{upload_name}"})
                 return JSONResponse({"message_id": "accepted"})

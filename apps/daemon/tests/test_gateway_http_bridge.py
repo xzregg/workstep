@@ -9,9 +9,9 @@ from fastapi import FastAPI, Request, WebSocket
 from workstep_gateway_protocol import (FrameType, ProxyFrame,
                                        WebSocketMessageAssembler, websocket_payloads)
 
-from services.desktop_security import DesktopSecurityMiddleware
+from api.desktop_security import DesktopSecurityMiddleware
 from services.gateway_client.bridge import ManagedHttpBridge, ManagedWebSocketBridge
-from services.desktop_security import desktop_websocket_allowed
+from api.desktop_security import desktop_websocket_allowed
 from services.remote_access import get_current_actor
 from services.messages import current_actor_message_fields
 from tests.test_gateway_share_ticket import _ticket
