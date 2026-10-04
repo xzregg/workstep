@@ -166,7 +166,8 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                 return response
             request.state.gateway_share_scope = share_scope
         if remote_bridge and actor.project_id is not None and not project_http_allowed(
-                request, actor.project_id, actor.project_access_level,
+                request.method, request.url.path, list(request.query_params.multi_items()),
+                actor.project_id, actor.project_access_level,
                 actor.remote_task_create):
             await record_remote_request_failure(actor, 403, "project_scope")
             response = JSONResponse({"detail": "project scope denied"}, status_code=403)

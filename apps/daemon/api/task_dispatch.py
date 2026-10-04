@@ -1,7 +1,5 @@
 """Daemon-to-daemon endpoint for remote workflow-step dispatch."""
 
-import base64
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -37,40 +35,13 @@ class ReceiveDispatchRequest(BaseModel):
 @router.post("/receive")
 async def receive_dispatch(req: ReceiveDispatchRequest, project_id: str = Query(...)):
     from main import project_manager, task_service, workflow_runtime
-    from models import Task
 
     if task_service is None or workflow_runtime is None:
         raise HTTPException(status_code=503, detail="Service not initialized")
     try:
-        def prepare_dispatch():
-            project = project_manager.get_project_by_id(project_id)
-            if project is None:
-                raise ValueError("Project not found")
-            workflow = project.workflow_by_id(req.workflow_id)
-            if workflow is None:
-                raise ValueError("目标流程不存在")
-            existing = Task.get_or_none(Task.source_dispatch_id == req.dispatch_id)
-            if existing is not None:
-                return {"existing": task_service.get_task(existing.id)}
-            root = project.workstep_dir / "task-inputs" / req.dispatch_id
-            manifest = []
-            for item in req.files:
-                relative = Path(item.relative_path)
-                if relative.is_absolute() or ".." in relative.parts:
-                    raise ValueError("输入产物路径非法")
-                destination = (root / item.source_step_key / relative).resolve()
-                destination.relative_to(root.resolve())
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                destination.write_bytes(base64.b64decode(item.content_b64, validate=True))
-                manifest.append({
-                    "source_step_key": item.source_step_key,
-                    "source_round": item.source_round,
-                    "name": item.name,
-                    "path": str(destination),
-                })
-            return {"cwd": str(project.path), "manifest": manifest}
+        from services.task_dispatch import prepare_received_dispatch
 
-        prepared = await project_manager.run_db(project_id, lambda _project: prepare_dispatch())
+        prepared = await project_manager.run_db(project_id, lambda _project: prepare_received_dispatch(project_manager, task_service, project_id, req))
         if "existing" in prepared:
             return prepared["existing"]
         result = await create_project_task(

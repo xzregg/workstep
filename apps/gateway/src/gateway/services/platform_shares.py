@@ -1,3 +1,5 @@
+from gateway.services.errors import GatewayError
+from gateway.contracts import GatewayCall, CredentialGrant, JsonValue
 import asyncio
 
 import hashlib
@@ -20,7 +22,6 @@ from argon2 import PasswordHasher
 
 from argon2.exceptions import VerificationError
 
-from fastapi import APIRouter, HTTPException, Query, Request
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
@@ -125,90 +126,90 @@ def _share_csrf(session_token: str) -> str:
     return hashlib.sha256(f"share-csrf:{session_token}".encode()).hexdigest()
 
 
-def _check_share_csrf(request: Request) -> None:
-    session_token = request.cookies.get(SHARE_SESSION_COOKIE, "")
-    provided = request.headers.get("x-share-csrf", "")
+def _check_share_csrf(call: GatewayCall) -> None:
+    session_token = call.tokens.get(SHARE_SESSION_COOKIE, '')
+    provided = call.proofs.get('x-share-csrf', '')
     if not provided or not hmac.compare_digest(provided, _share_csrf(session_token)):
-        raise HTTPException(status_code=403, detail="Share CSRF token required")
+        raise GatewayError('forbidden', 'Share CSRF token required')
 
 
-async def _bounded_share_json(request: Request):
+async def _bounded_share_json(call: GatewayCall):
     raw = bytearray()
-    async for chunk in request.stream():
+    async for chunk in call.payload():
         raw.extend(chunk)
         if len(raw) > 262144:
-            raise HTTPException(status_code=413, detail="Share message too large")
+            raise GatewayError('too_large', 'Share message too large')
     try:
         return json.loads(raw)
     except (ValueError, UnicodeDecodeError) as exc:
-        raise HTTPException(status_code=422, detail="Invalid share message") from exc
+        raise GatewayError('invalid', 'Invalid share message') from exc
 
 
-async def _share_upload_body(request: Request) -> bytes:
-    filename = request.headers.get("x-share-filename", "")
+async def _share_upload_body(call: GatewayCall) -> bytes:
+    filename = call.proofs.get('x-share-filename', '')
     if not filename or len(filename) > 512:
-        raise HTTPException(status_code=422, detail="Attachment filename required")
+        raise GatewayError('invalid', 'Attachment filename required')
     raw = bytearray()
-    async for chunk in request.stream():
+    async for chunk in call.payload():
         raw.extend(chunk)
         if len(raw) > 25_000_000:
-            raise HTTPException(status_code=413, detail="Attachment exceeds 25 MB")
+            raise GatewayError('too_large', 'Attachment exceeds 25 MB')
     if not raw:
-        raise HTTPException(status_code=422, detail="Attachment is empty")
+        raise GatewayError('invalid', 'Attachment is empty')
     return bytes(raw)
 
 
-async def _share_message_body(request: Request) -> bytes:
+async def _share_message_body(call: GatewayCall) -> bytes:
     try:
-        body = ShareMessageInput.model_validate(await _bounded_share_json(request))
+        body = ShareMessageInput.model_validate(await _bounded_share_json(call))
     except ValidationError as exc:
-        raise HTTPException(status_code=422, detail="Invalid share message") from exc
+        raise GatewayError('invalid', 'Invalid share message') from exc
     if not body.content.strip():
-        raise HTTPException(status_code=422, detail="Share message required")
+        raise GatewayError('invalid', 'Share message required')
     return json.dumps({"content": body.content}, separators=(",", ":")).encode()
 
 
-async def _share_review_body(request: Request) -> bytes:
+async def _share_review_body(call: GatewayCall) -> bytes:
     try:
-        body = ShareReviewInput.model_validate(await _bounded_share_json(request))
+        body = ShareReviewInput.model_validate(await _bounded_share_json(call))
     except ValidationError as exc:
-        raise HTTPException(status_code=422, detail="Invalid review decision") from exc
+        raise GatewayError('invalid', 'Invalid review decision') from exc
     return json.dumps({"review_run_id": body.review_run_id, "comment": body.comment},
                       separators=(",", ":")).encode()
 
 
-async def _share_interaction_body(request: Request) -> bytes:
+async def _share_interaction_body(call: GatewayCall) -> bytes:
     try:
-        body = ShareInteractionInput.model_validate(await _bounded_share_json(request))
+        body = ShareInteractionInput.model_validate(await _bounded_share_json(call))
     except ValidationError as exc:
-        raise HTTPException(status_code=422, detail="Invalid interaction response") from exc
+        raise GatewayError('invalid', 'Invalid interaction response') from exc
     return json.dumps({"data": body.data}, separators=(",", ":")).encode()
 
 
-async def _share_git_commit_body(request: Request) -> bytes:
+async def _share_git_commit_body(call: GatewayCall) -> bytes:
     try:
-        body = ShareGitCommitInput.model_validate(await _bounded_share_json(request))
+        body = ShareGitCommitInput.model_validate(await _bounded_share_json(call))
     except ValidationError as exc:
-        raise HTTPException(status_code=422, detail="Invalid Git commit") from exc
+        raise GatewayError('invalid', 'Invalid Git commit') from exc
     return json.dumps(body.model_dump(), separators=(",", ":")).encode()
 
 
-async def _share_git_sync_body(request: Request) -> bytes:
+async def _share_git_sync_body(call: GatewayCall) -> bytes:
     try:
-        body = ShareGitSyncInput.model_validate(await _bounded_share_json(request))
+        body = ShareGitSyncInput.model_validate(await _bounded_share_json(call))
     except ValidationError as exc:
-        raise HTTPException(status_code=422, detail="Invalid Git sync request") from exc
+        raise GatewayError('invalid', 'Invalid Git sync request') from exc
     return json.dumps(body.model_dump(exclude_none=True), separators=(",", ":")).encode()
 
 
-async def _share_git_branch_body(request: Request, kind: str) -> bytes:
+async def _share_git_branch_body(call: GatewayCall, kind: str) -> bytes:
     model = {"git_switch": ShareGitSwitchInput,
              "git_branch_create": ShareGitBranchCreateInput,
              "git_branch_delete": ShareGitBranchDeleteInput}[kind]
     try:
-        body = model.model_validate(await _bounded_share_json(request))
+        body = model.model_validate(await _bounded_share_json(call))
     except ValidationError as exc:
-        raise HTTPException(status_code=422, detail="Invalid Git branch request") from exc
+        raise GatewayError('invalid', 'Invalid Git branch request') from exc
     return json.dumps(body.model_dump(exclude_none=True), separators=(",", ":")).encode()
 
 
@@ -235,38 +236,38 @@ async def can_create_platform_share(session, user_id: str, project: PlatformProj
             and not any(rule.effect == "deny" for rule in applicable))
 
 
-async def _live_share(request: Request, token: str) -> PlatformShare:
+async def _live_share(call: GatewayCall, token: str) -> PlatformShare:
     if len(token) > 128:
-        raise HTTPException(status_code=404, detail="Share unavailable")
-    async with request.app.state.database.session() as session:
+        raise GatewayError('not_found', 'Share unavailable')
+    async with call.database.session() as session:
         share = await session.scalar(select(PlatformShare).where(
             PlatformShare.token_hash == _digest(token),
         ))
         if share is None or share.revoked_at is not None or share.status == "revoked":
-            raise HTTPException(status_code=404, detail="Share unavailable")
+            raise GatewayError('not_found', 'Share unavailable')
         project = await session.get(PlatformProject, share.project_id)
         device = await session.get(Device, share.device_id)
     if share.expires_at is not None and _utc(share.expires_at) <= datetime.now(timezone.utc):
-        raise HTTPException(status_code=404, detail="Share expired")
+        raise GatewayError('not_found', 'Share expired')
     if share.status == "paused":
-        raise HTTPException(status_code=503, detail="Share paused")
+        raise GatewayError('unavailable', 'Share paused')
     if share.status != "active":
-        raise HTTPException(status_code=404, detail="Share unavailable")
+        raise GatewayError('not_found', 'Share unavailable')
     if (project is None or project.status != "active"
             or project.access_mode != "remote_published"
             or project.device_id != share.device_id):
-        raise HTTPException(status_code=503, detail="Share project unavailable")
+        raise GatewayError('unavailable', 'Share project unavailable')
     if device is None or device.status != "active":
-        raise HTTPException(status_code=503, detail="Share paused")
+        raise GatewayError('unavailable', 'Share paused')
     return share
 
 
-async def _authorized_visitor(request: Request, token: str, *, touch: bool = False):
-    share = await _live_share(request, token)
-    session_token = request.cookies.get(SHARE_SESSION_COOKIE)
+async def _authorized_visitor(call: GatewayCall, token: str, *, touch: bool = False):
+    share = await _live_share(call, token)
+    session_token = call.tokens.get(SHARE_SESSION_COOKIE)
     if not session_token:
-        raise HTTPException(status_code=401, detail="Share session required")
-    async with request.app.state.database.session() as session:
+        raise GatewayError('unauthenticated', 'Share session required')
+    async with call.database.session() as session:
         async with session.begin():
             visit = await session.scalar(select(PlatformShareSession).where(
                 PlatformShareSession.session_token_hash == _digest(session_token),
@@ -275,117 +276,95 @@ async def _authorized_visitor(request: Request, token: str, *, touch: bool = Fal
             ))
             project = await session.get(PlatformProject, share.project_id)
             if visit is None or _utc(visit.expires_at) <= datetime.now(timezone.utc):
-                raise HTTPException(status_code=401, detail="Share session expired")
+                raise GatewayError('unauthenticated', 'Share session expired')
             if project is None or project.device_id != share.device_id:
-                raise HTTPException(status_code=503, detail="Share project unavailable")
+                raise GatewayError('unavailable', 'Share project unavailable')
             if touch:
                 visit.last_seen_at = datetime.now(timezone.utc)
     return share, project
 
 
-async def _proxy_share_step(request: Request, token: str, step_key: str, action: str):
+async def _proxy_share_step(call: GatewayCall, token: str, step_key: str, action: str):
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", step_key):
-        raise HTTPException(status_code=404, detail="Step unavailable")
-    return await _proxy_share_request(
-        request, token, f"/api/platform-share/steps/{step_key}/{action}",
-        write=True, body_kind="message" if action != "cancel" else None,
-    )
+        raise GatewayError('not_found', 'Step unavailable')
+    return await _proxy_share_request(call, token, f'/api/platform-share/steps/{step_key}/{action}', write=True, body_kind='message' if action != 'cancel' else None)
 
 
-async def _interactive_provider_scope(request: Request, share: PlatformShare, project: PlatformProject) -> list[str]:
-    async with request.app.state.database.session() as session:
+async def _interactive_provider_scope(call: GatewayCall, share: PlatformShare, project: PlatformProject) -> list[str]:
+    async with call.database.session() as session:
         creator = await session.get(User, share.created_by_user_id)
         if creator is None or creator.status != 'active' or not await can_create_platform_share(session, creator.id, project):
-            raise HTTPException(403, 'Share creator authorization revoked')
-    ids, _ = await compiled_provider_access(request.app.state.database, share.device_id, share.created_by_user_id)
+            raise GatewayError('forbidden', 'Share creator authorization revoked')
+    ids, _ = await compiled_provider_access(call.database, share.device_id, share.created_by_user_id)
     return ids
 
 
-async def _proxy_share_request(request: Request, token: str, target_path: str,
+async def _proxy_share_request(call: GatewayCall, token: str, target_path: str,
                                *, write: bool = False,
                                interactive_read: bool = False,
                                body_kind: Literal["message", "review", "interaction", "upload", "git_commit", "git_sync", "git_switch", "git_branch_create", "git_branch_delete"] | None = None):
-    share, project = await _authorized_visitor(request, token, touch=True)
+    share, project = await _authorized_visitor(call, token, touch=True)
     if write or interactive_read:
         if share.mode != "interactive":
-            raise HTTPException(status_code=403, detail="Share is read-only")
+            raise GatewayError('forbidden', 'Share is read-only')
     if write:
-        _check_share_csrf(request)
-    share_body = (await _share_message_body(request) if body_kind == "message"
-                  else await _share_review_body(request) if body_kind == "review"
-                  else await _share_interaction_body(request) if body_kind == "interaction"
-                  else await _share_git_commit_body(request) if body_kind == "git_commit"
-                  else await _share_git_sync_body(request) if body_kind == "git_sync"
-                  else await _share_git_branch_body(request, body_kind) if body_kind in (
-                      "git_switch", "git_branch_create", "git_branch_delete")
-                  else await _share_upload_body(request) if body_kind == "upload"
-                  else b"" if write else None)
-    connections = request.app.state.control_connections
+        _check_share_csrf(call)
+    share_body = await _share_message_body(call) if body_kind == 'message' else await _share_review_body(call) if body_kind == 'review' else await _share_interaction_body(call) if body_kind == 'interaction' else await _share_git_commit_body(call) if body_kind == 'git_commit' else await _share_git_sync_body(call) if body_kind == 'git_sync' else await _share_git_branch_body(call, body_kind) if body_kind in ('git_switch', 'git_branch_create', 'git_branch_delete') else await _share_upload_body(call) if body_kind == 'upload' else b'' if write else None
+    connections = call.control_connections
     if not connections.is_online(share.device_id):
-        raise HTTPException(status_code=503, detail="Shared device offline")
+        raise GatewayError('unavailable', 'Shared device offline')
 
     async def authorize_stream():
-        current, current_project = await _authorized_visitor(request, token)
+        current, current_project = await _authorized_visitor(call, token)
         if (current.id != share.id or current.device_id != share.device_id
                 or current_project.host_project_id != project.host_project_id
                 or current.mode != share.mode):
-            raise HTTPException(status_code=403, detail="Share changed")
+            raise GatewayError('forbidden', 'Share changed')
         if share.mode == 'interactive':
-            current_ids = await _interactive_provider_scope(request, current, current_project)
+            current_ids = await _interactive_provider_scope(call, current, current_project)
             if set(provider_ids) - set(current_ids):
-                raise HTTPException(403, 'Share provider authorization revoked')
+                raise GatewayError('forbidden', 'Share provider authorization revoked')
 
     provider_ids = []
     if share.mode == 'interactive':
-        provider_ids = await _interactive_provider_scope(request, share, project)
-    ticket = request.app.state.gateway_signer.sign_platform_share_ticket(
-        gateway_id=request.app.state.settings.gateway_id,
-        device_id=share.device_id, share_id=share.id,
-        project_id=share.project_id, host_project_id=project.host_project_id,
-        task_id=share.task_id, mode=share.mode, provider_ids=provider_ids,
-    )
+        provider_ids = await _interactive_provider_scope(call, share, project)
+    ticket = call.gateway_signer.sign_platform_share_ticket(gateway_id=call.settings.gateway_id, device_id=share.device_id, share_id=share.id, project_id=share.project_id, host_project_id=project.host_project_id, task_id=share.task_id, mode=share.mode, provider_ids=provider_ids)
     try:
         connection = await connections.request_data(share.device_id)
-        response = await connection.proxy_http(
-            request, share_ticket=ticket,
-            target_path=target_path,
-            authorization_check=authorize_stream,
-            **({"share_body": share_body} if write else {}),
-        )
+        response = await connection.proxy_http(call, share_ticket=ticket, target_path=target_path, authorization_check=authorize_stream, **{'share_body': share_body} if write else {})
         response.headers["Cache-Control"] = "no-store"
         return response
     except (ConnectionError, asyncio.TimeoutError) as exc:
-        raise HTTPException(status_code=503, detail="Shared device unavailable") from exc
+        raise GatewayError('unavailable', 'Shared device unavailable') from exc
 
 
-
-async def create_platform_share(request: Request, body: CreateShareInput):
-    origin = request.app.state.settings.public_origin
+async def create_platform_share(call: GatewayCall, body: CreateShareInput):
+    origin = call.settings.public_origin
     if origin is None:
-        raise HTTPException(status_code=503, detail="Public Gateway origin unavailable")
-    auth_token = request.cookies.get(COOKIE_NAME)
-    actor, _ = await IdentityService(request.app.state.database).session_user(auth_token)
-    _check_csrf(request, auth_token)
+        raise GatewayError('unavailable', 'Public Gateway origin unavailable')
+    auth_token = call.tokens.get(COOKIE_NAME)
+    actor, _ = await IdentityService(call.database).session_user(auth_token)
+    _check_csrf(call, auth_token)
     if actor.status != "active" or actor.must_change_password:
-        raise HTTPException(status_code=403, detail="Account unavailable")
+        raise GatewayError('forbidden', 'Account unavailable')
     if body.expires_at is not None:
         expiry = _utc(body.expires_at)
         if not datetime.now(timezone.utc) < expiry <= datetime.now(timezone.utc) + timedelta(days=90):
-            raise HTTPException(status_code=422, detail="Invalid share expiration")
+            raise GatewayError('invalid', 'Invalid share expiration')
     else:
         expiry = None
     password_hash = (await asyncio.to_thread(_hasher.hash, body.password)) if body.password else None
     token = secrets.token_urlsafe(32)
-    async with request.app.state.database.session() as session:
+    async with call.database.session() as session:
         async with session.begin():
             project = await session.get(PlatformProject, body.project_id)
             device = await session.get(Device, project.device_id) if project else None
             if (project is None or project.status != "active"
                     or project.access_mode != "remote_published"
                     or device is None or device.status != "active"):
-                raise HTTPException(status_code=404, detail="Published project unavailable")
+                raise GatewayError('not_found', 'Published project unavailable')
             if not await can_create_platform_share(session, actor.id, project):
-                raise HTTPException(status_code=403, detail="Share creation unavailable")
+                raise GatewayError('forbidden', 'Share creation unavailable')
             share = PlatformShare(
                 id=str(uuid4()), token_hash=_digest(token), device_id=device.id,
                 project_id=project.id, task_id=body.task_id, mode=body.mode,
@@ -407,16 +386,13 @@ async def create_platform_share(request: Request, body: CreateShareInput):
             "expires_at": expiry}
 
 
-
-async def list_own_platform_shares(request: Request,
-                                   project_id: str = Query(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"),
-                                   task_id: str = Query(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")):
-    actor, _ = await IdentityService(request.app.state.database).session_user(
-        request.cookies.get(COOKIE_NAME),
-    )
+async def list_own_platform_shares(call: GatewayCall,
+                                   project_id: str = None,
+                                   task_id: str = None):
+    actor, _ = await IdentityService(call.database).session_user(call.tokens.get(COOKIE_NAME))
     if actor.status != "active" or actor.must_change_password:
-        raise HTTPException(status_code=403, detail="Account unavailable")
-    async with request.app.state.database.session() as session:
+        raise GatewayError('forbidden', 'Account unavailable')
+    async with call.database.session() as session:
         rows = (await session.scalars(select(PlatformShare).where(
             PlatformShare.created_by_user_id == actor.id,
             PlatformShare.project_id == project_id,
@@ -432,23 +408,22 @@ async def list_own_platform_shares(request: Request,
     } for share in rows]}
 
 
-
-async def revoke_platform_share(request: Request, share_id: str):
-    auth_token = request.cookies.get(COOKIE_NAME)
-    actor, _ = await IdentityService(request.app.state.database).session_user(auth_token)
-    _check_csrf(request, auth_token)
-    async with request.app.state.database.session() as session:
+async def revoke_platform_share(call: GatewayCall, share_id: str):
+    auth_token = call.tokens.get(COOKIE_NAME)
+    actor, _ = await IdentityService(call.database).session_user(auth_token)
+    _check_csrf(call, auth_token)
+    async with call.database.session() as session:
         async with session.begin():
             share = await session.get(PlatformShare, share_id)
             if share is None:
-                raise HTTPException(status_code=404, detail="Share unavailable")
+                raise GatewayError('not_found', 'Share unavailable')
             admin = await session.scalar(select(AdminAssignment.id).where(
                 AdminAssignment.user_id == actor.id,
                 AdminAssignment.role == "super_admin",
                 AdminAssignment.revoked_at.is_(None),
             ))
             if actor.id != share.created_by_user_id and admin is None:
-                raise HTTPException(status_code=403, detail="Share management unavailable")
+                raise GatewayError('forbidden', 'Share management unavailable')
             if share.revoked_at is None:
                 project = await session.get(PlatformProject, share.project_id)
                 share.status = "revoked"
@@ -469,277 +444,199 @@ async def revoke_platform_share(request: Request, share_id: str):
                 ))
 
 
-
-async def public_share_meta(request: Request, token: str):
-    share = await _live_share(request, token)
+async def public_share_meta(call: GatewayCall, token: str):
+    share = await _live_share(call, token)
     return {"title": share.title, "mode": share.mode,
             "has_password": share.password_hash is not None, "status": "active"}
 
 
-
-async def unlock_public_share(request: Request, token: str, body: UnlockShareInput):
-    share = await _live_share(request, token)
-    client_ip = request.client.host if request.client else "unknown"
-    await request.app.state.identity_rate_limiter.check(f"share:{share.id}", client_ip)
+async def unlock_public_share(call: GatewayCall, token: str, body: UnlockShareInput):
+    share = await _live_share(call, token)
+    client_ip = call.peer.host if call.peer else 'unknown'
+    await call.identity_rate_limiter.check(f'share:{share.id}', client_ip)
     if share.password_hash is not None:
         try:
             verified = await asyncio.to_thread(_hasher.verify, share.password_hash, body.password)
         except VerificationError:
             verified = False
         if not verified:
-            raise HTTPException(status_code=403, detail="Invalid share password")
+            raise GatewayError('forbidden', 'Invalid share password')
     session_token = secrets.token_urlsafe(32)
     expiry = min(datetime.now(timezone.utc) + timedelta(hours=1),
                  _utc(share.expires_at) if share.expires_at else datetime.now(timezone.utc) + timedelta(hours=1))
-    async with request.app.state.database.session() as session:
+    async with call.database.session() as session:
         async with session.begin():
             current = await session.get(PlatformShare, share.id)
             if (current is None or current.revoked_at is not None
                     or current.status != "active"):
-                raise HTTPException(status_code=404, detail="Share unavailable")
+                raise GatewayError('not_found', 'Share unavailable')
             session.add(PlatformShareSession(
                 id=str(uuid4()), share_id=share.id,
                 session_token_hash=_digest(session_token), expires_at=expiry,
             ))
-    from fastapi.responses import JSONResponse
-    response = JSONResponse({"unlocked": True, "csrf_token": _share_csrf(session_token)})
-    response.set_cookie(SHARE_SESSION_COOKIE, session_token, max_age=3600,
-                        secure=request.app.state.settings.cookie_secure, httponly=True, samesite="lax", path="/")
+
+    response = JsonValue({'unlocked': True, 'csrf_token': _share_csrf(session_token)})
+    response.grants.append(CredentialGrant(SHARE_SESSION_COOKIE, session_token, lifetime=3600))
     response.headers["Cache-Control"] = "no-store"
     return response
 
 
-
-async def public_share_session(request: Request, token: str):
-    share, _ = await _authorized_visitor(request, token, touch=True)
+async def public_share_session(call: GatewayCall, token: str):
+    share, _ = await _authorized_visitor(call, token, touch=True)
     return {"share_id": share.id, "mode": share.mode, "task_id": share.task_id,
-            "csrf_token": _share_csrf(request.cookies[SHARE_SESSION_COOKIE])}
+            "csrf_token": _share_csrf(call.tokens[SHARE_SESSION_COOKIE])}
 
 
-
-async def public_share_task(request: Request, token: str):
-    return await _proxy_share_request(request, token, "/api/platform-share/task")
-
+async def public_share_task(call: GatewayCall, token: str):
+    return await _proxy_share_request(call, token, '/api/platform-share/task')
 
 
-async def public_share_execution_report(request: Request, token: str):
-    return await _proxy_share_request(request, token, '/api/platform-share/execution-report')
+async def public_share_execution_report(call: GatewayCall, token: str):
+    return await _proxy_share_request(call, token, '/api/platform-share/execution-report')
 
 
+async def public_share_host_status(call: GatewayCall, token: str):
 
-async def public_share_host_status(request: Request, token: str):
-    from fastapi.responses import JSONResponse
-    share, _ = await _authorized_visitor(request, token)
-    connections = request.app.state.control_connections
+    share, _ = await _authorized_visitor(call, token)
+    connections = call.control_connections
     connected = connections.is_online(share.device_id)
-    return JSONResponse(
-        {"connected": connected,
-         "daemon_health": connections.daemon_health(share.device_id) if connected else None},
-        headers={"Cache-Control": "no-store"},
-    )
+    return JsonValue({'connected': connected, 'daemon_health': connections.daemon_health(share.device_id) if connected else None}, headers={'Cache-Control': 'no-store'})
 
 
-
-async def public_share_history(request: Request, token: str):
-    return await _proxy_share_request(request, token, "/api/platform-share/history")
-
+async def public_share_history(call: GatewayCall, token: str):
+    return await _proxy_share_request(call, token, '/api/platform-share/history')
 
 
-async def public_share_history_page(request: Request, token: str, offset: int):
+async def public_share_history_page(call: GatewayCall, token: str, offset: int):
     if not 0 <= offset <= 999999:
-        raise HTTPException(status_code=404, detail="History page unavailable")
-    return await _proxy_share_request(request, token, f"/api/platform-share/history/{offset}")
+        raise GatewayError('not_found', 'History page unavailable')
+    return await _proxy_share_request(call, token, f'/api/platform-share/history/{offset}')
 
 
-
-async def public_share_events(request: Request, token: str, message_id: str, cursor: int):
+async def public_share_events(call: GatewayCall, token: str, message_id: str, cursor: int):
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", message_id) or not 0 <= cursor <= 999999999:
-        raise HTTPException(status_code=404, detail="Message events unavailable")
-    return await _proxy_share_request(
-        request, token, f"/api/platform-share/events/{message_id}/{cursor}",
-    )
+        raise GatewayError('not_found', 'Message events unavailable')
+    return await _proxy_share_request(call, token, f'/api/platform-share/events/{message_id}/{cursor}')
 
 
-
-async def public_share_artifacts(request: Request, token: str):
-    return await _proxy_share_request(request, token, "/api/platform-share/artifacts")
-
+async def public_share_artifacts(call: GatewayCall, token: str):
+    return await _proxy_share_request(call, token, '/api/platform-share/artifacts')
 
 
-async def public_share_reviews(request: Request, token: str):
-    return await _proxy_share_request(request, token, "/api/platform-share/reviews")
+async def public_share_reviews(call: GatewayCall, token: str):
+    return await _proxy_share_request(call, token, '/api/platform-share/reviews')
 
 
-
-async def public_share_interventions(request: Request, token: str):
-    return await _proxy_share_request(
-        request, token, "/api/platform-share/interventions", interactive_read=True,
-    )
+async def public_share_interventions(call: GatewayCall, token: str):
+    return await _proxy_share_request(call, token, '/api/platform-share/interventions', interactive_read=True)
 
 
-
-async def public_share_artifact_content(request: Request, token: str, artifact_id: str):
+async def public_share_artifact_content(call: GatewayCall, token: str, artifact_id: str):
     if not re.fullmatch(r"[0-9a-f]{64}", artifact_id):
-        raise HTTPException(status_code=404, detail="Artifact unavailable")
-    return await _proxy_share_request(
-        request, token, f"/api/platform-share/artifacts/{artifact_id}/content",
-    )
+        raise GatewayError('not_found', 'Artifact unavailable')
+    return await _proxy_share_request(call, token, f'/api/platform-share/artifacts/{artifact_id}/content')
 
 
-
-async def public_share_artifact_preview(request: Request, token: str, artifact_id: str):
+async def public_share_artifact_preview(call: GatewayCall, token: str, artifact_id: str):
     if not re.fullmatch(r"[0-9a-f]{64}", artifact_id):
-        raise HTTPException(status_code=404, detail="Artifact unavailable")
-    return await _proxy_share_request(
-        request, token, f"/api/platform-share/artifacts/{artifact_id}/preview",
-    )
+        raise GatewayError('not_found', 'Artifact unavailable')
+    return await _proxy_share_request(call, token, f'/api/platform-share/artifacts/{artifact_id}/preview')
 
 
-
-async def public_share_upload(request: Request, token: str):
-    async with request.app.state.share_upload_slots:
-        return await _proxy_share_request(
-            request, token, "/api/platform-share/uploads", write=True,
-            body_kind="upload",
-        )
+async def public_share_upload(call: GatewayCall, token: str):
+    async with call.share_upload_slots:
+        return await _proxy_share_request(call, token, '/api/platform-share/uploads', write=True, body_kind='upload')
 
 
-
-async def public_share_upload_content(request: Request, token: str, filename: str):
+async def public_share_upload_content(call: GatewayCall, token: str, filename: str):
     if not re.fullmatch(r"t[0-9a-f]{24}-[0-9a-f]{32}\.[a-z0-9]{1,10}", filename):
-        raise HTTPException(status_code=404, detail="Attachment unavailable")
-    response = await _proxy_share_request(
-        request, token, f"/api/platform-share/uploads/{filename}",
-    )
+        raise GatewayError('not_found', 'Attachment unavailable')
+    response = await _proxy_share_request(call, token, f'/api/platform-share/uploads/{filename}')
     response.headers["Content-Security-Policy"] = "sandbox"
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response
 
 
-
-async def public_share_git_read(request: Request, token: str, action: str, encoded: str):
+async def public_share_git_read(call: GatewayCall, token: str, action: str, encoded: str):
     if action not in {"repositories", "history", "changes", "diff", "blame", "remotes", "browse", "preview", "content"} or not re.fullmatch(r"[0-9a-f]{2,16384}", encoded):
-        raise HTTPException(404, "Git view unavailable")
-    return await _proxy_share_request(request, token, f"/api/platform-share/git/read/{action}/{encoded}")
+        raise GatewayError('not_found', 'Git view unavailable')
+    return await _proxy_share_request(call, token, f'/api/platform-share/git/read/{action}/{encoded}')
 
 
-
-async def public_share_git_workspace(request: Request, token: str):
-    return await _proxy_share_request(request, token, "/api/platform-share/git/workspace")
-
+async def public_share_git_workspace(call: GatewayCall, token: str):
+    return await _proxy_share_request(call, token, '/api/platform-share/git/workspace')
 
 
-async def public_share_git_status(request: Request, token: str, tree_id: str):
+async def public_share_git_status(call: GatewayCall, token: str, tree_id: str):
     if not re.fullmatch(r"[0-9a-f]{24}", tree_id):
-        raise HTTPException(status_code=404, detail="Git worktree unavailable")
-    return await _proxy_share_request(
-        request, token, f"/api/platform-share/git/worktrees/{tree_id}/status",
-    )
+        raise GatewayError('not_found', 'Git worktree unavailable')
+    return await _proxy_share_request(call, token, f'/api/platform-share/git/worktrees/{tree_id}/status')
 
 
-
-async def public_share_git_branches(request: Request, token: str, tree_id: str):
+async def public_share_git_branches(call: GatewayCall, token: str, tree_id: str):
     if not re.fullmatch(r"[0-9a-f]{24}", tree_id):
-        raise HTTPException(status_code=404, detail="Git worktree unavailable")
-    return await _proxy_share_request(
-        request, token, f"/api/platform-share/git/worktrees/{tree_id}/branches",
-    )
+        raise GatewayError('not_found', 'Git worktree unavailable')
+    return await _proxy_share_request(call, token, f'/api/platform-share/git/worktrees/{tree_id}/branches')
 
 
-
-async def public_share_git_commit(request: Request, token: str, tree_id: str):
+async def public_share_git_commit(call: GatewayCall, token: str, tree_id: str):
     if not re.fullmatch(r"[0-9a-f]{24}", tree_id):
-        raise HTTPException(status_code=404, detail="Git worktree unavailable")
-    return await _proxy_share_request(
-        request, token, f"/api/platform-share/git/worktrees/{tree_id}/commit",
-        write=True, body_kind="git_commit",
-    )
+        raise GatewayError('not_found', 'Git worktree unavailable')
+    return await _proxy_share_request(call, token, f'/api/platform-share/git/worktrees/{tree_id}/commit', write=True, body_kind='git_commit')
 
 
-
-async def public_share_git_switch(request: Request, token: str, tree_id: str):
+async def public_share_git_switch(call: GatewayCall, token: str, tree_id: str):
     if not re.fullmatch(r"[0-9a-f]{24}", tree_id):
-        raise HTTPException(status_code=404, detail="Git worktree unavailable")
-    return await _proxy_share_request(
-        request, token, f"/api/platform-share/git/worktrees/{tree_id}/switch",
-        write=True, body_kind="git_switch",
-    )
+        raise GatewayError('not_found', 'Git worktree unavailable')
+    return await _proxy_share_request(call, token, f'/api/platform-share/git/worktrees/{tree_id}/switch', write=True, body_kind='git_switch')
 
 
-
-async def public_share_git_fetch(request: Request, token: str, tree_id: str):
+async def public_share_git_fetch(call: GatewayCall, token: str, tree_id: str):
     if not re.fullmatch(r"[0-9a-f]{24}", tree_id):
-        raise HTTPException(status_code=404, detail="Git worktree unavailable")
-    return await _proxy_share_request(
-        request, token, f"/api/platform-share/git/worktrees/{tree_id}/fetch",
-        write=True,
-    )
+        raise GatewayError('not_found', 'Git worktree unavailable')
+    return await _proxy_share_request(call, token, f'/api/platform-share/git/worktrees/{tree_id}/fetch', write=True)
 
 
-
-async def public_share_git_create_branch(request: Request, token: str, tree_id: str):
+async def public_share_git_create_branch(call: GatewayCall, token: str, tree_id: str):
     if not re.fullmatch(r"[0-9a-f]{24}", tree_id):
-        raise HTTPException(status_code=404, detail="Git worktree unavailable")
-    return await _proxy_share_request(
-        request, token, f"/api/platform-share/git/worktrees/{tree_id}/branches",
-        write=True, body_kind="git_branch_create",
-    )
+        raise GatewayError('not_found', 'Git worktree unavailable')
+    return await _proxy_share_request(call, token, f'/api/platform-share/git/worktrees/{tree_id}/branches', write=True, body_kind='git_branch_create')
 
 
-
-async def public_share_git_delete_branch(request: Request, token: str, tree_id: str):
+async def public_share_git_delete_branch(call: GatewayCall, token: str, tree_id: str):
     if not re.fullmatch(r"[0-9a-f]{24}", tree_id):
-        raise HTTPException(status_code=404, detail="Git worktree unavailable")
-    return await _proxy_share_request(
-        request, token, f"/api/platform-share/git/worktrees/{tree_id}/branches/delete",
-        write=True, body_kind="git_branch_delete",
-    )
+        raise GatewayError('not_found', 'Git worktree unavailable')
+    return await _proxy_share_request(call, token, f'/api/platform-share/git/worktrees/{tree_id}/branches/delete', write=True, body_kind='git_branch_delete')
 
 
-
-async def public_share_git_sync(request: Request, token: str, tree_id: str, action: str):
+async def public_share_git_sync(call: GatewayCall, token: str, tree_id: str, action: str):
     if not re.fullmatch(r"[0-9a-f]{24}", tree_id) or action not in {"pull", "push"}:
-        raise HTTPException(status_code=404, detail="Git operation unavailable")
-    return await _proxy_share_request(
-        request, token, f"/api/platform-share/git/worktrees/{tree_id}/{action}",
-        write=True, body_kind="git_sync",
-    )
+        raise GatewayError('not_found', 'Git operation unavailable')
+    return await _proxy_share_request(call, token, f'/api/platform-share/git/worktrees/{tree_id}/{action}', write=True, body_kind='git_sync')
 
 
-
-async def public_share_step_message(request: Request, token: str, step_key: str):
-    return await _proxy_share_step(request, token, step_key, "message")
-
+async def public_share_step_message(call: GatewayCall, token: str, step_key: str):
+    return await _proxy_share_step(call, token, step_key, 'message')
 
 
-async def public_share_step_resume(request: Request, token: str, step_key: str):
-    return await _proxy_share_step(request, token, step_key, "resume")
+async def public_share_step_resume(call: GatewayCall, token: str, step_key: str):
+    return await _proxy_share_step(call, token, step_key, 'resume')
 
 
-
-async def public_share_step_cancel(request: Request, token: str, step_key: str):
-    return await _proxy_share_step(request, token, step_key, "cancel")
-
+async def public_share_step_cancel(call: GatewayCall, token: str, step_key: str):
+    return await _proxy_share_step(call, token, step_key, 'cancel')
 
 
-async def public_share_review_decision(request: Request, token: str,
+async def public_share_review_decision(call: GatewayCall, token: str,
                                        step_key: str, decision: str):
     if (not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", step_key)
             or decision not in {"approve", "reject", "force_approve", "terminate", "complete_task"}):
-        raise HTTPException(status_code=404, detail="Review decision unavailable")
-    return await _proxy_share_request(
-        request, token, f"/api/platform-share/steps/{step_key}/review/{decision}",
-        write=True, body_kind="review",
-    )
+        raise GatewayError('not_found', 'Review decision unavailable')
+    return await _proxy_share_request(call, token, f'/api/platform-share/steps/{step_key}/review/{decision}', write=True, body_kind='review')
 
 
-
-async def public_share_intervention_response(request: Request, token: str,
+async def public_share_intervention_response(call: GatewayCall, token: str,
                                              interaction_id: str):
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", interaction_id):
-        raise HTTPException(status_code=404, detail="Interaction unavailable")
-    return await _proxy_share_request(
-        request, token,
-        f"/api/platform-share/interventions/{interaction_id}/respond",
-        write=True, body_kind="interaction",
-    )
+        raise GatewayError('not_found', 'Interaction unavailable')
+    return await _proxy_share_request(call, token, f'/api/platform-share/interventions/{interaction_id}/respond', write=True, body_kind='interaction')

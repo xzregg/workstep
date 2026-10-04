@@ -42,6 +42,61 @@ async def test_coordinator_live_event_carries_project_scope():
     await bus.close()
 
 
+@pytest.mark.anyio
+@pytest.mark.parametrize("event_type", ["session_started", "tool_call"])
+async def test_coordinator_slow_live_journal_keeps_health_responsive(
+    api_context, monkeypatch, event_type,
+):
+    import time
+    import main
+    from engines.core.registry import ENGINE_REGISTRY
+
+    class Engine(CoordinatorFakeEngine):
+        async def spawn(self, **kwargs):
+            yield InternalEvent(event_type, {
+                "session_id": "slow-journal",
+                "tool_call_id": "large-tool",
+                "title": "读取文件",
+                "output": "x" * 40000,
+            })
+            async for event in super().spawn(**kwargs):
+                yield event
+
+    client, tmp_path = api_context
+    project_id, task_id = await _create_task(client, tmp_path)
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", Engine)
+    journal = main.coordinator_module._event_journal
+    original = journal.sync
+    entered, release = threading.Event(), threading.Event()
+    threads = []
+    loop_thread = threading.get_ident()
+
+    def slow_sync(*args, **kwargs):
+        if not entered.is_set():
+            threads.append(threading.get_ident())
+            entered.set()
+            release.wait(2)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(journal, "sync", slow_sync)
+    accepted = await client.post(
+        f"/api/task/{task_id}/chat?project_id={project_id}",
+        headers={"Idempotency-Key": f"slow-journal-{event_type}"},
+        json={"content": "检查日志"},
+    )
+    started = time.monotonic()
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        assert (await asyncio.wait_for(client.get("/api/health"), 0.3)).status_code == 200
+        assert time.monotonic() - started < 0.5
+        assert threads[0] != loop_thread
+    finally:
+        release.set()
+    assert accepted.status_code == 200
+    reply = await _wait_for_reply(client, project_id, task_id, accepted.json()["assistant_message_id"])
+    assert reply["run_status"] == "succeeded"
+
+
 @pytest.mark.parametrize("script_path", ["../outside.sh", "nested/start.sh", "action.json"])
 def test_coordinator_action_proposal_rejects_unsafe_script_paths(script_path):
     from agent_assistants.coordinator_actions import CoordinatorActionService

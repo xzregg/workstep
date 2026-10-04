@@ -1,6 +1,5 @@
 """Task review history and decision API routes."""
 
-import json
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -16,37 +15,10 @@ async def get_task_reviews(
     pid: str = Query(..., alias="project_id"),
 ):
     """Return persisted review history for a task."""
-    from models import ReviewRun
     await _require_scoped_task(pid, task_id)
-    def load_reviews():
-        rows = (
-            ReviewRun.select()
-            .where(ReviewRun.task == task_id)
-            .order_by(ReviewRun.started_at.desc(), ReviewRun.id.desc())
-        )
-        return [{
-            "id": row.id,
-            "workflow_run_id": row.workflow_run_id,
-            "step_run_id": row.step_run_id,
-            "artifact_round": row.step_run.artifact_round,
-            "step_key": row.step_key,
-            "mode": row.mode,
-            "status": row.status,
-            "engine": row.engine,
-            "model": row.model,
-            "report": json.loads(row.report_json) if row.report_json else None,
-            "decision": row.decision,
-            "error": row.error,
-            "decision_comment": row.decision_comment,
-            "reviewer_id": row.reviewer_id,
-            "reviewer_name": row.reviewer_name,
-            "reviewer_device_id": row.reviewer_device_id,
-            "reviewer_device_name": row.reviewer_device_name,
-            "started_at": row.started_at,
-            "ended_at": row.ended_at,
-        } for row in rows]
+    from services.task_queries import task_reviews
 
-    return {"reviews": await _run_db(pid, load_reviews)}
+    return {"reviews": await _run_db(pid, lambda: task_reviews(task_id))}
 
 
 async def _decide_review(

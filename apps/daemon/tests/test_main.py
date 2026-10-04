@@ -172,11 +172,11 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
     monkeypatch.setattr(main, "ensure_global_templates", lambda: None)
     monkeypatch.setattr(main, "project_manager", ProjectManagerStub())
     monkeypatch.setattr(main, "TaskService", lambda bus: object())
-    monkeypatch.setattr(main, "BotManager", lambda *args: BotStub())
+    monkeypatch.setattr(main, "BotManager", lambda *args, **kwargs: BotStub())
     monkeypatch.setattr(
         main,
         "WorkflowRuntime",
-        lambda bus, project_manager: RuntimeStub(),
+        lambda bus, project_manager, *, remote_client: RuntimeStub(),
     )
     monkeypatch.setattr(
         main,

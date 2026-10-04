@@ -1,9 +1,10 @@
 """Periodic enterprise directory reconciliation."""
+from gateway.services.errors import GatewayError
 
 import asyncio
 import logging
 
-from fastapi import HTTPException
+
 from sqlalchemy import select, update
 
 from gateway.database import GatewayDatabase
@@ -29,9 +30,7 @@ class DirectoryReconciler:
             await service.full_sync(source.id, snapshot["departments"], snapshot["people"],
                                     snapshot.get("cursor"))
         except Exception as exc:
-            await service.record_sync_failure(source.id,
-                                              "snapshot_invalid" if isinstance(exc, HTTPException)
-                                              and exc.status_code == 422 else "snapshot_apply_failed")
+            await service.record_sync_failure(source.id, 'snapshot_invalid' if isinstance(exc, GatewayError) and exc.reason == 'invalid' else 'snapshot_apply_failed')
             raise
 
     async def run_once(self) -> None:

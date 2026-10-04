@@ -1,3 +1,5 @@
+from gateway.services.errors import GatewayError
+from gateway.contracts import GatewayCall
 import asyncio
 
 import json
@@ -8,7 +10,6 @@ from uuid import uuid4
 
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query, Request
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -51,11 +52,11 @@ class BatchInput(BaseModel):
 
 def _validate_parameters(body: BatchInput) -> None:
     if body.action in ("install", "update") and not body.version:
-        raise HTTPException(status_code=422, detail="Exact engine version required")
+        raise GatewayError('invalid', 'Exact engine version required')
     if body.action in ("install", "update") and not body.accept_third_party_terms:
-        raise HTTPException(status_code=422, detail="Third-party terms acknowledgement required")
+        raise GatewayError('invalid', 'Third-party terms acknowledgement required')
     if body.action in ("rollback", "refresh", "test") and body.version:
-        raise HTTPException(status_code=422, detail="Version not accepted for this action")
+        raise GatewayError('invalid', 'Version not accepted for this action')
 
 
 def _public_command(command: DeviceCommand) -> dict:
@@ -114,7 +115,7 @@ async def _create_batch(session, body: BatchInput, actor_id: str) -> DeviceOpera
         Device.id.in_(body.device_ids), Device.status == "active",
     ))).all()
     if len(devices) != len(body.device_ids):
-        raise HTTPException(status_code=404, detail="Operation target unavailable")
+        raise GatewayError('not_found', 'Operation target unavailable')
     batch = DeviceOperationBatch(
         id=str(uuid4()), action=body.action,
         parameters_json=json.dumps({
@@ -205,21 +206,19 @@ async def record_command_result(database, command_id: str, device_id: str,
             return True
 
 
-
-async def create_device_operation(request: Request, body: BatchInput):
-    _, actor, _ = await device_manager(request, device_ids=body.device_ids, mutation=True)
-    async with request.app.state.database.session() as session:
+async def create_device_operation(call: GatewayCall, body: BatchInput):
+    _, actor, _ = await device_manager(call, device_ids=body.device_ids, mutation=True)
+    async with call.database.session() as session:
         async with session.begin():
             batch = await _create_batch(session, body, actor.id)
         return await _batch_view(session, batch)
 
 
-
-async def list_device_operations(request: Request,
-                                 limit: int = Query(default=50, ge=1, le=100),
-                                 offset: int = Query(default=0, ge=0)):
-    _, _, allowed = await device_manager(request)
-    async with request.app.state.database.session() as session:
+async def list_device_operations(call: GatewayCall,
+                                 limit: int = 50,
+                                 offset: int = 0):
+    _, _, allowed = await device_manager(call)
+    async with call.database.session() as session:
         async with session.begin():
             await _expire_waiting(session)
             conditions = []
@@ -236,40 +235,38 @@ async def list_device_operations(request: Request,
                     "batches": [await _batch_view(session, batch) for batch in batches]}
 
 
-
-async def get_device_operation(request: Request, batch_id: str):
-    _, _, allowed = await device_manager(request)
-    async with request.app.state.database.session() as session:
+async def get_device_operation(call: GatewayCall, batch_id: str):
+    _, _, allowed = await device_manager(call)
+    async with call.database.session() as session:
         async with session.begin():
             batch = await session.get(DeviceOperationBatch, batch_id)
             if not batch:
-                raise HTTPException(status_code=404, detail="Operation batch unavailable")
+                raise GatewayError('not_found', 'Operation batch unavailable')
             targets = set((await session.scalars(select(DeviceCommand.device_id).where(
                 DeviceCommand.batch_id == batch_id))).all())
             if allowed is not None and not targets.issubset(allowed):
-                raise HTTPException(status_code=403, detail="Device management scope denied")
+                raise GatewayError('forbidden', 'Device management scope denied')
             await _expire_waiting(session, batch_id)
             return await _batch_view(session, batch)
 
 
-
-async def retry_failed_device_operation(request: Request, batch_id: str):
-    _, actor, allowed = await device_manager(request, mutation=True)
-    async with request.app.state.database.session() as session:
+async def retry_failed_device_operation(call: GatewayCall, batch_id: str):
+    _, actor, allowed = await device_manager(call, mutation=True)
+    async with call.database.session() as session:
         async with session.begin():
             original = await session.get(DeviceOperationBatch, batch_id)
             if not original:
-                raise HTTPException(status_code=404, detail="Operation batch unavailable")
+                raise GatewayError('not_found', 'Operation batch unavailable')
             targets = set((await session.scalars(select(DeviceCommand.device_id).where(
                 DeviceCommand.batch_id == batch_id))).all())
             if allowed is not None and not targets.issubset(allowed):
-                raise HTTPException(status_code=403, detail="Device management scope denied")
+                raise GatewayError('forbidden', 'Device management scope denied')
             failed = (await session.scalars(select(DeviceCommand.device_id).where(
                 DeviceCommand.batch_id == batch_id,
                 DeviceCommand.status.in_(("failed", "expired")),
             ))).all()
             if not failed:
-                raise HTTPException(status_code=409, detail="No failed targets to retry")
+                raise GatewayError('conflict', 'No failed targets to retry')
             params = json.loads(original.parameters_json)
             body = BatchInput(action=original.action, engine_id=params["engine_id"],
                               device_ids=failed, max_concurrency=original.max_concurrency,

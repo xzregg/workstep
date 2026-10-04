@@ -47,6 +47,48 @@ async def test_async_journal_preserves_record_order(tmp_path):
     assert [event["data"]["index"] for event in timeline["events"]] == list(range(20))
 
 
+async def test_concurrent_db_thread_record_during_flush_does_not_lose_events(tmp_path, monkeypatch):
+    import threading
+    from pathlib import Path
+
+    journal = TurnEventJournal(flush_interval=10)
+    ref = await journal.astart(tmp_path, "session-concurrent", "message-concurrent")
+    await journal.arecord(ref, {"type": "status", "data": {"index": 1}})
+    target = journal.resolve(tmp_path, ref)
+    entered, release, record_started = threading.Event(), threading.Event(), threading.Event()
+    original = Path.open
+
+    def slow_open(path, mode="r", *args, **kwargs):
+        if path == target and mode == "ab" and not entered.is_set():
+            entered.set()
+            release.wait(2)
+        return original(path, mode, *args, **kwargs)
+
+    def record_from_db_thread():
+        record_started.set()
+        journal.record(ref, {"type": "status", "data": {"index": 2}})
+
+    monkeypatch.setattr(Path, "open", slow_open)
+    flush = asyncio.create_task(journal.async_flush(ref))
+    record = None
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        record = asyncio.create_task(asyncio.to_thread(record_from_db_thread))
+        assert await asyncio.to_thread(record_started.wait, 1)
+        await asyncio.sleep(0.02)
+    finally:
+        release.set()
+        await flush
+        if record is not None:
+            await record
+    try:
+        timeline = await journal.atimeline(ref)
+        assert [event["data"]["index"] for event in timeline["events"]] == [1, 2]
+        assert [event["seq"] for event in timeline["events"]] == [1, 2]
+    finally:
+        await journal.aclose()
+
+
 def test_journal_recovers_snapshot_without_exposing_thoughts_in_summary(tmp_path):
     journal = TurnEventJournal()
     ref = journal.start(tmp_path, "session-1", "message-1")
@@ -171,13 +213,43 @@ def test_journal_finish_cancels_unanswered_interactions(tmp_path):
 
 async def test_journal_flushes_a_quiet_tail_after_the_buffer_interval(tmp_path):
     journal = TurnEventJournal(flush_interval=0.01)
-    ref = journal.start(tmp_path, "session-quiet", "message-quiet")
+    ref = await journal.astart(tmp_path, "session-quiet", "message-quiet")
 
-    journal.record(ref, {"type": "agent_message_chunk", "data": {"content": {"text": "tail"}}})
+    await journal.arecord(ref, {"type": "agent_message_chunk", "data": {"content": {"text": "tail"}}})
     await asyncio.sleep(0.03)
 
     path = journal.resolve(tmp_path, ref)
     assert '"agent_message_chunk"' in path.read_text(encoding="utf-8")
+    await journal.aclose()
+
+
+async def test_slow_scheduled_journal_flush_keeps_event_loop_responsive(tmp_path, monkeypatch):
+    import threading
+
+    journal = TurnEventJournal(flush_interval=0.01)
+    ref = await journal.astart(tmp_path, "session-timer", "message-timer")
+    entered, release = threading.Event(), threading.Event()
+    original = journal.sync
+    loop_thread = threading.get_ident()
+    threads = []
+
+    def slow_sync(*args, **kwargs):
+        threads.append(threading.get_ident())
+        entered.set()
+        release.wait(2)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(journal, "sync", slow_sync)
+    try:
+        started = time.monotonic()
+        await journal.arecord(ref, {"type": "agent_message_chunk", "data": {"text": "tail"}})
+        assert await asyncio.to_thread(entered.wait, 1)
+        await asyncio.sleep(0.01)
+        assert time.monotonic() - started < 0.5
+        assert threads[0] != loop_thread
+    finally:
+        release.set()
+        await journal.aclose()
 
 
 def test_journal_summary_keeps_first_output_and_elapsed_times(tmp_path):

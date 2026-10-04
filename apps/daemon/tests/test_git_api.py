@@ -1260,7 +1260,8 @@ async def test_history_root_commit_binary_and_large_previews(client, layout):
 
 
 async def test_remote_git_catalog_exposes_project_operations_and_denies_global_settings():
-    from services.remote_project import _build_route_catalog
+
+    from streaming.remote_host import _build_route_catalog
     app = FastAPI()
     app.include_router(git_api.router)
     catalog = _build_route_catalog(app)

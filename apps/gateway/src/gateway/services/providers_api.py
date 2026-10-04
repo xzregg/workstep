@@ -1,3 +1,5 @@
+from gateway.services.errors import GatewayError
+from gateway.contracts import GatewayCall
 import asyncio
 
 import json
@@ -8,7 +10,6 @@ from urllib.parse import urlsplit
 
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query, Request
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -69,15 +70,15 @@ class ProviderUpdateInput(ProviderInput):
 
 def _validate_catalog(body: ProviderInput) -> None:
     if any(protocol not in SUPPORTED_PROVIDER_PROTOCOLS for protocol in body.protocols):
-        raise HTTPException(status_code=422, detail="Unsupported provider protocol")
+        raise GatewayError('invalid', 'Unsupported provider protocol')
     if set(body.protocols) != set(body.protocol_base_urls) or len(set(body.protocols)) != len(body.protocols):
-        raise HTTPException(status_code=422, detail="Provider protocols and endpoints differ")
+        raise GatewayError('invalid', 'Provider protocols and endpoints differ')
     if len(set(body.models)) != len(body.models) or any(
         not model or model != model.strip() or len(model) > 128 for model in body.models
     ):
-        raise HTTPException(status_code=422, detail="Invalid provider model")
+        raise GatewayError('invalid', 'Invalid provider model')
     if set(body.prices) - set(body.models):
-        raise HTTPException(status_code=422, detail="Unknown priced model")
+        raise GatewayError('invalid', 'Unknown priced model')
 
 
 async def _bump_assigned_devices(session, subject_type: str, subject_id: str) -> None:
@@ -117,9 +118,9 @@ class ProviderTestInput(BaseModel):
     device_id: str = Field(min_length=1, max_length=64)
 
 
-async def _admin(request: Request):
-    identity, actor = await _super_admin_request(request)
-    _, session = await identity.session_user(request.cookies.get(COOKIE_NAME))
+async def _admin(call: GatewayCall):
+    identity, actor = await _super_admin_request(call)
+    _, session = await identity.session_user(call.tokens.get(COOKIE_NAME))
     await identity.require_step_up(session)
     return actor
 
@@ -135,11 +136,10 @@ def _public_provider(provider: PlatformProvider) -> dict:
             "has_key": bool(provider.secret_ciphertext)}
 
 
-async def _assignment_admin(request: Request, body: ProviderAssignInput):
-    identity, actor, _ = await project_manager(
-        request, device_id=body.subject_id if body.subject_type == "device" else None, mutation=True)
+async def _assignment_admin(call: GatewayCall, body: ProviderAssignInput):
+    identity, actor, _ = await project_manager(call, device_id=body.subject_id if body.subject_type == 'device' else None, mutation=True)
     if body.subject_type == "user":
-        await require_grant_subject(request, identity, actor.id, "user", body.subject_id)
+        await require_grant_subject(call, identity, actor.id, 'user', body.subject_id)
     return actor
 
 
@@ -209,24 +209,22 @@ async def compiled_provider_access(database, device_id: str, user_id: str) -> tu
     return ids, models
 
 
-
-async def list_assignment_catalog(request: Request):
-    await project_manager(request)
-    async with request.app.state.database.session() as session:
+async def list_assignment_catalog(call: GatewayCall):
+    await project_manager(call)
+    async with call.database.session() as session:
         providers = (await session.scalars(select(PlatformProvider).order_by(PlatformProvider.name))).all()
     return {"providers": [{"id": row.id, "name": row.name, "enabled": bool(row.enabled)}
                           for row in providers]}
 
 
-
-async def list_platform_providers(request: Request,
-                                  q: str = Query("", max_length=128),
+async def list_platform_providers(call: GatewayCall,
+                                  q: str = '',
                                   enabled: bool | None = None,
                                   sort: Literal["name", "created_at"] = "name",
                                   direction: Literal["asc", "desc"] = "asc",
-                                  page: int = Query(1, ge=1),
-                                  page_size: int = Query(25, ge=1, le=100)):
-    await _super_admin_read(request)
+                                  page: int = 1,
+                                  page_size: int = 25):
+    await _super_admin_read(call)
     conditions = []
     if q.strip():
         escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -236,7 +234,7 @@ async def list_platform_providers(request: Request,
         conditions.append(PlatformProvider.enabled == int(enabled))
     column = PlatformProvider.name if sort == "name" else PlatformProvider.created_at
     ordered = column.asc() if direction == "asc" else column.desc()
-    async with request.app.state.database.session() as session:
+    async with call.database.session() as session:
         total = await session.scalar(select(func.count()).select_from(PlatformProvider).where(*conditions))
         providers = (await session.scalars(select(PlatformProvider).where(*conditions).order_by(
             ordered, PlatformProvider.id,
@@ -280,7 +278,7 @@ async def list_platform_providers(request: Request,
             targets.update(targets_by_user.get(user_id, ()))
         status = {"applied": 0, "pending": 0, "failed": 0, "offline": 0}
         for device_id in targets:
-            if not request.app.state.control_connections.is_online(device_id):
+            if not call.control_connections.is_online(device_id):
                 status["offline"] += 1
             elif applied.get(device_id) and applied[device_id].last_error:
                 status["failed"] += 1
@@ -298,17 +296,16 @@ async def list_platform_providers(request: Request,
     return {"providers": result, "total": total, "page": page, "page_size": page_size}
 
 
-
-async def list_provider_applications(request: Request,
-                                     q: str = Query("", max_length=128),
-                                     page: int = Query(1, ge=1),
-                                     page_size: int = Query(25, ge=1, le=100)):
-    await _super_admin_read(request)
+async def list_provider_applications(call: GatewayCall,
+                                     q: str = '',
+                                     page: int = 1,
+                                     page_size: int = 25):
+    await _super_admin_read(call)
     conditions = []
     if q.strip():
         escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         conditions.append(Device.name.ilike(f"%{escaped}%", escape="\\"))
-    async with request.app.state.database.session() as session:
+    async with call.database.session() as session:
         total = await session.scalar(select(func.count()).select_from(Device).where(*conditions))
         rows = (await session.execute(select(Device, DeviceProviderApplication).outerjoin(
             DeviceProviderApplication, DeviceProviderApplication.device_id == Device.id,
@@ -317,52 +314,48 @@ async def list_provider_applications(request: Request,
     return {"devices": [{
         "device_id": device.id, "device_name": device.name,
         "device_status": device.status,
-        "online": request.app.state.control_connections.is_online(device.id),
+        "online": call.control_connections.is_online(device.id),
         "desired_revision": device.provider_revision,
         "applied_revision": applied.applied_revision if applied else None,
         "last_error": applied.last_error if applied else None,
     } for device, applied in rows], "total": total, "page": page, "page_size": page_size}
 
 
-
-async def test_platform_provider(request: Request, provider_id: str,
+async def test_platform_provider(call: GatewayCall, provider_id: str,
                                  body: ProviderTestInput):
-    await _admin(request)
-    async with request.app.state.database.session() as session:
+    await _admin(call)
+    async with call.database.session() as session:
         provider = await session.get(PlatformProvider, provider_id)
         device = await session.get(Device, body.device_id)
         if provider is None or not provider.enabled:
-            raise HTTPException(status_code=404, detail="Provider unavailable")
+            raise GatewayError('not_found', 'Provider unavailable')
         if device is None or device.status != "active":
-            raise HTTPException(status_code=404, detail="Device unavailable")
-    control = request.app.state.control_connections
+            raise GatewayError('not_found', 'Device unavailable')
+    control = call.control_connections
     user_id = control.active_user(body.device_id)
     if user_id is None:
-        raise HTTPException(status_code=503, detail="Device is offline")
-    provider_ids, _ = await compiled_provider_access(
-        request.app.state.database, body.device_id, user_id,
-    )
+        raise GatewayError('unavailable', 'Device is offline')
+    provider_ids, _ = await compiled_provider_access(call.database, body.device_id, user_id)
     if provider_id not in provider_ids:
-        raise HTTPException(status_code=403, detail="Provider unavailable on device")
+        raise GatewayError('forbidden', 'Provider unavailable on device')
     try:
         return await control.request_provider_test(body.device_id, provider_id)
     except asyncio.TimeoutError as exc:
-        raise HTTPException(status_code=504, detail="Provider test timed out") from exc
+        raise GatewayError('timeout', 'Provider test timed out') from exc
     except ConnectionError as exc:
-        raise HTTPException(status_code=503, detail="Device is unavailable") from exc
+        raise GatewayError('unavailable', 'Device is unavailable') from exc
 
 
-
-async def list_provider_test_targets(request: Request, provider_id: str,
-                                     q: str = Query("", max_length=128),
-                                     page: int = Query(1, ge=1),
-                                     page_size: int = Query(25, ge=1, le=100)):
-    await _super_admin_read(request)
-    connected = request.app.state.control_connections.connected_users()
-    async with request.app.state.database.session() as session:
+async def list_provider_test_targets(call: GatewayCall, provider_id: str,
+                                     q: str = '',
+                                     page: int = 1,
+                                     page_size: int = 25):
+    await _super_admin_read(call)
+    connected = call.control_connections.connected_users()
+    async with call.database.session() as session:
         provider = await session.get(PlatformProvider, provider_id)
         if provider is None or not provider.enabled:
-            raise HTTPException(status_code=404, detail="Provider unavailable")
+            raise GatewayError('not_found', 'Provider unavailable')
         assignments = (await session.scalars(select(ProviderAssignment).where(
             ProviderAssignment.provider_id == provider_id,
             ProviderAssignment.revoked_at.is_(None),
@@ -385,15 +378,11 @@ async def list_provider_test_targets(request: Request, provider_id: str,
             "total": total, "page": page, "page_size": page_size}
 
 
-
-async def create_platform_provider(request: Request, body: ProviderInput):
-    actor = await _admin(request)
+async def create_platform_provider(call: GatewayCall, body: ProviderInput):
+    actor = await _admin(call)
     _validate_catalog(body)
     provider_id = str(uuid4())
-    encrypted = await asyncio.to_thread(
-        request.app.state.gateway_signer.encrypt_provider_secret,
-        provider_id, body.api_key,
-    )
+    encrypted = await asyncio.to_thread(call.gateway_signer.encrypt_provider_secret, provider_id, body.api_key)
     provider = PlatformProvider(
         id=provider_id, name=body.name, type=body.type, revision=1, enabled=1,
         config_json=json.dumps({"protocols": body.protocols,
@@ -404,31 +393,27 @@ async def create_platform_provider(request: Request, body: ProviderInput):
         created_by_user_id=actor.id,
     )
     try:
-        async with request.app.state.database.session() as session:
+        async with call.database.session() as session:
             async with session.begin():
                 session.add(provider)
                 session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,
                                        action="admin.provider_created", result="success",
                                        metadata_json=json.dumps({"provider_id": provider_id})))
     except IntegrityError as exc:
-        raise HTTPException(status_code=409, detail="Provider name already exists") from exc
+        raise GatewayError('conflict', 'Provider name already exists') from exc
     return _public_provider(provider)
 
 
-
-async def update_platform_provider(request: Request, provider_id: str, body: ProviderUpdateInput):
-    actor = await _admin(request)
+async def update_platform_provider(call: GatewayCall, provider_id: str, body: ProviderUpdateInput):
+    actor = await _admin(call)
     _validate_catalog(body)
-    encrypted = (await asyncio.to_thread(
-        request.app.state.gateway_signer.encrypt_provider_secret,
-        provider_id, body.api_key,
-    ) if body.api_key is not None else None)
+    encrypted = await asyncio.to_thread(call.gateway_signer.encrypt_provider_secret, provider_id, body.api_key) if body.api_key is not None else None
     try:
-        async with request.app.state.database.session() as session:
+        async with call.database.session() as session:
             async with session.begin():
                 provider = await session.get(PlatformProvider, provider_id)
                 if not provider:
-                    raise HTTPException(status_code=404, detail="Provider unavailable")
+                    raise GatewayError('not_found', 'Provider unavailable')
                 provider.name = body.name
                 provider.type = body.type
                 provider.revision += 1
@@ -451,16 +436,15 @@ async def update_platform_provider(request: Request, provider_id: str, body: Pro
                                                                   "revision": provider.revision}),
                 ))
     except IntegrityError as exc:
-        raise HTTPException(status_code=409, detail="Provider name already exists") from exc
+        raise GatewayError('conflict', 'Provider name already exists') from exc
     return _public_provider(provider)
 
 
-
-async def list_platform_provider_assignments(request: Request, provider_id: str,
-                                             q: str = Query("", max_length=128),
-                                             page: int = Query(1, ge=1),
-                                             page_size: int = Query(25, ge=1, le=100)):
-    identity, actor, devices = await project_manager(request)
+async def list_platform_provider_assignments(call: GatewayCall, provider_id: str,
+                                             q: str = '',
+                                             page: int = 1,
+                                             page_size: int = 25):
+    identity, actor, devices = await project_manager(call)
     base = select(ProviderAssignment, User.username, Device.name).outerjoin(
         User, and_(ProviderAssignment.subject_type == "user",
                    ProviderAssignment.subject_id == User.id),
@@ -474,7 +458,7 @@ async def list_platform_provider_assignments(request: Request, provider_id: str,
         conditions.append(or_(User.username.ilike(pattern, escape="\\"),
                               Device.name.ilike(pattern, escape="\\"),
                               ProviderAssignment.subject_id.ilike(pattern, escape="\\")))
-    async with request.app.state.database.session() as session:
+    async with call.database.session() as session:
         if devices is not None:
             users = await identity.manageable_user_ids(
                 session, actor.id, roles=("super_admin", "org_admin", "department_admin"))
@@ -483,7 +467,7 @@ async def list_platform_provider_assignments(request: Request, provider_id: str,
                 and_(ProviderAssignment.subject_type == "user", ProviderAssignment.subject_id.in_(users or set())),
             ))
         if not await session.get(PlatformProvider, provider_id):
-            raise HTTPException(status_code=404, detail="Provider unavailable")
+            raise GatewayError('not_found', 'Provider unavailable')
         total = await session.scalar(select(func.count()).select_from(base.where(*conditions).subquery()))
         assignments = (await session.execute(base.where(*conditions).order_by(
             ProviderAssignment.created_at, ProviderAssignment.id,
@@ -497,18 +481,17 @@ async def list_platform_provider_assignments(request: Request, provider_id: str,
         "total": total, "page": page, "page_size": page_size}
 
 
-
-async def assign_platform_provider(request: Request, provider_id: str, body: ProviderAssignInput):
-    actor = await _assignment_admin(request, body)
-    async with request.app.state.database.session() as session:
+async def assign_platform_provider(call: GatewayCall, provider_id: str, body: ProviderAssignInput):
+    actor = await _assignment_admin(call, body)
+    async with call.database.session() as session:
         async with session.begin():
             provider = await session.get(PlatformProvider, provider_id)
             if not provider or not provider.enabled:
-                raise HTTPException(status_code=404, detail="Provider unavailable")
+                raise GatewayError('not_found', 'Provider unavailable')
             target = await session.get(User if body.subject_type == "user" else Device,
                                        body.subject_id)
             if not target or target.status != "active":
-                raise HTTPException(status_code=404, detail="Assignment target unavailable")
+                raise GatewayError('not_found', 'Assignment target unavailable')
             assignment = await session.scalar(select(ProviderAssignment).where(
                 ProviderAssignment.provider_id == provider_id,
                 ProviderAssignment.subject_type == body.subject_type,
@@ -535,15 +518,14 @@ async def assign_platform_provider(request: Request, provider_id: str, body: Pro
     return {"id": assignment.id, "provider_id": provider_id}
 
 
-
-async def set_default_platform_provider(request: Request, provider_id: str,
+async def set_default_platform_provider(call: GatewayCall, provider_id: str,
                                         body: ProviderDefaultInput):
-    actor = await _assignment_admin(request, body)
-    async with request.app.state.database.session() as session:
+    actor = await _assignment_admin(call, body)
+    async with call.database.session() as session:
         async with session.begin():
             provider = await session.get(PlatformProvider, provider_id)
             if not provider or (body.enabled and not provider.enabled):
-                raise HTTPException(status_code=404, detail="Provider unavailable")
+                raise GatewayError('not_found', 'Provider unavailable')
             assignment = await session.scalar(select(ProviderAssignment).where(
                 ProviderAssignment.provider_id == provider_id,
                 ProviderAssignment.subject_type == body.subject_type,
@@ -551,7 +533,7 @@ async def set_default_platform_provider(request: Request, provider_id: str,
                 ProviderAssignment.revoked_at.is_(None),
             ))
             if assignment is None:
-                raise HTTPException(status_code=404, detail="Active assignment required")
+                raise GatewayError('not_found', 'Active assignment required')
             if bool(assignment.is_default) == body.enabled:
                 return {"is_default": body.enabled}
             if body.enabled:
@@ -571,11 +553,10 @@ async def set_default_platform_provider(request: Request, provider_id: str,
     return {"is_default": body.enabled}
 
 
-
-async def revoke_platform_provider_assignment(request: Request, provider_id: str,
+async def revoke_platform_provider_assignment(call: GatewayCall, provider_id: str,
                                               body: ProviderAssignInput):
-    actor = await _assignment_admin(request, body)
-    async with request.app.state.database.session() as session:
+    actor = await _assignment_admin(call, body)
+    async with call.database.session() as session:
         async with session.begin():
             assignment = await session.scalar(select(ProviderAssignment).where(
                 ProviderAssignment.provider_id == provider_id,
@@ -598,14 +579,13 @@ async def revoke_platform_provider_assignment(request: Request, provider_id: str
             ))
 
 
-
-async def disable_platform_provider(request: Request, provider_id: str):
-    actor = await _admin(request)
-    async with request.app.state.database.session() as session:
+async def disable_platform_provider(call: GatewayCall, provider_id: str):
+    actor = await _admin(call)
+    async with call.database.session() as session:
         async with session.begin():
             provider = await session.get(PlatformProvider, provider_id)
             if not provider:
-                raise HTTPException(status_code=404, detail="Provider unavailable")
+                raise GatewayError('not_found', 'Provider unavailable')
             if not provider.enabled:
                 return
             provider.enabled = 0

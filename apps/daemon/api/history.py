@@ -1,6 +1,5 @@
 """History and intervention API routes."""
 
-import asyncio
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -92,50 +91,8 @@ async def list_sessions(project_id: str | None = None, limit: int = 50, offset: 
 
     If project_id is provided, filter by that project.
     """
-    from models import Task
-
-    def load_project_tasks(pid: str, *, bounded: bool) -> list[dict]:
-        query = Task.select().order_by(Task.updated_at.desc())
-        if bounded:
-            query = query.limit(limit).offset(offset)
-        return [
-            {
-                "id": task.id,
-                "title": task.title,
-                "description": task.description,
-                "status": task.status,
-                "engine": task.engine,
-                "created_at": task.created_at,
-                "updated_at": task.updated_at,
-            }
-            for task in query
-        ]
-
-    if project_id:
-        # Get sessions for specific project
-        proj = project_manager.get_project_by_id(project_id)
-        if not proj:
-            raise HTTPException(status_code=404, detail="Project not found")
-
-        sessions = await project_manager.run_db(
-            project_id,
-            lambda _project: load_project_tasks(project_id, bounded=True),
-        )
-    else:
-        # Cross-project session list. Each project owns a separate database, so
-        # query under its context and merge before applying global pagination.
-        projects = tuple(project_manager.iter_projects())
-        batches = await asyncio.gather(*(
-            project_manager.run_db(
-                project.id,
-                lambda _project, pid=project.id: load_project_tasks(
-                    pid, bounded=False
-                ),
-            )
-            for project in projects
-        ))
-        sessions = [item for batch in batches for item in batch]
-        sessions.sort(key=lambda task: task["updated_at"], reverse=True)
-        sessions = sessions[offset:offset + limit]
-
-    return {"sessions": sessions, "limit": limit, "offset": offset}
+    from services.task_search import list_sessions as load
+    try:
+        return await load(project_manager, project_id, limit, offset)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

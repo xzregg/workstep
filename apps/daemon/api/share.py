@@ -433,23 +433,15 @@ async def public_share_message_events(
     if ctx["token"] != token:
         raise HTTPException(status_code=403, detail="Session does not match share")
     from main import project_manager
-    from models import Message
     from services.history import get_message_events
 
+    from services.task_queries import shared_message_events
     def load(project):
-        message = Message.get_or_none(
-            (Message.id == message_id)
-            & (Message.task == ctx["task_id"])
-            & (Message.channel == "execution")
-        )
-        if message is None:
-            raise HTTPException(status_code=404, detail="Task message not found")
-        page = get_message_events(
-            ctx["task_id"], message_id, project.workstep_dir,
-            cursor=cursor, limit=limit,
-        )
-        page["events"] = share_service._scrub_events(page["events"], mode=ctx.get("mode", "read_only"))
-        return page
+        try:
+            return shared_message_events(project, ctx["task_id"], message_id,
+                                         cursor=cursor, limit=limit, mode=ctx.get("mode", "read_only"))
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="Task message not found") from exc
 
     return await project_manager.run_db(ctx["project_id"], load)
 
@@ -519,34 +511,10 @@ async def public_share_reviews(token: str, request: Request):
     if ctx["token"] != token:
         raise HTTPException(status_code=403, detail="Session does not match share")
     from main import project_manager
-    from models import ReviewRun
 
+    from services.task_queries import task_reviews
     def load_reviews():
-        rows = (
-            ReviewRun.select()
-            .where(ReviewRun.task == ctx["task_id"])
-            .order_by(ReviewRun.started_at.desc(), ReviewRun.id.desc())
-        )
-        return [{
-            "id": row.id,
-            "workflow_run_id": row.workflow_run_id,
-            "step_run_id": row.step_run_id,
-            "artifact_round": row.step_run.artifact_round,
-            "step_key": row.step_key,
-            "mode": row.mode,
-            "status": row.status,
-            "engine": row.engine,
-            "model": row.model,
-            "report": json.loads(row.report_json) if row.report_json else None,
-            "decision": row.decision,
-            "decision_comment": row.decision_comment,
-            "reviewer_id": row.reviewer_id,
-            "reviewer_name": row.reviewer_name,
-            "reviewer_device_id": row.reviewer_device_id,
-            "reviewer_device_name": row.reviewer_device_name,
-            "started_at": row.started_at,
-            "ended_at": row.ended_at,
-        } for row in rows]
+        return task_reviews(ctx["task_id"], include_errors=False)
 
     return {"reviews": await project_manager.run_db(ctx["project_id"], lambda _project: load_reviews())}
 

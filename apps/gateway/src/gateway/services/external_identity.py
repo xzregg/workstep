@@ -1,4 +1,5 @@
 """Gateway-owned external identity mapping and directory projection."""
+from gateway.services.errors import GatewayError
 
 import hashlib
 import json
@@ -7,7 +8,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from uuid import uuid4
 
-from fastapi import HTTPException
+
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
@@ -57,21 +58,21 @@ class ExternalIdentityService:
                         from gateway.services.organization_settings import option_key
                         session.add(PlatformSetting(key=option_key(source.id), value_json=json.dumps(options)))
         except IntegrityError as exc:
-            raise HTTPException(status_code=409, detail="Identity source already exists") from exc
+            raise GatewayError('conflict', 'Identity source already exists') from exc
         return source
 
     async def source(self, source_id: str, purpose: str | None = None) -> IdentitySource:
         async with self.database.session() as session:
             source = await session.get(IdentitySource, source_id)
             if source is None:
-                raise HTTPException(status_code=404, detail="Identity source not found")
+                raise GatewayError('not_found', 'Identity source not found')
             if not source.enabled:
-                raise HTTPException(status_code=403, detail="Identity source disabled")
+                raise GatewayError('forbidden', 'Identity source disabled')
         if purpose:
             from gateway.services.organization_settings import source_options
             options = await source_options(self.database, source_id)
             if not options.get(purpose + '_enabled', True):
-                raise HTTPException(status_code=403, detail='Identity source option disabled')
+                raise GatewayError('forbidden', 'Identity source option disabled')
         return source
 
     async def enabled_sources(self) -> list[IdentitySource]:
@@ -127,9 +128,9 @@ class ExternalIdentityService:
         async with self.database.session() as session:
             attempt = await session.get(ExternalLoginAttempt, _state_digest(state))
             if attempt is None or attempt.source_id != source_id or _as_utc(attempt.expires_at) <= _now():
-                raise HTTPException(status_code=400, detail="Scan session expired")
+                raise GatewayError('bad_input', 'Scan session expired')
             if attempt.binding_session_id and attempt.binding_session_id != browser_session_id:
-                raise HTTPException(status_code=401, detail="Original browser session required")
+                raise GatewayError('unauthenticated', 'Original browser session required')
             nonce = attempt.nonce
             binding_user_id = attempt.binding_user_id
             return_to = attempt.return_to
@@ -142,13 +143,13 @@ class ExternalIdentityService:
                     ExternalLoginAttempt.expires_at > _now(),
                 ).values(consumed_at=_now()))
                 if result.rowcount != 1:
-                    raise HTTPException(status_code=409, detail="Scan callback already used")
+                    raise GatewayError('conflict', 'Scan callback already used')
         try:
             profile = await connector.exchange_code(source, code, nonce)
         except Exception as exc:
-            raise HTTPException(status_code=502, detail="Identity provider unavailable") from exc
+            raise GatewayError('upstream_failed', 'Identity provider unavailable') from exc
         if profile.tenant_id != source.tenant_id or not profile.subject or len(profile.subject) > 256:
-            raise HTTPException(status_code=403, detail="Identity outside configured tenant")
+            raise GatewayError('forbidden', 'Identity outside configured tenant')
         try:
             async with self.database.session() as session:
                 async with session.begin():
@@ -158,24 +159,24 @@ class ExternalIdentityService:
                     ))
                     if binding_user_id:
                         if identity and identity.user_id != binding_user_id:
-                            raise HTTPException(status_code=409, detail="External identity already bound")
+                            raise GatewayError('conflict', 'External identity already bound')
                         user = await session.get(User, binding_user_id)
                         if user is None or user.status != "active":
-                            raise HTTPException(status_code=403, detail="Binding account unavailable")
+                            raise GatewayError('forbidden', 'Binding account unavailable')
                     elif identity:
                         user = await session.get(User, identity.user_id)
                         if user is None or user.status == "disabled":
-                            raise HTTPException(status_code=403, detail="Account unavailable")
+                            raise GatewayError('forbidden', 'Account unavailable')
                         directory_person = await session.scalar(select(DirectoryPerson).where(
                             DirectoryPerson.source_id == source_id,
                             DirectoryPerson.subject == profile.subject,
                         ))
                         if directory_person is not None and not directory_person.active:
-                            raise HTTPException(status_code=403, detail="Directory member inactive")
+                            raise GatewayError('forbidden', 'Directory member inactive')
                     else:
                         mode = await session.get(PlatformSetting, "registration_mode")
                         if mode is None or mode.value_json == '"closed"':
-                            raise HTTPException(status_code=403, detail="External identity not provisioned")
+                            raise GatewayError('forbidden', 'External identity not provisioned')
                         user = User(
                             id=str(uuid4()), username=_external_username(source_id, profile.subject),
                             display_name=profile.display_name, password_hash=None,
@@ -200,19 +201,19 @@ class ExternalIdentityService:
                     await session.flush()
                     return user, token, return_to
         except IntegrityError as exc:
-            raise HTTPException(status_code=409, detail="External identity already linked") from exc
+            raise GatewayError('conflict', 'External identity already linked') from exc
 
     async def full_sync(self, source_id: str, departments: list[dict], people: list[dict],
                         cursor: str | None = None) -> dict[str, int]:
         await self.source(source_id, purpose="sync")
         if cursor is not None and (not isinstance(cursor, str) or len(cursor) > 256):
-            raise HTTPException(status_code=422, detail="Invalid directory cursor")
+            raise GatewayError('invalid', 'Invalid directory cursor')
         department_ids = [item["external_id"] for item in departments]
         subjects = [item["subject"] for item in people]
         if len(set(department_ids)) != len(department_ids) or len(set(subjects)) != len(subjects):
-            raise HTTPException(status_code=422, detail="Duplicate directory identifier")
+            raise GatewayError('invalid', 'Duplicate directory identifier')
         if any(department not in department_ids for person in people for department in person["department_ids"]):
-            raise HTTPException(status_code=422, detail="Unknown department in directory snapshot")
+            raise GatewayError('invalid', 'Unknown department in directory snapshot')
         async with self.database.session() as session:
             async with session.begin():
                 existing_departments = {row.external_id: row for row in (await session.scalars(
@@ -344,7 +345,7 @@ class ExternalIdentityService:
             async with session.begin():
                 source = await session.get(IdentitySource, source_id)
                 if source is None:
-                    raise HTTPException(status_code=404, detail="Identity source not found")
+                    raise GatewayError('not_found', 'Identity source not found')
                 source.enabled = 0
 
     async def apply_person_event(self, source_id: str, event_id: str, kind: str,
@@ -376,7 +377,7 @@ class ExternalIdentityService:
                         )
                     )).all()}
                     if len(departments) != len(set(department_ids)):
-                        raise HTTPException(status_code=422, detail="Unknown department")
+                        raise GatewayError('invalid', 'Unknown department')
                     if person is None:
                         identity = await session.scalar(select(ExternalIdentity).where(
                             ExternalIdentity.source_id == source_id,

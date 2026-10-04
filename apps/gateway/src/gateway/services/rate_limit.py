@@ -1,10 +1,9 @@
 """Bounded per-client limits for public identity endpoints."""
+from gateway.services.errors import GatewayError
 
 import asyncio
 from collections import deque
 from time import monotonic
-
-from fastapi import HTTPException
 
 
 class IdentityRateLimiter:
@@ -22,5 +21,5 @@ class IdentityRateLimiter:
             while attempts and now - attempts[0] >= self.window_seconds:
                 attempts.popleft()
             if len(attempts) >= self.limit:
-                raise HTTPException(status_code=429, detail="Too many attempts")
+                raise GatewayError('rate_limited', 'Too many attempts')
             attempts.append(now)

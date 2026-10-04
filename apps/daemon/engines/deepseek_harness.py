@@ -801,7 +801,9 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         pool_token = -1
 
         try:
-            project_root = str(Path(cwd).expanduser().resolve())
+            project_root = await asyncio.to_thread(
+                lambda: str(Path(cwd).expanduser().resolve())
+            )
             fingerprint = self._pool_fingerprint(
                 project_root=project_root,
                 provider=provider,

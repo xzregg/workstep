@@ -10,8 +10,12 @@ from starlette.exceptions import HTTPException
 from workstep_gateway_protocol import PROTOCOL_VERSION
 
 from gateway.config import GatewaySettings
-from gateway.services.share_viewer import install_share_viewer
+from gateway.api.share_viewer import install_share_viewer
 from gateway.database import GatewayDatabase
+from gateway.api.errors import identity_error_response, gateway_error_response
+from gateway.services.errors import GatewayError
+from gateway.api.adapters import invoke
+from gateway.services.identity_errors import IdentityError
 from gateway.api.identity_api import router as identity_router
 from gateway.api.external_identity_api import router as external_identity_router
 from gateway.api.directory_callbacks import router as directory_callbacks_router
@@ -83,6 +87,8 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
             await database.close()
 
     app = FastAPI(title="WorkStep Gateway", lifespan=lifespan)
+    app.add_exception_handler(IdentityError, identity_error_response)
+    app.add_exception_handler(GatewayError, gateway_error_response)
     app.state.ready = False
     app.state.settings = settings
     app.state.protocol_version = PROTOCOL_VERSION
@@ -98,7 +104,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.state.share_upload_slots = asyncio.Semaphore(2)
     app.state.usage_batch_timeout_seconds = 10.0
 
-    from gateway.services.request_audit import audit_admin_request
+    from gateway.api.request_audit import audit_admin_request
     app.middleware("http")(audit_admin_request)
 
     @app.middleware("http")
@@ -109,7 +115,11 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
                 if request.url.path not in ("/api/remote/redeem", "/api/remote/session",
                                             "/api/remote/project-grants"):
                     try:
-                        return await proxy_remote_request(request)
+                        return await invoke(proxy_remote_request, request=request)
+                    except IdentityError as exc:
+                        return await identity_error_response(request, exc)
+                    except GatewayError as exc:
+                        return await gateway_error_response(request, exc)
                     except HTTPException as exc:
                         return await http_error(request, exc)
         return await call_next(request)

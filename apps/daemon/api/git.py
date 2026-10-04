@@ -35,16 +35,10 @@ def _task_project(project_id: str):
 
 
 async def _task_exists(project_id: str, task_id: str, *, editable: bool = False):
-    from models import Task
     from services.project import project_manager
 
-    def inspect(_project):
-        task = Task.get_or_none(Task.id == task_id)
-        if task is None:
-            return None
-        return {'status': task.status, 'creator_name': task.creator_name or '', 'workflow_id': task.workflow_id}
-
-    task = await project_manager.run_db(project_id, inspect)
+    from services.task_queries import task_workspace_state
+    task = await project_manager.run_db(project_id, lambda _project: task_workspace_state(task_id))
     if task is None:
         raise HTTPException(404, '任务不存在。')
     if editable and task['status'] in {'running', 'queued'}:

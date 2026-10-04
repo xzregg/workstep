@@ -1,8 +1,9 @@
+from gateway.services.errors import GatewayError
+from gateway.contracts import GatewayCall
 from uuid import uuid4
 
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -129,27 +130,24 @@ class GroupProjectCapabilityInput(BaseModel):
     effect: Literal["allow", "deny"]
 
 
-async def _capability_manager(request: Request, user_id: str, body: CapabilityTargetInput):
+async def _capability_manager(call: GatewayCall, user_id: str, body: CapabilityTargetInput):
     if body.scope_type == 'global':
-        identity, actor = await _super_admin_request(request)
-        _, auth_session = await identity.session_user(request.cookies.get(COOKIE_NAME))
+        identity, actor = await _super_admin_request(call)
+        _, auth_session = await identity.session_user(call.tokens.get(COOKIE_NAME))
         await identity.require_step_up(auth_session)
     else:
-        identity, actor, _ = await project_manager(request, mutation=True,
-            project_id=body.scope_id if body.scope_type == 'project' else None,
-            device_id=body.scope_id if body.scope_type == 'device' else None)
-        await require_grant_subject(request, identity, actor.id, 'user', user_id)
+        identity, actor, _ = await project_manager(call, mutation=True, project_id=body.scope_id if body.scope_type == 'project' else None, device_id=body.scope_id if body.scope_type == 'device' else None)
+        await require_grant_subject(call, identity, actor.id, 'user', user_id)
     return identity, actor
 
 
-
-async def list_user_project_capabilities(request: Request, project_id: str):
-    identity, actor, _ = await project_manager(request, project_id=project_id)
-    async with request.app.state.database.session() as session:
+async def list_user_project_capabilities(call: GatewayCall, project_id: str):
+    identity, actor, _ = await project_manager(call, project_id=project_id)
+    async with call.database.session() as session:
         project = await session.get(PlatformProject, project_id)
         if (project is None or project.status != 'active'
                 or project.access_mode != 'remote_published'):
-            raise HTTPException(status_code=404, detail='Published project unavailable')
+            raise GatewayError('not_found', 'Published project unavailable')
         subjects = await grant_subject_ids(session, identity, actor.id, 'user')
         rows = (await session.execute(select(CapabilityAssignment, User.username).join(
             User, User.id == CapabilityAssignment.user_id,
@@ -163,14 +161,13 @@ async def list_user_project_capabilities(request: Request, project_id: str):
                              'username': name, 'effect': row.effect} for row, name in rows]}
 
 
-
-async def list_group_project_capabilities(request: Request, project_id: str):
-    identity, actor, _ = await project_manager(request, project_id=project_id)
-    async with request.app.state.database.session() as session:
+async def list_group_project_capabilities(call: GatewayCall, project_id: str):
+    identity, actor, _ = await project_manager(call, project_id=project_id)
+    async with call.database.session() as session:
         project = await session.get(PlatformProject, project_id)
         if (project is None or project.status != 'active'
                 or project.access_mode != 'remote_published'):
-            raise HTTPException(status_code=404, detail='Published project unavailable')
+            raise GatewayError('not_found', 'Published project unavailable')
         subjects = await grant_subject_ids(session, identity, actor.id, 'group')
         rows = (await session.execute(select(GroupCapabilityAssignment, UserGroup.name).join(
             UserGroup, UserGroup.id == GroupCapabilityAssignment.group_id,
@@ -183,19 +180,18 @@ async def list_group_project_capabilities(request: Request, project_id: str):
                              'group_name': name, 'effect': row.effect} for row, name in rows]}
 
 
-
-async def set_group_project_capability(request: Request, project_id: str,
+async def set_group_project_capability(call: GatewayCall, project_id: str,
                                        group_id: str, body: GroupProjectCapabilityInput):
-    identity, actor, _ = await project_manager(request, project_id=project_id, mutation=True)
-    await require_grant_subject(request, identity, actor.id, 'group', group_id)
-    async with request.app.state.database.session() as session:
+    identity, actor, _ = await project_manager(call, project_id=project_id, mutation=True)
+    await require_grant_subject(call, identity, actor.id, 'group', group_id)
+    async with call.database.session() as session:
         async with session.begin():
             project = await session.get(PlatformProject, project_id)
             group = await session.get(UserGroup, group_id)
             if (project is None or project.status != 'active'
                     or project.access_mode != 'remote_published'
                     or group is None or group.status != 'active'):
-                raise HTTPException(status_code=404, detail='Project or group unavailable')
+                raise GatewayError('not_found', 'Project or group unavailable')
             assignment = await session.scalar(select(GroupCapabilityAssignment).where(
                 GroupCapabilityAssignment.group_id == group_id,
                 GroupCapabilityAssignment.project_id == project_id,
@@ -221,11 +217,10 @@ async def set_group_project_capability(request: Request, project_id: str,
             'capability': 'task.create', 'effect': body.effect}
 
 
-
-async def revoke_group_project_capability(request: Request, project_id: str, group_id: str):
-    identity, actor, _ = await project_manager(request, project_id=project_id, mutation=True)
-    await require_grant_subject(request, identity, actor.id, 'group', group_id)
-    async with request.app.state.database.session() as session:
+async def revoke_group_project_capability(call: GatewayCall, project_id: str, group_id: str):
+    identity, actor, _ = await project_manager(call, project_id=project_id, mutation=True)
+    await require_grant_subject(call, identity, actor.id, 'group', group_id)
+    async with call.database.session() as session:
         async with session.begin():
             assignment = await session.scalar(select(GroupCapabilityAssignment).where(
                 GroupCapabilityAssignment.group_id == group_id,
@@ -234,7 +229,7 @@ async def revoke_group_project_capability(request: Request, project_id: str, gro
                 GroupCapabilityAssignment.revoked_at.is_(None),
             ))
             if assignment is None:
-                raise HTTPException(status_code=404, detail='Group capability unavailable')
+                raise GatewayError('not_found', 'Group capability unavailable')
             assignment.revoked_at = _now()
             await session.execute(update(Device).where(Device.id == select(
                 PlatformProject.device_id).where(PlatformProject.id == project_id).scalar_subquery()
@@ -243,20 +238,19 @@ async def revoke_group_project_capability(request: Request, project_id: str, gro
                                    action='admin.group_capability_revoked', result='success'))
 
 
-
-async def set_capability(request: Request, user_id: str, body: CapabilityInput):
-    identity, actor = await _capability_manager(request, user_id, body)
-    database = request.app.state.database
+async def set_capability(call: GatewayCall, user_id: str, body: CapabilityInput):
+    identity, actor = await _capability_manager(call, user_id, body)
+    database = call.database
     scope_id = body.scope_id or ""
     async with database.session() as session:
         async with session.begin():
             user = await session.get(User, user_id)
             if user is None:
-                raise HTTPException(status_code=404, detail="User not found")
+                raise GatewayError('not_found', 'User not found')
             if body.scope_type == "device" and await session.get(Device, scope_id) is None:
-                raise HTTPException(status_code=404, detail="Device not found")
+                raise GatewayError('not_found', 'Device not found')
             if body.scope_type == "project" and await session.get(PlatformProject, scope_id) is None:
-                raise HTTPException(status_code=404, detail="Project not found")
+                raise GatewayError('not_found', 'Project not found')
             assignment = await session.scalar(select(CapabilityAssignment).where(
                 CapabilityAssignment.user_id == user_id,
                 CapabilityAssignment.capability == body.capability,
@@ -285,11 +279,10 @@ async def set_capability(request: Request, user_id: str, body: CapabilityInput):
             "scope_type": body.scope_type, "scope_id": body.scope_id, "effect": body.effect}
 
 
-
-async def revoke_capability(request: Request, user_id: str, body: CapabilityTargetInput):
-    identity, actor = await _capability_manager(request, user_id, body)
+async def revoke_capability(call: GatewayCall, user_id: str, body: CapabilityTargetInput):
+    identity, actor = await _capability_manager(call, user_id, body)
     scope_id = body.scope_id or ""
-    async with request.app.state.database.session() as session:
+    async with call.database.session() as session:
         async with session.begin():
             assignment = await session.scalar(select(CapabilityAssignment).where(
                 CapabilityAssignment.user_id == user_id,
@@ -298,7 +291,7 @@ async def revoke_capability(request: Request, user_id: str, body: CapabilityTarg
                 CapabilityAssignment.scope_id == scope_id,
             ))
             if assignment is None or assignment.revoked_at is not None:
-                raise HTTPException(status_code=404, detail="Capability assignment not found")
+                raise GatewayError('not_found', 'Capability assignment not found')
             assignment.revoked_at = _now()
             await _bump_revisions(session, user_id, body.scope_type, scope_id)
             session.add(AuditEvent(

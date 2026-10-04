@@ -1,6 +1,7 @@
+from gateway.services.errors import GatewayError
+from gateway.contracts import GatewayCall
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query, Request
 
 from sqlalchemy import and_, exists, func, or_, select, tuple_
 
@@ -14,11 +15,11 @@ from gateway.models import DirectoryDepartment, DirectoryMembership, DirectoryPe
 """Scoped, read-only organization directory for management pages."""
 
 
-async def _scope(request: Request, session) -> set[str] | None:
-    identity = IdentityService(request.app.state.database)
-    actor, _ = await identity.session_user(request.cookies.get(COOKIE_NAME))
+async def _scope(call: GatewayCall, session) -> set[str] | None:
+    identity = IdentityService(call.database)
+    actor, _ = await identity.session_user(call.tokens.get(COOKIE_NAME))
     if actor.must_change_password:
-        raise HTTPException(status_code=403, detail='Password change required')
+        raise GatewayError('forbidden', 'Password change required')
     return await identity.manageable_department_ids(session, actor.id)
 
 
@@ -27,16 +28,15 @@ def _pattern(q: str) -> str:
     return f'%{escaped}%'
 
 
-
-async def list_departments(request: Request, source_id: str | None = None,
-                           q: str = Query('', max_length=128),
+async def list_departments(call: GatewayCall, source_id: str | None = None,
+                           q: str = '',
                            roots_only: bool = False, parent_id: str | None = None,
                            status: Literal['active', 'deleted', 'all'] = 'active',
                            sort: Literal['display_name', 'external_id'] = 'display_name',
                            direction: Literal['asc', 'desc'] = 'asc',
-                           page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100)):
-    async with request.app.state.database.session() as session:
-        allowed_ids = await _scope(request, session)
+                           page: int = 1, page_size: int = 25):
+    async with call.database.session() as session:
+        allowed_ids = await _scope(call, session)
         conditions = []
         if allowed_ids is not None:
             conditions.append(DirectoryDepartment.id.in_(allowed_ids))
@@ -46,12 +46,12 @@ async def list_departments(request: Request, source_id: str | None = None,
             conditions.append(DirectoryDepartment.active == int(status == 'active'))
         if parent_id:
             if allowed_ids is not None and parent_id not in allowed_ids:
-                raise HTTPException(status_code=403, detail='Department scope denied')
+                raise GatewayError('forbidden', 'Department scope denied')
             parent = await session.get(DirectoryDepartment, parent_id)
             if parent is None:
-                raise HTTPException(status_code=404, detail='Department not found')
+                raise GatewayError('not_found', 'Department not found')
             if source_id and source_id != parent.source_id:
-                raise HTTPException(status_code=400, detail='Source mismatch')
+                raise GatewayError('bad_input', 'Source mismatch')
             conditions.extend((DirectoryDepartment.source_id == parent.source_id,
                                DirectoryDepartment.parent_external_id == parent.external_id))
         elif roots_only and not q.strip():
@@ -106,19 +106,18 @@ async def list_departments(request: Request, source_id: str | None = None,
     return {'departments': departments, 'total': total, 'page': page, 'page_size': page_size}
 
 
-
-async def list_department_members(request: Request, department_id: str,
-                                  q: str = Query('', max_length=128),
+async def list_department_members(call: GatewayCall, department_id: str,
+                                  q: str = '',
                                   sort: Literal['display_name', 'username'] = 'display_name',
                                   direction: Literal['asc', 'desc'] = 'asc',
-                                  page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100)):
-    async with request.app.state.database.session() as session:
-        allowed_ids = await _scope(request, session)
+                                  page: int = 1, page_size: int = 25):
+    async with call.database.session() as session:
+        allowed_ids = await _scope(call, session)
         if allowed_ids is not None and department_id not in allowed_ids:
-            raise HTTPException(status_code=403, detail='Department scope denied')
+            raise GatewayError('forbidden', 'Department scope denied')
         department = await session.get(DirectoryDepartment, department_id)
         if department is None:
-            raise HTTPException(status_code=404, detail='Department not found')
+            raise GatewayError('not_found', 'Department not found')
         conditions = [DirectoryMembership.department_id == department_id, DirectoryPerson.active == 1]
         if q.strip():
             pattern = _pattern(q)

@@ -477,11 +477,9 @@ async def stop_session(session_id: str, project_id: str | None = Query(None)):
     """Stop the running turn of one chat session."""
     _enforce_project_scope(project_id)
     if project_id is not None:
-        from models.chat_session import ChatSession
 
-        exists = await _run_db(project_id, lambda: ChatSession.select().where(
-            ChatSession.id == session_id,
-        ).exists())
+        from services.task_queries import chat_session_exists
+        exists = await _run_db(project_id, lambda: chat_session_exists(session_id))
         if not exists:
             raise HTTPException(status_code=404, detail="Chat session not found")
     return {"stopped": await _module().stop_current(session_id, project_id=project_id)}

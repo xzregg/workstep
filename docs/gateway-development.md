@@ -78,6 +78,8 @@ uv run --project apps/gateway --no-sync uvicorn gateway.app:app --host 127.0.0.1
 
 `src/gateway/api/` 声明 HTTP/WS 路由；`services/` 执行业务工作单元；`models/` 按领域定义 SQLAlchemy 模型；`app.py` 装配生命周期、路由和门户。数据库表与迁移不因目录调整变化。
 
+所有服务接受 `contracts.py` 的普通输入及异步端口，不依赖 Request、Response、HTTPException 或 ASGI 应用。`api/adapters.py` 统一构造输入，并把服务返回的数据、凭据变更、文件与异步流映射为 HTTP 响应；Cookie 与 WebSocket 框架适配仅属于接口层。业务错误使用 `GatewayError(reason, message)`，身份错误 `IdentityError` 为其子类，`api/errors.py` 保持原状态码与公开错误结构。失败审计由 `api/request_audit.py` 提取安全元数据，`services/request_audit.py` 入库；静态分享资源在 `api/share_viewer.py`。数据库继续使用 AsyncSession，密码计算及同步磁盘操作必须在工作线程执行。边界由 `tests/test_layering.py` 守护，输入、错误、Cookie 和异步流兼容由 `test_api_adapters.py`、`test_identity_errors.py` 及真实账号、分享、远程通道 API 测试验证。
+
 新平台无用户时，门户 `/auth` 显示“设置超级管理员”，首次提交普通注册接口即可初始化平台并获得超管权限；并发注册只有一位超管，其余为普通账号。首位账号创建后默认开放注册，可由超管在平台设置中调整。旧平台保持原有管理员和恢复账号，旧初始化接口保留兼容。非空但未初始化的异常旧库不会自动提升新注册者。
 
 ## 普通 daemon 的平台设置

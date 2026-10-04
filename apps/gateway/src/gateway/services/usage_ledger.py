@@ -1,3 +1,5 @@
+from gateway.services.errors import GatewayError
+from gateway.contracts import GatewayCall
 import hashlib
 
 import json
@@ -10,7 +12,6 @@ from typing import Literal
 
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query, Request
 
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
@@ -230,7 +231,7 @@ def _usage_conditions(*, device_id: str | None, user_id: str | None,
                       entity=UsageEvent) -> list:
     if ((from_time and from_time.tzinfo is None) or (to_time and to_time.tzinfo is None)
             or (from_time and to_time and from_time >= to_time)):
-        raise HTTPException(status_code=422, detail="Invalid usage time range")
+        raise GatewayError('invalid', 'Invalid usage time range')
     conditions = []
     for column, value in ((entity.device_id, device_id), (entity.user_id, user_id),
                           (entity.project_id, project_id),
@@ -248,13 +249,12 @@ def _usage_conditions(*, device_id: str | None, user_id: str | None,
     return conditions
 
 
-
-async def import_provider_bills(request: Request, body: ProviderBillBatch):
-    identity, actor = await _super_admin_request(request)
-    _, session_user = await identity.session_user(request.cookies.get(COOKIE_NAME))
+async def import_provider_bills(call: GatewayCall, body: ProviderBillBatch):
+    identity, actor = await _super_admin_request(call)
+    _, session_user = await identity.session_user(call.tokens.get(COOKIE_NAME))
     await identity.require_step_up(session_user)
     if len(body.model_dump_json()) > 512 * 1024:
-        raise HTTPException(status_code=413, detail="Provider bill batch too large")
+        raise GatewayError('too_large', 'Provider bill batch too large')
     accepted, duplicates = [], []
     prepared = []
     for line in body.lines:
@@ -268,7 +268,7 @@ async def import_provider_bills(request: Request, body: ProviderBillBatch):
             separators=(",", ":"),
         ).encode()).hexdigest()
         prepared.append((line, event_id, digest))
-    async with request.app.state.database.session() as session:
+    async with call.database.session() as session:
         async with session.begin():
             receipts = (await session.scalars(select(UsageEventReceipt).where(
                 UsageEventReceipt.usage_event_id.in_(
@@ -280,7 +280,7 @@ async def import_provider_bills(request: Request, body: ProviderBillBatch):
                 receipt = existing.get(event_id)
                 if receipt:
                     if receipt.device_id != "provider-bill" or receipt.payload_sha256 != digest:
-                        raise HTTPException(status_code=409, detail="Provider bill line changed")
+                        raise GatewayError('conflict', 'Provider bill line changed')
                     duplicates.append(line.line_id)
                     continue
                 session.add(UsageEventReceipt(
@@ -312,26 +312,25 @@ async def import_provider_bills(request: Request, body: ProviderBillBatch):
             "duplicates": duplicates}
 
 
-
-async def usage_summary(request: Request,
-                        device_id: str | None = Query(default=None, max_length=64),
-                        user_id: str | None = Query(default=None, max_length=64),
-                        project_id: str | None = Query(default=None, max_length=64),
-                        provider_id: str | None = Query(default=None, max_length=64),
-                        model: str | None = Query(default=None, max_length=128),
+async def usage_summary(call: GatewayCall,
+                        device_id: str | None = None,
+                        user_id: str | None = None,
+                        project_id: str | None = None,
+                        provider_id: str | None = None,
+                        model: str | None = None,
                         source: UsageSource | None = "reported_by_device",
                         metering_status: MeteringStatus | None = None,
                         from_time: datetime | None = None,
                         to_time: datetime | None = None,
                         group_by: Literal["user", "device", "project", "provider", "model", "day"] | None = None,
-                        limit: int = Query(default=100, ge=1, le=1000),
-                        offset: int = Query(default=0, ge=0)):
+                        limit: int = 100,
+                        offset: int = 0):
     conditions = _usage_conditions(device_id=device_id, user_id=user_id, project_id=project_id,
                                    provider_id=provider_id, model=model, source=source,
                                    metering_status=metering_status, from_time=from_time,
                                    to_time=to_time)
-    async with request.app.state.database.session() as session:
-        scope = await ledger_scope(request, session, UsageEvent)
+    async with call.database.session() as session:
+        scope = await ledger_scope(call, session, UsageEvent)
         if scope is not None:
             conditions.append(scope)
         pending = await session.scalar(select(UsageRollupQueue.id).limit(1))
@@ -372,13 +371,12 @@ async def usage_summary(request: Request,
         return result
 
 
-
-async def usage_reconciliation(request: Request,
-                               provider_id: str = Query(min_length=1, max_length=64),
-                               from_day: date = Query(), to_day: date = Query()):
-    await _super_admin_read(request)
+async def usage_reconciliation(call: GatewayCall,
+                               provider_id: str = None,
+                               from_day: date = None, to_day: date = None):
+    await _super_admin_read(call)
     if from_day > to_day or (to_day - from_day).days > 30 or to_day == date.max:
-        raise HTTPException(status_code=422, detail="Invalid reconciliation range")
+        raise GatewayError('invalid', 'Invalid reconciliation range')
     day = func.date(UsageEvent.occurred_at)
     query = (select(
         day, UsageEvent.model, UsageEvent.source,
@@ -397,10 +395,10 @@ async def usage_reconciliation(request: Request,
         ),
         UsageEvent.source.in_(("reported_by_device", "provider_reconciled")),
     ).group_by(day, UsageEvent.model, UsageEvent.source).limit(4000))
-    async with request.app.state.database.session() as session:
+    async with call.database.session() as session:
         values = (await session.execute(query)).all()
     if len(values) == 4000:
-        raise HTTPException(status_code=413, detail="Reconciliation range too large")
+        raise GatewayError('too_large', 'Reconciliation range too large')
     groups: dict[tuple[str, str | None], dict[str, tuple]] = {}
     for row in values:
         groups.setdefault((row[0], row[1]), {})[row[2]] = row
@@ -454,25 +452,24 @@ async def usage_reconciliation(request: Request,
     return {"rows": result}
 
 
-
-async def usage_events(request: Request,
-                       device_id: str | None = Query(default=None, max_length=64),
-                       user_id: str | None = Query(default=None, max_length=64),
-                       project_id: str | None = Query(default=None, max_length=64),
-                       provider_id: str | None = Query(default=None, max_length=64),
-                       model: str | None = Query(default=None, max_length=128),
+async def usage_events(call: GatewayCall,
+                       device_id: str | None = None,
+                       user_id: str | None = None,
+                       project_id: str | None = None,
+                       provider_id: str | None = None,
+                       model: str | None = None,
                        source: UsageSource | None = None,
                        metering_status: MeteringStatus | None = None,
                        from_time: datetime | None = None,
                        to_time: datetime | None = None,
-                       page: int = Query(1, ge=1),
-                       page_size: int = Query(25, ge=1, le=100)):
+                       page: int = 1,
+                       page_size: int = 25):
     conditions = _usage_conditions(device_id=device_id, user_id=user_id, project_id=project_id,
                                    provider_id=provider_id, model=model, source=source,
                                    metering_status=metering_status, from_time=from_time,
                                    to_time=to_time)
-    async with request.app.state.database.session() as session:
-        scope = await ledger_scope(request, session, UsageEvent)
+    async with call.database.session() as session:
+        scope = await ledger_scope(call, session, UsageEvent)
         if scope is not None:
             conditions.append(scope)
         total = await session.scalar(select(func.count()).select_from(UsageEvent).where(*conditions))

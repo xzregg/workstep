@@ -5,7 +5,8 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from services.project_scope import require_catalog_project, workspace_engine_catalog
+from api.project_scope import require_catalog_project
+from services.project_scope import workspace_engine_catalog
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse

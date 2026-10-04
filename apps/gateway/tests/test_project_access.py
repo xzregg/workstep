@@ -2,7 +2,7 @@ import base64
 import json
 
 from fastapi.testclient import TestClient
-from fastapi.responses import JSONResponse
+from gateway.contracts import JsonValue as JSONResponse
 
 from gateway.app import create_app
 from gateway.config import GatewaySettings
@@ -115,12 +115,12 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
                 assert provider_grant_expires_at > int(__import__('time').time())
                 assert display_name == "Worker"
                 assert project_id == "host-1"
-                if request.url.path in ('/', '/tasks', '/canvas', '/assets/app.js'):
-                    from fastapi.responses import HTMLResponse
-                    return HTMLResponse('<main>Full WorkStep workspace</main>')
-                if request.method not in ("GET", "HEAD"):
+                if request.target.path in ('/', '/tasks', '/canvas', '/assets/app.js'):
+                    from gateway.contracts import RawValue as HTMLResponse
+                    return HTMLResponse('<main>Full WorkStep workspace</main>', media_type='text/html')
+                if request.operation not in ("GET", "HEAD"):
                     assert access_level == "edit"
-                    assert task_create is (request.url.path in ("/api/task/create", "/api/task/copy"))
+                    assert task_create is (request.target.path in ("/api/task/create", "/api/task/copy"))
                 else:
                     assert access_level == "read"
                     assert task_create is False

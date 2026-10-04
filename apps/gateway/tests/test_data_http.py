@@ -10,6 +10,9 @@ from workstep_gateway_protocol import (FrameType, ProxyFrame,
                                        WebSocketMessageAssembler, websocket_payloads)
 
 from gateway.services.control_connection import DataConnection
+from gateway.api.adapters import invoke
+from gateway.contracts import GatewaySocket
+from urllib.parse import urlsplit
 
 
 @pytest.mark.asyncio
@@ -40,7 +43,7 @@ async def test_proxy_redirect_and_websocket_policy_preserve_public_scheme(scheme
         'query_string': b'', 'headers': [(b'host', host.encode())],
         'server': (host.split(':')[0], 8700),
     }, receive)
-    response = await connection.proxy_http(request, user_id='user-1', username='alice')
+    response = await invoke(connection.proxy_http, request=request, user_id='user-1', username='alice')
     assert response.headers['location'] == f'{scheme}://{host}/login?next=project'
     assert f"connect-src 'self' {ws_scheme}://{host}" in response.headers['content-security-policy']
     async for _ in response.body_iterator:
@@ -101,72 +104,72 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
 
     @app.get("/api/public/shares/token/task")
     async def guest_task(request: Request):
-        return await connection.proxy_http(
-            request, share_ticket="signed-ticket",
+        return await invoke(connection.proxy_http,
+            request=request, share_ticket="signed-ticket",
             target_path="/api/platform-share/task",
         )
 
     @app.get("/api/public/shares/token/history")
     async def guest_history(request: Request):
-        return await connection.proxy_http(
-            request, share_ticket="signed-ticket",
+        return await invoke(connection.proxy_http,
+            request=request, share_ticket="signed-ticket",
             target_path="/api/platform-share/history",
         )
 
     @app.get("/api/public/shares/token/history/100")
     async def guest_older_history(request: Request):
-        return await connection.proxy_http(
-            request, share_ticket="signed-ticket",
+        return await invoke(connection.proxy_http,
+            request=request, share_ticket="signed-ticket",
             target_path="/api/platform-share/history/100",
         )
 
     @app.get("/api/public/shares/token/events")
     async def guest_events(request: Request):
-        return await connection.proxy_http(
-            request, share_ticket="signed-ticket",
+        return await invoke(connection.proxy_http,
+            request=request, share_ticket="signed-ticket",
             target_path="/api/platform-share/events/message-1/0",
         )
 
     @app.get("/api/public/shares/token/artifacts")
     async def guest_artifacts(request: Request):
-        return await connection.proxy_http(
-            request, share_ticket="signed-ticket",
+        return await invoke(connection.proxy_http,
+            request=request, share_ticket="signed-ticket",
             target_path="/api/platform-share/artifacts",
         )
 
     @app.get("/api/public/shares/token/artifacts/content")
     async def guest_artifact_content(request: Request):
-        return await connection.proxy_http(
-            request, share_ticket="signed-ticket",
+        return await invoke(connection.proxy_http,
+            request=request, share_ticket="signed-ticket",
             target_path=f"/api/platform-share/artifacts/{'a' * 64}/content",
         )
 
     @app.get("/api/public/shares/token/artifacts/preview")
     async def guest_artifact_preview(request: Request):
-        return await connection.proxy_http(
-            request, share_ticket="signed-ticket",
+        return await invoke(connection.proxy_http,
+            request=request, share_ticket="signed-ticket",
             target_path=f"/api/platform-share/artifacts/{'a' * 64}/preview",
         )
 
     @app.post("/api/public/shares/token/steps/build/message")
     async def guest_step_message(request: Request):
-        return await connection.proxy_http(
-            request, share_ticket="signed-ticket", share_body=b'{"content":"hello"}',
+        return await invoke(connection.proxy_http,
+            request=request, share_ticket="signed-ticket", share_body=b'{"content":"hello"}',
             target_path="/api/platform-share/steps/build/message",
         )
 
     @app.post("/api/public/shares/token/steps/build/review/approve")
     async def guest_review(request: Request):
-        return await connection.proxy_http(
-            request, share_ticket="signed-ticket",
+        return await invoke(connection.proxy_http,
+            request=request, share_ticket="signed-ticket",
             share_body=b'{"review_run_id":"review-1"}',
             target_path="/api/platform-share/steps/build/review/approve",
         )
 
     @app.post("/api/public/shares/token/interventions/interaction-1/respond")
     async def guest_interaction(request: Request):
-        return await connection.proxy_http(
-            request, share_ticket="signed-ticket",
+        return await invoke(connection.proxy_http,
+            request=request, share_ticket="signed-ticket",
             share_body=b'{"data":{"action":"cancel"}}',
             target_path="/api/platform-share/interventions/interaction-1/respond",
         )
@@ -175,51 +178,51 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
 
     @app.post("/api/public/shares/token/uploads")
     async def guest_upload(request: Request):
-        return await connection.proxy_http(
-            request, share_ticket="signed-ticket", share_body=b"visible",
+        return await invoke(connection.proxy_http,
+            request=request, share_ticket="signed-ticket", share_body=b"visible",
             target_path="/api/platform-share/uploads",
         )
 
     @app.get("/api/public/shares/token/uploads/file")
     async def guest_upload_content(request: Request):
-        return await connection.proxy_http(
-            request, share_ticket="signed-ticket",
+        return await invoke(connection.proxy_http,
+            request=request, share_ticket="signed-ticket",
             target_path=f"/api/platform-share/uploads/{upload_name}",
         )
 
     @app.get("/api/public/shares/token/git/workspace")
     async def guest_git_workspace(request: Request):
-        return await connection.proxy_http(
-            request, share_ticket="signed-ticket",
+        return await invoke(connection.proxy_http,
+            request=request, share_ticket="signed-ticket",
             target_path="/api/platform-share/git/workspace",
         )
 
     @app.get("/api/public/shares/token/git/worktrees/status")
     async def guest_git_status(request: Request):
-        return await connection.proxy_http(
-            request, share_ticket="signed-ticket",
+        return await invoke(connection.proxy_http,
+            request=request, share_ticket="signed-ticket",
             target_path=f"/api/platform-share/git/worktrees/{'a' * 24}/status",
         )
 
     @app.post("/api/public/shares/token/git/worktrees/commit")
     async def guest_git_commit(request: Request):
-        return await connection.proxy_http(
-            request, share_ticket="signed-ticket", share_body=b'{"message":"Commit"}',
+        return await invoke(connection.proxy_http,
+            request=request, share_ticket="signed-ticket", share_body=b'{"message":"Commit"}',
             target_path=f"/api/platform-share/git/worktrees/{'a' * 24}/commit",
         )
 
     @app.post("/api/public/shares/token/git/worktrees/{action}")
     async def guest_git_sync(request: Request, action: str):
-        return await connection.proxy_http(
-            request, share_ticket="signed-ticket",
+        return await invoke(connection.proxy_http,
+            request=request, share_ticket="signed-ticket",
             share_body=b"" if action == "fetch" else b'{"branch":"feature"}',
             target_path=f"/api/platform-share/git/worktrees/{'a' * 24}/{action}",
         )
 
     @app.get("/api/public/shares/token/git/worktrees/branches")
     async def guest_git_branches(request: Request):
-        return await connection.proxy_http(
-            request, share_ticket="signed-ticket",
+        return await invoke(connection.proxy_http,
+            request=request, share_ticket="signed-ticket",
             target_path=f"/api/platform-share/git/worktrees/{'a' * 24}/branches",
         )
 
@@ -227,8 +230,8 @@ async def test_share_proxy_forwards_only_ticket_and_fixed_task_path():
     async def guest_branch_write(request: Request, action: str):
         suffix = {"switch": "switch", "create": "branches",
                   "delete": "branches/delete"}[action]
-        return await connection.proxy_http(
-            request, share_ticket="signed-ticket", share_body=b'{"snapshot":"' + b"d" * 64 + b'"}',
+        return await invoke(connection.proxy_http,
+            request=request, share_ticket="signed-ticket", share_body=b'{"snapshot":"' + b"d" * 64 + b'"}',
             target_path=f"/api/platform-share/git/worktrees/{'a' * 24}/{suffix}",
         )
 
@@ -345,7 +348,7 @@ async def test_data_connection_multiplexes_large_http_body_and_streamed_response
 
     @app.post("/echo")
     async def echo(request: Request):
-        return await connection.proxy_http(request, user_id="user-1", username="alice",
+        return await invoke(connection.proxy_http, request=request, user_id="user-1", username="alice",
                                            display_name="Alice Display",
                                            project_id="host-1", access_level="edit",
                                            task_create=True, provider_ids=["provider-allowed"],
@@ -428,7 +431,7 @@ async def test_data_connection_forwards_bidirectional_websocket_frames():
     browser = Browser()
     connection = DataConnection("device-1", Socket())
     await asyncio.wait_for(connection.proxy_websocket(
-        browser, user_id="user-1", username="alice",
+        GatewaySocket(port=browser, target=urlsplit(browser.url.path), wire_headers=tuple(browser.scope["headers"])), user_id="user-1", username="alice",
         display_name="Alice Display",
         project_id="host-1", access_level="edit",
     ), timeout=2)
@@ -476,7 +479,7 @@ async def test_project_websocket_closes_after_access_revocation():
     browser = Browser()
     connection = DataConnection("device-1", Socket())
     task = asyncio.create_task(connection.proxy_websocket(
-        browser, user_id="user-1", username="alice",
+        GatewaySocket(port=browser, target=urlsplit(browser.url.path), wire_headers=tuple(browser.scope["headers"])), user_id="user-1", username="alice",
         project_id="host-1", access_level="read",
         authorization_check=authorize,
     ))
@@ -513,8 +516,8 @@ async def test_project_http_stream_stops_when_authorization_is_revoked():
         "type": "http", "method": "GET", "scheme": "https", "path": "/api/task/list",
         "query_string": b"project_id=host-1", "headers": [], "server": ("gateway.test", 443),
     }, receive)
-    response = await connection.proxy_http(
-        request, user_id="user-1", username="alice", project_id="host-1",
+    response = await invoke(connection.proxy_http,
+        request=request, user_id="user-1", username="alice", project_id="host-1",
         access_level="read", authorization_check=authorize,
     )
     allowed = False
@@ -541,7 +544,7 @@ async def test_slow_authorization_cannot_exceed_device_stream_capacity():
         async def receive(): return {'type': 'http.request', 'body': b'', 'more_body': False}
         request = StarletteRequest({'type': 'http', 'method': 'GET', 'scheme': 'http', 'path': '/api/health',
             'query_string': b'', 'headers': [(b'host', b'd-device.localhost:8700')], 'server': ('localhost', 8700)}, receive)
-        return await connection.proxy_http(request, user_id='user', username='User', authorization_check=authorize)
+        return await invoke(connection.proxy_http, request=request, user_id='user', username='User', authorization_check=authorize)
     results = await asyncio.wait_for(asyncio.gather(*(one() for _ in range(33)), return_exceptions=True), 3)
     try:
         assert len(connection._streams) == 32

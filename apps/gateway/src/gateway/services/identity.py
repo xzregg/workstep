@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
-from fastapi import HTTPException
+from gateway.services.identity_errors import IdentityError
 from sqlalchemy import select, update, func
 from sqlalchemy.exc import IntegrityError
 
@@ -75,9 +75,9 @@ class IdentityService:
                     registration_mode: str) -> tuple[User, str]:
         async with self.database.session() as session:
             if await session.get(PlatformSetting, "platform_initialized"):
-                raise HTTPException(status_code=409, detail="Platform already initialized")
+                raise IdentityError("conflict", "Platform already initialized")
             if await session.scalar(select(func.count(User.id))):
-                raise HTTPException(status_code=409, detail="Platform already contains users")
+                raise IdentityError("conflict", "Platform already contains users")
         primary_hash = await self._hash_password(password)
         recovery_hash = await self._hash_password(recovery_password)
         primary = User(
@@ -107,14 +107,14 @@ class IdentityService:
                         result="success", metadata_json=None,
                     ))
         except IntegrityError as exc:
-            raise HTTPException(status_code=409, detail="Platform already initialized") from exc
+            raise IdentityError("conflict", "Platform already initialized") from exc
         return primary, token
 
     async def registration_mode(self) -> str:
         async with self.database.session() as session:
             setting = await session.get(PlatformSetting, "registration_mode")
             if setting is None:
-                raise HTTPException(status_code=503, detail="Platform not initialized")
+                raise IdentityError("unavailable", "Platform not initialized")
             return setting.value_json.strip('"')
 
     async def set_registration_mode(self, mode: str, actor_id: str) -> None:
@@ -122,7 +122,7 @@ class IdentityService:
             async with session.begin():
                 setting = await session.get(PlatformSetting, "registration_mode")
                 if setting is None:
-                    raise HTTPException(status_code=503, detail="Platform not initialized")
+                    raise IdentityError("unavailable", "Platform not initialized")
                 setting.value_json = f'"{mode}"'
                 setting.updated_by_user_id = actor_id
                 session.add(AuditEvent(
@@ -134,7 +134,7 @@ class IdentityService:
         initialized = await self.initialized()
         mode = await self.registration_mode() if initialized else "open"
         if mode == "closed":
-            raise HTTPException(status_code=403, detail="Registration is closed")
+            raise IdentityError("forbidden", "Registration is closed")
         password_hash = await self._hash_password(password)
         user = User(
             id=str(uuid4()), username=username, display_name=display_name,
@@ -156,7 +156,7 @@ class IdentityService:
                         ).on_conflict_do_nothing(index_elements=["key"]).returning(PlatformSetting.key))
                         if first:
                             if await session.scalar(select(func.count(User.id))):
-                                raise HTTPException(status_code=409, detail="Platform already contains users")
+                                raise IdentityError("conflict", "Platform already contains users")
                             session.add(user)
                             await session.flush()
                             session.add(PlatformSetting(key="registration_mode", value_json='"open"'))
@@ -173,28 +173,28 @@ class IdentityService:
                         PlatformSetting.value_json,
                     ))
                     if current_mode is None:
-                        raise HTTPException(status_code=503, detail="Platform not initialized")
+                        raise IdentityError("unavailable", "Platform not initialized")
                     mode = current_mode.strip('"')
                     if mode == "closed":
-                        raise HTTPException(status_code=403, detail="Registration is closed")
+                        raise IdentityError("forbidden", "Registration is closed")
                     user.status = "active" if mode == "open" else "pending"
                     session.add(user)
                     if mode == "open":
                         auth_session, token = self._create_session(user.id)
                         session.add(auth_session)
         except IntegrityError as exc:
-            raise HTTPException(status_code=409, detail="Username unavailable") from exc
+            raise IdentityError("conflict", "Username unavailable") from exc
         return user, token
 
     async def login(self, username: str, password: str) -> tuple[User, str]:
         async with self.database.session() as session:
             user = await session.scalar(select(User).where(User.username == username))
         if user is None or not user.password_hash or not await self._verify_password(user.password_hash, password):
-            raise HTTPException(status_code=401, detail="Invalid username or password")
+            raise IdentityError("unauthenticated", "Invalid username or password")
         if user.status == "pending":
-            raise HTTPException(status_code=403, detail="Account awaiting approval")
+            raise IdentityError("forbidden", "Account awaiting approval")
         if user.status != "active":
-            raise HTTPException(status_code=403, detail="Account disabled")
+            raise IdentityError("forbidden", "Account disabled")
         auth_session, token = self._create_session(user.id)
         async with self.database.session() as session:
             async with session.begin():
@@ -212,16 +212,16 @@ class IdentityService:
 
     async def session_user(self, token: str | None, *, allow_device_session: bool = False) -> tuple[User, AuthSession]:
         if not token:
-            raise HTTPException(status_code=401, detail="Authentication required")
+            raise IdentityError("unauthenticated", "Authentication required")
         async with self.database.session() as session:
             auth_session = await session.scalar(select(AuthSession).where(AuthSession.token_hash == _digest(token)))
             if (auth_session is None or auth_session.revoked_at
                     or _as_utc(auth_session.expires_at) <= _now()
                     or (auth_session.device_id and not allow_device_session)):
-                raise HTTPException(status_code=401, detail="Session expired")
+                raise IdentityError("unauthenticated", "Session expired")
             user = await session.get(User, auth_session.user_id)
             if user is None or user.status != "active":
-                raise HTTPException(status_code=401, detail="Account unavailable")
+                raise IdentityError("unauthenticated", "Account unavailable")
             return user, auth_session
 
     async def logout(self, token: str) -> None:
@@ -234,13 +234,13 @@ class IdentityService:
     async def change_password(self, user: User, auth_session: AuthSession,
                               current_password: str, new_password: str) -> None:
         if not user.password_hash or not await self._verify_password(user.password_hash, current_password):
-            raise HTTPException(status_code=403, detail="Current password is incorrect")
+            raise IdentityError("forbidden", "Current password is incorrect")
         new_hash = await self._hash_password(new_password)
         async with self.database.session() as session:
             async with session.begin():
                 fresh = await session.get(User, user.id)
                 if fresh.password_hash != user.password_hash:
-                    raise HTTPException(status_code=409, detail="Password changed; retry")
+                    raise IdentityError("conflict", "Password changed; retry")
                 fresh.password_hash = new_hash
                 fresh.password_changed_at = _now()
                 fresh.must_change_password = 0
@@ -260,7 +260,7 @@ class IdentityService:
                 AdminAssignment.revoked_at.is_(None),
             ))
             if assignment is None:
-                raise HTTPException(status_code=403, detail="Administrator access required")
+                raise IdentityError("forbidden", "Administrator access required")
 
     async def require_skill_admin(self, user_id: str) -> None:
         async with self.database.session() as session:
@@ -271,23 +271,23 @@ class IdentityService:
                 AdminAssignment.revoked_at.is_(None),
             ))
             if assignment is None:
-                raise HTTPException(status_code=403, detail="Skill administrator access required")
+                raise IdentityError("forbidden", "Skill administrator access required")
 
     async def step_up(self, user: User, auth_session: AuthSession, password: str) -> None:
         if not user.password_hash or not await self._verify_password(user.password_hash, password):
-            raise HTTPException(status_code=403, detail="Password is incorrect")
+            raise IdentityError("forbidden", "Password is incorrect")
         async with self.database.session() as session:
             async with session.begin():
                 current = await session.get(AuthSession, auth_session.id)
                 if current is None or current.revoked_at or _as_utc(current.expires_at) <= _now():
-                    raise HTTPException(status_code=401, detail="Session expired")
+                    raise IdentityError("unauthenticated", "Session expired")
                 current.step_up_expires_at = _now() + timedelta(minutes=5)
 
     async def require_step_up(self, auth_session: AuthSession) -> None:
         async with self.database.session() as session:
             current = await session.get(AuthSession, auth_session.id)
             if current is None or current.step_up_expires_at is None or _as_utc(current.step_up_expires_at) <= _now():
-                raise HTTPException(status_code=403, detail="Recent password confirmation required")
+                raise IdentityError("forbidden", "Recent password confirmation required")
 
     async def is_super_admin(self, user_id: str) -> bool:
         async with self.database.session() as session:
@@ -306,7 +306,7 @@ class IdentityService:
                 return
             if not platform_only and target_user_id in manageable:
                 return
-        raise HTTPException(status_code=403, detail="Administrator scope does not cover this user")
+        raise IdentityError("forbidden", "Administrator scope does not cover this user")
 
     async def manageable_user_ids(self, session, actor_id: str, *,
                                   roles=("super_admin", "identity_admin", "org_admin", "department_admin")) -> set[str] | None:
@@ -338,7 +338,7 @@ class IdentityService:
         organizations = {assignment.scope_id for assignment in assignments
                          if assignment.role in ("org_admin", "audit_admin") and assignment.scope_type == "organization"}
         if not scoped and not organizations:
-            raise HTTPException(status_code=403, detail="User management denied")
+            raise IdentityError("forbidden", "User management denied")
         departments = (await session.scalars(select(DirectoryDepartment).where(
             DirectoryDepartment.active == 1,
         ))).all()
@@ -374,19 +374,19 @@ class IdentityService:
             async with session.begin():
                 user = await session.get(User, user_id)
                 if user is None:
-                    raise HTTPException(status_code=404, detail="User not found")
+                    raise IdentityError("not_found", "User not found")
                 if scope_type == "department":
                     if not scope_id or await session.get(DirectoryDepartment, scope_id) is None:
-                        raise HTTPException(status_code=422, detail="Department scope not found")
+                        raise IdentityError("invalid", "Department scope not found")
                 elif scope_type == "organization":
                     if not scope_id or await session.get(IdentitySource, scope_id) is None:
-                        raise HTTPException(status_code=422, detail="Organization scope not found")
+                        raise IdentityError("invalid", "Organization scope not found")
                 elif scope_type == "device_group":
                     from gateway.models import DeviceGroup
                     if not scope_id or await session.get(DeviceGroup, scope_id) is None:
-                        raise HTTPException(status_code=422, detail="Device group scope not found")
+                        raise IdentityError("invalid", "Device group scope not found")
                 elif scope_id is not None:
-                    raise HTTPException(status_code=422, detail="Platform scope cannot have an ID")
+                    raise IdentityError("invalid", "Platform scope cannot have an ID")
                 existing = await session.scalar(select(AdminAssignment).where(
                     AdminAssignment.user_id == user_id,
                     AdminAssignment.role == role,
@@ -435,7 +435,7 @@ class IdentityService:
                 ).values(value_json="true"))
                 assignment = await session.get(AdminAssignment, assignment_id)
                 if assignment is None or assignment.revoked_at is not None:
-                    raise HTTPException(status_code=404, detail="Administrator assignment not found")
+                    raise IdentityError("not_found", "Administrator assignment not found")
                 user = await session.get(User, assignment.user_id)
                 if assignment.role == "super_admin":
                     active_local = await session.scalar(select(func.count()).select_from(AdminAssignment).join(User).where(
@@ -445,9 +445,9 @@ class IdentityService:
                         User.registration_source == "local",
                     ))
                     if user and user.status == "active" and user.registration_source == "local" and active_local <= 1:
-                        raise HTTPException(status_code=409, detail="Cannot revoke last local super administrator")
+                        raise IdentityError("conflict", "Cannot revoke last local super administrator")
                     if user and user.is_recovery:
-                        raise HTTPException(status_code=403, detail="Recovery administrator is protected")
+                        raise IdentityError("forbidden", "Recovery administrator is protected")
                 assignment.revoked_at = _now()
                 session.add(AuditEvent(
                     id=str(uuid4()), user_id=actor_id,
@@ -463,7 +463,7 @@ class IdentityService:
             async with session.begin():
                 user = await session.get(User, user_id)
                 if user is None:
-                    raise HTTPException(status_code=404, detail="User not found")
+                    raise IdentityError("not_found", "User not found")
                 user.password_hash = password_hash
                 user.password_changed_at = _now()
                 user.must_change_password = 1
@@ -486,7 +486,7 @@ class IdentityService:
                 async with session.begin():
                     session.add(user)
         except IntegrityError as exc:
-            raise HTTPException(status_code=409, detail="Username unavailable") from exc
+            raise IdentityError("conflict", "Username unavailable") from exc
         return user
 
     async def approve_user(self, user_id: str) -> None:
@@ -494,9 +494,9 @@ class IdentityService:
             async with session.begin():
                 user = await session.get(User, user_id)
                 if user is None:
-                    raise HTTPException(status_code=404, detail="User not found")
+                    raise IdentityError("not_found", "User not found")
                 if user.status == "disabled":
-                    raise HTTPException(status_code=409, detail="Disabled account cannot be approved")
+                    raise IdentityError("conflict", "Disabled account cannot be approved")
                 user.status = "active"
 
     async def disable_user(self, user_id: str) -> None:
@@ -509,7 +509,7 @@ class IdentityService:
                 ).values(value_json="true"))
                 user = await session.get(User, user_id)
                 if user is None:
-                    raise HTTPException(status_code=404, detail="User not found")
+                    raise IdentityError("not_found", "User not found")
                 if user.status == "disabled":
                     return
                 assignment = await session.scalar(select(AdminAssignment.id).where(
@@ -524,9 +524,9 @@ class IdentityService:
                         User.status == "active",
                     ))
                     if count <= 1:
-                        raise HTTPException(status_code=409, detail="Cannot disable last super administrator")
+                        raise IdentityError("conflict", "Cannot disable last super administrator")
                 if user.is_recovery:
-                    raise HTTPException(status_code=403, detail="Recovery administrator is protected")
+                    raise IdentityError("forbidden", "Recovery administrator is protected")
                 user.status = "disabled"
                 await session.execute(update(AuthSession).where(
                     AuthSession.user_id == user_id,

@@ -63,10 +63,11 @@ def _copy_local_artifact(source: Path, destination: Path) -> None:
 class TaskDispatchService:
     """Small execution seam for the terminal ``task_dispatch`` step."""
 
-    def __init__(self, project_manager, event_bus, workflow_runtime):
+    def __init__(self, project_manager, event_bus, workflow_runtime, *, remote_client=None):
         self._project_manager = project_manager
         self._task_service = TaskService(event_bus)
         self._workflow_runtime = workflow_runtime
+        self._remote_client = remote_client
 
     async def _run_db(self, project_id: str, operation):
         run_db = getattr(self._project_manager, "run_db", None)
@@ -178,8 +179,7 @@ class TaskDispatchService:
         self, *, target_project_id, target_workflow_id, target_start_step_key,
         config, dispatch_id, task, step, source_project_id, lineage, artifacts_dir,
     ) -> dict:
-        from api.remote_project import client_manager
-
+        client_manager = self._remote_client
         if client_manager is None:
             raise ValueError("远程项目连接服务未初始化")
         workflow_response = await client_manager.request(
@@ -327,3 +327,32 @@ class TaskDispatchService:
         # description user-authored so downstream LLM prompts do not expose
         # internal project/task/dispatch identifiers or duplicate paths.
         return str(task.description or "").strip()
+
+
+def prepare_received_dispatch(project_manager, task_service, project_id, req):
+    project = project_manager.get_project_by_id(project_id)
+    if project is None:
+        raise ValueError("Project not found")
+    workflow = project.workflow_by_id(req.workflow_id)
+    if workflow is None:
+        raise ValueError("目标流程不存在")
+    existing = Task.get_or_none(Task.source_dispatch_id == req.dispatch_id)
+    if existing is not None:
+        return {"existing": task_service.get_task(existing.id)}
+    root = project.workstep_dir / "task-inputs" / req.dispatch_id
+    manifest = []
+    for item in req.files:
+        relative = Path(item.relative_path)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError("输入产物路径非法")
+        destination = (root / item.source_step_key / relative).resolve()
+        destination.relative_to(root.resolve())
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(base64.b64decode(item.content_b64, validate=True))
+        manifest.append({
+            "source_step_key": item.source_step_key,
+            "source_round": item.source_round,
+            "name": item.name,
+            "path": str(destination),
+        })
+    return {"cwd": str(project.path), "manifest": manifest}

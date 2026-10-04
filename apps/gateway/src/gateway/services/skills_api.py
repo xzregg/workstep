@@ -1,3 +1,5 @@
+from gateway.services.errors import GatewayError
+from gateway.contracts import GatewayCall, FileArtifact
 import asyncio
 
 import re
@@ -6,9 +8,6 @@ from datetime import datetime, timezone
 
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Request
-
-from fastapi.responses import FileResponse
 
 from pydantic import BaseModel, Field
 
@@ -49,23 +48,23 @@ class SkillRevokeInput(BaseModel):
     reason: str = Field(min_length=1, max_length=512)
 
 
-async def _admin(request: Request):
-    identity = _identity(request)
-    token = request.cookies.get(COOKIE_NAME)
+async def _admin(call: GatewayCall):
+    identity = _identity(call)
+    token = call.tokens.get(COOKIE_NAME)
     actor, auth_session = await identity.session_user(token)
-    _check_csrf(request, token)
+    _check_csrf(call, token)
     if actor.must_change_password:
-        raise HTTPException(status_code=403, detail="Password change required")
+        raise GatewayError('forbidden', 'Password change required')
     await identity.require_skill_admin(actor.id)
     await identity.require_step_up(auth_session)
     return actor
 
 
-async def _admin_read(request: Request):
-    identity = _identity(request)
-    actor, _ = await identity.session_user(request.cookies.get(COOKIE_NAME))
+async def _admin_read(call: GatewayCall):
+    identity = _identity(call)
+    actor, _ = await identity.session_user(call.tokens.get(COOKIE_NAME))
     if actor.must_change_password:
-        raise HTTPException(status_code=403, detail="Password change required")
+        raise GatewayError('forbidden', 'Password change required')
     await identity.require_skill_admin(actor.id)
     return actor
 
@@ -125,10 +124,9 @@ async def compile_skill_manifest(database, signer, gateway_id: str,
                                       projects=entries)
 
 
-
-async def list_skill_applications(request: Request):
-    await _admin_read(request)
-    async with request.app.state.database.session() as session:
+async def list_skill_applications(call: GatewayCall):
+    await _admin_read(call)
+    async with call.database.session() as session:
         rows = (await session.execute(select(
             PlatformProject, Device, DeviceProjectSkillState,
         ).join(Device, Device.id == PlatformProject.device_id)
@@ -147,30 +145,28 @@ async def list_skill_applications(request: Request):
     } for project, device, state in rows]}
 
 
-
-async def create_skill(request: Request, body: SkillInput):
-    actor = await _admin(request)
+async def create_skill(call: GatewayCall, body: SkillInput):
+    actor = await _admin(call)
     if body.name != body.name.strip() or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", body.slug):
-        raise HTTPException(status_code=422, detail="Invalid Skill name or slug")
+        raise GatewayError('invalid', 'Invalid Skill name or slug')
     row = SkillPackage(id=str(uuid4()), name=body.name, slug=body.slug,
                        description=body.description, owner_user_id=actor.id)
     try:
-        async with request.app.state.database.session() as session:
+        async with call.database.session() as session:
             async with session.begin():
                 session.add(row)
                 session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,
                                        action="skill.created", result="success",
                                        metadata_json=f'{{"skill_id":"{row.id}"}}'))
     except IntegrityError as exc:
-        raise HTTPException(status_code=409, detail="Skill slug already exists") from exc
+        raise GatewayError('conflict', 'Skill slug already exists') from exc
     return {"id": row.id, "name": row.name, "slug": row.slug,
             "description": row.description, "status": row.status}
 
 
-
-async def list_skills(request: Request):
-    await _admin_read(request)
-    async with request.app.state.database.session() as session:
+async def list_skills(call: GatewayCall):
+    await _admin_read(call)
+    async with call.database.session() as session:
         rows = (await session.scalars(select(SkillPackage).order_by(
             SkillPackage.name, SkillPackage.id,
         ))).all()
@@ -179,33 +175,32 @@ async def list_skills(request: Request):
                        for row in rows]}
 
 
-
-async def upload_skill_version(request: Request, skill_id: str, body: SkillVersionInput):
-    actor = await _admin(request)
+async def upload_skill_version(call: GatewayCall, skill_id: str, body: SkillVersionInput):
+    actor = await _admin(call)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", body.version):
-        raise HTTPException(status_code=422, detail="Invalid Skill version")
+        raise GatewayError('invalid', 'Invalid Skill version')
     try:
         raw, digest, count, total = await asyncio.to_thread(
             validate_archive, body.archive_base64,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise GatewayError('invalid', str(exc)) from exc
     version_id = str(uuid4())
     storage_name = f"{version_id}.zip"
-    directory = request.app.state.settings.data_dir / "skill-packages"
+    directory = call.settings.data_dir / 'skill-packages'
     path = directory / storage_name
     try:
-        async with request.app.state.database.session() as session:
+        async with call.database.session() as session:
             async with session.begin():
                 skill = await session.get(SkillPackage, skill_id)
                 if skill is None or skill.status != "active":
-                    raise HTTPException(status_code=404, detail="Skill unavailable")
+                    raise GatewayError('not_found', 'Skill unavailable')
                 existing = await session.scalar(select(SkillVersion.id).where(
                     SkillVersion.skill_id == skill_id,
                     SkillVersion.version == body.version,
                 ))
                 if existing:
-                    raise HTTPException(status_code=409, detail="Skill version exists")
+                    raise GatewayError('conflict', 'Skill version exists')
                 await asyncio.to_thread(save_archive, directory, storage_name, raw)
                 row = SkillVersion(id=version_id, skill_id=skill_id,
                                    version=body.version, digest=digest,
@@ -222,26 +217,24 @@ async def upload_skill_version(request: Request, skill_id: str, body: SkillVersi
     return _public_version(row)
 
 
-
-async def list_skill_versions(request: Request, skill_id: str):
-    await _admin_read(request)
-    async with request.app.state.database.session() as session:
+async def list_skill_versions(call: GatewayCall, skill_id: str):
+    await _admin_read(call)
+    async with call.database.session() as session:
         rows = (await session.scalars(select(SkillVersion).where(
             SkillVersion.skill_id == skill_id,
         ).order_by(SkillVersion.created_at.desc()))).all()
     return {"versions": [_public_version(row) for row in rows]}
 
 
-
-async def approve_skill_version(request: Request, skill_id: str, version_id: str):
-    actor = await _admin(request)
-    async with request.app.state.database.session() as session:
+async def approve_skill_version(call: GatewayCall, skill_id: str, version_id: str):
+    actor = await _admin(call)
+    async with call.database.session() as session:
         async with session.begin():
             row = await session.get(SkillVersion, version_id)
             if row is None or row.skill_id != skill_id:
-                raise HTTPException(status_code=404, detail="Skill version unavailable")
+                raise GatewayError('not_found', 'Skill version unavailable')
             if row.status != "pending_review":
-                raise HTTPException(status_code=409, detail="Skill version already reviewed")
+                raise GatewayError('conflict', 'Skill version already reviewed')
             row.status = "approved"
             row.reviewed_by_user_id = actor.id
             row.published_at = datetime.now(timezone.utc)
@@ -251,17 +244,16 @@ async def approve_skill_version(request: Request, skill_id: str, version_id: str
     return _public_version(row)
 
 
-
-async def revoke_skill_version(request: Request, skill_id: str,
+async def revoke_skill_version(call: GatewayCall, skill_id: str,
                                version_id: str, body: SkillRevokeInput):
-    actor = await _admin(request)
-    async with request.app.state.database.session() as session:
+    actor = await _admin(call)
+    async with call.database.session() as session:
         async with session.begin():
             row = await session.get(SkillVersion, version_id)
             if row is None or row.skill_id != skill_id:
-                raise HTTPException(status_code=404, detail="Skill version unavailable")
+                raise GatewayError('not_found', 'Skill version unavailable')
             if row.status != "approved":
-                raise HTTPException(status_code=409, detail="Skill version is not active")
+                raise GatewayError('conflict', 'Skill version is not active')
             row.status = "revoked"
             row.revoked_at = datetime.now(timezone.utc)
             row.revoke_reason = body.reason
@@ -290,17 +282,16 @@ async def revoke_skill_version(request: Request, skill_id: str,
     return _public_version(row)
 
 
-
-async def grant_group_skill(request: Request, group_id: str, body: SkillGrantInput):
-    actor = await _admin(request)
-    async with request.app.state.database.session() as session:
+async def grant_group_skill(call: GatewayCall, group_id: str, body: SkillGrantInput):
+    actor = await _admin(call)
+    async with call.database.session() as session:
         async with session.begin():
             group = await session.get(UserGroup, group_id)
             version = await session.get(SkillVersion, body.skill_version_id)
             if group is None or group.status != "active" or version is None:
-                raise HTTPException(status_code=404, detail="Group or Skill version unavailable")
+                raise GatewayError('not_found', 'Group or Skill version unavailable')
             if version.status != "approved":
-                raise HTTPException(status_code=409, detail="Skill version is not approved")
+                raise GatewayError('conflict', 'Skill version is not approved')
             grant = await session.scalar(select(GroupSkillCatalog).where(
                 GroupSkillCatalog.group_id == group_id,
                 GroupSkillCatalog.skill_id == version.skill_id,
@@ -319,8 +310,7 @@ async def grant_group_skill(request: Request, group_id: str, body: SkillGrantInp
                         ProjectSkillAssignment.revoked_at.is_(None),
                     ).limit(1))
                     if active_assignment is not None:
-                        raise HTTPException(status_code=409,
-                                            detail="Revoke active project Skills before changing group version")
+                        raise GatewayError('conflict', 'Revoke active project Skills before changing group version')
                 grant.skill_version_id = version.id
                 grant.revoked_at = None
                 grant.granted_by_user_id = actor.id
@@ -331,10 +321,9 @@ async def grant_group_skill(request: Request, group_id: str, body: SkillGrantInp
             "skill_version_id": version.id}
 
 
-
-async def list_skill_admin_groups(request: Request):
-    await _admin_read(request)
-    async with request.app.state.database.session() as session:
+async def list_skill_admin_groups(call: GatewayCall):
+    await _admin_read(call)
+    async with call.database.session() as session:
         rows = (await session.scalars(select(UserGroup).where(
             UserGroup.status == "active",
         ).order_by(UserGroup.name, UserGroup.id))).all()
@@ -342,13 +331,12 @@ async def list_skill_admin_groups(request: Request):
                         "source_type": row.source_type} for row in rows]}
 
 
-
-async def list_skill_admin_group_grants(request: Request, group_id: str):
-    await _admin_read(request)
-    async with request.app.state.database.session() as session:
+async def list_skill_admin_group_grants(call: GatewayCall, group_id: str):
+    await _admin_read(call)
+    async with call.database.session() as session:
         group = await session.get(UserGroup, group_id)
         if group is None or group.status != "active":
-            raise HTTPException(status_code=404, detail="Group unavailable")
+            raise GatewayError('not_found', 'Group unavailable')
         rows = (await session.execute(select(
             GroupSkillCatalog, SkillVersion, SkillPackage,
         ).join(SkillVersion, SkillVersion.id == GroupSkillCatalog.skill_version_id)
@@ -362,10 +350,9 @@ async def list_skill_admin_group_grants(request: Request, group_id: str):
                        for _, version, package in rows]}
 
 
-
-async def revoke_group_skill(request: Request, group_id: str, skill_id: str):
-    actor = await _admin(request)
-    async with request.app.state.database.session() as session:
+async def revoke_group_skill(call: GatewayCall, group_id: str, skill_id: str):
+    actor = await _admin(call)
+    async with call.database.session() as session:
         async with session.begin():
             grant = await session.scalar(select(GroupSkillCatalog).where(
                 GroupSkillCatalog.group_id == group_id,
@@ -373,7 +360,7 @@ async def revoke_group_skill(request: Request, group_id: str, skill_id: str):
                 GroupSkillCatalog.revoked_at.is_(None),
             ))
             if grant is None:
-                raise HTTPException(status_code=404, detail="Group Skill grant unavailable")
+                raise GatewayError('not_found', 'Group Skill grant unavailable')
             now = datetime.now(timezone.utc)
             grant.revoked_at = now
             assignments = (await session.scalars(select(ProjectSkillAssignment).where(
@@ -392,12 +379,11 @@ async def revoke_group_skill(request: Request, group_id: str, skill_id: str):
                                    metadata_json=f'{{"group_id":"{group_id}","skill_id":"{skill_id}"}}'))
 
 
-
-async def list_group_skills(request: Request, group_id: str):
-    service, actor = await _actor(request, write=False)
-    async with request.app.state.database.session() as session:
+async def list_group_skills(call: GatewayCall, group_id: str):
+    service, actor = await _actor(call, write=False)
+    async with call.database.session() as session:
         if not await _can_manage_group(session, service, actor, group_id):
-            raise HTTPException(status_code=403, detail="Group management denied")
+            raise GatewayError('forbidden', 'Group management denied')
         rows = (await session.execute(select(
             GroupSkillCatalog, SkillVersion, SkillPackage,
         ).join(SkillVersion, SkillVersion.id == GroupSkillCatalog.skill_version_id)
@@ -413,24 +399,23 @@ async def list_group_skills(request: Request, group_id: str):
                        for _, version, package in rows]}
 
 
-
-async def assign_project_skill(request: Request, group_id: str,
+async def assign_project_skill(call: GatewayCall, group_id: str,
                                project_id: str, body: SkillGrantInput):
-    service, actor = await _actor(request, write=True)
-    async with request.app.state.database.session() as session:
+    service, actor = await _actor(call, write=True)
+    async with call.database.session() as session:
         async with session.begin():
             if not await _can_manage_group(session, service, actor, group_id):
-                raise HTTPException(status_code=403, detail="Group management denied")
+                raise GatewayError('forbidden', 'Group management denied')
             linked = await session.scalar(select(GroupProject.id).where(
                 GroupProject.group_id == group_id,
                 GroupProject.platform_project_id == project_id,
                 GroupProject.revoked_at.is_(None),
             ))
             if linked is None:
-                raise HTTPException(status_code=403, detail="Project is not linked to group")
+                raise GatewayError('forbidden', 'Project is not linked to group')
             version = await session.get(SkillVersion, body.skill_version_id)
             if version is None or version.status != "approved":
-                raise HTTPException(status_code=409, detail="Skill version is not approved")
+                raise GatewayError('conflict', 'Skill version is not approved')
             catalog = await session.scalar(select(GroupSkillCatalog.id).where(
                 GroupSkillCatalog.group_id == group_id,
                 GroupSkillCatalog.skill_id == version.skill_id,
@@ -438,10 +423,10 @@ async def assign_project_skill(request: Request, group_id: str,
                 GroupSkillCatalog.revoked_at.is_(None),
             ))
             if catalog is None:
-                raise HTTPException(status_code=403, detail="Skill is not granted to group")
+                raise GatewayError('forbidden', 'Skill is not granted to group')
             project = await session.get(PlatformProject, project_id)
             if project is None:
-                raise HTTPException(status_code=404, detail="Project unavailable")
+                raise GatewayError('not_found', 'Project unavailable')
             existing = (await session.scalars(select(ProjectSkillAssignment).where(
                 ProjectSkillAssignment.platform_project_id == project_id,
                 ProjectSkillAssignment.skill_id == version.skill_id,
@@ -450,7 +435,7 @@ async def assign_project_skill(request: Request, group_id: str,
                                if item.source_group_id == group_id), None)
             if any(item.revoked_at is None and item.skill_version_id != version.id
                    for item in existing):
-                raise HTTPException(status_code=409, detail="Skill version conflict across groups")
+                raise GatewayError('conflict', 'Skill version conflict across groups')
             if (assignment is not None and assignment.revoked_at is None
                     and assignment.skill_version_id == version.id):
                 return {"project_id": project_id, "skill_id": version.skill_id,
@@ -480,19 +465,18 @@ async def assign_project_skill(request: Request, group_id: str,
             "desired_revision": assignment.desired_revision}
 
 
-
-async def list_project_skills(request: Request, group_id: str, project_id: str):
-    service, actor = await _actor(request, write=False)
-    async with request.app.state.database.session() as session:
+async def list_project_skills(call: GatewayCall, group_id: str, project_id: str):
+    service, actor = await _actor(call, write=False)
+    async with call.database.session() as session:
         if not await _can_manage_group(session, service, actor, group_id):
-            raise HTTPException(status_code=403, detail="Group management denied")
+            raise GatewayError('forbidden', 'Group management denied')
         linked = await session.scalar(select(GroupProject.id).where(
             GroupProject.group_id == group_id,
             GroupProject.platform_project_id == project_id,
             GroupProject.revoked_at.is_(None),
         ))
         if linked is None:
-            raise HTTPException(status_code=403, detail="Project is not linked to group")
+            raise GatewayError('forbidden', 'Project is not linked to group')
         project = await session.get(PlatformProject, project_id)
         rows = (await session.execute(select(
             ProjectSkillAssignment, SkillVersion, SkillPackage,
@@ -514,14 +498,13 @@ async def list_project_skills(request: Request, group_id: str, project_id: str):
                        for assignment, version, package in rows]}
 
 
-
-async def revoke_project_skill(request: Request, group_id: str,
+async def revoke_project_skill(call: GatewayCall, group_id: str,
                                project_id: str, skill_id: str):
-    service, actor = await _actor(request, write=True)
-    async with request.app.state.database.session() as session:
+    service, actor = await _actor(call, write=True)
+    async with call.database.session() as session:
         async with session.begin():
             if not await _can_manage_group(session, service, actor, group_id):
-                raise HTTPException(status_code=403, detail="Group management denied")
+                raise GatewayError('forbidden', 'Group management denied')
             assignment = await session.scalar(select(ProjectSkillAssignment).where(
                 ProjectSkillAssignment.platform_project_id == project_id,
                 ProjectSkillAssignment.skill_id == skill_id,
@@ -529,7 +512,7 @@ async def revoke_project_skill(request: Request, group_id: str,
                 ProjectSkillAssignment.revoked_at.is_(None),
             ))
             if assignment is None:
-                raise HTTPException(status_code=404, detail="Project Skill assignment unavailable")
+                raise GatewayError('not_found', 'Project Skill assignment unavailable')
             project = await session.get(PlatformProject, project_id)
             project.skill_revision += 1
             assignment.desired_revision = project.skill_revision
@@ -540,26 +523,22 @@ async def revoke_project_skill(request: Request, group_id: str,
                                    metadata_json=f'{{"project_id":"{project_id}","skill_id":"{skill_id}"}}'))
 
 
-
-async def download_skill_version(request: Request, version_id: str):
-    authorization = request.headers.get("authorization", "")
+async def download_skill_version(call: GatewayCall, version_id: str):
+    authorization = call.proofs.get('authorization', '')
     if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Skill manifest required")
+        raise GatewayError('unauthenticated', 'Skill manifest required')
     try:
-        claims = request.app.state.gateway_signer.verify_skill_manifest(
-            authorization.removeprefix("Bearer "),
-            gateway_id=request.app.state.settings.gateway_id,
-        )
+        claims = call.gateway_signer.verify_skill_manifest(authorization.removeprefix('Bearer '), gateway_id=call.settings.gateway_id)
     except ValueError as exc:
-        raise HTTPException(status_code=403, detail="Invalid Skill manifest") from exc
+        raise GatewayError('forbidden', 'Invalid Skill manifest') from exc
     project_ids = [project.get("platform_project_id") for project in claims["projects"]
                    if isinstance(project, dict) and isinstance(project.get("skills"), list)
                    and any(isinstance(skill, dict)
                            and skill.get("skill_version_id") == version_id
                            for skill in project["skills"])]
     if not project_ids:
-        raise HTTPException(status_code=403, detail="Skill version is out of scope")
-    async with request.app.state.database.session() as session:
+        raise GatewayError('forbidden', 'Skill version is out of scope')
+    async with call.database.session() as session:
         device = await session.get(Device, claims["device_id"])
         user = await session.get(User, claims["user_id"])
         access = await session.scalar(select(UserDevice.id).where(
@@ -569,7 +548,7 @@ async def download_skill_version(request: Request, version_id: str):
         ))
         if (device is None or device.status != "active"
                 or user is None or user.status != "active" or access is None):
-            raise HTTPException(status_code=403, detail="Device access revoked")
+            raise GatewayError('forbidden', 'Device access revoked')
         version = await session.scalar(select(SkillVersion).join(
             ProjectSkillAssignment,
             ProjectSkillAssignment.skill_version_id == SkillVersion.id,
@@ -590,9 +569,8 @@ async def download_skill_version(request: Request, version_id: str):
                    GroupProject.revoked_at.is_(None),
                    GroupSkillCatalog.revoked_at.is_(None)))
     if version is None or not re.fullmatch(r"[0-9a-f-]{36}\.zip", version.storage_name):
-        raise HTTPException(status_code=403, detail="Skill version unavailable")
-    path = request.app.state.settings.data_dir / "skill-packages" / version.storage_name
+        raise GatewayError('forbidden', 'Skill version unavailable')
+    path = call.settings.data_dir / 'skill-packages' / version.storage_name
     if not await asyncio.to_thread(path.is_file):
-        raise HTTPException(status_code=503, detail="Skill package unavailable")
-    return FileResponse(path, media_type="application/zip",
-                        headers={"Cache-Control": "private, no-store"})
+        raise GatewayError('unavailable', 'Skill package unavailable')
+    return FileArtifact(path, media_type='application/zip', headers={'Cache-Control': 'private, no-store'})

@@ -1,3 +1,5 @@
+from gateway.services.errors import GatewayError
+from gateway.contracts import GatewayCall, FileArtifact
 import asyncio
 
 import base64
@@ -14,9 +16,6 @@ from pathlib import Path
 
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Request
-
-from fastapi.responses import FileResponse
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -88,14 +87,10 @@ def _public(release: ClientRelease) -> dict:
     }
 
 
-
-async def list_client_releases(request: Request, os: str | None = None, arch: str | None = None):
-    database = request.app.state.database
+async def list_client_releases(call: GatewayCall, os: str | None = None, arch: str | None = None):
+    database = call.database
     async with database.session() as session:
-        query = select(ClientRelease).where(
-            ClientRelease.gateway_id == request.app.state.settings.gateway_id,
-            ClientRelease.status == "published",
-        )
+        query = select(ClientRelease).where(ClientRelease.gateway_id == call.settings.gateway_id, ClientRelease.status == 'published')
         if os:
             query = query.where(ClientRelease.os == os)
         if arch:
@@ -104,15 +99,14 @@ async def list_client_releases(request: Request, os: str | None = None, arch: st
     return {"releases": [_public(release) for release in releases]}
 
 
-
-async def publish_client_release(request: Request, body: PublishReleaseInput):
-    token = request.cookies.get(COOKIE_NAME)
-    identity = IdentityService(request.app.state.database)
+async def publish_client_release(call: GatewayCall, body: PublishReleaseInput):
+    token = call.tokens.get(COOKIE_NAME)
+    identity = IdentityService(call.database)
     actor, auth_session = await identity.session_user(token)
-    _check_csrf(request, token)
+    _check_csrf(call, token)
     await identity.require_super_admin(actor.id)
     await identity.require_step_up(auth_session)
-    settings = request.app.state.settings
+    settings = call.settings
     release_id = uuid4().hex
     published = settings.data_dir / "releases" / "published"
     try:
@@ -121,13 +115,13 @@ async def publish_client_release(request: Request, body: PublishReleaseInput):
             published, release_id,
         )
     except (FileNotFoundError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise GatewayError('bad_input', str(exc)) from exc
     signed_payload = json.dumps({
         "gateway_id": settings.gateway_id, "os": body.os, "arch": body.arch,
         "version": body.version, "sha256": sha256, "file_size": file_size,
         "minimum_protocol_version": body.minimum_protocol_version,
     }, sort_keys=True, separators=(",", ":")).encode()
-    signer = request.app.state.gateway_signer
+    signer = call.gateway_signer
     signature = base64.urlsafe_b64encode(signer.private_key.sign(signed_payload)).rstrip(b"=").decode()
     release = ClientRelease(
         id=release_id, gateway_id=settings.gateway_id, os=body.os, arch=body.arch,
@@ -137,23 +131,21 @@ async def publish_client_release(request: Request, body: PublishReleaseInput):
         minimum_protocol_version=body.minimum_protocol_version,
     )
     try:
-        async with request.app.state.database.session() as session:
+        async with call.database.session() as session:
             async with session.begin():
                 session.add(release)
     except IntegrityError as exc:
         await asyncio.to_thread((published / storage_name).unlink, missing_ok=True)
-        raise HTTPException(status_code=409, detail="Release version already exists") from exc
+        raise GatewayError('conflict', 'Release version already exists') from exc
     return _public(release)
 
 
-
-async def download_client_release(request: Request, release_id: str):
-    async with request.app.state.database.session() as session:
+async def download_client_release(call: GatewayCall, release_id: str):
+    async with call.database.session() as session:
         release = await session.get(ClientRelease, release_id)
-    if not release or release.gateway_id != request.app.state.settings.gateway_id or release.status != "published":
-        raise HTTPException(status_code=404, detail="Release not found")
-    path = request.app.state.settings.data_dir / "releases" / "published" / release.storage_name
+    if not release or release.gateway_id != call.settings.gateway_id or release.status != "published":
+        raise GatewayError('not_found', 'Release not found')
+    path = call.settings.data_dir / 'releases' / 'published' / release.storage_name
     if not await asyncio.to_thread(path.is_file):
-        raise HTTPException(status_code=404, detail="Release file missing")
-    return FileResponse(path, filename=release.filename, media_type="application/octet-stream",
-                        headers={"Cache-Control": "public, max-age=31536000, immutable"})
+        raise GatewayError('not_found', 'Release file missing')
+    return FileArtifact(path, filename=release.filename, media_type='application/octet-stream', headers={'Cache-Control': 'public, max-age=31536000, immutable'})

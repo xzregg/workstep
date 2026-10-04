@@ -86,7 +86,7 @@ async def test_share_bridge_applies_only_signed_supplier_scope_and_keeps_visitor
     from types import SimpleNamespace
     from fastapi import FastAPI
     from services.config import ConfigStore
-    from services.desktop_security import DesktopSecurityMiddleware
+    from api.desktop_security import DesktopSecurityMiddleware
     from services.remote_access import get_current_actor
     from services.gateway_client.bridge import ManagedHttpBridge
     from workstep_gateway_protocol import FrameType, ProxyFrame

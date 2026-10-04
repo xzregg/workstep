@@ -68,7 +68,7 @@ class WorkflowRunHandle:
 class WorkflowRuntime:
     """Run project workflows behind one small interface."""
 
-    def __init__(self, event_bus: EventBus, project_manager):
+    def __init__(self, event_bus: EventBus, project_manager, *, remote_client=None):
         self._event_bus = event_bus
         self._project_manager = project_manager
         self._runners: dict[str, TaskRunner] = {}
@@ -84,7 +84,7 @@ class WorkflowRuntime:
             self._recover_project_runs,
         )
         self._dispatch_service = TaskDispatchService(
-            project_manager, event_bus, self
+            project_manager, event_bus, self, remote_client=remote_client
         )
 
     def project_has_active_runs(self, project_id: str) -> bool:

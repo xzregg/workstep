@@ -7,7 +7,8 @@ from pydantic import BaseModel, Field
 
 from agent_assistants.base import assistant_registry
 from engines.core.registry import create_engine, get_available_engines
-from services.project_scope import require_catalog_project, workspace_engine_catalog
+from api.project_scope import require_catalog_project
+from services.project_scope import workspace_engine_catalog
 from services import providers as provider_service
 from services.config import CODEX_REASONING_EFFORTS, config_store
 

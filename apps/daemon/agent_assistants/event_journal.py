@@ -10,8 +10,10 @@ from __future__ import annotations
 import asyncio
 import functools
 import json
+import logging
 import os
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -21,6 +23,7 @@ from typing import Any
 
 
 _SAFE_SEGMENT = re.compile(r"^[A-Za-z0-9_.:-]+$")
+logger = logging.getLogger(__name__)
 _SUMMARY_EVENT_TYPES = {
     "async_question",
     "interaction_request",
@@ -67,7 +70,16 @@ class _WriterState:
     buffered: list[dict[str, Any]] = field(default_factory=list)
     buffered_bytes: int = 0
     last_flush: float = field(default_factory=time.monotonic)
-    flush_handle: asyncio.TimerHandle | None = None
+
+
+def _storage_operation(operation):
+    @functools.wraps(operation)
+    def serialized(self, *args, **kwargs):
+        # Project database workers can also read or append the same journal.
+        # Serialize complete storage operations across both kinds of worker.
+        with self._storage_lock:
+            return operation(self, *args, **kwargs)
+    return serialized
 
 
 class TurnEventJournal:
@@ -77,11 +89,14 @@ class TurnEventJournal:
         self._flush_interval = flush_interval
         self._flush_bytes = flush_bytes
         self._states: dict[Path, _WriterState] = {}
+        self._storage_lock = threading.RLock()
         self._io_executor = ThreadPoolExecutor(
             max_workers=1,
             thread_name_prefix="workstep-event-journal",
         )
         self._io_closed = False
+        self._flush_handles: dict[JournalRef, asyncio.TimerHandle] = {}
+        self._flush_tasks: set[asyncio.Task] = set()
 
     async def _run_io(self, operation, /, *args, **kwargs):
         """Serialize journal storage work outside the daemon event loop."""
@@ -97,7 +112,9 @@ class TurnEventJournal:
         return await self._run_io(self.start, *args, **kwargs)
 
     async def arecord(self, *args, **kwargs) -> int:
-        return await self._run_io(self.record, *args, **kwargs)
+        sequence = await self._run_io(self.record, *args, **kwargs)
+        self._schedule_flush(args[0] if args else kwargs["ref"])
+        return sequence
 
     async def amove_to_conversation(self, *args, **kwargs) -> JournalRef:
         return await self._run_io(self.move_to_conversation, *args, **kwargs)
@@ -106,6 +123,7 @@ class TurnEventJournal:
         await self._run_io(self.sync, *args, **kwargs)
 
     async def afinish(self, *args, **kwargs) -> None:
+        self._cancel_flush(args[0] if args else kwargs["ref"])
         await self._run_io(self.finish, *args, **kwargs)
 
     async def asnapshot(self, *args, **kwargs) -> dict[str, Any]:
@@ -120,6 +138,11 @@ class TurnEventJournal:
     async def aclose(self) -> None:
         if self._io_closed:
             return
+        for handle in self._flush_handles.values():
+            handle.cancel()
+        self._flush_handles.clear()
+        if self._flush_tasks:
+            await asyncio.gather(*tuple(self._flush_tasks))
         await self._run_io(self._close_files)
         self._io_closed = True
         await asyncio.to_thread(self._io_executor.shutdown, True)
@@ -130,6 +153,7 @@ class TurnEventJournal:
             raise ValueError("Invalid journal path segment")
         return value
 
+    @_storage_operation
     def start(
         self,
         workstep_dir: str | Path,
@@ -153,6 +177,7 @@ class TurnEventJournal:
         self._states[path] = _WriterState(ref=ref, next_seq=next_seq)
         return ref
 
+    @_storage_operation
     def move_to_conversation(
         self,
         ref: JournalRef,
@@ -196,6 +221,7 @@ class TurnEventJournal:
             raise ValueError("Journal path escapes project event_logs") from exc
         return candidate
 
+    @_storage_operation
     def record(self, ref: JournalRef, event: dict[str, Any], *, force: bool = False) -> int:
         path = self.resolve(ref.root, ref)
         state = self._states.get(path)
@@ -216,30 +242,18 @@ class TurnEventJournal:
         encoded = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
         state.buffered.append(record)
         state.buffered_bytes += len(encoded.encode("utf-8")) + 1
-        if state.flush_handle is None:
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                pass
-            else:
-                state.flush_handle = loop.call_later(
-                    self._flush_interval,
-                    self._flush_scheduled,
-                    ref,
-                )
+        self._schedule_flush(ref)
         elapsed = time.monotonic() - state.last_flush
         if force or state.buffered_bytes >= self._flush_bytes or elapsed >= self._flush_interval:
             self.sync(ref, durable=force)
         return int(record["seq"])
 
+    @_storage_operation
     def sync(self, ref: JournalRef, *, durable: bool = False) -> None:
         path = self.resolve(ref.root, ref)
         state = self._states.get(path)
         if state is None or not state.buffered:
             return
-        if state.flush_handle is not None:
-            state.flush_handle.cancel()
-            state.flush_handle = None
         payload = "".join(
             json.dumps(item, ensure_ascii=False, separators=(",", ":")) + "\n"
             for item in state.buffered
@@ -253,13 +267,37 @@ class TurnEventJournal:
         state.buffered_bytes = 0
         state.last_flush = time.monotonic()
 
-    def _flush_scheduled(self, ref: JournalRef) -> None:
-        state = self._states.get(self.resolve(ref.root, ref))
-        if state is None:
+    def _schedule_flush(self, ref: JournalRef) -> None:
+        # Timer/task ownership stays on the event loop; storage state stays on
+        # the I/O worker. Synchronous worker calls never touch loop handles.
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
             return
-        state.flush_handle = None
-        self.sync(ref)
+        if not self._io_closed and ref not in self._flush_handles:
+            self._flush_handles[ref] = loop.call_later(
+                self._flush_interval, self._flush_scheduled, ref,
+            )
 
+    def _cancel_flush(self, ref: JournalRef) -> None:
+        handle = self._flush_handles.pop(ref, None)
+        if handle is not None:
+            handle.cancel()
+
+    def _flush_scheduled(self, ref: JournalRef) -> None:
+        self._flush_handles.pop(ref, None)
+        if self._io_closed:
+            return
+        task = asyncio.create_task(self.async_flush(ref))
+        self._flush_tasks.add(task)
+        task.add_done_callback(self._flush_done)
+
+    def _flush_done(self, task: asyncio.Task) -> None:
+        self._flush_tasks.discard(task)
+        if not task.cancelled() and task.exception() is not None:
+            logger.error("Scheduled event journal flush failed", exc_info=task.exception())
+
+    @_storage_operation
     def finish(self, ref: JournalRef, event: dict[str, Any] | None = None) -> None:
         self.sync(ref)
         events = self._read(ref)
@@ -294,10 +332,9 @@ class TurnEventJournal:
             self.record(ref, event, force=True)
         else:
             self.sync(ref, durable=True)
-        state = self._states.pop(self.resolve(ref.root, ref), None)
-        if state is not None and state.flush_handle is not None:
-            state.flush_handle.cancel()
+        self._states.pop(self.resolve(ref.root, ref), None)
 
+    @_storage_operation
     def snapshot(self, ref: JournalRef) -> dict[str, Any]:
         self.sync(ref)
         events = self._read(ref)
@@ -367,6 +404,7 @@ class TurnEventJournal:
             "events": summary_events,
         }
 
+    @_storage_operation
     def timeline(
         self,
         ref: JournalRef,
@@ -391,6 +429,7 @@ class TurnEventJournal:
             "complete": len(available) <= len(events),
         }
 
+    @_storage_operation
     def delete_session(self, workstep_dir: str | Path, session_id: str) -> None:
         root = Path(workstep_dir).resolve()
         directory = (root / "event_logs" / self._segment(session_id)).resolve()
@@ -398,15 +437,14 @@ class TurnEventJournal:
         if not directory.exists():
             return
         for path in directory.glob("*.jsonl"):
-            state = self._states.pop(path.resolve(), None)
-            if state is not None and state.flush_handle is not None:
-                state.flush_handle.cancel()
+            self._states.pop(path.resolve(), None)
             path.unlink(missing_ok=True)
         try:
             directory.rmdir()
         except OSError:
             pass
 
+    @_storage_operation
     def _close_files(self) -> None:
         for state in tuple(self._states.values()):
             self.sync(state.ref, durable=True)
@@ -419,6 +457,7 @@ class TurnEventJournal:
         self._io_closed = True
         self._io_executor.shutdown(wait=True)
 
+    @_storage_operation
     def _read(self, ref: JournalRef) -> list[dict[str, Any]]:
         path = self.resolve(ref.root, ref)
         if not path.exists():

@@ -64,7 +64,7 @@ from services.task import TaskService
 from services.intervention import intervention_manager
 from services.workflow_runtime import WorkflowRuntime
 from services.config import config_store
-from services.desktop_security import DesktopSecurityMiddleware
+from api.desktop_security import DesktopSecurityMiddleware
 from agent_assistants.coordinator import CoordinatorModule
 from agent_assistants.workflow_gen import WorkflowGenModule
 from agent_assistants.task_draft import TaskDraftModule
@@ -81,15 +81,10 @@ from streaming.ws import (
     parse_subscription,
     register_websocket_routes,
 )
-from services.remote_project import (
-    ActorSnapshot,
-    BrowserActorMiddleware,
-    RemoteAccessService,
-    RemoteAccessGuardMiddleware,
-    RemoteProjectClientManager,
-    RemoteProjectProxyMiddleware,
-    RemoteProjectRegistry,
-)
+from services.remote_project import ActorSnapshot, RemoteAccessService, RemoteProjectClientManager, RemoteProjectRegistry
+from api.remote_access_guard import BrowserActorMiddleware
+from api.remote_access_guard import RemoteAccessGuardMiddleware
+from api.remote_project_proxy import RemoteProjectProxyMiddleware
 
 logger = logging.getLogger(__name__)
 configure_observability()
@@ -152,7 +147,9 @@ async def lifespan(app: FastAPI):
     )
     await sync_all_project_configs(project_manager)
     task_service = TaskService(event_bus)
-    workflow_runtime = WorkflowRuntime(event_bus, project_manager)
+    workflow_runtime = WorkflowRuntime(
+        event_bus, project_manager, remote_client=remote_project_client,
+    )
     gateway_client.workflow_runtime = workflow_runtime
     recovered = await workflow_runtime.recover_running_workflows()
     if recovered:

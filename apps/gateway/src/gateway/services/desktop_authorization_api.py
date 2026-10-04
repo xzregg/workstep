@@ -1,10 +1,11 @@
+from gateway.services.errors import GatewayError
+from gateway.contracts import GatewayCall
 import re
 
 from typing import Literal
 
 from urllib.parse import urlencode, urlsplit
 
-from fastapi import APIRouter, HTTPException, Query, Request
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -68,75 +69,52 @@ class DesktopTokenInput(BaseModel):
     rotation_signature: str | None = Field(default=None, max_length=256)
 
 
-def _service(request: Request) -> DesktopAuthorizationService:
-    return DesktopAuthorizationService(
-        request.app.state.database, request.app.state.gateway_signer,
-        request.app.state.settings.gateway_id,
-    )
+def _service(call: GatewayCall) -> DesktopAuthorizationService:
+    return DesktopAuthorizationService(call.database, call.gateway_signer, call.settings.gateway_id)
 
 
-
-async def gateway_key(request: Request):
-    signer = request.app.state.gateway_signer
-    return {"gateway_id": request.app.state.settings.gateway_id,
+async def gateway_key(call: GatewayCall):
+    signer = call.gateway_signer
+    return {"gateway_id": call.settings.gateway_id,
             "public_key_pem": signer.public_key_pem, "fingerprint": signer.fingerprint}
 
 
-
-async def authorize_desktop(request: Request, body: DesktopAuthorizeInput):
-    token = request.cookies.get(COOKIE_NAME)
-    user, _ = await IdentityService(request.app.state.database).session_user(token)
-    _check_csrf(request, token)
+async def authorize_desktop(call: GatewayCall, body: DesktopAuthorizeInput):
+    token = call.tokens.get(COOKIE_NAME)
+    user, _ = await IdentityService(call.database).session_user(token)
+    _check_csrf(call, token)
     if user.must_change_password:
-        raise HTTPException(status_code=403, detail="Password change required")
-    code = await _service(request).authorize(
-        user.id, body.gateway_id, body.state, body.nonce,
-        body.code_challenge, body.app_instance_id,
-    )
+        raise GatewayError('forbidden', 'Password change required')
+    code = await _service(call).authorize(user.id, body.gateway_id, body.state, body.nonce, body.code_challenge, body.app_instance_id)
     return {"callback_url": (body.redirect_uri or "workstep://auth/callback") + "?" + urlencode({
         "code": code, "state": body.state,
     })}
 
 
-
-async def redeem_desktop_code(request: Request, body: DesktopTokenInput):
-    user, device, signed = await _service(request).redeem(
-        code=body.code, state=body.state, nonce=body.nonce,
-        verifier=body.code_verifier, app_instance_id=body.app_instance_id,
-        gateway_id=body.gateway_id, device_public_key=body.device_public_key,
-        device_name=body.device_name, version=body.version,
-        os=body.os if body.arch else None, arch=body.arch if body.os else None,
-        rotation_signature=body.rotation_signature,
-    )
+async def redeem_desktop_code(call: GatewayCall, body: DesktopTokenInput):
+    user, device, signed = await _service(call).redeem(code=body.code, state=body.state, nonce=body.nonce, verifier=body.code_verifier, app_instance_id=body.app_instance_id, gateway_id=body.gateway_id, device_public_key=body.device_public_key, device_name=body.device_name, version=body.version, os=body.os if body.arch else None, arch=body.arch if body.os else None, rotation_signature=body.rotation_signature)
     return {"user": public_user(user),
             "device": {"id": device.id, "status": device.status},
             "device_authorization": signed}
 
 
-
-async def approve_device(request: Request, device_id: str):
-    _, actor, _ = await device_manager(request, device_ids=[device_id], mutation=True)
-    await _service(request).approve_device(device_id, actor.id)
-
+async def approve_device(call: GatewayCall, device_id: str):
+    _, actor, _ = await device_manager(call, device_ids=[device_id], mutation=True)
+    await _service(call).approve_device(device_id, actor.id)
 
 
-async def list_devices(request: Request, status: Literal["pending", "active", "disabled", "revoked"] | None = None,
-                       q: str = Query(default='', max_length=128),
+async def list_devices(call: GatewayCall, status: Literal["pending", "active", "disabled", "revoked"] | None = None,
+                       q: str = '',
                        sort: Literal['created_at', 'name', 'status'] = 'created_at',
                        direction: Literal['asc', 'desc'] = 'desc',
-                       page: int = Query(default=1, ge=1), page_size: int = Query(default=25, ge=1, le=100)):
-    _, _, allowed = await device_manager(request)
-    devices, total = await _service(request).list_devices(
-        status=status, q=q, sort=sort, direction=direction, page=page, page_size=page_size, allowed_ids=allowed)
+                       page: int = 1, page_size: int = 25):
+    _, _, allowed = await device_manager(call)
+    devices, total = await _service(call).list_devices(status=status, q=q, sort=sort, direction=direction, page=page, page_size=page_size, allowed_ids=allowed)
     platforms = {(device.os, device.arch) for device in devices if device.os and device.arch}
     latest: dict[tuple[str, str], tuple[Version, str]] = {}
     if platforms:
-        async with request.app.state.database.session() as session:
-            releases = (await session.scalars(select(ClientRelease).where(
-                ClientRelease.gateway_id == request.app.state.settings.gateway_id,
-                ClientRelease.status == "published",
-                tuple_(ClientRelease.os, ClientRelease.arch).in_(platforms),
-            ))).all()
+        async with call.database.session() as session:
+            releases = (await session.scalars(select(ClientRelease).where(ClientRelease.gateway_id == call.settings.gateway_id, ClientRelease.status == 'published', tuple_(ClientRelease.os, ClientRelease.arch).in_(platforms)))).all()
         for release in releases:
             platform = (release.os, release.arch)
             if platform not in platforms:
@@ -160,26 +138,17 @@ async def list_devices(request: Request, status: Literal["pending", "active", "d
     result = []
     for device in devices:
         latest_version, update_available = release_status(device)
-        result.append({
-            "id": device.id, "name": device.name, "status": device.status, "department_id": device.department_id,
-            "online": request.app.state.control_connections.is_online(device.id),
-            "daemon_health": request.app.state.control_connections.daemon_health(device.id),
-            "version": device.version, "os": device.os, "arch": device.arch,
-            "latest_version": latest_version, "update_available": update_available,
-            "app_instance_id": device.app_instance_id,
-        })
+        result.append({'id': device.id, 'name': device.name, 'status': device.status, 'department_id': device.department_id, 'online': call.control_connections.is_online(device.id), 'daemon_health': call.control_connections.daemon_health(device.id), 'version': device.version, 'os': device.os, 'arch': device.arch, 'latest_version': latest_version, 'update_available': update_available, 'app_instance_id': device.app_instance_id})
     return {"devices": result, "total": total, "page": page, "page_size": page_size}
 
 
-
-async def disable_device(request: Request, device_id: str):
-    _, actor, _ = await device_manager(request, device_ids=[device_id], mutation=True)
-    await _service(request).change_device_status(device_id, actor.id, "disabled")
-    await request.app.state.control_connections.disconnect(device_id)
-
+async def disable_device(call: GatewayCall, device_id: str):
+    _, actor, _ = await device_manager(call, device_ids=[device_id], mutation=True)
+    await _service(call).change_device_status(device_id, actor.id, 'disabled')
+    await call.control_connections.disconnect(device_id)
 
 
-async def revoke_device(request: Request, device_id: str):
-    _, actor, _ = await device_manager(request, device_ids=[device_id], mutation=True)
-    await _service(request).change_device_status(device_id, actor.id, "revoked")
-    await request.app.state.control_connections.disconnect(device_id)
+async def revoke_device(call: GatewayCall, device_id: str):
+    _, actor, _ = await device_manager(call, device_ids=[device_id], mutation=True)
+    await _service(call).change_device_status(device_id, actor.id, 'revoked')
+    await call.control_connections.disconnect(device_id)

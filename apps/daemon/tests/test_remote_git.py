@@ -10,7 +10,7 @@ from fastapi import FastAPI
 
 import api.git as git_api
 from services.remote_access import ActorSnapshot, RemotePrincipal
-from services.remote_host import RemoteRouteDispatcher
+from streaming.remote_host import RemoteRouteDispatcher
 from services.remote_protocol import RemoteHttpRequest
 from tests.test_git_api import client, layout, git, payment_id
 

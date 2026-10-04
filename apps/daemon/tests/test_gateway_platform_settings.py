@@ -114,7 +114,7 @@ async def test_slow_identity_file_does_not_block_real_api_health(tmp_path,monkey
 @pytest.mark.asyncio
 async def test_callback_sets_local_session_cookie_and_survives_desktop_browser_handoff(monkeypatch):
     from api.gateway_platform import router
-    from services.desktop_security import DesktopSecurityMiddleware
+    from api.desktop_security import DesktopSecurityMiddleware
     from services.gateway_client.browser_login import COOKIE
     monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
     monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')

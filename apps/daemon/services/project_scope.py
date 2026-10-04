@@ -1,28 +1,25 @@
 """Allowlisted API surface for a Gateway session bound to one local project."""
 
-from starlette.requests import Request
 from workstep_gateway_protocol import project_http_route_allowed
 
 
-def project_http_allowed(request: Request, project_id: str, access_level: str,
+def project_http_allowed(method: str, path: str, query: list[tuple[str, str]], project_id: str, access_level: str,
                          task_create: bool = False) -> bool:
     if access_level not in ("read", "edit"):
         return False
-    return project_http_route_allowed(request.method, request.url.path,
-                                      list(request.query_params.multi_items()),
+    return project_http_route_allowed(method, path, query,
                                       project_id, access_level=access_level,
                                       task_create=task_create)
 
 
 def require_catalog_project(project_id: str) -> bool:
     """Validate the actor as well as the tunnel route; return whether to redact."""
-    from fastapi import HTTPException
     from services.remote_access import get_current_actor
 
     actor = get_current_actor()
     if actor and actor.project_id is not None:
         if project_id != actor.project_id:
-            raise HTTPException(status_code=403, detail="项目范围不匹配")
+            raise PermissionError("项目范围不匹配")
         return True
     return False
 

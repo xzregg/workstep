@@ -5,7 +5,7 @@ import time
 import uuid
 from dataclasses import asdict
 
-from services.project_scope import require_catalog_project
+from api.project_scope import require_catalog_project
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse

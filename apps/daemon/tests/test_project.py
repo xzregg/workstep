@@ -342,7 +342,7 @@ async def test_bind_project_is_isolated_between_interleaved_async_tasks(tmp_path
     assert project_b_tasks == ["task-b"]
 
 
-async def test_activate_project_by_id_scopes_and_restores_the_binding(tmp_path, manager):
+def test_activate_project_by_id_scopes_and_restores_the_binding(tmp_path, manager):
     """ProjectContext restores the caller's prior database after its scope."""
     m, _, _ = manager
     project_a_path = tmp_path / "scoped-a"
@@ -353,7 +353,7 @@ async def test_activate_project_by_id_scopes_and_restores_the_binding(tmp_path, 
     project_b = m.init_project(project_b_path)
 
     m.bind_project_by_id(project_a.id)
-    async with m.activate_project_by_id(project_b.id) as active_project:
+    with m.activate_project_by_id(project_b.id) as active_project:
         assert active_project is project_b
         Task.create(
             id="task-b",
