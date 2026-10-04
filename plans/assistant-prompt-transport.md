@@ -54,6 +54,6 @@ system/developer 的角色本身不禁用缓存，稳定的全局指令适合放
 
 验收：`test_workflow_gen.py`、`test_task_draft.py`、`test_coordinator.py` 覆盖原生 system/developer 与正文降级、第二轮背景、格式修复、数据库查看、重启后恢复实际输入、无重复日志输入副本及已有停止、慢数据库健康检查；`test_review_gate.py` 覆盖执行／审核的 system、developer、正文降级、同会话打回重跑、原始检查点恢复及慢输入保存健康检查。
 
-任务 Git 工作区规则已拆分：Git 命令执行位置、仅添加任务所需仓库、项目相对路径及 `git worktree add --relative-paths` 放在稳定的执行系统规则中，仅在提供工作区背景时适用；具体工作区路径与仓库列表保留在正文，并在恢复重跑时检测变化。
+任务 Git 工作区规则已拆分：Git 命令执行位置、仅添加任务所需仓库、项目相对路径及 `git worktree add --relative-paths` 放在稳定的执行系统规则中，仅在提供工作区背景时适用；任务专属的工作区相对路径也通过 `assemble_step_system_prompt` 绑定到系统规则，挂载仓库列表继续作为正文背景；正文中保留已有工作区快照用于恢复检查点和变化检测。
 
 Pydantic AI 固定系统消息随 Harness 历史保存并在压缩时保留；恢复相同规则时只传新正文，规则更新、清空或历史丢失时由引擎替换／重新初始化自己标记的系统消息。原生其他适配器的每轮参数行为保持现状，不能用 Session ID 一概跳过。

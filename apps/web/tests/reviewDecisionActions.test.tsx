@@ -18,7 +18,7 @@ test('manual review offers set complete immediately after terminate', async () =
     ))
     const buttons = Array.from(window.document.querySelectorAll('button'))
     assert.deepEqual(buttons.map((button) => button.textContent?.trim()), [
-      '终止任务', '设置完成', '驳回并重启步骤', '通过并进入下一步骤',
+      '终止任务', '完成步骤', '驳回重做', '通过继续',
     ])
     await act(async () => buttons[1].click())
     assert.deepEqual(decisions, ['set-complete'])
@@ -35,6 +35,6 @@ test('share review hides unsupported step completion while retaining review deci
     await act(async () => root.render(<I18nProvider><ReviewDecisionActions status="pending" pending={false}
       canCompleteStep={false} onAction={() => {}} /></I18nProvider>))
     assert.deepEqual(Array.from(document.querySelectorAll('button')).map(button => button.textContent?.trim()),
-      ['终止任务', '驳回并重启步骤', '通过并进入下一步骤'])
+      ['终止任务', '驳回重做', '通过继续'])
   } finally { await act(async () => root.unmount()); await window.happyDOM.close() }
 })

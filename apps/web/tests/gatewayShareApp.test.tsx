@@ -50,7 +50,7 @@ for (const interactive of [false, true]) test(`Gateway public route mounts canon
     assert.equal(element.querySelector('.app-shell'), null)
     if (!interactive) assert.equal(element.querySelector('.chat-input'), null)
     else {
-      const approve = Array.from(element.querySelectorAll('button')).find(button => button.textContent?.trim() === '通过并进入下一步骤')
+      const approve = Array.from(element.querySelectorAll('button')).find(button => button.textContent?.trim() === '通过继续')
       assert.ok(approve)
       await act(async () => approve.click())
       assert.equal(calls.filter(path => path.endsWith('/review/approve')).length, 0)

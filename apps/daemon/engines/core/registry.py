@@ -295,11 +295,20 @@ def create_engine(backend: str) -> AcpEngineBase | None:
     """Create an engine instance by backend name.
 
     上层只依赖 ``AcpEngineBase``（ACP 协议接口）；自定义函数经基类继承获得。
+    Missing registered engines are probed again; async callers must run this
+    synchronous lookup in a worker, just like engine construction.
     """
     with _REGISTRY_LOCK:
         cls = ENGINE_REGISTRY.get(backend)
         if not cls:
-            return None
+            # Startup probes can miss an engine whose runtime becomes available
+            # later. Recheck only the requested engine before rejecting a saved
+            # session; keep unknown/disabled engines unavailable.
+            cls = _ALL_ENGINES.get(backend)
+            if cls is None or not cls.is_installed():
+                return None
+            ENGINE_REGISTRY[backend] = cls
+            _invalidated_scan_generation()
         return cls()
 
 

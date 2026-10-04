@@ -436,6 +436,15 @@ def test_assemble_prompt_task_worktrees_keep_project_cwd(tmp_path):
     assert "git worktree add --relative-paths" in SYSTEM_PROMPT
     assert "project-relative paths" in SYSTEM_PROMPT
     assert task.id not in SYSTEM_PROMPT
+    from services.prompt import assemble_step_system_prompt
+    system = assemble_step_system_prompt(task, artifacts)
+    assert f"Workspace directory: .workstep/worktrees/{task.id}" in system
+    assert str(tmp_path) not in system
+    assert "git worktree add --relative-paths" in system
+    (workspace / "C").mkdir()
+    (workspace / "C" / ".git").write_text("gitdir: elsewhere")
+    assert assemble_step_system_prompt(task, artifacts) == system
+    assert "Attached repositories" not in system
     assert task.cwd == str(tmp_path)
     db.close()
 

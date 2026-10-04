@@ -376,6 +376,31 @@ def test_create_engine_unknown():
     assert create_engine("unknown") is None
 
 
+def test_create_engine_rechecks_engine_missing_from_startup_registry(monkeypatch):
+    class RecoveredEngine(StubEngine):
+        def __init__(self):
+            super().__init__([])
+
+    monkeypatch.setattr(engine_registry, "_ALL_ENGINES", {"recovered": RecoveredEngine})
+    monkeypatch.setattr(engine_registry, "ENGINE_REGISTRY", {})
+    monkeypatch.setattr(engine_registry, "_SCAN_CACHE", [{"id": "recovered", "installed": False}])
+    assert isinstance(create_engine("recovered"), RecoveredEngine)
+    assert engine_registry.ENGINE_REGISTRY["recovered"] is RecoveredEngine
+    assert engine_registry._SCAN_CACHE is None
+
+
+def test_create_engine_does_not_register_uninstalled_engine(monkeypatch):
+    class MissingEngine(StubEngine):
+        @staticmethod
+        def is_installed():
+            return False
+
+    monkeypatch.setattr(engine_registry, "_ALL_ENGINES", {"missing": MissingEngine})
+    monkeypatch.setattr(engine_registry, "ENGINE_REGISTRY", {})
+    assert create_engine("missing") is None
+    assert "missing" not in engine_registry.ENGINE_REGISTRY
+
+
 def test_create_engine_waits_for_registry_refresh(monkeypatch):
     """聊天提交不得观察到刷新过程中被暂时清空的引擎注册表。"""
     original_registry = ENGINE_REGISTRY.copy()

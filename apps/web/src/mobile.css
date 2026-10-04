@@ -176,6 +176,17 @@
     height: var(--mobile-control-icon-size) !important;
     flex: 0 0 var(--mobile-control-icon-size);
   }
+  .review-decision-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .review-decision-actions > button.btn {
+    width: 100%;
+    height: auto;
+    min-width: 0;
+    min-height: var(--mobile-control-regular);
+    justify-content: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    margin: 0;
+  }
   .provider-protocol-toggle { height: var(--mobile-button-height); min-height: var(--mobile-button-height); }
   .chat-input-text-segment { min-width: 0; overflow-wrap: anywhere; }
   .markdown-body, .markdown-message { min-width: 0; overflow-wrap: anywhere; }

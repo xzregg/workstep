@@ -84,7 +84,7 @@ test('manual review renders the green set-complete action beside its badge', asy
       </I18nProvider>,
     ))
     const button = [...window.document.querySelectorAll('button')]
-      .find((item) => item.textContent?.trim() === '设置完成') as HTMLButtonElement | undefined
+      .find((item) => item.textContent?.trim() === '完成步骤') as HTMLButtonElement | undefined
     assert.ok(button)
     assert.equal(button.style.color, 'var(--success)')
     await act(async () => button.click())
@@ -110,7 +110,7 @@ test('stopped automatic review can show the same set-complete action', async () 
       </I18nProvider>,
     ))
     const button = [...window.document.querySelectorAll('button')]
-      .find((item) => item.textContent?.trim() === '设置完成') as HTMLButtonElement | undefined
+      .find((item) => item.textContent?.trim() === '完成步骤') as HTMLButtonElement | undefined
     assert.ok(button)
     const summary = button.closest('.process-trace-session-summary')
     assert.ok(summary)
@@ -144,7 +144,7 @@ test('failed execution can show restart and set-complete together', async () => 
     ))
     const restart = window.document.querySelector('button[title="重启失败的消息"]') as HTMLButtonElement | null
     const complete = [...window.document.querySelectorAll('button')]
-      .find((item) => item.textContent?.trim() === '设置完成') as HTMLButtonElement | undefined
+      .find((item) => item.textContent?.trim() === '完成步骤') as HTMLButtonElement | undefined
     assert.ok(restart)
     assert.ok(complete)
     await act(async () => restart.click())
@@ -175,7 +175,7 @@ test('stopped execution can show restart and set-complete together', async () =>
     ))
     const restart = window.document.querySelector('button[title="用新会话重跑"]') as HTMLButtonElement | null
     const complete = [...window.document.querySelectorAll('button')]
-      .find((item) => item.textContent?.trim() === '设置完成') as HTMLButtonElement | undefined
+      .find((item) => item.textContent?.trim() === '完成步骤') as HTMLButtonElement | undefined
     assert.ok(restart)
     assert.ok(complete)
     await act(async () => restart.click())

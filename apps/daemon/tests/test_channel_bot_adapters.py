@@ -307,7 +307,8 @@ async def test_dingtalk_received_group_name_and_sender_are_normalized():
 
 
 @pytest.mark.parametrize('nested', [False, True])
-async def test_wecom_card_buttons_and_callback_use_original_card_id(monkeypatch, nested):
+@pytest.mark.parametrize('result', ['已停止', '该回复已结束', '操作失败，请重试', '该操作已处理或已失效（操作人：小王）'])
+async def test_wecom_card_buttons_and_callback_use_original_card_id(monkeypatch, nested, result):
     from services.channels.base import ChannelCard, ChannelButton
     clients = []
     class Client:
@@ -324,7 +325,7 @@ async def test_wecom_card_buttons_and_callback_use_original_card_id(monkeypatch,
     async def action(click, on_claimed=None):
         received.append(click)
         await on_claimed()
-        return '已停止'
+        return result
     adapter.set_action_handler(action)
     await adapter.start()
     client = clients[0]
@@ -341,6 +342,11 @@ async def test_wecom_card_buttons_and_callback_use_original_card_id(monkeypatch,
     assert (received[0].card_id,received[0].key,received[0].sender_id) == ('card','0','u')
     client.update_template_card.assert_awaited_once()
     assert client.update_template_card.await_args.args[1]['task_id'] == 'card'
+    # The original reply supplies the terminal "已停止" message. Other
+    # outcomes still need explicit feedback from the button callback.
+    assert client.send_message.await_count == (1 if result == '已停止' else 2)
+    if result != '已停止':
+        assert client.send_message.await_args.args[1]['markdown']['content'] == result
     await adapter.stop()
 
 async def test_dingtalk_card_callback_ack_does_not_wait_for_llm_action():
@@ -409,7 +415,7 @@ async def test_dingtalk_card_http_is_async_and_checks_platform_error(monkeypatch
         await adapter.update_card(None,card)
 
 
-async def test_wecom_stop_card_is_sent_independently_of_stream_updates():
+async def test_wecom_stop_card_is_sent_once_with_stream_updates():
     from services.channels.base import ChannelCard, ChannelButton
     adapter = WeComAdapter({'id':'b'},AsyncMock(),AsyncMock())
     client = type('Client',(),{'reply_stream':AsyncMock(),'reply_stream_with_card':AsyncMock(),'send_message':AsyncMock()})()
@@ -421,13 +427,31 @@ async def test_wecom_stop_card_is_sent_independently_of_stream_updates():
     await adapter.send_card(message,card)
     await adapter.update_reply(message,'部分正文')
     await adapter.send_text(message,'已停止。')
-    client.reply_stream_with_card.assert_not_awaited()
-    client.send_message.assert_awaited_once()
-    template=client.send_message.await_args.args[1]['template_card']
+    client.send_message.assert_not_awaited()
+    calls = client.reply_stream_with_card.await_args_list
+    template=calls[0].kwargs['template_card']
     assert template['task_id']=='c'
+    # Active button cards require a title: the live API rejects its absence
+    # with errcode=41016, errmsg="missing title".
+    assert template['main_title']=={'title':'正在处理'}
+    assert template['sub_title_text']=='点击中止'
     assert template['button_list']==[{'text':'中止','key':'0'}]
-    assert [c.args[2] for c in client.reply_stream.await_args_list]==['','部分正文','已停止。\n\n<@u>']
+    assert [c.args[2] for c in calls]==['','部分正文','已停止。\n\n<@u>']
+    assert all('template_card' not in c.kwargs for c in calls[1:])
+    assert calls[-1].kwargs['finish'] is True
 
+
+
+@pytest.mark.parametrize('title, expected', [('   ', '请选择操作'), ('阶段' * 20, '阶段' * 13)])
+async def test_wecom_button_card_keeps_required_title_within_platform_limit(title, expected):
+    from services.channels.base import ChannelCard, ChannelButton
+    adapter = WeComAdapter({'id':'bot'}, AsyncMock(), AsyncMock())
+    adapter._client = type('Client', (), {'send_message':AsyncMock()})()
+    card = ChannelCard('card', title, '点击按钮操作。', (ChannelButton('0', '确认'),))
+    await adapter.send_card(IncomingMessage('bot','m','group','group','u',''), card)
+    template = adapter._client.send_message.await_args.args[1]['template_card']
+    assert template['main_title'] == {'title':expected}
+    assert template['sub_title_text'] == '点击按钮操作。'
 
 
 async def test_wecom_long_choices_use_short_number_buttons_and_full_descriptions():
@@ -455,4 +479,5 @@ async def test_wecom_oversized_choice_explanation_is_complete_and_does_not_end_r
     explanation=calls[0].args[1]['markdown']['content']
     assert all(label in explanation for label in choices)
     assert len(calls[1].args[1]['template_card']['sub_title_text'])<=112
+    assert calls[1].args[1]['template_card']['main_title']=={'title':'请选择'}
     adapter._client.reply_stream.assert_not_awaited()

@@ -532,6 +532,13 @@ def step_worktrees_prompt_path(task: Task, artifacts_dir: Path) -> str:
     )
 
 
+
+def assemble_step_system_prompt(task: Task, artifacts_dir: Path) -> str:
+    """Bind the stable task workspace path to the step's fixed Git rules."""
+    workspace_path = step_worktrees_prompt_path(task, artifacts_dir)
+    return f"{SYSTEM_PROMPT}\n\n## Task Git workspace\nWorkspace directory: {workspace_path}."
+
+
 def _task_git_workspace_context(task: Task, artifacts_dir: Path) -> str:
     """Describe attached task worktrees using paths relative to engine cwd."""
     workspace = _task_git_workspace_path(task, artifacts_dir)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 
 from aibot import WSClient, WSClientOptions
 
@@ -14,6 +14,14 @@ from services.channels.media import fetch_media
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _ReplyStream:
+    text: str = ''
+    card_sent: bool = False
+    finished: bool = False
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 def _utf8_parts(text: str, limit: int):
@@ -48,7 +56,7 @@ class WeComAdapter(ChannelAdapter):
         self._task: asyncio.Task | None = None
         self._stopped = False
         self._last_error = ""
-        self._card_streams = set()
+        self._reply_streams: dict[str, _ReplyStream] = {}
 
     async def start(self) -> None:
         self._stopped = False
@@ -130,7 +138,9 @@ class WeComAdapter(ChannelAdapter):
                 except Exception:
                     logger.warning("Failed to acknowledge WeCom card", exc_info=True)
             result = await self._on_action(click, on_claimed=claimed)
-            if click.sender_id:
+            # Successful cancellation is finalized by the original reply
+            # stream/forwarder; another active message would duplicate it.
+            if click.sender_id and result != '已停止':
                 await client.send_message(click.conversation_id or click.sender_id, {
                     "msgtype":"markdown", "markdown":{"content":result},
                 })
@@ -150,7 +160,7 @@ class WeComAdapter(ChannelAdapter):
 
     async def stop(self) -> None:
         self._stopped = True
-        self._card_streams.clear()
+        self._reply_streams.clear()
         if self._client:
             self._client.disconnect()
             self._client = None
@@ -179,7 +189,7 @@ class WeComAdapter(ChannelAdapter):
             raise RuntimeError("企业微信机器人未连接")
         frame = self._reply_frame(message)
         if frame:
-            await self._client.reply_stream(frame, self._stream_id(message), "", finish=False)
+            await self._reply_stream(message, '', finish=False)
 
     async def _send_text(self, message: IncomingMessage, text: str) -> None:
         if not self._client:
@@ -211,12 +221,15 @@ class WeComAdapter(ChannelAdapter):
 
     async def _reply_stream(self, message: IncomingMessage, text: str, *, finish: bool) -> None:
         stream_id = self._stream_id(message)
-        method = self._client.reply_stream_with_card if stream_id in self._card_streams else self._client.reply_stream
-        # The template is sent once; subsequent updates retain the combined type.
-        await method(self._reply_frame(message), stream_id, text, finish=finish)
+        state = self._reply_streams.setdefault(stream_id, _ReplyStream())
+        async with state.lock:
+            method = self._client.reply_stream_with_card if state.card_sent else self._client.reply_stream
+            # The template is sent once; subsequent updates retain the combined type.
+            await method(self._reply_frame(message), stream_id, text, finish=finish)
+            state.text, state.finished = text, finish
 
     def release_reply(self, message: IncomingMessage) -> None:
-        self._card_streams.discard(self._stream_id(message))
+        self._reply_streams.pop(self._stream_id(message), None)
 
 
     async def send_card(self, recipient: IncomingMessage, card: ChannelCard) -> None:
@@ -229,18 +242,36 @@ class WeComAdapter(ChannelAdapter):
             description += '\n' + identifier
         if numbered:
             description += '\n\n' + '\n'.join(f'{index + 1}. {button.label}' for index, button in enumerate(card.buttons))
+        title = card.title.strip()[:26] or '请选择操作'
         if len(description) > 112:
             # Send complete explanations actively; never finalize the running reply.
             await self._send_text(replace(recipient, reply_context=None), card.title + '\n\n' + description)
-            description = '完整说明见上一条消息。' + ('请按对应编号选择。' if numbered else '请点击下方按钮。')
+            description = '完整说明见上一条，' + ('请按编号选择。' if numbered else '请点击下方按钮。')
             if identifier:
                 description += '\n' + identifier
+        # Active button cards require a nonempty title (41016 otherwise),
+        # even though the SDK's shared TemplateCard type makes it optional.
         template = {"card_type":"button_interaction", "task_id":card.id,
-                    "main_title":{"title":card.title[:36]}, "sub_title_text":description,
+                    "main_title":{"title":title}, "sub_title_text":description,
                     "button_list":[{"text":str(index + 1) if numbered else button.label,"key":button.key, **({'style':3} if button.danger else {})}
                                    for index, button in enumerate(card.buttons)]}
-        # Keep controls independent of the streaming bubble so subsequent
-        # text snapshots cannot replace or hide its buttons.
+        if card.running and self._reply_frame(recipient):
+            stream_id = self._stream_id(recipient)
+            state = self._reply_streams.setdefault(stream_id, _ReplyStream())
+            # Serialize attachment with text updates so they cannot revert
+            # the combined type or erase the latest body while awaiting ACK.
+            async with state.lock:
+                if not state.card_sent and not state.finished:
+                    try:
+                        await self._client.reply_stream_with_card(self._reply_frame(recipient),
+                            stream_id, state.text, finish=False, template_card=template)
+                    except Exception:
+                        logger.warning('WeCom combined card failed; using active card', exc_info=True)
+                    else:
+                        state.card_sent = True
+                        return
+        # Only one template can attach to a stream. Later interactions and
+        # automatic-step cards use active delivery without a reply frame.
         await self._client.send_message(recipient.conversation_id, {"msgtype":"template_card","template_card":template})
 
 

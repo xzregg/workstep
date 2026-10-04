@@ -826,7 +826,7 @@ async def test_task_channel_stop_callback_bypasses_message_queue(bots):
     assert await asyncio.wait_for(manager._handle_card_action(ChannelAction(bot['id'],card.id,'0','u',conversation_id='room')),.5) == '已停止'
     await asyncio.wait_for(inbound,.5)
     assert adapter.sent[-1] == ('room','已停止。')
-    assert await manager._handle_card_action(ChannelAction(bot['id'],card.id,'0','u')) == '该操作已处理或已失效'
+    assert await manager._handle_card_action(ChannelAction(bot['id'],card.id,'0','u')) == '该操作已处理或已失效（操作人：u）'
 
 
 async def test_dingtalk_optional_card_template_is_saved_and_updated_through_api(bots):
