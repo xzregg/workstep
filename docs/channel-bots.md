@@ -94,3 +94,8 @@ workstep channel send --project <项目ID> --bot <机器人ID> --user <用户ID>
 
 
 任务归档／删除后的渠道解绑由 `api/task_context.py::_release_task_channel_bindings` 统一调用 `services/channels/bots.py::remove_task_bindings`。`api/task_archive.py` 的直接归档、经验确认归档（有／无经验）及 `api/task.py` 的删除仅在任务操作成功后调用；解除该项目、该任务的全部群绑定，历史默认任务目标回到原默认项目，不删除渠道会话、来源或近期群。恢复归档不会恢复旧绑定。真实 HTTP、跨项目／跨任务隔离、失败保留及慢配置写入健康检查见 `tests/test_task_channel_unbinding.py`。
+
+
+## 验收边界
+
+企业微信、钉钉适配器及群绑定已有自动化回归；真实平台租户的权限配置、收发、重连与跨群路由仍需联调，模拟客户端不代表真实平台验收通过。机器人默认配置使用项目；已有默认任务配置只作为历史兼容，编辑保存时转换到默认项目。一个机器人可通过不同群绑定服务多个项目及任务，不能根据当前前端所选项目猜测路由。

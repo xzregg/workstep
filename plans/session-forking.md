@@ -236,7 +236,7 @@ POST /api/chat-sessions/{session_id}/fork
 ### 阶段五：文档
 
 - 更新 `docs/architecture.md` 的会话生命周期，区分 resume、native fork、history handoff。
-- 更新 `plans/chat-session.md` 的已实现能力和接口。
+- 更新 `docs/architecture.md` 中普通会话的已实现能力和接口。
 - 如引擎支持矩阵发生变化，同步 AGENTS.md 的多引擎表述，仅写已验证事实。
 
 ## 验收标准

@@ -106,3 +106,8 @@ test('builds the AI workflow draft from the flow name', () => {
     '帮我创建一个“发布流程”的工作流',
   )
 })
+
+test('task Git repository actions use compact labels', () => {
+  assert.equal(zhCNT('git.taskOpenRepositoryDirectory'), '打开目录')
+  assert.equal(zhCNT('git.taskRemove'), '移除')
+})

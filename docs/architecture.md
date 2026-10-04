@@ -1,10 +1,10 @@
 # WorkStep 架构
 
-本文描述当前可运行实现。具体接口和字段发生冲突时，以代码、测试和根目录 `AGENTS.md` 为准；功能设计与历史实施记录位于 [`plans/`](../plans/README.md)。
+本文描述当前可运行实现。具体接口和字段发生冲突时，以代码、测试和根目录 `AGENTS.md` 为准；尚未完成的方案与验收记录位于 [`plans/`](../plans/README.md)。
 
 ## 运行形态
 
-WorkStep 由五个可独立维护的应用组成：
+WorkStep 的主要应用及职责如下：
 
 | 应用 | 技术 | 职责 |
 |---|---|---|
@@ -12,6 +12,8 @@ WorkStep 由五个可独立维护的应用组成：
 | `apps/web` | React、TypeScript、Vite、Zustand | 任务、流程画布、聊天、设置和实时状态 UI |
 | `apps/desktop` | Electron | 启动内置 Python 后端、加载 Web UI、桌面协议和更新 |
 | `apps/landing` | React、Vite | 产品官网 |
+| `apps/gateway` | Python、FastAPI、异步 SQLAlchemy | 平台账号、设备授权、远程通道、分享与审计 |
+| `apps/gateway-web` | React、TypeScript、Vite | 平台门户及管理界面 |
 
 开发模式下，Web 前端通过 Vite 连接本地 daemon。生产 Web 资源由 daemon 提供。桌面端打包一套 uv-managed Python 运行时和 daemon 源码，不使用 Nuitka 冻结；sidecar 只监听 `127.0.0.1`，默认请求端口 `0`，通过 stdout 的 `PORT:<port>` 报告实际端口。
 
@@ -64,7 +66,11 @@ Task
 
 `TaskStep` 是每个步骤的当前状态投影；`WorkflowRun`、`StepRun` 和 `ReviewRun` 保存执行历史。`TaskRunner` 根据依赖关系并行启动 ready 步骤，汇合节点只有在所有依赖通过且每条实线输入连接已经被对应的非空产物激活后才会执行。
 
-任务并发和助手对话并发由 `ConcurrencyGate` 分通道管理，可配置全局值和项目覆盖值。定时任务可选择豁免任务并发限制。
+任务并发和助手对话并发由 `ConcurrencyGate` 分通道管理。各项目拥有独立的槽位池与 FIFO 等待队列；全局配置是各项目的默认值，不是所有项目共享的总量上限。任务排队不占对话槽位，同一会话内的 turn 由助手运行时串行处理。
+
+配置逐字段按“项目显式值 → 全局默认值 → 不限制”解析：`max_tasks`、`max_chats` 的 `0` 表示不限制，项目 `null` 表示跟随全局；项目覆盖保存在 `project_settings` 的 `concurrency` 键。`schedule_exempt` 生效时，定时任务与定时启动不占任务槽位。降低限额不中断已有运行，提高限额会唤醒等待项。任务运行收尾和对话 turn 收尾释放各自槽位；取消排队任务回到 `ready`，重启后的队列恢复见[工作流执行说明](workflow-engine-execution.md#队列恢复)。
+
+全局配置入口为 `GET/PUT /api/assistant/concurrency`，项目覆盖为 `GET/PUT /api/projects/{project_id}/settings/concurrency`。配置加载及修改后推送到内存闸门，执行热路径不直接读取数据库；行为测试见 `test_concurrency_gate.py`、`test_concurrency_api.py`。
 
 ### 执行状态机与收敛边界
 
@@ -221,11 +227,51 @@ Pydantic AI 是进程内引擎，固定挂载项目范围的 Coder 和 Skills。
 - 任务创建助手：`task_create`
 - 任务协调助手：`coordinator`
 
-会话聊天数据保存在 `chat_sessions` 和 `chat_messages`，支持停止、引擎配置、分叉和跨引擎交接。完整事件同样使用 JSONL 日志，`events_json` 仅兼容旧记录。
+### 普通会话
+
+普通会话按项目、流程、会话组织，执行目录为项目根目录，不自动创建任务或修改流程。消息独立保存在 `chat_sessions` 和 `chat_messages`，支持新建、改名、删除、排序、停止、引擎及 Provider 配置、分叉和跨引擎交接。完整事件使用 JSONL 日志，`events_json` 仅兼容旧记录。
+
+`api/chat_session.py` 提供会话 CRUD、历史、聊天与停止接口，聊天使用 `Idempotency-Key` 防止重复提交；运行中删除或分叉会被拒绝。会话标识包含项目和会话范围，`session_chat` channel 与其它助手隔离。前端复用 `createAssistantStore`、`AssistantChatPanel` 和公共聊天控件。分叉和提示词查看的边界分别见[会话分叉方案](../plans/session-forking.md)和[助手提示词传输](../plans/assistant-prompt-transport.md)；测试入口为 `test_chat_session.py` 和 `test_api_contracts.py`。
+
+### 协调助手
 
 协调助手不能直接执行副作用。它生成持久化动作提案，只有用户确认、版本校验和幂等检查通过后，后端才会执行步骤补充、审核决定或从指定步骤重跑。`rerun_from_step` 可由协调助手按需携带 `payload.content`；确认后该内容会保存为目标步骤补充并注入本轮执行，目标步骤及其 DAG 下游步骤一起重跑。未携带 `content` 时仅重跑，不额外注入提示词。
 
 局部重跑使用当前流程定义创建子运行；范围外已通过步骤以 `reused` StepRun 进入子运行。输入恢复优先采用该子运行明确记录的复用轮次，再回退到最新可继承轮次，避免旧 manifest 标记漂移导致目标步骤被错误跳过。没有连接的孤立步骤只在自身被选为重跑目标时执行，协调助手负责按需读取任务全局信息并将整理后的上下文作为步骤补充注入。
+
+### 定时任务助手
+
+定时任务保留静态建任务模式，同时支持任务创建助手的 headless 调用，不另建一套助手。`task_template_json.mode` 缺省为 `static`；`agent` 模式提供生成指令、候选流程及重试次数。候选为空表示全部有效流程，每次尝试使用新的内存会话。
+
+`services/schedule.py` 调用 `task_draft.run_schedule`，通过共享运行时等待结构化结果，校验标题、内容、候选流程与起始步骤，再经 `create_project_task` 创建和派发任务。该调用不直接创建任务，不等待人工问答；单次尝试默认超时十分钟。重试耗尽时仅本次运行失败，下次调度仍有效。显式候选流程全部被删除时，计划置为无效。Agent 模式不使用静态模式的审核覆盖，助手会话不跨重启恢复。
+
+前端计划页复用任务创建聊天组件，CLI 使用 `schedule create/update --mode agent --instruction ... --candidates ... --retry-count ...`；行为入口为 `test_schedule.py`、`test_task_draft.py`。
+
+## 快捷按钮与脚本 Action
+
+快捷按钮的现行字段以 `services/quick_buttons.py` 为准：`kind` 为 `prompt`、`display` 或 `action`，标题保存为 `label`。旧按钮缺少 `kind` 时按提示词按钮读取，`immediate_send` 默认关闭；展示按钮的 HTML 经白名单清洗，不执行脚本。
+
+项目按钮保存在项目设置。流程顶层 `quickButtons` 保存流程自有按钮，`projectQuickButtonIds` 明确选择继承的项目按钮；旧流程只有在 `inheritProjectQuickButtons: true` 时才继承全部项目按钮。阶段按钮保存在节点 `quickButtons`，任务显示顺序为阶段、流程、继承的项目按钮，按稳定 ID 区分。任务读取当前流程配置，重新获得焦点时刷新按钮列表。
+
+### 脚本、目录与运行输入
+
+项目 Action 根目录为 `.workstep/actions/<action_id>/`；流程及阶段 Action 共用 `.workstep/artifacts/<workflow_id>/actions/<action_id>/`。按钮的 `script_path` 是该 Action 根目录内的相对文件路径。脚本选择和预览复用 `ProjectDirectoryBrowser` 及其文件编辑器，根目录始终限制在 Action 目录。
+
+`action.json` 可选，用于声明解释器、参数、超时及停止宽限期；真正的入口脚本由按钮配置指定。服务端重新查找按钮、Action 和脚本，客户端不能提交任意命令、绝对脚本路径或 PID。路径规范化及包含关系检查拒绝目录、路径穿越和越界符号链接。
+
+任务 Action 的 `cwd_mode` 支持 `project`、`task`、`worktrees`：后两者均从任务产物根目录启动，脚本通过 `.worktrees.json` 选择仓库。项目普通会话没有任务上下文时从项目根目录执行。新任务 Worktree 位于 `.workstep/artifacts/<workflow_id>/<task_id>/.worktrees/<alias>/`，旧 `.workstep/worktrees/<task_id>/` 只兼容解析、不自动搬迁。
+
+运行时提供 `WORKSTEP_PROJECT_ROOT`、`WORKSTEP_WORKFLOW_ROOT`、`WORKSTEP_TASK_ROOT`、`WORKSTEP_ACTION_ROOT`、`WORKSTEP_WORKTREES_FILE`、`WORKSTEP_PROJECT_ID`、`WORKSTEP_WORKFLOW_ID`、`WORKSTEP_TASK_ID`、`WORKSTEP_STEP_KEY`、`WORKSTEP_ACTION_RUN_ID` 和确认输入 `WORKSTEP_ACTION_INPUT`。任务下 `.action-runs/<run_id>/` 保存运行日志；产物扫描忽略流程的保留目录 `actions/` 与任务下点号目录。
+
+### 确认、去重与停止
+
+Action 直接异步执行脚本，不调用 LLM。默认要求执行前确认；取消不创建消息或运行记录。需要确认的服务端配置要求请求携带 `confirmed: true`，配置确认输入时还需校验输入内容。
+
+数据库 `ActionRun.active_key` 唯一约束保证同一任务、同一 Action 只有一个 `preparing/running/stopping` 运行；无任务的项目会话按项目与 Action 去重。并发重复请求返回已有 `run_id` 和 `deduplicated: true`，不创建第二个进程或消息。终态清空占位后才能再次执行。
+
+运行输出持续更新同一条 Action 回复，保留运行目录、退出码与状态。进程按参数数组启动，stdout/stderr 异步分块读取；停止根据 `run_id` 定位进程组，先发送 SIGTERM，宽限期后使用 SIGKILL。脚本子服务必须留在该进程组内，脱离进程组的后台服务不能依赖停止按钮回收。
+
+`api/action.py` 提供任务/会话按钮列表与运行、运行详情和停止接口；服务发布 `action_run_*` 生命周期与输出事件。当前页面由 `useActionRuns` 在活跃期间每 1.2 秒轮询恢复状态，终态停止轮询；daemon 重启后没有运行所有权的遗留记录按中断处理。行为入口为 `test_action_shortcuts.py`、`test_action_runtime.py`、Web `actionPolling.test.tsx` 和 `actionConfirmationInput.test.tsx`。
 
 ## 核心数据表
 
@@ -238,11 +284,12 @@ Pydantic AI 是进程内引擎，固定挂载项目范围的 Coder 和 Skills。
 - `pending_message_inserts`：按正在运行的 assistant Message ID 保存待插入内容；消费前不属于正式聊天记录，目标执行结束后按顺序合并为一条用户消息
 - `coordinator_sessions`、`coordinator_turns`、`action_proposals`、`stage_supplements`
 - `schedules`、`schedule_runs`
+- `action_runs`：快捷脚本的消息关联、运行状态及并发占位
 - `task_shares`；`channels` 与 `channel_chat_mappings` 为旧个人微信渠道的历史兼容表
 
 - `project_settings`
 
-企业微信智能机器人和钉钉 Stream 机器人通过 daemon 主动建立平台长连接。机器人凭证、默认项目/任务目标及 `(机器人 ID, 群 ID) → 任务` 索引存放在全局配置；平台群消息经 `services/channels/bots.py` 路由到现有任务协调助手，默认项目消息复用项目渠道聊天会话。平台连接与 WorkStep 前端 `/ws` 是两套独立通道，配置和使用方式见[渠道机器人文档](channel-bots.md)。
+企业微信智能机器人和钉钉 Stream 机器人通过 daemon 主动建立平台长连接。机器人凭证、默认项目及历史默认任务目标兼容配置、 `(机器人 ID, 群 ID) → 任务` 索引存放在全局配置；平台群消息经 `services/channels/bots.py` 路由到现有任务协调助手，默认项目消息复用项目渠道聊天会话。平台连接与 WorkStep 前端 `/ws` 是两套独立通道，配置和使用方式见[渠道机器人文档](channel-bots.md)。
 
 完整集合以 `apps/daemon/models/__init__.py::ALL_MODELS` 为准。迁移器通过当前模型建表并使用 additive columns 收敛旧数据库；`LATEST_SCHEMA_VERSION = 0` 是 bootstrap 基线，不是累计迁移次数。
 
@@ -252,4 +299,4 @@ Pydantic AI 是进程内引擎，固定挂载项目范围的 Coder 和 Skills。
 
 公开任务分享与远程项目是两套边界：任务分享面向一个任务的受控查看和交互，远程项目面向另一台 WorkStep 设备的项目级访问。
 
-未来的平台登录、多用户权限和平台数据库方案仍处于提案步骤，见 [`plans/platform-mode.md`](../plans/platform-mode.md)，不属于当前产品能力。
+Gateway 已接入平台账号、设备授权、远程项目及任务分享，开发和部署见[Gateway 开发文档](gateway-development.md)。平台模式仍有未完成验收，当前范围与剩余事项见[总方案](../plans/platform-mode.md)、[逐阶段计划](../plans/platform-gateway-development.md)和[剩余验收计划](../plans/platform-gateway-remaining-development.md)，不能把已有代码等同于整个平台完成交付。
