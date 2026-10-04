@@ -271,7 +271,7 @@ Gateway 平台分享控制面在 `apps/gateway/src/gateway/services/platform_sha
 | 步骤审核设置的有效配置、草稿、保存与错误恢复 | `TaskDetail.tsx` 保留流程步骤的 `review`，`TaskDetailView.tsx` 将其传入 `TaskReviewConfigPanel.tsx`；面板先继承流程配置，再合并任务覆盖，与 `services/review_messages.py::resolve_review_config` 的模式优先级一致，禁止将未保存的配置显示成人工；任务页仅开启编辑，分享页不显示设置 | `taskReviewConfigPanel.test.tsx`；后端 `tests/test_task_review_overrides.py` 验证任务人工配置在初次执行和重新执行时均覆盖流程自动配置 |
 | 消息时间线与滚动 | `taskConversationFeed.ts`；滚动行为由 `src/hooks/useTaskConversationScroll.ts` 管理，任务、助手和过程追踪共用规则在 `src/utils/conversationScroll.ts` | `conversationScroll.test.ts`、`streamingSelection.test.tsx` 及对应 conversation 测试 |
 | 运行中消息的折叠过程预览与条目上翻 | `src/components/ProcessTrace.tsx` 持有最近两个过程条目及新条目的切换状态；`src/index.css` 定义上翻和动态光效，复用现有 AG-UI 消息流 | `apps/web/tests/processTracePreview.test.tsx` |
-| 单条任务消息的发送者、执行状态、审核操作、产物与元数据 | `TaskConversationMessage.tsx`；`TaskDetailView.tsx` 只选择消息顺序并接入时间线，`TaskMessageArtifacts.tsx` 展示产物入口；任务消息复用共享 `ChatMessageBubble.tsx`，头像右侧不再重复显示阶段名称，普通助手对话不显示助手名称，任务消息头部保留自己的作者姓名，`mobile.css` 在任务对话历史的左右留白中绝对定位头像，保持正文宽度，普通助手对话隐藏头像 | `scripts/check-message-mobile-width.mjs`（320/390/1023px 浏览器宽度与任务头像显示回归）、`taskConversationMessage.test.tsx`、`chatMessageMobileIdentity.test.tsx`、`taskConversationRuntime.test.ts`、`taskMessageArtifacts.test.tsx` |
+| 单条任务消息的发送者、执行状态、审核操作、产物与元数据 | `TaskConversationMessage.tsx`；`TaskDetailView.tsx` 只选择消息顺序并接入时间线，`TaskMessageArtifacts.tsx` 展示产物入口；任务消息复用共享 `ChatMessageBubble.tsx`，头像右侧不再重复显示阶段名称，普通助手对话不显示助手名称，任务消息头部保留自己的作者姓名；`actorDisplay.ts` 去除历史渠道作者名前缀，头像提示通过点击、聚焦或悬停展示姓名、账号及来源名，渠道来源只显示一次；新渠道消息由 `services/channels/bots.py::_sender_actor` 将姓名与渠道来源分字段保存，`mobile.css` 在任务对话历史的左右留白中绝对定位头像，保持正文宽度，普通助手对话隐藏头像 | `scripts/check-message-mobile-width.mjs`（320/390/1023px 浏览器宽度与任务头像显示回归）、`taskConversationMessage.test.tsx`、`chatMessageMobileIdentity.test.tsx`、`taskConversationRuntime.test.ts`、`taskMessageArtifacts.test.tsx` |
 | 任务历史、向上分页与消息事件详情 | `src/hooks/useTaskHistory.ts` | `taskHistory.test.tsx`、`remoteChatSync.test.mjs` |
 | 任务对话待插入队列的加载、编辑、排序、立即发送与失败回滚 | `src/hooks/useTaskPendingInserts.ts`；队列持久状态在 `src/stores/pendingMessageInsertStore.ts`，`TaskDetail.tsx` 只选定目标消息并接入对话 | `useTaskPendingInserts.test.tsx`、`pendingMessageInsertStore.test.ts` |
 | 任务协调引擎配置与供应商/模型选择 | `src/hooks/useTaskCoordinatorConfig.ts`；`TaskDetail.tsx` 负责接入任务详情输入区 | `useTaskCoordinatorConfig.test.tsx` |
@@ -334,7 +334,7 @@ Gateway 工作台顶部导航由 `apps/gateway-web/src/PortalHeader.tsx` 持有�
 
 运行中消息的提示词查看由 `apps/web/src/components/MessageMetaBar.tsx` 持有；有实传 `prompt` 且开启开发模式时可查看。`mobile.css` 对 `.chat-message-action--prompt` 保留可见，复制／分叉仍遵循运行中隐藏规则。行为回归见 `apps/web/tests/messageMetaRetry.test.tsx`，覆盖移动端运行中查看实际输入与普通操作按钮隐藏。
 
-任务步骤的 Git 工作区固定规则由 `services/prompt.py::SYSTEM_PROMPT` 提供，经 `task_runner.py` 的 ACP 系统注入入口传入；`_task_git_workspace_context` 仅生成当前工作区相对路径和已挂载仓库，作为正文背景，并由恢复重试逻辑检测变化。行为入口为 `tests/test_pipeline.py::test_assemble_prompt_task_worktrees_keep_project_cwd`、`tests/test_review_gate.py`。
+任务步骤的 Git 工作区固定规则由 `services/prompt.py::SYSTEM_PROMPT` 提供，经 `task_runner.py` 的 ACP 系统注入入口传入；`_task_git_workspace_context` 在独立系统注入模式下只生成已挂载仓库列表，作为正文背景，并由恢复重试逻辑检测变化；工作区路径仅由系统提示词提供，旧正文降级模式仍保留路径。行为入口为 `tests/test_pipeline.py::test_assemble_prompt_task_worktrees_keep_project_cwd`、`tests/test_review_gate.py`。
 
 渠道单条回复更新能力由 `services/channels/base.py::supports_streaming_reply` 按收件人声明：企业微信需要原始回调帧，钉钉通过 `dingtalk.py` 创建并更新同一 Markdown 卡片。`task_forwarder.py` 只向可更新的收件人推送累计正文，其他主动任务消息结束后发送完整结果；`bots.py` 复用该判断。行为与 I/O 响应测试见 `tests/test_channel_streaming.py`、`tests/test_channel_task_forwarder.py`、`tests/test_channel_protocol.py`。
 
@@ -360,11 +360,14 @@ Pydantic AI 的会话系统规则生命周期由 `engines/pydantic_ai/harness_ru
 
 任务归档／删除后的渠道解绑由 `api/task_context.py::_release_task_channel_bindings` 统一调用 `services/channels/bots.py::remove_task_bindings`。`api/task_archive.py` 的直接归档、经验确认归档（有／无经验）及 `api/task.py` 的删除仅在任务操作成功后调用；解除该项目、该任务的全部群绑定，历史默认任务目标回到原默认项目，不删除渠道会话、来源或近期群。恢复归档不会恢复旧绑定。真实 HTTP、跨项目／跨任务隔离、失败保留及慢配置写入健康检查见 `tests/test_task_channel_unbinding.py`。
 
-步骤执行的任务工作区路径由 `services/prompt.py::assemble_step_system_prompt` 与固定 Git 规则组成系统输入，`task_runner.py` 在线程中解析项目相对路径后交给 ACP。首次、续聊和重置会话均提供相同任务路径；Pydantic AI 依据持久化规则去重，挂载仓库仍在正文背景中更新。回归为 `test_pipeline.py` 的工作区提示词测试与 `test_review_gate.py` 的首轮／恢复输入、慢路径解析健康检查。
+步骤执行的任务工作区路径由 `services/prompt.py::assemble_step_system_prompt` 与固定 Git 规则组成系统输入，`task_runner.py` 在线程中解析项目相对路径后交给 ACP。首次、续聊和重置会话均提供相同任务路径；Pydantic AI 依据持久化规则去重，自动生成的正文不再重复工作区路径，挂载仓库仍在正文背景中更新；增量重试兼容旧输入快照里的路径，只比较仓库变动。回归为 `test_pipeline.py` 的工作区提示词测试与 `test_review_gate.py` 的首轮／恢复输入、慢路径解析健康检查。
 
 
 任务渠道正文由 `services/channels/task_forwarder.py::_deliver` 按任务终态事件顺序发送：`succeeded` 与 `completed` 不追加「已完成」，`stopped`／`cancelled` 有正文时同样不追加状态，无正文时仅反馈「已中止」，真实失败追加错误说明；人工审核的系统等待消息不作为 LLM 正文推送。`review_messages.py` 发布 `message_completed(status=completed)`，经 `engines/core/agui.py::to_agui_events` 保留为 `TEXT_MESSAGE_END(status=completed)`；翻译后的执行／审核消息转发回归见 `tests/test_channel_task_forwarder.py::test_completed_status_from_real_message_translation_is_success`。
 
 自动步骤的渠道人工审核和提问由 `services/channels/task_controls.py::ChannelTaskControls` 订阅 AG-UI 审核及交互事件，通过项目数据库执行器读取当前审核和步骤正文，仅向仍绑定的群发送卡片；`BotManager` 管理订阅生命周期，每个任务按事件顺序处理，跨任务与群异步隔离。`controls.py::review/handle` 复用 `WorkflowRuntime.decide_review`，以实际点击者的 `ActorSnapshot` 持久化审核人及审核消息作者；自动群卡片允许本群成员操作，用户发起的停止和提问仍限定发起者。跨群点击去重、归档/解绑/新审核轮次失效、重启后的审核操作、真实 SQLite 审核落库及慢 SQL 健康检查见 `tests/test_channel_task_controls.py`。
+
+
+原生 SDK 的固定规则恢复由各引擎 `_prepare_prompt_input` 持有：`engines/codex_sdk.py` 在 ACP 捕获前在线程中校验最新原生 `turn_context.developer_instructions`，匹配时不设置新的线程覆盖，缺失或规则变化继续设置；`claude_agent_sdk.py` / `qoder_sdk.py` 每轮创建进程并保留 preset append，当前不假定启动配置随 Session ID 恢复。Pydantic AI 的 Harness 系统消息恢复见上述入口。回归：`tests/test_engine_system_prompt.py`（SDK 实参、查看快照、重启／历史丢失、配置合并、动态背景、慢读取健康检查）。
 
 渠道审核卡片由 `task_controls.py` 在 `task_forwarder.py::wait_for_completed` 的终态事件栅栏后发送，确保阶段正文先发送；栅栏不等待仍在运行的 LLM，跨任务保持异步。`taskReviewRules.ts::reviewActorLabel` 对渠道审核人名称中已带的来源去重（如「企业微信 · 用户」不再次拼接企业微信）。顺序、人工审核通知过滤、慢审核查询健康检查和标签回归见 `test_channel_task_forwarder.py`、`test_channel_task_controls.py`、`taskReviewRules.test.ts`。

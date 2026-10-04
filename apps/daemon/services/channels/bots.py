@@ -30,7 +30,7 @@ def _sender_actor(message: IncomingMessage, platform: str) -> ActorSnapshot:
     sender_id = message.sender_id.strip() or message.conversation_id
     return ActorSnapshot(
         actor_id=f"channel:{platform}:{sender_id}",
-        user_name=f"{label} · {message.sender_name or sender_id}",
+        user_name=message.sender_name.strip() or sender_id,
         username=sender_id,
         device_id=f"channel:{message.bot_id}",
         device_name=label,

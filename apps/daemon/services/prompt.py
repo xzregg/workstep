@@ -124,7 +124,9 @@ def assemble_prompt(
     """
     parts = [] if separate_instructions else [SYSTEM_PROMPT]
 
-    workspace_context = _task_git_workspace_context(task, artifacts_dir)
+    workspace_context = _task_git_workspace_context(
+        task, artifacts_dir, include_directory=not separate_instructions,
+    )
     if workspace_context:
         parts.append(f"## Task Git workspace\n{workspace_context}")
 
@@ -430,6 +432,7 @@ def assemble_retry_prompt(
     input_snapshot: dict,
     artifact_round: int | None = None,
     previous_prompt: str | None = None,
+    separate_instructions: bool = False,
 ) -> str:
     """Build the incremental contract for a resumed review/feedback revision.
 
@@ -454,7 +457,15 @@ def assemble_retry_prompt(
         parts.append(previous_outputs)
     if previous_prompt is not None:
         previous_workspace = _prompt_section(previous_prompt, "Task Git workspace")
-        current_workspace = _task_git_workspace_context(task, artifacts_dir)
+        current_workspace = _task_git_workspace_context(
+            task, artifacts_dir, include_directory=not separate_instructions,
+        ).strip()
+        if separate_instructions and "Attached repositories:" in previous_workspace:
+            # Legacy input snapshots also contain the stable directory. Only
+            # compare the mutable repositories when rules/path are separate.
+            previous_workspace = "Attached repositories:" + previous_workspace.split(
+                "Attached repositories:", 1,
+            )[1]
         if previous_workspace != current_workspace:
             parts.append(
                 _format_changed_context("Task Git workspace", current_workspace)
@@ -539,7 +550,9 @@ def assemble_step_system_prompt(task: Task, artifacts_dir: Path) -> str:
     return f"{SYSTEM_PROMPT}\n\n## Task Git workspace\nWorkspace directory: {workspace_path}."
 
 
-def _task_git_workspace_context(task: Task, artifacts_dir: Path) -> str:
+def _task_git_workspace_context(
+    task: Task, artifacts_dir: Path, *, include_directory: bool = True,
+) -> str:
     """Describe attached task worktrees using paths relative to engine cwd."""
     workspace = _task_git_workspace_path(task, artifacts_dir)
     if not workspace.is_dir():
@@ -552,10 +565,8 @@ def _task_git_workspace_context(task: Task, artifacts_dir: Path) -> str:
         workspace,
         task.cwd or artifacts_dir.parent.parent,
     )
-    return (
-        f"Workspace directory: {workspace_path}. Attached repositories: "
-        f"{', '.join(aliases) if aliases else '(none yet)'}. "
-    )
+    directory = f"Workspace directory: {workspace_path}. " if include_directory else ""
+    return f"{directory}Attached repositories: {', '.join(aliases) if aliases else '(none yet)'}."
 
 
 def _format_retry_feedback_inputs(

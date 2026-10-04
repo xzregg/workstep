@@ -11,7 +11,7 @@ import tomllib
 import uuid
 from typing import Any, AsyncIterator
 
-from engines.codex_compaction import compact_codex_thread
+from engines.codex_compaction import _find_rollout_path, compact_codex_thread
 from engines.codex_sdk_events import CodexSDKNotificationMapper
 from engines.core.acp_base import AcpEngineBase
 from engines.core.base import (
@@ -74,6 +74,76 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
     RUNTIME_PACKAGE = RuntimePackage('openai-codex', 'pypi', '0.147.0', None)
     UPDATE_PACKAGE = "openai-codex"
     QUOTA_TIMEOUT_SECONDS = 5
+
+    @staticmethod
+    def _combined_developer_instructions(config: dict, instruction: str) -> str:
+        existing = next((
+            value for key, value in parse_codex_custom_config(config.get("custom_config"))
+            if key == "developer_instructions"
+        ), "")
+        existing = str(existing or "")
+        if existing:
+            try:
+                existing = str(tomllib.loads(f"value = {existing}")["value"])
+            except tomllib.TOMLDecodeError:
+                pass
+        return "\n\n".join(part for part in (existing, instruction) if part)
+
+    @staticmethod
+    def _saved_developer_instructions(cwd: str, session_id: str) -> str | None:
+        """Only trust the latest durable native settings, never just a thread ID.
+
+        Older runtimes do not persist this setting: keep supplying it there.
+        A partial write or unknown rollout format also requires reinjection.
+        """
+        from pathlib import Path
+
+        try:
+            path = _find_rollout_path(session_id, None)
+            if path is None:
+                return None
+            verified_session = False
+            saved = None
+            with path.open(encoding="utf-8") as stream:
+                for line in stream:
+                    if not line.endswith("\n"):
+                        return None
+                    record = json.loads(line)
+                    if not isinstance(record, dict):
+                        return None
+                    payload = record.get("payload") or {}
+                    if not isinstance(payload, dict):
+                        return None
+                    if record.get("type") == "session_meta":
+                        verified_session = (
+                            payload.get("id") == session_id
+                            and Path(payload.get("cwd") or "").resolve() == Path(cwd).resolve()
+                        )
+                    elif record.get("type") == "turn_context":
+                        saved = payload.get("developer_instructions")
+            return saved if verified_session and isinstance(saved, str) else None
+        except (OSError, ValueError, TypeError):
+            return None
+
+    async def _prepare_prompt_input(self, kwargs, system_prompt, *, each_turn=False):
+        prepared = await super()._prepare_prompt_input(kwargs, system_prompt, each_turn=each_turn)
+        instruction = prepared.get("system_prompt")
+        session_id = prepared.get("session_id")
+        if not instruction or not session_id or each_turn:
+            return prepared
+
+        def restored():
+            config = self.merge_config_overrides(
+                config_store.get_codex_sdk_config(), kwargs.get("config_overrides"),
+            )
+            expected = self._combined_developer_instructions(config, instruction)
+            return self._saved_developer_instructions(kwargs["cwd"], session_id) == expected
+
+        if await asyncio.to_thread(restored):
+            # Empty is an internal restore sentinel: do not override the native
+            # setting with either WorkStep rules or custom developer config.
+            prepared["system_prompt"] = ""
+        return prepared
 
     @classmethod
     def supported_provider_protocols(cls) -> set[str]:
@@ -459,16 +529,12 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             "sandbox": sandbox,
             "config": thread_config or None,
         }
-        if system_prompt:
-            existing = str(thread_config.pop("developer_instructions", "") or "")
-            if existing:
-                try:
-                    existing = str(tomllib.loads(f"value = {existing}")["value"])
-                except tomllib.TOMLDecodeError:
-                    pass
-            thread_kwargs["developer_instructions"] = "\n\n".join(
-                part for part in (existing, system_prompt) if part
-            )
+        if system_prompt is not None:
+            thread_config.pop("developer_instructions", None)
+            if system_prompt:
+                thread_kwargs["developer_instructions"] = self._combined_developer_instructions(
+                    sdk_config, system_prompt,
+                )
         if approval_mode is not None:
             # thread_start 的 approval_mode 不接受 None（默认 auto_review）
             thread_kwargs["approval_mode"] = approval_mode

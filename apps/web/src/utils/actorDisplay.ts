@@ -1,3 +1,7 @@
+function authorDisplayName(authorName: string): string {
+  return authorName.replace(/^(?:企业微信|钉钉)\s*·\s*(?=\S)/, '')
+}
+
 export function isSameActorName(
   authorName?: string | null,
   currentUserName?: string | null,
@@ -16,7 +20,7 @@ export function displayUserSender(
   const author = authorName?.trim() || ''
   if (!author) return historicalUserLabel
   if (isSameActorName(author, currentUserName)) return meLabel
-  return author
+  return authorDisplayName(author)
 }
 
 export function displayUserDetail(
@@ -25,9 +29,10 @@ export function displayUserDetail(
   fallbackName: string,
   authorUsername?: string | null,
 ): string {
-  const author = authorName?.trim() || fallbackName
+  const author = authorDisplayName(authorName?.trim() || fallbackName)
+  const authorParts = author.split('·').map((part) => part.trim())
   const username = authorUsername?.trim() || ''
-  const name = username && username !== author ? `${author} (@${username})` : author
+  const name = username && !authorParts.includes(username) ? `${author} (@${username})` : author
   const device = deviceName?.trim() || ''
-  return device ? `${name} · ${device}` : name
+  return device && !authorParts.includes(device) ? `${name} · ${device}` : name
 }

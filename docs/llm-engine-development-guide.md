@@ -955,3 +955,24 @@ corepack yarn build
 - [ ] 单元测试、ACP 契约测试、三步骤场景的工作流测试和前端构建通过。
 
 Pydantic AI 的 `_prepare_prompt_input` 在输入捕获前异步检查持久化历史，只有匹配的 WorkStep 系统消息存在时才省略新注入；不只依赖 Session ID。`harness_runtime.py::_with_session_system_prompt` 用独立来源标记保存／替换规则，系统消息位于历史前部滑动窗口通过 WorkStep 包装保留该消息，摘要压缩继续保留系统消息。渠道的 `system_prompt_each_turn` 仍显式刷新来源背景，但不累积多份消息。查看记录仍显示本次传给引擎的新输入参数，不补造恢复历史；模型请求仍包含恢复的系统规则。测试见 `test_pydantic_ai_harness.py`（真实 SQLite 重启恢复、规则更新／清空、压缩、模型输入和慢读取健康检查）。
+
+
+### 原生系统指令的恢复与重复设置
+
+ACP 统一接受固定配置，是否省略本轮设置由引擎依据原生持久化状态判断，不能仅根据 `SYSTEM_PROMPT_MODE` 或 Session ID 判断。
+
+| 引擎 | 同会话固定规则的处理 |
+|---|---|
+| Pydantic AI | 从 Harness 的系统消息恢复；规则相同不新增，变更／清空替换自己的消息 |
+| Codex SDK | 从原生 rollout 最新 `turn_context.developer_instructions` 验证规则及自定义 developer 配置；匹配才省略线程覆盖。旧版本不保存该字段、记录不完整、工作目录不匹配或历史丢失时继续设置 |
+| Claude Agent SDK | 当前适配器每轮创建新进程；保持 preset append，不凭 ID 省略。SDK 未设置 system_prompt 时可生成空 `--system-prompt`；较新 Claude 的 snapshot 是版本相关能力，尚未在本适配器接入 |
+| Qoder SDK | 每轮创建新进程，当前接口未验证系统配置随 resume 恢复；继续设置 preset append，不能将聊天历史恢复视作系统配置恢复 |
+
+Codex 的恢复检查在 `codex_sdk.py::_prepare_prompt_input` 中、输入捕获之前完成，所有配置／原生日志读取均在线程中。确认恢复时内部空字符串标记表示不重新覆盖 developer 配置，实际 SDK 的 `thread_resume` 不携带新的 `developer_instructions`，`config` 中也不携带旧自定义覆盖；原生历史继续提供规则。变更、首次和 `system_prompt_each_turn=True` 仍传递独立规则。此优化不另建数据库字段，不写入原生会话文件。
+
+Claude/Qoder 的 append 是本次进程启动配置，不是向历史追加多条系统消息。实际设置时，「查看提示词」继续显示它；不得为了让查看变短而隐藏实际参数。渠道动态来源仍按每轮策略传递。回归见 `test_engine_system_prompt.py`，覆盖实际 SDK 参数、首次／恢复／重建、自定义规则合并、原生记录缺失／不完整、规则变更、每轮策略和慢读取健康检查。
+
+依据：[Claude 系统提示词及 snapshot 版本语义](https://code.claude.com/docs/en/agent-sdk/modifying-system-prompts#change-the-prompt-of-an-existing-session)、[Qoder 会话恢复](https://docs.qoder.com/cli/sdk/session-control)、[Codex 原生会话与配置](https://github.com/openai/codex/blob/main/codex-rs/core/src/session/turn_context.rs)。
+
+
+任务 Git 工作区的自动背景在独立系统注入模式下，固定规则与任务路径由 `assemble_step_system_prompt` 提供；正文的 `Task Git workspace` 只列已挂载仓库，避免同轮重复路径。`assemble_retry_prompt(..., separate_instructions=True)` 只比较仓库变动，兼容旧 `input_prompt` 仍带路径的快照，不把格式迁移误判为工作区变化。旧无独立系统入口的调用保持完整正文路径。查看仍记录实际输入，已有 DB 提示词不改写。

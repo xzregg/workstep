@@ -429,7 +429,8 @@ def test_assemble_prompt_task_worktrees_keep_project_cwd(tmp_path):
     assert "git worktree add --relative-paths" in prompt
     from services.prompt import SYSTEM_PROMPT
     body = assemble_prompt(task, Step(key="build", label="Build", prompt="Edit code"), artifacts, separate_instructions=True)
-    assert f"Workspace directory: .workstep/worktrees/{task.id}" in body
+    assert "Workspace directory:" not in body
+    assert f".workstep/worktrees/{task.id}" not in body
     assert "Attached repositories: B." in body
     assert "git worktree add --relative-paths" not in body
     assert "Run Git commands" not in body
@@ -445,6 +446,31 @@ def test_assemble_prompt_task_worktrees_keep_project_cwd(tmp_path):
     (workspace / "C" / ".git").write_text("gitdir: elsewhere")
     assert assemble_step_system_prompt(task, artifacts) == system
     assert "Attached repositories" not in system
+    snapshot = {"execution_type": "feedback", "ports": []}
+    unchanged_body = assemble_prompt(task, Step(key="build", label="Build", prompt="Edit code"), artifacts, separate_instructions=True)
+    retry = assemble_retry_prompt(
+        task, Step(key="build", label="Build", prompt="Edit code"), artifacts, snapshot,
+        previous_prompt=unchanged_body, separate_instructions=True,
+    )
+    assert "Task Git workspace" not in retry
+    # Old DB snapshots may still have the workspace path. Do not report it as
+    # a changed workspace just because new bodies omit that stable information.
+    legacy_retry = assemble_retry_prompt(
+        task, Step(key="build", label="Build", prompt="Edit code"), artifacts, snapshot,
+        previous_prompt=unchanged_body.replace(
+            "Attached repositories:", f"Workspace directory: .workstep/worktrees/{task.id}. Attached repositories:",
+        ), separate_instructions=True,
+    )
+    assert "Task Git workspace" not in legacy_retry
+    (workspace / "D").mkdir()
+    (workspace / "D" / ".git").write_text("gitdir: elsewhere")
+    changed_retry = assemble_retry_prompt(
+        task, Step(key="build", label="Build", prompt="Edit code"), artifacts, snapshot,
+        previous_prompt=unchanged_body, separate_instructions=True,
+    )
+    assert "Attached repositories: B, C, D." in changed_retry
+    assert "Workspace directory:" not in changed_retry
+    assert assemble_step_system_prompt(task, artifacts) == system
     assert task.cwd == str(tmp_path)
     db.close()
 

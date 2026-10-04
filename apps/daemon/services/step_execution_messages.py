@@ -97,6 +97,7 @@ class StepExecutionMessages:
                 assemble_retry_prompt,
                 task, step, artifacts_dir, input_snapshot,
                 state.artifact_round, state.previous_execution_prompt,
+                separate_instructions=capture_input,
             )
         else:
             step_user_input = (

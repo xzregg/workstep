@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class _ReplyStream:
     text: str = ''
+    combined: bool = False
     card_sent: bool = False
     finished: bool = False
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -189,7 +190,7 @@ class WeComAdapter(ChannelAdapter):
             raise RuntimeError("企业微信机器人未连接")
         frame = self._reply_frame(message)
         if frame:
-            await self._reply_stream(message, '', finish=False)
+            await self._reply_stream(message, '正在处理…', finish=False, combined=True)
 
     async def _send_text(self, message: IncomingMessage, text: str) -> None:
         if not self._client:
@@ -219,13 +220,15 @@ class WeComAdapter(ChannelAdapter):
             await self._reply_stream(message, preview, finish=False)
 
 
-    async def _reply_stream(self, message: IncomingMessage, text: str, *, finish: bool) -> None:
+    async def _reply_stream(self, message: IncomingMessage, text: str, *, finish: bool, combined: bool = False) -> None:
         stream_id = self._stream_id(message)
         state = self._reply_streams.setdefault(stream_id, _ReplyStream())
         async with state.lock:
-            method = self._client.reply_stream_with_card if state.card_sent else self._client.reply_stream
+            use_combined = combined or state.combined or state.card_sent
+            method = self._client.reply_stream_with_card if use_combined else self._client.reply_stream
             # The template is sent once; subsequent updates retain the combined type.
             await method(self._reply_frame(message), stream_id, text, finish=finish)
+            state.combined = use_combined
             state.text, state.finished = text, finish
 
     def release_reply(self, message: IncomingMessage) -> None:
