@@ -402,6 +402,9 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
             setting_sources=[],
             settings=json.dumps(settings_payload, ensure_ascii=False),
         )
+        # Each invocation creates a new SDK process. Resume restores the
+        # transcript, not reliably the startup options on supported versions.
+        # Keep configuring the preset append; omitting it can lose these rules.
         if system_prompt:
             options.system_prompt = {
                 "type": "preset", "preset": "claude_code", "append": system_prompt,

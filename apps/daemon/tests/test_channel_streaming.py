@@ -52,13 +52,13 @@ async def test_progress_failure_does_not_escape_or_keep_retrying():
 @pytest.mark.asyncio
 async def test_wecom_progress_uses_same_bubble_and_final_body_is_complete():
     adapter = WeComAdapter({'id': 'bot'}, AsyncMock(), AsyncMock())
-    adapter._client = type('Client', (), {'reply_stream': AsyncMock(), 'send_message': AsyncMock()})()
+    adapter._client = type('Client', (), {'reply_stream': AsyncMock(), 'reply_stream_with_card': AsyncMock(), 'send_message': AsyncMock()})()
     message = IncomingMessage('bot', 'message', 'single', 'user', 'user', '问题', reply_context={'headers': {'req_id': 'req'}})
     await adapter.start_reply(message)
     await adapter.update_reply(message, '部分正文')
     await adapter.send_text(message, '完整正文')
     calls = adapter._client.reply_stream.await_args_list
-    assert [call.args[2] for call in calls] == ['', '部分正文', '完整正文']
+    assert [call.args[2] for call in calls] == ['正在处理…', '部分正文', '完整正文']
     assert len({call.args[1] for call in calls}) == 1
     assert [call.kwargs['finish'] for call in calls] == [False, False, True]
 
@@ -188,38 +188,15 @@ async def test_dingtalk_stop_button_stays_on_the_streaming_reply_and_finish_keep
     assert json.loads(final['sys_full_json_obj'])['msgButtons'] == []
 
 
-async def test_wecom_running_reply_combines_controls_and_preserves_stream_body():
-    from services.channels.base import ChannelButton, ChannelCard
-    adapter = WeComAdapter({'id':'bot'}, AsyncMock(), AsyncMock())
-    adapter._client = type('Client', (), {'reply_stream':AsyncMock(),
-        'reply_stream_with_card':AsyncMock(), 'send_message':AsyncMock()})()
-    message = IncomingMessage('bot','message','single','user','user','问题',
-        reply_context={'headers':{'req_id':'req'}})
-    await adapter.start_reply(message)
-    await adapter.update_reply(message,'正在执行…')
-    await adapter.send_card(message, ChannelCard('stop','正在处理','等待回复',
-        (ChannelButton('0','中止'),), running=True))
-    await adapter.update_reply(message,'部分正文')
-    await adapter.send_text(message,'已停止。')
-    assert [c.args[2] for c in adapter._client.reply_stream.await_args_list] == ['', '正在执行…']
-    calls = adapter._client.reply_stream_with_card.await_args_list
-    assert [c.args[2] for c in calls] == ['正在执行…', '部分正文', '已停止。']
-    assert len({c.args[1] for c in calls}) == 1
-    assert calls[0].kwargs['template_card']['task_id'] == 'stop'
-    assert all('template_card' not in c.kwargs for c in calls[1:])
-    assert calls[-1].kwargs['finish'] is True
-    adapter._client.send_message.assert_not_awaited()
-    adapter.release_reply(message)
-
-
-async def test_wecom_combined_reply_uses_sdk_wire_format_and_later_choices_stay_independent():
+@pytest.mark.parametrize('conversation_type', ['single', 'group'])
+async def test_wecom_running_reply_uses_independent_stop_card(conversation_type):
     from aibot import WSClient, WSClientOptions
     from services.channels.base import ChannelButton, ChannelCard
     adapter = WeComAdapter({'id':'bot'}, AsyncMock(), AsyncMock())
     client = WSClient(WSClientOptions(bot_id='bot', secret='test'))
     client._ws_manager.send_reply = AsyncMock()
     adapter._client = client
-    message = IncomingMessage('bot','message','single','user','user','问题',
+    message = IncomingMessage('bot','message',conversation_type,'room','user','问题',
         reply_context={'headers':{'req_id':'req'}})
     await adapter.start_reply(message)
     await adapter.send_card(message, ChannelCard('stop','处理中','点击中止',
@@ -229,68 +206,45 @@ async def test_wecom_combined_reply_uses_sdk_wire_format_and_later_choices_stay_
         (ChannelButton('yes','确认'),)))
     await adapter.send_text(message, '完整正文')
     bodies = [c.args[1] for c in client._ws_manager.send_reply.await_args_list]
-    assert [b['msgtype'] for b in bodies] == ['stream', 'stream_with_template_card',
-        'stream_with_template_card', 'template_card', 'stream_with_template_card']
+    assert [b['msgtype'] for b in bodies] == ['stream','template_card','stream','template_card','stream']
+    assert bodies[1]['chatid'] == 'room'
     assert bodies[1]['template_card']['main_title']['title'] == '处理中'
     assert bodies[1]['template_card']['button_list'][0]['style'] == 3
     assert '消息 ID: assistant' in bodies[1]['template_card']['sub_title_text']
-    assert all('template_card' not in bodies[i] for i in (2, 4))
-    assert bodies[4]['stream']['content'] == '完整正文'
+    assert bodies[0]['stream']['content'] == '正在处理…'
+    assert bodies[4]['stream']['content'] == '完整正文' + ('\n\n<@user>' if conversation_type == 'group' else '')
     assert bodies[4]['stream']['finish'] is True
     assert len({b['stream']['id'] for b in bodies if 'stream' in b}) == 1
     adapter.release_reply(message)
-    assert not adapter._reply_streams
 
 
-async def test_wecom_failed_combined_card_falls_back_without_breaking_text_stream():
-    from services.channels.base import ChannelButton, ChannelCard
-    adapter = WeComAdapter({'id':'bot'}, AsyncMock(), AsyncMock())
-    adapter._client = type('Client', (), {'reply_stream':AsyncMock(),
-        'reply_stream_with_card':AsyncMock(side_effect=RuntimeError('rejected')),
-        'send_message':AsyncMock()})()
-    message = IncomingMessage('bot','message','single','user','user','问题',
-        reply_context={'headers':{'req_id':'req'}})
-    await adapter.send_card(message, ChannelCard('stop','处理中','点击中止',
-        (ChannelButton('0','中止'),), running=True))
-    await adapter.update_reply(message, '部分正文')
-    await adapter.send_text(message, '完整正文')
-    adapter._client.send_message.assert_awaited_once()
-    assert adapter._client.reply_stream_with_card.await_count == 1
-    assert [c.args[2] for c in adapter._client.reply_stream.await_args_list] == ['部分正文','完整正文']
-
-
-async def test_wecom_slow_combined_card_serializes_body_updates_without_blocking_health():
+async def test_wecom_slow_independent_card_does_not_block_text_or_health():
     from httpx import ASGITransport, AsyncClient
     import main
     from services.channels.base import ChannelButton, ChannelCard
     entered, release = asyncio.Event(), asyncio.Event()
-    async def slow_attach(*args, **kwargs):
-        if 'template_card' in kwargs:
-            entered.set()
-            await release.wait()
+    async def slow_card(*args):
+        entered.set()
+        await release.wait()
     adapter = WeComAdapter({'id':'bot'}, AsyncMock(), AsyncMock())
     adapter._client = type('Client', (), {'reply_stream':AsyncMock(),
-        'reply_stream_with_card':AsyncMock(side_effect=slow_attach), 'send_message':AsyncMock()})()
+        'reply_stream_with_card':AsyncMock(), 'send_message':AsyncMock(side_effect=slow_card)})()
     message = IncomingMessage('bot','message','single','user','user','问题',
         reply_context={'headers':{'req_id':'req'}})
-    await adapter.update_reply(message, '已有正文')
+    await adapter.start_reply(message)
     pending = asyncio.create_task(adapter.send_card(message, ChannelCard('stop','处理中','点击中止',
         (ChannelButton('0','中止'),), running=True)))
-    update = None
     try:
         await asyncio.wait_for(entered.wait(), 1)
-        update = asyncio.create_task(adapter.update_reply(message, '最新正文'))
+        await asyncio.wait_for(adapter.update_reply(message, '最新正文'), .5)
         async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
             assert (await asyncio.wait_for(client.get('/api/health'), .5)).status_code == 200
         assert not pending.done()
-        assert not update.done()
     finally:
         release.set()
         await pending
-        if update:
-            await update
-    assert [c.args[2] for c in adapter._client.reply_stream_with_card.await_args_list] == ['已有正文','最新正文']
-    assert adapter._client.reply_stream.await_count == 1
+    assert [c.args[2] for c in adapter._client.reply_stream.await_args_list] == ['正在处理…','最新正文']
+    adapter._client.reply_stream_with_card.assert_not_awaited()
 
 
 async def test_dingtalk_stop_callback_preserves_reply_and_releases_completed_control():

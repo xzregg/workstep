@@ -73,3 +73,32 @@ test('own task messages retain the saved author name for mobile display', async 
     await window.happyDOM.close()
   }
 })
+
+
+test('legacy channel task avatars use the first two characters of the user name', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    for (const [author, initials] of [['企业微信 · XieZhaoRong', 'Xi'], ['企业微信 · 谢钊荣', '谢钊'], ['钉钉 · 小王', '小王']]) {
+      await act(async () => root.render(<I18nProvider><TaskConversationMessage
+        message={{ id: 'message', role: 'user', channel: 'coordinator', step_key: 'coordinator',
+          author_name: author, author_device_name: author.split(' · ')[0],
+          content: '现在进度呢', created_at: '2026-01-01T00:00:00Z' }}
+        task={null} steps={[]} stepProgress={[]} reviews={[]} artifacts={[]}
+        latestStepMessageIds={new Map()} latestExecutionMessageIds={new Map()}
+        locale="zh-CN" canChat={false} onOpenArtifact={() => {}}
+        sessionIdForStep={() => null} stepLastRef={{ current: {} }}
+      /></I18nProvider>))
+      assert.equal(container.querySelector('.chat-message-avatar-anchor [aria-label]')?.textContent, initials)
+      assert.equal(container.querySelector('.user-sender-marquee')?.textContent, author.split(' · ')[1])
+      const avatar = container.querySelector('.chat-message-avatar-anchor') as HTMLElement
+      await act(async () => avatar.click())
+      assert.equal(container.querySelector('[role="tooltip"]')?.textContent, `${author.split(' · ')[1]} · ${author.split(' · ')[0]}`)
+    }
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})

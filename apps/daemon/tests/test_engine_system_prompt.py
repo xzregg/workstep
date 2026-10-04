@@ -91,11 +91,12 @@ async def test_compaction_does_not_receive_system_instruction():
     assert engine.received == ("/compact", {})
 
 
+@pytest.mark.parametrize("session_id", [None, "existing"])
 @pytest.mark.parametrize("engine_name, package, preset", [
     ("claude_agent_sdk", "claude_agent_sdk", "claude_code"),
     ("qoder_sdk", "qoder_agent_sdk", "qodercli"),
 ])
-async def test_sdk_appends_to_native_preset(monkeypatch, tmp_path, engine_name, package, preset):
+async def test_sdk_appends_to_native_preset(monkeypatch, tmp_path, engine_name, package, preset, session_id):
     import asyncio
     import importlib
     import sys
@@ -146,23 +147,37 @@ async def test_sdk_appends_to_native_preset(monkeypatch, tmp_path, engine_name, 
     monkeypatch.setattr("services.skill_runtime.prepare_qoder_plugin", lambda _skills: (tmp_path, []))
     events = [event async for event in engine.spawn_with_retry(
         prompt="question", cwd=str(tmp_path), system_prompt="channel role",
-        live_message_queue=asyncio.Queue(),
+        live_message_queue=asyncio.Queue(), session_id=session_id, capture_prompt_input=True,
     )]
     assert not [event for event in events if event.type == "error"]
     assert captured["prompt"] == "question"
+    assert next(e.data for e in events if e.type == "prompt_input")["system_prompt"] == "channel role"
+    assert getattr(captured["options"], "resume", None) == session_id
     assert captured["options"].system_prompt == {
         "type": "preset", "preset": preset, "append": "channel role",
     }
 
 
-@pytest.mark.parametrize("session_id", [None, "existing"])
-async def test_codex_uses_developer_instructions_and_preserves_base(monkeypatch, tmp_path, session_id):
+@pytest.mark.parametrize("session_id, restored", [(None, False), ("existing", False), ("existing", True)])
+async def test_codex_uses_developer_instructions_and_preserves_base(monkeypatch, tmp_path, session_id, restored):
     import sys
     from types import ModuleType, SimpleNamespace
     from engines.codex_sdk import CodexSDKEngine
     from engines.core.base import ProviderRuntimeConfig
 
     captured = {}
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    if restored:
+        import json
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        records = [
+            {"type": "session_meta", "payload": {"id": session_id, "cwd": str(tmp_path)}},
+            {"type": "turn_context", "payload": {"developer_instructions": "existing rules\n\nchannel role"}},
+        ]
+        (sessions / "rollout-test-existing.jsonl").write_text(
+            "".join(json.dumps(record) + "\n" for record in records),
+        )
 
     class Turn:
         async def stream(self):
@@ -208,10 +223,18 @@ async def test_codex_uses_developer_instructions_and_preserves_base(monkeypatch,
     })
     events = [event async for event in engine.spawn_with_retry(
         prompt="question", cwd=str(tmp_path), session_id=session_id, system_prompt="channel role",
+        capture_prompt_input=True,
     )]
     assert not [event for event in events if event.type == "error"]
     assert captured["prompt"] == "question"
-    assert captured["kwargs"]["developer_instructions"] == "existing rules\n\nchannel role"
+    snapshot = next(e.data for e in events if e.type == "prompt_input")
+    if restored:
+        assert not snapshot["system_prompt"]
+        assert "developer_instructions" not in captured["kwargs"]
+        assert "developer_instructions" not in captured["kwargs"]["config"]
+    else:
+        assert snapshot["system_prompt"] == "channel role"
+        assert captured["kwargs"]["developer_instructions"] == "existing rules\n\nchannel role"
     assert "base_instructions" not in captured["kwargs"]
 
 
@@ -331,3 +354,85 @@ async def test_coordinator_transport_does_not_add_rules_to_assistant_instruction
     )]
     assert events[0].data["system_prompt"] == "assistant rules"
     assert engine.received[0] == "question"
+
+
+@pytest.mark.parametrize("saved, each_turn, expected", [
+    ("existing rules\n\nchannel role", False, ""),
+    ("existing rules\n\nchannel role", True, "channel role"),
+    ("other rules", False, "channel role"),
+    (None, False, "channel role"),
+])
+async def test_codex_only_skips_instructions_confirmed_in_native_snapshot(
+    monkeypatch, tmp_path, saved, each_turn, expected,
+):
+    import json
+    from engines.codex_sdk import CodexSDKEngine
+
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    sessions = tmp_path / "sessions" / "2026" / "10" / "04"
+    sessions.mkdir(parents=True)
+    path = sessions / "rollout-test-existing.jsonl"
+    records = [
+        {"type": "session_meta", "payload": {"id": "existing", "cwd": str(tmp_path)}},
+        {"type": "turn_context", "payload": {"developer_instructions": saved}},
+    ]
+    path.write_text("".join(json.dumps(r) + "\n" for r in records))
+    monkeypatch.setattr("engines.codex_sdk.config_store.get_codex_sdk_config", lambda: {
+        "custom_config": 'developer_instructions="existing rules"',
+    })
+    # A fresh engine instance must use native persisted state, not a process cache.
+    kwargs = {"prompt": "next", "cwd": str(tmp_path), "session_id": "existing"}
+    prepared = await CodexSDKEngine()._prepare_prompt_input(kwargs, "channel role", each_turn=each_turn)
+    assert prepared["system_prompt"] == expected
+    assert prepared["prompt"] == "next"
+    fresh = await CodexSDKEngine()._prepare_prompt_input({**kwargs, "session_id": None}, "channel role")
+    assert fresh["system_prompt"] == "channel role"
+    # Missing native history must reinitialize, even with the same session ID.
+    path.unlink()
+    assert (await CodexSDKEngine()._prepare_prompt_input(kwargs, "channel role"))["system_prompt"] == "channel role"
+
+
+async def test_codex_does_not_skip_from_stale_or_incomplete_native_state(monkeypatch, tmp_path):
+    import json
+    from engines.codex_sdk import CodexSDKEngine
+
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    monkeypatch.setattr("engines.codex_sdk.config_store.get_codex_sdk_config", lambda: {"custom_config": ""})
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    path = sessions / "rollout-test-existing.jsonl"
+    records = [
+        {"type": "session_meta", "payload": {"id": "existing", "cwd": str(tmp_path)}},
+        {"type": "turn_context", "payload": {"developer_instructions": "rules"}},
+        {"type": "turn_context", "payload": {}},
+    ]
+    kwargs = {"prompt": "next", "cwd": str(tmp_path), "session_id": "existing"}
+    path.write_text("".join(json.dumps(r) + "\n" for r in records))
+    assert (await CodexSDKEngine()._prepare_prompt_input(kwargs, "rules"))["system_prompt"] == "rules"
+    path.write_text(json.dumps(records[0]) + "\n" + json.dumps(records[1]))
+    assert (await CodexSDKEngine()._prepare_prompt_input(kwargs, "rules"))["system_prompt"] == "rules"
+
+
+async def test_codex_slow_native_rule_read_keeps_health_responsive(monkeypatch, tmp_path):
+    import asyncio
+    import threading
+    from engines.codex_sdk import CodexSDKEngine
+    from httpx import ASGITransport, AsyncClient
+    from main import app
+
+    entered, release = threading.Event(), threading.Event()
+    def lookup(*args):
+        entered.set()
+        release.wait(2)
+        return None
+    monkeypatch.setattr(CodexSDKEngine, "_saved_developer_instructions", staticmethod(lookup))
+    task = asyncio.create_task(CodexSDKEngine()._prepare_prompt_input(
+        {"prompt": "hello", "cwd": str(tmp_path), "session_id": "existing"}, "rules",
+    ))
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            assert (await asyncio.wait_for(client.get("/api/health"), .3)).status_code == 200
+    finally:
+        release.set()
+        await task

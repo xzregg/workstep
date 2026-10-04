@@ -79,7 +79,7 @@ async def test_manual_review_broadcast_has_no_stop_and_uses_clicker_identity(set
     assert await controls.handle(ChannelAction('bot',card.id,'0','member',conversation_id=group,sender_name='小李')) == '小李 审核通过'
     runtime.decide_review.assert_awaited_once_with(project.id,'task','build','review','approve')
     assert actors[0].actor_id == 'channel:wecom:member'
-    assert actors[0].user_name == '企业微信 · 小李'
+    assert actors[0].user_name == '小李'
     other_recipient,other = adapter.send_card.await_args_list[1].args
     assert await controls.handle(ChannelAction('bot',other.id,'1','other',conversation_id=other_recipient.conversation_id)) == '该操作已处理或已失效（操作人：小李）'
     assert store.rows['channel_button_actions'][card.id]['clicked_by']['user_name'] == '小李'
@@ -147,7 +147,7 @@ async def test_review_callback_persists_reviewer_and_message_author_after_restar
         message = Message.get_by_id('review-message')
         step = TaskStep.get(TaskStep.task=='task')
         return review.decision, review.reviewer_id, review.reviewer_name, message.author_name, message.author_username, step.status
-    assert await projects.run_db(project.id, read) == (decision,'channel:wecom:reviewer','企业微信 · 小陈','企业微信 · 小陈','reviewer',status)
+    assert await projects.run_db(project.id, read) == (decision,'channel:wecom:reviewer','小陈','小陈','reviewer',status)
     runtime._resume_in_project.assert_awaited_once()
     assert '失效' in await fresh.handle(ChannelAction('bot',card.id,key,'reviewer',conversation_id=recipient.conversation_id))
 
@@ -214,7 +214,7 @@ async def test_wecom_review_callback_from_group_member_persists_source_user(setu
         def read(_project):
             row = ReviewRun.get_by_id('review')
             return row.reviewer_id, row.reviewer_name, row.decision
-        assert await projects.run_db(project.id, read) == ('channel:wecom:XieZhaoRong','企业微信 · XieZhaoRong','approve')
+        assert await projects.run_db(project.id, read) == ('channel:wecom:XieZhaoRong','XieZhaoRong','approve')
         assert client.send_message.await_args.args[1]['markdown']['content'] == 'XieZhaoRong 审核通过'
     finally:
         await adapter.stop()

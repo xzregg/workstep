@@ -424,6 +424,9 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
         )
         if add_dirs:
             options.add_dirs = list(add_dirs)
+        # Each invocation creates a new SDK process. Resume restores the
+        # transcript, not reliably the startup options on supported versions.
+        # Keep configuring the preset append; omitting it can lose these rules.
         if system_prompt:
             options.system_prompt = {
                 "type": "preset", "preset": "qodercli", "append": system_prompt,

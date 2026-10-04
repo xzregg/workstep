@@ -65,7 +65,7 @@ async def test_wecom_streams_before_turn_completion_without_blocking_health(bots
 
     async def reply_stream(frame, stream_id, text, finish):
         calls.append((stream_id, text, finish))
-        if text and not finish:
+        if text and text != '正在处理…' and not finish:
             progress_sent.set()
             await finish_turn.wait()  # Simulate a slow platform acknowledgement.
 
@@ -111,7 +111,7 @@ async def test_wecom_streams_before_turn_completion_without_blocking_health(bots
     finally:
         finish_turn.set()
         await asyncio.wait_for(pending, 2)
-    assert [(text, finish) for _, text, finish in calls] == [('', False), ('部分正文', False), ('完整正文', True)]
+    assert [(text, finish) for _, text, finish in calls] == [('正在处理…', False), ('部分正文', False), ('完整正文', True)]
     assert len({stream_id for stream_id, _, _ in calls}) == 1
 
 
@@ -255,8 +255,8 @@ async def test_channel_messages_snapshot_sender_in_task_and_project_chat(bots):
     ))
     assert [(kind, actor.actor_id, actor.username, actor.user_name)
             for kind, actor, _ in observed] == [
-        ("task", "channel:dingtalk:staff-1", "staff-1", "钉钉 · 小王"),
-        ("chat", "channel:wecom:staff-2", "staff-2", "企业微信 · 小李"),
+        ("task", "channel:dingtalk:staff-1", "staff-1", "小王"),
+        ("chat", "channel:wecom:staff-2", "staff-2", "小李"),
     ]
     assert observed[0][2] == observed[0][1].user_name
 

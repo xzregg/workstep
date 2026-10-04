@@ -19,6 +19,7 @@ async def test_wecom_group_message_and_reply_use_official_sdk_frame(monkeypatch)
             self.connect = AsyncMock()
             self.send_message = AsyncMock()
             self.reply_stream = AsyncMock()
+            self.reply_stream_with_card = AsyncMock()
             self.disconnect = lambda: None
 
         def on(self, event):
@@ -52,7 +53,7 @@ async def test_wecom_group_message_and_reply_use_official_sdk_frame(monkeypatch)
     first, last = client.reply_stream.await_args_list
     assert first.args[0] == incoming[0].reply_context
     assert first.args[1] == last.args[1]
-    assert first.args[2] == ""
+    assert first.args[2] == "正在处理…"
     assert first.kwargs == {"finish": False}
     assert last.args[2] == "完成\n\n<@u1>"
     assert last.kwargs == {"finish": True}
@@ -427,17 +428,18 @@ async def test_wecom_stop_card_is_sent_once_with_stream_updates():
     await adapter.send_card(message,card)
     await adapter.update_reply(message,'部分正文')
     await adapter.send_text(message,'已停止。')
-    client.send_message.assert_not_awaited()
-    calls = client.reply_stream_with_card.await_args_list
-    template=calls[0].kwargs['template_card']
+    client.send_message.assert_awaited_once()
+    client.reply_stream_with_card.assert_not_awaited()
+    calls = client.reply_stream.await_args_list
+    template=client.send_message.await_args.args[1]['template_card']
     assert template['task_id']=='c'
     # Active button cards require a title: the live API rejects its absence
     # with errcode=41016, errmsg="missing title".
     assert template['main_title']=={'title':'正在处理'}
     assert template['sub_title_text']=='点击中止'
     assert template['button_list']==[{'text':'中止','key':'0'}]
-    assert [c.args[2] for c in calls]==['','部分正文','已停止。\n\n<@u>']
-    assert all('template_card' not in c.kwargs for c in calls[1:])
+    assert [c.args[2] for c in calls]==['正在处理…','部分正文','已停止。\n\n<@u>']
+    assert all('template_card' not in c.kwargs for c in calls)
     assert calls[-1].kwargs['finish'] is True
 
 

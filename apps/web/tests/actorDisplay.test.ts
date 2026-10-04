@@ -36,3 +36,25 @@ test('hover detail keeps the original author name instead of the me label', () =
     '张三 (@zhangsan) · MacBook Pro',
   )
 })
+
+
+test('channel avatar details do not repeat the saved platform or sender account', () => {
+  assert.equal(
+    displayUserDetail('企业微信 · XieZhaoRong', '企业微信', '历史用户', 'XieZhaoRong'),
+    'XieZhaoRong · 企业微信',
+  )
+  assert.equal(
+    displayUserDetail('钉钉 · 张三', '钉钉', '历史用户', 'zhangsan'),
+    '张三 (@zhangsan) · 钉钉',
+  )
+  assert.equal(
+    displayUserDetail('企业微信 · XieZhaoRong', '企业微信测试设备', '历史用户', 'XieZhao'),
+    'XieZhaoRong (@XieZhao) · 企业微信测试设备',
+  )
+})
+
+test('channel author names omit the legacy platform prefix', () => {
+  assert.equal(displayUserSender('企业微信 · XieZhaoRong', '', '我', '历史用户'), 'XieZhaoRong')
+  assert.equal(displayUserSender('钉钉 · 小王', '', '我', '历史用户'), '小王')
+  assert.equal(displayUserDetail('XieZhaoRong', '企业微信', '历史用户', 'XieZhaoRong'), 'XieZhaoRong · 企业微信')
+})

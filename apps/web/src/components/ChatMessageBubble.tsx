@@ -116,6 +116,24 @@ function MessageAvatar({
   return (
     <span
       className="chat-message-avatar-anchor"
+      role={showTooltip ? 'button' : undefined}
+      tabIndex={showTooltip ? 0 : undefined}
+      aria-label={showTooltip ? label : undefined}
+      onClick={showTooltip ? (event) => {
+        event.stopPropagation()
+        setHovered(true)
+      } : undefined}
+      onFocus={showTooltip ? () => setHovered(true) : undefined}
+      onBlur={showTooltip ? () => setHovered(false) : undefined}
+      onKeyDown={showTooltip ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          event.stopPropagation()
+          setHovered(true)
+        } else if (event.key === 'Escape') {
+          setHovered(false)
+        }
+      } : undefined}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
