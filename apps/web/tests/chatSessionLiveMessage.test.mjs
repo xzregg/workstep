@@ -10,12 +10,20 @@ const pageSource = await readFile(
   new URL('../src/pages/ChatPage.tsx', import.meta.url),
   'utf8',
 )
+const actionsSource = await readFile(
+  new URL('../src/hooks/useChatSessionActions.ts', import.meta.url),
+  'utf8',
+)
 const clientSource = await readFile(
-  new URL('../src/api/client.ts', import.meta.url),
+  new URL('../src/api/conversations.ts', import.meta.url),
   'utf8',
 )
 const pendingSource = await readFile(
   new URL('../src/components/PendingMessageInserts.tsx', import.meta.url),
+  'utf8',
+)
+const assistantPendingSource = await readFile(
+  new URL('../src/hooks/useAssistantPendingInserts.tsx', import.meta.url),
   'utf8',
 )
 const taskDetailSource = await readFile(
@@ -32,10 +40,9 @@ const taskDetailChatSource = await readFile(
 )
 
 test('session chat queues drafts against the running assistant message', () => {
-  assert.match(panelSource, /message\.role === 'assistant' && message\.status === 'running'/)
-  assert.match(panelSource, /pendingActions\.addPending\(projectId, activeMessageId, content\)/)
+  assert.match(panelSource, /useAssistantPendingInserts\(\{/)
   assert.match(panelSource, /running && queueEnabled/)
-  assert.match(pageSource, /chatSessionApi\.sendLiveMessage\(/)
+  assert.match(actionsSource, /chatSessionApi\.sendLiveMessage\(/)
   assert.match(pageSource, /onSendContent=\{sendPendingContent\}/)
   assert.doesNotMatch(pageSource, /chatInsertQueue|loadInsertQueue|saveInsertQueue/)
 })
@@ -49,9 +56,8 @@ test('session chat treats a running assistant bubble as an active turn', () => {
 
 test('all editable assistant chats reuse the backend pending-insert panel', () => {
   assert.match(pendingSource, /export default function PendingMessageInserts/)
-  assert.match(panelSource, /<PendingMessageInserts/)
-  assert.match(panelSource, /onSend=\{\(item\) => void sendPendingInserts\(\[item\]\)\}/)
-  assert.match(panelSource, /onSendAll=\{\(\) => void sendPendingInserts\(pendingInserts\)\}/)
+  assert.match(assistantPendingSource, /<PendingMessageInserts/)
+  assert.match(panelSource, /\{pendingPanel\}/)
   assert.match(taskDetailSource, /<PendingMessageInserts/)
   assert.match(clientSource, /pendingMessageInsertApi/)
   assert.match(clientSource, /\/pending-message-inserts/)
@@ -59,16 +65,14 @@ test('all editable assistant chats reuse the backend pending-insert panel', () =
 
 test('task step and coordinator queues are keyed by the active message id', () => {
   assert.match(taskDetailPageSource, /pendingTargetMessageId/)
-  assert.match(taskDetailPageSource, /pendingInsertQueueKey\(projectId, pendingTargetMessageId\)/)
-  assert.match(taskDetailPageSource, /pendingInsertActions\.add\(projectId, pendingTargetMessageId, submittedPrompt\)/)
+  assert.match(taskDetailPageSource, /useTaskPendingInserts\(\{/)
+  assert.match(taskDetailPageSource, /pendingInserts\.add\(submittedPrompt\)/)
   assert.doesNotMatch(taskDetailPageSource, /chatInsertQueue|loadTaskInsertQueue|saveTaskInsertQueue/)
 })
 
 test('task step pending inserts keep their immediate-send actions wired', () => {
-  assert.match(taskDetailPageSource, /const sendStepInserts = async/)
-  assert.match(taskDetailPageSource, /const sendCoordinatorInserts = async/)
-  assert.match(taskDetailPageSource, /taskApi\.sendStepMessage\(/)
-  assert.match(taskDetailPageSource, /taskApi\.chat\([\s\S]{0,180}sendingIds/)
+  assert.match(taskDetailPageSource, /pendingInserts\.send\(\[insert\]\)/)
+  assert.match(taskDetailPageSource, /pendingInserts\.send\(pendingInserts\.items\)/)
   assert.match(taskDetailPageSource, /onStepInsertSend=/)
   assert.match(taskDetailPageSource, /onSendAllInserts=/)
 })

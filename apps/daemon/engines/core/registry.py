@@ -20,13 +20,16 @@ from services.config import config_store
 logger = logging.getLogger(__name__)
 
 
+# 暂不注册的引擎（文件保留，仅跳过自动发现）。Codex CLI / Claude Code CLI 先隐藏。
+_DISABLED_ENGINES = {"codex", "claude_code"}
+
 def _discover_engine_classes() -> dict[str, type[AcpEngineBase]]:
     """扫描 ``engines/`` 一级模块，收集声明了 ``ENGINE_ID`` 的引擎类。"""
     found: dict[str, type[AcpEngineBase]] = {}
     module_names = sorted(
         module.name
         for module in pkgutil.iter_modules(_engines_pkg.__path__)
-        if not module.name.startswith("_")
+        if not module.name.startswith("_") and module.name not in _DISABLED_ENGINES
     )
     for name in module_names:
         try:
@@ -49,9 +52,8 @@ def _discover_engine_classes() -> dict[str, type[AcpEngineBase]]:
 _ALL_ENGINES: dict[str, type[AcpEngineBase]] = _discover_engine_classes()
 
 # 协调 Agent 默认引擎未配置/不可用时，按此优先级回退；新引擎自动追加到末尾。
+# 注：codex / claude（CLI）暂隐藏，不在回退链中。
 _COORDINATOR_BASE_ORDER = [
-    "claude",
-    "codex",
     "hermes",
     "pydantic_ai",
     "claude_agent_sdk",
@@ -293,11 +295,20 @@ def create_engine(backend: str) -> AcpEngineBase | None:
     """Create an engine instance by backend name.
 
     上层只依赖 ``AcpEngineBase``（ACP 协议接口）；自定义函数经基类继承获得。
+    Missing registered engines are probed again; async callers must run this
+    synchronous lookup in a worker, just like engine construction.
     """
     with _REGISTRY_LOCK:
         cls = ENGINE_REGISTRY.get(backend)
         if not cls:
-            return None
+            # Startup probes can miss an engine whose runtime becomes available
+            # later. Recheck only the requested engine before rejecting a saved
+            # session; keep unknown/disabled engines unavailable.
+            cls = _ALL_ENGINES.get(backend)
+            if cls is None or not cls.is_installed():
+                return None
+            ENGINE_REGISTRY[backend] = cls
+            _invalidated_scan_generation()
         return cls()
 
 

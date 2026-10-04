@@ -123,7 +123,7 @@ class GitService(GitQueries, GitWrites, GitRecoveries):
 
     async def scan(self, job, generation):
         try:
-            projects = [dict(p) for p in self.projects_provider()]
+            projects = await asyncio.to_thread(lambda: [dict(p) for p in self.projects_provider()])
             depth = await asyncio.to_thread(self.depth_provider)
             job['total_projects'] = len(projects)
             repositories = {}

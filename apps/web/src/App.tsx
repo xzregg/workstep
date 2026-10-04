@@ -1,6 +1,6 @@
 import { BrandIcon } from './components/BrandIcon'
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useProjectStore } from './stores/projectStore'
 import Layout from './components/Layout'
 import TaskList from './pages/TaskList'
@@ -8,22 +8,24 @@ import CanvasEditor from './pages/CanvasEditor'
 import StatisticsPage from './pages/StatisticsPage'
 import SchedulePage from './pages/SchedulePage'
 import ChatPage from './pages/ChatPage'
-import ChannelsPage from './pages/ChannelsPage'
+import GitWorkspace from './pages/GitWorkspace'
 import SharedTaskView from './pages/SharedTaskView'
+import { gatewayShareApi, isGatewayPublicShare } from './api/gatewayShare'
 import FilePreviewPage from './pages/FilePreviewPage'
 import type { Project } from './api/client'
 import { useI18n } from './i18n'
 import FirstUseDialog from './components/FirstUseDialog'
 import RemoteAccessGate from './components/RemoteAccessGate'
+import GatewayRemoteFrame from './components/GatewayRemoteFrame'
 import { projectSelectionPath } from './utils/projectSelectionPath'
+import { isGatewayRemoteBrowser } from './utils/gatewayRemote'
+import { useGatewaySessionStore } from './stores/gatewaySessionStore'
 
-const GitWorkspace = lazy(() => import('./pages/GitWorkspace'))
-
-const GitPrototype = import.meta.env.DEV
+const GitPrototype = import.meta.env?.DEV
   ? lazy(() => import('./pages/prototype/GitPrototype'))
   : null
 
-function AppRoutes() {
+export function AppRoutes() {
   const navigate = useNavigate()
   const location = useLocation()
   const { activeProject } = useProjectStore()
@@ -48,7 +50,7 @@ function AppRoutes() {
   if (location.pathname.startsWith('/share/')) {
     return (
       <Routes>
-        <Route path="/share/:token" element={<SharedTaskView />} />
+        <Route path="/share/:token" element={<SharedTaskView api={isGatewayPublicShare() ? gatewayShareApi : undefined} />} />
       </Routes>
     )
   }
@@ -64,14 +66,15 @@ function AppRoutes() {
   return (
     <Layout onSelectProject={handleSelectProject}>
       <Routes>
-        <Route path="/" element={<WelcomeView />} />
-        <Route path="/git" element={<Suspense fallback={null}><GitWorkspace /></Suspense>} />
+        <Route path="/" element={activeProject && useGatewaySessionStore.getState().session?.host_project_id
+          ? <Navigate replace to={projectSelectionPath('/tasks', activeProject.name, useProjectStore.getState().activeWorkflowId)} />
+          : <WelcomeView />} />
+        <Route path="/git" element={<GitWorkspace />} />
         <Route path="/tasks" element={activeProject ? <TaskList /> : <WelcomeView />} />
         <Route path="/canvas" element={<CanvasEditor />} />
         <Route path="/statistics" element={<StatisticsPage />} />
         <Route path="/schedules" element={activeProject ? <SchedulePage /> : <WelcomeView />} />
         <Route path="/chat" element={activeProject ? <ChatPage /> : <WelcomeView />} />
-        <Route path="/channels" element={activeProject ? <ChannelsPage /> : <WelcomeView />} />
         <Route path="*" element={<WelcomeView />} />
       </Routes>
     </Layout>
@@ -96,13 +99,14 @@ function WelcomeView() {
 function App() {
   return (
     <BrowserRouter>
-      <GatedApp />
+      <GatewayRemoteFrame><GatedApp /></GatewayRemoteFrame>
     </BrowserRouter>
   )
 }
 
 function GatedApp() {
   const location = useLocation()
+  if (isGatewayRemoteBrowser()) return <AppRoutes />
   // Development-only mock surface: no daemon, project selection or Git operations.
   if (GitPrototype && location.pathname === '/prototype/git') {
     return <Suspense fallback={<div>…</div>}><GitPrototype /></Suspense>
@@ -114,6 +118,7 @@ function GatedApp() {
     location.pathname === '/file-preview'
 
   if (bypassGate) {
+    if (isGatewayPublicShare()) return <AppRoutes />
     return (
       <>
         <AppRoutes />

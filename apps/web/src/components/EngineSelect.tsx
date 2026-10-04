@@ -24,6 +24,7 @@ interface EngineSelectProps {
   defaultOption?: { value: string; label: string }
   title?: string
   ariaLabel?: string
+  className?: string
   style?: CSSProperties
 }
 
@@ -82,6 +83,7 @@ export default function EngineSelect({
   defaultOption,
   title,
   ariaLabel,
+  className,
   style,
 }: EngineSelectProps) {
   const { t } = useI18n()
@@ -113,6 +115,7 @@ export default function EngineSelect({
       onChange={(event) => onChange(event.target.value)}
       title={title}
       aria-label={ariaLabel}
+      className={className}
       style={style}
     >
       {defaultOption && (

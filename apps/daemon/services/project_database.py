@@ -25,6 +25,7 @@ class ProjectDatabaseExecutor:
 
     def __init__(self, database: pw.SqliteDatabase, project_id: str) -> None:
         self._database = database
+        self.project_id = project_id
         self._executor = ThreadPoolExecutor(
             max_workers=1,
             thread_name_prefix=f"workstep-db-{project_id or 'project'}",

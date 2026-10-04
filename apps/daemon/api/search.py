@@ -2,8 +2,10 @@
 
 import asyncio
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from services.project import project_manager
+from services.remote_access import get_current_actor
+from services.task_read_model import project_relative_task_cwd
 
 router = APIRouter(prefix="/api/search")
 
@@ -34,6 +36,11 @@ async def search_tasks(
     from datetime import datetime, timezone
     from models import Task
 
+    actor = get_current_actor()
+    project_scoped = actor is not None and actor.project_id is not None
+    if project_scoped and project_id != actor.project_id:
+        raise HTTPException(status_code=403, detail="Project scope denied")
+
     projects = (
         [project_manager.get_project_by_id(project_id)]
         if project_id
@@ -63,7 +70,7 @@ async def search_tasks(
         except ValueError:
             pass
 
-    def load_project_tasks():
+    def load_project_tasks(project):
         conditions = []
         if query:
             conditions.append(
@@ -86,7 +93,10 @@ async def search_tasks(
                 "id": task.id,
                 "title": task.title,
                 "description": task.description,
-                "cwd": task.cwd,
+                "cwd": (
+                    project_relative_task_cwd(task.cwd, project.path)
+                    if project_scoped else task.cwd
+                ),
                 "status": task.status,
                 "engine": task.engine,
                 "created_at": task.created_at,
@@ -98,7 +108,7 @@ async def search_tasks(
     batches = await asyncio.gather(*(
         project_manager.run_db(
             project.id if hasattr(project, "id") else project["id"],
-            lambda _project: load_project_tasks(),
+            lambda _project: load_project_tasks(_project),
         )
         for project in projects
     ))

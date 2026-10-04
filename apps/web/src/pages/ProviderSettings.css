@@ -1,0 +1,38 @@
+.provider-settings-page { max-width: 960px; margin: 0 auto; }
+.provider-settings-header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 18px; }
+.provider-settings-heading { flex: 1; }
+.provider-settings-title { margin-bottom: 6px; font-size: calc(20px * var(--font-scale)); font-weight: 650; }
+.provider-settings-intro { color: var(--muted); font-size: calc(13px * var(--font-scale)); }
+.provider-settings-alert { padding: 10px 12px; margin-bottom: 12px; border-radius: 8px; background: color-mix(in oklab, var(--danger), transparent 90%); color: var(--danger); font-size: calc(13px * var(--font-scale)); }
+.provider-settings-alert--delete { margin-top: 10px; padding: 9px 12px; font-size: calc(12px * var(--font-scale)); }
+.provider-settings-empty { padding: 32px; border: 1px dashed var(--border); border-radius: 12px; background: var(--bg); color: var(--meta); text-align: center; }
+.provider-settings-empty--loading { border-style: solid; }
+.provider-settings-list { display: flex; flex-direction: column; gap: 8px; }
+.provider-settings-card { border: 1px solid var(--border); border-radius: 12px; background: var(--bg); }
+.provider-settings-card--disabled { opacity: .72; }
+.provider-settings-card-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px 14px; }
+.provider-settings-avatar { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 34px; height: 34px; border: 1px solid color-mix(in oklab, var(--accent), transparent 72%); border-radius: 9px; background: color-mix(in oklab, var(--accent), transparent 86%); color: var(--accent); font-size: calc(12px * var(--font-scale)); font-weight: 700; }
+.provider-settings-card-content { flex: 1; min-width: 0; }
+.provider-settings-card-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+.provider-settings-card-name { font-size: calc(13px * var(--font-scale)); font-weight: 600; }
+.provider-settings-type-badge { padding: 1px 6px; border-radius: 999px; background: var(--surface); color: var(--muted); font-size: calc(11px * var(--font-scale)); text-transform: uppercase; }
+.provider-settings-card-detail { overflow-wrap: anywhere; color: var(--muted); font-size: calc(11px * var(--font-scale)); }
+.provider-settings-test-status { margin-top: 7px; font-size: calc(11px * var(--font-scale)); }
+.provider-settings-test-status--success, .provider-settings-model-status--success { color: var(--success); }
+.provider-settings-test-status--failure, .provider-settings-model-status--error { color: var(--danger); }
+.provider-settings-model-status { margin-top: 4px; font-size: calc(11px * var(--font-scale)); }
+.provider-settings-model-status--empty { color: var(--meta); }
+.provider-settings-model-groups { display: flex; flex-direction: column; gap: 7px; margin-top: 8px; }
+.provider-settings-model-group-title { margin-bottom: 4px; color: var(--muted); font-size: calc(10px * var(--font-scale)); font-weight: 650; }
+.provider-settings-model-list { display: flex; flex-wrap: wrap; gap: 4px; max-height: 132px; overflow-y: auto; }
+.provider-settings-model-chip { padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); font-size: calc(11px * var(--font-scale)); overflow-wrap: anywhere; }
+.provider-settings-card-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
+.provider-settings-action { min-width: 54px; height: 30px; justify-content: center; }
+.provider-settings-action--wide { min-width: 62px; }
+.provider-settings-action--copy { min-width: 76px; }
+.provider-settings-action--delete { width: 30px; min-width: 30px; height: 30px; padding: 0; }
+.provider-settings-model-count { margin-left: 4px; color: var(--meta); }
+.provider-settings-badge { padding: 2px 8px; border-radius: 999px; font-size: calc(11px * var(--font-scale)); font-weight: 600; }
+.provider-settings-badge--disabled { background: var(--surface); color: var(--meta); }
+.provider-settings-badge--verified { background: color-mix(in oklab, var(--success), transparent 88%); color: var(--success); }
+.provider-settings-badge--unverified { background: color-mix(in oklab, var(--warn), transparent 88%); color: var(--warn); }

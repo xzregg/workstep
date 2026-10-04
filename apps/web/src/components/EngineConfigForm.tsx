@@ -44,6 +44,8 @@ interface Props {
   /** Extra controls rendered in the footer row. */
   footerSlot?: ReactNode
   onSaved?: (result: EngineConfigSchema) => void
+  /** Reports draft values upward (panel uses provider_id to follow supplier for model list). */
+  onValuesChange?: (values: Record<string, string>) => void
   /** Reports save availability so an external save button stays in sync. */
   onFormStateChange?: (state: { saving: boolean; canSave: boolean }) => void
   modelOptions?: EngineModel[]
@@ -67,6 +69,7 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
     config,
     footerSlot,
     onSaved,
+    onValuesChange,
     onFormStateChange,
     modelOptions = [],
     modelOptionsLoading = false,
@@ -95,6 +98,13 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
     setRevealed({})
     setClearKeys({})
   }, [config])
+
+  // Bubble draft values so the panel can follow supplier selection live.
+  const valuesChangeRef = useRef(onValuesChange)
+  valuesChangeRef.current = onValuesChange
+  useEffect(() => {
+    valuesChangeRef.current?.(values)
+  }, [values])
 
   const needsConfirmation = (): EngineConfigField | null => {
     for (const field of fields) {

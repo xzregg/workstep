@@ -1,20 +1,22 @@
 import ResponsivePopover from './ResponsivePopover'
 import Icon from './Icon'
 import { useCompactLayout } from '../hooks/useCompactLayout'
+import { useChatInputDraft } from '../hooks/useChatInputDraft'
+import { useChatInputAttachments } from '../hooks/useChatInputAttachments'
 import {
   useEffect,
   useRef,
   useState,
   type ClipboardEvent,
-  type DragEvent,
   type ReactNode,
   type Ref,
 } from 'react'
 import ChatInputTextSegment from './ChatInputTextSegment'
+import ChatInputUsage from './ChatInputUsage'
 import CoordinatorConfigBar from './CoordinatorConfigBar'
 import FloatingMenu, { useFloatingMenu } from './FloatingMenu'
 import ImagePreview from './ImagePreview'
-import { engineApi, fsApi, type CoordinatorEngineSummary, type EngineConfigField, type EngineInputItem, type EngineQuota, type ProviderInfo } from '../api/client'
+import { engineApi, type CoordinatorEngineSummary, type EngineConfigField, type EngineInputItem, type EngineQuota, type ProviderInfo } from '../api/client'
 import { engineLabel } from '../engineMeta'
 import { useI18n } from '../i18n'
 import {
@@ -26,8 +28,6 @@ import {
   type MarkdownTextSegment,
 } from '../utils/markdownImages'
 import { applySlashInputItem, slashInputQuery } from '../utils/slashSkills'
-import { formatMarkdownAttachment } from '../utils/markdownAttachment'
-import { loadDraft, loadTaskDraft, saveDraft, saveTaskDraft } from '../utils/chatDraft'
 import { useMarkdownUrlResolver } from '../contexts/MarkdownAssetUrlContext'
 import {
   applyTaskStepMention,
@@ -40,15 +40,6 @@ const inputItemIcon = (item: EngineInputItem) => {
   if (item.action === 'open_reasoning') return 'sparkles' as const
   if (item.action === 'show_status') return 'bar-chart' as const
   return 'terminal' as const
-}
-
-function readDraft(owner: { type: 'session' | 'task'; id: string }): string {
-  return owner.type === 'task' ? loadTaskDraft(owner.id) : loadDraft(owner.id)
-}
-
-function writeDraft(owner: { type: 'session' | 'task'; id: string }, value: string): void {
-  if (owner.type === 'task') saveTaskDraft(owner.id, value)
-  else saveDraft(owner.id, value)
 }
 
 function splitComposerSegments(markdown: string): MarkdownInputSegment[] {
@@ -106,8 +97,9 @@ export interface ChatInputEngineConfig {
   notice?: string
   hint?: string
   engineTitle?: string
-  onEngineChange: (engineId: string) => void
-  onProviderChange?: (providerId: string) => void
+  /** 返回 false 表示弹层应关闭（如移动端弹出引擎交接确认，避免双层叠放）。 */
+  onEngineChange: (engineId: string) => boolean | void
+  onProviderChange?: (providerId: string) => boolean | void
   onModelChange: (model: string) => void
   onFastModelChange: (model: string) => void
   onVisionModelChange?: (model: string) => void
@@ -120,6 +112,8 @@ export interface ChatInputEngineConfig {
   allowDefault?: boolean
   /** Reset all selections back to the defaults. */
   onReset?: () => void
+  /** 递增即重新打开配置弹层并聚焦模型选择（交接确认关闭后回流）。 */
+  reopenSignal?: number
 }
 
 export interface ChatInputImageAttach {
@@ -290,7 +284,7 @@ export default function ChatInput({
   minHeight = 110,
   maxHeight = 120,
 }: ChatInputProps) {
-  const { t, locale } = useI18n()
+  const { t } = useI18n()
   const markdownUrlResolver = useMarkdownUrlResolver()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const segmentRefs = useRef(new Map<number, HTMLTextAreaElement>())
@@ -299,38 +293,25 @@ export default function ChatInput({
   const inputFocusedRef = useRef(false)
   const [configOpen, setConfigOpen] = useState(false)
   const [configFocus, setConfigFocus] = useState<'model' | 'reasoning' | null>(null)
+  const reopenSignal = config?.reopenSignal ?? 0
+  const reopenSeenRef = useRef(0)
+  useEffect(() => {
+    if (reopenSignal > reopenSeenRef.current) {
+      reopenSeenRef.current = reopenSignal
+      setConfigFocus(null)
+      setConfigOpen(true)
+    }
+  }, [reopenSignal])
   const [statusOpen, setStatusOpen] = useState(false)
   const isCompact = useCompactLayout()
   const permissionMenu = useFloatingMenu()
   const permissionButtonRef = useRef<HTMLButtonElement>(null)
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
-  const [uploadingImage, setUploadingImage] = useState(false)
-  const [dragActive, setDragActive] = useState(false)
   const [previewImage, setPreviewImage] = useState<MarkdownImageSegment | null>(null)
   const [focused, setFocused] = useState(false)
   const [allSelected, setAllSelected] = useState(false)
   const allSelectedRef = useRef(false)
   const undoSnapshotRef = useRef<{ before: string; after: string } | null>(null)
-  const [contextTipOpen, setContextTipOpen] = useState(false)
-  const contextRef = useRef<HTMLSpanElement>(null)
-  const [contextTipStyle, setContextTipStyle] = useState<React.CSSProperties | undefined>(undefined)
-  const [quotaTipOpen, setQuotaTipOpen] = useState(false)
-  const quotaRef = useRef<HTMLSpanElement>(null)
-  const [quotaTipStyle, setQuotaTipStyle] = useState<React.CSSProperties | undefined>(undefined)
-  // Close usage detail tips when clicking outside.
-  useEffect(() => {
-    if (!contextTipOpen && !quotaTipOpen) return
-    const handleClickOutside = (e: MouseEvent) => {
-      if (contextRef.current && !contextRef.current.contains(e.target as Node)) {
-        setContextTipOpen(false)
-      }
-      if (quotaRef.current && !quotaRef.current.contains(e.target as Node)) {
-        setQuotaTipOpen(false)
-      }
-    }
-    document.addEventListener('click', handleClickOutside, true)
-    return () => document.removeEventListener('click', handleClickOutside, true)
-  }, [contextTipOpen, quotaTipOpen])
   const [slashCursor, setSlashCursor] = useState(value.length)
   const [slashDismissedValue, setSlashDismissedValue] = useState<string | null>(null)
   const [inspectedItems, setInspectedItems] = useState<EngineInputItem[]>([])
@@ -341,12 +322,7 @@ export default function ChatInput({
   const [mentionDismissedValue, setMentionDismissedValue] = useState<string | null>(null)
   const attachInputRef = useRef<HTMLInputElement>(null)
   const attachFileInputRef = useRef<HTMLInputElement>(null)
-  const draftOwnerRef = useRef<{ type: 'session' | 'task'; id: string } | null>(null)
-  const valueRef = useRef(value)
-  valueRef.current = value
-  // The parent echo caused by restoring a draft must not be treated as user
-  // input; a real edit produces a different value and saves normally.
-  const restoredValueRef = useRef<string | null>(null)
+  const valueRef = useChatInputDraft({ sessionId, taskId, value, onChange })
   const canSend = !disabled
     && (!running || allowSendWhileRunning)
     && !stopping
@@ -431,38 +407,6 @@ export default function ChatInput({
   }, [mentionQuery?.query])
 
   useEffect(() => {
-    const previous = draftOwnerRef.current
-    const next = taskId
-      ? { type: 'task' as const, id: taskId }
-      : sessionId
-        ? { type: 'session' as const, id: sessionId }
-        : null
-    const ownerChanged = previous?.id !== next?.id || previous?.type !== next?.type
-    if (ownerChanged) {
-      if (previous) writeDraft(previous, valueRef.current)
-      draftOwnerRef.current = next
-      if (!next) return
-      const restored = readDraft(next)
-      if (restored !== valueRef.current) {
-        restoredValueRef.current = restored
-        onChange(restored)
-      }
-      return
-    }
-    if (restoredValueRef.current === value) {
-      restoredValueRef.current = null
-      return
-    }
-    restoredValueRef.current = null
-    if (next) writeDraft(next, value)
-  }, [sessionId, taskId, value, onChange])
-
-  useEffect(() => () => {
-    const owner = draftOwnerRef.current
-    if (owner) writeDraft(owner, valueRef.current)
-  }, [])
-
-  useEffect(() => {
     if (!inputFocusedRef.current) setSlashCursor(value.length)
   }, [value])
 
@@ -500,9 +444,6 @@ export default function ChatInput({
     return () => { cancelled = true }
   }, [effectiveEngine, projectId, slashActive])
 
-  const formatTokens = (count: number) =>
-    new Intl.NumberFormat(locale).format(Math.max(0, Math.round(count)))
-
   const focusMarkdownCursor = (markdown: string, cursor: number) => {
     const segments = splitComposerSegments(markdown)
     let textIndex = -1
@@ -523,6 +464,18 @@ export default function ChatInput({
     element.focus({ preventScroll: true })
     element.setSelectionRange(localCursor, localCursor)
   }
+
+  const {
+    uploadingImage, dragActive, setDragActive, handleAttachments, handleAttachPaste, handleDrop,
+  } = useChatInputAttachments({
+    imageAttach,
+    valueRef,
+    cursor: slashCursor,
+    onChange,
+    onCursorChange: setSlashCursor,
+    undoSnapshotRef,
+    focusCursor: focusMarkdownCursor,
+  })
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const modifier = event.metaKey || event.ctrlKey
@@ -687,83 +640,11 @@ export default function ChatInput({
     })
   }
 
-  // ── Attachments (single implementation shared by every chat) ───────────
-  const handleAttachments = async (files: File[]) => {
-    if (!imageAttach || files.length === 0) return
-    imageAttach.onError?.('')
-    setUploadingImage(true)
-    const previousValue = valueRef.current
-    let nextValue = previousValue
-    let nextCursor = Math.max(0, Math.min(slashCursor, nextValue.length))
-    let uploadedAny = false
-    try {
-      for (const file of files) {
-        const isImage = file.type.startsWith('image/')
-        try {
-          const uploaded = imageAttach.upload
-            ? await imageAttach.upload(file, imageAttach.prefix)
-            : isImage
-              ? await fsApi.uploadImage(file, imageAttach.projectId!, imageAttach.prefix)
-              : await fsApi.uploadFile(file, imageAttach.projectId!, imageAttach.prefix)
-          const markdown = formatMarkdownAttachment(file, uploaded.url)
-          const before = nextValue.slice(0, nextCursor)
-          const after = nextValue.slice(nextCursor)
-          const beforeEndsWithImage = splitMarkdownImages(before)
-            .some((segment) => segment.type === 'image' && segment.end === before.length)
-          const afterStartsWithImage = splitMarkdownImages(after)
-            .some((segment) => segment.type === 'image' && segment.start === 0)
-          const prefix = !isImage && before && !before.endsWith('\n') && !beforeEndsWithImage
-            ? '\n\n'
-            : ''
-          const suffix = !isImage && after && !after.startsWith('\n') && !afterStartsWithImage
-            ? '\n\n'
-            : ''
-          nextValue = before + prefix + markdown + suffix + after
-          nextCursor = before.length + prefix.length + markdown.length + suffix.length
-          uploadedAny = true
-        } catch (reason) {
-          imageAttach.onError?.(reason instanceof Error
-            ? reason.message
-            : isImage ? t('chatInput.imageUploadFailed') : t('chatInput.fileUploadFailed'))
-        }
-      }
-      if (uploadedAny) {
-        undoSnapshotRef.current = { before: previousValue, after: nextValue }
-        valueRef.current = nextValue
-        onChange(nextValue)
-        setSlashCursor(nextCursor)
-        requestAnimationFrame(() => focusMarkdownCursor(nextValue, nextCursor))
-      }
-    } finally {
-      setUploadingImage(false)
-    }
-  }
-
-  const handleAttachPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
-    const items = Array.from(event.clipboardData?.items || [])
-    const files = items
-      .filter((item) => item.kind === 'file')
-      .map((item) => item.getAsFile())
-      .filter((file): file is File => Boolean(file))
-    if (files.length === 0) return
-    event.preventDefault()
-    void handleAttachments(files)
-  }
-
   const handleCopy = (event: ClipboardEvent<HTMLDivElement>) => {
     if (!allSelectedRef.current || !event.clipboardData) return
     event.preventDefault()
     event.clipboardData.setData('text/plain', value)
     event.clipboardData.setData('text/markdown', value)
-  }
-
-  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
-    if (!imageAttach) return
-    const files = Array.from(event.dataTransfer?.files || [])
-    setDragActive(false)
-    if (files.length === 0) return
-    event.preventDefault()
-    void handleAttachments(files)
   }
 
   const updateTextSegment = (
@@ -822,7 +703,7 @@ export default function ChatInput({
   }
 
   return (
-    <div className="chat-input-root" style={{ position: 'relative' }}>
+    <div className="chat-input-root">
       {statusOpen && !skillMenuVisible && !mentionMenuVisible && (
         <div className="chat-command-status" role="status">
           <div className="chat-command-status-header">
@@ -909,6 +790,7 @@ export default function ChatInput({
         </div>
       )}
       <div
+        className="chat-input-frame"
         data-focused={focused}
         data-dragging={imageAttach ? dragActive : undefined}
         onDragEnter={imageAttach ? (event) => {
@@ -927,18 +809,6 @@ export default function ChatInput({
           }
         } : undefined}
         onDrop={imageAttach ? handleDrop : undefined}
-        style={{
-          position: 'relative',
-          border: '0.5px solid transparent',
-          borderRadius: 12,
-          background: 'var(--bg)',
-          transition: 'box-shadow 0.15s',
-          boxShadow: dragActive
-            ? '0 0 0 1.5px var(--accent), 0 1px 2px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.02)'
-            : focused
-              ? '0 0 0 0.5px var(--accent), 0 1px 2px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.02)'
-              : '0 0 0 0.5px var(--border-soft), 0 1px 2px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.02)',
-        }}
       >
         {imageAttach && dragActive && (
           <div className="chat-input-drop-hint" aria-hidden="true">
@@ -1096,7 +966,7 @@ export default function ChatInput({
                   e.target.value = ''
                 }}
               />
-              <div style={{ position: 'relative' }}>
+              <div className="chat-input-attach-anchor">
                 <button
                   type="button"
                   className="chat-input-attach"
@@ -1109,11 +979,6 @@ export default function ChatInput({
                   aria-label={t('chatInput.attachMenuTitle')}
                   aria-expanded={attachMenuOpen}
                   onClick={() => setAttachMenuOpen((open) => !open)}
-                  style={{
-                    position: 'relative',
-                    cursor: uploadingImage ? 'wait' : 'pointer',
-                    opacity: uploadingImage ? 0.7 : 1,
-                  }}
                 >
                   {uploadingImage
                     ? <span className="task-status-spinner" aria-hidden="true" />
@@ -1122,27 +987,20 @@ export default function ChatInput({
                         name="plus"
                         size={15}
                         strokeWidth={1.8}
-                        style={{
-                          transform: attachMenuOpen ? 'rotate(45deg)' : undefined,
-                          transition: 'transform 200ms cubic-bezier(0.35, 1.55, 0.65, 1)',
-                        }}
+                        className="chat-input-attach-plus"
                       />
                     )}
                   {hasImage && !uploadingImage && (
                     <span
                       aria-hidden="true"
-                      style={{
-                        position: 'absolute', right: 0, bottom: 0, width: 9, height: 9,
-                        borderRadius: '50%', background: 'var(--accent)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}
+                      className="chat-input-attach-indicator"
                     >
                       <Icon name="check" size={6} strokeWidth={4} color="var(--accent-fg)" />
                     </span>
                   )}
                 </button>
                 {attachMenuOpen && (
-                  <ResponsivePopover title={t('chatInput.attachMenuTitle')} onClose={() => setAttachMenuOpen(false)} className="chat-input-menu" style={{ left: 0, bottom: 'calc(100% + 6px)', zIndex: 1301, width: 190 }}>
+                  <ResponsivePopover title={t('chatInput.attachMenuTitle')} onClose={() => setAttachMenuOpen(false)} className="chat-input-menu chat-input-attach-menu">
                       <button
                         type="button"
                         className="chat-input-menu-item"
@@ -1184,7 +1042,7 @@ export default function ChatInput({
                           </span>
                           <span className="chat-input-menu-name">{t('chatInput.attachPlanMode')}</span>
                           {planActive && (
-                            <Icon name="check" size={13} strokeWidth={2.2} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                            <Icon name="check" size={13} strokeWidth={2.2} className="chat-input-menu-check-icon" />
                           )}
                         </button>
                       )}
@@ -1204,7 +1062,7 @@ export default function ChatInput({
                           </span>
                           <span className="chat-input-menu-name">{t('chatInput.attachGoalMode')}</span>
                           {goal.active && (
-                            <Icon name="check" size={13} strokeWidth={2.2} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                            <Icon name="check" size={13} strokeWidth={2.2} className="chat-input-menu-check-icon" />
                           )}
                         </button>
                       )}
@@ -1232,203 +1090,40 @@ export default function ChatInput({
             <button
               type="button"
               className="chat-input-pill"
+              data-kind="plan"
               data-active={planActive}
               disabled={plan.disabled}
               onClick={() => plan.onChange(!planActive)}
               aria-pressed={planActive}
               title={t('chatInput.planModeTitle')}
-              style={{ opacity: plan.disabled ? 0.55 : 1, cursor: plan.disabled ? 'not-allowed' : 'pointer' }}
             >
               <Icon name="lightbulb" size={12} strokeWidth={1.8} color={planActive ? '#f5a623' : 'var(--meta)'} />
-              <span style={{ color: planActive ? '#f5a623' : 'var(--fg)', fontWeight: planActive ? 600 : 500 }}>
+              <span>
                 {t('chatInput.planMode')}
               </span>
             </button>
           )}
-          <div style={{ flex: 1 }} />
-          {quota?.primary && (
-            <span
-              ref={quotaRef}
-              className={`chat-input-context chat-input-quota${quotaTipOpen ? ' is-tip-open' : ''}`}
-              tabIndex={0}
-              role="button"
-              onClick={() => {
-                if (isCompact && quotaRef.current) {
-                  const rect = quotaRef.current.getBoundingClientRect()
-                  setQuotaTipStyle({
-                    position: 'fixed',
-                    left: '50%',
-                    bottom: window.innerHeight - rect.top + 8,
-                    transform: 'translateX(-50%)',
-                    zIndex: 9999,
-                    width: 'max-content',
-                    maxWidth: 'calc(100vw - 32px)',
-                    whiteSpace: 'normal',
-                  })
-                } else {
-                  setQuotaTipStyle(undefined)
-                }
-                setQuotaTipOpen((open) => !open)
-              }}
-            >
-              {t('chatInput.quotaCompact', { remaining: quota.primary.remaining_percent })}
-              <span className="chat-input-context-tip chat-input-quota-tip" style={quotaTipStyle}>
-                <span className="chat-input-quota-heading">
-                  <strong>{quota.limit_name || t('chatInput.quotaTitle')}</strong>
-                  {onRefreshQuota && (
-                    <button
-                      type="button"
-                      className="chat-input-quota-refresh"
-                      data-quota-refresh=""
-                      disabled={quotaRefreshing}
-                      aria-label={t('common.refresh')}
-                      title={t('common.refresh')}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        onRefreshQuota()
-                      }}
-                    >
-                      {quotaRefreshing
-                        ? <span className="task-status-spinner" aria-hidden="true" />
-                        : <Icon name="refresh" size={13} strokeWidth={2} />}
-                    </button>
-                  )}
-                </span>
-                <span>{t('chatInput.quotaPrimary', {
-                  remaining: quota.primary.remaining_percent,
-                })}</span>
-                <span>{t('chatInput.quotaReset', {
-                  reset: quota.primary.resets_at
-                    ? new Date(quota.primary.resets_at * 1000).toLocaleString(locale)
-                    : t('chatInput.quotaResetUnknown'),
-                })}</span>
-                {quota.secondary && (
-                  <span>{t('chatInput.quotaSecondary', {
-                    remaining: quota.secondary.remaining_percent,
-                  })}</span>
-                )}
-                {quota.credits && (
-                  <span>{quota.credits.unlimited
-                    ? t('chatInput.quotaCreditsUnlimited')
-                    : t('chatInput.quotaCredits', { balance: quota.credits.balance ?? '0' })}</span>
-                )}
-                {quota.individual_limit && (
-                  <span>{t('chatInput.quotaIndividual', {
-                    used: quota.individual_limit.used,
-                    limit: quota.individual_limit.limit,
-                    remaining: quota.individual_limit.remaining_percent,
-                  })}</span>
-                )}
-              </span>
-            </span>
-          )}
-          {context && (
-            <span
-              ref={contextRef}
-              className={`chat-input-context chat-input-context-breakdown-wrap${contextTipOpen ? ' is-tip-open' : ''}`}
-              tabIndex={0}
-              role="button"
-              onClick={() => {
-                if (isCompact && contextRef.current) {
-                  const rect = contextRef.current.getBoundingClientRect()
-                  setContextTipStyle({
-                    position: 'fixed',
-                    left: '50%',
-                    bottom: window.innerHeight - rect.top + 8,
-                    transform: 'translateX(-50%)',
-                    zIndex: 9999,
-                    width: 'max-content',
-                    maxWidth: 'calc(100vw - 32px)',
-                    whiteSpace: 'normal',
-                  })
-                } else {
-                  setContextTipStyle(undefined)
-                }
-                setContextTipOpen((v) => !v)
-              }}
-              aria-label={t('chatInput.contextTokens', { used: formatTokens(context.used), total: formatTokens(context.total) })}
-              style={{
-                color: context.percent > 90
-                  ? 'var(--danger)'
-                  : context.percent > 70
-                    ? '#d97706'
-                    : 'var(--meta)',
-              }}
-            >
-              <svg className="chat-input-context-ring" viewBox="0 0 24 24" aria-hidden="true">
-                <circle className="chat-input-context-ring-track" cx="12" cy="12" r="9" pathLength="100" />
-                <circle
-                  className="chat-input-context-ring-value"
-                  cx="12"
-                  cy="12"
-                  r="9"
-                  pathLength="100"
-                  strokeDasharray={`${Math.min(100, Math.max(0, context.percent))} 100`}
-                />
-              </svg>
-              <span>{Math.round(context.percent)}%</span>
-              <span className="chat-input-context-tip chat-input-context-detail" style={contextTipStyle}>
-                <span className="chat-input-context-heading">
-                  <strong>{t('chatInput.contextCompact', { percent: Math.round(context.percent) })}</strong>
-                  <span>{context.estimated ? '~' : ''}{formatTokens(context.used)} / {formatTokens(context.total)}</span>
-                </span>
-                <span className="chat-input-context-meter"><i style={{ width: `${Math.min(100, context.percent)}%` }} /></span>
-                {context.breakdown && (
-                  <>
-                    <span className="chat-input-context-section-title">
-                      {context.breakdown.estimated ? t('chatInput.contextBreakdownEstimated') : t('chatInput.contextBreakdown')}
-                    </span>
-                    {([
-                      ['system', 'contextSystem', '#f59e0b'],
-                      ['toolDefinitions', 'contextToolDefinitions', '#0ea5e9'],
-                      ['user', 'contextUserMessages', '#d946ef'],
-                      ['assistant', 'contextAssistantMessages', '#ec4899'],
-                      ['toolRequests', 'contextToolRequests', '#8b5cf6'],
-                      ['toolResults', 'contextToolResults', '#10b981'],
-                      ['other', 'contextOther', '#94a3b8'],
-                    ] as const).filter(([key]) => context.breakdown![key] > 0).map(([key, label, color]) => (
-                      <span className="chat-input-context-row" key={key}>
-                        <i style={{ background: color }} />
-                        <span>{t(`chatInput.${label}`)}</span>
-                        <code>~{formatTokens(context.breakdown![key])}</code>
-                        <em>{Math.round((context.breakdown![key] / context.used) * 100)}%</em>
-                      </span>
-                    ))}
-                    {context.tools && context.tools.length > 0 && (
-                      <>
-                        <span className="chat-input-context-section-title">{t('chatInput.contextToolsTop')}</span>
-                        {context.tools.map((tool) => (
-                          <span className="chat-input-context-tool" key={tool.name}>
-                            <code>{tool.name}</code>
-                            <span>~{formatTokens(tool.tokens)}</span>
-                            <em>{Math.round((tool.tokens / context.used) * 100)}%</em>
-                          </span>
-                        ))}
-                      </>
-                    )}
-                  </>
-                )}
-              </span>
-            </span>
-          )}
+          <div className="chat-input-toolbar-spacer" />
+          <ChatInputUsage context={context} quota={quota} onRefreshQuota={onRefreshQuota} quotaRefreshing={quotaRefreshing} compact={isCompact} />
           {permission && (
             <>
               <button
                 ref={permissionButtonRef}
                 type="button"
                 className="chat-input-pill"
+                data-kind="permission"
                 data-open={permissionMenu.anchor != null}
+                data-selected={Boolean(permission.value)}
                 disabled={permission.disabled}
                 onClick={() => (permissionMenu.anchor ? permissionMenu.close() : permissionMenu.openFrom(permissionButtonRef.current))}
                 aria-expanded={permissionMenu.anchor != null}
                 title={t('chatSession.permissionLabel')}
-                style={{ opacity: permission.disabled ? 0.55 : 1, cursor: permission.disabled ? 'not-allowed' : 'pointer' }}
               >
                 <Icon name="shield" size={12} strokeWidth={1.8} color={permission.value ? 'var(--accent)' : 'var(--meta)'} />
-                <span style={{ color: permission.value ? 'var(--accent)' : 'var(--fg)', fontWeight: permission.value ? 600 : 500 }}>
+                <span>
                   {permissionLabel}
                 </span>
-                <Icon name="chevron-down" size={9} strokeWidth={2.5} style={{ transform: permissionMenu.anchor ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s', opacity: 0.6 }} />
+                <Icon name="chevron-down" size={9} strokeWidth={2.5} className="chat-input-pill-chevron" />
               </button>
               {permissionMenu.anchor && (
                 <FloatingMenu
@@ -1447,39 +1142,38 @@ export default function ChatInput({
             </>
           )}
           {config && (
-            <div style={{ position: 'relative', display: 'flex' }}>
+            <div className="chat-input-config-anchor">
               <button
                 type="button"
                 className="chat-input-pill"
+                data-kind="config"
                 data-open={configOpen}
                 disabled={config.disabled}
                 onClick={() => { setConfigFocus(null); setConfigOpen((open) => !open) }}
                 aria-expanded={configOpen}
                 title={t('chatInput.engineModelTitle')}
-                style={{ opacity: config.disabled ? 0.55 : 1, cursor: config.disabled ? 'not-allowed' : 'pointer' }}
               >
                 {config.saving && <span className="task-status-spinner" aria-hidden="true" />}
                 <Icon name="sparkles" size={11} strokeWidth={1.8} color="var(--accent)" />
-                <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{engineLabel(engineId)}</span>
-                <span style={{ color: 'var(--meta)', opacity: 0.7 }}>·</span>
-                <span style={{ color: 'var(--fg)', opacity: 0.9 }}>{config.model || t('chatInput.defaultModel')}</span>
+                <span className="chat-input-config-engine">{engineLabel(engineId)}</span>
+                <span className="chat-input-config-separator">·</span>
+                <span className="chat-input-config-model">{config.model || t('chatInput.defaultModel')}</span>
                 {(config.thinkingEffort || effectiveDefaultThinkingEffort) && (
                   <>
-                    <span style={{ color: 'var(--meta)', opacity: 0.7 }}>·</span>
-                    <span style={{ color: 'var(--fg)', opacity: 0.75 }}>
+                    <span className="chat-input-config-separator">·</span>
+                    <span className="chat-input-config-effort">
                       {thinkingEffortDisplay}
                     </span>
                   </>
                 )}
-                <Icon name="chevron-down" size={9} strokeWidth={2.5} style={{ transform: configOpen ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s', opacity: 0.6 }} />
+                <Icon name="chevron-down" size={9} strokeWidth={2.5} className="chat-input-pill-chevron" />
               </button>
               {configOpen && (
-                <ResponsivePopover title={t('chatInput.engineModelDialog')} onClose={() => setConfigOpen(false)} style={{ position: 'absolute', right: 0, bottom: '100%', marginBottom: 8, zIndex: 1301, width: 224, maxHeight: '70vh', overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border-soft)', borderRadius: 12, padding: 6 }}>
+                <ResponsivePopover title={t('chatInput.engineModelDialog')} onClose={() => setConfigOpen(false)} className="chat-input-config-menu">
                     {config.onReset && (
                       <button
                         type="button"
                         className="chat-input-menu-reset"
-                        style={{ marginBottom: 2 }}
                         onClick={() => { config.onReset?.(); setConfigOpen(false) }}
                       >
                         <Icon name="refresh" size={14} strokeWidth={2} />
@@ -1511,8 +1205,8 @@ export default function ChatInput({
                       onStepFieldChange={config.onStepFieldChange}
                       requireCoordinator={config.requireCoordinator}
                       allowDefault={config.allowDefault}
-                      onEngineChange={(id) => { config.onEngineChange(id); setConfigOpen(true) }}
-                      onProviderChange={config.onProviderChange}
+                      onEngineChange={(id) => { setConfigOpen(config.onEngineChange(id) !== false) }}
+                      onProviderChange={(id) => { setConfigOpen((config.onProviderChange?.(id) ?? true) !== false) }}
                       onModelChange={config.onModelChange}
                       onFastModelChange={config.onFastModelChange}
                       onVisionModelChange={config.onVisionModelChange}
@@ -1525,22 +1219,22 @@ export default function ChatInput({
             {enhance && value.trim() && (
               enhance.enhancing ? (
                 <span
-                  className="task-status-spinner"
+                  className="task-status-spinner chat-input-enhance-spinner"
                   title={t('chatInput.enhancing')}
                   aria-label={t('chatInput.enhancing')}
-                  style={{ color: 'var(--accent)', width: 14, height: 14, flexShrink: 0 }}
                 />
               ) : (
                 <button
                   type="button"
                   className="chat-input-pill"
+                  data-kind="enhance"
+                  data-enhanced={enhance.enhanced}
                   disabled={running}
                   onClick={enhance.enhanced ? enhance.onRevert : enhance.onEnhance}
                   title={enhance.enhanced ? t('chatInput.enhanceRevert') : t('chatInput.enhancePrompt')}
-                  style={{ flexShrink: 0 }}
                 >
                   <Icon name={enhance.enhanced ? 'rotate-ccw' : 'sparkles'} size={12} strokeWidth={1.8} color={enhance.enhanced ? 'var(--meta)' : 'var(--accent)'} />
-                  <span style={{ color: enhance.enhanced ? 'var(--fg)' : 'var(--accent)', fontWeight: 600 }}>
+                  <span>
                     {enhance.enhanced ? t('chatInput.enhanceRevert') : t('chatInput.enhancePrompt')}
                   </span>
                 </button>
@@ -1550,7 +1244,7 @@ export default function ChatInput({
           <button
             type="button"
             className="chat-input-send"
-            data-state={stopped ? 'stopped' : undefined}
+            data-state={stopped ? 'stopped' : canSend ? 'active' : 'idle'}
             onClick={handleClick}
             disabled={buttonDisabled}
             aria-label={stopped
@@ -1567,24 +1261,15 @@ export default function ChatInput({
                 : running
                   ? t('chatInput.generating')
                   : title || t('chatInput.send')}
-            style={{
-              width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
-              padding: 0,
-              background: stopped ? '#d92d20' : canSend ? 'var(--fg)' : 'transparent',
-              color: stopped || canSend ? '#fff' : 'var(--fg-2)',
-              border: 'none', cursor: buttonDisabled ? 'not-allowed' : 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'background 0.15s, color 0.15s, transform 0.15s',
-            }}
           >
             {stopped && stopping ? (
               <span className="task-status-spinner" aria-hidden="true" />
             ) : stopped ? (
-              <div style={{ width: 12, height: 12, borderRadius: 2, background: 'currentColor' }} />
+              <div className="chat-input-stop-glyph" />
             ) : running && !canSend ? (
               <span className="task-status-spinner" aria-hidden="true" />
             ) : (
-              <Icon name="send" size={13} strokeWidth={1.6} style={{ padding: 0 }} />
+              <Icon name="send" size={13} strokeWidth={1.6} />
             )}
           </button>
         </div>

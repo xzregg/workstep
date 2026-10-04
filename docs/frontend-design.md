@@ -286,14 +286,20 @@
 | P0 | `SettingsPage.tsx` | 设置导航、引擎安装、助手配置和多个设置分区 | 由 section registry 组装独立设置分区，页面仅维护当前分区和跨分区刷新 |
 | P1 | `TaskDetail.tsx` | 项目解析、历史同步、实时事件、面板几何和会话控制 | 数据/实时协调 hook 与面板外壳分离，视图交给 `TaskDetailView` 的后续子模块 |
 | P1 | `TaskList.tsx` | 看板、拖拽、筛选、新建任务和 AI 创建 | 看板控制器与任务创建面板分离，新建流程自行拥有草稿、校验和关闭保护 |
-| P2 | `ProviderSettings.tsx`、`ChatInput.tsx`、`ChatPage.tsx` | 表单状态或会话副作用集中，接口持续扩张 | 分别按供应商编辑、输入附件/配置、会话加载/发送队列建立 seam |
+| P2 | `ProviderSettings.tsx`、`ChatInput.tsx` | 供应商编辑仍集中；聊天编辑器的光标、选择和撤销状态需保持一致 | 供应商设置按完整编辑流程检查边界；`ChatInput` 的附件、草稿和用量已由独立模块负责，编辑核心保持内聚。会话页的发送、历史、引擎选择、分叉交接已按业务归属收口，见 Code Map。 |
 
 `Layout.tsx` 已先移出流程创建、项目连接和侧栏活动同步；剩余侧栏树与菜单仍是后续拆分对象，新功能不得重新放回 `Layout`。
+
+2026-09-25 进展：`src/api/client.ts` 已按传输、项目、会话、任务、引擎、分享、统计和定时任务拆成领域模块，原入口只保留其余 API 与兼容导出（约 499 行）。`SettingsPage` 的助手配置和提示词增强已成为自管理组件；`TaskDetailView` 的协调提案卡片也已独立。`SettingsPage`（约 1355 行）和 `TaskDetailView`（约 3771 行）仍触发拆分信号，后续按上表的业务边界继续抽离，避免用大量 state/setter 透传制造浅模块。
+
+画布编辑器已将数据格式转换与节点配置表单分别放到 `flowCanvasData.ts` 和 `NodeConfigPanel.tsx`；`FlowCanvas.tsx` 继续负责画布状态、交互与保存。行数只用于发现职责混杂，不要求把文件拆到固定行数以下。
 
 ### 5.2 基础层组件规范
 
 - `Button`：变体 `primary`（accent 底 + `--accent-fg` 文字，hover `brightness(1.06)`）、`ghost`（`--border` 描边）、`danger`、`icon`（圆形图标钮）；尺寸 `sm`/默认；loading 态内置 `Spinner`。
 - `Input`/`Select`/`Textarea`：统一高度 32px（多行除外）、`--radius-xs`、`--border` 描边、focus `--accent` 边框 + `--focus-ring`、disabled 置灰、placeholder `--text-tertiary`。
+- 移动端普通按钮、输入和工具栏控件复用 `mobile.css` 的 32px 高度变量；菜单项与需要较大点击区域的控件复用 44px 变量。不要在页面样式中另写 36px、48px 等高度。消息操作小按钮保留紧凑规格。
+- 任务详情头部增加操作或信息时，需在 320px、390px 和 1023px 宽度检查整行布局，优先让信息在两行内显示，保留创建者与时间，避免长任务 ID 被按钮挤到第三行。「绑定BOT」位于分享按钮左侧。较长的元信息和 ID 可限宽滚动展示，但完整值应可查看、复制；滚动效果需适配减少动态效果的系统设置。核对实际渲染中的换行与按钮点击区域。
 - `Field`：label + 帮助文本 + 错误提示组合；label `--text-body` 加粗，帮助/错误提示在**固定高度区域**（`minHeight` 占位）避免布局跳动。
 - `Spinner`：统一旋转加载图标（沿用手写 CSS 圆环，`currentColor`）。
 - `StatusBadge`：封装现有 `.status-badge`（`data-s` 语义 + token 色），统一「进行中」附旋转加载图标。

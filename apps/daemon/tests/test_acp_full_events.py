@@ -9,6 +9,26 @@ from engines.core.acp_base import AcpEngineBase, _StreamingClient
 from engines.core.events import InternalEvent
 
 
+def test_streaming_client_has_protocol_owner():
+    from engines.core.acp_streaming_client import ACPStreamingClient
+
+    assert _StreamingClient is ACPStreamingClient
+
+
+def test_acp_notification_mapping_has_one_owner():
+    from engines.core.acp_event_mapper import ACPEventMapper
+
+    assert isinstance(_ProbeEngine(), ACPEventMapper)
+    assert "_map_notification" not in AcpEngineBase.__dict__
+
+
+def test_acp_session_commands_have_one_owner():
+    from engines.core.acp_sessions import ACPSessionProtocol
+
+    assert isinstance(_ProbeEngine(), ACPSessionProtocol)
+    assert "create_session" not in AcpEngineBase.__dict__
+
+
 class _ProbeEngine(AcpEngineBase):
     ENGINE_ID = "probe"
     COMMAND = ["probe"]

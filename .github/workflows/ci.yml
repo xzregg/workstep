@@ -13,6 +13,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  gateway-postgres:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: workstep
+          POSTGRES_PASSWORD: workstep-test
+          POSTGRES_DB: workstep_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U workstep -d workstep_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with: { python-version: "3.12" }
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with: { enable-cache: true }
+      - name: PostgreSQL migrations and transaction
+        env:
+          WORKSTEP_TEST_POSTGRES_URL: postgresql+asyncpg://workstep:workstep-test@127.0.0.1:5432/workstep_test
+        run: |
+          uv sync --project apps/gateway --frozen --group dev
+          uv run --project apps/gateway --no-sync pytest apps/gateway/tests/test_database.py::test_postgres_migration_and_core_transaction
   verify:
     runs-on: ubuntu-24.04
     steps:
@@ -31,10 +58,12 @@ jobs:
           python scripts/check_secrets.py
       - name: Daemon tests
         working-directory: apps/daemon
-        # Install the public Codex/Claude SDK contracts only in CI. They remain
-        # excluded from desktop packages; Qoder-specific tests stay deselected.
+        # Optional SDKs are installed only for CI contracts, outside uv.lock.
+        # Qoder-specific tests stay deselected.
         run: |
-          uv run --frozen --group dev --group sdk-engines pytest -k 'not does_not_block_health' \
+          uv sync --frozen --group dev
+          uv pip install --python .venv/bin/python 'claude-agent-sdk>=0.1.0' 'openai-codex>=0.147.0'
+          uv run --no-sync pytest -k 'not does_not_block_health' \
             --deselect='tests/test_acp_command_inspection.py::test_hermes_inspection_discovers_and_caches_acp_commands[asyncio]' \
             --deselect=tests/test_assistant_api.py::test_assistant_set_and_read_config \
             --deselect=tests/test_assistant_api.py::test_chat_session_config_stores_full_defaults \
@@ -63,11 +92,16 @@ jobs:
             --deselect='tests/test_recovery.py::test_e2e_three_step_run_resumes_after_crash[asyncio]' \
             --deselect=tests/test_recovery.py::test_graceful_shutdown_leaves_run_recoverable \
             --deselect=tests/test_recovery.py::test_recovery_takes_over_expired_lease
+      - name: Gateway and protocol tests
+        run: |
+          uv sync --project apps/gateway --frozen --group dev
+          uv run --project apps/gateway --no-sync pytest apps/gateway/tests packages/gateway-protocol/tests
+          uv run --project apps/gateway --no-sync python packages/gateway-protocol/scripts/schema.py --check
       - name: Isolation-sensitive daemon contracts
         working-directory: apps/daemon
         run: |
-          uv run --frozen --group dev --group sdk-engines pytest -k does_not_block_health
-          uv run --frozen --group dev --group sdk-engines pytest \
+          uv run --no-sync pytest -k does_not_block_health
+          uv run --no-sync pytest \
             tests/test_chat_session.py::test_chat_history_converts_legacy_visualize_markers \
             tests/test_chat_session.py::test_chat_history_converts_bare_visualize_marker \
             tests/test_chat_session.py::test_chat_history_converts_visualize_marker_in_events \
@@ -82,9 +116,12 @@ jobs:
           uv run --project apps/daemon --frozen --group dev pytest \
             apps/desktop/tests/test_backend_entry.py \
             apps/desktop/tests/test_build_script.py
-          node --test apps/desktop/tests/sidecar.test.cjs
+          node --test apps/desktop/tests/sidecar.test.cjs apps/desktop/tests/managed-config.test.cjs
       - name: Web tests and build
         working-directory: apps/web
+        run: corepack enable && yarn install --frozen-lockfile && yarn test && yarn build
+      - name: Gateway Web tests and build
+        working-directory: apps/gateway-web
         run: corepack enable && yarn install --frozen-lockfile && yarn test && yarn build
       - name: Landing tests and build
         working-directory: apps/landing

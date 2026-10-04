@@ -23,6 +23,19 @@ from services.workflow_definition import WorkflowDefinition
 from streaming.bus import EventBus
 
 
+@pytest.fixture(autouse=True)
+def _named_test_user(monkeypatch):
+    """Manual workflow runs require a named local actor (commit 45c02827)."""
+    import services.config as config_mod
+
+    monkeypatch.setattr(config_mod.config_store, "get_user_name", lambda: "Test User")
+    monkeypatch.setattr(
+        config_mod.config_store,
+        "get_device_identity",
+        lambda: {"device_id": "test-device", "device_name": "Test Device"},
+    )
+
+
 OUTPUT_PATH_RE = re.compile(r"output path: `([^`]+)`")
 
 
@@ -337,7 +350,7 @@ async def test_new_upstream_round_replaces_recovered_input_pin(tmp_path):
         input_rounds_by_step={"review": {"write": 2}},
     )
     try:
-        await runner._apply_artifact_routes(
+        await runner._artifact_routes.apply(
             task=task,
             step=write,
             scheduler=DAGScheduler([write, review]),
@@ -357,7 +370,7 @@ async def test_new_upstream_round_replaces_recovered_input_pin(tmp_path):
             failed=set(),
         )
 
-        assert runner._input_rounds_by_step["review"]["write"] == 3
+        assert runner._artifact_routes.input_rounds_for("review")["write"] == 3
     finally:
         db.close()
 
@@ -512,7 +525,8 @@ async def test_nonempty_feedback_output_reworks_target_before_forward_branch(tmp
         assert "PRD：实现订单查询接口" in calls["develop"][1]
         assert "PRD.md" in calls["develop"][1]
         assert "Bug列表.md" in calls["develop"][1]
-        assert "Execution reason: `feedback_revision`" in calls["develop"][1]
+        assert "Execution reason:" not in calls["develop"][1]
+        assert "## Previous outputs" in calls["develop"][1]
         assert "测试报告.md" in calls["publish"][0]
         assert "Bug列表.md" not in calls["publish"][0]
         run = WorkflowRun.get_by_id(run.id)
@@ -1164,7 +1178,8 @@ async def test_manual_approval_of_feedback_artifact_resumes_target_rework(tmp_pa
         assert len(calls["develop"]) == 2
         assert len(calls["test"]) == 2
         assert "Bug列表.md" in calls["develop"][1]
-        assert "Execution reason: `feedback_revision`" in calls["develop"][1]
+        assert "Execution reason:" not in calls["develop"][1]
+        assert "## Previous outputs" in calls["develop"][1]
         second_review = (
             ReviewRun.select()
             .where((ReviewRun.task == task) & (ReviewRun.status == "pending"))

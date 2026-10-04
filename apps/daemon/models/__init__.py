@@ -6,6 +6,7 @@ from models.task import Task, TaskStep
 from models.message import Message
 from models.action_run import ActionRun
 from models.pending_message_insert import PendingMessageInsert
+from models.project_audit import ProjectAuditEvent
 from models.schema import SchemaVersion
 from models.run import StepRun, WorkflowRun
 from models.review import ReviewRun
@@ -31,6 +32,7 @@ ALL_MODELS = [
     Message,
     ActionRun,
     PendingMessageInsert,
+    ProjectAuditEvent,
     WorkflowRun,
     StepRun,
     ReviewRun,

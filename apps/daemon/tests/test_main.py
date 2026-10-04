@@ -161,10 +161,18 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
         async def shutdown(self):
             events.append("chats-shutdown")
 
+    class BotStub:
+        async def start(self):
+            events.append("bots-start")
+
+        async def shutdown(self):
+            events.append("bots-shutdown")
+
     monkeypatch.setattr(main, "event_bus", BusStub())
     monkeypatch.setattr(main, "ensure_global_templates", lambda: None)
     monkeypatch.setattr(main, "project_manager", ProjectManagerStub())
     monkeypatch.setattr(main, "TaskService", lambda bus: object())
+    monkeypatch.setattr(main, "BotManager", lambda *args: BotStub())
     monkeypatch.setattr(
         main,
         "WorkflowRuntime",
@@ -188,10 +196,12 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
         "projects-load",
         "workflows-recover",
         "workflows-requeue",
+        "bots-start",
         "chats-recover",
         "schedules-start",
         "serving",
         "schedules-shutdown",
+        "bots-shutdown",
         "chats-shutdown",
         "runtime-shutdown",
         "bus-close",
@@ -303,5 +313,127 @@ async def test_handle_client_message_subscribe_updates_filter(monkeypatch):
         await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "task_id": "t2"})
         with pytest.raises(asyncio.TimeoutError):
             await asyncio.wait_for(q.get(), timeout=0.1)
+    finally:
+        event_bus.unsubscribe(q)
+
+
+@pytest.mark.anyio
+async def test_websocket_heartbeat_replies_only_to_originating_connection():
+    import json
+    import main
+    from main import WsSubscription
+
+    origin, other = event_bus.subscribe(), event_bus.subscribe()
+    try:
+        await main._handle_client_message(
+            json.dumps({'type': 'ping', 'nonce': 'heartbeat-1'}),
+            WsSubscription(active=True, project_id='project-1'), origin,
+        )
+        assert origin.get_nowait() == {'type': 'pong', 'nonce': 'heartbeat-1'}
+        assert other.empty()
+    finally:
+        event_bus.unsubscribe(origin)
+        event_bus.unsubscribe(other)
+
+
+@pytest.mark.anyio
+async def test_project_websocket_subscription_cannot_escape_project_or_send_commands(monkeypatch):
+    import json
+    import main
+    from streaming.ws import _make_subscription_predicate
+    from main import WsSubscription
+
+    sub = WsSubscription(project_id="project-1")
+    q = event_bus.subscribe(_make_subscription_predicate(sub))
+    try:
+        await event_bus.publish({"type": "RUN_STARTED", "project_id": "project-2", "task_id": "t"})
+        await event_bus.publish({"type": "RUN_STARTED", "task_id": "t"})
+        await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-1",
+                                 "channel": "session_chat", "session_id": "private"})
+        assert q.empty()
+        await event_bus.publish({"type": "RUN_STARTED", "project_id": "project-1", "task_id": "t"})
+        assert (await q.get())["project_id"] == "project-1"
+        await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-1",
+                                 "channel": "execution", "task_id": "t"})
+        assert (await q.get())["channel"] == "execution"
+        await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-1",
+                                 "channel": "coordinator", "task_id": "t"})
+        assert (await q.get())["channel"] == "coordinator"
+        for channel in ("review", "archive_experience"):
+            await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-2",
+                                     "channel": channel, "task_id": "t"})
+            await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-1",
+                                     "channel": channel, "task_id": "t"})
+            assert (await q.get())["channel"] == channel
+            await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-1",
+                                     "channel": channel})
+            assert q.empty()
+
+        await main._handle_client_message(json.dumps({
+            "type": "subscribe", "project_id": "project-2", "task_ids": ["t"],
+            "session_ids": ["visible-chat"], "channels": ["channel_bots"],
+        }), sub, q)
+        assert sub.project_id == "project-1"
+        await event_bus.publish({"type": "CUSTOM", "name": "channel.session_changed",
+                                 "project_id": "project-2", "channel": "channel_bots"})
+        await event_bus.publish({"type": "CUSTOM", "name": "channel.session_changed",
+                                 "project_id": "project-1", "channel": "channel_bots"})
+        assert (await q.get())["name"] == "channel.session_changed"
+        assert q.empty()
+        await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-1",
+                                 "channel": "session_chat", "session_id": "visible-chat"})
+        assert (await q.get())["session_id"] == "visible-chat"
+        await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-1",
+                                 "channel": "session_chat", "session_id": "other-chat"})
+        await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-2",
+                                 "channel": "session_chat", "session_id": "visible-chat"})
+        await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-1",
+                                 "channel": "flow_gen", "session_id": "visible-chat"})
+        assert q.empty()
+        for channel in ("review", "archive_experience"):
+            await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-1",
+                                     "channel": channel, "task_id": "other"})
+            await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "project_id": "project-1",
+                                     "channel": channel, "task_id": "t"})
+            assert (await q.get())["channel"] == channel
+            assert q.empty()
+        await event_bus.publish({"type": "RUN_STARTED", "project_id": "project-2", "task_id": "t"})
+        assert q.empty()
+        await event_bus.publish({"type": "RUN_STARTED", "project_id": "project-1", "task_id": "t"})
+        assert (await q.get())["project_id"] == "project-1"
+
+        class Runtime:
+            async def cancel(self, task_id):
+                raise AssertionError("project websocket cancelled a task")
+
+        monkeypatch.setattr(main, "workflow_runtime", Runtime())
+        await main._handle_client_message(json.dumps({"type": "cancel", "task_id": "t"}), sub, q)
+        await main._handle_client_message(json.dumps({
+            "type": "respond", "intervention_id": "other-project",
+        }), sub, q)
+    finally:
+        event_bus.unsubscribe(q)
+
+
+@pytest.mark.anyio
+async def test_task_runner_events_carry_executor_project_into_agui_feed():
+    from services.task_runner import TaskRunner
+    from types import SimpleNamespace
+
+    runner = object.__new__(TaskRunner)
+    runner._event_bus = event_bus
+    runner._database_executor = SimpleNamespace(project_id="project-1")
+    q = event_bus.subscribe(lambda event: event.get("project_id") == "project-1")
+    try:
+        await runner._publish("task-1", "do", {
+            "type": "status", "data": {"status": "running", "task_id": "task-1"},
+        })
+        assert not q.empty()
+        assert (await q.get())["project_id"] == "project-1"
+        await runner._publish("task-1", "do", {
+            "type": "status", "project_id": "project-2",
+            "data": {"status": "ready", "task_id": "task-1"},
+        })
+        assert (await q.get())["project_id"] == "project-1"
     finally:
         event_bus.unsubscribe(q)

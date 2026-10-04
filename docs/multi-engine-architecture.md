@@ -58,6 +58,8 @@ for name in module_names:
 | `deepseek_harness` | DeepSeek Harness | 官方 Harness Python SDK | sdk |
 | `pydantic_ai` | Pydantic AI | 内置进程内 Agent（无需外部运行时） | agent |
 | `hermes` | Hermes | ACP 原生（stdio JSON-RPC） | acp |
+| `opencode` | OpenCode | ACP 原生（`opencode acp`，stdio JSON-RPC） | acp |
+| `cursor` | Cursor | Python SDK（`cursor-sdk` + 内置 bridge） | sdk |
 | `openclaw` | OpenClaw | CLI（JSON 封装，非 ACP） | cli |
 
 更深入的引擎接入步骤见 [llm-engine-development-guide.md](llm-engine-development-guide.md)，运行时安装与版本管理见 [engine-runtime-management.md](engine-runtime-management.md)。

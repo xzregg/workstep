@@ -38,7 +38,15 @@ async def action_client(tmp_path, monkeypatch):
     action_dir = project.workstep_dir / "actions" / "restart"
     action_dir.mkdir(parents=True)
     (action_dir / "restart.sh").write_text("#!/bin/sh\necho started\nsleep 0.3\necho finished\n")
-    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=main.app), base_url="http://test",
+        headers={
+            "X-WorkStep-Actor-Id": "action-user",
+            "X-WorkStep-Actor-Name": "Action User",
+            "X-WorkStep-Actor-Device-Id": "action-device",
+            "X-WorkStep-Actor-Device-Name": "Test Device",
+        },
+    ) as client:
         yield client, manager, project
     from services.action_runtime import action_runtime
     if action_runtime.tasks:
@@ -67,6 +75,29 @@ async def test_action_confirm_deduplicate_and_stream(action_client):
     assert "finished" in current.json()["output"]
     history = await client.get(f"/api/task/task-action/history?project_id={project.id}")
     assert [item["channel"] for item in history.json()["messages"]] == ["action", "action"]
+
+
+@pytest.mark.anyio
+async def test_action_requires_named_user_before_creating_messages(action_client, monkeypatch):
+    from services.config import config_store
+    from services.action_runtime import action_runtime
+
+    client, manager, project = action_client
+    monkeypatch.setattr(config_store, "get_user_name", lambda: "")
+    response = await client.post(
+        f"/api/tasks/task-action/actions/run?project_id={project.id}",
+        headers={
+            "X-WorkStep-Actor-Id": "",
+            "X-WorkStep-Actor-Name": "",
+            "X-WorkStep-Actor-Device-Id": "",
+            "X-WorkStep-Actor-Device-Name": "",
+        },
+        json={"button_id": "restart", "source": "project", "confirmed": True},
+    )
+    assert response.status_code == 409
+    assert "用户名" in response.json()["detail"]
+    assert not action_runtime.tasks
+    assert await manager.run_db(project.id, lambda _project: Task.get_by_id("task-action").messages.count()) == 0
 
 
 @pytest.mark.anyio
@@ -405,6 +436,61 @@ async def test_create_project_action_api_registers_script_and_button(action_clie
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("scope", ["workflow", "project"])
+async def test_action_publish_rolls_back_files_when_button_save_fails(action_client, monkeypatch, scope):
+    from services.workflow_actions import create_project_action, create_workflow_action
+
+    _client, manager, project = action_client
+    payload = {
+        "action_id": "publish-failure", "title": "发布失败", "script_path": "run.sh",
+        "script_content": "#!/bin/sh\necho ready\n",
+    }
+    workflow_id = project.workflows[0]["id"]
+    model = Workflow if scope == "workflow" else ProjectSetting
+
+    def fail_save(*_args, **_kwargs):
+        raise RuntimeError("button save failed")
+
+    monkeypatch.setattr(model, "save", fail_save)
+    with pytest.raises(RuntimeError, match="button save failed"):
+        if scope == "workflow":
+            await manager.run_db(project.id, lambda proj: create_workflow_action(proj, workflow_id, payload))
+        else:
+            await manager.run_db(project.id, lambda proj: create_project_action(proj, project.id, payload))
+    action_root = project.workstep_dir / (
+        f"artifacts/{workflow_id}/actions/publish-failure" if scope == "workflow"
+        else "actions/publish-failure"
+    )
+    assert not action_root.exists()
+
+
+@pytest.mark.anyio
+async def test_workflow_action_overwrite_restores_original_files_when_button_save_fails(action_client, monkeypatch):
+    from services.workflow_actions import create_workflow_action
+
+    _client, manager, project = action_client
+    workflow_id = project.workflows[0]["id"]
+    payload = {
+        "action_id": "rollback-action", "title": "原始标题", "script_path": "run.sh",
+        "script_content": "#!/bin/sh\necho original\n",
+    }
+    await manager.run_db(project.id, lambda proj: create_workflow_action(proj, workflow_id, payload))
+    action_root = project.workstep_dir / "artifacts" / workflow_id / "actions" / "rollback-action"
+    before = {name: (action_root / name).read_bytes() for name in ("run.sh", "action.json")}
+
+    def fail_save(*_args, **_kwargs):
+        raise RuntimeError("button save failed")
+
+    monkeypatch.setattr(Workflow, "save", fail_save)
+    with pytest.raises(RuntimeError, match="button save failed"):
+        await manager.run_db(project.id, lambda proj: create_workflow_action(proj, workflow_id, {
+            **payload, "title": "新标题", "script_content": "#!/bin/sh\necho replaced\n",
+            "overwrite": True,
+        }))
+    assert {name: (action_root / name).read_bytes() for name in before} == before
+
+
+@pytest.mark.anyio
 async def test_slow_project_action_publish_does_not_block_health(action_client, monkeypatch):
     import api.action as action_api
 
@@ -596,3 +682,80 @@ async def test_project_chat_action_is_session_scoped(action_client):
     messages = await manager.run_db(project.id, load_messages)
     assert any(role == "assistant" and status.startswith("action_") and engine == "action"
                for role, status, engine in messages)
+
+
+@pytest.mark.anyio
+async def test_project_chat_action_snapshots_actor_and_initiator(action_client):
+    from services.remote_access import ActorSnapshot, actor_context
+
+    client, manager, project = action_client
+
+    def seed(_project):
+        ChatSession.create(
+            id="chat-attributed", project_id=project.id,
+            workflow_id=project.workflows[0]["id"], engine="claude",
+            created_at=utc_now(), updated_at=utc_now(),
+        )
+
+    await manager.run_db(project.id, seed)
+    actor = ActorSnapshot(
+        actor_id="user-1", user_name="Alice Display", username="alice",
+        device_id="device-1", device_name="Office PC", source="managed",
+    )
+    with actor_context(actor):
+        response = await client.post(
+            f"/api/project-actions/sessions/chat-attributed/run?project_id={project.id}",
+            json={"button_id": "restart", "confirmed": True},
+        )
+    assert response.status_code == 200, response.text
+
+    def load_messages(_project):
+        return list(ChatMessage.select().where(
+            ChatMessage.session == "chat-attributed"
+        ).order_by(ChatMessage.created_at, ChatMessage.role.desc()))
+
+    user, assistant = await manager.run_db(project.id, load_messages)
+    assert (user.author_id, user.author_username, user.author_name,
+            user.author_type, user.initiated_by_user_id,
+            user.initiated_by_username) == (
+                "user-1", "alice", "Alice Display", "user", "user-1", "alice",
+            )
+    assert (assistant.author_id, assistant.author_username, assistant.author_name,
+            assistant.author_type, assistant.initiated_by_user_id,
+            assistant.initiated_by_username) == (
+                "action", "action", "action", "assistant", "user-1", "alice",
+            )
+
+
+@pytest.mark.anyio
+async def test_slow_chat_action_message_write_does_not_block_health(action_client, monkeypatch):
+    client, manager, project = action_client
+
+    def seed(_project):
+        ChatSession.create(
+            id="chat-slow-write", project_id=project.id,
+            workflow_id=project.workflows[0]["id"], engine="claude",
+            created_at=utc_now(), updated_at=utc_now(),
+        )
+
+    await manager.run_db(project.id, seed)
+    entered = threading.Event()
+    original_create = ChatMessage.create
+
+    def slow_create(**values):
+        if values.get("role") == "user":
+            entered.set()
+            time.sleep(0.8)
+        return original_create(**values)
+
+    monkeypatch.setattr(ChatMessage, "create", slow_create)
+    request = asyncio.create_task(client.post(
+        f"/api/project-actions/sessions/chat-slow-write/run?project_id={project.id}",
+        json={"button_id": "restart", "confirmed": True},
+    ))
+    assert await asyncio.to_thread(entered.wait, 2)
+    before = time.monotonic()
+    health = await client.get("/api/health")
+    assert health.status_code == 200
+    assert time.monotonic() - before < 0.5
+    assert (await request).status_code == 200

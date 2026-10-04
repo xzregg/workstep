@@ -33,6 +33,16 @@ def test_builtin_workstep_cli_skill_is_enabled_and_mirrored_by_default(tmp_path)
     assert "<project>/.workstep/artifacts/<workflow_id>/<task_id>/.worktrees/<alias>/" in text
     assert "<project>/.workstep/worktrees/<task_id>/" not in text
     assert "--workflow" in text
+    assert "python -m cli channel list" in text
+    assert "python -m cli channel sessions" in text
+    assert "python -m cli channel send" in text
+    assert "python -m cli channel bind" in text
+    assert "workstep_bind_channel_group" in text
+    assert "--image" in text
+    assert "--file" in text
+    assert "workstep_upload_channel_attachment" in text
+    assert "workstep_send_channel_message" in text
+    assert "Send only when explicitly requested" in text
     assert "python -m cli schedule create" in text
     assert "--mode agent" in text
     assert "WORKSTEP_CLI_PYTHON" in text

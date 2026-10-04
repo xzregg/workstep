@@ -5,6 +5,7 @@ import { formatDuration, toMilliseconds } from '../utils/datetime'
 import { isTaskCompleted } from '../pages/taskDetailChat'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
+import DeleteTaskConfirmation from './DeleteTaskConfirmation'
 import Icon from './Icon'
 import Input from './Input'
 
@@ -15,6 +16,8 @@ interface Lane {
 }
 
 interface TaskTableViewProps {
+  readOnly?: boolean
+  canCreateTask?: boolean
   lanes: Lane[]
   tasksByLane: Record<string, Task[]>
   showArchived: boolean
@@ -22,7 +25,7 @@ interface TaskTableViewProps {
   onOpenTask: (taskId: string) => void
   onAddTask: (laneKey: string) => void
   onArchiveTask: (taskId: string) => Promise<void>
-  onDeleteTask: (taskId: string) => Promise<void>
+  onDeleteTask: (taskId: string, deleteWorkspace: boolean) => Promise<void>
   onError: (message: string) => void
 }
 
@@ -75,6 +78,8 @@ export default function TaskTableView({
   onArchiveTask,
   onDeleteTask,
   onError,
+  readOnly = false,
+  canCreateTask = true,
 }: TaskTableViewProps) {
   const { t, locale } = useI18n()
   const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({})
@@ -115,14 +120,14 @@ export default function TaskTableView({
       : [...current, taskId])
   }
 
-  const runBulkAction = async () => {
-    if (!pendingAction || selectedIds.length === 0 || busy) return
+  const runBulkAction = async (deleteWorkspace = false) => {
+    if (!pendingAction || readOnly || selectedIds.length === 0 || busy) return
     setBusy(true)
     try {
       if (pendingAction === 'archive') {
         await Promise.all(selectedIds.map(onArchiveTask))
       } else {
-        await Promise.all(selectedIds.map(onDeleteTask))
+        await Promise.all(selectedIds.map(id => onDeleteTask(id, deleteWorkspace)))
       }
       setSelectedIds([])
       setPendingAction(null)
@@ -178,10 +183,10 @@ export default function TaskTableView({
           {t('taskList.selectedTasks', { count: selectedIds.length })}
         </span>
         <span style={{ flex: 1 }} />
-        {!showArchived && (
+        {canCreateTask && !showArchived && (
           <Button
             variant="ghost"
-            disabled={selectedIds.length === 0 || busy}
+            disabled={readOnly || selectedIds.length === 0 || busy}
             onClick={() => setPendingAction('archive')}
             style={{ gap: 5 }}
           >
@@ -191,7 +196,7 @@ export default function TaskTableView({
         )}
         <Button
           variant="ghost"
-          disabled={selectedIds.length === 0 || busy}
+          disabled={readOnly || selectedIds.length === 0 || busy}
           onClick={() => setPendingAction('delete')}
           style={{ gap: 5, color: 'var(--danger)' }}
         >
@@ -230,7 +235,7 @@ export default function TaskTableView({
                 {t('taskList.taskCount', { count: laneTasks.length })}
               </span>
               <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                {!showArchived && (
+                {canCreateTask && !showArchived && (
                   <Button
                     variant="ghost"
                     aria-label={t('taskList.addTaskToLane', { lane: lane.label })}
@@ -311,14 +316,20 @@ export default function TaskTableView({
       })}
 
       <ConfirmDialog
-        open={pendingAction !== null}
-        title={t(pendingAction === 'archive' ? 'taskList.bulkArchiveTitle' : 'taskList.bulkDeleteTitle')}
-        message={t(pendingAction === 'archive' ? 'taskList.bulkArchiveMessage' : 'taskList.bulkDeleteMessage', { count: selectedIds.length })}
-        confirmText={t(pendingAction === 'archive' ? 'taskList.bulkArchive' : 'taskList.bulkDelete')}
-        danger={pendingAction === 'delete'}
+        open={pendingAction === 'archive'}
+        title={t('taskList.bulkArchiveTitle')}
+        message={t('taskList.bulkArchiveMessage', { count: selectedIds.length })}
+        confirmText={t('taskList.bulkArchive')}
         loading={busy}
         onConfirm={() => void runBulkAction()}
         onCancel={() => { if (!busy) setPendingAction(null) }}
+      />
+      <DeleteTaskConfirmation
+        open={pendingAction === 'delete'}
+        count={selectedIds.length}
+        busy={busy}
+        onConfirm={choice => void runBulkAction(choice)}
+        onCancel={() => setPendingAction(null)}
       />
     </>
   )

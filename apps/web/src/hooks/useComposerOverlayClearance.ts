@@ -5,7 +5,7 @@ import {
   useState,
   type RefObject,
 } from 'react'
-import { conversationBottomScrollTop } from '../pages/taskDetailChat'
+import { conversationBottomScrollTop } from '../utils/conversationScroll'
 
 /** 悬浮面板与会话内容之间额外保留的间隙（px）。 */
 const OVERLAY_GAP = 2

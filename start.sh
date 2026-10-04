@@ -93,9 +93,7 @@ wait_ready() {
 }
 
 # === 预检查 ===
-if check_port "$PORT"; then
-    fail "端口 $PORT 已被其他进程占用，请先停止该进程或传入其他端口"
-fi
+
 
 # 检查依赖
 command -v uv >/dev/null 2>&1 || fail "需要 uv (curl -LsSf https://astral.sh/uv/install.sh | sh)"

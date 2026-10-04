@@ -1,4 +1,4 @@
-import { useGitApi, useReadOnlyGit } from './GitApiContext'
+import { useGitApi, useReadOnlyGit, useGitActionAllowed } from './GitApiContext'
 import ResizablePanel from '../ResizablePanel'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -11,10 +11,13 @@ import Button from '../Button'
 import ConfirmDialog from '../ConfirmDialog'
 import GitCodeEditor, { type GitCodeEditorHandle } from './GitCodeEditor'
 import MarqueeText from '../MarqueeText'
+import { usePanelGitWrites } from './gitPanelWrites'
 
 export default function GitDiffDialog({ id, files, path, comparison, onSelect, onSaved, onClose }: { id: string; files: string[]; path: string; comparison: Comparison; onSelect: (path: string) => void; onSaved?: () => Promise<void>; onClose: () => void }) {
   const gitApi = useGitApi()
+  const writes = usePanelGitWrites()
   const readOnly = useReadOnlyGit()
+  const can = useGitActionAllowed()
   const { t } = useI18n()
   const dialog = useRef<HTMLDivElement>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
@@ -106,17 +109,20 @@ export default function GitDiffDialog({ id, files, path, comparison, onSelect, o
   const viewHunks = useMemo(() => fullFile && data ? [expandHunks(data.before, data.after, hunks)] : hunks, [fullFile, data, hunks])
   const authors = useMemo(() => ({ before: new Map(blame.before.map(line => [line.line, line])), after: new Map(blame.after.map(line => [line.line, line])) }), [blame])
   const index = files.indexOf(path)
-  const editable = !readOnly && !comparison.ref && !comparison.commit && !!data?.snapshot && !data.binary && !data.truncated && !data.submodule
+  const editable = !readOnly && can('saveFile') && !comparison.ref && !comparison.commit && !!data?.snapshot && !data.binary && !data.truncated && !data.submodule
   async function persistContent(content: string, snapshot: string, expectedContent?: string): Promise<GitStatus | null> {
-    if (saving) return null
+    if (saving || writes.busy) return null
     setSaving(true); setError('')
     try {
-      const status = expectedContent === undefined
-        ? await gitApi.saveFile(id, path, content, snapshot)
-        : await gitApi.saveFile(id, path, content, snapshot, expectedContent)
-      setEditing(false)
-      setRetry(value => value + 1)
-      try { await onSaved?.() } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
+      const status = await writes.run(async () => {
+        const value = expectedContent === undefined
+          ? await gitApi.saveFile(id, path, content, snapshot)
+          : await gitApi.saveFile(id, path, content, snapshot, expectedContent)
+        setEditing(false)
+        setRetry(current => current + 1)
+        try { await onSaved?.() } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
+        return value
+      })
       return status
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); return null }
     finally { setSaving(false) }

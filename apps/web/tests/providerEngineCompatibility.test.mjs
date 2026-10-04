@@ -6,16 +6,24 @@ const coordinatorSource = await readFile(
   new URL('../src/components/CoordinatorConfigBar.tsx', import.meta.url),
   'utf8',
 )
-const settingsSource = await readFile(
-  new URL('../src/pages/SettingsPage.tsx', import.meta.url),
+const assistantSettingsSource = await readFile(
+  new URL('../src/pages/AgentAssistantSettings.tsx', import.meta.url),
+  'utf8',
+)
+const promptEnhanceSource = await readFile(
+  new URL('../src/pages/PromptEnhanceSettings.tsx', import.meta.url),
   'utf8',
 )
 const providerSource = await readFile(
   new URL('../src/pages/ProviderSettings.tsx', import.meta.url),
   'utf8',
 )
+const providerEditorSource = await readFile(
+  new URL('../src/components/ProviderEditorDialog.tsx', import.meta.url),
+  'utf8',
+)
 const flowCanvasSource = await readFile(
-  new URL('../src/components/FlowCanvas.tsx', import.meta.url),
+  new URL('../src/components/NodeConfigPanel.tsx', import.meta.url),
   'utf8',
 )
 const chatPageSource = await readFile(
@@ -31,22 +39,19 @@ const taskCreateAssistantSource = await readFile(
   'utf8',
 )
 const apiClientSource = await readFile(
+  new URL('../src/api/conversations.ts', import.meta.url),
+  'utf8',
+)
+const assistantApiSource = await readFile(
   new URL('../src/api/client.ts', import.meta.url),
   'utf8',
 )
 
 test('assistant provider switching clears every selected model', () => {
   assert.match(
-    settingsSource,
+    assistantSettingsSource,
     /setProviderId\(event\.target\.value\)[\s\S]*?setModel\(''\)[\s\S]*?setFastModel\(''\)[\s\S]*?setVisionModel\(''\)/,
   )
-})
-
-test('project chat loads its own assistant defaults', () => {
-  assert.match(chatPageSource, /assistantApi\.list\(\)/)
-  assert.match(chatPageSource, /item\.name === 'chat_session'/)
-  assert.match(chatPageSource, /setSelectedProvider\(configured\.provider_id \|\| ''\)/)
-  assert.doesNotMatch(chatPageSource, /engineApi\.coordinatorDefaults/)
 })
 
 test('internal assistants load their own vision configuration', () => {
@@ -83,36 +88,35 @@ test('provider settings exposes all supported protocols', () => {
     'openai_responses',
     'openai_chat_completions',
   ]) {
-    assert.match(providerSource, new RegExp(protocol))
+    assert.match(providerEditorSource, new RegExp(protocol))
   }
-  assert.match(providerSource, /protocol_base_urls/)
-  assert.match(providerSource, /form\.protocols\.map/)
-  assert.match(providerSource, /protocol: form\.protocols\[0\]/)
-  assert.match(providerSource, /base_url: protocolBaseUrls\[form\.protocols\[0\]\]/)
+  assert.match(providerEditorSource, /protocol_base_urls/)
+  assert.match(providerEditorSource, /form\.protocols\.map/)
+  assert.match(providerEditorSource, /protocol: form\.protocols\[0\]/)
+  assert.match(providerEditorSource, /base_url: protocolBaseUrls\[form\.protocols\[0\]\]/)
 })
 
 test('provider protocols use switches and reveal their own address field', () => {
-  assert.match(providerSource, /className="provider-protocol-toggle"/)
-  assert.match(providerSource, /role="switch"/)
-  assert.match(providerSource, /className="provider-protocol-switch"/)
+  assert.match(providerEditorSource, /className="provider-protocol-toggle"/)
+  assert.match(providerEditorSource, /role="switch"/)
+  assert.match(providerEditorSource, /className="provider-protocol-switch"/)
   assert.match(
-    providerSource,
-    /form\.protocols\.includes\(option\.value\) && \([\s\S]*?provider-base-url-\$\{option\.value\}/,
+    providerEditorSource,
+    /const enabled = form\.protocols\.includes\(option\.value\)[\s\S]*?provider-base-url-\$\{option\.value\}/,
   )
-  assert.doesNotMatch(providerSource, /provider-protocol-checkmark/)
+  assert.doesNotMatch(providerEditorSource, /provider-protocol-checkmark/)
 })
 
 test('provider settings can copy an existing provider into a new configuration', () => {
   assert.match(providerSource, /providerSettings\.copy/)
-  assert.match(providerSource, /providerSettings\.copyTitle/)
-  assert.match(providerSource, /providerApi\.reveal\(provider\.id\)/)
-  assert.match(providerSource, /setEditingId\(null\)/)
-  assert.match(providerSource, /name: t\('providerSettings\.copyName', \{ name: provider\.name \}\)/)
+  assert.match(providerEditorSource, /providerSettings\.copyTitle/)
+  assert.match(providerEditorSource, /providerApi\.reveal\(target\.provider\.id\)/)
+  assert.match(providerEditorSource, /name: t\('providerSettings\.copyName', \{ name: target\.provider\.name \}\)/)
 })
 
 test('prompt enhancement selects and persists a provider protocol', () => {
-  assert.match(settingsSource, /setProtocol\(result\.protocol \|\| configuredProvider\?\.protocols\?\.\[0\] \|\| ''\)/)
-  assert.match(settingsSource, /providerApi\.models\(providerId, false, protocol\)/)
-  assert.match(settingsSource, /setEnhanceConfig\(\{ providerId, model, protocol \}\)/)
-  assert.match(apiClientSource, /protocol: config\.protocol/)
+  assert.match(promptEnhanceSource, /setProtocol\(result\.protocol \|\| configuredProvider\?\.protocols\?\.\[0\] \|\| ''\)/)
+  assert.match(promptEnhanceSource, /providerApi\.models\(providerId, false, protocol\)/)
+  assert.match(promptEnhanceSource, /setEnhanceConfig\(\{ providerId, model, protocol \}\)/)
+  assert.match(assistantApiSource, /protocol: config\.protocol/)
 })

@@ -4,7 +4,8 @@ import asyncio
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from tempfile import TemporaryDirectory
+
+from services.project_scope import require_catalog_project, workspace_engine_catalog
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -24,9 +25,18 @@ from services.config import (
 )
 from services import providers as provider_service
 from services import engine_runtime
+from services.engine_actions import probe_engine
+from services.gateway_client.policy import require_managed_capability
 from services.project import project_manager
 
 router = APIRouter(prefix="/api/engine")
+
+
+def _require_managed_engine_permission() -> None:
+    try:
+        require_managed_capability("engine.install")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 class EngineTestRequest(BaseModel):
@@ -117,14 +127,17 @@ def _engine_info(engine_id: str) -> dict | None:
 
 
 @router.get("/list")
-async def list_engines():
+async def list_engines(project_id: str = ""):
     """Return every supported backend and its local availability."""
-    return {"engines": await asyncio.to_thread(_engine_summaries)}
+    scoped = require_catalog_project(project_id)
+    engines = await asyncio.to_thread(_engine_summaries)
+    return {"engines": workspace_engine_catalog(engines) if scoped else engines}
 
 
 @router.post("/refresh")
 async def refresh_engines():
     """Re-scan the host for supported execution engines."""
+    _require_managed_engine_permission()
     engines = await asyncio.to_thread(_refresh_and_summaries)
     return {"engines": engines}
 
@@ -153,7 +166,8 @@ def _validate_engine(engine_id: str, *, coordinator: bool = False):
 
 
 @router.get("/execution/config")
-async def get_execution_default_config():
+async def get_execution_default_config(project_id: str = ""):
+    require_catalog_project(project_id)
     configured = await asyncio.to_thread(config_store.get_execution_default_engine)
     return {
         "engine": configured,
@@ -176,6 +190,7 @@ async def set_execution_default_config(req: DefaultEngineRequest):
 
 @router.get("/coordinator/config")
 async def get_coordinator_default_config(project_id: str = ""):
+    scoped = require_catalog_project(project_id)
     def load() -> dict:
         return {
             "engine": config_store.get_coordinator_default_engine(),
@@ -183,7 +198,8 @@ async def get_coordinator_default_config(project_id: str = ""):
             "fast_model": config_store.get_coordinator_default_fast_model(),
             "vision_model": config_store.get_coordinator_default_vision_model(),
             "thinking_effort": config_store.get_coordinator_default_thinking_effort(),
-            "available_engines": _coordinator_engine_options(),
+            "available_engines": (workspace_engine_catalog(_coordinator_engine_options())
+                                  if scoped else _coordinator_engine_options()),
         }
 
     return await asyncio.to_thread(load)
@@ -223,46 +239,16 @@ async def set_coordinator_default_config(req: CoordinatorDefaultsRequest):
 @router.post("/test")
 async def test_engine(req: EngineTestRequest):
     """Delegate the connectivity test to the selected engine adapter."""
-    engine = await asyncio.to_thread(
-        lambda: (refresh_registry(), create_engine(req.engine_id))[1]
+    _require_managed_engine_permission()
+    result = await probe_engine(
+        req.engine_id, timeout_seconds=req.timeout_seconds, model=req.model,
+        values=req.values, clear=req.clear, store=config_store,
     )
-    if engine is None:
-        await asyncio.to_thread(config_store.set_engine_verified, req.engine_id, False)
-        return {
-            "engine_id": req.engine_id,
-            "success": False,
-            "message": "引擎未安装或当前不可用",
-            "duration_ms": 0,
-        }
-
-    test_kwargs = {
-        "timeout_seconds": req.timeout_seconds,
-    }
-    selected_model = req.model.strip()
-    if selected_model:
-        test_kwargs["model"] = selected_model
-    config_overrides = dict(req.values)
-    clear_keys = [key for key, should_clear in req.clear.items() if should_clear]
-    if clear_keys:
-        config_overrides["__workstep_clear_keys__"] = clear_keys
-    if config_overrides:
-        test_kwargs["config_overrides"] = config_overrides
-    # Engine initialization writes project-local skills and session state.
-    # Connectivity probes must not treat the daemon's cwd as a project.
-    workspace = await asyncio.to_thread(
-        TemporaryDirectory, prefix="workstep-engine-test-"
-    )
-    try:
-        result = await engine.test_connection(cwd=workspace.name, **test_kwargs)
-    finally:
-        await asyncio.to_thread(workspace.cleanup)
-    await asyncio.to_thread(
-        config_store.set_engine_verified, req.engine_id, result.success
-    )
+    if result.pop("_unavailable", False):
+        return result
     engine_info = await asyncio.to_thread(_engine_info, req.engine_id)
     return {
-        "engine_id": req.engine_id,
-        **asdict(result),
+        **result,
         "engine": engine_info,
     }
 
@@ -285,6 +271,7 @@ async def engine_runtime_operation(engine_id: str):
 
 @router.post("/{engine_id}/runtime/operation", status_code=202)
 async def start_engine_runtime_operation(engine_id: str, req: EngineRuntimeRequest):
+    _require_managed_engine_permission()
     try:
         return await engine_runtime.runtime_manager.start(
             engine_id, req.version, rollback=req.rollback,
@@ -298,6 +285,7 @@ async def start_engine_runtime_operation(engine_id: str, req: EngineRuntimeReque
 
 @router.post("/{engine_id}/install")
 async def install_engine(engine_id: str, req: EngineInstallRequest | None = None):
+    _require_managed_engine_permission()
     try:
         async with engine_runtime.runtime_manager.legacy_operation():
             return await _install_engine(engine_id, req)
@@ -349,6 +337,7 @@ async def _install_engine(engine_id: str, req: EngineInstallRequest | None):
 
 @router.post("/{engine_id}/update")
 async def update_engine(engine_id: str):
+    _require_managed_engine_permission()
     try:
         async with engine_runtime.runtime_manager.legacy_operation():
             return await _update_engine(engine_id)
@@ -421,6 +410,8 @@ async def get_engine_quota(engine_id: str, project_id: str = ""):
     quota = await get_quota(
         cwd=str(project.path) if project else str(Path.cwd())
     )
+    if quota is None:
+        return {"engine_id": engine_id, "supported": False, "quota": None}
     return {
         "engine_id": engine_id,
         "supported": True,
@@ -436,6 +427,9 @@ async def list_engine_models(
     project_id: str = "",
 ):
     """Return native models or the selected provider's cached model list."""
+    scoped = require_catalog_project(project_id)
+    if scoped and refresh:
+        raise HTTPException(status_code=403, detail="项目会话不能刷新宿主模型目录")
     engine = await asyncio.to_thread(
         lambda: (refresh_registry(invalidate_scan=False), create_engine(engine_id))[1]
     )
@@ -525,7 +519,7 @@ async def list_engine_models(
         error = "读取模型列表超时"
     except Exception as exc:
         models = []
-        error = str(exc) or "读取模型列表失败"
+        error = "读取模型列表失败" if scoped else (str(exc) or "读取模型列表失败")
     return {
         "engine_id": engine_id,
         "models": [asdict(model) for model in models],

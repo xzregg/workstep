@@ -2,10 +2,10 @@
 
 One assistant registered in the shared assistant layer
 (``agent_assistants/base.py``): it only declares an ``AssistantConfig``
-plus a persistence adapter that stores each conversation row in the new
-``chat_sessions`` / ``chat_messages`` tables. Session lifecycle, idempotency,
-engine invocation with resume and streaming events all live in the generic
-``AssistantRuntime``.
+plus ``chat_row_persistence.py``, which stores conversation rows in
+``chat_sessions`` / ``chat_messages``. Shared turn lifecycle, idempotency,
+engine invocation with resume and streaming events live in ``AssistantRuntime``.
+Engine handoff and session forks live in ``chat_session_transitions.py``.
 
 Each project can hold many independent sessions. Sessions are created
 explicitly (``create_session``), auto-titled from the first user message,
@@ -17,10 +17,8 @@ import asyncio
 import json
 import logging
 import peewee as pw
-import re
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any
 
 from engines.codex_visualize import (
@@ -34,23 +32,28 @@ from models.fields import utc_now
 from agent_assistants.base import (
     AssistantConfig,
     AssistantRuntime,
-    PersistenceAdapter,
     SCOPE_CHAT,
     assistant_registry,
-    repair_message_times,
     validate_provider_override,
 )
+from agent_assistants.history import default_history_message
 from agent_assistants.event_journal import TurnEventJournal
+from agent_assistants.chat_row_persistence import (
+    ChatRowPersistence,
+    _iso,
+    _load_json,
+    _preview,
+)
 from agent_assistants.event_truncation import truncate_large_tool_payloads
 from agent_assistants.context_handoff import (
-    append_handoff_log,
-    compile_handoff,
     mark_handoff_consumed,
     render_handoff,
     render_handoff_reference,
 )
+from agent_assistants.chat_session_transitions import ChatSessionTransitions
 from engines.core.agui import AGUIContext, to_agui_events
 from services.chat_permissions import is_valid_permission_mode
+from services.channels.session_source import channel_session_source
 from services.config import config_store, resolve_execution_engine
 
 logger = logging.getLogger(__name__)
@@ -67,7 +70,6 @@ MAX_SYSTEM_PROMPT_LENGTH = 20000
 MAX_QUICK_BUTTONS = 20
 MAX_QUICK_BUTTON_LABEL = 1000
 MAX_QUICK_BUTTON_PROMPT = 400
-DEFAULT_TITLE_LENGTH = 40
 PREVIEW_LENGTH = 60
 ENHANCE_MAX_LENGTH = 4000
 
@@ -80,30 +82,6 @@ ENHANCE_SYSTEM_PROMPT = (
 SYSTEM_PROMPT = """You are the WorkStep chat assistant. Work in the project root and help with programming and research: answer questions, explain code and project structure, propose solutions, design tests, review code, and debug.
 
 Keep multi-turn context. Ask one brief question when information is missing. Be concise and actionable. Use Markdown code blocks for code. Reply in the user's language."""
-
-
-def _iso(value: datetime | None) -> str | None:
-    return value.isoformat() if value is not None else None
-
-
-def _from_iso(value: Any) -> datetime | None:
-    if isinstance(value, datetime):
-        return value
-    if not isinstance(value, str):
-        return None
-    try:
-        return datetime.fromisoformat(value)
-    except ValueError:
-        return None
-
-
-def _load_json(raw: str | None, default):
-    if not raw:
-        return default
-    try:
-        return json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        return default
 
 
 _AGUI_EVENT_TYPES = {
@@ -160,236 +138,6 @@ def _detail_agui_events(
     return translated
 
 
-def _preview(text: str, limit: int) -> str:
-    collapsed = re.sub(r"\s+", " ", text or "").strip()
-    return collapsed if len(collapsed) <= limit else f"{collapsed[:limit]}…"
-
-
-def _extract_usage(events: list | None) -> dict | None:
-    for event in events or []:
-        if isinstance(event, dict) and event.get("type") in ("usage", "usage_update"):
-            data = event.get("data")
-            return data if isinstance(data, dict) else dict(event)
-    return None
-
-
-class ChatRowPersistence(PersistenceAdapter):
-    """Persist one chat conversation as rows in chat_sessions / chat_messages."""
-
-    # ── session / messages loading ─────────────────────────────────────
-
-    def load(self, session) -> None:
-        row = ChatSession.get_or_none(ChatSession.id == session.session_id)
-        if row is None:
-            return
-        session.messages = self._load_messages(row)
-        session.resolved_session_id = row.engine_session_id
-        if row.engine_state_json:
-            try:
-                session.engine_state = json.loads(row.engine_state_json)
-            except json.JSONDecodeError:
-                logger.exception("Failed to restore chat engine state")
-        handoff = _load_json(row.fork_context_json, None)
-        if isinstance(handoff, dict) and not handoff.get("consumed"):
-            session.extra["pending_handoff"] = handoff
-        session.engine = row.engine or session.engine
-        if row.model is not None:
-            session.model = row.model
-        if row.fast_model is not None:
-            session.fast_model = row.fast_model
-        if row.vision_model is not None:
-            session.vision_model = row.vision_model
-
-    def _load_messages(self, row: ChatSession) -> list[dict]:
-        messages: list[dict] = []
-        rows = (
-            ChatMessage.select()
-            .where(ChatMessage.session == row)
-            .order_by(ChatMessage.created_at, ChatMessage.id)
-        )
-        for item in rows:
-            message: dict = {
-                "role": item.role,
-                "content": convert_visualize_markers(item.content or ""),
-                "id": item.id,
-                "created_at": _iso(item.created_at),
-            }
-            if item.author_name:
-                message.update(
-                    author_id=item.author_id,
-                    author_name=item.author_name,
-                    author_device_id=item.author_device_id,
-                    author_device_name=item.author_device_name,
-                )
-            if item.status:
-                message["status"] = item.status
-            if item.engine:
-                message["engine"] = item.engine
-            if item.model:
-                message["model"] = item.model
-            if item.prompt:
-                message["prompt"] = item.prompt
-            if item.ended_at:
-                message["ended_at"] = _iso(item.ended_at)
-            events = _load_json(item.events_json, [])
-            if events:
-                # 历史出口同样截断超大工具载荷：events_json 按全量保真落库，
-                # 单条消息可达数十 MB（raw_output）。整包随 history 下发会让
-                # 前端 JSON.parse + store 常驻数百 MB（多会话缓存叠加后直接
-                # 压垮渲染进程）。完整内容仍可在展开时经 messageEvents 懒加载。
-                if item.engine in CODEX_ENGINE_IDS:
-                    events = [
-                        convert_event_visualize_markers(event) for event in events
-                    ]
-                message["events"] = [
-                    truncate_large_tool_payloads(event) for event in events
-                ]
-            summary = _load_json(item.event_summary_json, {})
-            if item.event_log_path:
-                message["event_log_path"] = item.event_log_path
-                message["event_summary"] = summary
-                message["event_detail"] = {
-                    "available": True,
-                    "loaded": False,
-                    "event_count": item.event_count or 0,
-                    "last_event_seq": item.last_event_seq or 0,
-                    **summary,
-                }
-            message = repair_message_times(message)
-            messages.append(message)
-        return messages
-
-    # ── save ───────────────────────────────────────────────────────────
-
-    def save(self, session) -> None:
-        now = utc_now()
-        row = ChatSession.get_or_none(ChatSession.id == session.session_id)
-        if row is None:
-            row = ChatSession.create(
-                id=session.session_id,
-                project_id=session.project_id,
-                workflow_id=session.scope_key or "",
-                title=self._default_title(session.messages),
-                engine=session.engine,
-                model=session.model,
-                fast_model=session.fast_model,
-                vision_model=session.vision_model,
-                engine_session_id=session.resolved_session_id,
-                engine_state_json=self._dump_state(session.engine_state),
-                created_at=now,
-                updated_at=now,
-            )
-        else:
-            title = row.title or self._default_title(session.messages)
-            row.title = title
-            row.engine_session_id = session.resolved_session_id
-            row.engine_state_json = self._dump_state(session.engine_state)
-            pending_handoff = session.extra.get("pending_handoff")
-            if isinstance(pending_handoff, dict):
-                last = session.messages[-1] if session.messages else {}
-                if last.get("role") == "assistant" and last.get("status") == "succeeded":
-                    pending_handoff = {**pending_handoff, "consumed": True}
-                    session.extra.pop("pending_handoff", None)
-                row.fork_context_json = json.dumps(pending_handoff, ensure_ascii=False)
-            row.updated_at = now
-            row.save()
-        for item in session.messages:
-            message_id = str(item.get("id") or "")
-            if not message_id:
-                continue
-            created_at = _from_iso(item.get("created_at")) or now
-            ended_at = _from_iso(item.get("ended_at"))
-            events = [e for e in (item.get("events") or []) if isinstance(e, dict)]
-            values = {
-                "session": row,
-                "role": item.get("role", "assistant"),
-                "content": item.get("content", ""),
-                "author_id": item.get("author_id"),
-                "author_name": item.get("author_name"),
-                "author_device_id": item.get("author_device_id"),
-                "author_device_name": item.get("author_device_name"),
-                "status": item.get("status") or (
-                    "succeeded" if item.get("role") == "assistant" else None
-                ),
-                "engine": item.get("engine"),
-                "model": item.get("model"),
-                "prompt": item.get("prompt"),
-                "events_json": json.dumps(events, ensure_ascii=False) if events else None,
-                "event_log_path": item.get("event_log_path"),
-                "event_summary_json": (
-                    json.dumps(item.get("event_summary"), ensure_ascii=False)
-                    if item.get("event_summary") else None
-                ),
-                "event_count": int((item.get("event_summary") or {}).get("event_count") or 0),
-                "last_event_seq": int((item.get("event_summary") or {}).get("last_event_seq") or 0),
-                "usage_json": (
-                    json.dumps(_extract_usage(events), ensure_ascii=False)
-                    if _extract_usage(events) else None
-                ),
-                "created_at": created_at,
-                "ended_at": ended_at,
-            }
-            existing = ChatMessage.get_or_none(ChatMessage.id == message_id)
-            if existing is None:
-                ChatMessage.create(id=message_id, **values)
-            else:
-                ChatMessage.update(**values).where(ChatMessage.id == message_id).execute()
-
-    @staticmethod
-    def _default_title(messages: list[dict]) -> str:
-        """Auto-title from the first user message, using its first sentence."""
-        for item in messages:
-            if item.get("role") != "user":
-                continue
-            text = re.sub(r"\s+", " ", item.get("content") or "").strip()
-            if not text:
-                continue
-            sentence = re.split(r"[。！？!?；;…]", text, maxsplit=1)[0].strip()
-            if not sentence:
-                sentence = text
-            return _preview(sentence, DEFAULT_TITLE_LENGTH)
-        return ""
-
-    @staticmethod
-    def _dump_state(state: Any) -> str | None:
-        if state is None:
-            return None
-        try:
-            return json.dumps(state, ensure_ascii=False)
-        except Exception:
-            logger.exception("Failed to serialize chat engine state")
-            return None
-
-    # ── history / delete ───────────────────────────────────────────────
-
-    def load_history(
-        self,
-        project_id: str,
-        scope_key: str,
-    ) -> tuple[
-        str, str | None, str | None, str | None, str | None, list[dict]
-    ] | None:
-        row = ChatSession.get_or_none(ChatSession.id == scope_key)
-        if row is None:
-            return None
-        return (
-            row.engine,
-            row.model,
-            row.fast_model,
-            row.vision_model,
-            row.engine_session_id,
-            self._load_messages(row),
-        )
-
-    def delete(self, project_id: str, scope_key: str) -> bool:
-        row = ChatSession.get_or_none(ChatSession.id == scope_key)
-        if row is None:
-            return False
-        ChatMessage.delete().where(ChatMessage.session == row).execute()
-        row.delete_instance()
-        return True
-
-
 @dataclass(frozen=True, slots=True)
 class ChatAccepted:
     session_id: str
@@ -414,8 +162,8 @@ DEFAULT_QUICK_BUTTONS = [
 ]
 
 
-class ChatSessionModule(AssistantRuntime):
-    """The Codex-style session chat assistant — config + row persistence."""
+class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
+    """The Codex-style session chat assistant and session operations."""
 
     def __init__(self, event_bus, project_manager):
         self._event_journal = TurnEventJournal()
@@ -497,6 +245,76 @@ class ChatSessionModule(AssistantRuntime):
         return recovered
 
     # ── session CRUD ───────────────────────────────────────────────────
+
+    async def stop_current(self, session_id: str, project_id: str | None = None, *, expected_message_id: str | None = None) -> bool:
+        cutoff = utc_now()
+        accepted = await super().stop_current(session_id, project_id=project_id, expected_message_id=expected_message_id)
+        if expected_message_id is not None:
+            return accepted
+        if any(
+            state.get("session_id") == session_id and self._turn_is_active(turn_id)
+            for turn_id, state in self._turn_states.items()
+        ):
+            return accepted
+        projects = (
+            [self._project_manager.get_project_by_id(project_id)]
+            if project_id is not None
+            else list(self._project_manager.iter_projects())
+        )
+        for project in projects:
+            if project is None:
+                continue
+            found, messages = await self._project_manager.run_db(
+                project.id,
+                lambda current: self._stop_orphaned_messages(current, session_id, cutoff),
+            )
+            if not found:
+                continue
+            for message in messages:
+                for event in _detail_agui_events(
+                    [{"type": "message_completed", "data": message, "seq": message["seq"]}],
+                    project_id=project.id,
+                    session_id=session_id,
+                    message_id=message["id"],
+                    engine=message["engine"],
+                ):
+                    await self._event_bus.publish(event)
+            return True
+        return accepted
+
+    def _stop_orphaned_messages(self, project, session_id: str, cutoff) -> tuple[bool, list[dict]]:
+        """Reconcile dead turns in the project DB worker, preserving journal output."""
+        if not ChatSession.select().where(ChatSession.id == session_id).exists():
+            return False, []
+        now = utc_now()
+        messages = []
+        for row in ChatMessage.select().where(
+            ChatMessage.session == session_id,
+            ChatMessage.role == "assistant",
+            ChatMessage.status == "running",
+            ChatMessage.created_at <= cutoff,
+        ):
+            if row.event_log_path:
+                ref = self._event_journal.reopen(project.workstep_dir, row.event_log_path)
+                self._event_journal.record(ref, {"type": "status", "data": {"status": "stopped"}})
+                snapshot = self._event_journal.snapshot(ref)
+                self._event_journal.finish(ref)
+                row.content = convert_visualize_markers(snapshot["content"] or row.content or "")
+                row.events_json = json.dumps(snapshot["events"], ensure_ascii=False)
+                row.event_summary_json = json.dumps(snapshot["summary"], ensure_ascii=False)
+                row.event_count = snapshot["summary"].get("event_count", row.event_count)
+                row.last_event_seq = snapshot["summary"].get("last_event_seq", row.last_event_seq)
+            row.status = "stopped"
+            row.ended_at = now
+            row.save()
+            messages.append({
+                "id": row.id, "engine": row.engine, "status": "stopped",
+                "content": row.content or "", "ended_at": now.isoformat(),
+                "seq": (row.last_event_seq or 0) + 1,
+            })
+        if messages:
+            ChatSession.update(updated_at=now).where(ChatSession.id == session_id).execute()
+        return True, messages
 
     def list_sessions(self, project_id: str, workflow_id: str | None = None, archived: bool = False) -> list[dict]:
         """The active project database owns sessions, including historical registry IDs."""
@@ -597,13 +415,20 @@ class ChatSessionModule(AssistantRuntime):
             )
         return self.get_session(project_id, session_id)
 
-    def get_session(self, project_id: str, session_id: str) -> dict | None:
+    def get_session(self, project_id: str, session_id: str, *, limit: int | None = None, offset: int = 0) -> dict | None:
         with self._project_ctx(project_id):
             row = ChatSession.get_or_none(ChatSession.id == session_id)
             if row is None:
                 return None
             summary = self._session_summary(row, project_id)
-        history = self.history(project_id, session_id) or {}
+        if limit is None:
+            history = self.history(project_id, session_id) or {}
+        else:
+            with self._project_ctx(project_id):
+                normalize = self._config.history_message or default_history_message
+                history = {"messages": [normalize(item) for item in self._config.persistence._load_messages(
+                    row, limit=limit, offset=offset,
+                )]}
         for message in history.get("messages", []):
             if message.get("status") != "running" or not message.get("event_log_path"):
                 continue
@@ -635,7 +460,31 @@ class ChatSessionModule(AssistantRuntime):
                 }
             except Exception:
                 logger.exception("Failed to restore running chat snapshot")
-        return {**summary, "messages": history.get("messages", [])}
+        messages = history.get("messages", [])
+        if self._config.name in {"chat_session", "channel_chat"}:
+            with self._project_ctx(project_id):
+                self._attach_prompt_views(summary, messages)
+        return {**summary, "messages": messages}
+
+    def _attach_prompt_views(self, summary: dict, messages: list[dict]) -> None:
+        """Prefer live captured input, retaining the stored snapshot after restart."""
+        runtime = self
+        if self._config.name == "chat_session" and summary.get("source") == "channel":
+            from main import channel_chat_module
+
+            if channel_chat_module is not None:
+                runtime = channel_chat_module
+        captured = {}
+        for session in list(runtime._sessions.values()):
+            if session.project_id != summary["project_id"] or session.session_id != summary["id"]:
+                continue
+            captured = {str(item.get("id")): item.get("prompt") for item in list(session.messages)}
+            break
+        for message in messages:
+            # Never substitute the latest config for an unknown past request.
+            prompt = captured.get(str(message.get("id")))
+            if prompt:
+                message["prompt"] = prompt
 
     def message_events(
         self,
@@ -832,6 +681,7 @@ class ChatSessionModule(AssistantRuntime):
             "project_id": project_id,
             "workflow_id": row.workflow_id,
             "title": row.title or "未命名会话",
+            **channel_session_source(row.id, row.title),
             "archived": bool(row.archived),
             "engine": row.engine,
             "model": row.model,
@@ -859,313 +709,6 @@ class ChatSessionModule(AssistantRuntime):
             "updated_at": _iso(row.updated_at),
         }
 
-    def handoff_session(
-        self,
-        project_id: str,
-        session_id: str,
-        *,
-        engine: str,
-        context_mode: str,
-        model: str | None = None,
-        fast_model: str | None = None,
-        vision_model: str | None = None,
-        provider_id: str | None = None,
-        permission_mode: str | None = None,
-    ) -> dict:
-        """Switch engines while keeping the same visible chat session."""
-        if context_mode not in {"smart", "full", "none"}:
-            raise ValueError(f"Unsupported handoff context mode: {context_mode}")
-        if any(
-            state.get("session_id") == session_id
-            and state.get("status") in {"queued", "running", "stopping"}
-            for state in self._turn_states.values()
-        ):
-            raise ValueError("Chat session is running")
-        self._validate_engine(engine)
-        permission_mode = (permission_mode or "").strip()
-        if permission_mode and not is_valid_permission_mode(permission_mode):
-            raise ValueError(f"Unsupported permission mode: {permission_mode}")
-
-        normalized_provider = validate_provider_override(
-            provider_id,
-            engine,
-        )
-
-        with self._project_ctx(project_id) as project:
-            row = ChatSession.get_or_none(
-                ChatSession.id == session_id,
-            )
-            if row is None:
-                raise ValueError("Chat session not found")
-            provider_changed = (row.provider_id or "") != normalized_provider
-            if row.engine == engine and not provider_changed:
-                raise ValueError("Target engine is already active")
-            if ChatMessage.select().where(
-                ChatMessage.session == row,
-                ChatMessage.status == "running",
-            ).exists():
-                raise ValueError("Chat session is running")
-            source_engine = row.engine
-            source_provider = row.provider_id or ""
-            messages = ChatRowPersistence()._load_messages(row)
-            metadata = append_handoff_log(
-                project.workstep_dir,
-                session_id,
-                messages,
-                source_engine=source_engine,
-                target_engine=engine,
-                mode=context_mode,
-                source_provider=source_provider,
-                target_provider=normalized_provider,
-            )
-            row.engine = engine
-            row.model = model or None
-            row.fast_model = fast_model or None
-            row.vision_model = vision_model or None
-            row.provider_id = normalized_provider or None
-            if permission_mode:
-                row.permission_mode = permission_mode
-            row.engine_session_id = None
-            row.engine_state_json = None
-            row.fork_context_mode = context_mode
-            row.fork_context_json = json.dumps(metadata, ensure_ascii=False)
-            row.updated_at = utc_now()
-            row.save()
-
-        memory_key, _ = self._session_identity(project_id, session_id)
-        session = self._sessions.get(memory_key)
-        if session is not None:
-            session.engine = engine
-            session.model = model or None
-            session.fast_model = fast_model or None
-            session.vision_model = vision_model or None
-            session.resolved_session_id = None
-            session.engine_state = None
-            session.extra["pending_handoff"] = metadata
-        result = self.get_session(project_id, session_id)
-        if result is None:
-            raise ValueError("Chat session not found")
-        return result
-
-    async def fork_session(
-        self,
-        project_id: str,
-        source_session_id: str,
-        *,
-        title: str,
-        engine: str,
-        context_mode: str,
-        model: str | None = None,
-        fast_model: str | None = None,
-        vision_model: str | None = None,
-        provider_id: str | None = None,
-        permission_mode: str | None = None,
-        fork_message_id: str | None = None,
-    ) -> dict:
-        """Fork one stable chat session through a native or handoff strategy."""
-        title = (title or "").strip()
-        if not title:
-            raise ValueError("Session title cannot be empty")
-        if context_mode not in {"native", "smart", "full", "none"}:
-            raise ValueError(f"Unsupported fork context mode: {context_mode}")
-        if any(
-            state.get("session_id") == source_session_id
-            and state.get("status") in {"queued", "running", "stopping"}
-            for state in self._turn_states.values()
-        ):
-            raise ValueError("Chat session is running")
-        def load_source():
-            source = ChatSession.get_or_none(
-                ChatSession.id == source_session_id,
-            )
-            if source is None:
-                raise ValueError("Chat session not found")
-            if ChatMessage.select().where(
-                ChatMessage.session == source,
-                ChatMessage.status == "running",
-            ).exists():
-                raise ValueError("Chat session is running")
-            messages = ChatRowPersistence()._load_messages(source)
-            fork_at_tail = True
-            if fork_message_id:
-                selected_index = next(
-                    (
-                        index
-                        for index, item in enumerate(messages)
-                        if item.get("id") == fork_message_id
-                    ),
-                    None,
-                )
-                if selected_index is None:
-                    raise ValueError("Fork message not found")
-                fork_at_tail = selected_index == len(messages) - 1
-                messages = messages[: selected_index + 1]
-            fork_point = messages[-1].get("id") if messages else None
-            source_engine = source.engine
-            source_engine_session_id = source.engine_session_id
-            source_workflow_id = source.workflow_id
-            source_model = source.model
-            source_fast_model = source.fast_model
-            source_vision_model = source.vision_model
-            source_provider_id = source.provider_id
-            source_permission_mode = source.permission_mode
-            return {
-                "messages": messages,
-                "fork_at_tail": fork_at_tail,
-                "fork_point": fork_point,
-                "engine": source_engine,
-                "engine_session_id": source_engine_session_id,
-                "workflow_id": source_workflow_id,
-                "model": source_model,
-                "fast_model": source_fast_model,
-                "vision_model": source_vision_model,
-                "provider_id": source_provider_id,
-                "permission_mode": source_permission_mode,
-            }
-
-        source_data = await self._project_manager.run_db(
-            project_id, lambda _project: load_source()
-        )
-        messages = source_data["messages"]
-        fork_at_tail = source_data["fork_at_tail"]
-        fork_point = source_data["fork_point"]
-        source_engine = source_data["engine"]
-        source_engine_session_id = source_data["engine_session_id"]
-        source_workflow_id = source_data["workflow_id"]
-        source_model = source_data["model"]
-        source_fast_model = source_data["fast_model"]
-        source_vision_model = source_data["vision_model"]
-        source_provider_id = source_data["provider_id"]
-        source_permission_mode = source_data["permission_mode"]
-
-        self._validate_engine(engine)
-        effective_context_mode = context_mode
-        native_engine_session_id: str | None = None
-        package: dict[str, Any] | None = None
-        adapter = None
-        if context_mode == "native":
-            if not fork_at_tail:
-                raise ValueError("Native fork only supports the latest message; use smart handoff")
-            if not messages and not source_engine_session_id:
-                effective_context_mode = "none"
-            elif engine != source_engine:
-                raise ValueError("Native fork requires the same engine")
-            elif (provider_id or "").strip() and (provider_id or "").strip() != (source_provider_id or "").strip():
-                # 引擎会话端点与供应商绑定：换供应商时不能直接 fork 原生会话。
-                raise ValueError("Native fork requires the same provider; use smart handoff")
-            else:
-                adapter = create_engine(engine)
-                if adapter is None or not adapter.supports_session_fork:
-                    raise ValueError("Selected engine does not support native session fork")
-            if effective_context_mode == "native" and not source_engine_session_id:
-                if messages:
-                    raise ValueError("Source engine session is unavailable; use smart handoff")
-                effective_context_mode = "none"
-        else:
-            package = compile_handoff(
-                messages,
-                context_mode,
-                source_session_id=source_session_id,
-                forked_from_message_id=fork_point,
-            )
-
-        if engine == source_engine:
-            model = source_model if model is None else model
-            fast_model = source_fast_model if fast_model is None else fast_model
-            vision_model = source_vision_model if vision_model is None else vision_model
-            provider_id = source_provider_id if provider_id is None else provider_id
-
-        created = await self._project_manager.run_db(
-            project_id,
-            lambda _project: self.create_session(
-                project_id,
-                source_workflow_id,
-                title=title,
-                engine=engine,
-                model=model,
-                fast_model=fast_model,
-                vision_model=vision_model,
-                provider_id=provider_id,
-                permission_mode=permission_mode or source_permission_mode,
-            ),
-        )
-        new_session_id = created["id"]
-        try:
-            def persist_fork():
-                with ChatSession._meta.database.atomic():
-                    target = ChatSession.get_by_id(new_session_id)
-                    target.parent_session_id = source_session_id
-                    target.forked_from_message_id = fork_point
-                    target.fork_context_mode = effective_context_mode
-                    target.fork_context_json = (
-                        json.dumps(package, ensure_ascii=False) if package else None
-                    )
-                    target.engine_session_id = None
-                    target.engine_state_json = None
-                    target.fork_status = (
-                        "pending"
-                        if effective_context_mode == "native" and source_engine_session_id
-                        else "ready"
-                    )
-                    target.save()
-                    if effective_context_mode != "none":
-                        for item in messages:
-                            ChatMessage.create(
-                                id=str(uuid.uuid4()),
-                                session=target,
-                                role=item["role"],
-                                content=item.get("content", ""),
-                                author_id=item.get("author_id"),
-                                author_name=item.get("author_name"),
-                                author_device_id=item.get("author_device_id"),
-                                author_device_name=item.get("author_device_name"),
-                                status=item.get("status"),
-                                engine=item.get("engine"),
-                                model=item.get("model"),
-                                created_at=_from_iso(item.get("created_at")) or utc_now(),
-                                ended_at=_from_iso(item.get("ended_at")),
-                            )
-            await self._project_manager.run_db(
-                project_id, lambda _project: persist_fork()
-            )
-            if effective_context_mode == "native" and source_engine_session_id:
-                native_engine_session_id = await adapter.fork_session(
-                    source_engine_session_id,
-                    self._cwd(project_id),
-                    fork_point=fork_point,
-                    model=model,
-                    provider_id=provider_id,
-                )
-                if not native_engine_session_id:
-                    raise ValueError("Native session fork failed")
-                def mark_ready():
-                    ChatSession.update(
-                        engine_session_id=native_engine_session_id,
-                        fork_status="ready",
-                    ).where(ChatSession.id == new_session_id).execute()
-                await self._project_manager.run_db(
-                    project_id, lambda _project: mark_ready()
-                )
-        except Exception:
-            def discard_fork():
-                ChatMessage.delete().where(ChatMessage.session == new_session_id).execute()
-                ChatSession.delete().where(ChatSession.id == new_session_id).execute()
-            await self._project_manager.run_db(
-                project_id, lambda _project: discard_fork()
-            )
-            if native_engine_session_id and adapter is not None:
-                try:
-                    await adapter.close_session(
-                        native_engine_session_id,
-                        self._cwd(project_id),
-                    )
-                except Exception:
-                    logger.exception("Failed to clean up native fork %s", native_engine_session_id)
-            raise
-        return await self._project_manager.run_db(
-            project_id,
-            lambda _project: self.get_session(project_id, new_session_id),
-        )
 
     # ── turn submission ────────────────────────────────────────────────
 
@@ -1257,11 +800,39 @@ class ChatSessionModule(AssistantRuntime):
                 )
             ):
                 raise ValueError("没有可压缩的当前引擎会话")
-            if requested_engine is None:
-                model = row.model if model is None else model
-                fast_model = row.fast_model if fast_model is None else fast_model
-                vision_model = row.vision_model if vision_model is None else vision_model
-                provider_id = row.provider_id if provider_id is None else provider_id
+            # 请求省略的字段一律沿用会话已存值：前端每条消息都带 engine
+            # （空才省略），不能再用「请求没带 engine」作为是否继承的判断，
+            # 否则第二条起会话绑定的供应商/模型丢失、回落引擎默认，
+            # 且回写还会把绑定抹掉。
+            engine_switched = (
+                requested_engine is not None
+                and requested_engine != (row.engine or "")
+            )
+            # 模型是引擎特有的：显式换引擎时不继承旧引擎的模型（回引擎默认）；
+            # 供应商跨引擎可继承，前提是协议兼容。
+            model = row.model if model is None and not engine_switched else model
+            fast_model = (
+                row.fast_model
+                if fast_model is None and not engine_switched
+                else fast_model
+            )
+            vision_model = (
+                row.vision_model
+                if vision_model is None and not engine_switched
+                else vision_model
+            )
+            provider_id = row.provider_id if provider_id is None else provider_id
+            if provider_id and engine_switched and requested_provider_id is None:
+                # 从旧引擎继承的供应商与新引擎协议不兼容（或已删除）：
+                # 本轮按「跟随引擎默认」执行，并在成功后的回写中清掉绑定
+                # （与 UI chooseEngine 重置语义一致）。
+                stored_provider = config_store.get_provider(provider_id)
+                target_engine = create_engine(engine)
+                if stored_provider is None or (
+                    target_engine is None
+                    or not target_engine.supports_provider(stored_provider)
+                ):
+                    provider_id = None
             if permission_mode:
                 ChatSession.update(permission_mode=permission_mode).where(
                     ChatSession.id == session_id
@@ -1306,19 +877,25 @@ class ChatSessionModule(AssistantRuntime):
             provider_id=provider_id,
             schedule=schedule,
         )
+        # 字段回写独立于 engine 是否在请求中出现；省略的字段不覆盖已有值。
+        # 换引擎时同时保存上面解析出的兼容配置，避免遗留旧引擎的模型/供应商。
+        updates: dict[str, Any] = {}
         if requested_engine is not None:
-            normalized_provider = validate_provider_override(
-                requested_provider_id,
-                engine,
-            )
+            updates["engine"] = engine
+        for field, requested, effective in (
+            ("model", requested_model, model),
+            ("fast_model", requested_fast_model, fast_model),
+            ("vision_model", requested_vision_model, vision_model),
+        ):
+            if requested is not None or engine_switched:
+                updates[field] = (effective or "").strip() or None
+        if requested_provider_id is not None or engine_switched:
+            updates["provider_id"] = validate_provider_override(provider_id, engine) or None
+        if updates:
             with self._project_ctx(project_id):
-                ChatSession.update(
-                    engine=engine,
-                    model=(requested_model or "").strip() or None,
-                    fast_model=(requested_fast_model or "").strip() or None,
-                    vision_model=(requested_vision_model or "").strip() or None,
-                    provider_id=normalized_provider or None,
-                ).where(ChatSession.id == session_id).execute()
+                ChatSession.update(**updates).where(
+                    ChatSession.id == session_id
+                ).execute()
         return ChatAccepted(
             session_id=accepted.session_id,
             turn_id=accepted.turn_id,
@@ -1336,9 +913,28 @@ class ChatSessionModule(AssistantRuntime):
 
     # ── per-project system prompt ─────────────────────────────────────
 
+    def _prompt_system_instruction(self, session) -> str:
+        if self._config.name == "chat_session" or self._config.system_prompt_transport:
+            return ""
+        return self.get_system_prompt(session.project_id)
+
+    def _engine_system_prompt(self, session) -> str:
+        if self._config.name != "chat_session":
+            return super()._engine_system_prompt(session)
+        return self.get_system_prompt(session.project_id)
+
+    def _capture_prompt_input(self) -> bool:
+        return self._config.name in {"chat_session", "channel_chat"} or super()._capture_prompt_input()
+
+    def _display_prompt(self, session, prompt: str, system_prompt: str | None = None) -> str:
+        if self._config.name not in {"chat_session", "channel_chat"}:
+            return super()._display_prompt(session, prompt, system_prompt)
+        # No preview assembled from config: wait for actual prepared inputs.
+        return ""
+
     def _build_prompt(self, session) -> str:
-        """Use the project-configured system prompt ("" when unset, no default)."""
-        prompt = self.get_system_prompt(session.project_id)
+        """Build user/context input; configured chat rules travel independently."""
+        prompt = self._prompt_system_instruction(session)
         pending_handoff = session.extra.get("pending_handoff")
         if isinstance(pending_handoff, dict):
             project = self._project_manager.get_project_by_id(session.project_id)
@@ -1403,8 +999,8 @@ class ChatSessionModule(AssistantRuntime):
             )
             tail = f"Conversation history:\n{history}\n\nContinue."
             prompt = (
-                f"{self.get_system_prompt(session.project_id)}\n\n{tail}"
-                if self.get_system_prompt(session.project_id)
+                f"{self._prompt_system_instruction(session)}\n\n{tail}"
+                if self._prompt_system_instruction(session)
                 else tail
             )
         return prompt
@@ -1499,12 +1095,16 @@ class ChatSessionModule(AssistantRuntime):
         )
         if enhance_config["provider_id"] and enhance_config["model"]:
             from services import providers as provider_service
+            from services.gateway_client.usage import snapshot_usage_provider
+            from main import gateway_client
 
             provider = await asyncio.to_thread(
                 config_store.get_provider, enhance_config["provider_id"]
             )
             if provider is None:
                 raise ValueError("提示词增强的供应商不存在，请在设置中重新配置")
+            provider_snapshot = snapshot_usage_provider(provider)
+            usage: dict = {}
             raw = await provider_service.text_completion(
                 provider,
                 enhance_config["model"],
@@ -1514,23 +1114,33 @@ class ChatSessionModule(AssistantRuntime):
                 ],
                 thinking="disabled",
                 protocol=enhance_config.get("protocol") or None,
+                usage_collector=usage,
             )
             result = raw.strip()
             if not result:
                 raise ValueError("提示词增强失败，请重试")
+            await gateway_client.record_one_shot_usage(
+                project_id=project_id, model=enhance_config["model"],
+                provider=provider_snapshot, usage=usage or None,
+            )
             return result
         enhance_input = f"{ENHANCE_SYSTEM_PROMPT}\n\n用户提示词：\n{prompt}"
+        usage_details: dict = {}
         try:
             from engines.pydantic_ai import PydanticAIEngine
 
-            raw = await PydanticAIEngine.run_simple(enhance_input)
+            raw = await PydanticAIEngine.run_simple(
+                enhance_input, usage_details=usage_details,
+            )
         except RuntimeError:
             from agent_assistants.base import invoke_engine
+            from services.messages import extract_usage_json
 
             engine_id, _model, fast_model = self._resolve_engine_models()
             with self._project_ctx(project_id) as project:
                 cwd = str(project.path)
-            raw, _events, _session_id = await invoke_engine(
+            _, provider_snapshot = await self._usage_provider_snapshot(engine_id, "")
+            raw, events, _session_id = await invoke_engine(
                 engine_id,
                 fast_model,
                 cwd,
@@ -1541,9 +1151,22 @@ class ChatSessionModule(AssistantRuntime):
                 thinking_effort="minimal",
                 permission_mode="auto",
             )
+            usage_json = extract_usage_json(events)
+            usage_details = {
+                "provider": provider_snapshot,
+                "model": fast_model or "",
+                "usage": json.loads(usage_json) if usage_json else None,
+            }
         result = raw.strip()
         if not result:
             raise ValueError("提示词增强失败，请重试")
+        from main import gateway_client
+
+        await gateway_client.record_one_shot_usage(
+            project_id=project_id, model=usage_details.get("model") or "",
+            provider=usage_details.get("provider"),
+            usage=usage_details.get("usage"),
+        )
         return result
 
     # ── engine / model resolution ──────────────────────────────────────

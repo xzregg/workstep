@@ -9,5 +9,5 @@ export default function ProjectGitButton({ project }: { project: Project | null 
   const location = useLocation()
   const { t } = useI18n()
   if (!project || project.type === 'remote') return null
-  return <Button variant="ghost" size="sm" title={t('git.title')} style={{ padding: '4px 8px', gap: 5 }} onClick={() => navigate(`/git?project_id=${encodeURIComponent(project.id)}`, { state: { returnTo: location.pathname + location.search } })}><Icon name="git-fork" size={13} />{t('git.entry')}</Button>
+  return <Button variant="ghost" size="sm" title={t('git.title')} style={{ padding: '4px 8px', gap: 5 }} onClick={() => navigate(`/git?project_id=${encodeURIComponent(project.id)}`, { state: { returnTo: location.pathname + location.search + location.hash } })}><Icon name="git-fork" size={13} />{t('git.entry')}</Button>
 }

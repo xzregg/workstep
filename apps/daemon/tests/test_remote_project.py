@@ -3,7 +3,9 @@
 import asyncio
 import base64
 import json
+import time
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from fastapi import APIRouter, FastAPI, WebSocket
 from fastapi.testclient import TestClient
@@ -33,6 +35,28 @@ from services.remote_project import (
 from services.messages import current_actor_message_fields
 from streaming.bus import EventBus
 import api.remote_project as remote_project_api
+
+
+def test_remote_access_identity_has_one_owner():
+    from services.remote_access import ActorSnapshot as AccessActorSnapshot
+    from services.remote_access import RemoteAccessService as AccessService
+
+    assert ActorSnapshot is AccessActorSnapshot
+    assert RemoteAccessService is AccessService
+
+
+def test_remote_project_registry_has_one_owner():
+    from services.remote_registry import RemoteProjectRegistry as Registry
+
+    assert RemoteProjectRegistry is Registry
+
+
+def test_remote_host_dispatch_and_protocol_have_owners():
+    from services.remote_host import RemoteRouteDispatcher as HostDispatcher
+    from services.remote_protocol import RemoteHttpRequest as ProtocolRequest
+
+    assert RemoteRouteDispatcher is HostDispatcher
+    assert RemoteHttpRequest is ProtocolRequest
 
 
 async def test_remote_model_selection_read_routes_are_project_scoped():
@@ -112,6 +136,90 @@ class MemoryConfig:
 
     def set(self, key, value):
         self.values[key] = value
+
+
+def test_remote_registry_keeps_workflow_data_only_in_memory():
+    config = MemoryConfig()
+    config.set("remote_projects", [{"id": "remote:a", "name": "demo"}])
+    registry = RemoteProjectRegistry(config)
+    steps = {"nodes": [{"key": "build", "prompt": "large prompt"}]}
+    workflows = [{"id": "flow", "steps": steps}]
+    public = registry.mark_authenticated(
+        "remote:a", credential="secret",
+        project={"name": "demo", "steps": steps, "workflows": workflows},
+    )
+    assert public["steps"] == steps
+    assert registry.list_public()[0]["workflows"] == workflows
+    assert "steps" not in config.get("remote_projects")[0]
+    assert "workflows" not in config.get("remote_projects")[0]
+    registry.set_status("remote:a", "disconnected")
+    assert registry.get("remote:a")["steps"] == steps
+    restarted = RemoteProjectRegistry(config)
+    assert restarted.get("remote:a")["credential"] == "secret"
+    assert restarted.list_public()[0]["steps"] == {}
+    assert restarted.list_public()[0]["workflows"] == []
+    assert registry.remove("remote:a")
+    config.set("remote_projects", [{"id": "remote:a", "name": "demo"}])
+    assert registry.list_public()[0]["steps"] == {}
+
+
+def test_remote_registry_workflow_refresh_does_not_write_config():
+    class CountingConfig(MemoryConfig):
+        writes = 0
+
+        def set(self, key, value):
+            self.writes += 1
+            super().set(key, value)
+
+    config = CountingConfig()
+    config.set("remote_projects", [{"id": "remote:a", "name": "demo"}])
+    registry = RemoteProjectRegistry(config)
+    registry.update("remote:a", name="demo", steps={"nodes": [1]}, workflows=[])
+    assert config.writes == 1
+    assert registry.list_public()[0]["steps"] == {"nodes": [1]}
+
+
+async def test_remote_project_list_migrates_legacy_cache_without_blocking(monkeypatch):
+    import threading
+    import api.project as project_api
+
+    started = threading.Event()
+
+    class SlowConfig(MemoryConfig):
+        def set(self, key, value):
+            started.set()
+            time.sleep(0.15)
+            super().set(key, value)
+
+    config = SlowConfig()
+    config.values["remote_projects"] = [{
+        "id": "remote:a", "name": "demo", "credential": "secret",
+        "steps": {"nodes": [1]}, "workflows": [{"id": "flow"}],
+    }]
+    registry = RemoteProjectRegistry(config)
+    monkeypatch.setattr(remote_project_api, "remote_project_registry", registry)
+    monkeypatch.setattr(project_api.project_manager, "list_projects", lambda: [])
+    app = FastAPI()
+    app.include_router(project_api.router)
+
+    @app.get("/health")
+    async def health():
+        return {"ok": True}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        listing = asyncio.create_task(client.get("/api/project/list"))
+        try:
+            assert await asyncio.to_thread(started.wait, 1)
+            assert (await client.get("/health")).json() == {"ok": True}
+            assert not listing.done()
+            response = await listing
+        finally:
+            await listing
+    assert response.status_code == 200
+    assert response.json()["projects"][0]["steps"] == {}
+    assert config.get("remote_projects") == [{
+        "id": "remote:a", "name": "demo", "credential": "secret",
+    }]
 
 
 def test_access_password_hashing_and_token_roundtrip():
@@ -200,6 +308,66 @@ async def test_remote_access_guard_blocks_non_local_api_until_unlocked(monkeypat
         assert local.status_code == 200
 
 
+async def test_remote_access_guard_slow_config_keeps_event_loop_responsive(monkeypatch):
+    access = RemoteAccessService(MemoryConfig())
+
+    def slow_required():
+        time.sleep(0.25)
+        return False
+
+    monkeypatch.setattr(access, "access_password_required", slow_required)
+    app = FastAPI()
+    app.add_middleware(RemoteAccessGuardMiddleware, access_service=access)
+
+    @app.get("/api/secret")
+    async def secret():
+        return {"ok": True}
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app, client=("203.0.113.9", 5000)),
+        base_url="http://test",
+    ) as client:
+        started = time.perf_counter()
+        request_task = asyncio.create_task(client.get("/api/secret"))
+        await asyncio.sleep(0.02)
+        elapsed = time.perf_counter() - started
+        response = await request_task
+
+    assert response.status_code == 200
+    assert elapsed < 0.15
+
+
+async def test_main_websocket_slow_access_check_keeps_event_loop_responsive(monkeypatch):
+    from streaming import ws as websocket_routes
+
+    access = RemoteAccessService(MemoryConfig())
+
+    def slow_required():
+        time.sleep(0.25)
+        return True
+
+    monkeypatch.setattr(access, "access_password_required", slow_required)
+    monkeypatch.setattr(websocket_routes, "_main", lambda: SimpleNamespace(remote_access_service=access))
+    monkeypatch.setattr(websocket_routes, "desktop_websocket_allowed", lambda _ws: True)
+    app = FastAPI()
+    websocket_routes.register_websocket_routes(app)
+    endpoint = next(route.endpoint for route in app.routes if route.path == "/ws")
+    ws = SimpleNamespace(
+        headers={}, cookies={}, query_params={},
+        client=SimpleNamespace(host="203.0.113.9"),
+        close=AsyncMock(),
+    )
+
+    started = time.perf_counter()
+    request_task = asyncio.create_task(endpoint(ws))
+    await asyncio.sleep(0.02)
+    elapsed = time.perf_counter() - started
+    await request_task
+
+    ws.close.assert_awaited_once_with(code=4401, reason="remote access locked")
+    assert elapsed < 0.15
+
+
 async def test_remote_access_guard_is_open_when_no_password_is_set():
     access = RemoteAccessService(MemoryConfig())
     app = FastAPI()
@@ -278,7 +446,11 @@ def test_local_user_identity_is_attached_to_messages_and_live_events(monkeypatch
 
     assert current_actor_message_fields() == {
         "author_id": "device-a",
+        "author_username": "电脑 A 使用者",
         "author_name": "电脑 A 使用者",
+        "author_type": "user",
+        "initiated_by_user_id": "device-a",
+        "initiated_by_username": "电脑 A 使用者",
         "author_device_id": "device-a",
         "author_device_name": "电脑 A",
     }
@@ -1203,6 +1375,14 @@ async def test_proxy_middleware_forwards_existing_api_when_project_is_remote():
     assert forwarded.path == "/api/sessions"
     assert forwarded.query["project_id"] == "remote:abc"
 
+    app.state.gateway_client = type('ManagedGateway', (), {'managed_config': object()})()
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        managed_response = await client.get("/api/sessions?project_id=remote%3Aabc")
+    assert managed_response.status_code == 403
+    assert len(manager.requests) == 1
+
 
 async def test_proxy_middleware_keeps_remote_scope_for_html_relative_assets():
     config = MemoryConfig()
@@ -1484,6 +1664,10 @@ async def test_client_applies_remote_project_updates_and_forwards_status_events(
         await asyncio.sleep(0.001)
 
     assert registry.list_public()[0]["workflows"][0]["running"] is True
+    stored = next(item for item in config.get("remote_projects") if item["id"] == project["id"])
+    assert "steps" not in stored
+    assert "workflows" not in stored
+    assert stored["credential"] == "issued-secret"
     status_event = next(
         event for event in events if event.get("name") == "workstep.status"
     )

@@ -44,6 +44,8 @@ export interface FloatingMenuProps {
   icon?: 'terminal' | 'sparkles' | 'sliders-horizontal' | 'image' | 'shield'
   width?: number
   title?: string
+  /** Show a filter input. Defaults to true when there are more than 7 options. */
+  searchable?: boolean
 }
 
 export function useFloatingMenu() {
@@ -55,6 +57,15 @@ export function useFloatingMenu() {
   }
   const close = () => setAnchor(null)
   return { anchor, openFrom, close }
+}
+
+/** Case-insensitive substring match over label + description + value. */
+export function filterMenuOptions(options: FloatingMenuOption[], query: string) {
+  const normalized = query.trim().toLowerCase()
+  if (!normalized) return options
+  return options.filter((option) =>
+    `${option.label} ${option.description ?? ''} ${option.value}`.toLowerCase().includes(normalized),
+  )
 }
 
 export default function FloatingMenu({
@@ -69,11 +80,15 @@ export default function FloatingMenu({
   icon,
   width = 240,
   title,
+  searchable,
 }: FloatingMenuProps) {
   const compact = useCompactLayout()
   const { t } = useI18n()
   const menuRef = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState({ left: 0, top: 0 })
+  const [query, setQuery] = useState('')
+  const showSearch = searchable ?? options.length > 7
+  const visibleOptions = filterMenuOptions(options, query)
 
   useLayoutEffect(() => {
     if (compact) return
@@ -108,7 +123,7 @@ export default function FloatingMenu({
       }
     }
     setPosition({ left, top })
-  }, [anchor, options.length, width, side, compact])
+  }, [anchor, options.length, visibleOptions.length, showSearch, width, side, compact])
 
   useLayoutEffect(() => {
     if (compact) return
@@ -146,7 +161,21 @@ export default function FloatingMenu({
       onMouseLeave={() => onHoverChange?.(false)}
     >
       {title && <div className="chat-input-menu-label">{title}</div>}
-      {options.map((option) => {
+      {showSearch && (
+        <label className="chat-input-menu-search" onMouseDown={(event) => event.stopPropagation()}>
+          <Icon name="search" size={13} strokeWidth={2} />
+          <input
+            autoFocus
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t('common.searchOptions')}
+            aria-label={t('common.searchOptions')}
+          />
+        </label>
+      )}
+      <div className="chat-input-menu-list" role="listbox">
+      {visibleOptions.map((option) => {
         const selected = option.value === value
         return (
           <button
@@ -188,6 +217,10 @@ export default function FloatingMenu({
           </button>
         )
       })}
+      {visibleOptions.length === 0 && (
+        <div className="chat-input-menu-empty">{t('common.noMatchingOptions')}</div>
+      )}
+      </div>
     </div>
   )
   if (compact) return <MobileSheet open title={title || t('common.select')} onClose={onClose}>{menu}</MobileSheet>

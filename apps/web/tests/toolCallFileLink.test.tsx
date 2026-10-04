@@ -1,5 +1,8 @@
+import { installDomEnvironment } from './helpers/domEnv.ts'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { act } from 'react'
+import { createRoot } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import ToolCallRow from '../src/components/ToolCallRow.tsx'
@@ -184,7 +187,7 @@ test('search tool targets stay plain text even with a project', () => {
   assert.doesNotMatch(html, /markdown-file-link/)
 })
 
-test('process trace resolves tool file targets when a project is available', () => {
+test('process trace reveals tool file links after expanding the timeline', async () => {
   const events = [
     {
       type: 'tool_use',
@@ -193,13 +196,29 @@ test('process trace resolves tool file targets when a project is available', () 
     { type: 'tool_result', data: { tool_use_id: 'tool-1', content: 'file body' } },
   ]
 
-  // running → disclosure 初始展开；折叠时 body 不渲染（巨型 trace 零 DOM）
-  const withProject = renderRow(
-    <ProcessTrace events={events as never} projectId="project-1" running />,
-  )
-  assert.match(withProject, /class="markdown-file-link"/)
-  assert.match(withProject, />example\.tsx</)
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(
+      <I18nProvider><ProcessTrace events={events as never} projectId="project-1" running /></I18nProvider>,
+    ))
+    assert.doesNotMatch(container.innerHTML, /markdown-file-link/)
+    assert.equal(container.querySelector('.process-trace-session-summary')?.getAttribute('aria-expanded'), 'false')
 
-  const withoutProject = renderRow(<ProcessTrace events={events as never} running />)
-  assert.doesNotMatch(withoutProject, /markdown-file-link/)
+    await act(async () => {
+      (container.querySelector('.process-trace-session-summary') as HTMLElement).click()
+    })
+    assert.match(container.innerHTML, /class="markdown-file-link"/)
+    assert.match(container.innerHTML, />example\.tsx</)
+
+    await act(async () => root.render(
+      <I18nProvider><ProcessTrace events={events as never} running /></I18nProvider>,
+    ))
+    assert.doesNotMatch(container.innerHTML, /markdown-file-link/)
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
 })

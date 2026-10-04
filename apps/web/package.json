@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:gateway-share": "tsc -b && vite build --mode gateway-share",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "node --loader ./scripts/test-loader.mjs --test tests/*.test.ts tests/*.test.tsx tests/*.test.mjs"

@@ -7,18 +7,29 @@ from pathlib import Path
 
 from models import StepSupplement
 from models.task import Task
-from services.artifact_rounds import select_upstream_round, step_round_dir
+from services.artifact_rounds import iter_artifact_rounds, select_upstream_round, step_round_dir
+from services.git.task_workspace import TaskGitWorkspace
 from services.pipeline import Step
 
 # Config path relative to this file
 _OUTPUT_TYPES_PATH = Path(__file__).resolve().parent.parent / "data" / "output-types.json"
 _DEFAULT_CONSTRAINT = "Generic UTF-8 text; clear structure and directly readable."
-_OUTPUT_GUIDANCE = "Decide from the step requirements and available context whether outputs are ready. If information is insufficient, you may omit artifacts or leave them empty; do not invent filler or placeholders just to satisfy the output list. Explain the reason in your reply. Generated artifacts must keep their declared names, types, and paths."
+_OUTPUT_GUIDANCE = (
+    "Create only outputs supported by the requirements and available information. "
+    "If an output is not ready, omit it and explain why; do not create placeholders. "
+    "Write each generated artifact at its declared path."
+)
 
 # System prompt injected at the start of every step
 SYSTEM_PROMPT = """You are executing one step in a WorkStep workflow.
-Work in the current project root and complete only the step requirements.
-When an output specification is present, follow its artifact contract."""
+Work from the project root and follow the step requirements.
+
+When a Task Git workspace is provided:
+The engine still starts in the project root. Run Git commands inside the relevant
+worktree child directory; add only repositories needed by this task.
+Use project-relative paths in instructions and scripts, never container absolute paths.
+If creating a worktree with Git, place it under the provided workspace directory and use
+git worktree add --relative-paths so the checkout also works at the host path."""
 
 _STEP_TEMPLATE_VARIABLE = re.compile(
     r"\{([a-z][a-z0-9_]*)\}|｛([a-z][a-z0-9_]*)｝",
@@ -30,6 +41,7 @@ def render_step_prompt(
     template: str,
     task: Task,
     step: Step,
+    worktrees_path: str,
     trigger_name: str = "",
 ) -> str:
     """Render supported task and step variables in a step prompt template."""
@@ -43,9 +55,7 @@ def render_step_prompt(
         "task_description": task.description or "",
         "step_name": step.label or "",
         "step_key": step.key or "",
-        "worktrees": (
-            f".workstep/artifacts/{task.workflow_id or 'default'}/{task.id}/.worktrees"
-        ),
+        "worktrees": worktrees_path,
     }
 
     def replace(match: re.Match[str]) -> str:
@@ -102,6 +112,7 @@ def assemble_prompt(
     input_rounds: dict[str, int] | None = None,
     input_snapshot: dict | None = None,
     trigger_name: str = "",
+    separate_instructions: bool = False,
 ) -> str:
     """Assemble the full prompt for a pipeline step.
 
@@ -111,9 +122,11 @@ def assemble_prompt(
     3. Step-specific prompt
     4. User supplementary input
     """
-    parts = [SYSTEM_PROMPT]
+    parts = [] if separate_instructions else [SYSTEM_PROMPT]
 
-    workspace_context = _task_git_workspace_context(task, artifacts_dir)
+    workspace_context = _task_git_workspace_context(
+        task, artifacts_dir, include_directory=not separate_instructions,
+    )
     if workspace_context:
         parts.append(f"## Task Git workspace\n{workspace_context}")
 
@@ -122,12 +135,11 @@ def assemble_prompt(
         parts.append(f"## Project memory\n{memory}")
 
     task_title = str(task.title or "").strip()
-    if task_title:
-        parts.append(f"## Task title\n{task_title}")
-
     task_description = _task_description_for_prompt(task)
-    if task_description:
-        parts.append(f"## Task description\n{task_description}")
+    if task_title or task_description:
+        parts.append("## Task\n" + "\n".join(
+            value for value in (task_title, task_description) if value
+        ))
 
     if task.input_manifest_json:
         try:
@@ -153,6 +165,11 @@ def assemble_prompt(
         out_dir,
         task.cwd or artifacts_dir.parent.parent,
     )
+    previous_outputs = _format_previous_outputs(
+        task, step, artifacts_dir, artifact_round,
+    )
+    if previous_outputs:
+        parts.append(previous_outputs)
     if input_snapshot is not None:
         formatted_snapshot = _format_input_snapshot(
             input_snapshot,
@@ -178,9 +195,10 @@ def assemble_prompt(
 
     # Step prompt
     if step.prompt:
+        worktrees_path = step_worktrees_prompt_path(task, artifacts_dir)
         parts.append(
             "## Step requirements\n"
-            + render_step_prompt(step.prompt, task, step, trigger_name)
+            + render_step_prompt(step.prompt, task, step, worktrees_path, trigger_name)
         )
 
     supplements = [
@@ -244,6 +262,39 @@ def _relative_prompt_path(path: str | Path, base_dir: str | Path) -> str:
         return str(path)
 
 
+def _format_previous_outputs(
+    task: Task, step: Step, artifacts_dir: Path, artifact_round: int | None,
+) -> str:
+    """Point a later execution at the latest existing round of this step."""
+    if artifact_round is None or artifact_round <= 1:
+        return ""
+    previous = max(
+        (
+            item for item in iter_artifact_rounds(
+                artifacts_dir, task.workflow_id, task.id, step.key,
+            ) if item.round < artifact_round
+        ),
+        key=lambda item: item.round,
+        default=None,
+    )
+    if previous is None:
+        return ""
+    path = _relative_prompt_path(
+        previous.path, task.cwd or artifacts_dir.parent.parent,
+    )
+    return (
+        f"## Previous outputs\n`{path}/`\n"
+        "Review the current inputs and the previous round directory. "
+        "For each declared current path: "
+        "needed and unaffected, copy the file verbatim from the previous round; "
+        "needed and affected, write the revised full file (not a diff); "
+        "no longer needed, write nothing (do not create empty/placeholder files). "
+        "Never modify files in the previous round directory. "
+        "The current round directory must be self-contained: "
+        "a consumer reading only the current paths gets the complete result."
+    )
+
+
 def _format_external_inputs(inputs: list[dict], base_dir: str | Path) -> str:
     """Render dispatched artifacts as useful inputs, hiding internal lineage IDs."""
     blocks: list[str] = []
@@ -251,29 +302,17 @@ def _format_external_inputs(inputs: list[dict], base_dir: str | Path) -> str:
         if not isinstance(item, dict) or not item.get("path"):
             continue
         name = str(item.get("name") or Path(str(item["path"])).name or "artifact")
-        lines = [f"### Input: {name}"]
-        if item.get("source_step_key"):
-            lines.append(f"- Source step: `{item['source_step_key']}`")
-        if item.get("source_round") is not None:
-            lines.append(f"- Source round: {item['source_round']}")
-        lines.append(
-            f"- Path: `{_relative_prompt_path(item['path'], base_dir)}`"
+        blocks.append(
+            f"- {name}: `{_relative_prompt_path(item['path'], base_dir)}`"
         )
-        blocks.append("\n".join(lines))
     if not blocks:
         return ""
-    return "## Upstream task inputs\n" + "\n\n".join(blocks)
+    return "## Upstream task inputs\n" + "\n".join(blocks)
 
 
 def _format_input_snapshot(snapshot: dict, base_dir: str | Path) -> str:
     """Render runtime inputs as a semantic contract, not graph internals."""
-    execution_type = str(snapshot.get("execution_type") or "forward")
-    reason = {
-        "initial": "initial_execution",
-        "forward": "upstream_ready",
-        "feedback": "feedback_revision",
-    }.get(execution_type, execution_type)
-    lines = ["## Step execution context", f"Execution reason: `{reason}`"]
+    lines = ["## Inputs"]
     has_input = False
     for port in snapshot.get("ports", []):
         if not isinstance(port, dict):
@@ -284,10 +323,6 @@ def _format_input_snapshot(snapshot: dict, base_dir: str | Path) -> str:
         index = port.get("port")
         name = str(port.get("name") or f"input-{index}")
         status = str(port.get("status") or "inactive")
-        lines.extend([
-            "",
-            f"### Input: {name}",
-        ])
         sources = port.get("sources") or []
         if not sources:
             availability = {
@@ -297,32 +332,21 @@ def _format_input_snapshot(snapshot: dict, base_dir: str | Path) -> str:
                 ),
                 "inactive": "No artifact is available for this input in this execution.",
             }.get(status, "No artifact is available for this input.")
-            lines.append(f"- Availability: {availability}")
+            lines.append(f"- {name}: {availability}")
             continue
         for source in sources:
             if not isinstance(source, dict):
                 continue
-            if source.get("step"):
-                lines.append(f"- Source step: `{source['step']}`")
-            if source.get("round") is not None:
-                lines.append(f"- Source round: {source['round']}")
-            if source.get("name"):
-                lines.append(f"- Artifact: {source['name']}")
             if source.get("path"):
                 if source.get("is_dir") or str(source.get("type") or "").lower() == "directory":
                     lines.append(
-                        "- Directory: `"
-                        f"{_relative_prompt_path(source['path'], base_dir)}`"
-                    )
-                    lines.append(
-                        "- Usage: Inspect this directory and read the files required for this step."
+                        f"- {name} (directory): `{_relative_prompt_path(source['path'], base_dir)}`; "
+                        "inspect the files needed for this step."
                     )
                 else:
-                    lines.append(
-                        f"- Path: `{_relative_prompt_path(source['path'], base_dir)}`"
-                    )
+                    lines.append(f"- {name}: `{_relative_prompt_path(source['path'], base_dir)}`")
             if source.get("kind") == "dashed":
-                lines.append("- Purpose: revise the affected work using this feedback artifact.")
+                lines.append("  Use this feedback to revise the affected outputs.")
     return "\n".join(lines) if has_input else ""
 
 
@@ -378,17 +402,25 @@ def assemble_followup_prompt(
         task.cwd or artifacts_dir.parent.parent,
     )
 
+    previous_outputs = _format_previous_outputs(
+        task, step, artifacts_dir, artifact_round,
+    )
+    if previous_outputs:
+        parts.append(previous_outputs)
+
+    if input_snapshot is not None:
+        feedback_inputs = _format_retry_feedback_inputs(
+            input_snapshot,
+            task.cwd or artifacts_dir.parent.parent,
+        )
+        if feedback_inputs:
+            parts.append(feedback_inputs)
+
     output_ports = _active_output_ports(step, input_snapshot)
     if output_ports:
-        parts.append(
-            _format_output_specs(
-                [step.outputs[index] for index in output_ports],
-                prompt_out_dir,
-                step.outgoing_connections,
-                heading="Artifact requirements",
-                output_ports=output_ports,
-            )
-        )
+        parts.append(_format_retry_output_paths(
+            [step.outputs[index] for index in output_ports], prompt_out_dir,
+        ))
 
     return "\n\n".join(parts)
 
@@ -400,6 +432,7 @@ def assemble_retry_prompt(
     input_snapshot: dict,
     artifact_round: int | None = None,
     previous_prompt: str | None = None,
+    separate_instructions: bool = False,
 ) -> str:
     """Build the incremental contract for a resumed review/feedback revision.
 
@@ -417,25 +450,38 @@ def assemble_retry_prompt(
         "## Step execution update\n"
         "Continue in the existing step session and revise the previous result."
     ]
+    previous_outputs = _format_previous_outputs(
+        task, step, artifacts_dir, artifact_round,
+    )
+    if previous_outputs:
+        parts.append(previous_outputs)
     if previous_prompt is not None:
         previous_workspace = _prompt_section(previous_prompt, "Task Git workspace")
-        current_workspace = _task_git_workspace_context(task, artifacts_dir)
+        current_workspace = _task_git_workspace_context(
+            task, artifacts_dir, include_directory=not separate_instructions,
+        ).strip()
+        if separate_instructions and "Attached repositories:" in previous_workspace:
+            # Legacy input snapshots also contain the stable directory. Only
+            # compare the mutable repositories when rules/path are separate.
+            previous_workspace = "Attached repositories:" + previous_workspace.split(
+                "Attached repositories:", 1,
+            )[1]
         if previous_workspace != current_workspace:
             parts.append(
                 _format_changed_context("Task Git workspace", current_workspace)
             )
 
-        previous_title = _prompt_section(previous_prompt, "Task title")
-        current_title = str(task.title or "").strip()
-        if previous_title != current_title:
-            parts.append(_format_changed_context("Task title", current_title))
-
-        previous_description = _prompt_section(previous_prompt, "Task description")
-        current_description = _task_description_for_prompt(task)
-        if previous_description != current_description:
-            parts.append(
-                _format_changed_context("Task description", current_description)
-            )
+        previous_task = _prompt_section(previous_prompt, "Task")
+        if not previous_task:
+            previous_task = "\n".join(value for value in (
+                _prompt_section(previous_prompt, "Task title"),
+                _prompt_section(previous_prompt, "Task description"),
+            ) if value)
+        current_task = "\n".join(value for value in (
+            str(task.title or "").strip(), _task_description_for_prompt(task),
+        ) if value)
+        if previous_task != current_task:
+            parts.append(_format_changed_context("Task", current_task))
 
     feedback_inputs = _format_retry_feedback_inputs(
         input_snapshot,
@@ -464,9 +510,11 @@ def _prompt_section(prompt: str, heading: str) -> str:
         return ""
     content = prompt[match.end():]
     next_section = re.search(
-        r"(?m)^## (?:Project memory|Task description|Upstream task inputs|Step execution context|"
+        r"(?m)^## (?:Project memory|Task|Task title|Task description|"
+        r"Previous outputs|Inputs|Step execution context|Output specification|"
+        r"Upstream task inputs|"
         r"Upstream artifacts \(completed; may be referenced\)|Step requirements|"
-        r"User-confirmed step supplements|Output specification|User input|"
+        r"User-confirmed step supplements|Outputs|User input|"
         r"Artifact output directory)\s*$",
         content,
     )
@@ -479,12 +527,34 @@ def _format_changed_context(heading: str, value: str) -> str:
     return f"## Updated {heading}\nThe {heading.lower()} was cleared."
 
 
-def _task_git_workspace_context(task: Task, artifacts_dir: Path) -> str:
+def _task_git_workspace_path(task: Task, artifacts_dir: Path) -> Path:
+    return TaskGitWorkspace.root(
+        task.cwd or artifacts_dir.parent.parent,
+        task.id,
+        task.workflow_id or "default",
+    )
+
+
+def step_worktrees_prompt_path(task: Task, artifacts_dir: Path) -> str:
+    """Return the task workspace path as seen from the engine cwd."""
+    return _relative_prompt_path(
+        _task_git_workspace_path(task, artifacts_dir),
+        task.cwd or artifacts_dir.parent.parent,
+    )
+
+
+
+def assemble_step_system_prompt(task: Task, artifacts_dir: Path) -> str:
+    """Bind the stable task workspace path to the step's fixed Git rules."""
+    workspace_path = step_worktrees_prompt_path(task, artifacts_dir)
+    return f"{SYSTEM_PROMPT}\n\n## Task Git workspace\nWorkspace directory: {workspace_path}."
+
+
+def _task_git_workspace_context(
+    task: Task, artifacts_dir: Path, *, include_directory: bool = True,
+) -> str:
     """Describe attached task worktrees using paths relative to engine cwd."""
-    workspace = artifacts_dir / (task.workflow_id or "default") / task.id / ".worktrees"
-    legacy_workspace = artifacts_dir.parent / "worktrees" / task.id
-    if legacy_workspace.is_dir() and any(legacy_workspace.iterdir()):
-        workspace = legacy_workspace
+    workspace = _task_git_workspace_path(task, artifacts_dir)
     if not workspace.is_dir():
         return ""
     aliases = sorted(
@@ -495,15 +565,8 @@ def _task_git_workspace_context(task: Task, artifacts_dir: Path) -> str:
         workspace,
         task.cwd or artifacts_dir.parent.parent,
     )
-    return (
-        f"Workspace directory: {workspace_path}. Attached repositories: "
-        f"{', '.join(aliases) if aliases else '(none yet)'}. "
-        "The engine still starts in the project root. Run Git commands inside the relevant "
-        "worktree child directory; add only repositories needed by this task. "
-        "Use project-relative paths in instructions and scripts, never container absolute paths. "
-        "If creating a worktree with Git, place it under this workspace directory and use "
-        "git worktree add --relative-paths so the checkout also works at the host path."
-    )
+    directory = f"Workspace directory: {workspace_path}. " if include_directory else ""
+    return f"{directory}Attached repositories: {', '.join(aliases) if aliases else '(none yet)'}."
 
 
 def _format_retry_feedback_inputs(
@@ -534,8 +597,8 @@ def _format_retry_output_paths(outputs: list[dict], out_base: str | Path) -> str
     the unchanged output format contract already present in that session.
     """
     lines = [
-        "## Current-round output destinations",
-        "Output names and formats are unchanged; write this round's results to these paths:",
+        "## Current outputs",
+        "Write this round's results to these paths:",
     ]
     for index, output in enumerate(outputs, 1):
         name = output.get("name", f"artifact-{index}")
@@ -645,25 +708,23 @@ def _format_output_specs(
     out_base: str | Path,
     outgoing_connections: list[dict] | None = None,
     *,
-    heading: str = "Output specification",
+    heading: str = "Outputs",
     output_ports: list[int] | None = None,
 ) -> str:
     """Describe optional outputs once, including their exact destination."""
     lines = [f"## {heading}"]
     lines.append(_OUTPUT_GUIDANCE)
-    lines.append("The list below defines each artifact's format and exact output path when generated:\n")
     out_base = str(out_base)
 
     for i, out in enumerate(outputs, 1):
         name = out.get("name", f"artifact-{i}")
         otype = out.get("type", "file")
         constraint = OUTPUT_TYPE_CONSTRAINTS.get(otype, _DEFAULT_CONSTRAINT)
-        lines.append(f"{i}. **{name}**")
-        lines.append(f"   - type: `{otype}`")
-        lines.append(f"   - format requirement: {constraint}")
         path_label, output_path = _output_path(out_base, name, otype)
         suffix = "/" if path_label == "output directory" else ""
-        lines.append(f"   - {path_label}: `{output_path}{suffix}`")
+        lines.append(
+            f"- **{name}** — {otype}; {constraint}; {path_label}: `{output_path}{suffix}`"
+        )
         output_port = output_ports[i - 1] if output_ports is not None else i - 1
         routes = [
             connection

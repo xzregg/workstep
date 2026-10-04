@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { projectApi, remoteProjectApi, workflowApi, type Project, type WorkflowDetail } from '../api/client'
 import { zhCNT } from '../i18n'
+import { useGatewaySessionStore } from './gatewaySessionStore'
 
 const hasWhitespace = (s: string) => /\s/.test(s)
 
@@ -64,7 +65,15 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
               activeProject = state.activeProject
             }
           }
-          return { projects, activeProject, loading: false }
+          const boundProjectId = useGatewaySessionStore.getState().session?.host_project_id
+          if (boundProjectId && activeProject?.id !== boundProjectId) {
+            activeProject = projects.find(p => p.id === boundProjectId) ?? null
+          }
+          const defaultWorkflow = activeProject?.workflows?.find(w => w.is_default)
+            ?? activeProject?.workflows?.[0]
+          return { projects, activeProject, loading: false,
+            ...(boundProjectId && state.activeProject?.id !== boundProjectId
+              ? { activeWorkflowId: defaultWorkflow?.id ?? null } : {}) }
         })
       } catch {
         set({ loading: false })

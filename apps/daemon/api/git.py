@@ -1,13 +1,29 @@
-"""Global Git endpoints; never forwarded through a remote-project channel."""
+"""Git endpoints with project ownership checks for remote requests."""
 import asyncio
 import time
 from pydantic import BaseModel, Field, field_validator
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from services.git import git_service
 from services.git.command import GitError
 from services.git.task_workspace import TaskGitWorkspace
 
-router = APIRouter(prefix='/api/git', tags=['git'])
+async def project_scope(request: Request, scoped_project: str | None = Query(None, alias='project_id')):
+    if not scoped_project:
+        return
+    path = request.url.path
+    if path.startswith('/api/git/projects/'):
+        if request.path_params.get('project_id') != scoped_project:
+            raise HTTPException(403, 'Git 项目不匹配。')
+        return
+    if path.startswith('/api/git/worktrees/') and not path.endswith('/identity/global') and '/credentials' not in path:
+        directory = git_service.directories.get(request.path_params.get('id'))
+        if not directory or scoped_project not in directory['project_ids']:
+            raise HTTPException(403, 'Git 工作目录不属于当前项目。')
+        return
+    raise HTTPException(403, '远程项目不能修改全局 Git 设置。')
+
+
+router = APIRouter(prefix='/api/git', tags=['git'], dependencies=[Depends(project_scope)])
 
 
 def _task_project(project_id: str):
@@ -55,7 +71,6 @@ class RecoveryRequest(BaseModel):
 async def task_workspace(project_id: str, task_id: str):
     project = _task_project(project_id)
     task = await _task_exists(project_id, task_id)
-    await project_repositories(project_id)
     return await result(TaskGitWorkspace(git_service, task['workflow_id']).list(project.path, task_id))
 
 
@@ -63,7 +78,6 @@ async def task_workspace(project_id: str, task_id: str):
 async def open_task_workspace(project_id: str, task_id: str):
     project = _task_project(project_id)
     task = await _task_exists(project_id, task_id)
-    await project_repositories(project_id)
     return await result(TaskGitWorkspace(git_service, task['workflow_id']).ensure(project.path, task_id, creator_name=task['creator_name']))
 
 
@@ -71,7 +85,6 @@ async def open_task_workspace(project_id: str, task_id: str):
 async def delete_task_workspace(project_id: str, task_id: str, force: bool = False):
     project = _task_project(project_id)
     task = await _task_exists(project_id, task_id, editable=True)
-    await project_repositories(project_id)
     return await result(TaskGitWorkspace(git_service, task['workflow_id']).delete(project.path, task_id, force=force))
 
 
@@ -79,7 +92,6 @@ async def delete_task_workspace(project_id: str, task_id: str, force: bool = Fal
 async def add_task_worktree(project_id: str, task_id: str, body: AddTaskWorktreeRequest):
     project = _task_project(project_id)
     task = await _task_exists(project_id, task_id)
-    await project_repositories(project_id)
     return await result(TaskGitWorkspace(git_service, task['workflow_id']).add(
         project.path, task_id, body.repository_id, body.alias, body.base_ref, body.branch_name,
         creator_name=task['creator_name'],
@@ -87,11 +99,10 @@ async def add_task_worktree(project_id: str, task_id: str, body: AddTaskWorktree
 
 
 @router.delete('/projects/{project_id}/tasks/{task_id}/worktrees/{alias}')
-async def remove_task_worktree(project_id: str, task_id: str, alias: str):
+async def remove_task_worktree(project_id: str, task_id: str, alias: str, force: bool = False):
     project = _task_project(project_id)
     task = await _task_exists(project_id, task_id, editable=True)
-    await project_repositories(project_id)
-    return await result(TaskGitWorkspace(git_service, task['workflow_id']).remove(project.path, task_id, alias))
+    return await result(TaskGitWorkspace(git_service, task['workflow_id']).remove(project.path, task_id, alias, force=force))
 
 
 @router.post('/scans')
@@ -112,16 +123,18 @@ async def repositories():
 
 
 @router.get('/projects/{project_id}/repositories')
-async def project_repositories(project_id: str):
+async def project_repositories(project_id: str, refresh: bool = False):
     _task_project(project_id)
-    if git_service.snapshot['scanned_at'] is None or time.time() - git_service.snapshot['scanned_at'] > 30:
+    if refresh or git_service.snapshot['scanned_at'] is None or time.time() - git_service.snapshot['scanned_at'] > 30:
         job = await git_service.start_scan()
         while job['state'] == 'running':
             await asyncio.sleep(0.05)
         if job['state'] != 'complete':
             raise HTTPException(503, 'Git 仓库扫描失败，请重试。')
-    return {'repositories': [
-        {'id': repo['id'], 'name': repo['name'], 'projects': repo['projects'], 'worktrees': repo['worktrees']}
+    snapshot = git_service.snapshot
+    return {**snapshot, 'projects': [p for p in snapshot['projects'] if p['id'] == project_id],
+        'errors': [e for e in snapshot['errors'] if e.get('project_id') == project_id], 'repositories': [
+        {**repo, 'projects': [p for p in repo['projects'] if p['id'] == project_id]}
         for repo in git_service.snapshot['repositories']
         if any(item['id'] == project_id for item in repo['projects'])
     ]}

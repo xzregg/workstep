@@ -51,6 +51,9 @@ def _local_project_summary(project_id: str) -> dict[str, Any] | None:
 
 
 _SUBSCRIBE_KEYS = ("task_ids", "status_only_task_ids", "session_ids", "channels")
+_PROJECT_EVENT_CHANNELS = frozenset({
+    "execution", "coordinator", "review", "archive_experience", "session_chat", "channel_bots",
+})
 
 
 @dataclass
@@ -116,6 +119,18 @@ def _make_subscription_predicate(sub: WsSubscription):
     """返回基于当前订阅状态的过滤谓词（供 EventBus 使用）。"""
 
     def predicate(event: dict[str, Any]) -> bool:
+        if sub.project_id:
+            if event.get("project_id") != sub.project_id:
+                return False
+            channel = event.get("channel")
+            if channel is not None and channel not in _PROJECT_EVENT_CHANNELS:
+                return False
+            if channel in ("review", "archive_experience") and not event.get("task_id"):
+                return False
+            if channel == "session_chat":
+                return bool(sub.active and event.get("session_id") in sub.session_ids)
+            if event.get("session_id") and not event.get("task_id"):
+                return False
         return matches_subscription(event, sub)
 
     return predicate
@@ -131,6 +146,20 @@ async def _handle_client_message(
     try:
         msg = json.loads(raw)
         msg_type = msg.get("type")
+        if msg_type == "ping":
+            if queue is not None:
+                try:
+                    queue.put_nowait({"type": "pong", "nonce": msg.get("nonce")})
+                except asyncio.QueueFull:
+                    logger.warning("WebSocket heartbeat queue full")
+            return
+
+        # Project sessions may narrow their feed, but never select another
+        # project or invoke global intervention/task controls.
+        scoped_project_id = subscription.project_id if subscription is not None else ""
+        if scoped_project_id and msg_type != "subscribe":
+            logger.warning("Project WebSocket command denied: %s", msg_type)
+            return
 
         if msg_type == "subscribe":
             if subscription is None or queue is None:
@@ -141,11 +170,11 @@ async def _handle_client_message(
             subscription.status_only_task_ids = new_sub.status_only_task_ids
             subscription.session_ids = new_sub.session_ids
             subscription.channels = new_sub.channels
-            subscription.project_id = new_sub.project_id
+            subscription.project_id = scoped_project_id or new_sub.project_id
             subscription.active = new_sub.active
             main.event_bus.set_filter(queue, _make_subscription_predicate(subscription))
             project_id = str(msg.get("project_id") or "")
-            if main.remote_project_registry.get(project_id) is not None:
+            if not scoped_project_id and main.remote_project_registry.get(project_id) is not None:
                 try:
                     await main.remote_project_client.subscribe(project_id, msg)
                 except Exception as exc:
@@ -227,12 +256,18 @@ def register_websocket_routes(app: FastAPI) -> None:
         if not desktop_websocket_allowed(ws):
             await ws.close(code=4401, reason="desktop authentication required")
             return
-        if not websocket_access_allowed(ws, main.remote_access_service):
+        if not await asyncio.to_thread(
+            websocket_access_allowed, ws, main.remote_access_service
+        ):
             await ws.close(code=4401, reason="remote access locked")
             return
         await ws.accept()
-        queue = main.event_bus.subscribe()
-        subscription = WsSubscription()
+        actor = ws.scope.get("managed_actor")
+        project_id = actor.project_id if actor is not None else None
+        subscription = WsSubscription(project_id=project_id or "")
+        queue = main.event_bus.subscribe(
+            _make_subscription_predicate(subscription) if project_id else None
+        )
         try:
             while True:
                 bus_task = asyncio.create_task(queue.get())

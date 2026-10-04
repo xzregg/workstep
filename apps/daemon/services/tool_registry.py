@@ -224,6 +224,46 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         body_params=("repository_id", "alias", "base_ref", "branch_name"),
     ),
     WorkstepTool(
+        name="workstep_list_channel_bots", description="List configured channel robots without secrets.",
+        method="GET", path="/api/channel-bots",
+    ),
+    WorkstepTool(
+        name="workstep_list_channel_sessions", description="List active channel sessions and their exact recipients in one project.",
+        method="GET", path="/api/channel-bots/sessions",
+        parameters={"project_id": {"type": "string", "description": "project id"}},
+        required=("project_id",), query_params=("project_id",),
+    ),
+    WorkstepTool(
+        name="workstep_bind_channel_group",
+        description="Bind the current group channel session to a task in its project after the group user explicitly asks.",
+        method="POST", path="/api/channel-bots/sessions/{session_id}/bind-task",
+        parameters={
+            "session_id": {"type": "string", "description": "current channel session id from system context"},
+            "project_id": {"type": "string", "description": "project id of the current channel session"},
+            "task_id": {"type": "string", "description": "existing target task id"},
+        },
+        required=("session_id", "project_id", "task_id"), read_only=False,
+        side_effect="bind the current platform group to a task",
+        path_params=("session_id",), body_params=("project_id", "task_id"),
+    ),
+    WorkstepTool(
+        name="workstep_send_channel_message", description="Send a notification via a channel session, or bot plus user/group, only when authorized.",
+        method="POST", path="/api/channel-bots/send",
+        parameters={key: {"type": "string", "description": description} for key, description in {
+            "project_id": "project id", "text": "message text", "session_id": "existing channel session id",
+            "bot_id": "bot id for explicit recipient", "user_id": "platform user id", "group_id": "platform group id",
+        }.items()} | {"attachments": {"type": "array", "description": "image/file attachments with project-relative path and kind"}},
+        required=("project_id",), read_only=False, side_effect="send an external channel message",
+        body_params=("project_id", "text", "session_id", "bot_id", "user_id", "group_id", "attachments"),
+    ),
+    WorkstepTool(
+        name="workstep_upload_channel_attachment", description="Upload a user-authorized local attachment into a project for channel delivery.",
+        method="POST", path="/api/fs/upload/file",
+        parameters={key: {"type":"string"} for key in ("project_id", "filename", "data_url")},
+        required=("project_id", "filename", "data_url"), read_only=False, side_effect="save attachment to project uploads",
+        query_params=("project_id",), body_params=("filename", "data_url"),
+    ),
+    WorkstepTool(
         name="workstep_list_engines",
         description=(
             "List installed LLM engines and their capabilities (coordinator, "

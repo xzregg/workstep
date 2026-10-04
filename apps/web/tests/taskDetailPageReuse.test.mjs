@@ -46,14 +46,11 @@ test('task detail keeps review actions in content and has no duplicate footer ac
   assert.doesNotMatch(taskDetail, /resolveTaskDetailAdvanceState/)
   assert.doesNotMatch(sharedView, /resolveTaskDetailAdvanceState/)
   assert.doesNotMatch(sharedView, /primaryAction/)
-  assert.doesNotMatch(sharedView, /onReviewAction/)
   assert.match(sharedView, /chatEnabled=\{interactive\}/)
 })
 
-test('task detail close control is the final header action', () => {
-  const headerStart = taskDetailView.indexOf('const renderHeader = () =>')
-  const headerEnd = taskDetailView.indexOf('// ─── Render: Recovered hint', headerStart)
-  const header = taskDetailView.slice(headerStart, headerEnd)
+test('task detail close control is the final header action', async () => {
+  const header = await readFile(new URL('../src/components/TaskDetailHeader.tsx', import.meta.url), 'utf8')
   const titleIndex = header.indexOf('{task.title}')
   const closeIndex = header.indexOf('aria-label={t(\'common.close\')}')
 

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
+import { useUserSettingsStore } from '../src/stores/userSettingsStore'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import MessageMetaBar from '../src/components/MessageMetaBar'
@@ -82,7 +84,7 @@ test('manual review renders the green set-complete action beside its badge', asy
       </I18nProvider>,
     ))
     const button = [...window.document.querySelectorAll('button')]
-      .find((item) => item.textContent?.trim() === '设置完成') as HTMLButtonElement | undefined
+      .find((item) => item.textContent?.trim() === '完成步骤') as HTMLButtonElement | undefined
     assert.ok(button)
     assert.equal(button.style.color, 'var(--success)')
     await act(async () => button.click())
@@ -108,7 +110,7 @@ test('stopped automatic review can show the same set-complete action', async () 
       </I18nProvider>,
     ))
     const button = [...window.document.querySelectorAll('button')]
-      .find((item) => item.textContent?.trim() === '设置完成') as HTMLButtonElement | undefined
+      .find((item) => item.textContent?.trim() === '完成步骤') as HTMLButtonElement | undefined
     assert.ok(button)
     const summary = button.closest('.process-trace-session-summary')
     assert.ok(summary)
@@ -142,7 +144,7 @@ test('failed execution can show restart and set-complete together', async () => 
     ))
     const restart = window.document.querySelector('button[title="重启失败的消息"]') as HTMLButtonElement | null
     const complete = [...window.document.querySelectorAll('button')]
-      .find((item) => item.textContent?.trim() === '设置完成') as HTMLButtonElement | undefined
+      .find((item) => item.textContent?.trim() === '完成步骤') as HTMLButtonElement | undefined
     assert.ok(restart)
     assert.ok(complete)
     await act(async () => restart.click())
@@ -173,7 +175,7 @@ test('stopped execution can show restart and set-complete together', async () =>
     ))
     const restart = window.document.querySelector('button[title="用新会话重跑"]') as HTMLButtonElement | null
     const complete = [...window.document.querySelectorAll('button')]
-      .find((item) => item.textContent?.trim() === '设置完成') as HTMLButtonElement | undefined
+      .find((item) => item.textContent?.trim() === '完成步骤') as HTMLButtonElement | undefined
     assert.ok(restart)
     assert.ok(complete)
     await act(async () => restart.click())
@@ -181,6 +183,42 @@ test('stopped execution can show restart and set-complete together', async () =>
     assert.equal(restarted, 1)
     assert.equal(completed, 1)
   } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+
+test('mobile running messages keep captured prompt inspection visible', async () => {
+  const { window } = installDomEnvironment()
+  window.innerWidth = 390
+  const document = window.document
+  const style = document.createElement('style')
+  style.textContent = readFileSync(new URL('../src/mobile.css', import.meta.url), 'utf8')
+  document.head.appendChild(style)
+  const host = document.body.appendChild(document.createElement('div'))
+  host.className = 'chat-message-row'
+  host.setAttribute('data-thinking', 'true')
+  const root = createRoot(host)
+  const previous = useUserSettingsStore.getState().openMode
+  useUserSettingsStore.setState({ openMode: true })
+  let inspected = ''
+  try {
+    await act(async () => root.render(
+      <I18nProvider>
+        <MessageMetaBar running prompt="actual input" onViewPrompt={(value) => { inspected = value }} />
+      </I18nProvider>,
+    ))
+    const button = [...document.querySelectorAll('button')].find((item) => item.textContent?.trim() === '查看提示词')!
+    assert.ok(button)
+    assert.notEqual(window.getComputedStyle(button).display, 'none')
+    await act(async () => button.click())
+    assert.equal(inspected, 'actual input')
+    const copy = host.appendChild(document.createElement('button'))
+    copy.className = 'chat-message-action'
+    assert.equal(window.getComputedStyle(copy).display, 'none')
+  } finally {
+    await act(async () => { useUserSettingsStore.setState({ openMode: previous }) })
     await act(async () => root.unmount())
     await window.happyDOM.close()
   }

@@ -1,9 +1,12 @@
 """Behavior tests for the production workflow runtime interface."""
 
 from contextlib import nullcontext
+from pathlib import Path
 from types import SimpleNamespace
 import asyncio
 import json
+import threading
+import time
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -13,6 +16,18 @@ from engines.core.events import InternalEvent
 from models import StepRun, Task, TaskStep, WorkflowRun, init_db
 from models.fields import utc_now
 from streaming.bus import EventBus
+
+
+@pytest.fixture(autouse=True)
+def named_runtime_actor():
+    from services.remote_access import ActorSnapshot, actor_context
+
+    with actor_context(ActorSnapshot(
+        actor_id="runtime-test-user", user_name="Runtime Test User",
+        device_id="runtime-test-device", device_name="Test Device",
+        source="browser",
+    )):
+        yield
 
 
 class RuntimeFakeEngine(AcpEngineBase):
@@ -68,7 +83,7 @@ class RuntimeFakeEngine(AcpEngineBase):
     ],
 )
 def test_user_message_uses_current_task_step(statuses, expected):
-    from services.workflow_runtime import resolve_message_step_key
+    from services.workflow_start import resolve_message_step_key
 
     steps_config = {
         "steps": [
@@ -84,7 +99,7 @@ def test_user_message_uses_current_task_step(statuses, expected):
 def test_restart_closes_running_messages_from_superseded_parent(tmp_path):
     from datetime import timedelta
     from models import Message, ReviewRun
-    from services.workflow_runtime import WorkflowRuntime
+    from services.workflow_restart import create_restart_run
 
     db = init_db(str(tmp_path / "restart-messages.db"))
     try:
@@ -121,9 +136,8 @@ def test_restart_closes_running_messages_from_superseded_parent(tmp_path):
                 run_status="running", step_run_id=step_run.id,
                 position=sequence, started_at=timestamp, created_at=timestamp,
             )
-        runtime = WorkflowRuntime(EventBus(), SimpleNamespace())
-        runtime._create_restart_run(
-            task, parent, 1, "do", {"do"},
+        create_restart_run(
+            task, parent, 1, "do", {"do"}, instance_id="restart-test",
         )
         assert ReviewRun.get_by_id(review.id).status == "cancelled"
         execution = Message.get_by_id("restart-execution")
@@ -141,6 +155,7 @@ async def test_retry_failed_message_targets_only_the_latest_failed_execution(tmp
     from unittest.mock import AsyncMock
     from models import Message
     from services.project import ProjectManager
+    from services.step_message_restart import inspect_failed_message_retry
     from services.workflow_runtime import WorkflowRuntime
 
     pm = ProjectManager()
@@ -197,7 +212,7 @@ async def test_retry_failed_message_targets_only_the_latest_failed_execution(tmp
         )
     assert await runtime._run_db(
         project.id,
-        lambda _project: runtime._inspect_failed_message_retry(task.id, "latest-failure"),
+        lambda _project: inspect_failed_message_retry(task.id, "latest-failure", False),
     ) == ("do", run.id)
     with pm.activate_project(project.path):
         later_other_step.delete_instance()
@@ -498,8 +513,7 @@ async def test_runtime_persists_selected_entry_with_two_boundary_inputs(tmp_path
         await runtime.run(project.id, task.id, "")
 
         assert len(prompts) == 1
-        assert "## Task title\nDirect C" in prompts[0]
-        assert "## Task description\nDeploy the approved build" in prompts[0]
+        assert "## Task\nDirect C\nDeploy the approved build" in prompts[0]
         assert prompts[0].count(
             "Use the task title, description, dispatched inputs"
         ) == 2
@@ -717,6 +731,46 @@ async def test_restart_cancels_parallel_active_steps_and_pending_reviews(tmp_pat
         await bus.close()
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_pending_insert_batch_query_does_not_block_event_loop(
+    tmp_path, monkeypatch,
+):
+    from services import workflow_runtime as runtime_module
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    project = SimpleNamespace(id="pending-project")
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    original = runtime_module.oldest_task_pending_batch
+    entered = threading.Event()
+
+    def slow_batch(task_id):
+        entered.set()
+        time.sleep(0.15)
+        return original(task_id)
+
+    monkeypatch.setattr(runtime_module, "oldest_task_pending_batch", slow_batch)
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, ProjectManagerStub())
+    try:
+        work = asyncio.create_task(
+            runtime._consume_task_pending_inserts(project.id, "missing-task")
+        )
+        assert await asyncio.to_thread(entered.wait, 1)
+        started = time.monotonic()
+        await asyncio.sleep(0.01)
+        assert time.monotonic() - started < 0.1
+        await work
+    finally:
+        await bus.close()
         db.close()
 
 
@@ -965,7 +1019,7 @@ async def test_restart_without_parent_rejects_unusable_input_round(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_explicit_feedback_round_is_validated_and_resolved(tmp_path):
+async def test_explicit_feedback_round_is_validated_and_resolved(tmp_path, monkeypatch):
     from engines.core.registry import ENGINE_REGISTRY
     from services.artifact_rounds import step_round_dir, write_round_manifest
     from services.artifact_routing import empty_routing_state, resolve_input_snapshot
@@ -1025,9 +1079,11 @@ async def test_explicit_feedback_round_is_validated_and_resolved(tmp_path):
     original = ENGINE_REGISTRY.copy()
     ENGINE_REGISTRY["claude"] = RuntimeFakeEngine
     runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
+    from services.workflow_restart import validate_restart_input_rounds
     try:
-        feedback = runtime._validate_input_rounds(
+        feedback = validate_restart_input_rounds(
             project, task, "backend", {"test": 2},
+            current_workflow_steps=runtime._current_workflow_steps,
         )
         compiled = WorkflowDefinition.load(steps).compile().to_steps_config()
         backend = next(
@@ -1043,15 +1099,38 @@ async def test_explicit_feedback_round_is_validated_and_resolved(tmp_path):
         assert snapshot["execution_type"] == "feedback"
         assert snapshot["ports"][1]["sources"][0]["round"] == 2
         assert snapshot["ports"][1]["sources"][0]["name"] == "Backend bugs"
-        prepared = runtime._prepare_start_from_step_without_parent(
-            project, task.id, "backend", feedback_inputs=feedback,
+        from services.workflow_start import prepare_start_from_step_without_parent
+
+        prepared = prepare_start_from_step_without_parent(
+            project, task.id, "backend",
+            instance_id=runtime._leases.instance_id,
+            current_workflow_steps=runtime._current_workflow_steps,
+            feedback_inputs=feedback,
         )
         saved_state = json.loads(prepared.workflow_run.routing_state_json)
         assert saved_state["feedback_inputs"]["backend"] == feedback
         assert set(feedback) <= set(saved_state["active_edges"])
-        handle = await runtime.restart_from_step(
-            project.id, task.id, "backend", input_rounds={"test": 2},
-        )
+        from services.workflow_restart import iter_artifact_rounds
+        probing = threading.Event()
+
+        def slow_round_probe(*args, **kwargs):
+            probing.set()
+            time.sleep(0.35)
+            return iter_artifact_rounds(*args, **kwargs)
+
+        with monkeypatch.context() as patcher:
+            patcher.setattr(
+                "services.workflow_restart.iter_artifact_rounds",
+                slow_round_probe,
+            )
+            restart = asyncio.create_task(runtime.restart_from_step(
+                project.id, task.id, "backend", input_rounds={"test": 2},
+            ))
+            assert await asyncio.to_thread(probing.wait, 2)
+            heartbeat_started = time.perf_counter()
+            await asyncio.wait_for(asyncio.sleep(0), timeout=0.2)
+            assert time.perf_counter() - heartbeat_started < 0.2
+            handle = await restart
         await runtime.wait(handle)
         child = WorkflowRun.get_by_id(handle.id)
         child_state = json.loads(child.routing_state_json)
@@ -1062,16 +1141,19 @@ async def test_explicit_feedback_round_is_validated_and_resolved(tmp_path):
         assert json.loads(backend_run.input_rounds_json) == {"test": 2}
         assert json.loads(backend_run.input_snapshot_json)["execution_type"] == "feedback"
         with pytest.raises(ValueError, match="不可沿用"):
-            runtime._validate_input_rounds(
+            validate_restart_input_rounds(
                 project, task, "backend", {"test": 1},
+                current_workflow_steps=runtime._current_workflow_steps,
             )
         with pytest.raises(ValueError, match="没有可用的返工产物"):
-            runtime._validate_input_rounds(
+            validate_restart_input_rounds(
                 project, task, "backend", {"test": 3},
+                current_workflow_steps=runtime._current_workflow_steps,
             )
         with pytest.raises(ValueError, match="不是目标步骤"):
-            runtime._validate_input_rounds(
+            validate_restart_input_rounds(
                 project, task, "backend", {"unrelated": 2},
+                current_workflow_steps=runtime._current_workflow_steps,
             )
     finally:
         await runtime.shutdown()
@@ -1318,7 +1400,7 @@ async def test_rerun_upstream_with_new_artifact_restarts_previously_blocked_down
 
 
 @pytest.mark.anyio
-async def test_restart_from_step_picks_up_edited_engine(tmp_path):
+async def test_restart_from_step_picks_up_edited_engine(tmp_path, monkeypatch):
     """编辑流程更换阶段引擎后，重跑该阶段应使用新引擎而非父 run 快照。"""
     import json
 
@@ -1386,8 +1468,24 @@ async def test_restart_from_step_picks_up_edited_engine(tmp_path):
     ENGINE_REGISTRY["engine-a"] = RuntimeFakeEngine
     ENGINE_REGISTRY["engine-b"] = RuntimeFakeEngine
     runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
+    original_execute_sql = db.execute_sql
+    child_insert_started = threading.Event()
+
+    def slow_child_insert(sql, params=None, commit=None):
+        if 'INSERT INTO "workflow_runs"' in sql and not child_insert_started.is_set():
+            child_insert_started.set()
+            time.sleep(0.35)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(db, "execute_sql", slow_child_insert)
     try:
-        handle = await runtime.restart_from_step(project.id, task.id, "do")
+        restart = asyncio.create_task(runtime.restart_from_step(project.id, task.id, "do"))
+        assert await asyncio.to_thread(child_insert_started.wait, 1)
+        assert not restart.done()
+        heartbeat_started = time.perf_counter()
+        await asyncio.wait_for(asyncio.sleep(0), timeout=0.2)
+        assert time.perf_counter() - heartbeat_started < 0.2
+        handle = await restart
         await runtime.wait(handle)
 
         child = WorkflowRun.get_by_id(handle.id)
@@ -1978,7 +2076,7 @@ async def test_task_step_provider_override_hands_off_history_without_session(tmp
 
 @pytest.mark.anyio
 async def test_runtime_start_immediately_persists_user_message(tmp_path, monkeypatch):
-    """The submitted prompt is available to history before execution finishes."""
+    """Prompt persistence and slow artifact setup leave the loop responsive."""
     from models import Message
     from services.workflow_runtime import WorkflowRuntime
 
@@ -2011,8 +2109,22 @@ async def test_runtime_start_immediately_persists_user_message(tmp_path, monkeyp
         return kwargs["workflow_run"].id
 
     monkeypatch.setattr(runtime, "_execute", skip_execution)
+    mkdir_started = threading.Event()
+    original_mkdir = Path.mkdir
+
+    def slow_artifact_mkdir(path, *args, **kwargs):
+        if path.name == "artifacts":
+            mkdir_started.set()
+            time.sleep(0.2)
+        return original_mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", slow_artifact_mkdir)
     try:
-        handle = await runtime.start(project.id, task.id, "  Build it  ")
+        starting = asyncio.create_task(runtime.start(project.id, task.id, "  Build it  "))
+        assert await asyncio.wait_for(asyncio.to_thread(mkdir_started.wait), 1)
+        assert not starting.done()
+        await asyncio.wait_for(asyncio.sleep(0.01), 0.1)
+        handle = await starting
         user_message = Message.get(
             (Message.task == task) & (Message.role == "user")
         )
@@ -2022,6 +2134,7 @@ async def test_runtime_start_immediately_persists_user_message(tmp_path, monkeyp
         assert user_message.run_id == handle.id
         await runtime.wait(handle)
     finally:
+        await runtime.shutdown()
         db.close()
 
 
@@ -2234,11 +2347,21 @@ async def test_run_endpoint_reports_an_invalid_saved_workflow(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_runtime_cancels_an_active_pipeline(tmp_path):
+@pytest.mark.parametrize("action", ["task.cancel", "task.pause", "step.cancel"])
+async def test_runtime_cancels_an_active_pipeline(tmp_path, monkeypatch, action):
     """Cancellation uses the same runtime that owns the active TaskRunner."""
     from engines.core.registry import ENGINE_REGISTRY
-    from models import WorkflowRun
+    from models import ProjectAuditEvent, WorkflowRun
     from services.workflow_runtime import WorkflowRuntime
+    from services.remote_access import ActorSnapshot
+
+    monkeypatch.setattr(
+        "services.remote_access.get_effective_actor",
+        lambda: ActorSnapshot(
+            actor_id="operator-1", user_name="Operator", device_id="device-1",
+            device_name="Test device", source="local", username="operator",
+        ),
+    )
 
     class BlockingEngine(RuntimeFakeEngine):
         def __init__(self):
@@ -2294,11 +2417,47 @@ async def test_runtime_cancels_an_active_pipeline(tmp_path):
         )
         await engine.started.wait()
 
-        assert await runtime.cancel(task.id) is True
+        if action == "step.cancel":
+            write_started = threading.Event()
+            original_execute_sql = db.execute_sql
+
+            def slow_step_write(sql, *args, **kwargs):
+                if (
+                    sql.upper().startswith("UPDATE")
+                    and "taskstep" in sql
+                    and not write_started.is_set()
+                ):
+                    write_started.set()
+                    time.sleep(0.35)
+                return original_execute_sql(sql, *args, **kwargs)
+
+            monkeypatch.setattr(db, "execute_sql", slow_step_write)
+            assert await runtime.cancel_step(project.id, task.id, "req") is True
+            assert await asyncio.to_thread(write_started.wait, 1)
+            import main
+
+            async with AsyncClient(
+                transport=ASGITransport(app=main.app), base_url="http://test",
+            ) as client:
+                health = await asyncio.wait_for(
+                    client.get("/api/health"), timeout=0.2,
+                )
+            assert health.status_code == 200
+        else:
+            assert await runtime.cancel(task.id, action=action) is True
         await asyncio.wait_for(active_run, timeout=1)
 
         assert Task.get_by_id(task.id).status == "paused"
         assert WorkflowRun.get(WorkflowRun.task == task).status == "failed"
+        events = list(ProjectAuditEvent.select().where(
+            ProjectAuditEvent.action == action,
+        ))
+        assert len(events) == 1
+        assert events[0].actor_username == "operator"
+        assert events[0].metadata_json == (
+            '{"status": "cancelled", "step_key": "req"}'
+            if action == "step.cancel" else '{"status": "paused"}'
+        )
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
@@ -2334,8 +2493,8 @@ async def test_pause_endpoint_stops_an_active_pipeline(monkeypatch):
     calls = []
 
     class RuntimeStub:
-        async def cancel(self, task_id):
-            calls.append(task_id)
+        async def cancel(self, task_id, *, action):
+            calls.append((task_id, action))
             return True
 
     monkeypatch.setattr(main, "workflow_runtime", RuntimeStub(), raising=False)
@@ -2348,7 +2507,7 @@ async def test_pause_endpoint_stops_an_active_pipeline(monkeypatch):
 
     assert response.status_code == 200
     assert response.json() == {"paused": True}
-    assert calls == ["task-1"]
+    assert calls == [("task-1", "task.pause")]
 
 
 @pytest.mark.anyio
@@ -2624,9 +2783,10 @@ async def _wait_run_finished(run_id: str, timeout: float = 5.0) -> WorkflowRun:
 
 
 @pytest.mark.anyio
-async def test_cancel_orphaned_running_step_preserves_session_for_restart(tmp_path):
+async def test_cancel_orphaned_running_step_preserves_session_for_restart(tmp_path, monkeypatch):
     """停止失联 runner 时收尾持久状态，并从日志路径恢复已有会话。"""
-    from models import Message
+    from models import Message, ProjectAuditEvent
+    from services.remote_access import ActorSnapshot, actor_context
     from services.workflow_runtime import WorkflowRuntime
 
     db = init_db(str(tmp_path / "workstep.db"))
@@ -2711,8 +2871,24 @@ async def test_cancel_orphaned_running_step_preserves_session_for_restart(tmp_pa
 
         # 租约过期后才允许本实例将失联步骤收尾。
         WorkflowRun.update(heartbeat_at=1).where(WorkflowRun.id == run.id).execute()
-        runtime._leased_runs[run.id] = project.id
-        assert await runtime.cancel(task.id) is True
+        runtime._leases._leased_runs[run.id] = project.id
+        from services import project_audit
+
+        with monkeypatch.context() as patcher:
+            patcher.setattr(
+                project_audit, "record_project_audit",
+                lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("audit unavailable")),
+            )
+            with pytest.raises(RuntimeError, match="audit unavailable"):
+                await runtime.cancel_step(project.id, task.id, "do")
+        assert TaskStep.get_by_id((task.id, "do")).status == "running"
+        assert Task.get_by_id(task.id).status == "running"
+        with actor_context(ActorSnapshot(
+            actor_id="operator-2", user_name="Second operator",
+            device_id="device-2", device_name="Desktop", source="managed",
+            username="operator2",
+        )):
+            assert await runtime.cancel(task.id) is True
 
         step = TaskStep.get_by_id((task.id, "do"))
         assert step.status == "cancelled"
@@ -2730,11 +2906,19 @@ async def test_cancel_orphaned_running_step_preserves_session_for_restart(tmp_pa
 
         task = Task.get_by_id(task.id)
         assert task.status == "paused"
+        stop_event = ProjectAuditEvent.get(
+            (ProjectAuditEvent.task_id == task.id)
+            & (ProjectAuditEvent.action == "step.cancel")
+        )
+        assert stop_event.actor_username == "operator2"
+        assert stop_event.metadata_json == (
+            '{"status": "paused", "step_key": "do"}'
+        )
         run = WorkflowRun.get_by_id(run.id)
         assert run.status == "failed"
         assert run.owner_id is None
         assert run.heartbeat_at is None
-        assert run.id not in runtime._leased_runs
+        assert run.id not in runtime._leases._leased_runs
 
         # 重复点击停止保持幂等，不会破坏为后续 @ 重跑保留的 session。
         assert await runtime.cancel_step(project.id, task.id, "do") is True

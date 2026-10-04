@@ -1,0 +1,8 @@
+.channel-conversation-context { flex-shrink: 0; padding: 6px 12px; border-bottom: 1px solid var(--border-soft); color: var(--muted); font-size: calc(12px * var(--font-scale)); }
+.channel-conversation-context summary { cursor: pointer; overflow-wrap: anywhere; }
+.channel-conversation-context summary > span { margin-inline-end: 8px; }
+.channel-conversation-context dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 8px 0 0; max-height: 30dvh; overflow-y: auto; }
+.channel-conversation-context dd { margin: 0; color: var(--fg); overflow-wrap: anywhere; user-select: text; }
+@media (max-width: 1023px) {
+  .channel-conversation-context summary { min-height: var(--mobile-control-regular); align-content: center; }
+}

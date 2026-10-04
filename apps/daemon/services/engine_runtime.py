@@ -27,9 +27,18 @@ from packaging.utils import canonicalize_name, parse_wheel_filename
 from packaging.version import InvalidVersion, Version
 
 from engines.core.packages import RuntimePackage
-from engines.core.base import install_python_package, install_with_command
+from engines.core.base import _has_pip, install_python_package, install_with_command
 from engines.core.registry import list_all_engines
 from services.config import CONFIG_DIR, config_store
+
+
+@asynccontextmanager
+async def _temporary_directory(**kwargs):
+    temporary = await asyncio.to_thread(TemporaryDirectory, **kwargs)
+    try:
+        yield Path(temporary.name)
+    finally:
+        await asyncio.to_thread(temporary.cleanup)
 
 
 class EngineRuntimeManager:
@@ -155,11 +164,59 @@ class EngineRuntimeManager:
         record = await asyncio.to_thread(self._read, engine_id)
         state = record.get("operation")
         if state and state["status"] in ("queued", "running"):
-            state.update(status="failed", stage="failed", message="后台服务已重启，安装中断；请重试或回退")
+            state.update(status="failed", stage="failed", interrupted=True,
+                         message="后台服务已重启，安装中断；请重试或回退")
             await asyncio.to_thread(self._save, engine_id, record)
         return state
 
-    async def start(self, engine_id: str, version: str | None, *, rollback=False, accept_terms=False) -> dict:
+    async def recover_managed(self, engine_id: str, command_scope: dict) -> dict | None:
+        """Resume only an already journaled managed operation, at its original target."""
+        spec = self.package(engine_id)
+        state = self._states.get(engine_id)
+        if state is not None:
+            return dict(state) if state.get("managed_command") == command_scope else None
+        if self._busy:
+            raise RuntimeError("已有引擎安装任务正在执行，请等待完成")
+        self._busy = True
+        try:
+            record = await asyncio.to_thread(self._read, engine_id)
+            state = record.get("operation")
+            if not state or state.get("managed_command") != command_scope:
+                self._busy = False
+                return None
+            expected_action = "rollback" if command_scope.get("action") == "rollback" else "install"
+            target = state.get("target_version")
+            if (state.get("engine_id") != engine_id or state.get("action") != expected_action
+                    or not isinstance(target, str)
+                    or not re.fullmatch(r"[0-9][0-9A-Za-z.+-]{0,99}", target)
+                    or (expected_action == "install" and target != command_scope.get("version"))):
+                raise ValueError("Invalid managed recovery target")
+            if state.get("status") in ("succeeded", "failed") and not state.get("interrupted"):
+                self._busy = False
+                return dict(state)
+            if state.get("status") not in ("queued", "running", "failed"):
+                raise ValueError("Invalid recovery operation status")
+            # Keep the original operation ID, rollback target and previous version.
+            # start(rollback=True) would resolve a possibly changed rollback target.
+            cls = list_all_engines()[engine_id]
+            if (cls.requires_third_party_terms_acceptance()
+                    and not command_scope.get("accept_third_party_terms")):
+                raise ValueError("请先阅读并接受第三方服务条款")
+            if await asyncio.to_thread(cls.get_binary_override):
+                raise ValueError("当前使用自定义可执行文件路径，请先清除路径配置再管理版本")
+            state.pop("interrupted", None)
+            state.update(status="queued", stage="preparing", message="",
+                         downloaded_bytes=0, total_bytes=None)
+            await asyncio.to_thread(self._save, engine_id, record)
+            self._states[engine_id] = state
+            self._task = asyncio.create_task(self._run(engine_id, spec, state, record))
+            return dict(state)
+        except BaseException:
+            self._busy = False
+            raise
+
+    async def start(self, engine_id: str, version: str | None, *, rollback=False, accept_terms=False,
+                    managed_command: dict | None = None) -> dict:
         spec = self.package(engine_id)
         if self._busy:
             raise RuntimeError("已有引擎安装任务正在执行，请等待完成")
@@ -183,6 +240,8 @@ class EngineRuntimeManager:
                      "previous_version": previous, "status": "queued", "stage": "preparing",
                      "downloaded_bytes": 0, "total_bytes": None, "size_scope": "primary_package",
                      "message": "", "started_at": datetime.now(timezone.utc).isoformat()}
+            if managed_command is not None:
+                state["managed_command"] = dict(managed_command)
             # Save the recovery target BEFORE changing anything in the environment.
             # A retry must not overwrite recovery with a partially installed version.
             failed = record.get("operation", {}).get("status") in ("failed", "running", "queued")
@@ -220,11 +279,14 @@ class EngineRuntimeManager:
                 length = response.headers.get("content-length")
                 if length and length.isdigit():
                     state["total_bytes"] = int(length)
-                with destination.open("wb") as file:
+                file = await asyncio.to_thread(destination.open, "wb")
+                try:
                     async for chunk in response.aiter_bytes(256 * 1024):
                         await asyncio.to_thread(file.write, chunk)
                         digest.update(chunk)
                         state["downloaded_bytes"] += len(chunk)
+                finally:
+                    await asyncio.to_thread(file.close)
         if state["total_bytes"] is not None and state["total_bytes"] != state["downloaded_bytes"]:
             raise ValueError("安装包下载不完整，请重试")
         if digest.hexdigest() != expected:
@@ -235,29 +297,38 @@ class EngineRuntimeManager:
         package_dir = os.environ.get("WORKSTEP_ENGINE_PACKAGE_DIR", "").strip()
         if not package_dir:
             return await install_python_package(str(archive), upgrade=True)
-        target = Path(package_dir).expanduser().resolve()
+        target = await asyncio.to_thread(lambda: Path(package_dir).expanduser().resolve())
         await asyncio.to_thread(target.parent.mkdir, parents=True, exist_ok=True)
         # pip --target does not remove older dist-info. Stage the shared site,
         # then remove only metadata superseded by the installer report.
-        with TemporaryDirectory(prefix=".workstep-packages-", dir=target.parent, ignore_cleanup_errors=True) as temporary:
-            stage = Path(temporary) / "packages"
-            report = Path(temporary) / "install-report.json"
+        async with _temporary_directory(prefix=".workstep-packages-", dir=target.parent, ignore_cleanup_errors=True) as temporary:
+            stage = temporary / "packages"
+            report = temporary / "install-report.json"
             if await asyncio.to_thread(target.exists):
                 await asyncio.to_thread(shutil.copytree, target, stage)
             else:
-                stage.mkdir()
-            result = await install_with_command([
-                sys.executable, "-m", "pip", "install", "--upgrade", "--target", str(stage),
-                "--report", str(report), str(archive),
-            ], display=spec.name)
+                await asyncio.to_thread(stage.mkdir)
+            if await asyncio.to_thread(_has_pip):
+                command = [
+                    sys.executable, "-m", "pip", "install", "--upgrade", "--target", str(stage),
+                    "--report", str(report), str(archive),
+                ]
+            elif await asyncio.to_thread(shutil.which, "uv"):
+                command = ["uv", "pip", "install", "--upgrade", "--target", str(stage), str(archive)]
+            else:
+                raise ValueError("未找到 uv 或 pip，无法安装 Python SDK 包")
+            result = await install_with_command(command, display=spec.name)
             if not result.success:
                 return result
 
             def validate_and_switch():
-                installed = {
-                    canonicalize_name(item["metadata"]["name"]): item["metadata"]["version"]
-                    for item in json.loads(report.read_text())["install"]
-                }
+                installed = (
+                    {
+                        canonicalize_name(item["metadata"]["name"]): item["metadata"]["version"]
+                        for item in json.loads(report.read_text())["install"]
+                    }
+                    if report.exists() else {canonicalize_name(spec.name): version}
+                )
                 for info in stage.glob("*.dist-info"):
                     distribution = importlib.metadata.PathDistribution(info)
                     name = canonicalize_name(distribution.metadata.get("Name", ""))
@@ -267,7 +338,7 @@ class EngineRuntimeManager:
                                 if canonicalize_name(d.metadata.get("Name", "")) == canonicalize_name(spec.name)), None)
                 if current != version:
                     raise ValueError("临时安装目录版本校验失败，原安装保持不变")
-                backup = Path(temporary) / "previous"
+                backup = temporary / "previous"
                 had_target = target.exists()
                 if had_target:
                     target.rename(backup)
@@ -290,9 +361,9 @@ class EngineRuntimeManager:
                 entry = next((e for e in entries if e["version"] == state["target_version"]), None)
                 if entry is None:
                     raise ValueError("该版本不可用或不满足当前平台和最低版本要求，请刷新版本列表")
-                with TemporaryDirectory(prefix="workstep-engine-") as directory:
-                    destination = Path(directory) / entry["filename"]
-                    if destination.parent != Path(directory):
+                async with _temporary_directory(prefix="workstep-engine-") as directory:
+                    destination = directory / entry["filename"]
+                    if destination.parent != directory:
                         raise ValueError("无效的安装包文件名")
                     await self._download(entry, destination, state)
                     state["stage"] = "installing"

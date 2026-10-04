@@ -11,12 +11,12 @@ import uuid
 from typing import Any, AsyncIterator, Awaitable, Callable
 
 from engines.core.acp_base import AcpEngineBase
+from engines.pydantic_ai.harness_runtime import PydanticAIHarnessRuntime
 from engines.core.base import EngineModel, resolve_thinking_effort
 from engines.core.schema import EngineImage
 from engines.core.events import (
     InternalEvent,
     agent_message_chunk,
-    compacted_event,
     normalize_token_usage,
     tool_call_event,
     tool_call_update_event,
@@ -70,8 +70,9 @@ PYDANTIC_PLANNING_TOOL_NAMES = frozenset({
 })
 
 
-class PydanticAIEngine(AcpEngineBase):
+class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
     ENGINE_ID = "pydantic_ai"
+    SYSTEM_PROMPT_MODE = "system"
 
     @classmethod
     def supported_provider_protocols(cls) -> set[str]:
@@ -125,7 +126,8 @@ class PydanticAIEngine(AcpEngineBase):
         return message
 
     @classmethod
-    async def run_simple(cls, prompt: str) -> str:
+    async def run_simple(cls, prompt: str,
+                         usage_details: dict | None = None) -> str:
         """One-shot, context-free completion via the configured provider.
 
         无工具、无项目上下文、无会话记忆：仅用于轻量单轮改写等快速场景。
@@ -148,6 +150,13 @@ class PydanticAIEngine(AcpEngineBase):
         provider = await asyncio.to_thread(config_store.get_provider, runtime.provider_id)
         if provider is None or not provider.get("base_url") or not model_name:
             raise RuntimeError("Pydantic AI 尚未配置供应商和模型")
+        if usage_details is not None:
+            from services.gateway_client.usage import snapshot_usage_provider
+
+            usage_details.update({
+                "provider": snapshot_usage_provider(provider),
+                "model": model_name,
+            })
         loaded_model = cls.build_model(
             provider=provider,
             model_name=model_name,
@@ -157,6 +166,17 @@ class PydanticAIEngine(AcpEngineBase):
 
         agent = Agent(loaded_model)
         result = await agent.run(prompt)
+        if usage_details is not None:
+            usage_attr = getattr(result, "usage", None)
+            usage = usage_attr() if callable(usage_attr) else usage_attr
+            if usage is not None:
+                usage_details["usage"] = {
+                    "input_tokens": getattr(usage, "input_tokens", 0),
+                    "output_tokens": getattr(usage, "output_tokens", 0),
+                    "cache_read_input_tokens": getattr(usage, "cache_read_tokens", 0),
+                    "cache_creation_input_tokens": getattr(usage, "cache_write_tokens", 0),
+                    "cache_input_included": runtime.protocol != "anthropic_messages",
+                }
         return str(getattr(result, "output", "") or "").strip()
 
     @staticmethod
@@ -389,6 +409,7 @@ class PydanticAIEngine(AcpEngineBase):
         ``protocol`` 由基类 ``pick_protocol`` 解析（供应商多协议时按其
         列表顺序与本引擎支持集合取交集）；缺省回退供应商默认协议。
         """
+        provider_service.require_managed_model(provider, model_name)
         provider_type = str(provider.get("type") or "custom")
         protocol = str(protocol or "").strip() or (
             provider_service.normalize_provider_protocol(
@@ -734,6 +755,7 @@ class PydanticAIEngine(AcpEngineBase):
         workstep_tools: bool = False,
         session_id: str | None = None,
         sandbox: str = "workspace-write",
+        system_prompt: str | None = None,
     ) -> tuple[Any, Any]:
         """Run the agent, injecting queued live messages between rounds."""
         from pydantic_ai import Agent
@@ -784,6 +806,7 @@ class PydanticAIEngine(AcpEngineBase):
         capabilities.append(WebFetch(native=False, local=True))
         agent = Agent(
             model,
+            **({"system_prompt": system_prompt} if system_prompt else {}),
             capabilities=capabilities,
             retries={"tools": PYDANTIC_AI_TOOL_RETRIES, "output": 1},
         )
@@ -874,6 +897,7 @@ class PydanticAIEngine(AcpEngineBase):
                     if harness_capabilities
                     else None
                 )
+                seeded_history = self._with_session_system_prompt(seeded_history, system_prompt)
                 if seeded_history is not None:
                     stream_kwargs["message_history"] = seeded_history
                 result = await self._stream_agent_run(
@@ -1073,221 +1097,6 @@ class PydanticAIEngine(AcpEngineBase):
 
         return SubagentProgress()
 
-    # --- pydantic-ai-harness 扩展（上下文压缩 / 会话持久化） ---
-
-    @staticmethod
-    def _harness_enabled() -> bool:
-        """Whether the harness extension is on (config auto + installed)."""
-        config = config_store.get_pydantic_ai_engine_config()
-        if str(config.get("harness") or "auto") == "off":
-            return False
-        try:
-            import pydantic_ai_harness  # noqa: F401
-
-            return True
-        except Exception:
-            return False
-
-    @staticmethod
-    def _harness_store(root: Path):
-        """SQLite StepPersistence store under the project .workstep dir."""
-        from pydantic_ai_harness.step_persistence import SqliteStepStore
-
-        workstep_dir = root / ".workstep"
-        workstep_dir.mkdir(parents=True, exist_ok=True)
-        return SqliteStepStore(
-            database=workstep_dir / "harness_runs.db",
-            # WorkStep 的会话恢复（continue_run）只读最新一个 complete
-            # 快照，从不消费中间 step 回退点；保留多份完整累积历史纯属
-            # 磁盘冗余（单 run 曾达 ~130MB）。保留 1 份即可，单 run ~5MB。
-            max_snapshots_per_run=1,
-        )
-
-    def delete_session_persistence(self, session_id: str, cwd: str) -> None:
-        """Drop this conversation's StepPersistence rows from harness_runs.db.
-
-        ``SqliteStepStore`` (fixed dep ``pydantic-ai-harness``) exposes no
-        delete API, and WorkStep's ``conversation_id == engine_session_id``,
-        so purge the tables by that key directly. tool_effects has no
-        conversation_id column, so it is removed via the run ids.
-        """
-        if not session_id or not self._harness_enabled():
-            return
-        import sqlite3
-
-        db = Path(cwd) / ".workstep" / "harness_runs.db"
-        if not db.exists():
-            return
-        try:
-            conn = sqlite3.connect(str(db))
-            try:
-                run_ids = [
-                    r[0]
-                    for r in conn.execute(
-                        "SELECT run_id FROM runs WHERE conversation_id = ?",
-                        (session_id,),
-                    )
-                ]
-                if run_ids:
-                    ph = ",".join("?" * len(run_ids))
-                    conn.execute(
-                        f"DELETE FROM tool_effects WHERE run_id IN ({ph})", run_ids
-                    )
-                for table in ("runs", "events", "snapshots"):
-                    conn.execute(
-                        f"DELETE FROM {table} WHERE conversation_id = ?",
-                        (session_id,),
-                    )
-                conn.commit()
-                conn.execute("VACUUM")
-            finally:
-                conn.close()
-        except Exception:
-            logger.exception(
-                "Failed to purge harness_runs.db for session %s", session_id
-        )
-
-    @classmethod
-    def _harness_summary_model(cls):
-        """SummarizingCompaction 的摘要模型。
-
-        优先 pydantic_ai_engine.fast_model（config.getter 已回退 coordinator
-        快速模型），用当前引擎供应商的 base_url/api_key 构建模型对象；
-        未配置快速模型时返回 None（摘要走 run 自身模型）。任何配置异常
-        都静默降级为 None，不阻断 harness 挂载。
-        """
-        try:
-            config = config_store.get_pydantic_ai_engine_config()
-            fast_model_name = str(config.get("fast_model") or "").strip()
-            if not fast_model_name:
-                return None
-            provider = config_store.get_provider(str(config.get("provider_id") or ""))
-            if provider is None:
-                return None
-            return cls.build_model(provider=provider, model_name=fast_model_name)
-        except Exception:
-            return None
-
-    @classmethod
-    def _harness_capabilities(
-        cls,
-        root: Path,
-        session_id: str | None,
-    ) -> list | None:
-        """Harness capabilities for this run, or None when disabled."""
-        if not cls._harness_enabled() or root is None or not root.is_dir():
-            return None
-        try:
-            from pydantic_ai_harness.compaction import (
-                ClearToolResults,
-                SlidingWindowCompaction,
-                SummarizingCompaction,
-                TieredCompaction,
-                WarnNearLimits,
-            )
-            from pydantic_ai_harness.conversation_search import (
-                ConversationSearch,
-                SnapshotHistorySource,
-            )
-            from pydantic_ai_harness.step_persistence import StepPersistence
-        except Exception:
-            return None
-        # StepPersistence 与 ConversationSearch 共享同一个 SQLite store：
-        # 后者通过 SnapshotHistorySource 做 BM25 检索（scope=conversation，
-        # 只召回同一 conversation_id 的历史 run）。
-        store = cls._harness_store(root)
-        return [
-            TieredCompaction(
-                target_fraction=0.9,
-                tiers=[
-                    ClearToolResults(max_messages=200, keep_pairs=10),
-                    # 零成本层：只收窄请求窗口、不写回持久化历史，原文仍可被
-                    # ConversationSearch 检索。TieredCompaction 直接驱动
-                    # compact()，max_messages 仅用于满足构造校验（trigger 旁路），
-                    # 实际裁剪目标是 keep_messages=60 条尾部。
-                    SlidingWindowCompaction(max_messages=200, keep_messages=60),
-                    SummarizingCompaction(
-                        max_messages=120,
-                        keep_messages=30,
-                        receipts=True,
-                        model=cls._harness_summary_model(),
-                    ),
-                ],
-            ),
-            WarnNearLimits(max_context_fraction=0.85),
-            StepPersistence(
-                store=store,
-                agent_name="workstep",
-            ),
-            ConversationSearch(SnapshotHistorySource(store), scope="conversation"),
-        ]
-
-    @classmethod
-    async def _harness_continue_history(
-        cls,
-        root: Path,
-        session_id: str | None,
-    ) -> list | None:
-        """Load the persisted snapshot for this session, when available."""
-        if (
-            not session_id
-            or not cls._harness_enabled()
-            or root is None
-            or not await asyncio.to_thread(root.is_dir)
-        ):
-            return None
-        try:
-            from pydantic_ai_harness.step_persistence import continue_run
-
-            store = await asyncio.to_thread(cls._harness_store, root)
-            runs = await store.list_runs(conversation_id=session_id)
-            # StepPersistence registers the new retry run before WorkStep asks
-            # for continuation history. That newest run has no snapshot yet;
-            # walk backwards so a failed turn resumes from its last durable
-            # step instead of falling back to the previous successful turn.
-            for run in reversed(runs):
-                if await store.latest_snapshot(run_id=run.run_id) is not None:
-                    return list(await continue_run(store, run_id=run.run_id))
-            return None
-        except Exception:
-            return None
-
-    @staticmethod
-    def _open_receipt_scope(enabled: bool):
-        """Open a compaction-receipt scope for the run (None when disabled)."""
-        if not enabled:
-            return None
-        try:
-            from pydantic_ai_harness.compaction._receipts import open_receipt_scope
-
-            return open_receipt_scope()
-        except Exception:
-            return None
-
-    @staticmethod
-    async def _drain_compaction_receipts(scope, on_event) -> None:
-        """Emit ``compacted`` events for receipts recorded during the run."""
-        if scope is None:
-            return
-        try:
-            from pydantic_ai_harness.compaction._receipts import (
-                drain_receipts,
-                reset_receipt_scope,
-            )
-
-            receipts = []
-            try:
-                receipts = drain_receipts()
-            finally:
-                reset_receipt_scope(scope)
-            for receipt in receipts:
-                await on_event(compacted_event(summary=(
-                    f"{receipt.strategy} 压缩：丢弃 {receipt.dropped_messages} "
-                    f"条消息、约 {receipt.dropped_tokens} tokens"
-                )))
-        except Exception:
-            logger.exception("Failed to drain compaction receipts")
-
     async def spawn(
         self,
         prompt: str,
@@ -1300,6 +1109,7 @@ class PydanticAIEngine(AcpEngineBase):
         thinking_effort: str | None = None,
         config_overrides: dict | None = None,
         workstep_tools: bool = False,
+        system_prompt: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
         config = self.merge_config_overrides(
             await asyncio.to_thread(config_store.get_pydantic_ai_engine_config),
@@ -1357,6 +1167,8 @@ class PydanticAIEngine(AcpEngineBase):
             }
             if thinking_effort:
                 run_kwargs["thinking_effort"] = thinking_effort
+            if system_prompt is not None:
+                run_kwargs["system_prompt"] = system_prompt
             if workstep_tools:
                 run_kwargs["workstep_tools"] = True
             agent_task = asyncio.create_task(

@@ -28,6 +28,7 @@ from agent_assistants.base import (
     extract_streaming_reply,
 )
 from agent_assistants.event_journal import TurnEventJournal
+from agent_assistants.workflow_choice_ui import ensure_flow_choice_ui
 from agent_assistants.workflow_patch import (
     WorkflowPatchError,
     apply_patch,
@@ -85,6 +86,7 @@ class WorkflowGenModule(AssistantRuntime):
             name="workflow_gen",
             channel=GEN_CHANNEL,
             system_prompt=SYSTEM_PROMPT,
+            system_prompt_transport=True,
             scope=SCOPE_WORKFLOW,
             engine_label="Workflow generation engine",
             max_history_turns=MAX_HISTORY_TURNS,
@@ -315,8 +317,7 @@ class WorkflowGenModule(AssistantRuntime):
             )
         engine = create_engine(session.engine)
         if engine is not None and engine.supports_resume:
-            # 引擎侧维护会话上下文：历史不再拼进 prompt。首轮携带完整系统
-            # 提示，续轮只发当前画布与用户消息，避免重复污染引擎会话。
+            # 引擎侧维护历史；固定规则由统一指令入口提供，正文传当前画布和用户消息。
             user_message = next(
                 (
                     str(item.get("content") or "")
@@ -325,8 +326,7 @@ class WorkflowGenModule(AssistantRuntime):
                 ),
                 "",
             )
-            head = SYSTEM_PROMPT if not session.resolved_session_id else ""
-            return f"{head}{canvas_json}\n\n{user_message}"
+            return f"{canvas_json}\n\n{user_message}"
         # 无引擎侧会话的引擎（不支持 resume）：保留最近对话记录拼接，
         # 否则多轮对话将完全失去上下文。
         turns = session.messages[-(MAX_HISTORY_TURNS * 2):]
@@ -335,7 +335,6 @@ class WorkflowGenModule(AssistantRuntime):
             for item in turns
         )
         return (
-            f"{SYSTEM_PROMPT}"
             f"{canvas_json}\n\nConversation history:\n{history}\n\nContinue."
         )
 
@@ -467,7 +466,7 @@ class WorkflowGenModule(AssistantRuntime):
                     "data": {"message": f"画布 JSON 未通过校验，已丢弃：{exc}"},
                 })
         if proposals:
-            reply, a2ui_payloads = self._ensure_a2ui_choice_ui(reply, proposals)
+            reply, a2ui_payloads = ensure_flow_choice_ui(reply, proposals)
             for payload in a2ui_payloads:
                 events.append({"type": "a2ui", "data": payload})
         return reply, proposals, events
@@ -498,173 +497,13 @@ class WorkflowGenModule(AssistantRuntime):
             return cleaned, parsed
         return reply, None
 
-    @staticmethod
-    def _has_a2ui_fence(content: str) -> bool:
-        """True when the reply already contains a complete ```a2ui fence."""
-        return re.search(
-            r"^```a2ui[ \t]*\r?\n[\s\S]*?^```[ \t]*\r?\n?",
-            content,
-            re.MULTILINE,
-        ) is not None
-
-    @staticmethod
-    def _ensure_a2ui_choice_ui(reply: str, proposals: list[dict]) -> tuple[str, list[dict]]:
-        """保证方案选择界面：返回 (reply, a2ui 事件载荷列表)。
-
-        模型自带 `````a2ui```` fence 时保留 fence（并注入 stepsJson），UI 走
-        fence 渲染、不发事件；否则自动生成 createSurface + updateComponents
-        作为 ``a2ui`` 事件推送，reply 只留文本摘要。
-        """
-        if not proposals:
-            return reply, []
-        if WorkflowGenModule._has_a2ui_fence(reply):
-            return WorkflowGenModule._inject_a2ui_flow_steps(reply, proposals), []
-        components: list[dict] = [
-            {
-                "component": "Text",
-                "id": "hint",
-                "text": "请选择一个方案（点击按钮应用到画布）",
-            }
-        ]
-        root_children: list[str] = ["hint"]
-        for index, item in enumerate(proposals, start=1):
-            # A2UI Button.child 引用的是组件 id，按钮文字由独立的 Text 标签提供。
-            label_id = f"l{index}"
-            button_id = f"p{index}"
-            components.append(
-                {
-                    "component": "Text",
-                    "id": label_id,
-                    "text": item.get("title") or f"方案 {index}",
-                }
-            )
-            components.append(
-                {
-                    "component": "Button",
-                    "id": button_id,
-                    "child": label_id,
-                    "variant": "primary" if index == 1 else "default",
-                    "action": {
-                        "event": {
-                            "name": "apply_flow",
-                            "context": {
-                                "proposal": index,
-                                "stepsJson": json.dumps(
-                                    item["steps"],
-                                    ensure_ascii=False,
-                                    separators=(",", ":"),
-                                ),
-                            },
-                        }
-                    },
-                }
-            )
-            root_children.extend([label_id, button_id])
-            summary = item.get("summary")
-            if summary:
-                summary_id = f"s{index}"
-                components.append(
-                    {
-                        "component": "Text",
-                        "id": summary_id,
-                        "text": summary,
-                        "variant": "caption",
-                    }
-                )
-                root_children.append(summary_id)
-        components.insert(
-            0,
-            {
-                "component": "Column",
-                "id": "root",
-                "children": root_children,
-            },
-        )
-        payloads = [
-            {
-                "version": "v0.9.1",
-                "createSurface": {
-                    "surfaceId": "flow-choice",
-                    "catalogId": "basic",
-                },
-            },
-            {
-                "version": "v0.9.1",
-                "updateComponents": {
-                    "surfaceId": "flow-choice",
-                    "components": components,
-                },
-            },
-        ]
-        # reply 只留文本摘要；UI 以 a2ui 事件推送（前端 store 渲染）。
-        return reply.rstrip(), payloads
-
-
-    @staticmethod
-    def _inject_a2ui_flow_steps(reply: str, proposals: list[dict]) -> str:
-        """Make model-authored apply buttons self-contained across refreshes."""
-        fence_pattern = re.compile(
-            r"(^```a2ui[ \t]*\r?\n)([\s\S]*?)(^```[ \t]*\r?\n?)",
-            re.MULTILINE,
-        )
-
-        def enrich(match: re.Match) -> str:
-            body = match.group(2)
-            messages = []
-            decoder = json.JSONDecoder()
-            index = 0
-            try:
-                while index < len(body):
-                    while index < len(body) and body[index].isspace():
-                        index += 1
-                    if index >= len(body):
-                        break
-                    message, index = decoder.raw_decode(body, index)
-                    messages.append(message)
-            except (json.JSONDecodeError, TypeError):
-                return match.group(0)
-
-            changed = False
-            for message in messages:
-                update = message.get("updateComponents") if isinstance(message, dict) else None
-                components = update.get("components") if isinstance(update, dict) else None
-                if not isinstance(components, list):
-                    continue
-                for component in components:
-                    if not isinstance(component, dict) or component.get("component") != "Button":
-                        continue
-                    action = component.get("action")
-                    event = action.get("event") if isinstance(action, dict) else None
-                    if not isinstance(event, dict) or event.get("name") != "apply_flow":
-                        continue
-                    context = event.get("context")
-                    if not isinstance(context, dict) or "stepsJson" in context:
-                        continue
-                    try:
-                        proposal_index = int(context.get("proposal")) - 1
-                        steps = proposals[proposal_index]["steps"]
-                    except (TypeError, ValueError, IndexError, KeyError):
-                        continue
-                    context["stepsJson"] = json.dumps(
-                        steps, ensure_ascii=False, separators=(",", ":")
-                    )
-                    proposal_id = proposals[proposal_index].get("id") if isinstance(proposals[proposal_index], dict) else None
-                    if proposal_id:
-                        context["proposalId"] = proposal_id
-                    changed = True
-            if not changed:
-                return match.group(0)
-            body = "\n".join(json.dumps(item, ensure_ascii=False) for item in messages)
-            return f"{match.group(1)}{body}\n{match.group(3)}"
-
-        return fence_pattern.sub(enrich, reply)
-
     async def _resolve_proposal_inner(
         self,
         session,
         raw: str,
     ) -> tuple[str, list[dict], list[dict]]:
         """Parse the model reply; validate/repair any flow proposals."""
+        repair_events = []
         try:
             reply, proposals = self._parse_reply(raw)
         except RuntimeError:
@@ -672,16 +511,17 @@ class WorkflowGenModule(AssistantRuntime):
                 session.engine,
                 session.fast_model,
                 session.cwd,
-                (
+                raw,
+                None,
+                system_prompt=(
                     "Repair the following response into valid workflow-generation "
                     'JSON of the form {"reply": "...", "flow_proposals": '
                     '[{"title": "...", "workflowName": "...", '
                     '"summary": "...", "steps": {...}}]}. '
-                    "Return JSON only.\n\n"
-                    f"{raw}"
+                    "Return JSON only."
                 ),
-                None,
             )
+            repair_events.extend(events)
             reply, proposals = self._parse_reply(repaired)
 
         # Merge incremental patches against the live canvas before validating so
@@ -699,23 +539,23 @@ class WorkflowGenModule(AssistantRuntime):
 
         # All proposals invalid → ask the fast model to repair them.
         if not valid and proposals and first_error:
-            repair_prompt = (
+            repair_system_prompt = (
                 "The proposed flows below are structurally invalid. Fix ONLY the "
                 "structural errors and return the complete corrected JSON "
                 '{"reply": "...", "flow_proposals": [{"title": "...", '
                 '"workflowName": "...", "summary": "...", "steps": {...}}]} '
                 "keeping the same number of proposals. "
-                "Return JSON only.\n\n"
-                f"Validation error: {first_error}\n\n"
-                f"Proposals:\n{json.dumps(proposals, ensure_ascii=False)}"
+                "Return JSON only."
             )
             repaired, events, _ = await self._invoke(
                 session.engine,
                 session.fast_model,
                 session.cwd,
-                repair_prompt,
+                f"Validation error: {first_error}\n\nProposals:\n{json.dumps(proposals, ensure_ascii=False)}",
                 None,
+                system_prompt=repair_system_prompt,
             )
+            events = repair_events + events
             try:
                 _reply, fixed_proposals = self._parse_reply(repaired)
             except RuntimeError:
@@ -740,7 +580,7 @@ class WorkflowGenModule(AssistantRuntime):
                 }
             ]
 
-        return reply, valid, []
+        return reply, valid, repair_events
 
     @staticmethod
     def _validate_proposal_steps(steps: dict) -> None:

@@ -19,7 +19,11 @@ class Message(BaseModel):
     role = pw.TextField()  # 'user' / 'assistant'
     content = pw.TextField(default="")  # user input / concatenated text_delta
     author_id = pw.TextField(null=True)
+    author_username = pw.TextField(null=True)
     author_name = pw.TextField(null=True)
+    author_type = pw.TextField(null=True)
+    initiated_by_user_id = pw.TextField(null=True)
+    initiated_by_username = pw.TextField(null=True)
     author_device_id = pw.TextField(null=True)
     author_device_name = pw.TextField(null=True)
     engine = pw.TextField(null=True)

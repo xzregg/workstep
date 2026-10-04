@@ -73,8 +73,12 @@ RUN node --version && npm --version && volta --version && uv --version \
     && git --version && jq --version && curl --version | head -1
 
 # 后端依赖（uv.lock 已入库；固定 Python 3.14）
+# daemon 经本地 path 依赖 packages/gateway-protocol（editable），
+# 先 COPY 进去否则 uv sync 报 Distribution not found；editable 安装指向
+# 该目录，运行时也要保留。
 WORKDIR /app/apps/daemon
 COPY apps/daemon/pyproject.toml apps/daemon/uv.lock apps/daemon/.python-version ./
+COPY packages/gateway-protocol /app/packages/gateway-protocol
 RUN uv sync --no-dev --frozen \
     && uv pip install --python .venv/bin/python pip \
     && rm -rf /tmp/uv-cache

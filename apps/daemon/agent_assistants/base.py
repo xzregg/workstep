@@ -12,20 +12,25 @@ Adding a new assistant only requires registering an ``AssistantConfig``
 """
 
 import asyncio
+from copy import deepcopy
 import inspect
 import json
 import logging
 import re
 import time
 import uuid
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Protocol
+from typing import Any, Awaitable, Callable
 
 from engines.core.agui import AGUIContext, to_agui_events
 from engines.core.events import InternalEvent, is_commentary
 from agent_assistants.event_journal import JournalRef, TurnEventJournal
+from agent_assistants.engine_invocation import run_engine_turn
+from agent_assistants.session_state import AssistantSession, AcceptedTurn
+from agent_assistants.persistence import PersistenceAdapter, MemoryPersistence, JsonRowPersistence
+from agent_assistants.history import _PERSISTED_EVENT_TYPES, _prune_events, default_history_message, repair_message_times
 from agent_assistants.event_truncation import truncate_large_tool_payloads
 from agent_assistants.thought_aggregation import ThoughtChunkAggregator
 from engines.core.registry import create_engine
@@ -33,13 +38,8 @@ from engines.core.schema import EngineImage
 from models.fields import utc_now
 from services.chat_permissions import (
     is_valid_permission_mode,
-    map_permission_overrides,
-    map_plan_mode_overrides,
-    parse_goal_command,
-    PLAN_MODE_INSTRUCTION,
 )
 from services.config import CODEX_REASONING_EFFORTS, config_store, resolve_execution_engine
-from services.intervention import intervention_manager
 from services.remote_project import get_effective_actor
 from streaming.bus import EventBus
 
@@ -55,6 +55,8 @@ MAX_HISTORY_TURNS = 8
 MAX_SESSIONS = 200
 SESSION_TTL_SECONDS = 60 * 60
 SHUTDOWN_DRAIN_TIMEOUT_SECONDS = 1.0
+#: 聊天回合空闲看门狗的轮询间隔上限（秒）；实际取 min(该值， timeout/4)。
+IDLE_WATCHDOG_POLL_SECONDS = 5.0
 
 _IMAGE_MARKDOWN_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 _UPLOADS_PATH_RE = re.compile(r"([^\s`\"'()]+\.workstep/uploads/[^\s`\"'()]+)")
@@ -85,7 +87,7 @@ def extract_uploaded_images(project, cwd: str, content: str) -> list[EngineImage
         legacy_prefix = f"{project.name}/.workstep/uploads/"
         if target.startswith(legacy_prefix):
             candidate_paths.append(uploads / target[len(legacy_prefix):])
-        for base in (root, root.parent):
+        for base in (root, root.parent, uploads.parent.parent):
             candidate = Path(target)
             if not candidate.is_absolute():
                 candidate = base / candidate
@@ -187,555 +189,34 @@ async def invoke_engine(
     workstep_tools: bool = False,
     config_overrides: dict | None = None,
     live_message_queue: asyncio.Queue | None = None,
+    system_prompt: str | None = None,
+    system_prompt_each_turn: bool = False,
+    capture_prompt_input: bool = False,
 ) -> tuple[str, list[dict], str | None]:
-    """Run one engine turn; stream events; return (text, events, session_id).
-
-    Shared by every assistant. ``spawner`` defaults to ``engine.spawn``;
-    task-style assistants may pass a custom spawner (e.g.
-    ``spawn_coordinator``, closing over its own images). When
-    ``running_engines`` is given, the engine instance is tracked under
-    ``run_key`` so callers can stop it. ``workstep_tools`` asks the engine to
-    load the WorkStep internal tools natively (when it can host them); a
-    custom ``spawner`` receives it as ``spawner(engine, workstep_tools=True)``.
-    ``config_overrides`` merges into the engine's dynamic config (e.g. the
-    built-in Pydantic AI engine's per-assistant provider).
-    """
-    engine = create_engine(engine_id)
-    if engine is None:
-        raise RuntimeError(f"{error_prefix} is unavailable: {engine_id}")
-    if permission_mode:
-        await engine.set_permission_mode(permission_mode)
-    if images:
-        capabilities = getattr(engine, "capabilities", None)
-        engine_accepts_images = bool(
-            getattr(capabilities, "supports_vision", False)
-        )
-        supports_multimodal = getattr(
-            config_store,
-            "model_supports_multimodal",
-            None,
-        )
-        provider_id = str((config_overrides or {}).get("provider_id") or "")
-        model_accepts_images = (
-            supports_multimodal(engine_id, model or "", provider_id)
-            if callable(supports_multimodal)
-            else engine_accepts_images
-        )
-        if not (engine_accepts_images and model_accepts_images):
-            prompt = engine.render_image_prompt(prompt, images)
-            images = None
-    supports_native_plan_mode = bool(
-        getattr(getattr(engine, "capabilities", None), "supports_plan_mode", False)
+    """Compatibility entry point; the turn transport lives in engine_invocation."""
+    return await run_engine_turn(
+        engine_id, model, cwd, prompt, session_id, on_event,
+        engine_factory=create_engine,
+        settings_store=config_store,
+        spawner=spawner,
+        error_prefix=error_prefix,
+        run_key=run_key,
+        running_engines=running_engines,
+        assign_session_on_no_resume=assign_session_on_no_resume,
+        message_history=message_history,
+        images=images,
+        report_engine_state=report_engine_state,
+        thinking_effort=thinking_effort,
+        permission_mode=permission_mode,
+        plan_mode=plan_mode,
+        goal_mode=goal_mode,
+        workstep_tools=workstep_tools,
+        config_overrides=config_overrides,
+        live_message_queue=live_message_queue,
+        **({"system_prompt": system_prompt} if system_prompt else {}),
+        **({"system_prompt_each_turn": True} if system_prompt_each_turn else {}),
+        **({"capture_prompt_input": True} if capture_prompt_input else {}),
     )
-    goal_command = parse_goal_command(prompt)
-    if goal_mode and goal_command is None:
-        goal_command = ("start", prompt)
-    if goal_command:
-        if plan_mode:
-            raise ValueError("目标模式不能与计划模式同时启用")
-        if not getattr(getattr(engine, "capabilities", None), "supports_goal_mode", False):
-            raise ValueError(f"当前引擎不支持目标模式：{engine_id}")
-        goal_action, prompt = goal_command
-        if goal_action != "start" and not session_id:
-            raise ValueError("当前会话还没有可操作的目标")
-        if goal_action == "start" and not prompt.strip():
-            raise ValueError("目标内容不能为空")
-    if plan_mode and not supports_native_plan_mode and prompt.strip() != "/compact":
-        prompt = f"{prompt}\n\n{PLAN_MODE_INSTRUCTION}"
-    content: list[str] = []
-    events: list[dict] = []
-    resolved_session_id = session_id
-    error: str | None = None
-    try:
-        if running_engines is not None and run_key is not None:
-            running_engines[run_key] = engine
-        spawn_kwargs: dict[str, object] = {}
-        load_workstep_tools = bool(
-            workstep_tools
-            and getattr(
-                getattr(engine, "capabilities", None),
-                "supports_workstep_tools",
-                False,
-            )
-        )
-        if load_workstep_tools:
-            spawn_kwargs["workstep_tools"] = True
-        if engine.supports_message_history:
-            if message_history is not None:
-                spawn_kwargs["message_history"] = message_history
-            if report_engine_state:
-                spawn_kwargs["report_engine_state"] = True
-        if images:
-            spawn_kwargs["images"] = images
-        if (
-            live_message_queue is not None
-            and getattr(
-                getattr(engine, "capabilities", None),
-                "supports_live_step_message",
-                False,
-            )
-        ):
-            spawn_kwargs["live_message_queue"] = live_message_queue
-        if (
-            getattr(
-                getattr(engine, "capabilities", None),
-                "supports_thinking_effort",
-                False,
-            )
-            and thinking_effort
-        ):
-            spawn_kwargs["thinking_effort"] = thinking_effort
-        merged_overrides = dict(config_overrides or {})
-        if permission_mode:
-            merged_overrides.update(
-                map_permission_overrides(engine_id, permission_mode)
-            )
-        if plan_mode:
-            merged_overrides.update(map_plan_mode_overrides(engine_id))
-        if supports_native_plan_mode:
-            spawn_kwargs["plan_mode"] = bool(plan_mode)
-        if goal_command:
-            spawn_kwargs["goal_action"] = goal_action
-        if merged_overrides:
-            spawn_kwargs["config_overrides"] = merged_overrides
-        if prompt.strip() == "/compact":
-            spawner = None
-        if spawner is None:
-            iterator = getattr(engine, "spawn_with_retry", engine.spawn)(
-                prompt=prompt,
-                cwd=cwd,
-                model=model,
-                session_id=session_id if engine.supports_resume else None,
-                **spawn_kwargs,
-            )
-        elif workstep_tools:
-            iterator = spawner(
-                engine,
-                workstep_tools=True,
-                config_overrides=merged_overrides or None,
-            )
-        else:
-            iterator = spawner(engine, config_overrides=merged_overrides or None)
-        async for event in iterator:
-            normalize_event = getattr(
-                engine,
-                "normalize_event",
-                getattr(engine, "normalize_interaction_event", None),
-            )
-            if normalize_event is not None:
-                event = normalize_event(event)
-            if event is None:
-                continue
-            interaction_waiter: asyncio.Task | None = None
-            if event.type == "interaction_request":
-                interaction_id = str(
-                    event.data.get("interaction_id") or uuid.uuid4()
-                )
-                event.data["interaction_id"] = interaction_id
-                interaction_waiter = asyncio.create_task(
-                    intervention_manager.request_response(
-                        interaction_id,
-                        run_key or engine_id,
-                        "assistant",
-                        event.data,
-                    )
-                )
-                # Register before publishing to avoid a fast-response race.
-                await asyncio.sleep(0)
-            events.append(event.to_dict())
-            if on_event is not None:
-                await on_event(event)
-            if event.type == "agent_message_chunk" and not is_commentary(event):
-                content_block = event.data.get("content") or {}
-                content.append(str(content_block.get("text", "")))
-            elif event.type == "session_started":
-                resolved_session_id = (
-                    str(event.data.get("session_id") or "") or None
-                )
-            elif event.type == "usage_update" and event.data.get("session_id"):
-                resolved_session_id = str(event.data["session_id"])
-            elif event.type == "error" and error is None:
-                error = str(event.data.get("message") or f"{error_prefix} failed")
-            if interaction_waiter is not None:
-                response = await interaction_waiter
-                if response.get("error"):
-                    response = (
-                        {"outcome": {"outcome": "cancelled"}}
-                        if event.data.get("method") == "session/request_permission"
-                        else {"action": "cancel"}
-                    )
-                await engine.respond_interaction(event.data, response)
-                response_event = InternalEvent(
-                    type="interaction_response",
-                    data={
-                        "interaction_id": event.data["interaction_id"],
-                        "method": event.data.get("method"),
-                        "response": response,
-                    },
-                )
-                events.append(response_event.to_dict())
-                if on_event is not None:
-                    await on_event(response_event)
-    finally:
-        if running_engines is not None and run_key is not None:
-            running_engines.pop(run_key, None)
-    if (
-        resolved_session_id is None
-        and assign_session_on_no_resume
-        and not engine.supports_resume
-    ):
-        resolved_session_id = str(uuid.uuid4())
-    if error:
-        raise RuntimeError(error)
-    return "".join(content).strip(), events, resolved_session_id
-
-
-@dataclass
-class AssistantSession:
-    """One in-memory assistant conversation."""
-
-    session_id: str
-    project_id: str
-    scope: str
-    scope_key: str | None = None
-    cwd: str = ""
-    engine: str = ""
-    model: str | None = None
-    fast_model: str | None = None
-    vision_model: str | None = None
-    resolved_session_id: str | None = None
-    messages: list[dict] = field(default_factory=list)
-    steps: dict | None = None
-    extra: dict = field(default_factory=dict)
-    engine_state: Any = None
-    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    last_active: float = field(default_factory=time.monotonic)
-
-
-@dataclass(frozen=True, slots=True)
-class AcceptedTurn:
-    session_id: str
-    turn_id: str
-    assistant_message_id: str
-    status: str
-
-    def to_dict(self) -> dict:
-        return {
-            "session_id": self.session_id,
-            "turn_id": self.turn_id,
-            "assistant_message_id": self.assistant_message_id,
-            "status": self.status,
-        }
-
-
-class PersistenceAdapter(Protocol):
-    """Optional conversation persistence for a scoped assistant session."""
-
-    def load(self, session: AssistantSession) -> None: ...
-
-    def save(self, session: AssistantSession) -> None: ...
-
-    def load_history(
-        self,
-        project_id: str,
-        scope_key: str,
-    ) -> tuple[
-        str, str | None, str | None, str | None, str | None, list[dict]
-    ] | None:
-        """Return engine, reasoning/fast/vision models, session id and messages."""
-        ...
-
-    def delete(self, project_id: str, scope_key: str) -> bool: ...
-
-
-class MemoryPersistence:
-    """No-op persistence — conversations live only in memory."""
-
-    def load(self, session: AssistantSession) -> None:
-        return None
-
-    def save(self, session: AssistantSession) -> None:
-        return None
-
-    def load_history(
-        self,
-        project_id: str,
-        scope_key: str,
-    ) -> None:
-        return None
-
-    def delete(self, project_id: str, scope_key: str) -> bool:
-        return False
-
-
-class JsonRowPersistence:
-    """Persist a conversation as a JSON blob on a peewee model.
-
-    The model is expected to expose: ``id``, ``project_id``, the scope field
-    (e.g. ``workflow_id``), ``engine``, ``model``, ``fast_model``, ``vision_model``,
-    ``engine_session_id``, ``messages_json``, ``cwd`` and UTC timestamps —
-    ``models/gen_session.WorkflowGenSession`` is the reference shape.
-    """
-
-    def __init__(
-        self,
-        model,
-        scope_field: str,
-        make_id: Callable[[str, str], str],
-    ):
-        self._model = model
-        self._scope_field = scope_field
-        self._make_id = make_id
-
-    def _row(self, project_id: str, scope_key: str):
-        query = (self._model.project_id == project_id) & (
-            getattr(self._model, self._scope_field) == scope_key
-        )
-        return self._model.get_or_none(query)
-
-    def load(self, session: AssistantSession) -> None:
-        if not session.scope_key:
-            return
-        row = self._row(session.project_id, session.scope_key)
-        if row is None:
-            return
-        session.messages = _restore_messages(row.messages_json)
-        session.resolved_session_id = row.engine_session_id
-        if row.engine_state_json:
-            try:
-                session.engine_state = json.loads(row.engine_state_json)
-            except json.JSONDecodeError:
-                logger.exception("Failed to restore engine state")
-        session.engine = row.engine or session.engine
-        if row.model is not None:
-            session.model = row.model
-        if row.fast_model is not None:
-            session.fast_model = row.fast_model
-        if row.vision_model is not None:
-            session.vision_model = row.vision_model
-        if row.cwd:
-            session.cwd = row.cwd
-
-    @staticmethod
-    def _dump_state(state: Any) -> str | None:
-        if state is None:
-            return None
-        try:
-            return json.dumps(state, ensure_ascii=False)
-        except Exception:
-            logger.exception("Failed to serialize engine state")
-            return None
-
-    def save(self, session: AssistantSession) -> None:
-        if not session.scope_key:
-            return
-        try:
-            now = utc_now()
-            payload = json.dumps(session.messages, ensure_ascii=False)
-            row = self._row(session.project_id, session.scope_key)
-            if row is None:
-                self._model.create(
-                    id=self._make_id(session.project_id, session.scope_key),
-                    project_id=session.project_id,
-                    **{self._scope_field: session.scope_key},
-                    engine=session.engine,
-                    model=session.model,
-                    fast_model=session.fast_model,
-                    vision_model=session.vision_model,
-                    engine_session_id=session.resolved_session_id,
-                    engine_state_json=self._dump_state(session.engine_state),
-                    messages_json=payload,
-                    cwd=session.cwd,
-                    created_at=now,
-                    updated_at=now,
-                )
-            else:
-                row.engine = session.engine
-                row.model = session.model
-                row.fast_model = session.fast_model
-                row.vision_model = session.vision_model
-                row.engine_session_id = session.resolved_session_id
-                row.engine_state_json = self._dump_state(session.engine_state)
-                row.messages_json = payload
-                row.cwd = session.cwd
-                row.updated_at = now
-                row.save()
-        except Exception:
-            logger.exception("Failed to persist assistant session")
-
-    def load_history(
-        self,
-        project_id: str,
-        scope_key: str,
-    ) -> tuple[
-        str, str | None, str | None, str | None, str | None, list[dict]
-    ] | None:
-        row = self._row(project_id, scope_key)
-        if row is None:
-            return None
-        return (
-            row.engine,
-            row.model,
-            row.fast_model,
-            row.vision_model,
-            row.engine_session_id,
-            _restore_messages(row.messages_json),
-        )
-
-    def delete(self, project_id: str, scope_key: str) -> bool:
-        query = (self._model.project_id == project_id) & (
-            getattr(self._model, self._scope_field) == scope_key
-        )
-        return self._model.delete().where(query).execute() > 0
-
-
-def _restore_messages(raw: str | None) -> list[dict]:
-    if not raw:
-        return []
-    try:
-        parsed = json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        return []
-    if not isinstance(parsed, list):
-        return []
-    return [
-        item
-        for item in parsed
-        if isinstance(item, dict) and item.get("role") in {"user", "assistant"}
-    ]
-
-
-_PERSISTED_EVENT_TYPES = frozenset({
-    "async_question",
-    "status",
-    "agent_thought_chunk",
-    "tool_call",
-    "tool_call_update",
-    "interaction_request",
-    "interaction_response",
-    "plan",
-    "plan_update",
-    "plan_removed",
-    "subagent",
-    "compacted",
-    "goal_update",
-    "usage_update",
-    "session_started",
-    "error",
-    "engine_state",
-    "a2ui",
-    "acp_raw",
-    "elicitation_completed",
-    "flow_proposals",
-    "flow_proposals_rejected",
-})
-
-
-def _prune_events(events: list[dict]) -> list[dict]:
-    """Keep replayable engine events; drop per-character text deltas."""
-    return [
-        event
-        for event in events
-        if isinstance(event, dict) and (
-            event.get("type") in _PERSISTED_EVENT_TYPES or is_commentary(event)
-        )
-    ]
-
-
-def default_history_message(item: dict) -> dict:
-    """Normalize one stored message for the history API."""
-    item = repair_message_times(item)
-    events = []
-    for event in item.get("events") or []:
-        if not isinstance(event, dict):
-            continue
-        normalized = {
-            "type": event.get("type"),
-            "data": event.get("data") or {},
-        }
-        timestamp = event.get("timestamp") or event.get("created_at")
-        if timestamp is not None:
-            normalized["timestamp"] = timestamp
-        events.append(normalized)
-    return {
-        "id": item.get("id") or str(uuid.uuid4()),
-        "role": item.get("role", "assistant"),
-        "content": item.get("content", ""),
-        "status": (
-            item.get("status")
-            if item.get("status") in ("running", "error", "stopped")
-            else "succeeded"
-        ),
-        "engine": item.get("engine"),
-        "model": item.get("model"),
-        "created_at": item.get("created_at"),
-        "ended_at": item.get("ended_at"),
-        "prompt": item.get("prompt"),
-        "events": events,
-        "author_id": item.get("author_id"),
-        "author_name": item.get("author_name"),
-        "author_device_id": item.get("author_device_id"),
-        "author_device_name": item.get("author_device_name"),
-        "event_summary": item.get("event_summary") or {},
-        "event_detail": item.get("event_detail") or {"available": False},
-        "event_log_path": item.get("event_log_path"),
-    }
-
-
-def _event_time_ms(value: Any) -> int | None:
-    """Event/message timestamp → epoch milliseconds (int/float 秒或毫秒、ISO 字符串)."""
-    if value is None or isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        number = float(value)
-        return int(number) if number >= 1_000_000_000_000 else int(number * 1000)
-    if isinstance(value, str):
-        try:
-            parsed = datetime.fromisoformat(value)
-        except ValueError:
-            return None
-        return int(parsed.timestamp() * 1000)
-    return None
-
-
-def _iso_from_ms(value: int) -> str:
-    return datetime.fromtimestamp(value / 1000, timezone.utc).isoformat()
-
-
-def repair_message_times(item: dict) -> dict:
-    """旧数据回补：早期成功回合只写了 ``created_at``（完成时刻）、没有 ``ended_at``。
-
-    只有缺少 ``ended_at`` 且事件带时间戳时才修正：
-    - 若 ``created_at`` 不早于最后一条事件（说明 created_at 记的是完成时刻），
-      起点取最早事件时间、终点取原 ``created_at``；
-    - 否则终点取最后一条事件时间。
-    """
-    created_at = item.get("created_at")
-    if item.get("ended_at") or not created_at:
-        return item
-    event_times = []
-    for event in item.get("events") or []:
-        if not isinstance(event, dict):
-            continue
-        event_ms = _event_time_ms(
-            event.get("timestamp") or event.get("created_at")
-        )
-        if event_ms is not None:
-            event_times.append(event_ms)
-    if not event_times:
-        return item
-    created_ms = _event_time_ms(created_at)
-    if created_ms is None:
-        return item
-    if created_ms > min(event_times) and created_ms >= max(event_times):
-        # 旧数据：created_at 是完成时刻 → 起点取最早事件，终点取原 created_at。
-        return {
-            **item,
-            "created_at": _iso_from_ms(min(event_times)),
-            "ended_at": created_at,
-        }
-    # 新数据只缺 ended_at：终点取最后事件时间。
-    return {**item, "ended_at": _iso_from_ms(max(event_times))}
 
 
 @dataclass
@@ -751,6 +232,7 @@ class AssistantConfig:
     name: str
     channel: str
     system_prompt: str = ""
+    system_prompt_transport: bool = False
     scope: str = SCOPE_EPHEMERAL
     engine_label: str = "LLM engine"
     max_history_turns: int = MAX_HISTORY_TURNS
@@ -767,6 +249,7 @@ class AssistantConfig:
     # Hooks (defaults are provided by AssistantRuntime).
     session_identity: Callable[[str, str | None, str | None], tuple[tuple, str]] | None = None
     resolve_engine_models: Callable[[], tuple[str, str | None, str | None]] | None = None
+    engine_system_prompt: Callable[[AssistantSession], str] | None = None
     build_prompt: Callable[[AssistantSession], str] | None = None
     parse_response: Callable[[AssistantSession, str], tuple[str, list, list]] | None = None
     publish_structured: Callable[[AssistantSession, str, str, list, int], Awaitable[int]] | None = None
@@ -794,6 +277,7 @@ class AssistantRuntime:
         self._active_tasks: set[asyncio.Task] = set()
         self._turn_tasks: dict[str, asyncio.Task] = {}
         self._running_engines: dict[str, object] = {}
+        self._prompt_input_callbacks: dict[str, Callable] = {}
         self._stop_tasks: set[asyncio.Task] = set()
         self._shutting_down = False
 
@@ -822,6 +306,7 @@ class AssistantRuntime:
         extra: dict | None = None,
         schedule: bool = True,
         author_name: str | None = None,
+        replay_pending: bool = False,
     ) -> AcceptedTurn:
         """Queue one turn; returns immediately with an accepted turn.
 
@@ -835,6 +320,10 @@ class AssistantRuntime:
             raise ValueError("Message content cannot be empty")
         if not (idempotency_key or "").strip():
             raise ValueError("Idempotency-Key is required")
+        if not replay_pending:
+            from services.remote_access import require_user_actor
+
+            require_user_actor()
         normalized_effort = (thinking_effort or "").strip()
         if not normalized_effort:
             # “默认”表示不覆盖，由引擎自己的配置决定；只有协调助手
@@ -944,7 +433,10 @@ class AssistantRuntime:
                 **(
                     {
                         "author_id": stored_actor.actor_id,
+                        "author_username": stored_actor.username or stored_actor.user_name,
                         "author_name": stored_actor.user_name,
+                        "initiated_by_user_id": stored_actor.actor_id,
+                        "initiated_by_username": stored_actor.username or stored_actor.user_name,
                         "author_device_id": stored_actor.device_id,
                         "author_device_name": stored_actor.device_name,
                     }
@@ -956,6 +448,7 @@ class AssistantRuntime:
                     if stored_author_name
                     else {}
                 ),
+                "author_type": "user",
             }
         )
         started_at = utc_now().isoformat()
@@ -966,23 +459,22 @@ class AssistantRuntime:
                 "id": assistant_message_id,
                 "engine": session.engine,
                 "model": session.model,
+                "author_id": session.engine or "assistant",
+                "author_username": session.engine or "assistant",
+                "author_name": session.engine or "助手",
+                "author_type": "assistant",
+                "initiated_by_user_id": stored_actor.actor_id if stored_actor else None,
+                "initiated_by_username": (
+                    (stored_actor.username or stored_actor.user_name)
+                    if stored_actor else stored_author_name or None
+                ),
                 "status": "running",
                 "created_at": started_at,
                 "events": [],
-                **(
-                    {
-                        "author_id": stored_actor.actor_id,
-                        "author_name": stored_author_name,
-                        "author_device_id": stored_actor.device_id,
-                        "author_device_name": stored_actor.device_name,
-                    }
-                    if stored_actor is not None
-                    else (
-                        {"author_name": stored_author_name}
-                        if stored_author_name
-                        else {}
-                    )
-                ),
+                **({
+                    "author_device_id": stored_actor.device_id,
+                    "author_device_name": stored_actor.device_name,
+                } if stored_actor is not None else {}),
                 **(
                     {
                         "event_log_path": journal_ref.relative_path,
@@ -1000,6 +492,7 @@ class AssistantRuntime:
         self._turn_keys[key] = turn_id
         self._turn_states[turn_id] = {
             "status": "queued",
+            "project_id": session.project_id,
             "assistant_message_id": assistant_message_id,
             "session_id": session.session_id,
             "thinking_effort": normalized_effort or None,
@@ -1146,30 +639,35 @@ class AssistantRuntime:
         def prepare(_project):
             from services.pending_message_inserts import (
                 delete_pending_insert_batch,
+                pending_insert_actor,
                 pending_insert_batch,
             )
+            from services.remote_access import replayed_actor_context
 
             ids, content, username = pending_insert_batch(target_message_id)
             if not ids or not content:
                 return None
-            accepted = AssistantRuntime.submit_message(
-                self,
-                session.project_id,
-                content,
-                f"pending-insert:{target_message_id}:{','.join(ids)}",
-                session_id=session.session_id,
-                memory_key=memory_key,
-                scope_key=session.scope_key,
-                engine=session.engine,
-                model=session.model,
-                fast_model=session.fast_model,
-                vision_model=session.vision_model,
-                provider_id=state.get("provider_id"),
-                steps=session.steps,
-                extra=session.extra,
-                schedule=False,
-                author_name=username,
-            )
+            actor = pending_insert_actor(target_message_id)
+            with replayed_actor_context(actor):
+                accepted = AssistantRuntime.submit_message(
+                    self,
+                    session.project_id,
+                    content,
+                    f"pending-insert:{target_message_id}:{','.join(ids)}",
+                    session_id=session.session_id,
+                    memory_key=memory_key,
+                    scope_key=session.scope_key,
+                    engine=session.engine,
+                    model=session.model,
+                    fast_model=session.fast_model,
+                    vision_model=session.vision_model,
+                    provider_id=state.get("provider_id"),
+                    steps=session.steps,
+                    extra=session.extra,
+                    schedule=False,
+                    author_name=username,
+                    replay_pending=True,
+                )
             delete_pending_insert_batch(ids)
             return accepted
 
@@ -1187,18 +685,33 @@ class AssistantRuntime:
         if accepted is not None:
             self.start_queued_turn(accepted.turn_id)
 
-    async def stop_current(self, session_id: str) -> bool:
-        """Stop the newest queued or running turn for an assistant session."""
-        for turn_id, state in reversed(self._turn_states.items()):
+    async def stop_current(self, session_id: str, project_id: str | None = None, *, expected_message_id: str | None = None) -> bool:
+        """Stop session turns, optionally restricted to one assistant reply."""
+        accepted = False
+        for turn_id, state in reversed(list(self._turn_states.items())):
             if state.get("session_id") != session_id:
                 continue
+            if expected_message_id is not None and state.get("assistant_message_id") != expected_message_id:
+                continue
+            session = self._sessions.get(state.get("memory_key"))
+            owner_project_id = session.project_id if session is not None else state.get("project_id")
+            if project_id is not None and owner_project_id != project_id:
+                continue
             if state.get("status") == "stopping":
-                return True
+                accepted = True
+                continue
             if state.get("status") not in ("queued", "running"):
                 continue
             task = self._turn_tasks.get(turn_id)
+            if state.get("status") == "queued" and session is not None:
+                if task is not None:
+                    task.cancel()
+                await self._finalize_queued_turn_as_stopped(
+                    session, turn_id, str(state.get("assistant_message_id") or "")
+                )
+                accepted = True
+                continue
             if task is None or task.done():
-                session = self._sessions.get(state.get("memory_key"))
                 if session is not None:
                     await self._finalize_queued_turn_as_stopped(
                         session,
@@ -1207,7 +720,8 @@ class AssistantRuntime:
                     )
                 else:
                     state["status"] = "stopped"
-                return True
+                accepted = True
+                continue
             state["status"] = "stopping"
             engine = self._running_engines.get(turn_id)
             if engine is not None:
@@ -1219,8 +733,8 @@ class AssistantRuntime:
                 cleanup.add_done_callback(self._consume_stop_task)
             else:
                 task.cancel()
-            return True
-        return False
+            accepted = True
+        return accepted
 
     async def set_running_permission_mode(
         self,
@@ -1269,7 +783,7 @@ class AssistantRuntime:
             raise ValueError("Chat session not found")
         if project_id is not None and session.project_id != project_id:
             raise ValueError("Chat session not found")
-        engine = create_engine(session.engine)
+        engine = await asyncio.to_thread(create_engine, session.engine)
         capabilities = getattr(engine, "capabilities", None)
         if not getattr(capabilities, "supports_live_step_message", False):
             raise ValueError("该引擎不支持执行中消息注入")
@@ -1288,7 +802,11 @@ class AssistantRuntime:
             **(
                 {
                     "author_id": actor.actor_id,
+                    "author_username": actor.username or actor.user_name,
                     "author_name": actor.user_name,
+                    "author_type": "user",
+                    "initiated_by_user_id": actor.actor_id,
+                    "initiated_by_username": actor.username or actor.user_name,
                     "author_device_id": actor.device_id,
                     "author_device_name": actor.device_name,
                 }
@@ -1341,13 +859,24 @@ class AssistantRuntime:
         task: asyncio.Task,
         engine: object,
     ) -> None:
+        stop_task = asyncio.create_task(engine.stop())
         try:
-            await engine.stop()
+            done, _ = await asyncio.wait(
+                {stop_task}, timeout=SHUTDOWN_DRAIN_TIMEOUT_SECONDS
+            )
+            if stop_task in done:
+                await stop_task
+            else:
+                stop_task.cancel()
+                stop_task.add_done_callback(self._consume_stop_task)
         except Exception:
             logger.exception(
                 "Engine stop raised while stopping assistant turn %s",
                 turn_id,
             )
+        finally:
+            if not stop_task.done():
+                stop_task.cancel()
         if not task.done():
             done, _ = await asyncio.wait(
                 {task},
@@ -1387,6 +916,11 @@ class AssistantRuntime:
         vision_model = (
             restored_vision if restored_vision is not None else vision_model
         )
+        if self._capture_prompt_input():
+            captured = {item.get("id"): item.get("prompt") for live in self._sessions.values()
+                        if live.project_id == project_id and live.scope_key == scope_key
+                        for item in live.messages}
+            messages = [{**item, "prompt": captured.get(item.get("id")) or item.get("prompt")} for item in messages]
         normalize = self._config.history_message or default_history_message
         return {
             "engine": engine,
@@ -1596,27 +1130,44 @@ class AssistantRuntime:
 
     def _prune_sessions(self) -> None:
         now = time.monotonic()
+        # Long-running turns must retain their session and stop/idempotency state.
+        active_turn_ids = {
+            turn_id for turn_id in self._turn_states
+            if self._turn_is_active(turn_id)
+        }
+        active_memory_keys = {
+            self._turn_states[turn_id].get("memory_key")
+            for turn_id in active_turn_ids
+        }
         stale = [
             key
             for key, session in self._sessions.items()
-            if now - session.last_active > self._config.session_ttl_seconds
+            if key not in active_memory_keys
+            and now - session.last_active > self._config.session_ttl_seconds
         ]
         for key in stale:
             self._sessions.pop(key, None)
         if len(self._sessions) > self._config.max_sessions:
             oldest = sorted(
-                self._sessions.items(), key=lambda item: item[1].last_active
+                ((key, session) for key, session in self._sessions.items()
+                 if key not in active_memory_keys),
+                key=lambda item: item[1].last_active,
             )[: len(self._sessions) - self._config.max_sessions]
             for key, _ in oldest:
                 self._sessions.pop(key, None)
         # Bound turn idempotency state (dicts preserve insertion order).
         if len(self._turn_states) > self._config.max_sessions * 5:
             overflow = len(self._turn_states) - self._config.max_sessions * 5
-            for turn_id in list(self._turn_states)[:overflow]:
+            inactive = [turn_id for turn_id in self._turn_states if turn_id not in active_turn_ids]
+            for turn_id in inactive[:overflow]:
                 self._turn_states.pop(turn_id, None)
         if len(self._turn_keys) > self._config.max_sessions * 5:
             overflow = len(self._turn_keys) - self._config.max_sessions * 5
-            for key in list(self._turn_keys)[:overflow]:
+            inactive_keys = [
+                key for key, turn_id in self._turn_keys.items()
+                if turn_id not in active_turn_ids
+            ]
+            for key in inactive_keys[:overflow]:
                 self._turn_keys.pop(key, None)
 
     def _resolve_engine_models(self) -> tuple[str, str | None, str | None]:
@@ -1674,7 +1225,7 @@ class AssistantRuntime:
             )
             head = (
                 self._config.system_prompt
-                if not session.resolved_session_id
+                if not session.resolved_session_id and not self._config.system_prompt_transport
                 else ""
             )
             return f"{head}\n\n{user_message}"
@@ -1688,7 +1239,7 @@ class AssistantRuntime:
             for item in turns
         )
         return (
-            f"{self._config.system_prompt}"
+            f"{'' if self._config.system_prompt_transport else self._config.system_prompt}"
             f"\n\nConversation history:\n{history}\n\nContinue."
         )
 
@@ -1696,13 +1247,30 @@ class AssistantRuntime:
         """Return the system instruction that remains effective for this session."""
         return self._config.system_prompt
 
-    def _display_prompt(self, session: AssistantSession, prompt: str) -> str:
-        """Return the complete effective prompt shown by ``查看提示词``.
+    def _engine_system_prompt(self, session: AssistantSession) -> str:
+        """Return fixed rules separately from the changing turn context."""
+        if self._config.engine_system_prompt is not None:
+            return self._config.engine_system_prompt(session)
+        return self._config.system_prompt if self._config.system_prompt_transport else ""
 
-        Resume-capable engines retain the system instruction in their session,
-        so later wire prompts intentionally omit it.  The inspection view must
-        still show that effective instruction without sending it again.
-        """
+    def _system_prompt_each_turn(self) -> bool:
+        return False
+
+    def _capture_prompt_input(self) -> bool:
+        return self._config.system_prompt_transport or self._system_prompt_each_turn()
+
+    def _format_prompt_input(self, data: dict) -> str | None:
+        """Opt-in transport inspection; existing assistant displays are unchanged."""
+        if not self._capture_prompt_input():
+            return None
+        from agent_assistants.prompt_input import format_prompt_input
+
+        return format_prompt_input(data)
+
+    def _display_prompt(self, session: AssistantSession, prompt: str, system_prompt: str | None = None) -> str:
+        """Migrated assistants wait for actual inputs; legacy previews stay compatible."""
+        if self._capture_prompt_input():
+            return ""
         system_prompt = self._system_prompt_for_display(session).strip()
         if not system_prompt or prompt.lstrip().startswith(system_prompt):
             return prompt
@@ -1741,11 +1309,74 @@ class AssistantRuntime:
             active_segment_events: list[dict] = []
             live_split_count = [0]
             turn_persisted = [False]
+
+            async def record_turn_error(exc: BaseException) -> None:
+                """把回合落为 error 终态（含落库与广播），供各异常分支复用。"""
+                failed_error = str(exc)
+                # 保留已流式出来的正文（final_answer）。旧实现无条件把 content
+                # 覆盖成「（生成失败：…）」，会把真实回复吞掉：重开会话后正文
+                # 消失、只剩红色错误行。仅当没有任何正文时才用包装错误占位。
+                failed_content = (
+                    streamed_reply
+                    if streamed_reply
+                    else f"（生成失败：{failed_error}）"
+                )
+                logger.exception(
+                    "Assistant turn %s (%s) failed",
+                    turn_id,
+                    self._config.name,
+                )
+                active_message[0].update(
+                    {
+                        "role": "assistant",
+                        "content": failed_content,
+                        "id": active_message_id[0],
+                        "engine": session.engine,
+                        "model": session.model,
+                        "status": "error",
+                        "created_at": active_started_at[0],
+                        "ended_at": utc_now().isoformat(),
+                        "prompt": active_prompt[0],
+                        "events": _prune_events(active_segment_events),
+                    }
+                )
+                await self._finish_journal(
+                    active_journal_ref[0],
+                    active_message[0],
+                    {"type": "error", "data": {"message": failed_error}},
+                )
+                turn_persisted[0] = await self._persist_session(session)
+                try:
+                    next_seq = await self._publish(
+                        session,
+                        active_message_id[0],
+                        "error",
+                        {"message": failed_error},
+                        seq,
+                    )
+                    await self._publish(
+                        session,
+                        active_message_id[0],
+                        "message_completed",
+                        {
+                            "status": "error",
+                            "content": failed_content,
+                            "error": failed_error,
+                        },
+                        next_seq,
+                    )
+                except Exception:
+                    pass
+                self._turn_states[turn_id]["status"] = "error"
+                self._turn_states[turn_id]["error"] = str(exc)
             try:
                 session.cwd = await asyncio.to_thread(self._cwd, session.project_id)
                 prompt = await asyncio.to_thread(self._build_prompt, session)
-                display_prompt = self._display_prompt(session, prompt)
+                system_prompt = await asyncio.to_thread(self._engine_system_prompt, session)
+                display_prompt = await asyncio.to_thread(self._display_prompt, session, prompt, system_prompt)
                 active_prompt = [display_prompt]
+                prompt_input_snapshots: list[str] = []
+                captured_inputs: list[dict] = []
                 user_messages = [
                     message
                     for message in session.messages
@@ -1814,6 +1445,20 @@ class AssistantRuntime:
 
                     async def publish_live_event(event: InternalEvent) -> None:
                         nonlocal raw_content, streamed_reply
+                        if event.type == "prompt_input":
+                            captured_inputs.append(event.data)
+                            snapshot = self._format_prompt_input(event.data)
+                            if snapshot is not None:
+                                prompt_input_snapshots.append(snapshot)
+                                active_prompt[0] = "\n\n".join(prompt_input_snapshots)
+                                active_message[0]["prompt"] = active_prompt[0]
+                                await self._persist_session(session)
+                                await self._publish(
+                                    session, active_message_id[0], "message_started",
+                                    {"prompt": active_prompt[0]}, seq_holder[0],
+                                )
+                                seq_holder[0] += 1
+                            return
                         if event.type == "session_started":
                             resolved = str(event.data.get("session_id") or "")
                             if resolved:
@@ -2002,14 +1647,22 @@ class AssistantRuntime:
                                         "prompt": active_prompt[0],
                                         "engine": session.engine,
                                         "model": session.model,
+                                        "author_id": session.engine or "assistant",
+                                        "author_username": session.engine or "assistant",
+                                        "author_name": session.engine or "助手",
+                                        "author_type": "assistant",
+                                        "initiated_by_user_id": (
+                                            inserted.get("author_id") if inserted else None
+                                        ),
+                                        "initiated_by_username": (
+                                            inserted.get("author_username") if inserted else None
+                                        ),
                                         "status": "running",
                                         "created_at": next_started_at,
                                         "events": [],
                                         **{
                                             key: inserted[key]
                                             for key in (
-                                                "author_id",
-                                                "author_name",
                                                 "author_device_id",
                                                 "author_device_name",
                                             )
@@ -2074,20 +1727,25 @@ class AssistantRuntime:
                             # event has no current AG-UI rendering path.
                             await self._record_journal_event(active_journal_ref[0], event_dict)
 
+                    self._prompt_input_callbacks[turn_id] = publish_live_event
                     return publish_live_event
 
                 journaled_events: list[dict] = []
                 invoke_kwargs = {"message_history": session.engine_state}
+                if system_prompt:
+                    invoke_kwargs["system_prompt"] = system_prompt
                 if images:
                     invoke_kwargs["images"] = images
                 try:
-                    raw, _events, resolved = await self._invoke(
+                    raw, _events, resolved = await self._invoke_with_idle_watchdog(
+                        session,
+                        turn_id,
+                        make_live_callback(journaled_events),
                         session.engine,
                         turn_model,
                         session.cwd,
                         prompt,
                         session.resolved_session_id,
-                        make_live_callback(journaled_events),
                         **invoke_kwargs,
                     )
                 except RuntimeError as exc:
@@ -2104,15 +1762,27 @@ class AssistantRuntime:
                         self._build_rebuild_prompt,
                         session,
                     )
-                    raw, _events, resolved = await self._invoke(
+                    raw, _events, resolved = await self._invoke_with_idle_watchdog(
+                        session,
+                        turn_id,
+                        make_live_callback(journaled_events),
                         session.engine,
                         turn_model,
                         session.cwd,
                         rebuild_prompt,
                         None,
-                        make_live_callback(journaled_events),
                         **invoke_kwargs,
                     )
+                unmatched_inputs = list(captured_inputs)
+                for input_event in _events:
+                    if input_event.get("type") != "prompt_input":
+                        continue
+                    data = input_event.get("data") or {}
+                    if data in unmatched_inputs:
+                        unmatched_inputs.remove(data)
+                    else:
+                        await make_live_callback(journaled_events)(InternalEvent("prompt_input", data))
+                _events = [item for item in _events if item.get("type") != "prompt_input"]
                 # 回合结束：先冲刷聚合器里剩余的思考流，再补录非实时事件。
                 for pending in thought_aggregator.flush():
                     await emit_aggregated(pending)
@@ -2137,6 +1807,9 @@ class AssistantRuntime:
                 if live_split_count[0] > 0 and not structured:
                     reply = streamed_reply
                 for extra_event in repair_events:
+                    if extra_event.get("type") == "prompt_input":
+                        await make_live_callback(journaled_events)(InternalEvent("prompt_input", extra_event.get("data") or {}))
+                        continue
                     await self._record_journal_event(active_journal_ref[0], extra_event)
                     await self._publish(
                         session,
@@ -2195,6 +1868,10 @@ class AssistantRuntime:
                 # message_completed / status=completed 之后、最终 save 之前
                 # 读历史，拿到缺 engine_session_id 或旧消息的快照。
                 turn_persisted[0] = await self._persist_session(session)
+                if turn_persisted[0]:
+                    await self._record_message_usage(
+                        session, turn_id, active_message[0], turn_model,
+                    )
                 seq_holder[0] = await self._publish(
                     session,
                     active_message_id[0],
@@ -2211,6 +1888,14 @@ class AssistantRuntime:
                 )
                 self._turn_states[turn_id]["status"] = "completed"
             except asyncio.CancelledError:
+                idle_message = self._turn_states.get(turn_id, {}).pop(
+                    "idle_timeout_message", None
+                )
+                if idle_message is not None:
+                    # 空闲看门狗触发的取消：按 error（而非 stopped）终态处理，
+                    # 保留引擎会话 id，下次发送可原生 resume。
+                    await record_turn_error(RuntimeError(idle_message))
+                    return
                 ended_at = utc_now().isoformat()
                 stopped_content = streamed_reply
                 if self._shutting_down and not stopped_content:
@@ -2292,51 +1977,9 @@ class AssistantRuntime:
                         pass
                     self._turn_states[turn_id]["status"] = "stopped"
                     return
-                logger.exception(
-                    "Assistant turn %s (%s) failed",
-                    turn_id,
-                    self._config.name,
-                )
-                active_message[0].update(
-                    {
-                        "role": "assistant",
-                        "content": f"（生成失败：{exc}）",
-                        "id": active_message_id[0],
-                        "engine": session.engine,
-                        "model": session.model,
-                        "status": "error",
-                        "created_at": active_started_at[0],
-                        "ended_at": utc_now().isoformat(),
-                        "prompt": active_prompt[0],
-                        "events": _prune_events(active_segment_events),
-                    }
-                )
-                await self._finish_journal(
-                    active_journal_ref[0],
-                    active_message[0],
-                    {"type": "error", "data": {"message": str(exc)}},
-                )
-                turn_persisted[0] = await self._persist_session(session)
-                try:
-                    seq = await self._publish(
-                        session,
-                        active_message_id[0],
-                        "error",
-                        {"message": str(exc)},
-                        seq,
-                    )
-                    await self._publish(
-                        session,
-                        active_message_id[0],
-                        "message_completed",
-                        {"status": "error", "content": str(exc)},
-                        seq,
-                    )
-                except Exception:
-                    pass
-                self._turn_states[turn_id]["status"] = "error"
-                self._turn_states[turn_id]["error"] = str(exc)
+                await record_turn_error(exc)
             finally:
+                self._prompt_input_callbacks.pop(turn_id, None)
                 session.last_active = time.monotonic()
                 # 兜底：各终态分支已在对外可见前落库；只有终态保存失败
                 # （或被跳过）时才在这里重试一次，避免状态先于数据可见。
@@ -2365,6 +2008,45 @@ class AssistantRuntime:
             )
             return False
 
+    async def _record_message_usage(self, session: "AssistantSession", turn_id: str,
+                                    message: dict, model: str | None) -> None:
+        from main import gateway_client
+        from services.messages import extract_usage_json
+
+        state = self._turn_states.get(turn_id, {})
+        if "usage_provider_id" in state:
+            selected = state["usage_provider_id"]
+            provider_snapshot = state["usage_provider_snapshot"]
+        else:
+            selected, provider_snapshot = await self._usage_provider_snapshot(
+                session.engine, str(state.get("resolved_provider_id") or ""),
+            )
+        await gateway_client.record_message_usage(
+            project_id=session.project_id or None,
+            task_id=session.scope_key if self._config.scope == SCOPE_TASK else None,
+            message_id=str(message["id"]), run_id=turn_id, model=model,
+            occurred_at=datetime.fromisoformat(str(message["ended_at"])),
+            provider=provider_snapshot, provider_id=selected or None,
+            usage_json=extract_usage_json(message.get("events") or []),
+            user_id=message.get("initiated_by_user_id"), session_id=session.session_id,
+        )
+
+    async def _usage_provider_snapshot(self, engine_id: str,
+                                       selected: str) -> tuple[str, dict | None]:
+        engine = await asyncio.to_thread(create_engine, engine_id)
+        resolve_provider_id = getattr(engine, "resolve_provider_id", None)
+        if callable(resolve_provider_id):
+            selected = await asyncio.to_thread(resolve_provider_id, selected)
+        provider_snapshot = None
+        if selected:
+            def load_provider():
+                provider = config_store.get_provider(selected)
+                return (deepcopy({key: provider.get(key) for key in
+                                  ("id", "prices", "managed_revision")})
+                        if provider else None)
+            provider_snapshot = await asyncio.to_thread(load_provider)
+        return selected, provider_snapshot
+
     async def _record_journal_event(
         self,
         ref: JournalRef | None,
@@ -2388,6 +2070,8 @@ class AssistantRuntime:
         """Persist events returned by adapters that skipped the live callback."""
         unmatched = list(journaled_events)
         for event in returned_events:
+            if event.get("type") == "prompt_input":
+                continue
             if event in unmatched:
                 unmatched.remove(event)
             else:
@@ -2471,6 +2155,94 @@ class AssistantRuntime:
             return int(result), []
         return seq, []
 
+    async def _engine_idle_timeout_seconds(self) -> float:
+        """聊天回合引擎空闲超时（秒）；<=0 表示关闭看门狗。
+
+        复用工作流侧 ``engine_idle_timeout_seconds`` 配置（默认 600），
+        聊天助手之前没有接这个看门狗， stall 的连接会无限等下去。
+        """
+        getter = getattr(
+            config_store, "get_engine_idle_timeout_seconds", None
+        )
+        if callable(getter):
+            try:
+                return float(await asyncio.to_thread(getter))
+            except Exception:
+                logger.exception(
+                    "Failed to read engine idle timeout; watchdog disabled"
+                )
+                return 0
+        try:
+            return float(
+                await asyncio.to_thread(
+                    config_store.get, "engine_idle_timeout_seconds", 600
+                )
+            )
+        except Exception:
+            return 0
+
+    async def _invoke_with_idle_watchdog(
+        self,
+        session: "AssistantSession",
+        turn_id: str,
+        live_callback: Callable[[InternalEvent], Awaitable[None]],
+        *invoke_args: Any,
+        **invoke_kwargs: Any,
+    ) -> tuple[str, list[dict], str | None]:
+        """带空闲看门狗的 ``_invoke`` 包装。
+
+        看门狗只计量“引擎流事件间隔”（每次 on_event 到达即重置），
+        超时后 stop 引擎并取消回合任务，由回合异常处理统一落为
+        error 终态；引擎会话 id 保持不变，下次发送可原生 resume。
+        """
+        timeout = await self._engine_idle_timeout_seconds()
+        if not timeout or timeout <= 0:
+            return await self._invoke(
+                *invoke_args, live_callback, **invoke_kwargs
+            )
+        last_activity = time.monotonic()
+
+        async def watched_event(event: InternalEvent) -> None:
+            nonlocal last_activity
+            last_activity = time.monotonic()
+            await live_callback(event)
+
+        message = (
+            f"引擎空闲超时（{int(timeout)}s 无输出），"
+            "已停止执行并保留会话，可重新发送消息恢复"
+        )
+
+        async def _watch() -> None:
+            poll = min(IDLE_WATCHDOG_POLL_SECONDS, max(0.05, timeout / 4))
+            while True:
+                await asyncio.sleep(poll)
+                if time.monotonic() - last_activity >= timeout:
+                    self._turn_states.get(turn_id, {})[
+                        "idle_timeout_message"
+                    ] = message
+                    engine = self._running_engines.get(turn_id)
+                    if engine is not None:
+                        try:
+                            await engine.stop()
+                        except Exception:
+                            logger.exception(
+                                "Engine stop failed after chat idle timeout"
+                            )
+                    task = self._turn_tasks.get(turn_id)
+                    if task is not None:
+                        task.cancel()
+                    return
+
+        watcher = asyncio.create_task(
+            _watch(), name=f"assistant-idle-watch:{turn_id}"
+        )
+        try:
+            return await self._invoke(
+                *invoke_args, watched_event, **invoke_kwargs
+            )
+        finally:
+            watcher.cancel()
+
     async def _invoke(
         self,
         engine_id: str,
@@ -2481,6 +2253,7 @@ class AssistantRuntime:
         on_event: Callable[[InternalEvent], Awaitable[None]] | None = None,
         message_history: list | None = None,
         images: list[EngineImage] | None = None,
+        system_prompt: str | None = None,
     ) -> tuple[str, list[dict], str | None]:
         current_task = asyncio.current_task()
         run_key = next(
@@ -2491,6 +2264,12 @@ class AssistantRuntime:
             ),
             None,
         )
+        auxiliary_capture = on_event is None and run_key in self._prompt_input_callbacks
+        if auxiliary_capture:
+            async def capture_input(event):
+                if event.type == "prompt_input":
+                    await self._prompt_input_callbacks[run_key](event)
+            on_event = capture_input
         thinking_effort = (
             self._turn_states.get(run_key, {}).get("thinking_effort")
             if run_key
@@ -2523,7 +2302,14 @@ class AssistantRuntime:
         config_overrides = (
             {"provider_id": provider_id} if provider_id else None
         )
-        return await invoke_engine(
+        if run_key:
+            turn_state["resolved_provider_id"] = provider_id
+            selected, snapshot = await self._usage_provider_snapshot(
+                engine_id, provider_id,
+            )
+            turn_state["usage_provider_id"] = selected
+            turn_state["usage_provider_snapshot"] = snapshot
+        result = await invoke_engine(
             engine_id,
             model,
             cwd,
@@ -2543,7 +2329,15 @@ class AssistantRuntime:
             workstep_tools=self._config.workstep_tools,
             config_overrides=config_overrides,
             live_message_queue=turn_state.get("live_message_queue"),
+            **({"system_prompt": system_prompt} if system_prompt else {}),
+            **({"system_prompt_each_turn": True} if self._system_prompt_each_turn() else {}),
+            **({"capture_prompt_input": True} if self._capture_prompt_input() else {}),
         )
+
+        if auxiliary_capture:
+            raw, events, resolved = result
+            return raw, [event for event in events if event.get("type") != "prompt_input"], resolved
+        return result
 
     def _build_rebuild_prompt(self, session: AssistantSession) -> str:
         """Build a stateless prompt after an engine session was lost."""
@@ -2560,7 +2354,7 @@ class AssistantRuntime:
             for item in turns
         )
         return (
-            f"{self._config.system_prompt}"
+            f"{'' if self._config.system_prompt_transport else self._config.system_prompt}"
             f"\n\nConversation history:\n{history}\n\nContinue."
         )
 

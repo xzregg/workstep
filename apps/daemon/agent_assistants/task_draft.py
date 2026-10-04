@@ -69,6 +69,8 @@ class TaskDraftModule(AssistantRuntime):
             name="task_create",
             channel=TASK_CREATE_CHANNEL,
             system_prompt=SYSTEM_PROMPT,
+            system_prompt_transport=True,
+            engine_system_prompt=self._engine_system_prompt,
             scope=SCOPE_EPHEMERAL,
             engine_label="Task creation engine",
             max_history_turns=MAX_HISTORY_TURNS,
@@ -333,11 +335,6 @@ class TaskDraftModule(AssistantRuntime):
             }
 
     def _build_prompt(self, session) -> str:
-        system = (
-            SYSTEM_PROMPT_SCHEDULE
-            if session.extra.get("schedule_mode")
-            else SYSTEM_PROMPT
-        )
         context = json.dumps(self._context(session), ensure_ascii=False, default=str)
         user_message = next(
             (
@@ -349,8 +346,7 @@ class TaskDraftModule(AssistantRuntime):
         )
         engine = create_engine(session.engine)
         if engine is not None and engine.supports_resume:
-            head = system if not session.resolved_session_id else ""
-            prompt = f"{head}\n\nCurrent context:\n{context}\n\nUser: {user_message}"
+            prompt = f"Current context:\n{context}\n\nUser: {user_message}"
         else:
             turns = session.messages[-(MAX_HISTORY_TURNS * 2):]
             history = "\n\n".join(
@@ -358,13 +354,13 @@ class TaskDraftModule(AssistantRuntime):
                 for item in turns
             )
             prompt = (
-                f"{system}\n\nCurrent context:\n{context}"
+                f"Current context:\n{context}"
                 f"\n\nConversation history:\n{history}\n\nContinue."
             )
         return prompt
 
-    def _system_prompt_for_display(self, session) -> str:
-        """Match the visible system instruction to normal or scheduled mode."""
+    def _engine_system_prompt(self, session) -> str:
+        """Select fixed rules for normal creation or scheduled execution."""
         return (
             SYSTEM_PROMPT_SCHEDULE
             if session.extra.get("schedule_mode")
@@ -448,12 +444,14 @@ class TaskDraftModule(AssistantRuntime):
                 if not schedule_mode
                 else self._schedule_valid_step_keys(session)
             )
+            instruction, repair_context = self._repair_instruction(session, valid_keys, raw)
             repaired, events, _ = await self._invoke(
                 session.engine,
                 session.fast_model,
                 session.cwd,
-                self._repair_instruction(session, valid_keys, raw),
+                repair_context,
                 None,
+                system_prompt=instruction,
             )
             reply, draft = self._parse_reply(repaired)
             validated = self._validate_draft(session, draft)
@@ -461,7 +459,7 @@ class TaskDraftModule(AssistantRuntime):
                 session.extra["schedule_result"] = validated[-1]
             return reply, validated, events
 
-    def _repair_instruction(self, session, valid_keys: set[str], raw: str) -> str:
+    def _repair_instruction(self, session, valid_keys: set[str], raw: str) -> tuple[str, str]:
         if session.extra.get("schedule_mode"):
             allowed_ids = sorted(
                 wf["id"] for wf in self._allowed_workflow_ids(session)
@@ -471,7 +469,7 @@ class TaskDraftModule(AssistantRuntime):
                 'the form {"reply":"...","task_draft":{"title":"...",'
                 '"description":"...","workflow_id":"chosen candidate workflow id",'
                 '"start_step_key":"valid workflow step key or omit"}}. '
-                "Return JSON only.\n\n"
+                "Return JSON only.",
                 f"Valid workflow ids: {allowed_ids}\n\n"
                 f"Valid step keys: {sorted(valid_keys)}\n\n"
                 f"{raw}"
@@ -485,7 +483,7 @@ class TaskDraftModule(AssistantRuntime):
             "Repair the response into valid task-creation JSON of the form "
             f'{{"reply":"...","task_draft":{{{title_field}"description":"...",'
             '"start_step_key":"valid workflow step key"}}}. '
-            "Use task_draft:null when clarification is required. Return JSON only.\n\n"
+            "Use task_draft:null when clarification is required. Return JSON only.",
             f"Valid step keys: {sorted(valid_keys)}\n\n"
             f"{raw}"
         )

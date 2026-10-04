@@ -4,7 +4,7 @@
   --mobile-control-composer: var(--mobile-button-height);
   --mobile-control-regular: var(--mobile-button-height);
   --mobile-control-touch: 44px;
-  --mobile-control-menu: 48px;
+  --mobile-control-menu: 44px;
   --mobile-toolbar-control-height: var(--mobile-control-regular);
   --mobile-control-font-size: calc(13px * var(--font-scale));
   --mobile-control-icon-size: 16px;
@@ -176,11 +176,35 @@
     height: var(--mobile-control-icon-size) !important;
     flex: 0 0 var(--mobile-control-icon-size);
   }
+  .review-decision-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .review-decision-actions > button.btn {
+    width: 100%;
+    height: auto;
+    min-width: 0;
+    min-height: var(--mobile-control-regular);
+    justify-content: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    margin: 0;
+  }
   .provider-protocol-toggle { height: var(--mobile-button-height); min-height: var(--mobile-button-height); }
   .chat-input-text-segment { min-width: 0; overflow-wrap: anywhere; }
   .markdown-body, .markdown-message { min-width: 0; overflow-wrap: anywhere; }
   .markdown-body pre, .markdown-message pre, .chat-message-row pre { max-width: 100%; overflow-x: auto; }
   .markdown-body table, .markdown-message table { display: block; max-width: 100%; overflow-x: auto; }
+  .markdown-body th, .markdown-body td,
+  .markdown-message th, .markdown-message td {
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    vertical-align: top;
+  }
+  .markdown-body td code, .markdown-body th code,
+  .markdown-message td code, .markdown-message th code {
+    white-space: break-spaces;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
   .chat-message-row img { max-width: 100%; height: auto; }
   .desktop-task-toolbar, .desktop-task-board { display: none !important; }
   .mobile-task-toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--border-soft); }
@@ -326,19 +350,76 @@
   .mobile-task-row-meta time { margin-left: auto; font-variant-numeric: tabular-nums; }
   .mobile-empty { padding-block: 48px; color: var(--meta); text-align: center; }
   .task-detail-window, .task-create-panel { inset: 0 !important; width: 100% !important; min-width: 0 !important; height: var(--app-viewport-height, 100dvh) !important; max-height: var(--app-viewport-height, 100dvh); padding-top: env(safe-area-inset-top); box-shadow: none !important; border: 0 !important; }
-  .task-detail-header { padding: 8px 12px !important; gap: 8px !important; }
+  .task-detail-header { --task-detail-badge-height: 22px; padding: 8px 12px !important; gap: 8px !important; }
+  .task-detail-header-badge { min-height: var(--task-detail-badge-height); }
   .task-detail-header > div { min-width: 0; }
-  .task-detail-header > div > div > span:first-child { font-size: calc(16px * var(--font-scale)) !important; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .task-detail-header > div > div { gap: 4px !important; }
-  .task-detail-header > div > div + div { display: none; }
-  .task-detail-share-button { margin-left: auto !important; }
-  .task-detail-id-button {
-    max-width: 180px;
+  .task-detail-header-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 4px !important;
+  }
+  .task-detail-header-primary,
+  .task-detail-header-secondary {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+    gap: 4px;
+    flex-wrap: nowrap;
+  }
+  .task-detail-header-primary .task-detail-title {
+    flex: 1 1 0;
+    min-width: 0;
     overflow: hidden;
-    font-size: calc(10px * var(--font-scale)) !important;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-size: calc(16px * var(--font-scale)) !important;
   }
+  .task-detail-header-primary .task-detail-header-badge:not([data-status]) { max-width: 84px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .task-detail-header-primary .task-detail-header-badge[data-status] { flex-shrink: 0; white-space: nowrap; }
+  .task-detail-recovered-badge { display: none; }
+  .task-detail-header-meta { flex: 1 1 0; min-width: 0; }
+  .task-detail-header-actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+  .task-detail-header-close { align-self: flex-end; width: var(--mobile-control-regular); height: var(--mobile-control-regular); }
+  .task-detail-header > div > div + div { display: none; }
+  .task-detail-discussion-button,
+  .task-detail-share-button {
+    height: var(--mobile-control-regular);
+    min-height: var(--mobile-control-regular);
+    padding-block: 0;
+  }
+  .task-detail-share-button {
+    width: var(--mobile-control-regular);
+    min-width: var(--mobile-control-regular);
+    padding: 0 !important;
+    justify-content: center;
+    margin-left: 0 !important;
+  }
+  .task-detail-share-label { display: none; }
+  .task-detail-id-button {
+    height: var(--task-detail-badge-height);
+    min-height: var(--task-detail-badge-height);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    width: 84px;
+    max-width: 84px;
+    flex: 0 0 84px;
+    overflow: hidden;
+    font-size: calc(10px * var(--font-scale)) !important;
+  }
+  .task-detail-primary-tabs-row {
+    display: flex; align-items: center; flex-shrink: 0; min-width: 0;
+    padding-inline: 12px; gap: 8px; border-bottom: 1px solid var(--border-soft);
+  }
+  .task-detail-primary-tabs-row > .task-detail-primary-tabs {
+    flex: 1; min-width: 0; padding: 0; gap: 6px; border-bottom: 0; overflow-x: auto;
+    white-space: nowrap; font-size: calc(12px * var(--font-scale));
+  }
+  .task-detail-primary-tabs-row > .task-detail-primary-tabs > button { flex-shrink: 0; padding-inline: 1px; }
+  .task-detail-primary-tabs-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+  .task-detail-id-button:hover { background: transparent; }
   .mobile-detail-tabs { display: flex; flex-shrink: 0; border-bottom: 1px solid var(--border-soft); padding-inline: 12px; }
   .mobile-detail-tabs button { flex: 1; height: var(--mobile-button-height); min-height: var(--mobile-button-height); padding: 0 12px; justify-content: center; border-radius: 0; border-bottom: 2px solid transparent; }
   .mobile-detail-tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
@@ -353,7 +434,7 @@
   .task-artifact-step-section { padding: 10px; }
   .task-artifact-round-tabs > button { white-space: nowrap; text-align: center; }
   .task-artifact-file-row { padding-inline: 0; }
-  .task-detail-conversation > div > div:first-child { padding: 8px 16px !important; flex-wrap: wrap; }
+  .task-conversation-header { display: none; }
   .task-detail-composer {
     padding: 2px 2px max(2px, env(safe-area-inset-bottom)) !important;
     gap: 4px !important;
@@ -452,21 +533,18 @@
     min-height: var(--mobile-button-height);
     align-items: center;
   }
-  .provider-protocol-switch,
-  .channel-toggle span {
+  .provider-protocol-switch {
     width: 52px;
     height: var(--mobile-button-height);
     flex-basis: 52px;
   }
-  .provider-protocol-switch::after,
-  .channel-toggle span::after {
+  .provider-protocol-switch::after {
     width: 28px;
     height: 28px;
     top: 2px;
     left: 2px;
   }
-  .provider-protocol-toggle input:checked + .provider-protocol-switch::after,
-  .channel-toggle input:checked + span::after { transform: translateX(20px); }
+  .provider-protocol-toggle input:checked + .provider-protocol-switch::after { transform: translateX(20px); }
   .provider-settings-header {
     flex-direction: column;
     align-items: stretch !important;
@@ -494,6 +572,11 @@
   .provider-settings-card-actions {
     grid-column: 1 / -1;
     justify-content: flex-start !important;
+  }
+  .provider-settings-model-list {
+    max-height: min(160px, 24dvh) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
   }
   .engine-settings-section-heading {
     align-items: flex-start !important;
@@ -531,9 +614,9 @@
 }
 
 @media (pointer: coarse), (max-width: 1023px) {
-  /* 触控高度：默认给按钮一个合理的最小高度（36px），
-     只有特定区域（toolbar、sheet body、菜单项）才需要 44px。 */
+  /* 可见按钮默认 32px；菜单项与少数触控目标使用 44px。 */
   button, [role="button"], .ws-row { min-height: var(--mobile-button-height); }
+  .pending-insert-panel .pending-insert-button { min-height: var(--mobile-control-compact); }
   .mobile-sheet-body > button, .mobile-sheet-body > select { min-height: var(--mobile-button-height); }
   .chat-input-menu-item { min-height: var(--mobile-control-menu); }
   .chat-input-toolbar > *, .chat-input-toolbar-scroll > * { min-height: var(--mobile-control-composer) !important; }
@@ -542,7 +625,7 @@
   /* 需要紧凑的小按钮：图标按钮、消息操作、预览内按钮等 */
   .btn-icon, .btn-sm,
   .chat-message-action,
-  .chat-input-quota-refresh,
+  .ws-session-time-button,
   .chat-input-image-remove,
   .conversation-new-messages-button,
   .git-copy-block,
@@ -555,6 +638,10 @@
   .artifact-preview-container button,
   .dialog-header button {
     min-height: var(--mobile-control-compact);
+  }
+  /* 额度刷新沿用 24px 圆形，避免通用最小高度将按钮撑成椭圆。 */
+  .chat-input-quota-refresh {
+    min-height: 0;
   }
   /* 图片删除按钮保持原始小尺寸 */
   .chat-input-image-remove {
@@ -638,9 +725,9 @@
     display: none !important;
   }
 
-  /* 移动端思考中/运行中隐藏消息操作按钮（复制/fork），已完成消息保留显示。 */
-  .chat-message-row[data-thinking] .chat-message-action,
-  .message-footer--running .chat-message-action {
+  /* 移动端运行中隐藏复制/fork，已捕获的提示词仍允许查看。 */
+  .chat-message-row[data-thinking] .chat-message-action:not(.chat-message-action--prompt),
+  .message-footer--running .chat-message-action:not(.chat-message-action--prompt) {
     display: none !important;
   }
 
@@ -662,12 +749,13 @@
     display: none !important;
   }
 
-  /* token 摘要 4-5 行 → 2 行，超出省略。 */
-  .footer-usage-summary {
+  /* token 摘要 4-5 行 → 2 行，超出省略。点击后切换单行跑马灯（--marquee）时不 clamp。 */
+  .footer-usage-summary:not(.footer-usage-summary--marquee) {
     display: -webkit-box !important;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     overflow: hidden;
+    cursor: pointer;
   }
 
   /* 快捷提示行：保留功能，压薄。 */
@@ -756,9 +844,30 @@
 
   /* ── C 方案补充（纯 CSS） ── */
 
-  /* 隐藏头像：移动端屏幕窄，省出 ~40px 给正文。 */
+  /* 普通助手对话隐藏头像；任务对话历史保留头像及身份文字。 */
   .chat-message-avatar-anchor {
     display: none !important;
+  }
+  /* 头像放在左右留白中，不占用正文的 flex 宽度。 */
+  .task-conversation-content .chat-message-row {
+    position: relative;
+  }
+  .task-conversation-content .chat-message-avatar-anchor {
+    display: inline-flex !important;
+    position: absolute;
+    left: -34px;
+  }
+  .task-conversation-content .chat-message-row[data-message-role="user"] .chat-message-avatar-anchor {
+    left: auto;
+    right: -34px;
+  }
+  .chat-message-row .chat-message-sender-mobile {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+    color: var(--meta);
+    font-size: calc(11px * var(--font-scale));
+    overflow-wrap: anywhere;
   }
 
   /* Meta 栏去底线 + 弱化：C 风格是灰色单行，不要分隔线。 */

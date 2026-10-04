@@ -205,6 +205,8 @@ def test_non_acp_engine_mapping_events_are_declared():
     """映射路径实际产出的事件类型 ⊆ 声明集合（声明覆盖实际）。"""
     probes = _mapping_probes()
     for engine_id, probe in probes.items():
+        if engine_id not in _ALL_ENGINES:
+            continue  # 暂隐藏未注册的引擎（如 codex / claude CLI）
         engine = _ALL_ENGINES[engine_id]()
         produced = probe(engine)
         declared = set(engine.acp_events)

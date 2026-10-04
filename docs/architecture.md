@@ -12,7 +12,6 @@ WorkStep 由五个可独立维护的应用组成：
 | `apps/web` | React、TypeScript、Vite、Zustand | 任务、流程画布、聊天、设置和实时状态 UI |
 | `apps/desktop` | Electron | 启动内置 Python 后端、加载 Web UI、桌面协议和更新 |
 | `apps/landing` | React、Vite | 产品官网 |
-| `apps/wechat-bridge` | Node.js | 微信渠道桥接 |
 
 开发模式下，Web 前端通过 Vite 连接本地 daemon。生产 Web 资源由 daemon 提供。桌面端打包一套 uv-managed Python 运行时和 daemon 源码，不使用 Nuitka 冻结；sidecar 只监听 `127.0.0.1`，默认请求端口 `0`，通过 stdout 的 `PORT:<port>` 报告实际端口。
 
@@ -239,8 +238,11 @@ Pydantic AI 是进程内引擎，固定挂载项目范围的 Coder 和 Skills。
 - `pending_message_inserts`：按正在运行的 assistant Message ID 保存待插入内容；消费前不属于正式聊天记录，目标执行结束后按顺序合并为一条用户消息
 - `coordinator_sessions`、`coordinator_turns`、`action_proposals`、`stage_supplements`
 - `schedules`、`schedule_runs`
-- `task_shares`、`channels`
+- `task_shares`；`channels` 与 `channel_chat_mappings` 为旧个人微信渠道的历史兼容表
+
 - `project_settings`
+
+企业微信智能机器人和钉钉 Stream 机器人通过 daemon 主动建立平台长连接。机器人凭证、默认项目/任务目标及 `(机器人 ID, 群 ID) → 任务` 索引存放在全局配置；平台群消息经 `services/channels/bots.py` 路由到现有任务协调助手，默认项目消息复用项目渠道聊天会话。平台连接与 WorkStep 前端 `/ws` 是两套独立通道，配置和使用方式见[渠道机器人文档](channel-bots.md)。
 
 完整集合以 `apps/daemon/models/__init__.py::ALL_MODELS` 为准。迁移器通过当前模型建表并使用 additive columns 收敛旧数据库；`LATEST_SCHEMA_VERSION = 0` 是 bootstrap 基线，不是累计迁移次数。
 

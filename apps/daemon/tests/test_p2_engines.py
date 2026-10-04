@@ -53,8 +53,15 @@ async def test_sdk_permission_mode_changes_active_client_immediately(
 # --- CodexEngine ---
 
 def test_codex_resolve_binary():
-    binary = CodexEngine.resolve_binary()
+    from engines.codex import CodexEngine as DirectCodex
+    from engines.claude_code import ClaudeCodeEngine as DirectClaude
+    DirectCodex._binary_override = getattr(DirectCodex, '_binary_override', None)
+    binary = DirectCodex.resolve_binary()
     assert binary is None or isinstance(binary, str)
+    assert DirectCodex.ENGINE_ID == "codex"
+    assert DirectClaude.ENGINE_ID == "claude"
+    assert "codex" not in _ALL_ENGINES
+    assert "claude" not in _ALL_ENGINES
 
 
 @pytest.mark.anyio
@@ -182,6 +189,13 @@ def test_codex_map_agent_message_text_field():
     assert event is not None
     assert event.type == "agent_message_chunk"
     assert event.data["content"]["text"] == "你好！我是 Codex"
+
+
+def test_codex_cli_event_mapping_has_one_owner():
+    from engines.codex_cli_events import CodexCLIEventMapper
+
+    assert isinstance(CodexEngine(), CodexCLIEventMapper)
+    assert "_map_event" not in CodexEngine.__dict__
 
 
 @pytest.mark.parametrize(
@@ -722,6 +736,13 @@ async def test_codex_denial_reject_for_session_auto_denies(monkeypatch):
     assert len(decisions) == 2
     assert all("user rejected" in content for content in decisions)
     assert all("rejected" in content for content in decisions)
+
+
+def test_claude_code_event_mapping_has_one_owner():
+    from engines.claude_code_events import ClaudeCodeEventMapper
+
+    assert isinstance(ClaudeCodeEngine(), ClaudeCodeEventMapper)
+    assert "_map_events_content" not in ClaudeCodeEngine.__dict__
 
 
 def test_claude_code_maps_subagent_task_frames():
@@ -1563,7 +1584,7 @@ async def test_claude_spawn_passes_compaction_override_only_to_child(monkeypatch
 
 
 @pytest.mark.anyio
-async def test_claude_spawn_injects_custom_settings_env_and_flags(monkeypatch):
+async def test_claude_spawn_injects_custom_settings_env_and_flags(monkeypatch, tmp_path):
     """custom_settings: env 注入子进程环境，其余键合并进 --settings 传给 CLI。"""
     import json as _json
 
@@ -1595,7 +1616,7 @@ async def test_claude_spawn_injects_custom_settings_env_and_flags(monkeypatch):
         lambda: {"model_map": "", "custom_settings": custom},
     )
 
-    async for _event in ClaudeCodeEngine().spawn(prompt="hello", cwd="/tmp"):
+    async for _event in ClaudeCodeEngine().spawn(prompt="hello", cwd=str(tmp_path)):
         pass
 
     cmd = captured["cmd"]
@@ -2169,6 +2190,13 @@ class _SdkFake:
 
 def test_claude_agent_sdk_engine_id():
     assert ClaudeAgentSDKEngine.ENGINE_ID == "claude_agent_sdk"
+
+
+def test_claude_agent_sdk_message_mapping_has_one_owner():
+    from engines.claude_agent_sdk_events import ClaudeAgentSDKEventMapper
+
+    assert isinstance(ClaudeAgentSDKEngine(), ClaudeAgentSDKEventMapper)
+    assert "_map_message_content" not in ClaudeAgentSDKEngine.__dict__
 
 
 @pytest.mark.anyio
@@ -2785,7 +2813,7 @@ async def test_claude_agent_sdk_spawn_uses_modern_query_api(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_claude_agent_sdk_spawn_injects_custom_settings_env_and_options(monkeypatch):
+async def test_claude_agent_sdk_spawn_injects_custom_settings_env_and_options(monkeypatch, tmp_path):
     """custom_settings: env 进子进程环境，其余键合并进 SDK settings。"""
     import claude_agent_sdk as sdk_module
     import json as _json
@@ -2834,7 +2862,7 @@ async def test_claude_agent_sdk_spawn_injects_custom_settings_env_and_options(mo
 
     events = [
         event
-        async for event in ClaudeAgentSDKEngine().spawn(prompt="hi", cwd="/tmp")
+        async for event in ClaudeAgentSDKEngine().spawn(prompt="hi", cwd=str(tmp_path))
     ]
     assert [event.type for event in events] == ["status"]
     options = captured["client"].options
@@ -3054,6 +3082,18 @@ def test_codex_sdk_maps_compacted_notification():
     assert events[0].data == {}
 
 
+def test_codex_sdk_notification_mapping_has_one_owner():
+    from engines.codex_sdk_events import CodexSDKNotificationMapper
+
+    engine = CodexSDKEngine()
+    assert isinstance(engine, CodexSDKNotificationMapper)
+    events = engine._map_notification(
+        _SdkFake(method="thread/compacted", payload=_SdkFake()),
+        {"emitted_text": False, "tool_emitted": set()},
+    )
+    assert [event.type for event in events] == ["compacted"]
+
+
 def test_codex_sdk_maps_turn_plan_updated_to_acp_snapshot():
     engine = CodexSDKEngine()
     events = engine._map_notification(
@@ -3094,12 +3134,10 @@ def test_codex_sdk_maps_started_and_text_delta():
 
 
 def test_codex_sdk_preserves_async_questions_on_completed_message():
-    from openai_codex.generated.v2_all import AgentMessageDelivery
-
     engine = CodexSDKEngine()
     root = _SdkFake(
         type="agentMessage", id="call-question", text="请选择处理方式",
-        phase="final_answer", delivery=AgentMessageDelivery(root="async"),
+        phase="final_answer", delivery="async",
         questions=[_SdkFake(title="处理方式？", options=["复制差异块", "逐行复制"])],
     )
     events = engine._map_notification(
@@ -3379,11 +3417,101 @@ def test_codex_sdk_maps_goal_lifecycle_to_shared_event():
 
 
 @pytest.mark.anyio
+async def test_codex_sdk_goal_start_explicitly_uses_default_mode():
+    engine = CodexSDKEngine()
+    calls = []
+
+    class GoalState:
+        def activate_turn_routing(self):
+            calls.append("route")
+
+        def is_finished(self):
+            return True
+
+    class RawClient:
+        def register_goal_operation(self, thread_id):
+            calls.append(("register", thread_id))
+            return GoalState()
+
+        async def thread_goal_clear(self, thread_id):
+            calls.append(("clear", thread_id))
+
+        async def turn_start(self, thread_id, prompt, params=None):
+            calls.append(("turn", thread_id, prompt, params))
+            return SimpleNamespace(turn=SimpleNamespace(id="first-turn"))
+
+        async def thread_goal_set(self, thread_id, **kwargs):
+            calls.append(("goal", thread_id, kwargs))
+
+        async def next_goal_notification(self, state):
+            return SimpleNamespace(method="thread/goal/updated")
+
+        def unregister_goal_operation(self, state):
+            calls.append("unregister")
+
+    raw = RawClient()
+    engine._map_notification = lambda notification, state: []
+    await engine._run_goal_command(
+        SimpleNamespace(_client=raw), SimpleNamespace(id="thread-1"),
+        "start", "完成计划", {}, asyncio.Queue(),
+        model="gpt-test", reasoning_effort="medium",
+    )
+
+    turn = next(call for call in calls if isinstance(call, tuple) and call[0] == "turn")
+    assert turn[1:3] == ("thread-1", "完成计划")
+    assert turn[3]["collaborationMode"]["mode"] == "default"
+    assert calls.index("route") < calls.index(turn) < next(
+        index for index, call in enumerate(calls)
+        if isinstance(call, tuple) and call[0] == "goal"
+    )
+
+
+@pytest.mark.anyio
+async def test_codex_sdk_goal_start_interrupts_first_turn_if_goal_set_fails():
+    engine = CodexSDKEngine()
+    calls = []
+
+    class GoalState:
+        def activate_turn_routing(self):
+            pass
+
+    class RawClient:
+        def register_goal_operation(self, thread_id):
+            return GoalState()
+
+        async def thread_goal_clear(self, thread_id):
+            pass
+
+        async def turn_start(self, thread_id, prompt, params=None):
+            return SimpleNamespace(turn=SimpleNamespace(id="first-turn"))
+
+        async def thread_goal_set(self, thread_id, **kwargs):
+            raise RuntimeError("goal set failed")
+
+        async def turn_interrupt(self, thread_id, turn_id):
+            calls.append(("interrupt", thread_id, turn_id))
+
+        def unregister_goal_operation(self, state):
+            calls.append(("unregister", state))
+
+    with pytest.raises(RuntimeError, match="goal set failed"):
+        await engine._run_goal_command(
+            SimpleNamespace(_client=RawClient()), SimpleNamespace(id="thread-1"),
+            "start", "完成计划", {}, asyncio.Queue(), model="gpt-test",
+        )
+    assert calls[0] == ("interrupt", "thread-1", "first-turn")
+    assert calls[1][0] == "unregister"
+
+
+@pytest.mark.anyio
 async def test_codex_sdk_goal_stream_waits_for_goal_completion_across_turns(monkeypatch):
     engine = CodexSDKEngine()
 
     class GoalState:
         index = 0
+
+        def activate_turn_routing(self):
+            pass
 
         def is_finished(self):
             return self.index == 4
@@ -3402,9 +3530,20 @@ async def test_codex_sdk_goal_stream_waits_for_goal_completion_across_turns(monk
     class RawClient:
         unregistered = False
 
-        async def start_goal_operation(self, thread_id, objective):
-            assert (thread_id, objective) == ("thread-1", "修复性能问题")
-            return goal_state, "first-turn"
+        def register_goal_operation(self, thread_id):
+            assert thread_id == "thread-1"
+            return goal_state
+
+        async def thread_goal_clear(self, thread_id):
+            assert thread_id == "thread-1"
+
+        async def turn_start(self, thread_id, prompt, params=None):
+            assert (thread_id, prompt) == ("thread-1", "修复性能问题")
+            assert params["collaborationMode"]["mode"] == "default"
+            return SimpleNamespace(turn=SimpleNamespace(id="first-turn"))
+
+        async def thread_goal_set(self, thread_id, **kwargs):
+            assert thread_id == "thread-1"
 
         async def next_goal_notification(self, state):
             item = notifications[state.index]
@@ -3420,6 +3559,7 @@ async def test_codex_sdk_goal_stream_waits_for_goal_completion_across_turns(monk
     await engine._run_goal_command(
         SimpleNamespace(_client=raw), SimpleNamespace(id="thread-1"),
         "start", "修复性能问题", {}, queue,
+        model="gpt-test",
     )
     events = [queue.get_nowait() for _ in range(queue.qsize())]
     assert [event.data.get("status") for event in events if event.type == "status"] == [
@@ -4432,14 +4572,16 @@ async def test_claude_permission_mode_save_requires_confirmation(monkeypatch):
 def test_all_engines_registered():
     """All engines are in the full list."""
     assert len(_ALL_ENGINES) == 9
-    assert "claude" in _ALL_ENGINES
-    assert "codex" in _ALL_ENGINES
+    assert "claude" not in _ALL_ENGINES
+    assert "codex" not in _ALL_ENGINES
     assert "hermes" in _ALL_ENGINES
     assert "qoder_sdk" in _ALL_ENGINES
     assert "openclaw" in _ALL_ENGINES
     assert "pydantic_ai" in _ALL_ENGINES
     assert "claude_agent_sdk" in _ALL_ENGINES
     assert "codex_sdk" in _ALL_ENGINES
+    assert "cursor" in _ALL_ENGINES
+    assert "opencode" in _ALL_ENGINES
 
 
 def test_registered_engines_declare_resume_capability_accurately():
@@ -4461,12 +4603,13 @@ def test_get_available_engines_lists_all_backends():
     """get_available_engines returns entries for all backends."""
     engines = get_available_engines()
     ids = {e["id"] for e in engines}
-    assert "claude" in ids
-    assert "codex" in ids
+    assert "claude" not in ids
+    assert "codex" not in ids
     assert "hermes" in ids
     assert "qoder_sdk" in ids
     assert "openclaw" in ids
     assert "claude_agent_sdk" in ids
+    assert ids == set(_ALL_ENGINES.keys())
 
 
 def test_create_engine_returns_instance():
@@ -4520,6 +4663,13 @@ class _QoderResultMessage(_QoderFake):
 
 def test_qoder_sdk_engine_id():
     assert QoderSDKEngine.ENGINE_ID == "qoder_sdk"
+
+
+def test_qoder_sdk_message_mapping_has_one_owner():
+    from engines.qoder_sdk_events import QoderSDKEventMapper
+
+    assert isinstance(QoderSDKEngine(), QoderSDKEventMapper)
+    assert "_map_message_content" not in QoderSDKEngine.__dict__
 
 
 def test_qoder_sdk_version_and_binary():

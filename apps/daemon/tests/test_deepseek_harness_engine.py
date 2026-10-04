@@ -15,6 +15,13 @@ def notification(method: str, payload: dict):
     return SimpleNamespace(method=method, payload=payload)
 
 
+@pytest.fixture(autouse=True)
+def _clean_harness_pool():
+    DeepSeekHarnessEngine.shutdown_pool()
+    yield
+    DeepSeekHarnessEngine.shutdown_pool()
+
+
 @pytest.fixture
 def deepseek_provider():
     return {
@@ -31,14 +38,14 @@ def test_deepseek_harness_declares_sdk_install_and_safe_capabilities(monkeypatch
     monkeypatch.setattr(DeepSeekHarnessEngine, "is_configured", staticmethod(lambda: True))
 
     assert DeepSeekHarnessEngine.install_command() == (
-        "pip install deepseek-harness-sdk==0.1.0rc6"
+        "pip install deepseek-harness-sdk==0.1.5rc1"
     )
     assert DeepSeekHarnessEngine().capabilities == EngineCapabilities(
         supports_coordinator=True,
         supports_resume=True,
         supports_tool_disable=False,
         supports_native_schema=False,
-        supports_live_step_message=False,
+        supports_live_step_message=True,
         supports_sessions=True,
         supports_tool_approval=False,
         supports_vision=False,
@@ -117,7 +124,7 @@ def test_deepseek_harness_uses_workstep_standard_composition(
     monkeypatch.setitem(
         sys.modules,
         "deepseek_harness",
-        SimpleNamespace(DeepSeekHarness=FakeHarness),
+        SimpleNamespace(DeepSeekHarness=FakeHarness, DeepSeekHarnessConfig=LegacyConfig),
     )
 
     engine = DeepSeekHarnessEngine()
@@ -329,6 +336,8 @@ def test_deepseek_harness_spawn_streams_notifications_and_reuses_session(
 
     events = asyncio.run(collect())
 
+    # 池化后 spawn 结束不再关闭 harness（留给同项目下一轮复用），
+    # 关闭只发生在 stop()/空闲回收/lifespan shutdown。
     assert captured == {
         "cwd": str(tmp_path),
         "provider": deepseek_provider,
@@ -337,14 +346,15 @@ def test_deepseek_harness_spawn_streams_notifications_and_reuses_session(
         "preset": "standard",
         "prompt": "修复测试",
         "session_id": "session-existing",
-        "closed": True,
     }
+    assert "closed" not in captured
     assert [event.type for event in events] == [
         "status", "session_started", "status", "agent_message_chunk", "status",
     ]
     assert events[0].data["status"] == "initializing"
     assert events[1].data["session_id"] == "session-existing"
     assert events[-1].data["status"] == "done"
+    DeepSeekHarnessEngine.shutdown_pool()
 
 
 def test_deepseek_harness_spawn_reports_sdk_failure(monkeypatch, tmp_path, deepseek_provider):
@@ -376,3 +386,337 @@ def test_deepseek_harness_spawn_reports_sdk_failure(monkeypatch, tmp_path, deeps
     events = asyncio.run(collect())
     assert events[-1].type == "error"
     assert events[-1].data["message"] == "runtime crashed"
+
+
+# --- 两代 SDK 的 config 签名兼容 ----------------------------------------------
+# 0.1.0rc7 世代：session_root / cordis / runtime_bin；
+# >= 0.1.5rc1 世代：dsh_home / patches / dsh_bin。
+
+import importlib  # noqa: E402
+from dataclasses import dataclass, field  # noqa: E402
+from types import ModuleType  # noqa: E402
+
+from services.skill_center import ProjectSkillSelection  # noqa: E402
+
+
+@dataclass
+class LegacyConfig:
+    """0.1.0rc7 世代签名（session_root / cordis / runtime_bin）。"""
+
+    provider: str = "deepseek-official"
+    model: str = "deepseek-v4-flash"
+    max_tokens: int | None = None
+    cwd: str | None = None
+    runtime_cwd: str | None = None
+    session_root: str | None = None
+    cordis: str | None = None
+    env: dict = field(default_factory=dict)
+    runtime_bin: str | None = None
+    launch_args_override: tuple | None = None
+    request_timeout_seconds: float | None = None
+    shutdown_timeout_seconds: float = 1.0
+    base_url: str | None = None
+    api_key: str | None = None
+
+
+@dataclass
+class ModernConfig:
+    """>= 0.1.5rc1 世代签名（dsh_home / patches / dsh_bin）。"""
+
+    provider: str = "deepseek-official"
+    model: str = "deepseek-v4-flash"
+    reasoning_effort: str | None = None
+    max_tokens: int | None = None
+    cwd: str | None = None
+    runtime_cwd: str | None = None
+    dsh_bin: str | None = None
+    profile: str = "sdk"
+    patches: tuple = ()
+    dsh_home: str | None = None
+    env: dict = field(default_factory=dict)
+    initialize_timeout_seconds: float = 30.0
+    request_timeout_seconds: float | None = None
+    shutdown_timeout_seconds: float = 1.0
+    base_url: str | None = None
+    api_key: str | None = None
+
+
+@dataclass
+class UnknownConfig:
+    """两代参数都不带的签名（用于回归保护）。"""
+
+    provider: str = "deepseek-official"
+    model: str = "deepseek-v4-flash"
+    env: dict = field(default_factory=dict)
+
+
+class _HarnessRecorder:
+    """记录 DeepSeekHarness 构造参数的桩。"""
+
+    last_kwargs: dict | None = None
+
+    def __init__(self, **kwargs):
+        type(self).last_kwargs = dict(kwargs)
+
+
+def _install_sdk_stub(monkeypatch, config_class) -> None:
+    """把带指定 config 签名的 fake deepseek_harness 模块注入 sys.modules。
+
+    引擎在 ``_build_harness`` 内部才 import SDK（函数级导入），因此无需
+    reload 引擎模块；monkeypatch 会在测试结束后还原 sys.modules。
+    """
+    module = ModuleType("deepseek_harness")
+    module.DeepSeekHarnessConfig = config_class
+    module.DeepSeekHarness = _HarnessRecorder
+    monkeypatch.setitem(sys.modules, "deepseek_harness", module)
+    _HarnessRecorder.last_kwargs = None
+
+
+PROVIDER = {
+    "id": "prov-deepseek",
+    "type": "deepseek",
+    "name": "DeepSeek",
+    "base_url": "https://api.deepseek.com",
+    "api_key": "sk-test",
+    "enabled": True,
+}
+
+
+def _selection(project_root) -> ProjectSkillSelection:
+    return ProjectSkillSelection(
+        project_root=project_root,
+        skills=(),
+        enabled=(),
+        disabled_source_paths=(),
+    )
+
+
+def _build(monkeypatch, tmp_path, config_class, binary_override: str | None = None):
+    _install_sdk_stub(monkeypatch, config_class)
+    engine = DeepSeekHarnessEngine()
+    monkeypatch.setattr(
+        DeepSeekHarnessEngine,
+        "project_skills",
+        lambda self, cwd: _selection(Path(cwd)),
+    )
+    override = binary_override if binary_override is not None else None
+    monkeypatch.setattr(
+        DeepSeekHarnessEngine,
+        "get_binary_override",
+        classmethod(lambda cls: override),
+    )
+    harness = engine._build_harness(
+        cwd=str(tmp_path),
+        provider=PROVIDER,
+        model="deepseek-v4-flash",
+        max_tokens=None,
+        preset="standard",
+    )
+    assert isinstance(harness, _HarnessRecorder)
+    return _HarnessRecorder.last_kwargs
+
+
+def test_build_harness_modern_sdk_uses_dsh_home_and_patches(monkeypatch, tmp_path):
+    kwargs = _build(monkeypatch, tmp_path, ModernConfig)
+    expected_home = tmp_path / ".workstep" / "deepseek-harness"
+    assert kwargs["dsh_home"] == str(expected_home)
+    assert expected_home.is_dir()
+    assert isinstance(kwargs["patches"], tuple) and len(kwargs["patches"]) == 1
+    patch_path = tmp_path / ".workstep" / "runtime" / "deepseek" / "controlled-skills.workstep-patch.yml"
+    assert kwargs["patches"][0] == str(patch_path)
+    patch_text = patch_path.read_text(encoding="utf-8")
+    assert "includeDefaultRoots: false" in patch_text
+    assert str(tmp_path / ".workstep" / "skills") in patch_text
+    # 旧世代参数不得传给新 SDK（会触发 unexpected keyword argument）。
+    for legacy in ("session_root", "cordis", "runtime_bin"):
+        assert legacy not in kwargs
+    # 两代共享的参数原样透传。
+    assert kwargs["provider"] == "deepseek-official"
+    assert kwargs["model"] == "deepseek-v4-flash"
+    assert kwargs["cwd"] == str(tmp_path.resolve())
+    assert kwargs["runtime_cwd"] == str(tmp_path.resolve())
+    assert kwargs["api_key"] == "sk-test"
+    assert kwargs["base_url"]
+
+
+def test_build_harness_legacy_sdk_uses_session_root_and_cordis(monkeypatch, tmp_path):
+    kwargs = _build(monkeypatch, tmp_path, LegacyConfig)
+    expected_root = tmp_path / ".workstep" / "deepseek-harness" / "sessions"
+    assert kwargs["session_root"] == str(expected_root)
+    assert expected_root.is_dir()
+    composition = tmp_path / ".workstep" / "runtime" / "deepseek" / "controlled-skills.cordis.yml"
+    assert kwargs["cordis"] == str(composition)
+    composition_text = composition.read_text(encoding="utf-8")
+    assert "includeDefaultRoots: false" in composition_text
+    assert str(tmp_path / ".workstep" / "skills") in composition_text
+    for modern in ("dsh_home", "patches", "dsh_bin"):
+        assert modern not in kwargs
+
+
+def test_build_harness_binary_override_follows_generation(monkeypatch, tmp_path):
+    modern = _build(monkeypatch, tmp_path, ModernConfig, binary_override="/bin/dsh-override")
+    assert modern["dsh_bin"] == "/bin/dsh-override"
+    assert "runtime_bin" not in modern
+    legacy = _build(monkeypatch, tmp_path, LegacyConfig, binary_override="/bin/dsh-override")
+    assert legacy["runtime_bin"] == "/bin/dsh-override"
+    assert "dsh_bin" not in legacy
+
+
+def test_build_harness_unknown_generation_raises(monkeypatch, tmp_path):
+    with pytest.raises(RuntimeError, match="Unsupported DeepSeek Harness SDK"):
+        _build(monkeypatch, tmp_path, UnknownConfig)
+
+
+def test_install_surface_pins_latest_sdk():
+    assert DeepSeekHarnessEngine.SDK_PACKAGE == "deepseek-harness-sdk==0.1.5rc1"
+    assert DeepSeekHarnessEngine.RUNTIME_PACKAGE.kind == "pypi"
+    assert DeepSeekHarnessEngine.RUNTIME_PACKAGE.default_version == "0.1.5rc1"
+    # 适配器保留对 0.1.0rc7 世代的最低兼容线。
+    assert DeepSeekHarnessEngine.RUNTIME_PACKAGE.minimum == "0.1.0rc7"
+    assert DeepSeekHarnessEngine.install_command() == f"pip install {DeepSeekHarnessEngine.SDK_PACKAGE}"
+
+
+def test_preset_templates_ship():
+    standard = DeepSeekHarnessEngine.PRESET_COMPOSITIONS["standard"]
+    assert standard.is_file(), f"missing composition template: {standard}"
+    assert "workspaceContext" in standard.read_text(encoding="utf-8")
+    patch = DeepSeekHarnessEngine.PRESET_PATCHES["standard"]
+    assert patch.is_file(), f"missing patch template: {patch}"
+    patch_text = patch.read_text(encoding="utf-8")
+    assert "<WORKSTEP_SKILL_DIRS>" in patch_text
+    assert "skill-filesystem" in patch_text
+
+
+# --- 会话记忆：池化复用 + 结构化错误分类 --------------------------------------
+
+from engines.deepseek_harness import _is_session_exists_error  # noqa: E402
+
+
+class _JsonRpcErrorStub(Exception):
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+def test_session_exists_classifier_uses_structured_code():
+    # SDK 0.1.5rc1 实测形状：code -32603 + 精确 message。
+    assert _is_session_exists_error(
+        _JsonRpcErrorStub(-32603, 'session "session-abc" already exists')
+    ) is True
+    # 同 code 但无关 message：不是会话冲突。
+    assert _is_session_exists_error(
+        _JsonRpcErrorStub(-32603, "provider exploded")
+    ) is False
+    # 其它 code：不是会话冲突。
+    assert _is_session_exists_error(
+        _JsonRpcErrorStub(-32000, 'session "session-abc" already exists')
+    ) is False
+    # turn 内错误携带 "not found"（如工具返回 file not found）绝不能误判。
+    assert _is_session_exists_error(RuntimeError("tool result: file not found")) is False
+    assert _is_session_exists_error(RuntimeError("reader not found: foo")) is False
+    # 老世代 SDK 无 code 属性：只认持久化层冲突原文。
+    assert _is_session_exists_error(RuntimeError("id collision on log")) is True
+    assert _is_session_exists_error(
+        RuntimeError("session already has a persisted log")
+    ) is True
+
+
+def test_spawn_reuses_pooled_harness_across_turns(monkeypatch, tmp_path, deepseek_provider):
+    """同项目连续两轮 spawn 必须复用同一 harness 实例（同进程 resume 即记忆）。
+
+    回归：此前每轮新建 SDK server 进程，跨进程 resume 报 AlreadyExists，
+    每轮都被迫回退到全新会话导致记忆丢失。
+    """
+    built = []
+
+    class FakeHarness:
+        def run(self, prompt, *, session_id, on_notification):
+            return SimpleNamespace(finish_reason="completed")
+
+        def close(self):
+            built.append("closed")
+
+    def _build(self, **kwargs):
+        harness = FakeHarness()
+        built.append(harness)
+        return harness
+
+    monkeypatch.setattr(
+        "engines.deepseek_harness.config_store.get_deepseek_harness_config",
+        lambda: {"provider_id": "deepseek-official", "model": "deepseek-v4-flash", "max_tokens": ""},
+    )
+    monkeypatch.setattr(
+        "engines.deepseek_harness.config_store.get_provider",
+        lambda _provider_id: deepseek_provider,
+    )
+    monkeypatch.setattr(DeepSeekHarnessEngine, "_build_harness", _build)
+    monkeypatch.setattr(DeepSeekHarnessEngine, "is_installed", staticmethod(lambda: True))
+
+    async def two_turns():
+        first = [
+            event async for event in DeepSeekHarnessEngine().spawn(
+                "你好", str(tmp_path), session_id="session-keep"
+            )
+        ]
+        second = [
+            event async for event in DeepSeekHarnessEngine().spawn(
+                "我上一句问啥", str(tmp_path), session_id="session-keep"
+            )
+        ]
+        return first, second
+
+    first, second = asyncio.run(two_turns())
+    harnesses = [item for item in built if not isinstance(item, str)]
+    assert len(harnesses) == 1, f"expected one pooled harness, built {len(built)}"
+    assert "closed" not in built
+    assert [e.type for e in first if e.type == "session_started"] == ["session_started"]
+    assert first[1].data["session_id"] == "session-keep"
+    assert second[1].data["session_id"] == "session-keep"
+    # 无 session_fallback：第二轮真正带上了同一会话。
+    assert all(
+        e.data.get("status") != "session_fallback" for e in second if e.type == "status"
+    )
+
+
+def test_spawn_falls_back_only_on_structured_exists_error(
+    monkeypatch, tmp_path, deepseek_provider
+):
+    """只有结构化会话冲突才回退；普通 turn 错误直接报错不丢会话。"""
+    calls = []
+
+    class FlakyHarness:
+        def run(self, prompt, *, session_id, on_notification):
+            calls.append(session_id)
+            if len(calls) == 1:
+                raise RuntimeError('tool "bash" failed: file not found')
+            return SimpleNamespace(finish_reason="completed")
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(
+        "engines.deepseek_harness.config_store.get_deepseek_harness_config",
+        lambda: {"provider_id": "deepseek-official", "model": "deepseek-v4-flash", "max_tokens": ""},
+    )
+    monkeypatch.setattr(
+        "engines.deepseek_harness.config_store.get_provider",
+        lambda _provider_id: deepseek_provider,
+    )
+    monkeypatch.setattr(
+        DeepSeekHarnessEngine, "_build_harness", lambda self, **_k: FlakyHarness()
+    )
+    monkeypatch.setattr(DeepSeekHarnessEngine, "is_installed", staticmethod(lambda: True))
+
+    async def collect():
+        return [
+            event async for event in DeepSeekHarnessEngine().spawn(
+                "go", str(tmp_path), session_id="session-keep"
+            )
+        ]
+
+    events = asyncio.run(collect())
+    # "file not found" 不再误判为会话丢失：直接报错，不开新会话。
+    assert calls == ["session-keep"]
+    assert events[-1].type == "error"
+    assert "file not found" in events[-1].data["message"]

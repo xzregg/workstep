@@ -233,7 +233,11 @@ export default function AiFlowChat({
             ended_at: m.ended_at,
             prompt: m.prompt,
             author_id: m.author_id,
+            author_username: m.author_username,
             author_name: m.author_name,
+            author_type: m.author_type,
+            initiated_by_user_id: m.initiated_by_user_id,
+            initiated_by_username: m.initiated_by_username,
             author_device_id: m.author_device_id,
             author_device_name: m.author_device_name,
             events: (m.events || []).map((e) => ({

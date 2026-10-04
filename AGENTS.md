@@ -6,6 +6,7 @@
 
 - `README.md` / `README.zh-CN.md`：面向使用者的项目首页与快速开始。
 - `docs/README.md`：架构、开发和 GitHub 维护文档入口。
+- `docs/code-map.md`：按功能定位 Web、API、服务与测试的入口。
 - `PRODUCT.md` / `DESIGN.md`：产品定位与视觉系统。
 - 本文件：Agent 执行约束和当前实现不变量；与代码冲突时以已验证的代码行为为准，并同步修正文档。
 
@@ -20,13 +21,12 @@
 - `apps/web` — React + TypeScript + Vite Web 前端
 - `apps/desktop` — Electron 桌面端与内置后端打包
 - `apps/landing` — 产品官网
-- `apps/wechat-bridge` — 微信渠道桥接服务
 - `docs/`、`plans/` — 产品、架构、开发与实施文档
 
 ## 目录结构
 
 ```
-apps/            # 可运行应用（daemon、web、desktop、landing、wechat-bridge）
+apps/            # 可运行应用（daemon、web、desktop、landing、android）
 ui/DESIGN/       # 设计系统静态参考页
 docs/            # 架构、开发与维护文档
 plans/           # 功能设计与实施方案
@@ -89,10 +89,13 @@ yarn build
 ### 其他应用
 
 - `apps/desktop` 的开发与打包命令以其 `README.md` 和 `package.json` 为准。
-- `apps/landing`、`apps/wechat-bridge` 的命令以各自 `package.json` 为准。
+- `apps/landing` 的命令以其 `package.json` 为准。
 - 静态设计参考页为 `ui/DESIGN/index.html`，不代表当前可运行前端功能。
 
 ## 前端开发规范（`apps/web`）
+
+- **功能定位**：增加功能或移动功能职责时，同步更新 `docs/code-map.md`，写明功能入口、实际职责所有者、相关 API/服务和行为测试入口；Code Map 是 AI 修改代码的首站，不允许只在提交说明中描述新位置。
+- **样式可定位**：固定布局、尺寸、颜色及状态样式写在 CSS 中，用有语义的 `className` 或 `id` 定位；JSX 的 `style` 只用于运行时计算值（如拖动比例或步骤颜色），且只传动态属性，禁止用内联 `style` 写死静态规则。复用控件优先使用组件和共享 CSS 规格。
 
 - **优先复用**：同一 UI 出现两次即抽公共组件并统一默认值，禁止复制实现。现有入口：消息用 `ChatMessageBubble` + `MessageMetaBar` + `MessageResponseFooter`；输入用 `ChatInput`（配置菜单用 `CoordinatorConfigBar`）；Markdown 编辑/展示用 `MarkdownEditor` / `MarkdownMessage`；确认用 `ConfirmDialog`。
 - **页面与布局职责**：`Layout` 和页面层只负责路由级数据选择、区域编排与少量跨区域协调，不得内联实现完整业务流程。一个弹框、侧栏分区或编辑器只要同时拥有独立状态、异步请求、校验和确认交互，就应抽成自管理的组合模块；调用方只传稳定标识和结果/关闭回调，禁止为了“拆文件”透传整组 state/setter。文件超过 800 行、局部状态超过 15 个或 effect 超过 10 个均视为拆分信号；现有超限文件属于待治理技术债，修改时不得继续加入新的独立业务职责或显著增加复杂度。新增复杂流程必须先抽离模块；确实无法拆分时须在变更说明中写明理由。
@@ -109,7 +112,8 @@ yarn build
 - **图标按钮**：按钮直接内联 `svg`/`Icon` 时必须显式 `padding: 0`（或按设计给最小内边距），禁止依赖全局 `button` 默认 padding（`4px 8px`），否则固定尺寸按钮的内容区被压缩、图标被裁剪。
 - **复选框**：原生 `input[type="checkbox"]` 必须使用全局紧凑规格，默认可见尺寸统一为 `16px × 16px`，特殊密集选择场景最多 `18px × 18px`；禁止继承文本输入框的 `width: 100%` / `height: 32px`，也禁止通过放大可见方框满足触控尺寸。需要扩大点击区域时应使用 `label` 或外层容器提供命中范围，复选框本体仍保持紧凑。
 - **移动端适配**（`apps/web/src/mobile.css`，断点 `≤1023px`）：
-  - 所有交互元素最小触控高度 44px（`mobile.css` 全局规则），但消息操作按钮（`.chat-message-action`）和浮层小按钮（如 `.conversation-new-messages-button`）必须排除该规则，保持原始紧凑尺寸。新增浮层/弹出式小按钮时须同步在 `min-height: 44px` 的 `:not()` 排除列表中补充。
+  - 普通可见控件使用 `--mobile-control-regular` 的 32px 高度；菜单项和需要更大点击区域的控件使用 44px 变量。消息操作按钮（`.chat-message-action`）和浮层小按钮（如 `.conversation-new-messages-button`）保持紧凑。新增尺寸须复用 `mobile.css` 的共享变量，不写单独的像素高度。
+  - 修改任务详情头部的按钮或信息时，必须整体检查标题、状态、创建者、时间、绑定 BOT、分享、任务 ID 和关闭入口在 320px、390px 及 1023px 宽度下的排布；移动端头部信息优先在两行内显示，创建者和时间保持可见，长文本可限宽滚动，不能因新增按钮把任务 ID 挤到第三行。长 ID 须限制占用宽度并保持完整值可查看、可复制；使用跑马灯时兼容 `prefers-reduced-motion`。除行为测试外，还须在窄屏实际渲染中核对换行、按钮高度和点击区域。
   - `.btn-ghost` 在消息区域（`.chat-message-row`、`.process-trace-thinking-copy`、`.llm-tool-call`）内必须去掉 border、强制 `min-height/min-width: 24px`，避免 ghost 边框在小按钮上显得过大。
   - 思考中 / 运行中的消息（`[data-thinking]`、`.message-footer--running`）隐藏操作按钮；已完成消息的操作按钮始终可见（移动端无 hover，不依赖 `opacity: 0 → hover: opacity: 1`）。
   - 新增消息区域内的可交互按钮时，必须加 `chat-message-action` class 以复用移动端样式规则；新增类似的小尺寸图标按钮容器须在 `mobile.css` 的 ghost 按钮选择器中补充覆盖。
@@ -174,7 +178,7 @@ Pydantic AI 的关键不变量：固定挂载 harness `Coder` 与项目 Skills �
 - `messages` — 任务消息正文、事件摘要与 JSONL 日志索引
 - `chat_sessions`、`chat_messages` — 项目会话及消息；可恢复引擎会话标识保存在会话或步骤字段中
 - `coordinator_sessions`、`coordinator_turns`、`action_proposals`、`stage_supplements` — 协调助手状态
-- `schedules`、`schedule_runs`、`task_shares`、`channels` — 定时任务、分享与外部渠道
+- `schedules`、`schedule_runs`、`task_shares` — 定时任务与分享；`channels`、`channel_chat_mappings` 是已移除个人微信渠道的历史兼容表
 
 完整表集合以 `apps/daemon/models/__init__.py::ALL_MODELS` 为准。产物不是 `artifacts` 数据表，而是项目 `.workstep/artifacts/` 下的文件与 manifest。
 

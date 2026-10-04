@@ -157,4 +157,6 @@ def test_desktop_backend_includes_legal_notices_and_sbom() -> None:
         assert "generate_release_sbom.py" in text
         assert "--require-hashes" in text
         assert "requirements-bootstrap.txt" in text
+        assert "requirements-gateway.txt" in text
+        assert "workstep_gateway_protocol" in text
         assert "cli.py" in text

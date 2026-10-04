@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import Button from './Button'
 import Icon from './Icon'
-import { fsApi, type DirectoryOpener, type Project } from '../api/client'
+import { fsApi, type DirectoryBrowseResult, type DirectoryOpener, type Project } from '../api/client'
 import { type TFunction } from '../i18n'
 import ProjectDirectoryBrowserDialog from './ProjectDirectoryBrowserDialog'
 import { usesWebDirectoryBrowser } from '../utils/openLocation'
@@ -11,10 +11,9 @@ import { usesWebDirectoryBrowser } from '../utils/openLocation'
  * dropdown) that reveals the active project directory in a chosen app.
  *
  * This is the single source of truth for the directory-opener UI. It is used by
- * both the task board top bar (TaskList) and the standalone chat page header
- * (ChatPage). All state (available openers, selected opener, dropdown open,
- * transient notice) and logic (fetch openers, open directory) live here so the
- * two placements stay in sync.
+ * the task board, chat page, and Git workspaces. All state (available openers,
+ * selected opener, dropdown open, transient notice) and logic (fetch openers,
+ * open directory) live here so the placements stay in sync.
  */
 
 const OPENERS_STORAGE_KEY = 'workstep-directory-opener'
@@ -49,6 +48,14 @@ function OpenerIcon({ id }: { id: string }) {
 export interface OpenLocationButtonProps {
   activeProject: Project | null
   t: TFunction
+  /** Directory to open instead of the project root. */
+  directoryPath?: string
+  buttonLabel?: string
+  /** Empty string allows browsing a Git worktree outside the project root. */
+  browserProjectId?: string
+  forceWebBrowser?: boolean
+  browseDirectory?: (path: string, includeHidden: boolean) => Promise<DirectoryBrowseResult>
+  readOnlyBrowser?: boolean
   /**
    * Render the transient success/failure notice inline (just before the
    * buttons). Defaults to true. Set false when the parent renders the notice
@@ -94,6 +101,12 @@ const MENU_ITEM_BASE: CSSProperties = {
 export default function OpenLocationButton({
   activeProject,
   t,
+  directoryPath,
+  buttonLabel,
+  browserProjectId,
+  forceWebBrowser = false,
+  browseDirectory,
+  readOnlyBrowser = false,
   showInlineNotice = true,
   onNoticeChange,
   mainButtonStyle,
@@ -115,12 +128,13 @@ export default function OpenLocationButton({
 
   const openerDisplayLabel = (opener: DirectoryOpener) =>
     opener.id === 'file_manager' ? t('taskList.openLocation') : opener.label
+  const targetPath = directoryPath || activeProject?.path
 
-  const webDirectoryMode = activeProject ? usesWebDirectoryBrowser(
+  const webDirectoryMode = forceWebBrowser || (activeProject ? usesWebDirectoryBrowser(
     activeProject.type,
     typeof window === 'undefined' ? 'localhost' : window.location.hostname,
     typeof navigator === 'undefined' ? '' : navigator.userAgent,
-  ) : false
+  ) : false)
 
   // Load the platform's available directory openers.
   useEffect(() => {
@@ -172,13 +186,13 @@ export default function OpenLocationButton({
   }
 
   const openProjectDirectory = async (openerId = selectedOpener) => {
-    if (!activeProject) return
+    if (!activeProject || !targetPath) return
     if (webDirectoryMode) {
       setShowWebBrowser(true)
       return
     }
     try {
-      const result = await fsApi.openDirectory(activeProject.path, openerId)
+      const result = await fsApi.openDirectory(targetPath, openerId)
       setNotice(t('taskList.opened', { path: result.path }))
     } catch (error) {
       setNotice(t('taskList.openFailed', {
@@ -194,7 +208,7 @@ export default function OpenLocationButton({
     void openProjectDirectory(opener.id)
   }
 
-  const disabled = !activeProject
+  const disabled = !activeProject || !targetPath
   const selectedOpenerEntry = directoryOpeners.find((item) => item.id === selectedOpener)
     ?? { id: 'file_manager', label: '', available: true }
 
@@ -210,12 +224,13 @@ export default function OpenLocationButton({
           variant="ghost"
           onClick={() => void openProjectDirectory()}
           disabled={disabled}
+          aria-label={buttonLabel || t('taskList.openLocation')}
           title={activeProject
             ? webDirectoryMode
               ? t('taskList.browseProjectTitle', { name: activeProject.name })
               : t('taskList.openWithTitle', {
                   opener: openerDisplayLabel(selectedOpenerEntry),
-                  path: activeProject.path,
+                  path: targetPath || '',
                 })
             : t('taskList.selectProjectFirst')}
           style={{
@@ -225,7 +240,7 @@ export default function OpenLocationButton({
           }}
         >
           <OpenerIcon id={webDirectoryMode ? 'file_manager' : selectedOpener} />
-          {t('taskList.openLocation')}
+          <span className="open-location-label">{buttonLabel || t('taskList.openLocation')}</span>
         </Button>
         {!webDirectoryMode && (
           <Button
@@ -264,9 +279,12 @@ export default function OpenLocationButton({
       </div>
       {showWebBrowser && activeProject && (
         <ProjectDirectoryBrowserDialog
-          projectId={activeProject.id}
+          projectId={browserProjectId ?? activeProject.id}
           title={activeProject.name}
-          displayPath={t('browser.projectRoot')}
+          rootPath={directoryPath}
+          displayPath={directoryPath || t('browser.projectRoot')}
+          browseDirectory={browseDirectory}
+          readOnly={readOnlyBrowser}
           onClose={() => setShowWebBrowser(false)}
         />
       )}

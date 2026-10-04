@@ -131,9 +131,89 @@ async def test_task_workspace_selects_only_requested_repository(client, layout):
     after_remove = await workspace.remove(root, task_id, 'payment')
     assert [tree['alias'] for tree in after_remove['worktrees']] == ['fifth']
     assert not payment_tree.exists()
-    assert git(repo, 'show-ref', '--verify', 'refs/heads/workstep/task-123/payment')
+    assert not git(repo, 'branch', '--list', 'workstep/task-123/payment')
     restored = await workspace.add(root, task_id, payment['id'], 'payment', 'main')
     assert {tree['alias'] for tree in restored['worktrees']} == {'fifth', 'payment'}
+
+
+async def test_task_workspace_allows_multiple_worktrees_for_one_repository(client, layout):
+    http, service = client
+    root, repo, _ = layout
+    data = await scan(http)
+    payment = next(item for item in data['repositories'] if item['name'] == 'payment')
+    from services.git.task_workspace import TaskGitWorkspace
+
+    workspace = TaskGitWorkspace(service)
+    first = await workspace.add(root, 'task-duplicate', payment['id'], 'payment-one', 'main')
+    second = await workspace.add(root, 'task-duplicate', payment['id'], 'payment-two', 'main')
+    assert len(first['worktrees']) == 1
+    assert [tree['alias'] for tree in second['worktrees']] == ['payment-one', 'payment-two']
+    assert {tree['repository_id'] for tree in second['worktrees']} == {payment['id']}
+    assert {tree['branch'] for tree in second['worktrees']} == {
+        'workstep/task-duplicate/payment-one', 'workstep/task-duplicate/payment-two',
+    }
+    assert all(Path(tree['path']).is_dir() for tree in second['worktrees'])
+    with pytest.raises(GitError, match='同名工作目录'):
+        await workspace.add(root, 'task-duplicate', payment['id'], 'payment-two', 'main')
+    with pytest.raises(GitError, match='功能分支已存在'):
+        await workspace.add(
+            root, 'task-duplicate', payment['id'], 'payment-three', 'main',
+            'workstep/task-duplicate/payment-one',
+        )
+    deleted = await workspace.delete(root, 'task-duplicate')
+    assert deleted['outcome'] == 'deleted'
+    assert deleted['removed_aliases'] == ['payment-one', 'payment-two']
+    assert not Path(deleted['path']).exists()
+    assert not git(repo, 'branch', '--list', 'workstep/task-duplicate/payment-one')
+    assert not git(repo, 'branch', '--list', 'workstep/task-duplicate/payment-two')
+
+
+async def test_task_workspace_rejects_repository_from_another_registered_project(client, layout, tmp_path):
+    http, service = client
+    source_project, _, _ = layout
+    task_project = tmp_path / 'task-project'
+    task_project.mkdir()
+    service.projects_provider = lambda: [
+        {'id': 'source', 'name': 'Source', 'path': str(source_project)},
+        {'id': 'task', 'name': 'Task', 'path': str(task_project)},
+    ]
+    data = await scan(http)
+    payment = next(item for item in data['repositories'] if item['name'] == 'payment')
+    assert not any(member['id'] == 'task' for member in payment['projects'])
+
+    from services.git.task_workspace import TaskGitWorkspace
+
+    workspace = TaskGitWorkspace(service)
+    with pytest.raises(GitError, match='不属于当前项目'):
+        await workspace.add(task_project, 'cross-project', payment['id'], 'payment', 'main')
+    assert not (task_project / '.workstep' / 'worktrees' / 'cross-project' / 'payment').exists()
+
+
+async def test_slow_workspace_source_check_keeps_event_loop_responsive(client, layout, monkeypatch):
+    http, service = client
+    root, repo, _ = layout
+    repositories = await scan(http)
+    payment = next(item for item in repositories['repositories'] if item['name'] == 'payment')
+    from services.git.task_workspace import TaskGitWorkspace
+
+    original_is_dir = Path.is_dir
+    checking_source = threading.Event()
+
+    def slow_source_check(path):
+        if path == repo:
+            checking_source.set()
+            time.sleep(.2)
+        return original_is_dir(path)
+
+    monkeypatch.setattr(Path, 'is_dir', slow_source_check)
+    workspace = TaskGitWorkspace(service)
+    started = time.monotonic()
+    operation = asyncio.create_task(workspace.add(root, 'slow-check', payment['id'], 'payment', 'main'))
+    assert await asyncio.to_thread(checking_source.wait, 2)
+    assert time.monotonic() - started < .17
+    await asyncio.sleep(.02)
+    assert time.monotonic() - started < .17
+    assert (await operation)['worktrees'][0]['alias'] == 'payment'
 
 
 async def test_workflow_task_workspace_uses_artifact_task_directory(client, layout):
@@ -244,6 +324,46 @@ async def test_task_worktree_uses_selected_source_branch_and_custom_new_branch(c
     assert git(tree['path'], 'show', 'HEAD:one.txt') == 'release version'
     with pytest.raises(Exception):
         await workspace.add(root, 'task-other', payment['id'], 'other', 'main', 'taskfix/payment-fix')
+    await workspace.remove(root, 'task-123', 'payment')
+    assert not git(repo, 'branch', '--list', 'taskfix/payment-fix')
+    assert git(repo, 'branch', '--show-current') == 'main'
+
+
+async def test_removing_task_worktree_deletes_created_branch_after_switch(client, layout):
+    http, service = client
+    root, repo, _ = layout
+    data = await scan(http)
+    payment = next(item for item in data['repositories'] if item['name'] == 'payment')
+    from services.git.task_workspace import TaskGitWorkspace
+
+    workspace = TaskGitWorkspace(service)
+    created = await workspace.add(root, 'task-switched', payment['id'], 'payment', 'main', 'taskfix/owned')
+    tree = Path(created['worktrees'][0]['path'])
+    git(repo, 'branch', 'unrelated', 'main')
+    git(tree, 'switch', 'unrelated')
+    listed = await workspace.list(root, 'task-switched')
+    assert listed['worktrees'][0]['branch'] == 'unrelated'
+    assert listed['worktrees'][0]['created_branch'] == 'taskfix/owned'
+    await workspace.remove(root, 'task-switched', 'payment')
+    assert not git(repo, 'branch', '--list', 'taskfix/owned')
+    assert git(repo, 'branch', '--list', 'unrelated')
+
+
+async def test_forced_task_worktree_removal_discards_dirty_files_and_branch(client, layout):
+    http, service = client
+    root, repo, _ = layout
+    data = await scan(http)
+    payment = next(item for item in data['repositories'] if item['name'] == 'payment')
+    from services.git.task_workspace import TaskGitWorkspace
+
+    workspace = TaskGitWorkspace(service)
+    created = await workspace.add(root, 'task-disposable', payment['id'], 'payment', 'main')
+    tree = Path(created['worktrees'][0]['path'])
+    (tree / 'one.txt').write_text('discard me\n')
+    removed = await workspace.remove(root, 'task-disposable', 'payment', force=True)
+    assert removed['worktrees'] == []
+    assert not tree.exists()
+    assert not git(repo, 'branch', '--list', 'workstep/task-disposable/payment')
 
 
 async def test_task_worktree_inherits_git_identity_without_writing_overrides(client, layout):
@@ -296,7 +416,7 @@ async def test_task_workspace_can_select_nested_git_inside_git_project(tmp_path)
         await service.close()
 
 
-async def test_delete_task_workspace_preflights_all_worktrees_and_preserves_branches(client, layout):
+async def test_delete_task_workspace_preflights_all_worktrees_and_deletes_branches(client, layout):
     http, service = client
     root, payment, _ = layout
     data = await scan(http)
@@ -312,9 +432,10 @@ async def test_delete_task_workspace_preflights_all_worktrees_and_preserves_bran
         await workspace.delete(root, 'task-123')
     assert (folder / 'payment').is_dir()
     deleted_dirty = await workspace.delete(root, 'task-123', force=True)
+    assert deleted_dirty['outcome'] == 'deleted'
     assert deleted_dirty['worktrees'] == []
     assert not folder.exists()
-    assert git(payment, 'show-ref', '--verify', 'refs/heads/workstep/task-123/payment')
+    assert not git(payment, 'branch', '--list', 'workstep/task-123/payment')
     await workspace.add(root, 'task-123', repos['payment']['id'], 'payment', 'main')
     await workspace.add(root, 'task-123', repos['fifth']['id'], 'fifth', 'main')
     (folder / 'fifth' / 'one.txt').write_text('original\n')
@@ -326,9 +447,95 @@ async def test_delete_task_workspace_preflights_all_worktrees_and_preserves_bran
     assert (folder / 'payment').is_dir()
     (folder / 'notes.txt').unlink()
     deleted = await workspace.delete(root, 'task-123')
+    assert deleted['outcome'] == 'deleted'
     assert deleted['worktrees'] == []
     assert not folder.exists()
-    assert git(payment, 'show-ref', '--verify', 'refs/heads/workstep/task-123/payment')
+    assert not git(payment, 'branch', '--list', 'workstep/task-123/payment')
+
+
+async def test_delete_task_workspace_reports_partial_progress(client, layout, monkeypatch):
+    http, service = client
+    root, _, _ = layout
+    data = await scan(http)
+    repos = {repo['name']: repo for repo in data['repositories']}
+    from services.git.task_workspace import TaskGitWorkspace
+
+    workspace = TaskGitWorkspace(service)
+    await workspace.add(root, 'task-123', repos['payment']['id'], 'payment', 'main')
+    await workspace.add(root, 'task-123', repos['fifth']['id'], 'fifth', 'main')
+    original_remove = workspace._remove
+
+    async def fail_second(project_path, task_id, alias, *, force=False):
+        if alias == 'payment':
+            raise GitError('second removal failed', 409)
+        return await original_remove(project_path, task_id, alias, force=force)
+
+    monkeypatch.setattr(workspace, '_remove', fail_second)
+    result = await workspace.delete(root, 'task-123')
+    assert result['outcome'] == 'partial'
+    assert result['removed_aliases'] == ['fifth']
+    assert [tree['alias'] for tree in result['worktrees']] == ['payment']
+    assert 'second removal failed' in result['failure']
+    fifth = root / 'a' / 'b' / 'c' / 'd' / 'fifth'
+    assert not git(fifth, 'branch', '--list', 'workstep/task-123/fifth')
+
+
+async def test_delete_workspace_preflights_missing_branch_before_removing_any_tree(client, layout):
+    http, service = client
+    root, _, _ = layout
+    data = await scan(http)
+    repos = {repo['name']: repo for repo in data['repositories']}
+    from services.git.task_workspace import TaskGitWorkspace
+
+    workspace = TaskGitWorkspace(service)
+    created = await workspace.add(root, 'task-branch-check', repos['payment']['id'], 'payment', 'main')
+    created = await workspace.add(root, 'task-branch-check', repos['fifth']['id'], 'fifth', 'main')
+    fifth_tree = next(tree for tree in created['worktrees'] if tree['alias'] == 'fifth')
+    git(fifth_tree['path'], 'config', '--worktree', '--unset', 'workstep.createdBranch')
+    git(fifth_tree['path'], 'switch', '--detach')
+    with pytest.raises(GitError, match='功能分支'):
+        await workspace.delete(root, 'task-branch-check')
+    assert all(Path(tree['path']).is_dir() for tree in created['worktrees'])
+
+
+async def test_task_workspace_list_discovers_repositories_with_cold_snapshot(client, layout):
+    http, service = client
+    root, _, _ = layout
+    data = await scan(http)
+    payment = next(repo for repo in data['repositories'] if repo['name'] == 'payment')
+    from services.git.task_workspace import TaskGitWorkspace
+
+    await TaskGitWorkspace(service).add(root, 'task-123', payment['id'], 'payment', 'main')
+    cold = GitService(lambda: [{'id': 'p', 'name': 'Project', 'path': str(root)}], lambda: 5,
+                      credential_file=root / 'git-credentials.json')
+    try:
+        listed = await TaskGitWorkspace(cold).list(root, 'task-123')
+        assert [tree['alias'] for tree in listed['worktrees']] == ['payment']
+        assert listed['worktrees'][0]['id'] in cold.directories
+    finally:
+        await cold.close()
+
+
+async def test_task_workspace_cold_scan_does_not_block_event_loop(layout):
+    root, _, _ = layout
+
+    def slow_projects():
+        time.sleep(.2)
+        return [{'id': 'p', 'name': 'Project', 'path': str(root)}]
+
+    service = GitService(slow_projects, lambda: 5, credential_file=root / 'git-credentials.json')
+    from services.git.task_workspace import TaskGitWorkspace
+    workspace = TaskGitWorkspace(service)
+    folder = root / '.workstep' / 'worktrees' / 'task-123'
+    folder.mkdir(parents=True)
+    try:
+        pending = asyncio.create_task(workspace.list(root, 'task-123'))
+        start = asyncio.get_running_loop().time()
+        await asyncio.sleep(.02)
+        assert asyncio.get_running_loop().time() - start < .12
+        await pending
+    finally:
+        await service.close()
 
 
 async def test_delete_task_workspace_slow_disk_does_not_block_event_loop(client, layout, monkeypatch):
@@ -591,6 +798,7 @@ async def test_save_file_can_undo_an_applied_block_after_file_becomes_clean(clie
 
 async def test_generate_commit_message_uses_prompt_enhance_provider_and_selected_diff(client, layout, monkeypatch):
     from services.config import config_store
+    from main import gateway_client
 
     http, _ = client
     _, repo, _ = layout
@@ -600,6 +808,7 @@ async def test_generate_commit_message_uses_prompt_enhance_provider_and_selected
     url = f'/api/git/worktrees/{id}'
     state = (await http.get(url + '/status')).json()
     calls = []
+    recorded_usage = []
 
     monkeypatch.setattr(config_store, 'get_prompt_enhance_config', lambda: {
         'provider_id': 'enhance-provider',
@@ -610,9 +819,14 @@ async def test_generate_commit_message_uses_prompt_enhance_provider_and_selected
 
     async def fake_completion(provider, model, messages, **kwargs):
         calls.append((provider, model, messages, kwargs))
+        kwargs['usage_collector'].update({'input_tokens': 20, 'output_tokens': 8})
         return 'fix(git): 修正行为并补充新文件\n\n- 更新已选文件内容'
 
+    async def record_usage(**kwargs):
+        recorded_usage.append(kwargs)
+
     monkeypatch.setattr('services.providers.text_completion', fake_completion)
+    monkeypatch.setattr(gateway_client, 'record_one_shot_usage', record_usage)
     response = await http.post(url + '/commit-message', json={'paths': ['one.txt', 'new.txt'], 'snapshot': state['snapshot']})
     assert response.status_code == 200, response.text
     assert response.json()['message'].startswith('fix(git):')
@@ -623,6 +837,10 @@ async def test_generate_commit_message_uses_prompt_enhance_provider_and_selected
     assert calls[0][3]['thinking'] == 'disabled'
     assert calls[0][3]['protocol'] == 'openai_chat_completions'
     assert calls[0][3]['timeout'] == 180
+    assert len(recorded_usage) == 1
+    assert recorded_usage[0]['project_id'] == 'p'
+    assert recorded_usage[0]['model'] == 'fast-model'
+    assert recorded_usage[0]['usage'] == {'input_tokens': 20, 'output_tokens': 8}
 
     async def timeout_completion(*args, **kwargs):
         raise ReadTimeout('')
@@ -631,6 +849,7 @@ async def test_generate_commit_message_uses_prompt_enhance_provider_and_selected
     response = await http.post(url + '/commit-message', json={'paths': ['one.txt'], 'snapshot': state['snapshot']})
     assert response.status_code == 504
     assert '180 秒' in response.json()['detail']
+    assert len(recorded_usage) == 1
 
 
 async def test_switch_checks_dirty_active_and_worktree_occupation(client, layout):
@@ -1040,11 +1259,19 @@ async def test_history_root_commit_binary_and_large_previews(client, layout):
     assert large['truncated'] and not large['patch']
 
 
-async def test_git_routes_are_not_exposed_over_remote_project_channel():
+async def test_remote_git_catalog_exposes_project_operations_and_denies_global_settings():
     from services.remote_project import _build_route_catalog
     app = FastAPI()
     app.include_router(git_api.router)
-    assert not _build_route_catalog(app)
+    catalog = _build_route_catalog(app)
+    paths = {route.path_template for route in catalog}
+    assert '/api/git/projects/{project_id}/tasks/{task_id}/workspace' in paths
+    assert '/api/git/projects/{project_id}/repositories' in paths
+    assert '/api/git/worktrees/{id}/status' in paths
+    assert '/api/git/worktrees/{id}/commit' in paths
+    assert '/api/git/scans' not in paths
+    assert '/api/git/repositories' not in paths
+    assert not any('/credentials' in path or path.endswith('/identity/global') for path in paths)
 
 
 async def test_branch_sync_fetch_and_fast_forward_pull(client, layout, tmp_path):
@@ -1546,7 +1773,7 @@ async def test_push_unchecked_out_branch_with_explicit_remote_sets_upstream(clie
     assert git(repo, 'for-each-ref', '--format=%(upstream:short)', 'refs/heads/tt') == 'origin/tt'
     assert (repo / 'draft.txt').read_text() == 'uncommitted work\n'
     assert (await http.post(url + '/push-branch', json={
-        'branch': 'tt', 'head': git(repo, 'rev-parse', 'main')[:-1] + '0',
+        'branch': 'tt', 'head': head[:-1] + ('1' if head.endswith('0') else '0'),
         'remote': 'origin', 'target_branch': 'tt',
     })).status_code == 409
 

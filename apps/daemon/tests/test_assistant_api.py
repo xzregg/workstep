@@ -212,8 +212,16 @@ async def test_assistant_list_lists_all_assistants(assistant_client):
 
 async def test_assistant_list_separates_configured_override_from_resolved_default(
     assistant_client,
+    monkeypatch,
 ):
     client, store = assistant_client
+    import api.assistant as _assistant_api
+    from engines.core.registry import _ALL_ENGINES as _AE
+    def _fake_create(engine_id):
+        cls = _AE.get(engine_id)
+        return cls() if cls is not None else None
+    monkeypatch.setattr(_assistant_api, "create_engine", _fake_create)
+
     store.set_coordinator_defaults("claude", "m1", "", "", "medium")
     store.set_codex_sdk_config(model_reasoning_effort="low")
     store.set_assistant_defaults("chat_session", engine="codex_sdk")
@@ -276,12 +284,18 @@ async def test_task_coordinator_resolves_engine_default_thinking_effort(
     assert item["resolved"]["thinking_effort"] == "auto"
 
 
-async def test_assistant_set_and_read_config(assistant_client):
+async def test_assistant_set_and_read_config(assistant_client, monkeypatch):
     client, store = assistant_client
+    import api.assistant as _assistant_api
+    from engines.core.registry import _ALL_ENGINES as _AE
+    def _fake_create(engine_id):
+        cls = _AE.get(engine_id)
+        return cls() if cls is not None else None
+    monkeypatch.setattr(_assistant_api, "create_engine", _fake_create)
     response = await client.put(
         "/api/assistant/task_create/config",
         json={
-            "engine": "claude",
+            "engine": "claude_agent_sdk",
             "model": "gm",
             "fast_model": "gf",
             "vision_model": "gv",
@@ -291,7 +305,7 @@ async def test_assistant_set_and_read_config(assistant_client):
     assert response.status_code == 200
     assert response.json()["saved"] is True
     defaults = store.get_assistant_defaults("task_create")
-    assert defaults["engine"] == "claude"
+    assert defaults["engine"] == "claude_agent_sdk"
     assert defaults["model"] == "gm"
     assert defaults["fast_model"] == "gf"
     assert defaults["vision_model"] == "gv"
@@ -305,12 +319,18 @@ async def test_assistant_set_and_read_config(assistant_client):
     assert item["configured"]["model"] == "gm"
 
 
-async def test_chat_session_config_stores_full_defaults(assistant_client):
+async def test_chat_session_config_stores_full_defaults(assistant_client, monkeypatch):
     client, store = assistant_client
+    import api.assistant as _assistant_api
+    from engines.core.registry import _ALL_ENGINES as _AE
+    def _fake_create(engine_id):
+        cls = _AE.get(engine_id)
+        return cls() if cls is not None else None
+    monkeypatch.setattr(_assistant_api, "create_engine", _fake_create)
     response = await client.put(
         "/api/assistant/chat_session/config",
         json={
-            "engine": "codex",
+            "engine": "hermes",
             "model": "cm",
             "fast_model": "cf",
             "vision_model": "cv",
@@ -319,7 +339,7 @@ async def test_chat_session_config_stores_full_defaults(assistant_client):
     )
     assert response.status_code == 200
     defaults = store.get_assistant_defaults("chat_session")
-    assert defaults["engine"] == "codex"
+    assert defaults["engine"] == "hermes"
     assert defaults["model"] == "cm"
     assert defaults["fast_model"] == "cf"
     assert defaults["vision_model"] == "cv"
@@ -341,24 +361,30 @@ async def test_assistant_config_rejects_model_without_engine(assistant_client):
     assert response.status_code == 400
 
 
-async def test_assistant_config_accepts_auto_and_xhigh(assistant_client):
+async def test_assistant_config_accepts_auto_and_xhigh(assistant_client, monkeypatch):
     client, store = assistant_client
+    import api.assistant as _assistant_api
+    from engines.core.registry import _ALL_ENGINES as _AE
+    def _fake_create(engine_id):
+        cls = _AE.get(engine_id)
+        return cls() if cls is not None else None
+    monkeypatch.setattr(_assistant_api, "create_engine", _fake_create)
     response = await client.put(
         "/api/assistant/task_coordinator/config",
-        json={"engine": "claude", "thinking_effort": "auto"},
+        json={"engine": "hermes", "thinking_effort": "auto"},
     )
     assert response.status_code == 200
     assert store.get_coordinator_default_thinking_effort() == "auto"
     response = await client.put(
         "/api/assistant/task_create/config",
-        json={"engine": "claude", "thinking_effort": "xhigh"},
+        json={"engine": "hermes", "thinking_effort": "xhigh"},
     )
     assert response.status_code == 200
     assert store.get_assistant_defaults("task_create")["thinking_effort"] == "xhigh"
     # 非法强度仍然拒绝
     response = await client.put(
         "/api/assistant/task_create/config",
-        json={"engine": "claude", "thinking_effort": "ultra"},
+        json={"engine": "hermes", "thinking_effort": "ultra"},
     )
     assert response.status_code == 400
 
@@ -431,13 +457,14 @@ async def test_assistant_config_provider_requires_builtin_engine(assistant_clien
     })
     response = await client.put(
         "/api/assistant/task_create/config",
-        json={"engine": "claude", "provider_id": "p-b"},
+        json={"engine": "hermes", "provider_id": "p-b"},
     )
     assert response.status_code == 400
 
 
 async def test_assistant_config_accepts_compatible_external_engine_provider(
     assistant_client,
+    monkeypatch,
 ):
     client, store = assistant_client
     store.save_provider({
@@ -450,9 +477,12 @@ async def test_assistant_config_accepts_compatible_external_engine_provider(
         "enabled": True,
     })
 
+    import api.assistant as _assistant_api2
+    from engines.claude_agent_sdk import ClaudeAgentSDKEngine as _CASE
+    monkeypatch.setattr(_assistant_api2, "create_engine", lambda eid: _CASE() if eid == "claude_agent_sdk" else None)
     response = await client.put(
         "/api/assistant/task_create/config",
-        json={"engine": "claude", "provider_id": "p-claude"},
+        json={"engine": "claude_agent_sdk", "provider_id": "p-claude"},
     )
 
     assert response.status_code == 200
@@ -586,11 +616,12 @@ async def test_assistant_runtime_injects_assistant_provider(monkeypatch):
     )
     runtime = base.AssistantRuntime.__new__(base.AssistantRuntime)
     runtime._config = SimpleNamespace(
-        name="task_create", engine_label="Test", workstep_tools=False
+        name="task_create", engine_label="Test", workstep_tools=False, system_prompt_transport=False
     )
     runtime._turn_states = {}
     runtime._turn_tasks = {}
     runtime._running_engines = {}
+    runtime._prompt_input_callbacks = {}
     await runtime._invoke("pydantic_ai", None, "/tmp", "hi", None)
     assert captured["config_overrides"] == {"provider_id": "p-b"}
     # 兼容性已在保存/排队 seam 校验；运行时对所有引擎统一注入覆盖。

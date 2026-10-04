@@ -2,6 +2,8 @@
 
 import asyncio
 from datetime import datetime, timezone
+import threading
+import time
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -93,9 +95,11 @@ def test_schedule_models_are_created_by_project_migration(tmp_path):
         db.close()
 
 
-def test_user_can_create_pause_and_resume_a_project_schedule(tmp_path):
+def test_user_can_create_pause_and_resume_a_project_schedule(tmp_path, monkeypatch):
     from services.project import ProjectManager
     from services.schedule import ScheduleModule
+    from models import ProjectAuditEvent, Schedule
+    from services import project_audit
 
     manager = ProjectManager()
     project = manager.init_project(tmp_path / "project")
@@ -104,26 +108,122 @@ def test_user_can_create_pause_and_resume_a_project_schedule(tmp_path):
     workflow_id = project.default_workflow()["id"]
     module = ScheduleModule(manager, task_service=None, workflow_runtime=None)
 
-    created = module.create(
-        project.id,
-        name="Weekly report",
-        workflow_id=workflow_id,
-        task_template={"title": "Prepare report", "description": "Summarize changes"},
-        rule={
-            "kind": "weekly",
-            "weekdays": [1],
-            "time": "09:00",
-            "timezone": "Asia/Shanghai",
-        },
-    )
+    def create_schedule():
+        return module.create(
+            project.id,
+            name="Weekly report",
+            workflow_id=workflow_id,
+            task_template={"title": "Prepare report", "description": "Summarize changes"},
+            rule={
+                "kind": "weekly",
+                "weekdays": [1],
+                "time": "09:00",
+                "timezone": "Asia/Shanghai",
+            },
+        )
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(
+            project_audit, "record_project_audit",
+            lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("audit unavailable")),
+        )
+        with pytest.raises(RuntimeError, match="audit unavailable"):
+            create_schedule()
+    with manager.activate_project_by_id(project.id):
+        assert Schedule.select().count() == 0
+    created = create_schedule()
 
     assert created["status"] == "active"
     assert created["cron_expression"] == "0 9 * * 1"
     assert created["next_run_at"] is not None
+    with monkeypatch.context() as patcher:
+        patcher.setattr(
+            project_audit, "record_project_audit",
+            lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("audit unavailable")),
+        )
+        with pytest.raises(RuntimeError, match="audit unavailable"):
+            module.pause(project.id, created["id"])
+    with manager.activate_project_by_id(project.id):
+        assert Schedule.get_by_id(created["id"]).status == "active"
     assert module.pause(project.id, created["id"])["status"] == "paused"
     resumed = module.resume(project.id, created["id"])
     assert resumed["status"] == "active"
     assert resumed["next_run_at"] is not None
+    with monkeypatch.context() as patcher:
+        patcher.setattr(
+            project_audit, "record_project_audit",
+            lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("audit unavailable")),
+        )
+        with pytest.raises(RuntimeError, match="audit unavailable"):
+            module.update(project.id, created["id"], name="Updated report")
+    assert module.get(project.id, created["id"])["name"] == "Weekly report"
+    assert module.update(project.id, created["id"], name="Updated report")["name"] == "Updated report"
+    with monkeypatch.context() as patcher:
+        patcher.setattr(
+            project_audit, "record_project_audit",
+            lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("audit unavailable")),
+        )
+        with pytest.raises(RuntimeError, match="audit unavailable"):
+            module.delete(project.id, created["id"])
+    assert module.get(project.id, created["id"])["name"] == "Updated report"
+    module.delete(project.id, created["id"])
+    with manager.activate_project_by_id(project.id):
+        assert Schedule.select().count() == 0
+        events = list(ProjectAuditEvent.select().where(
+            ProjectAuditEvent.metadata_json.contains(created["id"]),
+        ).order_by(ProjectAuditEvent.created_at))
+    assert [event.action for event in events] == [
+        "schedule.create", "schedule.pause", "schedule.resume",
+        "schedule.update", "schedule.delete",
+    ]
+
+
+@pytest.mark.anyio
+async def test_schedule_pause_slow_sql_keeps_health_responsive(tmp_path, monkeypatch):
+    import main
+    from services.project import ProjectManager, DEFAULT_STEPS
+    from services.schedule import ScheduleModule
+
+    manager = ProjectManager()
+
+    def prepare():
+        project = manager.init_project(tmp_path / "project")
+        manager.create_workflow(project, "Test flow", DEFAULT_STEPS)
+        module = ScheduleModule(manager, task_service=None, workflow_runtime=None)
+        created = module.create(
+            project.id,
+            name="Daily",
+            workflow_id=project.default_workflow()["id"],
+            task_template={"title": "Daily task"},
+            rule={"kind": "daily", "time": "09:00", "timezone": "UTC"},
+        )
+        return project, module, created
+
+    project, module, created = await asyncio.to_thread(prepare)
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "schedule_module", module)
+    write_started = threading.Event()
+    original_execute_sql = project.db.execute_sql
+
+    def slow_schedule_write(sql, *args, **kwargs):
+        if sql.upper().startswith("UPDATE") and "schedule" in sql and not write_started.is_set():
+            write_started.set()
+            time.sleep(0.35)
+        return original_execute_sql(sql, *args, **kwargs)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_schedule_write)
+    async with AsyncClient(
+        transport=ASGITransport(app=main.app), base_url="http://test",
+    ) as client:
+        pause_request = asyncio.create_task(client.post(
+            f"/api/schedule/{created['id']}/pause?project_id={project.id}",
+        ))
+        assert await asyncio.to_thread(write_started.wait, 1)
+        health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+        paused = await pause_request
+    assert health.status_code == 200
+    assert paused.status_code == 200
+    assert paused.json()["status"] == "paused"
 
 
 def test_user_can_create_schedule_without_a_task_title(tmp_path):
@@ -208,7 +308,8 @@ async def test_due_manual_schedule_creates_a_task_and_execution_log(tmp_path):
     workflow_id = project.default_workflow()["id"]
     actor_token = _current_actor.set(
         ActorSnapshot(
-            "browser-1", "浏览器用户", "browser-device-1", "Chrome", "browser"
+            "browser-1", "浏览器用户", "browser-device-1", "Chrome", "browser",
+            username="browser-user",
         )
     )
     try:
@@ -238,10 +339,13 @@ async def test_due_manual_schedule_creates_a_task_and_execution_log(tmp_path):
         assert task.status == "ready"
         assert (
             task.creator_id,
+            task.creator_username,
             task.creator_name,
             task.creator_device_id,
             task.creator_device_name,
-        ) == ("browser-1", "浏览器用户", "browser-device-1", "Chrome")
+        ) == (
+            "browser-1", "browser-user", "浏览器用户", "browser-device-1", "Chrome",
+        )
 
     public = module.get(project.id, created["id"])
     assert "_creator" not in public["task_template"]
@@ -419,7 +523,9 @@ async def test_one_shot_task_timer_is_marked_missed_on_startup(tmp_path):
         async def start(self, *args):
             raise AssertionError("missed timer must not start")
     module = ScheduleModule(manager, tasks, Runtime())
+    project_events = bus.subscribe(lambda event: event.get("project_id") == project.id)
     await module.tick(datetime(2099, 1, 2, 3, 5, tzinfo=timezone.utc), startup=True)
+    assert (await asyncio.wait_for(project_events.get(), timeout=1))["name"] == "workstep.scheduled_start"
     with manager.activate_project_by_id(project.id):
         current = tasks.get_task(task["id"])
         assert current["scheduled_start_state"] == "missed"
@@ -816,3 +922,14 @@ async def test_schedule_cli_create_agent_mode_maps_candidates_and_instruction():
         "candidate_workflow_ids": ["w1", "w2"],
         "retry_count": 3,
     }
+def test_schedule_rule_module_owns_compilation_and_keeps_public_aliases():
+    from services.schedule import ScheduleValidationError as PublicError
+    from services.schedule import compile_rule as public_compile_rule
+    from services.schedule_rules import ScheduleValidationError, compile_rule
+
+    assert PublicError is ScheduleValidationError
+    assert public_compile_rule is compile_rule
+    expression, zone, run_at = compile_rule({
+        "kind": "daily", "time": "09:30", "timezone": "UTC",
+    })
+    assert (expression, zone, run_at) == ("30 9 * * *", "UTC", None)

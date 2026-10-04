@@ -1,0 +1,6 @@
+.sidebar-rename-field { display: flex; flex: 1; min-width: 0; flex-direction: column; }
+.sidebar-rename-input { min-width: 0; padding: 0 4px; border: 1px solid var(--accent); border-radius: 4px; outline: none; background: var(--bg); color: var(--fg); font-size: calc(14px * var(--font-scale)); }
+.sidebar-rename-field[data-kind="project"] .sidebar-rename-input { height: 30px; }
+.sidebar-rename-field[data-kind="workflow"] .sidebar-rename-input { height: 28px; }
+.sidebar-rename-input[aria-invalid="true"] { border-color: var(--danger); }
+.sidebar-rename-error { margin-top: 4px; color: var(--danger); font-size: calc(11px * var(--font-scale)); }

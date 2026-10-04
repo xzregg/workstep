@@ -12,11 +12,19 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from engines.core.registry import create_engine
-from models import ReviewRun, StepRun, Task, TaskStep, WorkflowRun
+from agent_assistants.prompt_input import format_prompt_input
+from models import Message, ReviewRun, StepRun, Task, TaskStep, WorkflowRun
 from models.fields import utc_now
 from services.artifact_rounds import step_round_dir, update_round_manifest_status
 from services.config import config_store
 from services.pipeline import Step
+
+
+_REVIEW_ROLE = "You are the WorkStep step review agent. Inspect results only; never modify files."
+_REVIEW_OUTPUT = (
+    'Return one JSON object only, without Markdown:\n'
+    '{"passed":true,"score":0,"summary":"","issues":[{"severity":"error","category":"","description":"","suggestion":""}]}'
+)
 
 
 Publish = Callable[[dict], Awaitable[None]]
@@ -31,6 +39,8 @@ class ReviewOutcome:
     review_run: ReviewRun
     report: dict
     events: tuple[dict, ...] = ()
+    provider_id: str | None = None
+    provider: dict | None = None
 
     @property
     def feedback(self) -> str:
@@ -137,7 +147,7 @@ class ReviewGate:
                 status="pending" if mode == "manual" else "running",
                 engine=engine_id if mode == "auto" else None,
                 model=model if mode == "auto" else None,
-                prompt_json=json.dumps({"prompt": prompt}, ensure_ascii=False),
+                prompt_json=json.dumps({"prompt": None, "input_prompt": prompt}, ensure_ascii=False),
                 started_at=now,
             )
             ts = TaskStep.get_or_none(
@@ -167,30 +177,47 @@ class ReviewGate:
             return ReviewOutcome("awaiting_review", review_run, report)
 
         await self._emit(task, step, step_run, review_run, "reviewing")
-        engine = create_engine(engine_id)
+        engine = await asyncio.to_thread(create_engine, engine_id)
         response_parts: list[str] = []
         events_collected: list[dict] = []
         error: str | None = None
+        provider_id: str | None = None
+        provider_snapshot: dict | None = None
         if not engine:
             error = f"Review engine '{engine_id}' not available"
         else:
             if self._set_active_engine is not None:
                 self._set_active_engine(engine)
             try:
+                config_overrides = config.get("config") or step.config or None
+                configured_provider = str((config_overrides or {}).get("provider_id") or "")
+                resolve_provider_id = getattr(engine, "resolve_provider_id", None)
+                if callable(resolve_provider_id):
+                    provider_id = await asyncio.to_thread(resolve_provider_id, configured_provider)
+                else:
+                    provider_id = configured_provider
+                if provider_id:
+                    def load_usage_provider():
+                        provider = config_store.get_provider(provider_id)
+                        return ({key: provider.get(key) for key in
+                                 ("id", "prices", "managed_revision")}
+                                if provider else None)
+                    provider_snapshot = await asyncio.to_thread(load_usage_provider)
                 spawn = getattr(engine, "spawn_with_retry", engine.spawn)
+                capture_input = callable(getattr(engine, "spawn_with_retry", None))
+                system_prompt, user_prompt = self._split_prompt(prompt)
                 spawn_kwargs = dict(
-                    prompt=prompt,
+                    prompt=user_prompt if capture_input else prompt,
                     cwd=task.cwd,
                     model=model or None,
                     session_id=(
                         review_session_id if engine.supports_resume else None
                     ),
-                    config_overrides=(
-                        config.get("config")
-                        or step.config
-                        or None
-                    ),
+                    config_overrides=config_overrides,
                 )
+                if capture_input:
+                    spawn_kwargs.update(system_prompt=system_prompt, capture_prompt_input=True)
+                prompt_snapshots = []
                 capabilities = getattr(engine, "capabilities", None)
                 if (
                     self._live_message_queue is not None
@@ -203,6 +230,21 @@ class ReviewGate:
                     if normalize_event is not None:
                         event = normalize_event(event)
                     if event is None:
+                        continue
+                    if event.type == "prompt_input":
+                        prompt_snapshots.append(format_prompt_input(event.data))
+                        prompt_view = "\n\n".join(prompt_snapshots)
+                        def save_prompt_input():
+                            checkpoint = json.dumps({"prompt": prompt_view, "input_prompt": prompt}, ensure_ascii=False)
+                            ReviewRun.update(prompt_json=checkpoint).where(ReviewRun.id == review_run.id).execute()
+                            if message_id:
+                                Message.update(prompt_json=checkpoint).where(Message.id == message_id).execute()
+                        await self._run_db(save_prompt_input)
+                        await self._publish({
+                            "channel": "review", "message_id": message_id,
+                            "engine": engine_id, "model": model,
+                            "type": "message_started", "data": {"prompt": prompt_view},
+                        })
                         continue
                     event_dict = event.to_dict()
                     if event.type == "live_message" and self._on_live_message is not None:
@@ -289,6 +331,8 @@ class ReviewGate:
             review_run,
             report,
             tuple(events_collected),
+            provider_id,
+            provider_snapshot,
         )
 
     @staticmethod
@@ -333,7 +377,7 @@ class ReviewGate:
                 f"- Requirement: {step.prompt}\n"
                 f"- Outputs: {json.dumps(step.outputs, ensure_ascii=False)}"
             )
-        return f"""You are the WorkStep step review agent. Inspect results only; never modify files.
+        return f"""{_REVIEW_ROLE}
 
 {contract_section}
 
@@ -346,9 +390,19 @@ class ReviewGate:
 ## Review requirements
 {review_prompt or "Check completeness, correctness, and compliance with the step requirements."}
 
-Return one JSON object only, without Markdown:
-{{"passed":true,"score":0,"summary":"","issues":[{{"severity":"error","category":"","description":"","suggestion":""}}]}}
+{_REVIEW_OUTPUT}
 """
+
+    @staticmethod
+    def _split_prompt(prompt: str) -> tuple[str, str]:
+        # The stored raw review checkpoint includes these fixed wrappers.
+        role, output = _REVIEW_ROLE, _REVIEW_OUTPUT
+        body = prompt.strip()
+        if body.startswith(role):
+            body = body[len(role):].lstrip()
+        if body.endswith(output):
+            body = body[:-len(output)].rstrip()
+        return role + "\n\n" + output, body
 
     @staticmethod
     def _parse_report(response: str) -> dict:

@@ -230,6 +230,20 @@ def project_terminal_message_state(entry: dict, msg: Message) -> None:
         )
 
 
+def message_author_snapshot(msg: Message) -> dict:
+    """Expose the stored author without inferring an identity for old rows."""
+    return {
+        "author_id": msg.author_id,
+        "author_username": msg.author_username,
+        "author_name": msg.author_name,
+        "author_type": msg.author_type,
+        "initiated_by_user_id": msg.initiated_by_user_id,
+        "initiated_by_username": msg.initiated_by_username,
+        "author_device_id": msg.author_device_id,
+        "author_device_name": msg.author_device_name,
+    }
+
+
 def get_task_history(
     task_id: str,
     workstep_dir: str | Path | None = None,
@@ -250,6 +264,7 @@ def get_task_history(
             "id": msg.id,
             "step_key": msg.step_key,
             "role": msg.role,
+            **message_author_snapshot(msg),
             "content": convert_visualize_markers(msg.content or ""),
             "engine": msg.engine,
             "model": msg.model,
@@ -302,6 +317,9 @@ def get_task_history(
             except (json.JSONDecodeError, AttributeError):
                 pass
 
+        if msg.channel in {"coordinator", "archive_experience"}:
+            from agent_assistants.prompt_input import get_prompt_view
+            entry["prompt"] = get_prompt_view(workstep_dir, msg.id) or entry["prompt"]
         result.append(entry)
 
     return result
@@ -327,6 +345,7 @@ def get_step_history(
         entry = {
             "id": msg.id,
             "role": msg.role,
+            **message_author_snapshot(msg),
             "content": convert_visualize_markers(msg.content or ""),
             "run_status": msg.run_status,
             "events": [],
@@ -364,6 +383,9 @@ def get_step_history(
                 entry["usage"] = json.loads(msg.usage_json)
             except json.JSONDecodeError:
                 pass
+        if msg.channel in {"coordinator", "archive_experience"}:
+            from agent_assistants.prompt_input import get_prompt_view
+            entry["prompt"] = get_prompt_view(workstep_dir, msg.id) or entry["prompt"]
         result.append(entry)
 
     return result

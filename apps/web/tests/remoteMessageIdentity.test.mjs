@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import test from 'node:test'
 
 const bubbleSource = fs.readFileSync(new URL('../src/components/ChatMessageBubble.tsx', import.meta.url), 'utf8')
-const taskDetailSource = fs.readFileSync(new URL('../src/components/TaskDetailView.tsx', import.meta.url), 'utf8')
+const taskDetailSource = fs.readFileSync(new URL('../src/components/TaskConversationMessage.tsx', import.meta.url), 'utf8')
 const assistantSource = fs.readFileSync(new URL('../src/components/AssistantChatPanel.tsx', import.meta.url), 'utf8')
 const styles = fs.readFileSync(new URL('../src/index.css', import.meta.url), 'utf8')
 

@@ -1,3 +1,4 @@
+import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -23,6 +24,7 @@ function CanvasEditorInner() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const activeProject = useProjectStore((s) => s.activeProject)
+  const { canEdit } = useGatewayProjectPermissions(activeProject?.id)
   const setActiveProject = useProjectStore((s) => s.setActiveProject)
   const saveSteps = useProjectStore((s) => s.saveSteps)
   const fetchProjects = useProjectStore((s) => s.fetchProjects)
@@ -116,6 +118,7 @@ function CanvasEditorInner() {
     <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row', alignItems: 'stretch' }}>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
       <FlowCanvas
+        readOnly={!canEdit}
         initialSteps={activeProject?.steps}
         projectId={activeProject?.id}
         workflowId={activeWorkflowId || undefined}
@@ -161,7 +164,7 @@ function CanvasEditorInner() {
               variant="ghost"
               className="ai-flow-entry-button"
               title={activeProject?.id ? t('canvas.aiEditTitle') : t('canvas.aiEditNoProject')}
-              disabled={!activeProject?.id}
+              disabled={!activeProject?.id || !canEdit}
               aria-expanded={aiPanelOpen}
               onClick={toggleAiPanel}
               style={{ height: 28, fontSize: 'calc(13px * var(--font-scale))', whiteSpace: 'nowrap' }}
@@ -187,7 +190,7 @@ function CanvasEditorInner() {
       </div>
 
       {/* Desktop: inline side panel. Mobile: full-screen editor overlay. */}
-      {aiPanelOpen && <div className="ai-flow-editor-host">
+      {canEdit && aiPanelOpen && <div className="ai-flow-editor-host">
         <AiFlowEditorPanel
           projectId={activeProject?.id || ''}
           workflowId={activeWorkflowId || undefined}

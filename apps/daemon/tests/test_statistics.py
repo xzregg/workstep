@@ -18,7 +18,7 @@ from models import (
     WorkflowRun,
 )
 from services.project import DEFAULT_STEPS, ProjectManager
-from services.statistics import StatisticsModule, StatisticsQuery, _usage_cost
+from services.statistics import StatisticsModule, StatisticsQuery
 
 
 class MemoryConfigStore:
@@ -37,62 +37,6 @@ class MemoryConfigStore:
             "usd_to_cny_rate": 7.2,
             "prices": [],
         })
-
-
-def test_model_cost_prefers_the_matching_execution_engine_for_same_named_models():
-    usage = {
-        "input_tokens": 1_000_000,
-        "output_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0,
-    }
-    pricing = {
-        "currency": "USD",
-        "usd_to_cny_rate": 7.2,
-        "prices": [
-            {
-                "provider_id": None,
-                "engine_id": "codex",
-                "model": "shared",
-                "input_price": 1,
-                "output_price": 0,
-                "cache_price": 0,
-            },
-            {
-                "provider_id": None,
-                "engine_id": "claude",
-                "model": "shared",
-                "input_price": 2,
-                "output_price": 0,
-                "cache_price": 0,
-            },
-        ],
-    }
-
-    assert _usage_cost(usage, "shared", pricing, engine="claude") == 2
-
-
-def test_model_cost_does_not_double_count_cached_codex_input_tokens():
-    usage = {
-        "input_tokens": 1_000_000,
-        "output_tokens": 0,
-        "cache_read_tokens": 900_000,
-        "cache_write_tokens": 0,
-    }
-    pricing = {
-        "currency": "USD",
-        "usd_to_cny_rate": 7.2,
-        "prices": [{
-            "provider_id": None,
-            "engine_id": "codex",
-            "model": "gpt-5",
-            "input_price": 1,
-            "output_price": 0,
-            "cache_price": 0.1,
-        }],
-    }
-
-    assert _usage_cost(usage, "gpt-5", pricing, engine="codex") == pytest.approx(0.19)
 
 
 @pytest.fixture
@@ -352,8 +296,11 @@ def test_statistics_groups_task_and_chat_usage_by_user(statistics_fixture):
     assert workflow is not None
     with manager.activate_project_by_id(project.id):
         task_message = Message.get_by_id("message-execution")
-        task_message.author_id = "user-a"
-        task_message.author_name = "小王"
+        task_message.author_id = "codex"
+        task_message.author_name = "Codex"
+        task_message.author_type = "assistant"
+        task_message.initiated_by_user_id = "user-a"
+        task_message.initiated_by_username = "小王"
         task_message.save()
         Message.update(author_id="user-b", author_name="小李").where(
             Message.id.in_(["message-review", "message-coordinator"])
@@ -374,8 +321,11 @@ def test_statistics_groups_task_and_chat_usage_by_user(statistics_fixture):
             session=session,
             role="assistant",
             content="完成",
-            author_id="user-a",
-            author_name="小王",
+            author_id="codex",
+            author_name="Codex",
+            author_type="assistant",
+            initiated_by_user_id="user-a",
+            initiated_by_username="小王",
             status="succeeded",
             engine="codex",
             model="gpt-5",

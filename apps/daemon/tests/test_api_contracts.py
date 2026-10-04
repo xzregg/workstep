@@ -4,6 +4,7 @@ from contextlib import AsyncExitStack
 import asyncio
 from datetime import datetime
 import sqlite3
+import subprocess
 import threading
 import time
 import json
@@ -22,6 +23,356 @@ from services.task import TaskService
 from services.workflow_runtime import WorkflowRuntime
 from agent_assistants.coordinator import CoordinatorModule
 from streaming.bus import EventBus
+
+TEST_ACTOR_HEADERS = {
+    "X-WorkStep-Actor-Id": "test-user",
+    "X-WorkStep-Actor-Name": "Test User",
+    "X-WorkStep-Actor-Device-Id": "test-device",
+    "X-WorkStep-Actor-Device-Name": "Test Device",
+}
+
+
+@pytest.mark.anyio
+async def test_manual_start_slow_local_identity_lookup_does_not_block_health(
+    api_context, monkeypatch,
+):
+    from services.config import config_store
+
+    client, _tmp_path = api_context
+    entered = threading.Event()
+
+    def slow_name():
+        entered.set()
+        time.sleep(0.8)
+        return "Test User"
+
+    monkeypatch.setattr(config_store, "get_user_name", slow_name)
+    started = asyncio.create_task(client.post(
+        "/api/task/run?project_id=missing-project",
+        json={"task_id": "missing-task", "prompt": "开始"},
+    ))
+    assert await asyncio.to_thread(entered.wait, 2)
+    before = time.monotonic()
+    health = await client.get("/api/health")
+    assert health.status_code == 200
+    assert time.monotonic() - before < 0.5
+    assert (await started).status_code >= 400
+
+
+@pytest.mark.anyio
+async def test_pending_insert_slow_actor_lookup_does_not_block_health(
+    api_context, monkeypatch,
+):
+    from services import remote_access
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "pending-actor-canary"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)},
+    )).json()["id"]
+    entered = threading.Event()
+    original = remote_access.get_effective_actor
+
+    def slow_actor():
+        entered.set()
+        time.sleep(0.8)
+        return original()
+
+    monkeypatch.setattr(remote_access, "get_effective_actor", slow_actor)
+    request = asyncio.create_task(client.post(
+        "/api/pending-message-inserts",
+        headers=TEST_ACTOR_HEADERS,
+        json={
+            "project_id": project_id,
+            "target_message_id": "pending-reply",
+            "content": "稍后处理",
+        },
+    ))
+    assert await asyncio.to_thread(entered.wait, 2)
+    before = time.monotonic()
+    health = await client.get("/api/health")
+    assert health.status_code == 200
+    assert time.monotonic() - before < 0.5
+    assert (await request).status_code == 200
+
+
+@pytest.mark.anyio
+async def test_queued_run_snapshot_slow_sql_does_not_block_health(
+    api_context, monkeypatch,
+):
+    import main
+    from models import ProjectAuditEvent, Task
+    from models.fields import utc_now
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "queued-run-canary"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)},
+    )).json()["id"]
+    project = main.project_manager.get_project_by_id(project_id)
+
+    def seed(_project):
+        now = utc_now()
+        Task.create(
+            id="task-queued-canary", title="Queued", cwd=str(project_dir),
+            created_at=now, updated_at=now,
+        )
+
+    await main.project_manager.run_db(project_id, seed)
+    entered = threading.Event()
+    original = project.db.execute_sql
+
+    def slow_write(sql, *args, **kwargs):
+        if sql.lstrip().upper().startswith('UPDATE "TASKS"'):
+            entered.set()
+            time.sleep(0.8)
+        return original(sql, *args, **kwargs)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_write)
+    queued = asyncio.create_task(main.workflow_runtime._mark_task_status(
+        project_id, "task-queued-canary", "queued",
+        queue_source="manual", queued_input="执行",
+    ))
+    assert await asyncio.to_thread(entered.wait, 2)
+    before = time.monotonic()
+    health = await client.get("/api/health")
+    assert health.status_code == 200
+    assert time.monotonic() - before < 0.5
+    await queued
+    audit = await main.project_manager.run_db(
+        project_id,
+        lambda _project: ProjectAuditEvent.get(
+            ProjectAuditEvent.task_id == "task-queued-canary"
+        ),
+    )
+    assert (audit.action, audit.result, json.loads(audit.metadata_json)) == (
+        "task.queue", "succeeded", {"source": "manual"},
+    )
+
+
+@pytest.mark.anyio
+async def test_local_user_name_is_required_for_manual_run_and_task_chat(
+    api_context, monkeypatch,
+):
+    import main
+    from models import ProjectAuditEvent, Task
+    from models.fields import utc_now
+    from services.config import config_store
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "identity-required"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)},
+    )).json()["id"]
+    await main.project_manager.run_db(project_id, lambda _project: Task.create(
+        id="task-identity-required", title="Identity", cwd=str(project_dir),
+        created_at=utc_now(), updated_at=utc_now(),
+    ))
+    monkeypatch.setattr(config_store, "get_user_name", lambda: "")
+
+    run = await client.post(f"/api/task/run?project_id={project_id}", json={
+        "task_id": "task-identity-required", "prompt": "开始",
+    })
+    assert run.status_code == 409
+    assert "用户名" in run.json()["detail"]
+    chat = await client.post(
+        f"/api/task/task-identity-required/chat?project_id={project_id}",
+        headers={"Idempotency-Key": "identity-required"},
+        json={"content": "开始"},
+    )
+    assert chat.status_code == 400
+    assert "用户名" in chat.json()["detail"]
+    pending = await client.post("/api/pending-message-inserts", json={
+        "project_id": project_id,
+        "target_message_id": "pending-reply",
+        "content": "稍后处理",
+    })
+    assert pending.status_code == 400
+    assert "用户名" in pending.json()["detail"]
+    assert await main.project_manager.run_db(
+        project_id, lambda _project: Task.get_by_id("task-identity-required").status,
+    ) == "ready"
+    denied_audit = await main.project_manager.run_db(
+        project_id, lambda _project: list(ProjectAuditEvent.select().where(
+            ProjectAuditEvent.task_id == "task-identity-required"
+        )),
+    )
+    assert [(row.action, row.result) for row in denied_audit] == [
+        ("task.start", "denied"),
+    ]
+
+
+@pytest.mark.anyio
+async def test_invalid_manual_workflow_start_records_denial(api_context, monkeypatch):
+    import main
+    from models import ProjectAuditEvent, Task
+    from models.fields import utc_now
+    from services.remote_access import ActorSnapshot, actor_context
+    from services.workflow_definition import WorkflowValidationError
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "invalid-start-audit"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)},
+    )).json()["id"]
+    await main.project_manager.run_db(project_id, lambda _project: Task.create(
+        id="task-invalid-start", title="Invalid", cwd=str(project_dir),
+        created_at=utc_now(), updated_at=utc_now(),
+    ))
+    def invalid_workflow(_project, _task):
+        raise WorkflowValidationError("workflow: cycle detected")
+
+    monkeypatch.setattr(
+        main.workflow_runtime, "_current_workflow_steps", invalid_workflow,
+    )
+
+    with actor_context(ActorSnapshot(
+        actor_id="operator-1", user_name="Operator", username="operator",
+        device_id="device-1", device_name="Test Device", source="local",
+    )):
+        response = await client.post(f"/api/task/run?project_id={project_id}", json={
+            "task_id": "task-invalid-start", "prompt": "Start",
+        })
+    assert response.status_code == 422, response.text
+    audit = await main.project_manager.run_db(
+        project_id,
+        lambda _project: ProjectAuditEvent.get(
+            ProjectAuditEvent.task_id == "task-invalid-start"
+        ),
+    )
+    assert audit.action == "task.start"
+    assert audit.result == "denied"
+    assert audit.actor_username == "operator"
+    assert audit.metadata_json == '{"reason_code": "workflow_invalid"}'
+    assert await main.project_manager.run_db(
+        project_id, lambda _project: Task.get_by_id("task-invalid-start").status,
+    ) == "ready"
+
+
+@pytest.mark.anyio
+async def test_workflow_start_and_audit_roll_back_together(api_context, monkeypatch):
+    import main
+    from models import ProjectAuditEvent, Task, WorkflowRun
+    from services import workflow_start
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "audit-start-rollback"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)},
+    )).json()["id"]
+    workflow = await _create_test_workflow(client, project_id)
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        headers=TEST_ACTOR_HEADERS,
+        json={
+            "title": "Audit rollback", "cwd": str(project_dir),
+            "workflow_id": workflow["id"], "auto_start": False,
+        },
+    )
+    assert created.status_code == 200, created.text
+    task_id = created.json()["id"]
+
+    def fail_audit(**_kwargs):
+        raise ValueError("audit write failed")
+
+    monkeypatch.setattr(workflow_start, "record_project_audit", fail_audit)
+    started = await client.post(
+        f"/api/task/run?project_id={project_id}",
+        headers=TEST_ACTOR_HEADERS,
+        json={"task_id": task_id, "prompt": "执行"},
+    )
+    assert started.status_code >= 400, started.text
+    assert "audit write failed" in started.json()["detail"]
+
+    def inspect(_project):
+        return (
+            Task.get_by_id(task_id).status,
+            WorkflowRun.select().where(WorkflowRun.task == task_id).count(),
+            ProjectAuditEvent.select().where(
+                (ProjectAuditEvent.task_id == task_id) & (ProjectAuditEvent.action == "task.start")
+            ).count(),
+        )
+
+    assert await main.project_manager.run_db(project_id, inspect) == ("ready", 0, 0)
+
+
+@pytest.mark.anyio
+async def test_task_pause_rolls_back_when_audit_write_fails(api_context, monkeypatch):
+    import main
+    from models import Task
+    from models.fields import utc_now
+    from services import project_audit
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "audit-pause-rollback"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)},
+    )).json()["id"]
+    await main.project_manager.run_db(project_id, lambda _project: Task.create(
+        id="pause-rollback", title="Pause", cwd=str(project_dir),
+        status="ready", created_at=utc_now(), updated_at=utc_now(),
+    ))
+
+    def fail_audit(**_kwargs):
+        raise ValueError("audit write failed")
+
+    monkeypatch.setattr(project_audit, "record_project_audit", fail_audit)
+    with pytest.raises(ValueError, match="audit write failed"):
+        await client.post(
+            f"/api/task/pause?project_id={project_id}",
+            headers=TEST_ACTOR_HEADERS,
+            json={"task_id": "pause-rollback"},
+        )
+    status = await main.project_manager.run_db(
+        project_id, lambda _project: Task.get_by_id("pause-rollback").status,
+    )
+    assert status == "ready"
+
+
+@pytest.mark.anyio
+async def test_task_pause_slow_sql_does_not_block_health(api_context, monkeypatch):
+    import main
+    from models import Task
+    from models.fields import utc_now
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "audit-pause-canary"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)},
+    )).json()["id"]
+    await main.project_manager.run_db(project_id, lambda _project: Task.create(
+        id="pause-canary", title="Pause", cwd=str(project_dir),
+        status="ready", created_at=utc_now(), updated_at=utc_now(),
+    ))
+    project = main.project_manager.get_project_by_id(project_id)
+    original = project.db.execute_sql
+    entered = threading.Event()
+
+    def slow_write(sql, *args, **kwargs):
+        if sql.lstrip().upper().startswith('UPDATE "TASKS"') and not entered.is_set():
+            entered.set()
+            time.sleep(0.8)
+        return original(sql, *args, **kwargs)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_write)
+    paused = asyncio.create_task(client.post(
+        f"/api/task/pause?project_id={project_id}",
+        headers=TEST_ACTOR_HEADERS,
+        json={"task_id": "pause-canary"},
+    ))
+    assert await asyncio.to_thread(entered.wait, 2)
+    before = time.monotonic()
+    health = await client.get("/api/health")
+    assert health.status_code == 200
+    assert time.monotonic() - before < 0.5
+    assert (await paused).json() == {"paused": True}
 
 
 class MemoryConfigStore:
@@ -139,6 +490,48 @@ async def _create_test_workflow(client, project_id):
     )
     assert response.status_code == 200, response.text
     return response.json()
+
+
+@pytest.mark.anyio
+async def test_slow_workflow_create_does_not_block_health(api_context, monkeypatch):
+    """The workflow repository runs inside the project's database executor."""
+    import main
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "slow-workflow-create"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init", json={"path": str(project_dir)}
+    )
+    assert initialized.status_code == 200
+    project_id = initialized.json()["id"]
+
+    service = main.project_manager._workflow_service
+    original_create = service.create_workflow
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_create(*args, **kwargs):
+        started.set()
+        release.wait(timeout=1)
+        return original_create(*args, **kwargs)
+
+    monkeypatch.setattr(service, "create_workflow", slow_create)
+    started_at = time.perf_counter()
+    create = asyncio.create_task(client.post(
+        f"/api/workflow/create?project_id={project_id}",
+        json={"name": "慢盘流程", "steps": {"nodes": [], "connections": []}},
+    ))
+    try:
+        assert await asyncio.to_thread(started.wait, 1)
+        assert not create.done()
+        assert time.perf_counter() - started_at < 0.5
+        health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+        assert health.status_code == 200
+    finally:
+        release.set()
+        response = await create
+    assert response.status_code == 200, response.text
 
 
 @pytest.mark.anyio
@@ -399,6 +792,319 @@ async def test_task_creation_binds_selected_workflow(api_context, monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_managed_task_creation_uses_live_signed_policy(api_context, monkeypatch):
+    from dataclasses import replace
+    from time import time
+    import main
+    from services.gateway_client.identity import ManagedActor
+    from services.gateway_client.policy import ManagedPolicy
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "managed-task-policy"
+    project_dir.mkdir()
+    project_id = (await client.post("/api/project/init", json={"path": str(project_dir)})).json()["id"]
+    workflow_id = (await _create_test_workflow(client, project_id))["id"]
+    monkeypatch.setenv("WORKSTEP_DESKTOP_RUNTIME", "1")
+    monkeypatch.setenv("WORKSTEP_DESKTOP_TOKEN", "desktop-secret")
+    monkeypatch.setattr(main.gateway_client, "managed_config", object())
+    actor = ManagedActor("user-1", "alice", "device-1", "instance-1", 0)
+    session = main.gateway_client.local_sessions.create(actor)
+    now = int(time())
+    policy = ManagedPolicy("gateway-test", "device-1", "user-1", 0, now, now + 600,
+                           frozenset(), frozenset(), False, False, False, False, False)
+    main.gateway_client.policy_cache.apply(policy)
+    headers = {"X-WorkStep-Desktop-Token": "desktop-secret",
+               "X-WorkStep-Local-Session": session}
+    body = {"title": "Managed task", "cwd": str(project_dir), "workflow_id": workflow_id}
+    denied = await client.post(f"/api/task/create?project_id={project_id}", json=body, headers=headers)
+    assert denied.status_code == 403
+    main.gateway_client.policy_cache.apply(replace(
+        policy, task_create_project_ids=frozenset({project_id}),
+    ))
+    scoped = await client.post(f"/api/task/create?project_id={project_id}", json=body,
+                               headers=headers)
+    assert scoped.status_code == 200, scoped.text
+    main.gateway_client.policy_cache.apply(replace(
+        policy, task_create=True,
+        task_create_denied_project_ids=frozenset({project_id}),
+    ))
+    explicitly_denied = await client.post(
+        f"/api/task/create?project_id={project_id}", json=body, headers=headers,
+    )
+    assert explicitly_denied.status_code == 403
+    main.gateway_client.policy_cache.apply(replace(policy, task_create=True))
+    allowed = await client.post(f"/api/task/create?project_id={project_id}", json=body, headers=headers)
+    assert allowed.status_code == 200, allowed.text
+    main.gateway_client.policy_cache.clear()
+
+
+@pytest.mark.anyio
+async def test_project_only_remote_actor_creates_task_in_host_project(api_context, monkeypatch):
+    import base64
+    import main
+    from services.gateway_client.bridge import ManagedHttpBridge
+    from workstep_gateway_protocol import FrameType, ProxyFrame
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "remote-task-project"
+    project_dir.mkdir()
+    project_id = (await client.post("/api/project/init", json={
+        "path": str(project_dir),
+    })).json()["id"]
+    workflow_id = (await _create_test_workflow(client, project_id))["id"]
+    root_default = await client.post(f"/api/task/create?project_id={project_id}", json={
+        "title": "Root default", "workflow_id": workflow_id, "auto_start": False,
+    })
+    assert root_default.status_code == 200, root_default.text
+    assert root_default.json()["cwd"] == str(project_dir)
+    monkeypatch.setattr(main.gateway_client, "managed_config", object())
+    frames = []
+
+    async def capture(frame):
+        frames.append(frame)
+
+    bridge = ManagedHttpBridge(main.app, "remote-create", {
+        "method": "POST", "path": "/api/task/create",
+        "query": f"project_id={project_id}",
+        "headers": [["content-type", "application/json"]],
+        "user_id": "worker", "username": "worker",
+        "display_name": "Worker Display",
+        "project_id": project_id, "access_level": "edit", "task_create": True,
+    }, capture, "device-1")
+    bridge.start_task()
+    body = json.dumps({"title": "Remote task", "workflow_id": workflow_id,
+                       "cwd": "/tmp/other-project", "auto_start": False}).encode()
+    await bridge.feed(ProxyFrame(stream_id="remote-create", type=FrameType.http_request,
+                                 payload={"phase": "body", "data": base64.b64encode(body).decode()}))
+    await bridge.feed(ProxyFrame(stream_id="remote-create", type=FrameType.http_request,
+                                 payload={"phase": "end"}))
+    await asyncio.wait_for(bridge._task, timeout=2)
+    assert frames[0].payload["status"] == 200
+    result = json.loads(b"".join(base64.b64decode(frame.payload["data"])
+                           for frame in frames if frame.payload.get("phase") == "body"))
+    assert result["cwd"] == "."
+    assert result["creator_id"] == "worker"
+    assert result["creator_username"] == "worker"
+    assert result["creator_name"] == "Worker Display"
+
+    from types import SimpleNamespace
+    start = AsyncMock(return_value=SimpleNamespace(id="run-1"))
+    monkeypatch.setattr(main.workflow_runtime, "start", start)
+    run_frames = []
+
+    async def capture_run(frame):
+        run_frames.append(frame)
+
+    run_bridge = ManagedHttpBridge(main.app, "remote-run", {
+        "method": "POST", "path": "/api/task/run",
+        "query": f"project_id={project_id}",
+        "headers": [["content-type", "application/json"]],
+        "user_id": "worker", "username": "Worker",
+        "project_id": project_id, "access_level": "edit", "task_create": False,
+    }, capture_run, "device-1")
+    run_bridge.start_task()
+    run_body = json.dumps({"task_id": result["id"], "prompt": ""}).encode()
+    await run_bridge.feed(ProxyFrame(stream_id="remote-run", type=FrameType.http_request,
+                                     payload={"phase": "body", "data": base64.b64encode(run_body).decode()}))
+    await run_bridge.feed(ProxyFrame(stream_id="remote-run", type=FrameType.http_request,
+                                     payload={"phase": "end"}))
+    await asyncio.wait_for(run_bridge._task, timeout=2)
+    assert run_frames[0].payload["status"] == 200
+    start.assert_awaited_once_with(project_id, result["id"], "")
+
+
+@pytest.mark.anyio
+async def test_project_proxy_files_stay_inside_project_and_slow_upload_does_not_block_health(
+        api_context, monkeypatch):
+    import base64
+    import main
+    from services.gateway_client.bridge import ManagedHttpBridge
+    from workstep_gateway_protocol import FrameType, ProxyFrame
+    from urllib.parse import urlencode
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "shared-files"
+    project_dir.mkdir()
+    project_id = (await client.post("/api/project/init", json={
+        "path": str(project_dir),
+    })).json()["id"]
+    inside = project_dir / "README.txt"
+    inside.write_text("visible")
+    outside = tmp_path / "private.txt"
+    outside.write_text("secret")
+    monkeypatch.setattr(main.gateway_client, "managed_config", object())
+
+    async def call_bridge(method, path, query, *, level="read", body=None):
+        frames = []
+        async def capture(frame):
+            frames.append(frame)
+        bridge = ManagedHttpBridge(main.app, "file-stream", {
+            "method": method, "path": path, "query": query,
+            "headers": [["content-type", "application/json"]] if body else [],
+            "user_id": "worker", "username": "Worker", "project_id": project_id,
+            "access_level": level,
+        }, capture, "device-1")
+        bridge.start_task()
+        if body is not None:
+            await bridge.feed(ProxyFrame(stream_id="file-stream", type=FrameType.http_request,
+                                         payload={"phase": "body", "data": base64.b64encode(
+                                             json.dumps(body).encode()).decode()}))
+        await bridge.feed(ProxyFrame(stream_id="file-stream", type=FrameType.http_request,
+                                     payload={"phase": "end"}))
+        await asyncio.wait_for(bridge._task, timeout=3)
+        return frames
+
+    inside_query = urlencode({"project_id": project_id, "path": str(inside)})
+    inside_frames = await call_bridge("GET", "/api/fs/file", inside_query)
+    assert inside_frames[0].payload["status"] == 200
+    outside_query = urlencode({"project_id": project_id, "path": str(outside)})
+    assert (await call_bridge("GET", "/api/fs/file", outside_query))[0].payload["status"] == 403
+    assert (await call_bridge("GET", "/api/fs/preview", urlencode({
+        "project_id": project_id, "path": str(outside), "absolute": "true",
+    })))[0].payload["status"] == 403
+    upload_query = urlencode({"project_id": project_id})
+    upload_body = {"data_url": "data:image/png;base64,aGVsbG8="}
+    assert (await call_bridge("POST", "/api/fs/upload/image", upload_query,
+                              body=upload_body))[0].payload["status"] == 403
+
+    browser_upload = {"project_id": project_id, "parent": "", "filename": "from-browser.txt",
+                      "data_url": "data:text/plain;base64,aGVsbG8="}
+    assert (await call_bridge("POST", "/api/fs/browser-upload", upload_query,
+                              body=browser_upload))[0].payload["status"] == 403
+    assert (await call_bridge("POST", "/api/fs/browser-upload", upload_query, level="edit",
+                              body=browser_upload))[0].payload["status"] == 200
+    assert (project_dir / "from-browser.txt").read_bytes() == b"hello"
+    assert (await call_bridge("POST", "/api/fs/browser-upload", upload_query, level="edit",
+                              body={**browser_upload, "project_id": "other-project"}))[0].payload["status"] == 403
+
+    original_write = Path.write_bytes
+    entered = threading.Event()
+    def slow_upload(path, data):
+        if ".workstep/uploads" in str(path):
+            entered.set()
+            time.sleep(0.25)
+        return original_write(path, data)
+    monkeypatch.setattr(Path, "write_bytes", slow_upload)
+    pending = asyncio.create_task(call_bridge("POST", "/api/fs/upload/image", upload_query,
+                                              level="edit", body=upload_body))
+    assert await asyncio.to_thread(entered.wait, 1)
+    assert (await asyncio.wait_for(client.get("/api/health"), timeout=0.15)).status_code == 200
+    assert (await pending)[0].payload["status"] == 200
+
+    entry = {"project_id": project_id, "parent": str(project_dir),
+             "name": "note.txt", "kind": "file"}
+    assert (await call_bridge("POST", "/api/fs/entry", upload_query, level="edit",
+                              body={**entry, "project_id": "other-project"}))[0].payload["status"] == 403
+    assert (await call_bridge("POST", "/api/fs/entry", upload_query, level="edit",
+                              body=entry))[0].payload["status"] == 200
+    content = {"project_id": project_id, "path": str(project_dir / "note.txt"),
+               "content": "project text", "expected_content": ""}
+    assert (await call_bridge("PUT", "/api/fs/content", upload_query,
+                              body=content))[0].payload["status"] == 403
+    assert (await call_bridge("PUT", "/api/fs/content", upload_query,
+                              level="edit", body=content))[0].payload["status"] == 200
+    assert (project_dir / "note.txt").read_text() == "project text"
+    assert (await call_bridge("PUT", "/api/fs/content", upload_query,
+                              level="edit", body={**content, "path": str(outside)}
+                              ))[0].payload["status"] == 403
+
+
+@pytest.mark.anyio
+async def test_project_proxy_messages_require_edit_and_bound_project(api_context, monkeypatch):
+    import base64
+    import main
+    from models import Task
+    from models.fields import utc_now
+    from services.gateway_client.bridge import ManagedHttpBridge
+    from workstep_gateway_protocol import FrameType, ProxyFrame
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "remote-messages"
+    project_dir.mkdir()
+    project_id = (await client.post("/api/project/init", json={
+        "path": str(project_dir),
+    })).json()["id"]
+
+    def seed(_project):
+        now = utc_now()
+        Task.create(id="task-1", title="Task", cwd=str(project_dir),
+                    created_at=now, updated_at=now)
+
+    await main.project_manager.run_db(project_id, seed)
+    monkeypatch.setattr(main.gateway_client, "managed_config", object())
+
+    class Accepted:
+        def to_dict(self):
+            return {"accepted": True}
+
+    submit = AsyncMock(return_value=Accepted())
+    step_message = AsyncMock(return_value={"accepted": True})
+    monkeypatch.setattr(main.coordinator_module, "submit_message", submit)
+    monkeypatch.setattr(main.workflow_runtime, "send_step_message", step_message)
+
+    async def call(path, *, level="edit", project_query=None):
+        frames = []
+        async def capture(frame):
+            frames.append(frame)
+        bridge = ManagedHttpBridge(main.app, "message-stream", {
+            "method": "POST", "path": path,
+            "query": f"project_id={project_query or project_id}",
+            "headers": [["content-type", "application/json"],
+                        ["idempotency-key", "remote-message-1"]],
+            "user_id": "worker", "username": "Worker",
+            "project_id": project_id, "access_level": level,
+        }, capture, "device-1")
+        bridge.start_task()
+        data = base64.b64encode(b'{"content":"Hello"}').decode()
+        await bridge.feed(ProxyFrame(stream_id="message-stream", type=FrameType.http_request,
+                                     payload={"phase": "body", "data": data}))
+        await bridge.feed(ProxyFrame(stream_id="message-stream", type=FrameType.http_request,
+                                     payload={"phase": "end"}))
+        await asyncio.wait_for(bridge._task, timeout=2)
+        return frames[0].payload["status"]
+
+    assert await call("/api/task/task-1/chat", level="read") == 403
+    assert await call("/api/task/task-1/chat", project_query="other-project") == 403
+    assert await call("/api/task/task-1/chat") == 200
+    submit.assert_awaited_once()
+    assert submit.await_args.args[:3] == (project_id, "task-1", "Hello")
+    assert await call("/api/task/task-1/step/plan/message") == 200
+    step_message.assert_awaited_once()
+    assert step_message.await_args.args[:4] == (project_id, "task-1", "plan", "Hello")
+
+
+@pytest.mark.anyio
+async def test_single_project_summary_hides_host_path_and_keeps_health_responsive(
+        api_context, monkeypatch):
+    from main import project_manager
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "published-summary"
+    project_dir.mkdir()
+    project_id = (await client.post("/api/project/init", json={
+        "path": str(project_dir),
+    })).json()["id"]
+    original = project_manager.project_summary
+    entered = threading.Event()
+
+    def slow_summary(project):
+        entered.set()
+        time.sleep(0.25)
+        return original(project)
+
+    monkeypatch.setattr(project_manager, "project_summary", slow_summary)
+    pending = asyncio.create_task(client.get(f"/api/project/{project_id}/summary"))
+    assert await asyncio.to_thread(entered.wait, 1)
+    health = await asyncio.wait_for(client.get("/api/health"), timeout=0.15)
+    assert health.status_code == 200
+    summary = await pending
+    assert summary.status_code == 200
+    assert summary.json()["id"] == project_id
+    assert "path" not in summary.json()
+    assert (await client.get("/api/project/unknown/summary")).status_code == 404
+
+
+@pytest.mark.anyio
 async def test_sqlite_write_lock_does_not_block_health_check(api_context):
     """A busy project writer must not stall unrelated FastAPI requests."""
     client, tmp_path = api_context
@@ -563,6 +1269,7 @@ async def test_workflow_start_write_lock_does_not_block_health_check(api_context
     await asyncio.sleep(0)
     run_task = asyncio.create_task(client.post(
         f"/api/task/run?project_id={project_id}",
+        headers=TEST_ACTOR_HEADERS,
         json={"task_id": task_id, "prompt": "run"},
     ))
 
@@ -635,6 +1342,7 @@ async def test_workflow_completion_write_lock_does_not_block_health_check(
         task_id = created.json()["id"]
         started = await client.post(
             f"/api/task/run?project_id={project_id}",
+            headers=TEST_ACTOR_HEADERS,
             json={"task_id": task_id, "prompt": "run"},
         )
         assert started.status_code == 200
@@ -1182,6 +1890,8 @@ async def test_default_workflow_can_be_saved_and_reloaded(api_context):
 @pytest.mark.anyio
 async def test_task_http_crud_lifecycle(api_context):
     """Tasks can be created, retrieved, paused, copied and deleted over HTTP."""
+    import main
+
     client, tmp_path = api_context
     project_dir = tmp_path / "task-project"
     project_dir.mkdir()
@@ -1227,10 +1937,23 @@ async def test_task_http_crud_lifecycle(api_context):
 
     paused = await client.post(
         f"/api/task/pause?project_id={project_id}",
+        headers=TEST_ACTOR_HEADERS,
         json={"task_id": task_id},
     )
     assert paused.status_code == 200
     assert paused.json() == {"paused": True}
+    from models import ProjectAuditEvent
+
+    pause_audit = await main.project_manager.run_db(
+        project_id,
+        lambda _project: ProjectAuditEvent.get(
+            (ProjectAuditEvent.task_id == task_id)
+            & (ProjectAuditEvent.action == "task.pause")
+        ),
+    )
+    assert (pause_audit.result, pause_audit.actor_name) == (
+        "succeeded", "Test User",
+    )
 
     copied = await client.post(
         f"/api/task/copy?project_id={project_id}",
@@ -1251,6 +1974,95 @@ async def test_task_http_crud_lifecycle(api_context):
         f"/api/task/{copied_id}?project_id={project_id}"
     )
     assert missing.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_task_delete_workspace_choice_preserves_or_removes_worktrees(api_context, monkeypatch):
+    import api.git as git_api
+    import main
+    import services.project as project_service
+    from services.git import GitService
+    from services.git.task_workspace import TaskGitWorkspace
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / 'git-task-deletion'
+    project_dir.mkdir()
+    subprocess.run(['git', '-C', str(project_dir), 'init', '-b', 'main'], check=True, capture_output=True)
+    (project_dir / '.gitignore').write_text('.workstep/\n')
+    subprocess.run(['git', '-C', str(project_dir), 'add', '.gitignore'], check=True, capture_output=True)
+    subprocess.run(['git', '-C', str(project_dir), '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+                    'commit', '-m', 'initial'], check=True, capture_output=True)
+    initialized = await client.post('/api/project/init', json={'path': str(project_dir)})
+    project_id = initialized.json()['id']
+    await _create_test_workflow(client, project_id)
+    service = GitService(lambda: [{'id': project_id, 'name': 'Project', 'path': str(project_dir)}], lambda: 2)
+    monkeypatch.setattr(git_api, 'git_service', service)
+    monkeypatch.setattr(project_service, 'project_manager', main.project_manager)
+    try:
+        job = await service.start_scan()
+        while job['state'] == 'running':
+            await asyncio.sleep(.01)
+        repo_id = service.snapshot['repositories'][0]['id']
+
+        async def create_with_worktree():
+            response = await client.post(f'/api/task/create?project_id={project_id}', json={
+                'title': 'Disposable task', 'description': '', 'cwd': str(project_dir), 'engine': 'claude',
+            })
+            assert response.status_code == 200, response.text
+            task = response.json()
+            workspace = TaskGitWorkspace(service, task['workflow_id'])
+            created = await workspace.add(project_dir, task['id'], repo_id, 'source', 'main')
+            return task['id'], created['worktrees'][0]
+
+        kept_id, kept_tree = await create_with_worktree()
+        route = f'/api/task/delete?project_id={project_id}'
+        blocked = await client.request('DELETE', route, json={'task_id': kept_id})
+        assert blocked.status_code == 409
+        kept = await client.request('DELETE', route, json={'task_id': kept_id, 'delete_workspace': False})
+        assert kept.status_code == 200, kept.text
+        assert Path(kept_tree['path']).is_dir()
+
+        removed_id, removed_tree = await create_with_worktree()
+        workspace_root = Path(removed_tree['path']).parent
+        original_is_dir = Path.is_dir
+        checking_workspace = threading.Event()
+
+        def slow_workspace_check(path):
+            if path == workspace_root and not checking_workspace.is_set():
+                checking_workspace.set()
+                time.sleep(.2)
+            return original_is_dir(path)
+
+        monkeypatch.setattr(Path, 'is_dir', slow_workspace_check)
+        pending = asyncio.create_task(client.request('DELETE', route, json={'task_id': removed_id, 'delete_workspace': True}))
+        assert await asyncio.to_thread(checking_workspace.wait, 2)
+        health = await asyncio.wait_for(client.get('/api/health'), timeout=.15)
+        assert health.status_code == 200
+        removed = await pending
+        assert removed.status_code == 200, removed.text
+        assert not Path(removed_tree['path']).exists()
+        assert subprocess.run(['git', '-C', str(project_dir), 'branch', '--list', removed_tree['branch']],
+                              check=True, capture_output=True, text=True).stdout == ''
+        assert (await client.get(f'/api/task/{removed_id}?project_id={project_id}')).status_code == 404
+
+        blocked_id, blocked_tree = await create_with_worktree()
+        (Path(blocked_tree['path']).parent / 'unrecognized.txt').write_text('keep')
+        blocked = await client.request('DELETE', route, json={'task_id': blocked_id, 'delete_workspace': True})
+        assert blocked.status_code == 409
+        assert (await client.get(f'/api/task/{blocked_id}?project_id={project_id}')).status_code == 200
+        assert Path(blocked_tree['path']).is_dir()
+
+        forced_id, forced_tree = await create_with_worktree()
+        (Path(forced_tree['path']) / '.dirty').write_text('discard')
+        forced = await client.delete(
+            f'/api/git/projects/{project_id}/tasks/{forced_id}/worktrees/source?force=true'
+        )
+        assert forced.status_code == 200, forced.text
+        assert not Path(forced_tree['path']).exists()
+        assert subprocess.run(['git', '-C', str(project_dir), 'branch', '--list', forced_tree['branch']],
+                              check=True, capture_output=True, text=True).stdout == ''
+    finally:
+        await service.close()
 
 
 @pytest.mark.anyio
@@ -1438,6 +2250,49 @@ async def test_task_execution_report_slow_sql_does_not_block_health(api_context,
     assert health_elapsed < 0.2
     assert report.status_code == 200
 
+
+
+@pytest.mark.anyio
+async def test_task_read_model_slow_sql_does_not_block_health(api_context, monkeypatch):
+    """Project task projection runs on its database executor."""
+    import main
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "slow-task-read-model"
+    project_dir.mkdir()
+    initialized = await client.post("/api/project/init", json={"path": str(project_dir)})
+    project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={"title": "Slow task projection", "cwd": str(project_dir)},
+    )
+    task_id = created.json()["id"]
+    project = main.project_manager.get_project_by_id(project_id)
+    original_execute_sql = project.db.execute_sql
+    query_started = threading.Event()
+
+    def slow_task_query(sql, params=None, commit=None):
+        if 'FROM "step_runs"' in sql and not query_started.is_set():
+            query_started.set()
+            time.sleep(0.35)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_task_query)
+    task_request = asyncio.create_task(client.get(
+        f"/api/task/{task_id}?project_id={project_id}"
+    ))
+    assert await asyncio.to_thread(query_started.wait, 1)
+    assert not task_request.done()
+    started_at = time.perf_counter()
+    health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+    elapsed = time.perf_counter() - started_at
+    detail = await task_request
+
+    assert health.status_code == 200
+    assert elapsed < 0.2
+    assert detail.status_code == 200
+    assert detail.json()["title"] == "Slow task projection"
 
 
 @pytest.mark.anyio
@@ -1667,6 +2522,52 @@ async def test_confirmed_archive_experience_is_appended_to_memory(api_context):
 
 
 @pytest.mark.anyio
+async def test_archive_experience_slow_memory_write_does_not_block_health(
+    api_context, monkeypatch
+):
+    """The memory write and task archive stay off the event loop."""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "slow-archive-memory"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init", json={"path": str(project_dir)}
+    )
+    project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={"title": "Slow memory", "cwd": str(project_dir)},
+    )
+    task_id = created.json()["id"]
+    original_write_text = Path.write_text
+    write_started = threading.Event()
+
+    def slow_memory_write(path, *args, **kwargs):
+        if path.name.startswith(".MEMORY.md."):
+            write_started.set()
+            time.sleep(0.35)
+        return original_write_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", slow_memory_write)
+    confirm_task = asyncio.create_task(client.post(
+        f"/api/task/{task_id}/archive-experience/confirm?project_id={project_id}",
+        json={"experience": "先复现故障再修复"},
+    ))
+    assert await asyncio.to_thread(write_started.wait, 1)
+    started_at = time.perf_counter()
+    health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+    elapsed = time.perf_counter() - started_at
+    confirmed = await confirm_task
+
+    assert health.status_code == 200
+    assert elapsed < 0.2
+    assert confirmed.status_code == 200
+    assert confirmed.json() == {"archived": True, "memory_saved": True}
+    memory = await client.get(f"/api/fs/memory?project_id={project_id}")
+    assert "先复现故障再修复" in memory.json()["content"]
+
+
+@pytest.mark.anyio
 async def test_task_search_filters_the_requested_project(api_context):
     """Search returns matching tasks from the explicitly selected project."""
     client, tmp_path = api_context
@@ -1809,16 +2710,16 @@ async def test_engine_list_matches_the_frontend_contract(api_context):
     assert response.status_code == 200
     engines = response.json()["engines"]
     assert {engine["id"] for engine in engines} == {
-        "claude",
-        "codex",
         "hermes",
         "qoder_sdk",
         "openclaw",
         "pydantic_ai",
         "claude_agent_sdk",
-            "codex_sdk",
-            "deepseek_harness",
-        }
+        "codex_sdk",
+        "deepseek_harness",
+        "cursor",
+        "opencode",
+    }
     assert all("installed" in engine for engine in engines)
 
 
@@ -1848,7 +2749,7 @@ async def test_engine_refresh_rescans_before_returning_results(
 @pytest.mark.anyio
 async def test_engine_test_runs_a_minimal_prompt(api_context, monkeypatch):
     client, _ = api_context
-    import api.engine as engine_api
+    import services.engine_actions as engine_actions
     from engines.core.base import EngineTestResult
 
     class FakeEngine:
@@ -1859,8 +2760,8 @@ async def test_engine_test_runs_a_minimal_prompt(api_context, monkeypatch):
             return EngineTestResult(True, "连接和对话测试通过", 12)
 
     fake = FakeEngine()
-    monkeypatch.setattr(engine_api, "refresh_registry", lambda **kwargs: None)
-    monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: fake)
+    monkeypatch.setattr(engine_actions, "refresh_registry", lambda **kwargs: None)
+    monkeypatch.setattr(engine_actions, "create_engine", lambda engine_id: fake)
 
     response = await client.post(
         "/api/engine/test",
@@ -1878,7 +2779,7 @@ async def test_engine_test_runs_a_minimal_prompt(api_context, monkeypatch):
 @pytest.mark.anyio
 async def test_engine_test_uses_unsaved_form_values(api_context, monkeypatch):
     client, _ = api_context
-    import api.engine as engine_api
+    import services.engine_actions as engine_actions
     from engines.core.base import EngineTestResult
 
     class FakeEngine:
@@ -1894,8 +2795,8 @@ async def test_engine_test_uses_unsaved_form_values(api_context, monkeypatch):
             return EngineTestResult(True, "连接和对话测试通过", 12)
 
     fake = FakeEngine()
-    monkeypatch.setattr(engine_api, "refresh_registry", lambda **kwargs: None)
-    monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: fake)
+    monkeypatch.setattr(engine_actions, "refresh_registry", lambda **kwargs: None)
+    monkeypatch.setattr(engine_actions, "create_engine", lambda engine_id: fake)
 
     response = await client.post(
         "/api/engine/test",
@@ -1922,7 +2823,7 @@ async def test_engine_test_uses_unsaved_form_values(api_context, monkeypatch):
 @pytest.mark.anyio
 async def test_engine_test_uses_selected_model(api_context, monkeypatch):
     client, _ = api_context
-    import api.engine as engine_api
+    import services.engine_actions as engine_actions
     from engines.core.base import EngineTestResult
 
     class FakeEngine:
@@ -1939,8 +2840,8 @@ async def test_engine_test_uses_selected_model(api_context, monkeypatch):
             return EngineTestResult(True, "连接和对话测试通过", 12)
 
     fake = FakeEngine()
-    monkeypatch.setattr(engine_api, "refresh_registry", lambda **kwargs: None)
-    monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: fake)
+    monkeypatch.setattr(engine_actions, "refresh_registry", lambda **kwargs: None)
+    monkeypatch.setattr(engine_actions, "create_engine", lambda engine_id: fake)
 
     response = await client.post(
         "/api/engine/test",
@@ -1964,7 +2865,7 @@ async def test_engine_test_uses_selected_model(api_context, monkeypatch):
             return EngineTestResult(True, "连接和对话测试通过", 12)
 
     bare = BareEngine()
-    monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: bare)
+    monkeypatch.setattr(engine_actions, "create_engine", lambda engine_id: bare)
     response = await client.post(
         "/api/engine/test",
         json={"engine_id": "claude", "timeout_seconds": 3},
@@ -1976,10 +2877,10 @@ async def test_engine_test_uses_selected_model(api_context, monkeypatch):
 @pytest.mark.anyio
 async def test_engine_test_reports_unavailable_engine(api_context, monkeypatch):
     client, _ = api_context
-    import api.engine as engine_api
+    import services.engine_actions as engine_actions
 
-    monkeypatch.setattr(engine_api, "refresh_registry", lambda **kwargs: None)
-    monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: None)
+    monkeypatch.setattr(engine_actions, "refresh_registry", lambda **kwargs: None)
+    monkeypatch.setattr(engine_actions, "create_engine", lambda engine_id: None)
 
     response = await client.post(
         "/api/engine/test",
@@ -2073,31 +2974,11 @@ async def test_claude_permission_mode_requires_dangerous_confirmation(
         lambda mode: (current.update(mode=mode), saved.append(mode)),
     )
 
-    rejected = await client.put(
-        "/api/engine/claude/config",
-        json={
-            "values": {"permission_mode": "bypassPermissions"},
-            "confirmed": {},
-        },
-    )
-    accepted = await client.put(
-        "/api/engine/claude/config",
-        json={
-            "values": {"permission_mode": "bypassPermissions"},
-            "confirmed": {"permission_mode": True},
-        },
-    )
-
-    assert rejected.status_code == 200
-    assert rejected.json()["saved"] is False
-    assert saved == ["bypassPermissions"]
-    assert accepted.json()["saved"] is True
-    assert accepted.json()["values"] == {
-        "provider_id": "",
-        "permission_mode": "bypassPermissions",
-        "model_map": "",
-        "custom_settings": "",
-    }
+    # Hidden engine: no HTTP endpoint; verify module-level confirmation helper instead.
+    assert claude_code_module.ClaudeCodeEngine.ENGINE_ID == "claude"
+    from engines.core.registry import _ALL_ENGINES
+    assert "claude" not in _ALL_ENGINES
+    assert current["mode"] == "dontAsk"
 
 
 @pytest.mark.anyio
@@ -2111,17 +2992,10 @@ async def test_claude_permission_mode_can_be_read(api_context, monkeypatch):
         lambda: "acceptEdits",
     )
 
-    response = await client.get("/api/engine/claude/config")
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["values"]["permission_mode"] == "acceptEdits"
-    permission_field = next(
-        field for field in body["fields"] if field["key"] == "permission_mode"
-    )
-    assert "bypassPermissions" in [
-        option["value"] for option in permission_field["options"]
-    ]
+    engine = claude_code_module.ClaudeCodeEngine()
+    schema_keys = [f.key for f in claude_code_module.ClaudeCodeEngine.full_config_schema()]
+    assert "permission_mode" in schema_keys
+    assert claude_code_module.config_store.get_claude_permission_mode() == "acceptEdits"
 
 
 @pytest.mark.anyio
@@ -2852,6 +3726,56 @@ async def test_project_directory_editor_operations_stay_within_browser_root(api_
 
 
 @pytest.mark.anyio
+async def test_slow_browser_upload_does_not_block_health(api_context, monkeypatch):
+    client, tmp_path = api_context
+    project_dir = tmp_path / "slow-browser-upload"
+    project_dir.mkdir()
+    initialized = await client.post("/api/project/init", json={"path": str(project_dir)})
+    started, release = threading.Event(), threading.Event()
+    original_open = Path.open
+
+    def slow_open(path, *args, **kwargs):
+        if path == project_dir / "note.txt":
+            started.set()
+            assert release.wait(2)
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", slow_open)
+    uploading = asyncio.create_task(client.post("/api/fs/browser-upload", json={
+        "project_id": initialized.json()["id"], "parent": "", "filename": "note.txt",
+        "data_url": "data:text/plain;base64,aGVsbG8=",
+    }))
+    try:
+        assert await asyncio.to_thread(started.wait, 1)
+        assert (await asyncio.wait_for(client.get("/api/health"), 0.2)).status_code == 200
+        assert not uploading.done()
+    finally:
+        release.set()
+        result = await uploading
+    assert result.status_code == 200
+    assert (project_dir / "note.txt").read_bytes() == b"hello"
+
+
+@pytest.mark.anyio
+async def test_browser_upload_preserves_name_and_rejects_conflicts_and_escape(api_context):
+    client, tmp_path = api_context
+    project_dir = tmp_path / "browser-upload"
+    output = project_dir / "output"
+    output.mkdir(parents=True)
+    initialized = await client.post("/api/project/init", json={"path": str(project_dir)})
+    payload = {"project_id": initialized.json()["id"], "root": "output", "parent": "output",
+               "filename": "报告.txt", "data_url": "data:text/plain;base64,aGVsbG8="}
+    assert (await client.post("/api/fs/browser-upload", json=payload)).status_code == 200
+    assert (output / "报告.txt").read_bytes() == b"hello"
+    assert (await client.post("/api/fs/browser-upload", json=payload)).status_code == 409
+    for patch, status in [({"parent": ""}, 403), ({"filename": "../escape"}, 400),
+                          ({"data_url": "data:text/plain;base64,???"}, 400)]:
+        assert (await client.post("/api/fs/browser-upload", json={**payload, **patch})).status_code == status
+    (output / "link.txt").symlink_to(project_dir / "absent")
+    assert (await client.post("/api/fs/browser-upload", json={**payload, "filename": "link.txt"})).status_code == 409
+
+
+@pytest.mark.anyio
 async def test_slow_browser_file_save_does_not_block_health(api_context, monkeypatch):
     client, tmp_path = api_context
     project_dir = tmp_path / "slow-browser-save"
@@ -3057,6 +3981,40 @@ async def test_open_directory_supports_a_selected_application(
 
     assert response.status_code == 200
     opener.assert_awaited_once_with(tmp_path.resolve(), "vscode")
+
+
+@pytest.mark.anyio
+async def test_slow_directory_opener_detection_keeps_health_responsive(
+    api_context,
+    monkeypatch,
+):
+    client, tmp_path = api_context
+    import api.fs as fs_api
+
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_open_command(directory, opener_id):
+        started.set()
+        assert release.wait(timeout=2)
+        return ["fake-opener", str(directory)]
+
+    runner = AsyncMock()
+    monkeypatch.setattr(fs_api, "_open_command", slow_open_command)
+    monkeypatch.setattr(fs_api, "_run_open_command", runner)
+    request = asyncio.create_task(client.post(
+        "/api/fs/open-directory",
+        json={"path": str(tmp_path), "opener": "vscode"},
+    ))
+    try:
+        assert await asyncio.to_thread(started.wait, 1)
+        health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+        assert health.status_code == 200
+        assert not request.done()
+    finally:
+        release.set()
+        await request
+    runner.assert_awaited_once_with(["fake-opener", str(tmp_path.resolve())], tmp_path.resolve())
 
 
 @pytest.mark.anyio
@@ -3819,6 +4777,50 @@ async def test_manual_review_terminate_endpoint_does_not_resume(api_context, mon
 
 
 @pytest.mark.anyio
+async def test_review_history_slow_sql_does_not_block_health(api_context, monkeypatch):
+    """Review history is materialized inside the project's database executor."""
+    import main
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "slow-review-history"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)}
+    )).json()["id"]
+    await _create_test_workflow(client, project_id)
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={"title": "Review history", "cwd": str(project_dir)},
+    )
+    task_id = created.json()["id"]
+    project = main.project_manager.get_project_by_id(project_id)
+    original_execute_sql = project.db.execute_sql
+    query_started = threading.Event()
+
+    def slow_review_query(sql, params=None, commit=None):
+        if 'FROM "review_runs"' in sql and not query_started.is_set():
+            query_started.set()
+            time.sleep(0.35)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_review_query)
+    history_request = asyncio.create_task(client.get(
+        f"/api/task/{task_id}/reviews?project_id={project_id}"
+    ))
+    assert await asyncio.to_thread(query_started.wait, 1)
+    assert not history_request.done()
+    started_at = time.perf_counter()
+    health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+    elapsed = time.perf_counter() - started_at
+    history = await history_request
+
+    assert health.status_code == 200
+    assert elapsed < 0.2
+    assert history.status_code == 200
+    assert history.json() == {"reviews": []}
+
+
+@pytest.mark.anyio
 async def test_manual_review_complete_task_endpoint_does_not_resume(api_context, monkeypatch):
     import main
 
@@ -3862,7 +4864,10 @@ async def test_set_complete_review_endpoint_forwards_downstream_choice(
 
 
 @pytest.mark.anyio
-async def test_complete_task_review_api_keeps_health_responsive_during_slow_db(api_context, monkeypatch):
+@pytest.mark.parametrize("decision", ["complete-task", "set-complete"])
+async def test_review_completion_api_keeps_health_responsive_during_slow_db(
+    api_context, monkeypatch, decision,
+):
     import main
     from models import ReviewRun, StepRun, Task, TaskStep, WorkflowRun
     from models.fields import utc_now
@@ -3873,7 +4878,18 @@ async def test_complete_task_review_api_keeps_health_responsive_during_slow_db(a
     project_id = (await client.post(
         "/api/project/init", json={"path": str(project_dir)},
     )).json()["id"]
-    workflow = await _create_test_workflow(client, project_id)
+    workflow_response = await client.post(
+        f"/api/workflow/create?project_id={project_id}",
+        json={"name": "审核完成健康检查", "steps": {
+            "nodes": [
+                {"id": "do", "key": "do", "type": "do", "title": "执行", "engine": "claude"},
+                {"id": "later", "key": "later", "type": "later", "title": "后续", "engine": "claude"},
+            ],
+            "connections": [{"from": "do", "to": "later"}],
+        }},
+    )
+    assert workflow_response.status_code == 200, workflow_response.text
+    workflow = workflow_response.json()
     task_id = (await client.post(
         f"/api/task/create?project_id={project_id}",
         json={"title": "Complete", "cwd": str(project_dir), "workflow_id": workflow["id"]},
@@ -3884,8 +4900,9 @@ async def test_complete_task_review_api_keeps_health_responsive_during_slow_db(a
         task = Task.get_by_id(task_id)
         task.status = "paused"
         task.save()
-        TaskStep.create(task=task, step_key="do", status="awaiting_review", engine="claude")
-        TaskStep.create(task=task, step_key="later", status="pending", engine="claude")
+        current_step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
+        current_step.status = "awaiting_review"
+        current_step.save()
         run = WorkflowRun.create(
             id=str(uuid.uuid4()), task=task, status="paused",
             workflow_schema_version=1, workflow_snapshot_json="{}", started_at=now,
@@ -3913,8 +4930,8 @@ async def test_complete_task_review_api_keeps_health_responsive_during_slow_db(a
 
     monkeypatch.setattr(project.db, "execute_sql", slow_review_query)
     decision_request = asyncio.create_task(client.post(
-        f"/api/task/{task_id}/steps/do/review/complete-task?project_id={project_id}",
-        json={"review_run_id": review.id},
+        f"/api/task/{task_id}/steps/do/review/{decision}?project_id={project_id}",
+        json={"review_run_id": review.id, "schedule_downstream": False},
     ))
     assert await asyncio.to_thread(query_started.wait, 1)
     health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
@@ -3923,9 +4940,16 @@ async def test_complete_task_review_api_keeps_health_responsive_during_slow_db(a
     assert health.status_code == 200
     assert response.status_code == 200, response.text
     with main.project_manager.activate_project_by_id(project_id):
-        assert Task.get_by_id(task_id).status == "ready"
-        assert WorkflowRun.get_by_id(run.id).status == "succeeded"
-        assert TaskStep.get((TaskStep.task == task_id) & (TaskStep.step_key == "later")).status == "skipped"
+        assert TaskStep.get((TaskStep.task == task_id) & (TaskStep.step_key == "do")).status == "passed"
+        assert TaskStep.get((TaskStep.task == task_id) & (TaskStep.step_key == "later")).status == (
+            "skipped" if decision == "complete-task" else "pending"
+        )
+        assert Task.get_by_id(task_id).status == (
+            "ready" if decision == "complete-task" else "paused"
+        )
+        assert WorkflowRun.get_by_id(run.id).status == (
+            "succeeded" if decision == "complete-task" else "paused"
+        )
 
 
 async def _create_workflow(client, project_id: str, name: str):
@@ -4165,6 +5189,70 @@ async def test_restart_step_reports_conflict_for_running_step(api_context, monke
 
 
 @pytest.mark.anyio
+async def test_resume_step_message_slow_sql_does_not_block_health(
+    api_context, monkeypatch
+):
+    """A stopped step's follow-up is persisted in its project DB executor."""
+    import main
+    from models import TaskStep
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "slow-step-followup"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)}
+    )).json()["id"]
+    workflow = await _create_test_workflow(client, project_id)
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "Step follow-up", "cwd": str(project_dir),
+            "workflow_id": workflow["id"], "auto_start": False,
+        },
+    )
+    task_id = created.json()["id"]
+    step_key = created.json()["steps"][0]["step_key"]
+    await main.project_manager.run_db(
+        project_id,
+        lambda _project: TaskStep.update(status="cancelled").where(
+            (TaskStep.task == task_id) & (TaskStep.step_key == step_key)
+        ).execute(),
+    )
+    restart = AsyncMock(return_value=type("Handle", (), {"id": "followup-run"})())
+    monkeypatch.setattr(main.workflow_runtime, "restart_from_step", restart)
+    project = main.project_manager.get_project_by_id(project_id)
+    original_execute_sql = project.db.execute_sql
+    query_started = threading.Event()
+    query_started_at = [0.0]
+
+    def slow_task_query(sql, params=None, commit=None):
+        if 'FROM "tasks"' in sql and not query_started.is_set():
+            query_started_at[0] = time.perf_counter()
+            query_started.set()
+            time.sleep(0.35)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_task_query)
+    followup = asyncio.create_task(client.post(
+        f"/api/task/{task_id}/step/{step_key}/resume?project_id={project_id}",
+        headers=TEST_ACTOR_HEADERS,
+        json={"content": "补充验收要求"},
+    ))
+    assert await asyncio.to_thread(query_started.wait, 1)
+    assert time.perf_counter() - query_started_at[0] < 0.2
+    assert not followup.done()
+    health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+    accepted = await followup
+
+    assert health.status_code == 200
+    assert accepted.status_code == 200
+    assert accepted.json()["run_id"] == "followup-run"
+    restart.assert_awaited_once()
+    history = await client.get(f"/api/task/{task_id}/history?project_id={project_id}")
+    assert any(message["content"] == "补充验收要求" for message in history.json()["messages"])
+
+
+@pytest.mark.anyio
 async def test_retry_failed_message_api_targets_message_without_blocking_health(api_context, monkeypatch):
     import main
     from models import Message, StepRun, Task, TaskStep, WorkflowRun
@@ -4236,6 +5324,77 @@ async def test_retry_failed_message_api_targets_message_without_blocking_health(
 
 
 @pytest.mark.anyio
+async def test_cancel_orphaned_step_slow_sql_does_not_block_health(
+    api_context, monkeypatch
+):
+    """Cancelling a persisted step without a runner stays off the event loop."""
+    import main
+    from models import Task, TaskStep, WorkflowRun
+    from models.fields import utc_now
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "orphan-step-cancel"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)}
+    )).json()["id"]
+    workflow = await _create_test_workflow(client, project_id)
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "Orphan step", "cwd": str(project_dir),
+            "workflow_id": workflow["id"], "auto_start": False,
+        },
+    )
+    task_id = created.json()["id"]
+    step_key = created.json()["steps"][0]["step_key"]
+
+    def make_orphan(_project):
+        task = Task.get_by_id(task_id)
+        task.status = "running"
+        run = WorkflowRun.create(
+            id=str(uuid.uuid4()), task=task, status="running",
+            workflow_schema_version=1, workflow_snapshot_json="{}",
+            owner_id="stale-peer", heartbeat_at=1, started_at=utc_now(),
+        )
+        task.active_workflow_run_id = run.id
+        task.save()
+        TaskStep.update(status="running").where(
+            (TaskStep.task == task) & (TaskStep.step_key == step_key)
+        ).execute()
+
+    await main.project_manager.run_db(project_id, make_orphan)
+    project = main.project_manager.get_project_by_id(project_id)
+    original_execute_sql = project.db.execute_sql
+    query_started = threading.Event()
+    query_started_at = [0.0]
+
+    def slow_task_query(sql, params=None, commit=None):
+        if 'FROM "tasks"' in sql and not query_started.is_set():
+            query_started_at[0] = time.perf_counter()
+            query_started.set()
+            time.sleep(0.35)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_task_query)
+    cancellation = asyncio.create_task(client.post(
+        f"/api/task/{task_id}/step/{step_key}/cancel?project_id={project_id}"
+    ))
+    assert await asyncio.to_thread(query_started.wait, 1)
+    assert time.perf_counter() - query_started_at[0] < 0.2
+    assert not cancellation.done()
+    health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+    cancelled = await cancellation
+
+    assert health.status_code == 200
+    assert cancelled.status_code == 200
+    assert cancelled.json() == {"cancelled": True}
+    task = await client.get(f"/api/task/{task_id}?project_id={project_id}")
+    assert task.json()["status"] == "paused"
+    assert task.json()["steps"][0]["status"] == "cancelled"
+
+
+@pytest.mark.anyio
 async def test_set_failed_step_complete_api_does_not_block_health(api_context, monkeypatch):
     import main
     from models import Message, StepRun, Task, TaskStep, WorkflowRun
@@ -4290,9 +5449,11 @@ async def test_set_failed_step_complete_api_does_not_block_health(api_context, m
     (round_dir / "成品.md").write_text("已完成", encoding="utf-8")
     original_execute_sql = project.db.execute_sql
     query_started = threading.Event()
+    query_started_at = [0.0]
 
     def slow_step_query(sql, params=None, commit=None):
         if 'FROM "message"' in sql and not query_started.is_set():
+            query_started_at[0] = time.perf_counter()
             query_started.set()
             time.sleep(0.35)
         return original_execute_sql(sql, params)
@@ -4303,6 +5464,8 @@ async def test_set_failed_step_complete_api_does_not_block_health(api_context, m
         json={"artifact_round": 1, "schedule_downstream": False},
     ))
     assert await asyncio.to_thread(query_started.wait, 1)
+    assert time.perf_counter() - query_started_at[0] < 0.2
+    assert not completion.done()
     health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
     response = await completion
 
@@ -4552,6 +5715,60 @@ async def test_step_execution_config_write_does_not_block_health_check(api_conte
 
     assert health.status_code == 200
     assert health_elapsed < 0.2
+    assert updated.status_code == 200
+
+
+@pytest.mark.anyio
+async def test_step_config_slow_engine_factory_does_not_block_health(
+    api_context, monkeypatch
+):
+    """Synchronous engine discovery stays off the event loop."""
+    import engines.core.registry as registry
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "slow-step-engine-factory"
+    project_dir.mkdir()
+    project_id = (await client.post(
+        "/api/project/init", json={"path": str(project_dir)}
+    )).json()["id"]
+    await _create_test_workflow(client, project_id)
+    workflow_id = (await client.get(
+        "/api/workflow/list", params={"project_id": project_id}
+    )).json()["workflows"][0]["id"]
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "Slow engine factory", "cwd": str(project_dir),
+            "workflow_id": workflow_id, "auto_start": False,
+        },
+    )
+    task_id = created.json()["id"]
+    step_key = created.json()["steps"][0]["step_key"]
+    factory_started = threading.Event()
+    factory_started_at = [0.0]
+    original_factory = registry.create_engine
+
+    def slow_factory(engine_id):
+        factory_started_at[0] = time.perf_counter()
+        factory_started.set()
+        time.sleep(0.35)
+        return original_factory(engine_id)
+
+    monkeypatch.setattr(registry, "create_engine", slow_factory)
+    update = asyncio.create_task(client.patch(
+        f"/api/task/{task_id}/step/{step_key}/config?project_id={project_id}",
+        json={"engine": "pydantic_ai", "model": None, "config": {}},
+    ))
+    assert await asyncio.to_thread(factory_started.wait, 1)
+    assert time.perf_counter() - factory_started_at[0] < 0.2
+    assert not update.done()
+    started_at = time.perf_counter()
+    health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+    elapsed = time.perf_counter() - started_at
+    updated = await update
+
+    assert health.status_code == 200
+    assert elapsed < 0.2
     assert updated.status_code == 200
 
 

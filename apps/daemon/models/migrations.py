@@ -37,6 +37,8 @@ _EXTRA_INDEXES = (
     "CREATE INDEX IF NOT EXISTS schedule_status_next_run_at ON schedules(status, next_run_at)",
     "CREATE INDEX IF NOT EXISTS schedulerun_status ON schedule_runs(status)",
     "CREATE INDEX IF NOT EXISTS task_scheduled_start_state_at ON tasks(scheduled_start_state, scheduled_start_at)",
+    "CREATE INDEX IF NOT EXISTS projectauditevent_upload_status_created_at "
+    "ON project_audit_events(upload_status, created_at)",
 )
 
 # Older builds could create this quoted index before the scheduled-start
@@ -47,9 +49,25 @@ _LEGACY_MALFORMED_INDEXES = (
 )
 
 _ADDITIVE_COLUMNS = {
+    "project_audit_events": {
+        "upload_status": "TEXT NOT NULL DEFAULT 'pending'",
+        "upload_error": "TEXT",
+    },
+    "pending_message_inserts": {
+        "author_id": "TEXT",
+        "author_username": "TEXT",
+        "author_name": "TEXT",
+        "author_device_id": "TEXT",
+        "author_device_name": "TEXT",
+        "author_source": "TEXT",
+    },
     "message": {
         "author_id": "TEXT",
+        "author_username": "TEXT",
         "author_name": "TEXT",
+        "author_type": "TEXT",
+        "initiated_by_user_id": "TEXT",
+        "initiated_by_username": "TEXT",
         "author_device_id": "TEXT",
         "author_device_name": "TEXT",
         "event_log_path": "TEXT",
@@ -61,7 +79,11 @@ _ADDITIVE_COLUMNS = {
     },
     "chat_messages": {
         "author_id": "TEXT",
+        "author_username": "TEXT",
         "author_name": "TEXT",
+        "author_type": "TEXT",
+        "initiated_by_user_id": "TEXT",
+        "initiated_by_username": "TEXT",
         "author_device_id": "TEXT",
         "author_device_name": "TEXT",
         "event_log_path": "TEXT",
@@ -88,7 +110,9 @@ _ADDITIVE_COLUMNS = {
         "vision_model": "TEXT",
     },
     "tasks": {
+        "queued_run_json": "TEXT",
         "creator_id": "TEXT",
+        "creator_username": "TEXT",
         "creator_name": "TEXT",
         "creator_device_id": "TEXT",
         "creator_device_name": "TEXT",
@@ -112,6 +136,12 @@ _ADDITIVE_COLUMNS = {
         "owner_id": "TEXT",
         "heartbeat_at": "DATETIME",
         "routing_state_json": "TEXT",
+        "trigger_source": "TEXT",
+        "initiated_by_user_id": "TEXT",
+        "initiated_by_username": "TEXT",
+        "initiated_by_name": "TEXT",
+        "initiated_by_device_id": "TEXT",
+        "initiated_by_device_name": "TEXT",
     },
     "step_runs": {
         "artifact_round": "INTEGER",

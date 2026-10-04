@@ -241,10 +241,10 @@ def load_shared_task(task_id: str) -> dict | None:
         task = Task.get_by_id(task_id)
     except Task.DoesNotExist:
         return None
-    from services.task import TaskService  # local import to avoid cycles
+    from services.task_read_model import task_to_dict
 
     import json as _json
-    canonical = TaskService._task_to_dict(task)
+    canonical = task_to_dict(task)
     shared_fields = (
         "id",
         "title",
@@ -325,9 +325,10 @@ def load_shared_history(
     for msg in reversed(messages):
         step_run_id, artifact_round = artifact_projections[msg.id]
         raw_events: list[dict] = []
-        if msg.events_json:
+        projected_events = msg.event_summary_json or msg.events_json
+        if projected_events:
             try:
-                raw_events = _json.loads(msg.events_json)
+                raw_events = _json.loads(projected_events)
             except Exception:
                 raw_events = []
         # 与实时推送共用 AG-UI 翻译层（旧词汇经兼容映射），

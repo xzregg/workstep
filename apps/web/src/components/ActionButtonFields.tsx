@@ -62,8 +62,8 @@ export default function ActionButtonFields({ projectId, workflowId, value, onCha
       <input type="checkbox" checked={value.requireConfirmation} onChange={(event) => onChange({ ...value, requireConfirmation: event.target.checked })} />
       {t('actionShortcuts.requireConfirmation')}
     </label>
-    {value.requireConfirmation && <Field label={t('actionShortcuts.confirmationInputPrompt')} help={t('actionShortcuts.confirmationInputHelp')}>
-      <Input value={value.confirmationInputPrompt} maxLength={200} onChange={(event) => onChange({ ...value, confirmationInputPrompt: event.target.value })} placeholder={t('actionShortcuts.confirmationInputPlaceholder')} />
+    {<Field label={t('actionShortcuts.confirmationInputPrompt')} help={t('actionShortcuts.confirmationInputHelp')}>
+      <Input value={value.confirmationInputPrompt} maxLength={200} disabled={!value.requireConfirmation} onChange={(event) => onChange({ ...value, confirmationInputPrompt: event.target.value })} placeholder={t('actionShortcuts.confirmationInputPlaceholder')} />
     </Field>}
     {browser && <ProjectDirectoryBrowserDialog
       projectId={projectId}

@@ -3,6 +3,7 @@
 import asyncio
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from schemas.project import InitRequest, ReorderProjectsRequest, RegisterRequest, RenameRequest, SaveStepsRequest
 from services.project import DEFAULT_STEPS, project_manager
@@ -12,6 +13,10 @@ from services.workflow_definition import (
 )
 
 router = APIRouter(prefix="/api/project")
+
+
+class ProjectPublicationRequest(BaseModel):
+    published: bool
 
 
 async def _run_db(project_id, operation):
@@ -68,6 +73,11 @@ async def reorder_projects(req: ReorderProjectsRequest):
 async def list_projects():
     """List all registered projects."""
     from api.remote_project import remote_project_registry
+    from services.remote_access import get_current_actor
+
+    actor = get_current_actor()
+    if actor is not None and actor.project_id is not None:
+        raise HTTPException(status_code=403, detail="Project scope denied")
 
     local_projects = await asyncio.to_thread(project_manager.list_projects)
     local = [
@@ -76,6 +86,56 @@ async def list_projects():
     ]
     remote = await asyncio.to_thread(remote_project_registry.list_public)
     return {"projects": [*local, *remote]}
+
+
+@router.get("/{project_id}/summary")
+async def get_project_summary(project_id: str):
+    """Expose one project's metadata without its host filesystem path."""
+    from services.remote_access import get_current_actor
+
+    actor = get_current_actor()
+    if actor is not None and actor.project_id is not None and actor.project_id != project_id:
+        raise HTTPException(status_code=403, detail="Project scope denied")
+
+    def summarize(project):
+        summary = project_manager.project_summary(project)
+        summary.pop("path", None)
+        return summary
+
+    try:
+        return await project_manager.run_db(project_id, summarize)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Project not found") from exc
+
+
+@router.post("/{project_id}/publication")
+async def set_project_publication(project_id: str, req: ProjectPublicationRequest):
+    from main import gateway_client
+
+    try:
+        return await gateway_client.publish_project(project_id, published=req.published)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc).strip("'")) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ConnectionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/{project_id}/publication")
+async def get_project_publication(project_id: str):
+    from main import gateway_client
+
+    try:
+        return await gateway_client.project_publication_status(project_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc).strip("'")) from exc
+    except ConnectionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.delete("/{project_id}")

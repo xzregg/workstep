@@ -1,0 +1,51 @@
+.chat-session-goal-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font-size: calc(12px * var(--font-scale));
+}
+.chat-session-goal-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.chat-session-goal-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  color: var(--meta);
+}
+.chat-session-goal-objective {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-session-goal-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.chat-session-goal-action {
+  justify-content: center;
+  padding: 4px 8px;
+}
+@media (max-width: 1023px) {
+  .chat-session-goal-summary { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .chat-session-goal-objective { max-width: 100%; }
+  .chat-session-goal-actions { margin-left: auto; }
+  .chat-session-goal-actions .chat-session-goal-action {
+    width: var(--mobile-control-regular);
+    height: var(--mobile-control-regular);
+    min-width: var(--mobile-control-regular);
+    min-height: var(--mobile-control-regular);
+    padding: 0;
+  }
+}

@@ -4,9 +4,9 @@ import { Window } from 'happy-dom'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import TaskStepProgressGraph, {
-  deriveStepRounds,
   type ProgressGraphStepProgress,
 } from '../src/components/TaskStepProgressGraph'
+import { deriveStepRounds } from '../src/components/taskStepProgressLayout'
 import { I18nProvider } from '../src/i18n'
 
 function installDom() {

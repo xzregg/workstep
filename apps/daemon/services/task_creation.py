@@ -6,6 +6,8 @@ from datetime import datetime
 
 from services.config import DEFAULT_EXECUTION_ENGINE
 from services.workflow_definition import WorkflowDefinition
+from services.gateway_client.policy import require_managed_capability
+from services.remote_access import get_current_actor
 
 
 @dataclass(frozen=True)
@@ -41,6 +43,11 @@ async def create_project_task(
     """Create one task and optionally start it using a single policy interface."""
     if execution_mode not in {"workflow", "immediate", "manual"}:
         raise ValueError(f"Invalid execution mode: {execution_mode}")
+    require_managed_capability("task.create", creator_fields=creator_fields,
+                               project_id=project_id)
+    actor = get_current_actor()
+    if actor is not None and actor.project_id is not None:
+        cwd = None
 
     def persist(project):
         if workflow_id and hasattr(project, "workflow_by_id"):
@@ -55,6 +62,7 @@ async def create_project_task(
             )
         definition = WorkflowDefinition.load(workflow["steps"])
         created = task_service.create_task(
+            project_id=project_id,
             title=title,
             cwd=cwd or str(project.path),
             description=description,
@@ -104,6 +112,10 @@ async def create_project_task(
             if hasattr(project_manager, "activate_project_by_id")
             else nullcontext(project_manager.bind_project_by_id(project_id))
         )
-        with context:
-            created = task_service.get_task(created["id"]) or created
+        if hasattr(project_manager, "run_db"):
+            created = await project_manager.run_db(project_id, lambda _project:
+                task_service.get_task(created["id"]) or created)
+        else:
+            with context:
+                created = task_service.get_task(created["id"]) or created
     return TaskCreationResult(created, handle)

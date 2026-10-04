@@ -1,0 +1,7 @@
+.task-discussion-groups { display: flex; flex-direction: column; gap: 12px; padding-top: 16px; }
+.task-discussion-groups p { margin: 0; color: var(--muted); }
+.task-discussion-groups label { display: flex; flex-direction: column; gap: 6px; }
+.task-discussion-groups-list { display: flex; flex-direction: column; gap: 8px; }
+.task-discussion-groups-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border-soft); }
+.task-discussion-groups-row span { overflow-wrap: anywhere; }
+.task-discussion-groups-error { color: var(--danger) !important; }
