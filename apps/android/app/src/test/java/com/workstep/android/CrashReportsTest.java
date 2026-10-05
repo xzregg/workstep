@@ -50,9 +50,11 @@ public class CrashReportsTest {
             Files.write(main.toPath(), ("2026-10-05T01:00:00Z 网页主进程 应用启动\n"
                     + "2026-10-05T01:01:00Z 网页主进程 启动监听失败\n"
                     + "java.lang.IllegalStateException: denied\n\tat Example.run(Example.java:1)\n"
-                    + "2026-10-05T01:02:00Z 网页主进程 返回前台\n").getBytes(StandardCharsets.UTF_8));
+                    + "2026-10-05T01:02:00Z 网页主进程 返回前台\n"
+                    + "2026-10-05T01:02:01Z 网页主进程 点击通知；目标=/tasks；任务=task-42\n").getBytes(StandardCharsets.UTF_8));
             Files.write(notification.toPath(), ("2026-10-05T01:03:00Z 后台通知进程 WebSocket 已连接\n"
-                    + "2026-10-05T01:04:00Z 后台通知进程 通知未显示：权限不足\n")
+                    + "2026-10-05T01:04:00Z 后台通知进程 通知未显示：权限不足\n"
+                    + "2026-10-05T01:05:00Z 后台通知进程 系统通知：已发送；目标=/tasks?task=task-42\n")
                     .getBytes(StandardCharsets.UTF_8));
             Files.write(crash.toPath(), "后台通知进程\njava.lang.Error: crash\n".getBytes(StandardCharsets.UTF_8));
 
@@ -60,6 +62,8 @@ public class CrashReportsTest {
             assertTrue(errors.contains("启动监听失败\njava.lang.IllegalStateException: denied\n\tat Example.run"));
             assertTrue(errors.contains("通知未显示：权限不足"));
             assertTrue(errors.contains("java.lang.Error: crash"));
+            assertTrue(errors.contains("点击通知；目标=/tasks；任务=task-42"));
+            assertTrue(errors.contains("系统通知：已发送；目标=/tasks?task=task-42"));
             assertFalse(errors.contains("应用启动"));
             assertFalse(errors.contains("WebSocket 已连接"));
             assertFalse(errors.contains("返回前台"));

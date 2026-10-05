@@ -16,7 +16,7 @@ WebSocket 前台恢复由 `apps/web/src/hooks/useWebSocket.ts` 持有：页面�
 
 回复及任务步骤执行结果通知由 `apps/web/src/utils/completionNotifications.ts` 统一筛选终态、去重、按 `session_chat` 频道选择会话目标、生成含流程标识的任务目标地址并选择桌面、浏览器或 Android 通道；`useWebSocket.ts` 从项目和任务状态补全目标项目及流程，再把事件与当前订阅交给该模块。Chrome 网页推送的登记在 `browserPush.ts` 与系统设置页，后台投递由 `public/completion-sw.js` 和 daemon `api/completion_notifications.py`、`services/completion_push.py` 持有；近期结果保留频道供 Android 后台服务重连后正确跳转。测试见 `completionNotifications.test.ts` 与 daemon `test_completion_push.py`。桌面端通过 `apps/desktop/src/preload.cjs` 与主进程发送系统通知；APK 的同源 WebView 桥接及前台 WebSocket 监听分别在 `MainActivity.java`、`CompletionWatchService.java`，通知未显示的具体原因及目标地址写入日志。
 
-Android 发送消息时的提前监听由 `useChatSessionActions.ts`、`TaskDetail.tsx` 和 `useTaskPendingInserts.ts` 通过 `completionNotifications.ts` 登记，避免用户立即切后台时漏掉开始事件。`CompletionWatchService.java` 在独立进程接收回复/步骤终态，`CrashReports.java` 记录主进程及通知进程异常，入口为 APK 悬浮球长按菜单的“查看日志”。
+Android 发送消息时的提前监听由 `useChatSessionActions.ts`、`TaskDetail.tsx` 和 `useTaskPendingInserts.ts` 通过 `completionNotifications.ts` 登记，避免用户立即切后台时漏掉开始事件。`CompletionWatchService.java` 在独立进程接收回复/步骤终态；`NotificationIds.java` 将 JSON 空标识（包括 optString 产生的字符串 `"null"`）归一为空，供监听订阅、通知分类和 `NotificationDestination.java` 跳转共用，回归见 `NotificationIdsTest.java`、`NotificationDestinationTest.java`。`CrashReports.java` 记录主进程及通知进程异常，入口为 APK 悬浮球长按菜单的“查看日志”。
 
 企业微信入站回复的正文流式更新由 `apps/daemon/services/channels/reply_stream.py::ChannelReplyStream` 合并、节流和隔离网络发送；`responder.py` 与 `bots.py::_task_reply` 提供累计 LLM 正文，`BotManager` 管理更新任务的生命周期，`wecom.py::update_reply` 更新同一气泡，最终回复按 UTF-8 限长分段。统一能力与接口在 `base.py`，协议说明见 `docs/channel-message-protocol.md`；行为及慢网络健康检查见 `tests/test_channel_streaming.py`、`test_channel_bots.py` 和 `test_channel_chat_responder.py`。
 
@@ -164,7 +164,7 @@ Gateway 审计工作台由 `apps/gateway-web/src/AdminAuditPage.tsx` 持有筛�
 | 功能 | Web 入口 | Daemon 入口 | 深入阅读 |
 |---|---|---|---|
 | 任务列表、详情、执行 | `src/pages/TaskList.tsx`、`TaskDetail.tsx`，`src/components/TaskDetailView.tsx`；详情内部见下表，API 在 `src/api/task.ts` | `api/task.py`、`services/task.py`、`task_creation.py`、`task_runner.py` | `docs/workflow-engine-execution.md` |
-| 任务详情按编号读取与跨流程列表刷新保护 | `src/hooks/useTaskRecord.ts` 独立保留已读取任务，`TaskDetail.tsx` 消费；任务列表仍按当前流程筛选，API 为 `src/api/task.ts` | `api/task.py` 按任务编号和项目读取 | `apps/web/tests/useTaskRecord.test.tsx` |
+| 任务详情按编号读取与跨流程列表刷新保护 | `src/hooks/useTaskRecord.ts` 独立保留已读取任务、区分加载/404/请求失败并提供重试，`TaskDetail.tsx` 消费；任务列表仍按当前流程筛选，API 为 `src/api/task.ts` | `api/task.py` 按任务编号和项目读取 | `apps/web/tests/useTaskRecord.test.tsx` |
 | 任务卡片与详情读取投影、步骤前次状态、产物轮次和用量 | `src/pages/TaskList.tsx`、`src/pages/TaskDetail.tsx`、`src/pages/SharedTaskView.tsx` | `services/task_read_model.py` 在项目数据库执行器内生成任务载荷；`services/task.py` 和 `services/share.py` 共用 | `tests/test_task.py`、`tests/test_share.py`、`tests/test_api_contracts.py` |
 | 任务归档、恢复、归档经验草稿与确认写入项目记忆 | `src/components/ArchiveExperienceDialog.tsx`、`src/pages/TaskList.tsx` | `api/task_archive.py` 持有归档和经验接口；`api/task_context.py` 提供项目数据库执行入口；`agent_assistants/archive_experience.py` 自主管理草稿证据、生成、停止、实时事件及日志交接，复用 `coordinator.py` 的引擎调用与配置 | `tests/test_api_contracts.py`、`tests/test_coordinator.py` |
 | 任务步骤启动、会话供应商切换、运行记录与产物轮次分配 | `src/components/TaskStepProgressGraph.tsx` 展示状态 | `services/task_step_start.py` 是同步数据库工作单元；`services/task_runner.py` 经项目数据库执行器调用，并在线程中创建执行引擎 | `tests/test_task_step_start.py`、`tests/test_pipeline.py` |

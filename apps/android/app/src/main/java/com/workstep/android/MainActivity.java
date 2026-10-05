@@ -445,7 +445,7 @@ public final class MainActivity extends Activity {
             if (id.isEmpty()) return;
             if ("watch".equals(type)) {
                 if (!message.optString("projectId").isEmpty()
-                        && (!message.optString("sessionId").isEmpty() || !message.optString("taskId").isEmpty())) {
+                        && (!NotificationIds.value(message.optString("sessionId")).isEmpty() || !NotificationIds.value(message.optString("taskId")).isEmpty())) {
                     completionWatches.put(id, message);
                     CrashReports.log(this, "网页主进程", "登记监听；数量=" + completionWatches.size(), null);
                 }
@@ -462,7 +462,7 @@ public final class MainActivity extends Activity {
                 String outcome = message.optString("outcome");
                 if (!"succeeded".equals(outcome) && !"failed".equals(outcome)) return;
                 boolean success = "succeeded".equals(outcome);
-                boolean task = !message.optString("taskId").isEmpty();
+                boolean task = !NotificationIds.value(message.optString("taskId")).isEmpty();
                 boolean step = !message.optString("stepKey").isEmpty();
                 String result = CompletionNotifications.show(this, id,
                         step ? (success ? "WorkStep 步骤完成" : "WorkStep 步骤失败")
@@ -838,7 +838,11 @@ public final class MainActivity extends Activity {
         String page = notificationPage(intent);
         if (page == null || webView == null) return;
         clearNotificationPage(intent);
-        CrashReports.log(this, "网页主进程", "点击通知，打开对应页面", null);
+        Uri target = Uri.parse(page);
+        CrashReports.log(this, "网页主进程", "点击通知；目标=" + target.getPath()
+                + "；项目=" + target.getQueryParameter("project")
+                + "；任务=" + target.getQueryParameter("task")
+                + "；会话=" + target.getQueryParameter("session"), null);
         webView.loadUrl(page);
     }
 

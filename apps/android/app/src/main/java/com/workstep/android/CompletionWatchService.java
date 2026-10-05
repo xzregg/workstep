@@ -161,8 +161,8 @@ public final class CompletionWatchService extends Service {
             String projectId = "";
             for (JSONObject watch : watches.values()) {
                 if (projectId.isEmpty()) projectId = watch.optString("projectId");
-                String sessionId = watch.optString("sessionId");
-                String taskId = watch.optString("taskId");
+                String sessionId = NotificationIds.value(watch.optString("sessionId"));
+                String taskId = NotificationIds.value(watch.optString("taskId"));
                 if (!sessionId.isEmpty()) sessions.add(sessionId);
                 if (!taskId.isEmpty()) tasks.add(taskId);
             }
@@ -218,23 +218,22 @@ public final class CompletionWatchService extends Service {
             JSONObject event = new JSONObject(text);
             String type = event.optString("type");
             String status = event.optString("status");
+            String sessionId = NotificationIds.value(event.optString("session_id"));
+            String taskId = "session_chat".equals(event.optString("channel")) && !sessionId.isEmpty()
+                    ? "" : NotificationIds.value(event.optString("task_id"));
             boolean step = ("RUN_FINISHED".equals(type) && "passed".equals(status))
                     || ("RUN_ERROR".equals(type) && "failed".equals(status));
             if (!step && !"TEXT_MESSAGE_END".equals(type)) return;
             String watchId = step
-                    ? event.optString("project_id") + ":" + event.optString("task_id") + ":step:" + event.optString("step_key")
+                    ? event.optString("project_id") + ":" + taskId + ":step:" + event.optString("step_key")
                     : event.optString("project_id") + ":" +
-                    (event.has("session_id") && !event.isNull("session_id") && !event.optString("session_id").isEmpty()
-                            ? event.optString("session_id") : event.optString("task_id"))
+                    (!sessionId.isEmpty() ? sessionId : taskId)
                     + ":" + event.optString("messageId");
             JSONObject watch = watches.remove(watchId);
             if (!step) {
                 String project = event.optString("project_id");
-                String session = event.optString("session_id");
-                String task = "session_chat".equals(event.optString("channel")) && !session.isEmpty()
-                        ? "" : event.optString("task_id");
-                JSONObject pendingSession = session.isEmpty() ? null : watches.remove(project + ":" + session + ":pending");
-                JSONObject pendingTask = task.isEmpty() ? null : watches.remove(project + ":" + task + ":pending");
+                JSONObject pendingSession = sessionId.isEmpty() ? null : watches.remove(project + ":" + sessionId + ":pending");
+                JSONObject pendingTask = taskId.isEmpty() ? null : watches.remove(project + ":" + taskId + ":pending");
                 if (watch == null) watch = pendingSession != null ? pendingSession : pendingTask;
             }
             if (watch == null) return;
@@ -243,10 +242,9 @@ public final class CompletionWatchService extends Service {
                 boolean success = "succeeded".equals(status) || "passed".equals(status);
                 String id = step ? watchId + ":" + event.optString("sequence", status) : watchId;
                 String destination = NotificationDestination.path(watch.optString("url"),
-                        event.optString("session_id"), event.optString("task_id"),
+                        sessionId, taskId,
                         event.optString("channel"));
-                boolean taskReply = !"session_chat".equals(event.optString("channel"))
-                        && !event.optString("task_id").isEmpty();
+                boolean taskReply = !taskId.isEmpty();
                 String result = CompletionNotifications.show(this, id,
                         step ? (success ? "WorkStep 步骤完成" : "WorkStep 步骤失败")
                                 : (success ? "WorkStep 回复完成" : "WorkStep 回复失败"),

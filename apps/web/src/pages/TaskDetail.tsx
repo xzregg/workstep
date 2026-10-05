@@ -8,6 +8,7 @@ import { useTaskRecord } from '../hooks/useTaskRecord'
 import { randomUuid } from '../utils/uuid'
 import { watchPendingCompletion, unwatchPendingCompletion } from '../utils/completionNotifications'
 import Button from '../components/Button'
+import Spinner from '../components/Spinner'
 import TaskDetailWindow from '../components/TaskDetailWindow'
 import {
   useState,
@@ -170,7 +171,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     () => taskApi.executionReport(taskId, projectId),
     [taskId, projectId],
   )
-  const task = useTaskRecord(taskId, projectId)
+  const { task, status: taskReadStatus, error: taskReadError, retry: retryTaskRead } = useTaskRecord(taskId, projectId)
   const taskStatus = task?.status
   const taskCompleted = isTaskCompleted(task?.steps || [])
   const sessionIdForStep = (stepKey?: string | null): string | null => {
@@ -839,8 +840,11 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   if (!task) {
     return (
       <div className="task-detail-not-found">
-        {t('taskDetail.taskNotFound')}
+        {taskReadStatus === 'loading' ? <><Spinner /> {t('common.loading')}</>
+          : taskReadStatus === 'not-found' ? t('taskDetail.taskNotFound')
+          : taskReadError}
         <br />
+        {taskReadStatus !== 'loading' && <Button variant="ghost" onClick={retryTaskRead}>{t('common.retry')}</Button>}
         <Button variant="ghost" className="task-detail-back" onClick={onClose}>← {t('common.back')}</Button>
       </div>
     )

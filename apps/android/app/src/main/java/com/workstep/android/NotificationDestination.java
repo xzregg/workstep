@@ -12,6 +12,8 @@ final class NotificationDestination {
     }
 
     static String path(String watchedPage, String sessionId, String taskId, String channel) {
+        sessionId = NotificationIds.value(sessionId);
+        taskId = NotificationIds.value(taskId);
         String project = "";
         String workflow = "";
         if (watchedPage != null && watchedPage.startsWith("/") && !watchedPage.startsWith("//")) {

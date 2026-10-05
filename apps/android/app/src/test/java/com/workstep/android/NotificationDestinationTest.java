@@ -6,6 +6,12 @@ import org.junit.Test;
 
 public class NotificationDestinationTest {
     @Test
+    public void replayedSessionWithJsonNullTaskOpensTheSession() {
+        assertEquals("/chat?project=Demo&session=session-1",
+                NotificationDestination.path("/chat?project=Demo", "session-1", "null"));
+    }
+
+    @Test
     public void opensTheCompletedSessionEvenWhenWatchWasCreatedBeforeUrlUpdated() {
         assertEquals("/chat?project=Demo&session=new-session",
                 NotificationDestination.path("/chat?project=Demo&session=old-session",
