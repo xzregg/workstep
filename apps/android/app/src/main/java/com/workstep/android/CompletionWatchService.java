@@ -231,7 +231,8 @@ public final class CompletionWatchService extends Service {
             if (!step) {
                 String project = event.optString("project_id");
                 String session = event.optString("session_id");
-                String task = event.optString("task_id");
+                String task = "session_chat".equals(event.optString("channel")) && !session.isEmpty()
+                        ? "" : event.optString("task_id");
                 JSONObject pendingSession = session.isEmpty() ? null : watches.remove(project + ":" + session + ":pending");
                 JSONObject pendingTask = task.isEmpty() ? null : watches.remove(project + ":" + task + ":pending");
                 if (watch == null) watch = pendingSession != null ? pendingSession : pendingTask;
@@ -244,11 +245,13 @@ public final class CompletionWatchService extends Service {
                 String destination = NotificationDestination.path(watch.optString("url"),
                         event.optString("session_id"), event.optString("task_id"),
                         event.optString("channel"));
+                boolean taskReply = !"session_chat".equals(event.optString("channel"))
+                        && !event.optString("task_id").isEmpty();
                 String result = CompletionNotifications.show(this, id,
                         step ? (success ? "WorkStep 步骤完成" : "WorkStep 步骤失败")
                                 : (success ? "WorkStep 回复完成" : "WorkStep 回复失败"),
                         step ? "步骤 " + event.optString("step_key") + (success ? " 已通过" : " 执行失败")
-                                : (success ? "会话的回复已完成" : "会话的回复失败"),
+                                : (taskReply ? "任务" : "会话") + "的回复" + (success ? "已完成" : "失败"),
                         destination, server);
                 CrashReports.log(this, "后台通知进程", "系统通知：" + result + "；目标=" + destination, null);
             }
