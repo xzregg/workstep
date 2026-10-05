@@ -58,7 +58,7 @@ final class CrashReports {
     }
 
     static void showLogs(Activity activity) {
-        StringBuilder content = new StringBuilder();
+        StringBuilder content = new StringBuilder(version(activity)).append('\n');
         for (String name : new String[]{"main-log.txt", "notification-log.txt"}) {
             content.append("\n==== ").append(name).append(" ====\n");
             try {
@@ -83,7 +83,7 @@ final class CrashReports {
                 .setPositiveButton("复制错误日志", (dialog, which) -> {
                     ClipboardManager clipboard = activity.getSystemService(ClipboardManager.class);
                     clipboard.setPrimaryClip(ClipData.newPlainText("WorkStep 错误日志",
-                            errorLogs(activity.getFilesDir())));
+                            version(activity) + "\n" + errorLogs(activity.getFilesDir())));
                     Toast.makeText(activity, "错误日志已复制", Toast.LENGTH_SHORT).show();
                 })
                 .setNeutralButton(R.string.clear_logs, (dialog, which) ->
@@ -111,7 +111,7 @@ final class CrashReports {
                 for (String entry : content.split("(?m)(?=^\\d{4}-\\d{2}-\\d{2}T)")) {
                     if (entry.isEmpty()) continue;
                     String header = entry.split("\\n", 2)[0];
-                    if (!header.matches(".*(失败|异常|错误|崩溃|未显示|无法|断开).*")
+                    if (!header.matches(".*(失败|异常|错误|崩溃|未显示|无法|断开|系统通知|点击通知).*")
                             && !entry.contains("Exception") && !entry.contains("Error")) continue;
                     if (errors.indexOf("==== " + name + " ====") < 0)
                         errors.append("==== ").append(name).append(" ====\n");
@@ -137,6 +137,16 @@ final class CrashReports {
             if (file.exists() && !file.delete()) success = false;
         }
         return success;
+    }
+
+    private static String version(Context context) {
+        try {
+            android.content.pm.PackageInfo info = context.getPackageManager()
+                    .getPackageInfo(context.getPackageName(), 0);
+            return "WorkStep APK " + info.versionName + " (" + info.getLongVersionCode() + ")";
+        } catch (Exception ignored) {
+            return "WorkStep APK 版本读取失败";
+        }
     }
 
     static void showIfPresent(Activity activity) {
