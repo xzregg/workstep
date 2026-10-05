@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Compare } from './components/Compare'
+import { Channels } from './components/Channels'
 import { Demos } from './components/Demos'
 import { DemoModal } from './components/DemoModal'
-import { DownloadModal } from './components/DownloadModal'
 import { EnginesStrip } from './components/EnginesStrip'
 import { Features } from './components/Features'
 import { FinalCta } from './components/FinalCta'
@@ -13,6 +13,7 @@ import { Philosophy } from './components/Philosophy'
 import { RemoteShare } from './components/RemoteShare'
 import { Workflow } from './components/Workflow'
 import type { DemoDef } from './demo/demos'
+import { getExperienceHref } from './config/entryPoints'
 
 function scrollToDemos() {
   document.getElementById('demos')?.scrollIntoView({ behavior: 'smooth' })
@@ -20,37 +21,25 @@ function scrollToDemos() {
 
 export default function App() {
   const [openDemo, setOpenDemo] = useState<DemoDef | null>(null)
-  const [downloadOpen, setDownloadOpen] = useState(false)
-  const fallbackTimer = useRef<number | null>(null)
-
-  useEffect(() => () => {
-    if (fallbackTimer.current !== null) window.clearTimeout(fallbackTimer.current)
-  }, [])
-
-  const launchWithFallback = () => {
-    if (fallbackTimer.current !== null) window.clearTimeout(fallbackTimer.current)
-    fallbackTimer.current = window.setTimeout(() => {
-      if (!document.hidden) setDownloadOpen(true)
-    }, 1400)
-  }
+  const experienceHref = getExperienceHref(typeof window === 'undefined' ? '' : window.location.pathname)
 
   return (
     <>
-      <Nav onDownload={() => setDownloadOpen(true)} />
+      <Nav />
       <main>
-        <Hero onOpenDemos={scrollToDemos} onLaunchFallback={launchWithFallback} />
+        <Hero onOpenDemos={scrollToDemos} experienceHref={experienceHref} />
         <EnginesStrip />
         <Philosophy />
         <Features />
         <Compare />
         <Demos onOpen={setOpenDemo} />
         <Workflow />
+        <Channels />
         <RemoteShare />
-        <FinalCta onLaunchFallback={launchWithFallback} />
+        <FinalCta experienceHref={experienceHref} />
       </main>
       <Footer />
       {openDemo && <DemoModal demo={openDemo} onClose={() => setOpenDemo(null)} />}
-      {downloadOpen && <DownloadModal onClose={() => setDownloadOpen(false)} />}
     </>
   )
 }

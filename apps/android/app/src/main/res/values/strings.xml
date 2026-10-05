@@ -1,14 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">WorkStep</string>
-    <string name="server_url">WorkStep HTTPS 地址</string>
+    <string name="server_url">WorkStep HTTP 或 HTTPS 地址</string>
     <string name="connect_title">连接 WorkStep</string>
-    <string name="connect_help">输入手机浏览器可以访问的 WorkStep HTTPS 根地址。网页、接口和实时消息须位于同一地址。</string>
+    <string name="connect_help">输入手机浏览器可以访问的 WorkStep HTTP 或 HTTPS 根地址。网页、接口和实时消息须位于同一地址。</string>
     <string name="connect">连接</string>
     <string name="change_address">修改地址</string>
     <string name="connection_options">打开网页导航菜单，长按打开连接选项</string>
     <string name="reload">重新加载</string>
     <string name="clear_web_cache">清除网页缓存</string>
+    <string name="view_logs">查看日志</string>
+    <string name="clear_logs">清除日志</string>
+    <string name="confirm_clear_logs">清除主进程、后台通知和上次崩溃记录？</string>
+    <string name="logs_cleared">日志已清除</string>
+    <string name="logs_clear_failed">部分日志清除失败</string>
+    <string name="test_notification">发送测试通知</string>
     <string name="web_cache_cleared">网页缓存已清除</string>
     <string name="retry">重试</string>
 </resources>

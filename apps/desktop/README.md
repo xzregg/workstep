@@ -66,6 +66,8 @@ uv run --project apps/daemon --group dev pytest apps/desktop/tests/test_backend_
 
 生产 sidecar 每次启动都会生成新的随机令牌。令牌只保留在 Electron 主进程与 sidecar 环境中，由主进程为目标 loopback origin 的 HTTP/WebSocket 请求注入；渲染进程不会获得令牌。外部导航、新窗口、WebView 和浏览器权限请求均由桌面壳限制。
 
+LLM 回复或任务步骤执行完成、失败且窗口不在前台时，网页通过受限 preload 桥接请求 Electron 系统通知；通知点击后打开对应会话或任务。桥接只接受已加载的本地服务来源，浏览器通知权限仍保持禁用。
+
 后端包的 `legal/` 目录包含 `LICENSE`、`NOTICE`、第三方说明和 CycloneDX SBOM。当前 GitHub Release 产出 Windows 与 macOS 未签名早期构建，不需要证书或 Apple 公证账号。
 
 Windows 构建使用隐藏子进程窗口并保留 stdout 管道，以便 `PORT:<port>` 就绪协议可靠传回主进程。

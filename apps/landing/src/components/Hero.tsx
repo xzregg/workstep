@@ -4,10 +4,10 @@ import { HeroPreview } from './HeroPreview'
 
 interface HeroProps {
   onOpenDemos: () => void
-  onLaunchFallback: () => void
+  experienceHref: string
 }
 
-export function Hero({ onOpenDemos, onLaunchFallback }: HeroProps) {
+export function Hero({ onOpenDemos, experienceHref }: HeroProps) {
   const { t } = useI18n()
 
   return (
@@ -25,7 +25,7 @@ export function Hero({ onOpenDemos, onLaunchFallback }: HeroProps) {
           </h1>
           <p className="hero-lede">{t('hero.lede')}</p>
           <div className="hero-actions">
-            <a href="workstep://open" className="btn btn-primary" onClick={onLaunchFallback}>
+            <a href={experienceHref} className="btn btn-primary">
               {t('hero.ctaStart')}
               <ArrowRight size={15} />
             </a>

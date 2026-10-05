@@ -46,7 +46,7 @@ export function ActionConversationMessage({ message, run, onStop }: {
       {onStop && isActive(run.status) && <Button variant="ghost" className="chat-message-action" disabled={run.status === 'stopping'} onClick={() => onStop(run.run_id)}><Icon name={run.status === 'stopping' ? 'loader-circle' : 'stop'} className={run.status === 'stopping' ? 'git-spin' : undefined} size={14} />{run.status === 'stopping' ? t('actionShortcuts.stopping') : t('actionShortcuts.stop')}</Button>}
     </div> : undefined}
   >
-    {!isUser && <pre style={{ margin: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 360, overflow: 'auto', background: 'var(--surface)', padding: 10, borderRadius: 6 }}>{output}</pre>}
+    {!isUser && <pre className="action-conversation-output">{output}</pre>}
     {!isUser && run?.exit_code !== null && run?.exit_code !== undefined && <small style={{ color: 'var(--muted)' }}>{t('actionShortcuts.exitCode', { code: run.exit_code })}</small>}
   </ChatMessageBubble>
 }

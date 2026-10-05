@@ -23,7 +23,8 @@ export function parseDesktopRequest(search: string): DesktopRequest | null {
   const keys = ['gateway_id', 'app_instance_id', 'state', 'nonce', 'code_challenge'] as const
   const redirect = params.get('redirect_uri')
   if (redirect) {
-    try { const uri = new URL(redirect); if (uri.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(uri.hostname) || !uri.port || uri.pathname !== '/api/gateway-platform/callback' || uri.username || uri.password || uri.search || uri.hash) return null } catch { return null }
+    if (params.getAll('redirect_uri').length !== 1 || !/^[\x21-\x7e]+$/.test(redirect) || redirect.includes('\\')) return null
+    try { const uri = new URL(redirect); if (!['http:', 'https:'].includes(uri.protocol) || !uri.hostname || uri.port === '0' || uri.pathname !== '/api/gateway-platform/callback' || uri.username || uri.password || uri.search || uri.hash || uri.href !== redirect) return null } catch { return null }
     params.delete('redirect_uri')
   }
   if ([...params].length !== keys.length) return null

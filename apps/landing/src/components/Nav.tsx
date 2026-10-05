@@ -2,8 +2,9 @@ import { Moon, Sun } from 'lucide-react'
 import { useState } from 'react'
 import { useI18n, type Lang } from '../i18n'
 import { applyTheme, initialTheme, nextTheme } from '../theme'
+import { RELEASES_URL } from '../config/downloads'
 
-export function Nav({ onDownload = () => {} }: { onDownload?: () => void }) {
+export function Nav() {
   const { t, lang, setLang } = useI18n()
   const [theme, setTheme] = useState(initialTheme)
   const otherLang: Lang = lang === 'zh-CN' ? 'en-US' : 'zh-CN'
@@ -31,9 +32,9 @@ export function Nav({ onDownload = () => {} }: { onDownload?: () => void }) {
         </nav>
         <div className="nav-spacer" />
         <div className="nav-actions">
-          <button type="button" className="nav-control nav-download" onClick={onDownload}>
+          <a href={RELEASES_URL} className="nav-control nav-download">
             {t('common.download')}
-          </button>
+          </a>
           <button type="button" className="nav-control nav-lang" onClick={() => setLang(otherLang)}>
             {otherLabel}
           </button>

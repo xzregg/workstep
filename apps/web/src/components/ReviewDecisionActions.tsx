@@ -22,7 +22,7 @@ export default function ReviewDecisionActions({ status, pending, onAction, canCo
       </Button>}
       {status === 'pending' ? (
         <>
-          <Button variant="ghost" disabled={pending} onClick={() => onAction('reject')}>
+          <Button variant="ghost" disabled={pending} className="review-decision-reject" onClick={() => onAction('reject')}>
             {t('taskDetail.reject')}
           </Button>
           <Button variant="primary" disabled={pending} loading={pending} onClick={() => onAction('approve')}>

@@ -1,5 +1,5 @@
 export const zhCN = {
-  gatewayPlatform: {"title": "网关平台", "intro": "配置平台地址，在该平台完成账号认证并连接当前电脑。", "loading": "正在读取平台设置…", "loadError": "无法读取平台设置。", "retry": "重试", "pending": "设备待管理员审批，批准后请重新认证。", "online": "已连接平台", "connecting": "已认证，正在连接平台…", "notAuthenticated": "尚未完成平台认证", "address": "网关平台地址", "addressHint": "支持 HTTPS；本机 localhost、127.0.0.1 和 ::1 可使用 HTTP。", "connect": "保存并前往平台认证", "redirecting": "正在前往认证…", "connectError": "无法连接平台，请检查地址和网关服务。", "changeTitle": "更换网关平台？", "changeMessage": "完成新平台认证后，将切换当前电脑的平台连接。"},
+  gatewayPlatform: {"title": "网关平台", "intro": "配置网关地址，并自主选择是否开启网关模式。仅保存地址不会跳转或启用网关。", "disabled": "网关模式未开启", "enable": "开启网关模式", "modeHint": "开启后保存将前往平台登录，授权当前电脑；关闭后使用本地模式。", "save": "保存设置", "saving": "正在保存设置…", "saveError": "无法保存网关设置，请重试。", "loading": "正在读取平台设置…", "loadError": "无法读取平台设置。", "retry": "重试", "pending": "设备待管理员审批，批准后请重新认证。", "online": "已连接平台", "connecting": "已认证，正在连接平台…", "notAuthenticated": "尚未完成平台认证", "address": "网关平台地址", "addressHint": "支持 HTTPS；本机 localhost、127.0.0.1 和 ::1 可使用 HTTP。", "connect": "保存并前往平台认证", "redirecting": "正在前往认证…", "connectError": "无法连接平台，请检查地址和网关服务。", "changeTitle": "更换网关平台？", "changeMessage": "完成新平台认证后，将切换当前电脑的平台连接。"},
 
   gatewayRemote: { loading: '远程电脑', disconnected: '连接已断开', online: '在线', back: '返回我的电脑', localOnly: '本机目录与桌面应用操作仅在电脑本机可用。' },
   channelBot: {
@@ -1391,6 +1391,11 @@ export const zhCN = {
     browseProjectDirectory: '浏览目录',
     defaultProjectDirectorySaved: '默认目录已保存',
     systemTitle: '系统设置',
+    browserNotifications: '浏览器后台通知',
+    browserNotificationsIntro: '回复完成或失败时，通过浏览器系统通知提醒。',
+    enableBrowserNotifications: '启用通知',
+    browserNotificationsEnabled: '通知已启用',
+    browserNotificationsError: '无法启用通知。请检查浏览器权限，并使用 HTTPS 或本机地址。',
     systemIntro: '管理这台设备上的个人偏好。',
     onboardingTitle: '新手引导',
     onboardingIntro: '重新打开快速设置引导，查看或继续首次工作流程。',

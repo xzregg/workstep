@@ -705,6 +705,18 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .review-decision-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .review-decision-actions > .btn { flex-shrink: 0; }
 .review-decision-complete { margin-right: auto; }
+.review-decision-actions .review-decision-complete {
+  background: var(--success); color: #fff; border-color: transparent;
+}
+.review-decision-actions .review-decision-complete:hover {
+  background: color-mix(in oklab, var(--success), black 12%); color: #fff;
+}
+.review-decision-actions .review-decision-reject {
+  background: #ea580c; color: #fff; border-color: transparent;
+}
+.review-decision-actions .review-decision-reject:hover {
+  background: #c2410c; color: #fff;
+}
 .task-message-review-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 2px; }
 .step-prompt-editor-overlay {
   position: fixed; inset: 0; z-index: 1275; background: rgba(0,0,0,0.35);
@@ -4064,6 +4076,16 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   scrollbar-width: thin;
 }
 
+.action-conversation-output {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 180px;
+  overflow: auto;
+  background: var(--surface);
+  padding: 10px;
+  border-radius: 6px;
+}
 .assistant-chat-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .assistant-chat-error { padding: 6px 12px; font-size: calc(13px * var(--font-scale)); color: var(--danger); background: var(--bg); }
 .chat-composer-outer { position: relative; flex-shrink: 0; background: var(--bg); }

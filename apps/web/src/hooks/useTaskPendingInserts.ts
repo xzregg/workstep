@@ -5,6 +5,7 @@ import { useI18n } from '../i18n'
 import { createOptimisticCoordinatorMessage, createOptimisticUserMessage } from '../pages/taskDetailChat'
 import { pendingInsertQueueKey, usePendingMessageInsertStore } from '../stores/pendingMessageInsertStore'
 import { randomUuid } from '../utils/uuid'
+import { watchPendingCompletion, unwatchPendingCompletion } from '../utils/completionNotifications'
 
 interface Insert { id: string; content: string }
 
@@ -117,6 +118,7 @@ export function useTaskPendingInserts({
       : createOptimisticUserMessage(optimisticId, content, targetStepKey!, new Date().toISOString())
     if (channel === 'coordinator') onFollow()
     setHistoryMessages((current) => [...current, optimistic])
+    if (channel === 'coordinator') watchPendingCompletion(projectId, { taskId })
     try {
       if (channel === 'coordinator') {
         const accepted = await taskApi.chat(taskId, content, projectId, randomUuid(), ids)
@@ -138,6 +140,7 @@ export function useTaskPendingInserts({
         } catch (error) { reportError(error) }
       }
     } catch (error) {
+      if (channel === 'coordinator') unwatchPendingCompletion(projectId, { taskId })
       setHistoryMessages((current) => current.filter((message) => message.id !== optimisticId))
       reportError(error)
     } finally {

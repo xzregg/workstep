@@ -13,8 +13,9 @@ public class ServerAddressTest {
     }
 
     @Test
-    public void rejectsInsecureOrNonRootAddresses() {
-        assertThrows(IllegalArgumentException.class, () -> ServerAddress.parse("http://workstep.example.com"));
+    public void acceptsHttpAndRejectsNonRootAddresses() {
+        assertEquals("http://workstep.example.com", ServerAddress.parse("http://workstep.example.com").origin());
+        assertEquals("http://192.168.1.10:8765", ServerAddress.parse("http://192.168.1.10:8765/").origin());
         assertThrows(IllegalArgumentException.class, () -> ServerAddress.parse("https://workstep.example.com/app"));
         assertThrows(IllegalArgumentException.class, () -> ServerAddress.parse("https://user:pass@workstep.example.com"));
         assertThrows(IllegalArgumentException.class, () -> ServerAddress.parse("https://workstep.example.com?token=secret"));
@@ -27,6 +28,9 @@ public class ServerAddressTest {
         assertEquals(false, server.contains("https://other.example.com/tasks"));
         assertEquals(false, server.contains("http://workstep.example.com/tasks"));
         assertEquals(false, server.contains("https://workstep.example.com.evil.test/file"));
+        ServerAddress http = ServerAddress.parse("http://192.168.1.10:8765");
+        assertEquals(true, http.contains("http://192.168.1.10:8765/tasks"));
+        assertEquals(false, http.contains("https://192.168.1.10:8765/tasks"));
     }
 
     @Test

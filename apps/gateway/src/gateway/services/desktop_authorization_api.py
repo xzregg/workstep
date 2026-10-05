@@ -5,6 +5,7 @@ import re
 from typing import Literal
 
 from urllib.parse import urlencode, urlsplit
+from workstep_gateway_protocol.origin import validate_daemon_origin
 
 
 from pydantic import BaseModel, Field, field_validator
@@ -37,13 +38,13 @@ class DesktopAuthorizeInput(BaseModel):
 
     @field_validator("redirect_uri")
     @classmethod
-    def local_callback(cls, value: str | None) -> str | None:
+    def daemon_callback(cls, value: str | None) -> str | None:
         if value is None: return None
         parsed = urlsplit(value)
-        if (parsed.scheme != "http" or parsed.hostname not in ("localhost", "127.0.0.1", "::1")
-                or not parsed.port or parsed.username or parsed.password or parsed.query or parsed.fragment
+        if (parsed.username or parsed.password or parsed.query or parsed.fragment
                 or parsed.path != "/api/gateway-platform/callback"):
             raise ValueError("Invalid daemon callback")
+        validate_daemon_origin(f"{parsed.scheme}://{parsed.netloc}")
         return value
 
     @field_validator("code_challenge")

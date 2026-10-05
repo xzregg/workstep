@@ -6,6 +6,7 @@ export interface PlatformDownload {
 }
 
 export const REPOSITORY_URL = 'https://github.com/xzregg/workstep'
+export const RELEASES_URL = `${REPOSITORY_URL}/releases/latest`
 const RELEASE_DOWNLOAD_URL = `${REPOSITORY_URL}/releases/latest/download`
 
 export const PLATFORM_DOWNLOADS: PlatformDownload[] = [

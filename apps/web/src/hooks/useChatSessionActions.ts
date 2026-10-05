@@ -4,6 +4,7 @@ import { useI18n } from '../i18n'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
 import type { ChatEngineConfigState } from '../utils/chatEngineConfig'
 import { randomUuid } from '../utils/uuid'
+import { watchPendingCompletion, unwatchPendingCompletion } from '../utils/completionNotifications'
 
 interface Options {
   sessionId: string | null
@@ -41,6 +42,7 @@ export function useChatSessionActions({
     setSendError('')
     // 先记乐观 id：彻底失败时撤掉气泡，不留后端不存在的幻影消息。
     const optimisticId = useChatSessionStore.getState().addUserMessage(sessionId, content)
+    watchPendingCompletion(projectId, { sessionId })
     try {
       const accepted = await chatSessionApi.chat(sessionId, projectId, content, randomUuid(), {
         engine: engineConfig.engine || undefined,
@@ -66,6 +68,10 @@ export function useChatSessionActions({
         onSessionIdChange(accepted.session_id)
       }
       const finalSessionId = accepted.session_id || sessionId
+      if (finalSessionId !== sessionId) {
+        unwatchPendingCompletion(projectId, { sessionId })
+        watchPendingCompletion(projectId, { sessionId: finalSessionId })
+      }
       const { sessions } = await chatSessionApi.list(projectId)
       const summary = sessions.find((item) => item.id === finalSessionId)
       if (summary?.title) {
@@ -74,6 +80,7 @@ export function useChatSessionActions({
       }
       return true
     } catch (reason) {
+      unwatchPendingCompletion(projectId, { sessionId })
       useChatSessionStore.getState().removeMessage(sessionId, optimisticId)
       setSendError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
       return false

@@ -21,6 +21,7 @@ import GlobalConcurrencySettings from './GlobalConcurrencySettings'
 import { useI18n } from '../i18n'
 import { useOnboardingStore } from '../stores/onboardingStore'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
+import { browserPushEnabled, enableBrowserPush } from '../utils/browserPush'
 import {
   loadFontSizePreference,
   saveFontSizePreference,
@@ -61,11 +62,17 @@ export default function SettingsPage({
   const [userNameSaved, setUserNameSaved] = useState(false)
   const [fontSize, setFontSize] = useState(loadFontSizePreference)
   const [engineRefreshRevision, setEngineRefreshRevision] = useState(0)
+  const [browserNotificationsEnabled, setBrowserNotificationsEnabled] = useState(false)
+  const [browserNotificationsError, setBrowserNotificationsError] = useState(false)
   const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection)
   const [preferredProviderProtocol, setPreferredProviderProtocol] = useState('')
   useEffect(() => {
     setActiveSection(initialSection)
   }, [initialSection])
+
+  useEffect(() => {
+    void browserPushEnabled().then(setBrowserNotificationsEnabled).catch(() => undefined)
+  }, [])
 
 
   useEffect(() => {
@@ -198,6 +205,22 @@ export default function SettingsPage({
               )}
             </div>
             <ProjectDirectorySetting />
+            {typeof Notification !== 'undefined' && !window.WorkStepAndroid && !window.workstepDesktop && (
+              <div className="settings-system-group">
+                <h2 className="settings-system-heading">{t('settings.browserNotifications')}</h2>
+                <p className="settings-system-description">{t('settings.browserNotificationsIntro')}</p>
+                <Button variant="ghost" disabled={browserNotificationsEnabled}
+                  onClick={() => void enableBrowserPush().then((enabled) => {
+                    setBrowserNotificationsEnabled(enabled)
+                    setBrowserNotificationsError(!enabled)
+                  }).catch(() => setBrowserNotificationsError(true))}>
+                  {browserNotificationsEnabled ? t('settings.browserNotificationsEnabled') : t('settings.enableBrowserNotifications')}
+                </Button>
+                {browserNotificationsError && <p role="status" className="settings-system-feedback settings-system-feedback--error">
+                  {t('settings.browserNotificationsError')}
+                </p>}
+              </div>
+            )}
             <div className="settings-system-group">
               <h2 className="settings-system-heading">{t('settings.openMode')}</h2>
               <button

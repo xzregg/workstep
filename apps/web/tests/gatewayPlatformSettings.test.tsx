@@ -43,7 +43,7 @@ test('platform settings preserve configured address after login failure and subm
  let finish: (value: Response) => void = () => {}
  globalThis.fetch = async (input, init) => {
   const url = String(input); calls.push({ url, body: String(init?.body ?? '') })
-  if (url.endsWith('/settings')) return Response.json({ url: 'http://localhost:8700', authenticated: false, online: false, pending_device: true, package_locked: false })
+  if (url.endsWith('/settings')) return Response.json({ url: 'http://localhost:8700', enabled: true, authenticated: false, online: false, pending_device: true, package_locked: false })
   return new Promise(resolve => { finish = resolve })
  }
  const container = document.body.appendChild(document.createElement('div')); const root = createRoot(container)
@@ -54,7 +54,7 @@ test('platform settings preserve configured address after login failure and subm
   const form = container.querySelector('form')!
   await act(async () => { form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })) })
   assert.equal(calls.filter(c => c.url.endsWith('/login')).length, 1)
-  assert.deepEqual(JSON.parse(calls[1].body!), { url: 'http://localhost:8700' })
+  assert.deepEqual(JSON.parse(calls.find(c => c.url.endsWith('/login'))!.body!), { url: 'http://localhost:8700' })
   await act(async () => finish(new Response(null, { status: 502 })))
   assert.match(container.textContent ?? '', /无法连接平台/)
   assert.equal(container.querySelector<HTMLInputElement>('input')?.value, 'http://localhost:8700')
@@ -69,10 +69,10 @@ test('returning from platform authentication refreshes desktop settings and unlo
  const { window } = installDomEnvironment()
  const original = globalThis.fetch
  let settingsCalls = 0
- globalThis.fetch = async input => {
+ globalThis.fetch = async (input, init) => {
   if (String(input).endsWith('/settings')) {
-   settingsCalls++
-   return Response.json({ url:'http://localhost:8700',authenticated:false,online:false,pending_device:settingsCalls>1,package_locked:false })
+   if (init?.method !== 'PUT') settingsCalls++
+   return Response.json({ url:'http://localhost:8700',enabled:true,authenticated:false,online:false,pending_device:settingsCalls>1,package_locked:false })
   }
   return Response.json({ authorization_url:'http://localhost:8700/desktop/login?state=test' })
  }
@@ -88,6 +88,45 @@ test('returning from platform authentication refreshes desktop settings and unlo
  } finally { await act(async () => root.unmount());globalThis.fetch=original;container.remove();await window.happyDOM.close() }
 })
 
+test('saving an address keeps gateway mode disabled and never starts authentication', async () => {
+ const { window } = installDomEnvironment(); const original = globalThis.fetch
+ const calls: { url: string; method?: string; body?: string }[] = []
+ globalThis.fetch = async (input, init) => {
+  calls.push({ url: String(input), method: init?.method, body: init?.body as string })
+  return Response.json({ url:'https://gateway.example.com',enabled:false,authenticated:false,online:false,pending_device:false,package_locked:false })
+ }
+ const container = document.body.appendChild(document.createElement('div')); const root = createRoot(container)
+ try {
+  await act(async () => root.render(<I18nProvider><GatewayPlatformSettings /></I18nProvider>))
+  assert.equal(container.querySelector<HTMLInputElement>('input[type=checkbox]')?.checked, false)
+  await act(async () => container.querySelector('form')!.dispatchEvent(new window.Event('submit', { bubbles:true, cancelable:true })))
+  const saved = calls.find(call => call.method === 'PUT')!
+  assert.deepEqual(JSON.parse(saved.body!), { url:'https://gateway.example.com', enabled:false })
+  assert.equal(calls.some(call => call.url.endsWith('/login')), false)
+  assert.match(container.textContent ?? '', /网关模式未开启/)
+  assert.equal(container.querySelector<HTMLButtonElement>('button[type=submit]')?.disabled, false)
+ } finally { await act(async () => root.unmount()); globalThis.fetch=original;container.remove();await window.happyDOM.close() }
+})
+
+test('only opting in to gateway mode saves enabled mode before authentication', async () => {
+ const { window } = installDomEnvironment(); const original = globalThis.fetch
+ const calls: string[] = []
+ globalThis.fetch = async (input, init) => {
+  calls.push(`${init?.method ?? 'GET'} ${input}`)
+  if (String(input).endsWith('/login')) return new Response(null, {status:502})
+  const enabled = init?.method === 'PUT' ? JSON.parse(init.body as string).enabled : false
+  return Response.json({ url:'https://gateway.example.com',enabled,authenticated:false,online:false,pending_device:false,package_locked:false })
+ }
+ const container=document.body.appendChild(document.createElement('div'));const root=createRoot(container)
+ try {
+  await act(async()=>root.render(<I18nProvider><GatewayPlatformSettings /></I18nProvider>))
+  await act(async()=>container.querySelector<HTMLInputElement>('input[type=checkbox]')!.click())
+  await act(async()=>container.querySelector('form')!.dispatchEvent(new window.Event('submit',{bubbles:true,cancelable:true})))
+  assert.deepEqual(calls, ['GET /api/gateway-platform/settings','PUT /api/gateway-platform/settings','POST /api/gateway-platform/login'])
+  assert.equal(container.querySelector<HTMLInputElement>('input[type=checkbox]')?.checked,true)
+ } finally {await act(async()=>root.unmount());globalThis.fetch=original;container.remove();await window.happyDOM.close()}
+})
+
 test('gateway settings show a readable error for an older daemon and allow retry',async()=>{
  const {window}=installDomEnvironment();const original=globalThis.fetch
  let old=true
@@ -101,4 +140,36 @@ test('gateway settings show a readable error for an older daemon and allow retry
   await act(async()=>container.querySelector<HTMLButtonElement>('[role=alert] button')!.click())
   assert.equal(container.querySelector<HTMLInputElement>('input')?.value,'http://localhost:8700')
  } finally {await act(async()=>root.unmount());globalThis.fetch=original;container.remove();await window.happyDOM.close()}
+})
+
+for (const address of ['http://192.168.1.10:8765/', 'https://workstep.example.com/']) {
+ test(`mobile gateway settings load and save without enabling authentication at ${address}`, async () => {
+  const { window } = installDomEnvironment(); window.location.href = address
+  const original = globalThis.fetch; const calls: string[] = []
+  globalThis.fetch = async (input, init) => {
+   calls.push(`${init?.method ?? 'GET'} ${input}`)
+   if (init?.method === 'PUT') assert.deepEqual(JSON.parse(init.body as string), {url:'https://gateway.example.com',enabled:false})
+   return Response.json({url:'https://gateway.example.com',enabled:false,authenticated:false,online:false,pending_device:false,package_locked:false})
+  }
+  const container = document.body.appendChild(document.createElement('div')); const root = createRoot(container)
+  try {
+   await act(async () => root.render(<I18nProvider><GatewayPlatformSettings /></I18nProvider>))
+   assert.deepEqual(calls, ['GET /api/gateway-platform/settings'])
+   assert.doesNotMatch(container.textContent ?? '', /无法读取平台设置|正在读取平台设置/)
+   assert.equal(container.querySelector<HTMLInputElement>('input[type=url]')?.value, 'https://gateway.example.com')
+   await act(async()=>container.querySelector('form')!.dispatchEvent(new window.Event('submit',{bubbles:true,cancelable:true})))
+   assert.deepEqual(calls, ['GET /api/gateway-platform/settings','PUT /api/gateway-platform/settings'])
+  } finally { await act(async () => root.unmount()); globalThis.fetch = original; container.remove(); await window.happyDOM.close() }
+ })
+}
+
+test('permission errors remain visible and can be retried', async () => {
+ const { window } = installDomEnvironment(); const original = globalThis.fetch
+ globalThis.fetch = async () => Response.json({ detail: 'Gateway settings access denied' }, { status: 403 })
+ const container = document.body.appendChild(document.createElement('div')); const root = createRoot(container)
+ try {
+  await act(async () => root.render(<I18nProvider><GatewayPlatformSettings /></I18nProvider>))
+  assert.match(container.textContent ?? '', /无法读取平台设置/)
+  assert.ok(container.querySelector('[role=alert] button'))
+ } finally { await act(async () => root.unmount()); globalThis.fetch = original; container.remove(); await window.happyDOM.close() }
 })

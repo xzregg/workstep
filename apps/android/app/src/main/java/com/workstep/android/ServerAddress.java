@@ -4,7 +4,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Locale;
 
-/** An HTTPS origin serving the WorkStep web UI, API, and WebSocket endpoint. */
+/** An HTTP or HTTPS origin serving the WorkStep web UI, API, and WebSocket endpoint. */
 public final class ServerAddress {
     private final String origin;
 
@@ -16,18 +16,20 @@ public final class ServerAddress {
         try {
             URI uri = new URI(input.trim());
             String path = uri.getRawPath();
-            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+            if (!("https".equals(scheme) || "http".equals(scheme)) || uri.getHost() == null
                     || uri.getRawUserInfo() != null || uri.getRawQuery() != null
                     || uri.getRawFragment() != null || !(path.isEmpty() || "/".equals(path))
                     || uri.getPort() == 0 || uri.getPort() > 65535) {
-                throw new IllegalArgumentException("请输入 HTTPS 服务根地址");
+                throw new IllegalArgumentException("请输入 HTTP 或 HTTPS 服务根地址");
             }
             String host = uri.getHost().toLowerCase(Locale.ROOT);
             if (host.contains(":")) host = "[" + host + "]";
             int port = uri.getPort();
-            return new ServerAddress("https://" + host + (port < 0 || port == 443 ? "" : ":" + port));
+            int defaultPort = "https".equals(scheme) ? 443 : 80;
+            return new ServerAddress(scheme + "://" + host + (port < 0 || port == defaultPort ? "" : ":" + port));
         } catch (NullPointerException | URISyntaxException error) {
-            throw new IllegalArgumentException("请输入有效的 HTTPS 服务根地址", error);
+            throw new IllegalArgumentException("请输入有效的 HTTP 或 HTTPS 服务根地址", error);
         }
     }
 
@@ -42,12 +44,14 @@ public final class ServerAddress {
     public boolean contains(String value) {
         try {
             URI uri = new URI(value);
-            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+            if (!("https".equals(scheme) || "http".equals(scheme)) || uri.getHost() == null
                     || uri.getRawUserInfo() != null) return false;
             String host = uri.getHost().toLowerCase(Locale.ROOT);
             if (host.contains(":")) host = "[" + host + "]";
             int port = uri.getPort();
-            String candidate = "https://" + host + (port < 0 || port == 443 ? "" : ":" + port);
+            int defaultPort = "https".equals(scheme) ? 443 : 80;
+            String candidate = scheme + "://" + host + (port < 0 || port == defaultPort ? "" : ":" + port);
             return origin.equals(candidate);
         } catch (URISyntaxException error) {
             return false;

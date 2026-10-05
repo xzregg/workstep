@@ -16,9 +16,30 @@ describe('landing positioning', () => {
   it('explains AI tool orchestration instead of LLM API orchestration', () => {
     const html = renderLanding()
 
-    expect(html).toContain('别人在编排模型 API，我们在编排 AI 工具')
+    expect(html).toContain('把你熟悉的 AI 工具，连接成工作流')
     expect(html).toContain('不造 Agent，编排已经能干活的 Agent')
     expect(html).toContain('编排现成 Agent 工具，不造轮子')
+  })
+
+  it('explains channel bots and their project, task, and review capabilities', () => {
+    const html = renderLanding()
+
+    expect(html).toContain('id="channels"')
+    expect(html).toContain('企业微信和钉钉')
+    expect(html).toContain('群聊、私聊都能接入项目助手')
+    expect(html).toContain('把讨论群绑定到任务')
+    expect(html).toContain('在群里参与审核与确认')
+    expect(html).toContain('图片和文件')
+  })
+
+  it('compares tool approaches without naming competing products or absolute claims', () => {
+    const html = renderLanding()
+
+    expect(html).toContain('不同工作流，各有侧重')
+    expect(html).toContain('模型 API 编排')
+    expect(html).toContain('代码驱动编排')
+    expect(html).toContain('托管任务助手')
+    expect(html).not.toMatch(/Dify|Coze|CrewAI|LangGraph|Manus|Devin|黑盒|经验无法沉淀/)
   })
 
   it('presents reciprocal, multi-person remote project collaboration', () => {

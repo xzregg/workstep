@@ -20,6 +20,8 @@ test('manual review offers set complete immediately after terminate', async () =
     assert.deepEqual(buttons.map((button) => button.textContent?.trim()), [
       '终止任务', '完成步骤', '驳回重做', '通过继续',
     ])
+    assert.ok(buttons[1].classList.contains('review-decision-complete'))
+    assert.ok(buttons[2].classList.contains('review-decision-reject'))
     await act(async () => buttons[1].click())
     assert.deepEqual(decisions, ['set-complete'])
   } finally {

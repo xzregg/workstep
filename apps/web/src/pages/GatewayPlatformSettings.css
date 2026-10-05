@@ -1,7 +1,8 @@
 .gateway-platform-settings { max-width: 640px; padding: 24px; }
 .gateway-platform-settings h1 { font-size: 20px; margin: 0 0 12px; }
 .gateway-platform-settings form { display: grid; gap: 12px; margin-top: 24px; }
-.gateway-platform-settings input { box-sizing: border-box; width: 100%; }
+.gateway-platform-settings input[type="url"] { box-sizing: border-box; width: 100%; }
+.gateway-platform-mode { display: flex; align-items: center; gap: 8px; }
 .gateway-platform-settings form button { justify-self: start; display: inline-flex; align-items: center; gap: 8px; }
 .gateway-platform-hint { color: var(--fg-muted); font-size: 12px; margin: 0; }
 .gateway-platform-spinner { animation: gateway-platform-spin 1s linear infinite; }
