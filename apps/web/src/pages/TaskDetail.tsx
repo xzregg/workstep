@@ -4,7 +4,9 @@ import { useTaskStepControls } from '../hooks/useTaskStepControls'
 import { gitApi, createProjectGitApi } from '../api/git'
 import { useSearchParams } from 'react-router-dom'
 import { useTaskRoute } from '../hooks/useTaskRoute'
+import { useTaskRecord } from '../hooks/useTaskRecord'
 import { randomUuid } from '../utils/uuid'
+import { watchPendingCompletion, unwatchPendingCompletion } from '../utils/completionNotifications'
 import Button from '../components/Button'
 import TaskDetailWindow from '../components/TaskDetailWindow'
 import {
@@ -168,7 +170,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     () => taskApi.executionReport(taskId, projectId),
     [taskId, projectId],
   )
-  const task = tasks.find((t) => t.id === taskId)
+  const task = useTaskRecord(taskId, projectId)
   const taskStatus = task?.status
   const taskCompleted = isTaskCompleted(task?.steps || [])
   const sessionIdForStep = (stepKey?: string | null): string | null => {
@@ -202,10 +204,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   }, [events, liveMessages])
   const [prompt, setPrompt] = useState('')
 
-  useEffect(() => {
-    if (!taskId || !projectId) return
-    void refreshTask(taskId, projectId).catch(() => undefined)
-  }, [projectId, refreshTask, taskId])
   const [running, setRunning] = useState(false)
   const [coordinatorRunning, setCoordinatorRunning] = useState(false)
   const [chatTarget, setChatTarget] = useState<string | 'coordinator'>('coordinator')
@@ -720,6 +718,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     setHistoryMessages((current) => [...current, optimisticMessage])
     setPrompt('')
     setCoordinatorRunning(true)
+    watchPendingCompletion(projectId, { taskId })
     try {
       const accepted = await taskApi.chat(
         taskId,
@@ -742,6 +741,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       setActiveCoordinatorMessageId(accepted.assistant_message_id)
       if (resetStep) setResetStep(false)
     } catch (reason) {
+      unwatchPendingCompletion(projectId, { taskId })
       setHistoryMessages((current) => current.filter(
         (message) => message.id !== optimisticId
       ))
@@ -804,6 +804,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     setChatError('')
     setHistoryMessages((current) => [...current, optimisticMessage])
     setCoordinatorRunning(true)
+    watchPendingCompletion(projectId, { taskId })
     taskApi.chat(taskId, content, projectId, randomUuid())
       .then((accepted) => {
         setHistoryMessages((current) => current.map((message) => (
@@ -819,6 +820,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         setActiveCoordinatorMessageId(accepted.assistant_message_id)
       })
       .catch((reason) => {
+        unwatchPendingCompletion(projectId, { taskId })
         setHistoryMessages((current) => current.filter(
           (message) => message.id !== optimisticId
         ))

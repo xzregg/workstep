@@ -231,14 +231,22 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .nav-control {
-  height: 36px;
+  height: 32px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  white-space: nowrap;
+  line-height: 1;
 }
 
 .nav-theme {
-  width: 36px;
+  width: 32px;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 23px;
@@ -265,10 +273,10 @@ button {
   color: #fff;
 }
 
-.nav-download{
-    border: 1px solid var(--border);
+.nav-download {
+  border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 6px 13px;
+  padding: 0 13px;
   font-size: 12px;
   font-weight: 600;
   color: var(--fg-2);
@@ -278,7 +286,7 @@ button {
 .nav-lang {
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 6px 13px;
+  padding: 0 13px;
   font-size: 12px;
   font-weight: 600;
   color: var(--fg-2);
@@ -2095,6 +2103,13 @@ button {
   font-size: 13px;
   line-height: 1.6;
   margin: 0;
+}
+
+.channels-note {
+  margin: 20px 0 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.6;
 }
 
 /* ── Demos ── */

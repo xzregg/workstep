@@ -1,9 +1,11 @@
 package com.workstep.android;
 
 import android.annotation.SuppressLint;
+import android.Manifest;
 import android.app.Activity;
 import android.content.ClipData;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -23,6 +25,7 @@ import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -38,6 +41,10 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import org.json.JSONObject;
+import org.json.JSONArray;
+
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -46,6 +53,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Collections;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -54,6 +63,7 @@ public final class MainActivity extends Activity {
     private static final String PAGE_KEY = "last_page_url";
     private static final String MENU_X_KEY = "connection_menu_x";
     private static final String MENU_Y_KEY = "connection_menu_y";
+    private static final String WATCH_SERVICE_REQUESTED_KEY = "watch_service_requested";
     private static final int FILE_REQUEST = 1001;
     private static final int SAVE_REQUEST = 1002;
 
@@ -76,12 +86,53 @@ public final class MainActivity extends Activity {
     private ServerAddress server;
     private ValueCallback<Uri[]> fileCallback;
     private PendingDownload pendingDownload;
+    private ApkInstaller apkInstaller;
     private boolean checking;
+    private long lastRendererFailure;
+    private static volatile boolean activityVisible;
+    private final HashMap<String, JSONObject> completionWatches = new HashMap<>();
+
+    static boolean isVisibleToUser() { return activityVisible; }
+
+    private void startCompletionWatchService() {
+        if (server == null || completionWatches.isEmpty()) return;
+        try {
+            CrashReports.log(this, "网页主进程", "切后台，启动监听；数量=" + completionWatches.size(), null);
+            String watches = new JSONArray(completionWatches.values()).toString();
+            Intent intent = new Intent(this, CompletionWatchService.class);
+            intent.putExtra("server", server.origin());
+            intent.putExtra("watches", watches);
+            intent.putExtra("cookie", CookieManager.getInstance().getCookie(server.origin()));
+            intent.putExtra("page", webView == null ? "" : webView.getUrl());
+            getPreferences(MODE_PRIVATE).edit().putBoolean(WATCH_SERVICE_REQUESTED_KEY, true).apply();
+            startForegroundService(intent);
+        } catch (RuntimeException error) {
+            getPreferences(MODE_PRIVATE).edit().putBoolean(WATCH_SERVICE_REQUESTED_KEY, false).apply();
+            android.util.Log.e("WorkStep", "Cannot start completion watcher", error);
+            CrashReports.log(this, "网页主进程", "启动监听失败", error);
+        }
+    }
+
+    private void stopCompletionWatchService() {
+        if (!getPreferences(MODE_PRIVATE).getBoolean(WATCH_SERVICE_REQUESTED_KEY, false)) return;
+        Intent stop = new Intent(this, CompletionWatchService.class);
+        stop.setAction(CompletionWatchService.ACTION_STOP);
+        try {
+            startForegroundService(stop);
+            getPreferences(MODE_PRIVATE).edit().putBoolean(WATCH_SERVICE_REQUESTED_KEY, false).apply();
+        } catch (RuntimeException error) {
+            CrashReports.log(this, "网页主进程", "停止后台监听失败", error);
+        }
+    }
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        CrashReports.install(this, "网页主进程");
+        CrashReports.log(this, "网页主进程", "应用启动；版本=1.0.25", null);
         root = new FrameLayout(this);
+        apkInstaller = new ApkInstaller(this, executor, foregroundRefresh::externalPickerStarted);
+        CompletionNotifications.createChannels(this);
         setContentView(root);
         String saved = getPreferences(MODE_PRIVATE).getString(SERVER_KEY, "");
         if (saved.isEmpty()) {
@@ -137,7 +188,7 @@ public final class MainActivity extends Activity {
         address.setSingleLine(true);
         address.setInputType(android.text.InputType.TYPE_CLASS_TEXT
                 | android.text.InputType.TYPE_TEXT_VARIATION_URI);
-        address.setHint("https://workstep.example.com");
+        address.setHint("http://192.168.1.10:8765 或 https://workstep.example.com");
         address.setText(current);
         address.setContentDescription(getString(R.string.server_url));
         LinearLayout.LayoutParams addressParams = new LinearLayout.LayoutParams(-1, -2);
@@ -181,6 +232,10 @@ public final class MainActivity extends Activity {
                     if (failure != null) {
                         error.setText(failure);
                         return;
+                    }
+                    if (server == null || !server.origin().equals(candidate.origin())) {
+                        completionWatches.clear();
+                        stopCompletionWatchService();
                     }
                     server = candidate;
                     getPreferences(MODE_PRIVATE).edit().putString(SERVER_KEY, candidate.origin()).apply();
@@ -235,6 +290,13 @@ public final class MainActivity extends Activity {
         settings.setSupportMultipleWindows(true);
         settings.setJavaScriptCanOpenWindowsAutomatically(false);
         settings.setSafeBrowsingEnabled(true);
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            WebViewCompat.addWebMessageListener(view, "WorkStepAndroid",
+                    Collections.singleton(server.origin()), (source, message, sourceOrigin, isMainFrame, reply) -> {
+                        if (!isMainFrame || server == null || !server.contains(sourceOrigin.toString())) return;
+                        handleNotificationMessage(message.getData());
+                    });
+        }
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(view, false);
         view.setWebViewClient(new WebViewClient() {
@@ -261,6 +323,27 @@ public final class MainActivity extends Activity {
             public void onReceivedSslError(WebView source, SslErrorHandler handler, SslError error) {
                 handler.cancel();
                 if (source == webView) showWebError("HTTPS 证书验证失败");
+            }
+
+            @Override
+            public boolean onRenderProcessGone(WebView source, RenderProcessGoneDetail detail) {
+                if (source != webView) return true;
+                android.util.Log.e("WorkStep", "WebView renderer exited; crashed=" + detail.didCrash());
+                CrashReports.log(MainActivity.this, "网页主进程", "网页进程退出；crashed=" + detail.didCrash(), null);
+                long now = SystemClock.elapsedRealtime();
+                boolean repeated = now - lastRendererFailure < 10000;
+                lastRendererFailure = now;
+                root.removeAllViews();
+                source.destroy();
+                webView = null;
+                if (fileCallback != null) {
+                    fileCallback.onReceiveValue(null);
+                    fileCallback = null;
+                }
+                if (repeated) showAddressScreen(server.origin());
+                else showWebView();
+                Toast.makeText(MainActivity.this, "网页进程已恢复，请重试刚才的操作", Toast.LENGTH_LONG).show();
+                return true;
             }
         });
         view.setWebChromeClient(new WebChromeClient() {
@@ -306,6 +389,14 @@ public final class MainActivity extends Activity {
                     public void onPageStarted(WebView ignored, String url, android.graphics.Bitmap icon) {
                         handle(url);
                     }
+
+                    @Override
+                    public boolean onRenderProcessGone(WebView popup, RenderProcessGoneDetail detail) {
+                        CrashReports.log(MainActivity.this, "网页主进程",
+                                "弹出网页进程退出；crashed=" + detail.didCrash(), null);
+                        popup.destroy();
+                        return true;
+                    }
                 });
                 WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
                 transport.setWebView(child);
@@ -315,13 +406,77 @@ public final class MainActivity extends Activity {
         });
         view.setDownloadListener(downloadListener);
         root.addView(view, new FrameLayout.LayoutParams(-1, -1));
-        view.loadUrl(server.pageOrRoot(getPreferences(MODE_PRIVATE).getString(PAGE_KEY, "")));
+        String requestedPage = notificationPage(getIntent());
+        if (requestedPage != null) clearNotificationPage(getIntent());
+        view.loadUrl(server.pageOrRoot(requestedPage != null ? requestedPage
+                : getPreferences(MODE_PRIVATE).getString(PAGE_KEY, "")));
         addConnectionMenu();
+        view.post(this::requestNotificationPermissionIfNeeded);
+    }
+
+    private void requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < 33 || isFinishing() || isDestroyed()
+                || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                || getPreferences(MODE_PRIVATE).getBoolean("notification_permission_asked", false)) return;
+        getPreferences(MODE_PRIVATE).edit().putBoolean("notification_permission_asked", true).apply();
+        try {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1003);
+        } catch (RuntimeException error) {
+            android.util.Log.e("WorkStep", "Cannot request notification permission", error);
+        }
     }
 
     private void rememberPage(String url) {
         if (server != null && url != null && server.contains(url))
             getPreferences(MODE_PRIVATE).edit().putString(PAGE_KEY, url).apply();
+    }
+
+    private void handleNotificationMessage(String raw) {
+        try {
+            JSONObject message = new JSONObject(raw);
+            String type = message.optString("type");
+            if ("project".equals(type)) {
+                String projectId = message.optString("projectId");
+                completionWatches.entrySet().removeIf(entry ->
+                        !projectId.equals(entry.getValue().optString("projectId")));
+                return;
+            }
+            String id = message.optString("id");
+            if (id.isEmpty()) return;
+            if ("watch".equals(type)) {
+                if (!message.optString("projectId").isEmpty()
+                        && (!message.optString("sessionId").isEmpty() || !message.optString("taskId").isEmpty())) {
+                    completionWatches.put(id, message);
+                    CrashReports.log(this, "网页主进程", "登记监听；数量=" + completionWatches.size(), null);
+                }
+            } else if ("unwatch".equals(type)) {
+                completionWatches.remove(id);
+                CrashReports.log(this, "网页主进程", "取消监听；数量=" + completionWatches.size(), null);
+            } else if ("notify".equals(type)) {
+                String target = message.optString("url");
+                if (activityVisible && webView != null
+                        && !NotificationView.shouldNotify(webView.getUrl(), target, server)) {
+                    CrashReports.log(this, "网页主进程", "结果属于当前详情，未弹系统通知", null);
+                    return;
+                }
+                String outcome = message.optString("outcome");
+                if (!"succeeded".equals(outcome) && !"failed".equals(outcome)) return;
+                boolean success = "succeeded".equals(outcome);
+                boolean task = !message.optString("taskId").isEmpty();
+                boolean step = !message.optString("stepKey").isEmpty();
+                boolean shown = CompletionNotifications.show(this, id,
+                        step ? (success ? "WorkStep 步骤完成" : "WorkStep 步骤失败")
+                                : (success ? "WorkStep 回复完成" : "WorkStep 回复失败"),
+                        step ? "步骤 " + message.optString("stepKey") + (success ? " 已通过" : " 执行失败")
+                                : (task ? "任务" : "会话") + "的回复" + (success ? "已完成" : "失败"),
+                        target, server);
+                CrashReports.log(this, "网页主进程",
+                        shown ? "网页桥接已发送系统通知" : "网页桥接通知未显示：权限、系统设置或重复", null);
+            }
+        } catch (Exception error) {
+            android.util.Log.e("WorkStep", "Notification bridge message failed", error);
+            CrashReports.log(this, "网页主进程", "通知桥接失败", error);
+        }
     }
 
     private Intent createFileChooserIntent(WebChromeClient.FileChooserParams params) {
@@ -400,6 +555,18 @@ public final class MainActivity extends Activity {
                     webView.reload();
                     Toast.makeText(this, R.string.web_cache_cleared, Toast.LENGTH_SHORT).show();
                 }
+                return true;
+            });
+            menu.getMenu().add(R.string.view_logs).setOnMenuItemClickListener(item -> {
+                CrashReports.showLogs(this);
+                return true;
+            });
+            menu.getMenu().add(R.string.test_notification).setOnMenuItemClickListener(item -> {
+                boolean shown = CompletionNotifications.show(this,
+                        "test-" + SystemClock.elapsedRealtime(), "WorkStep 测试通知",
+                        "如果能看到这条通知，系统通知权限正常", "/", server);
+                CrashReports.log(this, "网页主进程", shown ? "测试通知已发送" : "测试通知未显示：权限或系统设置", null);
+                Toast.makeText(this, shown ? "已发送测试通知" : "系统未允许显示通知", Toast.LENGTH_SHORT).show();
                 return true;
             });
             menu.show();
@@ -502,6 +669,10 @@ public final class MainActivity extends Activity {
         try {
             String filename = URLUtil.guessFileName(url, disposition, mime)
                     .replaceAll("[/\\\\]", "_");
+            if (ApkDownloadPolicy.isApk(filename, mime)) {
+                apkInstaller.download(server, url, userAgent, filename);
+                return;
+            }
             String type = mime == null ? "" : mime.split(";", 2)[0].trim();
             Intent save = new Intent(Intent.ACTION_CREATE_DOCUMENT);
             save.addCategory(Intent.CATEGORY_OPENABLE);
@@ -588,6 +759,7 @@ public final class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (apkInstaller.onActivityResult(requestCode)) return;
         if (requestCode == SAVE_REQUEST) {
             PendingDownload download = pendingDownload;
             pendingDownload = null;
@@ -613,7 +785,16 @@ public final class MainActivity extends Activity {
     }
 
     @Override
+    protected void onPause() {
+        CrashReports.log(this, "网页主进程", "进入后台；监听数量=" + completionWatches.size(), null);
+        startCompletionWatchService();
+        activityVisible = false;
+        super.onPause();
+    }
+
+    @Override
     protected void onStop() {
+        CrashReports.log(this, "网页主进程", "页面停止；监听数量=" + completionWatches.size(), null);
         if (webView != null) rememberPage(webView.getUrl());
         foregroundRefresh.onStop(SystemClock.elapsedRealtime());
         super.onStop();
@@ -622,11 +803,43 @@ public final class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        activityVisible = true;
+        CrashReports.log(this, "网页主进程", "返回前台；监听数量=" + completionWatches.size(), null);
+        stopCompletionWatchService();
+        CrashReports.showIfPresent(this);
         boolean reload = foregroundRefresh.onResume(SystemClock.elapsedRealtime());
         if (webView != null) {
             if (reload) webView.reload();
             else webView.evaluateJavascript("window.dispatchEvent(new Event('workstep:resume'))", null);
         }
+        openNotificationPage(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (activityVisible) openNotificationPage(intent);
+    }
+
+    private String notificationPage(Intent intent) {
+        if (intent == null || server == null) return null;
+        String page = intent.getStringExtra("notification_page");
+        if (page == null && intent.getData() != null) page = intent.getDataString();
+        return page != null && server.contains(page) ? page : null;
+    }
+
+    private void clearNotificationPage(Intent intent) {
+        intent.removeExtra("notification_page");
+        intent.setData(null);
+    }
+
+    private void openNotificationPage(Intent intent) {
+        String page = notificationPage(intent);
+        if (page == null || webView == null) return;
+        clearNotificationPage(intent);
+        CrashReports.log(this, "网页主进程", "点击通知，打开对应页面", null);
+        webView.loadUrl(page);
     }
 
     @Override
@@ -637,7 +850,10 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        CrashReports.log(this, "网页主进程", "页面销毁；监听数量=" + completionWatches.size(), null);
+        activityVisible = false;
         clearPage();
+        apkInstaller.dispose();
         executor.shutdownNow();
         super.onDestroy();
     }

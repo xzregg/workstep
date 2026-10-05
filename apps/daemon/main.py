@@ -57,6 +57,8 @@ from api.project_settings import router as project_settings_router
 from api.pending_message_inserts import router as pending_message_inserts_router
 from api.project_audit import router as project_audit_router
 from api.channel_bots import router as channel_bots_router, task_group_router
+from api.completion_notifications import router as completion_notifications_router
+from services.completion_push import CompletionPushService
 import api.remote_project as remote_project_api
 from api.remote_project import router as remote_project_router
 from services.project import project_manager
@@ -91,6 +93,7 @@ configure_observability()
 
 # Global event bus
 event_bus = EventBus()
+completion_push = CompletionPushService(event_bus)
 
 
 def _local_actor() -> ActorSnapshot:
@@ -134,6 +137,7 @@ async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
     global task_service, workflow_runtime, coordinator_module, workflow_gen_module, task_draft_module, schedule_module, chat_session_module, channel_chat_module, channel_bot_manager
     logger.info("WorkStep Daemon starting on %s:%d", settings.host, settings.port)
+    await completion_push.start()
     await asyncio.to_thread(config_store.migrate_legacy_config)
     await asyncio.to_thread(ensure_global_templates)
     await asyncio.to_thread(project_manager._load_saved_projects)
@@ -200,6 +204,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        await completion_push.shutdown()
         await gateway_client.close()
         await git_service.close()
         from services.engine_runtime import runtime_manager
@@ -235,9 +240,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="WorkStep Daemon", lifespan=lifespan, favicon_url="/static/favicon.svg")
+app.state.completion_push = completion_push
 app.state.gateway_client = gateway_client
 app.state.gateway_browser_login = GatewayBrowserLogin(gateway_client)
 app.include_router(gateway_platform_router)
+app.include_router(completion_notifications_router)
 gateway_client.asgi_app = app
 app.include_router(managed_router)
 app.include_router(platform_share_router)

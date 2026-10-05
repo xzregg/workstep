@@ -15,17 +15,17 @@ export function Compare() {
           <div className="compare-row compare-head">
             <div className="compare-cell compare-corner" />
             <div className="compare-cell compare-col-workstep">{t('compare.colWorkStep')}</div>
-            <div className="compare-cell">{t('compare.colDify')}</div>
-            <div className="compare-cell">{t('compare.colLangGraph')}</div>
-            <div className="compare-cell">{t('compare.colManus')}</div>
+            <div className="compare-cell">{t('compare.colApi')}</div>
+            <div className="compare-cell">{t('compare.colCode')}</div>
+            <div className="compare-cell">{t('compare.colHosted')}</div>
           </div>
           {ROWS.map((row) => (
             <div className="compare-row" key={row}>
               <div className="compare-cell compare-label">{t(`compare.row${row}Label`)}</div>
               <div className="compare-cell compare-col-workstep">{t(`compare.row${row}WorkStep`)}</div>
-              <div className="compare-cell">{t(`compare.row${row}Dify`)}</div>
-              <div className="compare-cell">{t(`compare.row${row}LangGraph`)}</div>
-              <div className="compare-cell">{t(`compare.row${row}Manus`)}</div>
+              <div className="compare-cell">{t(`compare.row${row}Api`)}</div>
+              <div className="compare-cell">{t(`compare.row${row}Code`)}</div>
+              <div className="compare-cell">{t(`compare.row${row}Hosted`)}</div>
             </div>
           ))}
         </div>

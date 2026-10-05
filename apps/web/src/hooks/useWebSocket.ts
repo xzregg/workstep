@@ -19,9 +19,22 @@ import { useWorkflowGenStore } from '../stores/workflowGenStore'
 import { useTaskDraftStore } from '../stores/taskDraftStore'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
 import { useProjectStore } from '../stores/projectStore'
+import { completionNotice, notificationUrl, notifyCompletion, unwatchPendingCompletion,
+  type CompletionNotice } from '../utils/completionNotifications'
+import { clearBrowserPushWatch, syncBrowserPush } from '../utils/browserPush'
 
 const WS_RECONNECT_BASE_MS = 1000
 const WS_RECONNECT_MAX_MS = 30000
+
+function notificationUrlFor(notice: CompletionNotice): string {
+  const projects = useProjectStore.getState()
+  const projectName = projects.projects.find((project) => project.id === notice.projectId)?.name
+    || projects.activeProject?.name
+  const workflowId = notice.taskId
+    ? useTaskStore.getState().tasks.find((task) => task.id === notice.taskId)?.workflow_id
+    : undefined
+  return notificationUrl(notice, projectName, workflowId)
+}
 
 /**
  * Which task detail panels are open (full event streams). Populated by
@@ -100,6 +113,22 @@ export function useWebSocket() {
   // cheap and keeps the subscribe-before-stream race window minimal.
   useEffect(() => {
     flushSubscription()
+    const project = useProjectStore.getState().activeProject
+    window.WorkStepAndroid?.postMessage(JSON.stringify({ type: 'project', projectId: project?.id || '' }))
+    if (project) {
+      void syncBrowserPush({
+        projectId: project.id, projectName: project.name,
+        sessionIds: [...new Set([
+          ...Object.keys(useWorkflowGenStore.getState().sessions),
+          ...Object.keys(useTaskDraftStore.getState().sessions),
+          ...Object.keys(useChatSessionStore.getState().sessions),
+          ...Object.values(useChatListStore.getState().sessionsByProject).flat().map((session) => session.id),
+        ])],
+        taskIds: useTaskStore.getState().tasks.map((task) => task.id),
+      }).catch((error) => console.warn('[Push] subscription update failed:', error))
+    } else {
+      void clearBrowserPushWatch().catch(() => undefined)
+    }
   }, [flushSubscription, detailTaskIds, tasks, genSessionIds, draftSessionIds, chatSessionIds, sidebarChatSessionIds, activeProjectId])
 
   useEffect(() => {
@@ -112,6 +141,7 @@ export function useWebSocket() {
     let heartbeatTimeout: ReturnType<typeof setTimeout> | null = null
     let connectTimeout: ReturnType<typeof setTimeout> | null = null
     let heartbeatNonce = 0
+    let disconnectedAt = 0
     const clearSocketTimers = () => {
       if (heartbeatTimer) clearInterval(heartbeatTimer)
       if (heartbeatTimeout) clearTimeout(heartbeatTimeout)
@@ -149,7 +179,25 @@ export function useWebSocket() {
           void useTaskStore.getState().fetchTasks(projectId)
           useChatListStore.getState().refreshSessions(projectId)
           window.dispatchEvent(new Event('workstep:reconnected'))
+          if (disconnectedAt && document.visibilityState === 'hidden') {
+            const since = disconnectedAt
+            const subscription = buildSubscription()
+            void fetch(`/api/completion-notifications/recent?${new URLSearchParams({
+              project_id: projectId, since: String(since),
+            })}`).then(async (response) => {
+              if (!response.ok) return
+              const payload = await response.json() as { events: Record<string, string>[] }
+              for (const event of payload.events) {
+                const notice = completionNotice(event)
+                if (!notice || !(notice.sessionId && subscription.session_ids.includes(notice.sessionId)
+                  || notice.taskId && (subscription.task_ids.includes(notice.taskId)
+                    || subscription.status_only_task_ids.includes(notice.taskId)))) continue
+                notifyCompletion(notice, notificationUrlFor(notice))
+              }
+            }).catch(() => undefined)
+          }
         }
+        disconnectedAt = 0
         heartbeatTimer = setInterval(() => {
           if (document.visibilityState === 'hidden' || heartbeatTimeout) return
           send({ type: 'ping', nonce: ++heartbeatNonce })
@@ -180,6 +228,38 @@ export function useWebSocket() {
               useChatListStore.getState().refreshSessions(projectId)
             }
           }
+          if (parsed.type === 'TEXT_MESSAGE_START' && parsed.role === 'assistant' && parsed.project_id && parsed.messageId && (parsed.session_id || parsed.task_id)) {
+            const watch = {
+              id: `${parsed.project_id}:${parsed.session_id || parsed.task_id}:${parsed.messageId}`,
+              projectId: parsed.project_id,
+              sessionId: parsed.session_id || null,
+              taskId: parsed.task_id || null,
+            }
+            window.WorkStepAndroid?.postMessage(JSON.stringify({
+              type: 'watch', ...watch,
+              url: notificationUrlFor({ ...watch, outcome: 'succeeded', title: '', body: '' }),
+            }))
+          }
+          if (parsed.type === 'RUN_STARTED' && parsed.project_id && parsed.task_id && parsed.step_key) {
+            const watch = {
+              id: `${parsed.project_id}:${parsed.task_id}:step:${parsed.step_key}`,
+              projectId: parsed.project_id,
+              taskId: parsed.task_id,
+              stepKey: parsed.step_key,
+            }
+            window.WorkStepAndroid?.postMessage(JSON.stringify({
+              type: 'watch', ...watch,
+              url: notificationUrlFor({ ...watch, sessionId: null, outcome: 'succeeded', title: '', body: '' }),
+            }))
+          }
+          const notice = completionNotice(parsed)
+          if (notice) {
+            notifyCompletion(notice, notificationUrlFor(notice))
+            window.WorkStepAndroid?.postMessage(JSON.stringify({ type: 'unwatch', id: parsed.step_key
+              ? `${parsed.project_id}:${parsed.task_id}:step:${parsed.step_key}` : notice.id }))
+            if (notice.sessionId) unwatchPendingCompletion(notice.projectId, { sessionId: notice.sessionId })
+            if (notice.taskId) unwatchPendingCompletion(notice.projectId, { taskId: notice.taskId })
+          }
           if (parsed.session_id && parsed.channel === 'flow_gen') handleGenEvent(parsed)
           if (parsed.session_id && parsed.channel === 'task_create') handleTaskDraftEvent(parsed)
           if (parsed.session_id && parsed.channel === 'session_chat') handleChatSessionEvent(parsed)
@@ -191,6 +271,7 @@ export function useWebSocket() {
       ws.onerror = () => ws.close()
       ws.onclose = () => {
         if (wsRef.current !== ws) return
+        disconnectedAt = Date.now() / 1000
         wsRef.current = null
         clearSocketTimers()
         if (!active || reconnectTimer) return

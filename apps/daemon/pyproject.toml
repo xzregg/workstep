@@ -21,6 +21,7 @@ dependencies = [
     "dingtalk-stream>=0.24.3",
     "workstep-gateway-protocol",
     "cryptography>=43.0",
+    "pywebpush>=2.5.0",
 ]
 
 [tool.uv.sources]

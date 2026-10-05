@@ -1,5 +1,6 @@
 const { createPrivateKey, randomBytes, sign } = require('node:crypto')
-const { app, BrowserWindow, dialog, safeStorage, session, shell } = require('electron')
+const { app, BrowserWindow, Notification, dialog, ipcMain, safeStorage, session, shell } = require('electron')
+const path = require('node:path')
 const { autoUpdater } = require('electron-updater')
 const { managedEnvironment, readManagedConfig } = require('./managed-config.cjs')
 const { loadOrCreateDeviceIdentity } = require('./credential-store.cjs')
@@ -137,6 +138,8 @@ function createWindow(url) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      backgroundThrottling: false,
+      preload: path.join(__dirname, 'preload.cjs'),
     },
   })
   window.webContents.on('will-navigate', (event, targetUrl) => {
@@ -149,6 +152,28 @@ function createWindow(url) {
     return { action: 'deny' }
   })
   window.webContents.on('will-attach-webview', (event) => event.preventDefault())
+  ipcMain.removeAllListeners('workstep:notify')
+  ipcMain.on('workstep:notify', (event, notice) => {
+    if (window.isDestroyed() || window.isFocused()) return
+    if (event.sender !== window.webContents || !isTrustedNavigation(event.senderFrame?.url, rootUrl)) return
+    if (!notice || typeof notice !== 'object' ||
+        !['succeeded', 'failed'].includes(notice.outcome) ||
+        typeof notice.url !== 'string' || !notice.url.startsWith('/') ||
+        !isTrustedNavigation(new URL(notice.url, rootUrl).toString(), rootUrl)) return
+    if (!Notification.isSupported()) return
+    const success = notice.outcome === 'succeeded'
+    const native = new Notification({
+      title: success ? 'WorkStep 回复完成' : 'WorkStep 回复失败',
+      body: `${notice.taskId ? '任务' : '会话'}的回复${success ? '已完成' : '失败'}`,
+    })
+    native.on('click', () => {
+      if (window.isDestroyed()) return
+      window.show()
+      window.focus()
+      void window.loadURL(new URL(notice.url, rootUrl).toString())
+    })
+    native.show()
+  })
   window.once('ready-to-show', () => window.show())
   void window.loadURL(url)
   mainWindow = window

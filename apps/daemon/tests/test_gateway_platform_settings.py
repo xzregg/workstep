@@ -15,15 +15,13 @@ def test_gateway_origin_rejects_remote_http_and_credentials():
 
 
 @pytest.mark.asyncio
-async def test_settings_api_does_not_allow_nonlocal_or_cross_origin_changes(monkeypatch):
+async def test_settings_api_does_not_allow_cross_origin_changes(monkeypatch):
     from api.gateway_platform import router
     app = FastAPI(); app.include_router(router)
     app.state.gateway_browser_login = SimpleNamespace()
     async with AsyncClient(transport=ASGITransport(app=app, client=('127.0.0.1',123)), base_url='http://localhost:8765') as client:
         result = await client.post('/api/gateway-platform/login', headers={'Origin':'https://evil.test'}, json={'url':'http://localhost:8700'})
         assert result.status_code == 403
-    async with AsyncClient(transport=ASGITransport(app=app, client=('10.0.0.1',123)), base_url='http://localhost:8765') as client:
-        assert (await client.get('/api/gateway-platform/settings')).status_code == 403
 
 
 @pytest.mark.asyncio
@@ -33,7 +31,8 @@ async def test_expired_or_wrong_callback_state_never_contacts_gateway():
     with pytest.raises(ValueError): await login.complete('code', 'unknown-state')
 
 @pytest.mark.asyncio
-async def test_browser_login_pending_then_approved_reuses_device_and_signed_delegation(tmp_path, monkeypatch):
+@pytest.mark.parametrize('callback_origin', ['http://localhost:8765', 'http://192.168.1.10:8765', 'https://workstep.example.com'])
+async def test_browser_login_pending_then_approved_reuses_device_and_signed_delegation(tmp_path, monkeypatch, callback_origin):
     import base64, hashlib, json, time
     from urllib.parse import urlsplit, parse_qs
     from cryptography.hazmat.primitives import serialization
@@ -59,6 +58,9 @@ async def test_browser_login_pending_then_approved_reuses_device_and_signed_dele
         signed=encoded+'.'+enc(key.sign(encoded.encode())); tokens.append(signed)
         return httpx.Response(200,json={'device_authorization':signed})
     class Gateway:
+        managed_config = None
+        control_client = None
+        current_user_id = None
         async def close(self): pass
         async def start(self): assert store.data['gateway_platform']['authorized']
         async def bootstrap(self, authorization, proof, private, public, delegation):
@@ -70,14 +72,17 @@ async def test_browser_login_pending_then_approved_reuses_device_and_signed_dele
             assert serialization.load_pem_private_key(private.encode(),password=None).public_key().public_bytes(serialization.Encoding.PEM,serialization.PublicFormat.SubjectPublicKeyInfo).decode()==public
             return 'local-session',SimpleNamespace(user_id='u1')
     login=module.GatewayBrowserLogin(Gateway(),client_factory=lambda:httpx.AsyncClient(transport=httpx.MockTransport(handler)))
-    url=await login.begin('http://localhost:8700','http://localhost:8765')
+    await login.save_settings('http://localhost:8700', True)
+    url=await login.begin('http://localhost:8700',callback_origin)
     params=parse_qs(urlsplit(url).query)
-    assert params['redirect_uri']==['http://localhost:8765/api/gateway-platform/callback']
+    assert params['redirect_uri']==[callback_origin+'/api/gateway-platform/callback']
     assert await login.complete('c'*32,params['state'][0]) is None
     assert store.data['gateway_platform']['pending_device']
     approved=True
-    url=await login.begin('http://localhost:8700','http://localhost:8765')
-    result=await login.complete('c'*32,parse_qs(urlsplit(url).query)['state'][0])
+    url=await login.begin('http://localhost:8700',callback_origin)
+    with pytest.raises(ValueError, match='origin mismatch'):
+        await login.complete('c'*32, parse_qs(urlsplit(url).query)['state'][0], callback_origin='https://other.example.com')
+    result=await login.complete('c'*32,parse_qs(urlsplit(url).query)['state'][0], callback_origin=callback_origin)
     assert result[0]=='local-session'
     assert device_keys[0]==device_keys[1]
     with pytest.raises(ValueError): await login.complete('c'*32,parse_qs(urlsplit(url).query)['state'][0])
@@ -93,17 +98,19 @@ async def test_slow_identity_file_does_not_block_real_api_health(tmp_path,monkey
     key=Ed25519PrivateKey.generate().public_key(); pem=key.public_bytes(serialization.Encoding.PEM,serialization.PublicFormat.SubjectPublicKeyInfo).decode()
     fp=hashlib.sha256(key.public_bytes(serialization.Encoding.DER,serialization.PublicFormat.SubjectPublicKeyInfo)).hexdigest()
     class Store:
-        def get(self,*args): return {}
-        def set(self,*args): pass
+        data = {}
+        def get(self, key, default=None): return self.data.get(key, default)
+        def set(self, key, value): self.data[key] = value
     monkeypatch.setattr(module,'config_store',Store());monkeypatch.setattr(module.config_module,'CONFIG_DIR',tmp_path)
     entered=threading.Event();original=module._identity
     def slow(origin): entered.set();time.sleep(.5);return original(origin)
     monkeypatch.setattr(module,'_identity',slow)
-    login=module.GatewayBrowserLogin(SimpleNamespace(),client_factory=lambda:httpx.AsyncClient(transport=httpx.MockTransport(lambda request:httpx.Response(200,json={'gateway_id':'g1','fingerprint':fp,'public_key_pem':pem}))))
+    login=module.GatewayBrowserLogin(SimpleNamespace(managed_config=None,control_client=None,current_user_id=None),client_factory=lambda:httpx.AsyncClient(transport=httpx.MockTransport(lambda request:httpx.Response(200,json={'gateway_id':'g1','fingerprint':fp,'public_key_pem':pem}))))
     app=FastAPI();app.include_router(router);app.state.gateway_browser_login=login
     @app.get('/api/health')
     async def health(): return {'status':'ok'}
     async with AsyncClient(transport=ASGITransport(app=app,client=('127.0.0.1',1)),base_url='http://localhost:8765') as client:
+        await client.put('/api/gateway-platform/settings',headers={'Origin':'http://localhost:8765'},json={'url':'http://localhost:8700','enabled':True})
         pending=asyncio.create_task(client.post('/api/gateway-platform/login',headers={'Origin':'http://localhost:8765'},json={'url':'http://localhost:8700'}))
         assert await asyncio.to_thread(entered.wait,2)
         started=time.monotonic(); assert (await client.get('/api/health')).status_code==200
@@ -120,7 +127,7 @@ async def test_callback_sets_local_session_cookie_and_survives_desktop_browser_h
     monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')
     calls=[]
     class Login:
-        async def complete(self, code, state):
+        async def complete(self, code, state, *, callback_origin=None):
             calls.append((code,state));return ('test-local-session',SimpleNamespace())
     app=FastAPI();app.include_router(router);app.add_middleware(DesktopSecurityMiddleware)
     app.state.gateway_browser_login=Login()
@@ -132,3 +139,154 @@ async def test_callback_sets_local_session_cookie_and_survives_desktop_browser_h
         assert response.cookies[COOKIE]=='test-local-session'
         assert 'HttpOnly' in response.headers['set-cookie'] and 'SameSite=strict' in response.headers['set-cookie']
         assert calls==[('c'*32,'s'*32)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('browser_origin', ['http://localhost:8765', 'http://192.168.1.10:8765', 'https://workstep.example.com'])
+async def test_address_save_does_not_enable_gateway_or_redirect_and_disable_cancels_login(monkeypatch, browser_origin):
+    from services.gateway_client import browser_login as module
+    from api.gateway_platform import router
+    class Store:
+        data = {}
+        def get(self, key, default=None): return self.data.get(key, default)
+        def set(self, key, value): self.data[key] = value
+    store = Store(); monkeypatch.setattr(module, 'config_store', store)
+    monkeypatch.delenv('WORKSTEP_MANAGED_BUNDLE_DIR', raising=False)
+    class Gateway:
+        control_client = None
+        current_user_id = None
+        managed_config = None
+        closed = 0
+        async def close(self): self.closed += 1; self.current_user_id = None
+    gateway = Gateway()
+    def no_network(): raise AssertionError('Saving an address or disabled login must not contact the gateway')
+    login = module.GatewayBrowserLogin(gateway, client_factory=no_network)
+    app = FastAPI(); app.include_router(router); app.state.gateway_browser_login = login
+    async with AsyncClient(transport=ASGITransport(app=app, client=('192.168.1.20', 1)), base_url=browser_origin) as client:
+        headers = {'Origin': browser_origin}
+        saved = await client.put('/api/gateway-platform/settings', headers=headers, json={'url':'https://gateway.example.com', 'enabled':False})
+        assert saved.status_code == 200
+        assert saved.json()['url'] == 'https://gateway.example.com'
+        assert saved.json()['enabled'] is False
+        assert module.configured_payload() is None
+        assert (await client.get('/gateway/login')).headers['location'] == '/'
+        assert (await client.post('/api/gateway-platform/login', headers=headers, json={'url':'https://gateway.example.com'})).status_code == 400
+        enabled = await client.put('/api/gateway-platform/settings', headers=headers, json={'url':'https://gateway.example.com', 'enabled':True})
+        assert enabled.json()['enabled'] is True
+        login.pending = {'state':'s'*32, 'expires':float('inf')}
+        gateway.managed_config = object(); gateway.current_user_id = 'u1'
+        login.desktop_local_session = 'session'
+        disabled = await client.put('/api/gateway-platform/settings', headers=headers, json={'url':'https://gateway.example.com', 'enabled':False})
+        assert disabled.json()['authenticated'] is False
+        assert login.pending is None and login.desktop_local_session is None
+        assert gateway.managed_config is None and gateway.closed == 1
+        with pytest.raises(ValueError): await login.complete('c'*32, 's'*32)
+
+
+@pytest.mark.asyncio
+async def test_save_settings_is_same_origin_only(monkeypatch):
+    from api.gateway_platform import router
+    app = FastAPI(); app.include_router(router)
+    async with AsyncClient(transport=ASGITransport(app=app, client=('10.0.0.1',1)), base_url='http://192.168.1.10:8765') as client:
+        assert (await client.put('/api/gateway-platform/settings', json={'url':'https://gateway.example.com','enabled':True})).status_code == 403
+    async with AsyncClient(transport=ASGITransport(app=app, client=('127.0.0.1',1)), base_url='http://localhost:8765') as client:
+        assert (await client.put('/api/gateway-platform/settings', headers={'Origin':'https://evil.test'}, json={'url':'https://gateway.example.com','enabled':True})).status_code == 403
+
+
+def test_disabled_gateway_never_restores_managed_payload(monkeypatch):
+    from services.gateway_client import browser_login as module
+    monkeypatch.setattr(module, 'config_store', SimpleNamespace(get=lambda *args: {
+        'url':'https://gateway.example.com', 'enabled':False, 'authorized':True,
+        'gateway_id':'g1', 'fingerprint':'abc'}))
+    assert module.configured_payload() is None
+
+
+@pytest.mark.asyncio
+async def test_slow_settings_save_keeps_health_responsive(monkeypatch):
+    import threading, time
+    from services.gateway_client import browser_login as module
+    from api.gateway_platform import router
+    entered = threading.Event()
+    class Store:
+        data = {}
+        def get(self, key, default=None): return self.data.get(key, default)
+        def set(self, key, value):
+            entered.set(); time.sleep(.5); self.data[key] = value
+    monkeypatch.setattr(module, 'config_store', Store())
+    monkeypatch.delenv('WORKSTEP_MANAGED_BUNDLE_DIR', raising=False)
+    app = FastAPI(); app.include_router(router)
+    app.state.gateway_browser_login = module.GatewayBrowserLogin(SimpleNamespace(
+        managed_config=None, control_client=None, current_user_id=None))
+    @app.get('/api/health')
+    async def health(): return {'status':'ok'}
+    async with AsyncClient(transport=ASGITransport(app=app, client=('127.0.0.1',1)), base_url='http://localhost:8765') as client:
+        pending = asyncio.create_task(client.put('/api/gateway-platform/settings',
+            headers={'Origin':'http://localhost:8765'}, json={'url':'https://gateway.example.com','enabled':False}))
+        assert await asyncio.to_thread(entered.wait, 2)
+        started = time.monotonic()
+        assert (await client.get('/api/health')).status_code == 200
+        assert time.monotonic() - started < .2
+        assert (await pending).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_mobile_configuration_uses_existing_access_guard_and_returns_to_mobile_origin(monkeypatch):
+    from api.gateway_platform import router
+    from api.desktop_security import DesktopSecurityMiddleware
+    from api.remote_access_guard import RemoteAccessGuardMiddleware
+    from services.gateway_client.browser_login import COOKIE
+    monkeypatch.delenv('WORKSTEP_DESKTOP_RUNTIME', raising=False)
+    class Login:
+        async def settings(self): return {'url':'https://gateway.example.com','enabled':True}
+        async def save_settings(self, url, enabled): return {'url':url,'enabled':enabled}
+        async def begin(self, url, callback_origin, *, desktop=False):
+            assert callback_origin == 'http://192.168.1.10:8765'
+            assert desktop is False
+            return url+'/desktop/login?state='+'s'*32
+        async def complete(self, code, state, *, callback_origin):
+            assert callback_origin == 'http://192.168.1.10:8765'
+            return ('mobile-session', SimpleNamespace())
+    guard = SimpleNamespace(access_password_required=lambda:True, verify_access_token=lambda token:token=='access-key')
+    app=FastAPI();app.include_router(router);app.state.gateway_browser_login=Login()
+    app.add_middleware(DesktopSecurityMiddleware)
+    app.add_middleware(RemoteAccessGuardMiddleware,access_service=guard)
+    async with AsyncClient(transport=ASGITransport(app=app,client=('192.168.1.20',1)),base_url='http://192.168.1.10:8765') as client:
+        assert (await client.get('/api/gateway-platform/settings')).status_code==401
+        client.headers.update({'x-workstep-access':'access-key','Origin':'http://192.168.1.10:8765'})
+        assert (await client.get('/api/gateway-platform/settings')).status_code==200
+        assert (await client.put('/api/gateway-platform/settings',json={'url':'https://gateway.example.com','enabled':True})).status_code==200
+        assert (await client.post('/api/gateway-platform/login',json={'url':'https://gateway.example.com'})).status_code==200
+        callback=await client.get('/api/gateway-platform/callback',params={'code':'c'*32,'state':'s'*32})
+        assert callback.status_code==303
+        assert callback.headers['location']=='/?gateway_auth=complete'
+        assert callback.cookies[COOKIE]=='mobile-session'
+
+
+@pytest.mark.asyncio
+async def test_mobile_cannot_change_managed_gateway_without_device_owner_session():
+    from api.gateway_platform import router
+    class Login:
+        async def save_settings(self, url, enabled): return {'url':url,'enabled':enabled}
+    owner = SimpleNamespace(user_id='owner')
+    gateway = SimpleNamespace(managed_config=object(),current_user_id='owner',
+        local_sessions=SimpleNamespace(resolve=lambda token: owner if token=='owner-session' else None))
+    app=FastAPI();app.include_router(router);app.state.gateway_browser_login=Login();app.state.gateway_client=gateway
+    async with AsyncClient(transport=ASGITransport(app=app,client=('192.168.1.20',1)),base_url='http://192.168.1.10:8765') as client:
+        headers={'Origin':'http://192.168.1.10:8765'}
+        payload={'url':'https://gateway.example.com','enabled':False}
+        assert (await client.put('/api/gateway-platform/settings',headers=headers,json=payload)).status_code==403
+        headers['x-workstep-local-session']='owner-session'
+        assert (await client.put('/api/gateway-platform/settings',headers=headers,json=payload)).status_code==200
+
+
+@pytest.mark.asyncio
+async def test_gateway_project_visitor_cannot_read_or_change_host_settings():
+    from api.gateway_platform import router
+    app=FastAPI();app.include_router(router)
+    @app.middleware('http')
+    async def attach_project_actor(request, call_next):
+        request.scope['gateway_remote_actor']=SimpleNamespace(project_id='shared-project')
+        return await call_next(request)
+    async with AsyncClient(transport=ASGITransport(app=app,client=('127.0.0.1',1)),base_url='http://127.0.0.1') as client:
+        assert (await client.get('/api/gateway-platform/settings')).status_code==403
+        assert (await client.put('/api/gateway-platform/settings',headers={'Origin':'http://127.0.0.1'},json={'url':'https://gateway.example.com','enabled':False})).status_code==403
