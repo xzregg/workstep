@@ -26,4 +26,11 @@ public class NotificationDestinationTest {
         assertEquals("/chat?project=My%20Project&session=session%2F1",
                 NotificationDestination.path("/chat?project=My%20Project", "session/1", ""));
     }
+
+    @Test
+    public void sessionChatEventOpensSessionEvenIfItAlsoCarriesTaskId() {
+        assertEquals("/chat?project=Demo&session=session-1",
+                NotificationDestination.path("/chat?project=Demo&session=old",
+                        "session-1", "unrelated-task", "session_chat"));
+    }
 }

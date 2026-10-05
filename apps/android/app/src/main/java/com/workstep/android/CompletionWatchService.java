@@ -241,14 +241,16 @@ public final class CompletionWatchService extends Service {
             if (step || "succeeded".equals(status) || "failed".equals(status) || "error".equals(status)) {
                 boolean success = "succeeded".equals(status) || "passed".equals(status);
                 String id = step ? watchId + ":" + event.optString("sequence", status) : watchId;
-                boolean shown = CompletionNotifications.show(this, id,
+                String destination = NotificationDestination.path(watch.optString("url"),
+                        event.optString("session_id"), event.optString("task_id"),
+                        event.optString("channel"));
+                String result = CompletionNotifications.show(this, id,
                         step ? (success ? "WorkStep 步骤完成" : "WorkStep 步骤失败")
                                 : (success ? "WorkStep 回复完成" : "WorkStep 回复失败"),
                         step ? "步骤 " + event.optString("step_key") + (success ? " 已通过" : " 执行失败")
                                 : (success ? "会话的回复已完成" : "会话的回复失败"),
-                        NotificationDestination.path(watch.optString("url"),
-                                event.optString("session_id"), event.optString("task_id")), server);
-                CrashReports.log(this, "后台通知进程", shown ? "已发送系统通知" : "通知未显示：权限、系统设置或重复", null);
+                        destination, server);
+                CrashReports.log(this, "后台通知进程", "系统通知：" + result + "；目标=" + destination, null);
             }
             if (watches.isEmpty()) {
                 stopped = true;

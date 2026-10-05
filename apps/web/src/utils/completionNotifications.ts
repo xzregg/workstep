@@ -38,17 +38,18 @@ export function completionNotice(event: TerminalEvent): CompletionNotice | null 
     }
   }
   if (event.type !== 'TEXT_MESSAGE_END' || !event.project_id || !event.messageId) return null
-  if (!event.session_id && !event.task_id) return null
+  const taskId = event.channel === 'session_chat' && event.session_id ? null : event.task_id || null
+  if (!event.session_id && !taskId) return null
   if (event.status !== 'succeeded' && event.status !== 'failed' && event.status !== 'error') return null
   const outcome = event.status === 'succeeded' ? 'succeeded' : 'failed'
   return {
     id: `${event.project_id}:${event.session_id || event.task_id}:${event.messageId}`,
     projectId: event.project_id,
     sessionId: event.session_id || null,
-    taskId: event.task_id || null,
+    taskId,
     outcome,
     title: outcome === 'succeeded' ? 'WorkStep 回复完成' : 'WorkStep 回复失败',
-    body: event.task_id
+    body: taskId
       ? `任务的回复${outcome === 'succeeded' ? '已完成' : '失败'}`
       : `会话的回复${outcome === 'succeeded' ? '已完成' : '失败'}`,
   }

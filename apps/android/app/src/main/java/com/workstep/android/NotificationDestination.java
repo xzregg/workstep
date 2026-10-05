@@ -8,6 +8,10 @@ import java.net.URLEncoder;
 /** Builds a destination from the completed event, not a possibly stale page snapshot. */
 final class NotificationDestination {
     static String path(String watchedPage, String sessionId, String taskId) {
+        return path(watchedPage, sessionId, taskId, null);
+    }
+
+    static String path(String watchedPage, String sessionId, String taskId, String channel) {
         String project = "";
         String workflow = "";
         if (watchedPage != null && watchedPage.startsWith("/") && !watchedPage.startsWith("//")) {
@@ -24,7 +28,8 @@ final class NotificationDestination {
                 }
             } catch (URISyntaxException ignored) { }
         }
-        boolean task = taskId != null && !taskId.isEmpty();
+        boolean task = taskId != null && !taskId.isEmpty()
+                && !("session_chat".equals(channel) && sessionId != null && !sessionId.isEmpty());
         String id = task ? taskId : sessionId;
         StringBuilder path = new StringBuilder(task ? "/tasks" : "/chat");
         if (!project.isEmpty()) path.append('?').append(project);

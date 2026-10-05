@@ -59,16 +59,18 @@ final class CompletionNotifications {
                 .build();
     }
 
-    static synchronized boolean show(Context context, String id, String title, String body,
+    static synchronized String show(Context context, String id, String title, String body,
                                   String page, ServerAddress server) {
-        if (id == null || id.isEmpty() || delivered.contains(id)) return false;
+        if (id == null || id.isEmpty()) return "缺少通知 ID";
+        if (delivered.contains(id)) return "重复事件";
         if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED) return false;
+                != PackageManager.PERMISSION_GRANTED) return "缺少通知权限";
         NotificationManager manager = context.getSystemService(NotificationManager.class);
-        if (!manager.areNotificationsEnabled()) return false;
-        delivered.add(id);
-        if (delivered.size() > 1000) delivered.remove(delivered.iterator().next());
+        if (!manager.areNotificationsEnabled()) return "系统通知已关闭";
         createChannels(context);
+        NotificationChannel channel = manager.getNotificationChannel(CHANNEL_ID);
+        if (channel != null && channel.getImportance() == NotificationManager.IMPORTANCE_NONE)
+            return "回复通知频道已关闭";
         Intent intent = new Intent(context, MainActivity.class);
         intent.setAction(Intent.ACTION_VIEW);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -89,7 +91,9 @@ final class CompletionNotifications {
                 .setContentIntent(pending)
                 .build();
         manager.notify(id.hashCode(), notice);
-        return true;
+        delivered.add(id);
+        if (delivered.size() > 1000) delivered.remove(delivered.iterator().next());
+        return "已发送";
     }
 
     private CompletionNotifications() { }

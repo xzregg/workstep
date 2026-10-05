@@ -137,7 +137,8 @@ class CompletionPushService:
             project_id = event.get("project_id")
             message_id = event.get("messageId")
             session_id = event.get("session_id")
-            task_id = event.get("task_id")
+            task_id = (None if event.get("channel") == "session_chat" and session_id
+                       else event.get("task_id"))
             if not project_id or (not task_id if step_result else not message_id or not (session_id or task_id)):
                 continue
             success = event["status"] in {"succeeded", "passed"}
@@ -147,7 +148,7 @@ class CompletionPushService:
                 continue
             self._sent_ids.append(key)
             record = {name: event.get(name) for name in
-                      ("type", "project_id", "session_id", "task_id", "messageId", "status",
+                      ("type", "channel", "project_id", "session_id", "task_id", "messageId", "status",
                        "step_key", "sequence")}
             record["recorded_at"] = time.time()
             async with self._save_lock:
