@@ -41,6 +41,14 @@ test('task notification URL keeps its workflow so the target board can load it',
     '/tasks?project=Demo&workflow=flow-2&task=task')
 })
 
+test('session chat reply opens its session even when an event also carries a task id', () => {
+  const notice = completionNotice({ type: 'TEXT_MESSAGE_END', channel: 'session_chat',
+    project_id: 'p', session_id: 'session-1', task_id: 'unrelated-task',
+    messageId: 'reply-1', status: 'succeeded' })!
+  assert.equal(notice.taskId, null)
+  assert.equal(notificationUrl(notice, 'Demo'), '/chat?project=Demo&session=session-1')
+})
+
 test('desktop bridge receives terminal notice even if the document remains visible', async () => {
   const { window } = installDomEnvironment()
   const delivered: string[] = []

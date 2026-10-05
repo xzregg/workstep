@@ -229,11 +229,12 @@ export function useWebSocket() {
             }
           }
           if (parsed.type === 'TEXT_MESSAGE_START' && parsed.role === 'assistant' && parsed.project_id && parsed.messageId && (parsed.session_id || parsed.task_id)) {
+            const taskId = parsed.channel === 'session_chat' && parsed.session_id ? null : parsed.task_id || null
             const watch = {
               id: `${parsed.project_id}:${parsed.session_id || parsed.task_id}:${parsed.messageId}`,
               projectId: parsed.project_id,
               sessionId: parsed.session_id || null,
-              taskId: parsed.task_id || null,
+              taskId,
             }
             window.WorkStepAndroid?.postMessage(JSON.stringify({
               type: 'watch', ...watch,

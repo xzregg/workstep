@@ -464,14 +464,14 @@ public final class MainActivity extends Activity {
                 boolean success = "succeeded".equals(outcome);
                 boolean task = !message.optString("taskId").isEmpty();
                 boolean step = !message.optString("stepKey").isEmpty();
-                boolean shown = CompletionNotifications.show(this, id,
+                String result = CompletionNotifications.show(this, id,
                         step ? (success ? "WorkStep 步骤完成" : "WorkStep 步骤失败")
                                 : (success ? "WorkStep 回复完成" : "WorkStep 回复失败"),
                         step ? "步骤 " + message.optString("stepKey") + (success ? " 已通过" : " 执行失败")
                                 : (task ? "任务" : "会话") + "的回复" + (success ? "已完成" : "失败"),
                         target, server);
                 CrashReports.log(this, "网页主进程",
-                        shown ? "网页桥接已发送系统通知" : "网页桥接通知未显示：权限、系统设置或重复", null);
+                        "网页桥接系统通知：" + result + "；目标=" + target, null);
             }
         } catch (Exception error) {
             android.util.Log.e("WorkStep", "Notification bridge message failed", error);
@@ -562,11 +562,11 @@ public final class MainActivity extends Activity {
                 return true;
             });
             menu.getMenu().add(R.string.test_notification).setOnMenuItemClickListener(item -> {
-                boolean shown = CompletionNotifications.show(this,
+                String result = CompletionNotifications.show(this,
                         "test-" + SystemClock.elapsedRealtime(), "WorkStep 测试通知",
                         "如果能看到这条通知，系统通知权限正常", "/", server);
-                CrashReports.log(this, "网页主进程", shown ? "测试通知已发送" : "测试通知未显示：权限或系统设置", null);
-                Toast.makeText(this, shown ? "已发送测试通知" : "系统未允许显示通知", Toast.LENGTH_SHORT).show();
+                CrashReports.log(this, "网页主进程", "测试通知：" + result, null);
+                Toast.makeText(this, "已发送".equals(result) ? "已发送测试通知" : result, Toast.LENGTH_SHORT).show();
                 return true;
             });
             menu.show();

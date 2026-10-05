@@ -19,7 +19,8 @@ def test_push_only_targets_watched_terminal_messages(tmp_path):
             await bus.publish({"type": "TEXT_MESSAGE_END", "project_id": "p1",
                                "session_id": "other", "messageId": "m1", "status": "succeeded"})
             await bus.publish({"type": "TEXT_MESSAGE_END", "project_id": "p1",
-                               "session_id": "s1", "messageId": "m2", "status": "failed"})
+                               "session_id": "s1", "task_id": "unrelated-task",
+                               "channel": "session_chat", "messageId": "m2", "status": "failed"})
             await bus.publish({"type": "TEXT_MESSAGE_END", "project_id": "p1",
                                "session_id": "s1", "messageId": "m2", "status": "failed"})
             for _ in range(10):
@@ -29,6 +30,7 @@ def test_push_only_targets_watched_terminal_messages(tmp_path):
             assert len(sent) == 1
             assert sent[0]["title"] == "WorkStep 回复失败"
             assert sent[0]["url"] == "/chat?project=%E9%A1%B9%E7%9B%AE+A&session=s1"
+            assert service.recent_for_project("p1")[-1]["channel"] == "session_chat"
             assert (tmp_path / "vapid.pem").exists()
             assert (tmp_path / "subscriptions.json").exists()
             assert len(service.recent_for_project("p1")) == 2
