@@ -126,7 +126,7 @@ public final class CompletionWatchService extends Service {
 
             @Override
             public void onMessage(WebSocket webSocket, String text) {
-                handler.post(() -> { if (socket == webSocket && !stopped) receive(text); });
+                handler.post(() -> { if (socket == webSocket && !stopped) receive(text, false); });
             }
 
             @Override
@@ -212,7 +212,7 @@ public final class CompletionWatchService extends Service {
                     for (int i = 0; i < events.length(); i++) {
                         String event = events.getJSONObject(i).toString();
                         handler.post(() -> {
-                            if (socket == target && !stopped) receive(event);
+                            if (socket == target && !stopped) receive(event, true);
                         });
                     }
                 } catch (Exception error) {
@@ -222,7 +222,7 @@ public final class CompletionWatchService extends Service {
         });
     }
 
-    private void receive(String text) {
+    private void receive(String text, boolean replay) {
         try {
             JSONObject event = new JSONObject(text);
             String type = event.optString("type");
@@ -241,8 +241,10 @@ public final class CompletionWatchService extends Service {
             JSONObject watch = watches.remove(watchId);
             if (!step) {
                 String project = event.optString("project_id");
-                JSONObject pendingSession = sessionId.isEmpty() ? null : watches.remove(project + ":" + sessionId + ":pending");
-                JSONObject pendingTask = taskId.isEmpty() ? null : watches.remove(project + ":" + taskId + ":pending");
+                JSONObject pendingSession = sessionId.isEmpty() ? null
+                        : takePending(project + ":" + sessionId + ":pending", event, replay);
+                JSONObject pendingTask = taskId.isEmpty() ? null
+                        : takePending(project + ":" + taskId + ":pending", event, replay);
                 if (watch == null) watch = pendingSession != null ? pendingSession : pendingTask;
             }
             if (watch == null) return;
@@ -269,6 +271,13 @@ public final class CompletionWatchService extends Service {
         } catch (Exception error) {
             CrashReports.log(this, "后台通知进程", "处理结果失败", error);
         }
+    }
+
+    private JSONObject takePending(String id, JSONObject event, boolean replay) {
+        JSONObject pending = watches.get(id);
+        if (pending == null || !CompletionWatchMatch.pending(replay,
+                event.optDouble("recorded_at", 0), pending.optLong("startedAt", 0))) return null;
+        return watches.remove(id);
     }
 
     @Override

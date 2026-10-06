@@ -11,12 +11,11 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 
-import java.util.LinkedHashSet;
+import java.io.IOException;
 
 final class CompletionNotifications {
     static final String CHANNEL_ID = "workstep_completion";
     static final String WATCH_CHANNEL_ID = "workstep_watch";
-    private static final LinkedHashSet<String> delivered = new LinkedHashSet<>();
 
     static void createChannels(Context context) {
         NotificationManager manager = context.getSystemService(NotificationManager.class);
@@ -62,7 +61,6 @@ final class CompletionNotifications {
     static synchronized String show(Context context, String id, String title, String body,
                                   String page, ServerAddress server) {
         if (id == null || id.isEmpty()) return "缺少通知 ID";
-        if (delivered.contains(id)) return "重复事件";
         if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) return "缺少通知权限";
         NotificationManager manager = context.getSystemService(NotificationManager.class);
@@ -88,12 +86,18 @@ final class CompletionNotifications {
                 .setContentTitle(title)
                 .setContentText(body)
                 .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
                 .setContentIntent(pending)
                 .build();
-        manager.notify(id.hashCode(), notice);
-        delivered.add(id);
-        if (delivered.size() > 1000) delivered.remove(delivered.iterator().next());
-        return "已发送";
+        String key = server.origin() + ":" + id;
+        try {
+            return NotificationLedger.deliver(context.getFilesDir(), key,
+                    () -> manager.notify(key, id.hashCode(), notice)) ? "已发送" : "重复事件";
+        } catch (IOException error) {
+            CrashReports.log(context, "通知去重", "通知去重记录失败", error);
+            manager.notify(key, id.hashCode(), notice);
+            return "已发送（去重记录失败）";
+        }
     }
 
     private CompletionNotifications() { }

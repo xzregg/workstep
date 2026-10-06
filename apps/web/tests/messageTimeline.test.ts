@@ -160,6 +160,30 @@ test('tracks subagent lifecycle as one timeline item updated in place', () => {
   assert.equal(subagent?.type === 'subagent' && subagent.activity.summary, '完成')
 })
 
+test('subagent duration excludes late result reads and preserves unified metadata on replay', () => {
+  const events = [
+    { type: 'CUSTOM', name: 'workstep.subagent', timestamp: 1700000002000, value: {
+      task_id: 'child', status: 'running', stage: 'started', agent_name: 'worker', agent_path: '/root/worker', prompt: '任务', started_at: 1700000002000,
+    } },
+    { type: 'CUSTOM', name: 'workstep.subagent', timestamp: 1700000005500, value: {
+      task_id: 'child', status: 'completed', stage: 'completed', ended_at: 1700000005500,
+    } },
+    { type: 'CUSTOM', name: 'workstep.subagent', timestamp: 1700000009000, value: {
+      task_id: 'child', status: 'completed', stage: 'progress', result: '结果',
+    } },
+  ]
+  const timeline = buildMessageTimeline(events)
+  const child = timeline[0]
+  assert.equal(child.type, 'subagent')
+  if (child.type !== 'subagent') return
+  assert.equal(child.activity.agentName, 'worker')
+  assert.equal(child.activity.prompt, '任务')
+  assert.equal(child.activity.startedAt, 1700000002000)
+  assert.equal(child.activity.endedAt, 1700000005500)
+  assert.equal(child.activity.result, '结果')
+  assert.deepEqual(buildMessageTimeline(JSON.parse(JSON.stringify(events))), timeline)
+})
+
 test('keeps multiple subagents as separate timeline items', () => {
   const timeline = buildMessageTimeline([
     { type: 'subagent', data: { task_id: 'task-1', description: '调研', status: 'running' } },

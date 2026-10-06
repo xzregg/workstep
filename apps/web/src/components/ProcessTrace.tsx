@@ -512,6 +512,7 @@ export default function ProcessTrace({
               lastSubagent={item === lastSubagentItem}
               messageRunning={running}
               projectId={projectId}
+              now={now}
             />
           ) : (
             <ToolTimelineItem

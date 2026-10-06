@@ -28,6 +28,53 @@ test('subagent live messages remain nested and survive replay', () => {
   assert.deepEqual(buildMessageTimeline(JSON.parse(JSON.stringify(events))), timeline)
 })
 
+test('Codex child activity and late results render as three separate completed agents', async () => {
+  const window = new Window({ url: 'http://localhost' })
+  Object.assign(globalThis, { window, document: window.document, HTMLElement: window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true })
+  const container = document.createElement('div')
+  const root = createRoot(container)
+  const frames = [1, 2, 3].flatMap((number) => [
+    { type: 'CUSTOM', name: 'workstep.subagent', value: {
+      task_id: `child-${number}`, description: `/root/test_${number}`, status: 'running', stage: 'started',
+      agent_name: `test_${number}`, agent_path: `/root/test_${number}`, prompt: `回复 ${number}`, started_at: 1700000002000,
+    } },
+    { type: 'CUSTOM', name: 'workstep.subagent', value: {
+      task_id: `child-${number}`, description: `/root/test_${number}`, status: 'completed', stage: 'completed', ended_at: 1700000005500,
+    } },
+    { type: 'CUSTOM', name: 'workstep.subagent', value: {
+      task_id: `child-${number}`, status: 'completed', stage: 'progress',
+      result: String(number),
+      events: [{ type: 'TEXT_MESSAGE_CHUNK', delta: String(number) }],
+    } },
+  ])
+  assert.equal(timelineText(buildMessageTimeline(frames)), '')
+  assert.deepEqual(buildMessageTimeline(JSON.parse(JSON.stringify(frames))), buildMessageTimeline(frames))
+  try {
+    await act(async () => root.render(<I18nProvider><ProcessTrace events={frames} /></I18nProvider>))
+    await act(async () => {
+      container.querySelector('.process-trace-session-summary')!
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    })
+    const children = [...container.querySelectorAll<HTMLDetailsElement>('.subagent-timeline')]
+    assert.equal(children.length, 3)
+    for (const [index, child] of children.entries()) {
+      assert.match(child.querySelector('summary')!.textContent ?? '', new RegExp(`test_${index + 1}`))
+      assert.doesNotMatch(child.querySelector('summary')!.textContent ?? '', /\/root\//)
+      assert.match(child.querySelector('.subagent-duration')!.textContent ?? '', /3秒/)
+      assert.ok(child.classList.contains('llm-tool-call-done'))
+      await act(async () => { child.open = true; child.dispatchEvent(new window.Event('toggle')) })
+      assert.equal(child.querySelector('.subagent-identity code')!.textContent, `/root/test_${index + 1}`)
+      assert.equal(child.querySelector('.subagent-prompt pre')!.textContent, `回复 ${index + 1}`)
+      assert.equal(child.querySelector('.subagent-result pre')!.textContent, String(index + 1))
+      assert.equal(child.querySelector('.subagent-event-markdown'), null)
+      assert.equal(child.querySelector('.task-status-spinner'), null)
+    }
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
 for (const width of [390, 1280]) {
   test(`only the latest subagent stays open at ${width}`, async () => {
     const window = new Window({ width, url: 'http://localhost' })

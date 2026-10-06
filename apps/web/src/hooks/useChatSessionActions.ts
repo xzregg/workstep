@@ -4,7 +4,7 @@ import { useI18n } from '../i18n'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
 import type { ChatEngineConfigState } from '../utils/chatEngineConfig'
 import { randomUuid } from '../utils/uuid'
-import { watchPendingCompletion, unwatchPendingCompletion } from '../utils/completionNotifications'
+import { watchPendingCompletion, unwatchPendingCompletion, watchAcceptedCompletion } from '../utils/completionNotifications'
 
 interface Options {
   sessionId: string | null
@@ -72,6 +72,7 @@ export function useChatSessionActions({
         unwatchPendingCompletion(projectId, { sessionId })
         watchPendingCompletion(projectId, { sessionId: finalSessionId })
       }
+      watchAcceptedCompletion(projectId, { sessionId: finalSessionId }, accepted.assistant_message_id)
       const { sessions } = await chatSessionApi.list(projectId)
       const summary = sessions.find((item) => item.id === finalSessionId)
       if (summary?.title) {

@@ -1,5 +1,7 @@
 """Codex SDK notifications translated into internal ACP-aligned events."""
 
+import asyncio
+import logging
 from typing import Any
 
 from engines.codex_events import codex_raw_event
@@ -14,7 +16,7 @@ from engines.core.events import (
     tool_call_update_event,
     usage_update_event,
 )
-from engines.core.plans import codex_subagent_events, plan_event
+from engines.core.plans import codex_subagent_events, plan_event, subagent_event
 from engines.core.tool_inputs import file_change_input
 
 
@@ -29,6 +31,97 @@ def _is_codex_sdk_terminal_event(event: InternalEvent) -> bool:
 
 class CodexSDKNotificationMapper:
     """Own item phases, tool updates, usage, and raw SDK passthrough."""
+
+    def _subagent_activity(self, root, state):
+        child_id = str(getattr(root, "agent_thread_id", "") or "")
+        kind = str(self._plain(getattr(root, "kind", "")) or "")
+        statuses = {"started": "running", "interacted": "running",
+                    "interrupted": "stopped", "completed": "completed"}
+        if not child_id or kind not in statuses:
+            return None
+        seen = state.setdefault("subagent_activity_seen", set())
+        key = (getattr(root, "id", ""), child_id, kind)
+        if key in seen:
+            return []
+        seen.add(key)
+        frame = subagent_event(
+            task_id=child_id, status=statuses[kind], stage=kind,
+            description=getattr(root, "agent_path", None),
+            agent_path=getattr(root, "agent_path", None),
+            agent_name=str(getattr(root, "agent_path", "") or "").rstrip("/").rsplit("/", 1)[-1] or None,
+        )
+        activities = state.setdefault("subagent_activities", {})
+        activities.setdefault(child_id, {}).update(frame.data)
+        return [frame]
+
+    async def _read_subagent_result(self, client, child_id, state):
+        """Activity items carry no text; read actual child history asynchronously."""
+        from openai_codex import AsyncThread
+
+        try:
+            response = await asyncio.wait_for(
+                AsyncThread(client, child_id).read(include_turns=True), timeout=10,
+            )
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "Could not read Codex subagent %s history", child_id, exc_info=True,
+            )
+            return []
+        activity = state.get("subagent_activities", {}).get(child_id, {})
+        seen = state.setdefault("subagent_result_seen", set())
+        events = []
+        for turn in getattr(response.thread, "turns", []):
+            for item in getattr(turn, "items", []):
+                root = self._root_of(item)
+                if getattr(root, "type", "") == "userMessage" and not activity.get("prompt"):
+                    texts = []
+                    for part in getattr(root, "content", []):
+                        part = self._root_of(part)
+                        if getattr(part, "type", "") == "text" and getattr(part, "text", ""):
+                            texts.append(part.text)
+                    if texts:
+                        activity["prompt"] = "\n".join(texts)
+                        frame = subagent_event(
+                            task_id=child_id, status=activity.get("status", "running"), stage="updated",
+                            prompt=activity["prompt"], agent_name=activity.get("agent_name"),
+                            agent_path=activity.get("agent_path"),
+                        )
+                        events.append(frame)
+                if getattr(root, "type", "") != "agentMessage":
+                    continue
+                text = getattr(root, "text", "") or ""
+                key = (child_id, getattr(root, "id", ""), text)
+                if not text or key in seen:
+                    continue
+                seen.add(key)
+                frame = subagent_event(
+                    task_id=child_id, status=activity.get("status", "completed"),
+                    stage="progress", description=activity.get("description"),
+                )
+                frame.data["event"] = agent_message_chunk(
+                    text, phase=self._plain(getattr(root, "phase", None)),
+                    source_item_id=getattr(root, "id", None),
+                ).to_dict()
+                if self._plain(getattr(root, "phase", None)) == "final_answer":
+                    frame.data["result"] = text
+                events.append(frame)
+        return events
+
+    async def _enqueue_sdk_notification(self, client, notification, state, queue, reads):
+        for event in self._map_notification(notification, state):
+            await queue.put(event)
+            self._schedule_subagent_read(client, event, state, queue, reads)
+
+    def _schedule_subagent_read(self, client, event, state, queue, reads):
+        if event.type != "subagent" or event.data.get("stage") not in {"started", "completed"}:
+            return
+        child_id = event.data["task_id"]
+
+        async def read_result():
+            for frame in await self._read_subagent_result(client, child_id, state):
+                await queue.put(frame)
+
+        reads.append(asyncio.create_task(read_result()))
 
     @classmethod
     def _goal_data(cls, goal: Any) -> dict[str, Any]:
@@ -161,11 +254,13 @@ class CodexSDKNotificationMapper:
         state.setdefault("unphased", UnphasedMessageClassifier())
         raw_events = self._map_notification_content(notification, state)
         payload = getattr(notification, "payload", None)
+
         root = self._root_of(getattr(payload, "item", None))
         if getattr(root, "type", "") == "collabAgentToolCall":
             raw_events.extend(codex_subagent_events({
                 "receiver_thread_ids": getattr(root, "receiver_thread_ids", []),
                 "agents_states": self._plain(getattr(root, "agents_states", {})),
+                "prompt": getattr(root, "prompt", None),
             }))
         events: list[InternalEvent] = []
         for event in raw_events:
@@ -195,6 +290,13 @@ class CodexSDKNotificationMapper:
         events: list[InternalEvent] = []
         method = self._notification_method(notification)
         payload = getattr(notification, "payload", None)
+
+        if method in {"item/started", "item/completed"}:
+            root = self._root_of(getattr(payload, "item", None))
+            if getattr(root, "type", "") == "subAgentActivity":
+                activity = self._subagent_activity(root, state)
+                if activity is not None:
+                    return activity
 
         if method == "turn/started":
             events.append(InternalEvent(type="status", data={"status": "running"}))

@@ -424,7 +424,7 @@ WorkStep 因此定义一个 SDK 可独立启动的 `standard` preset，基于官
 | `live_message` | `message_id`、`status` | 执行中补充消息的送达状态（`delivered` / `error`）。 |
 | `interaction_request` | `interaction_id`、`method` | 暂停执行并请求用户确认或输入；载荷采用 ACP `session/request_permission` 或 `elicitation/create` 形状。 |
 | `interaction_response` | `interaction_id`、`method`、`response` | 用户响应已送回引擎；与请求一起持久化，供消息历史恢复交互状态。 |
-| `subagent` | `task_id`、`status`、`stage` | 子代理 / 后台任务生命周期（Claude/Qoder SDK `task_started`/`task_progress`/`task_updated`/`task_notification`）；`status` 为语义状态（`running`/`paused`/`completed`/`failed`/`stopped`/`killed`），`stage` 保留原始帧类型，可选 `description`、`summary`、`usage`、`tool_use_id`。独立于 `plan` 展示。 |
+| `subagent` | `task_id`、`status`、`stage` | 所有引擎共用的子代理生命周期。可选 `agent_name`（短名称）、`agent_path`（层级标识，非磁盘路径）、`prompt`（真实委派输入）、`started_at/ended_at`（Unix 毫秒）、`result`（最终输出）；兼容 `description/summary/usage/tool_use_id` 和嵌套 `event`。`status` 为 `pending/running/paused/completed/failed/stopped/killed`，`stage` 保留原生阶段。适配器自行使用原生事件、工具输入、回调或异步子线程查询提取字段；未知字段缺省，不拼造提示词或完成结果。`AcpEngineBase.normalize_event` 的共享 tracker 记录已观察到的生命周期时间并冻结终态，晚到结果不延长耗时。独立于 `plan` 展示，对外统一转换为 `CUSTOM workstep.subagent`。 |
 | `compacted` | `summary`（可选） | 引擎上下文已自动压缩（Claude `compacted`/`compact_boundary`、Codex `thread/compacted`、Qoder `compact_boundary`、Pydantic AI harness `TieredCompaction` 接收）；`summary` 为压缩摘要。 |
 | `engine_state` | `state` | 进程内引擎可序列化的恢复状态；仅支持该能力的引擎产出（Pydantic AI `report_engine_state`）。 |
 | `error` | `message` | 可展示的错误；可附加 `detail`、`stderr`。 |

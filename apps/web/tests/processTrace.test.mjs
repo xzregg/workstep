@@ -133,7 +133,7 @@ test('process stream renders subagent lifecycle items alongside tools', () => {
   assert.match(subagentSource, /task-status-spinner/)
   assert.match(subagentSource, /trace\.subagentRunning/)
   assert.match(subagentSource, /trace\.subagentFailed/)
-  assert.match(subagentSource, /trace\.subagentSummary/)
+  assert.match(subagentSource, /trace\.subagentResult/)
 })
 
 test('subagent markdown uses compact spacing inside the event timeline', () => {

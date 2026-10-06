@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { completionNotice, CompletionDeduplicator, notificationUrl } from '../src/utils/completionNotifications'
-import { notifyCompletion, watchPendingCompletion, unwatchPendingCompletion } from '../src/utils/completionNotifications'
+import { notifyCompletion, watchPendingCompletion, unwatchPendingCompletion, watchAcceptedCompletion } from '../src/utils/completionNotifications'
 import { installDomEnvironment } from './helpers/domEnv'
 
 test('only assistant terminal messages produce completion notices', () => {
@@ -71,5 +71,22 @@ test('Android reply watch is registered before the assistant start event', async
     { type: 'watch', id: 'p:s:pending', projectId: 'p', sessionId: 's', taskId: null, url: '/' },
     { type: 'unwatch', id: 'p:s:pending' },
   ])
+  await window.happyDOM.close()
+})
+
+test('accepted reply replaces the pending watch with its exact message id', async () => {
+  const { window } = installDomEnvironment()
+  const sent: Array<{ type: string; id: string }> = []
+  window.WorkStepAndroid = { postMessage: (raw) => sent.push(JSON.parse(raw)) }
+  watchAcceptedCompletion('p', { sessionId: 's' }, 'accepted-reply')
+  assert.deepEqual(sent.map(({ type, id }) => ({ type, id })), [
+    { type: 'unwatch', id: 'p:s:pending' }, { type: 'watch', id: 'p:s:accepted-reply' },
+  ])
+  const notice = completionNotice({ type: 'TEXT_MESSAGE_END', project_id: 'p', session_id: 's',
+    messageId: 'fast-reply', status: 'succeeded' })!
+  notifyCompletion(notice, '/chat?session=s')
+  sent.length = 0
+  watchAcceptedCompletion('p', { sessionId: 's' }, 'fast-reply')
+  assert.deepEqual(sent.map(({ type, id }) => ({ type, id })), [{ type: 'unwatch', id: 'p:s:pending' }])
   await window.happyDOM.close()
 })
