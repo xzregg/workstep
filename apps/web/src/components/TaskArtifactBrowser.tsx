@@ -194,9 +194,6 @@ export default function TaskArtifactBrowser({
                     >
                       <span className="task-artifact-round-tab-label">
                         {t('taskDetail.artifactRoundTab', { round: round.round })}
-                        {round.artifacts[0]?.round_unchanged_from ? (
-                          <ArtifactUnchangedBadge fromRound={round.artifacts[0].round_unchanged_from} />
-                        ) : null}
                       </span>
                     </button>
                   ))}

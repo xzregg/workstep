@@ -111,7 +111,7 @@ test('shows relative paths so same-named files remain distinguishable', () => {
   assert.match(html, /方案二\/solution\.md/)
 })
 
-test('shows a neutral unchanged marker on both the round tab and copied file', () => {
+test('shows the unchanged marker only on the copied file while round tabs show just the round', () => {
   const html = renderToStaticMarkup(createElement(
     I18nProvider, null,
     createElement(TaskArtifactBrowser, {
@@ -124,8 +124,12 @@ test('shows a neutral unchanged marker on both the round tab and copied file', (
       onOpenArtifact: () => {},
     }),
   ))
-  assert.match(html, /task-artifact-round-tab-label[\s\S]*同第1轮/)
+  const roundTabs = html.match(/<button[^>]*role="tab"[\s\S]*?<\/button>/g) || []
+  assert.equal(roundTabs.length, 1)
+  assert.match(roundTabs[0], /task-artifact-round-tab-label">2 轮<\/span>/)
+  assert.doesNotMatch(roundTabs[0], /同第1轮/)
   assert.match(html, /task-artifact-file-row[\s\S]*同第1轮/)
+  assert.doesNotMatch(html, /<span aria-hidden="true">=<\/span>/)
 })
 
 test('stacks step sections without a left sidebar and keeps compact visible round tabs', () => {
