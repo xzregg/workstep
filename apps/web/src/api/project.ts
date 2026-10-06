@@ -264,6 +264,10 @@ export interface WorkflowDetail {
 }
 
 export const workflowApi = {
+  updateStepPrompt: (id: string, projectId: string, stepKey: string, prompt: string) =>
+    request<{ steps: Project['steps'] }>(`/workflow/${encodeURIComponent(id)}/step/${encodeURIComponent(stepKey)}/prompt?project_id=${encodeURIComponent(projectId)}`, {
+      method: 'PATCH', body: JSON.stringify({ prompt }),
+    }),
   list: (projectId: string) =>
     request<{ workflows: WorkflowSummary[] }>(`/workflow/list?project_id=${encodeURIComponent(projectId)}`),
   get: (id: string, projectId: string) =>

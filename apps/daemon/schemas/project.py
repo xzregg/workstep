@@ -82,3 +82,7 @@ class UpdateWorkflowRequest(BaseSchema):
         if v:
             _reject_whitespace(v)
         return v
+
+
+class UpdateStepPromptRequest(BaseSchema):
+    prompt: str

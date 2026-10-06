@@ -3,10 +3,11 @@
 import asyncio
 import json
 import logging
+from copy import deepcopy
 
 from fastapi import APIRouter, Body, HTTPException, Query
 
-from schemas.project import CreateWorkflowRequest, UpdateWorkflowRequest
+from schemas.project import CreateWorkflowRequest, UpdateWorkflowRequest, UpdateStepPromptRequest
 from engines.core.registry import list_all_engines
 from services import config as config_service
 from services.config import resolve_execution_engine
@@ -200,6 +201,35 @@ async def update_workflow(workflow_id: str, req: UpdateWorkflowRequest, pid: str
         if wf is None:
             raise HTTPException(status_code=404, detail="Workflow not found")
         return wf
+
+    return await _run_db(pid, update)
+
+
+@router.patch("/{workflow_id}/step/{step_key}/prompt")
+async def update_step_prompt(
+    workflow_id: str, step_key: str, req: UpdateStepPromptRequest,
+    pid: str = Query(..., alias="project_id"),
+):
+    """Update only one prompt against the latest persisted workflow."""
+    def update(proj):
+        with proj.db.atomic():
+            workflow = proj.workflow_by_id(workflow_id)
+            if workflow is None:
+                raise HTTPException(status_code=404, detail="Workflow not found")
+            steps = deepcopy(workflow["steps"])
+            is_nodes = bool(steps.get("nodes"))
+            items = steps.get("nodes") if is_nodes else steps.get("steps", [])
+            node = next((item for item in items if str(
+                (item.get("type") or item.get("key") or item.get("id")) if is_nodes
+                else (item.get("key") or item.get("id") or item.get("type"))
+            ) == step_key), None)
+            if node is None:
+                raise HTTPException(status_code=404, detail="Step not found")
+            node["prompt"] = req.prompt
+            updated = project_manager.update_workflow(proj, workflow_id, steps=steps)
+            if updated is None:
+                raise HTTPException(status_code=404, detail="Workflow not found")
+            return {"steps": updated["steps"]}
 
     return await _run_db(pid, update)
 

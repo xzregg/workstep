@@ -37,6 +37,8 @@ _TASK_CHAT = re.compile(r"/api/task/[A-Za-z0-9_-]{1,128}/chat\Z")
 _TASK_STEP_MESSAGE = re.compile(
     r"/api/task/[A-Za-z0-9_-]{1,128}/step/[A-Za-z0-9_-]{1,128}/message\Z")
 _WORKFLOW_DETAIL = re.compile(r"/api/workflow/[A-Za-z0-9_-]{1,128}\Z")
+_WORKFLOW_STEP_PROMPT = re.compile(
+    r"/api/workflow/[A-Za-z0-9_-]{1,128}/step/[A-Za-z0-9_-]{1,128}/prompt\Z")
 _WORKFLOW_ACTION = re.compile(
     r"/api/workflow/[A-Za-z0-9_-]{1,128}/(?:actions|restore)\Z")
 _CHAT_SESSION_DETAIL = re.compile(r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}\Z")
@@ -86,6 +88,8 @@ def project_http_route_allowed(method: str, path: str,
                 "/api/chat-sessions/system-prompt",
             )
         if method == "PATCH":
+            if _WORKFLOW_STEP_PROMPT.fullmatch(path):
+                return True
             if (_TASK_DETAIL.fullmatch(path) or _TASK_METADATA_UPDATE.fullmatch(path)
                     or _TASK_STEP_CONFIG.fullmatch(path)):
                 return True
