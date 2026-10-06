@@ -1,5 +1,9 @@
 import importlib.util
+import json
+import os
 from pathlib import Path
+import shutil
+import subprocess
 import sys
 
 import pytest
@@ -13,6 +17,20 @@ SERVER_SPEC.loader.exec_module(server)
 bind_server_socket = server.bind_server_socket
 parse_args = server.parse_args
 ready_line = server.ready_line
+
+
+@pytest.fixture(autouse=True)
+def isolate_runtime_environment(monkeypatch):
+    for name in (
+        "PATH", "PYTHONPATH", "NPM_CONFIG_PREFIX", "UV_INSTALL_DIR",
+        "UV_PYTHON_INSTALL_DIR", "WORKSTEP_ENGINE_PACKAGE_DIR",
+        "WORKSTEP_DAEMON_DIR", "WORKSTEP_CLI_PYTHON", "WORKSTEP_DAEMON_URL",
+    ):
+        if name in os.environ:
+            monkeypatch.setenv(name, os.environ[name])
+        else:
+            monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(sys, "path", list(sys.path))
 
 
 def test_default_port_requests_an_available_ephemeral_port():
@@ -85,3 +103,102 @@ def test_engine_packages_use_a_writable_user_directory(tmp_path, monkeypatch):
     assert resolved == package_dir
     assert package_dir.is_dir()
     assert sys.path[0] == str(package_dir)
+
+
+def test_desktop_runtime_uses_config_home_and_exposes_packages_to_child_python(tmp_path, monkeypatch):
+    config = tmp_path / "home with spaces" / ".workstep"
+    monkeypatch.setenv("WORKSTEP_CONFIG_DIR", str(config))
+    monkeypatch.delenv("WORKSTEP_ENGINE_PACKAGE_DIR", raising=False)
+    monkeypatch.setenv("NPM_CONFIG_PREFIX", str(tmp_path / "host-global"))
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    server.prepare_runtime_environment()
+
+    runtime = config / "runtime"
+    assert os.environ["NPM_CONFIG_PREFIX"] == str(runtime / "npm")
+    assert os.environ["UV_INSTALL_DIR"] == str(runtime / "base/bin")
+    assert os.environ["UV_PYTHON_INSTALL_DIR"] == str(runtime / "base/python")
+    package_dir = runtime / "python-packages"
+    (package_dir / "workstep_runtime_fixture.py").write_text("VALUE = 42\n")
+    result = subprocess.run(
+        [sys.executable, "-c", "import workstep_runtime_fixture; assert workstep_runtime_fixture.VALUE == 42"],
+        capture_output=True, text=True, timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_desktop_runtime_defaults_to_home_and_finds_managed_cli_first(tmp_path, monkeypatch):
+    monkeypatch.setattr(server.Path, "home", lambda: tmp_path)
+    monkeypatch.delenv("WORKSTEP_CONFIG_DIR", raising=False)
+    monkeypatch.delenv("WORKSTEP_ENGINE_PACKAGE_DIR", raising=False)
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    original_path = os.environ.get("PATH", "")
+    server.prepare_runtime_environment()
+    server.prepare_runtime_environment()
+    prefix = tmp_path / ".workstep/runtime/npm"
+    cli_dir = prefix if os.name == "nt" else prefix / "bin"
+    cli = cli_dir / ("workstep-fixture.cmd" if os.name == "nt" else "workstep-fixture")
+    cli.write_text("@echo fixture\n" if os.name == "nt" else "#!/bin/sh\necho fixture\n")
+    cli.chmod(0o755)
+    assert shutil.which(cli.name) == str(cli)
+    assert os.environ["PATH"].split(os.pathsep).count(str(cli_dir)) == 1
+    assert os.environ["PATH"].endswith(original_path)
+
+
+def test_desktop_runtime_preserves_custom_python_package_directory(tmp_path, monkeypatch):
+    monkeypatch.setenv("WORKSTEP_CONFIG_DIR", str(tmp_path / "config"))
+    package_dir = tmp_path / "custom-packages"
+    monkeypatch.setenv("WORKSTEP_ENGINE_PACKAGE_DIR", str(package_dir))
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    server.prepare_runtime_environment()
+    assert sys.path[0] == str(package_dir)
+    assert os.environ["PYTHONPATH"].split(os.pathsep)[0] == str(package_dir)
+
+
+def test_desktop_local_npm_install_update_and_restart_use_managed_directory(tmp_path, monkeypatch):
+    npm = shutil.which("npm")
+    if npm is None:
+        pytest.skip("npm is needed for the offline CLI install check")
+    monkeypatch.setenv("WORKSTEP_CONFIG_DIR", str(tmp_path / "config"))
+    monkeypatch.delenv("WORKSTEP_ENGINE_PACKAGE_DIR", raising=False)
+    monkeypatch.setenv("NPM_CONFIG_CACHE", str(tmp_path / "npm-cache"))
+    server.prepare_runtime_environment()
+    npm = shutil.which("npm")
+    package = tmp_path / "package"
+    package.mkdir()
+    for version in ("1.0.0", "2.0.0"):
+        (package / "package.json").write_text(json.dumps({
+            "name": "workstep-runtime-fixture", "version": version,
+            "bin": {"workstep-runtime-fixture": "cli.js"},
+        }))
+        (package / "cli.js").write_text(f'#!/usr/bin/env node\nconsole.log("{version}");\n')
+        result = subprocess.run(
+            [npm, "install", "-g", "--offline", "--ignore-scripts", "--install-links", str(package)],
+            capture_output=True, text=True, timeout=30, shell=os.name == "nt",
+        )
+        assert result.returncode == 0, result.stderr
+        # Repeat initialization as at the next launch, without reinstalling.
+        server.prepare_runtime_environment()
+        cli = shutil.which("workstep-runtime-fixture")
+        assert cli is not None
+        assert Path(cli).is_relative_to(tmp_path / "config/runtime/npm")
+        result = subprocess.run([cli], capture_output=True, text=True, timeout=10, shell=os.name == "nt")
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == version
+
+
+def test_desktop_main_prepares_runtime_before_loading_daemon(tmp_path, monkeypatch):
+    monkeypatch.setenv("WORKSTEP_DESKTOP_RUNTIME", "1")
+    monkeypatch.setenv("WORKSTEP_CONFIG_DIR", str(tmp_path))
+    monkeypatch.delenv("WORKSTEP_ENGINE_PACKAGE_DIR", raising=False)
+
+    def load_app(host, port):
+        assert os.environ["NPM_CONFIG_PREFIX"] == str(tmp_path / "runtime/npm")
+        assert sys.path[0] == str(tmp_path / "runtime/python-packages")
+        return object()
+
+    async def serve(app, sock, port):
+        return 0
+
+    monkeypatch.setattr(server, "_load_app", load_app)
+    monkeypatch.setattr(server, "_serve", serve)
+    assert server.main([]) == 0

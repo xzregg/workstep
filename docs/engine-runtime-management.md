@@ -24,6 +24,8 @@
 
 安装使用下载后的本地 wheel/tarball，确保主包版本固定。Python SDK 按需安装到 `~/.workstep/runtime/python-packages`（可用 `WORKSTEP_ENGINE_PACKAGE_DIR` 覆盖），不进入 uv 管理的虚拟环境，也不写入 `uv.lock`。安装时先复制共享包目录到临时目录，通过 pip 或 uv 安装并清理被替换的旧版本元数据；临时目录版本校验通过后才切换正式目录，安装失败保留原目录。
 
+桌面非沙箱模式由 `apps/desktop/backend/server.py` 在启动后台前统一安装环境：npm CLI 安装到 `$WORKSTEP_CONFIG_DIR/runtime/npm`（默认 `~/.workstep/runtime/npm`），uv 解释器下载到 `runtime/base/python`，uv 安装目标为 `runtime/base/bin`。这些 CLI 优先进入 PATH，Python 包目录同时进入后台 `sys.path` 与子进程 `PYTHONPATH`。Windows 使用 npm prefix 本身作为命令目录，macOS/Linux 使用其 `bin`。宿主机已有引擎继续作为回退，不自动迁移；daemon 自带 Python 随桌面安装包更新。容器采用同样的 Home 相对安装结构。
+
 安装结束会检查实际包版本/CLI 版本与目标是否一致，并清除引擎测试通过状态。SDK 已导入的模块不会热重载：需要重启后台服务、重新扫描和测试后使用新版本。
 
 操作在 daemon 后台运行，关闭面板或刷新页面不会取消。进度查询失败时前端自动重试，避免误报失败后立即启动第二次安装。所有受管理安装和旧安装接口共享进程内互斥，忙时返回 409。
