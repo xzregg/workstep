@@ -2568,7 +2568,8 @@ async def test_coordinator_inherits_global_thinking_effort(
 
 
 @pytest.mark.anyio
-async def test_coordinator_routes_message_images_to_engine(api_context, monkeypatch):
+@pytest.mark.parametrize("multimodal", [True, False])
+async def test_coordinator_routes_message_images_to_engine(api_context, monkeypatch, multimodal):
     from engines.core.registry import ENGINE_REGISTRY
     import agent_assistants.coordinator as coordinator_service
 
@@ -2588,7 +2589,7 @@ async def test_coordinator_routes_message_images_to_engine(api_context, monkeypa
             "provider_id": None,
             "engine_id": "claude",
             "model": "vision-model",
-            "supports_multimodal": True,
+            "supports_multimodal": multimodal,
         }],
     })
     project_id, task_id = await _create_task(client, tmp_path)
@@ -2625,6 +2626,7 @@ async def test_coordinator_routes_message_images_to_engine(api_context, monkeypa
     assert images[0].description == "运行截图"
     assert "coordinator-project/.workstep/uploads/shot.png" in call["prompt"]
 
+    assert "Attached image(s)" not in call["prompt"]
 
 @pytest.mark.anyio
 async def test_coordinator_ignores_images_outside_uploads(api_context, monkeypatch):

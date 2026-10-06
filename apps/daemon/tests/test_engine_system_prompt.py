@@ -96,7 +96,8 @@ async def test_compaction_does_not_receive_system_instruction():
     ("claude_agent_sdk", "claude_agent_sdk", "claude_code"),
     ("qoder_sdk", "qoder_agent_sdk", "qodercli"),
 ])
-async def test_sdk_appends_to_native_preset(monkeypatch, tmp_path, engine_name, package, preset, session_id):
+@pytest.mark.parametrize("with_image", [False, True])
+async def test_sdk_appends_to_native_preset(monkeypatch, tmp_path, engine_name, package, preset, session_id, with_image):
     import asyncio
     import importlib
     import sys
@@ -145,12 +146,23 @@ async def test_sdk_appends_to_native_preset(monkeypatch, tmp_path, engine_name, 
     })
     monkeypatch.setattr("services.skill_runtime.prepare_claude_plugin", lambda _skills: (tmp_path, []))
     monkeypatch.setattr("services.skill_runtime.prepare_qoder_plugin", lambda _skills: (tmp_path, []))
+    from engines.core.schema import EngineImage
+
+    images = [EngineImage(url="data:image/png;base64,cGljdHVyZQ==")] if with_image else None
     events = [event async for event in engine.spawn_with_retry(
         prompt="question", cwd=str(tmp_path), system_prompt="channel role",
-        live_message_queue=asyncio.Queue(), session_id=session_id, capture_prompt_input=True,
+        live_message_queue=asyncio.Queue(), session_id=session_id, capture_prompt_input=True, images=images,
     )]
     assert not [event for event in events if event.type == "error"]
-    assert captured["prompt"] == "question"
+    if with_image and preset == "claude_code":
+        assert captured["prompt"] == [
+            {"type": "text", "text": "question"},
+            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "cGljdHVyZQ=="}},
+        ]
+    elif with_image:
+        assert "Attached image(s)" in captured["prompt"]
+    else:
+        assert captured["prompt"] == "question"
     assert next(e.data for e in events if e.type == "prompt_input")["system_prompt"] == "channel role"
     assert getattr(captured["options"], "resume", None) == session_id
     assert captured["options"].system_prompt == {
@@ -159,7 +171,9 @@ async def test_sdk_appends_to_native_preset(monkeypatch, tmp_path, engine_name, 
 
 
 @pytest.mark.parametrize("session_id, restored", [(None, False), ("existing", False), ("existing", True)])
-async def test_codex_uses_developer_instructions_and_preserves_base(monkeypatch, tmp_path, session_id, restored):
+@pytest.mark.parametrize("entry", ["spawn_with_retry", "spawn_coordinator_with_retry"])
+@pytest.mark.parametrize("with_image", [False, True])
+async def test_codex_uses_developer_instructions_and_preserves_base(monkeypatch, tmp_path, session_id, restored, entry, with_image):
     import sys
     from types import ModuleType, SimpleNamespace
     from engines.codex_sdk import CodexSDKEngine
@@ -206,6 +220,18 @@ async def test_codex_uses_developer_instructions_and_preserves_base(monkeypatch,
             pass
 
     sdk = ModuleType("openai_codex")
+    from dataclasses import dataclass
+
+    @dataclass
+    class TextInput:
+        text: str
+
+    @dataclass
+    class LocalImageInput:
+        path: str
+
+    sdk.TextInput = TextInput
+    sdk.LocalImageInput = LocalImageInput
     sdk.AsyncCodex = Client
     sdk.CodexConfig = sdk.AsyncTurnHandle = SimpleNamespace
     sdk.ApprovalMode = lambda value: value
@@ -221,13 +247,23 @@ async def test_codex_uses_developer_instructions_and_preserves_base(monkeypatch,
         "sandbox": "workspace-write", "approval_mode": "", "model_reasoning_effort": "",
         "custom_config": 'developer_instructions="existing rules"',
     })
-    events = [event async for event in engine.spawn_with_retry(
+    from engines.core.schema import EngineImage
+
+    images = [EngineImage(path=str(tmp_path / "shot.png"), description="截图")] if with_image else None
+    events = [event async for event in getattr(engine, entry)(
         prompt="question", cwd=str(tmp_path), session_id=session_id, system_prompt="channel role",
-        capture_prompt_input=True,
+        capture_prompt_input=True, images=images,
     )]
     assert not [event for event in events if event.type == "error"]
-    assert captured["prompt"] == "question"
+    if with_image:
+        assert captured["prompt"] == [
+            TextInput("question"), LocalImageInput(str(tmp_path / "shot.png")),
+        ]
+    else:
+        assert captured["prompt"] == "question"
     snapshot = next(e.data for e in events if e.type == "prompt_input")
+    assert snapshot["prompt"] == "question"
+    assert snapshot["images"] == ([str(tmp_path / "shot.png")] if with_image else [])
     if restored:
         assert not snapshot["system_prompt"]
         assert "developer_instructions" not in captured["kwargs"]

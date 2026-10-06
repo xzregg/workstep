@@ -11,6 +11,7 @@ import time
 import uuid
 from typing import Any, AsyncIterator
 
+from engines.core.image_input import render_image_prompt
 from engines.core.acp_base import AcpEngineBase
 from engines.qoder_sdk_events import QoderSDKEventMapper
 from engines.core.packages import RuntimePackage
@@ -324,6 +325,7 @@ class QoderSDKEngine(QoderSDKEventMapper, AcpEngineBase):
         system_prompt: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
         self.require_native_credentials_allowed()
+        prompt = await asyncio.to_thread(render_image_prompt, prompt, images)
         if not self._sdk_available():
             yield InternalEvent(
                 type="error", data={"message": "qoder-agent-sdk 未安装"}

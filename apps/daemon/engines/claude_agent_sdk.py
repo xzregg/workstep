@@ -9,6 +9,7 @@ import shutil
 import uuid
 from typing import Any, AsyncIterator
 
+from engines.claude_image_input import build_claude_user_content
 from engines.core.acp_base import AcpEngineBase
 from engines.claude_agent_sdk_events import ClaudeAgentSDKEventMapper
 from engines.core.packages import RuntimePackage
@@ -310,8 +311,8 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
         config_overrides: dict | None = None,
         system_prompt: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
-        prompt, binary = await asyncio.to_thread(
-            lambda: (self.render_image_prompt(prompt, images), self.resolve_binary())
+        user_content, binary = await asyncio.to_thread(
+            lambda: (build_claude_user_content(prompt, images), self.resolve_binary())
         )
         if not binary:
             yield InternalEvent(
@@ -459,7 +460,7 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
         end_prompt = asyncio.Event()
         input_closed = asyncio.Event()
 
-        def _user_message(content: str) -> dict:
+        def _user_message(content: str | list[dict]) -> dict:
             return {
                 "type": "user",
                 "message": {"role": "user", "content": content},
@@ -475,7 +476,7 @@ class ClaudeAgentSDKEngine(ClaudeAgentSDKEventMapper, AcpEngineBase):
             the SDK emits its stream-end frame (deterministic end, not a
             timeout).
             """
-            yield _user_message(prompt)
+            yield _user_message(user_content)
             if live_message_queue is None:
                 return
             while True:

@@ -62,27 +62,6 @@ async def run_engine_turn(
         raise RuntimeError(f"{error_prefix} is unavailable: {engine_id}")
     if permission_mode:
         await engine.set_permission_mode(permission_mode)
-    if images:
-        capabilities = getattr(engine, "capabilities", None)
-        engine_accepts_images = bool(
-            getattr(capabilities, "supports_vision", False)
-        )
-        supports_multimodal = getattr(
-            settings_store,
-            "model_supports_multimodal",
-            None,
-        )
-        provider_id = str((config_overrides or {}).get("provider_id") or "")
-        model_accepts_images = (
-            await asyncio.to_thread(
-                supports_multimodal, engine_id, model or "", provider_id
-            )
-            if callable(supports_multimodal)
-            else engine_accepts_images
-        )
-        if not (engine_accepts_images and model_accepts_images):
-            prompt = engine.render_image_prompt(prompt, images)
-            images = None
     supports_native_plan_mode = bool(
         getattr(getattr(engine, "capabilities", None), "supports_plan_mode", False)
     )

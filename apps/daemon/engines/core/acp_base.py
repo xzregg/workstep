@@ -284,9 +284,6 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         if capture_prompt_input:
             # Assistant-owned rules are already supplied; do not add a second role.
             kwargs["_coordinator_prepared"] = True
-            if kwargs.get("images") and not self.capabilities.supports_vision:
-                kwargs["prompt"] = await asyncio.to_thread(self.render_image_prompt, kwargs["prompt"], kwargs["images"])
-                kwargs["images"] = None
         async for event in self._stream_with_retry(
             self.spawn_coordinator,
             system_prompt=system_prompt,
@@ -1120,10 +1117,6 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
             prompt if _coordinator_prepared or (session_id and self.supports_resume)
             else self._coordinator_prompt(prompt, workstep_tools=workstep_tools)
         )
-        if images and not self.capabilities.supports_vision:
-            guarded_prompt = await asyncio.to_thread(
-                self.render_image_prompt, guarded_prompt, images
-            )
         spawn_kwargs = self._prepare_system_prompt(
             {"prompt": guarded_prompt, "session_id": session_id}, system_prompt,
         )
@@ -1145,7 +1138,7 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
             cwd=cwd,
             model=model,
             session_id=session_id,
-            images=images if self.capabilities.supports_vision else None,
+            images=images,
             **spawn_kwargs,
         ):
             yield event
@@ -1171,24 +1164,6 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
             "instead.\n\n"
             f"{prompt}"
         )
-
-    @staticmethod
-    def render_image_prompt(
-        prompt: str,
-        images: list[EngineImage] | None,
-    ) -> str:
-        """Append attached images as markdown references to a text prompt.
-
-        Vision-capable engines embed the references natively; engines without
-        vision keep the paths visible to the model as a best-effort fallback.
-        """
-        if not images:
-            return prompt
-        lines = [prompt, "", "Attached image(s); analyze them if possible:"]
-        for image in images:
-            alt = image.description or "attached image"
-            lines.append(f"![{alt}]({image.reference})")
-        return "\n".join(lines)
 
     # --- Interaction（ACP 语义） ---
 

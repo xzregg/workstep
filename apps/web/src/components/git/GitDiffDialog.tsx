@@ -204,6 +204,7 @@ export default function GitDiffDialog({ id, files, path, comparison, onSelect, o
     const lineNumber = <span className="git-line-number">{line?.number}</span>
     const source = <code>{line?.text ?? ' '}</code>
     return <div className={`git-code-cell ${line?.changed ? side === 'before' ? 'removed' : 'added' : ''}`} onContextMenu={event => {
+      if (window.matchMedia('(max-width: 1023px)').matches) return
       event.preventDefault()
       const width = 188
       const height = 42

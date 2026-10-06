@@ -9,6 +9,7 @@ import shutil
 from pathlib import Path
 from typing import AsyncIterator
 
+from engines.claude_image_input import build_claude_user_content
 from engines.core.acp_base import AcpEngineBase
 from engines.claude_code_events import ClaudeCodeEventMapper
 from engines.core.packages import RuntimePackage
@@ -346,8 +347,8 @@ class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
         mode: stdin stays open and queued ``(message_id, content)`` pairs are
         injected as ordinary user messages while the turn is still running.
         """
-        prompt, binary = await asyncio.to_thread(
-            lambda: (self.render_image_prompt(prompt, images), self.resolve_binary())
+        user_content, binary = await asyncio.to_thread(
+            lambda: (build_claude_user_content(prompt, images), self.resolve_binary())
         )
         if not binary:
             yield InternalEvent(type="error", data={"message": "claude binary not found"})
@@ -374,6 +375,7 @@ class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
             return
 
         self._live_mode = live_message_queue is not None
+        stream_input = self._live_mode or bool(images)
         self._cwd = cwd
         self._permission_details.clear()
         self._session_allow.clear()
@@ -402,7 +404,7 @@ class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
             model=model,
             session_id=session_id,
             add_dirs=add_dirs,
-            live_mode=self._live_mode,
+            live_mode=stream_input,
             plugin_dir=str(plugin_dir),
             skill_settings=skill_settings,
         )
@@ -452,10 +454,10 @@ class ClaudeCodeEngine(ClaudeCodeEventMapper, AcpEngineBase):
         self._running = True
 
         # Send prompt via stdin. Live mode keeps stdin open for later messages.
-        if self._live_mode:
+        if stream_input:
             initial = {
                 "type": "user",
-                "message": {"role": "user", "content": prompt},
+                "message": {"role": "user", "content": user_content},
             }
             self._process.stdin.write(
                 (json.dumps(initial, ensure_ascii=False) + "\n").encode()

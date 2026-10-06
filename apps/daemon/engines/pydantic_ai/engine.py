@@ -10,6 +10,7 @@ from pathlib import Path
 import uuid
 from typing import Any, AsyncIterator, Awaitable, Callable
 
+from engines.core.image_input import render_image_prompt
 from engines.core.acp_base import AcpEngineBase
 from engines.pydantic_ai.harness_runtime import PydanticAIHarnessRuntime
 from engines.core.base import EngineModel, resolve_thinking_effort
@@ -952,13 +953,7 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
             return prompt
         from pydantic_ai.messages import ImageUrl
 
-        multimodal_note = (
-            "[Multimodal input: Actual image data is attached to this message. "
-            "Inspect the attached image directly; do not treat the Markdown "
-            "file path as the only image input, use file-reading tools, or "
-            "claim that only a path was provided.]"
-        )
-        parts = [f"{prompt}\n\n{multimodal_note}"]
+        parts = [prompt]
         for image in images:
             parts.append(ImageUrl(url=image.to_data_url()))
         return parts
@@ -1135,6 +1130,19 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
                 data={"message": "Pydantic AI 尚未配置供应商和模型"},
             )
             return
+
+        supports_multimodal = getattr(config_store, "model_supports_multimodal", None)
+        model_accepts_images = (
+            await asyncio.to_thread(
+                supports_multimodal, self.ENGINE_ID, model_name,
+                provider_runtime.provider_id,
+            )
+            if callable(supports_multimodal)
+            else self.supports_vision
+        )
+        if images and not model_accepts_images:
+            prompt = await asyncio.to_thread(render_image_prompt, prompt, images)
+            images = None
 
         self._running = True
         # 进程内 Agent 没有 CLI 会话概念：session_id 作为会话标识（供任务记录
