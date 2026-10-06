@@ -8,6 +8,7 @@ import shutil
 import uuid
 from typing import AsyncIterator
 
+from engines.core.image_input import render_image_prompt
 from engines.core.acp_base import AcpEngineBase
 from engines.core.schema import EngineImage
 from engines.core.events import (
@@ -92,7 +93,7 @@ class OpenClawEngine(AcpEngineBase):
         """
         self.require_native_credentials_allowed()
         prompt, binary = await asyncio.to_thread(
-            lambda: (self.render_image_prompt(prompt, images), self.resolve_binary())
+            lambda: (render_image_prompt(prompt, images), self.resolve_binary())
         )
         if not binary:
             yield InternalEvent(type="error", data={"message": "openclaw binary not found"})

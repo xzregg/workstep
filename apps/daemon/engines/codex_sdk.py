@@ -13,6 +13,7 @@ from typing import Any, AsyncIterator
 
 from engines.codex_compaction import _find_rollout_path, compact_codex_thread
 from engines.codex_sdk_events import CodexSDKNotificationMapper
+from engines.codex_image_input import codex_sdk_input, codex_wire_input
 from engines.core.acp_base import AcpEngineBase
 from engines.core.base import (
     EngineInstallResult,
@@ -432,11 +433,9 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
     ) -> AsyncIterator[InternalEvent]:
         # Codex SDK resumes context by native thread id.  Keep the common
         # coordinator signature, but do not round-trip host-managed history.
-        guarded_prompt = prompt if _coordinator_prepared else await asyncio.to_thread(
-            self.render_image_prompt,
-            prompt if session_id and self.supports_resume
-            else self._coordinator_prompt(prompt, workstep_tools=workstep_tools),
-            images,
+        guarded_prompt = (
+            prompt if _coordinator_prepared or (session_id and self.supports_resume)
+            else self._coordinator_prompt(prompt, workstep_tools=workstep_tools)
         )
         async for event in self._spawn_with_sandbox(
             prompt=guarded_prompt,
@@ -692,10 +691,11 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                         await self._run_goal_command(
                             client, thread, goal_action, prompt, state, event_queue,
                             model=model, reasoning_effort=reasoning_effort,
+                            **({"initial_input": codex_wire_input(prompt, images)} if images else {}),
                         )
                         return
                     if plan_mode is None:
-                        turn = await thread.turn(prompt, model=model or None)
+                        turn = await thread.turn(codex_sdk_input(prompt, images), model=model or None)
                     else:
                         turn = await self._start_collaboration_turn(
                             client,
@@ -705,6 +705,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                             reasoning_effort=reasoning_effort,
                             plan_mode=plan_mode,
                             turn_handle_type=AsyncTurnHandle,
+                            images=images,
                         )
                     await stream_turn(turn)
                     if (
@@ -770,6 +771,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         *,
         model: str | None = None,
         reasoning_effort: str | None = None,
+        initial_input: str | list[dict] | None = None,
     ) -> None:
         """Run one native goal operation through the shared engine event stream."""
         from openai_codex.generated.v2_all import ThreadGoalGetResponse, ThreadGoalStatus
@@ -806,7 +808,8 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                 # attach the goal to that running turn. Later turns remain native.
                 await raw.thread_goal_clear(thread.id)
                 goal_state.activate_turn_routing()
-                started = await raw.turn_start(thread.id, objective, params={
+                started = await raw.turn_start(
+                    thread.id, initial_input if initial_input is not None else objective, params={
                     "collaborationMode": {
                         "mode": "default",
                         "settings": {
@@ -881,6 +884,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         reasoning_effort: str | None,
         plan_mode: bool,
         turn_handle_type: Any,
+        images: list[EngineImage] | None = None,
     ) -> Any:
         """Start a native Codex collaboration-mode turn.
 
@@ -905,7 +909,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             public_parameters = {}
         if "collaboration_mode" in public_parameters:
             return await thread.turn(
-                prompt,
+                codex_sdk_input(prompt, images),
                 model=model,
                 collaboration_mode=mode,
             )
@@ -918,7 +922,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         if callable(start_with_subscription):
             started, subscription = await start_with_subscription(
                 thread.id,
-                prompt,
+                codex_wire_input(prompt, images),
                 params=params,
                 for_handle=True,
             )
@@ -932,7 +936,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         start_turn = getattr(async_client, "turn_start", None)
         if not callable(start_turn):
             raise RuntimeError("当前 openai-codex SDK 不支持原生计划模式")
-        started = await start_turn(thread.id, prompt, params=params)
+        started = await start_turn(thread.id, codex_wire_input(prompt, images), params=params)
         return turn_handle_type(client, thread.id, str(started.turn.id))
 
     @staticmethod
@@ -1069,6 +1073,10 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
 
     async def inject_response(self, tool_use_id: str, content: str) -> None:
         logger.warning("inject_response is not supported by CodexSDKEngine")
+
+    @property
+    def supports_vision(self) -> bool:
+        return True
 
     @property
     def supports_resume(self) -> bool:

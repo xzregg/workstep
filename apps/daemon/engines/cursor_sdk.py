@@ -13,6 +13,7 @@ import logging
 import os
 from typing import AsyncIterator, ClassVar
 
+from engines.core.image_input import render_image_prompt
 from engines.core.acp_base import AcpEngineBase
 from engines.core.base import ProviderRuntimeConfig
 from engines.core.events import InternalEvent
@@ -186,6 +187,7 @@ class CursorSdkEngine(AcpEngineBase):
         thinking_effort: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
         self.require_native_credentials_allowed()
+        prompt = await asyncio.to_thread(render_image_prompt, prompt, images)
         api_key = await asyncio.to_thread(self._api_key)
         if not api_key:
             yield InternalEvent(

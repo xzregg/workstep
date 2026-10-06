@@ -89,7 +89,8 @@ class DirectImageEngine(PromptCapturingEngine):
 
 
 @pytest.mark.anyio
-async def test_base_spawn_coordinator_injects_image_refs_into_prompt():
+@pytest.mark.parametrize("capture", [False, True])
+async def test_base_spawn_coordinator_passes_images_without_injection(capture):
     PromptCapturingEngine.calls.clear()
     PromptCapturingEngine.image_calls.clear()
     engine = PromptCapturingEngine()
@@ -97,14 +98,15 @@ async def test_base_spawn_coordinator_injects_image_refs_into_prompt():
         EngineImage(path="/project/.workstep/uploads/a.png", description="截图A"),
         EngineImage(url="https://example.com/b.png"),
     ]
-    async for _ in engine.spawn_coordinator("原问题", cwd="/project", images=images):
+    async for _ in engine.spawn_coordinator_with_retry(
+        prompt="原问题", cwd="/project", images=images, capture_prompt_input=capture
+    ):
         pass
     prompt = PromptCapturingEngine.calls[-1]
     assert "原问题" in prompt
-    assert "/project/.workstep/uploads/a.png" in prompt
-    assert "截图A" in prompt
-    assert "https://example.com/b.png" in prompt
-    assert PromptCapturingEngine.image_calls[-1] is None
+    assert "Attached image" not in prompt
+    assert "/project/.workstep/uploads/a.png" not in prompt
+    assert PromptCapturingEngine.image_calls[-1] == images
 
 
 @pytest.mark.anyio
@@ -122,7 +124,7 @@ async def test_base_spawn_coordinator_without_images_keeps_prompt_clean():
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("multimodal", [True, False])
-async def test_assistant_sends_images_directly_only_for_multimodal_model(
+async def test_assistant_leaves_image_handling_to_engine(
     monkeypatch,
     multimodal,
 ):
@@ -150,8 +152,8 @@ async def test_assistant_sends_images_directly_only_for_multimodal_model(
         images=[image],
     )
 
-    assert DirectImageEngine.image_calls[-1] == ([image] if multimodal else None)
-    assert ("/project/.workstep/uploads/a.png" in DirectImageEngine.calls[-1]) is not multimodal
+    assert DirectImageEngine.image_calls[-1] == [image]
+    assert DirectImageEngine.calls[-1] == "看图说话"
 
 
 class SimpleStore:
@@ -170,6 +172,9 @@ class SimpleStore:
         }
         self.pydantic_config = {"provider_id": "prov_1", "model": "m"}
 
+    def model_supports_multimodal(self, engine_id, model, provider_id=""):
+        return True
+
     def get_pydantic_ai_engine_config(self):
         return dict(self.pydantic_config)
 
@@ -180,7 +185,8 @@ class SimpleStore:
 
 
 @pytest.mark.anyio
-async def test_pydantic_ai_spawn_forwards_images_to_run_agent(monkeypatch):
+@pytest.mark.parametrize("multimodal", [True, False])
+async def test_pydantic_ai_spawn_handles_model_image_support_in_engine(monkeypatch, multimodal):
     import engines.pydantic_ai.engine as pydantic_ai_module
     from engines.pydantic_ai import PydanticAIEngine
 
@@ -189,6 +195,14 @@ async def test_pydantic_ai_spawn_forwards_images_to_run_agent(monkeypatch):
         base_url="https://agent-gateway.example.com/v1",
     )
     store.pydantic_config["model"] = "agent-model"
+    import asyncio
+    import time
+
+    def slow_model_support(*args):
+        time.sleep(0.2)
+        return multimodal
+
+    store.model_supports_multimodal = slow_model_support
     monkeypatch.setattr(pydantic_ai_module, "config_store", store)
 
     class FakeUsage:
@@ -218,13 +232,24 @@ async def test_pydantic_ai_spawn_forwards_images_to_run_agent(monkeypatch):
     monkeypatch.setattr(PydanticAIEngine, "_run_agent", fake_run_agent)
 
     images = [EngineImage(url="https://example.com/x.png")]
-    async for _ in PydanticAIEngine().spawn(
-        "do work", cwd="/tmp/project", images=images
-    ):
-        pass
+    async def consume():
+        async for _ in PydanticAIEngine().spawn(
+            "do work", cwd="/tmp/project", images=images
+        ):
+            pass
 
-    assert captured["prompt"] == "do work"
-    assert captured["images"] == images
+    task = asyncio.create_task(consume())
+    started = time.monotonic()
+    await asyncio.sleep(0.05)
+    assert time.monotonic() - started < 0.15
+    await task
+
+    assert captured["images"] == (images if multimodal else None)
+    if multimodal:
+        assert captured["prompt"] == "do work"
+    else:
+        assert captured["prompt"].startswith("do work")
+        assert "https://example.com/x.png" in captured["prompt"]
 
 
 @pytest.mark.anyio
@@ -272,9 +297,7 @@ async def test_pydantic_ai_run_agent_builds_image_user_content(monkeypatch):
 
     parts = captured["prompt"]
     assert isinstance(parts, list)
-    assert parts[0].startswith("看图说话\n\n")
-    assert "Actual image data is attached" in parts[0]
-    assert "do not treat the Markdown file path as the only image input" in parts[0]
+    assert parts[0] == "看图说话"
     assert parts[1].url == "https://example.com/x.png"
     assert parts[1].kind == "image-url"
 
@@ -351,5 +374,82 @@ def test_vision_capabilities_advertised_per_engine():
     assert PydanticAIEngine().capabilities.supports_vision is True
     assert ClaudeCodeEngine().capabilities.supports_vision is True
     assert ClaudeAgentSDKEngine().capabilities.supports_vision is True
-    assert CodexEngine().capabilities.supports_vision is False
-    assert CodexSDKEngine().capabilities.supports_vision is False
+    assert CodexEngine().capabilities.supports_vision is True
+    assert CodexSDKEngine().capabilities.supports_vision is True
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("live", [False, True])
+@pytest.mark.parametrize("session_id", [None, "existing"])
+async def test_claude_cli_sends_native_images_without_prompt_injection(monkeypatch, tmp_path, live, session_id):
+    import asyncio
+    import json
+    import time
+    from types import SimpleNamespace
+
+    import engines.claude_code as adapter
+    from engines.core.base import ProviderRuntimeConfig
+
+    captured = {}
+    class Stdin:
+        written = b""
+        closed = False
+
+        def write(self, data):
+            self.written += data
+
+        async def drain(self):
+            pass
+
+        def close(self):
+            self.closed = True
+
+    stdout = asyncio.StreamReader()
+    stdout.feed_data(b'{"type":"result","subtype":"success","result":"ok"}\n')
+    stdout.feed_eof()
+    stderr = asyncio.StreamReader()
+    stderr.feed_eof()
+    async def wait():
+        return 0
+
+    proc = SimpleNamespace(stdin=Stdin(), stdout=stdout, stderr=stderr, wait=wait)
+    async def create_process(*cmd, **kwargs):
+        captured["cmd"] = cmd
+        return proc
+
+    engine = adapter.ClaudeCodeEngine()
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", create_process)
+    monkeypatch.setattr(engine, "resolve_binary", lambda: "/fake/claude")
+    monkeypatch.setattr(engine, "resolve_provider_runtime", lambda **kw: ProviderRuntimeConfig())
+    monkeypatch.setattr(engine, "project_skills", lambda cwd: [])
+    monkeypatch.setattr(adapter.config_store, "get_claude_permission_mode", lambda: "default")
+    monkeypatch.setattr("services.skill_runtime.prepare_claude_plugin", lambda skills: (tmp_path, []))
+    original = EngineImage.to_data_url
+    def slow_read(image):
+        time.sleep(0.2)
+        return original(image)
+    monkeypatch.setattr(EngineImage, "to_data_url", slow_read)
+    shot = tmp_path / "shot.png"
+    shot.write_bytes(b"picture")
+    async def consume():
+        return [event async for event in engine.spawn(
+            "原问题", cwd=str(tmp_path), session_id=session_id,
+            images=[EngineImage(path=str(shot))],
+            live_message_queue=asyncio.Queue() if live else None,
+        )]
+
+    task = asyncio.create_task(consume())
+    started = time.monotonic()
+    await asyncio.sleep(0.05)
+    assert time.monotonic() - started < 0.15
+    events = await asyncio.wait_for(task, timeout=5)
+    assert not [event for event in events if event.type == "error"]
+    assert "--input-format" in captured["cmd"]
+    message = json.loads(proc.stdin.written.splitlines()[0])
+    assert message["message"]["content"] == [
+        {"type": "text", "text": "原问题"},
+        {"type": "image", "source": {
+            "type": "base64", "media_type": "image/png", "data": "cGljdHVyZQ==",
+        }},
+    ]
+    assert proc.stdin.closed

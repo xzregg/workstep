@@ -7,6 +7,32 @@ import { I18nProvider } from '../src/i18n'
 import { gitApi, type GitDiff } from '../src/api/git'
 import GitDiffDialog from '../src/components/git/GitDiffDialog'
 
+for (const width of [320, 390, 1023]) {
+  test(`mobile diff at ${width}px keeps native long press and toolbar attribution`, async () => {
+    const { window } = installDomEnvironment()
+    window.innerWidth = width
+    Object.defineProperty(globalThis, 'history', { configurable: true, value: window.history })
+    const original = { ...gitApi }
+    gitApi.diff = async () => ({ path: 'x.ts', old_path: 'x.ts', base: 'before', target: 'after', patch: '@@ -1 +1 @@\n-old\n+new\n', before: 'old\n', after: 'new\n', binary: false, truncated: false, submodule: false }) as GitDiff
+    const refs: string[] = []
+    gitApi.blame = async (_id, _path, ref) => { refs.push(ref); return { lines: [] } }
+    const root = createRoot(document.body.appendChild(document.createElement('div')))
+    try {
+      await act(async () => root.render(<I18nProvider><GitDiffDialog id="repo" files={['x.ts']} path="x.ts" comparison={{}} onSelect={() => {}} onClose={() => {}} /></I18nProvider>))
+      for (const cell of document.querySelectorAll('.git-code-cell')) {
+        const event = new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 80 })
+        await act(async () => { cell.dispatchEvent(event) })
+        assert.equal(event.defaultPrevented, false)
+        assert.equal(document.querySelector('.git-diff-context-menu'), null)
+      }
+      assert.deepEqual(refs, [])
+      const blame = [...document.querySelectorAll<HTMLButtonElement>('.git-diff-toolbar button')].find(button => button.textContent === '上次修改人')!
+      await act(async () => blame.click())
+      assert.deepEqual(refs.sort(), ['after', 'before'])
+    } finally { await act(async () => root.unmount()); Object.assign(gitApi, original); await window.happyDOM.close() }
+  })
+}
+
 test('split diff resizes and annotates both versions with their own line attribution', async () => {
   const { window } = installDomEnvironment()
   Object.defineProperty(globalThis, 'history', { configurable: true, value: window.history })

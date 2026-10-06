@@ -1444,24 +1444,6 @@ class CoordinatorModule:
         system_prompt: str | None = None,
         system_prompt_each_turn: bool = False,
     ) -> tuple[str, list[dict], str | None]:
-        model_supports_multimodal = getattr(
-            config_store,
-            "model_supports_multimodal",
-            None,
-        )
-        direct_images = bool(
-            images
-            and (
-                await asyncio.to_thread(model_supports_multimodal,
-                    engine_id,
-                    model or "",
-                    provider_id or "",
-                )
-                if callable(model_supports_multimodal)
-                else True
-            )
-        )
-
         def spawn(engine, *, workstep_tools=False, config_overrides=None, system_prompt=None, system_prompt_each_turn=False, capture_prompt_input=False):
             spawn_kwargs = {"capture_prompt_input": capture_prompt_input}
             if system_prompt:
@@ -1472,22 +1454,17 @@ class CoordinatorModule:
                 spawn_kwargs["workstep_tools"] = True
             if config_overrides:
                 spawn_kwargs["config_overrides"] = config_overrides
-            spawn_prompt = (
-                prompt
-                if direct_images or not images
-                else engine.render_image_prompt(prompt, images)
-            )
             spawn_coordinator = getattr(
                 engine,
                 "spawn_coordinator_with_retry",
                 engine.spawn_coordinator,
             )
             return spawn_coordinator(
-                prompt=spawn_prompt,
+                prompt=prompt,
                 cwd=cwd,
                 model=model,
                 session_id=session_id if engine.supports_resume else None,
-                images=images if direct_images else None,
+                images=images,
                 message_history=message_history,
                 report_engine_state=True,
                 thinking_effort=thinking_effort,

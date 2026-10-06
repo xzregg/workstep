@@ -333,6 +333,12 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
                     "message": f"Codex 压缩失败：{exc}",
                 })
             return
+        if any(not image.path for image in images or []):
+            yield InternalEvent(type="error", data={
+                "message": "Codex CLI 原生图片输入只支持本地图片路径",
+            })
+            return
+        image_paths = [image.path for image in images or []]
         run_prompt = prompt
         resume_session = session_id or None
         self._escalate_sandbox = False
@@ -361,6 +367,9 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
                     codex_config["sandbox_mode"] or self._default_sandbox(),
                     "-C", cwd,
                 ])
+
+            for image_path in image_paths:
+                cmd.extend(["--image", image_path])
 
             if model:
                 cmd.extend(["--model", model])
@@ -455,8 +464,10 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
                 if self._thread_id:
                     resume_session = self._thread_id
                     run_prompt = restart_content
+                    image_paths = []
                 elif resume_session:
                     run_prompt = restart_content
+                    image_paths = []
                 else:
                     # 会话尚未建立（thread.started 未到达）：无法 resume，
                     # 用「原提示词 + 插入消息」重启新会话，避免丢失上下文。
@@ -707,6 +718,10 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
 
     async def inject_response(self, tool_use_id: str, content: str) -> None:
         logger.warning("inject_response not supported for Codex")
+
+    @property
+    def supports_vision(self) -> bool:
+        return True
 
     @property
     def supports_resume(self) -> bool:
