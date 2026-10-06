@@ -27,6 +27,7 @@ public final class CompletionWatchService extends Service {
     static final String ACTION_STOP = "com.workstep.android.STOP_COMPLETION_WATCH";
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final LinkedHashMap<String, JSONObject> watches = new LinkedHashMap<>();
+    private final ConnectionRecovery recovery = new ConnectionRecovery();
     private OkHttpClient client;
     private WebSocket socket;
     private ServerAddress server;
@@ -73,6 +74,7 @@ public final class CompletionWatchService extends Service {
         if (watches.isEmpty()) { stopSelf(); return START_NOT_STICKY; }
         CrashReports.log(this, "后台通知进程", "服务启动；监听数量=" + watches.size(), null);
         stopped = false;
+        recovery.connected();
         try {
             client = new OkHttpClient.Builder().pingInterval(
                     20, java.util.concurrent.TimeUnit.SECONDS).build();
@@ -115,7 +117,8 @@ public final class CompletionWatchService extends Service {
             public void onOpen(WebSocket webSocket, Response response) {
                 handler.post(() -> {
                     if (socket == webSocket && !stopped) {
-                        CrashReports.log(CompletionWatchService.this, "后台通知进程", "WebSocket 已连接", null);
+                        CrashReports.log(CompletionWatchService.this, "后台通知进程",
+                                recovery.connected() ? "WebSocket 重连成功" : "WebSocket 已连接", null);
                         subscribe(webSocket);
                     }
                 });
@@ -128,30 +131,36 @@ public final class CompletionWatchService extends Service {
 
             @Override
             public void onFailure(WebSocket webSocket, Throwable error, Response response) {
-                if (stopped) return;
-                CrashReports.log(CompletionWatchService.this, "后台通知进程", "WebSocket 断开", error);
-                retry(webSocket);
+                retry(webSocket, error);
             }
 
             @Override
             public void onClosed(WebSocket webSocket, int code, String reason) {
-                retry(webSocket);
+                retry(webSocket, new IOException("WebSocket closed: " + code + " " + reason));
             }
             });
         } catch (RuntimeException error) {
-            android.util.Log.e("WorkStep", "Completion watcher connection failed", error);
-            CrashReports.log(this, "后台通知进程", "连接失败", error);
             socket = null;
-            if (!stopped) handler.postDelayed(this::connect, 5000);
+            scheduleReconnect(error);
         }
     }
 
-    private void retry(WebSocket previous) {
+    private void retry(WebSocket previous, Throwable error) {
         handler.post(() -> {
             if (socket != previous || stopped) return;
             socket = null;
-            handler.postDelayed(this::connect, 5000);
+            scheduleReconnect(error);
         });
+    }
+
+    private void scheduleReconnect(Throwable error) {
+        if (stopped || watches.isEmpty()) return;
+        if (recovery.failed()) {
+            CrashReports.log(this, "后台通知进程", "WebSocket 重连失败；将继续每5秒重试", error);
+        } else {
+            CrashReports.log(this, "后台通知进程", "WebSocket 连接中断，5秒后重试", null);
+        }
+        handler.postDelayed(this::connect, 5000);
     }
 
     private void subscribe(WebSocket target) {

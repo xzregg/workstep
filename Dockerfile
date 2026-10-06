@@ -34,8 +34,8 @@ RUN curl -fsSL https://www.kernel.org/pub/software/scm/git/git-2.50.1.tar.xz -o 
     && echo '7e3e6c36decbd8f1eedd14d42db6674be03671c2204864befa2a41756c5c8fc4  /tmp/git.tar.xz' | sha256sum -c - \
     && tar -xf /tmp/git.tar.xz -C /tmp \
     && cd /tmp/git-2.50.1 \
-    && make prefix=/opt/git NO_GETTEXT=YesPlease NO_TCLTK=YesPlease -j"$(nproc)" all \
-    && make prefix=/opt/git NO_GETTEXT=YesPlease NO_TCLTK=YesPlease install
+    && make prefix=/root/.workstep/runtime/base/git NO_GETTEXT=YesPlease NO_TCLTK=YesPlease -j"$(nproc)" all \
+    && make prefix=/root/.workstep/runtime/base/git NO_GETTEXT=YesPlease NO_TCLTK=YesPlease install
 
 # ============================================================
 # 阶段 2：运行时镜像（最小化）
@@ -50,22 +50,36 @@ FROM node:24-bookworm-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git curl jq \
     && rm -rf /var/lib/apt/lists/*
-COPY --from=git-build /opt/git /opt/git
-ENV PATH="/opt/git/bin:${PATH}"
+COPY --from=git-build /root/.workstep/runtime/base/git /root/.workstep/runtime/base/git
 
-RUN npm config set registry https://registry.npmmirror.com
+# Keep the managed runtime under HOME; /usr/local only supplies the image seed.
+ENV HOME=/root \
+    UV_INSTALL_DIR=/root/.workstep/runtime/base/bin \
+    UV_PYTHON_INSTALL_DIR=/root/.workstep/runtime/base/python \
+    UV_NO_MODIFY_PATH=1 \
+    UV_PYTHON=3.14 \
+    UV_CACHE_DIR=/root/.cache/uv \
+    UV_LINK_MODE=copy \
+    NPM_CONFIG_REGISTRY=https://registry.npmmirror.com \
+    NPM_CONFIG_CACHE=/root/.npm \
+    NPM_CONFIG_PREFIX=/root/.workstep/runtime/npm \
+    WORKSTEP_ENGINE_PACKAGE_DIR=/root/.workstep/runtime/python-packages \
+    PYTHONPATH=/root/.workstep/runtime/python-packages \
+    VOLTA_HOME=/root/.workstep/runtime/volta \
+    PATH="/app/apps/daemon/.venv/bin:/root/.workstep/runtime/npm/bin:/root/.workstep/runtime/base/bin:/root/.workstep/runtime/base/git/bin:/root/.workstep/runtime/volta/bin:${PATH}"
 
-# Volta 可在容器内直接调用；保留基础镜像的 Node/npm 与引擎安装路径优先级。
-ENV VOLTA_HOME=/root/.volta \
-    PATH="${PATH}:/root/.volta/bin"
-RUN curl -fsSL https://get.volta.sh | bash -s -- --skip-setup \
+RUN mkdir -p /root/.workstep/runtime/base/bin /root/.workstep/runtime/base/lib \
+    && cp /usr/local/bin/node /root/.workstep/runtime/base/bin/node \
+    && cp -a /usr/local/lib/node_modules /root/.workstep/runtime/base/lib/ \
+    && ln -s ../lib/node_modules/npm/bin/npm-cli.js /root/.workstep/runtime/base/bin/npm \
+    && ln -s ../lib/node_modules/npm/bin/npx-cli.js /root/.workstep/runtime/base/bin/npx
+
+# Seed Volta's binaries separately from its persistent downloads/configuration.
+RUN curl -fsSL https://get.volta.sh | VOLTA_HOME=/root/.workstep/runtime/base/volta bash -s -- --skip-setup \
+    && mkdir -p "$VOLTA_HOME/bin" \
+    && cp -a /root/.workstep/runtime/base/volta/bin/. "$VOLTA_HOME/bin/" \
     && volta --version
 
-# uv —— Python 依赖与解释器管理；UV_CACHE_DIR 指向 /tmp 便于构建后清理
-ENV UV_PYTHON=3.14 \
-    UV_CACHE_DIR=/tmp/uv-cache \
-    UV_LINK_MODE=copy \
-    PATH="/root/.local/bin:${PATH}"
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # 引擎按需安装环境与 JSON 工具自检（Node / npm / Volta / uv / git / curl / jq）
@@ -81,13 +95,7 @@ COPY apps/daemon/pyproject.toml apps/daemon/uv.lock apps/daemon/.python-version 
 COPY packages/gateway-protocol /app/packages/gateway-protocol
 RUN uv sync --no-dev --frozen \
     && uv pip install --python .venv/bin/python pip \
-    && rm -rf /tmp/uv-cache
-
-# 引擎安装到独立持久化目录；不挂载镜像的 Node/Python 运行环境。
-ENV NPM_CONFIG_PREFIX=/opt/workstep-engines/npm \
-    WORKSTEP_ENGINE_PACKAGE_DIR=/opt/workstep-engines/python \
-    PYTHONPATH=/opt/workstep-engines/python \
-    PATH="/app/apps/daemon/.venv/bin:/opt/workstep-engines/npm/bin:${PATH}"
+    && rm -rf /root/.cache/uv
 
 RUN command -v python && python --version \
     && command -v node && node --version \
@@ -97,17 +105,28 @@ RUN command -v python && python --version \
 # 后端源码（清理字节码缓存）
 COPY apps/daemon ./
 RUN find /app -name '__pycache__' -type d -prune -exec rm -rf {} + \
-    && rm -rf /root/.cache /tmp/uv-cache
+    && rm -rf /root/.cache
 
 # 前端构建产物（settings.py 中 web_dist=../web/dist、landing_dist=../landing/dist）
 COPY --from=web-build /app/apps/web/dist ../web/dist
 COPY --from=web-build /app/apps/landing/dist ../landing/dist
 
-# 数据、配置、会话与引擎目录由 compose 或 docker run 显式挂载以持久化。
+# An immutable seed remains visible when HOME is bind-mounted. First startup
+# installs it offline; a new image refreshes only base, retaining engines/data.
+COPY scripts/prepare-container-runtime.py /usr/local/share/workstep-runtime/prepare.py
+RUN python /usr/local/share/workstep-runtime/prepare.py /root/.workstep/runtime/base \
+    && rm /usr/local/share/workstep-runtime/prepare.py \
+    && tar -C /root/.workstep/runtime -cf /usr/local/share/workstep-runtime/base.tar base \
+    && sha256sum /usr/local/share/workstep-runtime/base.tar | cut -d ' ' -f 1 \
+       > /usr/local/share/workstep-runtime/base.sha256
+COPY --chmod=755 scripts/container-entrypoint.sh /usr/local/bin/workstep-entrypoint
+
+# Persist /root as one HOME mount; mount project roots separately.
 
 EXPOSE 8765
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD curl -fsS http://127.0.0.1:8765/api/health || exit 1
 
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8765"]
+ENTRYPOINT ["/usr/local/bin/workstep-entrypoint"]
+CMD ["/app/apps/daemon/.venv/bin/python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8765"]

@@ -2,6 +2,10 @@
 
 Electron 桌面壳负责窗口、安装包和自动更新；FastAPI daemon 运行在随应用分发的独立 Python runtime 中，用户机器无需安装 Python。Codex SDK、Claude Agent SDK 等可选引擎不随桌面包预装，用户点击“安装”后写入 `~/.workstep/runtime/python-packages/`，桌面应用升级不会覆盖它们。
 
+非沙箱模式的受管理安装统一使用 `~/.workstep/runtime/`（设置 `WORKSTEP_CONFIG_DIR` 时跟随该配置目录）：npm CLI 放在 `npm/`，Python SDK 放在 `python-packages/`，uv 新下载的解释器放在 `base/python/`，uv 安装目标为 `base/bin/`。桌面启动时优先查找这些目录，Windows 的 npm 命令入口直接位于 `npm/`，macOS/Linux 位于 `npm/bin/`；引擎子进程也能通过 `PYTHONPATH` 读取 Python SDK。
+
+现有宿主机引擎保留为查找回退，不自动移动或卸载；Node/npm/uv 仍可使用宿主机已有工具，daemon 自带 Python 仍位于安装包内。遇到 Volta 管理的 npm 时，启动阶段解析实际 Node/npm 路径，避免其全局安装拦截把引擎放回宿主机 Volta 目录。沙箱模式使用沙箱 `home/` 作为 Home，相同类型的安装采用同样的相对目录，详见 [容器运行时说明](../../docs/container-runtime.md)。
+
 安装包同时携带 daemon CLI。sidecar 会把 bundled Python、daemon 目录、当前随机端口和临时桌面令牌通过 `WORKSTEP_CLI_PYTHON`、`WORKSTEP_DAEMON_DIR`、`WORKSTEP_DAEMON_URL`、`WORKSTEP_DESKTOP_TOKEN` 传给引擎子进程，因此 Skill 调用 CLI 不依赖用户安装 Python，也不把动态地址或令牌写入项目文件。
 
 ```text

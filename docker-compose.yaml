@@ -15,14 +15,9 @@ services:
     security_opt:
       - seccomp:unconfined
     volumes:
-      # 应用内安装的 npm CLI 与 Python SDK，重建容器后保留（Linux 专用）
-      - ./data/engines:/opt/workstep-engines
-      # 全局配置 / 模板 / 任务元数据（容器独立目录，不与宿主机 ~/.workstep 冲突）
-      - ./data/workstep:/root/.workstep
-      # Codex 登录态与 rollout：项目库只存 thread id，恢复会话必须有对应 rollout 文件
-      - ./data/engines/codex:/root/.codex
-      # Claude Code 登录态与会话（不挂载则重建容器后丢失）
-      - ./data/engines/claude:/root/.claude
+      # 旧数据迁移方式见 docs/container-runtime.md，迁移后再重建容器。
+      # 整体持久化 Home：WorkStep 配置、基础运行时、引擎包、登录态与会话。
+      - ./data/home:/root
       # 项目数据目录：应用内创建项目时路径填 /data/projects/<名称>
       - ${WORKSTEP_PROJECTS_DIR:-./data/projects}:/data/projects
     healthcheck:

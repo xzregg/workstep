@@ -5,6 +5,7 @@
 - [Multi-engine architecture](multi-engine-architecture.md) *(简体中文)* — engine base classes, auto-discovery, ACP/AG-UI event boundary, capability declarations, and the engine list.
 - [Workflow engine execution](workflow-engine-execution.md) *(简体中文)* — task creation, DAG scheduling, stage prompts, reviews, artifact routing, reruns, coordinator actions, and recovery.
 - [Engine runtime management](engine-runtime-management.md) *(简体中文)* — version selection, measured package downloads, and rollback.
+- [容器 Home 与运行时持久化](container-runtime.md) *(简体中文)* — 整体 Home 挂载、基础运行时初始化、引擎持久化与旧挂载迁移。
 - [Development](development.md) — setup, test commands, module boundaries, Git management, onboarding, and pull-request checks.
 - [Code map](code-map.md) *(简体中文)* — find feature owners, API and service boundaries, tests, and change workflow.
 - [Gateway 开发与部署](gateway-development.md) *(简体中文)* — Gateway 分层、账号、授权、接口及部署入口；未完成验收仍以平台计划为准。

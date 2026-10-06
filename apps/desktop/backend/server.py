@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import shutil
 import socket
+import subprocess
 import sys
 from pathlib import Path
 
@@ -72,7 +74,7 @@ def prepare_engine_package_dir() -> Path:
     package_dir = (
         Path(configured).expanduser()
         if configured
-        else Path.home() / ".workstep" / "runtime" / "python-packages"
+        else _config_dir() / "runtime" / "python-packages"
     )
     package_dir.mkdir(parents=True, exist_ok=True)
     resolved = str(package_dir.resolve())
@@ -81,6 +83,56 @@ def prepare_engine_package_dir() -> Path:
         sys.path.remove(resolved)
     sys.path.insert(0, resolved)
     return package_dir.resolve()
+
+
+def _config_dir() -> Path:
+    configured = os.environ.get("WORKSTEP_CONFIG_DIR", "").strip()
+    return (Path(configured).expanduser() if configured else Path.home() / ".workstep").resolve()
+
+
+def _prepend_environment_paths(name: str, directories: list[Path]) -> None:
+    values = [str(directory) for directory in directories]
+    existing = os.environ.get(name, "").split(os.pathsep)
+    managed = {os.path.normcase(value) for value in values}
+    values.extend(value for value in existing if value and os.path.normcase(value) not in managed)
+    os.environ[name] = os.pathsep.join(values)
+
+
+def prepare_runtime_environment() -> None:
+    """Keep desktop-managed installs in the same layout as container HOME."""
+    runtime = _config_dir() / "runtime"
+    npm_prefix = runtime / "npm"
+    # npm puts Windows command shims directly in the global prefix.
+    npm_bin = npm_prefix if os.name == "nt" else npm_prefix / "bin"
+    base_bin = runtime / "base" / "bin"
+    python_dir = runtime / "base" / "python"
+    for directory in (npm_bin, base_bin, python_dir):
+        directory.mkdir(parents=True, exist_ok=True)
+    os.environ["NPM_CONFIG_PREFIX"] = str(npm_prefix)
+    os.environ["UV_INSTALL_DIR"] = str(base_bin)
+    os.environ["UV_PYTHON_INSTALL_DIR"] = str(python_dir)
+    host_bins: list[Path] = []
+    npm = shutil.which("npm")
+    volta_home = Path(os.environ.get("VOLTA_HOME") or Path.home() / ".volta").expanduser()
+    # Volta intercepts npm -g and ignores npm's configured prefix. Resolve its
+    # real tools once before serving requests, retaining existing host CLIs.
+    if npm and Path(npm).parent.resolve() == (volta_home / "bin").resolve():
+        volta = shutil.which("volta")
+        if volta is None:
+            raise RuntimeError("Cannot resolve Volta-managed npm without volta")
+        for tool in ("npm", "node"):
+            result = subprocess.run(
+                [volta, "which", tool], capture_output=True, text=True,
+                check=True, timeout=5, cwd=Path.home(),
+            )
+            binary = Path(result.stdout.strip())
+            if not binary.is_absolute() or not binary.is_file():
+                raise RuntimeError(f"Volta returned an invalid {tool} executable")
+            if binary.parent not in host_bins:
+                host_bins.append(binary.parent)
+    _prepend_environment_paths("PATH", [npm_bin, base_bin, *host_bins])
+    package_dir = prepare_engine_package_dir()
+    _prepend_environment_paths("PYTHONPATH", [package_dir])
 
 
 def prepare_cli_environment(host: str, port: int) -> None:
@@ -145,7 +197,7 @@ def main(argv: list[str] | None = None) -> int:
     port = sock.getsockname()[1]
     try:
         if os.environ.get("WORKSTEP_DESKTOP_RUNTIME") == "1":
-            prepare_engine_package_dir()
+            prepare_runtime_environment()
         app = _load_app(host, port)
         return asyncio.run(_serve(app, sock, port))
     finally:

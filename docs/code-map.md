@@ -1,5 +1,9 @@
 # 按功能查找代码
 
+桌面非沙箱安装环境由 `apps/desktop/backend/server.py::prepare_runtime_environment` 持有，在加载 daemon 前将 npm 全局安装、uv 安装及解释器下载统一到配置目录的 `runtime/`，并注入 CLI PATH 和 Python 子进程 PYTHONPATH；Windows npm 命令位于 prefix，macOS/Linux 位于 prefix/bin。Volta 管理的宿主 npm 会先解析实际工具路径，以保证引擎安装仍写入 WorkStep 目录。后台自带 Python 随安装包分发，宿主机原有引擎继续作为回退。测试为 `apps/desktop/tests/test_backend_entry.py`，覆盖配置目录、子进程导入、离线 npm 安装/更新、重复初始化与加载 daemon 前初始化。
+
+容器 Home 持久化由根目录 `Dockerfile` 与 `scripts/container-entrypoint.sh` 持有：基础运行时位于 `/root/.workstep/runtime/base`，镜像保留 Home 外的安装包；空 Home 首次离线初始化，安装包摘要变化时只替换基础运行时，并保留 npm/Python 引擎、Volta 下载和引擎配置。`scripts/prepare-container-runtime.py` 在构建时转换 terminfo 目录以兼容大小写不敏感的宿主文件系统；入口使用真实文件锁串行初始化，再执行镜像锁定的 daemon 虚拟环境。行为测试为 `scripts/tests/test_container_entrypoint.py`，挂载及迁移说明见 `docs/container-runtime.md`；根目录 `docker-compose.yaml` 使用 `./data/home:/root` 与独立项目挂载，保留本地构建入口；桌面管理入口尚未实现。
+
 官网渠道能力介绍由 `apps/landing/src/components/Channels.tsx` 持有，`App.tsx` 在流程模板与远程协作之间装配；中英文文案在 `src/i18n/zh-CN.ts` 与 `en-US.ts`，说明项目渠道对话、任务群绑定、阶段结果与附件推送、群内审核及确认。`Philosophy.tsx` 与 `Compare.tsx` 按工具路线呈现侧重点，不点名竞品。官网只展示能力，不调用渠道 API；实际渠道职责见下方渠道机器人条目。页面装配与文案回归在 `apps/landing/tests/positioning.test.tsx`，词典一致性见 `i18n.test.ts`。
 
 官网顶部控件由 `apps/landing/src/components/Nav.tsx` 与 `landing.css` 统一高度、居中和禁止换行；「下载」直接使用 `config/downloads.ts::RELEASES_URL` 打开 GitHub 最新发布页。`config/entryPoints.ts::getExperienceHref` 根据当前路径区分内置 `/landing` 官网（返回 Web 工作台 `/`）与独立官网（`workstep://open` 唤起桌面端），`App.tsx` 将同一目标传给首屏 `Hero.tsx` 与页尾 `FinalCta.tsx`。行为入口为 `apps/landing/tests/hero.test.tsx`，覆盖内置页面、独立官网和两个体验入口一致性。
@@ -16,7 +20,7 @@ WebSocket 前台恢复由 `apps/web/src/hooks/useWebSocket.ts` 持有：页面�
 
 回复及任务步骤执行结果通知由 `apps/web/src/utils/completionNotifications.ts` 统一筛选终态、去重、按 `session_chat` 频道选择会话目标、生成含流程标识的任务目标地址并选择桌面、浏览器或 Android 通道；`useWebSocket.ts` 从项目和任务状态补全目标项目及流程，再把事件与当前订阅交给该模块。Chrome 网页推送的登记在 `browserPush.ts` 与系统设置页，后台投递由 `public/completion-sw.js` 和 daemon `api/completion_notifications.py`、`services/completion_push.py` 持有；近期结果保留频道供 Android 后台服务重连后正确跳转。测试见 `completionNotifications.test.ts` 与 daemon `test_completion_push.py`。桌面端通过 `apps/desktop/src/preload.cjs` 与主进程发送系统通知；APK 的同源 WebView 桥接及前台 WebSocket 监听分别在 `MainActivity.java`、`CompletionWatchService.java`，通知未显示的具体原因及目标地址写入日志。
 
-Android 发送消息时的提前监听由 `useChatSessionActions.ts`、`TaskDetail.tsx` 和 `useTaskPendingInserts.ts` 通过 `completionNotifications.ts` 登记，避免用户立即切后台时漏掉开始事件。`CompletionWatchService.java` 在独立进程接收回复/步骤终态；`NotificationIds.java` 将 JSON 空标识（包括 optString 产生的字符串 `"null"`）归一为空，供监听订阅、通知分类和 `NotificationDestination.java` 跳转共用，回归见 `NotificationIdsTest.java`、`NotificationDestinationTest.java`。`CrashReports.java` 记录主进程及通知进程异常，入口为 APK 悬浮球长按菜单的“查看日志”。
+Android 发送消息时的提前监听由 `useChatSessionActions.ts`、`TaskDetail.tsx` 和 `useTaskPendingInserts.ts` 通过 `completionNotifications.ts` 登记，避免用户立即切后台时漏掉开始事件。`CompletionWatchService.java` 在独立进程接收回复/步骤终态；`ConnectionRecovery.java` 控制断线错误记录：首次中断先重连，重连仍失败才记录一次堆栈，恢复成功重置，回归见 `ConnectionRecoveryTest.java` 和 `CrashReportsTest.java`。`NotificationIds.java` 将 JSON 空标识（包括 optString 产生的字符串 `"null"`）归一为空，供监听订阅、通知分类和 `NotificationDestination.java` 跳转共用，回归见 `NotificationIdsTest.java`、`NotificationDestinationTest.java`。`CrashReports.java` 记录主进程及通知进程异常，入口为 APK 悬浮球长按菜单的“查看日志”。
 
 企业微信入站回复的正文流式更新由 `apps/daemon/services/channels/reply_stream.py::ChannelReplyStream` 合并、节流和隔离网络发送；`responder.py` 与 `bots.py::_task_reply` 提供累计 LLM 正文，`BotManager` 管理更新任务的生命周期，`wecom.py::update_reply` 更新同一气泡，最终回复按 UTF-8 限长分段。统一能力与接口在 `base.py`，协议说明见 `docs/channel-message-protocol.md`；行为及慢网络健康检查见 `tests/test_channel_streaming.py`、`test_channel_bots.py` 和 `test_channel_chat_responder.py`。
 
