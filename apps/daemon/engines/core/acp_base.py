@@ -215,7 +215,10 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
             "prompt": kwargs.get("prompt") or "",
             "system_prompt": kwargs.get("system_prompt"),
             "system_prompt_in_body": instruction_in_body,
-            "images": [image.reference for image in kwargs.get("images") or []],
+            "images": [
+                "[内联图片]" if image.reference.startswith("data:") else image.reference
+                for image in kwargs.get("images") or []
+            ],
             "message_history": kwargs.get("message_history"),
         })
 

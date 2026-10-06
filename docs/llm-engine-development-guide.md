@@ -159,6 +159,8 @@ class MyAcpEngine(AcpEngineBase):
 
 ### 2.4 Agent SDK（Claude / Qoder / Codex / DeepSeek Harness）
 
+图片输入由各引擎适配器决定，ACP 基类与助手调用层保持正文和附件分离。Codex CLI 用 `--image <本地路径>`，恢复和重试同样支持，远程 URL 明确拒绝；Codex SDK 用官方 `TextInput`、`LocalImageInput`、`ImageInput`，计划/目标模式通过原生 turn-start 输入图片块。两者声明 `supports_vision=True`，不把附图提示或 base64 拼入正文；WorkStep 提示词快照只保存图片引用，Codex 自己的会话历史仍由 Codex 管理。
+
 Agent SDK 的接入仍然是“我方 ACP 适配 + Base 引擎方法”，没有 SDK 专用的上层接口。适配器继承 `AcpEngineBase`，在进程内调用官方 SDK 驱动 Agent（例如 Claude Code 的 `claude-agent-sdk`、Qoder 的 `qoder-agent-sdk`、Codex 的 `openai-codex`、DeepSeek 的 `deepseek-harness-sdk`）。
 
 SDK 可以封装子进程、JSONL、JSON-RPC 或进程内消息流；这些都是适配器内部细节。适配器消费 SDK 的完整事件流，映射为 ACP 词汇 `InternalEvent`，并通过 `AcpEngineBase` 的统一会话和交互方法向上提供能力。上层不得直接依赖厂商 SDK 类型或消息对象。

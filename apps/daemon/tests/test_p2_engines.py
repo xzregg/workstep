@@ -3417,7 +3417,8 @@ def test_codex_sdk_maps_goal_lifecycle_to_shared_event():
 
 
 @pytest.mark.anyio
-async def test_codex_sdk_goal_start_explicitly_uses_default_mode():
+@pytest.mark.parametrize("with_image", [False, True])
+async def test_codex_sdk_goal_start_explicitly_uses_default_mode(with_image):
     engine = CodexSDKEngine()
     calls = []
 
@@ -3451,14 +3452,20 @@ async def test_codex_sdk_goal_start_explicitly_uses_default_mode():
 
     raw = RawClient()
     engine._map_notification = lambda notification, state: []
+    initial_input = [
+        {"type": "text", "text": "完成计划"},
+        {"type": "localImage", "path": "/project/shot.png"},
+    ] if with_image else None
     await engine._run_goal_command(
         SimpleNamespace(_client=raw), SimpleNamespace(id="thread-1"),
         "start", "完成计划", {}, asyncio.Queue(),
-        model="gpt-test", reasoning_effort="medium",
+        model="gpt-test", reasoning_effort="medium", initial_input=initial_input,
     )
 
     turn = next(call for call in calls if isinstance(call, tuple) and call[0] == "turn")
-    assert turn[1:3] == ("thread-1", "完成计划")
+    assert turn[1:3] == ("thread-1", initial_input if with_image else "完成计划")
+    goal = next(call for call in calls if isinstance(call, tuple) and call[0] == "goal")
+    assert goal[2]["objective"] == "完成计划"
     assert turn[3]["collaborationMode"]["mode"] == "default"
     assert calls.index("route") < calls.index(turn) < next(
         index for index, call in enumerate(calls)
