@@ -1172,6 +1172,12 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
 
     def normalize_event(self, event: InternalEvent) -> InternalEvent | None:
         """Normalize provider-native interaction and plan events at the ACP seam."""
+        from engines.core.subagents import SubagentTracker
+
+        subagents = getattr(self, "_subagent_tracker", None)
+        if subagents is None:
+            subagents = self._subagent_tracker = SubagentTracker()
+        event = subagents.observe(event)
         interaction = self.normalize_interaction_event(event)
         if interaction is not event:
             return interaction

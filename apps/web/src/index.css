@@ -1987,6 +1987,36 @@ details[open] > summary > .process-trace-chevron {
   min-width: 0;
 }
 
+.subagent-duration {
+  flex-shrink: 0;
+  color: var(--fg-3);
+  font-size: calc(11px * var(--font-scale));
+  font-variant-numeric: tabular-nums;
+}
+
+.subagent-identity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--fg-2);
+}
+
+.subagent-identity code {
+  overflow-wrap: anywhere;
+}
+
+.subagent-prompt > summary {
+  cursor: pointer;
+  color: var(--fg-2);
+}
+
+.subagent-prompt pre {
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .subagent-last-tool code {
   max-width: 100%;
   overflow: hidden;

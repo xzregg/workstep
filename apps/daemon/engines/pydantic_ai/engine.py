@@ -1055,11 +1055,14 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
         mapper = self._map_stream_event
 
         class SubagentProgress(AbstractCapability):
-            async def emit(self, ctx, status, stage, internal=None):
+            async def emit(self, ctx, status, stage, internal=None, result=None):
                 agent = ctx.agent
                 frame = subagent_event(
                     task_id=f"subagent-{ctx.run_id}",
                     description=getattr(agent, "description", None) or getattr(agent, "name", None),
+                    agent_name=getattr(agent, "name", None),
+                    prompt=ctx.prompt if isinstance(ctx.prompt, str) else None,
+                    result=result,
                     status=status,
                     stage=stage,
                     last_tool_name=(internal.data.get("title")
@@ -1072,15 +1075,17 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
             async def wrap_run(self, ctx, *, handler):
                 await self.emit(ctx, "running", "started")
                 status = "failed"
+                output = None
                 try:
                     result = await handler()
+                    output = result.output if isinstance(getattr(result, "output", None), str) else None
                     status = "completed"
                     return result
                 except asyncio.CancelledError:
                     status = "stopped"
                     raise
                 finally:
-                    await self.emit(ctx, status, "finished")
+                    await self.emit(ctx, status, "finished", result=output)
 
             async def wrap_run_event_stream(self, ctx, *, stream):
                 text_parts = {}

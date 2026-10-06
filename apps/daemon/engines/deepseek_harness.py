@@ -550,6 +550,8 @@ class DeepSeekHarnessEngine(AcpEngineBase):
                     status="running",
                     stage="started",
                     description=f"DeepSeek Harness 子代理 {child_id}",
+                    agent_name=payload.get("agentName"),
+                    prompt=payload.get("prompt"),
                 )]
             status = "completed" if payload.get("status") == "ok" else "failed"
             return [subagent_event(

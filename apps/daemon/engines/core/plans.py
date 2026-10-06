@@ -284,6 +284,12 @@ def subagent_event(
     summary: str | None = None,
     output_file: str | None = None,
     usage: Mapping[str, Any] | None = None,
+    agent_name: str | None = None,
+    agent_path: str | None = None,
+    prompt: str | None = None,
+    started_at: int | None = None,
+    ended_at: int | None = None,
+    result: str | None = None,
 ) -> InternalEvent:
     """Build the unified ``subagent`` event for a lifecycle frame.
 
@@ -303,6 +309,10 @@ def subagent_event(
         ("last_tool_name", last_tool_name),
         ("summary", summary),
         ("output_file", output_file),
+        ("agent_name", agent_name),
+        ("agent_path", agent_path),
+        ("prompt", prompt),
+        ("result", result),
     ):
         if value not in (None, ""):
             data[key] = str(value)
@@ -310,6 +320,9 @@ def subagent_event(
         data["usage"] = (
             dict(usage) if isinstance(usage, Mapping) else {"raw": usage}
         )
+    for key, value in (("started_at", started_at), ("ended_at", ended_at)):
+        if value is not None:
+            data[key] = value
     return InternalEvent(type="subagent", data=data)
 
 
@@ -346,6 +359,11 @@ def subagent_event_from_message(msg: Any) -> InternalEvent | None:
     task_id = str(field("task_id") or "")
     if not task_id:
         return None
+    metadata = {
+        "agent_name": field("agent_name", "agentName"),
+        "agent_path": field("agent_path", "agentPath"),
+        "prompt": field("prompt"),
+    }
     if subtype == "task_started":
         return subagent_event(
             task_id=task_id,
@@ -354,6 +372,7 @@ def subagent_event_from_message(msg: Any) -> InternalEvent | None:
             description=field("description"),
             tool_use_id=field("tool_use_id"),
             task_type=field("task_type"),
+            **metadata,
         )
     if subtype == "task_progress":
         return subagent_event(
@@ -364,6 +383,7 @@ def subagent_event_from_message(msg: Any) -> InternalEvent | None:
             tool_use_id=field("tool_use_id"),
             last_tool_name=field("last_tool_name"),
             usage=field("usage"),
+            **metadata,
         )
     if subtype == "task_updated":
         patch = field("patch") or {}
@@ -377,6 +397,7 @@ def subagent_event_from_message(msg: Any) -> InternalEvent | None:
             stage="updated",
             description=field("description", "subject"),
             tool_use_id=field("tool_use_id"),
+            **metadata,
         )
     if subtype == "task_notification":
         raw_status = str(field("status") or "").lower()
@@ -390,6 +411,7 @@ def subagent_event_from_message(msg: Any) -> InternalEvent | None:
             summary=field("summary"),
             output_file=field("output_file"),
             usage=field("usage"),
+            **metadata,
         )
     return None
 
@@ -430,5 +452,6 @@ def codex_subagent_events(item):
         status = str(snapshot.get("status") or "running")
         status = {"errored": "failed", "shutdown": "stopped"}.get(status, status)
         result.append(subagent_event(task_id=str(child_id), status=status, stage="progress",
-                                     summary=snapshot.get("message")))
+                                     summary=snapshot.get("message"), prompt=item.get("prompt"),
+                                     agent_name=snapshot.get("agent_name") or snapshot.get("agentName")))
     return result

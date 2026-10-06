@@ -42,6 +42,7 @@ from engines.core.base import (
 from engines.core.events import InternalEvent, compacted_event
 from engines.core.packages import RuntimePackage
 from engines.core.plans import subagent_event
+from engines.core.subagents import delegation_prompt
 from engines.core.schema import EngineImage
 from engines.core.stream_lines import ChunkedLineReader
 from services import providers as provider_service
@@ -314,6 +315,7 @@ class OpencodeEngine(AcpEngineBase):
                     stage="started",
                     description=str(data.get("title") or "task"),
                     tool_use_id=str(data.get("tool_call_id")),
+                    prompt=delegation_prompt(data.get("raw_input")),
                 )
                 frame.data["event"] = event.to_dict()
                 return frame

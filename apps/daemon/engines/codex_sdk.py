@@ -573,6 +573,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
 
             async def stream_turn(turn: Any) -> None:
                 stream = turn.stream().__aiter__()
+                child_reads: list[asyncio.Task] = []
                 notification_task = asyncio.create_task(anext(stream))
                 live_task = (
                     asyncio.create_task(live_message_queue.get())
@@ -625,10 +626,18 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                             notification = notification_task.result()
                         except StopAsyncIteration:
                             break
-                        for event in self._map_notification(notification, state):
-                            await event_queue.put(event)
+                        await self._enqueue_sdk_notification(
+                            client, notification, state, event_queue, child_reads,
+                        )
                         notification_task = asyncio.create_task(anext(stream))
+                    if child_reads:
+                        await asyncio.gather(*child_reads)
                 finally:
+                    for task in child_reads:
+                        if not task.done():
+                            task.cancel()
+                    if child_reads:
+                        await asyncio.gather(*child_reads, return_exceptions=True)
                     # Interrupted/older streams may never complete an item. Keep
                     # its actual text without guessing a phase or losing the tail.
                     for item_id, item in state.get("message_items", {}).items():
@@ -847,6 +856,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
 
         self._goal_state = goal_state
         seen_running = False
+        child_reads: list[asyncio.Task] = []
         try:
             while True:
                 notification = await raw.next_goal_notification(goal_state)
@@ -861,8 +871,11 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                             # Physical turn completion is not goal completion.
                             continue
                     await event_queue.put(event)
+                    self._schedule_subagent_read(client, event, state, event_queue, child_reads)
                 if goal_state.is_finished():
                     break
+            if child_reads:
+                await asyncio.gather(*child_reads)
             await event_queue.put(InternalEvent(type="status", data={"status": "done"}))
         except asyncio.CancelledError:
             await raw.cancel_goal_operation(goal_state)
@@ -871,6 +884,11 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             ))
             raise
         finally:
+            for task in child_reads:
+                if not task.done():
+                    task.cancel()
+            if child_reads:
+                await asyncio.gather(*child_reads, return_exceptions=True)
             raw.unregister_goal_operation(goal_state)
             self._goal_state = None
 

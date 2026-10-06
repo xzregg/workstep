@@ -6,7 +6,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useTaskRoute } from '../hooks/useTaskRoute'
 import { useTaskRecord } from '../hooks/useTaskRecord'
 import { randomUuid } from '../utils/uuid'
-import { watchPendingCompletion, unwatchPendingCompletion } from '../utils/completionNotifications'
+import { watchPendingCompletion, unwatchPendingCompletion, watchAcceptedCompletion } from '../utils/completionNotifications'
 import Button from '../components/Button'
 import Spinner from '../components/Spinner'
 import TaskDetailWindow from '../components/TaskDetailWindow'
@@ -740,6 +740,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           : message
       )))
       setActiveCoordinatorMessageId(accepted.assistant_message_id)
+      watchAcceptedCompletion(projectId, { taskId }, accepted.assistant_message_id)
       if (resetStep) setResetStep(false)
     } catch (reason) {
       unwatchPendingCompletion(projectId, { taskId })
@@ -819,6 +820,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             : message
         )))
         setActiveCoordinatorMessageId(accepted.assistant_message_id)
+        watchAcceptedCompletion(projectId, { taskId }, accepted.assistant_message_id)
       })
       .catch((reason) => {
         unwatchPendingCompletion(projectId, { taskId })

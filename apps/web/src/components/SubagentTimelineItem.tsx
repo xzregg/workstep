@@ -16,6 +16,8 @@ const SubagentThinkingText = memo(function SubagentThinkingText({
 import ToolTimelineItem from './ToolTimelineItem'
 import { buildMessageTimeline } from '../utils/messageTimeline'
 import Icon from './Icon'
+import { MessageCopyButton } from './MessageResponseFooter'
+import { durationMilliseconds, formatDuration } from '../utils/datetime'
 import { useI18n } from '../i18n'
 import type { MessageTimelineItem } from '../utils/messageTimeline'
 
@@ -25,9 +27,10 @@ interface SubagentTimelineItemProps {
   messageRunning: boolean
   /** 是否为同级最后一个子代理；与思考块一致，仅自动展开最后一项。 */
   lastSubagent: boolean
+  now?: number
 }
 
-const NON_TERMINAL = new Set(['pending', 'running', 'in_progress'])
+const NON_TERMINAL = new Set(['running', 'in_progress'])
 
 /**
  * 折叠时不渲染 body、展开时渲染条目封顶。子代理内层事件可达数千条，
@@ -41,6 +44,7 @@ export default function SubagentTimelineItem({
   messageRunning,
   projectId,
   lastSubagent,
+  now = Date.now(),
 }: SubagentTimelineItemProps) {
   const { t } = useI18n()
   const { activity } = item
@@ -55,8 +59,10 @@ export default function SubagentTimelineItem({
     }
   }, [active, lastSubagent])
   const timeline = useMemo(
-    () => buildMessageTimeline(activity.events ?? []),
-    [activity.events],
+    () => buildMessageTimeline(activity.events ?? []).filter(
+      (entry) => !(entry.type === 'text' && activity.result && entry.content === activity.result),
+    ),
+    [activity.events, activity.result],
   )
   const nestedSubagents = useMemo(
     () => timeline.filter(
@@ -71,30 +77,49 @@ export default function SubagentTimelineItem({
   const visibleTimeline = hiddenItemCount > 0 ? timeline.slice(hiddenItemCount) : timeline
   const failed = activity.status === 'failed'
   const stopped = activity.status === 'stopped' || activity.status === 'killed'
+  const name = activity.agentName || activity.description
+  const duration = formatDuration(durationMilliseconds(
+    activity.startedAt, activity.endedAt ?? (active ? now : undefined),
+  ) ?? Number.NaN, t)
   const label = active
     ? t('trace.subagentRunning')
     : failed
       ? t('trace.subagentFailed')
       : stopped
         ? t('trace.subagentStopped')
-        : t('trace.subagentDone')
+        : activity.status === 'pending'
+          ? t('trace.subagentPending')
+          : activity.status === 'paused'
+            ? t('trace.subagentPaused')
+            : t('trace.subagentDone')
 
   return (
     <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)} className={`subagent-timeline llm-tool-call llm-tool-call-${active ? 'running' : failed ? 'failed' : 'done'}`}>
-      <summary title={activity.description}>
+      <summary title={name}>
         <span className="llm-tool-call-icon" aria-hidden="true">
           {active
             ? <span className="task-status-spinner" />
             : <Icon name="bot" size={13} strokeWidth={1.7} />}
         </span>
         <span className="llm-tool-call-summary">
-          {activity.description ? `${label}：${activity.description}` : label}
+          {name ? `${label}：${name}` : label}
         </span>
+        {duration && <span className="subagent-duration">{t('trace.commandDuration', { duration })}</span>}
         {failed && <span className="process-trace-error">{t('trace.failed')}</span>}
         <Icon name="chevron-down" size={12} strokeWidth={1.8} className="llm-tool-call-chevron" />
       </summary>
       {open && (
       <div className="llm-tool-call-detail">
+        {activity.agentPath && <div className="subagent-identity">
+          <span>{t('trace.subagentPath')}</span><code>{activity.agentPath}</code>
+        </div>}
+        <details className="subagent-prompt">
+          <summary>{t('trace.subagentPrompt')}</summary>
+          {activity.prompt ? <>
+            <MessageCopyButton content={activity.prompt} title={t('trace.copyInput')} />
+            <pre>{activity.prompt}</pre>
+          </> : <div className="process-trace-empty">{t('trace.subagentPromptMissing')}</div>}
+        </details>
         {hiddenItemCount > 0 && (
           <div className="process-trace-empty">
             {t('trace.itemsHidden', { count: hiddenItemCount })}
@@ -120,6 +145,7 @@ export default function SubagentTimelineItem({
                 lastSubagent={entry === lastNestedSubagent}
                 messageRunning={active}
                 projectId={projectId}
+                now={now}
               />
             )
           }
@@ -144,10 +170,11 @@ export default function SubagentTimelineItem({
             <code>{activity.lastToolName}</code>
           </div>
         )}
-        {activity.summary ? (
-          <div>
-            <span>{t('trace.subagentSummary')}</span>
-            <pre>{activity.summary}</pre>
+        {(activity.result || activity.summary) ? (
+          <div className="subagent-result">
+            <span>{t('trace.subagentResult')}</span>
+            <MessageCopyButton content={activity.result || activity.summary || ''} title={t('trace.copyResult')} />
+            <pre>{activity.result || activity.summary}</pre>
           </div>
         ) : (
           !timeline.length && !activity.lastToolName && <div className="process-trace-empty">{t('trace.noDetails')}</div>

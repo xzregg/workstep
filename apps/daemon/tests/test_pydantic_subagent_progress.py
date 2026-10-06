@@ -37,6 +37,9 @@ async def test_live_messages_cover_whole_run_and_repeated_names(tmp_path):
         assert collected[-1].data["status"] == "running"
         return "file contents"
     await agent.run("inspect")
+    assert collected[0].data["prompt"] == "inspect"
+    assert collected[0].data["agent_name"] == "explorer"
+    assert collected[-1].data["result"] == "Found the answer"
     first_id = collected[0].data["task_id"]
     assert sum(e.data["stage"] == "started" for e in collected) == 1
     assert sum(e.data["stage"] == "finished" for e in collected) == 1

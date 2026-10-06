@@ -5,7 +5,7 @@ import { useI18n } from '../i18n'
 import { createOptimisticCoordinatorMessage, createOptimisticUserMessage } from '../pages/taskDetailChat'
 import { pendingInsertQueueKey, usePendingMessageInsertStore } from '../stores/pendingMessageInsertStore'
 import { randomUuid } from '../utils/uuid'
-import { watchPendingCompletion, unwatchPendingCompletion } from '../utils/completionNotifications'
+import { watchPendingCompletion, unwatchPendingCompletion, watchAcceptedCompletion } from '../utils/completionNotifications'
 
 interface Insert { id: string; content: string }
 
@@ -128,6 +128,7 @@ export function useTaskPendingInserts({
           : message))
         onCoordinatorRunning(true)
         onCoordinatorAccepted(accepted.assistant_message_id)
+        watchAcceptedCompletion(projectId, { taskId }, accepted.assistant_message_id)
       } else {
         const accepted = await taskApi.sendStepMessage(taskId, targetStepKey!, content, projectId, false)
         setHistoryMessages((current) => current.map((message) => message.id === optimisticId

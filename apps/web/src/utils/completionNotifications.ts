@@ -57,6 +57,7 @@ export function completionNotice(event: TerminalEvent): CompletionNotice | null 
 
 export class CompletionDeduplicator {
   private seen = new Set<string>()
+  has(id: string): boolean { return this.seen.has(id) }
   take(id: string): boolean {
     if (this.seen.has(id)) return false
     this.seen.add(id)
@@ -99,6 +100,22 @@ export function unwatchPendingCompletion(projectId: string, scope: { sessionId?:
   try {
     window.WorkStepAndroid?.postMessage(JSON.stringify({ type: 'unwatch', id: pendingCompletionId(projectId, scopeId) }))
   } catch (error) { console.warn('[Android] reply unwatch failed:', error) }
+}
+
+export function watchAcceptedCompletion(projectId: string,
+  scope: { sessionId?: string; taskId?: string }, messageId: string | undefined): void {
+  const scopeId = scope.sessionId || scope.taskId
+  if (!scopeId || !messageId) return
+  unwatchPendingCompletion(projectId, scope)
+  const id = `${projectId}:${scopeId}:${messageId}`
+  // A fast reply may finish before the HTTP acknowledgement arrives.
+  if (deduplicator.has(id)) return
+  try {
+    window.WorkStepAndroid?.postMessage(JSON.stringify({ type: 'watch', id, projectId,
+      sessionId: scope.sessionId || null, taskId: scope.taskId || null,
+      url: window.location.pathname + window.location.search,
+    }))
+  } catch (error) { console.warn('[Android] accepted reply watch failed:', error) }
 }
 
 export function notifyCompletion(notice: CompletionNotice, url: string): void {

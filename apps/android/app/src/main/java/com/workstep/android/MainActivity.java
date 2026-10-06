@@ -446,6 +446,7 @@ public final class MainActivity extends Activity {
             if ("watch".equals(type)) {
                 if (!message.optString("projectId").isEmpty()
                         && (!NotificationIds.value(message.optString("sessionId")).isEmpty() || !NotificationIds.value(message.optString("taskId")).isEmpty())) {
+                    message.put("startedAt", System.currentTimeMillis());
                     completionWatches.put(id, message);
                     CrashReports.log(this, "网页主进程", "登记监听；数量=" + completionWatches.size(), null);
                 }
