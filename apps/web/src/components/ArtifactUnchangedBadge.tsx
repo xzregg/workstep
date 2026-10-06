@@ -8,7 +8,6 @@ export default function ArtifactUnchangedBadge({ fromRound }: { fromRound: numbe
       title={t('taskDetail.artifactSameAsRoundTitle', { round: fromRound })}
       aria-label={t('taskDetail.artifactSameAsRoundTitle', { round: fromRound })}
     >
-      <span aria-hidden="true">=</span>
       {t('taskDetail.artifactSameAsRound', { round: fromRound })}
     </span>
   )
