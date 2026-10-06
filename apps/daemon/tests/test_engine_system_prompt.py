@@ -173,7 +173,8 @@ async def test_sdk_appends_to_native_preset(monkeypatch, tmp_path, engine_name, 
 @pytest.mark.parametrize("session_id, restored", [(None, False), ("existing", False), ("existing", True)])
 @pytest.mark.parametrize("entry", ["spawn_with_retry", "spawn_coordinator_with_retry"])
 @pytest.mark.parametrize("with_image", [False, True])
-async def test_codex_uses_developer_instructions_and_preserves_base(monkeypatch, tmp_path, session_id, restored, entry, with_image):
+@pytest.mark.parametrize("retry", [False, True])
+async def test_codex_uses_developer_instructions_and_preserves_base(monkeypatch, tmp_path, session_id, restored, entry, with_image, retry):
     import sys
     from types import ModuleType, SimpleNamespace
     from engines.codex_sdk import CodexSDKEngine
@@ -202,7 +203,10 @@ async def test_codex_uses_developer_instructions_and_preserves_base(monkeypatch,
         id = "existing"
 
         async def turn(self, prompt, **kwargs):
+            captured["turn_count"] = captured.get("turn_count", 0) + 1
             captured["prompt"] = prompt
+            if retry and captured["turn_count"] == 1:
+                raise RuntimeError("临时失败")
             return Turn()
 
     class Client:
@@ -230,6 +234,11 @@ async def test_codex_uses_developer_instructions_and_preserves_base(monkeypatch,
     class LocalImageInput:
         path: str
 
+    @dataclass
+    class ImageInput:
+        url: str
+
+    sdk.ImageInput = ImageInput
     sdk.TextInput = TextInput
     sdk.LocalImageInput = LocalImageInput
     sdk.AsyncCodex = Client
@@ -249,21 +258,29 @@ async def test_codex_uses_developer_instructions_and_preserves_base(monkeypatch,
     })
     from engines.core.schema import EngineImage
 
-    images = [EngineImage(path=str(tmp_path / "shot.png"), description="截图")] if with_image else None
+    images = [
+        EngineImage(path=str(tmp_path / "shot.png"), description="截图"),
+        EngineImage(url="data:image/png;base64,cGljdHVyZQ=="),
+    ] if with_image else None
     events = [event async for event in getattr(engine, entry)(
         prompt="question", cwd=str(tmp_path), session_id=session_id, system_prompt="channel role",
         capture_prompt_input=True, images=images,
     )]
     assert not [event for event in events if event.type == "error"]
+    assert captured["turn_count"] == (2 if retry else 1)
     if with_image:
         assert captured["prompt"] == [
             TextInput("question"), LocalImageInput(str(tmp_path / "shot.png")),
+            ImageInput("data:image/png;base64,cGljdHVyZQ=="),
         ]
     else:
         assert captured["prompt"] == "question"
-    snapshot = next(e.data for e in events if e.type == "prompt_input")
+    snapshots = [e.data for e in events if e.type == "prompt_input"]
+    assert len(snapshots) == (2 if retry else 1)
+    assert all("base64" not in str(data) for data in snapshots)
+    snapshot = snapshots[0]
     assert snapshot["prompt"] == "question"
-    assert snapshot["images"] == ([str(tmp_path / "shot.png")] if with_image else [])
+    assert snapshot["images"] == ([str(tmp_path / "shot.png"), "[内联图片]"] if with_image else [])
     if restored:
         assert not snapshot["system_prompt"]
         assert "developer_instructions" not in captured["kwargs"]
