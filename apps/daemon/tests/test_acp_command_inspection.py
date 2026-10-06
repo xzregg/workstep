@@ -98,6 +98,7 @@ async def test_hermes_inspection_timeout_returns_shared_skills(monkeypatch, tmp_
         yield Client(), SimpleNamespace()
 
     monkeypatch.setattr("engines.core.acp_base.acp.spawn_agent_process", fake_spawn)
+    monkeypatch.setattr(HermesEngine, "get_command", lambda self: ["hermes", "acp"])
     monkeypatch.setattr(HermesEngine, "ACP_COMMAND_DISCOVERY_TIMEOUT", 0.01)
 
     result = await HermesEngine().inspect_capabilities(str(tmp_path))
