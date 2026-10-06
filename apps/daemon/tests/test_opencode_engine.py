@@ -125,8 +125,9 @@ def test_permission_config_merges_global(monkeypatch, tmp_path):
     assert data["permission"]["edit"] == "ask"  # 覆盖权限
 
 
-def test_capabilities_honest():
+def test_capabilities_honest(monkeypatch):
     engine = OpencodeEngine()
+    monkeypatch.setattr(engine, "get_command", lambda: ["opencode", "acp"])
     assert engine.supports_resume is True
     assert engine.supports_tool_approval is True
     assert engine.supports_vision is True
@@ -254,7 +255,9 @@ async def test_resume_prefers_resume_over_load_to_avoid_replay(monkeypatch):
         yield client, object()
 
     monkeypatch.setattr("engines.core.acp_base.acp.spawn_agent_process", fake_spawn)
-    events = [event async for event in OpencodeEngine().spawn(
+    engine = OpencodeEngine()
+    monkeypatch.setattr(engine, "get_command", lambda: ["opencode", "acp"])
+    events = [event async for event in engine.spawn(
         "你是谁", "/tmp", session_id="ses_old",
     )]
 

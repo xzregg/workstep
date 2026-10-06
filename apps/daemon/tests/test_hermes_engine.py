@@ -71,7 +71,9 @@ async def test_bare_internal_error_gets_actionable_hint(monkeypatch):
         yield Client(), object()
 
     monkeypatch.setattr("engines.core.acp_base.acp.spawn_agent_process", fake_spawn)
-    events = [event async for event in HermesEngine().spawn("hi", "/tmp")]
+    engine = HermesEngine()
+    monkeypatch.setattr(engine, "get_command", lambda: ["hermes", "acp"])
+    events = [event async for event in engine.spawn("hi", "/tmp")]
     errors = [event for event in events if event.type == "error"]
     assert errors
     assert "hermes model" in errors[-1].data["message"]
@@ -129,7 +131,9 @@ async def test_resumed_turn_drops_replayed_history(monkeypatch):
         yield Client(), object()
 
     monkeypatch.setattr("engines.core.acp_base.acp.spawn_agent_process", fake_spawn)
-    events = [event async for event in HermesEngine().spawn(
+    engine = HermesEngine()
+    monkeypatch.setattr(engine, "get_command", lambda: ["hermes", "acp"])
+    events = [event async for event in engine.spawn(
         "go on", "/tmp", session_id="s1"
     )]
 

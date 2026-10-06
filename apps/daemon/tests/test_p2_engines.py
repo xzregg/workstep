@@ -13,6 +13,8 @@ from engines.qoder_sdk import QoderSDKEngine
 from engines.codex_sdk import CodexSDKEngine, _public_transport_error
 from engines.codex_visualize import convert_visualize_markers
 from engines.claude_code import ClaudeCodeEngine
+from engines.cursor_sdk import CursorSdkEngine
+from engines.opencode import OpencodeEngine
 from engines.pydantic_ai import PydanticAIEngine
 from engines.core.registry import (
     ENGINE_REGISTRY,
@@ -4591,7 +4593,10 @@ def test_all_engines_registered():
     assert "opencode" in _ALL_ENGINES
 
 
-def test_registered_engines_declare_resume_capability_accurately():
+def test_registered_engines_declare_resume_capability_accurately(monkeypatch):
+    # Resume 声明取决于适配器是否可启动；该契约测试不依赖本机 CLI/SDK 安装。
+    monkeypatch.setattr(CursorSdkEngine, "is_installed", staticmethod(lambda: True))
+    monkeypatch.setattr(OpencodeEngine, "get_command", lambda self: ["opencode", "acp"])
     unsupported = [
         engine_id
         for engine_id, engine_class in _ALL_ENGINES.items()

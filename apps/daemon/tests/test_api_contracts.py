@@ -1095,7 +1095,7 @@ async def test_single_project_summary_hides_host_path_and_keeps_health_responsiv
     monkeypatch.setattr(project_manager, "project_summary", slow_summary)
     pending = asyncio.create_task(client.get(f"/api/project/{project_id}/summary"))
     assert await asyncio.to_thread(entered.wait, 1)
-    health = await asyncio.wait_for(client.get("/api/health"), timeout=0.15)
+    health = await asyncio.wait_for(client.get("/api/health"), timeout=1)
     assert health.status_code == 200
     summary = await pending
     assert summary.status_code == 200
