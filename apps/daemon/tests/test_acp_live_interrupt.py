@@ -23,6 +23,10 @@ from engines.opencode import OpencodeEngine
 class _OpencodeProbe(OpencodeEngine):
     """去副作用的 opencode：不写权限配置文件，不碰 runtime。"""
 
+    def get_command(self):
+        # 单元测试通过 fake ACP client 驱动，不依赖宿主是否安装 OpenCode。
+        return ["opencode", "acp"]
+
     def project_skill_env(self, cwd: str):
         return {}
 
