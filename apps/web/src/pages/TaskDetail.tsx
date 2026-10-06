@@ -1115,8 +1115,14 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             project={detailProject}
             step={currentStep}
             projectId={projectId}
+            workflowId={task?.workflow_id || detailProject?.workflows?.find((workflow) => workflow.is_default)?.id || ''}
             onSaved={(nextSteps) => {
-              if (detailProject) setActiveProject({ ...detailProject, steps: nextSteps })
+              const workflowId = task?.workflow_id || detailProject?.workflows?.find((workflow) => workflow.is_default)?.id
+              if (detailProject) setActiveProject({ ...detailProject,
+                steps: useProjectStore.getState().activeWorkflowId === workflowId ? nextSteps : detailProject.steps,
+                workflows: detailProject.workflows.map((workflow) => workflow.id === workflowId
+                  ? { ...workflow, steps: nextSteps } : workflow),
+              })
             }}
             onClose={() => setShowPromptEditor(false)}
           />}

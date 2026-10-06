@@ -85,6 +85,17 @@ async def test_project_proxy_workflow_crud_is_project_scoped(api_context, monkey
     code, updated = await request("PUT", detail_path, {"name": "Renamed"})
     assert code == 200 and updated["name"] == "Renamed"
 
+    assert (await request("PUT", detail_path, {"steps": {"nodes": [
+        {"id": 1, "type": "dev", "title": "Dev", "prompt": "old"},
+    ], "connections": []}}))[0] == 200
+    prompt_path = detail_path + "/step/dev/prompt"
+    assert (await request("PATCH", prompt_path, {"prompt": "new"}, level="read"))[0] == 403
+    assert (await request("PATCH", prompt_path, {"prompt": "new"}, query_project=private))[0] == 403
+    assert (await request("PATCH", f"/api/workflow/{private_flow_id}/step/dev/prompt",
+                          {"prompt": "new"}))[0] == 404
+    code, saved = await request("PATCH", prompt_path, {"prompt": "new"})
+    assert code == 200 and saved["steps"]["nodes"][0]["prompt"] == "new"
+
     action_path = detail_path + "/actions"
     action = {"action_id": "start-services", "title": "Start", "script_path": "start.sh",
               "script_content": "#!/bin/sh\necho ready\n", "cwd_mode": "task",

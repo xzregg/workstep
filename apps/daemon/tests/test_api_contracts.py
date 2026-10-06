@@ -33,6 +33,54 @@ TEST_ACTOR_HEADERS = {
 
 
 @pytest.mark.anyio
+async def test_update_workflow_step_prompt_is_targeted_and_nonblocking(api_context, monkeypatch):
+    import main
+    from copy import deepcopy
+
+    client, tmp_path = api_context
+    directory = tmp_path / "prompt-project"
+    directory.mkdir()
+    project_id = (await client.post("/api/project/init", json={"path": str(directory)})).json()["id"]
+    definition = {"nodes": [
+        {"id": 1, "type": "build", "title": "Build", "prompt": "old", "review": {"mode": "skip"}},
+        {"id": 2, "type": "test", "title": "Test", "prompt": "keep"},
+    ], "connections": []}
+    default = (await client.post(f"/api/workflow/create?project_id={project_id}",
+                                json={"name": "Default", "steps": definition})).json()
+    selected = (await client.post(f"/api/workflow/create?project_id={project_id}",
+                                 json={"name": "Selected", "steps": definition})).json()
+    workflow_id = selected["id"]
+    project = main.project_manager.get_project_by_id(project_id)
+    original = project.db.execute_sql
+    entered = threading.Event()
+
+    def slow_update(sql, params=None, commit=None):
+        if sql.startswith('UPDATE "workflows"'):
+            entered.set()
+            time.sleep(0.3)
+        return original(sql, params)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_update)
+    pending = asyncio.create_task(client.patch(
+        f"/api/workflow/{workflow_id}/step/build/prompt?project_id={project_id}", json={"prompt": "new"}))
+    assert await asyncio.to_thread(entered.wait, 2)
+    before = time.monotonic()
+    assert (await client.get("/api/health")).status_code == 200
+    assert time.monotonic() - before < 0.15
+    response = await pending
+    assert response.status_code == 200
+    expected = deepcopy(selected["steps"])
+    expected["nodes"][0]["prompt"] = "new"
+    assert response.json()["steps"] == expected
+    assert (await client.get(f"/api/workflow/{workflow_id}?project_id={project_id}")).json()["steps"] == expected
+    assert (await client.get(f"/api/workflow/{default['id']}?project_id={project_id}")).json()["steps"] == default["steps"]
+    for flow, step in [("missing", "build"), (workflow_id, "missing")]:
+        result = await client.patch(f"/api/workflow/{flow}/step/{step}/prompt?project_id={project_id}", json={"prompt": "bad"})
+        assert result.status_code == 404
+    assert (await client.patch(f"/api/workflow/{workflow_id}/step/build/prompt?project_id={project_id}", json={})).status_code == 422
+
+
+@pytest.mark.anyio
 async def test_manual_start_slow_local_identity_lookup_does_not_block_health(
     api_context, monkeypatch,
 ):

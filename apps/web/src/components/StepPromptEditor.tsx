@@ -1,6 +1,6 @@
-import { useState, type CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import type { Project } from '../api/client'
-import { projectApi } from '../api/client'
+import { workflowApi } from '../api/client'
 import { useI18n } from '../i18n'
 import type { StepData } from './TaskDetailView'
 import Button from './Button'
@@ -8,47 +8,48 @@ import MarkdownEditor from './MarkdownEditor'
 import ResizablePanel from './ResizablePanel'
 import StepPromptVariablesHint from './StepPromptVariablesHint'
 
-export function replaceProjectStepPrompt(steps: Project['steps'], stepKey: string, prompt: string): Project['steps'] {
-  if (steps?.nodes?.length) {
-    return {
-      ...steps,
-      nodes: steps.nodes.map((node: any) =>
-        (node.type || node.key) === stepKey ? { ...node, prompt } : node),
-    }
-  }
-  if (steps?.steps?.length) {
-    return {
-      ...steps,
-      steps: steps.steps.map((step: any) =>
-        (step.key || step.id) === stepKey ? { ...step, prompt } : step),
-    }
-  }
-  return steps
-}
-
 interface Props {
   project: Project | null | undefined
   step: StepData
   projectId: string
+  workflowId: string
   onSaved: (steps: Project['steps']) => void
   onClose: () => void
 }
 
 /** Owns the quick edit draft, persistence, error state, and dialog. */
-export default function StepPromptEditor({ project, step, projectId, onSaved, onClose }: Props) {
+export default function StepPromptEditor({ project, step, projectId, workflowId, onSaved, onClose }: Props) {
   const { t } = useI18n()
   const [draft, setDraft] = useState(step.prompt)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoaded(false)
+    workflowApi.get(workflowId, projectId).then((workflow) => {
+      if (cancelled) return
+      const nodes = workflow.steps?.nodes
+      const items = nodes?.length ? nodes : workflow.steps?.steps || []
+      const selected = items.find((item: any) =>
+        (nodes?.length ? item.type || item.key || item.id : item.key || item.id || item.type) === step.key)
+      if (!selected) throw new Error('Step not found')
+      setDraft(selected.prompt || '')
+      setLoaded(true)
+    }).catch((reason) => {
+      if (!cancelled) setError(t('taskDetail.saveFailed', { error: String(reason) }))
+    })
+    return () => { cancelled = true }
+  }, [workflowId, projectId, step.key, t])
 
   const save = async () => {
-    if (!project || saving) return
-    const nextSteps = replaceProjectStepPrompt(project.steps, step.key, draft)
+    if (!project || saving || !loaded) return
     setSaving(true)
     setError('')
     try {
-      await projectApi.saveSteps(project.id, nextSteps)
-      onSaved(nextSteps)
+      const result = await workflowApi.updateStepPrompt(workflowId, projectId, step.key, draft)
+      onSaved(result.steps)
       onClose()
     } catch (reason) {
       setError(t('taskDetail.saveFailed', {
@@ -83,6 +84,7 @@ export default function StepPromptEditor({ project, step, projectId, onSaved, on
       <div className="step-prompt-editor-body">
         <MarkdownEditor
           value={draft}
+          disabled={!loaded || saving}
           onChange={setDraft}
           projectId={projectId}
           placeholder={t('taskDetail.promptEditorPlaceholder')}
@@ -96,7 +98,7 @@ export default function StepPromptEditor({ project, step, projectId, onSaved, on
       </div>
       <div className="dialog-footer">
         <Button variant="ghost" disabled={saving} onClick={onClose}>{t('common.cancel')}</Button>
-        <Button variant="primary" disabled={saving} loading={saving} onClick={() => void save()}>
+        <Button variant="primary" disabled={saving || !loaded} loading={saving} onClick={() => void save()}>
           {t('taskDetail.savePrompt')}
         </Button>
       </div>
