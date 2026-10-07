@@ -60,7 +60,11 @@ function containerArgs(config, platform, port, token, managedEnv = {}) {
   if (platform === 'linux') args.push('--userns=keep-id:uid=0,gid=0', '--cgroups=disabled')
   for (const mount of guestMounts(config, platform)) args.push('--mount', `type=bind,source=${mount.source},target=${mount.target}`)
   if (config.compatibility) args.push('--cap-add=SYS_ADMIN', '--security-opt=seccomp=unconfined')
-  args.push('--env', `WORKSTEP_DESKTOP_TOKEN=${token}`, '--env', 'WORKSTEP_DESKTOP_RUNTIME=1')
+  args.push(
+    '--env', `WORKSTEP_DESKTOP_TOKEN=${token}`,
+    '--env', 'WORKSTEP_DESKTOP_RUNTIME=1',
+    '--env', 'WORKSTEP_PROJECTS_ROOT=/data/projects',
+  )
   for (const [key, value] of Object.entries(managedEnv)) {
     if (key.startsWith('WORKSTEP_') && typeof value === 'string') args.push('--env', `${key}=${value}`)
   }

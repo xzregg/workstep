@@ -27,6 +27,7 @@ test('container only publishes loopback and does not expose container-management
   assert.ok(!args.includes('--privileged'))
   assert.ok(!args.join(' ').includes('docker.sock'))
   assert.ok(args.includes('WORKSTEP_DESKTOP_TOKEN=secret'))
+  assert.ok(args.includes('WORKSTEP_PROJECTS_ROOT=/data/projects'))
   assert.equal(windowsPath('C:\\Users\\A B\\project'), '/mnt/c/Users/A B/project')
 })
 
@@ -261,17 +262,17 @@ for (const conflict of [false, true]) {
         install: async () => ({ executable: '/managed/podman', helpers: [] }), execute: async (_file, args) => {
           calls.push(args)
           if (args.includes('ps')) return '[]'
-          if (args.includes('run') && conflict && args.includes('127.0.0.1:8765:8765')) throw new Error('bind: address already in use')
-          if (args.includes('port')) return conflict ? '127.0.0.1:45678' : '127.0.0.1:8765'
+          if (args.includes('run') && conflict && args.includes('127.0.0.1:8766:8765')) throw new Error('bind: address already in use')
+          if (args.includes('port')) return conflict ? '127.0.0.1:45678' : '127.0.0.1:8766'
           return '{}'
         } })
       await manager.prepare({ root: path.join(base, 'sandbox'), project: path.join(base, 'project'), mounts: [] })
       await manager.setEnabled(true)
       globalThis.fetch = async () => Response.json({ status: 'ok' })
-      assert.equal(await manager.start(8765, 'token'), conflict ? 'http://127.0.0.1:45678' : 'http://127.0.0.1:8765')
+      assert.equal(await manager.start(8766, 'token'), conflict ? 'http://127.0.0.1:45678' : 'http://127.0.0.1:8766')
       const runs = calls.filter(args => args.includes('run'))
       assert.equal(runs.length, conflict ? 2 : 1)
-      assert.ok(runs[0].includes('127.0.0.1:8765:8765'))
+      assert.ok(runs[0].includes('127.0.0.1:8766:8765'))
       if (conflict) assert.ok(runs[1].includes('127.0.0.1::8765'))
       await manager.stop()
     } finally { globalThis.fetch = originalFetch; await fs.rm(base, { recursive: true, force: true }) }

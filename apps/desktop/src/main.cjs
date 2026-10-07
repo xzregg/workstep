@@ -209,7 +209,7 @@ async function backendUrl() {
   }
   if (!app.isPackaged) {
     return process.env.WORKSTEP_DEV_SERVER_URL
-      ?? `http://127.0.0.1:${requestedPort || 8765}`
+      ?? `http://127.0.0.1:${requestedPort || 8766}`
   }
   const launch = backendLaunch(process.resourcesPath)
   const managedEnv = managedEnvironment(
