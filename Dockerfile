@@ -2,7 +2,7 @@
 # 阶段 1：前端构建（web + landing）
 # 完整 node:24-bookworm 提供 yarn（corepack）与编译工具，产物仅拷贝进最终镜像
 # ============================================================
-FROM node:24-bookworm AS web-build
+FROM --platform=$BUILDPLATFORM node:24-bookworm AS web-build
 
 WORKDIR /app/apps/web
 COPY apps/web/package.json apps/web/yarn.lock ./
