@@ -2,7 +2,7 @@ import Icon, { type IconName } from './Icon'
 import { useI18n } from '../i18n'
 import './SettingsNavigation.css'
 
-export type SettingsSection = 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'channels' | 'remote' | 'concurrency' | 'git' | 'system'
+export type SettingsSection = 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'channels' | 'remote' | 'concurrency' | 'git' | 'system' | 'sandbox'
 
 const sections: { id: SettingsSection; label: string; icon?: IconName; glyph?: string }[] = [
   { id: 'providers', label: 'providerSettings.nav', icon: 'sliders-horizontal' },
@@ -14,6 +14,7 @@ const sections: { id: SettingsSection; label: string; icon?: IconName; glyph?: s
   { id: 'remote', label: 'settings.remoteAccessTitle', icon: 'share' },
   { id: 'concurrency', label: 'projectSettings.tabs.concurrency', icon: 'layers' },
   { id: 'git', label: 'gitSettings.title', icon: 'git-fork' },
+  { id: 'sandbox', label: 'sandbox.title', icon: 'layers' },
   { id: 'system', label: 'settings.systemNav', glyph: '文' },
 ]
 
@@ -28,7 +29,7 @@ export default function SettingsNavigation({
   return (
     <aside className="settings-nav">
       <div className="settings-nav-heading">{t('nav.settings')}</div>
-      {sections.map(({ id, label, icon, glyph }) => (
+      {sections.filter(section => section.id !== 'sandbox' || window.workstepDesktop?.sandbox).map(({ id, label, icon, glyph }) => (
         <button
           key={id}
           type="button"

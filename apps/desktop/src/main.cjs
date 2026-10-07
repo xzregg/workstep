@@ -1,6 +1,9 @@
 const { createPrivateKey, randomBytes, sign } = require('node:crypto')
 const { app, BrowserWindow, Notification, dialog, ipcMain, safeStorage, session, shell } = require('electron')
 const path = require('node:path')
+const fs = require('node:fs/promises')
+const { SandboxManager } = require('./sandbox.cjs')
+const { registerSandboxIpc } = require('./sandbox-ipc.cjs')
 const { autoUpdater } = require('electron-updater')
 const { managedEnvironment, readManagedConfig } = require('./managed-config.cjs')
 const { loadOrCreateDeviceIdentity } = require('./credential-store.cjs')
@@ -24,6 +27,7 @@ const {
   updaterChannel,
 } = require('./security.cjs')
 
+let sandboxManager = null
 let backendProcess = null
 let stopping = null
 let installingUpdate = false
@@ -119,8 +123,12 @@ async function bootstrapManagedBackend(url, authorization) {
 
 async function stopBackend() {
   if (!stopping) {
-    stopping = stopSidecar(backendProcess).finally(() => {
+    stopping = (async () => {
+      if (sandboxManager?.session) await sandboxManager.stop()
+      await stopSidecar(backendProcess)
+    })().finally(() => {
       backendProcess = null
+      stopping = null
     })
   }
   await stopping
@@ -177,11 +185,28 @@ function createWindow(url) {
   window.once('ready-to-show', () => window.show())
   void window.loadURL(url)
   mainWindow = window
+  registerSandboxIpc({ ipcMain, dialog, shell, manager: sandboxManager,
+    window: () => mainWindow, rootUrl: () => rootUrl, hasActiveWork,
+    restart: async () => { await stopBackend(); app.relaunch(); app.quit() },
+  })
   return window
 }
 
 async function backendUrl() {
   const requestedPort = resolveBackendPort()
+  const sandbox = await sandboxManager.settings()
+  if (sandbox.enabled) {
+    desktopToken = randomBytes(32).toString('hex')
+    const env = app.isPackaged ? managedEnvironment(process.resourcesPath,
+      require('../package.json').managedGatewayRootFingerprint) : {}
+    if (env.WORKSTEP_MANAGED_BUNDLE_DIR) {
+      const target = path.join(sandbox.root, 'desktop/managed-gateway')
+      await fs.cp(env.WORKSTEP_MANAGED_BUNDLE_DIR, target, { recursive: true })
+      env.WORKSTEP_MANAGED_BUNDLE_DIR = '/usr/local/share/workstep-managed'
+    }
+    env.WORKSTEP_VERSION = app.getVersion()
+    return sandboxManager.start(requestedPort, desktopToken, env)
+  }
   if (!app.isPackaged) {
     return process.env.WORKSTEP_DEV_SERVER_URL
       ?? `http://127.0.0.1:${requestedPort || 8765}`
@@ -196,6 +221,8 @@ async function backendUrl() {
     port: requestedPort,
     env: {
       ...process.env,
+      // The signed application bundle must remain unchanged after launch.
+      PYTHONDONTWRITEBYTECODE: '1',
       WORKSTEP_DESKTOP_RUNTIME: '1',
       WORKSTEP_DESKTOP_TOKEN: desktopToken,
       WORKSTEP_VERSION: app.getVersion(),
@@ -271,7 +298,7 @@ function configureManagedSessionRecovery(managed) {
 }
 
 async function hasActiveWork() {
-  if (!rootUrl || !desktopToken) return true
+  if (!rootUrl || (!desktopToken && app.isPackaged)) return true
   try {
     const response = await fetch(`${rootUrl}/api/project/list`, {
       headers: { 'X-WorkStep-Desktop-Token': desktopToken,
@@ -330,12 +357,14 @@ function configureUpdater() {
   autoUpdater.autoInstallOnAppQuit = true
   autoUpdater.on('update-downloaded', () => void promptForUpdateInstall())
   autoUpdater.on('error', (error) => console.error('Auto update failed', error))
-  void autoUpdater.checkForUpdatesAndNotify()
+  void autoUpdater.checkForUpdatesAndNotify().catch((error) => {
+    console.error('Unable to check for desktop updates', error)
+  })
 }
 
 app.on('before-quit', (event) => {
   if (controlStatusTimer) clearInterval(controlStatusTimer)
-  if (installingUpdate || !backendProcess) return
+  if (installingUpdate || (!backendProcess && !sandboxManager?.session)) return
   event.preventDefault()
   void stopBackend().then(() => app.quit())
 })
@@ -359,6 +388,9 @@ app.on('open-url', (event, value) => {
 
 app.whenReady().then(async () => {
   if (!hasSingleInstanceLock) return
+  const release = require('./sandbox-release.json')
+  const image = app.isPackaged ? release.image : process.env.WORKSTEP_SANDBOX_IMAGE || release.image
+  sandboxManager = new SandboxManager({ stateDir: app.getPath('userData'), image })
   let managed = null
   try {
     managed = app.isPackaged
@@ -375,7 +407,20 @@ app.whenReady().then(async () => {
         return
       }
     }
-    rootUrl = await backendUrl()
+    for (;;) {
+      try { rootUrl = await backendUrl(); break } catch (error) {
+        if (!(await sandboxManager.settings()).enabled) throw error
+        const result = await dialog.showMessageBox({ type: 'error', title: 'WorkStep 沙箱启动失败',
+          message: error instanceof Error ? error.message : String(error),
+          buttons: ['重试', '打开日志目录', '切回非沙箱', '退出'], defaultId: 0, cancelId: 3 })
+        if (result.response === 3) { app.quit(); return }
+        if (result.response === 1) {
+          await sandboxManager.logWrite
+          await shell.openPath(path.join((await sandboxManager.settings()).root, 'desktop'))
+        }
+        if (result.response === 2) await sandboxManager.setEnabled(false)
+      }
+    }
     if (managedAuthorization) await bootstrapManagedBackend(rootUrl, managedAuthorization)
     configureAuthenticatedRequests(rootUrl)
     const initialPath = pendingProtocolUrl ? protocolPath(pendingProtocolUrl) : '/'

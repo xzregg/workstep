@@ -1,3 +1,4 @@
+import type { SandboxBridge } from './desktopSandbox'
 export interface CompletionNotice {
   id: string
   projectId: string
@@ -66,7 +67,7 @@ export class CompletionDeduplicator {
 }
 
 type NativeBridge = { postMessage: (message: string) => void }
-type DesktopBridge = { notify: (notice: CompletionNotice & { url: string }) => void }
+type DesktopBridge = { sandbox?: SandboxBridge; notify: (notice: CompletionNotice & { url: string }) => void }
 
 declare global {
   interface Window {
