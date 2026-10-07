@@ -62,15 +62,7 @@ jobs:
 
   macos:
     needs: [validate, sandbox-image]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15
-            arch: arm64
-          - runner: macos-15-intel
-            arch: x64
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ inputs.tag || github.ref }}" }
@@ -109,7 +101,7 @@ jobs:
           if [ -n "${{ inputs.tag }}" ]; then version="${{ inputs.tag }}"; version="${version#v}"; fi
           npm version "$version" --no-git-tag-version --allow-same-version
           ./inject-backend.sh
-          yarn electron-builder --mac dmg zip --${{ matrix.arch }} --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false --config.publish.channel=latest-${{ matrix.arch }}
+          yarn electron-builder --mac dmg zip --arm64 --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false --config.publish.channel=latest-arm64
           codesign --verify --deep --strict --verbose=2 "$(find dist -maxdepth 2 -type d -name WorkStep.app -print -quit)"
           test -x resources-placeholder/backend/python/bin/python3
           test -f resources-placeholder/backend/legal/LICENSE
@@ -120,7 +112,7 @@ jobs:
           test -n "$app_path"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: desktop-macos-${{ matrix.arch }}
+          name: desktop-macos-arm64
           path: |
             apps/desktop/dist/*.dmg
             apps/desktop/dist/*.zip
@@ -130,14 +122,6 @@ jobs:
 
   windows:
     needs: [validate, sandbox-image]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x64
-            python_arch: x86_64
-          - arch: ia32
-            python_arch: x86
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -160,7 +144,7 @@ jobs:
         shell: pwsh
         env:
           WORKSTEP_BUILD_VERSION: ${{ inputs.tag || github.ref_name }}
-          WORKSTEP_WINDOWS_PYTHON_ARCH: ${{ matrix.python_arch }}
+          WORKSTEP_WINDOWS_PYTHON_ARCH: x86_64
         run: ./apps/desktop/build-backend.ps1
       - name: Build unsigned Windows installer and update metadata
         shell: pwsh
@@ -171,18 +155,18 @@ jobs:
           $version = "${{ inputs.tag || github.ref_name }}".TrimStart("v")
           npm version $version --no-git-tag-version --allow-same-version
           ./inject-backend.ps1
-          yarn electron-builder --win nsis --${{ matrix.arch }} --publish never --config.win.forceCodeSigning=false --config.publish.channel=latest-${{ matrix.arch }}
+          yarn electron-builder --win nsis --x64 --publish never --config.win.forceCodeSigning=false --config.publish.channel=latest-x64
           if (-not (Test-Path "resources-placeholder/backend/python/python.exe")) { throw "Bundled Python missing" }
           if (-not (Test-Path "resources-placeholder/backend/legal/sbom.cdx.json")) { throw "SBOM missing" }
-          $installer = Get-Item "dist/WorkStep-windows-${{ matrix.arch }}.exe"
+          $installer = Get-Item "dist/WorkStep-windows-x64.exe"
           if (-not $installer) { throw "Windows installer missing" }
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: desktop-windows-${{ matrix.arch }}
+          name: desktop-windows-x64
           path: |
             apps/desktop/dist/*.exe
             apps/desktop/dist/*.blockmap
-            apps/desktop/dist/latest-${{ matrix.arch }}.yml
+            apps/desktop/dist/latest-x64.yml
           if-no-files-found: error
 
   linux:

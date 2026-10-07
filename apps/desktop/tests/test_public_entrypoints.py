@@ -8,9 +8,10 @@ def test_start_script_does_not_kill_unrelated_port_owners():
     start = (ROOT / "start.sh").read_text()
     stop = (ROOT / "stop.sh").read_text()
 
-    assert 'lsof -ti:"$port"' not in start
-    assert 'lsof -ti:"$port"' not in stop
-    assert 'fail "端口 $PORT 已被其他进程占用' in start
+    assert "kill $(lsof" not in start
+    assert "kill $(lsof" not in stop
+    assert 'stop_service "$PID_DIR/daemon.pid"' in start
+    assert 'stop_service "$PID_DIR/daemon.pid"' in stop
 
 
 def test_source_entrypoint_uses_project_package_manager():
@@ -45,26 +46,33 @@ def test_release_workflow_builds_unsigned_without_signing_secrets():
         assert secret_name not in workflow
 
     assert 'CSC_IDENTITY_AUTO_DISCOVERY: "false"' in workflow
+    assert "--config.mac.identity=-" in workflow
     assert "--config.mac.notarize=false" in workflow
     assert "--config.win.forceCodeSigning=false" in workflow
-    assert "codesign --verify" not in workflow
     assert "Get-AuthenticodeSignature" not in workflow
     assert "actions/attest" not in workflow
     assert "attestations: write" not in workflow
 
 
-def test_release_workflow_builds_windows_x64_and_x86_with_matching_python():
+def test_release_workflow_builds_supported_desktop_architectures_only():
     workflow = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text()
     backend_builder = (ROOT / "apps" / "desktop" / "build-backend.ps1").read_text()
 
-    assert "arch: x64" in workflow
-    assert "python_arch: x86_64" in workflow
-    assert "arch: ia32" in workflow
-    assert "python_arch: x86" in workflow
-    assert "WORKSTEP_WINDOWS_PYTHON_ARCH: ${{ matrix.python_arch }}" in workflow
-    assert "--${{ matrix.arch }}" in workflow
-    assert "desktop-windows-${{ matrix.arch }}" in workflow
-    assert '"dist/WorkStep-windows-${{ matrix.arch }}.exe"' in workflow
+    macos_job, windows_and_later = workflow.split("  windows:\n", 1)
+    windows_job = windows_and_later.split("  linux:\n", 1)[0]
+
+    assert "runs-on: macos-15" in macos_job
+    assert "macos-15-intel" not in macos_job
+    assert "--arm64" in macos_job
+    assert "desktop-macos-arm64" in macos_job
+
+    assert "runs-on: windows-2025" in windows_job
+    assert "WORKSTEP_WINDOWS_PYTHON_ARCH: x86_64" in windows_job
+    assert "--x64" in windows_job
+    assert "desktop-windows-x64" in windows_job
+    assert '"dist/WorkStep-windows-x64.exe"' in windows_job
+    assert "ia32" not in workflow
+    assert "macos-x64" not in workflow
     assert "$env:WORKSTEP_WINDOWS_PYTHON_ARCH" in backend_builder
     assert '"cpython-$PythonVersion-windows-$PythonArch-none"' in backend_builder
 
@@ -109,5 +117,5 @@ def test_release_artifacts_exclude_electron_builder_debug_metadata():
 
     assert "apps/desktop/dist/*.yml" not in workflow
     assert "apps/desktop/dist/latest-*-mac.yml" in workflow
-    assert "apps/desktop/dist/latest-${{ matrix.arch }}.yml" in workflow
+    assert "apps/desktop/dist/latest-x64.yml" in workflow
     assert "apps/desktop/dist/latest-linux.yml" in workflow

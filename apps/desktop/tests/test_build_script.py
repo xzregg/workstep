@@ -169,21 +169,3 @@ def test_sandbox_web_build_uses_github_reachable_npm_registry() -> None:
     assert "FROM --platform=$BUILDPLATFORM node:24-bookworm AS web-build" in web_build
     assert "registry.npmmirror.com" not in web_build
     assert "https://registry.npmjs.org" in web_build
-
-
-def test_desktop_crypto_dependency_keeps_windows_x86_wheel_support() -> None:
-    daemon_project = (REPO_DIR / "apps" / "daemon" / "pyproject.toml").read_text(
-        encoding="utf-8"
-    )
-    gateway_input = (
-        REPO_DIR / "apps" / "desktop" / "backend" / "requirements-gateway.in"
-    ).read_text(encoding="utf-8")
-    generated_requirements = (
-        REPO_DIR / "apps" / "desktop" / "backend" / "requirements-prod.txt",
-        REPO_DIR / "apps" / "desktop" / "backend" / "requirements-gateway.txt",
-    )
-
-    assert '"cryptography>=43.0,<49"' in daemon_project
-    assert "cryptography==48.0.1" in gateway_input
-    for requirements in generated_requirements:
-        assert "cryptography==48.0.1" in requirements.read_text(encoding="utf-8")
