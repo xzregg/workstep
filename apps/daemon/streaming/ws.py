@@ -224,7 +224,7 @@ def register_websocket_routes(app: FastAPI) -> None:
 
     @app.websocket("/ws/remote-project")
     async def remote_project_ws_endpoint(ws: WebSocket):
-        if not desktop_websocket_allowed(ws):
+        if not await desktop_websocket_allowed(ws):
             await ws.close(code=4401, reason="desktop authentication required")
             return
         dispatcher = RemoteRouteDispatcher(app)
@@ -252,7 +252,7 @@ def register_websocket_routes(app: FastAPI) -> None:
         receives everything (backward compatible).
         """
         main = _main()
-        if not desktop_websocket_allowed(ws):
+        if not await desktop_websocket_allowed(ws):
             await ws.close(code=4401, reason="desktop authentication required")
             return
         if not await asyncio.to_thread(
@@ -305,7 +305,7 @@ def register_websocket_routes(app: FastAPI) -> None:
         """
         from services.share import resolve_share_session
 
-        if not desktop_websocket_allowed(ws):
+        if not await desktop_websocket_allowed(ws):
             await ws.close(code=4401, reason="desktop authentication required")
             return
 

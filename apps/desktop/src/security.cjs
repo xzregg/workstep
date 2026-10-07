@@ -36,10 +36,25 @@ function updaterChannel(platform, arch) {
   return `latest-${arch}`
 }
 
+function primaryNetworkIPv4(interfaces = require('node:os').networkInterfaces()) {
+  const candidates = Object.values(interfaces).flat().filter((item) => (
+    item && (item.family === 'IPv4' || item.family === 4) && !item.internal
+    && !item.address.startsWith('127.') && !item.address.startsWith('169.254.')
+    && !item.address.startsWith('198.18.') && !item.address.startsWith('198.19.')
+  ))
+  const rank = (address) => (
+    address.startsWith('10.') || address.startsWith('192.168.')
+      || /^172\.(1[6-9]|2\d|3[01])\./.test(address) ? 0 : 1
+  )
+  candidates.sort((left, right) => rank(left.address) - rank(right.address))
+  return candidates[0]?.address || '127.0.0.1'
+}
+
 module.exports = {
   isAllowedExternalUrl,
   isTrustedNavigation,
   projectsHaveActiveWork,
   sessionsHaveActiveWork,
   updaterChannel,
+  primaryNetworkIPv4,
 }

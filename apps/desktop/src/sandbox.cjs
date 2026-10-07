@@ -56,7 +56,7 @@ function guestMounts(config, platform) {
   return [{ source: transform(path.join(config.root, 'home')), target: '/root' }, { source: transform(config.project), target: '/data/projects' }, ...config.mounts.map(mount => ({ source: transform(mount.source), target: mount.target }))]
 }
 function containerArgs(config, platform, port, token, managedEnv = {}) {
-  const args = ['run', '--detach', '--name', `workstep-${config.id}`, '--label', `com.workstep.sandbox=${config.id}`, '--publish', `127.0.0.1:${port || ''}:8765`]
+  const args = ['run', '--detach', '--name', `workstep-${config.id}`, '--label', `com.workstep.sandbox=${config.id}`, '--publish', `0.0.0.0:${port || ''}:8765`]
   if (platform === 'linux') args.push('--userns=keep-id:uid=0,gid=0', '--cgroups=disabled')
   for (const mount of guestMounts(config, platform)) args.push('--mount', `type=bind,source=${mount.source},target=${mount.target}`)
   if (config.compatibility) args.push('--cap-add=SYS_ADMIN', '--security-opt=seccomp=unconfined')

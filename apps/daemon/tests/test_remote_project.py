@@ -334,7 +334,9 @@ async def test_main_websocket_slow_access_check_keeps_event_loop_responsive(monk
 
     monkeypatch.setattr(access, "access_password_required", slow_required)
     monkeypatch.setattr(websocket_routes, "_main", lambda: SimpleNamespace(remote_access_service=access))
-    monkeypatch.setattr(websocket_routes, "desktop_websocket_allowed", lambda _ws: True)
+    monkeypatch.setattr(
+        websocket_routes, "desktop_websocket_allowed", AsyncMock(return_value=True)
+    )
     app = FastAPI()
     websocket_routes.register_websocket_routes(app)
     endpoint = next(route.endpoint for route in app.routes if route.path == "/ws")
@@ -1277,9 +1279,14 @@ def test_internal_access_address_defaults_to_primary_network_card_and_daemon_por
     access.set_runtime_port(18766)
     assert access.settings()["internal_base_url"] == "http://192.168.50.24:18766"
 
+    access.set_runtime_address("192.168.50.99", 8766)
+    assert access.settings()["internal_base_url"] == "http://192.168.50.99:8766"
+    access.set_runtime_port(8765)
+    assert access.settings()["internal_base_url"] == "http://192.168.50.99:8766"
+
     access.update_settings(
         enabled=True,
-        internal_base_url="http://192.168.50.24:18766",
+        internal_base_url="http://192.168.50.99:8766",
         external_base_url="",
     )
     assert config.get("remote_access")["internal_base_url"] == ""
@@ -1289,7 +1296,7 @@ def test_internal_access_address_defaults_to_primary_network_card_and_daemon_por
         project_name="demo",
         access="internal",
     )
-    assert shared["endpoint"] == "ws://192.168.50.24:18766/ws/remote-project"
+    assert shared["endpoint"] == "ws://192.168.50.99:8766/ws/remote-project"
 
 
 def test_manual_internal_access_address_overrides_generated_default():
@@ -1759,6 +1766,21 @@ async def test_remote_project_settings_and_add_api(monkeypatch):
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as client:
+        monkeypatch.setenv("WORKSTEP_DESKTOP_RUNTIME", "1")
+        monkeypatch.setenv("WORKSTEP_DESKTOP_TOKEN", "desktop-secret")
+        denied_runtime = await client.post(
+            "/api/remote-project/desktop-runtime",
+            json={"host": "192.168.50.24", "port": 8766},
+        )
+        assert denied_runtime.status_code == 401
+        runtime = await client.post(
+            "/api/remote-project/desktop-runtime",
+            headers={"X-WorkStep-Desktop-Token": "desktop-secret"},
+            json={"host": "192.168.50.24", "port": 8766},
+        )
+        assert runtime.status_code == 200
+        assert runtime.json()["internal_base_url"] == "http://192.168.50.24:8766"
+
         invalid = await client.put(
             "/api/remote-project/settings",
             json={

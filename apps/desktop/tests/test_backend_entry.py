@@ -227,3 +227,16 @@ def test_available_requested_port_is_reused():
         assert second.getsockname()[1] == preferred
     finally:
         second.close()
+
+
+def test_desktop_listener_accepts_lan_connections(monkeypatch):
+    seen = {}
+
+    def bind(host, port):
+        seen.update(host=host, port=port)
+        raise OSError("stop after observing bind")
+
+    monkeypatch.setattr(server, "bind_server_socket", bind)
+
+    assert server.main(["--port", "8766"]) == 2
+    assert seen == {"host": "0.0.0.0", "port": 8766}

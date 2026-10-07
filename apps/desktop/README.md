@@ -76,7 +76,7 @@ uv run --project apps/daemon --group dev pytest apps/desktop/tests/test_backend_
 
 更新下载完成后不会直接退出应用。桌面壳先检查所有项目是否仍有运行中的任务或会话；繁忙时只提示稍后更新，空闲时也必须由用户确认，之后才执行：停止 sidecar → 等待进程退出 → 额外等待 500ms → `quitAndInstall`。
 
-生产 sidecar 每次启动都会生成新的随机令牌。令牌只保留在 Electron 主进程与 sidecar 环境中，由主进程为目标 loopback origin 的 HTTP/WebSocket 请求注入；渲染进程不会获得令牌。外部导航、新窗口、WebView 和浏览器权限请求均由桌面壳限制。
+生产 sidecar 每次启动都会生成新的随机令牌。令牌只保留在 Electron 主进程与 sidecar 环境中，由主进程为桌面后台的 HTTP/WebSocket 请求注入；渲染进程不会获得令牌。沙箱和非沙箱模式都首选宿主机端口 `8766`，冲突时才回退到空闲端口。后台监听宿主机网络接口，但远程访问未开启时业务 API 仍要求桌面令牌；开启后，局域网浏览器再按远程访问设置及访问密钥鉴权。外部导航、新窗口、WebView 和浏览器权限请求均由桌面壳限制。
 
 LLM 回复或任务步骤执行完成、失败且窗口不在前台时，网页通过受限 preload 桥接请求 Electron 系统通知；通知点击后打开对应会话或任务。桥接只接受已加载的本地服务来源，浏览器通知权限仍保持禁用。
 
