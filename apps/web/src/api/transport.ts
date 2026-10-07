@@ -1,6 +1,7 @@
 /** REST API client for the WorkStep daemon. */
 
 import { browserActorHeaders } from '../utils/browserActor'
+import { zhCNT } from '../i18n'
 
 export const BASE = '/api'
 /** Default page size for loading full event logs / message histories. */
@@ -27,6 +28,17 @@ function errorDetailMessage(detail: unknown, status: number): string {
   return `HTTP ${status}`
 }
 
+async function readApiResponse<T>(res: Response, path: string): Promise<T> {
+  if (res.headers.get('Content-Type')?.toLowerCase().includes('text/html')) {
+    throw new ApiError(zhCNT('api.htmlResponse', { path: `${BASE}${path.split('?')[0]}` }), res.status)
+  }
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new ApiError(errorDetailMessage(detail.detail, res.status), res.status)
+  }
+  return res.json() as Promise<T>
+}
+
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const run = async () => {
     const res = await fetch(`${BASE}${path}`, {
@@ -37,11 +49,7 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
         ...(options?.headers || {}),
       },
     })
-    if (!res.ok) {
-      const detail = await res.json().catch(() => ({ detail: res.statusText }))
-      throw new ApiError(errorDetailMessage(detail.detail, res.status), res.status)
-    }
-    return res.json() as Promise<T>
+    return readApiResponse<T>(res, path)
   }
 
   const method = (options?.method || 'GET').toUpperCase()
@@ -85,11 +93,7 @@ export async function shareRequest<T>(
         ...(options?.headers || {}),
       },
     })
-    if (!res.ok) {
-      const detail = await res.json().catch(() => ({ detail: res.statusText }))
-      throw new ApiError(errorDetailMessage(detail.detail, res.status), res.status)
-    }
-    return res.json() as Promise<T>
+    return readApiResponse<T>(res, path)
   }
 
   const method = (options?.method || 'GET').toUpperCase()

@@ -58,7 +58,7 @@ run_yarn() {
 }
 
 check_port() {
-    if lsof -ti:"$1" >/dev/null 2>&1; then
+    if lsof -nP -iTCP:"$1" -sTCP:LISTEN -t >/dev/null 2>&1; then
         return 0  # 端口被占
     fi
     return 1  # 端口空闲
@@ -93,7 +93,10 @@ wait_ready() {
 }
 
 # === 预检查 ===
-
+command -v lsof >/dev/null 2>&1 || fail "需要 lsof 检查端口占用"
+if check_port "$PORT" || { [ "$MODE" = "dev" ] && check_port 5173; }; then
+    fail "服务端口已被占用；请使用重启按钮或先停止已有服务，不能重复启动"
+fi
 
 # 检查依赖
 command -v uv >/dev/null 2>&1 || fail "需要 uv (curl -LsSf https://astral.sh/uv/install.sh | sh)"
@@ -102,14 +105,16 @@ select_yarn
 
 # === 构建官网 ===
 # Daemon 在 "/landing" 托管官网，dev/prod 启动都需使用对应资源基路径。
-log "构建官网 landing..."
-cd "$LANDING_DIR"
-if [ ! -d "node_modules" ] || [ ! -f "node_modules/.bin/vite" ]; then
-    NODE_ENV=development run_yarn install --frozen-lockfile 2>&1 | tail -3
+if [ "${WORKSTEP_SKIP_LANDING_BUILD:-0}" != "1" ]; then
+    log "构建官网 landing..."
+    cd "$LANDING_DIR"
+    if [ ! -d "node_modules" ] || [ ! -f "node_modules/.bin/vite" ]; then
+        NODE_ENV=development run_yarn install --frozen-lockfile 2>&1 | tail -3
+    fi
+    LANDING_BASE=/landing/ run_yarn build
+    cd "$SCRIPT_DIR"
+    ok "官网已构建 → Daemon serve /landing"
 fi
-LANDING_BASE=/landing/ run_yarn build
-cd "$SCRIPT_DIR"
-ok "官网已构建 → Daemon serve /landing"
 
 # === 清理函数 ===
 cleanup() {

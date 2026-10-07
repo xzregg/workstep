@@ -8,8 +8,10 @@ import { I18nProvider } from '../src/i18n'
 import { useChatSessionActions } from '../src/hooks/useChatSessionActions'
 import { useChatSessionStore } from '../src/stores/chatSessionStore'
 
-for (const live of [false, true]) {
-  test(`send confirms the user message id even without WebSocket START (live=${live})`, async () => {
+for (const scenario of ['normal', 'live', 'list-failed']) {
+  const live = scenario === 'live'
+  const listFailed = scenario === 'list-failed'
+  test(`send establishes its accepted state even without WebSocket START (${scenario})`, async () => {
     const { window } = installDomEnvironment()
     const original = { chat: chatSessionApi.chat, sendLiveMessage: chatSessionApi.sendLiveMessage, list: chatSessionApi.list }
     let actions!: ReturnType<typeof useChatSessionActions>
@@ -24,13 +26,19 @@ for (const live of [false, true]) {
     }
     const root = createRoot(window.document.body.appendChild(window.document.createElement('div')))
     try {
-      chatSessionApi.chat = (async () => ({ session_id: 'confirmed', turn_id: 'saved-user' })) as never
+      chatSessionApi.chat = (async () => ({ session_id: 'confirmed', turn_id: 'saved-user',
+        assistant_message_id: 'reply', status: 'queued' })) as never
       chatSessionApi.sendLiveMessage = (async () => ({ message_id: 'saved-user', created_at: '2026-10-07T05:56:08Z' })) as never
-      chatSessionApi.list = (async () => ({ sessions: [] })) as never
+      chatSessionApi.list = (async () => {
+        if (listFailed) throw new Error('连接已断开')
+        return { sessions: [] }
+      }) as never
       await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
       await act(async () => { assert.equal(await actions.sendPendingContent('hello', []), true) })
       const messages = useChatSessionStore.getState().sessions.confirmed.messages
-      assert.deepEqual(messages.map((message) => message.id), ['saved-user'])
+      assert.deepEqual(messages.map((message) => message.id), live ? ['saved-user'] : ['saved-user', 'reply'])
+      if (!live) assert.equal(useChatSessionStore.getState().sessions.confirmed.running, true)
+      assert.equal(actions.sendError, '')
       if (live) assert.equal(messages[0].created_at, '2026-10-07T05:56:08Z')
     } finally {
       await act(async () => root.unmount())

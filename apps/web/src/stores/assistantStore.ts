@@ -73,6 +73,8 @@ export interface AssistantChatMessage {
   error?: string
   created_at?: string
   ended_at?: string
+  /** HTTP seeded this reply before its first live START supplied server time. */
+  awaiting_start?: boolean
   author_id?: string
   author_username?: string
   author_name?: string
@@ -147,6 +149,9 @@ export interface AssistantStore {
   newSession: (sessionId: string) => void
   addUserMessage: (sessionId: string, content: string) => string
   confirmUserMessage: (sessionId: string, optimisticId: string, messageId: string, createdAt?: string) => void
+  acceptAssistantReply: (sessionId: string, messageId: string, metadata: {
+    engine?: string; model?: string; status?: string
+  }) => void
   removeMessage: (sessionId: string, messageId: string) => void
   hydrateSession: (
     sessionId: string,
@@ -375,6 +380,26 @@ export function createAssistantStore(
             },
           },
         }
+      }),
+
+    acceptAssistantReply: (sessionId, messageId, metadata) =>
+      set((s) => {
+        const session = s.sessions[sessionId] || emptySession()
+        // HTTP can arrive after a complete live reply. Never revive or replace it.
+        if (!messageId || session.messages.some((message) => message.id === messageId)) return s
+        const active = !metadata.status || ['queued', 'running'].includes(metadata.status)
+        const status = active ? 'running' : metadata.status === 'stopped' ? 'stopped'
+          : ['error', 'failed'].includes(metadata.status!) ? 'error' : 'succeeded'
+        return { sessions: upsertSession(s.sessions, sessionId, {
+          ...session,
+          running: session.running || active,
+          messages: [...session.messages, {
+            id: messageId, role: 'assistant', content: '', status,
+            engine: metadata.engine, model: metadata.model,
+            created_at: session.messages.at(-1)?.created_at || new Date().toISOString(),
+            awaiting_start: active, events: [],
+          }],
+        }, maxSessions) }
       }),
 
     removeMessage: (sessionId, messageId) =>
@@ -612,8 +637,12 @@ export function createAssistantStore(
                 : messages[index].content,
               status: isUserEvent ? userStatus : 'running',
               prompt: prompt || messages[index].prompt,
+              created_at: isUserEvent || messages[index].awaiting_start
+                ? event.created_at || messages[index].created_at : messages[index].created_at,
+              awaiting_start: false,
+              engine: event.engine ?? messages[index].engine,
+              model: event.model ?? messages[index].model,
               ...(isUserEvent ? {
-                created_at: event.created_at || messages[index].created_at,
                 author_id: event.actor?.id ?? messages[index].author_id,
                 author_name: event.actor?.name ?? messages[index].author_name,
                 author_device_id: event.actor?.device_id ?? messages[index].author_device_id,

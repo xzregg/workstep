@@ -7,6 +7,7 @@ import { useTaskRoute } from '../hooks/useTaskRoute'
 import { useTaskRecord } from '../hooks/useTaskRecord'
 import { randomUuid } from '../utils/uuid'
 import { watchPendingCompletion, unwatchPendingCompletion, watchAcceptedCompletion } from '../utils/completionNotifications'
+import { flushWsSubscriptionNow } from '../hooks/useWebSocket'
 import Button from '../components/Button'
 import Spinner from '../components/Spinner'
 import TaskDetailWindow from '../components/TaskDetailWindow'
@@ -720,6 +721,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     setPrompt('')
     setCoordinatorRunning(true)
     watchPendingCompletion(projectId, { taskId })
+    flushWsSubscriptionNow()
     try {
       const accepted = await taskApi.chat(
         taskId,
@@ -807,6 +809,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     setHistoryMessages((current) => [...current, optimisticMessage])
     setCoordinatorRunning(true)
     watchPendingCompletion(projectId, { taskId })
+    flushWsSubscriptionNow()
     taskApi.chat(taskId, content, projectId, randomUuid())
       .then((accepted) => {
         setHistoryMessages((current) => current.map((message) => (

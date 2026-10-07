@@ -270,12 +270,17 @@ export default function AiFlowChat({
         }
         setSessionId(accepted.session_id)
       }
+      useWorkflowGenStore.getState().acceptAssistantReply(accepted.session_id || sid, accepted.assistant_message_id, {
+        engine: selectedEngine || assistantConfig?.configured.engine,
+        model: selectedModel || assistantConfig?.configured.model,
+        status: accepted.status,
+      })
       return true
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('aiFlow.sendFailed'))
       return false
     }
-  }, [input, running, sessionId, projectId, selectedEngine, selectedProvider, selectedModel, selectedFastModel, selectedVisionModel, selectedThinkingEffort, getCanvasSteps, workflowId, workflowName, t, resetEnhance])
+  }, [input, running, sessionId, projectId, selectedEngine, selectedProvider, selectedModel, selectedFastModel, selectedVisionModel, selectedThinkingEffort, getCanvasSteps, workflowId, workflowName, t, resetEnhance, assistantConfig])
 
   const handleA2uiAction = useCallback((action: A2uiClientAction) => {
     const flow = resolveA2uiFlowSteps(action, latestProposals)

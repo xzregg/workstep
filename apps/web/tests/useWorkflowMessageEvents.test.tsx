@@ -8,6 +8,49 @@ import { I18nProvider } from '../src/i18n'
 import { useWorkflowMessageEvents } from '../src/hooks/useWorkflowMessageEvents'
 import { useWorkflowGenStore } from '../src/stores/workflowGenStore'
 
+test('an HTML detail response leaves the workflow reply status intact and remains retryable', async () => {
+  const { window } = installDomEnvironment()
+  const originalFetch = globalThis.fetch
+  let load!: (id: string) => Promise<void>
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  function Harness() {
+    load = useWorkflowMessageEvents('project', 'workflow', 'session')
+    return null
+  }
+  try {
+    useWorkflowGenStore.setState({ sessions: {} })
+    useWorkflowGenStore.getState().hydrateSession('session', [{
+      id: 'reply', role: 'assistant', status: 'stopped', content: '已生成方案',
+      event_detail: { available: true, loaded: false },
+    }])
+    globalThis.fetch = async () => new Response('<!doctype html><title>WorkStep</title>', {
+      headers: { 'Content-Type': 'text/html' },
+    })
+    await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
+    await act(async () => load('reply'))
+    let message = useWorkflowGenStore.getState().sessions.session.messages[0]
+    assert.equal(message.status, 'stopped')
+    assert.equal(message.content, '已生成方案')
+    assert.equal(message.event_detail?.loading, false)
+    assert.match(message.event_detail?.error || '', /接口返回了网页/)
+
+    globalThis.fetch = async () => Response.json({
+      message_id: 'reply', events: [{ type: 'TOOL_CALL_START', toolCallId: 'read', toolCallName: 'Read' }],
+      event_count: 1, last_event_seq: 1, complete: true, next_cursor: null,
+    })
+    await act(async () => load('reply'))
+    message = useWorkflowGenStore.getState().sessions.session.messages[0]
+    assert.equal(message.event_detail?.loaded, true)
+    assert.ok(!message.event_detail?.error)
+    assert.equal(message.status, 'stopped')
+  } finally {
+    await act(async () => root.unmount())
+    globalThis.fetch = originalFetch
+    useWorkflowGenStore.setState({ sessions: {} })
+    await window.happyDOM.close()
+  }
+})
+
 test('workflow process details load all pages once and can retry a failure', async () => {
   const { window } = installDomEnvironment()
   const original = workflowGenApi.messageEvents

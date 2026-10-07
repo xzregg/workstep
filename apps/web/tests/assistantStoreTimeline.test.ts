@@ -5,6 +5,39 @@ import { createAssistantStore } from '../src/stores/assistantStore.ts'
 import { buildMessageTimeline } from '../src/utils/messageTimeline.ts'
 
 for (const channel of ['session_chat', 'flow_gen', 'task_create']) {
+  test(`${channel} HTTP acceptance creates one running reply and START backfills its metadata`, () => {
+    const store = createAssistantStore({ channel })
+    const state = store.getState()
+    state.addUserMessage('chat', '要求')
+    state.acceptAssistantReply('chat', 'reply', { engine: 'codex_sdk', model: 'gpt-6.1-sol' })
+    state.acceptAssistantReply('chat', 'reply', {})
+    assert.equal(store.getState().sessions.chat.running, true)
+    assert.equal(store.getState().sessions.chat.messages.length, 2)
+    state.handleWsEvent({ type: 'TEXT_MESSAGE_START', channel, session_id: 'chat', messageId: 'reply',
+      role: 'assistant', engine: 'claude_agent_sdk', model: 'actual', created_at: '2026-10-07T11:03:39Z' })
+    const reply = store.getState().sessions.chat.messages[1]
+    assert.equal(reply.engine, 'claude_agent_sdk')
+    assert.equal(reply.model, 'actual')
+    assert.equal(reply.created_at, '2026-10-07T11:03:39Z')
+    state.handleWsEvent({ type: 'TEXT_MESSAGE_START', channel, session_id: 'chat', messageId: 'reply',
+      role: 'assistant', prompt: '更新提示词', created_at: '2026-10-07T11:04:39Z' })
+    assert.equal(store.getState().sessions.chat.messages[1].created_at, '2026-10-07T11:03:39Z',
+      'a later prompt snapshot must not restart the elapsed clock')
+  })
+
+  test(`${channel} a late HTTP acceptance cannot revive a reply already completed through WebSocket`, () => {
+    const store = createAssistantStore({ channel })
+    const state = store.getState()
+    state.handleWsEvent({ type: 'TEXT_MESSAGE_END', channel, session_id: 'chat', messageId: 'reply',
+      status: 'succeeded', content: '完成' })
+    state.acceptAssistantReply('chat', 'reply', { engine: 'codex_sdk' })
+    assert.equal(store.getState().sessions.chat.running, false)
+    assert.equal(store.getState().sessions.chat.messages.length, 1)
+    assert.equal(store.getState().sessions.chat.messages[0].status, 'succeeded')
+  })
+}
+
+for (const channel of ['session_chat', 'flow_gen', 'task_create']) {
   for (const recovery of [false, true]) {
     test(`${channel} merges missing history in server order (recovery=${recovery})`, () => {
       const store = createAssistantStore({ channel })

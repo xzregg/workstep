@@ -665,6 +665,7 @@ export default function TaskDetailView({
                     key={message.id}
                     sender={t('aiFlow.agent')}
                     initials={t('aiFlow.agentInitials')}
+                    startedAt={message.started_at ?? message.created_at}
                     footer={task?.engine || task?.model ? (
                       <MessageResponseFooter
                         content=""
