@@ -1,0 +1,14 @@
+.sandbox-settings { display: flex; flex-direction: column; gap: 12px; max-width: 900px; }
+.sandbox-settings h1 { font-size: 20px; margin: 0; }
+.sandbox-settings h2 { font-size: 14px; margin: 8px 0 0; }
+.sandbox-settings p { margin: 0; color: var(--muted); line-height: 1.6; }
+.sandbox-directory { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.sandbox-image-picker { display: flex; flex-direction: column; gap: 8px; }
+.sandbox-image-picker select { min-width: 0; width: 100%; }
+.sandbox-mount { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; }
+.sandbox-actions, .sandbox-status, .sandbox-checkbox { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.sandbox-settings .sandbox-error { color: var(--danger); overflow-wrap: anywhere; }
+@media (max-width: 1023px) {
+  .sandbox-mount { grid-template-columns: minmax(0, 1fr); }
+  .sandbox-settings button { min-height: var(--mobile-control-regular); }
+}

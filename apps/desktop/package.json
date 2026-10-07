@@ -13,9 +13,11 @@
     "node": ">=22.12.0"
   },
   "scripts": {
+    "icons": "node scripts/generate-icons.cjs",
     "start": "electron .",
     "test": "node --test tests/*.test.cjs",
     "dist": "electron-builder --publish never",
+    "dist:mac:local": "electron-builder --mac dmg zip --arm64 --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false --config.publish.channel=latest-arm64",
     "bundle:managed": "node scripts/create-managed-bundle.cjs",
     "dist:managed": "node scripts/build-managed.cjs"
   },
@@ -31,6 +33,7 @@
     "yarn": "1.22.22"
   },
   "build": {
+    "beforePack": "scripts/validate-sandbox-release.cjs",
     "appId": "com.workstep.desktop",
     "productName": "WorkStep",
     "asar": true,

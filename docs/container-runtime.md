@@ -21,8 +21,8 @@ Dockerfile 支持将用户选择的沙箱目录下的 `home/` 整体挂载为 `/
    └─ .npm/                   npm 缓存
 ```
 
-`podman/`、`desktop/` 是桌面沙箱功能的约定，目前仅实现镜像端的 Home
-初始化与运行时持久化，尚未实现桌面下载、挂载列表或配置导入界面。
+`podman/`、`desktop/` 由桌面沙箱管理器管理，设置入口支持下载准备、挂载列表及
+引擎配置导入；发布与各平台验证要求见 [桌面沙箱模式](desktop-sandbox.md)。
 项目的 `.workstep/workstep.db`、事件日志和产物仍在项目目录内。
 
 桌面非沙箱模式默认使用宿主机 `~/.workstep/runtime/`，受管理 npm CLI、Python SDK
