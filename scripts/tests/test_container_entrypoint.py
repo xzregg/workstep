@@ -90,6 +90,18 @@ class ContainerEntrypointTests(unittest.TestCase):
         self.assertEqual((self.runtime / "npm/package").read_text(), "user data")
         self.assertEqual((self.runtime / "python-packages/sdk").read_text(), "user data")
 
+    def test_seed_preserves_relative_and_absolute_runtime_symlinks(self):
+        payload = self.root / "payload/base/bin"
+        (payload / "relative").symlink_to("../bin/runtime-version")
+        (payload / "absolute").symlink_to(self.runtime / "base/bin/runtime-version")
+        self.write_seed("linked")
+        result = self.start("true")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for name in ("relative", "absolute"):
+            link = self.runtime / "base/bin" / name
+            self.assertTrue(link.is_symlink())
+            self.assertEqual(link.read_text(), "linked")
+
     def test_new_image_replaces_only_base_runtime(self):
         self.assertEqual(self.start("true").returncode, 0)
         installed = self.runtime / "npm/user-engine"

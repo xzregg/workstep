@@ -31,6 +31,8 @@ WORKSTEP_DESKTOP_PORT=43123 WorkStep
 
 ## 本地开发
 
+桌面应用和安装包图标以 `apps/web/public/favicon.svg` 为源，与网页品牌图标一致。更新网页图标后，在 `apps/desktop` 执行 `yarn icons`，重新生成 `build/app-icon.svg`、macOS ICNS、Windows ICO 和 Linux 各尺寸 PNG，再重新打包。
+
 先分别启动 daemon 和 Web 开发服务，再启动 Electron：
 
 ```bash
@@ -46,7 +48,13 @@ cd apps/desktop && corepack yarn test
 uv run --project apps/daemon --group dev pytest apps/desktop/tests/test_backend_entry.py
 ```
 
+本机 macOS ARM64 试用包：先在仓库根运行 `./build.sh --with-web`，再在 `apps/desktop` 运行 `BUILD_PLATFORM=mac ./inject-backend.sh` 和 `yarn dist:mac:local`。该命令显式使用 ad-hoc 签名并关闭 hardened runtime，不使用开发者证书或公证；构建后用 `codesign --verify --deep --strict dist/mac-arm64/WorkStep.app` 检查。Electron fuses 会修改可执行文件，不能只跳过签名后直接分发，否则可能因签名页不匹配在启动前被 macOS 终止。正式 Developer ID 发布应继续使用默认 hardened runtime 与证书签名配置。
+
 ## 发布
+
+所有桌面打包入口都会校验沙箱镜像清单。在线发布前将可匿名拉取的 GHCR 镜像摘要设置为 `SANDBOX_IMAGE`，在 `apps/desktop` 执行 `node scripts/write-sandbox-release.cjs`。本地试用包使用明确的 `{"image":null,"localDocker":true}` 清单，仅支持从已启动的 Docker 扫描、选择并导入兼容的 WorkStep 镜像。未明确启用本地导入的空清单或仅含 `latest` 等标签的在线清单会阻止打包；已安装的桌面包不会读取开发用的 `WORKSTEP_SANDBOX_IMAGE` 覆盖变量。
+
+内置 Python 启动时禁用字节码缓存写入，避免改变已签名的应用包资源；验收时应在实际启动前后分别检查签名。
 
 根目录的 `build.sh` 可先构建 Web dist，再生成桌面后端包：
 
@@ -77,3 +85,7 @@ LLM 回复或任务步骤执行完成、失败且窗口不在前台时，网页�
 Windows 构建使用隐藏子进程窗口并保留 stdout 管道，以便 `PORT:<port>` 就绪协议可靠传回主进程。
 
 未签名构建会触发 Windows SmartScreen 或 macOS Gatekeeper 提示；macOS 用户可能需要在“系统设置 → 隐私与安全性”中明确允许首次打开。未签名构建不应承诺无提示自动更新，升级时应重新下载并人工确认。
+
+## 沙箱模式
+
+设置 → 沙箱提供 Podman 自动下载、Home 与项目挂载、引擎配置导入和重启切换。独立存储集中在用户选择的沙箱目录，沙箱 Home 使用相同的 `.workstep/runtime` 相对结构。支持的平台、镜像发布配置、系统前置条件和实机验收见 [桌面沙箱模式](../../docs/desktop-sandbox.md)。开发测试镜像可通过 `WORKSTEP_SANDBOX_IMAGE` 指定；生产桌面使用发布时固定的镜像摘要。

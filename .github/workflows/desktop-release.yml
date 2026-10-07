@@ -17,6 +17,37 @@ permissions:
   contents: read
 
 jobs:
+  sandbox-image:
+    needs: validate
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { ref: "${{ inputs.tag || github.ref }}" }
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Publish immutable sandbox image
+        id: image
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          repository="${IMAGE_REPOSITORY,,}"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker buildx build --platform linux/amd64,linux/arm64 --push \
+            --tag "$repository:$RELEASE_TAG" --tag "$repository:latest" \
+            --metadata-file "$RUNNER_TEMP/image-metadata.json" .
+          digest=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["containerimage.digest"])' "$RUNNER_TEMP/image-metadata.json")
+          docker logout ghcr.io
+          # Refuse to ship a desktop that cannot anonymously fetch its image.
+          docker buildx imagetools inspect "$repository@$digest" > /dev/null
+          echo "image=$repository@$digest" >> "$GITHUB_OUTPUT"
+
   validate:
     runs-on: ubuntu-24.04
     steps:
@@ -30,7 +61,7 @@ jobs:
           fi
 
   macos:
-    needs: validate
+    needs: [validate, sandbox-image]
     strategy:
       fail-fast: false
       matrix:
@@ -53,6 +84,11 @@ jobs:
           cache-dependency-path: |
             apps/web/yarn.lock
             apps/desktop/yarn.lock
+      - name: Pin sandbox image to this desktop release
+        working-directory: apps/desktop
+        env:
+          SANDBOX_IMAGE: ${{ needs.sandbox-image.outputs.image }}
+        run: node scripts/write-sandbox-release.cjs
       - name: Build React application
         working-directory: apps/web
         run: corepack enable && yarn install --frozen-lockfile && yarn build
@@ -73,7 +109,8 @@ jobs:
           if [ -n "${{ inputs.tag }}" ]; then version="${{ inputs.tag }}"; version="${version#v}"; fi
           npm version "$version" --no-git-tag-version --allow-same-version
           ./inject-backend.sh
-          yarn electron-builder --mac dmg zip --${{ matrix.arch }} --publish never --config.mac.notarize=false --config.publish.channel=latest-${{ matrix.arch }}
+          yarn electron-builder --mac dmg zip --${{ matrix.arch }} --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false --config.publish.channel=latest-${{ matrix.arch }}
+          codesign --verify --deep --strict --verbose=2 "$(find dist -maxdepth 2 -type d -name WorkStep.app -print -quit)"
           test -x resources-placeholder/backend/python/bin/python3
           test -f resources-placeholder/backend/legal/LICENSE
           test -f resources-placeholder/backend/legal/NOTICE
@@ -92,7 +129,7 @@ jobs:
           if-no-files-found: error
 
   windows:
-    needs: validate
+    needs: [validate, sandbox-image]
     strategy:
       fail-fast: false
       matrix:
@@ -111,6 +148,11 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
+      - name: Pin sandbox image to this desktop release
+        working-directory: apps/desktop
+        env:
+          SANDBOX_IMAGE: ${{ needs.sandbox-image.outputs.image }}
+        run: node scripts/write-sandbox-release.cjs
       - name: Build React application
         working-directory: apps/web
         run: corepack enable && yarn install --frozen-lockfile && yarn build
@@ -144,7 +186,7 @@ jobs:
           if-no-files-found: error
 
   linux:
-    needs: validate
+    needs: [validate, sandbox-image]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -159,6 +201,11 @@ jobs:
           cache-dependency-path: |
             apps/web/yarn.lock
             apps/desktop/yarn.lock
+      - name: Pin sandbox image to this desktop release
+        working-directory: apps/desktop
+        env:
+          SANDBOX_IMAGE: ${{ needs.sandbox-image.outputs.image }}
+        run: node scripts/write-sandbox-release.cjs
       - name: Build React application
         working-directory: apps/web
         run: corepack enable && yarn install --frozen-lockfile && yarn build
