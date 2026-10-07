@@ -791,6 +791,10 @@ class ChatSessionModule(ChatSessionTransitions, AssistantRuntime):
             if row is None:
                 raise ValueError("Chat session not found")
             engine = engine or row.engine
+            self._restore_handoff_endpoint(
+                project_id, row, engine,
+                ((row.provider_id if provider_id is None else provider_id) or "").strip(),
+            )
             if content.strip() == "/compact" and (
                 not row.engine_session_id
                 or engine != row.engine

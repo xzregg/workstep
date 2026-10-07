@@ -10,8 +10,8 @@ android {
         applicationId 'com.workstep.android'
         minSdk 29
         targetSdk 35
-        versionCode 31
-        versionName '1.0.30'
+        versionCode 33
+        versionName '1.0.32'
     }
 
     buildTypes {

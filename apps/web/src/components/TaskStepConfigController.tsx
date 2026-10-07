@@ -83,6 +83,18 @@ export default function TaskStepConfigController({
   }, [detail?.editable, projectId, running, stepKey, t, taskId])
 
   const selection = detail?.resolved
+  // 无可复用会话时也保留开始选择时的供应商，不能把每次保存当作新会话。
+  const endpointKey = JSON.stringify([projectId, taskId, stepKey, detail?.message_count, detail?.session_engine])
+  const [conversationEndpoint, setConversationEndpoint] = useState({
+    key: endpointKey, providerId: '',
+  })
+  if (conversationEndpoint.key !== endpointKey) {
+    setConversationEndpoint({
+      key: endpointKey,
+      providerId: detail?.session_provider ?? selection?.config.provider_id ?? '',
+    })
+  }
+  const sourceProvider = detail?.session_provider ?? conversationEndpoint.providerId
   const stepFields = useMemo(() => detail?.available_engines.find(
     (engine) => engine.id === selection?.engine,
   )?.config?.step_fields || [], [detail?.available_engines, selection?.engine])
@@ -143,7 +155,7 @@ export default function TaskStepConfigController({
         if (
           key === 'provider_id'
           && detail.has_history
-          && (detail.session_provider ?? selection.config.provider_id ?? '') !== value
+          && sourceProvider !== value
         ) {
           setHandoffTarget(next)
           return
@@ -165,7 +177,7 @@ export default function TaskStepConfigController({
           .finally(() => setSaving(false))
       },
     }
-  }, [detail, error, notice, projectId, running, save, saving, selection, stepFields, stepKey, t, taskId])
+  }, [detail, error, notice, projectId, running, save, saving, selection, sourceProvider, stepFields, stepKey, t, taskId])
 
   return (
     <>
@@ -180,13 +192,13 @@ export default function TaskStepConfigController({
         projectId={projectId}
         source={{
           engine: detail?.session_engine || selection?.engine || '',
-          providerId: detail?.session_provider || selection?.config.provider_id || '',
+          providerId: sourceProvider,
         }}
         target={{
           engine: handoffTarget?.engine || '',
           providerId: handoffTarget?.config.provider_id || '',
         }}
-        sourceProviderLabel={providerOptionLabel(detail?.session_provider ?? '')}
+        sourceProviderLabel={providerOptionLabel(sourceProvider)}
         targetProviderLabel={providerOptionLabel(handoffTarget?.config.provider_id ?? '')}
         messageCount={detail?.message_count || 0}
         permissionMode=""
