@@ -826,8 +826,9 @@ class WorkflowRuntime:
                 await asyncio.sleep(0.01)
         actor_fields = current_actor_message_fields()
         def persist_decision(project):
+            notifications = []
             with db_proxy.atomic("IMMEDIATE"):
-                return persist_review_decision(
+                result = persist_review_decision(
                     project,
                     task_id,
                     step_key,
@@ -839,11 +840,18 @@ class WorkflowRuntime:
                     active_runners=self._runners,
                     instance_id=self._leases.instance_id,
                     current_workflow_steps=self._current_workflow_steps,
+                    notifications=notifications,
                 )
+            return result, notifications
 
-        decision_data = await self._run_db(
+        decision_data, notifications = await self._run_db(
             project_id, persist_decision,
         )
+        for notification in notifications:
+            event = {**notification, "project_id": project_id, "task_id": task_id}
+            ctx = AGUIContext.from_event(event)
+            for agui_event in to_agui_events(event, ctx):
+                await self._event_bus.publish(agui_event)
         if decision in {"terminate", "complete_task", "set_complete"}:
             event = {
                 "project_id": project_id,

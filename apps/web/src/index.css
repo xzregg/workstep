@@ -816,6 +816,8 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .task-step-io-header { justify-content: space-between; margin-bottom: 8px; }
 .task-step-io-header > strong { font-size: calc(13px * var(--font-scale)); }
 .task-step-io-actions { gap: 6px; }
+.task-step-io-notice { margin: 0 0 8px; padding: 8px; color: var(--accent); background: var(--surface); border-radius: 4px; font-size: calc(12px * var(--font-scale)); line-height: 1.5; overflow-wrap: anywhere; }
+.task-step-io-notice.is-error { color: var(--danger); }
 .task-step-io-inputs, .task-step-io-group { display: flex; flex-direction: column; gap: 8px; }
 .task-step-io-group { gap: 4px; }
 .task-step-io-label {

@@ -14,8 +14,8 @@ const sections: { id: SettingsSection; label: string; icon?: IconName; glyph?: s
   { id: 'remote', label: 'settings.remoteAccessTitle', icon: 'share' },
   { id: 'concurrency', label: 'projectSettings.tabs.concurrency', icon: 'layers' },
   { id: 'git', label: 'gitSettings.title', icon: 'git-fork' },
-  { id: 'sandbox', label: 'sandbox.title', icon: 'layers' },
   { id: 'system', label: 'settings.systemNav', glyph: '文' },
+  { id: 'sandbox', label: 'sandbox.title', icon: 'layers' },
 ]
 
 export default function SettingsNavigation({

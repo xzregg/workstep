@@ -411,7 +411,7 @@ app.whenReady().then(async () => {
   if (!hasSingleInstanceLock) return
   const release = require('./sandbox-release.json')
   const image = app.isPackaged ? release.image : process.env.WORKSTEP_SANDBOX_IMAGE || release.image
-  sandboxManager = new SandboxManager({ stateDir: app.getPath('userData'), image })
+  sandboxManager = new SandboxManager({ stateDir: app.getPath('userData'), image, hostConfigFile: process.env.WORKSTEP_CONFIG_DIR ? path.join(process.env.WORKSTEP_CONFIG_DIR, 'config.json') : undefined })
   let managed = null
   try {
     managed = app.isPackaged

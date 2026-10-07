@@ -1,13 +1,20 @@
 const fs = require('node:fs/promises')
+const { createReadStream } = require('node:fs')
 const path = require('node:path')
 const os = require('node:os')
-const { createHash } = require('node:crypto')
+const { createHash, randomUUID } = require('node:crypto')
 const { setTimeout: delay } = require('node:timers/promises')
-const { run, installRuntime } = require('./sandbox-runtime.cjs')
+const { run, installRuntime, ASSETS } = require('./sandbox-runtime.cjs')
 const { listDockerImages, importDockerImage } = require('./sandbox-docker.cjs')
+const { migrateConfig, readConfig, projectCatalog, mapProjects } = require('./sandbox-config.cjs')
 
 const IMPORTS = { codex: ['.codex'], claude: ['.claude', '.claude.json'], agents: ['.agents'] }
 const contains = (parent, child) => child === parent || (!path.relative(parent, child).startsWith('..' + path.sep) && !path.isAbsolute(path.relative(parent, child)) && path.relative(parent, child) !== '..')
+async function fileDigest(file) {
+  const hash = createHash('sha256')
+  for await (const chunk of createReadStream(file)) hash.update(chunk)
+  return hash.digest('hex')
+}
 async function canonical(value) {
   const absolute = path.resolve(value)
   try { return await fs.realpath(absolute) } catch (error) {
@@ -78,8 +85,9 @@ function containerArgs(config, platform, port, token, managedEnv = {}) {
 }
 
 class SandboxManager {
-  constructor({ stateDir, platform = process.platform, arch = process.arch, hostHome = os.homedir(), install = installRuntime, execute = run, image, report = () => {} }) {
+  constructor({ stateDir, platform = process.platform, arch = process.arch, hostHome = os.homedir(), hostConfigFile, install = installRuntime, execute = run, image, report = () => {} }) {
     Object.assign(this, { stateDir, platform, arch, hostHome, install, execute, image, report })
+    this.hostConfigFile = hostConfigFile || path.join(hostHome, '.workstep/config.json')
     this.phase = 'idle'; this.progress = null; this.error = null; this.busy = false; this.running = false
   }
   async settings() {
@@ -89,8 +97,9 @@ class SandboxManager {
     }
   }
   dockerImages() { return listDockerImages(this.execute, this.platform, this.arch) }
+  async hostProjects() { return projectCatalog(await readConfig(this.hostConfigFile)) }
   compatibleImage(settings) {
-    return settings.dockerImage ? /^sha256:[a-f0-9]{64}$/.test(settings.dockerImage) && /^sha256:[a-f0-9]{64}$/.test(settings.image) : settings.image === this.image
+    return settings.dockerImage ? /^sha256:[a-f0-9]{64}$/.test(settings.dockerImage) && /^sha256:[a-f0-9]{64}$/.test(settings.image) : settings.image === this.image || (settings.releaseImage === this.image && /^sha256:[a-f0-9]{64}$/.test(settings.image))
   }
   async save(settings) {
     await fs.mkdir(this.stateDir, { recursive: true })
@@ -111,7 +120,87 @@ class SandboxManager {
     if (!active.root) {
       try { settings = { ...JSON.parse(await fs.readFile(path.join(this.stateDir, 'sandbox-pending.json'), 'utf8')), enabled: false, prepared: false } } catch (error) { if (error.code !== 'ENOENT') throw error }
     }
-    return { settings, onlineImage: Boolean(this.image), phase: this.phase, progress: this.progress, error: this.error, running: this.running, supported: ['darwin-arm64', 'darwin-x64', 'win32-x64', 'linux-x64'].includes(`${this.platform}-${this.arch}`) }
+    const seed = await this.imageSeed(settings.root)
+    let installed = false
+    if (settings.root) {
+      try {
+        const record = JSON.parse(await fs.readFile(path.join(settings.root, 'podman/runtime.json'), 'utf8'))
+        installed = record.sha256 === ASSETS[`${this.platform}-${this.arch}`]?.sha256 && (await fs.stat(record.executable)).isFile()
+      } catch { /* partially prepared runtimes can be retried */ }
+    }
+    return { settings, onlineImage: Boolean(this.image), platform: this.platform, arch: this.arch, runtimeReady: installed || this.runtimeRoot === settings.root || Boolean(settings.prepared), imageReady: Boolean(seed) || Boolean(settings.prepared && this.compatibleImage(settings)), cachedDockerImage: seed?.source.startsWith('sha256:') ? seed.source : settings.dockerImage || null, phase: this.phase, progress: this.progress, error: this.error, running: this.running, supported: ['darwin-arm64', 'darwin-x64', 'win32-x64', 'linux-x64'].includes(`${this.platform}-${this.arch}`) }
+  }
+  async stageRoot(input) {
+    if (this.running || (await this.settings()).enabled) throw new Error('请先关闭沙箱并重启')
+    if (typeof input?.root !== 'string' || !input.root.trim() || !path.isAbsolute(input.root)) throw new Error('请选择独立的沙箱目录')
+    const root = await canonical(input.root)
+    if (root === path.parse(root).root || root === await canonical(this.hostHome) || root.includes(',') || root.includes('\n')) throw new Error('请选择独立的沙箱目录')
+    const existing = (await this.status()).settings
+    if (existing.root && existing.root !== root) throw new Error('请先删除旧沙箱，或继续使用原沙箱目录')
+    const config = { enabled: false, prepared: false, root, project: existing.project || '', mounts: existing.mounts || [], dockerImage: Object.hasOwn(input, 'dockerImage') ? input.dockerImage || null : existing.dockerImage || null, id: createHash('sha256').update(root).digest('hex').slice(0, 16) }
+    await this.claimRoot(config)
+    await fs.mkdir(this.stateDir, { recursive: true })
+    await fs.writeFile(path.join(this.stateDir, 'sandbox-pending.json'), JSON.stringify(config), { mode: 0o600 })
+    return config
+  }
+  async prepareRuntime(input) {
+    return this.exclusive(async () => {
+      const config = await this.stageRoot(input)
+      if (!(await this.status()).supported) throw new Error('当前系统或架构不支持桌面沙箱')
+      if (this.platform === 'win32') {
+        try { await this.execute('wsl.exe', ['--status'], { timeout: 15000 }) } catch { throw new Error('请先启用 Windows WSL2 和虚拟化：https://learn.microsoft.com/windows/wsl/install') }
+      }
+      this.update('download')
+      await this.install(config.root, this.platform, this.arch, progress => this.update('download', progress))
+      this.runtimeRoot = config.root
+      this.update('runtimeReady')
+      return this.status()
+    })
+  }
+  async imageSeed(root) {
+    if (!root) return null
+    try {
+      const seed = JSON.parse(await fs.readFile(path.join(root, 'podman/cache/image-seed.json'), 'utf8'))
+      if (!/^sha256:[a-f0-9]{64}$/.test(seed.id) || !/^[a-f0-9]{64}$/.test(seed.sha256) || (seed.source !== this.image && !/^sha256:[a-f0-9]{64}$/.test(seed.source))) return null
+      const archive = path.join(root, 'podman/cache/image-seed.tar')
+      const stat = await fs.lstat(archive)
+      return stat.isFile() && !stat.isSymbolicLink() ? { ...seed, archive } : null
+    } catch (error) { if (error.code === 'ENOENT' || error instanceof SyntaxError) return null; throw error }
+  }
+  async inspectImage(command, image) {
+    const [details] = JSON.parse(await command(['image', 'inspect', image]))
+    if (details?.Os !== 'linux' || details?.Architecture !== (this.arch === 'x64' ? 'amd64' : this.arch) || !details?.Config?.Entrypoint?.includes('/usr/local/bin/workstep-entrypoint') || !/^sha256:[a-f0-9]{64}$/.test(details.Id)) throw new Error('镜像的架构或 WorkStep 入口不匹配')
+    return details.Id
+  }
+  async prepareImage(input) {
+    return this.exclusive(async () => {
+      const config = await this.stageRoot(input)
+      const source = input.dockerImage || this.image
+      if (!source || (input.dockerImage && !/^sha256:[a-f0-9]{64}$/.test(input.dockerImage))) throw new Error('请选择兼容的本地镜像或当前版本的发布镜像')
+      const cached = await this.imageSeed(config.root)
+      if (cached?.source === source && await fileDigest(cached.archive) === cached.sha256) { this.update('imageReady'); return this.status() }
+      const session = await this.setup(config)
+      const archive = path.join(config.root, 'podman/cache/image-seed.tar')
+      try {
+        this.update('image')
+        let image = source
+        if (input.dockerImage) image = await importDockerImage({ root: config.root, id: source, execute: this.execute, command: session.command, platform: this.platform, arch: this.arch })
+        else { try { await this.inspectImage(session.command, source) } catch { await session.command(['pull', source]) } }
+        const id = await this.inspectImage(session.command, image)
+        this.update('caching')
+        await session.command(['save', '--format=oci-archive', '--output', archive + '.partial', id])
+        const sha256 = await fileDigest(archive + '.partial')
+        await fs.rename(archive + '.partial', archive)
+        const marker = path.join(config.root, 'podman/cache/image-seed.json')
+        await fs.writeFile(marker + '.tmp', JSON.stringify({ source, id, sha256 }), { mode: 0o600 })
+        await fs.rename(marker + '.tmp', marker)
+        this.update('imageReady')
+        return this.status()
+      } finally {
+        await fs.rm(archive + '.partial', { force: true })
+        if (this.platform !== 'linux') await session.podman(['machine', 'stop', session.machine])
+      }
+    })
   }
   async exclusive(operation) {
     if (this.busy) throw new Error('沙箱操作正在进行，请稍候')
@@ -164,6 +253,7 @@ class SandboxManager {
     await this.claimRoot(config)
     this.update('download')
     const runtime = await this.install(config.root, this.platform, this.arch, progress => this.update('download', progress))
+    this.runtimeRoot = config.root
     const env = await this.environment(config, runtime)
     const podman = (args, options = {}) => this.execute(runtime.executable, args, { env, ...options })
     this.update('machine')
@@ -179,7 +269,8 @@ class SandboxManager {
           const args = ['machine', 'init', '--cpus=2', '--memory=2048', '--disk-size=20']
           if (this.platform === 'win32') args.push('--update-connection=false')
           if (this.platform === 'darwin') {
-            args.push('--volume', `${path.join(config.root, 'home')}:/var/mnt/workstep-home`, '--volume', `${config.project}:/var/mnt/workstep-projects`, '--volume', `${path.join(config.root, 'desktop/managed-gateway')}:/var/mnt/workstep-managed`)
+            args.push('--volume', `${path.join(config.root, 'home')}:/var/mnt/workstep-home`, '--volume', `${path.join(config.root, 'desktop/managed-gateway')}:/var/mnt/workstep-managed`)
+            if (config.project) args.push('--volume', `${config.project}:/var/mnt/workstep-projects`)
             config.mounts.forEach((mount, i) => args.push('--volume', `${mount.source}:/var/mnt/workstep-extra-${i}`))
           }
           args.push(machine); await podman(args)
@@ -229,8 +320,20 @@ class SandboxManager {
       const session = await this.setup(config)
       try {
         this.update('image')
-        if (config.dockerImage) config.image = await importDockerImage({ root: config.root, id: image, execute: this.execute, command: session.command, platform: this.platform, arch: this.arch })
+        const seed = await this.imageSeed(config.root)
+        if (seed?.source === image) {
+          if (await fileDigest(seed.archive) !== seed.sha256) throw new Error('镜像缓存校验失败，请返回镜像步骤重新准备')
+          await session.command(['load', '--input', seed.archive])
+          config.image = await this.inspectImage(session.command, seed.id)
+          if (config.image !== seed.id) throw new Error('导入后的镜像身份不匹配')
+          if (!config.dockerImage) config.releaseImage = this.image
+        }
+        else if (config.dockerImage) config.image = await importDockerImage({ root: config.root, id: image, execute: this.execute, command: session.command, platform: this.platform, arch: this.arch })
         else { await session.command(['pull', image]); config.image = image }
+        if (input.registeredProjects !== undefined) {
+          await this.writeProjectConfig(config, input.registeredProjects)
+          config.registeredProjects = input.registeredProjects
+        }
         await this.save({ ...config, enabled: false, prepared: true })
         await fs.rm(path.join(this.stateDir, 'sandbox-pending.json'), { force: true })
         this.update('ready')
@@ -351,14 +454,58 @@ class SandboxManager {
       return this.status()
     })
   }
+  async configFile(config) {
+    const directory = path.join(config.root, 'home/.workstep')
+    if (!contains(config.root, await canonical(directory))) throw new Error('配置目录不能指向沙箱外部')
+    return path.join(directory, 'config.json')
+  }
+  async writeConfig(config, value, label) {
+    const target = await this.configFile(config)
+    const directory = path.dirname(target)
+    await fs.mkdir(directory, { recursive: true })
+    const existing = await readConfig(target)
+    if (Object.keys(existing).length) {
+      const backup = path.join(config.root, 'desktop/backups', `${Date.now()}-${label}-${Math.random().toString(16).slice(2)}`)
+      await fs.mkdir(backup, { recursive: true })
+      await fs.copyFile(target, path.join(backup, 'config.json'))
+      await fs.chmod(path.join(backup, 'config.json'), 0o600)
+    }
+    const temporary = path.join(directory, `.config-${randomUUID()}.tmp`)
+    try {
+      await fs.writeFile(temporary, JSON.stringify(value, null, 2), { mode: 0o600, flag: 'wx' })
+      await fs.rename(temporary, target)
+    } finally { await fs.rm(temporary, { force: true }) }
+  }
+  async writeProjectConfig(config, selected) {
+    const target = await readConfig(await this.configFile(config))
+    const projects = await mapProjects(config, await this.hostProjects(), selected)
+    await this.writeConfig(config, { ...target, projects }, 'projects')
+  }
+  async migrateSettings(options) {
+    return this.exclusive(async () => {
+      if (this.running || (await this.settings()).enabled) throw new Error('请先关闭沙箱并重启，再导入配置')
+      if (!options || ['providers', 'engines', 'preferences', 'overwrite'].some(key => options[key] !== undefined && typeof options[key] !== 'boolean')) throw new Error('配置迁移选项无效')
+      const config = await this.settings()
+      if (!config.prepared) throw new Error('请先准备沙箱')
+      await this.claimRoot(config)
+      this.update('migration')
+      const target = await readConfig(await this.configFile(config))
+      const source = await readConfig(this.hostConfigFile)
+      const { config: migrated, warnings } = migrateConfig(source, target, options)
+      await this.writeConfig(config, migrated, 'config')
+      await this.save({ ...config, migrationWarnings: warnings })
+      this.update('ready')
+      return this.status()
+    })
+  }
   async remove() {
     return this.exclusive(async () => {
       const settings = (await this.status()).settings
       if (!settings.root) return this.status()
-      const config = await validateSettings(settings)
+      const config = settings.project ? await validateSettings(settings) : { ...settings, root: await canonical(settings.root), id: createHash('sha256').update(await canonical(settings.root)).digest('hex').slice(0, 16) }
       const owner = JSON.parse(await fs.readFile(path.join(config.root, 'desktop/owner.json'), 'utf8'))
       if (owner.id !== config.id || !Array.isArray(owner.mounts)) throw new Error('无法确认沙箱目录归属')
-      for (const mount of [{ source: owner.project }, ...owner.mounts]) if (contains(config.root, await canonical(mount.source))) throw new Error('沙箱内存在项目数据，拒绝删除')
+      for (const mount of [{ source: owner.project }, ...owner.mounts].filter(mount => mount.source)) if (contains(config.root, await canonical(mount.source))) throw new Error('沙箱内存在项目数据，拒绝删除')
       await this.claimRoot(config)
       await this.stop()
       const record = JSON.parse(await fs.readFile(path.join(config.root, 'podman/runtime.json'), 'utf8').catch(() => 'null'))
@@ -390,6 +537,7 @@ class SandboxManager {
       await fs.rm(path.join(os.tmpdir(), `workstep-podman-${config.id}`), { recursive: true, force: true })
       await fs.rm(path.join(this.stateDir, 'sandbox-pending.json'), { force: true })
       await this.save({ enabled: false, root: '', project: '', mounts: [] })
+      this.runtimeRoot = null
       this.update('idle')
       return this.status()
     })

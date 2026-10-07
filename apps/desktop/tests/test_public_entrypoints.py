@@ -119,3 +119,29 @@ def test_release_artifacts_exclude_electron_builder_debug_metadata():
     assert "apps/desktop/dist/latest-*-mac.yml" in workflow
     assert "apps/desktop/dist/latest-x64.yml" in workflow
     assert "apps/desktop/dist/latest-linux.yml" in workflow
+
+
+def test_repository_readmes_present_the_product_and_current_desktop_support():
+    readmes = {
+        "README.md": (
+            "Orchestrate AI coding agents into observable, controllable workflows",
+            "## Understand WorkStep in 30 seconds",
+            "## Core capabilities",
+        ),
+        "README.zh-CN.md": (
+            "把多个 AI 编程引擎，编排成可观察、可控制的研发工作流",
+            "## 30 秒了解 WorkStep",
+            "## 核心能力",
+        ),
+    }
+
+    for filename, required_copy in readmes.items():
+        content = (ROOT / filename).read_text()
+
+        assert '<div align="center">' in content
+        assert all(copy in content for copy in required_copy)
+        assert "macOS Apple Silicon" in content
+        assert "Windows x64" in content
+        assert "Linux x64" in content
+        assert "macOS Intel" not in content
+        assert "Windows x86" not in content

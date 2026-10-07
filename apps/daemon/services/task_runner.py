@@ -365,6 +365,9 @@ class TaskRunner:
         workflow_run: WorkflowRun | None,
     ) -> None:
         """Recursively execute ready steps, respecting DAG dependencies."""
+        await self._artifact_routes.prepare_feedback_context(
+            task, scheduler, artifacts_dir,
+        )
         ready = scheduler.get_ready_steps(
             completed,
             running | failed,
@@ -420,24 +423,52 @@ class TaskRunner:
                 active_edges=self._artifact_routes.active_edges,
                 task_context_edges=self._artifact_routes.task_context_edges(scheduler),
             )
-            if blocked:
+            if blocked or failed:
                 now = utc_now()
-                blocked_keys = {step.key for step in blocked}
-                error = "缺少必需的上游产物，步骤无法执行"
+                satisfied = (
+                    self._artifact_routes.active_edges
+                    | self._artifact_routes.task_context_edges(scheduler)
+                )
+                blocked_errors = {}
+                for step in blocked:
+                    missing = []
+                    for edge in step.incoming_connections:
+                        if edge.get("kind", "solid") != "solid" or str(edge.get("id")) in satisfied:
+                            continue
+                        source = scheduler.steps[str(edge.get("from"))]
+                        port = int(edge.get("fromPort", 0))
+                        output = source.outputs[port] if port < len(source.outputs) else {}
+                        missing.append(f"{source.label} / {output.get('name', '输出产物')}")
+                    blocked_errors[step.key] = "缺少必需的上游产物：" + "、".join(missing) + "，步骤无法执行"
 
                 def persist_blocked():
-                    TaskStep.update(
-                        status="failed",
-                        error=error,
-                        ended_at=now,
-                    ).where(
-                        (TaskStep.task == task)
-                        & (TaskStep.step_key.in_(blocked_keys))
-                    ).execute()
+                    rows = {row.step_key: row for row in TaskStep.select().where(
+                        TaskStep.task == task
+                    )}
+                    errors = dict(blocked_errors)
+                    failed_roots = {key for key in failed
+                                    if key in rows and rows[key].status == "failed"}
+                    while True:
+                        changed = False
+                        for key, step in scheduler.steps.items():
+                            if key in completed | running | failed | errors.keys():
+                                continue
+                            dependencies = set(step.depends_on) & (failed_roots | errors.keys())
+                            if dependencies:
+                                labels = "、".join(scheduler.steps[dep].label for dep in sorted(dependencies))
+                                errors[key] = f"上游步骤「{labels}」失败，无法继续执行；请修复上游后重跑"
+                                changed = True
+                        if not changed:
+                            break
+                    for key, error in errors.items():
+                        row = rows[key]
+                        row.status, row.error, row.ended_at = "failed", error, now
+                        row.save(only=[TaskStep.status, TaskStep.error, TaskStep.ended_at])
+                    return errors
 
-                await self._run_db(persist_blocked)
-                failed.update(blocked_keys)
-                for key in blocked_keys:
+                errors = await self._run_db(persist_blocked)
+                failed.update(errors)
+                for key, error in errors.items():
                     await self._publish(task.id, key, {
                         "type": "status",
                         "data": {

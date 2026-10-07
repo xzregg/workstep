@@ -57,13 +57,21 @@ async def test_review_rework_persists_feedback_only_on_producer(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_artifact_return_rewinds_downstream_without_stale_feedback(tmp_path):
+@pytest.mark.parametrize("previous_status", ["passed", "failed", "skipped", "pending"])
+async def test_artifact_return_rewinds_downstream_without_stale_feedback(
+    tmp_path, previous_status,
+):
     db, task, scheduler, owner, events = _setup(tmp_path)
     try:
         TaskStep.update(rework_feedback="旧反馈").where(
             TaskStep.task == task
         ).execute()
+        TaskStep.update(status=previous_status).where(
+            (TaskStep.task == task) & (TaskStep.step_key == "build")
+        ).execute()
         completed = {"build", "check", "publish"}
+        if previous_status != "passed":
+            completed.discard("build")
         failed = {"publish"}
         await owner.from_artifact(
             task, scheduler.steps["check"], scheduler, completed, failed,
@@ -74,7 +82,8 @@ async def test_artifact_return_rewinds_downstream_without_stale_feedback(tmp_pat
         assert failed == set()
         rows = {row.step_key: row for row in TaskStep.select()}
         assert rows["check"].status == "rework_waiting"
-        assert rows["build"].status == rows["publish"].status == "rework"
+        assert rows["build"].status == "rework"
+        assert rows["publish"].status == "rework_waiting"
         assert all(row.rework_feedback is None for row in rows.values())
         assert events[-1][2]["type"] == "step_return"
         assert events[-1][2]["data"]["connections"] == ["return-1"]
