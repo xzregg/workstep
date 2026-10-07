@@ -31,6 +31,7 @@ from agent_assistants.archive_experience import (
 from agent_assistants.coordinator_actions import CoordinatorActionService
 from agent_assistants.event_journal import JournalRef, TurnEventJournal
 from agent_assistants.coordinator_context import (
+    COORDINATOR_ROLE_RULES,
     COORDINATOR_CHANNEL,
     artifact_index,
     assemble_context,
@@ -86,7 +87,8 @@ COORDINATOR_CONFIG = AssistantConfig(
     scope=SCOPE_TASK,
     system_prompt_transport=True,
     system_prompt=(
-        "You are the WorkStep task coordinator. Use task and workflow context to "
+        COORDINATOR_ROLE_RULES
+        + "You are the WorkStep task coordinator. Use task and workflow context to "
         "answer questions. When you need to inspect or operate on WorkStep workflows, "
         "inspect the workstep-cli skill and use its documented native tools or CLI "
         "transport. Keep using available WorkStep tools for other operations. "
