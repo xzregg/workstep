@@ -6,20 +6,18 @@ FROM node:24-bookworm AS web-build
 
 WORKDIR /app/apps/web
 COPY apps/web/package.json apps/web/yarn.lock ./
-RUN sed -i 's#https://registry.yarnpkg.com#https://registry.npmmirror.com#g; s#https://registry.npmjs.org#https://registry.npmmirror.com#g' yarn.lock \
-    && npm config set registry https://registry.npmmirror.com \
+RUN npm config set registry https://registry.npmjs.org \
     && corepack enable && corepack prepare yarn@1.22.22 --activate \
-    && yarn config set registry https://registry.npmmirror.com \
+    && yarn config set registry https://registry.npmjs.org \
     && yarn install --frozen-lockfile
 COPY apps/web ./
 RUN yarn build
 
 WORKDIR /app/apps/landing
 COPY apps/landing/package.json apps/landing/yarn.lock ./
-RUN sed -i 's#https://registry.yarnpkg.com#https://registry.npmmirror.com#g; s#https://registry.npmjs.org#https://registry.npmmirror.com#g' yarn.lock \
-    && npm config set registry https://registry.npmmirror.com \
+RUN npm config set registry https://registry.npmjs.org \
     && corepack enable && corepack prepare yarn@1.22.22 --activate \
-    && yarn config set registry https://registry.npmmirror.com \
+    && yarn config set registry https://registry.npmjs.org \
     && yarn install --frozen-lockfile
 COPY apps/landing ./
 # 官网以 /landing 子路径托管（与 start.sh 生产模式一致），否则资源路径错误
