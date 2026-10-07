@@ -98,6 +98,11 @@ export const workflowGenApi = {
         `/workflow/generate/history?project_id=${encodeURIComponent(projectId)}&workflow_id=${encodeURIComponent(workflowId)}`,
       ),
     ),
+  messageEvents: (projectId: string, workflowId: string, messageId: string, cursor = 0) =>
+    request<ChatMessageEventsPage>(
+      `/workflow/generate/history/messages/${encodeURIComponent(messageId)}/events`
+      + `?project_id=${encodeURIComponent(projectId)}&workflow_id=${encodeURIComponent(workflowId)}&cursor=${cursor}`,
+    ),
   reset: (projectId: string, workflowId: string) =>
     request<{ reset: boolean; session_id: string }>(
       `/workflow/generate/history?project_id=${encodeURIComponent(projectId)}&workflow_id=${encodeURIComponent(workflowId)}`,

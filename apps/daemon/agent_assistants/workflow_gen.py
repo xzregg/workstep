@@ -192,6 +192,38 @@ class WorkflowGenModule(AssistantRuntime):
             }
         return {"session_id": session_id, **loaded}
 
+    def message_events(
+        self, project_id: str, workflow_id: str, message_id: str,
+        *, cursor: int = 0, limit: int = 30000,
+    ) -> dict:
+        """Read a workflow message timeline inside the project DB executor."""
+        from agent_assistants.event_replay import _detail_agui_events
+
+        history = self.history(project_id, workflow_id)
+        message = next((item for item in history["messages"] if item["id"] == message_id), None)
+        if message is None:
+            raise ValueError("Workflow message not found")
+        with self._project_ctx(project_id) as project:
+            if message.get("event_log_path"):
+                ref = self._event_journal.reopen(project.workstep_dir, message["event_log_path"])
+                page = self._event_journal.timeline(ref, cursor=cursor, limit=limit)
+            else:
+                events = message.get("events") or []
+                start = max(0, cursor)
+                end = min(start + min(max(1, limit), 30000), len(events))
+                page = {
+                    "events": events[start:end], "event_count": len(events),
+                    "last_event_seq": end,
+                    "next_cursor": end if end < len(events) else None,
+                    "complete": end >= len(events),
+                }
+        page["events"] = _detail_agui_events(
+            page["events"], project_id=project_id,
+            session_id=history["session_id"], message_id=message_id,
+            engine=message.get("engine"), channel=GEN_CHANNEL,
+        )
+        return {"message_id": message_id, **page}
+
     def reset_session(self, project_id: str, workflow_id: str) -> bool:
         """Clear the stable AI editing conversation for one workflow."""
         if not workflow_id:

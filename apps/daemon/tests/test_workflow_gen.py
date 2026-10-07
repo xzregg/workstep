@@ -2710,3 +2710,55 @@ async def test_saving_partial_workflow_history_preserves_existing_prompt(gen_mod
         module._config.persistence.save(runtime)
         return module.history(project.id, "old-flow")["messages"][0]["prompt"]
     assert await manager.run_db(project.id, save_partial) == "已存流程输入"
+
+
+@pytest.mark.anyio
+async def test_workflow_event_details_api_replays_journal_off_loop(gen_module, monkeypatch):
+    from httpx import ASGITransport, AsyncClient
+    from engines.core.events import InternalEvent
+    import main
+    import threading
+
+    module, _, manager, project, _ = gen_module
+    async def invoke(engine_id, model, cwd, prompt, session_id, on_event=None, **kwargs):
+        await on_event(InternalEvent("agent_thought_chunk", {"content": {"text": "检查流程"}}))
+        await on_event(InternalEvent("tool_call", {"tool_call_id": "read", "title": "Read", "kind": "read", "status": "in_progress"}))
+        return json.dumps({"reply": "好了", "flow_proposals": []}), [], None
+    monkeypatch.setattr(module, "_invoke", invoke)
+    accepted = module.submit_message(project.id, None, "调整", "detail-api", workflow_id="wf-details")
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    module._sessions.clear()  # Details must survive losing the in-memory conversation.
+    monkeypatch.setattr(main, "workflow_gen_module", module)
+    monkeypatch.setattr(main, "project_manager", manager)
+    entered = threading.Event()
+    original = module._event_journal.timeline
+    def slow_timeline(*args, **kwargs):
+        entered.set()
+        time.sleep(0.2)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(module._event_journal, "timeline", slow_timeline)
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        url = f"/api/workflow/generate/history/messages/{accepted.assistant_message_id}/events"
+        params = {"project_id": project.id, "workflow_id": "wf-details", "limit": 2}
+        pending = asyncio.create_task(client.get(url, params=params))
+        for _ in range(100):
+            if entered.is_set() or pending.done():
+                break
+            await asyncio.sleep(0.005)
+        assert entered.is_set(), "event detail endpoint must read the journal"
+        started = time.monotonic()
+        health = await client.get("/health")
+        assert health.status_code == 200
+        assert time.monotonic() - started < 0.15
+        response = await pending
+        assert response.status_code == 200
+        page = response.json()
+        events = page["events"]
+        while not page["complete"]:
+            params["cursor"] = page["next_cursor"]
+            page = (await client.get(url, params=params)).json()
+            events.extend(page["events"])
+        assert any(e["type"] == "REASONING_MESSAGE_CHUNK" and e["delta"] == "检查流程" for e in events)
+        assert any(e["type"] == "TOOL_CALL_START" for e in events)
+        assert all(e["channel"] == "flow_gen" for e in events)
+        assert (await client.get(url, params={**params, "workflow_id": "other"})).status_code == 404

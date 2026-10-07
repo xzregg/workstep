@@ -2207,3 +2207,177 @@ async def test_push_does_not_force_remote_and_slow_hook_keeps_api_responsive(cli
     response = await pending
     assert response.status_code == 400 and 'push-rejected' in response.text
     assert git(remote, 'rev-parse', 'refs/heads/main') == git(peer, 'rev-parse', 'HEAD')
+
+
+@pytest.mark.parametrize('branch', ['main', 'master', 'develop', 'trunk'])
+async def test_protected_branch_cannot_be_deleted_even_when_unoccupied(client, layout, branch):
+    http, _ = client
+    _, repo, _ = layout
+    if branch != 'main':
+        git(repo, 'branch', branch)
+    git(repo, 'switch', '-c', 'temporary')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    state = (await http.get(url + '/status')).json()
+    response = await http.post(url + '/branches/delete', json={
+        'branch': branch, 'head': state['head'], 'snapshot': state['snapshot'],
+    })
+    assert response.status_code == 409
+    assert '主分支' in response.json()['detail']
+    assert git(repo, 'rev-parse', branch) == state['head']
+
+
+async def test_delete_worktree_removes_directory_and_branch_and_protects_main(client, layout):
+    http, _ = client
+    _, repo, external = layout
+    data = await scan(http)
+    trees = next(r for r in data['repositories'] if r['name'] == 'payment')['worktrees']
+    main = next(w for w in trees if w['main'])
+    tree = next(w for w in trees if not w['main'])
+    url = f"/api/git/worktrees/{tree['id']}"
+    state = (await http.get(url + '/status')).json()
+    (external / 'dirty.txt').write_text('keep')
+    response = await http.post(url + '/delete', json={'snapshot': state['snapshot']})
+    assert response.status_code == 409
+    assert external.exists()
+    (external / 'dirty.txt').unlink()
+    state = (await http.get(url + '/status')).json()
+    response = await http.post(url + '/delete', json={'snapshot': state['snapshot']})
+    assert response.status_code == 200, response.text
+    assert not external.exists()
+    assert 'feature' not in git(repo, 'branch', '--format=%(refname:short)').splitlines()
+    state = (await http.get(f"/api/git/worktrees/{main['id']}/status")).json()
+    assert (await http.post(f"/api/git/worktrees/{main['id']}/delete", json={'snapshot': state['snapshot']})).status_code == 409
+
+
+async def test_delete_worktree_preserves_unique_detached_commits_and_locked_tree(client, layout):
+    http, _ = client
+    _, _, external = layout
+    git(external, 'switch', '--detach')
+    (external / 'unique.txt').write_text('keep')
+    git(external, 'add', '.'); git(external, 'commit', '-m', 'unique')
+    data = await scan(http)
+    tree = next(w for r in data['repositories'] for w in r['worktrees'] if w['path'] == str(external))
+    url = f"/api/git/worktrees/{tree['id']}"
+    state = (await http.get(url + '/status')).json()
+    assert (await http.post(url + '/delete', json={'snapshot': state['snapshot']})).status_code == 409
+    git(external, 'worktree', 'lock', str(external))
+    assert (await http.post(url + '/delete', json={'snapshot': state['snapshot']})).status_code == 409
+    assert external.exists()
+
+
+@pytest.mark.parametrize('missing', [False, True])
+async def test_slow_worktree_deletion_keeps_api_responsive(client, layout, monkeypatch, missing):
+    http, service = client
+    data = await scan(http)
+    tree = next(w for r in data['repositories'] if r['name'] == 'payment' for w in r['worktrees'] if not w['main'])
+    url = f"/api/git/worktrees/{tree['id']}"
+    state = (await http.get(url + '/status')).json()
+    if missing:
+        shutil.rmtree(tree['path'])
+    command = service.command
+    entered = asyncio.Event()
+    async def slow_remove(path, *args, **kwargs):
+        if args[:2] == ('worktree', 'remove'):
+            entered.set()
+            await asyncio.sleep(.2)
+        return await command(path, *args, **kwargs)
+    monkeypatch.setattr(service, 'command', slow_remove)
+    pending = asyncio.create_task(http.post(url + '/delete', json={'head': tree['head']} if missing else {'snapshot': state['snapshot']}))
+    await asyncio.wait_for(entered.wait(), 2)
+    assert (await asyncio.wait_for(http.get('/api/git/repositories'), .1)).status_code == 200
+    assert (await pending).status_code == 200
+
+
+@pytest.mark.parametrize('blocked', ['primary', 'unmerged', 'active', 'stale'])
+async def test_worktree_delete_rejects_protected_or_changed_state(client, layout, blocked):
+    http, service = client
+    _, repo, external = layout
+    if blocked == 'primary':
+        git(external, 'switch', '-c', 'master')
+    data = await scan(http)
+    tree = next(w for r in data['repositories'] for w in r['worktrees'] if w['path'] == str(external))
+    url = f"/api/git/worktrees/{tree['id']}"
+    state = (await http.get(url + '/status')).json()
+    if blocked == 'unmerged':
+        (external / 'unique').write_text('unique')
+        git(external, 'add', '.'); git(external, 'commit', '-m', 'unique')
+        state = (await http.get(url + '/status')).json()
+    elif blocked == 'active':
+        service.active_provider = lambda _: True
+    elif blocked == 'stale':
+        (external / 'dirty').write_text('changed')
+    response = await http.post(url + '/delete', json={'snapshot': state['snapshot']})
+    assert response.status_code == 409, response.text
+    assert external.exists()
+    assert git(repo, 'rev-parse', tree['branch'])
+
+
+async def test_delete_clean_detached_worktree_keeps_local_branches(client, layout):
+    http, _ = client
+    _, repo, external = layout
+    git(external, 'switch', '--detach')
+    data = await scan(http)
+    tree = next(w for r in data['repositories'] for w in r['worktrees'] if w['path'] == str(external))
+    url = f"/api/git/worktrees/{tree['id']}"
+    state = (await http.get(url + '/status')).json()
+    assert (await http.post(url + '/delete', json={'snapshot': state['snapshot']})).status_code == 200
+    assert not external.exists()
+    assert git(repo, 'rev-parse', 'feature') == tree['head']
+
+
+@pytest.mark.parametrize('detached', [False, True])
+async def test_delete_missing_worktree_only_removes_selected_record(client, layout, detached):
+    http, service = client
+    _, repo, external = layout
+    if detached:
+        git(external, 'switch', '--detach')
+    data = await scan(http)
+    tree = next(w for r in data['repositories'] for w in r['worktrees'] if w['path'] == str(external))
+    shutil.rmtree(external)
+    unrelated = external.parent / 'other-missing'
+    git(repo, 'worktree', 'add', '-b', 'other-missing', str(unrelated))
+    shutil.rmtree(unrelated)
+    url = f"/api/git/worktrees/{tree['id']}/delete"
+    assert (await http.post(url, json={'head': '0' * 40})).status_code == 409
+    response = await http.post(url, json={'head': tree['head']})
+    assert response.status_code == 200, response.text
+    trees = (await service.discover_repository(repo))['worktrees']
+    assert str(external) not in {w['path'] for w in trees}
+    assert str(unrelated) in {w['path'] for w in trees}
+    branches = git(repo, 'branch', '--format=%(refname:short)').splitlines()
+    assert ('feature' in branches) == detached
+    assert 'main' in branches
+
+
+async def test_missing_worktree_cleanup_keeps_unique_commits_and_locked_records(client, layout):
+    http, _ = client
+    _, repo, external = layout
+    (external / 'unique').write_text('preserve')
+    git(external, 'add', '.'); git(external, 'commit', '-m', 'unique')
+    data = await scan(http)
+    tree = next(w for r in data['repositories'] for w in r['worktrees'] if w['path'] == str(external))
+    shutil.rmtree(external)
+    url = f"/api/git/worktrees/{tree['id']}/delete"
+    assert (await http.post(url, json={'head': tree['head']})).status_code == 409
+    git(repo, 'worktree', 'lock', str(external))
+    assert (await http.post(url, json={'head': tree['head']})).status_code == 409
+    assert git(repo, 'rev-parse', 'feature') == tree['head']
+
+
+async def test_missing_worktree_cleanup_refuses_restored_directory_and_primary_branch(client, layout):
+    http, _ = client
+    _, repo, external = layout
+    git(external, 'switch', '-c', 'master')
+    data = await scan(http)
+    tree = next(w for r in data['repositories'] for w in r['worktrees'] if w['path'] == str(external))
+    shutil.rmtree(external)
+    url = f"/api/git/worktrees/{tree['id']}/delete"
+    response = await http.post(url, json={'head': tree['head']})
+    assert response.status_code == 409
+    assert '主分支' in response.json()['detail']
+    assert git(repo, 'rev-parse', 'master') == tree['head']
+    external.mkdir()
+    (external / 'preserve').write_text('restored directory')
+    assert (await http.post(url, json={'head': tree['head']})).status_code == 409
+    assert (external / 'preserve').read_text() == 'restored directory'

@@ -152,3 +152,15 @@
 .layout-session-delete-error-close.btn { padding: 0; color: var(--danger); }
 .layout-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .layout-bulk-delete-error { padding: 8px 0; font-size: calc(12px * var(--font-scale)); color: var(--danger); }
+
+.layout-sidebar-sandbox-badge {
+  flex-shrink: 0;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--accent);
+  font-family: var(--font-body);
+  font-size: calc(10px * var(--font-scale));
+  font-weight: 500;
+  white-space: nowrap;
+}

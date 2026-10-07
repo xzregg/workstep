@@ -52,14 +52,14 @@ export function loadBrowserActor(target: StorageLike | null = storage()): Browse
 
 export function saveBrowserActor(
   name: string,
-  device?: { deviceId?: string; deviceName?: string },
+  device?: { id?: string; deviceId?: string; deviceName?: string },
   target: StorageLike | null = storage(),
 ): BrowserActor | null {
   const normalized = name.trim()
   if (!target || !normalized) return null
   const existing = loadBrowserActor(target)
   const actor = {
-    id: existing?.id || randomId(),
+    id: device?.id?.trim() || existing?.id || randomId(),
     name: normalized,
     deviceId: device?.deviceId?.trim() || existing?.deviceId || randomId(),
     deviceName: device?.deviceName?.trim() || existing?.deviceName || defaultDeviceName(),

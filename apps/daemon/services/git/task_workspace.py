@@ -224,6 +224,7 @@ class TaskGitWorkspace:
         branch = tree.get("created_branch") or tree["branch"]
         if not branch or any(item["main"] and item["branch"] == branch for item in repo["worktrees"]):
             raise GitError("无法确认此工作目录对应的功能分支，已停止删除。", 409)
+        await self.git.protect_branch(tree["path"], branch)
         lock = self.git.locks.setdefault(repo["common_dir"], asyncio.Lock())
         async with lock:
             target = root / alias
@@ -265,6 +266,7 @@ class TaskGitWorkspace:
                 branch = tree.get("created_branch") or tree["branch"]
                 if not branch or any(item["main"] and item["branch"] == branch for item in repo["worktrees"]):
                     raise GitError("无法确认此工作目录对应的功能分支，已停止删除。", 409)
+                await self.git.protect_branch(tree["path"], branch)
                 raw, _ = await self.git.command(tree["path"], "status", "--porcelain=v1", "-z", "--untracked-files=all")
                 if raw and not force:
                     raise GitError("工作区存在未提交内容，请先处理后再删除。", 409)

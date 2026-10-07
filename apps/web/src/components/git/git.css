@@ -307,3 +307,12 @@
 .git-remote-toast strong { font-size:11px; font-weight:600; }
 .git-remote-toast small { margin-top:2px; overflow:hidden; color:var(--muted); font-family:var(--font-mono); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
 @media(max-width:600px) { .git-remote-panel { position:fixed; inset:auto 12px 12px; width:auto; } .git-remote-toast { position:fixed; inset:auto 12px 12px; width:auto; max-width:none; } }
+
+.git-tree-row { display:flex; align-items:center; }
+.git-tree .git-tree-row .git-tree-item { flex:1; min-width:0; width:auto; }
+.git-tree .git-tree-delete { flex:0 0 auto; width:26px; height:26px; min-width:26px; min-height:26px; padding:0; margin-right:4px; }
+
+.git-missing-worktrees { margin:8px 8px 8px 29px; font-size:11px; color:var(--muted); }
+.git-missing-worktrees summary { cursor:pointer; }
+.git-missing-worktree { display:flex; gap:8px; align-items:center; margin-top:6px; }
+.git-missing-worktree>span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

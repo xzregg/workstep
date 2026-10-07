@@ -43,14 +43,23 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
     set({ loading: true, error: '' })
     const actor = loadBrowserActor()
     try {
-      const settings = await systemSettingsApi.get()
+      let settings = await systemSettingsApi.get()
+      let restoredActor = actor
+      if (typeof window !== 'undefined' && window.workstepDesktop) {
+        // Desktop ports can change across launches; config belongs to the
+        // active native/sandbox Home, unlike origin-scoped browser storage.
+        if (!settings.user_name && actor?.name) settings = await systemSettingsApi.updateUserName(actor.name)
+        if (settings.user_name) restoredActor = saveBrowserActor(settings.user_name, {
+          id: settings.device_id, deviceId: settings.device_id, deviceName: settings.device_name,
+        })
+      }
       set({
         defaultProjectDirectory: settings.default_project_directory || '',
         gitScanDepth: settings.git_scan_depth ?? 5,
-        userName: actor?.name || '',
+        userName: restoredActor?.name || '',
         openMode: settings.open_mode,
-        deviceId: actor?.deviceId || '',
-        deviceName: actor?.deviceName || '',
+        deviceId: restoredActor?.deviceId || '',
+        deviceName: restoredActor?.deviceName || '',
         loaded: true,
       })
     } catch (reason) {
@@ -70,7 +79,12 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
     if (!userName) return false
     set({ loading: true, error: '' })
     try {
-      const next = saveBrowserActor(userName, { deviceId: get().deviceId, deviceName: get().deviceName })
+      const settings = typeof window !== 'undefined' && window.workstepDesktop
+        ? await systemSettingsApi.updateUserName(userName) : null
+      const next = saveBrowserActor(settings?.user_name || userName, {
+        id: settings?.device_id, deviceId: settings?.device_id || get().deviceId,
+        deviceName: settings?.device_name || get().deviceName,
+      })
       if (!next) throw new Error('无法保存浏览器身份')
       set({ userName: next.name, deviceId: next.deviceId, deviceName: next.deviceName, loaded: true })
       return true

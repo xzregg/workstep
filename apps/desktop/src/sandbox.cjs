@@ -120,14 +120,23 @@ class SandboxManager {
     let owner
     try { owner = JSON.parse(await fs.readFile(marker, 'utf8')) } catch (error) { if (error.code !== 'ENOENT') throw error }
     if (owner && owner.id !== config.id) throw new Error('该目录属于另一个沙箱')
-    if (!owner && (await fs.readdir(config.root)).length) throw new Error('首次开启请选择空的沙箱目录')
+    let preserveHome = owner?.preserveHome === true
+    if (!owner) {
+      const entries = await fs.readdir(config.root)
+      if (entries.some(name => !['home', '.DS_Store'].includes(name))) throw new Error('首次开启请选择空目录，或仅包含已有 home 的目录；其他文件不会自动接管')
+      if (entries.includes('home')) {
+        const home = await fs.lstat(path.join(config.root, 'home'))
+        if (!home.isDirectory() || home.isSymbolicLink()) throw new Error('已有 Home 必须是真实目录，不能是文件或符号链接')
+        preserveHome = true
+      }
+    }
     for (const directory of ['home', 'desktop', 'desktop/managed-gateway', 'podman/config', 'podman/data', 'podman/cache']) {
       const destination = path.join(config.root, directory)
       if (!contains(config.root, await canonical(destination))) throw new Error('沙箱内部目录不能指向外部位置')
       await fs.mkdir(destination, { recursive: true })
     }
     this.logFile = path.join(config.root, 'desktop/sandbox.log')
-    await fs.writeFile(marker, JSON.stringify({ id: config.id, project: config.project, mounts: config.mounts }), { mode: 0o600 })
+    await fs.writeFile(marker, JSON.stringify({ id: config.id, project: config.project, mounts: config.mounts, preserveHome }), { mode: 0o600 })
   }
   async environment(config, runtime) {
     const root = path.join(config.root, 'podman')
@@ -239,7 +248,15 @@ class SandboxManager {
       try {
         const containers = JSON.parse(await session.command(['ps', '-a', '--filter', `label=com.workstep.sandbox=${config.id}`, '--format=json']))
         for (const item of containers) await session.command(['rm', '--force', item.Id || item.ID])
-        await session.command(containerArgs(config, this.platform, port, token, managedEnv))
+        try {
+          await session.command(containerArgs(config, this.platform, port, token, managedEnv))
+        } catch (error) {
+          // Podman may leave a created container after publishing fails.
+          // Retry only port conflicts, preserving other startup failures.
+          if (!port || !/address already in use|port is already allocated|port.*already in use/i.test(error.message)) throw error
+          await session.command(['rm', '--force', `workstep-${config.id}`]).catch(() => {})
+          await session.command(containerArgs(config, this.platform, 0, token, managedEnv))
+        }
         const mapping = await session.command(['port', `workstep-${config.id}`, '8765/tcp'])
         const matched = /127\.0\.0\.1:(\d+)/.exec(mapping)
         if (!matched) throw new Error('无法取得沙箱后台端口')
@@ -361,7 +378,11 @@ class SandboxManager {
       }
       await this.logWrite
       this.logFile = null
-      await fs.rm(config.root, { recursive: true })
+      if (owner.preserveHome === true) {
+        // Compose Home was adopted, not created by this desktop sandbox.
+        await fs.rm(path.join(config.root, 'podman'), { recursive: true })
+        await fs.rm(path.join(config.root, 'desktop'), { recursive: true })
+      } else await fs.rm(config.root, { recursive: true })
       await fs.rm(path.join(os.tmpdir(), `workstep-podman-${config.id}`), { recursive: true, force: true })
       await fs.rm(path.join(this.stateDir, 'sandbox-pending.json'), { force: true })
       await this.save({ enabled: false, root: '', project: '', mounts: [] })

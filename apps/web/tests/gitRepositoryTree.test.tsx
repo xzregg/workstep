@@ -70,3 +70,30 @@ test('selecting a repository name does not collapse it', async () => {
     await window.happyDOM.close()
   }
 })
+
+
+test('tree only offers deletion for non-primary worktrees and hides local-only branches', async () => {
+  const { window } = installDomEnvironment()
+  const original = gitApi.branches
+  gitApi.branches = async () => ({ branches: [{ name: 'local-only', head: 'sha', worktree_id: null, path: null }] })
+  const data: GitDiscovery = { projects: [{ id: 'p', name: 'p', path: '/repo' }], repositories: [{ id: 'r', name: 'r', common_dir: '/repo/.git', projects: [{ id: 'p', relative_path: '.' }], worktrees: ['main', 'master', 'feature', null].map((branch, i) => ({ id: `tree-${i}`, path: `/repo/${i}`, branch, head: 'sha', main: i === 0, available: true, locked: false, prunable: false })) }], depth: 5, errors: [], scanned_at: 1 }
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><GitRepositoryTree data={data} onSelect={() => {}} /></I18nProvider>))
+    assert.doesNotMatch(container.textContent!, /local-only/)
+    assert.equal(container.querySelectorAll('.git-tree-delete').length, 2)
+    data.repositories[0].worktrees[2].available = false
+    data.repositories[0].worktrees[2].prunable = true
+    await act(async () => root.render(<I18nProvider><GitRepositoryTree data={{ ...data }} onSelect={() => {}} /></I18nProvider>))
+    assert.equal(container.querySelectorAll('.git-tree-item').length, 3)
+    assert.doesNotMatch([...container.querySelectorAll('.git-tree-item')].map(row => row.textContent).join(' '), /feature/)
+    assert.ok(container.querySelector('.git-missing-worktrees summary'))
+    assert.ok(container.querySelector('.git-missing-worktrees .git-tree-delete'))
+  } finally {
+    await act(async () => root.unmount())
+    gitApi.branches = original
+    container.remove()
+    await window.happyDOM.close()
+  }
+})

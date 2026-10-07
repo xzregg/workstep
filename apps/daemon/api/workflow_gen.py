@@ -46,6 +46,29 @@ async def workflow_gen_history(
     )
 
 
+@router.get("/history/messages/{message_id}/events")
+async def workflow_gen_message_events(
+    message_id: str,
+    project_id: str = Query(""),
+    workflow_id: str = Query(...),
+    cursor: int = Query(0, ge=0),
+    limit: int = Query(30000, ge=1, le=30000),
+):
+    from main import project_manager, workflow_gen_module
+
+    if not workflow_gen_module:
+        raise HTTPException(status_code=503, detail="Workflow generation is not initialized")
+    try:
+        return await project_manager.run_db(
+            project_id,
+            lambda _project: workflow_gen_module.message_events(
+                project_id, workflow_id, message_id, cursor=cursor, limit=limit,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.delete("/history")
 async def reset_workflow_gen_history(
     project_id: str = Query("", alias="project_id"),

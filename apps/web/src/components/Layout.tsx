@@ -29,6 +29,7 @@ import ProjectConnectionDialog from './ProjectConnectionDialog'
 import ProjectShareDialog from './ProjectShareDialog'
 import WorkflowCreateDialog from './WorkflowCreateDialog'
 import SidebarStatusIndicator from './SidebarStatusIndicator'
+import SandboxModeBadge from './SandboxModeBadge'
 import { loadSidebarSectionState, saveSidebarSectionState } from '../utils/sidebarSectionState'
 import LayoutOnboardingActions from './LayoutOnboardingActions'
 import SidebarRenameField from './SidebarRenameField'
@@ -474,6 +475,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           <div className="layout-sidebar-brand">
             <BrandIcon size={18} />
             WorkStep
+            <SandboxModeBadge />
             <a
               href="/landing"
               className="layout-sidebar-intro"

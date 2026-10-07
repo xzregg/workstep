@@ -92,10 +92,80 @@ def message_file(message):
 
 
 class GitWrites:
+    async def protect_branch(self, path, branch):
+        repository = await self.discover_repository(Path(path))
+        if branch in {'main', 'master', 'develop', 'development', 'trunk'} or any(
+            tree['main'] and tree['branch'] == branch for tree in repository['worktrees']
+        ):
+            raise GitError('主分支不能删除。', 409)
+
+    async def require_preserved_head(self, path, head, branches, branch):
+        other_heads = [item['head'] for item in branches if item['name'] != branch]
+        target = next((item for item in branches if item['name'] == branch), None)
+        if target and target['upstream_ref']:
+            upstream, code = await self.command(path, 'rev-parse', '--verify',
+                '--end-of-options', target['upstream_ref'] + '^{commit}', check=False)
+            if not code:
+                other_heads.append(text(upstream).strip())
+        for other_head in other_heads:
+            _, code = await self.command(path, 'merge-base', '--is-ancestor', head, other_head, check=False)
+            if not code:
+                break
+        else:
+            raise GitError('此分支的提交尚未合入其他本地分支或其远程上游，已保留分支。', 409)
+
+    async def delete_worktree(self, id, snapshot=None, head=None):
+        known = self.directories.get(id)
+        if not known or not set(known['project_ids']).intersection(p['id'] for p in self.projects_provider()):
+            raise GitError('工作目录未授权或已移除，请重新扫描。', 404)
+        source_directory = next((w for w in self.directories.values()
+            if w['common_dir'] == known['common_dir'] and w['main'] and w['available']), None)
+        if not source_directory:
+            raise GitError('主目录不可用，请重新扫描。', 409)
+        directory = await self.directory(source_directory['id'])
+        async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
+            repository = await self.discover_repository(Path(directory['path']))
+            tree = next((tree for tree in repository['worktrees'] if tree['id'] == id), None)
+            if not tree or tree['main'] or tree['locked']:
+                raise GitError('主目录或锁定的工作目录不能删除。', 409)
+            path = tree['path']
+            missing = not await asyncio.to_thread(os.path.lexists, path)
+            if tree['branch']:
+                await self.protect_branch(directory['path'], tree['branch'])
+            if missing:
+                if not head or tree['head'] != head:
+                    raise GitError('工作目录记录已变化，请重新扫描后再删除。', 409)
+                state = await self.status(directory['id'])
+                if state['active'] or state['operation']:
+                    raise GitError('存在运行中的任务或未完成的 Git 操作，请稍后清理。', 409)
+            else:
+                if not snapshot or not tree['available'] or tree['prunable']:
+                    raise GitError('工作目录已变化，请重新扫描并审阅后再删除。', 409)
+                state = await self.reviewed(id, snapshot)
+                if state['active'] or state['files']:
+                    raise GitError('存在未提交内容或运行中的任务，请先处理后再删除。', 409)
+            branches = (await self.branches(directory['id']))['branches']
+            await self.require_preserved_head(directory['path'], tree['head'], branches, tree['branch'])
+            source = next((w['path'] for w in repository['worktrees'] if w['main'] and w['available']), None)
+            if not source:
+                raise GitError('主目录不可用，请重新扫描。', 409)
+            await self.command(source, 'worktree', 'remove', '--', path, timeout=120)
+            try:
+                if tree['branch']:
+                    await self.command(source, 'update-ref', '-d', 'refs/heads/' + tree['branch'], tree['head'])
+            finally:
+                self.directories.pop(id, None)
+                refreshed = (await self.discover_repository(Path(source)))['worktrees']
+                for repo in self.snapshot['repositories']:
+                    if repo['id'] == directory['repo_id']:
+                        repo['worktrees'] = refreshed
+            return {'deleted': id}
+
     async def delete_branch(self, id, branch, head, snapshot):
         directory = await self.directory(id)
         path = directory['path']
         async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
+            await self.protect_branch(path, branch)
             state = await self.reviewed(id, snapshot)
             if state['active'] or state['operation']:
                 raise GitError('项目有正在运行的任务或未完成的 Git 操作，请稍后删除分支。', 409)
@@ -105,18 +175,7 @@ class GitWrites:
                 raise GitError('分支已变化，请刷新后重试。', 409)
             if target['worktree_id']:
                 raise GitError('分支已在工作目录中检出，请先切换或移除对应工作目录。', 409)
-            other_heads = [item['head'] for item in branch_data['branches'] if item['name'] != branch]
-            if target['upstream_ref']:
-                upstream, code = await self.command(path, 'rev-parse', '--verify',
-                    '--end-of-options', target['upstream_ref'] + '^{commit}', check=False)
-                if not code:
-                    other_heads.append(text(upstream).strip())
-            for other_head in other_heads:
-                _, code = await self.command(path, 'merge-base', '--is-ancestor', head, other_head, check=False)
-                if not code:
-                    break
-            else:
-                raise GitError('此分支的提交尚未合入其他本地分支或其远程上游，已保留分支。', 409)
+            await self.require_preserved_head(path, head, branch_data['branches'], branch)
             await self.command(path, 'update-ref', '-d', 'refs/heads/' + branch, head)
             return await self.branches(id)
 
