@@ -193,7 +193,7 @@ async def _serve(app, sock: socket.socket, port: int) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    host = "127.0.0.1"
+    host = "0.0.0.0"
     try:
         sock = bind_server_socket(host, args.port)
     except OSError as exc:

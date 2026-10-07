@@ -242,6 +242,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="WorkStep Daemon", lifespan=lifespan, favicon_url="/static/favicon.svg")
 app.state.completion_push = completion_push
 app.state.gateway_client = gateway_client
+app.state.remote_access_service = remote_access_service
 app.state.gateway_browser_login = GatewayBrowserLogin(gateway_client)
 app.include_router(gateway_platform_router)
 app.include_router(completion_notifications_router)

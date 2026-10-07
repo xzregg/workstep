@@ -306,14 +306,26 @@ class RemoteAccessService:
         self._state_lock = threading.RLock()
         self._daemon_host = daemon_host
         self._daemon_port = daemon_port
+        self._desktop_runtime_address = False
         self._network_address_resolver = network_address_resolver or _primary_network_ipv4
         self._live_connections: dict[tuple[str, str], int] = {}
         self._live_sockets: dict[tuple[str, str], set[Any]] = {}
 
     def set_runtime_port(self, port: int) -> None:
         """Use the actual ASGI listener port when it differs from configuration."""
-        if 1 <= int(port) <= 65535:
+        if not self._desktop_runtime_address and 1 <= int(port) <= 65535:
             self._daemon_port = int(port)
+
+    def set_runtime_address(self, host: str, port: int) -> None:
+        """Advertise the desktop host address instead of a container address."""
+        address = ipaddress.ip_address(host)
+        if address.is_unspecified or address.is_loopback or address.is_link_local:
+            raise ValueError("Invalid desktop runtime address")
+        if not 1 <= int(port) <= 65535:
+            raise ValueError("Invalid desktop runtime port")
+        self._daemon_host = str(address)
+        self._daemon_port = int(port)
+        self._desktop_runtime_address = True
 
     def _default_internal_base_url(self) -> str:
         host = self._daemon_host.strip()

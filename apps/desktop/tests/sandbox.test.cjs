@@ -19,9 +19,9 @@ test('mounts are limited to distinct project paths and never contain sandbox sto
   } finally { await fs.rm(base, { recursive: true, force: true }) }
 })
 
-test('container only publishes loopback and does not expose container-management sockets', () => {
+test('container publishes the authenticated desktop port without exposing container-management sockets', () => {
   const args = containerArgs({ root: '/sandbox', project: '/project', mounts: [], id: 'abc', image: 'registry/image@sha256:' + 'a'.repeat(64) }, 'linux', 43210, 'secret', {})
-  assert.ok(args.includes('127.0.0.1:43210:8765'))
+  assert.ok(args.includes('0.0.0.0:43210:8765'))
   assert.ok(args.some(a => a.includes('source=/sandbox/home,target=/root')))
   assert.ok(args.some(a => a.includes('source=/project,target=/data/projects')))
   assert.ok(!args.includes('--privileged'))
@@ -262,7 +262,7 @@ for (const conflict of [false, true]) {
         install: async () => ({ executable: '/managed/podman', helpers: [] }), execute: async (_file, args) => {
           calls.push(args)
           if (args.includes('ps')) return '[]'
-          if (args.includes('run') && conflict && args.includes('127.0.0.1:8766:8765')) throw new Error('bind: address already in use')
+          if (args.includes('run') && conflict && args.includes('0.0.0.0:8766:8765')) throw new Error('bind: address already in use')
           if (args.includes('port')) return conflict ? '127.0.0.1:45678' : '127.0.0.1:8766'
           return '{}'
         } })
@@ -272,8 +272,8 @@ for (const conflict of [false, true]) {
       assert.equal(await manager.start(8766, 'token'), conflict ? 'http://127.0.0.1:45678' : 'http://127.0.0.1:8766')
       const runs = calls.filter(args => args.includes('run'))
       assert.equal(runs.length, conflict ? 2 : 1)
-      assert.ok(runs[0].includes('127.0.0.1:8766:8765'))
-      if (conflict) assert.ok(runs[1].includes('127.0.0.1::8765'))
+      assert.ok(runs[0].includes('0.0.0.0:8766:8765'))
+      if (conflict) assert.ok(runs[1].includes('0.0.0.0::8765'))
       await manager.stop()
     } finally { globalThis.fetch = originalFetch; await fs.rm(base, { recursive: true, force: true }) }
   })

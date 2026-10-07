@@ -6,7 +6,9 @@ import json
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, IPvAnyAddress
+
+from api.desktop_security import desktop_request_authenticated
 
 from services.config import config_store
 from services.remote_project import (
@@ -40,6 +42,11 @@ class RemoteAccessSettingsRequest(BaseModel):
     access_password: str | None = Field(default=None, max_length=200)
 
 
+class DesktopRuntimeRequest(BaseModel):
+    host: IPvAnyAddress
+    port: int = Field(ge=1, le=65535)
+
+
 class RemoteAccessUnlockRequest(BaseModel):
     password: str = Field(min_length=1, max_length=200)
 
@@ -68,6 +75,19 @@ class UpdateDeviceAccessRequest(BaseModel):
 @router.get("/settings")
 async def get_remote_access_settings(request: Request):
     await asyncio.to_thread(_observe_runtime_port, request)
+    return await asyncio.to_thread(remote_access_service.settings)
+
+
+@router.post("/desktop-runtime")
+async def set_desktop_runtime(req: DesktopRuntimeRequest, request: Request):
+    if not desktop_request_authenticated(request):
+        raise HTTPException(status_code=401, detail="desktop authentication required")
+    try:
+        await asyncio.to_thread(
+            remote_access_service.set_runtime_address, str(req.host), req.port
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return await asyncio.to_thread(remote_access_service.settings)
 
 

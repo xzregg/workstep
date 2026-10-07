@@ -14,6 +14,7 @@ const {
   projectsHaveActiveWork,
   sessionsHaveActiveWork,
   updaterChannel,
+  primaryNetworkIPv4,
 } = require('../src/security.cjs')
 
 test('packaged desktop launches the bundled writable Python runtime', () => {
@@ -118,4 +119,12 @@ test('desktop update channels keep macOS and Windows architectures separate', ()
   assert.equal(updaterChannel('win32', 'x64'), 'latest-x64')
   assert.equal(updaterChannel('win32', 'ia32'), 'latest-ia32')
   assert.equal(updaterChannel('linux', 'x64'), null)
+})
+
+test('desktop remote access advertises a LAN address instead of a VM address', () => {
+  assert.equal(primaryNetworkIPv4({
+    lo0: [{ family: 'IPv4', address: '127.0.0.1', internal: true }],
+    utun5: [{ family: 'IPv4', address: '198.18.0.1', internal: false }],
+    en0: [{ family: 'IPv4', address: '192.168.50.24', internal: false }],
+  }), '192.168.50.24')
 })

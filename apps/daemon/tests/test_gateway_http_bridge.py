@@ -305,7 +305,7 @@ async def test_gateway_websocket_bridge_carries_bidirectional_messages_with_mana
 
     @app.websocket("/ws")
     async def echo(ws: WebSocket):
-        if not desktop_websocket_allowed(ws):
+        if not await desktop_websocket_allowed(ws):
             await ws.close(code=4401)
             return
         await ws.accept()

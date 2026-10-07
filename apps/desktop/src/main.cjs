@@ -25,6 +25,7 @@ const {
   projectsHaveActiveWork,
   sessionsHaveActiveWork,
   updaterChannel,
+  primaryNetworkIPv4,
 } = require('./security.cjs')
 
 let sandboxManager = null
@@ -233,6 +234,26 @@ async function backendUrl() {
   return `http://127.0.0.1:${result.port}`
 }
 
+async function announceDesktopRuntime(url) {
+  if (!desktopToken) return
+  try {
+    const parsed = new URL(url)
+    const response = await fetch(`${parsed.origin}/api/remote-project/desktop-runtime`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-WorkStep-Desktop-Token': desktopToken,
+      },
+      body: JSON.stringify({ host: primaryNetworkIPv4(), port: Number(parsed.port) }),
+      signal: AbortSignal.timeout(5000),
+    })
+    if (!response.ok) console.warn(`Unable to announce desktop runtime (${response.status})`)
+  } catch (error) {
+    // Older sandbox images do not expose this endpoint; keep them launchable.
+    console.warn('Unable to announce desktop runtime', error)
+  }
+}
+
 function configureAuthenticatedRequests(url) {
   if (!desktopToken) return
   const parsed = new URL(url)
@@ -422,6 +443,7 @@ app.whenReady().then(async () => {
       }
     }
     if (managedAuthorization) await bootstrapManagedBackend(rootUrl, managedAuthorization)
+    await announceDesktopRuntime(rootUrl)
     configureAuthenticatedRequests(rootUrl)
     const initialPath = pendingProtocolUrl ? protocolPath(pendingProtocolUrl) : '/'
     createWindow(`${rootUrl}${initialPath}`)

@@ -1,7 +1,8 @@
-"""Security boundary for the privileged loopback API used by Electron."""
+"""Security boundary for the privileged desktop API used by Electron."""
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import os
 import re
@@ -90,7 +91,16 @@ def _valid_token(value: str | None) -> bool:
     return hmac.compare_digest(value, expected)
 
 
-def desktop_websocket_allowed(ws: WebSocket) -> bool:
+def desktop_request_authenticated(request: Request) -> bool:
+    return _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER))
+
+
+def _remote_access_enabled(app) -> bool:
+    service = getattr(app.state, "remote_access_service", None)
+    return bool(service and service.settings().get("enabled"))
+
+
+async def desktop_websocket_allowed(ws: WebSocket) -> bool:
     """Require the Electron main-process header in packaged desktop mode."""
 
     gateway_client = getattr(ws.app.state, "gateway_client", None)
@@ -107,7 +117,9 @@ def desktop_websocket_allowed(ws: WebSocket) -> bool:
         return True
 
     if not _valid_token(ws.headers.get(DESKTOP_TOKEN_HEADER)):
-        return False
+        if gateway_client is not None and getattr(gateway_client, "managed_config", None) is not None:
+            return False
+        return await asyncio.to_thread(_remote_access_enabled, ws.app)
     # 显式 session header 兼容 TLS 终结反代；浏览器自动携带的 cookie
     # 必须另行校验 Origin，避免跨站 WebSocket 使用本机会话。
     if gateway_client is None or getattr(gateway_client, "managed_config", None) is None:
@@ -134,6 +146,11 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
         managed = gateway_client is not None and getattr(gateway_client, "managed_config", None) is not None
         actor = request.scope.get("gateway_remote_actor")
         remote_bridge = actor is not None and managed
+        remote_access = (
+            protected and not managed
+            and not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER))
+            and await asyncio.to_thread(_remote_access_enabled, request.app)
+        )
         share_scope = request.scope.get("gateway_share_scope")
         if managed and (share_scope is not None or request.url.path.startswith("/api/platform-share/")):
             if (not remote_bridge or not isinstance(share_scope, dict)
@@ -192,7 +209,9 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
                     or (getattr(getattr(request.app.state, "gateway_browser_login", None), "desktop_local_session", None) if _desktop_token() and _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)) else None)) is None):
             return RedirectResponse("/gateway/login", status_code=303)
         denied = protected and (
-            (not remote_bridge and request.url.path != "/api/gateway-platform/callback" and not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)))
+            (not remote_bridge and not remote_access
+             and request.url.path != "/api/gateway-platform/callback"
+             and not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)))
             or (managed and not remote_bridge and request.url.path not in ("/api/managed/bootstrap", "/api/health", "/api/gateway-platform/settings", "/api/gateway-platform/login", "/api/gateway-platform/callback") and actor is None)
         )
         if denied:

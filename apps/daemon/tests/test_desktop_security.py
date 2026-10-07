@@ -49,7 +49,7 @@ def _app() -> FastAPI:
 
     @app.websocket('/ws')
     async def websocket_endpoint(ws: WebSocket):
-        if not desktop_websocket_allowed(ws):
+        if not await desktop_websocket_allowed(ws):
             await ws.close(code=4401)
             return
         await ws.accept()
@@ -57,7 +57,7 @@ def _app() -> FastAPI:
 
     @app.websocket('/ws/remote-project')
     async def legacy_remote_project(ws: WebSocket):
-        if not desktop_websocket_allowed(ws):
+        if not await desktop_websocket_allowed(ws):
             await ws.close(code=4403)
             return
         await ws.accept()
@@ -81,6 +81,20 @@ def test_desktop_api_requires_runtime_token(monkeypatch):
     assert response.headers['content-security-policy'].startswith("default-src 'self'")
     assert response.headers['x-content-type-options'] == 'nosniff'
     assert response.headers['referrer-policy'] == 'no-referrer'
+
+
+def test_enabled_remote_access_can_use_desktop_http_and_websocket_without_desktop_token(monkeypatch):
+    monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
+    monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')
+    app = _app()
+    app.state.remote_access_service = type('RemoteAccess', (), {
+        'settings': lambda _self: {'enabled': True},
+    })()
+
+    with TestClient(app) as client:
+        assert client.get('/api/private').status_code == 200
+        with client.websocket_connect('/ws') as websocket:
+            assert websocket.receive_text() == 'ok'
 
 
 def test_static_shell_is_available_but_receives_security_headers(monkeypatch):
