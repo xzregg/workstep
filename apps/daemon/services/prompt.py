@@ -167,6 +167,7 @@ def assemble_prompt(
     )
     previous_outputs = _format_previous_outputs(
         task, step, artifacts_dir, artifact_round,
+        baseline_round=(input_snapshot or {}).get("baseline_round"),
     )
     if previous_outputs:
         parts.append(previous_outputs)
@@ -264,8 +265,9 @@ def _relative_prompt_path(path: str | Path, base_dir: str | Path) -> str:
 
 def _format_previous_outputs(
     task: Task, step: Step, artifacts_dir: Path, artifact_round: int | None,
+    *, baseline_round: int | None = None,
 ) -> str:
-    """Point a later execution at the latest existing round of this step."""
+    """Use the approved repair baseline, or the latest existing normal round."""
     if artifact_round is None or artifact_round <= 1:
         return ""
     previous = max(
@@ -273,6 +275,7 @@ def _format_previous_outputs(
             item for item in iter_artifact_rounds(
                 artifacts_dir, task.workflow_id, task.id, step.key,
             ) if item.round < artifact_round
+            and (baseline_round is None or item.round == baseline_round)
         ),
         key=lambda item: item.round,
         default=None,
@@ -404,6 +407,7 @@ def assemble_followup_prompt(
 
     previous_outputs = _format_previous_outputs(
         task, step, artifacts_dir, artifact_round,
+        baseline_round=(input_snapshot or {}).get("baseline_round"),
     )
     if previous_outputs:
         parts.append(previous_outputs)
@@ -452,6 +456,7 @@ def assemble_retry_prompt(
     ]
     previous_outputs = _format_previous_outputs(
         task, step, artifacts_dir, artifact_round,
+        baseline_round=(input_snapshot or {}).get("baseline_round"),
     )
     if previous_outputs:
         parts.append(previous_outputs)

@@ -83,6 +83,14 @@ export default function TaskStepIoPanel({ currentStep, steps, workflowConnection
           }))} />}
       </div>
     </div>
+    {progress?.error && <p className="task-step-io-notice is-error" role="alert">
+      {progress.error}
+    </p>}
+    {!progress?.error && ['rework', 'rework_waiting'].includes(progress?.status ?? '') && (
+      <p className="task-step-io-notice" role="status">
+        {t(progress?.status === 'rework' ? 'taskDetail.reworkQueuedNotice' : 'taskDetail.reworkWaitingNotice')}
+      </p>
+    )}
     <div className="task-step-io-inputs">
       <div className="task-step-io-label"><span aria-hidden="true">→</span>{t('taskDetail.ioInput')}</div>
       {(currentStep.inputs || []).map((input, inputIndex) => {

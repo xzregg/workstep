@@ -10,6 +10,7 @@ from models.fields import utc_now
 from services.artifact_rounds import ArtifactRound, step_round_dir, update_round_manifest_status
 from services.artifact_routing import normalize_routing_state, route_artifact_round
 from services.pipeline import DAGScheduler, Step
+from services.step_rework import artifact_return_events
 from services.workflow_definition import WorkflowDefinition
 
 
@@ -18,6 +19,7 @@ def persist_review_decision(
     decision: str, comment: str | None, actor_fields: dict,
     schedule_downstream: bool | None, *, active_runners: Mapping,
     instance_id: str, current_workflow_steps: Callable[[object, Task], dict],
+    notifications: list[dict] | None = None,
 ) -> tuple[Task, WorkflowRun, dict] | None:
     """Run only through the owning project database executor."""
     review = ReviewRun.get_or_none(ReviewRun.id == review_run_id)
@@ -352,11 +354,16 @@ def persist_review_decision(
                         (TaskStep.task == task) & (TaskStep.step_key == key)
                     )
                     row.status = (
-                        "rework_waiting" if key == step_key else "rework"
+                        "rework" if key in targets else "rework_waiting"
                     )
                     row.error = None
+                    row.started_at = None
                     row.ended_at = None
                     row.save()
+                if notifications is not None:
+                    notifications.extend(artifact_return_events(
+                        task.id, routed_step, scheduler, result.feedback_edges,
+                    ))
             workflow_run.routing_state_json = json.dumps(
                 result.state, ensure_ascii=False, sort_keys=True
             )
@@ -370,6 +377,14 @@ def persist_review_decision(
         workflow_run.owner_id = None
         workflow_run.heartbeat_at = now
         workflow_run.save()
+        if notifications is not None:
+            notifications.extend([
+                {"type": "status", "step_key": step_key,
+                 "data": {"task_id": task.id, "step_key": step_key,
+                          "status": "failed", "error": task_step.error}},
+                {"type": "status", "step_key": "",
+                 "data": {"task_id": task.id, "status": "paused"}},
+            ])
         return None
     task.status = "running"
     task.state_version += 1

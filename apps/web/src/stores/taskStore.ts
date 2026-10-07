@@ -365,7 +365,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
             ? 'retrying'
             : event.status ?? value.status
         ) as string || ''
-        const isRunning = ['running', 'reviewing', 'retrying'].includes(status)
+        const isRunning = ['running', 'reviewing', 'retrying', 'rework', 'rework_waiting'].includes(status)
         if (isRunning) {
           useProjectStore.getState().setProjectRunning(eventId, true)
         } else if (['passed', 'failed', 'cancelled', 'ready', 'stopped', 'paused', 'skipped'].includes(status)) {
@@ -534,13 +534,19 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         const isStepStatus = [
           'pending', 'running', 'reviewing', 'awaiting_review', 'retrying',
           'passed', 'rejected', 'failed', 'cancelled', 'skipped',
+          'rework', 'rework_waiting',
         ].includes(status)
         const stepStatus = status as TaskStepState['status']
         const updateTaskStep = (task: Task) => ({
           ...task,
           steps: isStepStatus && stepKey
             ? (task.steps || []).map((step) =>
-                step.step_key === stepKey ? { ...step, status: stepStatus } : step
+                step.step_key === stepKey ? {
+                  ...step, status: stepStatus,
+                  error: status === 'failed' || status === 'cancelled'
+                    ? String(event.error ?? value.error ?? step.error ?? '') || null
+                    : null,
+                } : step
               )
             : task.steps,
         })
@@ -548,7 +554,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           newTasks = s.tasks.map((t) =>
             t.id === taskId ? { ...updateTaskStep(t), status: 'ready' } : t,
           )
-        } else if (['running', 'reviewing', 'retrying'].includes(status)) {
+        } else if (['running', 'reviewing', 'retrying', 'rework', 'rework_waiting'].includes(status)) {
           newTasks = s.tasks.map((t) =>
             t.id === taskId ? { ...updateTaskStep(t), status: 'running' } : t,
           )

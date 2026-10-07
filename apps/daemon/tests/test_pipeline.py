@@ -2472,7 +2472,8 @@ async def test_task_runner_error_event_fails_step_and_blocks_downstream(tmp_path
         assert task.status == "paused"
         assert steps["a"].status == "failed"
         assert steps["a"].error == "engine unavailable"
-        assert steps["b"].status == "pending"
+        assert steps["b"].status == "failed"
+        assert "上游步骤" in steps["b"].error
         assert message.run_status == "failed"
         assert events[-1]["type"] == "RUN_ERROR"
         assert events[-1]["status"] == "failed"

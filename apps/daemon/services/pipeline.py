@@ -269,7 +269,13 @@ class DAGScheduler:
             ]
             if not inactive:
                 continue
-            missing_required = False
+            # An activated return explicitly selects this target; a missing
+            # initial input cannot turn requested repair into an omitted branch.
+            missing_required = any(
+                connection.get("kind") == "dashed"
+                and str(connection.get("id")) in active_edges
+                for connection in step.incoming_connections
+            )
             for connection in inactive:
                 source = self.steps.get(str(connection.get("from")))
                 active_sibling = bool(source) and any(

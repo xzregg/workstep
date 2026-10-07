@@ -6,6 +6,27 @@ from models import Task, TaskStep
 from services.pipeline import DAGScheduler, Step
 
 
+def artifact_return_events(task_id, source_step, scheduler, feedback_edges):
+    """Describe selected repairs and their waiting downstream after commit."""
+    targets = {str(edge.get("to")) for edge in feedback_edges}
+    rewind = set(targets)
+    for target in targets:
+        rewind.update(scheduler.get_all_downstream(target))
+    events = [{
+        "type": "status", "step_key": key,
+        "data": {"status": "rework" if key in targets else "rework_waiting",
+                 "task_id": task_id, "step_key": key},
+    } for key in sorted(rewind)]
+    events.append({
+        "type": "step_return", "step_key": source_step.key,
+        "data": {"task_id": task_id, "step_key": source_step.key,
+                 "targets": sorted(targets),
+                 "connections": [edge.get("id") for edge in feedback_edges],
+                 "max_returns": source_step.max_return_rounds},
+    })
+    return events
+
+
 class StepRework:
     """Keep both feedback paths' rewind, persistence and events together."""
 
@@ -41,38 +62,20 @@ class StepRework:
                     (TaskStep.task == task) & (TaskStep.step_key == key)
                 )
                 row.status = (
-                    "rework_waiting" if key == source_step.key else "rework"
+                    "rework" if key in targets else "rework_waiting"
                 )
                 # The input snapshot already carries feedback artifact paths.
                 row.rework_feedback = None
                 row.error = None
+                row.started_at = None
                 row.ended_at = None
                 row.save()
 
         await self._run_db(persist_return)
-        for key in rewind:
-            await self._publish(task.id, key, {
-                "type": "status",
-                "data": {
-                    "status": (
-                        "rework_waiting" if key == source_step.key else "rework"
-                    ),
-                    "task_id": task.id,
-                    "step_key": key,
-                },
-            })
-        await self._publish(task.id, source_step.key, {
-            "type": "step_return",
-            "data": {
-                "task_id": task.id,
-                "step_key": source_step.key,
-                "targets": sorted(targets),
-                "connections": [
-                    connection.get("id") for connection in feedback_edges
-                ],
-                "max_returns": source_step.max_return_rounds,
-            },
-        })
+        for event in artifact_return_events(
+            task.id, source_step, scheduler, feedback_edges,
+        ):
+            await self._publish(task.id, event["step_key"], event)
 
     async def from_review(
         self,

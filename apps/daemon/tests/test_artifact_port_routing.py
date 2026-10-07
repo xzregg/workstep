@@ -1062,7 +1062,7 @@ async def test_manual_approval_with_empty_output_fails_required_downstream(tmp_p
         assert TaskStep.get_by_id((task.id, "source")).status == "passed"
         target_step = TaskStep.get_by_id((task.id, "target"))
         assert target_step.status == "failed"
-        assert target_step.error == "缺少必需的上游产物，步骤无法执行"
+        assert "缺少必需的上游产物" in target_step.error
         assert Task.get_by_id(task.id).status == "paused"
         assert calls["target"] == []
     finally:
@@ -1206,7 +1206,17 @@ async def test_manual_approval_of_feedback_artifact_resumes_target_rework(tmp_pa
 
 
 @pytest.mark.anyio
-async def test_manual_approval_reworks_both_feedback_targets_outside_saved_scope(tmp_path):
+@pytest.mark.parametrize("input_case,feedback_targets", [
+    ("complete", ("frontend", "backend")),
+    ("complete", ("frontend",)),
+    ("complete", ("backend",)),
+    ("missing_with_baseline", ("frontend", "backend")),
+    ("missing_without_baseline", ("frontend", "backend")),
+    ("missing_reworked_output", ("frontend", "backend")),
+])
+async def test_manual_approval_reworks_both_feedback_targets_outside_saved_scope(
+    tmp_path, input_case, feedback_targets, monkeypatch,
+):
     from contextlib import nullcontext
     from types import SimpleNamespace
 
@@ -1224,6 +1234,9 @@ async def test_manual_approval_reworks_both_feedback_targets_outside_saved_scope
     )
     workflow = {
         "nodes": [
+            {"id": 4, "type": "req", "title": "需求", "engine": "req-engine",
+             "outputs": [{"name": "PRD", "type": "md"},
+                         {"name": "SPEC", "type": "md"}]},
             {"id": 1, "type": "frontend", "title": "前端开发",
              "engine": "frontend-engine", "outputs": [{"name": "前端结果", "type": "md"}],
              "inputs": [{"name": "需求"}, {"name": "前端 BUG"}]},
@@ -1240,6 +1253,10 @@ async def test_manual_approval_reworks_both_feedback_targets_outside_saved_scope
              "review": {"mode": "manual", "auto": False}},
         ],
         "connections": [
+            {"from": 4, "fromPort": 0, "to": 1, "toPort": 0},
+            {"from": 4, "fromPort": 1, "to": 1, "toPort": 0},
+            {"from": 4, "fromPort": 1, "to": 2, "toPort": 0},
+            {"from": 2, "fromPort": 0, "to": 1, "toPort": 0},
             {"from": 1, "fromPort": 0, "to": 3, "toPort": 0},
             {"from": 2, "fromPort": 0, "to": 3, "toPort": 1},
             {"from": 3, "fromPort": 1, "to": 1, "toPort": 1, "kind": "dashed"},
@@ -1257,13 +1274,14 @@ async def test_manual_approval_reworks_both_feedback_targets_outside_saved_scope
             assert project_id == project.id
             return nullcontext(project)
 
-    calls = {"frontend": [], "backend": [], "test": []}
+    calls = {"req": [], "frontend": [], "backend": [], "test": []}
 
     class TwoFeedbackEngine(ArtifactWritingEngine):
         async def spawn(self, prompt, cwd, **kwargs):
             self.calls["test"].append(prompt)
             wanted = (
-                {"前端BUG列表.md", "后端BUG列表.md"}
+                {f"{'前端' if key == 'frontend' else '后端'}BUG列表.md"
+                 for key in feedback_targets}
                 if len(self.calls["test"]) == 1 else {"测试报告.md"}
             )
             for value in OUTPUT_PATH_RE.findall(prompt):
@@ -1276,13 +1294,28 @@ async def test_manual_approval_reworks_both_feedback_targets_outside_saved_scope
                 data={"content": {"text": "test done"}},
             )
 
+    class BackendRepairEngine(ArtifactWritingEngine):
+        async def spawn(self, prompt, cwd, **kwargs):
+            if input_case == "missing_reworked_output" and self.calls["backend"]:
+                self.calls["backend"].append(prompt)
+                yield InternalEvent(
+                    type="agent_message_chunk",
+                    data={"content": {"text": "output omitted"}},
+                )
+                return
+            async for event in super().spawn(prompt, cwd, **kwargs):
+                yield event
+
     original = ENGINE_REGISTRY.copy()
     ENGINE_REGISTRY.update({
+        "req-engine": lambda: ArtifactWritingEngine("req", calls),
         "frontend-engine": lambda: ArtifactWritingEngine("frontend", calls),
-        "backend-engine": lambda: ArtifactWritingEngine("backend", calls),
+        "backend-engine": lambda: BackendRepairEngine("backend", calls),
         "test-engine": lambda: TwoFeedbackEngine("test", calls),
     })
-    runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
+    bus = EventBus()
+    notifications = bus.subscribe()
+    runtime = WorkflowRuntime(bus, ProjectManagerStub())
     try:
         first = await runtime.start(project.id, task.id, "")
         await runtime.wait(first)
@@ -1296,18 +1329,102 @@ async def test_manual_approval_reworks_both_feedback_targets_outside_saved_scope
         run.routing_state_json = json.dumps(state)
         run.save(only=[WorkflowRun.routing_state_json])
 
+        if input_case in {"missing_with_baseline", "missing_without_baseline"}:
+            req_dir = step_round_dir(
+                project.workstep_dir / "artifacts", "flow", task.id, "req", 1,
+            )
+            (req_dir / "SPEC.md").unlink()
+            write_round_manifest(
+                artifacts_root=project.workstep_dir / "artifacts",
+                workflow_id="flow", task_id=task.id, step_key="req",
+                artifact_round=1, status="passed", eligible_for_downstream=True,
+                outputs=workflow["nodes"][0]["outputs"],
+            )
+            state["active_edges"] = [
+                edge for edge in state["active_edges"]
+                if edge not in {"connection-1", "connection-2"}
+            ]
+            run.routing_state_json = json.dumps(state)
+            run.save(only=[WorkflowRun.routing_state_json])
+            if input_case == "missing_without_baseline":
+                for target in ("frontend", "backend"):
+                    baseline = step_round_dir(
+                        project.workstep_dir / "artifacts", "flow", task.id,
+                        target, 1,
+                    ) / "manifest.json"
+                    manifest = json.loads(baseline.read_text())
+                    manifest["eligible_for_downstream"] = False
+                    baseline.write_text(json.dumps(manifest))
+
+        if input_case == "missing_reworked_output":
+            import asyncio
+            import threading
+            import time
+
+            failing = threading.Event()
+            original_save = TaskStep.save
+
+            def slow_failure_save(row, *args, **kwargs):
+                if row.status == "failed":
+                    failing.set()
+                    time.sleep(0.2)
+                return original_save(row, *args, **kwargs)
+
+            monkeypatch.setattr(TaskStep, "save", slow_failure_save)
         resumed = await runtime.decide_review(
             project.id, task.id, "test", review.id, "approve"
         )
+        if input_case == "missing_reworked_output":
+            assert await asyncio.wait_for(asyncio.to_thread(failing.wait), 2)
+            await asyncio.wait_for(asyncio.sleep(0.01), 0.1)
         await runtime.wait(resumed)
 
-        assert len(calls["frontend"]) == 2
-        assert len(calls["backend"]) == 2
-        assert len(calls["test"]) == 2
-        assert "前端BUG列表.md" in calls["frontend"][1]
-        assert "后端BUG列表.md" in calls["backend"][1]
         state = json.loads(WorkflowRun.get_by_id(run.id).routing_state_json)
-        assert set(state["execution_scope"]) == {"frontend", "backend", "test"}
+        expected_scope = {"frontend", "test"}
+        if "backend" in feedback_targets:
+            expected_scope.add("backend")
+        assert set(state["execution_scope"]) == expected_scope
+        assert len(calls["req"]) == 1
+        events = []
+        while not notifications.empty():
+            events.append(notifications.get_nowait())
+        rework_events = [event for event in events
+                         if event.get("name") == "workstep.status"
+                         and event.get("value", {}).get("status") == "rework"]
+        assert {event["step_key"] for event in rework_events} == set(feedback_targets)
+        assert any(event.get("name") == "workstep.step_return" for event in events)
+        if input_case == "missing_reworked_output":
+            assert len(calls["backend"]) == 2
+            assert len(calls["frontend"]) == len(calls["test"]) == 1
+            assert Task.get_by_id(task.id).status == "paused"
+            assert TaskStep.get(
+                (TaskStep.task == task) & (TaskStep.step_key == "frontend")
+            ).status == "failed"
+            waiting_test = TaskStep.get(
+                (TaskStep.task == task) & (TaskStep.step_key == "test")
+            )
+            assert waiting_test.status == "failed"
+            assert "前端开发" in waiting_test.error
+            return
+
+        assert len(calls["frontend"]) == 2
+        assert len(calls["backend"]) == (2 if "backend" in feedback_targets else 1)
+        assert len(calls["test"]) == 2
+        if "frontend" in feedback_targets:
+            assert "前端BUG列表.md" in calls["frontend"][1]
+        if "backend" in feedback_targets:
+            assert "后端BUG列表.md" in calls["backend"][1]
+        if input_case == "missing_with_baseline":
+            assert "SPEC.md" not in calls["backend"][1]
+            assert "## Previous outputs" in calls["backend"][1]
+            assert "后端结果.md" in calls["frontend"][1]
+        frontend_runs = list(StepRun.select().where(
+            (StepRun.run == run) & (StepRun.step_key == "frontend")
+        ).order_by(StepRun.attempt))
+        backend_runs = list(StepRun.select().where(
+            (StepRun.run == run) & (StepRun.step_key == "backend")
+        ).order_by(StepRun.attempt))
+        assert backend_runs[-1].ended_at <= frontend_runs[-1].started_at
     finally:
         await runtime.shutdown()
         ENGINE_REGISTRY.clear()

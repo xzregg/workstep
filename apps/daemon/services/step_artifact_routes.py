@@ -7,7 +7,10 @@ from pathlib import Path
 
 from models import StepRun, Task, TaskStep, WorkflowRun
 from models.fields import utc_now
-from services.artifact_rounds import ArtifactRound, select_upstream_round, step_round_dir
+from services.artifact_rounds import (
+    ArtifactRound, iter_artifact_rounds, list_round_files, select_upstream_round,
+    step_round_dir,
+)
 from services.artifact_routing import (
     empty_routing_state,
     normalize_routing_state,
@@ -40,6 +43,11 @@ class StepArtifactRoutes:
         self._entry_explicit_sources = set(
             input_rounds_by_step.get(entry_step_key or "", {})
         )
+        self._explicit_sources_by_step = {
+            key: set(rounds) for key, rounds in input_rounds_by_step.items()
+        }
+        self._feedback_context_edges: set[str] = set()
+        self._feedback_baselines: dict[str, int] = {}
         self._run_db = run_db
         self._publish = publish
         self._rework = rework
@@ -61,6 +69,8 @@ class StepArtifactRoutes:
     ) -> None:
         """Restore a persisted run and apply an optional restart scope."""
         self._state = empty_routing_state()
+        self._feedback_context_edges.clear()
+        self._feedback_baselines.clear()
         if routing_state_json:
             try:
                 self._state = normalize_routing_state(
@@ -72,13 +82,13 @@ class StepArtifactRoutes:
             self._scope = execution_scope
 
     def task_context_edges(self, scheduler: DAGScheduler) -> set[str]:
-        """Entry inputs intentionally replaced by the task context."""
+        """Boundary entry inputs and established repair context inputs."""
         entry_key = self._entry_step_key
         scope = self._scope
         if not entry_key or scope is None or entry_key not in scheduler.steps:
-            return set()
+            return set(self._feedback_context_edges)
         active_edges = self.active_edges
-        return {
+        return self._feedback_context_edges | {
             str(connection.get("id"))
             for connection in scheduler.steps[entry_key].incoming_connections
             if connection.get("kind", "solid") == "solid"
@@ -86,6 +96,77 @@ class StepArtifactRoutes:
             and str(connection.get("from")) not in self._entry_explicit_sources
             and str(connection.get("id")) not in active_edges
         }
+
+    async def prepare_feedback_context(
+        self, task: Task, scheduler: DAGScheduler, artifacts_dir: Path,
+    ) -> None:
+        """Use real feedback to select repair independently of initial inputs.
+
+        A nonempty feedback input selects repair. Missing initial-development
+        inputs can use task context with real feedback. An approved historical
+        result is optional context. Explicitly selected inputs remain
+        required, and DAG dependencies still order reworked producers.
+        """
+        state = deepcopy(self._state)
+
+        def resolve():
+            edges: set[str] = set()
+            baselines: dict[str, int] = {}
+            active = set(state.get("active_edges", []))
+            repair_scope: set[str] = set()
+            for key in state.get("feedback_inputs", {}):
+                if key in scheduler.steps:
+                    repair_scope.add(key)
+                    repair_scope.update(scheduler.get_all_downstream(key))
+            for key, feedback in state.get("feedback_inputs", {}).items():
+                step = scheduler.steps.get(key)
+                if step is None or not isinstance(feedback, dict):
+                    continue
+                feedback_ports: set[int] = set()
+                for connection in step.incoming_connections:
+                    edge_id = str(connection.get("id"))
+                    source = feedback.get(edge_id)
+                    if (connection.get("kind") != "dashed" or edge_id not in active
+                            or not isinstance(source, dict) or not source.get("path")):
+                        continue
+                    path = Path(source["path"])
+                    try:
+                        nonempty = (
+                            path.is_file() and path.stat().st_size > 0
+                        ) or (path.is_dir() and any(
+                            child.stat().st_size > 0 for child in list_round_files(path)
+                        ))
+                    except OSError:
+                        nonempty = False
+                    if nonempty:
+                        feedback_ports.add(int(connection.get("toPort", 0)))
+                if not feedback_ports:
+                    continue
+                baseline = next((
+                    round_ for round_ in reversed(iter_artifact_rounds(
+                        artifacts_dir, task.workflow_id, task.id, key,
+                    ))
+                    if round_.eligible_for_downstream and any(
+                        path.stat().st_size > 0
+                        for path in list_round_files(round_.path)
+                    )
+                ), None)
+                if baseline is not None:
+                    baselines[key] = baseline.round
+                edges.update(
+                    str(connection.get("id"))
+                    for connection in step.incoming_connections
+                    if connection.get("kind", "solid") == "solid"
+                    and str(connection.get("from")) not in repair_scope
+                    and str(connection.get("from")) not in
+                    self._explicit_sources_by_step.get(key, set())
+                    and str(connection.get("id")) not in active
+                )
+            return edges, baselines
+
+        self._feedback_context_edges, self._feedback_baselines = (
+            await asyncio.to_thread(resolve)
+        )
 
     async def input_snapshot(
         self,
@@ -98,11 +179,8 @@ class StepArtifactRoutes:
         async with self._lock:
             routing_state = deepcopy(self._state)
             input_rounds = dict(self._input_rounds_by_step.get(step.key, {}))
-            context_edges = (
-                self.task_context_edges(scheduler)
-                if step.key == self._entry_step_key else set()
-            )
-        return await asyncio.to_thread(
+            context_edges = self.task_context_edges(scheduler)
+        snapshot = await asyncio.to_thread(
             resolve_input_snapshot,
             step=step,
             artifacts_root=artifacts_dir,
@@ -112,6 +190,9 @@ class StepArtifactRoutes:
             input_rounds=input_rounds,
             task_context_edges=context_edges,
         )
+        if step.key in self._feedback_baselines:
+            snapshot["baseline_round"] = self._feedback_baselines[step.key]
+        return snapshot
 
     def input_rounds_for(self, step_key: str) -> dict[str, int]:
         return dict(self._input_rounds_by_step.get(step_key, {}))
