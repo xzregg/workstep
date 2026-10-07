@@ -2,6 +2,31 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildTaskConversationTimeline, selectTaskConversationFeed } from '../src/components/taskConversationFeed.ts'
 
+for (const channel of ['coordinator', 'execution']) {
+  test(`${channel} insertion stays old reply, user, new reply through history recovery`, () => {
+    const history = [
+      { id: 'old', channel, role: 'assistant', content: '前段回复', sequence: 1,
+        run_status: 'succeeded', created_at: '2026-10-07T06:11:42Z' },
+      { id: 'insert', channel, role: 'user', content: '补充要求', sequence: 2,
+        run_status: 'succeeded', created_at: '2026-10-07T06:14:03Z' },
+    ]
+    const live = {
+      old: { ...history[0], status: 'running' },
+      new: { id: 'new', channel, role: 'assistant', content: '后段回复',
+        status: 'running', created_at: '2026-10-07T06:14:04Z', reply_to_message_id: 'insert' },
+    }
+    const build = (historyMessages: any[]) => buildTaskConversationTimeline({
+      historyMessages, liveMessages: live as any, actionRuns: [],
+      coordinatorRunning: channel === 'coordinator', actionTitle: (title) => title,
+    }).orderedMessages
+    assert.deepEqual(build(history).map((message) => message.id), ['old', 'insert', 'new'])
+    assert.equal(build(history)[0].run_status, 'succeeded')
+    const recovered = build([...history, { ...live.new, sequence: 3, run_status: 'succeeded' }])
+    assert.deepEqual(recovered.map((message) => message.id), ['old', 'insert', 'new'])
+    assert.equal(recovered[2].run_status, 'succeeded')
+  })
+}
+
 test('conversation feed excludes persisted live messages and user execution echoes', () => {
   const feed = selectTaskConversationFeed(
     [{ id: 'saved', channel: 'execution' }],

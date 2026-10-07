@@ -68,6 +68,7 @@ export function useChatSessionActions({
         onSessionIdChange(accepted.session_id)
       }
       const finalSessionId = accepted.session_id || sessionId
+      useChatSessionStore.getState().confirmUserMessage(finalSessionId, optimisticId, accepted.turn_id)
       if (finalSessionId !== sessionId) {
         unwatchPendingCompletion(projectId, { sessionId })
         watchPendingCompletion(projectId, { sessionId: finalSessionId })
@@ -100,7 +101,8 @@ export function useChatSessionActions({
       useChatSessionStore.getState().removeMessage(sessionId, optimisticId)
     }
     try {
-      await chatSessionApi.sendLiveMessage(sessionId, projectId, content, pendingInsertIds)
+      const accepted = await chatSessionApi.sendLiveMessage(sessionId, projectId, content, pendingInsertIds)
+      useChatSessionStore.getState().confirmUserMessage(sessionId, optimisticId, accepted.message_id, accepted.created_at)
       return true
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : ''

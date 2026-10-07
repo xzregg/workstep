@@ -162,7 +162,7 @@ export default function AiTaskCreateChat({
       useTaskDraftStore.getState().newSession(sid)
       setSessionId(sid)
     }
-    useTaskDraftStore.getState().addUserMessage(sid, content)
+    const optimisticId = useTaskDraftStore.getState().addUserMessage(sid, content)
     setInput('')
     resetEnhance()
     // 先让服务端订阅到该会话，再发起引擎调用，避免首条事件被过滤丢弃。
@@ -182,6 +182,7 @@ export default function AiTaskCreateChat({
         allowGenerateTitle,
         candidateWorkflowIds,
       })
+      useTaskDraftStore.getState().confirmUserMessage(sid, optimisticId, accepted.turn_id)
       if (accepted.session_id && accepted.session_id !== sid) {
         const oldSession = useTaskDraftStore.getState().sessions[sid]
         if (oldSession) {

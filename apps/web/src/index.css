@@ -3169,7 +3169,6 @@ details[open] > summary > .process-trace-chevron {
   font-size: calc(10px * var(--font-scale));
 }
 
-.task-artifact-file-type,
 .task-artifact-file-status {
   flex-shrink: 0;
   padding: 0 4px;

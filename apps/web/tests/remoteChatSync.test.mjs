@@ -14,11 +14,11 @@ test('task store surfaces remote user-message events without rendering live user
   assert.match(storeSource, /User messages are rendered from persisted history/)
 })
 
-test('open task details refresh persisted history when a user message arrives', () => {
+test('task details pass remote user-message refresh signals to their history module', () => {
   assert.match(detailSource, /s\.userMessageEvents\[taskId\]/)
   assert.match(detailSource, /useTaskHistory\(\{/)
-  assert.match(historySource, /taskApi\.history\(taskId, projectId, PAGE_SIZE, 0\)/)
-  assert.match(historySource, /mergeRefreshedTaskHistory\(current, response\.messages \|\| \[\]\)/)
+  // Refresh requests and recovery are exercised by taskHistory.test.tsx.
+  assert.match(detailSource, /userMessageEvents,\s*reviewEventSignal/)
 })
 
 test('task details load older history when the conversation is scrolled to the top', () => {

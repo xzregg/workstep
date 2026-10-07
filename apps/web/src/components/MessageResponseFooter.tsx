@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { engineLabel } from '../engineMeta'
 import MarqueeText from './MarqueeText'
 import { useCompactLayout } from '../hooks/useCompactLayout'
+import { useMessageClock } from '../hooks/useMessageClock'
 import { copyText } from '../utils/clipboard'
 import Button from './Button'
 import {
@@ -287,13 +288,7 @@ export default function MessageResponseFooter({
       : formatTokenUsage(usage, t, locale, engine)
 
   // 进行中每秒刷新一次时钟，让 t/s 与耗时保持流动；结束后停止计时器。
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (!running) return
-    setNow(Date.now())
-    const timer = window.setInterval(() => setNow(Date.now()), 1000)
-    return () => window.clearInterval(timer)
-  }, [running])
+  const now = useMessageClock(running)
 
   // 最早事件时间：单趟扫描 + memo（替代 events.map().filter() 建两个数组再
   // Math.min(...) 展开——后者每 token 重算且大数组展开有爆栈风险）。

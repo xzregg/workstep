@@ -146,6 +146,7 @@ export interface AssistantStore {
   sessions: Record<string, AssistantSessionState>
   newSession: (sessionId: string) => void
   addUserMessage: (sessionId: string, content: string) => string
+  confirmUserMessage: (sessionId: string, optimisticId: string, messageId: string, createdAt?: string) => void
   removeMessage: (sessionId: string, messageId: string) => void
   hydrateSession: (
     sessionId: string,
@@ -233,6 +234,33 @@ function capHistoryEvents(message: AssistantChatMessage): AssistantChatMessage {
   return message.events && message.events.length > MAX_LIVE_EVENTS_PER_MESSAGE
     ? { ...message, events: message.events.slice(-MAX_LIVE_EVENTS_PER_MESSAGE) }
     : message
+}
+
+/** History owns persisted order; omitted cached rows keep their next shared anchor. */
+function mergeHistoryOrder(
+  history: AssistantChatMessage[],
+  cached: AssistantChatMessage[],
+): AssistantChatMessage[] {
+  const historyIds = new Set(history.map((message) => message.id))
+  const before = new Map<string, AssistantChatMessage[]>()
+  const tail: AssistantChatMessage[] = []
+  let nextId: string | undefined
+  for (let index = cached.length - 1; index >= 0; index--) {
+    const message = cached[index]
+    if (historyIds.has(message.id)) {
+      nextId = message.id
+    } else if (nextId) {
+      const group = before.get(nextId) ?? []
+      group.push(message)
+      before.set(nextId, group)
+    } else {
+      tail.push(message)
+    }
+  }
+  return [
+    ...history.flatMap((message) => [...(before.get(message.id) ?? []).reverse(), message]),
+    ...tail.reverse(),
+  ]
 }
 
 function eventIdentity(event: AssistantChatEvent): string {
@@ -327,6 +355,28 @@ export function createAssistantStore(
       return optimisticId
     },
 
+    confirmUserMessage: (sessionId, optimisticId, messageId, createdAt) =>
+      set((s) => {
+        const session = s.sessions[sessionId]
+        if (!session || !messageId || !session.messages.some((m) => m.id === optimisticId)) return s
+        const confirmed = session.messages.find((m) => m.id === messageId)
+        return {
+          sessions: {
+            ...s.sessions,
+            [sessionId]: {
+              ...session,
+              messages: session.messages.flatMap((message) => {
+                if (message.id === optimisticId) return [{
+                  ...message, ...confirmed, id: messageId,
+                  ...(createdAt ? { created_at: createdAt } : {}),
+                }]
+                return message.id === messageId ? [] : [message]
+              }),
+            },
+          },
+        }
+      }),
+
     removeMessage: (sessionId, messageId) =>
       set((s) => {
         const session = s.sessions[sessionId]
@@ -345,23 +395,43 @@ export function createAssistantStore(
     hydrateSession: (sessionId, messages, running = false, unchangedMessages) =>
       set((s) => {
         const session = s.sessions[sessionId] || emptySession()
+        // Recovery can precede both HTTP and WebSocket acknowledgement. Match
+        // only pending bubbles to new persisted user rows, once per send and
+        // inside known history anchors; older pages can contain identical text.
+        const cachedIds = new Set(session.messages.map((m) => m.id))
+        const historyIndexes = new Map(messages.map((m, index) => [m.id, index]))
+        const acknowledgements = new Map<string, AssistantChatMessage>()
+        for (const [historyIndex, message] of messages.entries()) {
+          if (message.role !== 'user' || cachedIds.has(message.id)) continue
+          const pending = session.messages.find((m, index) => {
+            if (m.role !== 'user' || !m.id.startsWith('user-') || acknowledgements.has(m.id)
+              || m.content !== message.content) return false
+            const isConfirmed = (row: AssistantChatMessage) => !row.id.startsWith('user-')
+            const previous = session.messages.slice(0, index).reverse().find(isConfirmed)
+            if (previous) {
+              const anchor = historyIndexes.get(previous.id)
+              return anchor !== undefined && historyIndex > anchor
+            }
+            const next = session.messages.slice(index + 1).find(isConfirmed)
+            const anchor = next ? historyIndexes.get(next.id) : undefined
+            return anchor !== undefined && historyIndex < anchor
+              && !messages.slice(historyIndex + 1, anchor).some((row) => row.role === 'user')
+          })
+          if (pending) acknowledgements.set(pending.id, { ...pending, ...message })
+        }
+        const cachedMessages = session.messages.map((m) => acknowledgements.get(m.id) ?? m)
         // Merge: keep any live messages (running turn) and backfill history.
-        const existingIds = new Set(session.messages.map((m) => m.id))
-        const unchanged = new Map(unchangedMessages?.map((m) => [m.id, m]))
+        const unchanged = new Map(unchangedMessages?.map((m) => {
+          const confirmed = acknowledgements.get(m.id) ?? m
+          return [confirmed.id, confirmed]
+        }))
         const recovered = new Map(messages.map((m) => [m.id, capHistoryEvents(m)]))
-        const live = new Map(session.messages.map((m) => [m.id, m]))
-        const liveChanged = session.messages.some((m) => unchanged.get(m.id) !== m)
-        const merged = unchangedMessages ? [
-          ...session.messages.filter((m) => !recovered.has(m.id) && unchanged.has(m.id)),
-          ...messages.map((m) => (
-            live.has(m.id) && unchanged.get(m.id) !== live.get(m.id)
-              ? live.get(m.id)! : recovered.get(m.id)!
-          )),
-          ...session.messages.filter((m) => !recovered.has(m.id) && !unchanged.has(m.id)),
-        ] : [
-          ...messages.filter((m) => !existingIds.has(m.id)).map(capHistoryEvents),
-          ...session.messages,
-        ]
+        const live = new Map(cachedMessages.map((m) => [m.id, m]))
+        const liveChanged = cachedMessages.some((m) => unchanged.get(m.id) !== m)
+        const merged = mergeHistoryOrder(messages.map((m) => (
+          live.has(m.id) && (!unchangedMessages || unchanged.get(m.id) !== live.get(m.id))
+            ? live.get(m.id)! : recovered.get(m.id)!
+        )), cachedMessages)
         // A cached message can predate prompt persistence; backfill only the
         // missing prompt without replacing newer streamed content or inputs.
         const mergedWithPrompts = merged.map((message) => {
@@ -542,6 +612,13 @@ export function createAssistantStore(
                 : messages[index].content,
               status: isUserEvent ? userStatus : 'running',
               prompt: prompt || messages[index].prompt,
+              ...(isUserEvent ? {
+                created_at: event.created_at || messages[index].created_at,
+                author_id: event.actor?.id ?? messages[index].author_id,
+                author_name: event.actor?.name ?? messages[index].author_name,
+                author_device_id: event.actor?.device_id ?? messages[index].author_device_id,
+                author_device_name: event.actor?.device_name ?? messages[index].author_device_name,
+              } : {}),
             }
           }
           running = true
