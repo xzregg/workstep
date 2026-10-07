@@ -1,2 +1,2 @@
 # Signature verification for managed Gateway bundles.
-cryptography==48.0.1
+cryptography==50.0.2
