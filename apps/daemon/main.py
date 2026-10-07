@@ -345,6 +345,8 @@ if web_dist.exists() or landing_dist.exists():
 
     @app.get("/{fullpath:path}", include_in_schema=False)
     async def _spa_fallback(fullpath: str):
+        if fullpath == "api" or fullpath.startswith("api/"):
+            return _JSONResponse({"detail": "Not found"}, status_code=404)
         # "/landing" 指向官网（apps/landing）构建；home "/" 仍是 Web 应用。
         if fullpath == "landing" or fullpath.startswith("landing/"):
             rel = fullpath[len("landing/") :] if fullpath.startswith("landing/") else ""

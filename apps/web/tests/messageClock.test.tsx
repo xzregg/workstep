@@ -4,6 +4,7 @@ import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import ProcessTrace from '../src/components/ProcessTrace'
+import AssistantThinkingMessage from '../src/components/AssistantThinkingMessage'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
 
 for (const signal of ['workstep:resume', 'pageshow', 'visibilitychange']) {
@@ -53,3 +54,29 @@ for (const signal of ['workstep:resume', 'pageshow', 'visibilitychange']) {
     }
   })
 }
+
+test('the shared waiting reply counts seconds before any WebSocket event', async (context) => {
+  const { window, document } = installDomEnvironment()
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  const start = Date.parse('2026-10-07T05:56:08Z')
+  let now = start + 2000
+  context.mock.method(Date, 'now', () => now)
+  let tick!: () => void
+  context.mock.method(window, 'setInterval', (callback: () => void) => { tick = callback; return 1 })
+  context.mock.method(window, 'clearInterval', () => {})
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider>
+      <AssistantThinkingMessage sender="助手" initials="AI" startedAt={start} />
+    </I18nProvider>))
+    assert.match(container.textContent || '', /处理中 2秒/)
+    now += 1000
+    await act(async () => tick())
+    assert.match(container.textContent || '', /处理中 3秒/)
+  } finally {
+    await act(async () => root.unmount())
+    context.mock.restoreAll()
+    await window.happyDOM.close()
+  }
+})

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { I18nProvider } from '../src/i18n'
+import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { workflowGenApi, taskDraftApi } from '../src/api/client'
 import AiFlowChat from '../src/components/AiFlowChat'
 import AiTaskCreateChat from '../src/components/AiTaskCreateChat'
@@ -20,6 +20,7 @@ for (const kind of ['flow', 'task'] as const) {
     const root = createRoot(document.body.appendChild(document.createElement('div')))
     let sentSession = ''
     try {
+      useLocaleStore.setState({ locale: 'zh-CN' })
       store.setState({ sessions: {} })
       globalThis.fetch = (async () => new Response(JSON.stringify({
         assistants: [], providers: [], skills: [], items: [],
@@ -37,13 +38,15 @@ for (const kind of ['flow', 'task'] as const) {
       assert.equal(send.disabled, false)
       await act(async () => send.click())
       assert.ok(sentSession)
-      assert.deepEqual(store.getState().sessions[sentSession].messages.map((message) => message.id), ['saved-user'])
+      assert.deepEqual(store.getState().sessions[sentSession].messages.map((message) => message.id), ['saved-user', 'reply'])
+      assert.equal(store.getState().sessions[sentSession].running, true)
+      assert.match(document.body.textContent || '', /处理中.*秒/)
       // History/live can arrive after HTTP; they must update that same bubble.
       await act(async () => store.getState().handleWsEvent({
         type: 'TEXT_MESSAGE_START', channel: kind === 'flow' ? 'flow_gen' : 'task_create',
         session_id: sentSession, messageId: 'saved-user', role: 'user', content: '要求',
       }))
-      assert.equal(store.getState().sessions[sentSession].messages.length, 1)
+      assert.equal(store.getState().sessions[sentSession].messages.length, 2)
     } finally {
       await act(async () => root.unmount())
       api.chat = originalChat

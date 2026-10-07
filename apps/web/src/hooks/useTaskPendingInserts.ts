@@ -6,6 +6,7 @@ import { createOptimisticCoordinatorMessage, createOptimisticUserMessage } from 
 import { pendingInsertQueueKey, usePendingMessageInsertStore } from '../stores/pendingMessageInsertStore'
 import { randomUuid } from '../utils/uuid'
 import { watchPendingCompletion, unwatchPendingCompletion, watchAcceptedCompletion } from '../utils/completionNotifications'
+import { flushWsSubscriptionNow } from './useWebSocket'
 
 interface Insert { id: string; content: string }
 
@@ -118,6 +119,7 @@ export function useTaskPendingInserts({
       : createOptimisticUserMessage(optimisticId, content, targetStepKey!, new Date().toISOString())
     if (channel === 'coordinator') onFollow()
     setHistoryMessages((current) => [...current, optimistic])
+    flushWsSubscriptionNow()
     if (channel === 'coordinator') watchPendingCompletion(projectId, { taskId })
     try {
       if (channel === 'coordinator') {

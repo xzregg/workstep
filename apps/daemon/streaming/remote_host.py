@@ -12,9 +12,9 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 import httpx
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, routing
 from fastapi.encoders import jsonable_encoder
-from starlette.routing import compile_path
+from fastapi.routing import APIRoute
 
 from services.remote_access import (
     ActorSnapshot,
@@ -50,6 +50,16 @@ def _schema_properties(schema: dict[str, Any], document: dict[str, Any]) -> dict
 
 def _build_route_catalog(app: FastAPI) -> list[_RouteDescriptor]:
     document = app.openapi()
+    # OpenAPI omits converters such as :path; keep the actual routing regex so
+    # file URLs can contain multiple directory segments.
+    iter_contexts = getattr(routing, "iter_route_contexts", None)
+    routes = iter_contexts(app.routes) if iter_contexts else app.routes
+    route_patterns = {
+        (route.path_format, method): route.path_regex
+        for route in routes
+        if isinstance(getattr(route, "original_route", route), APIRoute)
+        for method in route.methods
+    }
     catalog: list[_RouteDescriptor] = []
     for path_template, path_item in document.get("paths", {}).items():
         if path_template.startswith("/api/remote-project"):
@@ -61,11 +71,13 @@ def _build_route_catalog(app: FastAPI) -> list[_RouteDescriptor]:
             continue
         if not isinstance(path_item, dict):
             continue
-        path_regex, _, _ = compile_path(path_template)
         for method, operation in path_item.items():
             if method.upper() not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
                 continue
             if not isinstance(operation, dict):
+                continue
+            path_regex = route_patterns.get((path_template, method.upper()))
+            if path_regex is None:
                 continue
             query_names = {
                 item.get("name")

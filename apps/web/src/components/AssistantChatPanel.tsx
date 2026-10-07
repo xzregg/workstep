@@ -587,6 +587,7 @@ export default function AssistantChatPanel({
             <AssistantThinkingMessage
               sender={copy.agent}
               initials={copy.agentInitials}
+              startedAt={engineMessages.at(-1)?.created_at}
               footer={config.engine || config.defaultEngine || config.model ? (
                 <MessageResponseFooter
                   content=""

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { useWebSocket } from '../src/hooks/useWebSocket'
+import { flushWsSubscriptionNow, useWebSocket } from '../src/hooks/useWebSocket'
 import { useProjectStore } from '../src/stores/projectStore'
 import { useTaskStore } from '../src/stores/taskStore'
 import { useChatListStore, useChatSessionStore } from '../src/stores/chatSessionStore'
@@ -74,23 +74,31 @@ test('foreground recovery replaces stale sockets, restores subscriptions and ref
     await act(async () => second.receive({ type: 'pong', nonce: ping.nonce }))
     await act(async () => context.mock.timers.tick(10000))
     assert.equal(Socket.instances.length, 2)
-    await act(async () => context.mock.timers.tick(10000))
-    await act(async () => context.mock.timers.tick(10000))
-    assert.equal(Socket.instances.length, 3, 'missing heartbeat reply replaces a half-open connection')
+    const previousPings = second.sent.filter((frame) => frame.type === 'ping').length
+    await act(async () => flushWsSubscriptionNow())
+    assert.equal(second.sent.filter((frame) => frame.type === 'ping').length, previousPings + 1,
+      'sending after idle checks the socket immediately')
+    await act(async () => context.mock.timers.tick(3000))
+    assert.equal(Socket.instances.length, 3, 'send probe recovers a half-open socket without waiting for the periodic heartbeat')
     await act(async () => Socket.instances[2].open())
+    await act(async () => context.mock.timers.tick(10000))
+    await act(async () => context.mock.timers.tick(10000))
+    await act(async () => context.mock.timers.tick(10000))
+    assert.equal(Socket.instances.length, 4, 'missing heartbeat reply replaces a half-open connection')
+    await act(async () => Socket.instances[3].open())
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
     await act(async () => {
       document.dispatchEvent(new window.Event('visibilitychange'))
       context.mock.timers.tick(1)
     })
-    assert.equal(Socket.instances.length, 3)
+    assert.equal(Socket.instances.length, 4)
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
     await act(async () => {
       document.dispatchEvent(new window.Event('visibilitychange'))
       window.dispatchEvent(new window.Event('online'))
       context.mock.timers.tick(1)
     })
-    assert.equal(Socket.instances.length, 4, 'foreground and network notifications coalesce')
+    assert.equal(Socket.instances.length, 5, 'foreground and network notifications coalesce')
   } finally {
     await act(async () => root.unmount())
     context.mock.timers.reset()

@@ -5,6 +5,7 @@ import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStor
 import type { ChatEngineConfigState } from '../utils/chatEngineConfig'
 import { randomUuid } from '../utils/uuid'
 import { watchPendingCompletion, unwatchPendingCompletion, watchAcceptedCompletion } from '../utils/completionNotifications'
+import { flushWsSubscriptionNow } from './useWebSocket'
 
 interface Options {
   sessionId: string | null
@@ -42,6 +43,7 @@ export function useChatSessionActions({
     setSendError('')
     // 先记乐观 id：彻底失败时撤掉气泡，不留后端不存在的幻影消息。
     const optimisticId = useChatSessionStore.getState().addUserMessage(sessionId, content)
+    flushWsSubscriptionNow()
     watchPendingCompletion(projectId, { sessionId })
     try {
       const accepted = await chatSessionApi.chat(sessionId, projectId, content, randomUuid(), {
@@ -69,17 +71,24 @@ export function useChatSessionActions({
       }
       const finalSessionId = accepted.session_id || sessionId
       useChatSessionStore.getState().confirmUserMessage(finalSessionId, optimisticId, accepted.turn_id)
+      useChatSessionStore.getState().acceptAssistantReply(finalSessionId, accepted.assistant_message_id, {
+        engine: engineConfig.engine || effectiveEngine, model: engineConfig.model || undefined,
+        status: accepted.status,
+      })
       if (finalSessionId !== sessionId) {
         unwatchPendingCompletion(projectId, { sessionId })
         watchPendingCompletion(projectId, { sessionId: finalSessionId })
       }
       watchAcceptedCompletion(projectId, { sessionId: finalSessionId }, accepted.assistant_message_id)
-      const { sessions } = await chatSessionApi.list(projectId)
-      const summary = sessions.find((item) => item.id === finalSessionId)
-      if (summary?.title) {
-        onTitleChange(summary.title)
-        useChatListStore.getState().renameSession(finalSessionId, summary.title)
-      }
+      // The turn is already accepted. A catalog refresh cannot fail that send
+      // or keep the composer waiting for a separate network request.
+      void chatSessionApi.list(projectId).then(({ sessions }) => {
+        const summary = sessions.find((item) => item.id === finalSessionId)
+        if (summary?.title) {
+          onTitleChange(summary.title)
+          useChatListStore.getState().renameSession(finalSessionId, summary.title)
+        }
+      }).catch(() => undefined)
       return true
     } catch (reason) {
       unwatchPendingCompletion(projectId, { sessionId })
@@ -97,6 +106,7 @@ export function useChatSessionActions({
     if (!running) return sendMessageNow(content)
     setSendError('')
     const optimisticId = useChatSessionStore.getState().addUserMessage(sessionId, content)
+    flushWsSubscriptionNow()
     const dropOptimistic = () => {
       useChatSessionStore.getState().removeMessage(sessionId, optimisticId)
     }

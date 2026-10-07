@@ -194,12 +194,17 @@ export default function AiTaskCreateChat({
         }
         setSessionId(accepted.session_id)
       }
+      useTaskDraftStore.getState().acceptAssistantReply(accepted.session_id || sid, accepted.assistant_message_id, {
+        engine: selectedEngine || assistantConfig?.configured.engine,
+        model: selectedModel || assistantConfig?.configured.model,
+        status: accepted.status,
+      })
       return true
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('taskList.aiSendFailed'))
       return false
     }
-  }, [allowGenerateTitle, candidateWorkflowIds, input, projectId, running, selectedEngine, selectedProvider, selectedFastModel, selectedVisionModel, selectedModel, selectedThinkingEffort, sessionId, startStepKey, t, taskDescription, taskTitle, workflowId, resetEnhance])
+  }, [allowGenerateTitle, candidateWorkflowIds, input, projectId, running, selectedEngine, selectedProvider, selectedFastModel, selectedVisionModel, selectedModel, selectedThinkingEffort, sessionId, startStepKey, t, taskDescription, taskTitle, workflowId, resetEnhance, assistantConfig])
 
   useEffect(() => {
     if (!autoSend || autoSentRef.current) return

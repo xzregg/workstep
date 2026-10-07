@@ -49,6 +49,7 @@ export function setDetailTaskIds(taskIds: string[]) {
 }
 
 let notifySubscriptionChange: (() => void) | null = null
+let verifyConnection: (() => void) | null = null
 
 /**
  * 立即把当前订阅状态推给服务端。用于「会话创建后、引擎调用前」先完成订阅，
@@ -57,6 +58,7 @@ let notifySubscriptionChange: (() => void) | null = null
  */
 export function flushWsSubscriptionNow() {
   notifySubscriptionChange?.()
+  verifyConnection?.()
 }
 
 export function useWebSocket() {
@@ -305,6 +307,17 @@ export function useWebSocket() {
         restart()
       }, 0)
     }
+    const checkConnection = () => {
+      const ws = wsRef.current
+      if (!ws) { restart(); return }
+      if (ws.readyState !== WebSocket.OPEN) return
+      // A long-idle mobile socket can still report OPEN after its network died.
+      // Check at send time instead of waiting for the next periodic heartbeat.
+      if (heartbeatTimeout) clearTimeout(heartbeatTimeout)
+      send({ type: 'ping', nonce: ++heartbeatNonce })
+      heartbeatTimeout = setTimeout(restart, 3000)
+    }
+    verifyConnection = checkConnection
     const pageShown = (event: PageTransitionEvent) => { if (event.persisted) resume() }
     document.addEventListener('visibilitychange', resume)
     window.addEventListener('online', resume)
@@ -314,6 +327,7 @@ export function useWebSocket() {
     connect()
     return () => {
       active = false
+      if (verifyConnection === checkConnection) verifyConnection = null
       clearSocketTimers()
       if (reconnectTimer) clearTimeout(reconnectTimer)
       if (resumeTimer) clearTimeout(resumeTimer)
