@@ -35,6 +35,11 @@ class StepArtifactRoutes:
         self._input_rounds_by_step = input_rounds_by_step
         self._scope = execution_scope
         self._entry_step_key = entry_step_key
+        # Only caller-selected rounds require every connected output. Rounds
+        # discovered while seeding reused steps must retain the entry fallback.
+        self._entry_explicit_sources = set(
+            input_rounds_by_step.get(entry_step_key or "", {})
+        )
         self._run_db = run_db
         self._publish = publish
         self._rework = rework
@@ -72,13 +77,14 @@ class StepArtifactRoutes:
         scope = self._scope
         if not entry_key or scope is None or entry_key not in scheduler.steps:
             return set()
-        explicit_sources = set(self._input_rounds_by_step.get(entry_key, {}))
+        active_edges = self.active_edges
         return {
             str(connection.get("id"))
             for connection in scheduler.steps[entry_key].incoming_connections
             if connection.get("kind", "solid") == "solid"
             and str(connection.get("from")) not in scope
-            and str(connection.get("from")) not in explicit_sources
+            and str(connection.get("from")) not in self._entry_explicit_sources
+            and str(connection.get("id")) not in active_edges
         }
 
     async def input_snapshot(

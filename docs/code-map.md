@@ -173,6 +173,8 @@ Gateway 审计工作台由 `apps/gateway-web/src/AdminAuditPage.tsx` 持有筛�
 
 任务协调助手的职责限制由 `agent_assistants/coordinator_context.py::COORDINATOR_ROLE_RULES` 统一定义，供 `assemble_context` 和 `coordinator.py::COORDINATOR_CONFIG` 共用：只读查看代码与产物，禁止直接修改项目代码、文件或自行创建分支／工作树；根据已有流程步骤的职责、依赖及状态提出补充或重跑建议，附步骤要求与验收条件，确认后由步骤引擎执行。缺少合适步骤时提示用户调整流程。提示词回归见 `tests/test_coordinator.py::test_assemble_context_includes_coordinator_root_dir`。
 
+手动重跑入口的产物回退由 `services/step_artifact_routes.py::task_context_edges` 持有：保留已激活的历史产物边，未显式指定轮次且缺少产物的边界输入使用任务上下文；自动发现的历史轮次不能被当作用户强制选择，导致入口步骤被跳过。协调器重跑与直接 @步骤共用 `WorkflowRuntime.restart_from_step`，后者由 `resume_step_with_message` 持久化消息后调用。部分历史输出、缺少测试地址及两种触发方式的实际引擎执行回归见 `tests/test_workflow_runtime.py::test_restart_entry_runs_with_partially_reused_upstream_outputs`，消息写入的慢 SQL 健康检查见 `tests/test_api_contracts.py::test_resume_step_message_slow_sql_does_not_block_health`。
+
 修改功能时先找所属模块，再沿前端页面或组件 → API → 服务 → 数据模型追踪。行为测试放在实际拥有该行为的模块附近；不要把页面、`src/api/client.ts` 或通用服务文件作为新功能的默认落点。
 
 普通对话的「全局提示词」由 `agent_assistants/chat_session.py::_engine_system_prompt` 从项目设置独立提供，正文不再拼接该规则，空值不补默认角色；渠道会话由 `agent_assistants/channel_chat.py::_engine_system_prompt` 组装角色、项目指令及来源背景（平台、BOT、群／会话 ID、群名称、首次发起者与当前发送者），字段白名单排除凭证。`base.py` 在线程中读取并通过 `engine_invocation.py` 独立传递；`engines/core/acp_base.py` 持有统一 `system_prompt`、首次/每轮降级及输入快照入口，Codex、Claude、Qoder、Pydantic AI 适配器持有原生追加方式。`services/channels/bots.py` 在启动回合前保存来源，项目渠道气泡只保存原文；流程设计、任务创建／定时生成、任务协调、经验归档及响应修复也通过该入口独立提供固定规则；任务步骤模板保持既有语义。测试见 `tests/test_engine_system_prompt.py`、`tests/test_chat_session.py`（真实 API、恢复输入、慢提示词读取健康检查）、`tests/test_channel_bots.py`（持久恢复、会话隔离、慢配置健康检查）及 `tests/test_pydantic_ai_harness.py`；协议约束见 `docs/llm-engine-development-guide.md`。

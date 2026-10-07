@@ -439,6 +439,115 @@ async def test_runtime_persists_selected_entry_with_two_boundary_inputs(tmp_path
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("direct_message", [False, True])
+async def test_restart_entry_runs_with_partially_reused_upstream_outputs(
+    tmp_path, direct_message,
+):
+    """Auto-selected upstream rounds must not suppress a manually chosen entry."""
+    from engines.core.registry import ENGINE_REGISTRY
+    from services.artifact_rounds import step_round_dir, write_round_manifest
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="partial-upstream-task", title="Retest", cwd=str(tmp_path),
+        workflow_id="flow", engine="claude", created_at=1, updated_at=1,
+    )
+    parent = WorkflowRun.create(
+        id="parent", task=task, status="failed", workflow_schema_version=1,
+        started_at=1,
+    )
+    task.active_workflow_run_id = parent.id
+    task.save()
+    TaskStep.create(task=task, step_key="req", status="passed")
+    TaskStep.create(task=task, step_key="environment", status="pending")
+    TaskStep.create(task=task, step_key="test", status="skipped")
+    StepRun.create(
+        id="req-run", run=parent, step_key="req", attempt=1,
+        artifact_round=1, status="succeeded",
+    )
+    outputs = [{"name": "PRD", "type": "md"}, {"name": "SPEC", "type": "md"}]
+    artifacts_root = tmp_path / ".workstep" / "artifacts"
+    round_dir = step_round_dir(artifacts_root, "flow", task.id, "req", 1)
+    round_dir.mkdir(parents=True)
+    (round_dir / "PRD.md").write_text("Requirements", encoding="utf-8")
+    write_round_manifest(
+        artifacts_root=artifacts_root, workflow_id="flow", task_id=task.id,
+        step_key="req", artifact_round=1, status="passed",
+        eligible_for_downstream=True, outputs=outputs,
+    )
+    workflow = {
+        "nodes": [
+            {"id": 1, "type": "req", "title": "Requirements", "outputs": outputs},
+            {"id": 2, "type": "test", "title": "Test", "engine": "claude",
+             "inputs": [{"name": "Requirements"}, {"name": "Test URL"}]},
+            {"id": 3, "type": "environment", "title": "Environment",
+             "outputs": [{"name": "Test URL", "type": "md"}]},
+        ],
+        "connections": [
+            {"from": 1, "fromPort": 0, "to": 2, "toPort": 0},
+            {"from": 1, "fromPort": 1, "to": 2, "toPort": 0},
+            {"from": 3, "fromPort": 0, "to": 2, "toPort": 1},
+        ],
+    }
+    project = SimpleNamespace(
+        id="partial-upstream-project", path=tmp_path,
+        workstep_dir=tmp_path / ".workstep", steps=workflow,
+        workflow_by_id=lambda _id: {"steps": workflow},
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    prompts = []
+
+    class RecordingEngine(RuntimeFakeEngine):
+        async def spawn(self, prompt, cwd, **kwargs):
+            prompts.append(prompt)
+            async for event in super().spawn(prompt, cwd, **kwargs):
+                yield event
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = RecordingEngine
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, ProjectManagerStub())
+    try:
+        if direct_message:
+            from models import Message
+
+            accepted = await runtime.resume_step_with_message(
+                project.id, task.id, "test", "Check the updated counts",
+            )
+            child_id = accepted["run_id"]
+            await _wait_run_finished(child_id)
+            message = Message.get_by_id(accepted["message_id"])
+            assert message.step_key == "test"
+            assert message.content == "Check the updated counts"
+        else:
+            child = await runtime.restart_from_step(
+                project.id, task.id, "test", step_followup="Check the updated counts",
+            )
+            child_id = child.id
+            await runtime.wait(child)
+        assert len(prompts) == 1
+        assert "Check the updated counts" in prompts[0]
+        assert "PRD.md" in prompts[0]
+        assert TaskStep.get(TaskStep.step_key == "test").status == "passed"
+        assert WorkflowRun.get_by_id(child_id).status == "succeeded"
+        assert not StepRun.select().where(
+            (StepRun.run == child_id) & (StepRun.step_key == "environment")
+        ).exists()
+    finally:
+        await runtime.shutdown()
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
 async def test_switching_from_running_a_to_c_does_not_keep_a_in_child_scope(
     tmp_path,
 ):

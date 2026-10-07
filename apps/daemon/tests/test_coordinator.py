@@ -1675,6 +1675,15 @@ def test_assemble_context_includes_coordinator_root_dir(tmp_path):
         assert "operate on WorkStep workflows" in COORDINATOR_CONFIG.system_prompt
         assert "# WorkStep CLI" not in prompt
         assert "WORKSTEP_CLI_PYTHON" not in prompt
+        _, instructions, _ = assemble_context(
+            StubProject(), task, turn, separate_instructions=True
+        )
+        for rules in (prompt, instructions, COORDINATOR_CONFIG.system_prompt):
+            assert "Never modify project code" in rules
+            assert "even when the user explicitly asks" in rules
+            assert "existing workflow step" in rules
+            assert "step-specific requirements and acceptance criteria" in rules
+        assert "create task worktrees" not in instructions
     finally:
         db.close()
 

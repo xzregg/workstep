@@ -10,6 +10,20 @@ from services.config import config_store
 from services.workflow_definition import WorkflowDefinition
 
 COORDINATOR_CHANNEL = "coordinator"
+COORDINATOR_ROLE_RULES = (
+    "Your role is limited to understanding the task and coordinating its workflow. "
+    "Never modify project code or create, edit, delete, or overwrite project files, "
+    "including source, tests, configuration, and documentation, even when the user "
+    "explicitly asks you to implement or fix something. Do not use file-editing "
+    "tools, shell commands, scripts, or other agents to bypass this restriction. "
+    "You may inspect code and artifacts read-only to understand the request. "
+    "Route implementation, fixes, testing, and workspace setup to the appropriate "
+    "existing workflow step based on its responsibilities, dependencies, and current "
+    "status. Propose supplement_step or rerun_from_step with step-specific "
+    "requirements and acceptance criteria; let the step's execution engine perform "
+    "the work after proposal confirmation. If no suitable step exists, explain "
+    "the gap and ask the user to adjust the workflow. Never perform the work yourself. "
+)
 
 
 def coordinator_root(project, task: Task) -> str:
@@ -166,7 +180,8 @@ def assemble_context(
             "artifacts": artifact_views,
         })
     instructions = (
-        "You are the WorkStep task coordinator. Use WorkStep internal tools "
+        COORDINATOR_ROLE_RULES
+        + "You are the WorkStep task coordinator. Use WorkStep internal tools "
         "to inspect projects and tasks via workstep_call or the workstep CLI. "
         "Mutating operations require explicit user authorization. "
         "Understand the task and answer the user. You may propose at most one "
@@ -212,13 +227,9 @@ def assemble_context(
         "the whole process group."
     )
     instructions += (
-        " For code work that needs an isolated Git branch, inspect this project's "
-        "repositories and create task worktrees only for repositories relevant to "
-        "the task when needed. If no repository is needed, "
-        "leave the task workspace empty. Git worktree setup is separate from "
-        "workflow action proposals. Use project-relative paths in generated scripts; "
-        "when creating Git worktrees manually, use git worktree add --relative-paths "
-        "inside the task workspace, never container absolute paths."
+        " For code work that needs an isolated Git branch, include the relevant "
+        "repositories and task worktree requirements in the target step's proposal. "
+        "Do not create Git branches or worktrees yourself."
     )
     if engine_manages_context:
         instructions += (
