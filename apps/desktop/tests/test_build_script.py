@@ -160,3 +160,11 @@ def test_desktop_backend_includes_legal_notices_and_sbom() -> None:
         assert "requirements-gateway.txt" in text
         assert "workstep_gateway_protocol" in text
         assert "cli.py" in text
+
+
+def test_sandbox_web_build_uses_github_reachable_npm_registry() -> None:
+    dockerfile = (REPO_DIR / "Dockerfile").read_text(encoding="utf-8")
+    web_build = dockerfile.split("# Git 2.48+", maxsplit=1)[0]
+
+    assert "registry.npmmirror.com" not in web_build
+    assert "https://registry.npmjs.org" in web_build
