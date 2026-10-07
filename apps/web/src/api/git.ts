@@ -38,6 +38,7 @@ export function createGitApi(client: typeof request = request) {
   progress: (id: string) => client<ScanJob>(`/git/scans/${id}`),
   repositories: () => client<GitDiscovery>('/git/repositories'),
   initialize: (projectId: string) => client<{ project_id: string; path: string }>(`/git/projects/${encodeURIComponent(projectId)}/initialize`, post()),
+  deleteWorktree: (id: string, snapshot?: string, head?: string) => client<{ deleted: string }>(route(id) + '/delete', post({ snapshot, head })),
   status: (id: string) => client<GitStatus>(route(id) + '/status'),
   branches: (id: string) => client<{ branches: GitBranch[]; remote_branches?: GitTrackedRemoteBranch[]; fetched_at?: number | null }>(route(id) + '/branches'),
   createBranch: (id: string, name: string, baseBranch: string, baseHead: string, snapshot: string, baseRemote?: string) => client<{ branches: GitBranch[]; remote_branches?: GitTrackedRemoteBranch[]; fetched_at?: number | null }>(route(id) + '/branches', post({ name, base_branch: baseBranch, base_head: baseHead, snapshot, base_remote: baseRemote })),

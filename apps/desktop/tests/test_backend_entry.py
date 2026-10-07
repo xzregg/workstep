@@ -33,10 +33,10 @@ def isolate_runtime_environment(monkeypatch):
     monkeypatch.setattr(sys, "path", list(sys.path))
 
 
-def test_default_port_requests_an_available_ephemeral_port():
+def test_default_port_prefers_the_fixed_port():
     args = parse_args([])
 
-    assert args.port == 0
+    assert args.port == 8765
 
 
 def test_port_can_be_changed_from_the_command_line():
@@ -202,3 +202,28 @@ def test_desktop_main_prepares_runtime_before_loading_daemon(tmp_path, monkeypat
     monkeypatch.setattr(server, "_load_app", load_app)
     monkeypatch.setattr(server, "_serve", serve)
     assert server.main([]) == 0
+
+
+def test_occupied_port_falls_back_without_connecting_to_existing_service():
+    occupied = bind_server_socket("127.0.0.1", 0)
+    preferred = occupied.getsockname()[1]
+    try:
+        fallback = bind_server_socket("127.0.0.1", preferred)
+        try:
+            assert fallback.getsockname()[1] != preferred
+            assert fallback.getsockname()[1] > 0
+        finally:
+            fallback.close()
+    finally:
+        occupied.close()
+
+
+def test_available_requested_port_is_reused():
+    first = bind_server_socket("127.0.0.1", 0)
+    preferred = first.getsockname()[1]
+    first.close()
+    second = bind_server_socket("127.0.0.1", preferred)
+    try:
+        assert second.getsockname()[1] == preferred
+    finally:
+        second.close()

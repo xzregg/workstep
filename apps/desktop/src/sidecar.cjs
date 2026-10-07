@@ -28,7 +28,7 @@ function resolveBackendPort(argv = process.argv.slice(1), env = process.env) {
       break
     }
   }
-  return parsePort(configured ?? env.WORKSTEP_DESKTOP_PORT ?? '0')
+  return parsePort(configured ?? env.WORKSTEP_DESKTOP_PORT ?? '8765')
 }
 
 function buildBackendArgs(port) {

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import errno
 import os
 import shutil
 import socket
@@ -27,8 +28,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--port",
         type=valid_port,
-        default=0,
-        help="Local port; 0 asks the OS to choose a free port (default: 0)",
+        default=8765,
+        help="Local port; 0 asks the OS to choose a free port (default: 8765; falls back if occupied)",
     )
     return parser.parse_args(argv)
 
@@ -36,7 +37,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def bind_server_socket(host: str, port: int) -> socket.socket:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        sock.bind((host, port))
+        try:
+            sock.bind((host, port))
+        except OSError as exc:
+            if not port or exc.errno != errno.EADDRINUSE:
+                raise
+            sock.bind((host, 0))
         sock.listen(2048)
         return sock
     except BaseException:

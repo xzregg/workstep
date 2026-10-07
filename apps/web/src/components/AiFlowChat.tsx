@@ -26,6 +26,7 @@ import { useI18n } from '../i18n'
 import { selectWorkflowTurnContext } from '../utils/workflowContext'
 import { applyAssistantQuickPrompt } from '../utils/taskQuickPrompts.js'
 import { flushWsSubscriptionNow } from '../hooks/useWebSocket'
+import { useWorkflowMessageEvents } from '../hooks/useWorkflowMessageEvents'
 import { usePromptEnhance } from '../hooks/usePromptEnhance'
 import { cloneCanvasSteps } from '../utils/canvasRestore'
 import { applyWorkflowPatch } from '../utils/workflowPatch'
@@ -232,6 +233,8 @@ export default function AiFlowChat({
             created_at: m.created_at,
             ended_at: m.ended_at,
             prompt: m.prompt,
+            event_summary: m.event_summary,
+            event_detail: m.event_detail,
             author_id: m.author_id,
             author_username: m.author_username,
             author_name: m.author_name,
@@ -252,6 +255,8 @@ export default function AiFlowChat({
       .catch(() => { /* keep the empty session; next turn still works */ })
     return () => { active = false }
   }, [workflowId, projectId])
+
+  const loadMessageEvents = useWorkflowMessageEvents(projectId, workflowId, sessionId)
 
   const send = useCallback(async (contentOverride?: string) => {
     const content = (contentOverride ?? input).trim()
@@ -385,6 +390,7 @@ export default function AiFlowChat({
   return (
     <>
       <AssistantChatPanel
+        onLoadMessageEvents={loadMessageEvents}
         projectId={projectId}
         title={title ?? t('aiFlow.title')}
         messages={messages}

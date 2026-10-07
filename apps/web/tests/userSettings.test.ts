@@ -131,3 +131,95 @@ test('a blank user name is rejected without calling the API', async () => {
     globalThis.fetch = originalFetch
   }
 })
+
+
+test('desktop persists its name and restores identity after the sandbox origin changes', async () => {
+  resetStore()
+  const originalFetch = globalThis.fetch
+  const originalWindow = globalThis.window
+  let name = ''
+  const settings = () => ({ user_name: name, open_mode: false, device_id: 'sandbox-device', device_name: 'WorkStep' })
+  const installWindow = () => Object.defineProperty(globalThis, 'window', {
+    configurable: true, value: { localStorage: memoryStorage(), workstepDesktop: { notify() {} } },
+  })
+  installWindow()
+  globalThis.fetch = async (_input, init) => {
+    if (init?.method === 'PUT') name = JSON.parse(String(init.body)).user_name
+    return new Response(JSON.stringify(settings()), { status: 200 })
+  }
+  try {
+    await useUserSettingsStore.getState().load()
+    assert.equal(await useUserSettingsStore.getState().saveUserName('  小王  '), true)
+    assert.equal(name, '小王')
+    const first = loadBrowserActor()!
+    installWindow() // A new port has an empty localStorage.
+    resetStore()
+    await useUserSettingsStore.getState().load()
+    assert.equal(useUserSettingsStore.getState().userName, '小王')
+    assert.deepEqual(loadBrowserActor(), first)
+  } finally {
+    globalThis.fetch = originalFetch
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow })
+  }
+})
+
+test('desktop migrates an existing browser name into config', async () => {
+  resetStore()
+  const originalFetch = globalThis.fetch
+  const originalWindow = globalThis.window
+  const storage = memoryStorage()
+  storage.setItem(BROWSER_ACTOR_STORAGE_KEY, JSON.stringify({ id: 'old', name: '原名称', deviceId: 'old', deviceName: 'Chrome' }))
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { localStorage: storage, workstepDesktop: { notify() {} } } })
+  let name = ''
+  globalThis.fetch = async (_input, init) => {
+    if (init?.method === 'PUT') name = JSON.parse(String(init.body)).user_name
+    return new Response(JSON.stringify({ user_name: name, open_mode: false, device_id: 'desktop', device_name: 'WorkStep' }))
+  }
+  try {
+    await useUserSettingsStore.getState().load()
+    assert.equal(name, '原名称')
+    assert.equal(useUserSettingsStore.getState().userName, name)
+  } finally {
+    globalThis.fetch = originalFetch
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow })
+  }
+})
+
+
+test('desktop prefers the current Home config over an identity from another environment', async () => {
+  resetStore()
+  const originalFetch = globalThis.fetch
+  const originalWindow = globalThis.window
+  const storage = memoryStorage()
+  storage.setItem(BROWSER_ACTOR_STORAGE_KEY, JSON.stringify({ id: 'native', name: '宿主名称', deviceId: 'native', deviceName: 'Chrome' }))
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { localStorage: storage, workstepDesktop: { notify() {} } } })
+  globalThis.fetch = async (_input, init) => {
+    assert.equal(init?.method, undefined)
+    return new Response(JSON.stringify({ user_name: '沙箱名称', open_mode: false, device_id: 'sandbox', device_name: 'WorkStep' }))
+  }
+  try {
+    await useUserSettingsStore.getState().load()
+    assert.equal(loadBrowserActor()?.name, '沙箱名称')
+    assert.equal(loadBrowserActor()?.id, 'sandbox')
+  } finally {
+    globalThis.fetch = originalFetch
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow })
+  }
+})
+
+test('desktop reports failed config writes without claiming the name was saved', async () => {
+  resetStore()
+  const originalFetch = globalThis.fetch
+  const originalWindow = globalThis.window
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { localStorage: memoryStorage(), workstepDesktop: { notify() {} } } })
+  globalThis.fetch = async () => new Response(JSON.stringify({ detail: '配置写入失败' }), { status: 500 })
+  try {
+    assert.equal(await useUserSettingsStore.getState().saveUserName('小王'), false)
+    assert.equal(loadBrowserActor(), null)
+    assert.equal(useUserSettingsStore.getState().userName, '')
+    assert.ok(useUserSettingsStore.getState().error)
+  } finally {
+    globalThis.fetch = originalFetch
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow })
+  }
+})

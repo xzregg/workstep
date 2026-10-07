@@ -41,6 +41,41 @@ test('failed preparation never changes active settings and can be retried', asyn
   } finally { await fs.rm(base, { recursive: true, force: true }) }
 })
 
+test('Compose Home survives failed preparation, retry and sandbox removal', async () => {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-compose-home-'))
+  try {
+    const root = path.join(base, 'data'), project = path.join(base, 'projects')
+    await fs.mkdir(path.join(root, 'home/.workstep'), { recursive: true }); await fs.mkdir(project)
+    await fs.writeFile(path.join(root, 'home/.workstep/config.json'), 'existing')
+    await fs.writeFile(path.join(root, '.DS_Store'), 'finder')
+    const manager = new SandboxManager({ stateDir: path.join(base, 'state'), image: 'ghcr.io/test/workstep@sha256:' + 'a'.repeat(64), install: async () => { throw new Error('download failed') } })
+    await assert.rejects(manager.prepare({ root, project, mounts: [] }), /download failed/)
+    await manager.claimRoot(await validateSettings({ root, project, mounts: [] }))
+    assert.equal(JSON.parse(await fs.readFile(path.join(root, 'desktop/owner.json'), 'utf8')).preserveHome, true)
+    await manager.remove()
+    assert.equal(await fs.readFile(path.join(root, 'home/.workstep/config.json'), 'utf8'), 'existing')
+    assert.equal(await fs.readFile(path.join(root, '.DS_Store'), 'utf8'), 'finder')
+    await assert.rejects(fs.stat(path.join(root, 'podman'))); await assert.rejects(fs.stat(path.join(root, 'desktop')))
+    assert.ok((await fs.stat(project)).isDirectory())
+  } finally { await fs.rm(base, { recursive: true, force: true }) }
+})
+
+test('adoption refuses unrelated contents and external Home links', async () => {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-compose-reject-'))
+  try {
+    const root = path.join(base, 'data'), project = path.join(base, 'projects')
+    await fs.mkdir(root); await fs.mkdir(project)
+    const config = await validateSettings({ root, project, mounts: [] })
+    const manager = new SandboxManager({ stateDir: path.join(base, 'state') })
+    await fs.writeFile(path.join(root, 'important'), 'keep')
+    await assert.rejects(manager.claimRoot(config), /空|home/)
+    assert.equal(await fs.readFile(path.join(root, 'important'), 'utf8'), 'keep')
+    await fs.rm(path.join(root, 'important')); await fs.symlink(project, path.join(root, 'home'))
+    await assert.rejects(manager.claimRoot(config), /Home|home|外部/)
+    await assert.rejects(fs.stat(path.join(root, 'desktop')))
+  } finally { await fs.rm(base, { recursive: true, force: true }) }
+})
+
 test('import backs up old configuration and refuses symlinks out of source', async () => {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-sandbox-test-'))
   try {
@@ -213,3 +248,32 @@ test('managed gateway uses guest paths on virtualized platforms', () => {
     assert.ok(args.includes(`type=bind,source=${source},target=/usr/local/share/workstep-managed,readonly`))
   }
 })
+
+
+for (const conflict of [false, true]) {
+  test(`sandbox prefers fixed port and retries only a bind conflict: ${conflict}`, async () => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-port-'))
+    const originalFetch = globalThis.fetch
+    const calls = []
+    try {
+      await fs.mkdir(path.join(base, 'project'))
+      const manager = new SandboxManager({ stateDir: path.join(base, 'state'), platform: 'linux', arch: 'x64', image: 'ghcr.io/test/workstep@sha256:' + 'a'.repeat(64),
+        install: async () => ({ executable: '/managed/podman', helpers: [] }), execute: async (_file, args) => {
+          calls.push(args)
+          if (args.includes('ps')) return '[]'
+          if (args.includes('run') && conflict && args.includes('127.0.0.1:8765:8765')) throw new Error('bind: address already in use')
+          if (args.includes('port')) return conflict ? '127.0.0.1:45678' : '127.0.0.1:8765'
+          return '{}'
+        } })
+      await manager.prepare({ root: path.join(base, 'sandbox'), project: path.join(base, 'project'), mounts: [] })
+      await manager.setEnabled(true)
+      globalThis.fetch = async () => Response.json({ status: 'ok' })
+      assert.equal(await manager.start(8765, 'token'), conflict ? 'http://127.0.0.1:45678' : 'http://127.0.0.1:8765')
+      const runs = calls.filter(args => args.includes('run'))
+      assert.equal(runs.length, conflict ? 2 : 1)
+      assert.ok(runs[0].includes('127.0.0.1:8765:8765'))
+      if (conflict) assert.ok(runs[1].includes('127.0.0.1::8765'))
+      await manager.stop()
+    } finally { globalThis.fetch = originalFetch; await fs.rm(base, { recursive: true, force: true }) }
+  })
+}

@@ -449,3 +449,13 @@ async def pull(id: str, body: RemoteSyncRequest):
 @router.post('/worktrees/{id}/push')
 async def push(id: str, body: RemoteSyncRequest):
     return await result(git_service.push(id, body.branch, body.snapshot, body.remote, body.target_branch, body.set_upstream))
+
+
+class DeleteWorktreeRequest(BaseModel):
+    snapshot: str | None = Field(default=None, min_length=64, max_length=64)
+    head: str | None = Field(default=None, min_length=40, max_length=64)
+
+
+@router.post('/worktrees/{id}/delete')
+async def delete_worktree(id: str, body: DeleteWorktreeRequest):
+    return await result(git_service.delete_worktree(id, body.snapshot, body.head))

@@ -6,7 +6,7 @@ Electron 桌面壳负责窗口、安装包和自动更新；FastAPI daemon 运�
 
 现有宿主机引擎保留为查找回退，不自动移动或卸载；Node/npm/uv 仍可使用宿主机已有工具，daemon 自带 Python 仍位于安装包内。遇到 Volta 管理的 npm 时，启动阶段解析实际 Node/npm 路径，避免其全局安装拦截把引擎放回宿主机 Volta 目录。沙箱模式使用沙箱 `home/` 作为 Home，相同类型的安装采用同样的相对目录，详见 [容器运行时说明](../../docs/container-runtime.md)。
 
-安装包同时携带 daemon CLI。sidecar 会把 bundled Python、daemon 目录、当前随机端口和临时桌面令牌通过 `WORKSTEP_CLI_PYTHON`、`WORKSTEP_DAEMON_DIR`、`WORKSTEP_DAEMON_URL`、`WORKSTEP_DESKTOP_TOKEN` 传给引擎子进程，因此 Skill 调用 CLI 不依赖用户安装 Python，也不把动态地址或令牌写入项目文件。
+安装包同时携带 daemon CLI。sidecar 会把 bundled Python、daemon 目录、当前实际端口和临时桌面令牌通过 `WORKSTEP_CLI_PYTHON`、`WORKSTEP_DAEMON_DIR`、`WORKSTEP_DAEMON_URL`、`WORKSTEP_DESKTOP_TOKEN` 传给引擎子进程，因此 Skill 调用 CLI 不依赖用户安装 Python，也不把动态地址或令牌写入项目文件。
 
 ```text
 Electron
@@ -17,7 +17,7 @@ Electron
 
 ## 端口
 
-生产版默认传入 `--port 0`，由操作系统分配空闲端口，不依赖固定的 8765。需要固定端口时可用：
+生产版（原生后台和沙箱）默认优先使用 `127.0.0.1:8765`，仅在端口被占用时改用系统分配的空闲端口。可设置首选端口，也可显式传入 `0` 使用随机端口：
 
 ```bash
 WorkStep --backend-port=43123
@@ -25,7 +25,7 @@ WorkStep --port 43123
 WORKSTEP_DESKTOP_PORT=43123 WorkStep
 ```
 
-启动参数优先于环境变量。固定端口被占用时，应用显示启动失败，不会错误连接到占用该端口的其他服务。后台只绑定 `127.0.0.1`。
+启动参数优先于环境变量。首选端口被占用时启动自己的后台并改用空闲端口，不会连接到占用该端口的其他服务；其他启动错误仍显示失败。后台只绑定 `127.0.0.1`。
 
 开发模式不启动二进制 sidecar，默认连接 `http://127.0.0.1:8765`；也可设置 `WORKSTEP_DEV_SERVER_URL`，或使用相同的 `--backend-port` 参数。
 
