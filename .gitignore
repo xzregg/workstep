@@ -24,7 +24,7 @@ apps/desktop/.nuitka-venv/
 !.env.example
 .claude/settings.local.json
 .claude/*.local.json
-
+.agents/
 # Open Design
 .od/
 .od-skills/
