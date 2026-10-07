@@ -28,7 +28,10 @@ mkdir -p "$runtime"
         stage=$(mktemp -d "$runtime/.base-stage.XXXXXX")
         trap 'rm -rf "$stage"' 0
         trap 'exit 1' HUP INT TERM
-        tar -xf "$seed/base.tar" -C "$stage"
+        # The checksum-verified image seed contains trusted ../ and absolute
+        # symlink targets. -P avoids GNU tar's mode-000 link placeholders, which
+        # cannot be reopened on rootless macOS virtiofs mounts.
+        tar -xPf "$seed/base.tar" -C "$stage"
         test -d "$stage/base/bin"
         printf '%s\n' "$expected" > "$stage/base/.image-sha256"
 

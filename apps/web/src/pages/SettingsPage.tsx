@@ -1,3 +1,5 @@
+import SandboxSettings from '../components/SandboxSettings'
+import ConfirmDialog from '../components/ConfirmDialog'
 import AgentAssistantSettings from './AgentAssistantSettings'
 import BotSettings from './BotSettings'
 import ResizablePanel from '../components/ResizablePanel'
@@ -6,7 +8,7 @@ import ProjectDirectorySetting from '../components/ProjectDirectorySetting'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useOverlay } from '../hooks/useOverlay'
 import Icon from '../components/Icon'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Button from '../components/Button'
 import Input from '../components/Input'
 import SegmentedControl from '../components/SegmentedControl'
@@ -51,7 +53,12 @@ export default function SettingsPage({
   const { t, locale, setLocale } = useI18n()
   const compactLayout = useCompactLayout()
   const settingsDialogRef = useRef<HTMLDivElement>(null)
-  useOverlay(true, onClose, settingsDialogRef, compactLayout)
+  const sandboxDirty = useRef(false)
+  const [pendingExit, setPendingExit] = useState<{ section?: SettingsSection } | null>(null)
+  const onSandboxDirty = useCallback((dirty: boolean) => { sandboxDirty.current = dirty }, [])
+  const closeSettings = () => sandboxDirty.current ? setPendingExit({}) : onClose()
+  const selectSection = (section: SettingsSection) => sandboxDirty.current ? setPendingExit({ section }) : setActiveSection(section)
+  useOverlay(true, closeSettings, settingsDialogRef, compactLayout)
   const userName = useUserSettingsStore((state) => state.userName)
   const userSettingsLoading = useUserSettingsStore((state) => state.loading)
   const userSettingsError = useUserSettingsStore((state) => state.error)
@@ -115,9 +122,15 @@ export default function SettingsPage({
       aria-modal="true"
       aria-label={t('nav.settings')}
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose()
+        if (event.target === event.currentTarget) closeSettings()
       }}
     >
+      <ConfirmDialog open={Boolean(pendingExit)} title={t('sandbox.discard')}
+        onCancel={() => setPendingExit(null)} onConfirm={() => {
+          const section = pendingExit?.section
+          sandboxDirty.current = false; setPendingExit(null)
+          if (section) setActiveSection(section); else onClose()
+        }} />
       <ResizablePanel
         className="modal settings-dialog-panel"
         onMouseDown={(event) => event.stopPropagation()}
@@ -127,11 +140,11 @@ export default function SettingsPage({
             <Icon name="sliders-horizontal" size={18} strokeWidth={2} />
             <span className="modal-title">{t('nav.settings')}</span>
           </div>
-          <Button variant="icon" aria-label={t('settings.closeSettings')} onClick={onClose}>✕</Button>
+          <Button variant="icon" aria-label={t('settings.closeSettings')} onClick={closeSettings}>✕</Button>
         </div>
 
       <div className="settings-layout">
-      <SettingsNavigation activeSection={activeSection} onSelect={setActiveSection} />
+      <SettingsNavigation activeSection={activeSection} onSelect={selectSection} />
 
       <section className="settings-content">
         <EngineSettingsPanel hidden={activeSection !== 'engines'} refreshRevision={engineRefreshRevision}
@@ -158,6 +171,8 @@ export default function SettingsPage({
           <GlobalConcurrencySettings />
         ) : activeSection === 'git' ? (
           <GitScanSettings />
+        ) : activeSection === 'sandbox' ? (
+          <SandboxSettings onDirtyChange={onSandboxDirty} />
         ) : activeSection === 'system' ? (
           <div className="settings-system-page">
             <h1 className="settings-system-title">{t('settings.systemTitle')}</h1>
