@@ -46,13 +46,19 @@ export function useChatSessionTransitions({
   const [handingOff, setHandingOff] = useState(false)
   const [handoffError, setHandoffError] = useState('')
   const [handoffTarget, setHandoffTarget] = useState<HandoffEndpoint | null>(null)
-  const [confirmedHandoffMessageCount, setConfirmedHandoffMessageCount] = useState<number | null>(null)
   const messageCount = messageIds.length
   const sourceEngine = current.engine || defaultEngine
-  const source: HandoffEndpoint = { engine: sourceEngine, providerId: current.providerId }
+  // 连续选择尚未产生新消息时，交接仍以原会话端点为基准。
+  const endpointKey = JSON.stringify([project?.id, sessionId, messageCount])
+  const [conversationEndpoint, setConversationEndpoint] = useState({
+    key: endpointKey, engine: sourceEngine, providerId: current.providerId,
+  })
+  if (conversationEndpoint.key !== endpointKey) {
+    setConversationEndpoint({ key: endpointKey, engine: sourceEngine, providerId: current.providerId })
+  }
+  const source: HandoffEndpoint = conversationEndpoint
 
   useEffect(() => {
-    setConfirmedHandoffMessageCount(null)
     setForkOpen(false)
     setHandoffOpen(false)
   }, [project?.id, sessionId])
@@ -74,7 +80,7 @@ export function useChatSessionTransitions({
 
   const requestEngineHandoff = (targetEngine: string) => {
     if (!requiresEngineHandoff(
-      sourceEngine, targetEngine, messageCount, current.providerId, '',
+      source.engine, targetEngine, messageCount,
     )) return false
     openHandoff({ engine: targetEngine, providerId: '' })
     return true
@@ -82,8 +88,7 @@ export function useChatSessionTransitions({
 
   const requestProviderHandoff = (providerId: string) => {
     if (!requiresEngineHandoff(
-      sourceEngine, sourceEngine, messageCount, current.providerId, providerId,
-      confirmedHandoffMessageCount === messageCount,
+      source.engine, sourceEngine, messageCount, source.providerId, providerId,
     )) return false
     openHandoff({ engine: sourceEngine, providerId })
     return true
@@ -118,7 +123,6 @@ export function useChatSessionTransitions({
     try {
       const detail = await chatSessionApi.handoff(sessionId, input)
       onHandoffApplied(detail)
-      setConfirmedHandoffMessageCount(messageCount)
       setHandoffOpen(false)
       onHandoffSettled?.()
       await useChatListStore.getState().fetchSessions(project.id)
@@ -165,7 +169,7 @@ export function useChatSessionTransitions({
       target={handoffTarget ?? source}
       messageCount={messageCount}
       permissionMode={permissionMode}
-      sourceProviderLabel={providerLabel(current.providerId)}
+      sourceProviderLabel={providerLabel(source.providerId)}
       targetProviderLabel={providerLabel(handoffTarget?.providerId ?? '')}
       loading={handingOff}
       error={handoffError}

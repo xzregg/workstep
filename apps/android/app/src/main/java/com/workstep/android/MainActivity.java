@@ -88,11 +88,28 @@ public final class MainActivity extends Activity {
     private PendingDownload pendingDownload;
     private ApkInstaller apkInstaller;
     private boolean checking;
+    private boolean pageLoading;
+    private boolean pageHadError;
+    private int pageLoadGeneration;
     private long lastRendererFailure;
     private static volatile boolean activityVisible;
     private final HashMap<String, JSONObject> completionWatches = new HashMap<>();
 
     static boolean isVisibleToUser() { return activityVisible; }
+
+    String diagnosticPage() {
+        String url = webView == null ? null : webView.getUrl();
+        if (url == null) return "未打开网页";
+        Uri page = Uri.parse(url);
+        if (!page.isHierarchical()) return page.getScheme() + "；加载中=" + pageLoading + "；加载错误=" + pageHadError;
+        Uri.Builder safe = new Uri.Builder().scheme(page.getScheme())
+                .encodedAuthority(page.getEncodedAuthority()).path(page.getPath());
+        for (String key : new String[]{"project", "workflow", "task", "session"}) {
+            String value = page.getQueryParameter(key);
+            if (value != null) safe.appendQueryParameter(key, value);
+        }
+        return safe.build() + "；加载中=" + pageLoading + "；加载错误=" + pageHadError;
+    }
 
     private void startCompletionWatchService() {
         if (server == null || completionWatches.isEmpty()) return;
@@ -129,7 +146,7 @@ public final class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         CrashReports.install(this, "网页主进程");
-        CrashReports.log(this, "网页主进程", "应用启动；版本=1.0.25", null);
+        CrashReports.log(this, "网页主进程", "应用启动；" + CrashReports.version(this), null);
         root = new FrameLayout(this);
         apkInstaller = new ApkInstaller(this, executor, foregroundRefresh::externalPickerStarted);
         CompletionNotifications.createChannels(this);
@@ -301,6 +318,42 @@ public final class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(view, false);
         view.setWebViewClient(new WebViewClient() {
             @Override
+            public void onPageStarted(WebView source, String url, android.graphics.Bitmap icon) {
+                if (source != webView) return;
+                pageLoading = true;
+                pageHadError = false;
+                android.view.View errorPanel = root.findViewWithTag("connection_error");
+                if (errorPanel != null) root.removeView(errorPanel);
+                int generation = ++pageLoadGeneration;
+                source.postDelayed(() -> {
+                    if (source == webView && generation == pageLoadGeneration && pageLoading) {
+                        CrashReports.log(MainActivity.this, "网页主进程", "网页加载超时；路径=" + Uri.parse(url).getPath(), null);
+                        showWebError("网页加载超时，请重新加载");
+                    }
+                }, 20000);
+            }
+
+            @Override
+            public void onPageFinished(WebView source, String url) {
+                if (source != webView) return;
+                pageLoading = false;
+                String currentUrl = source.getUrl();
+                String route = currentUrl == null ? "" : Uri.parse(currentUrl).getPath();
+                if (!"/chat".equals(route) && !"/tasks".equals(route)) return;
+                int generation = pageLoadGeneration;
+                source.postDelayed(() -> {
+                    if (source != webView || generation != pageLoadGeneration || pageHadError) return;
+                    source.evaluateJavascript("(function(){var r=document.getElementById('root');return !r||r.childElementCount>0;})()", value -> {
+                        if (source != webView || generation != pageLoadGeneration || pageHadError) return;
+                        if ("false".equals(value)) {
+                            CrashReports.log(MainActivity.this, "网页主进程", "网页渲染失败；根节点为空；路径=" + Uri.parse(url).getPath(), null);
+                            showWebError("网页未能正常显示，请重新加载");
+                        }
+                    });
+                }, 3000);
+            }
+
+            @Override
             public void doUpdateVisitedHistory(WebView source, String url, boolean isReload) {
                 if (source == webView) rememberPage(url);
             }
@@ -315,14 +368,31 @@ public final class MainActivity extends Activity {
 
             @Override
             public void onReceivedError(WebView source, WebResourceRequest request, WebResourceError error) {
-                if (source == webView && request.isForMainFrame())
+                if (source != webView) return;
+                if (request.isForMainFrame() || isPageScript(request)) {
+                    CrashReports.log(MainActivity.this, "网页主进程", "网页加载失败；错误码=" + error.getErrorCode()
+                            + "；路径=" + request.getUrl().getPath(), null);
                     showWebError("网页加载失败：" + error.getDescription());
+                }
+            }
+
+            @Override
+            public void onReceivedHttpError(WebView source, WebResourceRequest request,
+                    android.webkit.WebResourceResponse response) {
+                if (source == webView && (request.isForMainFrame() || isPageScript(request))) {
+                    CrashReports.log(MainActivity.this, "网页主进程", "网页资源加载失败；HTTP=" + response.getStatusCode()
+                            + "；路径=" + request.getUrl().getPath(), null);
+                    showWebError("网页资源加载失败（HTTP " + response.getStatusCode() + "），请重新加载");
+                }
             }
 
             @Override
             public void onReceivedSslError(WebView source, SslErrorHandler handler, SslError error) {
                 handler.cancel();
-                if (source == webView) showWebError("HTTPS 证书验证失败");
+                if (source == webView) {
+                    CrashReports.log(MainActivity.this, "网页主进程", "HTTPS 证书验证失败", null);
+                    showWebError("HTTPS 证书验证失败");
+                }
             }
 
             @Override
@@ -347,6 +417,16 @@ public final class MainActivity extends Activity {
             }
         });
         view.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onConsoleMessage(android.webkit.ConsoleMessage message) {
+                if (view == webView && message.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR) {
+                    CrashReports.log(MainActivity.this, "网页主进程", "网页脚本错误；来源="
+                            + Uri.parse(message.sourceId() == null ? "" : message.sourceId()).getPath()
+                            + "；行=" + message.lineNumber(), null);
+                }
+                return super.onConsoleMessage(message);
+            }
+
             @Override
             public boolean onShowFileChooser(WebView source, ValueCallback<Uri[]> callback,
                     FileChooserParams params) {
@@ -408,6 +488,7 @@ public final class MainActivity extends Activity {
         root.addView(view, new FrameLayout.LayoutParams(-1, -1));
         String requestedPage = notificationPage(getIntent());
         if (requestedPage != null) clearNotificationPage(getIntent());
+        pageLoading = true;
         view.loadUrl(server.pageOrRoot(requestedPage != null ? requestedPage
                 : getPreferences(MODE_PRIVATE).getString(PAGE_KEY, "")));
         addConnectionMenu();
@@ -732,6 +813,8 @@ public final class MainActivity extends Activity {
     }
 
     private void showWebError(String message) {
+        pageLoading = false;
+        pageHadError = true;
         if (root.findViewWithTag("connection_error") != null) return;
         LinearLayout panel = new LinearLayout(this);
         panel.setTag("connection_error");
@@ -755,6 +838,11 @@ public final class MainActivity extends Activity {
         change.setOnClickListener(view -> showAddressScreen(server.origin()));
         panel.addView(change);
         root.addView(panel, new FrameLayout.LayoutParams(-1, -1));
+    }
+
+    private boolean isPageScript(WebResourceRequest request) {
+        String path = request.getUrl().getPath();
+        return path != null && (path.endsWith(".js") || path.endsWith(".mjs"));
     }
 
     @Override
@@ -810,10 +898,13 @@ public final class MainActivity extends Activity {
         CrashReports.showIfPresent(this);
         boolean reload = foregroundRefresh.onResume(SystemClock.elapsedRealtime());
         if (webView != null) {
-            if (reload) webView.reload();
-            else webView.evaluateJavascript("window.dispatchEvent(new Event('workstep:resume'))", null);
+            switch (WebViewResumeAction.choose(notificationPage(getIntent()) != null, pageLoading, reload)) {
+                case NOTIFICATION -> openNotificationPage(getIntent());
+                case RELOAD -> { pageLoading = true; webView.reload(); }
+                case RESUME -> webView.evaluateJavascript("window.dispatchEvent(new Event('workstep:resume'))", null);
+                case WAIT -> { }
+            }
         }
-        openNotificationPage(getIntent());
     }
 
     @Override
@@ -844,6 +935,7 @@ public final class MainActivity extends Activity {
                 + "；项目=" + target.getQueryParameter("project")
                 + "；任务=" + target.getQueryParameter("task")
                 + "；会话=" + target.getQueryParameter("session"), null);
+        pageLoading = true;
         webView.loadUrl(page);
     }
 

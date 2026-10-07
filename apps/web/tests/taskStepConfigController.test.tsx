@@ -301,3 +301,46 @@ test('switching a step provider with history confirms handoff even without a reu
     await window.happyDOM.close()
   }
 })
+
+
+test('step provider returns to its original selection without another handoff before execution', async () => {
+  const window = installDom()
+  const originals = { get: taskApi.stepExecutionConfig, update: taskApi.updateStepExecutionConfig }
+  const initial = { ...detail, resolved: { ...detail.resolved, config: { provider_id: 'provider-a' } } }
+  taskApi.stepExecutionConfig = async () => initial
+  const saved: Array<{ provider: string; mode: string | undefined }> = []
+  taskApi.updateStepExecutionConfig = async (_task, _step, _project, selection, mode) => {
+    saved.push({ provider: selection.config.provider_id || '', mode })
+    return { ...initial, configured: selection, resolved: selection, source: 'task_override' }
+  }
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => {
+      root.render(<I18nProvider>
+        <TaskStepConfigController projectId="p" taskId="t" stepKey="do" running={false}>
+          {({ inputConfig }) => <>{['provider-b', 'provider-c', 'provider-a'].map((provider) => (
+            <button key={provider} data-provider={provider} onClick={() => inputConfig?.onStepFieldChange?.('provider_id', provider)}>{provider}</button>
+          ))}</>}
+        </TaskStepConfigController>
+      </I18nProvider>)
+    })
+    for (const provider of ['provider-b', 'provider-c']) {
+      await act(async () => { (container.querySelector(`[data-provider="${provider}"]`) as HTMLButtonElement).click() })
+      assert.ok(container.querySelector('[role="dialog"]'))
+      await act(async () => { (container.querySelector('.btn-primary') as HTMLButtonElement).click() })
+    }
+    await act(async () => { (container.querySelector('[data-provider="provider-a"]') as HTMLButtonElement).click() })
+    assert.equal(container.querySelector('[role="dialog"]'), null)
+    assert.deepEqual(saved, [
+      { provider: 'provider-b', mode: 'smart' },
+      { provider: 'provider-c', mode: 'smart' },
+      { provider: 'provider-a', mode: undefined },
+    ])
+  } finally {
+    taskApi.stepExecutionConfig = originals.get
+    taskApi.updateStepExecutionConfig = originals.update
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})

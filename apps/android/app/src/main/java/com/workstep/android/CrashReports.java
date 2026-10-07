@@ -58,18 +58,7 @@ final class CrashReports {
     }
 
     static void showLogs(Activity activity) {
-        StringBuilder content = new StringBuilder(version(activity)).append('\n');
-        for (String name : new String[]{"main-log.txt", "notification-log.txt"}) {
-            content.append("\n==== ").append(name).append(" ====\n");
-            try {
-                byte[] bytes = Files.readAllBytes(new File(activity.getFilesDir(), name).toPath());
-                int start = Math.max(0, bytes.length - 30000);
-                content.append(new String(bytes, start, bytes.length - start, StandardCharsets.UTF_8));
-            } catch (Exception ignored) {
-                content.append("暂无记录\n");
-            }
-        }
-        String logs = content.toString();
+        String logs = diagnosticSnapshot(activity);
         TextView text = new TextView(activity);
         int padding = Math.round(16 * activity.getResources().getDisplayMetrics().density);
         text.setPadding(padding, padding, padding, padding);
@@ -77,14 +66,14 @@ final class CrashReports {
         text.setText(logs);
         ScrollView scroll = new ScrollView(activity);
         scroll.addView(text);
+        scroll.post(() -> scroll.fullScroll(android.view.View.FOCUS_DOWN));
         new AlertDialog.Builder(activity)
-                .setTitle("WorkStep 日志")
+                .setTitle("WorkStep 排查信息")
                 .setView(scroll)
-                .setPositiveButton("复制错误日志", (dialog, which) -> {
+                .setPositiveButton("复制排查信息", (dialog, which) -> {
                     ClipboardManager clipboard = activity.getSystemService(ClipboardManager.class);
-                    clipboard.setPrimaryClip(ClipData.newPlainText("WorkStep 错误日志",
-                            version(activity) + "\n" + errorLogs(activity.getFilesDir())));
-                    Toast.makeText(activity, "错误日志已复制", Toast.LENGTH_SHORT).show();
+                    clipboard.setPrimaryClip(ClipData.newPlainText("WorkStep 排查信息", diagnosticSnapshot(activity)));
+                    Toast.makeText(activity, "排查信息已复制，粘贴给助手即可", Toast.LENGTH_SHORT).show();
                 })
                 .setNeutralButton(R.string.clear_logs, (dialog, which) ->
                         new AlertDialog.Builder(activity)
@@ -101,33 +90,21 @@ final class CrashReports {
                 .show();
     }
 
-    static String errorLogs(File directory) {
-        StringBuilder errors = new StringBuilder();
-        for (String name : new String[]{"main-log.txt", "notification-log.txt"}) {
-            File file = new File(directory, name);
-            if (!file.exists()) continue;
-            try {
-                String content = new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
-                for (String entry : content.split("(?m)(?=^\\d{4}-\\d{2}-\\d{2}T)")) {
-                    if (entry.isEmpty()) continue;
-                    String header = entry.split("\\n", 2)[0];
-                    if (!header.matches(".*(失败|异常|错误|崩溃|未显示|无法|断开|系统通知|点击通知).*")
-                            && !entry.contains("Exception") && !entry.contains("Error")) continue;
-                    if (errors.indexOf("==== " + name + " ====") < 0)
-                        errors.append("==== ").append(name).append(" ====\n");
-                    errors.append(entry);
-                    if (!entry.endsWith("\n")) errors.append('\n');
-                }
-            } catch (Exception ignored) { }
-        }
-        File crash = new File(directory, FILE_NAME);
-        if (crash.exists()) {
-            try {
-                errors.append("==== ").append(FILE_NAME).append(" ====\n")
-                        .append(new String(Files.readAllBytes(crash.toPath()), StandardCharsets.UTF_8));
-            } catch (Exception ignored) { }
-        }
-        return errors.length() == 0 ? "暂无错误日志" : errors.toString();
+    private static String diagnosticSnapshot(Activity activity) {
+        StringBuilder snapshot = new StringBuilder(version(activity)).append('\n');
+        snapshot.append("设备：").append(android.os.Build.MANUFACTURER).append(' ')
+                .append(android.os.Build.MODEL).append("；Android ").append(android.os.Build.VERSION.RELEASE)
+                .append("；SDK ").append(android.os.Build.VERSION.SDK_INT).append('\n');
+        android.content.pm.PackageInfo web = android.webkit.WebView.getCurrentWebViewPackage();
+        snapshot.append("WebView：").append(web == null ? "未知" : web.packageName + " " + web.versionName).append('\n');
+        android.app.NotificationManager manager = activity.getSystemService(android.app.NotificationManager.class);
+        android.app.NotificationChannel channel = manager.getNotificationChannel(CompletionNotifications.CHANNEL_ID);
+        snapshot.append("系统通知：").append(manager.areNotificationsEnabled() ? "开启" : "关闭")
+                .append("；回复频道：").append(channel == null ? "尚未创建" : channel.getImportance()).append('\n');
+        if (activity instanceof MainActivity) snapshot.append("当前页面：")
+                .append(((MainActivity) activity).diagnosticPage()).append('\n');
+        snapshot.append(DiagnosticReport.create(activity.getFilesDir(), System.currentTimeMillis()));
+        return snapshot.toString();
     }
 
     static boolean clearFiles(File directory) {
@@ -139,7 +116,7 @@ final class CrashReports {
         return success;
     }
 
-    private static String version(Context context) {
+    static String version(Context context) {
         try {
             android.content.pm.PackageInfo info = context.getPackageManager()
                     .getPackageInfo(context.getPackageName(), 0);

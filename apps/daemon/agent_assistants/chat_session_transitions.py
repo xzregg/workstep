@@ -7,7 +7,7 @@ import uuid
 from typing import Any
 
 from agent_assistants.base import validate_provider_override
-from agent_assistants.chat_row_persistence import ChatRowPersistence, _from_iso
+from agent_assistants.chat_row_persistence import ChatRowPersistence, _from_iso, _load_json
 from agent_assistants.context_handoff import append_handoff_log, compile_handoff
 from engines.core.registry import create_engine
 from models.chat_session import ChatMessage, ChatSession
@@ -19,6 +19,40 @@ logger = logging.getLogger(__name__)
 
 class ChatSessionTransitions:
     """Session transitions; mixed into ChatSessionModule for its runtime state."""
+
+    def _handoff_return_state(self, row: ChatSession) -> dict | None:
+        pending = _load_json(row.fork_context_json, None)
+        if not isinstance(pending, dict) or pending.get("consumed"):
+            return None
+        state = pending.get("return_state")
+        if not isinstance(state, dict):
+            return None
+        # A new message commits the selected endpoint, including quick actions
+        # and failed turns. Only unsent selection changes may be undone.
+        if ChatMessage.select().where(ChatMessage.session == row).count() != state.get("message_count"):
+            return None
+        return state
+
+    def _restore_handoff_endpoint(
+        self, project_id: str, row: ChatSession, engine: str, provider_id: str,
+    ) -> bool:
+        state = self._handoff_return_state(row)
+        if state is None or (state["engine"], state["provider_id"] or "") != (engine, provider_id):
+            return False
+        for field, value in state.items():
+            if field != "message_count":
+                setattr(row, field, value)
+        row.updated_at = utc_now()
+        row.save()
+        session = self._sessions.get(self._session_identity(project_id, row.id)[0])
+        if session is not None:
+            session.extra.pop("pending_handoff", None)
+            session.engine_state = None
+            ChatRowPersistence().load(session)
+            session.model = row.model
+            session.fast_model = row.fast_model
+            session.vision_model = row.vision_model
+        return True
 
     def handoff_session(
         self,
@@ -66,6 +100,18 @@ class ChatSessionTransitions:
                 ChatMessage.status == "running",
             ).exists():
                 raise ValueError("Chat session is running")
+            if self._restore_handoff_endpoint(project_id, row, engine, normalized_provider):
+                return self.get_session(project_id, session_id)
+            return_state = self._handoff_return_state(row)
+            if return_state is None:
+                return_state = {
+                    field: getattr(row, field)
+                    for field in (
+                        "engine", "provider_id", "model", "fast_model", "vision_model",
+                        "engine_session_id", "engine_state_json", "fork_context_mode", "fork_context_json",
+                    )
+                }
+                return_state["message_count"] = ChatMessage.select().where(ChatMessage.session == row).count()
             source_engine = row.engine
             source_provider = row.provider_id or ""
             messages = ChatRowPersistence()._load_messages(row)
@@ -79,6 +125,7 @@ class ChatSessionTransitions:
                 source_provider=source_provider,
                 target_provider=normalized_provider,
             )
+            metadata["return_state"] = return_state
             row.engine = engine
             row.model = model or None
             row.fast_model = fast_model or None

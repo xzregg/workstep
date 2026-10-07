@@ -716,6 +716,121 @@ async def test_cross_engine_handoff_is_injected_once(chat_module, monkeypatch):
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("provider_only", [False, True])
+@pytest.mark.parametrize("reload_memory", [False, True])
+@pytest.mark.parametrize("explicit_handoff", [False, True])
+@pytest.mark.parametrize("original_provider", ["", "provider-a"])
+async def test_unsent_handoffs_return_to_original_engine_session(
+    chat_module, monkeypatch, provider_only, reload_memory, explicit_handoff, original_provider,
+):
+    module, _bus, manager, project, config = chat_module
+    config.values["providers"] = [
+        {"id": name, "protocol": "openai_compatible", "enabled": True}
+        for name in ("provider-a", "provider-b", "provider-c")
+    ]
+    class ResumeEngine(FakeEngine):
+        supports_resume = True
+
+    monkeypatch.setattr("agent_assistants.chat_session.create_engine", lambda _: ResumeEngine())
+    source = module.create_session(project.id, engine="claude", provider_id=original_provider)
+    calls = []
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, **kwargs):
+        calls.append((engine_id, prompt, session_id, kwargs.get("message_history")))
+        return "完成", [], "original-thread"
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    first = module.submit_message(project.id, source["id"], "原始请求", "original")
+    assert await _wait_turn(module, first.turn_id) == "completed"
+    def seed_state(_project):
+        row = ChatSession.get_by_id(source["id"])
+        row.engine_state_json = json.dumps({"history": ["original-state"]})
+        row.save()
+    await manager.run_db(project.id, seed_state)
+    module._sessions[module._session_identity(project.id, source["id"])[0]].engine_state = {"history": ["original-state"]}
+    for engine, provider in [("pydantic_ai", "provider-b"), ("codex_sdk", "provider-c")]:
+        await manager.run_db(project.id, lambda _project: module.handoff_session(
+            project.id, source["id"], engine="claude" if provider_only else engine,
+            provider_id=provider, context_mode="smart",
+        ))
+    if reload_memory:
+        module._sessions.clear()
+    if explicit_handoff:
+        await manager.run_db(project.id, lambda _: module.handoff_session(
+            project.id, source["id"], engine="claude", provider_id=original_provider, context_mode="smart",
+        ))
+    accepted = await manager.run_db(project.id, lambda _project: module.submit_message(
+        project.id, source["id"], "切回原配置", "return-original",
+        engine="claude", provider_id=original_provider, schedule=False,
+    ))
+    module.start_queued_turn(accepted.turn_id)
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    assert calls[-1] == ("claude", "切回原配置", "original-thread", {"history": ["original-state"]})
+    detail = await manager.run_db(project.id, lambda _: module.get_session(project.id, source["id"]))
+    assert (detail["provider_id"] or "") == original_provider
+
+
+@pytest.mark.anyio
+async def test_new_message_prevents_restoring_unsent_handoff_state(chat_module):
+    module, _bus, manager, project, _config = chat_module
+    source = module.create_session(project.id, engine="claude")
+    def switch(_project):
+        row = ChatSession.get_by_id(source["id"])
+        row.engine_session_id = "original-thread"
+        row.save()
+        module.handoff_session(project.id, source["id"], engine="pydantic_ai", context_mode="smart")
+        ChatMessage.create(id="committed-message", session=row, role="user", content="新消息提交了当前选择", created_at=utc_now())
+        module.handoff_session(project.id, source["id"], engine="claude", context_mode="smart")
+        row = ChatSession.get_by_id(source["id"])
+        assert row.engine_session_id is None
+        assert json.loads(row.fork_context_json)["target_engine"] == "claude"
+    await manager.run_db(project.id, switch)
+
+
+@pytest.mark.anyio
+async def test_handoff_return_chat_api_slow_database_keeps_health_responsive(chat_module, monkeypatch):
+    import main
+    module, _bus, manager, project, _config = chat_module
+    source = module.create_session(project.id, engine="claude")
+    await manager.run_db(project.id, lambda _: module.handoff_session(
+        project.id, source["id"], engine="pydantic_ai", context_mode="smart",
+    ))
+    entered = threading.Event()
+    release = threading.Event()
+    original_execute_sql = project.db.execute_sql
+
+    def slow_return_query(sql, params=None, commit=None):
+        if not entered.is_set() and 'COUNT' in sql and 'chat_messages' in sql:
+            entered.set()
+            release.wait(timeout=2)
+        return original_execute_sql(sql, params)
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, **kwargs):
+        assert "<workstep_context_handoff>" not in prompt
+        return "完成", [], "restored-thread"
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    monkeypatch.setattr(project.db, "execute_sql", slow_return_query)
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        request = asyncio.create_task(client.post(
+            f"/api/chat-sessions/{source['id']}/chat",
+            json={"project_id": project.id, "engine": "claude", "provider_id": "", "content": "切回原配置"},
+            headers={"Idempotency-Key": "restore-api"},
+        ))
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+            assert health.status_code == 200
+        finally:
+            release.set()
+        response = await request
+        assert response.status_code == 200
+        assert await _wait_turn(module, response.json()["turn_id"]) == "completed"
+
+
+@pytest.mark.anyio
 async def test_cross_engine_handoff_continues_the_same_session(chat_module, monkeypatch):
     module, _bus, _manager, project, _ = chat_module
     source = module.create_session(project.id, title="同一会话", engine="claude")

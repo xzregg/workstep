@@ -9,12 +9,10 @@ export interface SlashInputItemLike {
 
 function slashRange(value: string, cursor: number): { start: number; query: string } | null {
   const safeCursor = Math.max(0, Math.min(cursor, value.length))
-  const beforeCursor = value.slice(0, safeCursor)
-  const match = beforeCursor.match(/(?:^|\n)\/([^\s/]*)$/)
-  if (!match || /\S/.test(value.slice(safeCursor))) return null
+  if (value[safeCursor - 1] !== '/') return null
   return {
-    start: safeCursor - (match[1]?.length ?? 0) - 1,
-    query: match[1] ?? '',
+    start: safeCursor - 1,
+    query: '',
   }
 }
 
