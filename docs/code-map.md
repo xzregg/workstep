@@ -406,4 +406,6 @@ Pydantic AI 的会话系统规则生命周期由 `engines/pydantic_ai/harness_ru
 
 桌面使用者名称由 `apps/web/src/stores/userSettingsStore.ts` 通过 `systemSettingsApi` 保存、恢复当前后台的 `config.json` 中 `user.name`，并以配置中的设备标识重建页面身份，避免沙箱随机端口改变导致首次设置反复出现；普通浏览器仍使用独立 localStorage 身份。已有桌面浏览器名称在配置为空时迁入。行为测试：`apps/web/tests/userSettings.test.ts`、`browserActor.test.ts`，后台持久化接口：`apps/daemon/api/system_settings.py` / `tests/test_system_settings_api.py`。侧栏 `SandboxModeBadge.tsx` 通过桌面桥查询实际运行状态，只有沙箱正在运行才展示标签；`Layout.tsx` 仅组装，测试：`sandboxModeBadge.test.tsx`。
 
-桌面首选端口由 `apps/desktop/src/sidecar.cjs::resolveBackendPort` 解析，默认 8765，支持命令行与环境变量覆盖（0 表示随机）。原生后台 `backend/server.py::bind_server_socket` 仅遇到 EADDRINUSE 时改绑空闲端口；沙箱 `src/sandbox.cjs::start` 仅发布端口冲突时清理自己创建的容器并重试随机映射，仍依据就绪协议或 Podman 实际映射连接自己的后台。测试：`tests/sidecar.test.cjs`、`tests/test_backend_entry.py`、`tests/sandbox.test.cjs`。
+桌面首选端口由 `apps/desktop/src/sidecar.cjs::resolveBackendPort` 解析，默认 8766，支持命令行与环境变量覆盖（0 表示随机）。原生后台 `backend/server.py::bind_server_socket` 仅遇到 EADDRINUSE 时改绑空闲端口；沙箱 `src/sandbox.cjs::start` 仅发布端口冲突时清理自己创建的容器并重试随机映射，仍依据就绪协议或 Podman 实际映射连接自己的后台。测试：`tests/sidecar.test.cjs`、`tests/test_backend_entry.py`、`tests/sandbox.test.cjs`。
+
+沙箱容器通过 `WORKSTEP_PROJECTS_ROOT=/data/projects` 声明项目边界；`services/project_scope.py` 统一解析和校验，`api/fs_browser.py` 限制未绑定项目的目录浏览、搜索与新建目录，`services/project.py` 限制项目初始化和注册，`api/system_settings.py` 限制默认项目目录。沙箱外未设置该变量时保持原有宿主目录行为。回归测试见 `tests/test_api_contracts.py::test_sandbox_project_root_limits_picker_creation_and_project_init`。

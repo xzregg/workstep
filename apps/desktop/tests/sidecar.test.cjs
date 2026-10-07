@@ -28,7 +28,7 @@ test('packaged desktop launches the bundled writable Python runtime', () => {
 })
 
 test('desktop prefers the fixed port by default', () => {
-  assert.equal(resolveBackendPort([], {}), 8765)
+  assert.equal(resolveBackendPort([], {}), 8766)
   assert.deepEqual(buildBackendArgs(0), ['--port', '0'])
 })
 

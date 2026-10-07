@@ -3650,6 +3650,53 @@ async def test_project_file_browser_defaults_to_project_root_and_clamps_parent(
 
 
 @pytest.mark.anyio
+async def test_sandbox_project_root_limits_picker_creation_and_project_init(
+    api_context, monkeypatch,
+):
+    client, tmp_path = api_context
+    projects_root = tmp_path / "projects"
+    projects_root.mkdir()
+    existing = projects_root / "existing"
+    existing.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    monkeypatch.setenv("WORKSTEP_PROJECTS_ROOT", str(projects_root))
+
+    root = await client.get("/api/fs/browse")
+    assert root.status_code == 200
+    assert root.json()["path"] == str(projects_root.resolve())
+    assert root.json()["parent"] is None
+    assert {item["name"] for item in root.json()["entries"]} == {"existing"}
+
+    escaped = await client.get("/api/fs/browse", params={"path": str(outside)})
+    assert escaped.status_code == 403
+    escaped_mkdir = await client.post(
+        "/api/fs/mkdir", json={"parent": str(outside), "name": "blocked"},
+    )
+    assert escaped_mkdir.status_code == 403
+    rejected_default = await client.put(
+        "/api/system-settings",
+        json={"default_project_directory": str(outside)},
+    )
+    assert rejected_default.status_code == 400
+
+    created = await client.post(
+        "/api/fs/mkdir", json={"parent": str(projects_root), "name": "created"},
+    )
+    assert created.status_code == 200
+    assert (projects_root / "created").is_dir()
+
+    rejected = await client.post(
+        "/api/project/init", json={"path": str(outside)},
+    )
+    assert rejected.status_code == 400
+    accepted = await client.post(
+        "/api/project/init", json={"path": str(projects_root / "created")},
+    )
+    assert accepted.status_code == 200
+
+
+@pytest.mark.anyio
 async def test_project_file_search_can_include_dotfiles(
     api_context,
 ):

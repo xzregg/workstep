@@ -36,7 +36,7 @@ def isolate_runtime_environment(monkeypatch):
 def test_default_port_prefers_the_fixed_port():
     args = parse_args([])
 
-    assert args.port == 8765
+    assert args.port == 8766
 
 
 def test_port_can_be_changed_from_the_command_line():

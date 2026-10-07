@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from services.config import config_store
+from services.project_scope import assert_within_projects_root
 
 router = APIRouter(prefix="/api/system-settings")
 
@@ -133,7 +134,7 @@ async def set_system_settings(req: SystemSettingsRequest):
                 path = Path(directory.strip()).expanduser()
                 if not path.is_absolute() or not path.is_dir():
                     raise ValueError()
-                return str(path.resolve())
+                return str(assert_within_projects_root(path))
             except (ValueError, OSError, RuntimeError):
                 raise HTTPException(status_code=400, detail="请选择已存在的目录，或输入绝对路径（支持 ~）")
 

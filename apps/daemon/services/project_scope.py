@@ -1,4 +1,7 @@
-"""Allowlisted API surface for a Gateway session bound to one local project."""
+"""Project authorization and optional container filesystem boundary."""
+
+import os
+from pathlib import Path
 
 from workstep_gateway_protocol import project_http_route_allowed
 
@@ -44,3 +47,16 @@ def workspace_engine_catalog(items: list[dict]) -> list[dict]:
                             if isinstance(schema, dict) else None)
         result.append(public)
     return result
+
+
+def projects_root() -> Path | None:
+    value = os.environ.get("WORKSTEP_PROJECTS_ROOT", "").strip()
+    return Path(value).expanduser().resolve() if value else None
+
+
+def assert_within_projects_root(path: str | Path) -> Path:
+    resolved = Path(path).expanduser().resolve()
+    root = projects_root()
+    if root is not None and not resolved.is_relative_to(root):
+        raise ValueError(f"Project path must be inside {root}")
+    return resolved

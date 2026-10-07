@@ -15,6 +15,7 @@ from api.fs_paths import (
     _assert_project_path, _path_error_detail, _project, _require_actor_project,
 )
 from services.remote_access import get_current_actor
+from services.project_scope import assert_within_projects_root, projects_root
 
 router = APIRouter()
 
@@ -89,7 +90,20 @@ def _resolve_browse_directory(path: str | None, project_id: str | None) -> tuple
             else (project_root / candidate).resolve()
         )
     else:
-        target = Path.home() if path is None else Path(path).expanduser().resolve()
+        scoped_root = projects_root()
+        if scoped_root is not None:
+            candidate = Path(path).expanduser() if path is not None else scoped_root
+            target = (
+                candidate.resolve()
+                if candidate.is_absolute()
+                else (scoped_root / candidate).resolve()
+            )
+            try:
+                assert_within_projects_root(target)
+            except ValueError as exc:
+                raise HTTPException(status_code=403, detail=str(exc)) from exc
+        else:
+            target = Path.home() if path is None else Path(path).expanduser().resolve()
     _assert_project_path(target, project_id)
     if not target.exists():
         raise HTTPException(status_code=404, detail=_path_error_detail("Directory not found", target))
@@ -145,6 +159,9 @@ async def browse_directory(
         except PermissionError:
             raise HTTPException(status_code=403, detail=_path_error_detail("Permission denied", target))
         parent = target.parent if target.parent != target else None
+        scoped_root = projects_root() if project_root is None else None
+        if scoped_root is not None and target == scoped_root:
+            parent = None
         if project_root is not None and target == project_root:
             parent = None
         return {
@@ -240,6 +257,10 @@ async def mkdir_directory(req: MkdirRequest):
         )
     def create_directory() -> Path:
         parent = Path(req.parent).expanduser().resolve()
+        try:
+            assert_within_projects_root(parent)
+        except ValueError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
         if not parent.exists():
             raise HTTPException(status_code=404, detail=f"Directory not found: {parent}")
         if not parent.is_dir():

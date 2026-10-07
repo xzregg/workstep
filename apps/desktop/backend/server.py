@@ -28,8 +28,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--port",
         type=valid_port,
-        default=8765,
-        help="Local port; 0 asks the OS to choose a free port (default: 8765; falls back if occupied)",
+        default=8766,
+        help="Local port; 0 asks the OS to choose a free port (default: 8766; falls back if occupied)",
     )
     return parser.parse_args(argv)
 

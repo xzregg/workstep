@@ -20,6 +20,7 @@ from models.chat_session import ChatSession, ProjectSetting
 from models.gen_session import WorkflowGenSession
 from models.channel import Channel
 from services.project_database import ProjectDatabaseExecutor
+from services.project_scope import assert_within_projects_root
 from services.project_workflows import ProjectWorkflowService
 from settings import settings
 
@@ -408,7 +409,7 @@ class ProjectManager:
 
         Returns the Project instance.
         """
-        path = Path(path).resolve()
+        path = assert_within_projects_root(path)
         path_str = str(path)
 
         if path_str in self._projects:
@@ -445,7 +446,7 @@ class ProjectManager:
 
         Raises ValueError if the path has no .workstep/ directory.
         """
-        path = Path(path).resolve()
+        path = assert_within_projects_root(path)
         path_str = str(path)
 
         if path_str in self._projects:
