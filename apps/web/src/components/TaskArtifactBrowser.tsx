@@ -64,14 +64,6 @@ export function resolveArtifactRound(rounds: number[], selectedRound: number | n
   return rounds[rounds.length - 1] ?? null
 }
 
-export function artifactFileType(artifact: Pick<TaskArtifact, 'name' | 'path' | 'is_dir' | 'artifact_type'>) {
-  if (artifact.is_dir) return ''
-  const filename = artifact.name || artifact.path.split(/[\\/]/).pop() || ''
-  const dotIndex = filename.lastIndexOf('.')
-  if (dotIndex > 0 && dotIndex < filename.length - 1) return filename.slice(dotIndex + 1).toLowerCase()
-  return artifact.artifact_type || ''
-}
-
 function parentDirectory(path: string) {
   const parent = path.replace(/[\\/][^\\/]+$/, '')
   return parent === path ? '' : parent
@@ -224,7 +216,6 @@ export default function TaskArtifactBrowser({
 
               <div className="task-artifact-file-list">
                 {activeRound.artifacts.map((artifact) => {
-                  const fileType = artifactFileType(artifact)
                   const artifactUpdatedAt = formatUpdatedAt(artifact.updated_at, locale)
                   const relativePath = artifact.relative_path || artifact.name
                   return (
@@ -250,7 +241,6 @@ export default function TaskArtifactBrowser({
                             {relativePath}
                           </span>
                         </span>
-                        {fileType && <span className="task-artifact-file-type">{fileType}</span>}
                       </span>
                       {artifactUpdatedAt && (
                         <time

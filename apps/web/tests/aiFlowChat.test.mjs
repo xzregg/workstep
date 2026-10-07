@@ -61,7 +61,6 @@ test('auto-applied patches merge onto the latest live canvas', () => {
 
 
 test('AI flow chat forwards persisted process metadata and the lazy loader to the shared panel', () => {
-  assert.match(chatSource, /event_summary: m\.event_summary/)
-  assert.match(chatSource, /event_detail: m\.event_detail/)
+  assert.match(chatSource, /useWorkflowConversationHistory\(projectId, workflowId, setSessionId\)/)
   assert.match(chatSource, /onLoadMessageEvents=\{loadMessageEvents\}/)
 })

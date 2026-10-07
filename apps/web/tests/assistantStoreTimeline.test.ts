@@ -4,6 +4,145 @@ import test from 'node:test'
 import { createAssistantStore } from '../src/stores/assistantStore.ts'
 import { buildMessageTimeline } from '../src/utils/messageTimeline.ts'
 
+for (const channel of ['session_chat', 'flow_gen', 'task_create']) {
+  for (const recovery of [false, true]) {
+    test(`${channel} merges missing history in server order (recovery=${recovery})`, () => {
+      const store = createAssistantStore({ channel })
+      const state = store.getState()
+      const row = (id: string) => ({ id, role: 'assistant' as const, content: id, status: 'succeeded' as const })
+      state.hydrateSession('chat', [row('middle'), row('first')])
+      const before = store.getState().sessions.chat.messages
+      state.hydrateSession('chat', [row('first'), row('middle'), row('last')], false,
+        recovery ? before : undefined)
+      assert.deepEqual(store.getState().sessions.chat.messages.map((message) => message.id),
+        ['first', 'middle', 'last'])
+    })
+  }
+
+  test(`${channel} keeps omitted cached messages between their history anchors`, () => {
+    const store = createAssistantStore({ channel })
+    const state = store.getState()
+    const row = (id: string) => ({ id, role: 'assistant' as const, content: id, status: 'succeeded' as const })
+    state.hydrateSession('chat', [row('older'), row('first'), row('between'), row('last')])
+    const before = store.getState().sessions.chat.messages
+    state.handleWsEvent({ type: 'TEXT_MESSAGE_START', channel, session_id: 'chat', messageId: 'live-tail' })
+    state.hydrateSession('chat', [row('first'), row('last')], false, before)
+    assert.deepEqual(store.getState().sessions.chat.messages.map((message) => message.id),
+      ['older', 'first', 'between', 'last', 'live-tail'])
+  })
+
+  test(`${channel} keeps the insertion split stable through history and completion`, () => {
+    const store = createAssistantStore({ channel })
+    const state = store.getState()
+    const scope = { channel, session_id: 'chat' }
+    state.handleWsEvent({ ...scope, type: 'TEXT_MESSAGE_START', messageId: 'old-reply' })
+    const pending = state.addUserMessage('chat', '补充要求')
+    state.confirmUserMessage('chat', pending, 'inserted-user')
+    state.handleWsEvent({ ...scope, type: 'TEXT_MESSAGE_END', messageId: 'old-reply', status: 'succeeded' })
+    state.handleWsEvent({ ...scope, type: 'TEXT_MESSAGE_START', messageId: 'new-reply' })
+    state.hydrateSession('chat', [
+      { id: 'old-reply', role: 'assistant', content: '', status: 'succeeded' },
+      { id: 'inserted-user', role: 'user', content: '补充要求', status: 'succeeded' },
+      { id: 'new-reply', role: 'assistant', content: '', status: 'running' },
+    ])
+    state.handleWsEvent({ ...scope, type: 'TEXT_MESSAGE_END', messageId: 'new-reply', status: 'succeeded' })
+    assert.deepEqual(store.getState().sessions.chat.messages.map((message) => message.id),
+      ['old-reply', 'inserted-user', 'new-reply'])
+  })
+}
+
+for (const recovery of [false, true]) {
+  test(`history reconciles a pending user bubble before its live acknowledgement (recovery=${recovery})`, () => {
+    const store = createAssistantStore({ channel: 'session_chat' })
+    const state = store.getState()
+    state.addUserMessage('chat', '新建快捷按钮')
+    state.handleWsEvent({ type: 'TEXT_MESSAGE_START', channel: 'session_chat',
+      session_id: 'chat', messageId: 'reply' })
+    const before = store.getState().sessions.chat.messages
+    const user = { id: 'saved-user', role: 'user' as const, content: '新建快捷按钮',
+      status: 'succeeded' as const, created_at: '2026-10-07T05:56:08Z', author_name: '发送者' }
+    state.hydrateSession('chat', [user, { id: 'reply', role: 'assistant', content: '', status: 'running' }],
+      true, recovery ? before : undefined)
+    state.handleWsEvent({ type: 'TEXT_MESSAGE_START', channel: 'session_chat',
+      session_id: 'chat', messageId: user.id, role: 'user', content: user.content })
+    const messages = store.getState().sessions.chat.messages
+    assert.deepEqual(messages.map((message) => message.id), ['saved-user', 'reply'])
+    assert.equal(messages[0].author_name, '发送者')
+  })
+}
+
+test('repeated user text remains two distinct sends after acknowledgement and recovery', () => {
+  const store = createAssistantStore({ channel: 'session_chat' })
+  const state = store.getState()
+  const first = state.addUserMessage('chat', '继续')
+  state.confirmUserMessage('chat', first, 'first')
+  const second = state.addUserMessage('chat', '继续')
+  state.hydrateSession('chat', [
+    { id: 'first', role: 'user', content: '继续', status: 'succeeded' },
+    { id: 'second', role: 'user', content: '继续', status: 'succeeded' },
+  ])
+  state.confirmUserMessage('chat', second, 'second')
+  assert.deepEqual(store.getState().sessions.chat.messages.map((message) => message.id), ['first', 'second'])
+})
+
+test('an older history page with identical text cannot acknowledge a current pending send', () => {
+  const store = createAssistantStore({ channel: 'session_chat' })
+  const state = store.getState()
+  state.hydrateSession('chat', [{ id: 'recent', role: 'assistant', content: '最近回复', status: 'succeeded' }])
+  const pending = state.addUserMessage('chat', '继续')
+  state.hydrateSession('chat', [{ id: 'older-user', role: 'user', content: '继续', status: 'succeeded' }])
+  assert.deepEqual(store.getState().sessions.chat.messages.map((message) => message.id),
+    ['older-user', 'recent', pending])
+})
+
+test('initial history acknowledges the latest matching user before the live reply', () => {
+  const store = createAssistantStore({ channel: 'session_chat' })
+  const state = store.getState()
+  state.addUserMessage('chat', '继续')
+  state.handleWsEvent({ type: 'TEXT_MESSAGE_START', channel: 'session_chat', session_id: 'chat', messageId: 'reply' })
+  state.hydrateSession('chat', [
+    { id: 'older-user', role: 'user', content: '继续', status: 'succeeded' },
+    { id: 'saved-user', role: 'user', content: '继续', status: 'succeeded' },
+    { id: 'reply', role: 'assistant', content: '', status: 'running' },
+  ])
+  assert.deepEqual(store.getState().sessions.chat.messages.map((message) => message.id),
+    ['older-user', 'saved-user', 'reply'])
+  state.handleWsEvent({ type: 'TEXT_MESSAGE_START', channel: 'session_chat', session_id: 'chat',
+    messageId: 'saved-user', role: 'user', content: '继续' })
+  assert.equal(store.getState().sessions.chat.messages.length, 3)
+})
+
+test('HTTP acknowledgement merges an existing server message at the pending bubble position', () => {
+  const store = createAssistantStore({ channel: 'session_chat' })
+  const state = store.getState()
+  const pendingId = state.addUserMessage('chat', 'hello')
+  state.handleWsEvent({ type: 'TEXT_MESSAGE_START', channel: 'session_chat', session_id: 'chat', messageId: 'reply' })
+  // Simulate a snapshot that has already created the persisted row.
+  store.setState((current) => ({ sessions: { ...current.sessions, chat: {
+    ...current.sessions.chat, messages: [...current.sessions.chat.messages,
+      { id: 'saved', role: 'user', content: 'hello', status: 'succeeded', author_name: '发送者' }],
+  } } }))
+  state.confirmUserMessage('chat', pendingId, 'saved')
+  state.confirmUserMessage('chat', pendingId, 'saved')
+  assert.deepEqual(store.getState().sessions.chat.messages.map((message) => message.id), ['saved', 'reply'])
+  assert.equal(store.getState().sessions.chat.messages[0].author_name, '发送者')
+})
+
+test('live acknowledgement backfills identity after HTTP has already confirmed the pending bubble', () => {
+  const store = createAssistantStore({ channel: 'session_chat' })
+  const state = store.getState()
+  const pending = state.addUserMessage('chat', 'hello')
+  state.confirmUserMessage('chat', pending, 'saved')
+  state.handleWsEvent({ type: 'TEXT_MESSAGE_START', channel: 'session_chat', session_id: 'chat',
+    messageId: 'saved', role: 'user', content: 'hello', created_at: '2026-10-07T05:56:08Z',
+    actor: { id: 'actor', name: '发送者', device_id: 'phone' } })
+  const messages = store.getState().sessions.chat.messages
+  assert.equal(messages.length, 1)
+  assert.equal(messages[0].author_name, '发送者')
+  assert.equal(messages[0].author_device_id, 'phone')
+  assert.equal(messages[0].created_at, '2026-10-07T05:56:08Z')
+})
+
 test('keeps commentary in the process timeline and out of the answer across replay', () => {
   const store = createAssistantStore({ channel: 'session_chat' })
   store.getState().newSession('phases')

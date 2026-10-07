@@ -1,4 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useMessageClock } from '../hooks/useMessageClock'
 import useStreamReveal from '../hooks/useStreamReveal'
 import { MessageCopyButton } from './MessageResponseFooter'
 import SubagentTimelineItem from './SubagentTimelineItem'
@@ -293,17 +294,11 @@ export default function ProcessTrace({
   projectId,
 }: ProcessTraceProps) {
   const { t } = useI18n()
-  const [now, setNow] = useState(() => Date.now())
+  const now = useMessageClock(running)
   const [open, setOpen] = useState(false)
   const [showAllItems, setShowAllItems] = useState(false)
   const titleRef = useRef<HTMLSpanElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!running) return
-    setNow(Date.now())
-    const timer = window.setInterval(() => setNow(Date.now()), 1000)
-    return () => window.clearInterval(timer)
-  }, [running])
   useEffect(() => {
     setOpen(false)
   }, [running])

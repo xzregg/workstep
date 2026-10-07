@@ -8,6 +8,33 @@ const run = {
   started_at: '2026-09-24T10:01:00Z', ended_at: null,
 }
 
+for (const runs of [[], [run]]) {
+  test(`Action merge preserves existing conversation order with skewed clocks (${runs.length} runs)`, () => {
+    const messages = [
+      { id: 'user', role: 'user', content: '请求', created_at: '2026-09-24T10:03:00Z' },
+      { id: 'reply', role: 'assistant', content: '回答', created_at: '2026-09-24T10:02:00Z' },
+    ]
+    const merged = mergeActionMessages(messages, runs, () => false, (item, role) => ({
+      id: role === 'user' ? item.user_message_id : item.reply_message_id,
+      role, content: '', created_at: item.started_at,
+    }))
+    assert.deepEqual(merged.filter((message) => ['user', 'reply'].includes(message.id))
+      .map((message) => message.id), ['user', 'reply'])
+  })
+}
+
+test('a missing Action user is inserted before its already streamed reply', () => {
+  const messages = [
+    { id: 'before', content: '', created_at: run.started_at },
+    { id: run.reply_message_id, content: '', created_at: run.started_at },
+    { id: 'after', content: '', created_at: run.started_at },
+  ]
+  const merged = mergeActionMessages(messages, [run], (message) => message.id === run.reply_message_id,
+    (item, role) => ({ id: role === 'user' ? item.user_message_id : item.reply_message_id,
+      content: '', created_at: item.started_at }))
+  assert.deepEqual(merged.map((message) => message.id), ['before', 'action-user', 'action-reply', 'after'])
+})
+
 test('Action execution becomes two chronological conversation messages', () => {
   const messages = [
     { id: 'before', role: 'assistant', content: '之前', created_at: '2026-09-24T10:00:00Z' },

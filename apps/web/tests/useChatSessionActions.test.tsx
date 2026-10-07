@@ -8,6 +8,39 @@ import { I18nProvider } from '../src/i18n'
 import { useChatSessionActions } from '../src/hooks/useChatSessionActions'
 import { useChatSessionStore } from '../src/stores/chatSessionStore'
 
+for (const live of [false, true]) {
+  test(`send confirms the user message id even without WebSocket START (live=${live})`, async () => {
+    const { window } = installDomEnvironment()
+    const original = { chat: chatSessionApi.chat, sendLiveMessage: chatSessionApi.sendLiveMessage, list: chatSessionApi.list }
+    let actions!: ReturnType<typeof useChatSessionActions>
+    function Harness() {
+      actions = useChatSessionActions({
+        sessionId: 'confirmed', projectId: 'project-1', running: live,
+        engineConfig: { engine: 'codex', providerId: '', model: '', fastModel: '', visionModel: '', thinkingEffort: '' },
+        permissionMode: '', planMode: false, goalMode: false, effectiveEngine: 'codex',
+        onSessionIdChange: () => {}, onTitleChange: () => {},
+      })
+      return null
+    }
+    const root = createRoot(window.document.body.appendChild(window.document.createElement('div')))
+    try {
+      chatSessionApi.chat = (async () => ({ session_id: 'confirmed', turn_id: 'saved-user' })) as never
+      chatSessionApi.sendLiveMessage = (async () => ({ message_id: 'saved-user', created_at: '2026-10-07T05:56:08Z' })) as never
+      chatSessionApi.list = (async () => ({ sessions: [] })) as never
+      await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
+      await act(async () => { assert.equal(await actions.sendPendingContent('hello', []), true) })
+      const messages = useChatSessionStore.getState().sessions.confirmed.messages
+      assert.deepEqual(messages.map((message) => message.id), ['saved-user'])
+      if (live) assert.equal(messages[0].created_at, '2026-10-07T05:56:08Z')
+    } finally {
+      await act(async () => root.unmount())
+      Object.assign(chatSessionApi, original)
+      useChatSessionStore.getState().resetSession('confirmed')
+      await window.happyDOM.close()
+    }
+  })
+}
+
 test('running chat falls back to a normal send when its turn has ended', async () => {
   const { window } = installDomEnvironment()
   const originalLive = chatSessionApi.sendLiveMessage

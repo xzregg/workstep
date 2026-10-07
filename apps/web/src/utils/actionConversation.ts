@@ -29,21 +29,23 @@ export function mergeActionMessages<
       ? { ...message, content: message.id === run.reply_message_id ? run.output : message.content, actionRun: run }
       : message
   })
-  for (const run of runs) {
+  // Insert only missing Action rows. The store/history already owns the order
+  // of ordinary messages, including optimistic sends with a different clock.
+  for (const run of [...runs].sort((a, b) => Date.parse(a.started_at) - Date.parse(b.started_at))) {
     for (const role of ['user', 'assistant'] as const) {
       const id = role === 'user' ? run.user_message_id : run.reply_message_id
       if (seen.has(id)) continue
       seen.add(id)
-      merged.push({ ...create(run, role), actionRun: run })
+      const message = { ...create(run, role), actionRun: run }
+      const counterpart = merged.findIndex((existing) => existing.id === (
+        role === 'user' ? run.reply_message_id : run.user_message_id
+      ))
+      let index = counterpart < 0 ? merged.findIndex((existing) => (
+        Date.parse(existing.created_at || '') > Date.parse(run.started_at)
+      )) : counterpart + (role === 'assistant' ? 1 : 0)
+      if (index < 0) index = merged.length
+      merged.splice(index, 0, message)
     }
   }
-  return merged.sort((left, right) => {
-    const delta = Date.parse(left.created_at || '') - Date.parse(right.created_at || '')
-    if (Number.isFinite(delta) && delta !== 0) return delta
-    const leftRun = byId.get(left.id)
-    if (leftRun?.user_message_id === left.id && right.id === leftRun.reply_message_id) return -1
-    const rightRun = byId.get(right.id)
-    if (rightRun?.user_message_id === right.id && left.id === rightRun.reply_message_id) return 1
-    return 0
-  })
+  return merged
 }

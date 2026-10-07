@@ -27,6 +27,7 @@ import { selectWorkflowTurnContext } from '../utils/workflowContext'
 import { applyAssistantQuickPrompt } from '../utils/taskQuickPrompts.js'
 import { flushWsSubscriptionNow } from '../hooks/useWebSocket'
 import { useWorkflowMessageEvents } from '../hooks/useWorkflowMessageEvents'
+import { useWorkflowConversationHistory, workflowSessionId } from '../hooks/useWorkflowConversationHistory'
 import { usePromptEnhance } from '../hooks/usePromptEnhance'
 import { cloneCanvasSteps } from '../utils/canvasRestore'
 import { applyWorkflowPatch } from '../utils/workflowPatch'
@@ -62,11 +63,6 @@ export interface AiFlowChatProps {
   workflowName?: string
   /** Prefill the chat composer without sending. */
   initialMessage?: string
-}
-
-/** Stable conversation id for a workflow edit session (mirrors backend key). */
-function workflowSessionId(projectId: string, workflowId: string): string {
-  return `wf:${projectId}:${workflowId}`
 }
 
 const EMPTY_PROPOSALS: GenProposalCard[] = []
@@ -208,52 +204,10 @@ export default function AiFlowChat({
     return () => { active = false }
   }, [projectId])
 
-  // Workflow edit sessions reuse a stable conversation: load prior history.
+  useWorkflowConversationHistory(projectId, workflowId, setSessionId)
+
   useEffect(() => {
     lastCanvasSnapshotRef.current = null
-    if (!workflowId) return
-    const canonicalId = workflowSessionId(projectId, workflowId)
-    setSessionId(canonicalId)
-    useWorkflowGenStore.getState().newSession(canonicalId)
-    let active = true
-    workflowGenApi.history(projectId, workflowId)
-      .then((history) => {
-        if (!active) return
-        const store = useWorkflowGenStore.getState()
-        store.newSession(history.session_id)
-        store.hydrateSession(
-          history.session_id,
-          (history.messages || []).map((m) => ({
-            id: m.id,
-            role: m.role,
-            content: m.content,
-            status: m.status,
-            engine: m.engine,
-            model: m.model,
-            created_at: m.created_at,
-            ended_at: m.ended_at,
-            prompt: m.prompt,
-            event_summary: m.event_summary,
-            event_detail: m.event_detail,
-            author_id: m.author_id,
-            author_username: m.author_username,
-            author_name: m.author_name,
-            author_type: m.author_type,
-            initiated_by_user_id: m.initiated_by_user_id,
-            initiated_by_username: m.initiated_by_username,
-            author_device_id: m.author_device_id,
-            author_device_name: m.author_device_name,
-            events: (m.events || []).map((e) => ({
-              ...e,
-              type: e.type || '',
-              data: e.data || {},
-            })),
-          })),
-        )
-        if (history.session_id !== canonicalId) setSessionId(history.session_id)
-      })
-      .catch(() => { /* keep the empty session; next turn still works */ })
-    return () => { active = false }
   }, [workflowId, projectId])
 
   const loadMessageEvents = useWorkflowMessageEvents(projectId, workflowId, sessionId)
@@ -268,7 +222,7 @@ export default function AiFlowChat({
       useWorkflowGenStore.getState().newSession(sid)
       setSessionId(sid)
     }
-    useWorkflowGenStore.getState().addUserMessage(sid, content)
+    const optimisticId = useWorkflowGenStore.getState().addUserMessage(sid, content)
     setInput('')
     resetEnhance()
     // 先让服务端订阅到该会话，再发起引擎调用，避免首条事件被过滤丢弃。
@@ -298,6 +252,7 @@ export default function AiFlowChat({
         contextMode: turnContext.mode,
         workflowId: workflowId || undefined,
       })
+      useWorkflowGenStore.getState().confirmUserMessage(sid, optimisticId, accepted.turn_id)
       lastCanvasSnapshotRef.current = turnContext.snapshot
       if (accepted.session_id && accepted.session_id !== sid) {
         // Backend re-created the session; move the local state over.

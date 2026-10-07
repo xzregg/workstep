@@ -4,7 +4,6 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import TaskArtifactBrowser, {
-  artifactFileType,
   artifactDirectories,
   buildArtifactStepGroups,
   resolveArtifactRound,
@@ -53,13 +52,7 @@ test('defaults each step to its latest round while preserving a valid selection'
   assert.equal(resolveArtifactRound([1, 2, 3], 8), 3)
 })
 
-test('shows the real file suffix beside a logical artifact name', () => {
-  assert.equal(artifactFileType(artifacts[0]), 'md')
-  assert.equal(artifactFileType(artifacts[1]), 'json')
-  assert.equal(artifactFileType(artifacts[3]), '')
-})
-
-test('keeps the file suffix in the left name group before right-side status', () => {
+test('keeps the complete filename below the logical name without a separate suffix badge', () => {
   const artifact = {
     ...artifacts[0],
     updated_at: '2026-09-22T08:30:00+08:00',
@@ -82,8 +75,9 @@ test('keeps the file suffix in the left name group before right-side status', ()
 
   assert.match(
     html,
-    /task-artifact-file-main[\s\S]*task-artifact-file-name[\s\S]*task-artifact-file-relative-path[\s\S]*task-artifact-file-type[\s\S]*task-artifact-file-updated-at[\s\S]*dateTime="2026-09-22T08:30:00\+08:00"[\s\S]*task-artifact-file-status/,
+    /task-artifact-file-main[\s\S]*task-artifact-file-name">成品<\/span>[\s\S]*task-artifact-file-relative-path[^>]*>result\.md<\/span>[\s\S]*task-artifact-file-updated-at[\s\S]*dateTime="2026-09-22T08:30:00\+08:00"[\s\S]*task-artifact-file-status/,
   )
+  assert.doesNotMatch(html, /task-artifact-file-type/)
 })
 
 test('shows relative paths so same-named files remain distinguishable', () => {

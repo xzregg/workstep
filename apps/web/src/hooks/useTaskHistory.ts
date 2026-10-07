@@ -34,36 +34,63 @@ export function useTaskHistory({ taskId, projectId, userMessageEvents,
   const hasOlderRef = useRef(true)
   const olderLoadingRef = useRef(false)
   const prependScrollHeightRef = useRef<number | null>(null)
-  const fetchedRef = useRef('')
+  const refreshHistoryRef = useRef<(() => void) | null>(null)
   const refreshSeenRef = useRef<{ key: string; user: number; review: string } | null>(null)
   const eventDetailInFlightRef = useRef(new Set<string>())
 
   useEffect(() => {
     if (!taskId || !projectId) {
-      fetchedRef.current = ''
       return
     }
-    const fetchKey = `${taskId}-${projectId}`
-    if (fetchedRef.current === fetchKey) return
     const controller = new AbortController()
+    let inFlight = false
+    let refreshPending = false
+    let timer: number | undefined
     setHistoryLoading(true)
     offsetRef.current = 0
     hasOlderRef.current = true
     olderLoadingRef.current = false
     setHistoryMessages([])
-    void loadTaskHistoryWithRetry(
-      () => taskApi.history(taskId, projectId, PAGE_SIZE, 0), controller.signal,
-    ).then((response) => {
-      if (controller.signal.aborted || !response) return
-      const messages = response.messages || []
-      offsetRef.current = messages.length
-      hasOlderRef.current = messages.length === PAGE_SIZE
-      setHistoryMessages((current) => mergeRefreshedTaskHistory(current, messages))
-      fetchedRef.current = fetchKey
-    }).finally(() => {
-      if (!controller.signal.aborted) setHistoryLoading(false)
-    })
-    return () => controller.abort()
+    const refresh = () => {
+      if (controller.signal.aborted) return
+      if (inFlight) { refreshPending = true; return }
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => { void load(false) }, 50)
+    }
+    const load = async (initial: boolean) => {
+      inFlight = true
+      try {
+        const response = initial
+          ? await loadTaskHistoryWithRetry(
+            () => taskApi.history(taskId, projectId, PAGE_SIZE, 0), controller.signal,
+          )
+          : await taskApi.history(taskId, projectId, PAGE_SIZE, 0)
+        if (controller.signal.aborted || !response) return
+        const messages = response.messages || []
+        if (initial) {
+          offsetRef.current = messages.length
+          hasOlderRef.current = messages.length === PAGE_SIZE
+        }
+        setHistoryMessages((current) => mergeRefreshedTaskHistory(current, messages))
+      } catch {
+        // Keep the current timeline; the next recovery or message signal retries.
+      } finally {
+        inFlight = false
+        if (!controller.signal.aborted) {
+          if (initial) setHistoryLoading(false)
+          if (refreshPending) { refreshPending = false; refresh() }
+        }
+      }
+    }
+    refreshHistoryRef.current = refresh
+    window.addEventListener('workstep:reconnected', refresh)
+    void load(true)
+    return () => {
+      controller.abort()
+      window.clearTimeout(timer)
+      window.removeEventListener('workstep:reconnected', refresh)
+      if (refreshHistoryRef.current === refresh) refreshHistoryRef.current = null
+    }
   }, [taskId, projectId])
 
   const loadOlderHistory = useCallback(async () => {
@@ -145,14 +172,7 @@ export function useTaskHistory({ taskId, projectId, userMessageEvents,
     // The initial history request already includes signals present when the panel opens.
     if (!previous || previous.key !== key
       || (previous.user === userMessageEvents && previous.review === reviewEventSignal)) return
-    let active = true
-    const timer = window.setTimeout(() => {
-      taskApi.history(taskId, projectId, PAGE_SIZE, 0)
-        .then((response) => {
-          if (active) setHistoryMessages((current) => mergeRefreshedTaskHistory(current, response.messages || []))
-        }).catch(() => undefined)
-    }, 50)
-    return () => { active = false; window.clearTimeout(timer) }
+    refreshHistoryRef.current?.()
   }, [projectId, taskId, userMessageEvents, reviewEventSignal])
 
   return { historyMessages, setHistoryMessages, historyLoading, loadOlderHistory, loadMessageEvents }
