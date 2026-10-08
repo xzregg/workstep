@@ -32,6 +32,16 @@ test('unbound workspace goes to the existing installation guide',async()=>{
  await screen.findByRole('heading',{name:'安装 WorkStep'})
 })
 
+test('unauthenticated workspace redirects to the single portal login page',async()=>{
+ globalThis.fetch=async input=>{
+  if(String(input)==='/api/auth/session')return new Response(null,{status:401})
+  throw Error(`Unexpected request: ${String(input)}`)
+ }
+ render(<MemoryRouter><Routes><Route path="/" element={<ProjectsPage/>}/><Route path="/auth" element={<h2>登录工作台</h2>}/></Routes></MemoryRouter>)
+ await screen.findByRole('heading',{name:'登录工作台'})
+ assert.equal(screen.queryByRole('heading',{name:'我的 WorkStep'}),null)
+})
+
 test('workspace shows device sidebar and projects, filters by device, and keeps offline opening disabled',async()=>{
  const calls:string[]=[]
  globalThis.fetch=async input=>{
@@ -39,19 +49,21 @@ test('workspace shows device sidebar and projects, filters by device, and keeps 
   if(url==='/api/auth/session')return Response.json({user:{id:'u'}})
   if(url==='/api/devices')return Response.json({devices:[{id:'d',name:'研发电脑',online:true},{id:'e',name:'离线电脑',online:false}]})
   if(url==='/api/projects')return Response.json({projects:[{id:'p',name:'演示项目',device_id:'d',device_name:'研发电脑',device_online:true,access_level:'edit',grant_sources:['个人授权']}]})
+  if(url==='/api/devices/d/access')return Response.json({url:'https://d-demo.gateway.test/',ticket:'test-ticket'})
   if(url==='/api/devices/e/access')throw Error('Offline device must not be requested')
   throw Error(url)
  }
+ dom.window.HTMLFormElement.prototype.submit=function(){}
  render(<MemoryRouter><ProjectsPage/></MemoryRouter>)
  await screen.findByText('演示项目')
  assert.ok(screen.getByRole('heading',{name:'我的 WorkStep'}))
  assert.equal(calls.filter(url=>url==='/api/auth/session').length,1)
  fireEvent.click(screen.getByRole('button',{name:'离线电脑'}))
  await waitFor(()=>assert.equal(screen.queryByText('演示项目'),null))
- assert.equal((screen.getByRole('button',{name:'打开 WorkStep'}) as HTMLButtonElement).disabled,true)
+ assert.ok(screen.getByText('设备离线，等待上线后可进入工作台。'))
  fireEvent.click(screen.getByRole('button',{name:'研发电脑'}))
  await screen.findByText('演示项目')
- assert.equal((screen.getByRole('button',{name:'打开 WorkStep'}) as HTMLButtonElement).disabled,false)
+ await waitFor(()=>assert.equal(calls.filter(url=>url==='/api/devices/d/access').length,1))
 })
 
 test('workspace opens a device through the ticket form and allows retry after an offline response',async()=>{
@@ -67,9 +79,9 @@ test('workspace opens a device through the ticket form and allows retry after an
  }
  render(<MemoryRouter><ProjectsPage/></MemoryRouter>)
  fireEvent.click(await screen.findByRole('button',{name:'演示设备'}))
- fireEvent.click(screen.getByRole('button',{name:'打开 WorkStep'}))
+
  await screen.findByRole('alert')
- fireEvent.click(screen.getByRole('button',{name:'打开 WorkStep'}))
+ fireEvent.click(screen.getByRole('button',{name:'演示设备'}))
  await waitFor(()=>assert.equal(redeemed,'https://d-demo.gateway.test/api/remote/redeem|test-ticket'))
  assert.equal(opens,2)
  assert.equal(document.querySelector('form'),null)

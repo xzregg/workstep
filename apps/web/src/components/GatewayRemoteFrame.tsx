@@ -1,3 +1,4 @@
+import GatewayDeviceSidebar from './GatewayDeviceSidebar'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useI18n } from '../i18n'
 import './GatewayRemoteFrame.css'
@@ -49,9 +50,12 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
       {context && <span>{context.username}</span>}
       <a href={context?.gateway_url ?? gatewayUrl}>{t('gatewayRemote.back')}</a>
     </div>
-    <div className="gateway-remote-content">{ready && context ? children : <div className="gateway-remote-loading" role="status">
+    <div className="gateway-remote-body">
+      {ready && context && !context.project_id && <GatewayDeviceSidebar currentDeviceId={context.device_id}/>}
+      <div className="gateway-remote-content">{ready && context ? children : <div className="gateway-remote-loading" role="status">
       {!disconnected && <Spinner size={16} />}
       {disconnected ? t('gatewayRemote.disconnected') : t('gatewayRemote.loading')}
     </div>}</div>
+    </div>
   </div>
 }

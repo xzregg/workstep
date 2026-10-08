@@ -107,3 +107,10 @@ test('sync tree cascades parent selection and submits every descendant including
  fireEvent.click(screen.getByRole('button',{name:'同步组织与用户'}))
  await waitFor(()=>assert.deepEqual(payload,{department_ids:['2','3']}))
 })
+
+
+test('completed sync reports additions and locally deleted skips',async()=>{
+ globalThis.fetch=async input=>Response.json(String(input).endsWith('/directory-preview')?{departments:[],selected_department_ids:[]}:{status:'completed',result:{departments:9,people:59,departments_added:0,people_added:1,departments_deleted_skipped:9,people_deleted_skipped:58}})
+ render(<OrganizationSyncPanel sourceId="source" provider="dingtalk" csrf="csrf" onClose={()=>{}} onCompleted={()=>{}} />)
+ await screen.findByText(/跳过本地已删除：9 个组织、58 位用户/)
+})

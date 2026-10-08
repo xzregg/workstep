@@ -61,7 +61,7 @@ export function AdminGrantRoleDialog({ csrf, onSaved, onClose, delegated = false
   return <div className="gateway-dialog-backdrop"><section className="gateway-confirm-dialog gateway-role-dialog"
     role="dialog" aria-modal="true" aria-label="授予管理员权限">
     <h3>授予管理员权限</h3>
-    <form className="gateway-auth-form" onSubmit={event => void submit(event)}>
+    <form className="gateway-role-form" onSubmit={event => void submit(event)}>
       <label htmlFor="role-user-search">搜索用户</label>
       <div className="gateway-admin-search">
         <input id="role-user-search" value={userQuery} onChange={event => {
@@ -70,9 +70,10 @@ export function AdminGrantRoleDialog({ csrf, onSaved, onClose, delegated = false
           placeholder="用户名或显示名称" />
         <button type="button" disabled={busy || !userQuery.trim()} onClick={() => void findChoices('users', userQuery)}>查找用户</button>
       </div>
-      {userChoices.length > 0 && <select aria-label="选择用户" value={userId} onChange={event => setUserId(event.target.value)}>
+      {userChoices.length > 0 && <label htmlFor="role-selected-user">选择用户</label>}
+      {userChoices.length > 0 && <select id="role-selected-user" aria-label="选择用户" value={userId} onChange={event => setUserId(event.target.value)}>
         <option value="">选择用户</option>{userChoices.map(user => <option value={user.id} key={user.id}>
-          {user.display_name}（{user.username}）</option>)}
+          {user.display_name}{user.username?.startsWith('ext_') ? '（企业扫码用户）' : `（${user.username ?? ''}）`}</option>)}
       </select>}
       <label htmlFor="role-kind">管理员角色</label>
       <select id="role-kind" value={role} onChange={event => {
@@ -94,7 +95,7 @@ export function AdminGrantRoleDialog({ csrf, onSaved, onClose, delegated = false
       <div className="gateway-dialog-actions">
         <button type="button" className="gateway-dialog-cancel" disabled={busy}
           onClick={() => dirty ? setConfirmClose(true) : onClose()}>取消</button>
-        <button type="submit" disabled={busy || !canSubmit}>{busy ? '正在保存…' : '授予权限'}</button>
+        <button type="submit" disabled={busy || !canSubmit}>{busy && <span className="gateway-spinner" />}{busy ? '正在保存…' : '授予权限'}</button>
       </div>
     </form>
     {confirmClose && <GatewayConfirmDialog title="放弃授权" message="已选择的用户与范围将丢失。"

@@ -61,10 +61,11 @@ test('startup queues an image switch without leaving sandbox mode for the user',
     await manager.save({ enabled: true, prepared: true, root: path.join(base, 'sandbox'), project: path.join(base, 'project'), mounts: [] })
     manager.busy = true
     const image = 'sha256:' + 'a'.repeat(64)
-    await manager.queueImageSwitch(image)
+    await manager.queueImageSwitch(image, 'workstep:latest')
     const settings = await manager.settings()
     assert.equal(settings.enabled, false)
     assert.equal(settings.pendingDockerImage, image)
+    assert.equal(settings.pendingDockerImageTag, 'workstep:latest')
     assert.equal(manager.busy, true)
   } finally { await fs.rm(base, { recursive: true, force: true }) }
 })
@@ -167,7 +168,7 @@ test('running sandbox can queue a scanned Docker image and restart from settings
   const manager = {
     busy: false, running: true,
     dockerImages: async () => ({ images: [{ id: image, tags: ['workstep:latest'], size: 1 }], error: null }),
-    queueImageSwitch: async value => calls.push(['queue', value]),
+    queueImageSwitch: async (value, tag) => calls.push(['queue', value, tag]),
   }
   const handlers = registerSandboxIpc({ ipcMain: { removeHandler() {}, handle() {} }, manager,
     window: () => null, rootUrl: () => '', hasActiveWork: async () => false,
@@ -175,7 +176,7 @@ test('running sandbox can queue a scanned Docker image and restart from settings
 
   await handlers.switchImage(image)
 
-  assert.deepEqual(calls, [['queue', image], ['restart']])
+  assert.deepEqual(calls, [['queue', image, 'workstep:latest'], ['restart']])
 })
 
 test('preparation, restart, container health and cleanup preserve project and HOME data', async () => {

@@ -37,9 +37,7 @@ function createAuthorizationRequest(managed, appInstanceId) {
   }
 }
 
-function claimAuthCallback(value, pending) {
-  if (!pending || pending.claimed) throw new Error('Authorization callback already claimed')
-  if (Date.now() - pending.createdAt > 5 * 60 * 1000) throw new Error('Authorization callback expired')
+function parseAuthCallback(value) {
   let url
   try { url = new URL(value) } catch { throw new Error('Invalid authorization callback') }
   if (url.protocol !== 'workstep:' || url.hostname !== 'auth' || url.pathname !== '/callback'
@@ -47,13 +45,20 @@ function claimAuthCallback(value, pending) {
       || !url.searchParams.get('state')) {
     throw new Error('Invalid authorization callback')
   }
-  const actual = Buffer.from(url.searchParams.get('state'))
+  return { code: url.searchParams.get('code'), state: url.searchParams.get('state') }
+}
+
+function claimAuthCallback(value, pending) {
+  if (!pending || pending.claimed) throw new Error('Authorization callback already claimed')
+  if (Date.now() - pending.createdAt > 5 * 60 * 1000) throw new Error('Authorization callback expired')
+  const callback = parseAuthCallback(value)
+  const actual = Buffer.from(callback.state)
   const expected = Buffer.from(pending.state)
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
     throw new Error('Authorization state mismatch')
   }
   pending.claimed = true
-  return { code: url.searchParams.get('code'), state: pending.state }
+  return { code: callback.code, state: pending.state }
 }
 
 function verifyDeviceAuthorization(token, publicKeyPem, expectedFingerprint, gatewayId, appInstanceId) {
@@ -123,6 +128,6 @@ async function exchangeDesktopCode({ pending, code, managed, devicePublicKey, de
 }
 
 module.exports = {
-  createAuthorizationRequest, claimAuthCallback, verifyDeviceAuthorization, exchangeDesktopCode,
+  createAuthorizationRequest, parseAuthCallback, claimAuthCallback, verifyDeviceAuthorization, exchangeDesktopCode,
   createControlDelegation,
 }

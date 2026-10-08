@@ -3,7 +3,7 @@ import json
 from typing import Literal
 from uuid import uuid4
 from pydantic import BaseModel, Field
-from sqlalchemy import select, update
+from sqlalchemy import select, update, delete
 from gateway.contracts import GatewayCall
 from gateway.models import AuditEvent, PlatformSetting, UserGroup, GroupProject, PlatformProject, DirectoryDepartment, IdentitySource
 from gateway.services.directory_names import directory_name
@@ -16,7 +16,7 @@ from gateway.services.group_membership_sync import reconcile_department_groups
 
 class BulkGroupInput(BaseModel):
     group_ids: list[str] = Field(min_length=1, max_length=100)
-    action: Literal['delete', 'restore']
+    action: Literal['delete', 'restore', 'purge']
 
 
 async def deleted_groups(call: GatewayCall):
@@ -47,7 +47,7 @@ async def bulk_groups(call: GatewayCall, body: BulkGroupInput):
                 raise GatewayError('conflict', 'Group status changed')
             for group in groups:
                 await bump_group_capability_revisions(session, group.id)
-                group.status = 'deleted' if body.action == 'delete' else 'active'
+                if body.action != 'purge': group.status = 'deleted' if body.action == 'delete' else 'active'
             await session.flush()
             if body.action == 'restore':
                 for group in groups:
@@ -57,6 +57,22 @@ async def bulk_groups(call: GatewayCall, body: BulkGroupInput):
                 GroupProject.group_id.in_(ids), GroupProject.revoked_at.is_(None))
             await session.execute(update(PlatformProject).where(PlatformProject.id.in_(project_ids))
                                   .values(skill_revision=PlatformProject.skill_revision + 1))
+            if body.action == 'purge':
+                from gateway.models.base import Base
+                for group in groups:
+                    if group.external_department_id:
+                        key = 'directory-group-purged:' + group.external_department_id
+                        if await session.get(PlatformSetting, key) is None:
+                            session.add(PlatformSetting(key=key, value_json='true'))
+                tables = Base.metadata.tables
+                for table in tables.values():
+                    for column in table.columns:
+                        if any(fk.target_fullname == 'user_groups.id' for fk in column.foreign_keys):
+                            await session.execute(delete(table).where(column.in_(ids)))
+                for name in ['provider_assignments', 'project_access_grants']:
+                    table = tables[name]
+                    await session.execute(delete(table).where(table.c.subject_type == 'group', table.c.subject_id.in_(ids)))
+                await session.execute(delete(UserGroup).where(UserGroup.id.in_(ids)))
             session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,
                 action='group.bulk_' + body.action, result='success',
                 metadata_json=json.dumps({'group_ids': ids})))

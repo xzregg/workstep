@@ -9,6 +9,7 @@ import type { RegistrationMode } from './AdminRegistrationPolicyDialog'
 
 type PlatformSettings = {
   gateway_id: string; public_origin: string | null; registration_mode: RegistrationMode
+  device_approval_mode?: 'manual' | 'automatic'
   password_login_enabled?: boolean
   session_seconds: number; protocol_version: number; data_dir: string
   database: { backend: string; location: string; healthy: boolean; migration_version: string | null }
@@ -20,6 +21,7 @@ export function AdminPlatformSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
+  const [deviceEditing, setDeviceEditing] = useState(false)
   const [editing, setEditing] = useState(false)
   const [loginEditing,setLoginEditing]=useState(false)
   const [addressEditing, setAddressEditing] = useState(false)
@@ -66,6 +68,11 @@ export function AdminPlatformSettingsPage() {
         <button type="button" onClick={() => setEditing(true)}>修改注册策略</button>
 
       </section>
+      <section className="gateway-project-grants"><h3>设备审批</h3>
+        <p>当前策略：{settings.device_approval_mode === 'automatic' ? '自动审批' : '人工审批'}</p>
+        <p>自动审批允许已登录用户的新设备直接启用；人工审批需要管理员批准。</p>
+        <button type="button" onClick={() => setDeviceEditing(true)}>修改设备审批策略</button>
+      </section>
       <OrganizationSyncSettings csrf={csrf} />
       <section className="gateway-project-grants"><h3>客户端与数据</h3>
         <dl className="gateway-account-summary">
@@ -78,6 +85,8 @@ export function AdminPlatformSettingsPage() {
         <p>数据库连接配置由服务端部署管理，不能在此页面热切换。</p>
       </section>
     </>}
+    {deviceEditing && settings && <AdminRegistrationPolicyDialog devicePolicy mode={settings.device_approval_mode ?? 'manual'} csrf={csrf}
+      onClose={() => setDeviceEditing(false)} onSaved={() => { setDeviceEditing(false); setRevision(value => value + 1) }} />}
     {addressEditing && settings && <AdminPlatformAddressDialog address={settings.public_origin} csrf={csrf}
       onClose={() => setAddressEditing(false)} onSaved={() => {setAddressEditing(false); setRevision(current => current + 1)}}/>}
     {editing && settings && <AdminRegistrationPolicyDialog mode={settings.registration_mode} csrf={csrf}

@@ -9,6 +9,7 @@ import platform
 import secrets
 import time
 from pathlib import Path
+from typing import Any, NamedTuple
 from urllib.parse import urlencode
 
 import httpx
@@ -20,6 +21,12 @@ from services.config import config_store
 from services import config as config_module
 
 COOKIE = 'workstep_platform_local_session'
+
+
+class GatewayLoginCompletion(NamedTuple):
+    local_session: str
+    actor: Any
+    desktop: bool
 
 
 def normalize_origin(value: str) -> str:
@@ -118,7 +125,7 @@ class GatewayBrowserLogin:
             await asyncio.to_thread(config_store.set, 'gateway_platform', stored)
             query = {'gateway_id': data['gateway_id'], 'app_instance_id': identity['app_instance_id'],
                 'state': state, 'nonce': nonce, 'code_challenge': _encode(hashlib.sha256(verifier.encode()).digest()),
-                'redirect_uri': callback_origin + '/api/gateway-platform/callback'}
+                **({} if desktop else {'redirect_uri': callback_origin + '/api/gateway-platform/callback'})}
             return origin + '/desktop/login?' + urlencode(query)
 
     async def complete(self, code: str, state: str, *, callback_origin: str | None = None):
@@ -164,4 +171,4 @@ class GatewayBrowserLogin:
             await self.gateway.start()
             result = await self.gateway.bootstrap(authorization, proof, control_private, control_public, delegation)
             self.desktop_local_session = result[0] if pending["desktop"] else None
-            return result
+            return GatewayLoginCompletion(result[0], result[1], bool(pending["desktop"]))

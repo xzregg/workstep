@@ -49,8 +49,9 @@ function registerSandboxIpc({ ipcMain, dialog, shell, clipboard, manager, window
       await idle()
       const available = await manager.dockerImages()
       if (available.error) throw new Error(available.error)
-      if (!available.images.some(item => item.id === image)) throw new Error('请选择扫描结果中的兼容镜像')
-      await manager.queueImageSwitch(image)
+      const selected = available.images.find(item => item.id === image)
+      if (!selected) throw new Error('请选择扫描结果中的兼容镜像')
+      await manager.queueImageSwitch(image, selected.tags[0] || null)
       await restart()
     },
     importConfig: async kind => { await idle(); return manager.importConfig(kind) },

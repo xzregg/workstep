@@ -195,3 +195,22 @@ test('group selection cascades through hidden descendants and shows partial pare
  fireEvent.click(screen.getByRole('button',{name:'删除所选用户组'}))
  assert.match(screen.getByRole('dialog').textContent ?? '', /4 个用户组/)
 })
+
+
+test('group recycle bin offers restore and password-confirmed permanent deletion',async()=>{
+ let body:unknown
+ globalThis.fetch=async(input,init)=>{
+  if(String(input)==='/api/auth/step-up')return Response.json({})
+  if(init?.method==='POST'){body=JSON.parse(String(init.body));return Response.json({updated:1})}
+  return Response.json({groups:String(input)==='/api/groups/deleted'?[{id:'g1',name:'删除组'}]:[]})
+ }
+ render(<AdminGroupLifecyclePanel csrf="csrf" selected="" revision={0} onSelect={()=>{}} onChanged={()=>{}} />)
+ fireEvent.click(screen.getByRole('button',{name:'用户组回收站'}))
+ fireEvent.click(await screen.findByRole('checkbox',{name:/删除组/}))
+ assert.equal((screen.getByRole('button',{name:'恢复所选用户组'}) as HTMLButtonElement).disabled,false)
+ fireEvent.click(screen.getByRole('button',{name:'彻底删除所选用户组'}))
+ const dialog=screen.getByRole('dialog',{name:'彻底删除用户组'})
+ fireEvent.change(within(dialog).getByLabelText('输入你的密码确认'),{target:{value:'password'}})
+ fireEvent.click(within(dialog).getByRole('button',{name:'确认彻底删除'}))
+ await waitFor(()=>assert.deepEqual(body,{group_ids:['g1'],action:'purge'}))
+})

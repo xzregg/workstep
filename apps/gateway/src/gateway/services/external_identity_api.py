@@ -136,6 +136,9 @@ async def _begin(call: GatewayCall, source_id: str, binding: bool, return_to: st
         user_id, session_id = user.id, auth_session.id
     source, state, nonce = await _service(call).begin(source_id, user_id, session_id, return_to)
     redirect_uri = str(call.callback_url('external_callback', source_id=source_id))
+    if call.settings.public_origin:
+        from urllib.parse import urlsplit
+        redirect_uri = call.settings.public_origin + urlsplit(redirect_uri).path
     return {"authorization_url": _connector(call, source.provider).authorization_url(source, state, nonce, redirect_uri)}
 
 

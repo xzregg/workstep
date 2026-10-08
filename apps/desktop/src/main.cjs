@@ -9,11 +9,11 @@ const { managedEnvironment, readManagedConfig } = require('./managed-config.cjs'
 const { loadOrCreateDeviceIdentity } = require('./credential-store.cjs')
 const { managedSessionExpired } = require('./managed-session.cjs')
 const { desktopWindowTitle } = require('./window-title.cjs')
-const { attachHideOnClose } = require('./window-lifecycle.cjs')
+const { attachHideOnClose, createGracefulQuit } = require('./window-lifecycle.cjs')
 const { shouldOfferUpdate } = require('./update-version.cjs')
 const { createSandboxStartupWindow, formatSandboxFailure, applyPendingImageSwitch } = require('./sandbox-startup-window.cjs')
 const {
-  createAuthorizationRequest, claimAuthCallback, exchangeDesktopCode,
+  createAuthorizationRequest, parseAuthCallback, claimAuthCallback, exchangeDesktopCode,
   createControlDelegation,
 } = require('./desktop-auth.cjs')
 const {
@@ -25,6 +25,7 @@ const {
 } = require('./sidecar.cjs')
 const {
   isAllowedExternalUrl,
+  isGatewayDesktopLoginUrl,
   isTrustedNavigation,
   projectsHaveActiveWork,
   sessionsHaveActiveWork,
@@ -49,18 +50,49 @@ let controlStatusTimer = null
 let tray = null
 let quitting = false
 let windowsVisible = true
+let gatewayLoginWindow = null
 let pendingProtocolUrl = process.argv.find((value) => value.startsWith('workstep://')) ?? null
+
+async function completeConfiguredGatewayCallback(value) {
+  if (!rootUrl || !desktopToken) throw new Error('WorkStep desktop backend is not ready')
+  const callback = parseAuthCallback(value)
+  const target = new URL('/api/gateway-platform/callback', rootUrl)
+  target.searchParams.set('code', callback.code)
+  target.searchParams.set('state', callback.state)
+  const response = await fetch(target, {
+    redirect: 'manual',
+    headers: { 'X-WorkStep-Desktop-Token': desktopToken },
+    signal: AbortSignal.timeout(15_000),
+  })
+  if (response.status !== 303) throw new Error(`Gateway callback rejected (${response.status})`)
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.reload()
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  }
+}
 
 function openProtocolUrl(value) {
   if (value.startsWith('workstep://auth/')) {
-    if (!managedPending || !managedCallbackResolve) return
-    try {
-      const callback = claimAuthCallback(value, managedPending)
-      clearTimeout(managedCallbackTimeout)
-      managedCallbackResolve(callback)
-      managedCallbackResolve = null
-    } catch (error) {
-      console.error('Ignoring invalid WorkStep auth callback', error)
+    if (managedPending && managedCallbackResolve) {
+      try {
+        const callback = claimAuthCallback(value, managedPending)
+        clearTimeout(managedCallbackTimeout)
+        managedCallbackResolve(callback)
+        managedCallbackResolve = null
+      } catch (error) {
+        console.error('Ignoring invalid WorkStep auth callback', error)
+      }
+    } else if (rootUrl && desktopToken) {
+      void completeConfiguredGatewayCallback(value).catch((error) => {
+        console.error('Unable to complete configured Gateway login', error)
+        const options = { type: 'error', title: '网关登录失败',
+          message: '无法完成网关登录，请返回设置后重试。', detail: String(error) }
+        void (mainWindow ? dialog.showMessageBox(mainWindow, options) : dialog.showMessageBox(options))
+      })
+    } else {
+      pendingProtocolUrl = value
     }
     return
   }
@@ -71,6 +103,49 @@ function openProtocolUrl(value) {
   } catch (error) {
     console.error('Ignoring invalid WorkStep URL', error)
   }
+}
+
+function openGatewayLoginWindow(targetUrl) {
+  if (gatewayLoginWindow && !gatewayLoginWindow.isDestroyed()) {
+    void gatewayLoginWindow.loadURL(targetUrl)
+    gatewayLoginWindow.show()
+    gatewayLoginWindow.focus()
+    return
+  }
+  const window = new BrowserWindow({
+    parent: mainWindow ?? undefined,
+    width: 960,
+    height: 760,
+    minWidth: 720,
+    minHeight: 600,
+    show: false,
+    title: '登录 WorkStep 平台',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  })
+  gatewayLoginWindow = window
+  const handleNavigation = (event, destination) => {
+    if (destination.startsWith('workstep://auth/')) {
+      event.preventDefault()
+      openProtocolUrl(destination)
+      window.close()
+      return
+    }
+    if (!isAllowedExternalUrl(destination)) event.preventDefault()
+  }
+  window.webContents.on('will-navigate', handleNavigation)
+  window.webContents.on('will-redirect', handleNavigation)
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (isAllowedExternalUrl(url)) void window.loadURL(url)
+    return { action: 'deny' }
+  })
+  window.webContents.on('will-attach-webview', event => event.preventDefault())
+  window.once('ready-to-show', () => window.show())
+  window.on('closed', () => { if (gatewayLoginWindow === window) gatewayLoginWindow = null })
+  void window.loadURL(targetUrl)
 }
 
 async function authorizeManagedDesktop(managed) {
@@ -169,6 +244,10 @@ function createWindow(url) {
   window.webContents.on('will-navigate', (event, targetUrl) => {
     if (isTrustedNavigation(targetUrl, rootUrl)) return
     event.preventDefault()
+    if (isGatewayDesktopLoginUrl(targetUrl)) {
+      openGatewayLoginWindow(targetUrl)
+      return
+    }
     if (isAllowedExternalUrl(targetUrl)) void shell.openExternal(targetUrl)
   })
   window.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
@@ -428,12 +507,17 @@ function configureUpdater() {
   })
 }
 
+const handleGracefulQuit = createGracefulQuit({
+  stop: stopBackend,
+  quit: () => app.quit(),
+  onStart: () => { quitting = true },
+  onError: error => console.error('Unable to stop backend cleanly during quit', error),
+})
+
 app.on('before-quit', (event) => {
-  quitting = true
   if (controlStatusTimer) clearInterval(controlStatusTimer)
-  if (installingUpdate || (!backendProcess && !sandboxManager?.session)) return
-  event.preventDefault()
-  void stopBackend().then(() => app.quit())
+  if (installingUpdate) { quitting = true; return }
+  handleGracefulQuit(event)
 })
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
@@ -455,6 +539,7 @@ app.on('open-url', (event, value) => {
 
 app.whenReady().then(async () => {
   if (!hasSingleInstanceLock) return
+  app.setAsDefaultProtocolClient('workstep')
   configureTray()
   const release = require('./sandbox-release.json')
   const image = app.isPackaged ? release.image : process.env.WORKSTEP_SANDBOX_IMAGE || release.image
@@ -473,8 +558,9 @@ app.whenReady().then(async () => {
     if (action === 'switchImage') {
       const available = await sandboxManager.dockerImages()
       if (available.error) throw new Error(available.error)
-      if (!available.images.some(item => item.id === input)) throw new Error('请选择扫描结果中的兼容镜像')
-      await sandboxManager.queueImageSwitch(input)
+      const selected = available.images.find(item => item.id === input)
+      if (!selected) throw new Error('请选择扫描结果中的兼容镜像')
+      await sandboxManager.queueImageSwitch(input, selected.tags[0] || null)
       app.relaunch()
       app.quit()
     }
@@ -492,7 +578,6 @@ app.whenReady().then(async () => {
       : null
     let managedAuthorization = null
     if (managed) {
-      app.setAsDefaultProtocolClient('workstep')
       if (pendingProtocolUrl?.startsWith('workstep://auth/')) pendingProtocolUrl = null
       managedAuthorization = await authorizeManagedDesktop(managed)
       if (!managedAuthorization) {
@@ -533,6 +618,11 @@ app.whenReady().then(async () => {
     if (managedAuthorization) await bootstrapManagedBackend(rootUrl, managedAuthorization)
     await announceDesktopRuntime(rootUrl)
     configureAuthenticatedRequests(rootUrl)
+    if (!managed && pendingProtocolUrl?.startsWith('workstep://auth/')) {
+      const callback = pendingProtocolUrl
+      pendingProtocolUrl = null
+      await completeConfiguredGatewayCallback(callback)
+    }
     const initialPath = pendingProtocolUrl ? protocolPath(pendingProtocolUrl) : '/'
     createWindow(`${rootUrl}${initialPath}`)
     sandboxStartup?.close(); sandboxStartup = null

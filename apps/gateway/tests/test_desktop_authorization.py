@@ -204,3 +204,51 @@ def test_admin_device_list_filters_sorts_and_pages_on_server(tmp_path):
         assert result.json()["page"] == 2
         assert [device["name"] for device in result.json()["devices"]] == ["Team PC 02", "Team PC 03"]
         assert client.get("/api/admin/devices?page_size=101").status_code == 422
+
+
+def test_device_approval_policy_controls_new_devices_only(tmp_path):
+    with TestClient(create_app(GatewaySettings(data_dir=tmp_path,gateway_id='gateway-test')),base_url='https://gateway.test') as client:
+        csrf=_setup(client); headers={'X-CSRF-Token':csrf}
+        url='/api/admin/device-approval-policy'
+        assert client.get('/api/admin/platform-settings').json()['device_approval_mode']=='manual'
+        assert client.put(url,headers=headers,json={'mode':'automatic'}).status_code==403
+        client.post('/api/auth/step-up',headers=headers,json={'password':'OwnerPassphrase-2026!'})
+        assert client.put(url,headers=headers,json={'mode':'automatic'}).status_code==200
+        assert client.put(url,headers=headers,json={'mode':'invalid'}).status_code==422
+        key=_public_key()
+        result=_redeem(client,_authorize(client,csrf),key)
+        assert result.status_code==200,result.text
+        assert result.json()['device']['status']=='active'
+        assert result.json()['device_authorization']
+        assert client.put(url,headers=headers,json={'mode':'manual'}).status_code==200
+        assert _redeem(client,_authorize(client,csrf),key).json()['device']['status']=='active'
+
+
+def test_device_policy_slow_sql_keeps_health_responsive(tmp_path):
+    import asyncio
+    import threading
+    import time
+    from httpx import ASGITransport, AsyncClient
+    from sqlalchemy import event
+    app=create_app(GatewaySettings(data_dir=tmp_path,gateway_id='gateway-test'))
+    with TestClient(app,base_url='https://gateway.test') as client:
+        csrf=_setup(client); headers={'X-CSRF-Token':csrf}
+        client.post('/api/auth/step-up',headers=headers,json={'password':'OwnerPassphrase-2026!'})
+        reached=threading.Event()
+        def before_execute(connection,cursor,statement,parameters,context,many):
+            if statement.startswith(('INSERT INTO platform_settings','UPDATE platform_settings')):
+                reached.set(); time.sleep(.6)
+        engine=app.state.database.engine.sync_engine
+        event.listen(engine,'before_cursor_execute',before_execute)
+        async def scenario():
+            async with AsyncClient(transport=ASGITransport(app=app),base_url='https://gateway.test',cookies=client.cookies) as actor:
+                pending=asyncio.create_task(actor.put('/api/admin/device-approval-policy',headers=headers,json={'mode':'automatic'}))
+                try:
+                    assert await asyncio.to_thread(reached.wait,2)
+                    assert (await asyncio.wait_for(actor.get('/api/health'),.5)).status_code==200
+                    assert not pending.done()
+                finally:
+                    response=await pending
+                assert response.status_code==200
+        try: client.portal.call(scenario)
+        finally: event.remove(engine,'before_cursor_execute',before_execute)

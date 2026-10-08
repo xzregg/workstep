@@ -95,6 +95,8 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
                            follow_redirects=False).status_code == 303
         assert client.post(f"{host}/api/remote/redeem", data={"ticket": ticket}).status_code == 409
         assert client.get(f"{host}/api/remote/session").json()["project_id"] == "project-1"
+        assert client.get(f"{host}/api/remote/devices").status_code == 403
+        assert client.get(f"{host}/api/remote/devices/device-1/access").status_code == 403
         assert client.get(f"{host}/api/remote/session").json()["host_project_id"] == "host-1"
         assert client.get(f"{host}/api/remote/session").json()["task_create"] is False
         assert client.get(f"{host}/api/remote/session").json()["can_manage_project_access"] is False

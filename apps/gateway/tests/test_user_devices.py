@@ -140,3 +140,39 @@ def test_user_sees_only_assigned_pc_and_admin_can_revoke(tmp_path, monkeypatch):
         assert client.get("/api/devices").json() == {"devices": []}
         assert client.get("/api/devices/device-1/access").status_code == 403
         assert client.get(f"{remote_url}/api/remote/session").status_code == 403
+
+
+def test_whole_device_session_can_switch_only_to_its_assigned_devices(tmp_path, monkeypatch):
+    from gateway.models import Device, UserDevice
+    app = create_app(GatewaySettings(data_dir=tmp_path, public_origin='https://gateway.test'))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        setup = client.post('/api/platform/setup', json={'username':'owner','display_name':'Owner','password':'OwnerPassphrase-2026!','recovery_username':'recovery','recovery_password':'RecoveryPassphrase-2026!','registration_mode':'open'}).json()
+        user_id = setup['user']['id']
+        async def seed():
+            async with app.state.database.session() as session:
+                async with session.begin():
+                    session.add_all([Device(id=id, name=id, public_key='test', status='active', app_instance_id=id, version='1') for id in ('one','two','private')])
+                    session.add_all([UserDevice(id=id, user_id=user_id, device_id=id, access_level='edit') for id in ('one','two')])
+        client.portal.call(seed)
+        monkeypatch.setattr(app.state.control_connections,'is_online',lambda id:True)
+        first = client.get('/api/devices/one/access').json()
+        host = 'https://d-one.gateway.test'
+        assert client.post(host+'/api/remote/redeem',data={'ticket':first['ticket']},follow_redirects=False).status_code == 303
+        listing = client.get(host+'/api/remote/devices')
+        assert listing.status_code == 200, listing.text
+        assert {d['id'] for d in listing.json()['devices']} == {'one','two'}
+        second = client.get(host+'/api/remote/devices/two/access')
+        assert second.status_code == 200, second.text
+        assert second.json()['url'] == 'https://d-two.gateway.test/'
+        assert client.get(host+'/api/remote/devices/private/access').status_code == 403
+        monkeypatch.setattr(app.state.control_connections,'is_online',lambda id:id!='two')
+        assert client.get(host+'/api/remote/devices/two/access').status_code == 409
+        assert client.get('https://d-two.gateway.test/api/remote/devices').status_code in (401,403)
+        async def revoke():
+            from sqlalchemy import update
+            from gateway.services.identity import _now
+            async with app.state.database.session() as session:
+                async with session.begin():
+                    await session.execute(update(UserDevice).where(UserDevice.device_id=='one').values(revoked_at=_now()))
+        client.portal.call(revoke)
+        assert client.get(host+'/api/remote/devices').status_code == 403

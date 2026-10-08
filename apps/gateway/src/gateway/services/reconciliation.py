@@ -37,7 +37,7 @@ class DirectoryReconciler:
             raise
         try:
             await service.full_sync(source.id, snapshot["departments"], snapshot["people"],
-                                    snapshot.get("cursor"), selected_department_ids=selected)
+                                    snapshot.get("cursor"), selected_department_ids=selected, additions_only=True)
             return True
         except Exception as exc:
             await service.record_sync_failure(source.id, 'snapshot_invalid' if isinstance(exc, GatewayError) and exc.reason == 'invalid' else 'snapshot_apply_failed')

@@ -80,7 +80,9 @@ export function AdminUsersPage() {
 
   return <section className="gateway-admin-page">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
-    <h2>用户管理</h2>
+    <h2>{filters.status === 'deleted' ? '用户回收站' : '用户管理'}</h2>
+    <div className="gateway-device-actions"><button type="button" onClick={() => setFilters(current => ({ ...current, status: '', groupId: undefined, page: 1 }))}>用户列表</button><button type="button" onClick={() => setFilters(current => ({ ...current, status: 'deleted', groupId: undefined, q: '', page: 1 }))}>回收站</button></div>
+    {filters.status === 'deleted' && <p>删除的用户可单项或批量恢复；恢复后为停用状态，可返回用户列表启用。彻底删除需要管理员密码确认，完成后无法恢复。</p>}
     {access === 'checking' && <p role="status">正在检查登录状态…</p>}
     {access === 'forbidden' && <p role="alert">当前账号没有用户管理权限，或需要先<Link to="/account">修改初始密码</Link>。</p>}
     {access === 'ready' && <div className="gateway-users-workspace">
@@ -88,6 +90,7 @@ export function AdminUsersPage() {
        {superAdmin && <button type="button" onClick={() => setGroupCreateOpen(true)}>创建用户组</button>}
       </div><div className="gateway-users-table-panel">
       <div className="gateway-admin-toolbar">
+        <button type="button" disabled={loading} onClick={refresh}>刷新用户与用户组</button>
         <form onSubmit={search} className="gateway-admin-search">
           <label htmlFor="admin-user-search">搜索用户</label>
           <input id="admin-user-search" value={searchDraft} onChange={event => setSearchDraft(event.target.value)}

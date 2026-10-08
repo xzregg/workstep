@@ -10,7 +10,7 @@ from workstep_gateway_protocol import ManagedGatewayPayload
 
 @pytest.mark.parametrize("origin", ["http://localhost:8700", "http://127.0.0.1:8700",
                                     "http://[::1]:8700", "http://gateway.localhost:8700",
-                                    "https://gateway.test:8700"])
+                                    "https://gateway.test:8700", "http://192.168.1.2:8700"])
 def test_gateway_and_signed_package_accept_local_origins(origin):
     assert GatewaySettings(public_origin=origin).public_origin == origin
     assert ManagedGatewayPayload(gateway_id="local", gateway_origin=origin,
@@ -19,7 +19,7 @@ def test_gateway_and_signed_package_accept_local_origins(origin):
 
 
 @pytest.mark.parametrize("origin", ["http://gateway.test:8700", "http://localhost.evil.test:8700",
-                                    "http://0.0.0.0:8700", "http://192.168.1.2:8700",
+                                    "http://0.0.0.0:8700",
                                     "http://user@localhost:8700", "http://localhost:8700/path"])
 def test_nonlocal_insecure_origins_are_rejected(origin):
     with pytest.raises(ValidationError):

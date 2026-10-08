@@ -147,3 +147,10 @@ async def admin_reset_password(request: Request, user_id: str, body: ResetPasswo
 @router.put('/admin/platform-address')
 async def set_platform_address(request: Request, body: PlatformAddressInput):
     return await invoke(_handle_platform_address, request=request, body=body)
+
+
+from gateway.services.device_approval_policy import DeviceApprovalPolicyInput, set_device_approval_policy
+
+@router.put('/admin/device-approval-policy')
+async def device_approval_policy(request: Request, body: DeviceApprovalPolicyInput):
+    return await invoke(set_device_approval_policy, request=request, body=body)

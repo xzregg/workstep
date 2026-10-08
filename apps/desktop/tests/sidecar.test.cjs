@@ -10,6 +10,7 @@ const {
 } = require('../src/sidecar.cjs')
 const {
   isAllowedExternalUrl,
+  isGatewayDesktopLoginUrl,
   isTrustedNavigation,
   projectsHaveActiveWork,
   sessionsHaveActiveWork,
@@ -87,6 +88,19 @@ test('only ordinary web links may be delegated to the system browser', () => {
   assert.equal(isAllowedExternalUrl('file:///tmp/private'), false)
   assert.equal(isAllowedExternalUrl('javascript:alert(1)'), false)
   assert.equal(isAllowedExternalUrl('workstep://open'), false)
+})
+
+test('only a complete Gateway desktop login URL opens in the embedded auth window', () => {
+  const query = new URLSearchParams({
+    gateway_id: 'gateway-test', app_instance_id: 'app-test',
+    state: 's'.repeat(32), nonce: 'n'.repeat(32), code_challenge: 'A'.repeat(43),
+  })
+  assert.equal(isGatewayDesktopLoginUrl(`http://192.168.52.156:8700/desktop/login?${query}`), true)
+  assert.equal(isGatewayDesktopLoginUrl(`https://gateway.example.com/desktop/login?${query}`), true)
+  assert.equal(isGatewayDesktopLoginUrl(`http://8.8.8.8:8700/desktop/login?${query}`), false)
+  assert.equal(isGatewayDesktopLoginUrl(`https://gateway.example.com/admin?${query}`), false)
+  query.set('extra', 'value')
+  assert.equal(isGatewayDesktopLoginUrl(`https://gateway.example.com/desktop/login?${query}`), false)
 })
 
 test('updates are blocked while any project has active work', () => {

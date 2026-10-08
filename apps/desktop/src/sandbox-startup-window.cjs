@@ -31,8 +31,24 @@ function formatSandboxFailure(error, status = {}) {
 async function applyPendingImageSwitch(manager) {
   const settings = await manager.settings()
   if (!settings.pendingDockerImage) return false
-  await manager.prepareImage({ root: settings.root, dockerImage: settings.pendingDockerImage })
-  await manager.prepare({ ...settings, dockerImage: settings.pendingDockerImage })
+  let dockerImage = settings.pendingDockerImage
+  try {
+    await manager.prepareImage({ root: settings.root, dockerImage })
+  } catch (error) {
+    if (!settings.pendingDockerImageTag || !/no such image|image not known|not found/i.test(error instanceof Error ? error.message : String(error))) throw error
+    const available = await manager.dockerImages()
+    const replacement = available.images.find(item => item.tags.includes(settings.pendingDockerImageTag))
+    if (!replacement) throw error
+    dockerImage = replacement.id
+    await manager.prepareImage({ root: settings.root, dockerImage })
+  }
+  const {
+    pendingDockerImage: _pendingImage,
+    pendingDockerImageTag: _pendingTag,
+    registeredProjects: _registeredProjects,
+    ...nextSettings
+  } = settings
+  await manager.prepare({ ...nextSettings, dockerImage })
   await manager.setEnabled(true)
   return true
 }
