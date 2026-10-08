@@ -19,6 +19,17 @@ describe('landing page', () => {
     expect(html).toMatch(/class="nav-control nav-download"[^>]*>下载<\/a>/)
   })
 
+  it('presents the quality-delivery promise in the hero', () => {
+    const html = renderToStaticMarkup(
+      <I18nProvider>
+        <Hero onOpenDemos={() => undefined} experienceHref="/" />
+      </I18nProvider>,
+    )
+
+    expect(html).toContain('让高质量交付持续发生。')
+    expect(html).toContain('class="hero-promise"')
+  })
+
   it.each(['/landing', '/landing/', '/landing/index.html'])('returns to the web app from %s', (path) => {
     expect(getExperienceHref(path)).toBe('/')
   })

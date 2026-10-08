@@ -19,7 +19,7 @@ interface ProjectState {
   setActiveWorkflow: (id: string | null) => void
   setCanvasDirty: (d: boolean) => void
   setProjectRunning: (projectId: string, running: boolean) => void
-  initProject: (path: string, name?: string) => Promise<Project>
+  initProject: (path: string, name?: string, followProject?: boolean) => Promise<Project>
   addRemoteProject: (shareString: string) => Promise<Project>
   renameProject: (path: string, name: string) => Promise<void>
   deleteProject: (projectId: string) => Promise<Project | null>
@@ -190,9 +190,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
-  initProject: async (path, name) => {
+  initProject: async (path, name, followProject = true) => {
     if (name && hasWhitespace(name)) throw new Error(zhCNT('taskList.projectNameWhitespace'))
-    const proj = await projectApi.init(path, name)
+    const proj = await projectApi.init(path, name, followProject)
     set((s) => ({
       projects: s.projects.some((p) => p.id === proj.id)
         ? s.projects.map((p) => p.id === proj.id ? proj : p)

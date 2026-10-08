@@ -61,6 +61,10 @@ class ProjectDatabaseExecutor:
         finally:
             db_proxy.reset(token)
 
+    def rebind(self, database: pw.SqliteDatabase) -> None:
+        """Replace the database from an exclusive work unit on the worker."""
+        self._database = database
+
     def close(self) -> None:
         """Drain pending work, close the worker connection, and stop it."""
         with self._state_lock:

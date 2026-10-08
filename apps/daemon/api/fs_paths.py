@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from fastapi import HTTPException
+from settings import settings
 from services.remote_access import get_current_actor
 
 
@@ -36,10 +37,8 @@ def _assert_project_path(path: Path, project_id: str | None) -> None:
     if not project_id:
         return
     project = _project(project_id)
-    try:
-        path.relative_to(project.path.resolve())
-    except ValueError as exc:
-        raise HTTPException(status_code=403, detail="Path is outside the project") from exc
+    if not (path.is_relative_to(project.path.resolve()) or path.is_relative_to(project.workstep_dir.resolve())):
+        raise HTTPException(status_code=403, detail="Path is outside the project")
 
 
 def _resolve_project_file(
@@ -59,7 +58,14 @@ def _resolve_project_file(
 
     project = _project(project_id)
     project_root = project.path.resolve()
-    target = candidate.resolve() if candidate.is_absolute() else (project_root / candidate).resolve()
+    if candidate.as_posix() == f"{settings.workstep_dir}/project.json":
+        target = (project_root / candidate).resolve()
+    elif not candidate.is_absolute() and candidate.parts and candidate.parts[0] == settings.workstep_dir:
+        target = (project.workstep_dir / Path(*candidate.parts[1:])).resolve()
+        if not target.is_relative_to(project.workstep_dir.resolve()):
+            raise HTTPException(status_code=403, detail="Path is outside the project")
+    else:
+        target = candidate.resolve() if candidate.is_absolute() else (project_root / candidate).resolve()
     if not (allow_absolute and candidate.is_absolute()):
         _assert_project_path(target, project_id)
     return target
@@ -72,4 +78,7 @@ def _project_relative_path(path: Path, project_id: str | None) -> str | None:
     try:
         return path.relative_to(project.path.resolve()).as_posix()
     except ValueError:
-        return None
+        try:
+            return (Path(settings.workstep_dir) / path.relative_to(project.workstep_dir.resolve())).as_posix()
+        except ValueError:
+            return None

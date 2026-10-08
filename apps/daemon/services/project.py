@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import shutil
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,6 +23,7 @@ from models.channel import Channel
 from services.project_database import ProjectDatabaseExecutor
 from services.project_scope import assert_within_projects_root
 from services.project_workflows import ProjectWorkflowService
+from services.project_storage import data_directory, read_identity, write_identity, external_directory, relocate_snapshot
 from settings import settings
 
 logger = logging.getLogger(__name__)
@@ -109,6 +111,8 @@ class Project:
     workflows: list[dict] = field(default_factory=list)  # [{id, name, is_default, steps, ...}]
     name: str = ""  # Display name, defaults to directory name
     id: str = ""  # Unique project ID
+    follow_project: bool = True
+    storage_changing: bool = False
     database_executor: ProjectDatabaseExecutor = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -119,7 +123,7 @@ class Project:
 
     @property
     def workstep_dir(self) -> Path:
-        return self.path / settings.workstep_dir
+        return self.path / settings.workstep_dir if self.follow_project else external_directory(self.id)
 
     @property
     def db_path(self) -> Path:
@@ -209,7 +213,10 @@ class ProjectManager:
                 "name": proj.name,
                 "sort_order": len(ordered),
             })
+        registered_ids = {project.id for project in self._projects.values()}
         for entry in existing_by_path.values():
+            if entry.get("id") in registered_ids:
+                continue
             entry["sort_order"] = len(ordered)
             ordered.append(entry)
 
@@ -320,6 +327,8 @@ class ProjectManager:
             raise ValueError(f"Project not found: {project_id}")
 
         def execute() -> ResultT:
+            if project.storage_changing:
+                raise ValueError("项目数据正在迁移，请稍后重试")
             with ProjectContext(project):
                 return operation(project)
 
@@ -329,8 +338,7 @@ class ProjectManager:
 
     def _restore_project_identity(self, proj: Project, project_id: str | None = None) -> None:
         """Keep project-scoped rows reachable after removing the global registry entry."""
-        identity_path = proj.path / settings.workstep_dir / "project.json"
-        identity = json.loads(identity_path.read_text()) if identity_path.exists() else {}
+        identity = read_identity(proj.path)
         saved_id = identity.get("id")
         if not project_id and not saved_id:
             # Older workspaces kept their identity only in project-scoped rows.
@@ -340,7 +348,8 @@ class ProjectManager:
                     saved_id = row.project_id
                     break
         proj.id = project_id or saved_id or proj.id
-        identity_path.write_text(json.dumps({"id": proj.id}) + "\n")
+        proj.follow_project = identity.get("follow_project", proj.follow_project)
+        write_identity(proj.path, proj.id, proj.follow_project)
 
     # Workflow operations run only in the caller's activated project database.
     def create_workflow(self, proj: Project, name: str, steps: dict | None = None,
@@ -396,7 +405,7 @@ class ProjectManager:
         except Exception as e:
             logger.warning("Failed to load projects from config: %s", e)
 
-    def init_project(self, path: str | Path, name: str | None = None) -> Project:
+    def init_project(self, path: str | Path, name: str | None = None, follow_project: bool = True) -> Project:
         """Initialize a new WorkStep project at the given path.
 
         Creates:
@@ -418,7 +427,15 @@ class ProjectManager:
             _ensure_ignore_rule(path, ".dockerignore", ignore_rule)
             return self._projects[path_str]
 
-        ws_dir = path / settings.workstep_dir
+        identity = read_identity(path)
+        if identity or (path / settings.workstep_dir / "workstep.db").exists():
+            project = self.register(path, name=name)
+            self._save_config()
+            return project
+        project_id = str(uuid.uuid4())
+        ws_dir = path / settings.workstep_dir if follow_project else external_directory(project_id)
+        if ws_dir.exists() and any(ws_dir.iterdir()):
+            raise ValueError("项目数据目录非空，不能覆盖")
         ws_dir.mkdir(parents=True, exist_ok=True)
 
         ignore_rule = f"{settings.workstep_dir.rstrip('/')}/"
@@ -429,7 +446,7 @@ class ProjectManager:
         db_path = ws_dir / "workstep.db"
         db = init_db(str(db_path))
 
-        project = Project(path=path, db=db, steps={}, name=name or path.name, id=str(uuid.uuid4())[:8])
+        project = Project(path=path, db=db, steps={}, name=name or path.name, id=project_id, follow_project=follow_project)
         self._projects[path_str] = project
 
         # Load existing workflows; new projects start empty.
@@ -440,6 +457,113 @@ class ProjectManager:
         self._save_config()
         logger.info("Initialized project: %s (name=%s, id=%s)", path_str, project.name, project.id)
         return project
+
+    async def set_storage(self, project_id: str, follow_project: bool) -> dict:
+        project = self.get_project_by_id(project_id)
+        if project is None:
+            raise ValueError("项目不存在")
+        if project.storage_changing:
+            raise ValueError("项目数据正在迁移，请稍后重试")
+        if project.follow_project == follow_project:
+            return {"follow_project": follow_project, "data_path": str(project.workstep_dir)}
+        from services.concurrency import concurrency_gate
+        counts = concurrency_gate.active_count(project_id)
+        if counts["tasks_running"] or counts["chats_running"]:
+            raise ValueError("项目有运行中的任务或会话，不能迁移")
+        project.storage_changing = True
+
+        def migrate():
+            from models.action_run import ActionRun
+            from models.chat_session import ChatMessage
+            from models.coordinator import CoordinatorTurn
+            if (Task.select().where(Task.status == "running").exists()
+                    or ChatMessage.select().where(ChatMessage.status == "running").exists()
+                    or CoordinatorTurn.select().where(CoordinatorTurn.status.in_(["queued", "running"])).exists()
+                    or ActionRun.select().where(ActionRun.status.in_(["preparing", "running"])).exists()):
+                raise ValueError("项目有运行中的任务或会话，不能迁移")
+            source = project.workstep_dir
+            target = project.path / settings.workstep_dir if follow_project else external_directory(project.id)
+            if target.is_symlink():
+                raise ValueError("数据目录不能是符号链接")
+            if target.exists() and any(p.name != "project.json" for p in target.iterdir()):
+                raise ValueError("目标数据目录非空，不能覆盖")
+            if any(p.name == ".git" for p in source.rglob(".git")):
+                raise ValueError("项目存在 Git 工作区，请移除工作区后再切换存储位置")
+            staging = target.with_name(target.name + ".migrating")
+            if staging.exists():
+                raise ValueError("存在未完成的迁移目录，请检查后重试")
+            checkpoint = project.db.execute_sql("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+            if checkpoint and checkpoint[0] != 0:
+                raise ValueError("数据库仍被占用，请稍后重试")
+            project.db.close()
+            installed = []
+            old_db = project.db
+            new_db = None
+            previous = project.follow_project
+            committed = False
+            try:
+                shutil.copytree(source, staging, ignore=lambda directory, names: [name for name in names if Path(directory) == source and name in {"project.json", "project.json.tmp"}], symlinks=True)
+                target.mkdir(parents=True, exist_ok=True)
+                for entry in staging.iterdir():
+                    destination = target / entry.name
+                    entry.rename(destination)
+                    installed.append(destination)
+                new_db = init_db(str(target / "workstep.db"))
+                from models import StepRun, WorkflowRun
+                for model, column in ((StepRun, StepRun.input_snapshot_json), (StepRun, StepRun.io_contract_json), (WorkflowRun, WorkflowRun.routing_state_json)):
+                    for row in model.select().where(column.is_null(False)):
+                        raw = getattr(row, column.name)
+                        try:
+                            snapshot = json.loads(raw)
+                        except (TypeError, ValueError):
+                            continue
+                        updated = relocate_snapshot(snapshot, source, target)
+                        if updated != snapshot:
+                            setattr(row, column.name, json.dumps(updated, ensure_ascii=False))
+                            row.save(only=[column])
+                if new_db.execute_sql("PRAGMA quick_check").fetchone() != ("ok",):
+                    raise ValueError("迁移后的数据库校验失败")
+                write_identity(project.path, project.id, follow_project)
+                project.db = new_db
+                project.database_executor.rebind(new_db)
+                project.follow_project = follow_project
+                committed = True
+            finally:
+                if not committed:
+                    if new_db is not None and not new_db.is_closed():
+                        new_db.close()
+                    project.db = old_db
+                    project.database_executor.rebind(old_db)
+                    old_db.connect(reuse_if_open=True)
+                    project.follow_project = previous
+                    for entry in installed:
+                        if entry.is_dir() and not entry.is_symlink():
+                            shutil.rmtree(entry)
+                        else:
+                            entry.unlink()
+                if staging.exists():
+                    shutil.rmtree(staging)
+            # Identity is committed before removing old files. Failures leave recoverable data.
+            try:
+                for entry in source.iterdir():
+                    if entry.name == "project.json":
+                        continue
+                    if entry.is_dir() and not entry.is_symlink():
+                        shutil.rmtree(entry)
+                    else:
+                        entry.unlink()
+                if previous is False:
+                    source.rmdir()
+            except OSError:
+                logger.warning("Project storage committed; old data requires cleanup: %s", source, exc_info=True)
+                return {"follow_project": follow_project, "data_path": str(target),
+                        "warning": "存储位置已切换，但旧目录清理未完成，请核对旧目录后手动清理"}
+            return {"follow_project": follow_project, "data_path": str(target)}
+
+        try:
+            return await project.database_executor.run(migrate)
+        finally:
+            project.storage_changing = False
 
     def register(self, path: str | Path, name: str | None = None, project_id: str | None = None) -> Project:
         """Register an existing project path (opens its DB).
@@ -452,7 +576,14 @@ class ProjectManager:
         if path_str in self._projects:
             return self._projects[path_str]
 
-        ws_dir = path / settings.workstep_dir
+        identity = read_identity(path)
+        project_id = identity.get("id") or project_id
+        for existing in list(self._projects.values()):
+            if project_id and existing.id == project_id:
+                if existing.path.exists():
+                    raise ValueError("项目 ID 已被其他目录使用；复制项目不能同时关联同一份数据")
+                self.unregister(existing.id)
+        ws_dir = data_directory(path)
         if not ws_dir.exists():
             raise ValueError(f"No {settings.workstep_dir}/ directory at {path}")
 
@@ -461,7 +592,7 @@ class ProjectManager:
             raise ValueError(f"No workstep.db at {db_path}")
 
         db = init_db(str(db_path))
-        project = Project(path=path, db=db, steps={}, name=name or path.name, id=project_id or str(uuid.uuid4())[:8])
+        project = Project(path=path, db=db, steps={}, name=name or path.name, id=project_id or str(uuid.uuid4()), follow_project=identity.get("follow_project", True))
         self._projects[path_str] = project
 
         # Restore existing workflows without seeding empty projects.
@@ -682,6 +813,8 @@ class ProjectManager:
             "name": proj.name,
             "steps": proj.steps,
             "workflows": workflows,
+            "follow_project": proj.follow_project,
+            "data_path": str(proj.workstep_dir),
         }
 
     def get_project(self, path: str | Path) -> Project | None:

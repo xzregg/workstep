@@ -19,6 +19,7 @@ def _reject_whitespace(value: str) -> str:
 
 
 class InitRequest(BaseSchema):
+    follow_project: bool = True
     path: str
     name: str | None = None
 

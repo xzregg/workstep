@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from services.project_storage import data_directory
 import errno
 import json
 import os
@@ -103,7 +104,7 @@ def prepare_codex_skills(selection: ProjectSkillSelection) -> tuple[Path, str]:
     """
     skills_root = selection.project_root / ".agents" / "skills"
     skills_root.mkdir(parents=True, exist_ok=True)
-    state_dir = selection.project_root / ".workstep" / "runtime" / "codex"
+    state_dir = data_directory(selection.project_root) / "runtime" / "codex"
     state_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = state_dir / "managed-skills.json"
     try:
@@ -217,14 +218,14 @@ def _replace_tree_if_sizes_changed(
 
 
 def _write_text_if_changed(path: Path, content: str) -> None:
-    if path.is_file() and path.stat().st_size == len(content.encode("utf-8")):
+    if path.is_file() and path.read_text(encoding="utf-8") == content:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
 
 
 def prepare_claude_plugin(selection: ProjectSkillSelection) -> tuple[Path, list[str]]:
-    plugin = selection.project_root / ".workstep" / "runtime" / "claude-plugin"
+    plugin = data_directory(selection.project_root) / "runtime" / "claude-plugin"
     sources = [
         (f"skills/{skill.name}", source)
         for skill in selection.enabled
@@ -241,7 +242,7 @@ def prepare_claude_plugin(selection: ProjectSkillSelection) -> tuple[Path, list[
 
 
 def prepare_qoder_plugin(selection: ProjectSkillSelection) -> tuple[Path, list[str]]:
-    plugin = selection.project_root / ".workstep" / "runtime" / "qoder-plugin"
+    plugin = data_directory(selection.project_root) / "runtime" / "qoder-plugin"
     sources = [
         (f"skills/{skill.name}", source)
         for skill in selection.enabled
@@ -258,11 +259,11 @@ def prepare_qoder_plugin(selection: ProjectSkillSelection) -> tuple[Path, list[s
 
 
 def write_openclaw_config(selection: ProjectSkillSelection) -> Path:
-    runtime = selection.project_root / ".workstep" / "runtime" / "openclaw"
+    runtime = data_directory(selection.project_root) / "runtime" / "openclaw"
     runtime.mkdir(parents=True, exist_ok=True)
     path = runtime / "openclaw.json"
     content = json.dumps({
-        "skills": {"load": {"extraDirs": [str(selection.project_root / ".workstep" / "skills")]}},
+        "skills": {"load": {"extraDirs": [str(data_directory(selection.project_root) / "skills")]}},
         "agents": {"defaults": {"skills": [skill.name for skill in selection.enabled]}},
     }, ensure_ascii=False, indent=2) + "\n"
     _write_text_if_changed(path, content)
@@ -272,7 +273,7 @@ def write_openclaw_config(selection: ProjectSkillSelection) -> Path:
 def deepseek_skill_provider_config(selection: ProjectSkillSelection) -> dict:
     return {
         "includeDefaultRoots": False,
-        "customSkillDirs": [str(selection.project_root / ".workstep" / "skills")],
+        "customSkillDirs": [str(data_directory(selection.project_root) / "skills")],
     }
 
 
@@ -280,7 +281,7 @@ def prepare_deepseek_composition(
     selection: ProjectSkillSelection, base_composition: Path
 ) -> Path:
     """Derive a project-local Cordis composition with default roots disabled."""
-    runtime = selection.project_root / ".workstep" / "runtime" / "deepseek"
+    runtime = data_directory(selection.project_root) / "runtime" / "deepseek"
     runtime.mkdir(parents=True, exist_ok=True)
     target = runtime / "controlled-skills.cordis.yml"
     text = base_composition.read_text(encoding="utf-8")
@@ -307,7 +308,7 @@ def prepare_deepseek_patch(
     above the profile's base tree, overriding the ``skill-filesystem`` entry
     so the harness only loads WorkStep-controlled project skills.
     """
-    runtime = selection.project_root / ".workstep" / "runtime" / "deepseek"
+    runtime = data_directory(selection.project_root) / "runtime" / "deepseek"
     runtime.mkdir(parents=True, exist_ok=True)
     target = runtime / "controlled-skills.workstep-patch.yml"
     text = base_patch.read_text(encoding="utf-8")

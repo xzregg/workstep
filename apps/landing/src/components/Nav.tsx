@@ -32,6 +32,7 @@ export function Nav() {
         </nav>
         <div className="nav-spacer" />
         <div className="nav-actions">
+          <a href="#docs" className="nav-control nav-docs">{t('common.docs')}</a>
           <a href={RELEASES_URL} className="nav-control nav-download">
             {t('common.download')}
           </a>

@@ -1,6 +1,18 @@
 import type { I18nDict } from './keys'
 
 export const enUS: I18nDict = {
+  manual: {
+    title: "User manual",
+    home: "Back to home",
+    search: "Search manual",
+    searchPlaceholder: "Search features or questions",
+    chapters: "Manual chapters",
+    noResults: "No matching chapters",
+    chineseNotice: "The manual is currently available in Chinese. Screenshots show the Chinese interface.",
+    enlarge: "View full image",
+    pagination: "Previous and next chapter",
+    screenshotPending: "Screenshots for this section are pending.",
+  },
   common: {
     download: 'Download',
     watchDemo: 'Watch the demo',
@@ -27,6 +39,7 @@ export const enUS: I18nDict = {
     eyebrow: 'ORCHESTRATE AI AGENTS · CHAT-GENERATED WORKFLOWS · TEAM-SHARING',
     titleA: 'Chain Claude Code and Codex into a pipeline.',
     titleB: 'Just chat and it runs.',
+    promise: 'Make quality delivery continuous.',
     lede: 'No building agents from scratch, no YAML, no drag-and-drop nodes. WorkStep orchestrates the AI coding tools you already use into executable steps. Upstream artifacts flow downstream automatically, everything is reviewable and reworkable. One environment for your team, shared by everyone.',
     ctaStart: 'Try it now',
     ctaPrimary: 'Download WorkStep',

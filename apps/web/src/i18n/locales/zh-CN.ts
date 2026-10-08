@@ -1,4 +1,13 @@
 export const zhCN = {
+  projectStorage: {
+    follow: '数据目录跟随项目目录',
+    existingHint: '已有项目会沿用身份文件中的存储位置；需要切换时，请在添加后进入项目配置。',
+    localHint: '默认将任务、流程、附件、日志和项目记忆保存在项目的 .workstep/ 目录中。',
+    homeHint: '统一保存在当前用户 Home 的 ~/.workstep/projects/<项目ID>/，项目目录只保留身份文件。',
+    moveHint: '移动或重命名项目时，请保留 .workstep/project.json，以便重新关联原数据。删除身份文件会导致无法自动关联，原数据不会被删除。跨电脑迁移时，还需迁移 Home 中对应的数据目录。',
+    confirmTitle: '切换项目数据存储位置',
+    confirmHint: '将迁移全部项目数据，项目 ID 保持不变。运行中的任务、会话或快捷动作会阻止切换；已有 Git 工作区需先移除。迁移期间请勿关闭窗口。',
+  },
   api: {
     htmlResponse: '接口返回了网页，无法读取数据。请确认后台已更新并重启。接口：{path}',
   },
@@ -771,6 +780,9 @@ export const zhCN = {
     thinkingEffortTitle: '思考强度：控制本次对话 LLM 的推理投入程度；从下一条消息生效',
     thinkingEffortDefault: '默认',
     thinkingLevels: {
+      none: '关闭',
+      max: '最高',
+      ultra: '超高',
       auto: '自动',
       minimal: '极简',
       low: '低',
@@ -1859,6 +1871,7 @@ export const zhCN = {
     proposalTitle: '协调动作 · {type}',
     proposalTargetStep: '目标步骤：{step}',
     proposalInjectedPrompt: '确认后注入目标步骤的提示词',
+    proposalResetSession: '确认后重置目标步骤上下文，以新会话运行',
     proposalActionCwd: '执行目录：{directory}',
     proposalCreateActionTitle: '创建流程快捷 Action',
     proposalOverwriteActionTitle: '覆盖现有流程快捷 Action',

@@ -1,5 +1,6 @@
 """Pydantic AI harness capabilities, persistence, and compaction receipts."""
 
+from services.project_storage import data_directory
 import asyncio
 import logging
 from pathlib import Path
@@ -91,7 +92,7 @@ class PydanticAIHarnessRuntime:
         """SQLite StepPersistence store under the project .workstep dir."""
         from pydantic_ai_harness.step_persistence import SqliteStepStore
 
-        workstep_dir = root / ".workstep"
+        workstep_dir = data_directory(root)
         workstep_dir.mkdir(parents=True, exist_ok=True)
         return SqliteStepStore(
             database=workstep_dir / "harness_runs.db",
@@ -113,7 +114,7 @@ class PydanticAIHarnessRuntime:
             return
         import sqlite3
 
-        db = Path(cwd) / ".workstep" / "harness_runs.db"
+        db = data_directory(cwd) / "harness_runs.db"
         if not db.exists():
             return
         try:

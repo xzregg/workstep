@@ -22,6 +22,8 @@ export interface Project {
   steps: any
   workflows: WorkflowSummary[]
   /** Backend aggregate: any running workflow task OR live chat turn. */
+  follow_project?: boolean
+  data_path?: string
   has_running_tasks?: boolean
   type?: 'local' | 'remote'
   connection_status?: 'local' | 'connecting' | 'connected' | 'disconnected' | 'error'
@@ -57,11 +59,15 @@ export const projectApi = {
     }
     return request<{ projects: Project[] }>('/project/list')
   },
-  init: (path: string, name?: string) =>
+  init: (path: string, name?: string, followProject = true) =>
     request<Project>('/project/init', {
       method: 'POST',
-      body: JSON.stringify({ path, name }),
+      body: JSON.stringify({ path, name, follow_project: followProject }),
     }),
+  storage: (projectId: string) => request<{ follow_project: boolean; data_path: string }>(`/project/${encodeURIComponent(projectId)}/storage`),
+  setStorage: (projectId: string, followProject: boolean) => request<{ follow_project: boolean; data_path: string; warning?: string }>(`/project/${encodeURIComponent(projectId)}/storage`, {
+    method: 'PUT', body: JSON.stringify({ follow_project: followProject }),
+  }),
   register: (path: string, name?: string) =>
     request<Project>('/project/register', {
       method: 'POST',

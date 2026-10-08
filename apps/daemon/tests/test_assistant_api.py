@@ -361,7 +361,11 @@ async def test_assistant_config_rejects_model_without_engine(assistant_client):
     assert response.status_code == 400
 
 
-async def test_assistant_config_accepts_auto_and_xhigh(assistant_client, monkeypatch):
+@pytest.mark.parametrize("engine,effort", [
+    ("hermes", "auto"), ("hermes", "xhigh"),
+    ("codex_sdk", "none"), ("codex_sdk", "max"), ("codex_sdk", "ultra"),
+])
+async def test_assistant_config_accepts_native_efforts(assistant_client, monkeypatch, engine, effort):
     client, store = assistant_client
     import api.assistant as _assistant_api
     from engines.core.registry import _ALL_ENGINES as _AE
@@ -371,20 +375,20 @@ async def test_assistant_config_accepts_auto_and_xhigh(assistant_client, monkeyp
     monkeypatch.setattr(_assistant_api, "create_engine", _fake_create)
     response = await client.put(
         "/api/assistant/task_coordinator/config",
-        json={"engine": "hermes", "thinking_effort": "auto"},
+        json={"engine": engine, "thinking_effort": effort},
     )
     assert response.status_code == 200
-    assert store.get_coordinator_default_thinking_effort() == "auto"
+    assert store.get_coordinator_default_thinking_effort() == effort
     response = await client.put(
         "/api/assistant/task_create/config",
-        json={"engine": "hermes", "thinking_effort": "xhigh"},
+        json={"engine": engine, "thinking_effort": effort},
     )
     assert response.status_code == 200
-    assert store.get_assistant_defaults("task_create")["thinking_effort"] == "xhigh"
+    assert store.get_assistant_defaults("task_create")["thinking_effort"] == effort
     # 非法强度仍然拒绝
     response = await client.put(
         "/api/assistant/task_create/config",
-        json={"engine": "hermes", "thinking_effort": "ultra"},
+        json={"engine": engine, "thinking_effort": "invalid-effort"},
     )
     assert response.status_code == 400
 

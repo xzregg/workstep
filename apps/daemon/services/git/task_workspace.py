@@ -1,5 +1,7 @@
 """Task-owned collections of Git worktrees below a project's .workstep directory."""
 
+import os
+from services.project_storage import data_directory
 import asyncio
 import re
 import time
@@ -30,7 +32,7 @@ class TaskGitWorkspace:
         if not re.fullmatch(r"[A-Za-z0-9-]{1,80}", task_id):
             raise GitError("无效的任务 ID。")
         project = Path(project_path).resolve()
-        workstep = project / ".workstep"
+        workstep = data_directory(project)
         if workstep.is_symlink():
             raise GitError("项目元数据目录不能是符号链接。", 409)
         legacy_container = workstep / "worktrees"
@@ -99,7 +101,7 @@ class TaskGitWorkspace:
         root = await asyncio.to_thread(self._root, project_path, task_id)
         project = await asyncio.to_thread(Path(project_path).resolve)
         if not await asyncio.to_thread(root.is_dir):
-            return {"path": str(root), "relative_path": root.relative_to(project).as_posix(), "worktrees": []}
+            return {"path": str(root), "relative_path": os.path.relpath(root, project), "worktrees": []}
         await self._ensure_repositories()
         repos = await asyncio.to_thread(self._project_repositories, project)
         by_common = {repo["common_dir"]: repo for repo in repos.values()}
@@ -132,8 +134,8 @@ class TaskGitWorkspace:
                 "project_ids": [m["id"] for m in repo["projects"]]}
             result.append({"alias": entry.name, "repository_id": repo["id"], "repository_name": repo["name"],
                            **tree, "created_branch": text(created_raw).strip() if not created_code else tree["branch"],
-                           "relative_path": entry.relative_to(project).as_posix()})
-        return {"path": str(root), "relative_path": root.relative_to(project).as_posix(), "worktrees": result}
+                           "relative_path": os.path.relpath(entry, project)})
+        return {"path": str(root), "relative_path": os.path.relpath(root, project), "worktrees": result}
 
     async def add(self, project_path: str | Path, task_id: str, repository_id: str, alias: str, base_ref: str, branch_name: str | None = None, *, creator_name: str = "") -> dict:
         async with self._lock(project_path, task_id):

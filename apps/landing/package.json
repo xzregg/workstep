@@ -9,7 +9,8 @@
     "build": "tsc -b && vite build && node scripts/inline-dist.mjs",
     "lint": "oxlint",
     "test": "vitest run",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "manual:check": "node scripts/check-manual.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.29.0",

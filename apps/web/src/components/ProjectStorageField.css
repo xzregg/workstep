@@ -1,0 +1,8 @@
+.project-storage-field { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.project-storage-label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.project-storage-field .project-storage-label input[type="checkbox"] { width: 16px; height: 16px; flex: 0 0 16px; margin: 0; }
+.project-storage-field p { margin: 0; color: var(--muted); font-size: calc(12px * var(--font-scale)); line-height: 1.6; }
+.project-storage-path { display: block; overflow-wrap: anywhere; color: var(--muted); font-size: calc(12px * var(--font-scale)); }
+.project-storage-error { color: var(--danger); }
+
+.project-storage-existing-hint { margin: 0; color: var(--muted); font-size: calc(12px * var(--font-scale)); line-height: 1.6; }

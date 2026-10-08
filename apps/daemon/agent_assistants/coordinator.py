@@ -849,8 +849,7 @@ class CoordinatorModule:
                     message_history=engine_state,
                     thinking_effort=thinking_effort,
                     provider_id=provider_id,
-                    system_prompt="\n\n".join(filter(None, [prepared["system_prompt"], prepared["channel_source_instruction"]])),
-                    system_prompt_each_turn=bool(prepared["channel_source_instruction"]),
+                    system_prompt=prepared["system_prompt"],
                 )
                 self._record_unstreamed_journal_events(
                     journal_ref, events, journaled_events
@@ -903,8 +902,7 @@ class CoordinatorModule:
                         turn_id,
                         thinking_effort=thinking_effort,
                         provider_id=provider_id,
-                        system_prompt="\n\n".join(filter(None, [prepared["system_prompt"], prepared["channel_source_instruction"]])),
-                        system_prompt_each_turn=bool(prepared["channel_source_instruction"]),
+                        system_prompt=prepared["system_prompt"],
                     )
                     self._record_unstreamed_journal_events(
                         journal_ref, more_events, journaled_more_events
@@ -1160,6 +1158,9 @@ class CoordinatorModule:
         prompt, system_prompt, artifacts = assemble_context(
             project, task, turn, root_dir=coordinator_root, separate_instructions=True
         )
+        source_context = request_source_prompt(user_message, previous_channel=previous_channel)
+        if source_context:
+            prompt = f"{prompt}\n\n{source_context}"
         images = extract_uploaded_images(
             project, task.cwd, user_message.content or ""
         )
@@ -1181,7 +1182,6 @@ class CoordinatorModule:
             "thinking_effort": thinking_effort,
             "prompt": prompt,
             "system_prompt": system_prompt,
-            "channel_source_instruction": request_source_prompt(user_message, previous_channel=previous_channel),
             "artifacts": artifacts,
             "images": images,
             "turn_model": turn_model,

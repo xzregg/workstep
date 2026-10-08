@@ -115,6 +115,9 @@ export function CoordinatorProposalCard({
             step: current.target_step_key || t('common.none'),
           })}
       </div>
+      {current.type === 'rerun_from_step' && current.payload.reset_session === true && (
+        <div>{t('taskDetail.proposalResetSession')}</div>
+      )}
       {actionScript && (
         <div style={{ border: '1px solid var(--border-soft)', borderRadius: 6, padding: 10, background: 'var(--surface)' }}>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>{String(current.payload.label)} · {actionPath}</div>

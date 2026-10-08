@@ -26,6 +26,6 @@ describe('landing theme', () => {
 
     expect(html).toMatch(/class="[^"]*nav-theme[^"]*"/)
     expect(html).toContain('aria-label="切换到夜间模式"')
-    expect(html.match(/class="[^"]*nav-control[^"]*"/g)).toHaveLength(3)
+    expect(html.match(/class="[^"]*nav-control[^"]*"/g)).toHaveLength(4)
   })
 })

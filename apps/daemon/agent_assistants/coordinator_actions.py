@@ -177,6 +177,7 @@ class CoordinatorActionService:
         elif proposal_type == "rerun_from_step":
             content = str(payload.get("content", "")).strip()
             payload = {
+                "reset_session": payload.get("reset_session") is True,
                 "input_rounds": self._normalize_input_rounds(
                     payload.get("input_rounds"),
                     target_step_key or "",
@@ -298,6 +299,7 @@ class CoordinatorActionService:
             expected_run_id=action["expected_workflow_run_id"],
             step_followup=content or None,
             input_rounds=input_rounds or None,
+            reset_session=payload.get("reset_session") is True,
         )
         return {
             "run_id": handle.id,

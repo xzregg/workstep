@@ -10,6 +10,7 @@ from models.task import Task
 from services.artifact_rounds import iter_artifact_rounds, select_upstream_round, step_round_dir
 from services.git.task_workspace import TaskGitWorkspace
 from services.pipeline import Step
+from services.project_storage import data_directory
 
 # Config path relative to this file
 _OUTPUT_TYPES_PATH = Path(__file__).resolve().parent.parent / "data" / "output-types.json"
@@ -258,6 +259,9 @@ def _task_description_for_prompt(task: Task) -> str:
 def _relative_prompt_path(path: str | Path, base_dir: str | Path) -> str:
     """Format an artifact path relative to the engine's working directory."""
     try:
+        storage = data_directory(base_dir)
+        if not storage.is_relative_to(Path(base_dir)) and Path(path).is_relative_to(storage):
+            return str(path)
         return Path(os.path.relpath(str(path), start=str(base_dir))).as_posix()
     except (OSError, ValueError):
         return str(path)

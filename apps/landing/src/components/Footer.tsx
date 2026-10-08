@@ -12,6 +12,7 @@ export function Footer() {
         </div>
         <div className="footer-tagline">{t('footer.tagline')}</div>
         <div className="footer-links">
+          <a href="#docs">{t('common.docs')}</a>
           <a href="#features">{t('nav.features')}</a>
           <a href="#demos">{t('nav.demos')}</a>
           <a href={`${import.meta.env.BASE_URL}privacy.html`}>{t('footer.privacy')}</a>

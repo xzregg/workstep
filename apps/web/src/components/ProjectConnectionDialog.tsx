@@ -1,3 +1,4 @@
+import ProjectStorageField from './ProjectStorageField'
 import ResizablePanel from './ResizablePanel'
 import { useEffect, useState } from 'react'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
@@ -29,6 +30,8 @@ export default function ProjectConnectionDialog({
   const [remoteShareString, setRemoteShareString] = useState('')
   const [addingRemote, setAddingRemote] = useState(false)
   const [path, setPath] = useState('')
+  const [followProject, setFollowProject] = useState(true)
+  const [initializing, setInitializing] = useState(false)
   const [error, setError] = useState('')
   const defaultDirectory = useUserSettingsStore((state) => state.defaultProjectDirectory)
   const settingsLoaded = useUserSettingsStore((state) => state.loaded)
@@ -57,20 +60,22 @@ export default function ProjectConnectionDialog({
     setRemoteShareString('')
     setAddingRemote(false)
     setPath('')
+    setFollowProject(true)
     setError('')
     onClose()
   }
 
   const handleInit = async () => {
-    if (!path.trim()) return
+    if (!path.trim() || initializing) return
     setError('')
+    setInitializing(true)
     try {
-      const project = await initProject(path.trim())
+      const project = await initProject(path.trim(), undefined, followProject)
       onConnected(project)
       close()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
-    }
+    } finally { setInitializing(false) }
   }
 
   const handleAddRemote = async () => {
@@ -120,6 +125,8 @@ export default function ProjectConnectionDialog({
                 {t('browser.selectHint')}
               </div>
               {settingsLoaded && <DirectoryBrowser onSelect={setPath} selectedPath={path} initialPath={defaultDirectory || undefined} />}
+              <ProjectStorageField value={followProject} onChange={setFollowProject} disabled={initializing} />
+              <p className="project-storage-existing-hint">{t('projectStorage.existingHint')}</p>
               {error && (
                 <div style={{ marginTop: 8, color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>
                   {error}
@@ -146,7 +153,7 @@ export default function ProjectConnectionDialog({
         <div className="modal-footer">
           <Button variant="ghost" onClick={close}>{t('common.cancel')}</Button>
           {mode === 'local' ? (
-            <Button variant="primary" disabled={!path.trim()} onClick={handleInit}>{t('layout.init')}</Button>
+            <Button variant="primary" loading={initializing} disabled={!path.trim() || initializing} onClick={handleInit}>{t('layout.init')}</Button>
           ) : (
             <Button
               variant="primary"

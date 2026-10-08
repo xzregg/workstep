@@ -4182,7 +4182,10 @@ def test_codex_sdk_spawn_error_without_sdk(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_codex_sdk_spawn_injects_custom_config_and_skips_managed_keys(tmp_path, monkeypatch):
+@pytest.mark.parametrize("effort", ["high", "none", "max", "ultra"])
+@pytest.mark.parametrize("source", ["engine_default", "turn_override"])
+@pytest.mark.parametrize("session_id", [None, "thread-existing"])
+async def test_codex_sdk_spawn_injects_custom_config_and_skips_managed_keys(tmp_path, monkeypatch, effort, source, session_id):
     """自定义 config 写入 thread config；已托管的键不被覆盖。"""
     import openai_codex as codex_module
 
@@ -4209,6 +4212,11 @@ async def test_codex_sdk_spawn_injects_custom_config_and_skips_managed_keys(tmp_
             captured["start_kwargs"] = kwargs
             return FakeThread()
 
+        async def thread_resume(self, thread_id, **kwargs):
+            assert thread_id == session_id
+            captured["start_kwargs"] = kwargs
+            return FakeThread()
+
         async def close(self):
             return None
 
@@ -4216,7 +4224,7 @@ async def test_codex_sdk_spawn_injects_custom_config_and_skips_managed_keys(tmp_
     monkeypatch.setattr(
         "engines.codex_sdk.config_store.get_codex_sdk_config",
         lambda: {
-            "model_reasoning_effort": "high",
+            "model_reasoning_effort": effort if source == "engine_default" else "medium",
             "approval_mode": "",
             "sandbox": "workspace-write",
             "custom_config": (
@@ -4226,13 +4234,16 @@ async def test_codex_sdk_spawn_injects_custom_config_and_skips_managed_keys(tmp_
         },
     )
 
-    async for _event in CodexSDKEngine().spawn(prompt="hi", cwd=str(tmp_path)):
+    async for _event in CodexSDKEngine().spawn(
+        prompt="hi", cwd=str(tmp_path), session_id=session_id,
+        thinking_effort=effort if source == "turn_override" else None,
+    ):
         pass
 
     config = captured["start_kwargs"]["config"]
     assert config["model_context_window"] == "128000"
     # WorkStep 的推理强度优先，自定义的 low 不得覆盖。
-    assert config["model_reasoning_effort"] == "high"
+    assert config["model_reasoning_effort"] == effort
 
 
 @pytest.mark.anyio

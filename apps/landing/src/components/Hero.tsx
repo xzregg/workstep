@@ -23,6 +23,7 @@ export function Hero({ onOpenDemos, experienceHref }: HeroProps) {
             <br />
             <em>{t('hero.titleB')}</em>
           </h1>
+          <p className="hero-promise">{t('hero.promise')}</p>
           <p className="hero-lede">{t('hero.lede')}</p>
           <div className="hero-actions">
             <a href={experienceHref} className="btn btn-primary">

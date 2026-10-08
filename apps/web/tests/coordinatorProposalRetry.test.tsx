@@ -7,6 +7,31 @@ import { CoordinatorProposalCard } from '../src/components/CoordinatorProposalCa
 import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { installDomEnvironment } from './helpers/domEnv'
 
+test('rerun proposal discloses context reset before confirmation', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const proposal = {
+    id: 'reset-proposal', type: 'rerun_from_step', status: 'pending',
+    target_step_key: 'build', payload: { reset_session: true },
+  } as unknown as ActionProposal
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  try {
+    await act(async () => root.render(<I18nProvider>
+      <CoordinatorProposalCard proposal={proposal} taskId="task-1" projectId="project-1" onChanged={() => {}} />
+    </I18nProvider>))
+    assert.match(container.textContent || '', /重置目标步骤上下文，以新会话运行/)
+    await act(async () => root.render(<I18nProvider>
+      <CoordinatorProposalCard proposal={{ ...proposal, payload: {} }} taskId="task-1" projectId="project-1" onChanged={() => {}} />
+    </I18nProvider>))
+    assert.doesNotMatch(container.textContent || '', /重置目标步骤上下文/)
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
+
 test('failed duplicate Action proposal keeps a visible overwrite retry button', async () => {
   const { window } = installDomEnvironment()
   const original = taskApi.confirmAction

@@ -414,6 +414,21 @@ export function mergeHistoryMessageWithLive(
   }
 }
 
+/** A recovered terminal reply must also release the local send lock. */
+export function isCoordinatorReplyFinished(
+  messageId: string | null,
+  historyMessages: readonly Record<string, any>[],
+  liveMessages: Record<string, Record<string, any>>,
+): boolean {
+  if (!messageId) return false
+  const history = historyMessages.find((message) => message.id === messageId)
+  const live = liveMessages[messageId]
+  const status = history
+    ? mergeHistoryMessageWithLive(history, live).run_status
+    : live?.status
+  return ['succeeded', 'completed', 'failed', 'stopped', 'cancelled'].includes(status)
+}
+
 export function runningTaskMessageIds(
   historyMessages: Array<Record<string, any>>,
   liveMessages: Record<string, Record<string, any>>,

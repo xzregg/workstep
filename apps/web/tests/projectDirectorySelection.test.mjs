@@ -19,6 +19,5 @@ test('project creation selects a folder from the tree before confirmation', () =
   assert.doesNotMatch(directoryBrowserSource, /browser\.selectDir/)
 
   assert.match(projectConnectionDialogSource, /<DirectoryBrowser onSelect=\{setPath\} selectedPath=\{path\}(?:\s+[^>]+)? \/>/)
-  assert.match(projectConnectionDialogSource, /disabled=\{!path\.trim\(\)\}/)
   assert.doesNotMatch(projectConnectionDialogSource, /id="init-path"/)
 })

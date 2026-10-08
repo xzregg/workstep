@@ -21,3 +21,8 @@
 Repository-agent instructions remain in [`AGENTS.md`](../AGENTS.md); they point back to these human-facing documents instead of duplicating them.
 
 - [渠道消息协议与接入开发](channel-message-protocol.md)：统一适配器、能力声明和图片/文件收发。
+
+- [用户操作手册维护](../apps/landing/README.md#用户操作手册) — 官网功能指引、SDK 入门、截图与发布前同步要求。
+- [固定手册演示环境](manual-demo.md) — 独立配置、模拟项目与 `8777` 端口的启动和复用。
+
+- [项目数据存储位置与迁移](project-storage.md)

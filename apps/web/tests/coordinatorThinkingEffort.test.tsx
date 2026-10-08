@@ -25,6 +25,54 @@ function installDom() {
   return window
 }
 
+test('Codex selectors expose native efforts and preserve the selected value', async () => {
+  const window = installDom()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    for (const engine of ['codex_sdk', 'codex', 'claude']) {
+      let selected = ''
+      await act(async () => {
+        root.render(
+          <I18nProvider>
+            <CoordinatorConfigBar
+              engines={[]}
+              engine=""
+              defaultEngine={engine}
+              model=""
+              fastModel=""
+              thinkingEffort=""
+              defaultThinkingEffort={engine === 'claude' ? 'low' : 'ultra'}
+              onEngineChange={() => {}}
+              onModelChange={() => {}}
+              onFastModelChange={() => {}}
+              onThinkingEffortChange={(value) => { selected = value }}
+            />
+          </I18nProvider>,
+        )
+      })
+      const select = Array.from(container.querySelectorAll('select')).find(
+        (element) => Array.from(element.options).some((option) => option.value === 'xhigh'),
+      )!
+      assert.ok(select)
+      assert.deepEqual(Array.from(select.options).map((option) => option.value), engine === 'claude'
+        ? ['', 'auto', 'minimal', 'low', 'medium', 'high', 'xhigh']
+        : ['', 'auto', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
+      if (engine !== 'claude') {
+        assert.match(select.options[0].textContent || '', /默认（超高）/)
+        await act(async () => {
+          select.value = 'ultra'
+          select.dispatchEvent(new window.Event('change', { bubbles: true }))
+        })
+        assert.equal(selected, 'ultra')
+      }
+    }
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
 test('empty thinking effort shows the inherited default level', async () => {
   const window = installDom()
   const container = document.body.appendChild(document.createElement('div'))

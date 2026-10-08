@@ -16,6 +16,16 @@
 
 不要把完整架构或开发规范重新堆回首页 README；应更新对应 `docs/` 文档，并保持中英文首页链接可达。
 
+## 用户操作手册同步（合并提交与发布检查）
+
+- 官网操作手册位于 `apps/landing/src/manual/`，官网“文档”入口为 `#docs`；它是面向使用者的功能操作说明，技术架构仍维护在 `docs/`。
+- 仅在将 `dev` 合并到本地 `main` 并提交本批代码的交付节点，集中同步本批已通过行为测试的用户可见功能对应手册章节：用途、真实入口、操作步骤、字段示例、完成结果和常见问题。删除功能须移除失效指引；不能把尚未实现的能力写成已支持。日常开发不要求每完成一个功能就更新手册或采集截图，手册变更随本批交付一起提交。
+- 每个功能必须配真实界面截图。入口、字段、布局或结果状态变化时更新对应截图，保存在 `apps/landing/src/manual/screenshots/`，使用章节声明的截图 ID；截图不得包含密钥、个人对话、内部地址或私有项目内容。没有截图时登记缺口，不能用效果图冒充实际操作截图。
+- 手册截图统一使用固定模拟项目“操作手册演示”和本机 `8777` 端口；配置目录为 `~/.workstep-manual-demo/config`，模拟项目目录为 `~/.workstep-manual-demo/projects/storage-demo`。启动与复用方法见 `docs/manual-demo.md`，不得使用日常项目或复制真实凭据。
+- 入门教程优先通过界面下载 SDK 引擎，再说明供应商/认证配置、连接验证和默认执行配置；CLI 作为其他接入方式介绍，不要求新用户先安装 CLI。
+- 合并提交节点须核对手册与本批已验证版本一致，运行官网测试、构建及 `yarn --cwd apps/landing manual:check`。截图或指引缺失时登记缺口，不得宣称文档已完成。发布检查复核已合并提交版本的手册；发现遗漏时集中补齐受影响章节和截图，不另行要求开发中的每个功能逐项触发文档流程。
+
+
 ## 项目概述
 
 本仓库包含 **WorkStep** 的可运行应用、桌面端、官网与技术文档。WorkStep 是一个本地优先的工作流编排工具，将多个 CLI、SDK 与 ACP LLM 引擎串联为可定制的研发管道。
@@ -175,7 +185,7 @@ Pydantic AI 的关键不变量：固定挂载 harness `Coder` 与项目 Skills �
 
 ## 数据模型
 
-每个项目一个 `.workstep/workstep.db`，核心表：
+每个项目一个独立 SQLite 数据库：默认 `<项目>/.workstep/workstep.db`；取消“数据目录跟随项目目录”后使用 `~/.workstep/projects/<项目ID>/workstep.db`（环境覆盖沿用 `WORKSTEP_CONFIG_DIR`）。项目根目录始终保留 `.workstep/project.json` 稳定身份与存储模式；所有项目数据目录通过 `Project.workstep_dir` 或在线程内调用 `services/project_storage.py::data_directory` 解析，禁止重新写死根目录 `.workstep`。核心表：
 - `tasks` — 任务（对应前端"卡片"）
 - `task_steps` — 每步骤当前进度与引擎会话标识
 - `workflows`、`workflow_runs`、`step_runs`、`review_runs` — 流程定义及执行/审核轮次

@@ -2,7 +2,7 @@
 
 import asyncio
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from schemas.project import InitRequest, ReorderProjectsRequest, RegisterRequest, RenameRequest, SaveStepsRequest
@@ -34,7 +34,7 @@ async def init_project(req: InitRequest):
     """Initialize a new WorkStep project."""
     try:
         proj = await asyncio.to_thread(
-            project_manager.init_project, req.path, name=req.name
+            project_manager.init_project, req.path, name=req.name, follow_project=req.follow_project
         )
         return await _run_db(proj.id, project_manager.project_summary)
     except Exception as e:
@@ -100,6 +100,7 @@ async def get_project_summary(project_id: str):
     def summarize(project):
         summary = project_manager.project_summary(project)
         summary.pop("path", None)
+        summary.pop("data_path", None)
         return summary
 
     try:
@@ -184,3 +185,33 @@ async def save_steps(req: SaveStepsRequest, pid: str = Query(..., alias="project
 async def get_default_steps():
     """Return the built-in default workflow definition."""
     return DEFAULT_STEPS
+
+
+class ProjectStorageRequest(BaseModel):
+    follow_project: bool
+
+
+@router.get("/{project_id}/storage")
+async def get_project_storage(project_id: str, request: Request):
+    from services.remote_access import get_current_actor
+    actor = get_current_actor()
+    if request.scope.get("gateway_remote_actor") or (actor and (actor.project_id is not None or actor.source == "remote")):
+        raise HTTPException(403, "数据存储位置只能由本机管理")
+    project = project_manager.get_project_by_id(project_id)
+    if project is None:
+        raise HTTPException(404, "项目不存在")
+    return {"follow_project": project.follow_project, "data_path": str(project.workstep_dir)}
+
+
+@router.put("/{project_id}/storage")
+async def set_project_storage(project_id: str, req: ProjectStorageRequest, request: Request):
+    from services.remote_access import get_current_actor
+    actor = get_current_actor()
+    if request.scope.get("gateway_remote_actor") or (actor and (actor.project_id is not None or actor.source == "remote")):
+        raise HTTPException(403, "数据存储位置只能由本机管理")
+    try:
+        return await project_manager.set_storage(project_id, req.follow_project)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(500, "迁移未完成，请检查磁盘空间和目录权限后重试") from exc

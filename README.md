@@ -6,6 +6,8 @@
 
 ### Orchestrate AI coding agents into observable, controllable workflows
 
+**Make quality delivery continuous.**
+
 WorkStep connects Codex, Claude Code, ACP agents, SDKs, and local harnesses in one visual workspace for planning, implementation, testing, review, and delivery.
 
 [Website](https://xzregg.github.io/workstep/) · [Download](https://github.com/xzregg/workstep/releases/latest) · [Documentation](docs/README.md) · [简体中文](README.zh-CN.md)

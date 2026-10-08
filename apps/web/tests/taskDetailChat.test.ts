@@ -14,12 +14,27 @@ import {
   latestExecutionMessageIdsByStep,
   failedExecutionCompletionRound,
   runningTaskMessageIds,
+  isCoordinatorReplyFinished,
 } from '../src/pages/taskDetailChat.ts'
 import { artifactsForMessage, artifactsForStepRoundOutputs, findPreferredArtifact,
   findStepRoundInputArtifact, findStepRoundInputPort, groupStepOutputsByInput,
   downstreamInputsForOutput, hasStepIoContractChanged } from '../src/pages/taskArtifactRules.ts'
 import { loadTaskHistoryWithRetry, mergeLoadedTaskMessageEvents,
   mergeRefreshedTaskHistory } from '../src/pages/taskHistoryModel.ts'
+
+test('recovered coordinator completion releases a stale sending state', () => {
+  const live = { reply: { id: 'reply', channel: 'coordinator', status: 'running' } }
+  for (const run_status of ['succeeded', 'completed', 'failed', 'stopped', 'cancelled']) {
+    const history = [{ id: 'reply', channel: 'coordinator', run_status }]
+    assert.equal(isCoordinatorReplyFinished('reply', history, live), true)
+    assert.equal(isCoordinatorReplyFinished('reply', history, {}), true)
+  }
+  assert.equal(isCoordinatorReplyFinished('reply', [], live), false)
+  assert.equal(isCoordinatorReplyFinished('reply', [], {}), false)
+  assert.equal(isCoordinatorReplyFinished(null, [], live), false)
+  assert.equal(isCoordinatorReplyFinished('reply', [{ id: 'reply', run_status: 'running' }],
+    { reply: { id: 'reply', channel: 'coordinator', status: 'succeeded' } }), true)
+})
 
 test('persisted coordinator stop clears stale live running state', () => {
   const history = [{ id: 'assistant-1', channel: 'coordinator', role: 'assistant', run_status: 'stopped' }]

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { assistantApi, providerApi, fetchEngineModels, getCachedEngineModels, type AssistantConfigInfo, type AssistantConfiguredDefaults, type EngineInfo, type EngineModel, type ProviderInfo } from '../api/client'
 import EngineSelect from '../components/EngineSelect'
-import { THINKING_EFFORT_LEVELS } from '../components/CoordinatorConfigBar'
+import { getThinkingEffortLevels } from '../components/CoordinatorConfigBar'
 import Button from '../components/Button'
 import Select from '../components/Select'
 import { useI18n, type TFunction, type TKey } from '../i18n'
@@ -371,7 +371,7 @@ export default function AgentAssistantSettings() {
                   })
                   : t('settings.followEngineDefault')}
               </option>
-              {THINKING_EFFORT_LEVELS.map((level) => (
+              {getThinkingEffortLevels(engine || resolvedDefaults?.engine || '').map((level) => (
                 <option key={level} value={level}>
                   {t(`coord.thinkingLevels.${level}`)}
                 </option>

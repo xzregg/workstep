@@ -6,6 +6,8 @@
 
 ### 把多个 AI 编程引擎，编排成可观察、可控制的研发工作流
 
+**让高质量交付持续发生。**
+
 在一个可视化工作台中连接 Codex、Claude Code、ACP Agent、SDK 与本地 Harness，组织规划、开发、测试、审查和交付。
 
 [官网](https://xzregg.github.io/workstep/) · [下载](https://github.com/xzregg/workstep/releases/latest) · [文档](docs/README.md) · [English](README.md)

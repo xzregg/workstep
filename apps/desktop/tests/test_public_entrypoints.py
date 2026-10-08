@@ -125,11 +125,13 @@ def test_repository_readmes_present_the_product_and_current_desktop_support():
     readmes = {
         "README.md": (
             "Orchestrate AI coding agents into observable, controllable workflows",
+            "Make quality delivery continuous.",
             "## Understand WorkStep in 30 seconds",
             "## Core capabilities",
         ),
         "README.zh-CN.md": (
             "把多个 AI 编程引擎，编排成可观察、可控制的研发工作流",
+            "让高质量交付持续发生。",
             "## 30 秒了解 WorkStep",
             "## 核心能力",
         ),
