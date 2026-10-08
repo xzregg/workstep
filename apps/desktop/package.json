@@ -78,7 +78,7 @@
         "dmg",
         "zip"
       ],
-      "artifactName": "WorkStep-${version}-macos-${arch}.${ext}"
+      "artifactName": "WorkStep-macos-${arch}.${ext}"
     },
     "win": {
       "icon": "build/icon.ico",

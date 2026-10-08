@@ -189,7 +189,7 @@ def test_local_macos_package_script_rebuilds_version_icons_and_runtime() -> None
     assert 'run_yarn icons' in script
     assert 'WORKSTEP_BUILD_VERSION="$version" "$repo_dir/build.sh" --with-web' in script
     assert 'BUILD_PLATFORM=mac "$desktop_dir/inject-backend.sh"' in script
-    assert 'run_yarn dist:mac:local' in script
+    assert r'run_yarn dist:mac:local --config.mac.artifactName="WorkStep-${version}-macos-\${arch}.\${ext}"' in script
     assert 'codesign --verify --deep --strict' in script
     assert 'rm -rf "$desktop_dir/dist/mac-arm64"' in script
     assert 'shasum -a 256' in script
@@ -199,4 +199,4 @@ def test_local_macos_package_script_rebuilds_version_icons_and_runtime() -> None
 
     assert 'electron-builder --mac dmg --arm64' in package
     assert 'electron-builder --mac dmg zip --arm64' not in package
-    assert '"artifactName": "WorkStep-${version}-macos-${arch}.${ext}"' in package
+    assert '"artifactName": "WorkStep-macos-${arch}.${ext}"' in package
