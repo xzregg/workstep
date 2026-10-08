@@ -9,6 +9,7 @@ import subprocess
 
 REPO_DIR = Path(__file__).resolve().parents[3]
 BUILD_SCRIPT = REPO_DIR / "build.sh"
+LOCAL_MACOS_PACKAGE_SCRIPT = REPO_DIR / "apps" / "desktop" / "package-local-macos.sh"
 BACKEND_BUILD_SCRIPTS = (
     REPO_DIR / "apps" / "desktop" / "build-backend.sh",
     REPO_DIR / "apps" / "desktop" / "build-backend.ps1",
@@ -162,6 +163,14 @@ def test_desktop_backend_includes_legal_notices_and_sbom() -> None:
         assert "cli.py" in text
 
 
+def test_sbom_generation_uses_the_bundled_python_runtime() -> None:
+    shell = BACKEND_BUILD_SCRIPTS[0].read_text(encoding="utf-8")
+    powershell = BACKEND_BUILD_SCRIPTS[1].read_text(encoding="utf-8")
+
+    assert '"$python_bin" "$repo_dir/scripts/generate_release_sbom.py"' in shell
+    assert '& $Python (Join-Path $RepoDir "scripts/generate_release_sbom.py")' in powershell
+
+
 def test_sandbox_web_build_uses_github_reachable_npm_registry() -> None:
     dockerfile = (REPO_DIR / "Dockerfile").read_text(encoding="utf-8")
     web_build = dockerfile.split("# Git 2.48+", maxsplit=1)[0]
@@ -169,3 +178,25 @@ def test_sandbox_web_build_uses_github_reachable_npm_registry() -> None:
     assert "FROM --platform=$BUILDPLATFORM node:24-bookworm AS web-build" in web_build
     assert "registry.npmmirror.com" not in web_build
     assert "https://registry.npmjs.org" in web_build
+
+
+def test_local_macos_package_script_rebuilds_version_icons_and_runtime() -> None:
+    script = LOCAL_MACOS_PACKAGE_SCRIPT.read_text(encoding="utf-8")
+    package = (REPO_DIR / "apps" / "desktop" / "package.json").read_text(encoding="utf-8")
+
+    assert '"version": "1.0.9"' in package
+    assert 'npm version "$version" --no-git-tag-version --allow-same-version' in script
+    assert 'run_yarn icons' in script
+    assert 'WORKSTEP_BUILD_VERSION="$version" "$repo_dir/build.sh" --with-web' in script
+    assert 'BUILD_PLATFORM=mac "$desktop_dir/inject-backend.sh"' in script
+    assert 'run_yarn dist:mac:local' in script
+    assert 'codesign --verify --deep --strict' in script
+    assert 'rm -rf "$desktop_dir/dist/mac-arm64"' in script
+    assert 'shasum -a 256' in script
+    assert 'find "$desktop_dir/dist"' in script
+    assert "-name 'WorkStep-*-macos-arm64.zip'" in script
+    assert '"$desktop_dir/dist/WorkStep-$version-macos-arm64.dmg"' in script
+
+    assert 'electron-builder --mac dmg --arm64' in package
+    assert 'electron-builder --mac dmg zip --arm64' not in package
+    assert '"artifactName": "WorkStep-${version}-macos-${arch}.${ext}"' in package

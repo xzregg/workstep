@@ -1,6 +1,6 @@
 {
   "name": "workstep-desktop",
-  "version": "0.1.0",
+  "version": "1.0.9",
   "packageManager": "yarn@1.22.22",
   "private": true,
   "description": "Electron shell for the WorkStep FastAPI sidecar",
@@ -17,7 +17,7 @@
     "start": "electron .",
     "test": "node --test tests/*.test.cjs",
     "dist": "electron-builder --publish never",
-    "dist:mac:local": "electron-builder --mac dmg zip --arm64 --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false --config.publish.channel=latest-arm64",
+    "dist:mac:local": "electron-builder --mac dmg --arm64 --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false --config.publish.channel=latest-arm64",
     "bundle:managed": "node scripts/create-managed-bundle.cjs",
     "dist:managed": "node scripts/build-managed.cjs"
   },
@@ -59,7 +59,9 @@
     "protocols": [
       {
         "name": "WorkStep",
-        "schemes": ["workstep"]
+        "schemes": [
+          "workstep"
+        ]
       }
     ],
     "publish": {
@@ -72,12 +74,17 @@
       "icon": "build/icon.icns",
       "hardenedRuntime": true,
       "notarize": true,
-      "target": ["dmg", "zip"],
-      "artifactName": "WorkStep-macos-${arch}.${ext}"
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "artifactName": "WorkStep-${version}-macos-${arch}.${ext}"
     },
     "win": {
       "icon": "build/icon.ico",
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "forceCodeSigning": true,
       "artifactName": "WorkStep-windows-${arch}.${ext}"
     },
@@ -87,7 +94,9 @@
     },
     "linux": {
       "icon": "build/icons",
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "category": "Development",
       "artifactName": "WorkStep-linux-x64.${ext}"
     }

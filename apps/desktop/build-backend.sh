@@ -48,6 +48,6 @@ release_version="${WORKSTEP_BUILD_VERSION:-0.1.0}"
 release_version="${release_version#v}"
 mkdir -p "$output_dir/legal"
 cp "$repo_dir/LICENSE" "$repo_dir/NOTICE" "$repo_dir/THIRD_PARTY_NOTICES.md" "$output_dir/legal/"
-python "$repo_dir/scripts/generate_release_sbom.py" \
+"$python_bin" "$repo_dir/scripts/generate_release_sbom.py" \
   --version "$release_version" \
   --output "$output_dir/legal/sbom.cdx.json"

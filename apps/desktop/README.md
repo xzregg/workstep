@@ -48,7 +48,7 @@ cd apps/desktop && corepack yarn test
 uv run --project apps/daemon --group dev pytest apps/desktop/tests/test_backend_entry.py
 ```
 
-本机 macOS ARM64 试用包：先在仓库根运行 `./build.sh --with-web`，再在 `apps/desktop` 运行 `BUILD_PLATFORM=mac ./inject-backend.sh` 和 `yarn dist:mac:local`。该命令显式使用 ad-hoc 签名并关闭 hardened runtime，不使用开发者证书或公证；构建后用 `codesign --verify --deep --strict dist/mac-arm64/WorkStep.app` 检查。Electron fuses 会修改可执行文件，不能只跳过签名后直接分发，否则可能因签名页不匹配在启动前被 macOS 终止。正式 Developer ID 发布应继续使用默认 hardened runtime 与证书签名配置。
+本机 macOS ARM64 试用包可在仓库根直接运行 `./apps/desktop/package-local-macos.sh 1.0.9`。脚本会更新桌面版本、从 Web favicon 重新生成图标、构建 Web 和内置后台、注入资源、生成带版本号的 DMG，并完成 ad-hoc 签名校验与 SHA-256 输出；省略版本号时使用 `apps/desktop/package.json` 中的当前版本。打包前会清理旧 macOS DMG/ZIP，避免误用历史包。Electron Builder 生成 DMG 时需要临时创建 `WorkStep.app`，脚本会在校验后删除该目录，不把它作为独立产物保留。该命令关闭 hardened runtime，不使用开发者证书或公证。Electron fuses 会修改可执行文件，不能只跳过签名后直接分发，否则可能因签名页不匹配在启动前被 macOS 终止。正式 Developer ID 发布应继续使用默认 hardened runtime 与证书签名配置。
 
 ## 发布
 
