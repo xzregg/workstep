@@ -8,7 +8,11 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, IPvAnyAddress
 
-from api.desktop_security import desktop_request_authenticated
+from api.desktop_security import (
+    desktop_loopback_target,
+    desktop_request_authenticated,
+    desktop_runtime_authenticated,
+)
 
 from services.config import config_store
 from services.remote_project import (
@@ -114,7 +118,11 @@ async def update_remote_access_settings(req: RemoteAccessSettingsRequest, reques
 @router.get("/access/status")
 async def remote_access_status(request: Request):
     required = await asyncio.to_thread(remote_access_service.access_password_required)
-    local = _is_loopback(_client_host(request.headers, request.client))
+    local = (
+        desktop_runtime_authenticated(request)
+        or desktop_loopback_target(request)
+        or _is_loopback(_client_host(request.headers, request.client))
+    )
     token = request.cookies.get(ACCESS_COOKIE_NAME)
     authorized = local or not required or await asyncio.to_thread(
         remote_access_service.verify_access_token, token

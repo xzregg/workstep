@@ -245,6 +245,9 @@ export interface ActionProposal {
 }
 
 export interface CoordinatorEngineSummary {
+  name?: string
+  description?: string
+  enabled?: boolean
   id: string
   mode: 'cli' | 'acp' | 'agent' | 'sdk' | null
   installed: boolean

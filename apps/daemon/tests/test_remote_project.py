@@ -294,6 +294,27 @@ async def test_remote_access_guard_blocks_non_local_api_until_unlocked(monkeypat
         assert local.status_code == 200
 
 
+async def test_remote_access_guard_allows_desktop_token_and_loopback_target_in_container(monkeypatch):
+    access = RemoteAccessService(MemoryConfig())
+    access.set_access_password("letmein")
+    monkeypatch.setenv("WORKSTEP_DESKTOP_RUNTIME", "1")
+    monkeypatch.setenv("WORKSTEP_DESKTOP_TOKEN", "desktop-secret")
+    app = FastAPI()
+    app.add_middleware(RemoteAccessGuardMiddleware, access_service=access)
+
+    @app.get("/api/secret")
+    async def secret():
+        return {"ok": True}
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app, client=("192.168.127.2", 5000)),
+        base_url="http://127.0.0.1:8766",
+    ) as client:
+        assert (await client.get("/api/secret")).status_code == 200
+        assert (await client.get("/api/secret", headers={"host": "192.168.1.9:8766"})).status_code == 401
+        assert (await client.get("/api/secret", headers={"host": "192.168.1.9:8766", "X-WorkStep-Desktop-Token": "desktop-secret"})).status_code == 200
+
+
 async def test_remote_access_guard_slow_config_keeps_event_loop_responsive(monkeypatch):
     access = RemoteAccessService(MemoryConfig())
 
@@ -1808,6 +1829,28 @@ async def test_remote_project_settings_and_add_api(monkeypatch):
         )
         assert added.status_code == 200
         assert added.json()["type"] == "remote"
+
+
+async def test_remote_access_status_trusts_desktop_runtime_token(monkeypatch):
+    access = RemoteAccessService(MemoryConfig())
+    access.set_access_password("letmein")
+    monkeypatch.setattr(remote_project_api, "remote_access_service", access)
+    monkeypatch.setenv("WORKSTEP_DESKTOP_RUNTIME", "1")
+    monkeypatch.setenv("WORKSTEP_DESKTOP_TOKEN", "desktop-secret")
+    app = FastAPI()
+    app.include_router(remote_project_api.router)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app, client=("192.168.127.2", 5000)),
+        base_url="http://192.168.1.9:8766",
+    ) as client:
+        status = await client.get(
+            "/api/remote-project/access/status",
+            headers={"X-WorkStep-Desktop-Token": "desktop-secret"},
+        )
+
+    assert status.status_code == 200
+    assert status.json() == {"required": True, "local": True, "authorized": True}
 
 
 async def test_remote_project_share_and_device_expiry_api(monkeypatch):

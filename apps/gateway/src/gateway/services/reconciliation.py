@@ -18,17 +18,27 @@ class DirectoryReconciler:
     def __init__(self, database: GatewayDatabase, connectors: dict):
         self.database = database
         self.connectors = connectors
+        from gateway.services.directory_sync_jobs import DirectorySyncJobs
+        self.jobs = DirectorySyncJobs(database, connectors)
 
     async def _reconcile_source(self, source: IdentitySource, connector,
                                 service: ExternalIdentityService) -> None:
+        async with self.jobs.source_locks[source.id]:
+            return await self._apply_source(source, connector, service)
+
+    async def _apply_source(self, source, connector, service):
         try:
-            snapshot = await connector.fetch_directory(source)
+            from gateway.services.organization_settings import source_options
+            selected = (await source_options(self.database, source.id)).get('selected_department_ids', [])
+            if selected == [] or source.id in self.jobs.tasks or self.jobs.closed: return False
+            snapshot = await connector.fetch_directory(source, selected_department_ids=selected) if selected is not None else await connector.fetch_directory(source)
         except Exception:
             await service.record_sync_failure(source.id, "provider_unavailable")
             raise
         try:
             await service.full_sync(source.id, snapshot["departments"], snapshot["people"],
-                                    snapshot.get("cursor"))
+                                    snapshot.get("cursor"), selected_department_ids=selected)
+            return True
         except Exception as exc:
             await service.record_sync_failure(source.id, 'snapshot_invalid' if isinstance(exc, GatewayError) and exc.reason == 'invalid' else 'snapshot_apply_failed')
             raise
@@ -67,14 +77,16 @@ class DirectoryReconciler:
         for source_id, receipt_ids in by_source.items():
             source = sources.get(source_id)
             from gateway.services.organization_settings import source_options
-            if source and not (await source_options(self.database, source.id)).get('sync_enabled', True): continue
+            if source:
+                options = await source_options(self.database, source.id)
+                if not options.get('sync_enabled', True) or options.get('selected_department_ids', []) == []: continue
             connector = self.connectors.get(source.provider) if source and source.enabled else None
             if source and source.enabled and connector is None:
                 await service.record_sync_failure(source_id, "connector_unavailable")
                 continue
             if connector is not None:
                 try:
-                    await self._reconcile_source(source, connector, service)
+                    if not await self._reconcile_source(source, connector, service): continue
                 except Exception as exc:
                     logger.error("Directory callback reconciliation failed for source %s (%s)",
                                  source_id, type(exc).__name__)

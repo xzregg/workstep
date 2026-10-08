@@ -64,3 +64,9 @@ def test_workflow_level_quick_buttons_are_validated():
     WorkflowDefinition.load({"nodes": [], "connections": [], "quickButtons": [button]}).validate()
     with pytest.raises(WorkflowValidationError, match="quickButtons"):
         WorkflowDefinition.load({"nodes": [], "connections": [], "quickButtons": [{**button, "script_path": "../escape.sh"}]}).validate()
+
+
+def test_quick_button_enabled_defaults_and_disabled_persistence():
+    button = {"id": "prompt", "label": "生成实现", "prompt": "实现"}
+    assert normalize_quick_buttons([button])[0]["enabled"] is True
+    assert normalize_quick_buttons([{**button, "enabled": False}])[0]["enabled"] is False

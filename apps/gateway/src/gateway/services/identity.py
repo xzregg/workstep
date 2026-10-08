@@ -132,6 +132,11 @@ class IdentityService:
 
     async def register(self, username: str, display_name: str, password: str) -> tuple[User, str | None]:
         initialized = await self.initialized()
+        if initialized:
+            from gateway.services.login_policy import password_login_enabled
+            async with self.database.session() as session:
+                if not await password_login_enabled(session):
+                    raise IdentityError('forbidden', 'Password registration disabled')
         mode = await self.registration_mode() if initialized else "open"
         if mode == "closed":
             raise IdentityError("forbidden", "Registration is closed")
@@ -174,6 +179,9 @@ class IdentityService:
                     ))
                     if current_mode is None:
                         raise IdentityError("unavailable", "Platform not initialized")
+                    from gateway.services.login_policy import password_login_enabled
+                    if not await password_login_enabled(session):
+                        raise IdentityError('forbidden', 'Password registration disabled')
                     mode = current_mode.strip('"')
                     if mode == "closed":
                         raise IdentityError("forbidden", "Registration is closed")
@@ -187,7 +195,10 @@ class IdentityService:
         return user, token
 
     async def login(self, username: str, password: str) -> tuple[User, str]:
+        from gateway.services.login_policy import password_login_enabled
         async with self.database.session() as session:
+            if not await password_login_enabled(session):
+                raise IdentityError('forbidden', 'Password sign-in disabled')
             user = await session.scalar(select(User).where(User.username == username))
         if user is None or not user.password_hash or not await self._verify_password(user.password_hash, password):
             raise IdentityError("unauthenticated", "Invalid username or password")
@@ -198,6 +209,10 @@ class IdentityService:
         auth_session, token = self._create_session(user.id)
         async with self.database.session() as session:
             async with session.begin():
+                await session.execute(update(PlatformSetting).where(
+                    PlatformSetting.key == 'platform_initialized').values(value_json='true'))
+                if not await password_login_enabled(session):
+                    raise IdentityError('forbidden', 'Password sign-in disabled')
                 session.add(auth_session)
                 fresh_user = await session.get(User, user.id)
                 fresh_user.last_login_at = _now()
@@ -495,8 +510,8 @@ class IdentityService:
                 user = await session.get(User, user_id)
                 if user is None:
                     raise IdentityError("not_found", "User not found")
-                if user.status == "disabled":
-                    raise IdentityError("conflict", "Disabled account cannot be approved")
+                if user.status in ["disabled", "deleted"]:
+                    raise IdentityError("conflict", "Unavailable account cannot be approved")
                 user.status = "active"
 
     async def disable_user(self, user_id: str) -> None:
@@ -512,6 +527,8 @@ class IdentityService:
                     raise IdentityError("not_found", "User not found")
                 if user.status == "disabled":
                     return
+                if user.status == "deleted":
+                    raise IdentityError("conflict", "Restore deleted users first")
                 assignment = await session.scalar(select(AdminAssignment.id).where(
                     AdminAssignment.user_id == user_id,
                     AdminAssignment.role == "super_admin",

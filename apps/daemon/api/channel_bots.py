@@ -18,10 +18,16 @@ class CreateBotRequest(BaseModel):
     app_id: str = Field(min_length=1)
     secret: str = Field(min_length=1)
     enabled: bool = False
-    default_target_type: str = ""
-    default_project_id: str = ""
+    default_target_type: Literal['project', 'task'] = "project"
+    default_project_id: str = Field(min_length=1)
     default_task_id: str = ""
     card_template_id: str = Field(default="", max_length=200)
+
+    @model_validator(mode='after')
+    def require_project(self):
+        if not self.default_project_id.strip():
+            raise ValueError('请选择默认项目')
+        return self
 
 
 class UpdateBotRequest(BaseModel):
@@ -33,6 +39,14 @@ class UpdateBotRequest(BaseModel):
     default_project_id: str | None = None
     default_task_id: str | None = None
     card_template_id: str | None = Field(default=None, max_length=200)
+
+    @model_validator(mode='after')
+    def prevent_clearing_project(self):
+        if ('default_project_id' in self.model_fields_set and not (self.default_project_id or '').strip()) or (
+            'default_target_type' in self.model_fields_set and not self.default_target_type
+        ):
+            raise ValueError('请选择默认项目')
+        return self
 
 
 class BindGroupRequest(BaseModel):
@@ -190,3 +204,55 @@ async def bind_task_group(task_id: str, request: BindGroupRequest):
 async def unbind_task_group(task_id: str, bot_id: str, group_id: str, project_id: str = Query(...)):
     await _manager().unbind_group(project_id, task_id, bot_id, group_id)
     return {"deleted": True}
+
+
+class PrivateWhitelistUser(BaseModel):
+    sender_id: str = Field(min_length=1, max_length=500)
+    sender_name: str = Field(default="", max_length=500)
+
+
+class PrivateWhitelistRequest(BaseModel):
+    enabled: bool
+    users: list[PrivateWhitelistUser] = Field(max_length=10000)
+
+
+@router.get("/{bot_id}/private-whitelist")
+async def private_whitelist(bot_id: str):
+    try:
+        return await _manager().private_whitelist(bot_id)
+    except (ValueError, LookupError) as exc:
+        _raise_error(exc)
+
+
+@router.put("/{bot_id}/private-whitelist")
+async def save_private_whitelist(bot_id: str, request: PrivateWhitelistRequest):
+    try:
+        return await _manager().save_private_whitelist(bot_id, request.enabled, [user.model_dump() for user in request.users])
+    except (ValueError, LookupError) as exc:
+        _raise_error(exc)
+
+
+class GroupWhitelistEntry(BaseModel):
+    group_id: str = Field(min_length=1, max_length=500)
+    group_name: str = Field(default="", max_length=500)
+
+
+class GroupWhitelistRequest(BaseModel):
+    enabled: bool
+    groups: list[GroupWhitelistEntry] = Field(max_length=10000)
+
+
+@router.get("/{bot_id}/group-whitelist")
+async def group_whitelist(bot_id: str):
+    try:
+        return await _manager().private_whitelist(bot_id, scope="group")
+    except (ValueError, LookupError) as exc:
+        _raise_error(exc)
+
+
+@router.put("/{bot_id}/group-whitelist")
+async def save_group_whitelist(bot_id: str, request: GroupWhitelistRequest):
+    try:
+        return await _manager().save_private_whitelist(bot_id, request.enabled, [group.model_dump() for group in request.groups], scope="group")
+    except (ValueError, LookupError) as exc:
+        _raise_error(exc)

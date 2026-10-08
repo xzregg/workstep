@@ -50,8 +50,8 @@ test('super administrator creates a group, links a policy project and manages me
     if (url === '/api/groups/group-1/projects' && method === 'POST') {
       linked = true; return Response.json({ group_id: 'group-1', project_id: 'project-1' })
     }
-    if (url === '/api/groups/group-1/members' && method === 'POST') {
-      member = true; return Response.json({ group_id: 'group-1', user_id: 'user-1' })
+    if (url === '/api/groups/group-1/members/bulk' && method === 'POST') {
+      member = init?.body ? JSON.parse(String(init.body)).action !== 'remove' : true; return Response.json({ updated: 1 })
     }
     if (url === '/api/groups/group-1/projects/project-1' && method === 'DELETE') {
       linked = false; return new Response(null, { status: 204 })
@@ -76,25 +76,26 @@ test('super administrator creates a group, links a policy project and manages me
   fireEvent.click(screen.getByRole('button', { name: '查找项目' }))
   await screen.findByRole('button', { name: '关联策略项目' })
   fireEvent.click(screen.getByRole('button', { name: '关联策略项目' }))
-  await screen.findByText(/策略项目 · 已关联/)
+  await screen.findByRole('button', { name: '取消关联策略项目' })
   assert.deepEqual(writes.find(item => item.url === '/api/groups/group-1/projects'), {
     url: '/api/groups/group-1/projects', method: 'POST', body: { project_id: 'project-1' },
   })
   fireEvent.change(screen.getByLabelText('搜索用户'), { target: { value: 'leader' } })
   fireEvent.click(screen.getByRole('button', { name: '查找用户' }))
   fireEvent.change(screen.getByLabelText('成员角色'), { target: { value: 'leader' } })
-  await screen.findByRole('button', { name: '添加 leader 为组长' })
-  fireEvent.click(screen.getByRole('button', { name: '添加 leader 为组长' }))
-  await screen.findByText(/leader · 组长/)
-  assert.deepEqual(writes.find(item => item.url === '/api/groups/group-1/members'), {
-    url: '/api/groups/group-1/members', method: 'POST',
-    body: { user_id: 'user-1', role: 'leader' },
+  await screen.findByRole('button', { name: '添加 Leader 为组长' })
+  fireEvent.click(screen.getByRole('button', { name: '添加 Leader 为组长' }))
+  fireEvent.click(screen.getByRole('button', { name: '确认添加' }))
+  await screen.findByRole('button', { name: '移除 Leader' })
+  assert.deepEqual(writes.find(item => item.url === '/api/groups/group-1/members/bulk'), {
+    url: '/api/groups/group-1/members/bulk', method: 'POST',
+    body: { action: 'add', user_ids: ['user-1'], role: 'leader' },
   })
   fireEvent.click(screen.getByRole('button', { name: '取消关联策略项目' }))
   dialog = await screen.findByRole('dialog', { name: '取消项目关联' })
   fireEvent.click(getByRole(dialog, 'button', { name: '确认取消关联' }))
   await waitFor(() => assert.equal(linked, false))
-  fireEvent.click(screen.getByRole('button', { name: '移除 leader' }))
+  fireEvent.click(screen.getByRole('button', { name: '移除 Leader' }))
   dialog = await screen.findByRole('dialog', { name: '移除成员' })
   fireEvent.click(getByRole(dialog, 'button', { name: '确认移除' }))
   await waitFor(() => assert.equal(member, false))

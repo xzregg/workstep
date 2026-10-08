@@ -11,6 +11,7 @@ test('drawer opens, keeps a single navigation tree, closes after selection, and 
   const window = new Window({ width: 390, url: 'http://localhost/tasks' })
   Object.assign(globalThis, { window, document: window.document, history: window.history, HTMLElement: window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true })
   let mounts = 0
+  let setTitle: (title: string) => void = () => {}
   function NavigationContent() {
     useState(() => { mounts++; return 0 })
     const navigate = useNavigate()
@@ -27,7 +28,9 @@ test('drawer opens, keeps a single navigation tree, closes after selection, and 
   }
   function Surface() {
     const location = useLocation()
-    return <><ResponsiveNavigation title="项目" onNew={() => {}}><NavigationContent /></ResponsiveNavigation><output>{location.pathname}</output></>
+    const [title, updateTitle] = useState('会话标题很长时应在顶部缩略显示')
+    setTitle = updateTitle
+    return <><ResponsiveNavigation title={title} onNew={() => {}}><NavigationContent /></ResponsiveNavigation><output>{location.pathname}</output></>
   }
   const container = document.createElement('div')
   document.body.append(container)
@@ -35,6 +38,12 @@ test('drawer opens, keeps a single navigation tree, closes after selection, and 
   await act(async () => root.render(<I18nProvider><MemoryRouter><Surface /></MemoryRouter></I18nProvider>))
   const menu = container.querySelector<HTMLButtonElement>('[aria-label="打开导航"]')!
   assert.ok(menu)
+  const heading = container.querySelector('.mobile-header > span')!
+  assert.equal(heading.textContent, '会话标题很长时应在顶部缩略显示')
+  assert.equal(heading.getAttribute('title'), heading.textContent)
+  await act(async () => setTitle('重命名后的会话'))
+  assert.equal(heading.textContent, '重命名后的会话')
+  assert.equal(heading.getAttribute('title'), '重命名后的会话')
   await act(async () => menu.click())
   assert.equal(menu.getAttribute('aria-expanded'), 'true')
   const close = container.querySelector<HTMLButtonElement>('#workstep-navigation button.navigation-close')!

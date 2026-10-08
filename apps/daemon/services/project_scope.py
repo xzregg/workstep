@@ -29,7 +29,7 @@ def require_catalog_project(project_id: str) -> bool:
 
 def workspace_engine_catalog(items: list[dict]) -> list[dict]:
     """Only capability metadata and step schemas belong in a project workspace."""
-    keys = ("id", "default_model", "installed", "configured", "verified", "built_in",
+    keys = ("id", "enabled", "name", "description", "custom", "default_model", "installed", "configured", "verified", "built_in",
             "version", "mode", "provider_protocols", "supports_resume", "supports_session_fork",
             "supports_coordinator", "supports_tool_disable", "supports_native_schema",
             "supports_live_step_message", "supports_provider", "supports_sessions",

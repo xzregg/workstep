@@ -228,7 +228,13 @@ class ChatRowPersistence(PersistenceAdapter):
         for item in messages:
             if item.get("role") != "user":
                 continue
-            text = re.sub(r"\s+", " ", item.get("content") or "").strip()
+            # Image filenames and upload URLs are attachments, not title text.
+            content = re.sub(
+                r"!\[[^\]]*\]\((?:[^()]|\([^()]*\))*\)",
+                " ",
+                item.get("content") or "",
+            )
+            text = re.sub(r"\s+", " ", content).strip()
             if not text:
                 continue
             sentence = re.split(r"[。！？!?；;…]", text, maxsplit=1)[0].strip()

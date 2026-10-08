@@ -7,10 +7,11 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 
-def test_gateway_origin_rejects_remote_http_and_credentials():
+def test_gateway_origin_accepts_private_http_and_rejects_public_http_or_credentials():
     from services.gateway_client.browser_login import normalize_origin
     assert normalize_origin('http://localhost:8700/') == 'http://localhost:8700'
-    for value in ['http://example.com', 'https://u:p@example.com', 'https://example.com/path']:
+    assert normalize_origin('http://192.168.52.156:8700/') == 'http://192.168.52.156:8700'
+    for value in ['http://8.8.8.8:8700', 'http://example.com', 'https://u:p@example.com', 'https://example.com/path']:
         with pytest.raises(ValueError): normalize_origin(value)
 
 

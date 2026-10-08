@@ -96,6 +96,7 @@ class EnhancePromptRequest(BaseSchema):
 
 class QuickButtonItem(BaseSchema):
     id: str | None = None
+    enabled: bool = True
     label: str
     prompt: str
     content: str = ""

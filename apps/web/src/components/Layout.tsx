@@ -106,6 +106,9 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false)
   const [bulkDeleteError, setBulkDeleteError] = useState('')
   const activeSessionId = location.pathname === '/chat' ? searchParams.get('session') : null
+  const mobileHeaderTitle = (activeProject && activeSessionId
+    ? sessionsByProject[activeProject.id]?.find((session) => session.id === activeSessionId)?.title
+    : null) || activeProject?.name || 'WorkStep'
   useProjectRouteSelection()
   const {
     completedSessions,
@@ -470,7 +473,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   return (
     <div className="app-shell">
       {/* Sidebar */}
-      <ResponsiveNavigation className="layout-sidebar" newDisabled={!activeProject || !canEdit} dismissSignal={`${showSettings}:${showInitModal}:${addWfProjectId}`} title={activeProject?.name || "WorkStep"} onNew={() => navigate(`/chat?project=${encodeURIComponent(activeProject?.name || "")}`)} style={{ width: sidebarWidth }}>
+      <ResponsiveNavigation className="layout-sidebar" newDisabled={!activeProject || !canEdit} dismissSignal={`${showSettings}:${showInitModal}:${addWfProjectId}`} title={mobileHeaderTitle} onNew={() => navigate(`/chat?project=${encodeURIComponent(activeProject?.name || "")}`)} style={{ width: sidebarWidth }}>
         <div className="layout-sidebar-header">
           <div className="layout-sidebar-brand">
             <BrandIcon size={18} />

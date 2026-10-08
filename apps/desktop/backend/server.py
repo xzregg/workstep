@@ -87,7 +87,9 @@ def prepare_engine_package_dir() -> Path:
     os.environ["WORKSTEP_ENGINE_PACKAGE_DIR"] = resolved
     if resolved in sys.path:
         sys.path.remove(resolved)
-    sys.path.insert(0, resolved)
+    # Keep the bundled daemon environment authoritative when an optional
+    # engine installed a conflicting transitive dependency.
+    sys.path.append(resolved)
     return package_dir.resolve()
 
 

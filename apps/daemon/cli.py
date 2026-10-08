@@ -26,7 +26,7 @@ LIST_FIELDS = {
     "project": ("projects", ("id", "name", "path", "type", "connection_status")),
     "workflow": ("workflows", ("id", "name", "is_default", "deleted", "running", "failed", "nodeCount")),
     "task": ("tasks", ("id", "title", "status", "archived", "workflow_id", "created_at", "updated_at")),
-    "engine": ("engines", ("id", "installed", "configured", "verified", "built_in", "version", "mode", "default_model")),
+    "engine": ("engines", ("id", "enabled", "custom", "installed", "configured", "verified", "built_in", "version", "mode", "default_model")),
     "schedule": ("schedules", ("id", "name", "workflow_id", "status", "summary", "next_run_at", "last_run_at")),
     "channel": (None, ("id", "name", "platform", "enabled", "status")),
 }
@@ -216,6 +216,27 @@ def build_parser() -> argparse.ArgumentParser:
     engine = subparsers.add_parser("engine", help="manage engines")
     engine_sub = engine.add_subparsers(dest="subcommand", required=True)
     add_json(engine_sub.add_parser("list", help="list installed LLM engines"), list_output=True)
+
+    for action in ("inspect", "install", "validate", "register", "configure"):
+        command = engine_sub.add_parser(action, help=f"{action} a custom engine Python file or package directory")
+        command.add_argument("path")
+        if action in {"install", "validate"}:
+            command.add_argument("--no-wait", action="store_true", help="return operation ID immediately")
+        if action == "register":
+            command.add_argument("--replace", action="store_true")
+        if action == "configure":
+            command.add_argument("--config-file", required=True, help="JSON with values, clear, confirmed, provider_id and model")
+        add_json(command)
+    for action in ("disable", "enable", "rollback", "export"):
+        command = engine_sub.add_parser(action)
+        command.add_argument("engine_id")
+        if action == "export":
+            command.add_argument("--output", required=True)
+        add_json(command)
+    for action in ("operation", "stop"):
+        command = engine_sub.add_parser(action)
+        command.add_argument("operation_id")
+        add_json(command)
 
     schedule = subparsers.add_parser("schedule", help="manage project schedules")
     schedule_sub = schedule.add_subparsers(dest="subcommand", required=True)
@@ -458,8 +479,47 @@ async def _dispatch(args: argparse.Namespace, client: WorkstepClient | None = No
                 "overwrite": args.overwrite,
                 "confirm": "yes",
             })
-    if command == "engine" and args.subcommand == "list":
-        return await client.call("workstep_list_engines", {})
+    if command == "engine":
+        action = args.subcommand
+        if action == "list":
+            return await client.call("workstep_list_engines", {})
+        arguments = {"confirm": "yes"}
+        if hasattr(args, "path"):
+            arguments["path"] = str(await asyncio.to_thread(Path(args.path).expanduser().resolve))
+        if action == "inspect":
+            return await client.call("workstep_custom_engine_inspect", arguments)
+        if action == "configure":
+            data = await asyncio.to_thread(Path(args.config_file).read_text, encoding="utf-8")
+            payload = json.loads(data)
+            if not isinstance(payload, dict) or set(payload) - {"values", "clear", "confirmed", "provider_id", "model"}:
+                raise ValueError("配置文件字段无效")
+            return await client.call("workstep_custom_engine_configure", {**arguments, **payload})
+        if action == "register":
+            return await client.call("workstep_custom_engine_register", {**arguments, "replace": args.replace})
+        if action in {"install", "validate"}:
+            operation = await client.call("workstep_custom_engine_operation", {**arguments, "action": action})
+            if operation.get("ok") is False or args.no_wait:
+                return operation
+            operation_id = operation["id"]
+            try:
+                while operation.get("status") == "running":
+                    operation = await client.call("workstep_custom_engine_operation_get", {"operation_id": operation_id})
+                    if operation.get("ok") is False:
+                        return operation
+                    if operation.get("status") == "running":
+                        await asyncio.sleep(.5)
+            except asyncio.CancelledError:
+                await client.call("workstep_custom_engine_operation_stop", {"operation_id": operation_id, "confirm": "yes"})
+                raise
+            return operation.get("result") or {"ok": False, "operation": operation}
+        if action in {"operation", "stop"}:
+            return await client.call("workstep_custom_engine_operation_get" if action == "operation" else "workstep_custom_engine_operation_stop", {**arguments, "operation_id": args.operation_id})
+        if action in {"disable", "enable"}:
+            return await client.call("workstep_custom_engine_disable", {**arguments, "engine_id": args.engine_id, "disabled": action == "disable"})
+        if action == "rollback":
+            return await client.call("workstep_custom_engine_rollback", {**arguments, "engine_id": args.engine_id})
+        if action == "export":
+            return await client.call("workstep_custom_engine_export", {**arguments, "engine_id": args.engine_id, "output": str(Path(args.output).expanduser().resolve())})
     if command == "schedule":
         base = {"project_id": args.project_id}
         if args.subcommand == "list":

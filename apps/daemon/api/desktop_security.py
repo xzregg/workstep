@@ -7,6 +7,7 @@ import hmac
 import os
 import re
 from contextlib import nullcontext
+from urllib.parse import urlparse
 
 from fastapi import WebSocket
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -95,6 +96,25 @@ def desktop_request_authenticated(request: Request) -> bool:
     return _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER))
 
 
+def desktop_runtime_authenticated(request: Request) -> bool:
+    return _desktop_token() is not None and _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER))
+
+
+def desktop_loopback_target(request: Request) -> bool:
+    """Keep host-loopback browser access local across Podman port forwarding."""
+    if os.environ.get("WORKSTEP_DESKTOP_RUNTIME") != "1" or not _loopback_name(request.url.hostname):
+        return False
+    for header in ("origin", "referer"):
+        value = request.headers.get(header)
+        if value and not _loopback_name(urlparse(value).hostname):
+            return False
+    return True
+
+
+def _loopback_name(value: str | None) -> bool:
+    return str(value or "").strip("[]").lower() in {"localhost", "127.0.0.1", "::1"}
+
+
 def _remote_access_enabled(app) -> bool:
     service = getattr(app.state, "remote_access_service", None)
     return bool(service and service.settings().get("enabled"))
@@ -117,6 +137,8 @@ async def desktop_websocket_allowed(ws: WebSocket) -> bool:
         return True
 
     if not _valid_token(ws.headers.get(DESKTOP_TOKEN_HEADER)):
+        if _desktop_loopback_websocket(ws):
+            return True
         if gateway_client is not None and getattr(gateway_client, "managed_config", None) is not None:
             return False
         return await asyncio.to_thread(_remote_access_enabled, ws.app)
@@ -135,6 +157,14 @@ async def desktop_websocket_allowed(ws: WebSocket) -> bool:
         return False
     ws.scope["managed_actor"] = actor
     return True
+
+
+def _desktop_loopback_websocket(ws: WebSocket) -> bool:
+    target = urlparse(f"//{ws.headers.get('host') or ''}").hostname or ws.url.hostname
+    if os.environ.get("WORKSTEP_DESKTOP_RUNTIME") != "1" or not _loopback_name(target):
+        return False
+    origin = ws.headers.get("origin")
+    return not origin or _loopback_name(urlparse(origin).hostname)
 
 
 class DesktopSecurityMiddleware(BaseHTTPMiddleware):
@@ -211,7 +241,8 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
         denied = protected and (
             (not remote_bridge and not remote_access
              and request.url.path != "/api/gateway-platform/callback"
-             and not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)))
+             and not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER))
+             and not desktop_loopback_target(request))
             or (managed and not remote_bridge and request.url.path not in ("/api/managed/bootstrap", "/api/health", "/api/gateway-platform/settings", "/api/gateway-platform/login", "/api/gateway-platform/callback") and actor is None)
         )
         if denied:

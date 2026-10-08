@@ -1729,7 +1729,14 @@ async def test_enhance_prompt_uses_pydantic_ai_without_context(chat_module, monk
     }]
 
 
-async def test_session_auto_titles_from_first_sentence(chat_module, monkeypatch):
+@pytest.mark.parametrize(("content", "expected_title"), [
+    ("帮我实现用户登录模块，包括注册与找回密码。第二句别管。", "帮我实现用户登录模块，包括注册与找回密码"),
+    ("![image.png](.workstep/uploads/chat-session.png) 修复图片中的问题。第二句。", "修复图片中的问题"),
+    ("检查 ![截图](.workstep/uploads/screen.png) 布局", "检查 布局"),
+    ("![截图](.workstep/uploads/screen(1).png)\n![图片](https://example.com/a.png) 帮我检查", "帮我检查"),
+    ("![image.png](.workstep/uploads/chat-session.png)", "未命名会话"),
+])
+async def test_session_auto_titles_from_first_sentence(chat_module, monkeypatch, content, expected_title):
     """A session without a title takes its first user sentence as the title."""
     module, bus, manager, project, _ = chat_module
 
@@ -1745,13 +1752,13 @@ async def test_session_auto_titles_from_first_sentence(chat_module, monkeypatch)
     accepted = module.submit_message(
         project.id,
         session_id,
-        "帮我实现用户登录模块，包括注册与找回密码。第二句别管。",
+        content,
         "idem-title-1",
     )
     assert await _wait_turn(module, accepted.turn_id) == "completed"
 
     detail = module.get_session(project.id, session_id)
-    assert detail["title"] == "帮我实现用户登录模块，包括注册与找回密码"
+    assert detail["title"] == expected_title
 
 
 async def test_chat_messages_go_to_new_tables_not_task_tables(chat_module, monkeypatch):
@@ -3430,6 +3437,7 @@ async def test_action_quick_button_round_trip_and_script_validation(chat_module)
     }
     assert module.set_quick_buttons(project.id, [button])[0] == {
         **button,
+        "enabled": True,
         "immediate_send": False,
         "confirmation_input_prompt": "",
     }
@@ -3473,6 +3481,32 @@ async def test_system_prompt_persistence_validation_and_clear(chat_module):
     # Over-length is rejected.
     with pytest.raises(ValueError):
         module.set_system_prompt(project.id, "x" * 20001)
+
+
+@pytest.mark.anyio
+async def test_quick_button_enabled_http_round_trip(chat_module, monkeypatch):
+    import main
+
+    module, _, manager, project, _ = chat_module
+    monkeypatch.setattr(main, "project_manager", manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    button = {"id": "implementation", "label": "生成实现", "prompt": "实现"}
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        for state in (False, True, None):
+            payload = {**button, **({"enabled": state} if state is not None else {})}
+            response = await client.put(
+                "/api/chat-sessions/quick-buttons",
+                json={"project_id": project.id, "buttons": [payload]},
+            )
+            assert response.status_code == 200
+            expected = state is not False
+            assert response.json()["buttons"][0]["enabled"] is expected
+            loaded = await client.get(
+                "/api/chat-sessions/quick-buttons", params={"project_id": project.id},
+            )
+            assert loaded.status_code == 200
+            assert loaded.json()["buttons"][0]["enabled"] is expected
+            assert loaded.json()["buttons"][0]["prompt"] == button["prompt"]
 
 
 @pytest.mark.anyio
@@ -3777,6 +3811,7 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
             assert resp.status_code == 200
             assert resp.json()["buttons"][0] == {
                 "id": resp.json()["buttons"][0]["id"],
+                "enabled": True,
                 "label": '<a href="https://example.com">打开文档</a>',
                 "prompt": "",
                 "kind": "prompt",

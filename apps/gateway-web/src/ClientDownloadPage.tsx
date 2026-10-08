@@ -1,3 +1,4 @@
+import { PlatformAddress } from './PlatformAddress'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -19,13 +20,15 @@ export function ClientDownloadPage() {
   const [arch, setArch] = useState('arm64')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [address, setAddress] = useState<string | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
     void fetch('/api/client-releases', { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error('安装包目录加载失败。')
-        setReleases((await response.json()).releases ?? [])
+        const data = await response.json()
+        if (!controller.signal.aborted) { setReleases(data.releases ?? []); setAddress(data.public_origin ?? window.location.origin) }
       })
       .catch((reason) => { if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '安装包目录加载失败。') })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
@@ -39,7 +42,7 @@ export function ClientDownloadPage() {
       try {
         const response = await fetch('/api/devices', { credentials: 'same-origin', signal: controller.signal })
         if (response.ok && hasOnlineDevice((await response.json()).devices ?? [])) {
-          navigate('/devices', { replace: true })
+          navigate('/', { replace: true })
           return
         }
       } catch (reason) {
@@ -55,9 +58,10 @@ export function ClientDownloadPage() {
   return <section className="gateway-admin-page gateway-download-page">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台</span>
     <h2>安装 WorkStep</h2>
-    <p>你还没有获分配的在线电脑。设备上线后将自动进入“我的电脑”。<Link to="/devices">查看我的电脑</Link></p>
+    <p>设备绑定并上线后，将自动进入“我的 WorkStep”。<Link to="/">返回我的 WorkStep</Link></p>
     <p>选择电脑的系统和架构，下载此网关统一提供的受管安装包。安装后在桌面端登录并登记这台电脑。</p>
-    <p>平台地址：<code>{typeof window === 'undefined' ? '当前网关地址' : window.location.origin}</code></p>
+    <div className="gateway-download-address"><span>平台地址：</span><PlatformAddress address={address}/></div>
+    <p>复制地址，填入 WorkStep「设置 → 远程访问 → 网关平台」。</p>
     <div className="gateway-download-filters">
       <label htmlFor="release-os">操作系统</label>
       <select id="release-os" value={os} onChange={(event) => setOs(event.target.value)}>

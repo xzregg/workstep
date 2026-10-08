@@ -307,7 +307,7 @@ export default function CoordinatorConfigBar({
                 label: t('coord.defaultOption', { engine: engineLabel(defaultEngine || 'claude', t) }),
               }] : []),
               ...engines
-                .filter((item) => item.installed || item.built_in)
+                .filter((item) => item.enabled !== false && (item.installed || item.built_in))
                 .map((item) => ({
                   value: item.id,
                   label: engineLabel(item.id, t),

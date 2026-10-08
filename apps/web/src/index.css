@@ -6036,3 +6036,18 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   border-radius: var(--radius-sm); background: var(--surface); color: var(--danger);
   overflow-wrap: anywhere;
 }
+
+.action-conversation-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.action-conversation-duration {
+  color: var(--meta);
+  font-size: calc(11px * var(--font-scale));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}

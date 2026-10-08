@@ -135,6 +135,23 @@ async def list_engines(project_id: str = ""):
     return {"engines": workspace_engine_catalog(engines) if scoped else engines}
 
 
+class EngineVisibilityRequest(BaseModel):
+    enabled: bool
+
+
+@router.put("/{engine_id}/visibility")
+async def set_engine_visibility(engine_id: str, request: EngineVisibilityRequest):
+    _require_managed_engine_permission()
+
+    def update():
+        if engine_id not in list_all_engines():
+            raise HTTPException(status_code=404, detail="引擎不存在")
+        config_store.set_engine_enabled(engine_id, request.enabled)
+        return {"engines": _refresh_and_summaries()}
+
+    return await asyncio.to_thread(update)
+
+
 @router.post("/refresh")
 async def refresh_engines():
     """Re-scan the host for supported execution engines."""
@@ -683,3 +700,8 @@ def _engine_config_response(engine_id: str, engine: BaseLLMEngine) -> dict:
         "configured": engine.is_configured(),
         "installed": engine.is_installed(),
     }
+
+
+# Host-only custom engine operations reuse the existing engine router/auth boundary.
+from api.custom_engine import router as custom_engine_router
+router.include_router(custom_engine_router)

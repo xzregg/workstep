@@ -73,6 +73,10 @@ WorkStep 渠道消息协议 v1 是项目内部的收发契约。它采用与 LLM
 
 ## 按钮卡片与交互回调
 
+钉钉回复默认使用 [OpenClaw DingTalk Channel Plugin](https://github.com/soimy/openclaw-channel-dingtalk) 的预置 v2 模板 `675cde2f-f526-40cb-b828-f5b2b57b8b77.schema`，无需用户在后台创建模板。协议参考其 `src/card/card-template.ts`、`src/card/statusline-renderer.ts` 与 `docs/assets/card-data-mock-v2.json`；原作者为 YM Shen and contributors，许可声明见 [MIT License](licenses/soimy-dingtalk-MIT.txt)。运行正文通过 `PUT /v1.0/card/streaming` 的 `content` 全量流式更新；完成时结束流并将所有长度的正文提交至 `blockList`，`copy_content` 保留完整内容；`quoteContent` 保留问题标题，`hasAction` 控制中止按钮。运行使用 `flowStatus=2`，避免状态 1 的窄占位条；结束使用状态 3 并隐藏按钮。模板固定的 `btn_stop` 回调仅在当前运行卡片上映射到原中止操作，继续执行发起者和原消息校验。确认、选项及权限卡片使用独立的官方 Markdown 按钮模板，显式旧模板继续提供兼容字段。
+
+状态栏 `statusLine` 第一行显示实际引擎和模型，第二行显示耗时、输入／输出 Token 及已有缓存用量；不显示助手名、思考强度、费用或 DAPI 次数，无来源的引擎、模型和用量不显示。协调回复复用异步 `get_config` 的已解析配置，渠道对话读取已接受轮次的内存快照；后续模型和用量来自同条消息的 AG-UI 元数据及 `workstep.usage`。用量使用最新快照而非累加重复事件，耗时在终态固定，状态随既有正文更新节奏发送，不单独创建额外轮询。任务群转发也保留同条消息的模型与用量，自动阶段不增加中止按钮。回归与慢数据库健康检查见 `tests/test_dingtalk_card_status.py`、`tests/test_dingtalk_ai_card.py`；真实钉钉布局仍需联调确认。
+
 统一层新增 `ChannelButton(key, label)`、`ChannelCard(id, title, text, buttons, running)` 和 `ChannelAction(bot_id, card_id, key, sender_id, conversation_id)`；`ChannelCapabilities.cards` 声明平台按钮能力，适配器实现 `send_card`、`update_card` 并通过 `set_action_handler` 注册独立回调。回调不进入普通消息的串行锁。
 
 `services/channels/controls.py::ChannelControls` 持有卡片与消息、项目、任务／会话、协调轮次及交互请求的对应关系，保存在全局配置 `channel_button_actions`，不含凭证与附件。停止及阻塞交互只在对应原始轮次仍活跃时有效；提案及普通选择题可在回复结束后点击，提案经过现有状态版本检查。机器人、发起用户、会话和最新绑定必须匹配；重复点击去重。用户发起的回复、确认和权限卡片仅发起者可点击。自动任务阶段和审核广播不发送中止卡片。
@@ -116,3 +120,7 @@ WorkStep 渠道消息协议 v1 是项目内部的收发契约。它采用与 LLM
 自动群卡片通过机器人 ID、群 ID 和当前任务绑定验证来源，允许该群成员点击；用户消息触发的卡片继续限定原发起者。审核决定和消息作者使用实际点击者身份，昵称缺失时显示用户 ID；卡片操作记录另保存 `clicked_by`。审核按钮每次点击检查项目数据库中的当前轮次、归档状态和已有决定，跨群并发点击仅接受一个决定；持久化人工审核按钮可以跨重启操作，临时引擎问题仍受活跃会话约束。测试及慢 SQL 健康检查见 `tests/test_channel_task_controls.py`。
 
 渠道审核卡片由 `task_controls.py` 在 `task_forwarder.py::wait_for_completed` 的终态事件栅栏后发送，确保阶段正文先发送；栅栏不等待仍在运行的 LLM，跨任务保持异步。`taskReviewRules.ts::reviewActorLabel` 对渠道审核人名称中已带的来源去重（如「企业微信 · 用户」不再次拼接企业微信）。顺序、人工审核通知过滤、慢审核查询健康检查和标签回归见 `test_channel_task_forwarder.py`、`test_channel_task_controls.py`、`taskReviewRules.test.ts`。
+
+钉钉应用须同时开通 `Card.Instance.Write` 与 `Card.Streaming.Write`。实例更新使用 `updateCardDataByKey=true`；原生流式与按钮回调回归见 `tests/test_dingtalk_native_stream.py`。
+
+钉钉图片与文件下载共用 `dingtalk.py::download`：可信平台域名的旧 HTTP 地址在请求前升级为 HTTPS，签名查询原样保留，每次重定向均重新校验域名、协议和端口。不支持的地址仅记录协议及域名，不记录下载签名；行为回归见 `tests/test_dingtalk_media_download.py`，慢网络与大小上限见 `tests/test_channel_protocol.py`。

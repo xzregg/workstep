@@ -455,3 +455,22 @@ apply. Native callers can use `workstep_upload_channel_attachment` with
 `project_id/filename/data_url/confirm='yes'`, then pass
 `attachments: [{kind: 'image'|'file', path: '<returned project URL>'}]` to
 `workstep_send_channel_message`. Attachment-only sends do not require text.
+
+## Custom engines
+
+When creating or updating a custom engine, read [the onboarding guide](references/custom-engine.md) and [adapter contract](references/custom-engine-contract.md) on demand. These are reference documents within this CLI skill; do not load a separate custom-engine skill. Commands accept an absolute package directory or its Python entry file.
+
+```bash
+workstep engine inspect /absolute/adapter --json
+workstep engine install /absolute/adapter --json
+workstep engine configure /absolute/adapter --config-file /private/config.json --json
+workstep engine validate /absolute/adapter --json
+workstep engine register /absolute/adapter --json
+workstep engine register /absolute/adapter --replace --json
+workstep engine export engine_id --output /absolute/engine.zip --json
+workstep engine disable engine_id --json
+workstep engine enable engine_id --json
+workstep engine rollback engine_id --json
+```
+
+Install/validate wait for the final result. Add `--no-wait` to get an operation ID, query with `engine operation ID --json`, or cancel with `engine stop ID --json`. A passed report is bound to code, dependencies and configuration; changes require validation again. Registration is atomic and requires a daemon restart to discover the new adapter. Export excludes dependencies and credentials; recipients reinstall for their own OS/architecture. Visibility switches only hide engines in selectors; `disable` actually prevents custom engine execution.

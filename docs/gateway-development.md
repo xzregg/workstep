@@ -23,7 +23,7 @@ Gateway 是独立 FastAPI 服务，`apps/gateway-web` 是独立门户。阶段 0
 
 阶段 4D 的 Gateway 组 API 在 `/api/groups`；外部部门映射组跟随目录同步，组项目关系仅授予 Skills 管理范围。`/api/admin/skills` 接收限额 ZIP 包并保存不可变版本，具有平台范围 `skill_admin` 或超级管理员角色且完成短时密码二次认证后才能上传、审核和授权版本；组长只能给本组已关联项目分配获授权的固定版本。设备控制心跳携带签名清单，PC 从固定网关按需下载并验签、校验包摘要和路径后落盘；`/api/admin/skills/applications` 可看项目应用状态。管理页面仍待完成。
 
-本地开发使用 `uv run --project apps/gateway --group dev uvicorn gateway.app:app --host 127.0.0.1 --port 8766`。门户在 `apps/gateway-web` 执行 `yarn dev`，开发服务器将 `/api` 代理到 8766。构建后可设置 `WORKSTEP_GATEWAY_WEB_DIST` 为门户 `dist` 的绝对路径，让 Gateway 托管静态文件。默认 SQLite 位于 `~/.workstep-gateway/workstep_platform.db`，可用 `WORKSTEP_GATEWAY_DATA_DIR` 指定数据目录，或用 `WORKSTEP_GATEWAY_DATABASE_URL` 指定 `sqlite+aiosqlite` / `postgresql+asyncpg` 地址。启动执行 Alembic 迁移，未知版本拒绝启动，不会自动退回别的数据库。
+本地开发使用 `uv run --project apps/gateway --group dev uvicorn gateway.app:app --host 0.0.0.0 --port 8766`。门户在 `apps/gateway-web` 执行 `yarn dev`，开发服务器将 `/api` 代理到 8766。构建后可设置 `WORKSTEP_GATEWAY_WEB_DIST` 为门户 `dist` 的绝对路径，让 Gateway 托管静态文件。默认 SQLite 位于 `~/.workstep-gateway/workstep_platform.db`，可用 `WORKSTEP_GATEWAY_DATA_DIR` 指定数据目录，或用 `WORKSTEP_GATEWAY_DATABASE_URL` 指定 `sqlite+aiosqlite` / `postgresql+asyncpg` 地址。启动执行 Alembic 迁移，未知版本拒绝启动，不会自动退回别的数据库。
 
 SQLite 可在服务运行时执行 `uv run --project apps/gateway python apps/gateway/scripts/backup.py /安全位置/backup.db` 创建一致性备份；PostgreSQL 使用 `pg_dump`。数据库切换必须停机备份、迁移和校验。受管包可用 `apps/desktop` 的 `yarn bundle:managed` 生成签名配置，再用 `yarn dist:managed` 构建；前者需要 `WORKSTEP_GATEWAY_ID`、`WORKSTEP_GATEWAY_ORIGIN`、`WORKSTEP_GATEWAY_PUBLIC_KEY_FILE`、`WORKSTEP_MANAGED_SIGNING_KEY_FILE` 和 `WORKSTEP_MANAGED_BUNDLE_DIR`，后者需要最后一个变量。签名私钥只用于构建，不进入安装包。阶段 1 的受管设备实际连接仍待阶段 3B。
 
@@ -40,7 +40,7 @@ WORKSTEP_GATEWAY_GATEWAY_ID=local-acceptance-8700 \
 WORKSTEP_GATEWAY_PORT=8700 \
 WORKSTEP_GATEWAY_WEB_DIST="$PWD/apps/gateway-web/dist" \
 WORKSTEP_GATEWAY_WORKSPACE_WEB_DIST="$PWD/apps/web/dist-gateway-share" \
-uv run --project apps/gateway --no-sync uvicorn gateway.app:app --host 127.0.0.1 --port 8700
+uv run --project apps/gateway --no-sync uvicorn gateway.app:app --host 0.0.0.0 --port 8700
 ```
 
 打开 `http://localhost:8700/auth`；新数据目录需要先初始化管理员。相关行为测试：Gateway `test_local_gateway_origin.py` / `test_data_http.py`、daemon `test_gateway_local_origin.py`、Desktop `gateway-origin.test.cjs` / `managed-config.test.cjs`、Web `gatewayRemoteFrame.test.tsx`。
@@ -74,7 +74,7 @@ uv run --project apps/gateway --no-sync uvicorn gateway.app:app --host 127.0.0.1
 
 ## 常规启动与目录分层
 
-在仓库根目录执行 `./start-gateway.sh 8700 dev`（后端自动重载），或 `./start-gateway.sh 8700 prod`。脚本构建 `gateway-web` 门户与 `web` 分享查看器，首页提供门户；按 Ctrl+C 停止。也可在 `apps/gateway` 执行 `uv run --no-sync uvicorn main:app --host 127.0.0.1 --port 8700`，已构建的前端目录默认从同仓库查找。生产部署仍需按运维文档设置数据目录、稳定 Gateway ID 和外部地址。
+在仓库根目录执行 `./start-gateway.sh 8700 dev`（后端自动重载），或 `./start-gateway.sh 8700 prod`。脚本构建 `gateway-web` 门户与 `web` 分享查看器，首页提供门户；按 Ctrl+C 停止。也可在 `apps/gateway` 执行 `uv run --no-sync uvicorn main:app --host 0.0.0.0 --port 8700`，已构建的前端目录默认从同仓库查找。生产部署仍需按运维文档设置数据目录、稳定 Gateway ID 和外部地址。
 
 `src/gateway/api/` 声明 HTTP/WS 路由；`services/` 执行业务工作单元；`models/` 按领域定义 SQLAlchemy 模型；`app.py` 装配生命周期、路由和门户。数据库表与迁移不因目录调整变化。
 
@@ -89,3 +89,25 @@ uv run --project apps/gateway --no-sync uvicorn gateway.app:app --host 127.0.0.1
 服务读取平台公钥并固定指纹，发起 PKCE 登录；认证回到发起请求的浏览器入口下的固定 `/api/gateway-platform/callback` 路径，支持手机访问的 HTTP/LAN 和 HTTPS 地址，并校验回跳入口、状态码、验证码、安装身份和签名。首次认证的电脑可能待审批，管理员批准后重新认证；批准后连接现有控制/数据隧道。认证在平台页面完成，daemon 不收集平台账号密码。普通桌面会在返回窗口时刷新认证结果并重载工作台；待审批设备可在管理员批准后重新认证。开发时 Vite 代理保留浏览器 Host，保证回跳与 Cookie 同源检查一致。
 
 常规安装无需特殊受管包。地址和公钥指纹存入 `~/.workstep/config.json` 的 `gateway_platform`，设备私钥在 `gateway-identities/` 的 0600 文件中；未批准时只保存配置，不启用受管授权。重启后重新认证，不持久化浏览器会话或授权票据。原签名受管包仍保持地址固定。
+
+### 选择组织与查看同步进度
+
+在管理后台 → 系统设置 → 平台设置 → 组织同步与扫码登录，配置钉钉或企业微信应用后点击“同步组织”。平台只读取部门列表供勾选，未勾选时不能启动同步；部门的子部门须单独勾选，也可搜索后“勾选搜索结果”。点击“同步所选组织”后显示后台阶段、已读取部门数、当前部门及完成后的组织/用户数量。收起或刷新页面不取消任务，重新打开同一应用可恢复进度；重启服务会把未完成任务标记为中断，需重新启动。失败不会自动扩大同步范围，未选的已有组织与成员保留。后续周期与回调同步沿用最近一次成功的勾选范围；新旧应用尚未选择范围时均不会自动全量导入。
+
+### 用户与成员批量管理
+
+用户管理以显示名识别人；「登录用户名」仅显示具有密码登录能力的真实用户名，组织账号显示扫码登录，内部 ext 标识保留用于身份关联。勾选当前页用户后可批量批准待审核账号、启用已停用账号或停用账号；混合不适用状态时对应按钮禁用，切换搜索/分页/用户组会清空选择。停用前须密码验证，成功后撤销所选用户登录会话，恢复管理员受保护，不能停用最后一位活动超管。
+
+用户组管理左侧选择用户组，右侧管理成员与项目关联。查找用户后逐项勾选或全选当前结果，选择角色再批量添加；已加入的用户不可重复勾选。现有手工成员可批量调整角色或移除，移除仅撤销组成员身份，保留账号；组织同步成员显示只读说明，须在企业通讯录调整后同步。每批最多 100 个账号，批量接口在同一数据库事务内验证所有对象后提交，有对象不存在、越权或只读冲突时整批不变。项目关联以表格显示，提供关联、取消关联与确认交互，仍只授予 Skill 策略关系。
+
+### 仅使用企业扫码登录
+
+在「平台设置 → 组织同步与扫码登录」配置钉钉或企业微信应用并勾选「启用扫码登录」，再在「注册与身份 → 修改登录方式」取消「启用账号密码登录」并验证管理员密码保存。关闭后，普通登录、工作台和桌面端认证均不展示账号密码表单，自主注册关闭；服务层同步拒绝密码登录和注册，现有账号、登录会话及原注册策略保留。恢复账号密码登录后沿用原注册策略。登录入口只显示平台图标与名称，公开接口不返回企业编号。关闭前至少需要一个配置好密钥并启用的扫码应用；扫码独占时不能停用最后一个入口。启用前应确保需要管理后台的用户已关联企业身份并拥有对应权限。
+
+### 用户、用户组删除与统一工作台
+
+用户管理支持单项、勾选批量删除；状态筛选选择“已删除”可恢复。删除立即使账号和已有会话失效，恢复后先处于停用状态，核对授权后再启用。恢复管理员、当前操作账号不能删除，最后一个有效超管也受保护。历史记录和登录用户名保留，不释放用户名。用户组管理支持当前组或勾选组删除、已删除用户组批量恢复；不删除组内用户，不连带删除下级组，历史成员和关联保留。组删除后项目授权、组能力和 Skill 下发失效，恢复会重新启用这些关联（同步组成员按最新目录重新核对）。这些操作均要求超管或对应用户管理范围、CSRF 和密码验证，并保留审计。
+
+门户首页统一为“我的 WorkStep”：左侧设备选择，右侧项目搜索、列表与打开入口。打开设备进入实际 WorkStep 任务和工作流页面，打开项目复用原项目票据。未获分配设备进入原安装 WorkStep 引导，设备上线后自动返回。未登录仍遵循平台配置的密码／扫码登录方式。移除门户用户组 Skills 菜单，后台相关管理功能保留。
+
+网关启动脚本的开发和生产模式均默认监听 `0.0.0.0`（所有 IPv4 网卡），默认端口 `8700`。监听地址与 `WORKSTEP_GATEWAY_PUBLIC_ORIGIN` 是不同配置：前者用于绑定网卡，后者用于生成登录回调及设备入口，不能将 `0.0.0.0` 作为公开访问地址。

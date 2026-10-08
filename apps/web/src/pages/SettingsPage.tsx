@@ -149,7 +149,7 @@ export default function SettingsPage({
       <section className="settings-content">
         <EngineSettingsPanel hidden={activeSection !== 'engines'} refreshRevision={engineRefreshRevision}
           preferredProviderProtocol={preferredProviderProtocol} focusTarget={focusTarget}
-          onConfigurationChanged={onConfigurationChanged} />
+          onConfigurationChanged={onConfigurationChanged} onConversationStarted={closeSettings} />
         {activeSection !== 'engines' && (activeSection === 'providers' ? (
 
           <ProviderSettings

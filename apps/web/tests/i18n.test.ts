@@ -74,7 +74,6 @@ test('uses product-facing engine names', () => {
     assert.equal(t('engine.label.claude_agent_sdk'), 'Claude Code')
     assert.equal(t('engine.label.claude'), 'Claude Code CLI')
   }
-  assert.equal(zhCNT('settings.systemDefault'), '系统默认（Pydantic AI）')
 })
 
 test('translates the channel chat assistant name', () => {

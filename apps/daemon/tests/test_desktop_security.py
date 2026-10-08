@@ -83,6 +83,16 @@ def test_desktop_api_requires_runtime_token(monkeypatch):
     assert response.headers['referrer-policy'] == 'no-referrer'
 
 
+def test_desktop_loopback_url_remains_local_behind_container_forwarding(monkeypatch):
+    monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
+    monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')
+
+    with TestClient(_app(), base_url='http://127.0.0.1:8766') as client:
+        assert client.get('/api/private').status_code == 200
+        with client.websocket_connect('/ws', headers={'host': '127.0.0.1:8766', 'origin': 'http://127.0.0.1:8766'}) as websocket:
+            assert websocket.receive_text() == 'ok'
+
+
 def test_enabled_remote_access_can_use_desktop_http_and_websocket_without_desktop_token(monkeypatch):
     monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
     monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')

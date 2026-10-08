@@ -11,14 +11,20 @@ import aiohttp
 from services.channels.base import ChannelAttachment
 
 
-async def fetch_media(url: str, limit: int, domains: tuple[str, ...]) -> bytes:
+async def fetch_media(url: str, limit: int, domains: tuple[str, ...], *, upgrade_http: bool = False) -> bytes:
     timeout = aiohttp.ClientTimeout(total=30)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         for _ in range(4):
             parsed = urlparse(url)
             host = parsed.hostname or ''
-            if parsed.scheme != 'https' or not any(host == domain or host.endswith('.'+domain) for domain in domains):
-                raise ValueError('附件下载地址不是平台 HTTPS 地址')
+            trusted = any(host == domain or host.endswith('.'+domain) for domain in domains)
+            # DingTalk can return legacy HTTP media URLs. Upgrade before any
+            # request, including redirects, while retaining the signed query.
+            if upgrade_http and trusted and parsed.scheme == 'http' and parsed.port in (None, 80):
+                parsed = parsed._replace(scheme='https', netloc=host)
+                url = parsed.geturl()
+            if parsed.scheme != 'https' or not trusted or parsed.username or parsed.password or parsed.port not in (None, 443):
+                raise ValueError(f'附件下载地址不是平台 HTTPS 地址（协议: {parsed.scheme}，域名: {host}）')
             async with session.get(url, allow_redirects=False) as response:
                 if response.status in (301,302,303,307,308):
                     from urllib.parse import urljoin

@@ -336,6 +336,19 @@ class ConfigStore:
             self.set("device", normalized)
         return normalized
 
+    def is_engine_enabled(self, engine_id: str) -> bool:
+        """Visibility in engine selectors; never gates existing execution."""
+        values = self.get("engine_visibility", {})
+        value = values.get(engine_id) if isinstance(values, dict) else None
+        return value if isinstance(value, bool) else engine_id not in {"claude", "codex"}
+
+    def set_engine_enabled(self, engine_id: str, enabled: bool) -> None:
+        with self._lock:
+            values = self.get("engine_visibility", {})
+            values = dict(values) if isinstance(values, dict) else {}
+            values[engine_id] = enabled
+            self.set("engine_visibility", values)
+
     def is_engine_verified(self, engine_id: str) -> bool:
         verified = self.get("verified_engines", {})
         return isinstance(verified, dict) and verified.get(engine_id) is True

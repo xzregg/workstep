@@ -83,10 +83,10 @@ def test_group_leader_can_manage_only_own_skill_projects(tmp_path):
         members = client.get(f"/api/groups/{group_id}/members")
         assert members.status_code == 200
         assert members.json()["members"] == [{
-            "user_id": leader_id, "username": "leader", "display_name": "Leader",
+            "user_id": leader_id, "username": "leader", "login_username": "leader", "display_name": "Leader",
             "role": "leader", "source": "manual",
         }, {
-            "user_id": member_id, "username": "member", "display_name": "Member",
+            "user_id": member_id, "username": "member", "login_username": "member", "display_name": "Member",
             "role": "member", "source": "manual",
         }]
         assert client.post(f"/api/groups/{group_id}/members", json={

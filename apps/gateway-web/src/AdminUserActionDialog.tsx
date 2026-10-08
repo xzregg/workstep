@@ -32,7 +32,7 @@ export function AdminUserActionDialog({ user, action, csrf, onComplete, onClose 
   }
 
   return <GatewayConfirmDialog title={approval ? '批准用户' : '停用用户'}
-    message={`${user.display_name}（${user.username}）${approval ? '将获准登录。' : '的所有登录会话将失效。'}`}
+    message={`${user.display_name}${approval ? '将获准登录。' : '的所有登录会话将失效。'}`}
     confirmLabel={approval ? '批准' : '确认停用'} busy={busy} disabled={!approval && !password}
     onConfirm={() => void confirm()} onCancel={onClose}>
     {!approval && <><label htmlFor="admin-user-step-password">输入你的密码确认</label>

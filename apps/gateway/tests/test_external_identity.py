@@ -227,7 +227,7 @@ def test_provider_reconciliation_is_atomic_and_provisions_closed_registration(tm
     class DirectoryConnector(FakeConnector):
         failing = False
 
-        async def fetch_directory(self, source):
+        async def fetch_directory(self, source, *, selected_department_ids=None):
             if self.failing:
                 raise TimeoutError("provider offline")
             return {"departments": [{"external_id": "dept-1", "display_name": "研发"}],
@@ -239,6 +239,16 @@ def test_provider_reconciliation_is_atomic_and_provisions_closed_registration(tm
     with TestClient(app, base_url="https://gateway.test") as client:
         csrf = _setup(client)
         source_id = _source(client, csrf)
+        from gateway.models import PlatformSetting
+        from gateway.services.organization_settings import option_key
+        async def choose_scope():
+            async with app.state.database.session() as session:
+                async with session.begin():
+                    row = await session.get(PlatformSetting, option_key(source_id))
+                    options = __import__('json').loads(row.value_json)
+                    options['selected_department_ids'] = ['dept-1']
+                    row.value_json = __import__('json').dumps(options)
+        client.portal.call(choose_scope)
         reconcile_url = f"/api/admin/identity-sources/{source_id}/reconcile"
         reconciled = client.post(reconcile_url, headers={"X-CSRF-Token": csrf})
         assert reconciled.status_code == 200, reconciled.text

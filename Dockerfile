@@ -62,7 +62,6 @@ ENV HOME=/root \
     NPM_CONFIG_CACHE=/root/.npm \
     NPM_CONFIG_PREFIX=/root/.workstep/runtime/npm \
     WORKSTEP_ENGINE_PACKAGE_DIR=/root/.workstep/runtime/python-packages \
-    PYTHONPATH=/root/.workstep/runtime/python-packages \
     VOLTA_HOME=/root/.workstep/runtime/volta \
     PATH="/app/apps/daemon/.venv/bin:/root/.workstep/runtime/npm/bin:/root/.workstep/runtime/base/bin:/root/.workstep/runtime/base/git/bin:/root/.workstep/runtime/volta/bin:${PATH}"
 

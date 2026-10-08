@@ -436,7 +436,7 @@ async def test_wecom_stop_card_is_sent_once_with_stream_updates():
     # Active button cards require a title: the live API rejects its absence
     # with errcode=41016, errmsg="missing title".
     assert template['main_title']=={'title':'正在处理'}
-    assert template['sub_title_text']=='点击中止'
+    assert template['sub_title_text']==''
     assert template['button_list']==[{'text':'中止','key':'0'}]
     assert [c.args[2] for c in calls]==['正在处理…','部分正文','已停止。\n\n<@u>']
     assert all('template_card' not in c.kwargs for c in calls)

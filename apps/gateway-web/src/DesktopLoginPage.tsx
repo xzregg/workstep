@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { GatewayLoginForm } from './GatewayLoginForm'
+import { EnterpriseLoginChoices } from './EnterpriseLoginChoices'
 import { scanFailureMessage } from './scanFailure'
 
 type DesktopRequest = {
@@ -12,7 +13,7 @@ type DesktopRequest = {
   code_challenge: string
 }
 
-type IdentitySource = { id: string; provider: 'dingtalk' | 'wecom'; tenant_id: string }
+type IdentitySource = { id: string; provider: 'dingtalk' | 'wecom' }
 
 export function parseDesktopRequest(search: string): DesktopRequest | null {
   const params = new URLSearchParams(search)
@@ -43,12 +44,18 @@ export function DesktopLoginPage() {
   const [csrf, setCsrf] = useState<string | null>(null)
   const [error, setError] = useState(scanFailureMessage(searchParams.get('scan_error')))
   const [sources, setSources] = useState<IdentitySource[]>([])
+  const [passwordEnabled,setPasswordEnabled]=useState(false)
 
   useEffect(() => {
     if (!request) return
     const controller = new AbortController()
-    void fetch('/api/auth/session', { credentials: 'same-origin', signal: controller.signal })
-      .then(async (response) => {
+    void Promise.all([
+      fetch('/api/auth/session', { credentials: 'same-origin', signal: controller.signal }),
+      fetch('/api/auth/registration-policy', {signal:controller.signal}),
+    ]).then(async ([response,policy]) => {
+        if(controller.signal.aborted)return
+        if(!policy.ok)throw Error('登录方式加载失败，请重新发起认证。')
+        setPasswordEnabled((await policy.json()).password_login_enabled ?? true)
         if (!response.ok) {
           setStatus('login')
           return
@@ -58,7 +65,7 @@ export function DesktopLoginPage() {
         setStatus('ready')
       })
       .catch((reason) => {
-        if (reason?.name !== 'AbortError') setStatus('login')
+        if (reason?.name !== 'AbortError') {setError('登录方式加载失败，请重新发起认证。');setStatus('login')}
       })
     void fetch('/api/auth/identity-sources', { signal: controller.signal })
       .then(async (response) => {
@@ -119,7 +126,7 @@ export function DesktopLoginPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ return_to: `/desktop/login?${new URLSearchParams(request!).toString()}` }),
       })
-      if (!response.ok) throw new Error('扫码登录暂时不可用，请重试或使用用户名密码。')
+      if (!response.ok) throw new Error('扫码登录暂时不可用，请稍后重试。')
       const result = await response.json()
       if (typeof result.authorization_url !== 'string'
           || !result.authorization_url.startsWith('https://')) {
@@ -148,14 +155,9 @@ export function DesktopLoginPage() {
       {status === 'checking' && <p role="status">正在检查登录状态…</p>}
       {status === 'login' && (
         <>
-          <GatewayLoginForm onSubmit={signIn} submitLabel="登录并继续" />
-          {sources.length > 0 && <div className="gateway-auth-external">
-            <p>或使用企业身份登录</p>
-            {sources.map((source) => <button key={source.id} type="button"
-              onClick={() => void startExternalLogin(source.id)}>
-              {source.provider === 'dingtalk' ? '钉钉' : '企业微信'} · {source.tenant_id}
-            </button>)}
-          </div>}
+          {passwordEnabled && <GatewayLoginForm onSubmit={signIn} submitLabel="登录并继续" />}
+          <EnterpriseLoginChoices sources={sources} passwordEnabled={passwordEnabled} onSelect={id=>void startExternalLogin(id)}/>
+          {!passwordEnabled && !sources.length && <p><Link to={`/auth?next=${encodeURIComponent('/desktop/login?'+searchParams.toString())}`}>进入扫码登录页</Link></p>}
         </>
       )}
       {status === 'ready' && <button type="button" onClick={() => csrf && void authorize(csrf)}>

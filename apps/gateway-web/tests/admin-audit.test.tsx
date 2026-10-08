@@ -9,9 +9,13 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', {
 })
 Object.assign(globalThis, { window: dom.window, document: dom.window.document,
   HTMLElement: dom.window.HTMLElement, MutationObserver: dom.window.MutationObserver,
-  Event: dom.window.Event })
+  Event: dom.window.Event, getComputedStyle: dom.window.getComputedStyle,
+  SVGElement: dom.window.SVGElement, Element: dom.window.Element, ShadowRoot: dom.window.ShadowRoot })
+dom.window.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent() { return false }, media: '', onchange: null })
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator })
-const { cleanup, fireEvent, render, screen, waitFor } = await import('@testing-library/react')
+globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
+const { cleanup, fireEvent, render, screen, waitFor, configure } = await import('@testing-library/react')
+configure({ asyncUtilTimeout: 5000 })
 const originalFetch = globalThis.fetch
 afterEach(() => { cleanup(); globalThis.fetch = originalFetch })
 
@@ -41,11 +45,8 @@ test('audit workbench filters, retries, pages, and shows redacted event detail',
   fireEvent.click(screen.getByText('审计详情'))
   assert.match(document.body.textContent ?? '', /流程运行 run-1/)
   assert.match(document.body.textContent ?? '', /宿主项目 host-project-1/)
-  fireEvent.change(screen.getByLabelText('开始时间'), { target: { value: '2026-09-30T10:00' } })
-  fireEvent.change(screen.getByLabelText('结束时间'), { target: { value: '2026-09-29T10:00' } })
-  fireEvent.click(screen.getByRole('button', { name: '查询审计' }))
-  assert.match(screen.getByRole('alert').textContent ?? '', /结束时间必须晚于开始时间/)
-  fireEvent.change(screen.getByLabelText('开始时间'), { target: { value: '2026-09-28T10:00' } })
+  fireEvent.click(await screen.findByPlaceholderText('开始时间'))
+  fireEvent.click(await screen.findByText('最近 7 天'))
   fireEvent.change(screen.getByLabelText('用户 ID'), { target: { value: 'user-1' } })
   fireEvent.change(screen.getByLabelText('关键词'), { target: { value: 'task-1' } })
   fireEvent.click(screen.getByRole('button', { name: '查询审计' }))

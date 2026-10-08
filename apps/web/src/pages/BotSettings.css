@@ -14,4 +14,6 @@
 .bot-settings-checkbox { align-self: end; flex-direction: row !important; align-items: center; }
 .bot-settings-actions { display: flex; gap: 8px; }
 .bot-settings-error { color: var(--danger) !important; }
+.bot-settings-help-links { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 8px; }
+.bot-settings-help-links a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 @media (max-width: 700px) { .bot-settings-form { grid-template-columns: 1fr; } .bot-settings-row { flex-wrap: wrap; } }

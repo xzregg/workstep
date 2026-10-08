@@ -52,12 +52,17 @@ export const ENGINE_COLORS: Record<string, string> = {
   deepseek_harness: '#4d6bfe',
 }
 
+const customMetadata = new Map<string, { name?: string; description?: string }>()
+export function publishEngineMetadata(engines: readonly { id: string; name?: string; description?: string }[]) {
+  for (const engine of engines) if (engine.name || engine.description) customMetadata.set(engine.id, engine)
+}
+
 export function engineLabel(id: string, t: TFunction = zhCNT) {
-  return ENGINE_LABELS[id] ? t(ENGINE_LABELS[id]) : id
+  return ENGINE_LABELS[id] ? t(ENGINE_LABELS[id]) : customMetadata.get(id)?.name || id
 }
 
 export function engineDescription(id: string, t: TFunction = zhCNT) {
-  return ENGINE_DESCRIPTIONS[id] ? t(ENGINE_DESCRIPTIONS[id]) : t('engine.defaultDescription')
+  return ENGINE_DESCRIPTIONS[id] ? t(ENGINE_DESCRIPTIONS[id]) : customMetadata.get(id)?.description || t('engine.defaultDescription')
 }
 
 export function sortExecutionEngines<T extends { id: string; installed?: boolean }>(

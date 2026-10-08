@@ -8,6 +8,13 @@ export interface ActionRunLike {
   started_at: string
 }
 
+/** Polling unchanged runs must not count as new conversation content. */
+export function actionConversationScrollKey(runs: ActionRunLike[] = []): string {
+  return JSON.stringify(runs.map(run => [
+    run.user_message_id, run.reply_message_id, run.title, run.output, run.status,
+  ]))
+}
+
 export function mergeActionMessages<
   T extends { id: string; content: string; created_at?: string },
   R extends ActionRunLike,
@@ -45,6 +52,14 @@ export function mergeActionMessages<
       )) : counterpart + (role === 'assistant' ? 1 : 0)
       if (index < 0) index = merged.length
       merged.splice(index, 0, message)
+    }
+    // Both persisted rows can arrive reversed when their timestamps tie.
+    // The run's explicit message IDs define the user-before-reply relation.
+    const userIndex = merged.findIndex(message => message.id === run.user_message_id)
+    const replyIndex = merged.findIndex(message => message.id === run.reply_message_id)
+    if (userIndex > replyIndex && replyIndex >= 0) {
+      const [user] = merged.splice(userIndex, 1)
+      merged.splice(replyIndex, 0, user)
     }
   }
   return merged

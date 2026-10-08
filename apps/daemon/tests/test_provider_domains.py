@@ -21,7 +21,7 @@ def test_catalog_import_does_not_interrupt_engine_discovery():
             "-c",
             "import services.provider_catalog; "
             "from engines.core.registry import _ALL_ENGINES; "
-            "assert {'pydantic_ai', 'hermes'} <= _ALL_ENGINES.keys() and 'claude' not in _ALL_ENGINES and 'codex' not in _ALL_ENGINES",
+            "assert {'pydantic_ai', 'hermes'} <= _ALL_ENGINES.keys() and 'claude' in _ALL_ENGINES and 'codex' in _ALL_ENGINES",
         ],
         check=True,
         capture_output=True,

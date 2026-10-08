@@ -29,7 +29,7 @@ export default function ExecutionDefaultSettings({ engines, loading, onChanged }
       setNotice('')
       try {
         const config = await engineApi.executionConfig()
-        setEngine(config.engine)
+        setEngine(config.engine || config.resolved_engine)
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : t('settings.readDefaultFailed'))
       } finally {
@@ -45,7 +45,7 @@ export default function ExecutionDefaultSettings({ engines, loading, onChanged }
     setNotice('')
     try {
       const result = await engineApi.setExecutionConfig(engine)
-      setEngine(result.engine)
+      setEngine(result.engine || result.resolved_engine)
       setNotice(t('settings.saveDefaultSuccess'))
       onChanged?.()
     } catch (reason) {
@@ -62,7 +62,6 @@ export default function ExecutionDefaultSettings({ engines, loading, onChanged }
       <div className="execution-default-settings-controls">
         <EngineSelect engines={engines} value={engine} onChange={setEngine}
           disabled={loading || saving || loadingConfig}
-          defaultOption={{ value: '', label: t('settings.systemDefault') }}
           ariaLabel={t('settings.defaultEngineAria')}
           className="execution-default-settings-select" />
         <Button variant="primary" className="execution-default-settings-save"

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 import { AdminRecordTable } from './AdminRecordTable'
+import { OrganizationSyncPanel } from './OrganizationSyncPanel'
 
 type Application = { id: string; provider: 'dingtalk' | 'wecom'; tenant_id: string; client_id: string; agent_id?: string;
  enabled: boolean; login_enabled?: boolean; sync_enabled?: boolean; secret_configured?: boolean;
@@ -31,8 +32,9 @@ function ApplicationEditor({ provider, source, csrf, onClose, onSaved }: { provi
   finally { submitting.current = false; setBusy(false) }
  }
  return <><GatewayConfirmDialog title={names[provider] + '应用配置'} message="配置企业应用并选择组织同步及扫码登录。" confirmLabel="保存配置" disabled={!valid} busy={busy} onConfirm={() => void save()} onCancel={() => dirty ? setDiscard(true) : onClose()}>
+  <p><a href={provider === 'dingtalk' ? 'https://open-dev.dingtalk.com/' : 'https://work.weixin.qq.com/wework_admin/'} target="_blank" rel="noopener noreferrer">打开{names[provider]}{provider === 'dingtalk' ? '开发者' : '管理'}后台</a><br />{provider === 'dingtalk' ? '在后台查看企业 Corp ID；进入应用的「凭证与基础信息」获取 Client ID 和 Client Secret。' : '在「我的企业 → 企业信息」获取企业 Corp ID；进入「应用管理 → 自建应用」获取 Agent ID 和 Secret。'}</p>
   <div className="gateway-application-fields">
-   <label>Corp ID<input value={draft.tenant} disabled={busy || !!source} onChange={event => change('tenant', event.target.value)} /></label>
+   <label>企业 Corp ID<input value={draft.tenant} disabled={busy} onChange={event => change('tenant', event.target.value)} /><small>{provider === 'dingtalk' ? '企业 ID（通常以 ding 开头），用于登录企业校验；不是应用 AgentId 或 App ID。' : '企业微信的企业 ID，用于获取企业凭证和扫码登录。'}</small></label>
    {provider === 'dingtalk' && <label>App Key / Client ID<input value={draft.client} disabled={busy} onChange={event => change('client', event.target.value)} /></label>}
    {provider === 'wecom' && <label>Agent ID<input value={draft.agent} disabled={busy} onChange={event => change('agent', event.target.value)} /></label>}
    <label>应用 Secret<input type="password" autoComplete="new-password" value={draft.secret} disabled={busy} placeholder={source ? '留空保留已保存的密钥' : '请输入应用密钥'} onChange={event => change('secret', event.target.value)} /></label>
@@ -40,6 +42,7 @@ function ApplicationEditor({ provider, source, csrf, onClose, onSaved }: { provi
    <label className="gateway-check-label"><input type="checkbox" checked={draft.sync} disabled={busy} onChange={event => change('sync', event.target.checked)} />启用组织同步</label>
    <label className="gateway-check-label"><input type="checkbox" checked={draft.login} disabled={busy} onChange={event => change('login', event.target.checked)} />启用扫码登录</label>
   </div>
+  {source && draft.tenant.trim() !== source.tenant_id && <p role="status">正在更正企业 Corp ID；已有用户组和成员关联会保留。请确认仍是原企业，改为另一企业应添加新应用。</p>}
   <p>密钥加密保存，保存后不再回显。请在企业应用后台授权通讯录读取权限，并配置本平台的登录回调域。</p>
   {source && <label>登录回调地址<input readOnly value={window.location.origin + '/api/auth/external/' + source.id + '/callback'} /></label>}
   {error && <p role="alert" className="gateway-auth-error">{error}</p>}
@@ -51,9 +54,9 @@ export function OrganizationSyncSettings({ csrf }: { csrf: string }) {
  const [sources, setSources] = useState<Application[]>([])
  const [page, setPage] = useState(1); const [total, setTotal] = useState(0)
  const [revision, setRevision] = useState(0); const [error, setError] = useState(''); const [notice, setNotice] = useState('')
- const [loading, setLoading] = useState(true); const [busy, setBusy] = useState('')
+ const [loading, setLoading] = useState(true)
+ const [syncSource, setSyncSource] = useState<Application | null>(null)
  const [editor, setEditor] = useState<{ provider: Application['provider']; source?: Application } | null>(null)
- const syncing = useRef(false)
  useEffect(() => {
   const controller = new AbortController(); setLoading(true); setError('')
   void fetch(`/api/admin/identity-sources?page=${page}&page_size=25`, { credentials: 'same-origin', signal: controller.signal }).then(async response => {
@@ -62,18 +65,8 @@ export function OrganizationSyncSettings({ csrf }: { csrf: string }) {
   }).catch(() => { if (!controller.signal.aborted) setError('企业应用配置加载失败，请重试。') }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
   return () => controller.abort()
  }, [revision, page])
- async function sync(source: Application) {
-  if (syncing.current || !csrf) return
-  syncing.current = true; setBusy(source.id); setError(''); setNotice('')
-  try {
-   const response = await fetch('/api/admin/identity-sources/' + encodeURIComponent(source.id) + '/reconcile', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf } })
-   if (!response.ok) throw Error('同步失败，请检查应用密钥、通讯录权限和服务网络后重试。')
-   setNotice(names[source.provider] + '组织同步完成，已更新用户组和用户。'); setRevision(value => value+1)
-  } catch (reason) { setError(reason instanceof Error ? reason.message : '同步失败。') }
-  finally { syncing.current = false; setBusy('') }
- }
  return <section className="gateway-project-grants gateway-organization-settings"><div className="gateway-admin-toolbar"><h3>组织同步与扫码登录</h3>
-  <div className="gateway-device-actions"><button type="button" disabled={!csrf || !!busy} onClick={() => setEditor({ provider: 'dingtalk' })}>添加钉钉应用</button><button type="button" disabled={!csrf || !!busy} onClick={() => setEditor({ provider: 'wecom' })}>添加企业微信应用</button></div>
+  <div className="gateway-device-actions"><button type="button" disabled={!csrf} onClick={() => setEditor({ provider: 'dingtalk' })}>添加钉钉应用</button><button type="button" disabled={!csrf} onClick={() => setEditor({ provider: 'wecom' })}>添加企业微信应用</button></div>
  </div><p>同步将按企业部门层级创建用户组及成员；启用扫码登录后，对应入口会出现在平台登录页。</p>
  {loading && <p role="status"><span className="gateway-spinner" /> 正在加载企业应用…</p>}
  {error && <p role="alert" className="gateway-auth-error">{error}<button type="button" onClick={() => setRevision(value => value+1)}>重试</button></p>}
@@ -82,11 +75,12 @@ export function OrganizationSyncSettings({ csrf }: { csrf: string }) {
   <td><strong>{names[source.provider]}</strong><p>{source.tenant_id}</p><small>{source.secret_configured ? '密钥已配置' : '请配置密钥'}{source.enabled ? '' : ' · 应用已停用'}</small></td>
   <td>{source.sync_enabled === false ? '关闭' : '启用'}</td><td>{source.login_enabled === false ? '关闭' : '启用'}</td>
   <td>{source.sync_state?.last_success_at ? new Date(source.sync_state.last_success_at).toLocaleString() : '尚未同步'}{source.sync_state?.last_error_code && <p>最近同步失败</p>}</td>
-  <td><div className="gateway-device-actions"><button type="button" disabled={!!busy} onClick={() => setEditor({ provider: source.provider, source })}>编辑配置</button>
-   <button type="button" disabled={!csrf || !!busy || !source.enabled || source.sync_enabled === false} onClick={() => void sync(source)}>{busy === source.id && <span className="gateway-spinner" />}{busy === source.id ? '正在同步…' : '同步组织'}</button></div></td>
+  <td><div className="gateway-device-actions"><button type="button" disabled={!csrf} onClick={() => setEditor({ provider: source.provider, source })}>编辑配置</button>
+   <button type="button" disabled={!csrf || !source.enabled || source.sync_enabled === false} onClick={() => setSyncSource(source)}>同步组织与用户</button></div></td>
  </tr>)}</AdminRecordTable>
  {!loading && !sources.length && <p>尚未配置企业应用。</p>}
- {total > 25 && <div className="gateway-admin-pagination"><span>共 {total} 个应用 · 第 {page}/{Math.ceil(total/25)} 页</span><button type="button" disabled={loading || !!busy || page <= 1} onClick={() => setPage(value => value-1)}>上一页</button><button type="button" disabled={loading || !!busy || page*25 >= total} onClick={() => setPage(value => value+1)}>下一页</button></div>}
+ {total > 25 && <div className="gateway-admin-pagination"><span>共 {total} 个应用 · 第 {page}/{Math.ceil(total/25)} 页</span><button type="button" disabled={loading || page <= 1} onClick={() => setPage(value => value-1)}>上一页</button><button type="button" disabled={loading || page*25 >= total} onClick={() => setPage(value => value+1)}>下一页</button></div>}
+ {syncSource && <OrganizationSyncPanel key={syncSource.id} sourceId={syncSource.id} provider={syncSource.provider} csrf={csrf} onClose={() => setSyncSource(null)} onCompleted={() => { setNotice(names[syncSource.provider] + '组织同步完成，已更新用户组和用户。'); setRevision(value => value + 1) }} />}
  {editor && <ApplicationEditor {...editor} csrf={csrf} onClose={() => setEditor(null)} onSaved={() => { setEditor(null); setPage(1); setRevision(value => value+1) }} />}
  </section>
 }

@@ -165,7 +165,7 @@ class ExternalIdentityService:
                             raise GatewayError('forbidden', 'Binding account unavailable')
                     elif identity:
                         user = await session.get(User, identity.user_id)
-                        if user is None or user.status == "disabled":
+                        if user is None or user.status not in ["active", "pending"]:
                             raise GatewayError('forbidden', 'Account unavailable')
                         directory_person = await session.scalar(select(DirectoryPerson).where(
                             DirectoryPerson.source_id == source_id,
@@ -204,11 +204,14 @@ class ExternalIdentityService:
             raise GatewayError('conflict', 'External identity already linked') from exc
 
     async def full_sync(self, source_id: str, departments: list[dict], people: list[dict],
-                        cursor: str | None = None) -> dict[str, int]:
+                        cursor: str | None = None, *, selected_department_ids: list[str] | None = None) -> dict[str, int]:
         await self.source(source_id, purpose="sync")
         if cursor is not None and (not isinstance(cursor, str) or len(cursor) > 256):
             raise GatewayError('invalid', 'Invalid directory cursor')
         department_ids = [item["external_id"] for item in departments]
+        scope = set(selected_department_ids) if selected_department_ids is not None else None
+        if scope is not None and (not scope or set(department_ids) != scope):
+            raise GatewayError('invalid', 'Selected snapshot must include exactly the selected departments')
         subjects = [item["subject"] for item in people]
         if len(set(department_ids)) != len(department_ids) or len(set(subjects)) != len(subjects):
             raise GatewayError('invalid', 'Duplicate directory identifier')
@@ -242,18 +245,25 @@ class ExternalIdentityService:
                                          for external_id, row in existing_departments.items()}
                 old_person_active = {subject: bool(row.active)
                                      for subject, row in existing_people.items()}
+                affected_people = {subject for subject, row in existing_people.items()
+                                   if scope is None or old_memberships.get(row.id, set()) & scope}
                 changes["departments_deleted"] = sum(
-                    active and external_id not in incoming_departments
+                    active and external_id not in incoming_departments and (scope is None or external_id in scope)
                     for external_id, active in old_department_active.items()
                 )
                 changes["people_departed"] = sum(
-                    active and subject not in incoming_people
+                    active and subject not in incoming_people and subject in affected_people
+                    and (scope is None or not old_memberships.get(existing_people[subject].id, set()) - scope)
                     for subject, active in old_person_active.items()
                 )
                 for row in existing_departments.values():
-                    row.active = 0
+                    if scope is None or row.external_id in scope: row.active = 0
                 for row in existing_people.values():
-                    row.active = 0
+                    if row.subject in affected_people and (scope is None or not old_memberships.get(row.id, set()) - scope): row.active = 0
+                if scope is not None:
+                    await session.execute(DirectoryMembership.__table__.delete().where(
+                        DirectoryMembership.department_id.in_([row.id for row in existing_departments.values() if row.external_id in scope]),
+                    ))
                 for item in departments:
                     row = existing_departments.get(item["external_id"])
                     if row is None or not old_department_active[item["external_id"]]:
@@ -307,9 +317,10 @@ class ExternalIdentityService:
                     user = await session.get(User, row.user_id)
                     if user and user.registration_source == "directory_sync":
                         user.display_name = item["display_name"]
-                    await session.execute(DirectoryMembership.__table__.delete().where(
-                        DirectoryMembership.person_id == row.id,
-                    ))
+                    if scope is None:
+                        await session.execute(DirectoryMembership.__table__.delete().where(
+                            DirectoryMembership.person_id == row.id,
+                        ))
                     for department_id in item["department_ids"]:
                         session.add(DirectoryMembership(
                             id=str(uuid4()), person_id=row.id,
@@ -328,6 +339,14 @@ class ExternalIdentityService:
                 if cursor is not None:
                     state.cursor = cursor
                 state.changes_json = json.dumps(changes, sort_keys=True)
+                if scope is not None:
+                    from gateway.models import PlatformSetting
+                    from gateway.services.organization_settings import option_key
+                    options_row = await session.get(PlatformSetting, option_key(source_id))
+                    options = json.loads(options_row.value_json) if options_row else {}
+                    options['selected_department_ids'] = selected_department_ids
+                    if options_row: options_row.value_json = json.dumps(options)
+                    else: session.add(PlatformSetting(key=option_key(source_id), value_json=json.dumps(options)))
         return {"departments": len(departments), "people": len(people)}
 
     async def record_sync_failure(self, source_id: str, code: str) -> None:
@@ -347,6 +366,9 @@ class ExternalIdentityService:
                 if source is None:
                     raise GatewayError('not_found', 'Identity source not found')
                 source.enabled = 0
+                await session.flush()
+                from gateway.services.login_policy import ensure_login_method
+                await ensure_login_method(session)
 
     async def apply_person_event(self, source_id: str, event_id: str, kind: str,
                                  subject: str, display_name: str | None,

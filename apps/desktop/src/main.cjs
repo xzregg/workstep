@@ -1,5 +1,5 @@
 const { createPrivateKey, randomBytes, sign } = require('node:crypto')
-const { app, BrowserWindow, Notification, dialog, ipcMain, safeStorage, session, shell } = require('electron')
+const { app, BrowserWindow, Menu, Notification, Tray, clipboard, dialog, ipcMain, nativeImage, safeStorage, session, shell } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs/promises')
 const { SandboxManager } = require('./sandbox.cjs')
@@ -8,6 +8,10 @@ const { autoUpdater } = require('electron-updater')
 const { managedEnvironment, readManagedConfig } = require('./managed-config.cjs')
 const { loadOrCreateDeviceIdentity } = require('./credential-store.cjs')
 const { managedSessionExpired } = require('./managed-session.cjs')
+const { desktopWindowTitle } = require('./window-title.cjs')
+const { attachHideOnClose } = require('./window-lifecycle.cjs')
+const { shouldOfferUpdate } = require('./update-version.cjs')
+const { createSandboxStartupWindow, formatSandboxFailure, applyPendingImageSwitch } = require('./sandbox-startup-window.cjs')
 const {
   createAuthorizationRequest, claimAuthCallback, exchangeDesktopCode,
   createControlDelegation,
@@ -33,6 +37,7 @@ let backendProcess = null
 let stopping = null
 let installingUpdate = false
 let mainWindow = null
+let sandboxStartup = null
 let rootUrl = null
 let desktopToken = null
 let localSession = null
@@ -41,6 +46,9 @@ let managedCallbackResolve = null
 let managedCallbackTimeout = null
 let reauthenticating = null
 let controlStatusTimer = null
+let tray = null
+let quitting = false
+let windowsVisible = true
 let pendingProtocolUrl = process.argv.find((value) => value.startsWith('workstep://')) ?? null
 
 function openProtocolUrl(value) {
@@ -137,7 +145,9 @@ async function stopBackend() {
 
 function createWindow(url) {
   process.env.WORKSTEP_BACKEND_URL = url
+  const title = desktopWindowTitle(app.isPackaged, app.getVersion())
   const window = new BrowserWindow({
+    title,
     width: 1440,
     height: 900,
     minWidth: 1024,
@@ -150,6 +160,11 @@ function createWindow(url) {
       backgroundThrottling: false,
       preload: path.join(__dirname, 'preload.cjs'),
     },
+  })
+  attachHideOnClose(window, () => quitting, () => { windowsVisible = false })
+  window.on('page-title-updated', (event) => {
+    event.preventDefault()
+    window.setTitle(title)
   })
   window.webContents.on('will-navigate', (event, targetUrl) => {
     if (isTrustedNavigation(targetUrl, rootUrl)) return
@@ -183,14 +198,38 @@ function createWindow(url) {
     })
     native.show()
   })
-  window.once('ready-to-show', () => window.show())
+  window.once('ready-to-show', () => { if (windowsVisible) window.show() })
   void window.loadURL(url)
   mainWindow = window
-  registerSandboxIpc({ ipcMain, dialog, shell, manager: sandboxManager,
+  registerSandboxIpc({ ipcMain, dialog, shell, clipboard, manager: sandboxManager,
     window: () => mainWindow, rootUrl: () => rootUrl, hasActiveWork,
     restart: async () => { await stopBackend(); app.relaunch(); app.quit() },
   })
   return window
+}
+
+function showDesktopWindow() {
+  windowsVisible = true
+  const window = mainWindow && !mainWindow.isDestroyed() ? mainWindow : sandboxStartup?.window
+  if (!window || window.isDestroyed()) return
+  window.show()
+  if (window.isMinimized()) window.restore()
+  window.focus()
+}
+
+function configureTray() {
+  const iconPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'tray-icon.png')
+    : path.join(__dirname, '../build/icons/32x32.png')
+  const icon = nativeImage.createFromPath(iconPath).resize({ width: 18, height: 18 })
+  tray = new Tray(icon)
+  tray.setToolTip('WorkStep')
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '打开 WorkStep', click: showDesktopWindow },
+    { type: 'separator' },
+    { label: '退出 WorkStep', click: () => app.quit() },
+  ]))
+  tray.on('click', showDesktopWindow)
 }
 
 async function backendUrl() {
@@ -376,7 +415,13 @@ function configureUpdater() {
   const channel = updaterChannel(process.platform, process.arch)
   if (channel) autoUpdater.channel = channel
   autoUpdater.autoInstallOnAppQuit = true
-  autoUpdater.on('update-downloaded', () => void promptForUpdateInstall())
+  autoUpdater.on('update-downloaded', (info) => {
+    if (!shouldOfferUpdate(app.getVersion(), info?.version)) {
+      console.info('Ignoring stale desktop update', info?.version ?? 'unknown')
+      return
+    }
+    void promptForUpdateInstall()
+  })
   autoUpdater.on('error', (error) => console.error('Auto update failed', error))
   void autoUpdater.checkForUpdatesAndNotify().catch((error) => {
     console.error('Unable to check for desktop updates', error)
@@ -384,6 +429,7 @@ function configureUpdater() {
 }
 
 app.on('before-quit', (event) => {
+  quitting = true
   if (controlStatusTimer) clearInterval(controlStatusTimer)
   if (installingUpdate || (!backendProcess && !sandboxManager?.session)) return
   event.preventDefault()
@@ -409,9 +455,35 @@ app.on('open-url', (event, value) => {
 
 app.whenReady().then(async () => {
   if (!hasSingleInstanceLock) return
+  configureTray()
   const release = require('./sandbox-release.json')
   const image = app.isPackaged ? release.image : process.env.WORKSTEP_SANDBOX_IMAGE || release.image
-  sandboxManager = new SandboxManager({ stateDir: app.getPath('userData'), image, hostConfigFile: process.env.WORKSTEP_CONFIG_DIR ? path.join(process.env.WORKSTEP_CONFIG_DIR, 'config.json') : undefined })
+  sandboxManager = new SandboxManager({ stateDir: app.getPath('userData'), image, hostConfigFile: process.env.WORKSTEP_CONFIG_DIR ? path.join(process.env.WORKSTEP_CONFIG_DIR, 'config.json') : undefined,
+    report: status => sandboxStartup?.update(status) })
+  const startupAction = async (event, action, input) => {
+    if (!sandboxStartup || event.sender !== sandboxStartup.window.webContents) throw new Error('沙箱启动操作来源无效')
+    if (action === 'readLogs') return sandboxManager.readLogs()
+    if (action === 'copyLogs') { clipboard.writeText(await sandboxManager.readLogs()); return }
+    if (action === 'openLogs') {
+      const settings = await sandboxManager.settings()
+      if (settings.root) await shell.openPath(path.join(settings.root, 'desktop'))
+      return
+    }
+    if (action === 'dockerImages') return sandboxManager.dockerImages()
+    if (action === 'switchImage') {
+      const available = await sandboxManager.dockerImages()
+      if (available.error) throw new Error(available.error)
+      if (!available.images.some(item => item.id === input)) throw new Error('请选择扫描结果中的兼容镜像')
+      await sandboxManager.queueImageSwitch(input)
+      app.relaunch()
+      app.quit()
+    }
+  }
+  for (const action of ['readLogs', 'copyLogs', 'openLogs', 'dockerImages', 'switchImage']) {
+    const channel = `workstep:sandbox:startup:${action}`
+    ipcMain.removeHandler(channel)
+    ipcMain.handle(channel, (event, input) => startupAction(event, action, input))
+  }
   let managed = null
   try {
     managed = app.isPackaged
@@ -428,11 +500,27 @@ app.whenReady().then(async () => {
         return
       }
     }
+    const sandboxSettings = await sandboxManager.settings()
+    if (sandboxSettings.enabled || sandboxSettings.pendingDockerImage) {
+      sandboxStartup = createSandboxStartupWindow(BrowserWindow, {
+        onUserClose: (event, window) => { event.preventDefault(); windowsVisible = false; window.hide() },
+      })
+    }
+    if (sandboxSettings.pendingDockerImage) {
+      try { await applyPendingImageSwitch(sandboxManager) }
+      catch (error) {
+        const status = await sandboxManager.status()
+        sandboxStartup?.update({ ...status, phase: 'error', error: error instanceof Error ? error.message : String(error) })
+        return
+      }
+    }
     for (;;) {
       try { rootUrl = await backendUrl(); break } catch (error) {
         if (!(await sandboxManager.settings()).enabled) throw error
+        const status = await sandboxManager.status()
+        sandboxStartup?.update({ ...status, phase: 'error', error: error instanceof Error ? error.message : String(error) })
         const result = await dialog.showMessageBox({ type: 'error', title: 'WorkStep 沙箱启动失败',
-          message: error instanceof Error ? error.message : String(error),
+          message: '沙箱后台未能通过健康检查', detail: formatSandboxFailure(error, status),
           buttons: ['重试', '打开日志目录', '切回非沙箱', '退出'], defaultId: 0, cancelId: 3 })
         if (result.response === 3) { app.quit(); return }
         if (result.response === 1) {
@@ -447,6 +535,7 @@ app.whenReady().then(async () => {
     configureAuthenticatedRequests(rootUrl)
     const initialPath = pendingProtocolUrl ? protocolPath(pendingProtocolUrl) : '/'
     createWindow(`${rootUrl}${initialPath}`)
+    sandboxStartup?.close(); sandboxStartup = null
     if (managed) configureManagedSessionRecovery(managed)
     configureUpdater()
   } catch (error) {
@@ -460,4 +549,4 @@ app.whenReady().then(async () => {
   }
 })
 
-app.on('window-all-closed', () => app.quit())
+app.on('activate', showDesktopWindow)

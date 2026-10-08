@@ -57,6 +57,19 @@ class ChannelControls:
             text += '\n消息 ID: ' + assistant_message_id
         try:
             if stop_button:
+                adapter = self._adapters.get(message.bot_id)
+                prepare = getattr(adapter, 'set_reply_metadata', None)
+                if prepare:
+                    metadata = {'assistant': '协调助手' if task_id else '渠道助手'}
+                    if task_id and hasattr(self._coordinator, 'get_config'):
+                        try:
+                            resolved = (await self._coordinator.get_config(project_id, task_id)).get('resolved', {})
+                            metadata.update({k: resolved.get(k) or '' for k in ('engine', 'model', 'thinking_effort')})
+                        except Exception:
+                            logger.warning('Failed to read channel card execution metadata', exc_info=True)
+                    elif not task_id and hasattr(self._responder, 'reply_metadata'):
+                        metadata.update(self._responder.reply_metadata(turn_id))
+                    prepare(message, metadata)
                 await self._card(scope, title, text, [('中止', {'kind':'stop'})], recipient_override=message)
         except BaseException:
             ready.cancel()
@@ -128,6 +141,10 @@ class ChannelControls:
     async def event(self, scope, event):
         if event.get('messageId') and event['messageId'] != scope['assistant_message_id']:
             return
+        adapter = self._adapters.get(scope['message']['bot_id'])
+        observe = getattr(adapter, 'observe_reply', None)
+        if observe:
+            observe(IncomingMessage(**scope['message']), event)
         kind = event.get('type')
         if kind == 'TEXT_MESSAGE_CHUNK':
             self._reply_texts[scope['id']] = (self._reply_texts.get(scope['id'], '') + str(event.get('delta') or ''))[-4096:]
@@ -231,6 +248,8 @@ class ChannelControls:
             if message['bot_id'] != click.bot_id or (click.conversation_id and message['conversation_id'] != click.conversation_id):
                 return '该操作不属于此会话'
             action = row['options'].get(click.key)
+            if click.key == 'stop':
+                action = next((option for option in row['options'].values() if option['kind'] == 'stop'), None)
             broadcast_action = row.get('broadcast') and action and action['kind'] in {'stop','review','interaction','answer'}
             if broadcast_action and click.conversation_id != message['conversation_id']:
                 return '该操作不属于此会话'
