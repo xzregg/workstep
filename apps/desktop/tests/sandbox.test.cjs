@@ -147,7 +147,7 @@ test('preparation, restart, container health and cleanup preserve project and HO
         if (args.includes('run')) { running = true; exists = true }
         if (args.includes('stop')) running = false
         if (args.includes('rm')) exists = false
-        if (args.includes('port')) return '127.0.0.1:45678'
+        if (args.includes('port')) return '0.0.0.0:45678'
         return '{}'
       } })
     const status = await manager.prepare({ root: path.join(base, 'sandbox'), project: path.join(base, 'project'), mounts: [] })
@@ -263,7 +263,7 @@ for (const conflict of [false, true]) {
           calls.push(args)
           if (args.includes('ps')) return '[]'
           if (args.includes('run') && conflict && args.includes('0.0.0.0:8766:8765')) throw new Error('bind: address already in use')
-          if (args.includes('port')) return conflict ? '127.0.0.1:45678' : '127.0.0.1:8766'
+          if (args.includes('port')) return conflict ? '[::]:45678' : '0.0.0.0:8766'
           return '{}'
         } })
       await manager.prepare({ root: path.join(base, 'sandbox'), project: path.join(base, 'project'), mounts: [] })
