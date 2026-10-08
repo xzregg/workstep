@@ -44,7 +44,7 @@ try {
   Copy-Item (Join-Path $RepoDir "LICENSE") $LegalDir
   Copy-Item (Join-Path $RepoDir "NOTICE") $LegalDir
   Copy-Item (Join-Path $RepoDir "THIRD_PARTY_NOTICES.md") $LegalDir
-  python (Join-Path $RepoDir "scripts/generate_release_sbom.py") `
+  & $Python (Join-Path $RepoDir "scripts/generate_release_sbom.py") `
     --version $ReleaseVersion `
     --output (Join-Path $LegalDir "sbom.cdx.json")
 } finally {
