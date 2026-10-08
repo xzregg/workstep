@@ -593,7 +593,7 @@ async def get_task_artifacts(
     artifacts, input_snapshots = await _run_db(pid, listing)
     artifact_directory = Path(project.workstep_dir) / "artifacts" / (exists["workflow_id"] or "default") / task_id
     if project_scoped:
-        artifact_directory = artifact_directory.relative_to(project.path)
+        artifact_directory = Path(".workstep") / artifact_directory.relative_to(project.workstep_dir)
     return {
         "artifacts": artifacts,
         "input_snapshots": input_snapshots,

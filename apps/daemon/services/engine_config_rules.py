@@ -13,7 +13,11 @@ CLAUDE_PERMISSION_MODES = {
 }
 
 CODEX_SANDBOX_MODES = {"read-only", "workspace-write", "danger-full-access"}
-CODEX_REASONING_EFFORTS = {"auto", "minimal", "low", "medium", "high", "xhigh"}
+# Native Codex SDK ReasoningEffort values, in display order. "auto" is only
+# WorkStep's sentinel for omitting the override; it is never sent to Codex.
+CODEX_REASONING_EFFORTS = (
+    "auto", "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra",
+)
 CODEX_APPROVAL_POLICIES = {"never", "on-failure", "on-request", "full-auto"}
 CODEX_SDK_APPROVAL_MODES = {"auto_review", "deny_all"}
 

@@ -1,3 +1,4 @@
+import ProjectStorageSettings from './ProjectStorageSettings'
 import ResizablePanel from './ResizablePanel'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
@@ -379,6 +380,7 @@ function LocalProjectSettingsPanel({
               </div>
             ) : activeTab === 'general' ? (
               <div style={tabBodyStyle}>
+                {project.type !== 'remote' && <ProjectStorageSettings projectId={project.id} />}
                 <Field label={t('projectSettings.general.name')} error={nameError || undefined}>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <Input

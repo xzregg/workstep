@@ -94,8 +94,8 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
     def _saved_developer_instructions(cwd: str, session_id: str) -> str | None:
         """Only trust the latest durable native settings, never just a thread ID.
 
-        Older runtimes do not persist this setting: keep supplying it there.
-        A partial write or unknown rollout format also requires reinjection.
+        Runtimes without a turn_context setting persist tagged developer messages.
+        A partial write, compaction or unknown history requires reinjection.
         """
         from pathlib import Path
 
@@ -105,6 +105,7 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                 return None
             verified_session = False
             saved = None
+            message_rules = None
             with path.open(encoding="utf-8") as stream:
                 for line in stream:
                     if not line.endswith("\n"):
@@ -122,7 +123,29 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
                         )
                     elif record.get("type") == "turn_context":
                         saved = payload.get("developer_instructions")
-            return saved if verified_session and isinstance(saved, str) else None
+                    elif record.get("type") == "compacted":
+                        # A summary is not proof that the original rules survived.
+                        saved = message_rules = None
+                    elif record.get("type") == "response_item" and (
+                        payload.get("type") == "message" and payload.get("role") == "developer"
+                    ):
+                        for item in payload.get("content") or []:
+                            if not isinstance(item, dict) or item.get("type") != "input_text":
+                                continue
+                            match = re.fullmatch(
+                                r"<workstep_system_rules>\n(.*)\n</workstep_system_rules>",
+                                item.get("text") or "", re.DOTALL,
+                            )
+                            if match:
+                                message_rules = match.group(1)
+            restored = saved if isinstance(saved, str) else message_rules
+            if isinstance(restored, str):
+                match = re.fullmatch(
+                    r"<workstep_system_rules>\n(.*)\n</workstep_system_rules>", restored, re.DOTALL,
+                )
+                if match:
+                    restored = match.group(1)
+            return restored if verified_session else None
         except (OSError, ValueError, TypeError):
             return None
 
@@ -513,10 +536,16 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
             "model_supports_reasoning_summaries": True,
         }
         reasoning_effort = resolve_thinking_effort(
-            thinking_effort, sdk_config["model_reasoning_effort"]
+            thinking_effort, sdk_config["model_reasoning_effort"],
+            supported_levels=CODEX_REASONING_EFFORTS,
         )
         if reasoning_effort:
             thread_config["model_reasoning_effort"] = reasoning_effort
+        from services.project_storage import data_directory
+        from pathlib import Path
+        storage_root = await asyncio.to_thread(data_directory, cwd)
+        if not storage_root.is_relative_to(Path(cwd)) and not read_only:
+            thread_config["sandbox_workspace_write.writable_roots"] = [str(storage_root)]
         # 自定义覆盖只补充：已由 WorkStep / 供应商设置的键优先。
         for key, value in parse_codex_custom_config(
             sdk_config.get("custom_config")
@@ -531,8 +560,9 @@ class CodexSDKEngine(CodexSDKNotificationMapper, AcpEngineBase):
         if system_prompt is not None:
             thread_config.pop("developer_instructions", None)
             if system_prompt:
-                thread_kwargs["developer_instructions"] = self._combined_developer_instructions(
-                    sdk_config, system_prompt,
+                rules = self._combined_developer_instructions(sdk_config, system_prompt)
+                thread_kwargs["developer_instructions"] = (
+                    f"<workstep_system_rules>\n{rules}\n</workstep_system_rules>"
                 )
         if approval_mode is not None:
             # thread_start 的 approval_mode 不接受 None（默认 auto_review）

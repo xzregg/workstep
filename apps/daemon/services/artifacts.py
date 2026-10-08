@@ -274,7 +274,10 @@ def project_relative_artifact_listing(
                 project_root
             ).as_posix()
         except ValueError:
-            return None
+            try:
+                return (Path(".workstep") / path.resolve().relative_to(project.workstep_dir.resolve())).as_posix()
+            except ValueError:
+                return None
 
     visible_artifacts = []
     for artifact in artifacts:

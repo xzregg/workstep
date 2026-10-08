@@ -142,6 +142,14 @@ class AcpEngineBase(ACPSessionProtocol, ACPEventMapper, BaseLLMEngine):
         visible to preserve streaming; the first terminal error itself is
         replaced by a ``retrying`` status.  A second error is passed through.
         """
+        cwd = kwargs.get("cwd")
+        if cwd:
+            from services.project_storage import data_directory
+            from pathlib import Path
+            storage_root = await asyncio.to_thread(data_directory, cwd)
+            code_root = Path(cwd)
+            if not storage_root.is_relative_to(code_root):
+                kwargs["add_dirs"] = list(dict.fromkeys([*(kwargs.get("add_dirs") or []), str(storage_root)]))
         retry_session_id = kwargs.get("session_id")
         for attempt_index in range(self.EXECUTION_MAX_ATTEMPTS):
             attempt_kwargs = dict(kwargs)

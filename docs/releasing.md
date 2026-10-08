@@ -7,6 +7,16 @@ draft release.
 Before tagging:
 
 1. Ensure CI passes, including repository-health and full-history secret scans.
+   Verify the website user manual against the merged, committed release version.
+   Manual updates are batched only when merging `dev` into local `main` and
+   committing the delivery, alongside the verified user-facing changes; individual
+   features during development do not trigger this process. At that checkpoint,
+   update instructions and real, sanitized screenshots using the fixed demo project
+   on local port `8777` (see [demo environment](manual-demo.md)), and run
+   `yarn --cwd apps/landing manual:check`, tests and build. If release review finds
+   omissions, batch the affected corrections before publishing. Record screenshot
+   gaps and do not claim completion while they remain; do not document planned
+   features as available. The SDK-first setup path must still work on a clean installation.
 2. Review Dependabot alerts and dependency changes in all lockfiles.
 3. Confirm that the release is intentionally unsigned. The workflow disables
    macOS identity discovery and notarization and disables Windows code signing,

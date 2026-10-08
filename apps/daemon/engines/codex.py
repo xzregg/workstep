@@ -368,6 +368,9 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
                     "-C", cwd,
                 ])
 
+            if add_dirs:
+                # Config works for both exec and exec resume.
+                cmd.extend(["-c", "sandbox_workspace_write.writable_roots=" + json.dumps(add_dirs)])
             for image_path in image_paths:
                 cmd.extend(["--image", image_path])
 
@@ -375,7 +378,8 @@ class CodexEngine(CodexCLIEventMapper, AcpEngineBase):
                 cmd.extend(["--model", model])
 
             reasoning_effort = resolve_thinking_effort(
-                thinking_effort, codex_config["model_reasoning_effort"]
+                thinking_effort, codex_config["model_reasoning_effort"],
+                supported_levels=CODEX_REASONING_EFFORTS,
             )
             if reasoning_effort:
                 cmd.extend(

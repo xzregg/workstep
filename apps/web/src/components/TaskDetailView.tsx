@@ -529,9 +529,13 @@ export default function TaskDetailView({
     () => buildTaskConversationTimeline({
       historyMessages, liveMessages, actionRuns: taskActions.runs,
       coordinatorRunning: coordinatorRunning ?? false,
+      coordinatorEngine: coordinatorConfig?.resolved.engine || task?.coordinator_engine,
+      coordinatorModel: coordinatorConfig?.resolved.model,
       actionTitle: (title) => t('actionShortcuts.runTitle', { title }),
     }),
-    [historyMessages, liveMessages, taskActions.runs, coordinatorRunning, t],
+    [historyMessages, liveMessages, taskActions.runs, coordinatorRunning,
+      coordinatorConfig?.resolved.engine, coordinatorConfig?.resolved.model,
+      task?.coordinator_engine, t],
   )
 
   const selectedReview = reviews.find(

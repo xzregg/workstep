@@ -100,6 +100,14 @@ class WorkStepFileSystem(FileSystem):
         return toolset
 
 
+@dataclass
+class ProjectDataFileSystem(WorkStepFileSystem):
+    """Dedicated tools for an external project's data, without widening code root."""
+
+    def get_toolset(self):
+        return super().get_toolset().prefixed("project_data")
+
+
 class WorkStepShellToolset(ShellToolset):
     """Return command-policy failures to the model without spending retries."""
 

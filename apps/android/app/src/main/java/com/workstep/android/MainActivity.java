@@ -546,11 +546,14 @@ public final class MainActivity extends Activity {
                 boolean success = "succeeded".equals(outcome);
                 boolean task = !NotificationIds.value(message.optString("taskId")).isEmpty();
                 boolean step = !message.optString("stepKey").isEmpty();
+                JSONObject watch = completionWatches.get(id);
+                String name = NotificationContent.bridgeName(message.optString("scopeName"),
+                        watch == null ? "" : watch.optString("scopeName"),
+                        NotificationIds.value(message.optString("sessionId")),
+                        NotificationIds.value(message.optString("taskId")));
                 String result = CompletionNotifications.show(this, id,
-                        step ? (success ? "WorkStep 步骤完成" : "WorkStep 步骤失败")
-                                : (success ? "WorkStep 回复完成" : "WorkStep 回复失败"),
-                        step ? "步骤 " + message.optString("stepKey") + (success ? " 已通过" : " 执行失败")
-                                : (task ? "任务" : "会话") + "的回复" + (success ? "已完成" : "失败"),
+                        NotificationContent.title(name, step, success),
+                        NotificationContent.body(name, task, step ? message.optString("stepKey") : "", success),
                         target, server);
                 CrashReports.log(this, "网页主进程",
                         "网页桥接系统通知：" + result + "；目标=" + target, null);

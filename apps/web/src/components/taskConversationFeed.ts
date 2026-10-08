@@ -46,12 +46,15 @@ export function selectTaskConversationFeed(
 
 /** Produce the visible timeline and latest-message indexes for message actions. */
 export function buildTaskConversationTimeline({
-  historyMessages, liveMessages, actionRuns, coordinatorRunning, actionTitle,
+  historyMessages, liveMessages, actionRuns, coordinatorRunning, coordinatorEngine,
+  coordinatorModel, actionTitle,
 }: {
   historyMessages: any[]
   liveMessages: Record<string, LiveMessage>
   actionRuns: Array<ActionRunLike & { ended_at?: string | null }>
   coordinatorRunning: boolean
+  coordinatorEngine?: string | null
+  coordinatorModel?: string | null
   actionTitle: (title: string) => string
 }) {
   const feed = selectTaskConversationFeed(historyMessages, liveMessages)
@@ -84,6 +87,8 @@ export function buildTaskConversationTimeline({
       started_at: latestCoordinatorUser?.started_at || latestCoordinatorUser?.created_at,
       reply_to_message_id: latestCoordinatorUser?.id,
       thinkingPlaceholder: true,
+      engine: coordinatorEngine || undefined,
+      model: coordinatorModel || undefined,
     }] : []),
   ]
   const orderedMessages = orderConversationMessages(mergeActionMessages(

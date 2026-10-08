@@ -665,3 +665,49 @@ def test_workflow_restore_brings_it_back_from_recycle_bin(tmp_path, manager):
 
     # Restoring an already-active workflow is a no-op.
     assert m.restore_workflow(proj, wf["id"]) is None
+
+
+def test_external_project_identity_survives_move(tmp_path, manager):
+    from services.project_storage import data_directory
+    m, _, _ = manager
+    root = tmp_path / "external"
+    root.mkdir()
+    project = m.init_project(root, follow_project=False)
+    original_id = project.id
+    assert project.workstep_dir == data_directory(root)
+    assert project.workstep_dir.parent.name == "projects"
+    assert not (root / ".workstep/workstep.db").exists()
+    (project.workstep_dir / "MEMORY.md").write_text("remember")
+    m.unregister(project.id)
+    moved = tmp_path / "renamed"
+    root.rename(moved)
+    reopened = m.init_project(moved)
+    assert reopened.id == original_id
+    assert not reopened.follow_project
+    assert (reopened.workstep_dir / "MEMORY.md").read_text() == "remember"
+
+
+async def test_project_storage_roundtrip_preserves_data(tmp_path, manager):
+    m, _, _ = manager
+    root = tmp_path / "roundtrip"
+    root.mkdir()
+    project = m.init_project(root)
+    (project.workstep_dir / "MEMORY.md").write_text("memory")
+    await m.set_storage(project.id, False)
+    assert not project.follow_project
+    assert sorted(p.name for p in (root / ".workstep").iterdir()) == ["project.json"]
+    assert await m.run_db(project.id, lambda p: Task.select().count()) == 0
+    await m.set_storage(project.id, True)
+    assert project.follow_project
+    assert (project.workstep_dir / "MEMORY.md").read_text() == "memory"
+
+
+async def test_project_storage_rejects_running_task(tmp_path, manager):
+    m, _, _ = manager
+    root = tmp_path / "busy"
+    root.mkdir()
+    project = m.init_project(root)
+    await m.run_db(project.id, lambda p: Task.create(id="busy", title="busy", cwd=str(root), status="running", created_at=1, updated_at=1))
+    with pytest.raises(ValueError, match="运行"):
+        await m.set_storage(project.id, False)
+    assert project.follow_project

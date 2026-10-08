@@ -6,6 +6,7 @@ the resolved project selection instead of guessing native skill directories.
 
 from __future__ import annotations
 
+from services.project_storage import data_directory
 import hashlib
 import json
 import os
@@ -160,7 +161,7 @@ class SkillCenter:
 
     @staticmethod
     def _paths(project_root: Path) -> tuple[Path, Path, Path]:
-        workstep = project_root / ".workstep"
+        workstep = data_directory(project_root)
         skills = workstep / "skills"
         return skills, skills / MANIFEST_NAME, workstep / "skills-disabled"
 

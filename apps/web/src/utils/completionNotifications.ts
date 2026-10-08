@@ -1,4 +1,6 @@
 import type { SandboxBridge } from './desktopSandbox'
+import { completionScopeName } from './completionNotificationContext'
+export { completionScopeName } from './completionNotificationContext'
 export interface CompletionNotice {
   id: string
   projectId: string
@@ -90,6 +92,7 @@ export function watchPendingCompletion(projectId: string, scope: { sessionId?: s
     window.WorkStepAndroid?.postMessage(JSON.stringify({
       type: 'watch', id: pendingCompletionId(projectId, scopeId), projectId,
       sessionId: scope.sessionId || null, taskId: scope.taskId || null,
+      scopeName: completionScopeName(projectId, scope),
       url: window.location.pathname + window.location.search,
     }))
   } catch (error) { console.warn('[Android] reply watch failed:', error) }
@@ -114,6 +117,7 @@ export function watchAcceptedCompletion(projectId: string,
   try {
     window.WorkStepAndroid?.postMessage(JSON.stringify({ type: 'watch', id, projectId,
       sessionId: scope.sessionId || null, taskId: scope.taskId || null,
+      scopeName: completionScopeName(projectId, scope),
       url: window.location.pathname + window.location.search,
     }))
   } catch (error) { console.warn('[Android] accepted reply watch failed:', error) }
@@ -121,8 +125,16 @@ export function watchAcceptedCompletion(projectId: string,
 
 export function notifyCompletion(notice: CompletionNotice, url: string): void {
   if (!deduplicator.take(notice.id)) return
+  const name = completionScopeName(notice.projectId, notice)
+  const success = notice.outcome === 'succeeded'
+  notice = { ...notice,
+    title: `${name} · ${notice.stepKey ? '步骤' : '回复'}${success ? '完成' : '失败'}`,
+    body: notice.stepKey
+      ? `任务「${name}」：步骤 ${notice.stepKey} ${success ? '已通过' : '执行失败'}`
+      : `${notice.taskId ? '任务' : '会话'}「${name}」的回复${success ? '已完成' : '失败'}`,
+  }
   if (window.WorkStepAndroid) {
-    window.WorkStepAndroid.postMessage(JSON.stringify({ type: 'notify', ...notice, url }))
+    window.WorkStepAndroid.postMessage(JSON.stringify({ type: 'notify', ...notice, scopeName: name, url }))
     return
   }
   if (window.workstepDesktop) {

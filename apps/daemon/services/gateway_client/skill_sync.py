@@ -1,5 +1,6 @@
 """Safely materialize signed Gateway Skill versions in one project."""
 
+from services.project_storage import data_directory
 import hashlib
 import io
 import json
@@ -20,7 +21,7 @@ MAX_FILES = 100
 
 
 def project_needs_sync(project_root: Path, desired: dict) -> bool:
-    manifest_path = Path(project_root) / ".workstep" / "skills" / MANIFEST_NAME
+    manifest_path = data_directory(project_root) / "skills" / MANIFEST_NAME
     if not manifest_path.is_file() or manifest_path.is_symlink():
         return True
     try:
@@ -123,7 +124,7 @@ def apply_project_skills(project_root: Path, desired: dict,
         slugs.add(entry["slug"])
 
     with SkillCenter._lock_for(root):
-        skills_root = root / ".workstep" / "skills"
+        skills_root = data_directory(root) / "skills"
         if skills_root.is_symlink():
             raise ValueError("Skill root cannot be a symlink")
         skills_root.mkdir(parents=True, exist_ok=True)

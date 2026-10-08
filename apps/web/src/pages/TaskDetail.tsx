@@ -49,6 +49,7 @@ import {
   isStepActiveForStop,
   resolveStepDisplayStatus,
   runningTaskMessageIds,
+  isCoordinatorReplyFinished,
   findActiveStepIndex,
   findLatestDispatchedTask,
   resolveStepRestartImpact,
@@ -340,18 +341,17 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
   useEffect(() => {
     if (!activeCoordinatorMessageId) return
-    const activeMessage = liveMessages[activeCoordinatorMessageId]
-    if (!activeMessage || !['succeeded', 'failed', 'stopped'].includes(activeMessage.status)) return
+    if (!isCoordinatorReplyFinished(activeCoordinatorMessageId, historyMessages, liveMessages)) return
     setCoordinatorRunning(false)
     setActiveCoordinatorMessageId(null)
-    if (taskId && projectId) {
+    if (taskId && projectId && !isCoordinatorReplyFinished(activeCoordinatorMessageId, historyMessages, {})) {
       taskApi.history(taskId, projectId)
         .then((res) => setHistoryMessages((current) => (
           mergeRefreshedTaskHistory(current, res.messages || [])
         )))
         .catch(() => undefined)
     }
-  }, [activeCoordinatorMessageId, liveMessages, projectId, taskId])
+  }, [activeCoordinatorMessageId, historyMessages, liveMessages, projectId, taskId])
 
   useEffect(() => {
     if (historyLoading || !pendingStepScrollRef.current) return

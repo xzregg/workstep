@@ -73,6 +73,14 @@ def test_plain_input_has_only_one_section():
     assert display == "### 正文（user）\n\n```text\n在企业微信发一条消息。\n```"
 
 
+def test_native_instruction_restore_sentinel_is_not_a_new_injection():
+    display = format_prompt_input({
+        "instruction_transport": "developer", "system_prompt": "", "prompt": "继续",
+    })
+    assert "独立指令" not in display
+    assert display == "### 正文（user）\n\n```text\n继续\n```"
+
+
 def test_assistant_config_separates_instruction_transport():
     from agent_assistants.base import AssistantConfig, AssistantRuntime
     from agent_assistants.session_state import AssistantSession

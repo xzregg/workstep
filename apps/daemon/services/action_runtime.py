@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from services.project_storage import data_directory
 import asyncio
 import codecs
 import json
@@ -128,9 +129,7 @@ def _script_config(project: Path, task: Task | None, button: dict, source: str) 
     if not valid_script_path(script_path):
         raise ActionError("脚本路径无效")
     project = project.resolve()
-    workstep = (project / ".workstep").resolve()
-    if not _within(workstep, project):
-        raise ActionError("Action 目录超出项目根目录")
+    workstep = data_directory(project).resolve()
     workflow_root = workstep / "artifacts" / (task.workflow_id or "default") if task else None
     task_root = workflow_root / task.id if task else None
     action_root = (
@@ -146,7 +145,7 @@ def _script_config(project: Path, task: Task | None, button: dict, source: str) 
     cwd_mode = button.get("cwd_mode") or "task"
     cwd = project if task is None or cwd_mode == "project" else task_root
     cwd = cwd.resolve()
-    if not _within(cwd, project):
+    if not (_within(cwd, project) or _within(cwd, workstep)):
         raise ActionError("执行目录超出项目根目录")
     metadata_path = action_root / "action.json"
     metadata = {}
@@ -183,6 +182,7 @@ def _script_config(project: Path, task: Task | None, button: dict, source: str) 
     return {
         "script": script,
         "project_root": project,
+        "workstep_root": workstep,
         "action_root": action_root,
         "workflow_root": workflow_root,
         "task_root": task_root,
@@ -470,12 +470,12 @@ class ActionRuntime:
                 run_dir = config["task_root"] / ".action-runs" / run_id
                 worktrees_file = config["task_root"] / ".worktrees.json"
             else:
-                run_dir = config["project_root"] / ".workstep" / "action-runs" / run_id
+                run_dir = config["workstep_root"] / "action-runs" / run_id
                 worktrees_file = run_dir / ".worktrees.json"
-            if not _within(await asyncio.to_thread(run_dir.resolve), config["project_root"]):
+            if not _within(await asyncio.to_thread(run_dir.resolve), config["workstep_root"]):
                 raise ActionError("Action 运行目录超出项目根目录")
             await asyncio.to_thread(run_dir.mkdir, parents=True, exist_ok=True)
-            if not _within(await asyncio.to_thread(worktrees_file.resolve), config["project_root"]):
+            if not _within(await asyncio.to_thread(worktrees_file.resolve), config["workstep_root"]):
                 raise ActionError("Worktree 映射文件超出项目根目录")
             worktrees = {"worktrees": []}
             if run["task_id"]:

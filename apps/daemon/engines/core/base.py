@@ -37,25 +37,27 @@ THINKING_EFFORT_VALUES = ("auto",) + THINKING_EFFORT_LEVELS
 def resolve_thinking_effort(
     value: str | None,
     engine_default: str | None = None,
+    *,
+    supported_levels: tuple[str, ...] = THINKING_EFFORT_LEVELS,
 ) -> str | None:
     """Resolve one thinking-effort value into the engine-level override.
 
     - ``"auto"`` → ``None``: never send a forced level (model decides).
     - ``""`` / ``None`` → falls back to ``engine_default`` (follow engine
       config); an unusable default also resolves to ``None``.
-    - ``minimal/low/medium/high/xhigh`` → that level, passed through.
+    - values in ``supported_levels`` → passed through without remapping.
     - anything else → ``engine_default`` (defensive; validation upstream
       already rejects unknown values).
     """
     value = (value or "").strip().lower()
     if value == "auto":
         return None
-    if value in THINKING_EFFORT_LEVELS:
+    if value in supported_levels:
         return value
     default = (engine_default or "").strip().lower()
     if default == "auto":
         return None
-    return default if default in THINKING_EFFORT_LEVELS else None
+    return default if default in supported_levels else None
 
 
 async def sdk_turn_watchdog(

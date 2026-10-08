@@ -79,6 +79,13 @@ const selectStyle: CSSProperties = {
 }
 
 export const THINKING_EFFORT_LEVELS = ['auto', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const
+const CODEX_THINKING_EFFORT_LEVELS = ['auto', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'] as const
+
+export function getThinkingEffortLevels(engineId: string) {
+  return engineId === 'codex' || engineId === 'codex_sdk'
+    ? CODEX_THINKING_EFFORT_LEVELS
+    : THINKING_EFFORT_LEVELS
+}
 
 interface MenuOption {
   value: string
@@ -213,6 +220,7 @@ export default function CoordinatorConfigBar({
   const [models, setModels] = useState<EngineModel[]>([])
 
   const engineId = engine || defaultEngine
+  const thinkingEffortLevels = getThinkingEffortLevels(engineId)
   const selectedEngine = engines.find((item) => item.id === engineId)
   const supportsProvider = Boolean(selectedEngine?.supports_provider)
   const compatibleProviders = providers.filter((item) => (
@@ -257,14 +265,17 @@ export default function CoordinatorConfigBar({
   const effectiveThinkingEffort = defaultThinkingEffort
   const thinkingEffortDefaultLabel = effectiveThinkingEffort
     ? `${t('coord.thinkingEffortDefault')}（${
-      THINKING_EFFORT_LEVELS.includes(effectiveThinkingEffort as typeof THINKING_EFFORT_LEVELS[number])
+      CODEX_THINKING_EFFORT_LEVELS.includes(effectiveThinkingEffort as typeof CODEX_THINKING_EFFORT_LEVELS[number])
         ? {
           auto: t('coord.thinkingLevels.auto'),
+          none: t('coord.thinkingLevels.none'),
           minimal: t('coord.thinkingLevels.minimal'),
           low: t('coord.thinkingLevels.low'),
           medium: t('coord.thinkingLevels.medium'),
           high: t('coord.thinkingLevels.high'),
           xhigh: t('coord.thinkingLevels.xhigh'),
+          max: t('coord.thinkingLevels.max'),
+          ultra: t('coord.thinkingLevels.ultra'),
         }[effectiveThinkingEffort]
         : effectiveThinkingEffort
     }）`
@@ -374,7 +385,7 @@ export default function CoordinatorConfigBar({
               onChange={onThinkingEffortChange}
               options={[
                 { value: '', label: thinkingEffortDefaultLabel },
-                ...THINKING_EFFORT_LEVELS.map((level) => ({
+                ...thinkingEffortLevels.map((level) => ({
                   value: level,
                   label: t(`coord.thinkingLevels.${level}`),
                 })),
@@ -467,7 +478,7 @@ export default function CoordinatorConfigBar({
               style={fieldStyle}
             >
               <option value="">{thinkingEffortDefaultLabel}</option>
-              {THINKING_EFFORT_LEVELS.map((level) => (
+              {thinkingEffortLevels.map((level) => (
                 <option key={level} value={level}>
                   {t(`coord.thinkingLevels.${level}`)}
                 </option>

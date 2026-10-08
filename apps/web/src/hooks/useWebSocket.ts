@@ -19,7 +19,7 @@ import { useWorkflowGenStore } from '../stores/workflowGenStore'
 import { useTaskDraftStore } from '../stores/taskDraftStore'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
 import { useProjectStore } from '../stores/projectStore'
-import { completionNotice, notificationUrl, notifyCompletion, unwatchPendingCompletion,
+import { completionNotice, notificationUrl, notifyCompletion, unwatchPendingCompletion, completionScopeName,
   type CompletionNotice } from '../utils/completionNotifications'
 import { clearBrowserPushWatch, syncBrowserPush } from '../utils/browserPush'
 
@@ -222,6 +222,8 @@ export function useWebSocket() {
             const activeProjectId = useProjectStore.getState().activeProject?.id
             if (activeProjectId && activeProjectId === parsed.value?.project_id && parsed.value?.status === 'connected') {
               void useTaskStore.getState().fetchTasks(activeProjectId)
+              useChatListStore.getState().refreshSessions(activeProjectId)
+              window.dispatchEvent(new Event('workstep:reconnected'))
             }
           }
           if (parsed.type === 'CUSTOM' && parsed.name === 'channel.session_changed') {
@@ -239,7 +241,7 @@ export function useWebSocket() {
               taskId,
             }
             window.WorkStepAndroid?.postMessage(JSON.stringify({
-              type: 'watch', ...watch,
+              type: 'watch', ...watch, scopeName: completionScopeName(watch.projectId, watch),
               url: notificationUrlFor({ ...watch, outcome: 'succeeded', title: '', body: '' }),
             }))
           }
@@ -251,7 +253,7 @@ export function useWebSocket() {
               stepKey: parsed.step_key,
             }
             window.WorkStepAndroid?.postMessage(JSON.stringify({
-              type: 'watch', ...watch,
+              type: 'watch', ...watch, scopeName: completionScopeName(watch.projectId, watch),
               url: notificationUrlFor({ ...watch, sessionId: null, outcome: 'succeeded', title: '', body: '' }),
             }))
           }

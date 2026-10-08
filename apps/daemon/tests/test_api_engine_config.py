@@ -2349,11 +2349,18 @@ def test_claude_agent_sdk_and_codex_configs_validate_input(tmp_path, monkeypatch
     with pytest.raises(ValueError):
         store.set_codex_sdk_config(custom_config="=missing-key")
     with pytest.raises(ValueError):
-        store.set_codex_config(model_reasoning_effort="ultra")
+        store.set_codex_config(model_reasoning_effort="invalid-effort")
     with pytest.raises(ValueError):
         store.set_codex_sdk_config(approval_mode="prompt")
     with pytest.raises(ValueError):
         store.set_codex_sdk_config(sandbox="nope")
+
+    for effort in ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"):
+        store.set_codex_config(model_reasoning_effort=effort)
+        store.set_codex_sdk_config(model_reasoning_effort=effort)
+        reloaded = ConfigStore()
+        assert reloaded.get_codex_config()["model_reasoning_effort"] == effort
+        assert reloaded.get_codex_sdk_config()["model_reasoning_effort"] == effort
 
 
 # --- Engine install endpoints ---

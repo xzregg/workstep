@@ -59,11 +59,16 @@ test('timeline merges action runs and puts a pending coordinator reply after its
       started_at: '2026-01-01T00:00:01Z',
     }],
     coordinatorRunning: true,
+    coordinatorEngine: 'codex_sdk',
+    coordinatorModel: 'gpt-5.5',
     actionTitle: (title) => `操作：${title}`,
   })
   assert.deepEqual(timeline.orderedMessages.map((message) => message.id), [
     'prompt', 'pending-coordinator-thinking', 'action-user', 'action-reply',
   ])
+  const pending = timeline.orderedMessages.find((message) => message.id === 'pending-coordinator-thinking')
+  assert.equal(pending?.engine, 'codex_sdk')
+  assert.equal(pending?.model, 'gpt-5.5')
   assert.equal(timeline.orderedMessages.find((message) => message.id === 'action-reply')?.content, '完成')
   assert.equal(timeline.orderedMessages.find((message) => message.id === 'action-user')?.content, '操作：检查')
 })

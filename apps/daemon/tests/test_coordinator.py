@@ -2897,9 +2897,11 @@ async def test_slow_action_confirmation_keeps_health_responsive(api_context, mon
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("reset_session", [False, True])
 async def test_confirmed_rerun_can_inject_optional_step_prompt(
     api_context,
     monkeypatch,
+    reset_session,
 ):
     from engines.core.registry import ENGINE_REGISTRY
     from models import StepSupplement
@@ -2908,6 +2910,14 @@ async def test_confirmed_rerun_can_inject_optional_step_prompt(
     client, tmp_path = api_context
     monkeypatch.setitem(ENGINE_REGISTRY, "claude", CoordinatorFakeEngine)
     project_id, task_id = await _create_task(client, tmp_path)
+    restart_calls = []
+    original_restart = main.workflow_runtime.restart_from_step
+
+    async def capture_restart(*args, **kwargs):
+        restart_calls.append(kwargs)
+        return await original_restart(*args, **kwargs)
+
+    monkeypatch.setattr(main.workflow_runtime, "restart_from_step", capture_restart)
     injected_prompt = "先复现登录超时，再修复刷新令牌竞争条件并补充回归测试"
     CoordinatorFakeEngine.calls = []
     CoordinatorFakeEngine.reply = {
@@ -2919,7 +2929,7 @@ async def test_confirmed_rerun_can_inject_optional_step_prompt(
         "proposal": {
             "type": "rerun_from_stage",
             "target_step_key": "req",
-            "payload": {"content": injected_prompt},
+            "payload": {"content": injected_prompt, "reset_session": reset_session},
         },
     }
     try:
@@ -2937,6 +2947,7 @@ async def test_confirmed_rerun_can_inject_optional_step_prompt(
 
         proposal = assistant["proposals"][0]
         assert proposal["payload"]["content"] == injected_prompt
+        assert proposal["payload"].get("reset_session", False) is reset_session
 
         confirmed = await client.post(
             f"/api/task/{task_id}/actions/{proposal['id']}/confirm"
@@ -2948,6 +2959,7 @@ async def test_confirmed_rerun_can_inject_optional_step_prompt(
         assert confirmed.json()["status"] == "succeeded"
         assert confirmed.json()["result"]["status"] == "started"
         assert confirmed.json()["result"]["supplement_id"]
+        assert restart_calls[0].get("reset_session", False) is reset_session
         with main.project_manager.activate_project_by_id(project_id):
             supplement = StepSupplement.get(
                 StepSupplement.source_proposal == proposal["id"]

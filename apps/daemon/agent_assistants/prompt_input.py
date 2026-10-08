@@ -19,7 +19,7 @@ def format_prompt_input(data: dict) -> str:
     if data.get("attempt", 1) > 1:
         parts.append(f"## 重试 {data['attempt']}")
     instruction = data.get("system_prompt")
-    if instruction is not None:
+    if instruction:
         role = "developer" if data.get("instruction_transport") == "developer" else "system"
         title = "### 系统注入提示词" if data.get("instruction_transport") == "injection" else f"### 独立指令（{role}）"
         parts.extend([title, _content_block(instruction)])

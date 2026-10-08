@@ -39,3 +39,9 @@ corepack yarn build      # tsc -b + vite build，产物在 dist/
   `src/i18n/zh-CN.ts` 与 `src/i18n/en-US.ts` 文案。
 - 文案：新增任何展示文案必须同时写入中英两本词典，键集合一致性由
   `tests/i18n.test.ts` 保证。
+
+## 用户操作手册
+
+顶部“文档”进入 `#docs`，章节链接为 `#docs/<chapter-id>`。内容位于 `src/manual/onboarding.ts`（SDK 优先入门）与 `features.ts`（功能操作），页面复用官网主题和导航，提供章节搜索、前后章及原图查看。第一版正文为中文，英文界面显示语言提示。
+
+真实截图存于 `src/manual/screenshots/<screenshot-id>.jpg`，构建通过 Vite 导入，发布目录中的图片需与 HTML 一起保留。本地离线打开也需保留 `assets/` 图片目录。仅在 `dev` 合并到本地 `main` 并提交本批代码时，集中更新本批已验证功能的章节和截图，并运行 `yarn manual:check` 检查覆盖（缺图返回非零）、测试和构建；日常开发不逐功能触发。截图统一复用本机 `8777` 端口的“操作手册演示”项目，见 [演示环境](../../docs/manual-demo.md)。发布时复核已合并版本的手册。截图不得包含密钥、私人对话或内部地址。

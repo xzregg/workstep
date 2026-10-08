@@ -1,5 +1,6 @@
 """PydanticAIEngine — built-in Python agent powered by Pydantic AI."""
 
+from services.project_storage import data_directory
 import asyncio
 import functools
 from inspect import isawaitable
@@ -788,7 +789,15 @@ class PydanticAIEngine(PydanticAIHarnessRuntime, AcpEngineBase):
         self._active_plan_store = getattr(coder, "plan_store", None)
         self._last_plan_snapshot = None
         capabilities = [coder]
-        skill_library = root / ".workstep" / "skills"
+        storage_root = await asyncio.to_thread(data_directory, root)
+        if not storage_root.is_relative_to(root):
+            from engines.pydantic_ai.coder import ProjectDataFileSystem
+            capabilities.append(ProjectDataFileSystem(
+                root_dir=storage_root,
+                protected_patterns=["MEMORY.md", "project.json", "*.db", "*.db-*", "runtime/**", "skills/**"],
+                description="Project data tools: paths are relative to " + str(storage_root) + "; use these tools for artifacts outside the code workspace.",
+            ))
+        skill_library = storage_root / "skills"
         if await asyncio.to_thread(skill_library.is_dir):
             capabilities.append(Skills(skill_library))
         if effort:

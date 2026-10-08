@@ -256,11 +256,10 @@ public final class CompletionWatchService extends Service {
                         sessionId, taskId,
                         event.optString("channel"));
                 boolean taskReply = !taskId.isEmpty();
+                String name = NotificationContent.name(watch.optString("scopeName"), sessionId, taskId);
                 String result = CompletionNotifications.show(this, id,
-                        step ? (success ? "WorkStep 步骤完成" : "WorkStep 步骤失败")
-                                : (success ? "WorkStep 回复完成" : "WorkStep 回复失败"),
-                        step ? "步骤 " + event.optString("step_key") + (success ? " 已通过" : " 执行失败")
-                                : (taskReply ? "任务" : "会话") + "的回复" + (success ? "已完成" : "失败"),
+                        NotificationContent.title(name, step, success),
+                        NotificationContent.body(name, taskReply, step ? event.optString("step_key") : "", success),
                         destination, server);
                 CrashReports.log(this, "后台通知进程", "系统通知：" + result + "；目标=" + destination, null);
             }

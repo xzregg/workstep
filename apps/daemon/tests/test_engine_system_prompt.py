@@ -287,7 +287,9 @@ async def test_codex_uses_developer_instructions_and_preserves_base(monkeypatch,
         assert "developer_instructions" not in captured["kwargs"]["config"]
     else:
         assert snapshot["system_prompt"] == "channel role"
-        assert captured["kwargs"]["developer_instructions"] == "existing rules\n\nchannel role"
+        assert captured["kwargs"]["developer_instructions"] == (
+            "<workstep_system_rules>\nexisting rules\n\nchannel role\n</workstep_system_rules>"
+        )
     assert "base_instructions" not in captured["kwargs"]
 
 
@@ -489,3 +491,57 @@ async def test_codex_slow_native_rule_read_keeps_health_responsive(monkeypatch, 
     finally:
         release.set()
         await task
+
+
+@pytest.mark.parametrize("changed, compacted", [(False, False), (True, False), (False, True)])
+async def test_codex_restores_rules_from_native_developer_message(monkeypatch, tmp_path, changed, compacted):
+    import json
+    from engines.codex_sdk import CodexSDKEngine
+
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    monkeypatch.setattr("engines.codex_sdk.config_store.get_codex_sdk_config", lambda: {"custom_config": ""})
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    path = sessions / "rollout-test-existing.jsonl"
+    records = [
+        {"type": "session_meta", "payload": {"id": "existing", "cwd": str(tmp_path)}},
+        {"type": "response_item", "payload": {"type": "message", "role": "developer", "content": [
+            {"type": "input_text", "text": "<workstep_system_rules>\nrules\n</workstep_system_rules>"},
+        ]}},
+        # Actual Codex runtimes omit developer_instructions from turn_context.
+        {"type": "turn_context", "payload": {"model": "test"}},
+        {"type": "response_item", "payload": {"type": "message", "role": "developer", "content": [
+            {"type": "input_text", "text": "unrelated permission settings"},
+        ]}},
+    ]
+    if compacted:
+        records.append({"type": "compacted", "payload": {"message": "summary"}})
+    path.write_text("".join(json.dumps(r) + "\n" for r in records))
+    kwargs = {"prompt": "next", "cwd": str(tmp_path), "session_id": "existing"}
+    rules = "new rules" if changed else "rules"
+    prepared = await CodexSDKEngine()._prepare_prompt_input(kwargs, rules)
+    assert prepared["system_prompt"] == (rules if changed or compacted else "")
+    # Restoration must also work after rebuilding the engine (daemon restart).
+    assert (await CodexSDKEngine()._prepare_prompt_input(kwargs, rules))["system_prompt"] == prepared["system_prompt"]
+
+
+@pytest.mark.parametrize("role, text, expected", [
+    ("developer", "<workstep_system_rules>\nnew rules\n</workstep_system_rules>", "rules"),
+    ("user", "<workstep_system_rules>\nrules\n</workstep_system_rules>", "rules"),
+])
+async def test_codex_native_rule_marker_uses_latest_developer_only(monkeypatch, tmp_path, role, text, expected):
+    import json
+    from engines.codex_sdk import CodexSDKEngine
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    monkeypatch.setattr("engines.codex_sdk.config_store.get_codex_sdk_config", lambda: {"custom_config": ""})
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    records = [{"type": "session_meta", "payload": {"id": "existing", "cwd": str(tmp_path)}}]
+    if role == "developer":
+        records.append({"type": "response_item", "payload": {"type": "message", "role": "developer", "content": [
+            {"type": "input_text", "text": "<workstep_system_rules>\nrules\n</workstep_system_rules>"},
+        ]}})
+    records.append({"type": "response_item", "payload": {"type": "message", "role": role, "content": [{"type": "input_text", "text": text}]}})
+    (sessions / "rollout-test-existing.jsonl").write_text("".join(json.dumps(r) + "\n" for r in records))
+    prepared = await CodexSDKEngine()._prepare_prompt_input({"prompt": "next", "cwd": str(tmp_path), "session_id": "existing"}, "rules")
+    assert prepared["system_prompt"] == expected

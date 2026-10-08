@@ -1,4 +1,4 @@
-"""Allowlisted, persistent per-message channel context for coordinator instructions."""
+"""Allowlisted, persistent per-message context, separate from coordinator rules."""
 import json
 
 SOURCE_FIELDS = ('platform', 'bot_id', 'message_id', 'conversation_type', 'conversation_id',

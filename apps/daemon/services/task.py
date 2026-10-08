@@ -1,5 +1,6 @@
 """Task service — create, run, and manage task execution."""
 
+from services.project_storage import data_directory
 import asyncio
 import json
 import logging
@@ -483,7 +484,7 @@ class TaskService:
         msg_id = new_message_id()
         message_started_at = utc_now()
         journal_ref = self._event_journal.start(
-            Path(task.cwd) / ".workstep",
+            data_directory(task.cwd),
             f"task-{task.id}",
             msg_id,
         )

@@ -68,7 +68,7 @@ test('Android reply watch is registered before the assistant start event', async
   watchPendingCompletion('p', { sessionId: 's' })
   unwatchPendingCompletion('p', { sessionId: 's' })
   assert.deepEqual(sent, [
-    { type: 'watch', id: 'p:s:pending', projectId: 'p', sessionId: 's', taskId: null, url: '/' },
+    { type: 'watch', id: 'p:s:pending', projectId: 'p', sessionId: 's', taskId: null, scopeName: '会话 s', url: '/' },
     { type: 'unwatch', id: 'p:s:pending' },
   ])
   await window.happyDOM.close()
@@ -89,4 +89,57 @@ test('accepted reply replaces the pending watch with its exact message id', asyn
   watchAcceptedCompletion('p', { sessionId: 's' }, 'fast-reply')
   assert.deepEqual(sent.map(({ type, id }) => ({ type, id })), [{ type: 'unwatch', id: 'p:s:pending' }])
   await window.happyDOM.close()
+})
+
+
+test('notifications identify the actual session or task, including Android pending watches', async () => {
+  const { window } = installDomEnvironment()
+  const { useChatListStore } = await import('../src/stores/chatSessionStore')
+  const { useTaskStore } = await import('../src/stores/taskStore')
+  const { useProjectStore } = await import('../src/stores/projectStore')
+  useChatListStore.setState({ sessionsByProject: { named: [{ id: 'session-name', title: '安卓排查' } as never] } })
+  useProjectStore.setState({ activeProject: { id: 'named' } as never })
+  useTaskStore.setState({ tasks: [{ id: 'task-name', title: '修复上传' } as never] })
+  const sent: Array<{ type: string; title?: string; body?: string; scopeName?: string }> = []
+  window.WorkStepAndroid = { postMessage: (raw) => sent.push(JSON.parse(raw)) }
+  try {
+    watchPendingCompletion('named', { sessionId: 'session-name' })
+    watchAcceptedCompletion('named', { taskId: 'task-name' }, 'named-reply')
+    assert.equal(sent[0].scopeName, '安卓排查')
+    assert.equal(sent[2].scopeName, '修复上传')
+    notifyCompletion(completionNotice({ type: 'TEXT_MESSAGE_END', channel: 'session_chat',
+      project_id: 'named', session_id: 'session-name', task_id: 'task-name', messageId: 'named-session-reply', status: 'succeeded' })!, '/')
+    assert.equal(sent.at(-1)?.scopeName, '安卓排查')
+    assert.equal(sent.at(-1)?.title, '安卓排查 · 回复完成')
+    assert.equal(sent.at(-1)?.body, '会话「安卓排查」的回复已完成')
+    notifyCompletion(completionNotice({ type: 'RUN_ERROR', project_id: 'named', task_id: 'task-name',
+      step_key: 'review', status: 'failed' })!, '/')
+    assert.equal(sent.at(-1)?.title, '修复上传 · 步骤失败')
+    assert.equal(sent.at(-1)?.body, '任务「修复上传」：步骤 review 执行失败')
+  } finally {
+    useChatListStore.setState({ sessionsByProject: {} })
+    useTaskStore.setState({ tasks: [] })
+    useProjectStore.setState({ activeProject: null })
+    await window.happyDOM.close()
+  }
+})
+
+
+test('long notification names are ellipsized without cutting emoji or completion status', async () => {
+  const { window } = installDomEnvironment()
+  const { useChatListStore } = await import('../src/stores/chatSessionStore')
+  useChatListStore.setState({ sessionsByProject: { long: [{ id: 'long-session', title: '😀'.repeat(1000) } as never] } })
+  const sent: Array<{ title?: string; body?: string; scopeName?: string }> = []
+  window.WorkStepAndroid = { postMessage: raw => sent.push(JSON.parse(raw)) }
+  try {
+    watchPendingCompletion('long', { sessionId: 'long-session' })
+    assert.equal(sent[0].scopeName, '😀'.repeat(19) + '…')
+    notifyCompletion(completionNotice({ type: 'TEXT_MESSAGE_END', channel: 'session_chat',
+      project_id: 'long', session_id: 'long-session', messageId: 'long-reply', status: 'failed' })!, '/')
+    assert.equal(sent.at(-1)?.title, '😀'.repeat(19) + '… · 回复失败')
+    assert.equal(sent.at(-1)?.body, '会话「' + '😀'.repeat(19) + '…」的回复失败')
+  } finally {
+    useChatListStore.setState({ sessionsByProject: {} })
+    await window.happyDOM.close()
+  }
 })

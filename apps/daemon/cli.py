@@ -59,7 +59,8 @@ async def _create_project_action_on_existing_daemon(args, client, script_content
         raise FileExistsError("项目中已存在同名 Action")
     normalize_quick_buttons([*buttons, button])
     root = Path(project["path"]).resolve()
-    action_root = root / ".workstep" / "actions" / args.action_id
+    from services.project_storage import data_directory
+    action_root = data_directory(root) / "actions" / args.action_id
     await asyncio.to_thread(action_root.mkdir, parents=True, exist_ok=False)
     script = action_root / script_file.name
     metadata = action_root / "action.json"

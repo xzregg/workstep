@@ -22,6 +22,9 @@ async def test_spawn_slow_project_resolution_keeps_event_loop_responsive(
     import time
 
     class Harness:
+        def start(self):
+            pass
+
         def run(self, *args, **kwargs):
             return SimpleNamespace(finish_reason="completed")
 
@@ -166,6 +169,9 @@ def test_deepseek_harness_uses_workstep_standard_composition(
     captured = {}
 
     class FakeHarness:
+        def start(self):
+            pass
+
         def __init__(self, **kwargs):
             captured.update(kwargs)
 
@@ -343,6 +349,9 @@ def test_deepseek_harness_spawn_streams_notifications_and_reuses_session(
     captured = {}
 
     class FakeHarness:
+        def start(self):
+            pass
+
         def run(self, prompt, *, session_id, on_notification):
             captured.update(prompt=prompt, session_id=session_id)
             on_notification(notification("session.event", {
@@ -385,7 +394,7 @@ def test_deepseek_harness_spawn_streams_notifications_and_reuses_session(
     events = asyncio.run(collect())
 
     # 池化后 spawn 结束不再关闭 harness（留给同项目下一轮复用），
-    # 关闭只发生在 stop()/空闲回收/lifespan shutdown。
+    # 关闭只发生在 stop()/lifespan shutdown。
     assert captured == {
         "cwd": str(tmp_path),
         "provider": deepseek_provider,
@@ -407,6 +416,9 @@ def test_deepseek_harness_spawn_streams_notifications_and_reuses_session(
 
 def test_deepseek_harness_spawn_reports_sdk_failure(monkeypatch, tmp_path, deepseek_provider):
     class BrokenHarness:
+        def start(self):
+            pass
+
         def run(self, *_args, **_kwargs):
             raise RuntimeError("runtime crashed")
 
@@ -679,6 +691,9 @@ def test_spawn_reuses_pooled_harness_across_turns(monkeypatch, tmp_path, deepsee
     built = []
 
     class FakeHarness:
+        def start(self):
+            pass
+
         def run(self, prompt, *, session_id, on_notification):
             return SimpleNamespace(finish_reason="completed")
 
@@ -727,13 +742,16 @@ def test_spawn_reuses_pooled_harness_across_turns(monkeypatch, tmp_path, deepsee
     )
 
 
-def test_spawn_falls_back_only_on_structured_exists_error(
+def test_spawn_reports_tool_error_without_replacing_session(
     monkeypatch, tmp_path, deepseek_provider
 ):
-    """只有结构化会话冲突才回退；普通 turn 错误直接报错不丢会话。"""
+    """工具错误直接报错，不更换会话 ID。"""
     calls = []
 
     class FlakyHarness:
+        def start(self):
+            pass
+
         def run(self, prompt, *, session_id, on_notification):
             calls.append(session_id)
             if len(calls) == 1:
@@ -768,3 +786,184 @@ def test_spawn_falls_back_only_on_structured_exists_error(
     assert calls == ["session-keep"]
     assert events[-1].type == "error"
     assert "file not found" in events[-1].data["message"]
+
+
+def _configure_spawn(monkeypatch, provider, build):
+    monkeypatch.setattr(
+        "engines.deepseek_harness.config_store.get_deepseek_harness_config",
+        lambda: {"provider_id": provider["id"], "model": "deepseek-v4-flash", "max_tokens": ""},
+    )
+    monkeypatch.setattr(
+        "engines.deepseek_harness.config_store.get_provider", lambda _: provider,
+    )
+    monkeypatch.setattr(DeepSeekHarnessEngine, "is_installed", staticmethod(lambda: True))
+    monkeypatch.setattr(DeepSeekHarnessEngine, "_build_harness", build)
+
+
+async def test_model_interleaving_keeps_original_session_runtime(
+    monkeypatch, tmp_path, deepseek_provider,
+):
+    built = []
+
+    class Harness:
+        def __init__(self, model):
+            self.model, self.closed, self.sessions = model, False, set()
+
+        def start(self):
+            pass
+
+        def run(self, prompt, *, session_id, on_notification):
+            assert not self.closed
+            self.sessions.add(session_id)
+            return SimpleNamespace(finish_reason="completed")
+
+        def close(self):
+            self.closed = True
+
+    def build(self, **kwargs):
+        harness = Harness(kwargs["model"])
+        built.append(harness)
+        return harness
+
+    _configure_spawn(monkeypatch, deepseek_provider, build)
+    for model, sid in [("model-a", "session-a"), ("model-b", "session-b"),
+                       ("model-a", "session-a")]:
+        events = [event async for event in DeepSeekHarnessEngine().spawn(
+            "go", str(tmp_path), model=model, session_id=sid,
+        )]
+        assert not any(event.type == "error" for event in events)
+    assert len(built) == 2
+    assert all(not harness.closed for harness in built)
+
+
+@pytest.mark.parametrize("in_stream", [False, True])
+async def test_session_conflict_preserves_id_and_does_not_run_empty_session(
+    monkeypatch, tmp_path, deepseek_provider, in_stream,
+):
+    calls = []
+
+    class Harness:
+        def start(self):
+            pass
+
+        def run(self, prompt, *, session_id, on_notification):
+            calls.append(session_id)
+            message = f'session "{session_id}" already exists'
+            if not in_stream:
+                raise _JsonRpcErrorStub(-32603, message)
+            on_notification(notification("session.event", {
+                "sessionId": session_id,
+                "event": {"type": "turn/end", "data": {
+                    "reason": {"kind": "error", "error": {"message": message}},
+                }},
+            }))
+            return SimpleNamespace(finish_reason="error")
+
+        def close(self):
+            pass
+
+    _configure_spawn(monkeypatch, deepseek_provider, lambda self, **_: Harness())
+    events = [event async for event in DeepSeekHarnessEngine().spawn(
+        "go", str(tmp_path), session_id="session-keep",
+    )]
+    assert calls == ["session-keep"]
+    assert [event.data["session_id"] for event in events
+            if event.type == "session_started"] == ["session-keep"]
+    errors = [event for event in events if event.type == "error"]
+    assert len(errors) == 1
+    assert "session-keep" in errors[0].data["message"]
+    assert "恢复" in errors[0].data["message"]
+    assert not any(event.data.get("status") in {"done", "session_fallback"}
+                   for event in events)
+
+
+async def test_slow_runtime_fingerprint_keeps_event_loop_responsive(
+    monkeypatch, tmp_path, deepseek_provider,
+):
+    import threading
+
+    entered, release = threading.Event(), threading.Event()
+    main_thread = threading.get_ident()
+    threads = []
+
+    def fingerprint(**kwargs):
+        threads.append(threading.get_ident())
+        entered.set()
+        assert release.wait(2)
+        return "fingerprint"
+
+    class Harness:
+        def start(self):
+            pass
+
+        def run(self, *args, **kwargs):
+            return SimpleNamespace(finish_reason="completed")
+
+        def close(self):
+            pass
+
+    _configure_spawn(monkeypatch, deepseek_provider, lambda self, **_: Harness())
+    monkeypatch.setattr(DeepSeekHarnessEngine, "_pool_fingerprint", staticmethod(fingerprint))
+
+    async def collect():
+        return [event async for event in DeepSeekHarnessEngine().spawn("go", str(tmp_path))]
+
+    pending = asyncio.create_task(collect())
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        assert threads != [main_thread]
+        await asyncio.wait_for(asyncio.sleep(0), 0.2)
+    finally:
+        release.set()
+        await pending
+
+
+async def test_concurrent_first_turns_initialize_sdk_once_off_loop(
+    monkeypatch, tmp_path, deepseek_provider,
+):
+    import threading
+
+    entered, release = threading.Event(), threading.Event()
+    main_thread = threading.get_ident()
+    starts, calls = [], []
+
+    class Harness:
+        initialized = False
+
+        def start(self):
+            if self.initialized:
+                return
+            starts.append(threading.get_ident())
+            entered.set()
+            assert release.wait(2)
+            self.initialized = True
+
+        def run(self, prompt, *, session_id, on_notification):
+            self.start()  # official SDK starts lazily, without an initialization lock
+            calls.append(session_id)
+            return SimpleNamespace(finish_reason="completed")
+
+        def close(self):
+            pass
+
+    harness = Harness()
+    _configure_spawn(monkeypatch, deepseek_provider, lambda self, **_: harness)
+
+    async def collect(sid):
+        return [event async for event in DeepSeekHarnessEngine().spawn(
+            "go", str(tmp_path), session_id=sid,
+        )]
+
+    first = asyncio.create_task(collect("session-a"))
+    second = None
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        second = asyncio.create_task(collect("session-b"))
+        await asyncio.sleep(0.05)
+        assert len(starts) == 1
+        assert starts[0] != main_thread
+    finally:
+        release.set()
+        results = await asyncio.gather(first, *([second] if second else []))
+    assert sorted(calls) == ["session-a", "session-b"]
+    assert not any(event.type == "error" for events in results for event in events)

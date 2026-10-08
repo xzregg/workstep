@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { ManualPage } from './manual/ManualPage'
+import { getManualChapterId, isManualHash } from './manual/content'
 import { Compare } from './components/Compare'
 import { Channels } from './components/Channels'
 import { Demos } from './components/Demos'
@@ -20,13 +22,23 @@ function scrollToDemos() {
 }
 
 export default function App() {
+  const [hash, setHash] = useState(() => typeof window === 'undefined' ? '' : window.location.hash)
+  useEffect(() => {
+    const update = () => setHash(window.location.hash)
+    window.addEventListener('hashchange', update)
+    return () => window.removeEventListener('hashchange', update)
+  }, [])
+  useEffect(() => {
+    if (isManualHash(hash)) window.scrollTo(0, 0)
+    else if (hash) document.getElementById(hash.slice(1))?.scrollIntoView()
+  }, [hash])
   const [openDemo, setOpenDemo] = useState<DemoDef | null>(null)
   const experienceHref = getExperienceHref(typeof window === 'undefined' ? '' : window.location.pathname)
 
   return (
     <>
       <Nav />
-      <main>
+      {isManualHash(hash) ? <ManualPage chapterId={getManualChapterId(hash)} /> : <main>
         <Hero onOpenDemos={scrollToDemos} experienceHref={experienceHref} />
         <EnginesStrip />
         <Philosophy />
@@ -37,7 +49,7 @@ export default function App() {
         <Channels />
         <RemoteShare />
         <FinalCta experienceHref={experienceHref} />
-      </main>
+      </main>}
       <Footer />
       {openDemo && <DemoModal demo={openDemo} onClose={() => setOpenDemo(null)} />}
     </>

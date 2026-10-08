@@ -346,11 +346,14 @@ export default function ChatInput({
   )).length
   const thinkingEffortLabel: Record<string, string> = {
     auto: t('coord.thinkingLevels.auto'),
+    none: t('coord.thinkingLevels.none'),
     minimal: t('coord.thinkingLevels.minimal'),
     low: t('coord.thinkingLevels.low'),
     medium: t('coord.thinkingLevels.medium'),
     high: t('coord.thinkingLevels.high'),
     xhigh: t('coord.thinkingLevels.xhigh'),
+    max: t('coord.thinkingLevels.max'),
+    ultra: t('coord.thinkingLevels.ultra'),
   }
   const effectiveDefaultThinkingEffort = config?.defaultThinkingEffort
   const thinkingEffortDisplay = config?.thinkingEffort

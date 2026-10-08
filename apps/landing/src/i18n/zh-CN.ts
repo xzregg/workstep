@@ -1,4 +1,16 @@
 export const zhCN = {
+  manual: {
+    title: "操作手册",
+    home: "返回官网",
+    search: "搜索手册",
+    searchPlaceholder: "输入功能或问题",
+    chapters: "手册章节",
+    noResults: "没有找到相关章节",
+    chineseNotice: "手册目前提供中文内容。",
+    enlarge: "查看大图",
+    pagination: "上一章与下一章",
+    screenshotPending: "本节界面截图待补充。",
+  },
   common: {
     download: '下载',
     watchDemo: '观看演示',
@@ -25,6 +37,7 @@ export const zhCN = {
     eyebrow: '编排 AI Agent 工具 · 聊天生成流程 · 团队共享',
     titleA: '把 Claude Code、Codex 串成流水线，',
     titleB: '聊聊天就能跑起来',
+    promise: '让高质量交付持续发生。',
     lede: '不自己造 Agent，不写 YAML，不拖节点。WorkStep 把你已经在用的 AI 编码工具按步骤编排，上游产物自动流向下游，全程可审核可返工。团队一套环境，经验人人复用。',
     ctaStart: '立即体验',
     ctaPrimary: '下载 WorkStep',

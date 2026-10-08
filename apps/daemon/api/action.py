@@ -68,12 +68,12 @@ async def ensure_action_directory(project_id: str, action_id: str, workflow_id: 
 
     def create():
         root = Path(project.path).resolve()
-        workstep = (root / ".workstep").resolve()
+        workstep = project.workstep_dir.resolve()
         target = (workstep / "artifacts" / workflow_id / "actions" / action_id) if workflow_id else (workstep / "actions" / action_id)
-        if not workstep.is_relative_to(root) or not target.resolve().is_relative_to(workstep):
+        if not target.resolve().is_relative_to(workstep):
             raise ActionError("Action 目录超出项目根目录")
         target.mkdir(parents=True, exist_ok=True)
-        return {"path": target.relative_to(root).as_posix()}
+        return {"path": target.relative_to(root).as_posix() if target.is_relative_to(root) else str(target)}
 
     try:
         return await asyncio.to_thread(create)

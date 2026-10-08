@@ -31,6 +31,7 @@ test('foreground recovery replaces stale sockets, restores subscriptions and ref
   const originalTasks = useTaskStore.getState().fetchTasks
   const originalRefresh = useChatListStore.getState().refreshSessions
   const originalProject = useProjectStore.getState().activeProject
+  const originalProjects = useProjectStore.getState().fetchProjects
   let refreshes = 0
   let recoveries = 0
   const recovered = () => recoveries++
@@ -38,6 +39,7 @@ test('foreground recovery replaces stale sockets, restores subscriptions and ref
   globalThis.WebSocket = Socket as never
   Socket.instances = []
   useProjectStore.setState({ activeProject: { id: 'p' } as never })
+  useProjectStore.setState({ fetchProjects: async () => {} })
   useTaskStore.setState({ fetchTasks: async () => {} })
   useChatListStore.setState({ refreshSessions: () => { refreshes++ } })
   useChatSessionStore.setState({ sessions: {} })
@@ -61,6 +63,16 @@ test('foreground recovery replaces stale sockets, restores subscriptions and ref
     assert.ok((second.sent[0].session_ids as string[]).includes('channel-chat'))
     assert.equal(refreshes, 1)
     assert.equal(recoveries, 1)
+    await act(async () => second.receive({ type: 'CUSTOM', name: 'workstep.remote_project_status',
+      value: { project_id: 'other', status: 'connected' } }))
+    assert.equal(recoveries, 1, 'another remote project must not refresh the active conversation')
+    await act(async () => second.receive({ type: 'CUSTOM', name: 'workstep.remote_project_status',
+      value: { project_id: 'p', status: 'connecting' } }))
+    assert.equal(recoveries, 1, 'wait until the remote connection is usable')
+    await act(async () => second.receive({ type: 'CUSTOM', name: 'workstep.remote_project_status',
+      value: { project_id: 'p', status: 'connected' } }))
+    assert.equal(recoveries, 2, 'remote transport recovery must restore conversation history even when the browser socket stays open')
+    assert.equal(refreshes, 2, 'remote transport recovery also refreshes independent chat sessions')
     await act(async () => {
       second.receive({ type: 'TEXT_MESSAGE_CHUNK', channel: 'session_chat', session_id: 'channel-chat', messageId: 'm', delta: '实时正文' })
       first.onclose?.() // A delayed callback from the old socket must not reconnect again.
@@ -106,6 +118,7 @@ test('foreground recovery replaces stale sockets, restores subscriptions and ref
     useTaskStore.setState({ fetchTasks: originalTasks })
     useChatListStore.setState({ refreshSessions: originalRefresh })
     useProjectStore.setState({ activeProject: originalProject })
+    useProjectStore.setState({ fetchProjects: originalProjects })
     useChatSessionStore.setState({ sessions: {} })
     window.removeEventListener('workstep:reconnected', recovered)
     await window.happyDOM.close()
