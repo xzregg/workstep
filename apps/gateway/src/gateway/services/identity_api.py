@@ -26,7 +26,7 @@ USERNAME = re.compile(r"^[a-z][a-z0-9_-]{2,63}$")
 class AccountInput(BaseModel):
     username: str
     display_name: str = Field(min_length=1, max_length=256)
-    password: str = Field(min_length=12, max_length=128)
+    password: str = Field(min_length=8, max_length=128)
 
     @field_validator("username")
     @classmethod
@@ -45,7 +45,7 @@ class AccountInput(BaseModel):
 
 class SetupInput(AccountInput):
     recovery_username: str
-    recovery_password: str = Field(min_length=12, max_length=128)
+    recovery_password: str = Field(min_length=8, max_length=128)
     registration_mode: Literal["open", "open_with_approval", "closed"]
 
     @model_validator(mode="after")
@@ -64,7 +64,7 @@ class LoginInput(BaseModel):
 
 class ChangePasswordInput(BaseModel):
     current_password: str
-    new_password: str = Field(min_length=12, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class StepUpInput(BaseModel):
@@ -72,7 +72,7 @@ class StepUpInput(BaseModel):
 
 
 class ResetPasswordInput(BaseModel):
-    new_password: str = Field(min_length=12, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class AdminCreateInput(AccountInput):
@@ -221,7 +221,11 @@ async def register(call: GatewayCall, response: ReplyEffects, body: AccountInput
 
 
 async def registration_policy(call: GatewayCall):
-    return {"mode": await _identity(call).registration_mode()}
+    from gateway.services.login_policy import password_login_enabled
+    async with call.database.session() as session:
+        enabled = await password_login_enabled(session)
+    return {"mode": await _identity(call).registration_mode() if enabled else 'closed',
+            "password_login_enabled": enabled}
 
 
 async def login(call: GatewayCall, response: ReplyEffects, body: LoginInput):
@@ -279,7 +283,7 @@ async def admin_create_user(call: GatewayCall, body: AdminCreateInput):
 
 async def admin_list_users(call: GatewayCall, q: str = '',
                            group_id: str | None = None,
-                           status: Literal["active", "pending", "disabled"] | None = None,
+                           status: Literal["active", "pending", "disabled", "deleted"] | None = None,
                            sort: Literal["username", "display_name", "created_at"] = "created_at",
                            direction: Literal["asc", "desc"] = "desc",
                            page: int = 1, page_size: int = 25):
@@ -299,6 +303,8 @@ async def admin_list_users(call: GatewayCall, q: str = '',
             conditions.append(User.id.in_(select(GroupMembership.user_id).where(GroupMembership.group_id == group_id, GroupMembership.revoked_at.is_(None))))
         if status:
             conditions.append(User.status == status)
+        else:
+            conditions.append(User.status != 'deleted')
         if q.strip():
             escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             pattern = f"%{escaped}%"
@@ -311,6 +317,8 @@ async def admin_list_users(call: GatewayCall, q: str = '',
         rows = (await session.scalars(select(User).where(*conditions)
             .order_by(ordered, User.id).offset((page - 1) * page_size).limit(page_size))).all()
         users = [{**public_user(user), "registration_source": user.registration_source,
+                  "login_username": user.username if user.password_hash else None,
+                  "is_recovery": bool(user.is_recovery),
                   "created_at": user.created_at.isoformat()} for user in rows]
     return {"users": users, "total": total, "page": page, "page_size": page_size}
 
@@ -434,10 +442,14 @@ async def admin_set_registration_policy(call: GatewayCall, body: RegistrationPol
 async def admin_platform_settings(call: GatewayCall):
     identity, _ = await _super_admin_read(call)
     settings = call.settings
+    from gateway.services.login_policy import password_login_enabled
+    async with call.database.session() as session:
+        enabled = await password_login_enabled(session)
     return {
         "gateway_id": settings.gateway_id,
         "public_origin": settings.public_origin,
         "registration_mode": await identity.registration_mode(),
+        "password_login_enabled": enabled,
         "session_seconds": SESSION_SECONDS,
         "protocol_version": call.protocol_version,
         "data_dir": str(settings.data_dir),

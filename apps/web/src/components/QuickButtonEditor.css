@@ -1,0 +1,8 @@
+.quick-button-enabled-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-2);
+  font-size: calc(12px * var(--font-scale));
+  cursor: pointer;
+}

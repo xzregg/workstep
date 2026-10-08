@@ -55,7 +55,7 @@ test('create user shows a server conflict and allows a successful retry', async 
   render(<AdminCreateUserDialog csrf="csrf" onSaved={() => { saved++ }} onClose={() => {}} />)
   fireEvent.change(screen.getByLabelText('用户名'), { target: { value: 'alice' } })
   fireEvent.change(screen.getByLabelText('显示名称'), { target: { value: 'Alice' } })
-  fireEvent.change(screen.getByLabelText('初始密码（至少 12 位）'), { target: { value: 'strong-password-123' } })
+  fireEvent.change(screen.getByLabelText('初始密码（至少 8 位）'), { target: { value: 'strong-password-123' } })
   const submit = screen.getByRole('button', { name: '创建用户' })
   assert.equal((submit as HTMLButtonElement).disabled, false)
   fireEvent.click(submit)
@@ -353,6 +353,8 @@ test('management tab appears after signing in on the workbench', async () => {
   let signedIn = false
   globalThis.fetch = async input => {
     const url = String(input)
+    if (url === '/api/platform/status') return Response.json({ initialized: true })
+    if (url === '/api/auth/registration-policy') return Response.json({ mode: 'open', password_login_enabled: true })
     if (url === '/api/auth/admin-access') return signedIn
       ? Response.json({ roles: ['super_admin'], must_change_password: false })
       : new Response(null, { status: 401 })

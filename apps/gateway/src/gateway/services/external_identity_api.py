@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlsplit
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 
 from gateway.services.external_identity import ExternalIdentityService
 
@@ -70,6 +71,17 @@ class DirectorySnapshot(BaseModel):
     departments: list[DepartmentInput]
     people: list[PersonInput]
     cursor: str | None = Field(default=None, max_length=256)
+
+
+class SelectedDirectoryInput(BaseModel):
+    department_ids: list[str] = Field(min_length=1, max_length=10000)
+
+    @field_validator('department_ids')
+    @classmethod
+    def valid_ids(cls, values):
+        if any(not value or len(value) > 256 for value in values):
+            raise ValueError('Invalid department identifier')
+        return values
 
 
 class PersonEvent(BaseModel):
@@ -138,7 +150,7 @@ async def create_source(call: GatewayCall, body: SourceInput):
     # Source ID is allocated before encryption so ciphertext is bound to its record.
     from uuid import uuid4
     credential_id = str(uuid4())
-    options = {"login_enabled": body.login_enabled, "sync_enabled": body.sync_enabled, "enabled": body.enabled}
+    options = {"login_enabled": body.login_enabled, "sync_enabled": body.sync_enabled, "enabled": body.enabled, "selected_department_ids": []}
     if body.client_secret:
         options['encrypted_secret'] = call.gateway_signer.encrypt_provider_secret(credential_id, body.client_secret)
         options["credential_id"] = credential_id
@@ -236,14 +248,18 @@ async def reconcile_directory(call: GatewayCall, source_id: str):
     await organization_manager(call, source_id=source_id, mutation=True)
     service = _service(call)
     source = await service.source(source_id, purpose="sync")
+    selected = (await source_options(call.database, source_id)).get('selected_department_ids', [])
+    if selected == []:
+        raise GatewayError('invalid', 'Select departments before syncing')
     try:
-        snapshot = await _connector(call, source.provider).fetch_directory(source)
+        connector = _connector(call, source.provider)
+        snapshot = await connector.fetch_directory(source, selected_department_ids=selected) if selected is not None else await connector.fetch_directory(source)
     except Exception as exc:
         await service.record_sync_failure(source_id, 'provider_unavailable')
         raise GatewayError('upstream_failed', 'Directory provider unavailable') from exc
     try:
         return await service.full_sync(source_id, snapshot["departments"], snapshot["people"],
-                                       snapshot.get('cursor'))
+                                       snapshot.get('cursor'), selected_department_ids=selected)
     except Exception as exc:
         await service.record_sync_failure(source_id, 'snapshot_invalid' if isinstance(exc, GatewayError) and exc.reason == 'invalid' else 'snapshot_apply_failed')
         raise
@@ -268,10 +284,10 @@ async def external_start(call: GatewayCall, source_id: str, body: ExternalStartI
 
 
 async def identity_sources(call: GatewayCall):
-    sources = await _service(call).enabled_sources()
-    sources = [source for source in sources if (await source_options(call.database, source.id)).get('login_enabled', True)]
-    return {"sources": [{"id": source.id, "provider": source.provider,
-                         "tenant_id": source.tenant_id} for source in sources]}
+    from gateway.services.login_policy import scan_sources
+    async with call.database.session() as session:
+        sources = await scan_sources(session)
+    return {"sources": [{"id": source.id, "provider": source.provider} for source, _ in sources]}
 
 
 async def external_bind_start(call: GatewayCall, source_id: str):
@@ -329,8 +345,14 @@ async def update_source(call: GatewayCall, source_id: str, body: SourceInput):
         async with session.begin():
             source = await session.get(IdentitySource, source_id)
             if source is None: raise GatewayError('not_found', 'Identity source not found')
-            if source.provider != body.provider or source.tenant_id != body.tenant_id:
-                raise GatewayError('invalid', 'Provider and tenant identity cannot change')
+            if source.provider != body.provider:
+                raise GatewayError('invalid', 'Provider cannot change')
+            duplicate = await session.scalar(select(IdentitySource.id).where(
+                IdentitySource.provider == body.provider, IdentitySource.tenant_id == body.tenant_id,
+                IdentitySource.id != source_id))
+            if duplicate:
+                raise GatewayError('conflict', 'Enterprise identity source already exists')
+            source.tenant_id = body.tenant_id
             row = await session.get(PlatformSetting, option_key(source_id))
             options = json.loads(row.value_json) if row else {}
             if body.client_secret:
@@ -341,4 +363,32 @@ async def update_source(call: GatewayCall, source_id: str, body: SourceInput):
             else: session.add(PlatformSetting(key=option_key(source_id), value_json=json.dumps(options)))
             source.client_id, source.agent_id, source.enabled = body.client_id, body.agent_id, int(body.enabled)
             if body.secret_env: source.secret_env = body.secret_env
+            try:
+                await session.flush()
+            except IntegrityError as exc:
+                raise GatewayError('conflict', 'Enterprise identity source already exists') from exc
+            from gateway.services.login_policy import ensure_login_method
+            await ensure_login_method(session)
     return {'id': source_id}
+
+
+async def preview_directory(call: GatewayCall, source_id: str):
+    await organization_manager(call, source_id=source_id)
+    source = await _service(call).source(source_id, purpose='sync')
+    try:
+        snapshot = await _connector(call, source.provider).fetch_directory(source, departments_only=True)
+    except Exception as exc:
+        raise GatewayError('upstream_failed', 'Directory provider unavailable') from exc
+    options = await source_options(call.database, source_id)
+    return {'departments': snapshot['departments'], 'selected_department_ids': options.get('selected_department_ids', [])}
+
+
+async def start_selected_sync(call: GatewayCall, source_id: str, body: SelectedDirectoryInput):
+    await organization_manager(call, source_id=source_id, mutation=True)
+    return await call.directory_reconciler.jobs.start(source_id, body.department_ids)
+
+
+async def latest_selected_sync(call: GatewayCall, source_id: str):
+    await organization_manager(call, source_id=source_id)
+    await _service(call).source(source_id, purpose='sync')
+    return await call.directory_reconciler.jobs.latest(source_id)

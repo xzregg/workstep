@@ -19,7 +19,7 @@ test('software and image preparation happen before project selection, cached ima
       install: async () => ({ executable: '/managed/podman', helpers: [] }),
       execute: async (_file, args) => {
         calls.push(args)
-        if (args.includes('inspect')) return JSON.stringify([{ Id: id, Os: 'linux', Architecture: 'amd64', Config: { Entrypoint: ['/usr/local/bin/workstep-entrypoint'] } }])
+        if (args.includes('inspect')) return JSON.stringify([{ Id: id.slice(7), Os: 'linux', Architecture: 'amd64', Config: { Entrypoint: ['/usr/local/bin/workstep-entrypoint'] } }])
         if (args.includes('save')) await fs.writeFile(args[args.indexOf('--output') + 1], 'trusted image archive')
         return ''
       },
@@ -40,6 +40,7 @@ test('software and image preparation happen before project selection, cached ima
     await manager.prepare(settings)
     assert.ok(calls.some(a => a.includes('load')))
     assert.ok(!calls.some(a => a.includes('pull')))
+    assert.ok(!calls.some(a => a.includes('rmi') || a.includes('prune')), 'image preparation never removes other images')
     await manager.migrateSettings({ providers: true, engines: true, preferences: true })
     const target = JSON.parse(await fs.readFile(path.join(root, 'home/.workstep/config.json'), 'utf8'))
     assert.equal(target.providers[0].api_key, 'secret')
@@ -80,4 +81,17 @@ test('partly prepared runtime can be removed without selecting a project', async
     await manager.remove()
     await assert.rejects(fs.stat(root), { code: 'ENOENT' })
   } finally { await fs.rm(base, { recursive: true, force: true }) }
+})
+
+test('image inspection normalizes Podman IDs while rejecting incompatible images', async () => {
+  const manager = new SandboxManager({ platform: 'darwin', arch: 'arm64' })
+  const digest = 'b'.repeat(64)
+  const details = { Id: digest, Os: 'linux', Architecture: 'arm64', Config: { Entrypoint: ['/usr/local/bin/workstep-entrypoint'] } }
+  const inspect = overrides => manager.inspectImage(async () => JSON.stringify([{ ...details, ...overrides }]), 'local-image')
+  assert.equal(await inspect({}), 'sha256:' + digest)
+  assert.equal(await inspect({ Id: 'sha256:' + digest }), 'sha256:' + digest)
+  await assert.rejects(inspect({ Architecture: 'amd64' }), /架构/)
+  await assert.rejects(inspect({ Os: 'windows' }), /系统/)
+  await assert.rejects(inspect({ Config: { Entrypoint: ['/bin/sh'] } }), /入口/)
+  await assert.rejects(inspect({ Id: 'bad-id' }), /ID/)
 })

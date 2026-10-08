@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { GatewayLoginForm } from './GatewayLoginForm'
+import { EnterpriseLoginChoices } from './EnterpriseLoginChoices'
 import { scanFailureMessage } from './scanFailure'
 import { GatewayRegistrationForm } from './GatewayRegistrationForm'
 import { safeNextPath } from './portalAccount'
 import type { RegistrationMode } from './portalAccount'
 export { safeNextPath, validPortalAccount } from './portalAccount'
 
-type IdentitySource = { id: string; provider: 'dingtalk' | 'wecom'; tenant_id: string }
+type IdentitySource = { id: string; provider: 'dingtalk' | 'wecom' }
 
 export function PortalAuthPage() {
   const navigate = useNavigate()
@@ -16,6 +17,9 @@ export function PortalAuthPage() {
   const [stage, setStage] = useState<'checking' | 'setup' | 'login' | 'register'>('checking')
   const [mode, setMode] = useState<RegistrationMode>('closed')
   const [sources, setSources] = useState<IdentitySource[]>([])
+  const [passwordEnabled, setPasswordEnabled] = useState(true)
+  const [scanLoading, setScanLoading] = useState(true)
+  const [scanError, setScanError] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [scanNotice, setScanNotice] = useState(scanFailureMessage(params.get('scan_error')))
@@ -32,16 +36,20 @@ export function PortalAuthPage() {
         if (session.ok) { navigate(next, { replace: true }); return }
         if (session.status !== 401) throw new Error('无法检查登录状态，请稍后重试。')
         // Optional enterprise sign-in must not delay or block local accounts.
+        setScanLoading(true); setScanError(false)
         void fetch('/api/auth/identity-sources', { signal: controller.signal })
           .then(async response => {
-            if (!response.ok) return
+            if (!response.ok) throw new Error('Scan options unavailable')
             const result = await response.json()
             if (!controller.signal.aborted) setSources(result.sources ?? [])
-          }).catch(() => {})
+          }).catch(() => {if (!controller.signal.aborted) setScanError(true)})
+          .finally(() => {if (!controller.signal.aborted) setScanLoading(false)})
         const policy = await fetch('/api/auth/registration-policy', { signal: controller.signal })
         if (!policy.ok) throw new Error('无法读取注册策略，请刷新重试。')
         if (!controller.signal.aborted) {
-          setMode((await policy.json()).mode)
+          const data = await policy.json()
+          setMode(data.mode)
+          setPasswordEnabled(data.password_login_enabled ?? true)
           setStage('login')
         }
       } catch (reason) {
@@ -90,14 +98,12 @@ export function PortalAuthPage() {
     {stage === 'login' && <>
       <p className="gateway-auth-description">登录后查看你的电脑和项目。</p>
       {scanNotice && <p className="gateway-auth-error" role="alert">{scanNotice}</p>}
-      <GatewayLoginForm busy={busy} onSubmit={signIn} />
-      {mode !== 'closed' && <p><button className="gateway-auth-text-button" type="button" disabled={busy}
+      {passwordEnabled && <GatewayLoginForm busy={busy} onSubmit={signIn} />}
+      {passwordEnabled && mode !== 'closed' && <p><button className="gateway-auth-text-button" type="button" disabled={busy}
         onClick={() => { setError(''); setStage('register') }}>注册账号</button></p>}
-      {sources.length > 0 && <div className="gateway-auth-external"><p>或使用企业身份登录</p>
-        {sources.map(source => <button key={source.id} type="button" disabled={busy} onClick={() => void scan(source.id)}>
-          {source.provider === 'dingtalk' ? '钉钉' : '企业微信'} · {source.tenant_id}
-        </button>)}
-      </div>}
+      {!passwordEnabled && scanLoading && <p role="status"><span className="gateway-spinner"/> 正在加载扫码登录…</p>}
+      {!passwordEnabled && !scanLoading && (scanError || !sources.length) && <p role="alert">{scanError ? '扫码登录入口加载失败，请重试。' : '暂无可用的扫码登录入口，请联系管理员。'}<button type="button" onClick={()=>setRetry(value=>value+1)}>重试</button></p>}
+      <EnterpriseLoginChoices sources={sources} passwordEnabled={passwordEnabled} busy={busy} onSelect={id=>void scan(id)}/>
     </>}
     {stage === 'register' && <GatewayRegistrationForm mode={mode} onClosed={() => setMode('closed')}
       onRegistered={pending => navigate(pending ? `/auth/pending?next=${encodeURIComponent(next)}` : next, { replace: true })}

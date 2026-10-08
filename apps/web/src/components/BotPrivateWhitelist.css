@@ -1,0 +1,11 @@
+.bot-private-whitelist { display: flex; flex-direction: column; gap: 12px; padding-top: 16px; min-height: 260px; }
+.bot-private-whitelist label { display: flex; align-items: center; gap: 8px; }
+.bot-private-whitelist input[type="checkbox"] { width: 16px; height: 16px; flex: 0 0 16px; }
+.bot-private-whitelist-users { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; max-height: 50dvh; overflow-y: auto; }
+.bot-private-whitelist .bot-private-whitelist-user { flex-shrink: 0; padding: 12px; border: 1px solid var(--border-soft); border-radius: var(--radius-md); cursor: pointer; }
+.bot-private-whitelist-user:has(input:checked) { background: var(--bg-subtle); }
+.bot-private-whitelist .bot-private-whitelist-search { width: 100%; box-sizing: border-box; flex-shrink: 0; }
+.bot-private-whitelist-count { color: var(--muted); }
+.bot-private-whitelist-users span { min-width: 0; overflow-wrap: anywhere; }
+.bot-private-whitelist-users small { display: block; color: var(--muted); }
+.bot-private-whitelist [role="alert"] { color: var(--danger); }

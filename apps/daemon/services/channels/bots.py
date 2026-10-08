@@ -87,6 +87,7 @@ class BotManager:
         self._task_controls = ChannelTaskControls(event_bus, project_manager, self._load, self._controls,
                                                   forwarder=self._task_forwarder)
         self._card_answer_tasks = set()
+        self._private_users: dict[str, dict[str, dict]] = {}
 
     async def _ensure_factories(self) -> None:
         if self._registered_channels is None:
@@ -159,6 +160,37 @@ class BotManager:
         return [{**self._public(bot, self._statuses.get(bot["id"])),
                  "task_bindings": [row for row in bindings if row["bot_id"] == bot["id"]]}
                 for bot in data["bots"]]
+
+    async def private_whitelist(self, bot_id: str, *, scope: str = "private") -> dict:
+        data = await self._load()
+        bot = next((row for row in data["bots"] if row["id"] == bot_id), None)
+        if bot is None:
+            raise LookupError("机器人不存在")
+        config = bot.get(f"{scope}_whitelist", {"enabled": False, "users": []})
+        if scope == "group":
+            candidates = {row["group_id"]: {"group_id": row["group_id"], "group_name": row.get("group_name", "")} for row in data["recent_groups"] if row["bot_id"] == bot_id}
+            candidates.update({row["group_id"]: row for row in config.get("groups", [])})
+            return {"enabled": config["enabled"], "groups": config.get("groups", []), "candidates": list(candidates.values())}
+        candidates = dict(self._private_users.get(bot_id, {}))
+        candidates.update({user["sender_id"]: user for user in config["users"]})
+        return {**config, "candidates": list(candidates.values())}
+
+    async def save_private_whitelist(self, bot_id: str, enabled: bool, users: list[dict], *, scope: str = "private") -> dict:
+        id_field, name_field = ("group_id", "group_name") if scope == "group" else ("sender_id", "sender_name")
+        normalized = {}
+        for user in users:
+            sender_id = user[id_field].strip()
+            if not sender_id:
+                raise ValueError("用户标识不能为空")
+            normalized[sender_id] = {id_field: sender_id, name_field: user.get(name_field, "").strip()}
+        async with self._config_lock:
+            data = await self._load()
+            bot = next((row for row in data["bots"] if row["id"] == bot_id), None)
+            if bot is None:
+                raise LookupError("机器人不存在")
+            bot[f"{scope}_whitelist"] = {"enabled": enabled, "groups" if scope == "group" else "users": list(normalized.values())}
+            await self._save(data)
+        return await self.private_whitelist(bot_id, scope=scope)
 
     async def _validate_target(self, kind: str, project_id: str, task_id: str) -> None:
         if kind not in {"", "project", "task"}:
@@ -257,6 +289,7 @@ class BotManager:
             await self._save(data)
         await self._stop_bot(bot_id)
         self._statuses.pop(bot_id, None)
+        self._private_users.pop(bot_id, None)
 
     async def bind_session_group(self, session_id: str, project_id: str, task_id: str) -> dict:
         data = await self._load()
@@ -431,11 +464,10 @@ class BotManager:
             bot = next((row for row in data["bots"] if row["id"] == message.bot_id), None)
             if not bot or not bot["enabled"] or message.bot_id not in self._adapters:
                 return
-            dedupe_key = f"{message.bot_id}:{message.message_id}"
-            if dedupe_key in data["processed"]:
-                return
-            data["processed"].append(dedupe_key)
-            data["processed"] = data["processed"][-1000:]
+            if message.sender_id:
+                self._private_users.setdefault(message.bot_id, {})[message.sender_id] = {
+                    "sender_id": message.sender_id, "sender_name": message.sender_name or message.sender_id,
+                }
             if message.conversation_type == "group":
                 previous = next((row for row in data["recent_groups"] if row["bot_id"] == message.bot_id and row["group_id"] == message.conversation_id), {})
                 bound = next((row for row in data["groups"] if row["bot_id"] == message.bot_id and row["group_id"] == message.conversation_id), {})
@@ -445,6 +477,19 @@ class BotManager:
                           "sender_id": message.sender_id, "sender_name": message.sender_name or message.sender_id}
                 data["recent_groups"] = [recent] + [row for row in data["recent_groups"]
                     if (row["bot_id"], row["group_id"]) != (message.bot_id, message.conversation_id)][:49]
+            whitelist = bot.get("group_whitelist" if message.conversation_type == "group" else "private_whitelist", {})
+            if whitelist.get("enabled"):
+                if message.conversation_type == "group":
+                    if message.conversation_id not in {row["group_id"] for row in whitelist.get("groups", [])}:
+                        await self._save(data)
+                        return
+                elif not message.sender_id or message.sender_id not in {user["sender_id"] for user in whitelist.get("users", [])}:
+                    return
+            dedupe_key = f"{message.bot_id}:{message.message_id}"
+            if dedupe_key in data["processed"]:
+                return
+            data["processed"].append(dedupe_key)
+            data["processed"] = data["processed"][-1000:]
             await self._save(data)
         binding = next((row for row in data["groups"] if row["bot_id"] == message.bot_id and row["group_id"] == message.conversation_id), None) if message.conversation_type == "group" else None
         kind = "task" if binding else bot["default_target_type"]

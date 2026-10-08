@@ -96,7 +96,7 @@ async def list_client_releases(call: GatewayCall, os: str | None = None, arch: s
         if arch:
             query = query.where(ClientRelease.arch == arch)
         releases = (await session.scalars(query.order_by(ClientRelease.created_at.desc()))).all()
-    return {"releases": [_public(release) for release in releases]}
+    return {"releases": [_public(release) for release in releases], "public_origin": call.settings.public_origin}
 
 
 async def publish_client_release(call: GatewayCall, body: PublishReleaseInput):

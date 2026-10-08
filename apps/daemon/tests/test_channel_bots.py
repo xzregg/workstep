@@ -830,8 +830,9 @@ async def test_task_channel_stop_callback_bypasses_message_queue(bots):
 
 
 async def test_dingtalk_optional_card_template_is_saved_and_updated_through_api(bots):
+    _, first, *_ = bots
     async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
-        response = await client.post('/api/channel-bots',json={'platform':'dingtalk','name':'卡片助手','app_id':'card-template','secret':'s','card_template_id':'own.schema'})
+        response = await client.post('/api/channel-bots',json={'platform':'dingtalk','name':'卡片助手','app_id':'card-template','secret':'s','card_template_id':'own.schema','default_project_id':first.id})
         assert response.status_code == 200
         bot = response.json()
         assert bot['card_template_id'] == 'own.schema'
@@ -839,6 +840,22 @@ async def test_dingtalk_optional_card_template_is_saved_and_updated_through_api(
         update = await client.patch('/api/channel-bots/'+bot['id'],json={'card_template_id':''})
         assert update.status_code == 200
         assert (await client.get('/api/channel-bots')).json()[0]['card_template_id'] == ''
+
+
+async def test_create_bot_api_requires_default_project(bots):
+    _, first, *_ = bots
+    body = {'platform': 'dingtalk', 'name': '助手', 'app_id': 'required-project', 'secret': 's'}
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url='http://test') as client:
+        for extra in ({}, {'default_project_id': ''}, {'default_project_id': '   '}, {'default_project_id': first.id, 'default_target_type': ''}):
+            assert (await client.post('/api/channel-bots', json={**body, **extra})).status_code == 422
+        assert (await client.get('/api/channel-bots')).json() == []
+        invalid = await client.post('/api/channel-bots', json={**body, 'default_project_id': 'missing'})
+        assert invalid.status_code == 400
+        created = await client.post('/api/channel-bots', json={**body, 'default_project_id': first.id})
+        assert created.status_code == 200
+        assert created.json()['default_target_type'] == 'project'
+        for changes in ({'default_project_id': ''}, {'default_project_id': None}, {'default_target_type': ''}, {'default_target_type': None}):
+            assert (await client.patch('/api/channel-bots/' + created.json()['id'], json=changes)).status_code == 422
 
 
 def test_channel_browser_turn_does_not_reuse_platform_sender(monkeypatch):
@@ -946,3 +963,69 @@ async def test_channel_binding_prompt_uses_current_session_identity(bots, monkey
     assert f'"project_id": "{project.id}"' in prompt
     assert f'"session_id": "{session_id}"' in prompt
     assert '"conversation_id": "room"' in prompt
+
+
+@pytest.mark.parametrize("platform", ["wecom", "dingtalk"])
+async def test_private_whitelist(bots, platform):
+    manager, project, _, _, chats, adapters = bots
+    bot = await manager.create_bot(dict(platform=platform, name="白名单", app_id="allow", secret="s", enabled=True,
+        default_target_type="project", default_project_id=project.id))
+    path = f"/api/channel-bots/{bot['id']}/private-whitelist"
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        users = [{"sender_id": "saved", "sender_name": "已保存"}]
+        assert (await client.put(path, json={"enabled": True, "users": users})).status_code == 200
+        for index, sender in enumerate(["blocked", "saved", ""]):
+            await manager.handle_message(IncomingMessage(bot['id'], f"m{index}", "single", "different", sender, "你好"))
+        assert len(chats) == len(adapters[bot['id']].sent) == 1
+        assert {u['sender_id'] for u in (await client.get(path)).json()['candidates']} == {"blocked", "saved"}
+        manager._private_users.clear()
+        assert (await client.get(path)).json()['candidates'] == users
+        await manager.update_bot(bot['id'], {"name": "改名"})
+        assert (await client.get(path)).json()['users'] == users
+        await manager.handle_message(IncomingMessage(bot['id'], "group", "group", "room", "blocked", "群聊"))
+        assert len(chats) == 2
+        group_path = path.replace("private-whitelist", "group-whitelist")
+        groups = [{"group_id": "room", "group_name": "允许群"}]
+        assert (await client.put(group_path, json={"enabled": True, "groups": groups})).status_code == 200
+        for index, sender in enumerate(["blocked", "saved", "other-user"]):
+            await manager.handle_message(IncomingMessage(bot['id'], f"allowed-group{index}", "group", "room", sender, "@机器人"))
+        assert len(chats) == 5
+        await manager.handle_message(IncomingMessage(bot['id'], "denied-group", "group", "other-room", "saved", "@机器人"))
+        assert len(chats) == 5
+        assert "other-room" in {row['group_id'] for row in (await client.get(group_path)).json()['candidates']}
+        await manager.handle_message(IncomingMessage(bot['id'], "private-other", "single", "dm", "other-user", "拒绝私聊"))
+        assert len(chats) == 5
+        assert (await client.get(path)).json()['users'] == users
+        assert (await client.get(group_path)).json()['groups'] == groups
+        await client.put(group_path, json={"enabled": True, "groups": []})
+        await manager.handle_message(IncomingMessage(bot['id'], "empty-group", "group", "room", "saved", "拒绝群聊"))
+        assert len(chats) == 5
+        await client.put(group_path, json={"enabled": False, "groups": []})
+        await manager.handle_message(IncomingMessage(bot['id'], "off-group", "group", "other-room", "blocked", "允许群聊"))
+        assert len(chats) == 6
+        await client.put(path, json={"enabled": True, "users": []})
+        await manager.handle_message(IncomingMessage(bot['id'], "empty", "single", "saved", "saved", "拒绝"))
+        assert len(chats) == 6
+        await client.put(path, json={"enabled": False, "users": users})
+        await manager.handle_message(IncomingMessage(bot['id'], "off", "single", "blocked", "blocked", "允许"))
+        assert len(chats) == 7
+
+
+async def test_private_whitelist_slow_save(bots, monkeypatch):
+    manager, *_ = bots
+    bot = await manager.create_bot(dict(platform="wecom", name="名单", app_id="slow-allow", secret="s"))
+    entered, release = threading.Event(), threading.Event()
+    original = manager._store.set
+    def slow_set(*args):
+        entered.set()
+        assert release.wait(2)
+        return original(*args)
+    monkeypatch.setattr(manager._store, "set", slow_set)
+    async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://test") as client:
+        pending = asyncio.create_task(client.put(f"/api/channel-bots/{bot['id']}/private-whitelist", json={"enabled": True, "users": []}))
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            assert (await asyncio.wait_for(client.get('/api/health'), .3)).status_code == 200
+        finally:
+            release.set()
+        assert (await pending).status_code == 200

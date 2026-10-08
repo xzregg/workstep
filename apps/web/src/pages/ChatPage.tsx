@@ -189,7 +189,7 @@ export default function ChatPage() {
     closePrompt: t('aiFlow.closePrompt'),
   }), [t, compact])
   const quickPromptItems = useMemo(
-    () => quickButtons.map((button) => ({
+    () => quickButtons.filter((button) => button.enabled !== false).map((button) => ({
       id: button.id,
       label: button.label,
       prompt: button.prompt,

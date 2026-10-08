@@ -113,7 +113,8 @@ async def test_attachment_only_inbound_routes_into_existing_project_chat(bots, p
     assert len(list((Path(project.workstep_dir)/'uploads').iterdir()))==1
 
 
-async def test_media_download_is_bounded_and_does_not_block_health(monkeypatch):
+@pytest.mark.parametrize('upgrade_http', [False, True])
+async def test_media_download_is_bounded_and_does_not_block_health(monkeypatch, upgrade_http):
     from services.channels.media import fetch_media
     from httpx import ASGITransport,AsyncClient
     import main
@@ -136,7 +137,7 @@ async def test_media_download_is_bounded_and_does_not_block_health(monkeypatch):
         async def __aexit__(self,*args): pass
         def get(self,*args,**kwargs): return Response()
     monkeypatch.setattr('services.channels.media.aiohttp.ClientSession',Session)
-    pending=asyncio.create_task(fetch_media('https://files.qq.com/image',10,('qq.com',)))
+    pending=asyncio.create_task(fetch_media(('http' if upgrade_http else 'https') + '://files.qq.com/image',10,('qq.com',), upgrade_http=upgrade_http))
     try:
         await asyncio.wait_for(entered.wait(),1)
         async with AsyncClient(transport=ASGITransport(app=main.app),base_url='http://test') as client:

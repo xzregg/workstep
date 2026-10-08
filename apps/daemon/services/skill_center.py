@@ -140,7 +140,10 @@ class SkillCenter:
             name, description, ui, error = self._parse_frontmatter(skill_root / "SKILL.md")
             found.append(
                 SkillDescriptor(
-                    skill_id=self._skill_id(skill_root),
+                    skill_id=(
+                        hashlib.sha256(f"builtin:{name}".encode()).hexdigest()[:24]
+                        if source == "builtin" else self._skill_id(skill_root)
+                    ),
                     name=name,
                     description=description,
                     source=source,
@@ -321,6 +324,36 @@ class SkillCenter:
         manifest = self._load_manifest(project_root)
         discovered_list = self.discover()
         discovered = {skill.skill_id: skill for skill in discovered_list}
+        # Bundled skills move with the application. Collapse historical path IDs
+        # before syncing, otherwise a missing old source can delete the new mirror.
+        entries = manifest["entries"]
+        for skill in discovered_list:
+            if skill.source != "builtin":
+                continue
+            legacy_ids = [
+                key for key, entry in entries.items()
+                if key != skill.skill_id
+                and entry.get("source") == "builtin"
+                and entry.get("name") == skill.name
+            ]
+            if skill.skill_id not in entries and legacy_ids:
+                previous = next(
+                    (entries[key] for key in legacy_ids if entries[key].get("enabled")),
+                    entries[legacy_ids[0]],
+                )
+                entries[skill.skill_id] = dict(previous)
+            for key in legacy_ids:
+                del entries[key]
+            if skill.skill_id in entries and any(
+                entry.get("name") == skill.name
+                and entry.get("source") != "builtin"
+                and entry.get("enabled")
+                for entry in entries.values()
+            ):
+                entries[skill.skill_id].update(
+                    enabled=False, sync_status=SkillSyncStatus.DISABLED.value,
+                    sync_error=None,
+                )
         for skill in discovered_list:
             is_new = skill.skill_id not in manifest["entries"]
             previous = manifest["entries"].get(skill.skill_id, {})

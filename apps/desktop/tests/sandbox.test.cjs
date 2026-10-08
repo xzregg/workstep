@@ -42,6 +42,33 @@ test('failed preparation never changes active settings and can be retried', asyn
   } finally { await fs.rm(base, { recursive: true, force: true }) }
 })
 
+test('startup can disable sandbox immediately while the manager is busy', async () => {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-sandbox-switch-'))
+  try {
+    const manager = new SandboxManager({ stateDir: path.join(base, 'state') })
+    await manager.save({ enabled: true, prepared: true, root: path.join(base, 'sandbox'), project: path.join(base, 'project'), mounts: [] })
+    manager.busy = true
+    await manager.disableForRestart()
+    assert.equal((await manager.settings()).enabled, false)
+    assert.equal(manager.busy, true)
+  } finally { await fs.rm(base, { recursive: true, force: true }) }
+})
+
+test('startup queues an image switch without leaving sandbox mode for the user', async () => {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-sandbox-image-switch-'))
+  try {
+    const manager = new SandboxManager({ stateDir: path.join(base, 'state') })
+    await manager.save({ enabled: true, prepared: true, root: path.join(base, 'sandbox'), project: path.join(base, 'project'), mounts: [] })
+    manager.busy = true
+    const image = 'sha256:' + 'a'.repeat(64)
+    await manager.queueImageSwitch(image)
+    const settings = await manager.settings()
+    assert.equal(settings.enabled, false)
+    assert.equal(settings.pendingDockerImage, image)
+    assert.equal(manager.busy, true)
+  } finally { await fs.rm(base, { recursive: true, force: true }) }
+})
+
 test('Compose Home survives failed preparation, retry and sandbox removal', async () => {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-compose-home-'))
   try {
@@ -133,6 +160,24 @@ test('privileged IPC refuses foreign frames, active work, and unchosen host path
   await assert.rejects(handlers.get('workstep:sandbox:prepare')(event, { root: '/chosen', project: '/chosen' }), /任务/)
 })
 
+test('running sandbox can queue a scanned Docker image and restart from settings', async () => {
+  const { registerSandboxIpc } = require('../src/sandbox-ipc.cjs')
+  const image = 'sha256:' + 'c'.repeat(64)
+  const calls = []
+  const manager = {
+    busy: false, running: true,
+    dockerImages: async () => ({ images: [{ id: image, tags: ['workstep:latest'], size: 1 }], error: null }),
+    queueImageSwitch: async value => calls.push(['queue', value]),
+  }
+  const handlers = registerSandboxIpc({ ipcMain: { removeHandler() {}, handle() {} }, manager,
+    window: () => null, rootUrl: () => '', hasActiveWork: async () => false,
+    restart: async () => calls.push(['restart']) })
+
+  await handlers.switchImage(image)
+
+  assert.deepEqual(calls, [['queue', image], ['restart']])
+})
+
 test('preparation, restart, container health and cleanup preserve project and HOME data', async () => {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-lifecycle-'))
   const originalFetch = globalThis.fetch
@@ -157,8 +202,10 @@ test('preparation, restart, container health and cleanup preserve project and HO
     await manager.setEnabled(true)
     globalThis.fetch = async () => Response.json({ status: 'ok' })
     assert.equal(await manager.start(0, 'token'), 'http://127.0.0.1:45678')
+    assert.deepEqual({ health: (await manager.status()).health, hostPort: (await manager.status()).hostPort }, { health: 'healthy', hostPort: 45678 })
     assert.equal(running, true)
     await manager.stop()
+    assert.equal((await manager.status()).health, 'stopped')
     assert.equal(running, false)
     await manager.start(0, 'new-token')
     assert.equal(await fs.readFile(path.join(status.settings.root, 'home/engine-data'), 'utf8'), 'preserved')
@@ -235,6 +282,9 @@ test('container diagnostic logs redact the desktop token', async () => {
     const logs = await fs.readFile(path.join(base, 'desktop/daemon.log'), 'utf8')
     assert.ok(!logs.includes('runtime-secret'))
     assert.match(logs, /\[redacted\]/)
+    const diagnostic = await manager.readLogs()
+    assert.match(diagnostic, /容器日志/)
+    assert.match(diagnostic, /startup \[redacted\] failed/)
   } finally { await fs.rm(base, { recursive: true, force: true }) }
 })
 
@@ -278,3 +328,19 @@ for (const conflict of [false, true]) {
     } finally { globalThis.fetch = originalFetch; await fs.rm(base, { recursive: true, force: true }) }
   })
 }
+
+test('staging software and images does not require host work to stop but protects a running sandbox', async () => {
+  const { registerSandboxIpc } = require('../src/sandbox-ipc.cjs')
+  const manager = { status: async () => ({ settings: { root: '/chosen', mounts: [] } }), prepareRuntime: async () => 'runtime', prepareImage: async () => 'image' }
+  let checks = 0
+  const handlers = registerSandboxIpc({ ipcMain: { removeHandler() {}, handle() {} }, manager, window: () => null, rootUrl: () => '', hasActiveWork: async () => { checks++; return true } })
+  assert.equal(await handlers.prepareRuntime({ root: '/chosen' }), 'runtime')
+  assert.equal(await handlers.prepareImage({ root: '/chosen' }), 'image')
+  assert.equal(checks, 0)
+  await assert.rejects(handlers.prepareImage({ root: '/other' }), /授权/)
+  manager.busy = true
+  await assert.rejects(handlers.prepareImage({ root: '/chosen' }), /正在进行/)
+  manager.busy = false
+  manager.running = true
+  await assert.rejects(handlers.prepareImage({ root: '/chosen' }), /关闭沙箱/)
+})

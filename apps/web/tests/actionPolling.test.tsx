@@ -40,6 +40,65 @@ test('Action reply uses a chat message bubble with output and stop control', asy
   }
 })
 
+test('Action message shows final duration first on the left for terminal statuses', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    for (const status of ['succeeded', 'failed', 'stopped', 'timed_out', 'interrupted']) {
+      await act(async () => root.render(<I18nProvider><ActionConversationMessage
+        message={{ id: 'reply-1', role: 'assistant', content: '' }}
+        run={{ ...activeRun, status, started_at: '2026-10-08T00:00:00Z', ended_at: '2026-10-08T00:01:07Z' }}
+      /></I18nProvider>))
+      const duration = container.querySelector('.action-conversation-duration')
+      assert.equal(duration?.textContent, 'Duration 1m7s')
+      assert.equal(duration?.parentElement?.firstElementChild, duration)
+    }
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
+
+test('running Action updates duration and releases its clock when finished', async () => {
+  const { window } = installDomEnvironment()
+  const originalNow = Date.now
+  const originalInterval = window.setInterval
+  const originalClear = window.clearInterval
+  let now = Date.parse('2026-10-08T00:00:05Z')
+  const timers = new Map<number, () => void>()
+  Date.now = () => now
+  window.setInterval = ((callback: () => void) => { timers.set(1, callback); return 1 }) as typeof window.setInterval
+  window.clearInterval = ((id: number) => { timers.delete(id) }) as typeof window.clearInterval
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const render = (run: ActionRun) => root.render(<I18nProvider><ActionConversationMessage
+    message={{ id: 'reply-1', role: 'assistant', content: '' }} run={run}
+  /></I18nProvider>)
+  try {
+    const run = { ...activeRun, started_at: '2026-10-08T00:00:00Z' }
+    await act(async () => render(run))
+    const duration = () => container.querySelector('.action-conversation-duration')?.textContent
+    assert.equal(duration(), 'Duration 5s')
+    now += 3000
+    await act(async () => timers.get(1)?.())
+    assert.equal(duration(), 'Duration 8s')
+    await act(async () => render({ ...run, status: 'succeeded', ended_at: '2026-10-08T00:00:07Z' }))
+    assert.equal(duration(), 'Duration 7s')
+    assert.equal(timers.size, 0)
+    await act(async () => render({ ...run, started_at: '' }))
+    assert.equal(duration(), undefined)
+  } finally {
+    await act(async () => root.unmount())
+    Date.now = originalNow
+    window.setInterval = originalInterval
+    window.clearInterval = originalClear
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
+
 test('project Action only polls while an Action is active', async () => {
   const { window } = installDomEnvironment()
   const originalList = projectActionApi.list

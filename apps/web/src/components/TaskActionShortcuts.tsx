@@ -8,7 +8,8 @@ import Icon from './Icon'
 import QuickPromptButton from './QuickPromptButton'
 import ChatMessageBubble from './ChatMessageBubble'
 import MobileSheet from './MobileSheet'
-import { formatConversationDateTime } from '../utils/datetime'
+import { useMessageClock } from '../hooks/useMessageClock'
+import { formatDurationBetween, formatConversationDateTime } from '../utils/datetime'
 
 const isActive = (status: string) => ['preparing', 'running', 'stopping'].includes(status)
 
@@ -21,6 +22,9 @@ export function ActionConversationMessage({ message, run, onStop }: {
 }) {
   const { t, locale } = useI18n()
   const isUser = message.role === 'user'
+  const running = !isUser && Boolean(run && isActive(run.status))
+  const now = useMessageClock(running)
+  const duration = run ? formatDurationBetween(run.started_at, running ? now : run.ended_at, t) : null
   const statusLabel = (status: string) => ({
     preparing: t('actionShortcuts.launching'),
     running: t('actionShortcuts.running'),
@@ -39,7 +43,8 @@ export function ActionConversationMessage({ message, run, onStop }: {
     color={isUser ? 'var(--accent)' : 'var(--ai-assistant)'}
     content={isUser ? message.content : ''}
     header={isUser ? (message.created_at ? formatConversationDateTime(message.created_at, Date.now(), locale) : undefined) : run ? <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between', color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+      <span className="action-conversation-meta">
+        {duration && <span className="action-conversation-duration">{t('trace.processed')} {duration}</span>}
         {isActive(run.status) && <Icon name="loader-circle" className="git-spin" size={13} />}
         {t('actionShortcuts.runTitle', { title: run.title })} · {statusLabel(run.status)} · {run.cwd}
       </span>
@@ -54,6 +59,7 @@ export function ActionConversationMessage({ message, run, onStop }: {
 export function TaskActionButtons({ state, onFillPrompt, onSendPrompt, compact = false }: { state: State; onFillPrompt?: (value: string) => void; onSendPrompt?: (value: string) => void; compact?: boolean }) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
+  const enabledButtons = state.buttons.filter((button) => button.enabled !== false)
   const renderButton = (button: TaskQuickButton, inSheet: boolean) => {
     const actionRunning = button.kind === 'action' && state.runs.some((run) => run.action_id === button.action_id && isActive(run.status))
     return <QuickPromptButton
@@ -75,14 +81,14 @@ export function TaskActionButtons({ state, onFillPrompt, onSendPrompt, compact =
     />
   }
   return <>
-    {state.buttons.length > 0 && (compact ? <>
+    {enabledButtons.length > 0 && (compact ? <>
       <button type="button" className="chat-quick-bolt" onClick={() => setOpen(true)} aria-label={t('actionShortcuts.quickButtons')}
         style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'transparent', color: 'var(--meta)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 'calc(14px * var(--font-scale))', padding: 0 }}>⚡</button>
       <MobileSheet open={open} title={t('actionShortcuts.quickButtons')} onClose={() => setOpen(false)}>
-        {state.buttons.map((button) => renderButton(button, true))}
+        {enabledButtons.map((button) => renderButton(button, true))}
       </MobileSheet>
     </> : <div className="chat-quick-prompts" role="group" aria-label={t('actionShortcuts.quickButtons')} style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '0 1px 8px' }}>
-      {state.buttons.map((button) => renderButton(button, false))}
+      {enabledButtons.map((button) => renderButton(button, false))}
     </div>)}
     {state.error && !compact && <span role="alert" style={{ color: 'var(--danger)' }}>{state.error}</span>}
     <ActionConfirmDialog

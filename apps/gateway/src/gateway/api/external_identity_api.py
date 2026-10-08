@@ -80,3 +80,24 @@ async def update_source(request: Request, source_id: str, body: SourceInput):
 async def user_group_tree(request: Request):
     from gateway.services.organization_settings import user_group_tree as handle
     return await invoke(handle, request=request)
+
+
+@router.get('/admin/identity-sources/{source_id}/directory-preview')
+async def preview_directory(request: Request, source_id: str):
+    from gateway.services.external_identity_api import preview_directory as handle
+    return await invoke(handle, request=request, source_id=source_id)
+
+
+from gateway.services.external_identity_api import SelectedDirectoryInput
+
+
+@router.post('/admin/identity-sources/{source_id}/sync-jobs', status_code=202)
+async def start_selected_sync(request: Request, source_id: str, body: SelectedDirectoryInput):
+    from gateway.services.external_identity_api import start_selected_sync as handle
+    return await invoke(handle, request=request, source_id=source_id, body=body)
+
+
+@router.get('/admin/identity-sources/{source_id}/sync-jobs/latest')
+async def latest_selected_sync(request: Request, source_id: str):
+    from gateway.services.external_identity_api import latest_selected_sync as handle
+    return await invoke(handle, request=request, source_id=source_id)

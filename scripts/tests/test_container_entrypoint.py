@@ -12,6 +12,7 @@ import unittest
 
 
 ENTRYPOINT = Path(__file__).resolve().parents[1] / "container-entrypoint.sh"
+DOCKERFILE = ENTRYPOINT.parents[1] / "Dockerfile"
 
 
 class PortableRuntimeTests(unittest.TestCase):
@@ -35,6 +36,10 @@ class PortableRuntimeTests(unittest.TestCase):
 
 
 class ContainerEntrypointTests(unittest.TestCase):
+    def test_daemon_dependencies_are_not_shadowed_by_persistent_engine_packages(self):
+        dockerfile = DOCKERFILE.read_text()
+        self.assertNotIn("PYTHONPATH=/root/.workstep/runtime/python-packages", dockerfile)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)

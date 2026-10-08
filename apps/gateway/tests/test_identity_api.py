@@ -496,7 +496,7 @@ def test_admin_can_change_registration_policy_without_restart(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path))
     with TestClient(app, base_url="https://gateway.test") as client:
         csrf = _setup(client, mode="closed").json()["csrf_token"]
-        assert client.get("/api/auth/registration-policy").json() == {"mode": "closed"}
+        assert client.get("/api/auth/registration-policy").json() == {"mode": "closed", "password_login_enabled": True}
         assert client.put("/api/admin/registration-policy", json={"mode": "open"}, headers={
             "X-CSRF-Token": csrf,
         }).status_code == 403
@@ -506,7 +506,7 @@ def test_admin_can_change_registration_policy_without_restart(tmp_path):
         assert client.put("/api/admin/registration-policy", json={"mode": "open"}, headers={
             "X-CSRF-Token": csrf,
         }).status_code == 200
-        assert client.get("/api/auth/registration-policy").json() == {"mode": "open"}
+        assert client.get("/api/auth/registration-policy").json() == {"mode": "open", "password_login_enabled": True}
         client.cookies.clear()
         assert client.post("/api/auth/register", json={
             "username": "alice", "display_name": "Alice", "password": "AlicePassphrase-2026!",

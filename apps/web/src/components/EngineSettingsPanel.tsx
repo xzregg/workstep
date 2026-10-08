@@ -6,6 +6,8 @@ import Select from './Select'
 import Icon from './Icon'
 import EngineConfigForm, { type EngineConfigFormHandle } from './EngineConfigForm'
 import ExecutionDefaultSettings from './ExecutionDefaultSettings'
+import CustomEngineOnboardingButton from './CustomEngineOnboardingButton'
+import CustomEngineControls from './CustomEngineControls'
 import EngineRuntimeControl from './EngineRuntimeControl'
 import { engineApi, fetchEngineModels, invalidateEngineModels, type EngineInfo, type EngineModel, type EngineTestResult } from '../api/client'
 import { ENGINE_COLORS, engineLabel, engineDescription, sortExecutionEngines } from '../engineMeta'
@@ -33,14 +35,16 @@ interface Props {
   preferredProviderProtocol: string
   focusTarget?: 'provider-create' | 'execution-engine'
   onConfigurationChanged?: () => void
+  onConversationStarted?: () => void
 }
 
-export default function EngineSettingsPanel({ hidden, refreshRevision, preferredProviderProtocol, focusTarget, onConfigurationChanged }: Props) {
+export default function EngineSettingsPanel({ hidden, refreshRevision, preferredProviderProtocol, focusTarget, onConfigurationChanged, onConversationStarted }: Props) {
   const { t } = useI18n()
   const initialized = useRef(false)
   const [engines, setEngines] = useState<EngineInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [visibilitySaving, setVisibilitySaving] = useState<string | null>(null)
   const [testingEngine, setTestingEngine] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<Record<string, EngineTestResult>>({})
   const [models, setModels] = useState<Record<string, EngineModel[]>>({})
@@ -154,6 +158,20 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
       delete next[engineId]
       return next
     })
+  }
+
+  const setVisibility = async (engineId: string, enabled: boolean) => {
+    setVisibilitySaving(engineId)
+    setError('')
+    try {
+      const result = await engineApi.setVisibility(engineId, enabled)
+      setEngines(result.engines)
+      publishEngineCatalog(result.engines)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t('settings.saveFailed'))
+    } finally {
+      setVisibilitySaving(null)
+    }
   }
 
   const loadEngines = async (rescan: boolean) => {
@@ -319,6 +337,7 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                 {t('settings.enginesIntro')}
               </p>
             </div>
+            <CustomEngineOnboardingButton onStarted={onConversationStarted} />
             <Button
               variant="ghost"
               onClick={() => void loadEngines(true)}
@@ -473,7 +492,7 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                     title={isExpanded ? t('settings.collapseConfig') : t('settings.expandConfig')}
                   >
                     <div className="engine-settings-card-name-row">
-                      <span className="engine-settings-card-name">{engineLabel(engine.id, t)}</span>
+                      <span className="engine-settings-card-name">{engine.name || engineLabel(engine.id, t)}</span>
                       {onboardingCompatible && (
                         <span className="engine-settings-compatible-badge">
                           {t('onboarding.compatibleEngine')}
@@ -486,7 +505,7 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                       )}
                     </div>
                     <div className="engine-settings-card-description">
-                      {engineDescription(engine.id, t)}
+                      {engine.description || engineDescription(engine.id, t)}
                       {engine.version && <span> · {versionSummary(engine.version)}</span>}
                     </div>
                     {testResult && (
@@ -498,6 +517,7 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
 
                   </div>
                   <div className="engine-settings-card-actions">
+                  {engine.custom && <CustomEngineControls engine={engine} onChanged={() => loadEngines(true)} />}
                   {engine.runtime_manageable && (
                     <EngineRuntimeControl engineId={engine.id} onChanged={() => loadEngines(true)} />
                   )}
@@ -525,6 +545,17 @@ export default function EngineSettingsPanel({ hidden, refreshRevision, preferred
                   )}
 
 
+                  <div className="engine-settings-visibility" title={t('engine.visibilityHint')}>
+                    <button type="button" className="settings-switch" role="switch"
+                      aria-label={`${engine.name || engineLabel(engine.id, t)} · ${t(engine.enabled !== false ? 'engine.visibilityOn' : 'engine.visibilityOff')}`}
+                      aria-checked={engine.enabled !== false}
+                      disabled={visibilitySaving !== null}
+                      onClick={() => void setVisibility(engine.id, engine.enabled === false)}>
+                      <span className="settings-switch-thumb" />
+                    </button>
+                    <span>{t(engine.enabled !== false ? 'engine.visibilityOn' : 'engine.visibilityOff')}</span>
+                    {visibilitySaving === engine.id && <Icon name="loader-circle" className="engine-settings-visibility-spinner" />}
+                  </div>
                   <span className="engine-settings-status" data-state={engine.verified ? 'verified' : engine.installed ? 'needs-test' : 'not-installed'}>
                     {engine.verified ? t('settings.verified') : engine.installed ? t('engine.needsTest') : t('engine.notInstalled')}
                   </span>

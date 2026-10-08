@@ -18,6 +18,7 @@
  */
 
 import { create } from 'zustand'
+import { publishEngineMetadata } from '../engineMeta'
 import type { CoordinatorEngineSummary, EngineInfo } from '../api/client'
 
 /**
@@ -35,6 +36,9 @@ export function toCoordinatorEngines(
     ))
     .map((engine) => ({
       id: engine.id,
+      name: engine.name,
+      description: engine.description,
+      enabled: engine.enabled,
       mode: engine.mode,
       installed: engine.installed,
       configured: engine.configured,
@@ -51,6 +55,9 @@ export function toCoordinatorEngines(
 function availabilityKey(engines: readonly Partial<CoordinatorEngineSummary>[]) {
   return engines.map((engine) => [
     engine.id,
+    engine.name,
+    engine.description,
+    engine.enabled,
     engine.installed,
     engine.configured,
     engine.verified,
@@ -60,6 +67,7 @@ function availabilityKey(engines: readonly Partial<CoordinatorEngineSummary>[]) 
 }
 
 interface EngineAvailabilityState {
+  catalogKey: string
   /** 助手 / 协调聊天引擎下拉共用的可用性摘要。 */
   engines: CoordinatorEngineSummary[]
   /** 可用性每次真实变化 +1；步骤引擎下拉用它作为重新拉取的触发信号。 */
@@ -70,11 +78,14 @@ interface EngineAvailabilityState {
 
 export const useEngineAvailabilityStore = create<EngineAvailabilityState>((set, get) => ({
   engines: [],
+  catalogKey: '',
   revision: 0,
   publish: (source) => {
+    publishEngineMetadata(source)
     const engines = toCoordinatorEngines(source)
-    if (availabilityKey(engines) === availabilityKey(get().engines)) return
-    set({ engines, revision: get().revision + 1 })
+    const catalogKey = availabilityKey(source)
+    if (catalogKey === get().catalogKey) return
+    set({ engines, catalogKey, revision: get().revision + 1 })
   },
 }))
 
@@ -97,5 +108,5 @@ export function publishEngineCatalog(
 
 /** 测试专用：复位共享可用性。 */
 export function resetEngineAvailabilityStoreForTests() {
-  useEngineAvailabilityStore.setState({ engines: [], revision: 0 })
+  useEngineAvailabilityStore.setState({ engines: [], catalogKey: '', revision: 0 })
 }

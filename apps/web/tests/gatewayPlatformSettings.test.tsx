@@ -4,9 +4,16 @@ import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { I18nProvider } from '../src/i18n'
-import GatewayPlatformSettings from '../src/pages/GatewayPlatformSettings'
+import GatewayPlatformSettings, { validGatewayPlatformUrl } from '../src/pages/GatewayPlatformSettings'
 import RemoteAccessSettings from '../src/pages/RemoteAccessSettings'
 import { useManagedModeStore } from '../src/stores/managedModeStore'
+
+test('gateway settings accept private-network HTTP origins but reject public HTTP', () => {
+ assert.equal(validGatewayPlatformUrl('http://192.168.52.156:8700'), true)
+ assert.equal(validGatewayPlatformUrl('http://10.0.0.8:8700'), true)
+ assert.equal(validGatewayPlatformUrl('http://8.8.8.8:8700'), false)
+ assert.equal(validGatewayPlatformUrl('http://gateway.example.com:8700'), false)
+})
 
 test('remote access contains gateway authentication and switches legacy access only in ordinary mode', async () => {
  const { window } = installDomEnvironment()

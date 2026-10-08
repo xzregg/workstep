@@ -61,14 +61,15 @@ class DingTalkConnector:
                 display_name=profile.get("nick") or subject,
             )
 
-    async def fetch_directory(self, source: IdentitySource) -> dict:
+    async def fetch_directory(self, source: IdentitySource, *, selected_department_ids=None,
+                              departments_only=False, progress=None) -> dict:
         async with self.client_factory() as client:
             token = _checked(await client.post("https://api.dingtalk.com/v1.0/oauth2/accessToken", json={
                 "appKey": source.client_id, "appSecret": await _secret(source, self.secret_resolver),
             })).get("accessToken")
             if not token:
                 raise ValueError("DingTalk app token missing")
-            departments = [{"external_id": "1", "display_name": source.tenant_id,
+            departments = [{"external_id": "1", "display_name": '钉钉组织',
                             "parent_external_id": None}]
             pending = deque([1])
             seen = {1}
@@ -90,8 +91,12 @@ class DingTalkConnector:
                         "external_id": str(department_id), "display_name": child["name"],
                         "parent_external_id": str(child["parent_id"]),
                     })
+            if departments_only:
+                return {"departments": departments, "people": []}
+            departments, selected = _selected_departments(departments, selected_department_ids)
+            if progress: await progress('fetching', 0, len(selected), None)
             people = {}
-            for department_id in seen:
+            for completed, department_id in enumerate(selected, 1):
                 cursor = 0
                 for _ in range(10000):
                     page = _checked(await client.post(
@@ -107,7 +112,7 @@ class DingTalkConnector:
                         people[subject] = {
                             "subject": subject, "display_name": member.get("name") or subject,
                             "department_ids": [str(item) for item in member.get("dept_id_list", [])
-                                               if int(item) in seen],
+                                               if str(item) in {str(id) for id in selected}],
                         }
                     if page.get("has_more") not in (True, 1, "true", "True"):
                         break
@@ -117,6 +122,7 @@ class DingTalkConnector:
                     cursor = next_cursor
                 else:
                     raise ValueError("DingTalk member pagination limit reached")
+                if progress: await progress('fetching', completed, len(selected), str(department_id))
             return {"departments": departments, "people": list(people.values())}
 
 
@@ -153,7 +159,8 @@ class WeComConnector:
             subject = profile["UserId"]
             return ExternalProfile(tenant_id=source.tenant_id, subject=subject, display_name=subject)
 
-    async def fetch_directory(self, source: IdentitySource) -> dict:
+    async def fetch_directory(self, source: IdentitySource, *, selected_department_ids=None,
+                              departments_only=False, progress=None) -> dict:
         async with self.client_factory() as client:
             token = _checked(await client.get("https://qyapi.weixin.qq.com/cgi-bin/gettoken", params={
                 "corpid": source.tenant_id, "corpsecret": await _secret(source, self.secret_resolver),
@@ -171,8 +178,12 @@ class WeComConnector:
                 "external_id": str(item["id"]), "display_name": item["name"],
                 "parent_external_id": str(item["parentid"]) if int(item["parentid"]) in known else None,
             } for item in raw_departments]
+            if departments_only:
+                return {"departments": departments, "people": []}
+            departments, selected = _selected_departments(departments, selected_department_ids)
+            if progress: await progress('fetching', 0, len(selected), None)
             people = {}
-            for department_id in known:
+            for completed, department_id in enumerate(selected, 1):
                 members = _checked(await client.get(
                     "https://qyapi.weixin.qq.com/cgi-bin/user/list",
                     params={"access_token": token, "department_id": department_id,
@@ -185,6 +196,18 @@ class WeComConnector:
                     people[subject] = {
                         "subject": subject, "display_name": member.get("name") or subject,
                         "department_ids": [str(item) for item in member.get("department", [])
-                                           if int(item) in known],
+                                           if str(item) in {str(id) for id in selected}],
                     }
+                if progress: await progress('fetching', completed, len(selected), str(department_id))
             return {"departments": departments, "people": list(people.values())}
+
+
+def _selected_departments(departments, selected_department_ids):
+    known = {item['external_id'] for item in departments}
+    selected = known if selected_department_ids is None else set(selected_department_ids)
+    if not selected or not selected <= known:
+        raise ValueError('Selected department is unavailable')
+    filtered = [{**item, 'parent_external_id': item.get('parent_external_id')
+                 if item.get('parent_external_id') in selected else None}
+                for item in departments if item['external_id'] in selected]
+    return filtered, [int(item['external_id']) for item in filtered]

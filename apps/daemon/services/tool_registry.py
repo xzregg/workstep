@@ -400,6 +400,62 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
     ),
 ]
 
+# Custom engine tools share the same host-scoped APIs as settings.
+WORKSTEP_TOOLS.extend([
+    WorkstepTool(
+        name="workstep_custom_engine_inspect", description="Inspect a Python adapter/package in an isolated worker.",
+        method="POST", path="/api/engine/custom/inspect", parameters={"path": {"type": "string"}},
+        required=("path",), body_params=("path",), read_only=False, side_effect="load user adapter in a worker",
+    ),
+    WorkstepTool(
+        name="workstep_custom_engine_configure", description="Save custom adapter configuration and provider binding.",
+        method="POST", path="/api/engine/custom/configure",
+        parameters={key: {"type": kind} for key, kind in (("path", "string"), ("values", "object"), ("clear", "object"), ("confirmed", "object"), ("provider_id", "string"), ("model", "string"))},
+        required=("path",), body_params=("path", "values", "clear", "confirmed", "provider_id", "model"),
+        read_only=False, side_effect="save custom engine configuration",
+    ),
+    WorkstepTool(
+        name="workstep_custom_engine_operation", description="Start install or full validation; poll the returned operation ID.",
+        method="POST", path="/api/engine/custom/operations",
+        parameters={"path": {"type": "string"}, "action": {"type": "string", "enum": ["install", "validate"]}},
+        required=("path", "action"), body_params=("path", "action"), read_only=False, side_effect="install dependencies or run real acceptance tests",
+    ),
+    WorkstepTool(
+        name="workstep_custom_engine_operation_get", description="Read installation/validation status and measured results.",
+        method="GET", path="/api/engine/custom/operations/{operation_id}",
+        parameters={"operation_id": {"type": "string"}}, required=("operation_id",), path_params=("operation_id",),
+    ),
+    WorkstepTool(
+        name="workstep_custom_engine_operation_stop", description="Stop a custom engine install or acceptance operation.",
+        method="POST", path="/api/engine/custom/operations/{operation_id}/stop",
+        parameters={"operation_id": {"type": "string"}}, required=("operation_id",), path_params=("operation_id",),
+        read_only=False, side_effect="cancel worker and its child processes",
+    ),
+    WorkstepTool(
+        name="workstep_custom_engine_register", description="Register only an unchanged package with signed successful acceptance; replace explicitly updates an existing custom engine.",
+        method="POST", path="/api/engine/custom/register",
+        parameters={"path": {"type": "string"}, "replace": {"type": "boolean"}}, required=("path",),
+        body_params=("path", "replace"), read_only=False, side_effect="install adapter package",
+    ),
+    WorkstepTool(
+        name="workstep_custom_engine_export", description="Export a portable source ZIP, excluding dependencies and credentials.",
+        method="POST", path="/api/engine/custom/export",
+        parameters={"engine_id": {"type": "string"}, "output": {"type": "string"}}, required=("engine_id", "output"),
+        body_params=("engine_id", "output"), read_only=False, side_effect="write ZIP file on daemon host",
+    ),
+    WorkstepTool(
+        name="workstep_custom_engine_disable", description="Disable or re-enable a faulty custom engine (separate from selector visibility).",
+        method="POST", path="/api/engine/custom/disable",
+        parameters={"engine_id": {"type": "string"}, "disabled": {"type": "boolean"}}, required=("engine_id",),
+        body_params=("engine_id", "disabled"), read_only=False, side_effect="disable or enable custom execution",
+    ),
+    WorkstepTool(
+        name="workstep_custom_engine_rollback", description="Restore previous adapter/dependencies; restart then validate again.",
+        method="POST", path="/api/engine/custom/rollback", parameters={"engine_id": {"type": "string"}},
+        required=("engine_id",), body_params=("engine_id",), read_only=False, side_effect="restore previous custom adapter",
+    ),
+])
+
 TOOL_BY_NAME: dict[str, WorkstepTool] = {
     tool.name: tool for tool in WORKSTEP_TOOLS
 }

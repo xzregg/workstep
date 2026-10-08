@@ -1,3 +1,4 @@
+import { GatewayDateRange } from './GatewayDateRange'
 import { useState } from 'react'
 
 type Row = { day: string; provider_id: string; model: string | null; status: string;
@@ -49,10 +50,8 @@ export function AdminUsageReconciliation() {
     <form className="gateway-usage-filters" onSubmit={event => { event.preventDefault(); void query() }}>
       <label>对账供应商 ID<input value={providerId} maxLength={64}
         onChange={event => setProviderId(event.target.value)} /></label>
-      <label>对账开始日期<input type="date" value={fromDay}
-        onChange={event => setFromDay(event.target.value)} /></label>
-      <label>对账结束日期<input type="date" value={toDay}
-        onChange={event => setToDay(event.target.value)} /></label>
+      <GatewayDateRange dateOnly label="对账日期范围（UTC）" from={fromDay} to={toDay}
+        onChange={range => { setFromDay(range.from_time); setToDay(range.to_time) }} />
       <button type="submit" disabled={busy}>查看账单差异</button>
     </form>
     {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在核对账单…</p>}

@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import dayjs from 'dayjs'
+import { GatewayDateRange } from './GatewayDateRange'
 import { Link } from 'react-router-dom'
 import { AdminUsageSummary } from './AdminUsageSummary'
 import { AdminUsageEvents } from './AdminUsageEvents'
@@ -11,9 +13,12 @@ type Filters = { from_time: string; to_time: string; user_id: string; device_id:
 const emptyFilters: Filters = { from_time: '', to_time: '', user_id: '', device_id: '',
   project_id: '', provider_id: '', model: '', source: 'reported_by_device', metering_status: '' }
 
+function defaultFilters(): Filters { const now = dayjs(); return { ...emptyFilters, from_time: now.subtract(1, 'month').toISOString(), to_time: now.toISOString() } }
+function query(filters: Filters) { return new URLSearchParams(Object.entries(filters).filter(([, value]) => value.trim())).toString() }
+
 export function AdminUsagePage({ readOnly = false }: { readOnly?: boolean }) {
-  const [draft, setDraft] = useState<Filters>(emptyFilters)
-  const [filters, setFilters] = useState('source=reported_by_device')
+  const [draft, setDraft] = useState<Filters>(defaultFilters)
+  const [filters, setFilters] = useState(() => query(draft))
   const [error, setError] = useState('')
 
   function update(field: keyof Filters, value: string) {
@@ -41,10 +46,8 @@ export function AdminUsagePage({ readOnly = false }: { readOnly?: boolean }) {
     <div className="gateway-admin-toolbar"><h2>Token 用量</h2><Link to="/admin">返回管理概览</Link></div>
     <p>统计来自 PC 回传或供应商对账；未完成计量单独显示，缺失的 Token 和成本不会计为零。</p>
     <form className="gateway-usage-filters" onSubmit={event => { event.preventDefault(); apply() }}>
-      <label>开始时间<input type="datetime-local" value={draft.from_time}
-        onChange={event => update('from_time', event.target.value)} /></label>
-      <label>结束时间<input type="datetime-local" value={draft.to_time}
-        onChange={event => update('to_time', event.target.value)} /></label>
+      <GatewayDateRange from={draft.from_time} to={draft.to_time}
+        onChange={range => setDraft(current => ({ ...current, ...range }))} />
       <label>用户 ID<input value={draft.user_id} maxLength={64}
         onChange={event => update('user_id', event.target.value)} /></label>
       <label>PC ID<input value={draft.device_id} maxLength={64}
@@ -63,7 +66,7 @@ export function AdminUsagePage({ readOnly = false }: { readOnly?: boolean }) {
         <option value="">全部</option><option value="metered">已计量</option>
         <option value="unmetered">未完成计量</option></select></label>
       <div className="gateway-usage-filter-actions"><button type="submit">查询用量</button>
-        <button type="button" onClick={() => { setDraft(emptyFilters); setFilters('source=reported_by_device'); setError('') }}>清除筛选</button></div>
+        <button type="button" onClick={() => { const defaults = defaultFilters(); setDraft(defaults); setFilters(query(defaults)); setError('') }}>清除筛选</button></div>
     </form>
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}
     <AdminUsageSummary key={`summary-${filters}`} filters={filters} />

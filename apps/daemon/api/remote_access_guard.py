@@ -11,6 +11,7 @@ from services.remote_access import (
     RemoteAccessService, ACCESS_COOKIE_NAME, _current_actor, get_current_actor,
     actor_from_browser_headers, _is_loopback, _client_host, _guard_exempt,
 )
+from api.desktop_security import desktop_loopback_target, desktop_runtime_authenticated
 
 
 class BrowserActorMiddleware(BaseHTTPMiddleware):
@@ -43,6 +44,8 @@ class RemoteAccessGuardMiddleware(BaseHTTPMiddleware):
         self._service = access_service
 
     def _authorized(self, request: Request) -> bool:
+        if desktop_runtime_authenticated(request) or desktop_loopback_target(request):
+            return True
         if _is_loopback(_client_host(request.headers, request.client)):
             return True
         if not self._service.access_password_required():

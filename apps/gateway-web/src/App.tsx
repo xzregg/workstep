@@ -1,11 +1,10 @@
-import { Link, Route, Routes, useLocation } from 'react-router-dom'
+import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AdminLayout } from './AdminLayout'
 import { PortalHeader } from './PortalHeader'
 import { DesktopLoginPage } from './DesktopLoginPage'
 import { AdminDeviceGroupsPage } from './AdminDeviceGroupsPage'
 import { DeviceAdminPage } from './DeviceAdminPage'
 import { ClientDownloadPage } from './ClientDownloadPage'
-import { DeviceListPage } from './DeviceListPage'
 import { ProjectsPage } from './ProjectsPage'
 import { PortalAuthPage } from './PortalAuthPage'
 import { AccountPage } from './AccountPage'
@@ -43,7 +42,7 @@ function GatewayPortalApp() {
     !adminAccess.access.must_change_password
   return (
     <main>
-      {!location.pathname.startsWith('/admin') && <PortalHeader hasAdminAccess={hasAdminAccess} />}
+      {!location.pathname.startsWith('/admin') && <PortalHeader hasAdminAccess={hasAdminAccess} signedIn={adminAccess.status === 'ready'} checking={adminAccess.status === 'checking'} />}
       <AdminPortalRegion admin={location.pathname.startsWith('/admin')} roles={adminAccess.access?.roles ?? []}>
       <Routes>
         <Route path="/" element={<ProjectsPage />} />
@@ -79,7 +78,7 @@ function GatewayPortalApp() {
         <Route path="/admin/settings" element={<AdminAccessGate state={adminAccess}
           allow={['super_admin']}><AdminPlatformSettingsPage /></AdminAccessGate>} />
         <Route path="/devices/empty" element={<ClientDownloadPage />} />
-        <Route path="/devices" element={<DeviceListPage />} />
+        <Route path="/devices" element={<Navigate to="/" replace />} />
         <Route path="/shares/new" element={<GatewayShareCreatePage />} />
         <Route path="/desktop/login" element={<DesktopLoginPage />} />
         <Route path="/auth" element={<PortalAuthPage />} />

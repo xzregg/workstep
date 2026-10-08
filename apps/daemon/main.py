@@ -209,6 +209,8 @@ async def lifespan(app: FastAPI):
         await git_service.close()
         from services.engine_runtime import runtime_manager
         await runtime_manager.shutdown()
+        from services.custom_engines import custom_engine_manager
+        await custom_engine_manager.shutdown()
         try:
             from engines.deepseek_harness import DeepSeekHarnessEngine
             await asyncio.to_thread(DeepSeekHarnessEngine.shutdown_pool)

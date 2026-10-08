@@ -73,3 +73,14 @@
 .engine-settings-path-input[aria-invalid="true"] { border-color: var(--danger); }
 .engine-settings-path-hint { margin-top: 6px; font-size: calc(11px * var(--font-scale)); color: var(--meta); }
 .engine-settings-path-hint[data-error="true"] { color: var(--danger); }
+
+.engine-settings-visibility { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+.engine-settings-visibility .settings-switch { flex-shrink: 0; background: var(--border); }
+.engine-settings-visibility .settings-switch[aria-checked="true"] { background: var(--accent); }
+.engine-settings-visibility .settings-switch:disabled { cursor: not-allowed; opacity: 0.55; }
+
+.engine-settings-visibility-spinner { width: 14px; height: 14px; animation: engine-visibility-spin 1s linear infinite; }
+@keyframes engine-visibility-spin { to { transform: rotate(360deg); } }
+
+.custom-engine-control { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.custom-engine-control [role="alert"], .custom-engine-control [role="status"] { flex-basis: 100%; font-size: 12px; }

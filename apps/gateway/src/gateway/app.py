@@ -57,6 +57,8 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         database = GatewayDatabase(settings)
         await database.start()
+        from gateway.services.platform_address import restore_platform_address
+        await restore_platform_address(database, settings)
         app.state.database = database
         app.state.gateway_signer = await asyncio.to_thread(
             GatewaySigner.load_or_create, settings.data_dir / "gateway-signing-key.pem",
@@ -67,6 +69,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         app.state.directory_callback_wake = callback_wake
         reconciler = DirectoryReconciler(database, app.state.identity_connectors)
         app.state.directory_reconciler = reconciler
+        await reconciler.jobs.recover()
         reconciliation_task = asyncio.create_task(reconciler.run_periodic(
             stop_reconciliation, interval_seconds=settings.directory_reconcile_seconds,
         ))
@@ -80,6 +83,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
             app.state.ready = False
             stop_reconciliation.set()
             callback_wake.set()
+            await reconciler.jobs.close()
             await app.state.control_connections.shutdown()
             await reconciliation_task
             await callback_task

@@ -64,6 +64,9 @@ async def _actor(call: GatewayCall, *, write: bool):
 
 
 async def _can_manage_group(session, service, user: User, group_id: str) -> bool:
+    group = await session.get(UserGroup, group_id)
+    if group is None or group.status != 'active':
+        raise GatewayError('not_found', 'Group unavailable')
     try:
         await service.require_super_admin(user.id)
         return True
@@ -202,9 +205,11 @@ async def list_group_members(call: GatewayCall, group_id: str):
         rows = (await session.execute(select(GroupMembership, User).join(
             User, User.id == GroupMembership.user_id,
         ).where(GroupMembership.group_id == group_id,
+                User.status != 'deleted',
                 GroupMembership.revoked_at.is_(None))
             .order_by(User.username))).all()
     return {"members": [{"user_id": user.id, "username": user.username,
+                         "login_username": user.username if user.password_hash else None,
                          "display_name": user.display_name, "role": membership.role,
                          "source": membership.source}
                         for membership, user in rows]}

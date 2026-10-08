@@ -5,7 +5,7 @@ import { Link, useNavigate } from 'react-router-dom'
 type User = { username: string; display_name: string; must_change_password: boolean }
 
 export function validPasswordChange(current: string, next: string, confirmation: string): boolean {
-  return !!current && next.length >= 12 && next.length <= 128 && next !== current && next === confirmation
+  return !!current && next.length >= 8 && next.length <= 128 && next !== current && next === confirmation
 }
 
 export function AccountPage() {
@@ -83,9 +83,9 @@ export function AccountPage() {
         <label htmlFor="account-current-password">当前密码</label>
         <input id="account-current-password" type="password" autoComplete="current-password" value={current}
           onChange={event => setCurrent(event.target.value)} required />
-        <label htmlFor="account-new-password">新密码（至少 12 位）</label>
+        <label htmlFor="account-new-password">新密码（至少 8 位）</label>
         <input id="account-new-password" type="password" autoComplete="new-password" value={next}
-          onChange={event => setNext(event.target.value)} required minLength={12} />
+          onChange={event => setNext(event.target.value)} required minLength={8} />
         <label htmlFor="account-confirm-password">确认新密码</label>
         <input id="account-confirm-password" type="password" autoComplete="new-password" value={confirmation}
           onChange={event => setConfirmation(event.target.value)} required />

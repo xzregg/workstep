@@ -1,4 +1,7 @@
+import { PlatformAddress } from './PlatformAddress'
+import { AdminPlatformAddressDialog } from './AdminPlatformAddressDialog'
 import { OrganizationSyncSettings } from './OrganizationSyncSettings'
+import { AdminLoginPolicyDialog } from './AdminLoginPolicyDialog'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AdminRegistrationPolicyDialog, registrationLabels } from './AdminRegistrationPolicyDialog'
@@ -6,6 +9,7 @@ import type { RegistrationMode } from './AdminRegistrationPolicyDialog'
 
 type PlatformSettings = {
   gateway_id: string; public_origin: string | null; registration_mode: RegistrationMode
+  password_login_enabled?: boolean
   session_seconds: number; protocol_version: number; data_dir: string
   database: { backend: string; location: string; healthy: boolean; migration_version: string | null }
 }
@@ -17,6 +21,8 @@ export function AdminPlatformSettingsPage() {
   const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
   const [editing, setEditing] = useState(false)
+  const [loginEditing,setLoginEditing]=useState(false)
+  const [addressEditing, setAddressEditing] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -46,12 +52,17 @@ export function AdminPlatformSettingsPage() {
       <section className="gateway-project-grants"><h3>平台信息</h3>
         <dl className="gateway-account-summary">
           <div><dt>网关 ID</dt><dd>{settings.gateway_id}</dd></div>
-          <div><dt>公网地址</dt><dd>{settings.public_origin ?? '未配置'}</dd></div>
+          <div><dt>平台地址</dt><dd><PlatformAddress address={settings.public_origin}/></dd></div>
           <div><dt>会话有效期</dt><dd>{settings.session_seconds / 3600} 小时</dd></div>
         </dl>
+        <button type="button" onClick={() => setAddressEditing(true)}>修改平台地址</button>
+        <p>复制后粘贴到 WorkStep「设置 → 远程访问 → 网关平台」的地址栏。安装页也会显示此地址。</p>
       </section>
       <section className="gateway-project-grants"><h3>注册与身份</h3>
+        <p>账号密码登录：{settings.password_login_enabled === false ? '已关闭，仅企业扫码登录' : '已启用'}</p>
+        <button type="button" onClick={()=>setLoginEditing(true)}>修改登录方式</button>
         <p>当前策略：{registrationLabels[settings.registration_mode]}</p>
+        {settings.password_login_enabled === false && <p>账号密码登录已关闭，当前不开放自主注册。</p>}
         <button type="button" onClick={() => setEditing(true)}>修改注册策略</button>
 
       </section>
@@ -67,9 +78,13 @@ export function AdminPlatformSettingsPage() {
         <p>数据库连接配置由服务端部署管理，不能在此页面热切换。</p>
       </section>
     </>}
+    {addressEditing && settings && <AdminPlatformAddressDialog address={settings.public_origin} csrf={csrf}
+      onClose={() => setAddressEditing(false)} onSaved={() => {setAddressEditing(false); setRevision(current => current + 1)}}/>}
     {editing && settings && <AdminRegistrationPolicyDialog mode={settings.registration_mode} csrf={csrf}
       onClose={() => setEditing(false)} onSaved={() => {
         setEditing(false); setRevision(current => current + 1)
       }} />}
+    {loginEditing && settings && <AdminLoginPolicyDialog enabled={settings.password_login_enabled !== false} csrf={csrf}
+      onClose={()=>setLoginEditing(false)} onSaved={()=>{setLoginEditing(false);setRevision(value=>value+1)}}/>}
   </section>
 }

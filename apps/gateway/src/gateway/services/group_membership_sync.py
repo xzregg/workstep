@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from sqlalchemy import select
 
-from gateway.models import DirectoryDepartment, DirectoryMembership, DirectoryPerson, GroupMembership, UserGroup
+from gateway.models import DirectoryDepartment, DirectoryMembership, DirectoryPerson, GroupMembership, UserGroup, User
 from gateway.services.capabilities import bump_group_capability_revisions
 
 
@@ -39,7 +39,8 @@ async def reconcile_department_groups(session, *, source_id: str | None = None,
             desired = set((await session.scalars(select(DirectoryPerson.user_id).join(
                 DirectoryMembership,
                 DirectoryMembership.person_id == DirectoryPerson.id,
-            ).where(DirectoryMembership.department_id == department.id,
+            ).join(User, User.id == DirectoryPerson.user_id).where(DirectoryMembership.department_id == department.id,
+                    User.status != 'deleted',
                     DirectoryPerson.active == 1))).all())
         existing = {row.user_id: row for row in (await session.scalars(
             select(GroupMembership).where(GroupMembership.group_id == group.id),

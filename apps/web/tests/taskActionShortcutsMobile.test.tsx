@@ -15,6 +15,7 @@ test('task shortcuts use a lightning sheet on compact layouts', async () => {
   useLocaleStore.setState({ locale: 'zh-CN' })
   const state = {
     buttons: [
+      { id: 'disabled', kind: 'prompt', label: '停用按钮', prompt: '不可触发', source: 'project', enabled: false },
       { id: 'prompt', kind: 'prompt', label: '解释代码', prompt: '请解释代码', source: 'project' },
       { id: 'restart', kind: 'action', label: '重启服务', prompt: '', action_id: 'restart', source: 'workflow' },
     ],
@@ -31,6 +32,7 @@ test('task shortcuts use a lightning sheet on compact layouts', async () => {
     await act(async () => bolt.click())
     const sheet = document.querySelector<HTMLElement>('.mobile-sheet')
     assert.ok(sheet)
+    assert.doesNotMatch(sheet.textContent || '', /停用按钮/)
     assert.match(sheet.textContent || '', /解释代码/)
     assert.match(sheet.textContent || '', /重启服务/)
     const prompt = [...sheet.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent?.includes('解释代码'))!

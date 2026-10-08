@@ -1,10 +1,16 @@
 import { request, singleFlight } from './transport'
+import { browserActorHeaders } from '../utils/browserActor'
 import { workspaceCatalogPath } from './workspaceScope'
 import type { CoordinatorEngineSummary, EngineQuota } from './task'
 
 // --- Engine API ---
 
 export interface EngineInfo {
+  custom?: boolean
+  name?: string
+  description?: string
+  disabled?: boolean
+  enabled?: boolean
   id: string
   default_model?: string
   installed: boolean
@@ -421,6 +427,16 @@ export function invalidateEngineModels(engineId: string): void {
 }
 
 export const engineApi = {
+  customOnboarding: () => request<{ project_id: string; project_name: string; session_id: string; workspace_path: string; prompt: string }>('/engine/custom/onboarding', { method: 'POST' }),
+  customDisable: (engineId: string, disabled: boolean) => request<{ restart_required?: boolean }>('/engine/custom/disable', { method: 'POST', body: JSON.stringify({ engine_id: engineId, disabled }) }),
+  customRollback: (engineId: string) => request<{ restart_required: boolean }>('/engine/custom/rollback', { method: 'POST', body: JSON.stringify({ engine_id: engineId }) }),
+  customExport: async (engineId: string) => {
+    const response = await fetch(`/api/engine/custom/${encodeURIComponent(engineId)}/export`, { headers: browserActorHeaders() })
+    if (!response.ok) throw new Error((await response.json()).detail || `HTTP ${response.status}`)
+    return response.blob()
+  },
+  setVisibility: (engineId: string, enabled: boolean) =>
+    request<{ engines: EngineInfo[] }>(`/engine/${engineId}/visibility`, { method: 'PUT', body: JSON.stringify({ enabled }) }),
   list: async () => request<{ engines: EngineInfo[] }>(await workspaceCatalogPath('/engine/list')),
   refresh: () =>
     request<{ engines: EngineInfo[] }>('/engine/refresh', { method: 'POST' }),

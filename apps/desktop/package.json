@@ -52,6 +52,10 @@
     ],
     "extraResources": [
       {
+        "from": "build/icons/32x32.png",
+        "to": "tray-icon.png"
+      },
+      {
         "from": "resources-placeholder/backend",
         "to": "backend"
       }

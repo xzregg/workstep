@@ -18,6 +18,9 @@ export interface SandboxStatus {
   progress: { received: number; total: number | null } | null
   error: string | null
   running: boolean
+  health?: 'stopped' | 'starting' | 'healthy' | 'failed'
+  hostPort?: number | null
+  logDirectory?: string | null
   supported: boolean
   onlineImage?: boolean
   platform?: string
@@ -35,8 +38,11 @@ export interface SandboxBridge {
   chooseDirectory(): Promise<string | null>
   prepare(settings: SandboxSettings): Promise<SandboxStatus>
   switchMode(enabled: boolean): Promise<void>
+  switchImage(image: string): Promise<void>
   importConfig(kind: 'codex' | 'claude' | 'agents'): Promise<SandboxStatus>
   migrateSettings(options: SandboxMigrationOptions): Promise<SandboxStatus>
   remove(): Promise<SandboxStatus>
   logs(): Promise<void>
+  readLogs(): Promise<string>
+  copyLogs(): Promise<void>
 }
