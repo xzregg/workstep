@@ -272,3 +272,19 @@ async def proxy_remote_websocket(ws: GatewaySocket, path: str):
         await ws.close(code=4403)
     except (ConnectionError, asyncio.TimeoutError):
         await ws.close(code=1013)
+
+
+async def remote_devices(call: GatewayCall):
+    user, _, auth, _ = await _remote_identity(call)
+    if auth.project_id:
+        raise GatewayError('forbidden', 'Whole-device session required')
+    from gateway.services.user_devices_api import assigned_devices_for_user
+    return await assigned_devices_for_user(call, user.id)
+
+
+async def remote_device_access(call: GatewayCall, device_id: str):
+    user, _, auth, _ = await _remote_identity(call)
+    if auth.project_id:
+        raise GatewayError('forbidden', 'Whole-device session required')
+    from gateway.services.user_devices_api import device_access_for_user
+    return await device_access_for_user(call, device_id, user.id)

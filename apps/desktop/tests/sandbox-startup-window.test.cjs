@@ -15,8 +15,29 @@ test('pending startup image is prepared and sandbox mode is restored automatical
   assert.equal(await applyPendingImageSwitch(manager), true)
   assert.deepEqual(calls, [
     ['image', { root: '/sandbox', dockerImage: image }],
-    ['prepare', { root: '/sandbox', project: '/project', mounts: [], pendingDockerImage: image, registeredProjects: ['/project'], dockerImage: image }],
+    ['prepare', { root: '/sandbox', project: '/project', mounts: [], dockerImage: image }],
     ['enabled', true],
+  ])
+})
+
+test('pending image switch follows its Docker tag when the scanned ID was replaced', async () => {
+  const oldImage = 'sha256:' + 'a'.repeat(64)
+  const newImage = 'sha256:' + 'b'.repeat(64)
+  const calls = []
+  const manager = {
+    settings: async () => ({ root: '/sandbox', project: '/project', mounts: [], pendingDockerImage: oldImage, pendingDockerImageTag: 'workstep:latest' }),
+    prepareImage: async input => {
+      calls.push(['image', input.dockerImage])
+      if (input.dockerImage === oldImage) throw new Error(`No such image: ${oldImage}`)
+    },
+    dockerImages: async () => ({ images: [{ id: newImage, tags: ['workstep:latest'], size: 1 }], error: null }),
+    prepare: async input => calls.push(['prepare', input.dockerImage]),
+    setEnabled: async enabled => calls.push(['enabled', enabled]),
+  }
+
+  assert.equal(await applyPendingImageSwitch(manager), true)
+  assert.deepEqual(calls, [
+    ['image', oldImage], ['image', newImage], ['prepare', newImage], ['enabled', true],
   ])
 })
 

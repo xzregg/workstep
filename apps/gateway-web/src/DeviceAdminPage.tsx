@@ -18,7 +18,7 @@ export function DeviceAdminPage() {
   const [status, setStatus] = useState<'checking' | 'login' | 'ready'>('checking')
   const [csrf, setCsrf] = useState('')
   const [devices, setDevices] = useState<AdminDevice[]>([])
-  const [filters, setFilters] = useState<DeviceFilters>({ status: 'pending', q: '', sort: 'created_at',
+  const [filters, setFilters] = useState<DeviceFilters>({ status: '', q: '', sort: 'created_at',
     direction: 'desc', page: 1, pageSize: 25 })
   const [searchDraft, setSearchDraft] = useState('')
   const [total, setTotal] = useState(0)
@@ -90,6 +90,7 @@ export function DeviceAdminPage() {
         <button type="submit">搜索</button>
       </form>
       <div className="gateway-admin-filters">
+      <button type="button" disabled={loading} onClick={() => setRevision(value => value + 1)}>刷新设备</button>
       <label htmlFor="device-filter">设备状态</label>
       <select id="device-filter" value={filters.status} onChange={event => setFilters(current => (
         { ...current, status: event.target.value, page: 1 }))}>
@@ -108,7 +109,7 @@ export function DeviceAdminPage() {
       </div>
       {loading && <p role="status">正在加载设备…</p>}
       <AdminRecordTable>{devices.map((device) => <AdminRecordRow key={device.id}>
-        <div><strong>{device.name}</strong><p>{device.id} · {device.version ?? '版本未知'} · {device.status}</p>
+        <div><strong>{device.name}</strong> <span className={device.online ? 'gateway-device-presence gateway-device-presence--online' : 'gateway-device-presence'}>{device.online ? '在线' : '离线'}</span><p>{device.id} · {device.version ?? '版本未知'} · {device.status}</p>
           <p>控制连接：{device.online ? '在线' : '离线'} · daemon 健康：{
             device.daemon_health === true ? '正常' : device.daemon_health === false ? '异常' : '未知'
           }</p><p>客户端版本：{device.update_available === true

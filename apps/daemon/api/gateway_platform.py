@@ -48,6 +48,15 @@ def _desktop(request: Request) -> bool:
         hmac.compare_digest(request.headers.get('x-workstep-desktop-token', ''), expected))
 
 
+def _desktop_login_handoff(request: Request) -> bool:
+    """Use the app handoff for Electron's authenticated UI or its local browser."""
+    if _desktop(request):
+        return True
+    loopback = ('127.0.0.1', '::1', 'localhost')
+    return bool(os.environ.get('WORKSTEP_DESKTOP_RUNTIME') == '1' and request.client
+        and request.client.host in loopback and request.url.hostname in loopback)
+
+
 @router.get('/api/gateway-platform/settings')
 async def settings(request: Request):
     return await _settings_service(request).settings()
@@ -66,7 +75,7 @@ async def save_settings(request: Request, body: SettingsInput):
 async def login(request: Request, body: LoginInput):
     service = _settings_service(request, mutation=True)
     try:
-        url = await service.begin(body.url, str(request.base_url).rstrip('/'), desktop=_desktop(request))
+        url = await service.begin(body.url, str(request.base_url).rstrip('/'), desktop=_desktop_login_handoff(request))
     except (ValueError, KeyError) as exc:
         raise HTTPException(status_code=400, detail='Invalid platform configuration or changed signing key') from exc
     except (OSError, httpx.HTTPError) as exc:
@@ -94,8 +103,9 @@ async def callback(request: Request, code: str = Query(min_length=32, max_length
         raise HTTPException(status_code=400, detail='Gateway login expired or invalid') from exc
     except (OSError, httpx.HTTPError) as exc:
         raise HTTPException(status_code=502, detail='Gateway unavailable; retry login') from exc
-    response = RedirectResponse('/?gateway_auth=' + ('complete' if result else 'pending'), status_code=303)
+    desktop = bool(result and len(result) > 2 and result[2])
+    response = RedirectResponse('workstep://open' if desktop else '/?gateway_auth=' + ('complete' if result else 'pending'), status_code=303)
     if result:
-        token, _actor = result
+        token, _actor = result[:2]
         response.set_cookie(COOKIE, token, httponly=True, samesite='strict', secure=request.url.scheme=='https', path='/')
     return response

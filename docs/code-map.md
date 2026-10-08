@@ -507,3 +507,15 @@ Gateway 可选择组织同步：`apps/gateway-web/src/OrganizationSyncPanel.tsx`
 平台设置的平台地址支持一键复制到客户端远程访问设置，通过 `AdminPlatformAddressDialog.tsx` 由超管二次认证后保存到数据库并立即生效，安装页也使用此地址；地址复制成功、失败恢复由 Gateway Web `tests/admin-platform-settings.test.tsx` 验证。
 
 Gateway 平台地址写入由 `services/platform_address.py` 负责，`api/identity_api.py` 提供 `PUT /api/admin/platform-address`，复用 `PlatformSetting` 存储；启动恢复覆盖部署默认地址。`services/client_releases.py` 的安装目录返回已保存地址，前端安装页与后台共用 `PlatformAddress.tsx` 复制控件。行为和重启、数据库锁健康 canary 见 `tests/test_admin_platform_settings.py`；前端保存失败恢复、安装页域名复制见 `admin-platform-settings.test.tsx`、`client-download-address.test.tsx`。
+
+用户管理数据刷新：`apps/gateway-web/src/AdminUsersPage.tsx` 的「刷新用户与用户组」通过同一 revision 同时刷新用户表和 `AdminUserGroupTree`，保留当前筛选；同步后仍停留旧数据时可主动刷新。回归入口为 `admin-users-interactions.test.tsx`。
+
+组织增量导入与用户回收站：`directory_sync_jobs.py`、`reconciliation.py` 的供应商同步调用 `ExternalIdentityService.full_sync(additions_only=True)`，只导入新增记录，保留既有名称、状态及成员关系，结果包含本地删除跳过数；`OrganizationSyncPanel.tsx` 显示提示。用户回收站由 `AdminUsersPage.tsx` 提供入口，`AdminUserTable.tsx` 复用密码确认执行恢复和 purge；`admin_user_operations.py` 只允许超管彻底删除已删除账号，清理身份/授权并保留审计，存在业务所有权时要求先处理。企业身份删除留存不可恢复的同步排除标记。测试入口 `test_selected_directory_sync.py`、`test_admin_bulk_people.py`、`organization-sync-panel.test.tsx`、`admin-users-interactions.test.tsx`。
+
+企业 OAuth 的 `_begin` 使用后台保存的平台地址构建回调 URI，网页登录与桌面授权共用同一第三方回调，通过 return_to 区分完成后的页面。保存域名后的实际回调由 `tests/test_external_identity.py::test_oauth_callback_uses_saved_platform_domain_for_web_and_desktop` 覆盖。
+
+用户组回收站由 `AdminGroupLifecyclePanel.tsx` 管理入口、批量恢复和彻底删除确认；`group_operations.py` 的 purge 清理组关联并保留用户、项目及审计，企业组留存同步排除标记。后端回归 `test_admin_bulk_people.py`，前端 `admin-people-bulk.test.tsx`。
+
+设备列表与审批策略：`DeviceAdminPage.tsx` 默认全部，明确显示控制连接在线状态并支持刷新；`AdminPlatformSettingsPage.tsx` 复用策略弹框提供人工/自动审批。`device_approval_policy.py` 持久化超管密码确认后的策略并审计，`desktop_authorization.py` 仅对新设备应用，默认人工，已有停用/撤销设备及换钥保护不变。API `PUT /api/admin/device-approval-policy`；回归 `test_desktop_authorization.py`（含锁健康 canary）、`admin-users-interactions.test.tsx`。
+
+“我的 WorkStep”设备入口由 `gateway-web/src/MyWorkstepWorkspace.tsx` 选择在线设备直接兑换整机票据；随后加载原有 WorkStep Web。`apps/web/src/components/GatewayRemoteFrame.tsx` 组合 `GatewayDeviceSidebar.tsx` 保留设备切换栏，仅整机会话装配，单项目会话不装配。设备栏通过当前设备域 `/api/remote/devices` 和 `/api/remote/devices/{id}/access` 获取本人有效整机分配及下一设备票据，Gateway 独立处理、不转发至 daemon；复用 `user_devices_api.py` 的按用户设备授权业务，当前与目标设备均核权。测试：Gateway `test_user_devices.py`、门户 `my-workstep.test.tsx`、Web `gatewayDeviceSidebar.test.tsx` 与 `gatewayWorkspaceFrame.test.tsx`。

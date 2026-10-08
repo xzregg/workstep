@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { GatewayLoginForm } from './GatewayLoginForm'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { openRemoteAccess } from './openRemoteAccess'
 import { MyWorkstepWorkspace } from './MyWorkstepWorkspace'
 import type { WorkspaceDevice } from './MyWorkstepWorkspace'
@@ -11,36 +10,28 @@ export { ProjectCard } from './ProjectCard'
 export function ProjectsPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const [status, setStatus] = useState<'checking' | 'login' | 'ready'>('checking')
+  const [status, setStatus] = useState<'checking' | 'ready'>('checking')
   const [projects, setProjects] = useState<Project[]>([])
   const [devices,setDevices]=useState<WorkspaceDevice[]>([])
   const [loading,setLoading]=useState(true)
   const [retry,setRetry]=useState(0)
-  const [busy, setBusy] = useState(false)
   const [opening, setOpening] = useState<string | null>(null)
   const openingRef=useRef(false)
   const [error, setError] = useState('')
-  const [passwordEnabled,setPasswordEnabled]=useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
     void fetch('/api/auth/session', { credentials: 'same-origin', signal: controller.signal })
-      .then(async response => {
+      .then(response => {
         if (controller.signal.aborted) return
         if (response.status === 401) {
-          const platform = await fetch('/api/platform/status', { signal: controller.signal })
-          if (controller.signal.aborted) return
-          if (platform.ok && !(await platform.json()).initialized) {
-            navigate('/auth', { replace: true }); return
-          }
-          const policy=await fetch('/api/auth/registration-policy',{signal:controller.signal})
-          if(!policy.ok)throw Error('登录方式加载失败，请进入登录页重试。')
-          const data=await policy.json()
-          if(!controller.signal.aborted)setPasswordEnabled(data.password_login_enabled ?? true)
+          navigate('/auth?next=%2F', { replace: true })
+          return
         }
-        if (!controller.signal.aborted) setStatus(response.ok ? 'ready' : 'login')
+        if (!response.ok) throw Error('登录状态检查失败，请刷新重试。')
+        setStatus('ready')
       })
-      .catch(reason => { if (reason?.name !== 'AbortError') setStatus('login') })
+      .catch(reason => { if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '登录状态检查失败。') })
     return () => controller.abort()
   }, [navigate])
 
@@ -64,21 +55,6 @@ export function ProjectsPage() {
       .finally(()=>{if(!controller.signal.aborted)setLoading(false)})
     return () => controller.abort()
   }, [status, navigate, retry])
-
-  async function signIn(username: string, password: string) {
-    setBusy(true); setError('')
-    try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      })
-      if (!response.ok) throw new Error('登录失败，请检查账号和密码。')
-      setStatus('ready')
-      window.dispatchEvent(new Event('gateway-auth-changed'))
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '登录失败。') }
-    finally { setBusy(false) }
-  }
 
   async function openWorkspace(kind:'project'|'device', id:string) {
     if(openingRef.current)return
@@ -104,11 +80,6 @@ export function ProjectsPage() {
     {(location.state as { adminDenied?: boolean } | null)?.adminDenied &&
       <p role="alert">当前账号没有访问该管理页面的权限。</p>}
     {status === 'checking' && <p role="status">正在检查登录状态…</p>}
-    {status === 'login' && <div className="gateway-admin-login">
-      <p>登录后进入你的 WorkStep，查看设备和项目。</p>
-      {passwordEnabled && <GatewayLoginForm busy={busy} onSubmit={signIn} />}
-      <p><Link to="/auth">{passwordEnabled?'注册账号或使用企业身份登录':'扫码登录'}</Link></p>
-    </div>}
     {status === 'ready' && <>
       {loading?<p role="status"><span className="gateway-spinner"/> 正在加载工作空间…</p>:!!devices.length && <MyWorkstepWorkspace devices={devices} projects={projects} opening={opening}
        onOpenDevice={id=>void openWorkspace('device',id)} onOpenProject={id=>void openWorkspace('project',id)}/>}

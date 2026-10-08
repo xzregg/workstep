@@ -111,6 +111,9 @@ test('device page retries load errors and pages server results', async () => {
   await screen.findByRole('alert')
   fireEvent.click(screen.getByRole('button', { name: '重试' }))
   await screen.findByText('Alice PC')
+  assert.equal((screen.getByLabelText('设备状态') as HTMLSelectElement).value, '')
+  assert.ok(requests.filter(url => url.startsWith('/api/admin/devices?')).every(url => !new URLSearchParams(url.split('?')[1]).has('status')))
+  assert.ok(screen.getByText('离线'))
   fireEvent.change(screen.getByLabelText('搜索设备'), { target: { value: 'Alice' } })
   fireEvent.click(screen.getByRole('button', { name: '搜索' }))
   await waitFor(() => assert.ok(requests.some(url => url.includes('q=Alice'))))
@@ -497,4 +500,41 @@ test('organization delegation form exposes department roles and scopes only', as
   assert.deepEqual(Array.from(role.options).map(option => option.value).sort(), ['audit_admin', 'department_admin', 'identity_admin'])
   const scope = screen.getByLabelText('管理范围') as HTMLSelectElement
   assert.deepEqual(Array.from(scope.options).map(option => option.value), ['department'])
+})
+
+
+test('refresh reloads both synced users and the organization tree', async () => {
+ let synced = false
+ let userReads = 0; let groupReads = 0
+ globalThis.fetch = async input => {
+  const url = String(input)
+  if (url === '/api/auth/session') return Response.json({csrf_token:'csrf'})
+  if (url === '/api/admin/user-groups/tree') { groupReads++; return Response.json({groups: synced ? [{id:'g1',name:'同步部门',parent_id:null,member_count:1}] : []}) }
+  if (url.startsWith('/api/admin/users?')) { userReads++; return Response.json({users: synced ? [{id:'u1',username:'ext_1',display_name:'同步成员',status:'active',registration_source:'directory_sync',created_at:'2026-10-08'}] : [],total:synced ? 1 : 0}) }
+  throw Error(url)
+ }
+ render(<MemoryRouter><AdminUsersPage /></MemoryRouter>)
+ await screen.findByText('当前条件下没有用户。')
+ await screen.findByText('尚无用户组，可创建或同步组织。')
+ synced = true
+ fireEvent.click(screen.getByRole('button',{name:'刷新用户与用户组'}))
+ await screen.findByText('同步成员')
+ await screen.findByRole('button',{name:/同步部门/})
+ assert.equal(userReads,2); assert.equal(groupReads,2)
+})
+
+
+test('user recycle bin filters deleted accounts and offers permanent deletion',async()=>{
+ globalThis.fetch=async input=>{
+  const url=String(input)
+  if(url==='/api/auth/session')return Response.json({csrf_token:'csrf',admin_roles:['super_admin']})
+  if(url.includes('user-groups/tree'))return Response.json({groups:[]})
+  return Response.json({users:url.includes('status=deleted')?[{id:'u1',username:'alice',display_name:'已删用户',status:'deleted',registration_source:'local',created_at:'2026-10-08'}]:[],total:1})
+ }
+ render(<MemoryRouter><AdminUsersPage /></MemoryRouter>)
+ fireEvent.click(screen.getByRole('button',{name:'回收站'}))
+ await screen.findByText('已删用户')
+ fireEvent.click(screen.getByRole('button',{name:'彻底删除'}))
+ assert.ok(screen.getByRole('dialog',{name:'批量彻底删除用户'}))
+ assert.match(document.body.textContent??'',/无法恢复/)
 })

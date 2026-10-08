@@ -80,11 +80,13 @@ async def test_browser_login_pending_then_approved_reuses_device_and_signed_dele
     assert await login.complete('c'*32,params['state'][0]) is None
     assert store.data['gateway_platform']['pending_device']
     approved=True
-    url=await login.begin('http://localhost:8700',callback_origin)
+    url=await login.begin('http://localhost:8700',callback_origin,desktop=True)
+    assert 'redirect_uri' not in parse_qs(urlsplit(url).query)
     with pytest.raises(ValueError, match='origin mismatch'):
         await login.complete('c'*32, parse_qs(urlsplit(url).query)['state'][0], callback_origin='https://other.example.com')
     result=await login.complete('c'*32,parse_qs(urlsplit(url).query)['state'][0], callback_origin=callback_origin)
     assert result[0]=='local-session'
+    assert result[2] is True
     assert device_keys[0]==device_keys[1]
     with pytest.raises(ValueError): await login.complete('c'*32,parse_qs(urlsplit(url).query)['state'][0])
 
@@ -128,15 +130,20 @@ async def test_callback_sets_local_session_cookie_and_survives_desktop_browser_h
     monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')
     calls=[]
     class Login:
+        async def begin(self, url, callback_origin, *, desktop=False):
+            assert desktop is True
+            return url+'/desktop/login?state='+'s'*32
         async def complete(self, code, state, *, callback_origin=None):
-            calls.append((code,state));return ('test-local-session',SimpleNamespace())
+            calls.append((code,state));return ('test-local-session',SimpleNamespace(),True)
     app=FastAPI();app.include_router(router);app.add_middleware(DesktopSecurityMiddleware)
     app.state.gateway_browser_login=Login()
     async with AsyncClient(transport=ASGITransport(app=app,client=('127.0.0.1',1)),base_url='http://localhost:8765') as client:
+        login=await client.post('/api/gateway-platform/login',headers={'Origin':'http://localhost:8765'},json={'url':'http://localhost:8700'})
+        assert login.status_code==200
         # The external browser callback does not possess Electron's runtime token.
         response=await client.get('/api/gateway-platform/callback',params={'code':'c'*32,'state':'s'*32})
         assert response.status_code==303
-        assert response.headers['location']=='/?gateway_auth=complete'
+        assert response.headers['location']=='workstep://open'
         assert response.cookies[COOKIE]=='test-local-session'
         assert 'HttpOnly' in response.headers['set-cookie'] and 'SameSite=strict' in response.headers['set-cookie']
         assert calls==[('c'*32,'s'*32)]
@@ -257,6 +264,7 @@ async def test_mobile_configuration_uses_existing_access_guard_and_returns_to_mo
         assert (await client.get('/api/gateway-platform/settings')).status_code==200
         assert (await client.put('/api/gateway-platform/settings',json={'url':'https://gateway.example.com','enabled':True})).status_code==200
         assert (await client.post('/api/gateway-platform/login',json={'url':'https://gateway.example.com'})).status_code==200
+        del client.headers['x-workstep-access']
         callback=await client.get('/api/gateway-platform/callback',params={'code':'c'*32,'state':'s'*32})
         assert callback.status_code==303
         assert callback.headers['location']=='/?gateway_auth=complete'

@@ -7,7 +7,7 @@ import type { Department } from './DepartmentSelectionTree'
 import { subtreeIds } from './TreeSelection'
 type Job = { id?: string; status: 'idle' | 'queued' | 'fetching' | 'applying' | 'completed' | 'failed';
  completed?: number; total?: number; current_department?: string | null; error_code?: string;
- result?: { departments: number; people: number } }
+ result?: { departments: number; people: number; departments_added?: number; people_added?: number; departments_deleted_skipped?: number; people_deleted_skipped?: number } }
 const active = (job: Job | null) => !!job && ['queued', 'fetching', 'applying'].includes(job.status)
 const names = { wecom: '企业微信', dingtalk: '钉钉' }
 
@@ -91,7 +91,7 @@ export function OrganizationSyncPanel({ sourceId, provider, csrf, onClose, onCom
   <button type="button" className="gateway-dialog-cancel" disabled={starting} onClick={close}>{running ? '后台运行并关闭' : '取消'}</button>
   <button type="button" disabled={locked || !csrf || !selected.length} onClick={() => void start()}>{starting && <span className="gateway-spinner" />}{starting ? '正在提交…' : '同步组织与用户'}</button>
  </>}>
-  <p>勾选上级会自动包含全部下级组织及用户；取消上级会一起取消下级。搜索或折叠隐藏的下级也包含在选择中。未勾选的已有组织和成员保留；后续自动同步沿用最近一次成功的选择。</p>
+  <p>勾选上级会自动包含全部下级组织及用户；取消上级会一起取消下级。搜索或折叠隐藏的下级也包含在选择中。仅同步新增组织和用户，已有记录保持不变；本地已删除记录将跳过并提示，不会自动恢复。未勾选的已有组织和成员保留；后续自动同步沿用最近一次成功的选择。</p>
   {loading && <p role="status"><span className="gateway-spinner" /> 正在读取组织列表…</p>}
   {error && <p role="alert" className="gateway-auth-error">{error}<button type="button" onClick={() => departments.length ? setError('') : setRevision(value => value + 1)}>重试</button></p>}
   {!loading && <>
@@ -104,6 +104,7 @@ export function OrganizationSyncPanel({ sourceId, provider, csrf, onClose, onCom
     {running && <><p><span className="gateway-spinner" /> {job?.status === 'applying' ? '正在保存用户组和成员…' : job?.status === 'queued' ? '等待同步…' : '正在读取所选部门成员…'}{job?.current_department && ` · ${byId.get(job.current_department)?.display_name ?? job.current_department}`}</p>
      <progress aria-label="部门读取进度" value={job?.completed ?? 0} max={job?.total || 1} /><span>{job?.completed ?? 0} / {job?.total ?? selected.length} 个部门</span></>}
     {job?.status === 'completed' && <p>同步完成：{job.result?.departments ?? 0} 个组织、{job.result?.people ?? 0} 位用户。</p>}
+    {job?.status === 'completed' && job.result?.people_added !== undefined && <p>本次新增：{job.result.departments_added ?? 0} 个组织、{job.result.people_added} 位用户。跳过本地已删除：{job.result.departments_deleted_skipped ?? 0} 个组织、{job.result.people_deleted_skipped ?? 0} 位用户；请在回收站恢复后启用。</p>}
     {job?.status === 'failed' && <p role="alert">{job.error_code === 'interrupted' ? '服务重启或关闭导致同步中断，请重新同步。' : '同步失败，请检查应用密钥、通讯录权限或组织是否仍然存在，然后重试。'}</p>}
    </div>
   </>}

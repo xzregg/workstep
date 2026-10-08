@@ -204,7 +204,7 @@ class ExternalIdentityService:
             raise GatewayError('conflict', 'External identity already linked') from exc
 
     async def full_sync(self, source_id: str, departments: list[dict], people: list[dict],
-                        cursor: str | None = None, *, selected_department_ids: list[str] | None = None) -> dict[str, int]:
+                        cursor: str | None = None, *, selected_department_ids: list[str] | None = None, additions_only: bool = False) -> dict[str, int]:
         await self.source(source_id, purpose="sync")
         if cursor is not None and (not isinstance(cursor, str) or len(cursor) > 256):
             raise GatewayError('invalid', 'Invalid directory cursor')
@@ -217,6 +217,7 @@ class ExternalIdentityService:
             raise GatewayError('invalid', 'Duplicate directory identifier')
         if any(department not in department_ids for person in people for department in person["department_ids"]):
             raise GatewayError('invalid', 'Unknown department in directory snapshot')
+        result = {'departments': len(departments), 'people': len(people)}
         async with self.database.session() as session:
             async with session.begin():
                 existing_departments = {row.external_id: row for row in (await session.scalars(
@@ -228,6 +229,28 @@ class ExternalIdentityService:
                 identities = {row.subject: row for row in (await session.scalars(
                     select(ExternalIdentity).where(ExternalIdentity.source_id == source_id)
                 )).all()}
+                skipped_users = skipped_groups = 0
+                if additions_only:
+                    from gateway.models import UserGroup
+                    deleted_groups = set((await session.scalars(select(UserGroup.external_department_id).where(
+                        UserGroup.status == 'deleted', UserGroup.external_department_id.in_([d.id for d in existing_departments.values()])
+                    ))).all())
+                    purged_groups = set((await session.scalars(select(PlatformSetting.key).where(PlatformSetting.key.like('directory-group-purged:%')))).all())
+                    deleted_groups.update(d.id for d in existing_departments.values() if 'directory-group-purged:' + d.id in purged_groups)
+                    skipped_groups = sum(existing_departments[item['external_id']].id in deleted_groups
+                                         for item in departments if item['external_id'] in existing_departments)
+                    existing_users = {u.id: u for u in (await session.scalars(select(User).where(
+                        User.id.in_([i.user_id for i in identities.values()])
+                    ))).all()}
+                    skipped_users = sum(identities[item['subject']].user_id in existing_users and
+                        existing_users[identities[item['subject']].user_id].status == 'deleted'
+                        for item in people if item['subject'] in identities)
+                    purged = set((await session.scalars(select(PlatformSetting.key).where(PlatformSetting.key.like('directory-purged:%')))).all())
+                    skipped_users += sum('directory-purged:' + _external_username(source_id, item['subject']) in purged for item in people)
+                    people = [item for item in people if 'directory-purged:' + _external_username(source_id, item['subject']) not in purged and item['subject'] not in existing_people and item['subject'] not in identities]
+                    new_department_ids = {item['external_id'] for item in departments if item['external_id'] not in existing_departments}
+                    result.update(people_added=len(people), departments_added=len(new_department_ids),
+                                  people_deleted_skipped=skipped_users, departments_deleted_skipped=skipped_groups)
                 old_memberships: dict[str, set[str]] = {}
                 membership_rows = (await session.execute(select(
                     DirectoryMembership.person_id, DirectoryDepartment.external_id,
@@ -257,15 +280,16 @@ class ExternalIdentityService:
                     for subject, active in old_person_active.items()
                 )
                 for row in existing_departments.values():
-                    if scope is None or row.external_id in scope: row.active = 0
+                    if not additions_only and (scope is None or row.external_id in scope): row.active = 0
                 for row in existing_people.values():
-                    if row.subject in affected_people and (scope is None or not old_memberships.get(row.id, set()) - scope): row.active = 0
-                if scope is not None:
+                    if not additions_only and row.subject in affected_people and (scope is None or not old_memberships.get(row.id, set()) - scope): row.active = 0
+                if scope is not None and not additions_only:
                     await session.execute(DirectoryMembership.__table__.delete().where(
                         DirectoryMembership.department_id.in_([row.id for row in existing_departments.values() if row.external_id in scope]),
                     ))
                 for item in departments:
                     row = existing_departments.get(item["external_id"])
+                    if additions_only and row is not None: continue
                     if row is None or not old_department_active[item["external_id"]]:
                         changes["departments_added"] += 1
                     else:
@@ -327,7 +351,9 @@ class ExternalIdentityService:
                             department_id=existing_departments[department_id].id,
                         ))
                 await session.flush()
-                await reconcile_department_groups(session, source_id=source_id)
+                await reconcile_department_groups(session, source_id=source_id, additions_only=additions_only)
+                if additions_only:
+                    changes.update(people_departed=0, departments_deleted=0, people_deleted_skipped=skipped_users, departments_deleted_skipped=skipped_groups)
                 state = await session.get(DirectorySyncState, source_id)
                 if state is None:
                     state = DirectorySyncState(source_id=source_id)
@@ -340,14 +366,13 @@ class ExternalIdentityService:
                     state.cursor = cursor
                 state.changes_json = json.dumps(changes, sort_keys=True)
                 if scope is not None:
-                    from gateway.models import PlatformSetting
                     from gateway.services.organization_settings import option_key
                     options_row = await session.get(PlatformSetting, option_key(source_id))
                     options = json.loads(options_row.value_json) if options_row else {}
                     options['selected_department_ids'] = selected_department_ids
                     if options_row: options_row.value_json = json.dumps(options)
                     else: session.add(PlatformSetting(key=option_key(source_id), value_json=json.dumps(options)))
-        return {"departments": len(departments), "people": len(people)}
+        return result
 
     async def record_sync_failure(self, source_id: str, code: str) -> None:
         async with self.database.session() as session:

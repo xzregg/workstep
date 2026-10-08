@@ -360,3 +360,23 @@ def test_portal_scan_failures_return_to_login_without_authenticating(tmp_path):
         )
         assert unknown.status_code == 400
         assert client.get("/api/auth/session").status_code == 401
+
+
+def test_oauth_callback_uses_saved_platform_domain_for_web_and_desktop(tmp_path):
+    from urllib.parse import urlencode
+    class CallbackConnector(FakeConnector):
+        def authorization_url(self, source, state, nonce, redirect_uri):
+            return 'https://identity.test/authorize?' + urlencode({'redirect_uri':redirect_uri})
+    app = create_app(GatewaySettings(data_dir=tmp_path, public_origin='https://gateway.test'))
+    app.state.identity_connectors = {'dingtalk':CallbackConnector()}
+    with TestClient(app, base_url='https://gateway.test') as client:
+        csrf = _setup(client)
+        source = _source(client, csrf)
+        headers = {'X-CSRF-Token':csrf}
+        client.post('/api/auth/step-up', headers=headers, json={'password':'OwnerPassphrase-2026!'})
+        assert client.put('/api/admin/platform-address', headers=headers, json={'public_origin':'https://workstep.example.com'}).status_code == 200
+        for target in ('/', '/desktop/login?state=test'):
+            result = client.post(f'/api/auth/external/{source}/start', json={'return_to':target})
+            assert result.status_code == 200, result.text
+            callback = parse_qs(urlparse(result.json()['authorization_url']).query)['redirect_uri'][0]
+            assert callback == f'https://workstep.example.com/api/auth/external/{source}/callback'

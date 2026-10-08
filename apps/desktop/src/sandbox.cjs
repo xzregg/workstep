@@ -432,12 +432,15 @@ class SandboxManager {
   }
   async stop({ preserveHealth = false } = {}) {
     if (this.session && this.activeConfig) {
-      await this.captureLogs().catch(() => {})
       const { command, podman, machine } = this.session
-      const containers = JSON.parse(await command(['ps', '-a', '--filter', `label=com.workstep.sandbox=${this.activeConfig.id}`, '--format=json']))
-      for (const container of containers) await command(['stop', '--time=10', container.Id || container.ID])
-      if (this.platform !== 'linux') await podman(['machine', 'stop', machine])
-      this.session = null; this.activeConfig = null
+      try {
+        await this.captureLogs().catch(() => {})
+        const containers = JSON.parse(await command(['ps', '-a', '--filter', `label=com.workstep.sandbox=${this.activeConfig.id}`, '--format=json'], { timeout: 5000 }))
+        for (const container of containers) await command(['stop', '--time=5', container.Id || container.ID], { timeout: 12000 })
+        if (this.platform !== 'linux') await podman(['machine', 'stop', machine], { timeout: 15000 })
+      } finally {
+        this.session = null; this.activeConfig = null
+      }
     }
     this.running = false
     if (!preserveHealth) { this.health = 'stopped'; this.hostPort = null }
@@ -455,10 +458,11 @@ class SandboxManager {
     const settings = await this.settings()
     await this.save({ ...settings, enabled: false })
   }
-  async queueImageSwitch(dockerImage) {
+  async queueImageSwitch(dockerImage, dockerTag = null) {
     if (!/^sha256:[a-f0-9]{64}$/.test(dockerImage || '')) throw new Error('请选择有效的本地 WorkStep 镜像')
+    if (dockerTag !== null && (typeof dockerTag !== 'string' || !dockerTag.trim())) throw new Error('镜像标签无效')
     const settings = await this.settings()
-    await this.save({ ...settings, enabled: false, pendingDockerImage: dockerImage })
+    await this.save({ ...settings, enabled: false, pendingDockerImage: dockerImage, pendingDockerImageTag: dockerTag })
   }
   async importConfig(kind) {
     return this.exclusive(async () => {

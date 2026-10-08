@@ -35,7 +35,7 @@ test('scan-only login hides password and registration and never displays tenant 
  assert.equal(document.querySelectorAll('.gateway-identity-icon').length,2)
 })
 
-test('desktop authentication and workbench also respect scan-only policy',async()=>{
+test('desktop authentication and centralized workbench login respect scan-only policy',async()=>{
  globalThis.fetch=async(input)=>{
   const url=String(input)
   if(url==='/api/platform/status')return Response.json({initialized:true})
@@ -50,8 +50,8 @@ test('desktop authentication and workbench also respect scan-only policy',async(
  assert.equal(screen.queryByLabelText('用户名'),null)
  assert.equal(document.body.textContent?.includes('private-123'),false)
  cleanup()
- render(<MemoryRouter><ProjectsPage/></MemoryRouter>)
- await screen.findByRole('link',{name:'扫码登录'})
+ render(<MemoryRouter><Routes><Route path="/" element={<ProjectsPage/>}/><Route path="/auth" element={<PortalAuthPage/>}/></Routes></MemoryRouter>)
+ await screen.findByRole('button',{name:'钉钉扫码登录'})
  assert.equal(screen.queryByLabelText('用户名'),null)
 })
 

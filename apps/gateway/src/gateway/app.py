@@ -116,7 +116,10 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         if settings.public_origin:
             host = request.headers.get("host", "").lower()
             if settings.is_device_authority(host):
-                if request.url.path not in ("/api/remote/redeem", "/api/remote/session",
+                is_device_switch = (request.method == 'GET' and (request.url.path == '/api/remote/devices'
+                    or (request.url.path.startswith('/api/remote/devices/') and request.url.path.endswith('/access')
+                        and len(request.url.path.split('/')) == 6)))
+                if not is_device_switch and request.url.path not in ("/api/remote/redeem", "/api/remote/session",
                                             "/api/remote/project-grants"):
                     try:
                         return await invoke(proxy_remote_request, request=request)

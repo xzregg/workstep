@@ -73,7 +73,7 @@ class DirectorySyncJobs:
             )
             await progress('applying', job['total'], job['total'], None)
             result = await service.full_sync(source.id, snapshot['departments'], snapshot['people'],
-                snapshot.get('cursor'), selected_department_ids=job['department_ids'])
+                snapshot.get('cursor'), selected_department_ids=job['department_ids'], additions_only=True)
             job.update(status='completed', result=result, completed=job['total'])
             await self._save(source.id, job)
         except asyncio.CancelledError:

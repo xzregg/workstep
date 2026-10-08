@@ -8,9 +8,11 @@ export const registrationLabels: Record<RegistrationMode, string> = {
   closed: '关闭注册',
 }
 
-export function AdminRegistrationPolicyDialog({ mode, csrf, onSaved, onClose }: {
-  mode: RegistrationMode; csrf: string; onSaved: () => void; onClose: () => void
+export function AdminRegistrationPolicyDialog({ mode, csrf, onSaved, onClose, devicePolicy = false }: {
+  mode: RegistrationMode | 'manual' | 'automatic'; devicePolicy?: boolean; csrf: string; onSaved: () => void; onClose: () => void
 }) {
+  const title = devicePolicy ? '修改设备审批策略' : '修改注册策略'
+  const labels = devicePolicy ? { manual: '人工审批', automatic: '自动审批' } : registrationLabels
   const [selected, setSelected] = useState(mode)
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -25,29 +27,29 @@ export function AdminRegistrationPolicyDialog({ mode, csrf, onSaved, onClose }: 
       const step = await fetch('/api/auth/step-up', { method: 'POST', credentials: 'same-origin', headers,
         body: JSON.stringify({ password }) })
       if (!step.ok) throw new Error('密码验证失败。')
-      const response = await fetch('/api/admin/registration-policy', {
+      const response = await fetch(devicePolicy ? '/api/admin/device-approval-policy' : '/api/admin/registration-policy', {
         method: 'PUT', credentials: 'same-origin', headers,
         body: JSON.stringify({ mode: selected }),
       })
-      if (!response.ok) throw new Error('注册策略保存失败。')
+      if (!response.ok) throw new Error(title + '保存失败。')
       onSaved()
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '注册策略保存失败。')
+      setError(reason instanceof Error ? reason.message : title + '保存失败。')
     } finally { setBusy(false) }
   }
 
   return <>
-    <GatewayConfirmDialog title="修改注册策略" message="新策略会影响后续注册，不改变现有账号。"
+    <GatewayConfirmDialog title={title} message={devicePolicy ? '仅影响新注册设备；已有待审批设备和密钥更换仍需人工审批。' : '新策略会影响后续注册，不改变现有账号。'}
       className="gateway-platform-policy-dialog"
       confirmLabel="保存策略" busy={busy} disabled={selected === mode || !password}
       onConfirm={() => void save()} onCancel={() => {
         if (selected !== mode || password) setDiscard(true)
         else onClose()
       }}>
-      <label htmlFor="gateway-registration-mode">注册策略</label>
+      <label htmlFor="gateway-registration-mode">{devicePolicy ? '设备审批策略' : '注册策略'}</label>
       <select id="gateway-registration-mode" value={selected}
         onChange={event => setSelected(event.target.value as RegistrationMode)}>
-        {Object.entries(registrationLabels).map(([key, label]) =>
+        {Object.entries(labels).map(([key, label]) =>
           <option key={key} value={key}>{label}</option>)}</select>
       <label htmlFor="gateway-registration-password">管理员密码</label>
       <input id="gateway-registration-password" type="password" autoComplete="current-password"

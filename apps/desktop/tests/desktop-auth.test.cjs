@@ -3,6 +3,7 @@ const { createHash, generateKeyPairSync, sign, verify, createPublicKey } = requi
 const test = require('node:test')
 const {
   createAuthorizationRequest,
+  parseAuthCallback,
   claimAuthCallback,
   verifyDeviceAuthorization,
   exchangeDesktopCode,
@@ -46,6 +47,14 @@ test('callback accepts only matching one-time code and state', () => {
   const result = claimAuthCallback(`workstep://auth/callback?code=secret&state=${pending.state}`, pending)
   assert.equal(result.code, 'secret')
   assert.throws(() => claimAuthCallback(`workstep://auth/callback?code=secret&state=${pending.state}`, pending), /already/i)
+})
+
+test('configured desktop callback is parsed before the daemon verifies its state', () => {
+  assert.deepEqual(parseAuthCallback('workstep://auth/callback?code=secret&state=state-value'), {
+    code: 'secret', state: 'state-value',
+  })
+  assert.throws(() => parseAuthCallback('workstep://open?code=secret&state=state-value'), /callback/i)
+  assert.throws(() => parseAuthCallback('workstep://auth/callback?code=secret&state=x&extra=y'), /callback/i)
 })
 
 test('device authorization checks pinned key and bound installation', () => {

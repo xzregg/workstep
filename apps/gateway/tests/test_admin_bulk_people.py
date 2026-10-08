@@ -70,7 +70,7 @@ def test_group_bulk_members_atomic_and_directory_read_only(tmp_path):
         assert len(client.get(f'/api/groups/{group}/members').json()['members']) == 1
 
 
-@pytest.mark.parametrize('target', ['users', 'members', 'delete_users', 'delete_groups'])
+@pytest.mark.parametrize('target', ['users', 'members', 'delete_users', 'delete_groups', 'purge_users', 'purge_groups'])
 def test_bulk_database_contention_keeps_health_responsive(tmp_path, target):
     import asyncio
     import sqlite3
@@ -82,8 +82,14 @@ def test_bulk_database_contention_keeps_health_responsive(tmp_path, target):
         _, headers, users = setup(client)
         client.post('/api/admin/users/bulk', json={'user_ids': users, 'action': 'approve'}, headers=headers)
         group = client.post('/api/groups', json={'name': '研发组', 'slug': 'dev'}, headers=headers).json()['id']
-        url = '/api/admin/users/bulk' if target in ['users', 'delete_users'] else '/api/groups/bulk' if target == 'delete_groups' else f'/api/groups/{group}/members/bulk'
-        body = {'group_ids': [group], 'action': 'delete'} if target == 'delete_groups' else {'user_ids': users, 'action': 'delete' if target == 'delete_users' else 'disable' if target == 'users' else 'add'}
+        url = '/api/admin/users/bulk' if target in ['users', 'delete_users', 'purge_users'] else '/api/groups/bulk' if target in ['delete_groups', 'purge_groups'] else f'/api/groups/{group}/members/bulk'
+        body = {'group_ids': [group], 'action': 'delete'} if target in ['delete_groups', 'purge_groups'] else {'user_ids': users, 'action': 'delete' if target == 'delete_users' else 'disable' if target == 'users' else 'add'}
+        if target == 'purge_users':
+            client.post(url, json={'user_ids': users, 'action': 'delete'}, headers=headers)
+            body = {'user_ids': users, 'action': 'purge'}
+        if target == 'purge_groups':
+            client.post(url, json={'group_ids': [group], 'action': 'delete'}, headers=headers)
+            body = {'group_ids': [group], 'action': 'purge'}
         reached = threading.Event()
         def before_execute(connection, cursor, statement, parameters, context, many):
             if statement.startswith('UPDATE platform_settings') or statement.startswith('INSERT INTO group_memberships'):
@@ -196,3 +202,36 @@ def test_legacy_tenant_root_shows_organization_name_in_tree_directory_and_delete
         assert next(row for row in departments if row['external_id'] == '1')['display_name'] == '钉钉组织'
         assert client.post('/api/groups/bulk', headers=headers, json={'group_ids': [root['id']], 'action': 'delete'}).status_code == 200
         assert client.get('/api/groups/deleted').json()['groups'][0]['name'] == '钉钉组织'
+
+
+def test_recycle_bin_permanent_delete_requires_deleted_status_and_preserves_audit(tmp_path):
+    import sqlite3
+    with TestClient(create_app(GatewaySettings(data_dir=tmp_path)),base_url='https://gateway.test') as client:
+        _,headers,users=setup(client)
+        url='/api/admin/users/bulk'
+        assert client.post(url,headers=headers,json={'user_ids':users,'action':'purge'}).status_code==409
+        assert client.post(url,headers=headers,json={'user_ids':users,'action':'delete'}).status_code==200
+        assert client.post(url,json={'user_ids':users,'action':'purge'}).status_code==403
+        assert client.post(url,headers=headers,json={'user_ids':users,'action':'purge'}).status_code==200
+        assert client.get('/api/admin/users?status=deleted').json()['users']==[]
+        with sqlite3.connect(tmp_path/'workstep_platform.db') as db:
+            assert db.execute("select count(*) from users where id in (?,?)",users).fetchone()[0]==0
+            assert db.execute("select count(*) from audit_events where action='user.bulk_purge'").fetchone()[0]==1
+
+
+def test_group_recycle_bin_purge_removes_group_links_but_keeps_users(tmp_path):
+    import sqlite3
+    with TestClient(create_app(GatewaySettings(data_dir=tmp_path)),base_url='https://gateway.test') as client:
+        _,headers,users=setup(client)
+        group=client.post('/api/groups',headers=headers,json={'name':'回收组','slug':'recycle'}).json()['id']
+        client.post(f'/api/groups/{group}/members/bulk',headers=headers,json={'user_ids':users,'action':'add'})
+        url='/api/groups/bulk'
+        assert client.post(url,headers=headers,json={'group_ids':[group],'action':'purge'}).status_code==409
+        assert client.post(url,headers=headers,json={'group_ids':[group],'action':'delete'}).status_code==200
+        assert client.post(url,json={'group_ids':[group],'action':'purge'}).status_code==403
+        assert client.post(url,headers=headers,json={'group_ids':[group],'action':'purge'}).status_code==200
+        assert client.get('/api/groups/deleted').json()['groups']==[]
+        with sqlite3.connect(tmp_path/'workstep_platform.db') as db:
+            assert db.execute('select count(*) from users where id in (?,?)',users).fetchone()[0]==2
+            assert db.execute('select count(*) from group_memberships where group_id=?',(group,)).fetchone()[0]==0
+            assert db.execute('select count(*) from user_groups where id=?',(group,)).fetchone()[0]==0

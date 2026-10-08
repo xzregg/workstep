@@ -16,11 +16,11 @@ export function AdminUserTable({users, csrf, loading, resetKey, onRefresh}: {
  const [single, setSingle] = useState<{user:AdminUser; kind:'approve'|'disable'}|null>(null)
  const [notice, setNotice] = useState('')
  const chosen = users.filter(user=>selected.includes(user.id))
- function action(kind:'approve'|'enable'|'disable'|'delete'|'restore', ids = selected) {
-  const verb = {approve:'批准',enable:'启用',disable:'停用',delete:'删除',restore:'恢复'}[kind]
+ function action(kind:'approve'|'enable'|'disable'|'delete'|'restore'|'purge', ids = selected) {
+  const verb = {approve:'批准',enable:'启用',disable:'停用',delete:'删除',restore:'恢复',purge:'彻底删除'}[kind]
   setBulk({title:`批量${verb}用户`,label:`确认${verb}`,url:'/api/admin/users/bulk',
-   body:{action:kind,user_ids:ids},password:['disable','delete','restore'].includes(kind),
-   message:`确认${verb}所选 ${ids.length} 位用户？${kind==='disable'?'这些用户的登录会话将立即失效。':kind==='delete'?'登录和现有会话将失效，历史记录保留，可在“已删除”列表恢复。':kind==='restore'?'恢复后为停用状态，请核对权限后再启用。':''}`})
+   body:{action:kind,user_ids:ids},password:['disable','delete','restore','purge'].includes(kind),
+   message:`确认${verb}所选 ${ids.length} 位用户？${kind==='disable'?'这些用户的登录会话将立即失效。':kind==='delete'?'登录和现有会话将失效，历史记录保留，可在“已删除”列表恢复。':kind==='purge'?'账号及访问授权将永久删除，无法恢复。历史审计保留；同步不会重新创建该企业用户。':kind==='restore'?'恢复后为停用状态，请核对权限后再启用。':''}`})
  }
  return <>
   <div className="gateway-bulk-toolbar" aria-label="用户批量操作"><span>已选 {selected.length} 位用户</span>
@@ -29,6 +29,7 @@ export function AdminUserTable({users, csrf, loading, resetKey, onRefresh}: {
    <button type="button" disabled={loading || !chosen.length || chosen.some(user=>['disabled','deleted'].includes(user.status))} onClick={()=>action('disable')}>批量停用</button>
    <button type="button" disabled={loading || !chosen.length || chosen.some(user=>user.status==='deleted') || chosen.length>100} onClick={()=>action('delete')}>批量删除</button>
    {users.some(user=>user.status==='deleted') && <button type="button" disabled={loading || !chosen.length || chosen.some(user=>user.status!=='deleted') || chosen.length>100} onClick={()=>action('restore')}>批量恢复</button>}
+   {users.some(user=>user.status==='deleted') && <button type="button" disabled={loading || !chosen.length || chosen.some(user=>user.status!=='deleted') || chosen.length>100} onClick={()=>action('purge')}>批量彻底删除</button>}
    {!!selected.length && <button type="button" onClick={()=>setSelected([])}>取消选择</button>}
   </div>
   {notice && <p role="status">{notice}</p>}
@@ -44,6 +45,7 @@ export function AdminUserTable({users, csrf, loading, resetKey, onRefresh}: {
      {user.status==='deleted' ? <button type="button" disabled={loading || user.is_recovery} onClick={()=>action('restore',[user.id])}>恢复</button> : user.status==='disabled' ? <button type="button" disabled={loading || user.is_recovery} onClick={()=>action('enable',[user.id])}>启用</button>
       : <button type="button" disabled={loading || user.is_recovery} onClick={()=>setSingle({user,kind:'disable'})}>停用</button>}
      {user.status!=='deleted' && <button type="button" disabled={loading || user.is_recovery} onClick={()=>action('delete',[user.id])}>删除</button>}
+     {user.status==='deleted' && <button type="button" disabled={loading || user.is_recovery} onClick={()=>action('purge',[user.id])}>彻底删除</button>}
      {user.is_recovery && <span className="gateway-person-note">受保护账号</span>}
     </div></td>
    </tr>)}

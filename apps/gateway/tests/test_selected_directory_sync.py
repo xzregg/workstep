@@ -123,3 +123,55 @@ def test_automatic_sync_waits_for_selection_and_restart_marks_unfinished_job_fai
             row = await restarted.state.directory_reconciler.jobs.latest(source)
             assert row['status'] == 'failed' and row['error_code'] == 'interrupted'
         client.portal.call(check)
+
+
+def test_selected_sync_only_adds_and_reports_locally_deleted_records(tmp_path):
+    import sqlite3
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    class NewConnector(Connector):
+        async def fetch_directory(self, source, **kwargs):
+            return {'departments':[{'external_id':'2','display_name':'改名'}], 'people':[
+                {'subject':'old','display_name':'改名用户','department_ids':['2']},
+                {'subject':'deleted','display_name':'删除用户','department_ids':['2']},
+                {'subject':'new','display_name':'新增用户','department_ids':['2']} ]}
+    app.state.identity_connectors = {'dingtalk':NewConnector()}
+    with TestClient(app, base_url='https://gateway.test') as client:
+        csrf = _setup(client); headers = {'X-CSRF-Token':csrf}
+        source = client.post('/api/admin/identity-sources',headers=headers,json={'provider':'dingtalk','tenant_id':'corp','client_id':'app','client_secret':'secret'}).json()['id']
+        base = f'/api/admin/identity-sources/{source}'
+        client.post(base+'/sync',headers=headers,json={'departments':[{'external_id':'2','display_name':'原部门'}],'people':[
+            {'subject':'old','display_name':'原用户','department_ids':['2']},
+            {'subject':'deleted','display_name':'删除用户','department_ids':['2']},
+            {'subject':'missing','display_name':'本地保留','department_ids':['2']}]})
+        with sqlite3.connect(tmp_path/'workstep_platform.db') as db:
+            db.execute("update users set status='deleted' where id in (select user_id from directory_people where subject='deleted')")
+            db.execute("update user_groups set status='deleted'")
+        client.post(base+'/sync-jobs',headers=headers,json={'department_ids':['2']})
+        for _ in range(100):
+            job = client.get(base+'/sync-jobs/latest').json()
+            if job['status'] in ('completed','failed'): break
+            time.sleep(.02)
+        assert job['status']=='completed',job
+        assert job['result']['people_added']==1
+        assert job['result']['people_deleted_skipped']==1
+        assert job['result']['departments_deleted_skipped']==1
+        with sqlite3.connect(tmp_path/'workstep_platform.db') as db:
+            assert db.execute("select display_name,active from directory_people where subject='old'").fetchone()==('原用户',1)
+            assert db.execute("select active from directory_people where subject='missing'").fetchone()==(1,)
+            assert db.execute("select status from user_groups").fetchone()==('deleted',)
+
+        client.post('/api/auth/step-up',headers=headers,json={'password':'OwnerPassphrase-2026!'})
+        with sqlite3.connect(tmp_path/'workstep_platform.db') as db:
+            deleted_id=db.execute("select user_id from directory_people where subject='deleted'").fetchone()[0]
+        purged=client.post('/api/admin/users/bulk',headers=headers,json={'user_ids':[deleted_id],'action':'purge'})
+        assert purged.status_code==200,purged.text
+        client.post(base+'/sync-jobs',headers=headers,json={'department_ids':['2']})
+        for _ in range(100):
+            job=client.get(base+'/sync-jobs/latest').json()
+            if job['status'] in ('completed','failed'): break
+            time.sleep(.02)
+        assert job['status']=='completed',job
+        assert job['result']['people_deleted_skipped']==1
+        assert job['result']['people_added']==0
+        with sqlite3.connect(tmp_path/'workstep_platform.db') as db:
+            assert db.execute("select count(*) from directory_people where subject='deleted'").fetchone()[0]==0

@@ -60,6 +60,7 @@ def test_platform_address_saved_live_and_restored_on_restart(tmp_path):
     app = create_app(settings)
     with TestClient(app, base_url="https://gateway.test") as client:
         headers = {"X-CSRF-Token": _setup(client)}
+        assert client.put('/api/admin/platform-address', headers=headers, json={'public_origin':'https://workstep.example.com'}).status_code == 403
         assert client.post('/api/auth/step-up', headers=headers, json={'password':'OwnerPassphrase-2026!'}).status_code == 200
         body = {"public_origin": "https://workstep.example.com/"}
         assert client.put('/api/admin/platform-address', json=body).status_code == 403
@@ -95,7 +96,7 @@ def test_platform_address_write_lock_keeps_health_responsive(tmp_path):
         reached_write = threading.Event()
         engine = app.state.database.engine.sync_engine
         def before_execute(_connection, _cursor, statement, _parameters, _context, _many):
-            if 'platform_settings' in statement and statement.startswith(('INSERT', 'UPDATE')):
+            if statement.startswith(('INSERT', 'UPDATE')):
                 reached_write.set()
         event.listen(engine, 'before_cursor_execute', before_execute)
         async def scenario():

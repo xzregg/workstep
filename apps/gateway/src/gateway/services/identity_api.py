@@ -224,6 +224,8 @@ async def registration_policy(call: GatewayCall):
     from gateway.services.login_policy import password_login_enabled
     async with call.database.session() as session:
         enabled = await password_login_enabled(session)
+        from gateway.services.device_approval_policy import device_approval_mode
+        approval = await device_approval_mode(session)
     return {"mode": await _identity(call).registration_mode() if enabled else 'closed',
             "password_login_enabled": enabled}
 
@@ -445,11 +447,14 @@ async def admin_platform_settings(call: GatewayCall):
     from gateway.services.login_policy import password_login_enabled
     async with call.database.session() as session:
         enabled = await password_login_enabled(session)
+        from gateway.services.device_approval_policy import device_approval_mode
+        approval = await device_approval_mode(session)
     return {
         "gateway_id": settings.gateway_id,
         "public_origin": settings.public_origin,
         "registration_mode": await identity.registration_mode(),
         "password_login_enabled": enabled,
+        "device_approval_mode": approval,
         "session_seconds": SESSION_SECONDS,
         "protocol_version": call.protocol_version,
         "data_dir": str(settings.data_dir),

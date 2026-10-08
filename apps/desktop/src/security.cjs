@@ -1,9 +1,20 @@
+const { validateGatewayOrigin } = require('./gateway-origin.cjs')
+
 function parseUrl(value) {
   try {
     return new URL(value)
   } catch {
     return null
   }
+}
+
+function isGatewayDesktopLoginUrl(value) {
+  const target = parseUrl(value)
+  if (!target || target.pathname !== '/desktop/login' || target.hash) return false
+  try { validateGatewayOrigin(target.origin) } catch { return false }
+  const required = ['gateway_id', 'app_instance_id', 'state', 'nonce', 'code_challenge']
+  return [...target.searchParams].length === required.length
+    && required.every(key => target.searchParams.getAll(key).length === 1 && target.searchParams.get(key))
 }
 
 function isTrustedNavigation(value, rootUrl) {
@@ -52,6 +63,7 @@ function primaryNetworkIPv4(interfaces = require('node:os').networkInterfaces())
 
 module.exports = {
   isAllowedExternalUrl,
+  isGatewayDesktopLoginUrl,
   isTrustedNavigation,
   projectsHaveActiveWork,
   sessionsHaveActiveWork,

@@ -774,3 +774,21 @@ body:has(.gateway-dialog-backdrop) { overflow: hidden; }
 .gateway-platform-address code { overflow-wrap: anywhere; user-select: all; }
 
 .gateway-download-address { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+
+/* Keep role dialogs independent from the administration page's two-column forms. */
+.gateway-role-dialog { width: min(100%, 520px); }
+.gateway-role-dialog .gateway-role-form { display: flex; flex-direction: column; gap: 8px; }
+.gateway-role-dialog .gateway-role-form > label { margin: 12px 0 0; font-size: 13px; color: #475569; }
+.gateway-role-dialog .gateway-role-form > label:first-child { margin-top: 0; }
+.gateway-role-dialog .gateway-role-form input,
+.gateway-role-dialog .gateway-role-form select { box-sizing: border-box; width: 100%; min-width: 0; height: 40px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; color: #172033; font: inherit; }
+.gateway-role-dialog .gateway-role-form .gateway-admin-search { display: flex; align-items: center; gap: 8px; margin: 0; }
+.gateway-role-dialog .gateway-role-form .gateway-admin-search button { flex: none; margin: 0; }
+.gateway-role-dialog .gateway-role-form .gateway-role-checkbox { margin-top: 8px; }
+.gateway-role-dialog .gateway-role-form .gateway-role-checkbox input { width: 16px; height: 16px; padding: 0; }
+.gateway-role-dialog .gateway-role-form .gateway-dialog-actions { margin-top: 16px; padding-top: 16px; border-top: 1px solid #e2e8f0; justify-content: flex-end; }
+.gateway-role-dialog .gateway-role-form > p { margin: 4px 0; }
+
+.gateway-device-presence { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 12px; font-size: 12px; color: #64748b; background: #f1f5f9; }
+.gateway-device-presence::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.gateway-device-presence--online { color: #15803d; background: #dcfce7; }
