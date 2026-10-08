@@ -365,7 +365,7 @@ class SandboxManager {
           await session.command(containerArgs(config, this.platform, 0, token, managedEnv))
         }
         const mapping = await session.command(['port', `workstep-${config.id}`, '8765/tcp'])
-        const matched = /127\.0\.0\.1:(\d+)/.exec(mapping)
+        const matched = /(?:127\.0\.0\.1|0\.0\.0\.0|\[::\]|::):(\d+)/.exec(mapping)
         if (!matched) throw new Error('无法取得沙箱后台端口')
         const url = `http://127.0.0.1:${matched[1]}`
         const deadline = Date.now() + 90000
