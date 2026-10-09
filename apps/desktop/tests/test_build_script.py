@@ -176,7 +176,7 @@ def test_sandbox_web_build_uses_github_reachable_npm_registry() -> None:
     dockerfile = (REPO_DIR / "Dockerfile").read_text(encoding="utf-8")
     web_build = dockerfile.split("# Git 2.48+", maxsplit=1)[0]
 
-    assert "FROM --platform=$BUILDPLATFORM node:24-bookworm AS web-build" in web_build
+    assert "FROM node:24-bookworm AS web-build" in web_build
     assert "registry.npmmirror.com" not in web_build
     assert "https://registry.npmjs.org" in web_build
 
@@ -185,7 +185,7 @@ def test_local_macos_package_script_rebuilds_version_icons_and_runtime() -> None
     script = LOCAL_MACOS_PACKAGE_SCRIPT.read_text(encoding="utf-8")
     package = (REPO_DIR / "apps" / "desktop" / "package.json").read_text(encoding="utf-8")
 
-    assert '"version": "1.0.9"' in package
+    assert '"version": "1.0.10"' in package
     assert 'npm version "$version" --no-git-tag-version --allow-same-version' in script
     assert 'run_yarn icons' in script
     assert 'WORKSTEP_BUILD_VERSION="$version" "$repo_dir/build.sh" --with-web' in script

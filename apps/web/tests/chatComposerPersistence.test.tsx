@@ -157,7 +157,7 @@ async function renderChat(container: HTMLElement): Promise<Root> {
       </MemoryRouter>,
     )
   })
-  await act(async () => { await Promise.resolve() })
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
   return root
 }
 
@@ -561,14 +561,14 @@ test('permission mode remains editable and updates immediately while running', a
   try {
     const root = await renderChat(container)
     const permissionButton = [...document.querySelectorAll('button')]
-      .find((button) => button.title === '权限') as HTMLButtonElement | undefined
-    assert.ok(permissionButton)
+      .find((button) => button.dataset.kind === 'permission') as HTMLButtonElement | undefined
+    assert.ok(permissionButton, document.body.textContent || 'Permission control missing')
     assert.equal(permissionButton.disabled, false)
 
     await act(async () => permissionButton.click())
     const workspaceWrite = [...document.querySelectorAll('button')]
-      .find((button) => button.textContent?.includes('工作区写入')) as HTMLButtonElement | undefined
-    assert.ok(workspaceWrite)
+      .find((button) => /工作区写入|Workspace write/.test(button.textContent || '')) as HTMLButtonElement | undefined
+    assert.ok(workspaceWrite, document.body.textContent || 'Permission menu missing')
     await act(async () => workspaceWrite.click())
     await act(async () => { await Promise.resolve() })
 
@@ -576,13 +576,13 @@ test('permission mode remains editable and updates immediately while running', a
 
     await act(async () => permissionButton.click())
     const readOnly = [...document.querySelectorAll('button')]
-      .find((button) => button.textContent?.includes('只读')) as HTMLButtonElement | undefined
+      .find((button) => /只读|Read.only/.test(button.textContent || '')) as HTMLButtonElement | undefined
     assert.ok(readOnly)
     await act(async () => readOnly.click())
     await act(async () => { await Promise.resolve() })
 
     assert.deepEqual(updates, ['workspace-write', 'read-only'])
-    assert.match(permissionButton.textContent || '', /工作区写入/)
+    assert.match(permissionButton.textContent || '', /工作区写入|Workspace write/)
     assert.match(document.body.textContent || '', /permission update rejected/)
     await act(async () => root.unmount())
   } finally {
