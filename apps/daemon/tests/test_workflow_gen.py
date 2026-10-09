@@ -2747,7 +2747,7 @@ async def test_workflow_event_details_api_replays_journal_off_loop(gen_module, m
             await asyncio.sleep(0.005)
         assert entered.is_set(), "event detail endpoint must read the journal"
         started = time.monotonic()
-        health = await client.get("/health")
+        health = await client.get("/api/health")
         assert health.status_code == 200
         assert time.monotonic() - started < 0.15
         response = await pending

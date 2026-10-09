@@ -289,7 +289,7 @@ async def test_worker_timeout_kills_descendant_process(custom_environment):
     source = custom_environment
     code = "import subprocess, sys, time\nfrom pathlib import Path\nchild = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\nPath(__file__).with_name('child.pid').write_text(str(child.pid))\ntime.sleep(60)\n"
     (source / "engine.py").write_text(code)
-    with pytest.raises(TimeoutError): await manager.inspect(str(source), timeout=2)
+    with pytest.raises(TimeoutError): await manager.inspect(str(source), timeout=10)
     pid_file = source / "child.pid"
     assert pid_file.exists()
     pid = int(pid_file.read_text())

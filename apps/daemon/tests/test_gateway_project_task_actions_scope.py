@@ -261,6 +261,8 @@ async def test_project_bridge_chat_create_load_send_reload(api_context, monkeypa
     project_id = initialized.json()["id"]
     bus = EventBus()
     module = ChatSessionModule(bus, main.project_manager)
+    from engines.claude_code import ClaudeCodeEngine
+    monkeypatch.setattr(ClaudeCodeEngine, 'is_installed', classmethod(lambda cls: True))
     monkeypatch.setattr(main, "chat_session_module", module)
     monkeypatch.setattr(module, "start_queued_turn", lambda turn_id: None)
     monkeypatch.setattr(main.gateway_client, "managed_config", object())
