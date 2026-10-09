@@ -32,7 +32,7 @@ async def remote_files(tmp_path, monkeypatch):
     outside = tmp_path / "secret.html"
     outside.write_text("private")
     (site / "escape.html").symlink_to(outside)
-    project = SimpleNamespace(id="owner-project", path=root)
+    project = SimpleNamespace(id="owner-project", path=root, workstep_dir=root / '.workstep')
     monkeypatch.setattr(main, "project_manager", SimpleNamespace(
         get_project_by_id=lambda project_id: project if project_id == project.id else None,
     ))

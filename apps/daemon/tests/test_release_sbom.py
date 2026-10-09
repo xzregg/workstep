@@ -22,7 +22,7 @@ def test_release_sbom_covers_bundled_python_and_javascript_dependencies():
     assert bom["metadata"]["component"]["version"] == "1.2.3"
     assert any(name == "fastapi" for name, _version in components)
     assert any(name == "electron" for name, _version in components)
-    assert any(name == "electron-updater" for name, _version in components)
+    assert not any(name == "electron-updater" for name, _version in components)
     assert any(name == "react" for name, _version in components)
     assert any(name == "@electron/get" for name, _version in components)
     assert all(not version.startswith(("^", "~", ">", "<", "=")) for _name, version in components)

@@ -8,8 +8,10 @@ from services.skill_center import skill_center
 
 
 def chat_module():
-    from api.chat_session import _module
-    return _module()
+    from main import chat_session_module
+    if chat_session_module is None:
+        raise ValueError('Chat sessions are not initialized')
+    return chat_session_module
 
 
 def workspace_parent() -> Path:
