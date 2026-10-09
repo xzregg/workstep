@@ -2758,6 +2758,8 @@ async def test_engine_list_matches_the_frontend_contract(api_context):
     assert response.status_code == 200
     engines = response.json()["engines"]
     assert {engine["id"] for engine in engines} == {
+        "claude",
+        "codex",
         "hermes",
         "qoder_sdk",
         "openclaw",
@@ -3022,10 +3024,10 @@ async def test_claude_permission_mode_requires_dangerous_confirmation(
         lambda mode: (current.update(mode=mode), saved.append(mode)),
     )
 
-    # Hidden engine: no HTTP endpoint; verify module-level confirmation helper instead.
+    # Default-hidden engines remain registered for existing configurations.
     assert claude_code_module.ClaudeCodeEngine.ENGINE_ID == "claude"
     from engines.core.registry import _ALL_ENGINES
-    assert "claude" not in _ALL_ENGINES
+    assert "claude" in _ALL_ENGINES
     assert current["mode"] == "dontAsk"
 
 

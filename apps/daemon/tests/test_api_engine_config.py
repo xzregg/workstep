@@ -28,6 +28,9 @@ from engines.core.events import InternalEvent
 class MemoryEngineConfigStore:
     """In-memory stand-in for ConfigStore covering engine + provider config."""
 
+    def is_engine_enabled(self, engine_id):
+        return engine_id not in {"claude", "codex"}
+
     def __init__(self):
         self.providers: list[dict] = []
         self.provider_models: dict[str, dict] = {}
