@@ -994,3 +994,51 @@ def test_admin_provider_probe_runs_on_assigned_pc_and_returns_only_safe_result(t
                 assert result.json() == {"status": "succeeded", "duration_ms": 27,
                                          "error_code": None}
                 assert "secret-api-key" not in result.text
+
+
+def test_full_data_queue_closes_tunnel_and_allows_reconnect_without_blocking_health(tmp_path):
+    import asyncio
+    from workstep_gateway_protocol import FrameType, ProxyFrame
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        device_id, token, device_key, _ = _active_device(client)
+        with client.websocket_connect("/ws/control") as control:
+            _handshake(control, token, device_key)
+            assert control.receive_json()["kind"] == "hello"
+            pending = client.portal.start_task_soon(app.state.control_connections.request_data, device_id)
+            command = control.receive_json()
+            with client.websocket_connect("/ws/data") as data:
+                data.send_json({"kind": "data_hello", "token": command["token"]})
+                assert data.receive_json()["kind"] == "data_ready"
+                connection = pending.result(timeout=3)
+                frame = ProxyFrame(stream_id='slow', type=FrameType.websocket_data, payload={})
+                async def fill():
+                    queue = asyncio.Queue(maxsize=32)
+                    connection._streams['slow'] = queue
+                    for _ in range(32):
+                        await connection.deliver(frame)
+                    return queue
+                queue = client.portal.call(fill)
+                data.send_json(frame.model_dump(mode='json'))
+                with pytest.raises(WebSocketDisconnect) as closed:
+                    data.receive_json()
+                assert closed.value.code == 1013
+            async def check_release():
+                assert device_id not in app.state.control_connections._data_active
+                released = []
+                while not queue.empty():
+                    released.append(queue.get_nowait())
+                assert any(isinstance(item, ConnectionError) for item in released)
+            client.portal.call(check_release)
+            started = time.monotonic()
+            assert client.get('/api/health').json() == {'status': 'ok'}
+            control.send_json({'kind': 'heartbeat'})
+            assert control.receive_json()['kind'] == 'heartbeat_ack'
+            assert time.monotonic() - started < 0.5
+            pending = client.portal.start_task_soon(app.state.control_connections.request_data, device_id)
+            command = control.receive_json()
+            assert command['kind'] == 'open_data'
+            with client.websocket_connect('/ws/data') as data:
+                data.send_json({'kind': 'data_hello', 'token': command['token'], 'flow_control': True})
+                assert data.receive_json()['flow_control'] is True
+                assert pending.result(timeout=3).flow_control is True

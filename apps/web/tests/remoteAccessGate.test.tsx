@@ -90,3 +90,26 @@ test('remote access gate passes through local or password-free installs', async 
     await act(async () => root.unmount())
   }
 })
+
+
+test('remote access check shows a loading status while the network is slow', async () => {
+  const { document } = installDomEnvironment()
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  const originalFetch = globalThis.fetch
+  let finish!: (response: Response) => void
+  globalThis.fetch = () => new Promise<Response>(resolve => { finish = resolve })
+  const root = renderGate(document)
+  try {
+    await act(async () => {
+      root.render(<I18nProvider><RemoteAccessGate><div id="app-body">应用内容</div></RemoteAccessGate></I18nProvider>)
+    })
+    assert.ok(document.querySelector('[role="status"]')?.textContent)
+    assert.equal(document.querySelector('#app-body'), null)
+    await act(async () => { finish(Response.json({ required: false, local: false, authorized: true })) })
+    assert.equal(document.querySelector('#app-body')?.textContent, '应用内容')
+    assert.equal(document.querySelector('[role="status"]'), null)
+  } finally {
+    globalThis.fetch = originalFetch
+    await act(async () => root.unmount())
+  }
+})

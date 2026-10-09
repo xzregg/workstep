@@ -54,7 +54,12 @@ class ManagedHttpBridge:
         self._task = asyncio.create_task(self._run())
 
     async def feed(self, frame: ProxyFrame) -> None:
-        await self._inbound.put(frame)
+        # The shared reader must keep processing other streams and credits.
+        # Negotiated credit windows prevent overflow during normal operation.
+        try:
+            self._inbound.put_nowait(frame)
+        except asyncio.QueueFull as exc:
+            raise ConnectionError("Managed data receive queue full") from exc
 
     def cancel(self) -> None:
         if self._task:
@@ -235,7 +240,12 @@ class ManagedWebSocketBridge:
         self._task = asyncio.create_task(self._run())
 
     async def feed(self, frame: ProxyFrame) -> None:
-        await self._inbound.put(frame)
+        # The shared reader must keep processing other streams and credits.
+        # Negotiated credit windows prevent overflow during normal operation.
+        try:
+            self._inbound.put_nowait(frame)
+        except asyncio.QueueFull as exc:
+            raise ConnectionError("Managed data receive queue full") from exc
 
     def cancel(self) -> None:
         if self._task:
