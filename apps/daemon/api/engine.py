@@ -480,7 +480,9 @@ async def list_engine_models(
                     ),
                 )
             )
-            if refresh:
+            # An existing catalog is the user-selected subset, including an
+            # explicitly empty selection. Engine refresh must not overwrite it.
+            if refresh and not entry:
                 models = await asyncio.wait_for(
                     provider_service.fetch_and_save_models(
                         provider, protocol=provider_runtime.protocol

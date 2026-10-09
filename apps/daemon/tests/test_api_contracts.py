@@ -1734,27 +1734,34 @@ async def test_slow_filesystem_write_does_not_block_health_check(
     initialized = await client.post("/api/project/init", json={"path": str(project_dir)})
     project_id = initialized.json()["id"]
     original_write_bytes = Path.write_bytes
+    write_started = threading.Event()
+    release_write = threading.Event()
 
     def slow_upload(path, content):
         if path.parent.name == "uploads":
-            time.sleep(0.25)
+            write_started.set()
+            release_write.wait(5)
         return original_write_bytes(path, content)
 
     monkeypatch.setattr(Path, "write_bytes", slow_upload)
-    started = time.perf_counter()
     upload = asyncio.create_task(client.post(
         "/api/fs/upload/file",
         params={"project_id": project_id},
         json={"filename": "probe.txt", "data_url": "data:text/plain;base64,cHJvYmU="},
     ))
-    await asyncio.sleep(0.02)
-    health = await client.get("/api/health")
-    elapsed = time.perf_counter() - started
+    try:
+        async with asyncio.timeout(2):
+            while not write_started.is_set():
+                await asyncio.sleep(0.01)
+        health = await asyncio.wait_for(client.get("/api/health"), timeout=0.5)
+        assert health.status_code == 200
+        assert not upload.done()
+    finally:
+        release_write.set()
     uploaded = await upload
 
     assert health.status_code == 200
     assert uploaded.status_code == 200
-    assert elapsed < 0.15
 
 @pytest.mark.anyio
 async def test_upload_file_returns_project_relative_markdown_target(api_context):
