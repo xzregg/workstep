@@ -14,6 +14,7 @@ function desktopHarness() {
       this.options = options
       this.events = new Map()
       this.webContents = {
+        getURL: () => this.url,
         on: (event, callback) => handlers.set(event, callback),
         setWindowOpenHandler: callback => { this.openHandler = callback },
       }
@@ -22,8 +23,10 @@ function desktopHarness() {
     on(event, callback) { this.events.set(event, callback) }
     once(event, callback) { this.events.set(event, callback) }
     loadURL(url) { this.url = url; return Promise.resolve() }
+    getURL() { return this.url }
     show() {}
     focus() {}
+    isMinimized() { return false }
     close() { this.closed = true; this.events.get('closed')?.() }
     isDestroyed() { return !!this.closed }
   }
@@ -32,6 +35,7 @@ function desktopHarness() {
     require(name) {
       if (name === 'electron') return {
         BrowserWindow: Window,
+        Menu: { buildFromTemplate: template => template, setApplicationMenu: menu => handlers.set('application-menu', menu) },
         session: { defaultSession: {
           webRequest: {
             onCompleted: (_filter, callback) => handlers.set('completed', callback),
@@ -96,8 +100,18 @@ for (const entry of ['popup', 'redirect']) {
       handlers.get('will-redirect')({ preventDefault() {} }, url)
     }
     assert.deepEqual(external, [], 'login must not launch the system browser')
-    assert.equal(windows.length, 2)
-    assert.equal(windows[1].url, url)
+    assert.equal(windows.length, 1)
+    assert.equal(main.url, url)
+    let prevented = false
+    handlers.get("will-redirect")({ preventDefault() { prevented = true } }, "https://identity.example/login")
+    assert.equal(prevented, false, "authentication redirects stay in the current window")
+    context.authCallbacks = []
+    vm.runInContext('openProtocolUrl = value => authCallbacks.push(value)', context)
+    const callback = 'workstep://auth/callback?code=test&state=test'
+    handlers.get('will-redirect')({ preventDefault() { prevented = true } }, callback)
+    assert.equal(prevented, true)
+    assert.deepEqual(Array.from(context.authCallbacks), [callback])
+    assert.equal(main.closed, undefined)
   })
 }
 
@@ -135,4 +149,42 @@ test('configured gateway callback displays the device authorization rejection', 
   vm.runInContext('rootUrl = "http://127.0.0.1:8766"; desktopToken = "per-launch-secret"', context)
   await assert.rejects(vm.runInContext('completeConfiguredGatewayCallback("workstep://auth/callback?code=" + "c".repeat(32) + "&state=" + "s".repeat(32))', context),
     error => error.message === detail)
+})
+
+ test('configured gateway callback returns to the original local page in the same window', async () => {
+  const { context, windows } = desktopHarness()
+  context.fetch = async () => ({ status: 303 })
+  context.AbortSignal = AbortSignal
+  const main = vm.runInContext('rootUrl = "http://127.0.0.1:8766"; desktopToken = "secret"; createWindow(rootUrl + "/tasks?project=t1")', context)
+  vm.runInContext('openGatewayLoginWindow("https://gateway.example/desktop/login")', context)
+  await vm.runInContext('completeConfiguredGatewayCallback("workstep://auth/callback?code=" + "c".repeat(32) + "&state=" + "s".repeat(32))', context)
+  assert.equal(windows.length, 1)
+  assert.equal(main.closed, undefined)
+  assert.equal(main.url, 'http://127.0.0.1:8766/tasks?project=t1')
+ })
+
+for (const reason of ['escape', 'failure', 'button']) {
+  test(`gateway authentication ${reason} returns locally without reopening login`, async () => {
+    const { context, windows, handlers } = desktopHarness()
+    vm.runInContext('rootUrl = "http://127.0.0.1:8766"; createWindow(rootUrl + "/tasks?project=t1"); openGatewayLoginWindow("https://gateway.example/desktop/login")', context)
+    const main = windows[0]
+    if (reason === 'escape') handlers.get('before-input-event')({ preventDefault() {} }, { type: 'keyDown', key: 'Escape' })
+    else if (reason === 'button') handlers.get('will-navigate')({ preventDefault() {} }, 'workstep://auth/cancel')
+    else handlers.get('did-fail-load')({}, -102, 'connection refused', 'https://gateway.example/desktop/login', true)
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(windows.length, 1)
+    assert.equal(main.url, 'http://127.0.0.1:8766/tasks?project=t1&gateway_auth=cancelled')
+    assert.equal(vm.runInContext('gatewayLoginReturnUrl', context), null)
+  })
+}
+
+test('native desktop menu returns from an arbitrary page without an active login', async () => {
+  const { context, handlers } = desktopHarness()
+  const main = vm.runInContext('rootUrl = "http://127.0.0.1:8766"; createWindow(rootUrl)', context)
+  await main.loadURL('https://google.com')
+  const menu = handlers.get('application-menu')
+  const entry = menu.flatMap(item => item.submenu || []).find(item => item.label === '返回本地工作台')
+  assert.equal(entry.accelerator, 'CmdOrCtrl+Shift+H')
+  entry.click()
+  assert.equal(main.url, 'http://127.0.0.1:8766/?gateway_auth=cancelled')
 })

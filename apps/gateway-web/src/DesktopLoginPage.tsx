@@ -75,6 +75,24 @@ export function DesktopLoginPage() {
     return () => controller.abort()
   }, [request?.state])
 
+  async function switchAccount() {
+    if (!csrf || status !== 'ready') return
+    setStatus('submitting')
+    setError('')
+    try {
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf },
+      })
+      if (!response.ok && response.status !== 401) throw new Error('登出失败，请重试。')
+      setCsrf(null)
+      setStatus('login')
+      window.dispatchEvent(new Event('gateway-auth-changed'))
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '登出失败，请重试。')
+      setStatus('ready')
+    }
+  }
+
   async function authorize(token: string) {
     if (!request) return
     setStatus('submitting')
@@ -160,11 +178,15 @@ export function DesktopLoginPage() {
           {!passwordEnabled && !sources.length && <p><Link to={`/auth?next=${encodeURIComponent('/desktop/login?'+searchParams.toString())}`}>进入扫码登录页</Link></p>}
         </>
       )}
-      {status === 'ready' && <button type="button" onClick={() => csrf && void authorize(csrf)}>
-        在此电脑上继续
-      </button>}
+      {status === 'ready' && <>
+        <button type="button" onClick={() => csrf && void authorize(csrf)}>在此电脑上继续</button>
+        <button type="button" onClick={() => void switchAccount()}>登出并切换账号</button>
+      </>}
       {status === 'submitting' && <p role="status">正在完成授权…</p>}
       {error && <p className="gateway-auth-error" role="alert">{error}</p>}
+      {request.redirect_uri
+        ? <p><a href={new URL('/?gateway_auth=cancelled', request.redirect_uri).href}>返回本地工作台</a></p>
+        : <p><a href="workstep://auth/cancel">返回本地工作台</a></p>}
     </section>
   )
 }

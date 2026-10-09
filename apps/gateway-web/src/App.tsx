@@ -41,11 +41,14 @@ export function App({ deviceHost = typeof window !== 'undefined' && window.locat
 
 function GatewayPortalApp() {
   const location = useLocation()
+  const authenticationNext = new URLSearchParams(location.search).get('next')
+  const deviceAuthentication = location.pathname === '/desktop/login'
+    || (['/auth', '/auth/pending'].includes(location.pathname) && authenticationNext?.startsWith('/desktop/login?'))
   const adminAccess = useAdminAccess()
   const hasAdminAccess = adminAccess.status === 'ready' && !!adminAccess.access?.roles.length
   return (
     <PasswordConfirmationRequired.Provider value={adminAccess.access?.password_confirmation_required !== false}><main className={location.pathname === '/' ? 'gateway-workspace-portal' : undefined}>
-      {!location.pathname.startsWith('/admin') && <PortalHeader hasAdminAccess={hasAdminAccess} signedIn={adminAccess.status === 'ready'} checking={adminAccess.status === 'checking'} />}
+      {!location.pathname.startsWith('/admin') && !deviceAuthentication && <PortalHeader hasAdminAccess={hasAdminAccess} signedIn={adminAccess.status === 'ready'} checking={adminAccess.status === 'checking'} />}
       <AdminPortalRegion admin={location.pathname.startsWith('/admin')} roles={adminAccess.access?.roles ?? []}>
       <Routes>
         <Route path="/" element={<ProjectsPage />} />

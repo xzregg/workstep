@@ -9,6 +9,7 @@ export default function GatewayDesktopAuthentication() {
   const { t } = useI18n()
   const { status } = useGatewayConnection()
   const attempted = useRef('')
+  const cancelled = useRef(new URLSearchParams(window.location.search).get('gateway_auth') === 'cancelled')
   const submitting = useRef(false)
   const mounted = useRef(false)
   const [busy, setBusy] = useState(false)
@@ -40,7 +41,7 @@ export default function GatewayDesktopAuthentication() {
   }, [status, needsLogin, t])
 
   useEffect(() => {
-    if (needsLogin && status && attempted.current !== status.url) {
+    if (!cancelled.current && needsLogin && status && attempted.current !== status.url) {
       attempted.current = status.url
       void authenticate()
     }
