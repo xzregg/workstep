@@ -65,6 +65,7 @@ async def test_coordinator_status_reads_resolved_config_off_loop_and_routes_usag
     _, bus, _, _, config, projects, project = setup
     await projects.run_db(project.id, lambda p: Task.update(coordinator_engine='codex', coordinator_model='qwen', coordinator_thinking_effort='high').where(Task.id == 'task').execute())
     coordinator = CoordinatorModule(bus, projects, None)
+    monkeypatch.setattr(coordinator, '_resolve_engine_models', lambda task: ('codex', 'qwen', None, None))
     entered, release = threading.Event(), threading.Event()
     original = coordinator._get_config_sync
     def slow_config(*args):
