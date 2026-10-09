@@ -1,7 +1,9 @@
 .gateway-project-invitations { max-width: 900px; }
 .gateway-project-invitation-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 1px solid var(--gateway-admin-separator); }
-.gateway-project-invitation-tabs button { background: transparent; color: var(--gateway-admin-secondary); border: 1px solid transparent; min-height: 36px; padding: 8px 16px; }
-.gateway-project-invitation-tabs button[aria-selected="true"] { background: var(--gateway-admin-surface); color: var(--gateway-admin-accent); border-color: var(--gateway-admin-border); }
+.gateway-project-invitations .gateway-project-invitation-tabs button { background: transparent; color: var(--gateway-admin-secondary); border: 1px solid transparent; min-height: 36px; padding: 8px 16px; }
+.gateway-project-invitations .gateway-project-invitation-tabs button:not(:disabled):hover { background: var(--gateway-admin-surface); color: var(--gateway-admin-ink); }
+.gateway-project-invitations .gateway-project-invitation-tabs button[aria-selected="true"] { background: var(--gateway-admin-accent); color: var(--gateway-admin-canvas); border-color: var(--gateway-admin-accent); }
+.gateway-project-invitations .gateway-project-invitation-tabs button[aria-selected="true"]:not(:disabled):hover { background: var(--gateway-admin-accent-hover); color: var(--gateway-admin-canvas); border-color: var(--gateway-admin-accent-hover); }
 .gateway-project-invitation-tabs button:focus-visible { outline: 2px solid var(--gateway-admin-accent); outline-offset: 2px; }
 .gateway-project-invitation-section { margin-top: 0; padding-top: 0; }
 .gateway-project-invitation-section .gateway-auth-form { max-width: 560px; }

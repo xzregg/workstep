@@ -93,7 +93,7 @@ export const projectApi = {
     const session = useGatewaySessionStore.getState().session
     if (session?.host_project_id) {
       if (session.host_project_id !== projectId) throw new Error('项目不在当前授权范围内。')
-      const result = await request<Pick<ProjectPublicationStatus, 'grants'>>('/remote/project-grants')
+      const result = await request<Pick<ProjectPublicationStatus, 'grants' | 'can_invite'>>('/remote/project-grants')
       return { ...result, project_id: session.project_id, status: 'published',
         can_publish: false, can_manage: !!session.can_manage_project_access,
         gateway_url: session.gateway_url.replace(/\/devices$/, '') }

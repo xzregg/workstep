@@ -102,8 +102,21 @@ def test_project_grants_require_publication_and_follow_current_group_membership(
         assert client.get(f"{host}/api/remote/session").json()["can_manage_project_access"] is False
         grants = client.get(f"{host}/api/remote/project-grants")
         assert grants.status_code == 200, grants.text
-        assert grants.json() == {"grants": [{"subject_type": "group", "subject_id": group_id,
+        assert grants.json() == {"can_invite": False, "grants": [{"subject_type": "group", "subject_id": group_id,
                                              "subject_name": "Backend", "access_level": "read"}]}
+        async def assign_owner():
+            async with app.state.database.session() as session:
+                async with session.begin():
+                    device = await session.get(Device, 'device-1')
+                    device.owner_user_id = worker_id
+        client.portal.call(assign_owner)
+        assert client.get(f"{host}/api/remote/project-grants").json()['can_invite'] is True
+        async def clear_owner():
+            async with app.state.database.session() as session:
+                async with session.begin():
+                    device = await session.get(Device, 'device-1')
+                    device.owner_user_id = None
+        client.portal.call(clear_owner)
         assert client.get(f"{host}/admin").status_code == 403
         assert client.get(f"{host}/api/health").status_code == 403
         class ProjectData:
