@@ -177,6 +177,7 @@ def test_sandbox_web_build_uses_github_reachable_npm_registry() -> None:
     web_build = dockerfile.split("# Git 2.48+", maxsplit=1)[0]
 
     assert "FROM node:24-bookworm AS web-build" in web_build
+    assert web_build.count("--network-timeout 600000 --network-concurrency 4") == 3
     assert "registry.npmmirror.com" not in web_build
     assert "https://registry.npmjs.org" in web_build
 
