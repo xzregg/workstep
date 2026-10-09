@@ -472,29 +472,13 @@ async def list_engine_models(
         )
         effective_provider = provider_runtime.provider_id if provider_runtime else ""
         if effective_provider:
-            provider, entry = await asyncio.to_thread(
-                lambda: (
-                    config_store.get_provider(effective_provider),
-                    config_store.get_provider_models(
-                        effective_provider, provider_runtime.protocol
-                    ),
-                )
+            # Provider catalogs contain the user's saved selection. Refresh
+            # only rereads it; model discovery belongs to provider settings.
+            models = await asyncio.to_thread(
+                provider_service.saved_models,
+                effective_provider,
+                provider_runtime.protocol,
             )
-            # An existing catalog is the user-selected subset, including an
-            # explicitly empty selection. Engine refresh must not overwrite it.
-            if refresh and not entry:
-                models = await asyncio.wait_for(
-                    provider_service.fetch_and_save_models(
-                        provider, protocol=provider_runtime.protocol
-                    ),
-                    timeout=15,
-                )
-            else:
-                models = await asyncio.to_thread(
-                    provider_service.saved_models,
-                    effective_provider,
-                    provider_runtime.protocol,
-                )
             fetched_at = (
                 await asyncio.to_thread(
                     config_store.get_provider_models,

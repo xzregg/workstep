@@ -635,4 +635,6 @@ Gateway 项目管理 `/admin/projects` 由 `apps/gateway-web/src/AdminProjectsPa
 
 直接远程项目设置：`streaming/remote_host.py::_build_route_catalog` 将 `/api/projects/{project_id}/…` 和项目技能路径识别为 path 绑定，转发时将本地 `remote:…` 别名替换为已认证的宿主项目 ID；测试 `test_remote_project.py::test_remote_project_settings_path_is_bound_to_host_identity`。
 
-引擎模型刷新由 `apps/daemon/api/engine.py::list_engine_models` 持有：绑定供应商且已有模型目录时只重新读取已保存的勾选结果（包括空选择），不拉取或覆盖全量模型；尚无目录时允许首次拉取，原生账号仍刷新引擎目录。供应商全量预览与勾选保存仍归 `api/provider.py::provider_models_preview/provider_models_selection`。回归见 `tests/test_api_engine_config.py::test_engine_refresh_preserves_provider_selection`、`test_native_engine_models_are_persisted_and_reused`。
+引擎模型刷新由 `apps/daemon/api/engine.py::list_engine_models` 持有：绑定供应商时始终只重新读取已保存的勾选缓存（包括空选择），不拉取或覆盖全量模型；尚无缓存时返回空列表，原生账号仍刷新引擎目录。供应商全量预览与勾选保存仍归 `api/provider.py::provider_models_preview/provider_models_selection`。回归见 `tests/test_api_engine_config.py::test_engine_refresh_preserves_provider_selection`、`test_native_engine_models_are_persisted_and_reused`。
+
+侧栏项目拖动由 `apps/web/src/components/Layout.tsx` 组装，`stores/projectStore.ts::reorderProjects` 乐观排序并保存；本地与远程项目统一支持移动。`api/project.py::list_projects` 按本机配置 `project_order` 合并排序，`services/project.py::reorder_projects` 保存统一顺序并兼容原本地项目顺序。行为测试为 `tests/test_project_reorder.py` 与 Web `tests/projectReorder.test.ts`。

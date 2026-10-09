@@ -15,7 +15,7 @@ const project = (id: string): Project => ({
 test('reorderProjects reorders local state and persists the new order', async () => {
   const first = project('first')
   const second = project('second')
-  const third = project('third')
+  const third = { ...project('third'), type: 'remote' as const }
   const originalFetch = globalThis.fetch
   globalThis.fetch = async (input, init) => {
     assert.equal(String(input), '/api/project/reorder')
