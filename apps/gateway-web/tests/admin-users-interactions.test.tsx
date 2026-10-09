@@ -121,13 +121,79 @@ test('device page retries load errors and pages server results', async () => {
   await waitFor(() => assert.ok(requests.some(url => url.includes('page=2'))))
 })
 
+test('disabled device can be reenabled through an administrator confirmation', async () => {
+  let status = 'disabled'
+  globalThis.fetch = async input => {
+    const url = String(input)
+    if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
+    if (url.startsWith('/api/admin/devices?')) return Response.json({ devices: [
+      { id: 'device-1', name: 'Alice PC', version: '1', status, online: false },
+    ], total: 1 })
+    if (url === '/api/auth/step-up') return new Response(null, { status: 200 })
+    if (url === '/api/admin/devices/device-1/approve') {
+      status = 'active'; return new Response(null, { status: 204 })
+    }
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+  render(<DeviceAdminPage />)
+  fireEvent.click(await screen.findByRole('button', { name: '重新启用' }))
+  const dialog = screen.getByRole('dialog', { name: '重新启用设备' })
+  fireEvent.change(within(dialog).getByLabelText('输入管理员密码确认'), { target: { value: 'test-admin-password' } })
+  fireEvent.click(within(dialog).getByRole('button', { name: '确认重新启用' }))
+  await screen.findByRole('button', { name: '停用' })
+  assert.equal(status, 'active')
+})
+
+test('revoked device offers a name edit and explains why reenable is unavailable', async () => {
+  globalThis.fetch = async input => {
+    const url = String(input)
+    if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
+    if (url.startsWith('/api/admin/devices?')) return Response.json({ devices: [
+      { id: 'device-1', name: 'Container PC', version: '1', status: 'revoked', online: false },
+    ], total: 1 })
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+  render(<DeviceAdminPage />)
+  fireEvent.click(await screen.findByRole('button', { name: '修改名称' }))
+  assert.ok(screen.getByRole('dialog', { name: '修改设备名称' }))
+  assert.equal((screen.getByLabelText('设备名称') as HTMLInputElement).value, 'Container PC')
+  assert.equal(screen.queryByRole('button', { name: '重新启用' }), null)
+  assert.ok(screen.getByText(/该设备身份已撤销，不能直接重新启用。/))
+})
+
+test('permanent deletion is available for revoked devices and refreshes the list after confirmation', async () => {
+  let deleted = false
+  globalThis.fetch = async (input, init) => {
+    const url = String(input)
+    if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
+    if (url.startsWith('/api/admin/devices?')) return Response.json({ devices: deleted ? [] : [
+      { id: 'device-1', name: 'Container PC', version: '1', status: 'revoked', online: false },
+    ], total: deleted ? 0 : 1 })
+    if (url === '/api/auth/step-up') return new Response(null, { status: 200 })
+    assert.equal(url, '/api/admin/devices/device-1')
+    assert.equal(init?.method, 'DELETE')
+    deleted = true; return new Response(null, { status: 204 })
+  }
+  render(<DeviceAdminPage />)
+  fireEvent.click(await screen.findByRole('button', { name: '彻底删除' }))
+  const dialog = screen.getByRole('dialog', { name: '彻底删除设备' })
+  assert.match(dialog.textContent ?? '', /本机项目和文件保留/)
+  assert.match(dialog.textContent ?? '', /重新登记/)
+  const confirm = within(dialog).getByRole('button', { name: '确认彻底删除' }) as HTMLButtonElement
+  assert.equal(confirm.disabled, true)
+  fireEvent.change(within(dialog).getByLabelText('输入管理员密码确认'), { target: { value: 'test-password' } })
+  fireEvent.click(confirm)
+  await screen.findByText('当前筛选下没有设备。')
+  assert.equal(deleted, true)
+})
+
 test('device page distinguishes outdated and unknown client versions', async () => {
   globalThis.fetch = async input => {
     const url = String(input)
     if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
     if (url.startsWith('/api/admin/devices?')) return Response.json({ devices: [
       { id: 'old', name: 'Old PC', version: '1.2.0', status: 'active', online: true,
-        daemon_health: true, latest_version: '1.10.0', update_available: true },
+        connection_ip: '2001:db8::7', daemon_health: true, latest_version: '1.10.0', update_available: true },
       { id: 'legacy', name: 'Legacy PC', version: '1.0.0', status: 'active', online: false,
         daemon_health: null, latest_version: null, update_available: null },
     ], total: 2 })
@@ -137,6 +203,8 @@ test('device page distinguishes outdated and unknown client versions', async () 
   fireEvent.change(await screen.findByLabelText('设备状态'), { target: { value: 'active' } })
   const old = (await screen.findByText('Old PC')).closest('tr')!
   const legacy = screen.getByText('Legacy PC').closest('tr')!
+  assert.match(old.textContent ?? '', /连接 IP：2001:db8::7/)
+  assert.match(legacy.textContent ?? '', /离线，暂无连接 IP/)
   assert.match(old.textContent ?? '', /有新版本 1\.10\.0/)
   assert.match(legacy.textContent ?? '', /版本状态未知/)
 })

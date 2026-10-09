@@ -92,6 +92,7 @@ class ConfigStore:
         self._lock = threading.RLock()
         self._managed_gateway_id: str | None = None
         self._managed_provider_guard = None
+        self._local_provider_guard = None
 
     def _load(self) -> dict:
         with self._lock:
@@ -438,8 +439,6 @@ class ConfigStore:
             "thinking_effort",
             "provider_id",
         ):
-            if key == "provider_id" and managed_default:
-                continue
             value = overlay.get(key)
             if isinstance(value, str) and value.strip():
                 merged[key] = value.strip()
@@ -981,10 +980,11 @@ class ConfigStore:
 
     # --- Providers (global LLM API suppliers) ---
 
-    def set_managed_gateway_id(self, gateway_id: str | None, provider_guard=None) -> None:
+    def set_managed_gateway_id(self, gateway_id: str | None, provider_guard=None, local_provider_guard=None) -> None:
         with self._lock:
             self._managed_gateway_id = gateway_id
             self._managed_provider_guard = provider_guard
+            self._local_provider_guard = local_provider_guard
 
     @property
     def managed_gateway_id(self) -> str | None:
@@ -1113,10 +1113,12 @@ class ConfigStore:
             self._save()
         if self._managed_gateway_id and not include_unmanaged:
             return [item for item in providers
-                    if item.get("managed_gateway_id") == self._managed_gateway_id
-                    and self._managed_provider_guard is not None
-                    and self._managed_provider_guard(str(item.get("id")))
-                    and self._provider_allowed_for_actor(str(item.get("id")))]
+                    if (not item.get("managed") and (
+                        self._local_provider_guard is None or self._local_provider_guard())) or (
+                        item.get("managed_gateway_id") == self._managed_gateway_id
+                        and self._managed_provider_guard is not None
+                        and self._managed_provider_guard(str(item.get("id")))
+                        and self._provider_allowed_for_actor(str(item.get("id"))))]
         return providers
 
     def get_provider(self, provider_id: str) -> dict[str, Any] | None:
@@ -1126,9 +1128,9 @@ class ConfigStore:
         return None
 
     def save_provider(self, provider: dict[str, Any]) -> dict[str, Any]:
-        if self._managed_gateway_id:
-            raise PermissionError("Managed providers cannot be changed locally")
         providers = self.get_providers(include_unmanaged=True)
+        if any(item.get("id") == provider.get("id") and item.get("managed") for item in providers):
+            raise PermissionError("Managed providers cannot be changed locally")
         provider_id = str(provider.get("id") or "")
         replaced = False
         for index, item in enumerate(providers):
@@ -1199,9 +1201,9 @@ class ConfigStore:
         })
 
     def delete_provider(self, provider_id: str) -> bool:
-        if self._managed_gateway_id:
-            raise PermissionError("Managed providers cannot be changed locally")
         providers = self.get_providers(include_unmanaged=True)
+        if any(item.get("id") == provider_id and item.get("managed") for item in providers):
+            raise PermissionError("Managed providers cannot be changed locally")
         remaining = [item for item in providers if item.get("id") != provider_id]
         if len(remaining) == len(providers):
             return False

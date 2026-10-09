@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 
 from gateway.services.identity import COOKIE_NAME
 
@@ -33,7 +33,21 @@ class ProjectGrantInput(BaseModel):
     access_level: Literal["read", "edit"]
 
 
+async def lock_project_access(session, project_id: str):
+    """Serialize invitation joins and administrator grant changes across workers."""
+    await session.execute(update(PlatformProject).where(PlatformProject.id == project_id)
+                          .values(updated_at=PlatformProject.updated_at))
+
+
 async def effective_project_access(session, user_id: str, project_id: str) -> str | None:
+    if await IdentityService.super_admin_in_session(session, user_id):
+        return "edit"
+    blocked = await session.scalar(select(ProjectAccessGrant.id).where(
+        ProjectAccessGrant.project_id == project_id,
+        ProjectAccessGrant.subject_type == 'user', ProjectAccessGrant.subject_id == user_id,
+        ProjectAccessGrant.invitation_blocked.is_(True)))
+    if blocked:
+        return None
     group_ids = (await session.scalars(select(GroupMembership.group_id).join(
         UserGroup, UserGroup.id == GroupMembership.group_id,
     ).where(GroupMembership.user_id == user_id,
@@ -74,6 +88,7 @@ async def set_project_grant(call: GatewayCall, project_id: str,
     await require_grant_subject(call, identity, actor.id, body.subject_type, body.subject_id)
     async with call.database.session() as session:
         async with session.begin():
+            await lock_project_access(session, project_id)
             project = await session.get(PlatformProject, project_id)
             if project is None:
                 raise GatewayError('not_found', 'Project unavailable')
@@ -99,6 +114,8 @@ async def set_project_grant(call: GatewayCall, project_id: str,
                 grant.access_level = body.access_level
                 grant.assigned_by_user_id = actor.id
                 grant.revoked_at = None
+                grant.invitation_id = None
+                grant.invitation_blocked = False
             session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,
                                    device_id=project.device_id,
                                    action="project.access_granted", result="success",
@@ -115,15 +132,17 @@ async def revoke_project_grant(call: GatewayCall, project_id: str,
     await require_grant_subject(call, identity, actor.id, subject_type, subject_id)
     async with call.database.session() as session:
         async with session.begin():
+            await lock_project_access(session, project_id)
             grant = await session.scalar(select(ProjectAccessGrant).where(
                 ProjectAccessGrant.project_id == project_id,
                 ProjectAccessGrant.subject_type == subject_type,
                 ProjectAccessGrant.subject_id == subject_id,
-                ProjectAccessGrant.revoked_at.is_(None),
             ))
             if grant is None:
                 raise GatewayError('not_found', 'Project grant unavailable')
             grant.revoked_at = datetime.now(timezone.utc)
+            if subject_type == 'user':
+                grant.invitation_blocked = True
             session.add(AuditEvent(id=str(uuid4()), user_id=actor.id,
                                    action="project.access_revoked", result="success",
                                    metadata_json=f'{{"project_id":"{project_id}"}}'))
@@ -131,7 +150,7 @@ async def revoke_project_grant(call: GatewayCall, project_id: str,
 
 async def project_access(call: GatewayCall, project_id: str):
     user, _ = await IdentityService(call.database).session_user(call.tokens.get(COOKIE_NAME))
-    if user.must_change_password or user.status != "active":
+    if user.status != "active":
         raise GatewayError('forbidden', 'Account unavailable')
     async with call.database.session() as session:
         project = await session.get(PlatformProject, project_id)
@@ -156,8 +175,6 @@ async def project_access(call: GatewayCall, project_id: str):
 
 async def list_accessible_projects(call: GatewayCall):
     actor, _ = await _identity(call).session_user(call.tokens.get(COOKIE_NAME))
-    if actor.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     async with call.database.session() as session:
         rows = (await session.execute(select(PlatformProject, Device).join(
             Device, Device.id == PlatformProject.device_id,
@@ -172,17 +189,23 @@ async def list_accessible_projects(call: GatewayCall):
         project_ids = [project.id for project, _ in rows]
         grants = (await session.scalars(select(ProjectAccessGrant).where(
             ProjectAccessGrant.project_id.in_(project_ids),
-            ProjectAccessGrant.revoked_at.is_(None),
         ))).all() if project_ids else []
         visible = []
+        super_admin = await IdentityService.super_admin_in_session(session, actor.id)
         for project, device in rows:
+            if not super_admin and any(grant.project_id == project.id and grant.subject_type == 'user'
+                   and grant.subject_id == actor.id and grant.invitation_blocked for grant in grants):
+                continue
             own_grants = [grant for grant in grants if grant.project_id == project.id
+                          and grant.revoked_at is None
                           and ((grant.subject_type == "user" and grant.subject_id == actor.id)
                                or (grant.subject_type == "group" and grant.subject_id in groups))]
-            if own_grants:
-                level = "edit" if any(grant.access_level == "edit" for grant in own_grants) else "read"
-                sources = sorted({"直接授权" if grant.subject_type == "user"
+            if own_grants or super_admin:
+                level = "edit" if super_admin or any(grant.access_level == "edit" for grant in own_grants) else "read"
+                sources = sorted({("项目邀请" if grant.invitation_id else "直接授权") if grant.subject_type == "user"
                                   else f"用户组：{groups[grant.subject_id]}" for grant in own_grants})
+                if super_admin:
+                    sources = ["超级管理员"]
                 visible.append({'id': project.id, 'name': project.name, 'device_id': project.device_id, 'device_name': device.name, 'device_online': call.control_connections.is_online(device.id), 'access_level': level, 'grant_sources': sources})
     return {"projects": visible}
 

@@ -105,8 +105,8 @@ def test_managed_provider_apply_is_atomic_scoped_and_idempotent(tmp_path, monkey
     assert store.apply_managed_providers("gateway-test", 1, desired,
                                          default_provider_id="managed-1") is True
     assert store.get_managed_default_provider() == "managed-1"
-    assert [item["id"] for item in store.get_providers()] == ["managed-1"]
-    assert store.get_provider("local-1") is None
+    assert [item["id"] for item in store.get_providers()] == ["local-1", "managed-1"]
+    assert store.get_provider("local-1")["api_key"] == "local-secret"
     assert store.get_provider("managed-1")["managed_gateway_id"] == "gateway-test"
     with pytest.raises(ValueError):
         store.apply_managed_providers("gateway-test", 2, desired,
@@ -116,7 +116,7 @@ def test_managed_provider_apply_is_atomic_scoped_and_idempotent(tmp_path, monkey
                                          default_provider_id="managed-1") is False
     # A second signed-in user can have a different catalog at the same device revision.
     assert store.apply_managed_providers("gateway-test", 1, [], user_id="user-2") is True
-    assert store.get_providers() == []
+    assert [item["id"] for item in store.get_providers()] == ["local-1"]
     assert store.get_managed_default_provider() == ""
     assert store.apply_managed_providers("gateway-test", 1, desired, user_id="user-1") is True
     with pytest.raises(PermissionError):
@@ -135,7 +135,7 @@ def test_managed_provider_apply_is_atomic_scoped_and_idempotent(tmp_path, monkey
         )
     assert store.get_provider("managed-1")["api_key"] == "managed-secret"
     assert store.apply_managed_providers("gateway-test", 2, []) is True
-    assert store.get_providers() == []
+    assert [item["id"] for item in store.get_providers()] == ["local-1"]
     store.set_managed_gateway_id(None)
     assert [item["id"] for item in store.get_providers()] == ["local-1"]
 
@@ -157,6 +157,13 @@ def test_managed_provider_runtime_requires_catalog_model(tmp_path, monkeypatch):
         "api_key": "secret", "models": ["model-a"],
     }], default_provider_id="managed-1")
     monkeypatch.setattr(CodexEngine, "provider_config_store", classmethod(lambda cls: store))
+    store.save_provider({"id":"local-actual","name":"Local actual","type":"custom","protocols":["openai_responses"],"api_key":"local-secret"})
+    store.set("assistant_defaults", {"task_coordinator":{"provider_id":"local-actual"}})
+    assert store.get_assistant_defaults("task_coordinator")["provider_id"] == "local-actual"
+    store.set("assistant_defaults", {})
+    store.set_engine_provider("codex", "local-actual")
+    assert CodexEngine().resolve_provider_id() == "local-actual"
+    assert CodexEngine().get_full_config_values()["provider_id"] == "local-actual"
     store.set_engine_provider("codex", "local-1")
     assert CodexEngine().resolve_provider_id() == "managed-1"
     assert CodexEngine().resolve_provider_id("managed-2") == "managed-2"
@@ -174,17 +181,24 @@ def test_managed_provider_runtime_requires_catalog_model(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_managed_provider_api_rejects_local_mutations_and_key_reveal():
+async def test_managed_provider_api_allows_local_mutations(tmp_path, monkeypatch):
+    monkeypatch.setattr(config_module, "CONFIG_FILE", tmp_path / "config.json")
+    store = config_module.ConfigStore()
+    store.set_managed_gateway_id("gateway", provider_guard=lambda _id: True)
+    monkeypatch.setattr("api.provider.config_store", store)
+    monkeypatch.setattr("api.provider.refresh_registry", lambda: None)
+    monkeypatch.setattr("api.provider.provider_service.scan_cc_switch_providers", lambda: [])
     app = FastAPI()
     app.state.gateway_client = SimpleNamespace(managed_config=object())
     app.include_router(provider_router)
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
-                                 base_url="http://127.0.0.1") as client:
-        assert (await client.post("/api/provider", json={})).status_code == 403
-        assert (await client.post("/api/provider/import/cc-switch", json={})).status_code == 403
-        assert (await client.delete("/api/provider/provider-1")).status_code == 403
-        assert (await client.post("/api/provider/provider-1/reveal")).status_code == 403
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1") as client:
+        response = await client.post("/api/provider", json={"name":"Local","type":"custom","protocols":["openai_chat_completions"],"base_url":"https://api.example.test","api_key":"local-secret"})
+        assert response.status_code == 200 and response.json()["saved"]
+        provider_id = response.json()["provider"]["id"]
+        assert (await client.post(f"/api/provider/{provider_id}/reveal")).json()["value"] == "local-secret"
+        assert (await client.post("/api/provider/import/cc-switch", json={})).status_code == 200
         assert (await client.get("/api/provider/import/sources")).json() == {"sources": []}
+        assert (await client.delete(f"/api/provider/{provider_id}")).status_code == 200
 
 
 @pytest.mark.asyncio
@@ -364,8 +378,7 @@ def test_remote_actor_cannot_use_another_users_installed_provider(tmp_path, monk
 
         with pytest.raises(ValueError):
             CodexEngine().resolve_provider_runtime(provider_id='owner-only', model='model-a')
-        with pytest.raises(ValueError):
-            CodexEngine().resolve_provider_runtime(model='model-a')
+        assert CodexEngine().resolve_provider_runtime(model='model-a').provider_id == ""
 
     from dataclasses import replace
     allowed = replace(actor, provider_ids=frozenset({'owner-only'}), provider_grant_expires_at=int(time.time()) + 60)
@@ -379,7 +392,7 @@ def test_remote_actor_cannot_use_another_users_installed_provider(tmp_path, monk
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('engine_id', ['openclaw', 'qoder_sdk', 'cursor_sdk'])
-async def test_native_credentials_engines_fail_closed_in_managed_mode(engine_id, tmp_path, monkeypatch):
+async def test_native_credentials_engines_remain_available_in_managed_mode(engine_id, tmp_path, monkeypatch):
     from engines.openclaw import OpenClawEngine
     from engines.qoder_sdk import QoderSDKEngine
     from engines.cursor_sdk import CursorSdkEngine
@@ -388,6 +401,91 @@ async def test_native_credentials_engines_fail_closed_in_managed_mode(engine_id,
     engine_class = {'openclaw': OpenClawEngine, 'qoder_sdk': QoderSDKEngine,
                     'cursor_sdk': CursorSdkEngine}[engine_id]
     monkeypatch.setattr(engine_class, 'provider_config_store', classmethod(lambda cls: store))
-    with pytest.raises(ValueError, match='受管模式'):
-        async for _event in engine_class().spawn(prompt='Hello', cwd=str(tmp_path)):
-            pass
+    engine_class().require_native_credentials_allowed()
+
+
+def test_gateway_connection_allows_local_provider_and_native_runtime(tmp_path, monkeypatch):
+    monkeypatch.setattr(config_module, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(config_module, "CONFIG_FILE", tmp_path / "config.json")
+    store = config_module.ConfigStore()
+    store.set_managed_gateway_id("gateway", provider_guard=lambda _id: False)
+    store.save_provider({"id": "local", "name": "Local", "type": "custom", "protocols": ["openai_responses"], "api_key": "local-secret"})
+    monkeypatch.setattr(CodexEngine, "provider_config_store", classmethod(lambda cls: store))
+    assert CodexEngine().resolve_provider_runtime(provider_id="local", model="own-model").provider_id == "local"
+    from services.providers import require_managed_model
+    monkeypatch.setattr("services.providers.config_store", store)
+    require_managed_model(store.get_provider("local"), "own-model")
+    assert store.delete_provider("local") is True
+    assert CodexEngine().resolve_provider_runtime().provider_id == ""
+    CodexEngine().require_native_credentials_allowed()
+
+
+@pytest.mark.asyncio
+async def test_provider_origin_check_keeps_event_loop_responsive(tmp_path, monkeypatch):
+    import threading
+    monkeypatch.setattr(config_module, "CONFIG_FILE", tmp_path / "config.json")
+    store = config_module.ConfigStore()
+    store.set_managed_gateway_id("gateway", provider_guard=lambda _id: True)
+    store.apply_managed_providers("gateway", 1, [{"id":"distributed","name":"Distributed","type":"custom","protocols":["openai_responses"],"protocol_base_urls":{"openai_responses":"https://api.example.test"},"api_key":"secret","models":["model"]}])
+    monkeypatch.setattr("api.provider.config_store", store)
+    entered = threading.Event()
+    release = threading.Event()
+    original = store.get_providers
+    def slow_read(*args, **kwargs):
+        entered.set()
+        release.wait(2)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(store, "get_providers", slow_read)
+    app = FastAPI()
+    app.include_router(provider_router)
+    @app.get("/health")
+    async def health():
+        return {"ok":True}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as client:
+        pending = asyncio.create_task(client.post("/api/provider/distributed/reveal"))
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            response = await asyncio.wait_for(client.get("/health"), .2)
+            assert response.status_code == 200
+        finally:
+            release.set()
+        assert (await pending).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_local_provider_permission_controls_api_catalog_and_runtime(tmp_path, monkeypatch):
+    import main
+    from tests.test_gateway_policy import _signed_policy
+    from services.gateway_client.policy import verify_policy_snapshot
+    from services.remote_access import ActorSnapshot, actor_context
+
+    monkeypatch.setattr(config_module, "CONFIG_FILE", tmp_path / "config.json")
+    store = config_module.ConfigStore()
+    store.save_provider({"id": "local", "name": "Local", "type": "custom",
+                         "protocols": ["openai_responses"], "api_key": "local-secret"})
+    cache = ManagedPolicyCache()
+    store.set_managed_gateway_id("gateway-test", local_provider_guard=lambda: cache.allows("provider.local"))
+    monkeypatch.setattr(main, "gateway_client", SimpleNamespace(managed_config=object(), policy_cache=cache))
+    monkeypatch.setattr("api.provider.config_store", store)
+    monkeypatch.setattr("services.providers.config_store", store)
+    monkeypatch.setattr(CodexEngine, "provider_config_store", classmethod(lambda cls: store))
+    app = FastAPI()
+    app.include_router(provider_router)
+    actor = ActorSnapshot("user-1", "Alice", "device-1", "PC", "managed")
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as client:
+        with actor_context(actor):
+            assert (await client.get("/api/provider/list")).json()["providers"] == []
+            assert (await client.delete("/api/provider/local")).status_code == 403
+            CodexEngine().require_native_credentials_allowed()
+            for revision, allowed in ((2, True), (3, False)):
+                token, pem, fingerprint = _signed_policy(policy_revision=revision, allow_local_providers=allowed)
+                cache.apply(verify_policy_snapshot(token, pem, fingerprint, "gateway-test", "device-1", "user-1"))
+                result = (await client.get("/api/provider/list")).json()["providers"]
+                assert [item["id"] for item in result] == (["local"] if allowed else [])
+                if allowed:
+                    assert CodexEngine().resolve_provider_runtime(provider_id="local", model="own-model").provider_id == "local"
+                else:
+                    assert (await client.delete("/api/provider/local")).status_code == 403
+                    from services.providers import require_managed_model
+                    with pytest.raises(ValueError, match="授权已失效"):
+                        require_managed_model({"id": "local"}, "own-model")

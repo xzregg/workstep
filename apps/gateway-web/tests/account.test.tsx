@@ -15,6 +15,9 @@ test('account page validates a new distinct password and confirmation', () => {
   assert.equal(validPasswordChange('current-password', 'short', 'short'), false)
   assert.equal(validPasswordChange('same-password', 'same-password', 'same-password'), false)
   assert.equal(validPasswordChange('current-password', 'replacement-password', 'different-password'), false)
+  assert.equal(validPasswordChange('', 'replacement-password', 'replacement-password', false), true)
+  assert.equal(validPasswordChange('', 'replacement-password', 'replacement-password'), false)
+  assert.equal(validPasswordChange('', 'short', 'short', false), false)
 })
 
 test('account area is present in the Gateway workbench', () => {

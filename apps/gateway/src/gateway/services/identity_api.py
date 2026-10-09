@@ -129,10 +129,8 @@ def _check_csrf(call: GatewayCall, token: str) -> None:
 
 async def _active_admin_roles(call: GatewayCall, user_id: str) -> list[str]:
     async with call.database.session() as database_session:
-        roles = (await database_session.scalars(select(AdminAssignment.role).where(
-            AdminAssignment.user_id == user_id,
-            AdminAssignment.revoked_at.is_(None),
-        ))).all()
+        assignments = await IdentityService.admin_assignments_in_session(database_session, user_id)
+        roles = [row.role for row in assignments]
     return sorted(set(roles))
 
 
@@ -141,8 +139,6 @@ async def _super_admin_request(call: GatewayCall):
     identity = _identity(call)
     user, _ = await identity.session_user(token)
     _check_csrf(call, token)
-    if user.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     await identity.require_super_admin(user.id)
     return identity, user
 
@@ -150,8 +146,6 @@ async def _super_admin_request(call: GatewayCall):
 async def _super_admin_read(call: GatewayCall):
     identity = _identity(call)
     user, _ = await identity.session_user(call.tokens.get(COOKIE_NAME))
-    if user.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     await identity.require_super_admin(user.id)
     return identity, user
 
@@ -162,8 +156,6 @@ async def _user_manager_request(call: GatewayCall, target_user_id: str | None = 
     identity = _identity(call)
     user, _ = await identity.session_user(token)
     _check_csrf(call, token)
-    if user.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     await identity.require_user_manager(user.id, target_user_id, platform_only)
     return identity, user
 
@@ -175,8 +167,6 @@ async def _role_manager(call: GatewayCall, *, mutation=False):
     from .management_scope import organization_manager
     identity = _identity(call)
     actor, auth_session = await identity.session_user(call.tokens.get(COOKIE_NAME))
-    if actor.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     if mutation:
         _check_csrf(call, call.tokens.get(COOKIE_NAME))
         await identity.require_step_up(auth_session)
@@ -239,15 +229,17 @@ async def login(call: GatewayCall, response: ReplyEffects, body: LoginInput):
 
 async def session(call: GatewayCall):
     token = call.tokens.get(COOKIE_NAME)
-    user, _ = await _identity(call).session_user(token)
+    user, auth_session = await _identity(call).session_user(token)
     return {"user": public_user(user), "csrf_token": csrf_token(token),
+            "password_confirmation_required": auth_session.authentication_method != "scan",
             "admin_roles": await _active_admin_roles(call, user.id)}
 
 
 async def admin_access(call: GatewayCall):
-    user, _ = await _identity(call).session_user(call.tokens.get(COOKIE_NAME))
+    user, auth_session = await _identity(call).session_user(call.tokens.get(COOKIE_NAME))
     return {"roles": await _active_admin_roles(call, user.id),
-            "must_change_password": bool(user.must_change_password)}
+            "password_confirmation_required": auth_session.authentication_method != "scan",
+            "must_change_password": False}
 
 
 async def logout(call: GatewayCall, response: ReplyEffects):
@@ -291,8 +283,6 @@ async def admin_list_users(call: GatewayCall, q: str = '',
                            page: int = 1, page_size: int = 25):
     identity = _identity(call)
     actor, _ = await identity.session_user(call.tokens.get(COOKIE_NAME))
-    if actor.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     async with call.database.session() as session:
         scoped_ids = await identity.manageable_user_ids(session, actor.id)
         conditions = []
@@ -411,7 +401,8 @@ async def admin_list_departments(call: GatewayCall, q: str = '',
                                  direction: Literal["asc", "desc"] = "asc",
                                  page: int = 1, page_size: int = 25):
     await _super_admin_read(call)
-    conditions = [DirectoryDepartment.active == 1]
+    from gateway.services.directory_departments import assignable_department
+    conditions = [assignable_department()]
     if q.strip():
         escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"

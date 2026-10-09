@@ -8,7 +8,7 @@ from urllib.parse import urlencode, urlsplit
 from workstep_gateway_protocol.origin import validate_daemon_origin
 
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from packaging.version import InvalidVersion, Version
 
@@ -20,7 +20,7 @@ from gateway.services.identity import COOKIE_NAME, IdentityService, public_user
 
 from gateway.services.identity_api import _check_csrf
 
-from gateway.models import ClientRelease
+from gateway.models import ClientRelease, User
 
 from gateway.services.management_scope import device_manager
 
@@ -74,6 +74,39 @@ def _service(call: GatewayCall) -> DesktopAuthorizationService:
     return DesktopAuthorizationService(call.database, call.gateway_signer, call.settings.gateway_id)
 
 
+class DeviceNameInput(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    name: str = Field(min_length=1, max_length=256)
+
+    @field_validator('name', mode='before')
+    @classmethod
+    def trimmed_name(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+
+class DeviceOwnerInput(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    user_id: str = Field(min_length=1, max_length=64)
+
+
+async def transfer_device_owner(call: GatewayCall, device_id: str, body: DeviceOwnerInput):
+    _, actor, _ = await device_manager(call, device_ids=[device_id], mutation=True)
+    await _service(call).transfer_owner(device_id, actor.id, body.user_id)
+    await call.control_connections.close_data(device_id)
+
+
+async def rename_device(call: GatewayCall, device_id: str, body: DeviceNameInput):
+    _, actor, _ = await device_manager(call, device_ids=[device_id], mutation=True)
+    await _service(call).rename_device(device_id, actor.id, body.name)
+
+
+async def delete_device(call: GatewayCall, device_id: str):
+    from .device_deletion import delete_device_registration
+    _, actor, _ = await device_manager(call, device_ids=[device_id], mutation=True)
+    await delete_device_registration(call.database, device_id, actor.id)
+    await call.control_connections.disconnect(device_id)
+
+
 async def gateway_key(call: GatewayCall):
     signer = call.gateway_signer
     return {"gateway_id": call.settings.gateway_id,
@@ -84,8 +117,6 @@ async def authorize_desktop(call: GatewayCall, body: DesktopAuthorizeInput):
     token = call.tokens.get(COOKIE_NAME)
     user, _ = await IdentityService(call.database).session_user(token)
     _check_csrf(call, token)
-    if user.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     code = await _service(call).authorize(user.id, body.gateway_id, body.state, body.nonce, body.code_challenge, body.app_instance_id)
     return {"callback_url": (body.redirect_uri or "workstep://auth/callback") + "?" + urlencode({
         "code": code, "state": body.state,
@@ -136,10 +167,14 @@ async def list_devices(call: GatewayCall, status: Literal["pending", "active", "
         except (InvalidVersion, TypeError):
             return current[1], None
 
+    async with call.database.session() as session:
+        owners = {user.id: user.display_name or user.username for user in
+                  (await session.scalars(select(User).where(User.id.in_(
+                      {device.owner_user_id for device in devices if device.owner_user_id})))).all()}
     result = []
     for device in devices:
         latest_version, update_available = release_status(device)
-        result.append({'id': device.id, 'name': device.name, 'status': device.status, 'department_id': device.department_id, 'online': call.control_connections.is_online(device.id), 'daemon_health': call.control_connections.daemon_health(device.id), 'version': device.version, 'os': device.os, 'arch': device.arch, 'latest_version': latest_version, 'update_available': update_available, 'app_instance_id': device.app_instance_id})
+        result.append({'id': device.id, 'name': device.name, 'owner_user_id': device.owner_user_id, 'owner_name': owners.get(device.owner_user_id), 'status': device.status, 'department_id': device.department_id, 'online': call.control_connections.is_online(device.id), 'connection_ip': call.control_connections.connection_ip(device.id), 'daemon_health': call.control_connections.daemon_health(device.id), 'version': device.version, 'os': device.os, 'arch': device.arch, 'latest_version': latest_version, 'update_available': update_available, 'app_instance_id': device.app_instance_id})
     return {"devices": result, "total": total, "page": page, "page_size": page_size}
 
 

@@ -87,6 +87,7 @@ function containerArgs(config, platform, port, token, managedEnv = {}) {
 class SandboxManager {
   constructor({ stateDir, platform = process.platform, arch = process.arch, hostHome = os.homedir(), hostConfigFile, install = installRuntime, execute = run, image, report = () => {} }) {
     Object.assign(this, { stateDir, platform, arch, hostHome, install, execute, image, report })
+    this.startGeneration = 0
     this.hostConfigFile = hostConfigFile || path.join(hostHome, '.workstep/config.json')
     this.phase = 'idle'; this.progress = null; this.error = null; this.busy = false; this.running = false
     this.health = 'stopped'; this.hostPort = null
@@ -330,10 +331,20 @@ class SandboxManager {
       await fs.mkdir(this.stateDir, { recursive: true })
       await fs.writeFile(path.join(this.stateDir, 'sandbox-pending.json'), JSON.stringify(config), { mode: 0o600 })
       const session = await this.setup(config)
+      let preparedSuccessfully = false
       try {
         this.update('image')
         const seed = await this.imageSeed(config.root)
-        if (seed?.source === image) {
+        if (config.dockerImage && previous.dockerImage === image && previous.image) {
+          try {
+            config.image = await this.inspectImage(session.command, previous.image)
+          } catch {
+            // Podman storage may have been pruned or the VM may have been
+            // recreated. Fall back to importing the selected Docker image.
+            config.image = await importDockerImage({ root: config.root, id: image, execute: this.execute, command: session.command, platform: this.platform, arch: this.arch })
+          }
+        }
+        else if (seed?.source === image) {
           if (await fileDigest(seed.archive) !== seed.sha256) throw new Error('镜像缓存校验失败，请返回镜像步骤重新准备')
           await session.command(['load', '--input', seed.archive])
           config.image = await this.inspectImage(session.command, seed.id)
@@ -349,20 +360,23 @@ class SandboxManager {
         await this.save({ ...config, enabled: false, prepared: true })
         await fs.rm(path.join(this.stateDir, 'sandbox-pending.json'), { force: true })
         this.update('ready')
+        preparedSuccessfully = true
         return this.status()
       } finally {
         // Do not leave a preparation-only VM running beside the native backend.
-        if (this.platform !== 'linux') await session.podman(['machine', 'stop', session.machine])
+        if (this.platform !== 'linux' && (input.keepMachineRunning !== true || !preparedSuccessfully)) await session.podman(['machine', 'stop', session.machine])
       }
     })
   }
   async start(port, token, managedEnv = {}) {
+    const generation = ++this.startGeneration
     return this.exclusive(async () => {
       this.health = 'starting'; this.hostPort = null
       const settings = await this.settings()
       const config = { ...settings, ...await validateSettings(settings) }
       if (!config.enabled || !config.prepared || !this.compatibleImage(config)) throw new Error('沙箱需要先完成当前版本的初始化')
       const session = await this.setup(config)
+      if (generation !== this.startGeneration) throw new Error('沙箱启动已取消')
       this.session = session; this.activeConfig = config; this.redactions = [token]
       this.update('starting')
       try {
@@ -386,6 +400,7 @@ class SandboxManager {
         const healthStarted = Date.now()
         let healthy = false
         while (Date.now() < deadline) {
+          if (generation !== this.startGeneration) throw new Error('沙箱启动已取消')
           try {
             const response = await fetch(`${url}/api/health`, { headers: { 'X-WorkStep-Desktop-Token': token }, signal: AbortSignal.timeout(2000) })
             if (response.ok && (await response.json()).status === 'ok') { healthy = true; break }
@@ -461,6 +476,8 @@ class SandboxManager {
   async queueImageSwitch(dockerImage, dockerTag = null) {
     if (!/^sha256:[a-f0-9]{64}$/.test(dockerImage || '')) throw new Error('请选择有效的本地 WorkStep 镜像')
     if (dockerTag !== null && (typeof dockerTag !== 'string' || !dockerTag.trim())) throw new Error('镜像标签无效')
+    this.startGeneration += 1
+    await this.stop()
     const settings = await this.settings()
     await this.save({ ...settings, enabled: false, pendingDockerImage: dockerImage, pendingDockerImageTag: dockerTag })
   }

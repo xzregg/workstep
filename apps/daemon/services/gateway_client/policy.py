@@ -37,6 +37,8 @@ class ManagedPolicy:
     engine_install: bool
     task_create_project_ids: frozenset[str] = frozenset()
     task_create_denied_project_ids: frozenset[str] = frozenset()
+    task_share_project_ids: frozenset[str] = frozenset()
+    task_share_denied_project_ids: frozenset[str] = frozenset()
 
     @property
     def valid(self) -> bool:
@@ -45,16 +47,19 @@ class ManagedPolicy:
     def allows(self, action: str, *, project_id: str | None = None) -> bool:
         if not self.valid:
             return False
-        if action == "task.create":
+        if action in ("task.create", "task.share"):
+            allowed, project_ids, denied_project_ids = (
+                (self.task_create, self.task_create_project_ids, self.task_create_denied_project_ids)
+                if action == "task.create" else
+                (self.task_share, self.task_share_project_ids, self.task_share_denied_project_ids))
             if project_id is None:
-                return self.task_create
-            if project_id in self.task_create_denied_project_ids:
+                return allowed
+            if project_id in denied_project_ids:
                 return False
-            return self.task_create or project_id in self.task_create_project_ids
+            return allowed or project_id in project_ids
         return {
             "provider.local": self.allow_local_providers,
             "project.publish": self.project_publish,
-            "task.share": self.task_share,
             "engine.install": self.engine_install,
         }.get(action, False)
 
@@ -89,7 +94,8 @@ def verify_policy_snapshot(token: str, public_key_pem: str, expected_fingerprint
             if not isinstance(values, list) or len(values) > 1000 or any(
                     not isinstance(value, str) or not value for value in values):
                 raise ValueError("Invalid policy catalog")
-        for name in ("task_create_project_ids", "task_create_denied_project_ids"):
+        for name in ("task_create_project_ids", "task_create_denied_project_ids",
+                     "task_share_project_ids", "task_share_denied_project_ids"):
             values = claims.get(name, [])
             if (not isinstance(values, list) or len(values) > 1000
                     or any(not isinstance(value, str) or not value or len(value) > 128
@@ -111,6 +117,8 @@ def verify_policy_snapshot(token: str, public_key_pem: str, expected_fingerprint
             task_create_project_ids=frozenset(claims.get("task_create_project_ids", [])),
             task_create_denied_project_ids=frozenset(
                 claims.get("task_create_denied_project_ids", [])),
+            task_share_project_ids=frozenset(claims.get("task_share_project_ids", [])),
+            task_share_denied_project_ids=frozenset(claims.get("task_share_denied_project_ids", [])),
         )
     except (InvalidSignature, KeyError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
         raise ValueError("Invalid Gateway policy snapshot") from exc

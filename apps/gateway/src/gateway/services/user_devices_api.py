@@ -11,6 +11,7 @@ from gateway.services.identity import COOKIE_NAME, IdentityService, _now
 
 from gateway.services.management_scope import project_manager, require_grant_subject
 
+from gateway.services.device_grants import assigned_device_ids, has_device_access
 from gateway.models import AuditEvent, Device, User, UserDevice
 
 
@@ -29,17 +30,13 @@ async def _admin(call: GatewayCall, device_id: str, user_id: str):
 
 async def assigned_devices(call: GatewayCall):
     user, _ = await IdentityService(call.database).session_user(call.tokens.get(COOKIE_NAME))
-    if user.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     return await assigned_devices_for_user(call, user.id)
 
 
 async def assigned_devices_for_user(call: GatewayCall, user_id: str):
     async with call.database.session() as session:
-        devices = (await session.scalars(select(Device).join(
-            UserDevice, UserDevice.device_id == Device.id,
-        ).where(UserDevice.user_id == user_id, UserDevice.revoked_at.is_(None),
-                Device.status == "active").order_by(Device.created_at.desc()))).all()
+        devices = (await session.scalars(select(Device).where(Device.id.in_(assigned_device_ids(user_id)),
+                Device.status == 'active').order_by(Device.created_at.desc()))).all()
     return {"devices": [{"id": device.id, "name": device.name, "status": device.status,
                          "online": call.control_connections.is_online(device.id),
                          "version": device.version} for device in devices]}
@@ -47,7 +44,7 @@ async def assigned_devices_for_user(call: GatewayCall, user_id: str):
 
 async def device_access(call: GatewayCall, device_id: str):
     user, _ = await IdentityService(call.database).session_user(call.tokens.get(COOKIE_NAME))
-    if user.must_change_password or user.status != "active":
+    if user.status != "active":
         raise GatewayError('forbidden', 'Account unavailable')
     return await device_access_for_user(call, device_id, user.id)
 
@@ -55,10 +52,7 @@ async def device_access(call: GatewayCall, device_id: str):
 async def device_access_for_user(call: GatewayCall, device_id: str, user_id: str):
     async with call.database.session() as session:
         device = await session.get(Device, device_id)
-        assignment = await session.scalar(select(UserDevice).where(
-            UserDevice.device_id == device_id, UserDevice.user_id == user_id,
-            UserDevice.revoked_at.is_(None),
-        ))
+        assignment = await has_device_access(session,user_id,device_id)
     if not device or device.status != "active" or not assignment:
         raise GatewayError('forbidden', 'Device access denied')
     if not call.control_connections.is_online(device_id):

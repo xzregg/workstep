@@ -222,3 +222,28 @@ test('process trace reveals tool file links after expanding the timeline', async
     await window.happyDOM.close()
   }
 })
+
+
+test('clicking an edited file opens the Git diff dialog with the recorded patch', async () => {
+  const { window } = installDomEnvironment()
+  Object.defineProperty(globalThis, 'history', { configurable: true, value: window.history })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<I18nProvider><ToolCallRow projectId="project-1" activity={activity({ name: 'FileChange', kind: 'edit', input: { changes: [{ path: 'src/main.ts', diff: '@@ -4 +4 @@\n-old\n+new\n' }] } })} /></I18nProvider>))
+    await act(async () => (container.querySelector('[data-file-preview-link]') as HTMLElement).click())
+    const dialog = document.querySelector('.git-diff-dialog')
+    assert.ok(dialog)
+    assert.equal(dialog.querySelector('.removed code')?.textContent, 'old')
+    assert.equal(dialog.querySelector('.added code')?.textContent, 'new')
+    assert.equal(dialog.querySelector('.removed .git-line-number')?.textContent, '4')
+    const buttons = [...dialog.querySelectorAll<HTMLButtonElement>('.git-diff-toolbar button')]
+    assert.equal(buttons.some(button => button.textContent === '显示完整文件' || button.textContent === '上次修改人'), false)
+    await act(async () => buttons.find(button => button.textContent === '统一视图')!.click())
+    assert.ok(document.querySelector('.git-diff-dialog.unified'))
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})

@@ -1,3 +1,4 @@
+import { gatewayFetch } from '../utils/gatewayWorkspacePath'
 import { request, singleFlight } from './transport'
 import { browserActorHeaders } from '../utils/browserActor'
 import { workspaceCatalogPath } from './workspaceScope'
@@ -431,7 +432,7 @@ export const engineApi = {
   customDisable: (engineId: string, disabled: boolean) => request<{ restart_required?: boolean }>('/engine/custom/disable', { method: 'POST', body: JSON.stringify({ engine_id: engineId, disabled }) }),
   customRollback: (engineId: string) => request<{ restart_required: boolean }>('/engine/custom/rollback', { method: 'POST', body: JSON.stringify({ engine_id: engineId }) }),
   customExport: async (engineId: string) => {
-    const response = await fetch(`/api/engine/custom/${encodeURIComponent(engineId)}/export`, { headers: browserActorHeaders() })
+    const response = await gatewayFetch(`/api/engine/custom/${encodeURIComponent(engineId)}/export`, { headers: browserActorHeaders() })
     if (!response.ok) throw new Error((await response.json()).detail || `HTTP ${response.status}`)
     return response.blob()
   },

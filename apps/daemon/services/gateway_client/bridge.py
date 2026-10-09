@@ -135,6 +135,7 @@ class ManagedHttpBridge:
                 "raw_path": path.encode("utf-8"), "query_string": query.encode("utf-8"),
                 "root_path": "", "headers": headers, "client": ("127.0.0.1", 0),
                 "server": ("127.0.0.1", 80), "gateway_remote_actor": actor,
+                "gateway_device_owner": self.start.get("device_owner") is True and project_id is None and share_scope is None,
             }
             if share_scope is not None:
                 scope["gateway_share_scope"] = share_scope

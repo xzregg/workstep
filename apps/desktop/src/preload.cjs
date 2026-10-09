@@ -19,4 +19,9 @@ contextBridge.exposeInMainWorld('workstepDesktop', {
     copyLogs: () => ipcRenderer.invoke('workstep:sandbox:copyLogs'),
   },
   notify: (notice) => ipcRenderer.send('workstep:notify', notice),
+  updates: {
+    status: () => ipcRenderer.invoke('workstep:update:status'),
+    check: () => ipcRenderer.invoke('workstep:update:check'),
+    openDownload: (url) => ipcRenderer.invoke('workstep:update:open-download', url),
+  },
 })

@@ -1,24 +1,38 @@
 # Gateway 开发与部署
 
+Docker 部署使用根目录 `Dockerfile` 构建的 `workstep:latest` 共用镜像。
+先取消 `docker-compose.yaml` 中 `gateway` 配置块的注释，再执行
+`docker-compose -f docker-compose.yaml up -d --build gateway` 单独启动平台，默认宿主端口为 8700；
+`workstep` 和 `gateway` 两个 service 可以同时运行，共用镜像并使用独立 Home。完整配置、共享依赖及持久化说明见 [容器运行时](container-runtime.md#同一镜像启动-workstep-或-gateway)。
+
 生产部署、DNS/TLS、备份恢复、密钥与客户端回滚步骤见 [Gateway 运维手册](gateway-operations.md)。
 
 Gateway 是独立 FastAPI 服务，`apps/gateway-web` 是独立门户。阶段 0、1 已完成，后续阶段仍在开发与验收。部署验收以 `plans/platform-gateway-development.md` 为准。
 
 空平台使用 `POST /api/platform/setup` 一次性创建超级管理员及独立恢复管理员，并设置注册模式。`POST /api/auth/register` 遵循 `open`、`open_with_approval` 或 `closed` 策略；`POST /api/auth/login` 返回 CSRF token 并写入安全、HttpOnly Cookie。修改类请求在 `X-CSRF-Token` 传入该 token。登录后的 `POST /api/auth/password`、`POST /api/auth/logout` 管理自身会话；管理员可建号、审核与禁用用户。禁用管理员和重置密码需要先调用 `POST /api/auth/step-up` 以密码确认，确认有效五分钟。重置或禁用会撤销目标用户已有会话。生产访问须用 HTTPS；门户 `/auth` 和 `/account` 已接入初始化、注册、登录、改密与注销。
 
-超级管理员可在短时二次认证后调用 `POST /api/admin/users/{user_id}/roles` 授予平台或部门范围的 `identity_admin`，也可授予平台范围的 `super_admin`。平台范围的身份管理员可建号和管理用户；部门范围只可管理当前目录中属于指定部门的用户。管理员建号及密码重置后的账号须先修改密码，才能执行管理操作。恢复管理员的创建和登录写入 Gateway 审计表。 新增 `org_admin`（身份源或全组织）、`department_admin`（部门可递归）、`device_admin`（显式设备组或全设备）和范围只读的 `audit_admin`；原身份、Skills 管理员继续有效。设备部门与设备组在 `/admin/device-groups` 由超管设置，未归属设备不推断所属部门。组织管理员只能委派本组织部门范围的身份、部门与审计角色；部门管理员按用户、设备与项目范围管理内容授权和供应商分配。管理角色不产生普通内容访问权；供应商全局配置仍为超管专属，分级管理员使用 `/api/admin/providers/assignment-catalog` 安全目录。
+超级管理员可在短时二次认证后调用 `POST /api/admin/users/{user_id}/roles` 授予平台或部门范围的 `identity_admin`，也可授予平台范围的 `super_admin`。平台范围的身份管理员可建号和管理用户；部门范围只可管理当前目录中属于指定部门的用户。管理员建号及密码重置后不强制改密；历史 `must_change_password` 标记不再参与访问校验，兼容响应固定返回 `false`。用户仍可在个人账户主动修改密码，账号状态、内容授权及管理员二次认证照常校验。恢复管理员的创建和登录写入 Gateway 审计表。 新增 `org_admin`（身份源或全组织）、`department_admin`（部门可递归）、`device_admin`（显式设备组或全设备）和范围只读的 `audit_admin`；原身份、Skills 管理员继续有效。设备部门与设备组在 `/admin/device-groups` 由超管设置，未归属设备不推断所属部门。组织管理员只能委派本组织部门范围的身份、部门与审计角色；部门管理员按用户、设备与项目范围管理内容授权和供应商分配。普通管理角色不自动产生内容访问权；超级管理员可访问全部有效设备和已发布项目，并使用全部已启用平台供应商。供应商全局配置仍为超管专属，分级管理员使用 `/api/admin/providers/assignment-catalog` 安全目录。
 
 超级管理员通过 `POST /api/admin/identity-sources` 登记钉钉或企业微信身份源，凭据只引用服务进程的环境变量名 `secret_env`。钉钉的 `tenant_id` 填企业 CorpId，`client_id` 填应用 AppKey；企业微信的 `tenant_id` 填 CorpID，`agent_id` 填应用 AgentId。`POST /api/auth/external/{source_id}/start` 返回扫码授权 URL；已有 Gateway 会话可调用 `POST /api/auth/external/{source_id}/bind/start` 显式绑定。回调使用一次性 state，并按身份源、企业、稳定 subject 匹配。关闭注册时须先使用管理员目录导入 `POST /api/admin/identity-sources/{source_id}/sync` 预置人员，或由已登录用户显式绑定。`POST /api/admin/identity-sources/{source_id}/events` 幂等应用管理员导入的人员变更，`POST /api/admin/identity-sources/{source_id}/disable` 关闭扫码入口。当前目录导入及事件入口仅供管理员调用。
 管理员可调用 `POST /api/admin/identity-sources/{source_id}/reconcile` 从身份源主动拉取部门和人员快照；服务每六小时自动对账，可通过 `WORKSTEP_GATEWAY_DIRECTORY_RECONCILE_SECONDS` 调整。对账失败保留原投影。钉钉主动拉取使用企业内部应用凭据及通讯录读取权限；企业微信应用须能读取可见范围内的部门与人员。启用厂商事件回调时，同时在创建身份源请求中填写 `callback_token_env` 和 `callback_aes_key_env`，其值为服务进程中的环境变量名；不把 Token 或 AES Key 写入数据库。将厂商回调地址设为 `/api/auth/external/{source_id}/events`。钉钉使用加密 JSON POST，企业微信使用 GET URL 验证及加密 XML POST。入口验签、解密和校验身份源后，将目录变更触发记录持久化并快速回应；后台立即对账，失败每分钟重试且重启后继续。重复事件依据解密正文去重。真实厂商联调尚未验收。
 
 阶段 3A 的 Gateway 授权 API 已开始实现。服务首次启动会在数据目录生成仅服务进程可读的 `gateway-signing-key.pem`，`GET /api/platform/gateway-key` 提供公钥和 SHA-256 指纹；构建受管包时应把对应公钥文件用于固定指纹。设置 `WORKSTEP_GATEWAY_GATEWAY_ID`，与包内的 `gateway_id` 一致。浏览器已登录后调用 `POST /api/desktop/authorize` 获取仅含 code/state 的 `workstep://auth/callback`，Desktop 调用 `POST /api/desktop/token` 用 PKCE 兑换并登记 Ed25519 设备公钥。首次设备为待审批；超级管理员二次认证后调用 `POST /api/admin/devices/{device_id}/approve`，下次授权兑换返回 15 分钟的签名设备授权。
-受管 Desktop 使用系统浏览器打开 `/desktop/login`，在主进程内校验回调和固定 Gateway 公钥指纹；设备私钥使用 Electron 系统安全存储加密。审批后，Desktop 把签名设备授权及私钥证明提交给本机 daemon 的 `POST /api/managed/bootstrap`，daemon 校验 Gateway 签名和设备证明，再生成内存中的本机会话。受管模式的业务 HTTP 和 WebSocket 同时要求 Desktop 启动令牌与本机会话，仍在本机 loopback 处理；错误 Origin 被拒绝。本机会话失效时 daemon 返回专用 401 标记，Desktop 单飞重走网关登录与本机交接。超级管理员可在 `/admin/devices` 查看待审批设备，通过密码二次认证批准、停用或撤销。备份与迁移 Gateway 时须连同数据库保存 `gateway-signing-key.pem`；丢失密钥会使既有受管包公钥指纹不匹配。
+受管 Desktop 使用内置认证窗口打开 `/desktop/login`，钉钉登录可复用本机已登录账号；在主进程内拦截授权回调并校验固定 Gateway 公钥指纹；设备私钥使用 Electron 系统安全存储加密。审批后，Desktop 把签名设备授权及私钥证明提交给本机 daemon 的 `POST /api/managed/bootstrap`，daemon 校验 Gateway 签名和设备证明，再生成内存中的本机会话。受管模式的业务 HTTP 和 WebSocket 同时要求 Desktop 启动令牌与本机会话，仍在本机 loopback 处理；错误 Origin 被拒绝。本机会话失效时 daemon 返回专用 401 标记，Desktop 单飞重走网关登录与本机交接。超级管理员可在 `/admin/devices` 查看待审批设备，通过密码二次认证批准、停用或撤销。备份与迁移 Gateway 时须连同数据库保存 `gateway-signing-key.pem`；丢失密钥会使既有受管包公钥指纹不匹配。
 
 受管安装包由部署者按网关固定配置构建后放入 Gateway 数据目录的 `releases/`。超级管理员密码二次认证后调用 `POST /api/admin/client-releases`，提交 `os`、`arch`、`version`、`filename`、`minimum_protocol_version`；Gateway 把文件复制为不可变发布副本，计算大小与 SHA-256，并用网关密钥签署规范化清单。`GET /api/client-releases` 和 `/devices/empty` 对所有用户提供同一网关的安装包及校验信息；下载链接不携带用户身份。发布前须核对安装包内的受管配置与本 Gateway ID、公钥 pin 及域名一致，安装包代码签名仍由 Desktop 发布流程负责。
 
-阶段 3B 的控制 WebSocket 已建立 `/api/control/ws` 骨架：Desktop 用设备密钥签署短期控制密钥委托，只把临时控制私钥交给本机 daemon；Gateway 发出一次性随机挑战，由 daemon 的临时密钥应答，并核对签名授权、设备/用户状态和用户设备关系。Gateway 维护单设备在线连接和历史；心跳超时、停用或撤销关闭连接。daemon 主动连接、心跳并退避重连；授权被拒后，本机控制状态通知 Desktop 重新登录。Gateway 在握手和心跳下发十分钟签名策略快照，daemon 校验固定网关公钥、用户/设备、期限和 revision 后缓存并回执；本机状态接口展示期限。完整策略编译、其余受控业务入口门禁和命令传输仍待实现，因此此端点暂不用于生产受管设备。
-受管请求的操作者会进入 daemon 的当前身份上下文；共享任务创建服务根据本机签名策略检查 `task.create`，过期、未下发、用户不匹配或能力缺失时返回 403。未分配的受控能力默认拒绝；其余受控入口门禁留待后续阶段，此控制通道尚不适合生产部署。
-超级管理员短时二次认证后可调用 `POST /api/admin/capabilities/{user_id}` 授予全局或设备范围的 `task.create`，`effect=deny` 优先于 allow；`POST /api/admin/capabilities/{user_id}/revoke` 撤销相应分配。变更提高目标设备 policy revision，下次控制心跳重签并回传应用版本。设备停用、撤销或账号停用关闭控制连接时，daemon 清空受控策略。项目范围能力和其余受控动作仍待后续阶段。
+控制 WebSocket `/ws/control`：Desktop 用设备密钥签署短期控制密钥委托，只把临时控制私钥交给本机 daemon；Gateway 发出一次性随机挑战，由 daemon 的临时密钥应答，并核对签名授权、设备/用户状态和用户设备关系。Gateway 维护单设备在线连接和历史；心跳超时、停用或撤销关闭连接。daemon 主动连接、心跳并退避重连；授权被拒后，本机控制状态通知 Desktop 重新登录。Gateway 在握手和心跳下发十分钟签名策略快照，daemon 校验固定网关公钥、用户/设备、期限和 revision 后缓存并回执；本机状态接口展示期限。策略编译覆盖用户与组的受控动作，实际业务门禁与统一权限入口见下文。
+控制连接重连（2026-10-08）：首次登录仍使用 15 分钟设备授权。Gateway 在成功握手及每次心跳签发独立的 `control.reconnect` 凭据，绑定原授权摘要和临时控制公钥，有效 30 天并随心跳续期；daemon 仅在内存保存，重连仍必须应答新挑战。网关进程重启只要保留原数据库与签名密钥即可续连，无须重新登录；每次握手和心跳仍核对设备、用户与有效设备关系，撤销立即失效。默认心跳 20 秒，应答超时 10 秒，失败按 1/2/4 秒退避，最长 60 秒。旧客户端未获取续期凭据、凭据过期或 daemon 重启后仍需重新登录；更新后应重新登录一次建立新控制连接。
+
+受管请求的操作者会进入 daemon 的当前身份上下文；共享任务创建服务根据本机签名策略检查 `task.create`，过期、未下发、用户不匹配或能力缺失时返回 403。普通用户未分配的受控能力默认拒绝。
+有效的超级管理员默认拥有全部受控动作权限：`task.create`、`project.publish`、`task.share`、`engine.install` 和 `provider.local`，无需另行分配能力，也不受普通用户或组的能力禁止规则限制。Gateway 在握手与心跳读取当前角色并下发签名策略；授予或撤销超管角色会提高关联设备 policy revision，撤销后恢复普通用户规则。设备、账号、会话有效性和签名校验仍然生效。
+
+统一权限入口为 `/admin/permissions`（管理后台 → 用户与权限 → 权限管理），超级管理员可按用户或用户组分配、调整和撤销规则。目录覆盖设备访问、项目查看/编辑、模型供应商使用、创建任务、发布项目、创建分享、安装引擎、使用本地供应商，以及平台/组织/部门/设备组范围的管理员角色。全局和设备范围的五项业务动作均支持用户与组；项目范围支持 `task.create` 和 `share.create`，普通用户执行这些动作还需要相应项目访问。管理员角色的允许范围由目录限定。
+
+`POST /api/admin/permissions` 统一接收 `subject_type`（user/group）、`subject_id`、`permission`、`scope_type`、`scope_id` 和 `effect`；全局/平台不传 scope_id。`GET` 返回旧入口与新入口的同一批有效授权，`DELETE /{assignment_id}` 复用原有撤销逻辑，保留恢复管理员、最后一名本地超管、CSRF 与二次认证保护。项目查看/编辑共用一条授权，调整访问级别不会新增重复授权。资源访问和管理员角色通过撤销控制，五项业务动作支持显式禁止。个人与当前有效组的业务规则合并，禁止优先；超级管理员拥有全部权限，不受普通业务禁止规则限制。组角色也由当前有效成员继承，移出组、停用组或账号后失效。
+
+策略和供应商授权变更提高关联设备版本，下次控制心跳更新签名策略与加密供应商配置。超级管理员角色变更同时更新这两个版本。组供应商默认优先级为用户、用户组、设备；多个组默认按授权创建时间和 ID 稳定选择。网关授权名 `share.create` 对应 daemon 签名能力 `task.share`；任务创建与分享的项目允许/禁止列表均转换为宿主项目 ID 后签名下发，本机接口也遵守项目禁止优先。本地分享创建、引擎安装、任务创建、项目发布与本地供应商修改有实际后端门禁。本地供应商撤权后从目录和运行时选择中移除，已读出的旧供应商也不能继续通过模型调用入口；引擎自身账号登录不属于本地供应商授权。设备停用、撤销或账号停用关闭控制连接时，daemon 清空策略。统一列表展示直接规则，用户的组继承权限由后端实时计算。
+
 桌面登录页支持本地密码及已启用的钉钉/企业微信身份源；扫码回调持久化一次性 state 与经过白名单约束的回跳路径，成功后返回原桌面登录页继续签发 code，失败后携带有限错误状态返回重试。待审核账号进入等待页。
 
 阶段 4D 的 Gateway 组 API 在 `/api/groups`；外部部门映射组跟随目录同步，组项目关系仅授予 Skills 管理范围。`/api/admin/skills` 接收限额 ZIP 包并保存不可变版本，具有平台范围 `skill_admin` 或超级管理员角色且完成短时密码二次认证后才能上传、审核和授权版本；组长只能给本组已关联项目分配获授权的固定版本。设备控制心跳携带签名清单，PC 从固定网关按需下载并验签、校验包摘要和路径后落盘；`/api/admin/skills/applications` 可看项目应用状态。管理页面仍待完成。
@@ -47,7 +61,7 @@ uv run --project apps/gateway --no-sync uvicorn gateway.app:app --host 0.0.0.0 -
 
 阶段 3C 已提供整机分配的基础接口：超级管理员二次认证后可用 `POST /api/admin/devices/{device_id}/users` 分配用户，或用 `POST /api/admin/devices/{device_id}/users/{user_id}/revoke` 撤销；用户在 `/devices` 查看自己的有效设备。配置 `WORKSTEP_GATEWAY_PUBLIC_ORIGIN=https://gateway.example.com` 后，在线设备的 `GET /api/devices/{device_id}/access` 返回独立子域 URL 与 60 秒 Ed25519 票据，票据绑定用户、设备和目标主机。浏览器向设备子域 `POST /api/remote/redeem` 提交表单票据，一次性兑换主机限定、HttpOnly、Secure 的设备会话；`GET /api/remote/session` 每次重新核对分配和在线状态。迁移 `0012_remote_access` 记录已用票据。设备会话通过验证后才允许进入数据代理；完整远程工作台验收仍待完成。
 
-控制 WSS 可按需发出 `open_data` 命令，PC 随即向 `/api/data/ws` 回连并一次性提交短期 token；控制断开时数据连接随之关闭。
+控制 WSS 可按需发出 `open_data` 命令，PC 随即向 `/ws/data` 回连并一次性提交短期 token；控制断开时数据连接随之关闭。
 
 设备子域的 HTTP 和业务 WebSocket 请求现在由 Gateway 校验设备会话、当前分配和在线状态后，按流 ID 经数据 WSS 转发给 PC。PC 在进程内调用已有 FastAPI 应用，注入经过 Gateway 核验的用户身份；HTTP 正文和业务 WebSocket 消息分块传输，Gateway 不转发浏览器 Cookie 或伪造的操作者头。门户“打开电脑”会提交一次性票据，远程 Web 显示设备、用户、在线状态和返回入口。项目会话现在也经该数据通道加载宿主的完整 WorkStep Web，不再由门户复制任务列表/详情；首次只读取绑定项目摘要，进入原任务工作台，任务详情复用 `TaskDetailPage`，项目授权设置复用现有授权展示模块。PC 拒绝远程用户执行原生目录/桌面动作及无项目作用域的 FS 浏览，门户给出本机操作提示。完整流控、受管包端到端验收和更多接口边界检查仍待完成，阶段 3C 不可用于生产。
 
@@ -115,3 +129,27 @@ uv run --project apps/gateway --no-sync uvicorn gateway.app:app --host 0.0.0.0 -
 ## 后台保存平台地址
 
 超管在「管理后台 → 系统设置 → 平台设置 → 修改平台地址」填写完整域名地址并验证管理员密码保存。支持 HTTPS 域名与本地/内网 HTTP 地址，不含路径和查询参数；域名解析、TLS 和反向代理需在部署层完成。地址保存到 `platform_settings.public_origin`，立即用于设备与分享链接；启动时优先恢复数据库中的值，环境变量只提供未保存时的初始默认值，无需改 `.env` 或重新打包。安装页从安装目录接口读取此地址，并提供「复制地址」给客户端远程访问设置使用。
+
+
+## 直接工作台与跨设备完成通知（2026-10-09）
+
+“我的 WorkStep”保留顶部设备 Tab，选择在线设备后在当前页面兑换票据并加载原有 WorkStep；后台设备不驻留 iframe。只获项目授权的用户仍通过项目票据进入，并可切换本人已授权项目。设备或项目切换会重新加载目标工作台，当前未提交的编辑不跨设备保留；通知记录及已读状态保存在网关中。
+
+默认同源 `/workspace/{device_id}/` 工作台顶部装配设备 Tab 和通知中心。浏览器只保留当前设备的原工作台实时流，另使用一条 `/ws/notifications` 用户汇总连接；设备切换是页面导航，会重新建立当前页连接，旧页面连接随卸载关闭。旧设备子域入口仍兼容，但暂不装配主域汇总通知。通知列出来源设备、项目、任务或对话、完成/失败和时间，支持查看更早通知、全部已读及重新核权后定位来源任务。设备离线时通知保留，可上线后重试。网页关闭后没有常驻推送。安卓旧包的前台弹窗与后台已登记任务通知已通过网关兼容层接入；没有活跃任务监听时，不会启动后台常驻汇总。
+
+Gateway 对每个在线设备共享一次采集，复用已有控制/数据通道及 daemon 的 `/api/completion-notifications/recent`，不按用户重复采集、不拉取 token 流或对话正文。单轮最多 8 个设备并发，每设备最多轮询 20 个项目，下一轮轮换；目录缓存 60 秒，每设备实际执行有 30 秒超时，每轮结束后间隔 15 秒。设备/项目很多或连接慢时完成通知延迟会增加，这不是固定 15 秒推送保证。最新任务名称查询受每批 20 个及缓存上限约束，未补全时显示任务标识。
+
+通知摘要去重后保存 7 天，每用户已读游标持久化；REST 和每次 WebSocket 快照均按当前有效整机/项目授权过滤；超级管理员拥有全部资源访问，其他管理员角色不自动获得内容权限。每用户最多 5 个汇总连接，全局最多 512 个，唤醒队列只保留一个待更新信号，慢客户端发送超时关闭；客户端有心跳、退避重连和上线恢复。上游 daemon 原缓存只保留 24 小时且每设备最多 1000 个完成事件，长期离线或超出缓存的事件无法补回。本版本不汇总等待审批事件。
+
+验证：Gateway 全量 281 项通过、1 项跳过；直接工作台/通知/设备/项目授权与分层补测 15 项通过。Gateway Web 全量 127 项通过；Web 网关相关 9 项通过、普通及网关分享构建通过。Web 全量 1251 项通过、2 项原有失败（助手聊天滚动源码断言与快捷按钮数量断言）。200 个来源只验证每个采集一次、最多 8 个并发及有界唤醒，不等同于 100 个真实在线用户/200 台设备容量验收。实际浏览器验证无 iframe、通知连接成功及移动布局；当前设备离线，真实完成事件、设备切换与网关重启完整端到端验收待设备上线。
+
+
+### 旧安卓包通知接口兼容（2026-10-09）
+
+无需重新打 APK；安卓地址填写网关根地址、在 WebView 中登录，再由最新网关/网页适配原有桥接。Gateway 根路径 `/ws` 接受旧 `subscribe` 中的 project/session/task 字段，只发送单条 `TEXT_MESSAGE_END`、`RUN_FINISHED`、`RUN_ERROR` 完成摘要；`/api/completion-notifications/recent` 保留 `{events:[...]}` 与 `recorded_at`，断线补查仍由旧 APK 执行。根路径使用门户登录 Cookie，允许旧原生客户端省略 Origin，有浏览器 Origin 时必须同源；设备子域的 `/ws` 继续走原设备代理，工作台 `/workspace/{id}/ws` 原实时流不变。汇总与兼容连接共用上限和有界唤醒队列，不重复连接宿主或读取 token 流。
+
+网页给旧原生桥接登记 `gateway/{device_id}/{host_project_id}` 的不透明项目标识，任务/会话标识和旧桥接字段保持原形；网关发送相同标识供旧包匹配，防止复制项目/任务跨设备混淆。当前设备正常工作台内部仍使用真实宿主项目 ID，daemon 不感知这些原生桥接标识。前台汇总新事件调用旧 `notify` 桥接，使用与后台一致的去重 ID；历史初次加载不弹窗，当前正查看的目标也不重复提醒。旧包后台生成的根 `/tasks`、`/chat` 地址由门户重新核对通知记录及当前权限，签票进入来源设备，离线时可重试。
+
+保持旧包已有后台规则：只有网页已登记的活跃回复/步骤才启动后台服务，切换项目清理旧监听，全部完成后停止；不能只靠网关将旧包改成无任务也常驻的跨设备推送客户端。通知权限、安卓省电限制和强制停止规则沿用原包。
+
+验证：Gateway 全量 283 项通过、1 项跳过；平台前端 138 项通过；Web 通知桥接/订阅/恢复/直接工作台相关 16 项通过，前端构建通过。覆盖未登录与跨站拒绝、无 Origin 原生握手、旧事件单条格式、断线近期结果、设备隔离、旧设备代理、原桥接 ID 与原生点击目标。未更新 APK 或 daemon 后端；尚无手机真机前后台弹窗验收，不能用协议回归代替实际系统通知测试。

@@ -36,7 +36,7 @@ export function AdminUserTable({users, csrf, loading, resetKey, onRefresh}: {
   <AdminRecordTable columns={[<AdminSelectAll ids={selectable} selected={selected} onChange={setSelected} disabled={loading}/>, '显示名', '登录用户名', '状态', '注册来源', '操作']}>
    {users.map(user=><tr key={user.id}>
     <td><input type="checkbox" className="gateway-table-checkbox" aria-label={`选择${user.display_name}`} checked={selected.includes(user.id)} disabled={loading || user.is_recovery} onChange={event=>toggle(user.id,event.target.checked)}/></td>
-    <td><strong>{user.display_name}</strong>{user.must_change_password && <small className="gateway-person-note">首次登录需修改密码</small>}</td>
+    <td><strong>{user.display_name}</strong></td>
     <td><span className="gateway-login-name" title={loginUsername(user) ?? '使用企业身份登录'}>{loginUsername(user) ?? '扫码登录'}</span></td>
     <td>{user.status==='pending'?'待审核':user.status==='disabled'?'已停用':user.status==='deleted'?'已删除':'已启用'}</td>
     <td>{sources[user.registration_source] ?? user.registration_source}</td>

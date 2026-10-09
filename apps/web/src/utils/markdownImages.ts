@@ -1,3 +1,4 @@
+import { gatewayResourceUrl } from './gatewayWorkspacePath'
 export interface MarkdownTextSegment {
   type: 'text'
   markdown: string
@@ -70,9 +71,9 @@ export function removeMarkdownImage(markdown: string, image: MarkdownImageSegmen
 export function resolveMarkdownImageSrc(src: string, projectId?: string): string {
   const projectMatch = src.match(UPLOAD_RELATIVE)
   if (projectMatch && projectId) {
-    return `/api/fs/serve/${encodeURIComponent(projectMatch[1])}?project_id=${encodeURIComponent(projectId)}`
+    return gatewayResourceUrl(`/api/fs/serve/${encodeURIComponent(projectMatch[1])}?project_id=${encodeURIComponent(projectId)}`)
   }
   const globalMatch = src.match(GLOBAL_UPLOAD_RELATIVE)
-  if (globalMatch) return `/api/fs/serve/${encodeURIComponent(globalMatch[1])}`
+  if (globalMatch) return gatewayResourceUrl(`/api/fs/serve/${encodeURIComponent(globalMatch[1])}`)
   return src
 }

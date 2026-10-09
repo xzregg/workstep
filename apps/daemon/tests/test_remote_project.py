@@ -294,7 +294,7 @@ async def test_remote_access_guard_blocks_non_local_api_until_unlocked(monkeypat
         assert local.status_code == 200
 
 
-async def test_remote_access_guard_allows_desktop_token_and_loopback_target_in_container(monkeypatch):
+async def test_remote_access_guard_requires_desktop_token_or_access_key_in_container(monkeypatch):
     access = RemoteAccessService(MemoryConfig())
     access.set_access_password("letmein")
     monkeypatch.setenv("WORKSTEP_DESKTOP_RUNTIME", "1")
@@ -307,12 +307,94 @@ async def test_remote_access_guard_allows_desktop_token_and_loopback_target_in_c
         return {"ok": True}
 
     async with AsyncClient(
-        transport=ASGITransport(app=app, client=("192.168.127.2", 5000)),
+        transport=ASGITransport(app=app, client=("10.88.0.2", 5000)),
         base_url="http://127.0.0.1:8766",
     ) as client:
-        assert (await client.get("/api/secret")).status_code == 200
+        assert (await client.get("/api/secret")).status_code == 401
         assert (await client.get("/api/secret", headers={"host": "192.168.1.9:8766"})).status_code == 401
+        assert (await client.get("/api/secret", headers={"X-WorkStep-Desktop-Token": "wrong"})).status_code == 401
         assert (await client.get("/api/secret", headers={"host": "192.168.1.9:8766", "X-WorkStep-Desktop-Token": "desktop-secret"})).status_code == 200
+        assert (await client.get("/api/secret", headers={"X-WorkStep-Access": access.issue_access_token()})).status_code == 200
+
+
+def test_container_websocket_requires_desktop_token_or_access_key(monkeypatch):
+    from starlette.websockets import WebSocketDisconnect
+    from api.remote_access_guard import websocket_access_allowed
+    import pytest
+
+    monkeypatch.setenv("WORKSTEP_DESKTOP_RUNTIME", "1")
+    monkeypatch.setenv("WORKSTEP_DESKTOP_TOKEN", "desktop-secret")
+    access = RemoteAccessService(MemoryConfig())
+    access.set_access_password("letmein")
+    app = FastAPI()
+
+    @app.websocket('/ws')
+    async def socket(ws: WebSocket):
+        if not await asyncio.to_thread(websocket_access_allowed, ws, access):
+            await ws.close(code=4401)
+            return
+        await ws.accept()
+        await ws.send_text('ok')
+
+    with TestClient(app, base_url='http://127.0.0.1:8766', client=('10.88.0.2', 5000)) as client:
+        for headers in ({}, {'X-WorkStep-Desktop-Token': 'wrong'}, {'Host': '127.0.0.1:8766', 'X-Forwarded-For': '127.0.0.1'}):
+            with pytest.raises(WebSocketDisconnect):
+                with client.websocket_connect('/ws', headers=headers): pass
+        with client.websocket_connect('/ws', headers={'X-WorkStep-Desktop-Token': 'desktop-secret'}) as ws:
+            assert ws.receive_text() == 'ok'
+        client.cookies.set(ACCESS_COOKIE_NAME, access.issue_access_token())
+        with client.websocket_connect('/ws') as ws:
+            assert ws.receive_text() == 'ok'
+
+
+def test_gateway_configured_desktop_keeps_lan_password_unlock_available(monkeypatch):
+    from api.desktop_security import DesktopSecurityMiddleware, desktop_websocket_allowed
+    from api.remote_access_guard import websocket_access_allowed
+    from services.gateway_client.identity import ManagedLocalSessions
+    from starlette.websockets import WebSocketDisconnect
+    import pytest
+
+    monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
+    monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'desktop-secret')
+    config = MemoryConfig()
+    config.set('remote_access', {'enabled': True})
+    access = RemoteAccessService(config)
+    access.set_access_password('letmein')
+    monkeypatch.setattr(remote_project_api, 'remote_access_service', access)
+    app = FastAPI()
+    app.state.remote_access_service = access
+    app.state.gateway_client = SimpleNamespace(managed_config=object(), local_sessions=ManagedLocalSessions())
+    app.state.gateway_browser_login = SimpleNamespace(desktop_local_session=None)
+    app.add_middleware(DesktopSecurityMiddleware)
+    app.add_middleware(RemoteAccessGuardMiddleware, access_service=access)
+    app.include_router(remote_project_api.router)
+
+    @app.get('/')
+    @app.get('/api/private')
+    async def private(): return {'ok': True}
+
+    @app.websocket('/ws')
+    async def socket(ws: WebSocket):
+        if not await desktop_websocket_allowed(ws) or not await asyncio.to_thread(websocket_access_allowed, ws, access):
+            await ws.close(code=4401)
+            return
+        await ws.accept()
+        await ws.send_text('ok')
+
+    with TestClient(app, base_url='http://192.168.52.146:8766', client=('10.88.0.2', 5000)) as client:
+        assert client.get('/', follow_redirects=False).status_code == 200
+        assert client.get('/api/private').json()['code'] == 'remote_access_locked'
+        status = client.get('/api/remote-project/access/status')
+        assert status.status_code == 200
+        assert status.json() == {'required': True, 'local': False, 'authorized': False}
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect('/ws'): pass
+        assert client.post('/api/remote-project/access/unlock', json={'password':'wrong'}).status_code == 401
+        unlocked = client.post('/api/remote-project/access/unlock', json={'password':'letmein'})
+        assert unlocked.status_code == 200
+        assert client.get('/api/private').status_code == 200
+        with client.websocket_connect('ws://192.168.52.146:8766/ws') as ws:
+            assert ws.receive_text() == 'ok'
 
 
 async def test_remote_access_guard_slow_config_keeps_event_loop_responsive(monkeypatch):
@@ -1394,8 +1476,9 @@ async def test_proxy_middleware_forwards_existing_api_when_project_is_remote():
         transport=ASGITransport(app=app), base_url="http://test"
     ) as client:
         managed_response = await client.get("/api/sessions?project_id=remote%3Aabc")
-    assert managed_response.status_code == 403
-    assert len(manager.requests) == 1
+    assert managed_response.status_code == 200
+    assert managed_response.json() == {'source': 'remote'}
+    assert len(manager.requests) == 2
 
 
 async def test_proxy_middleware_keeps_remote_scope_for_html_relative_assets():

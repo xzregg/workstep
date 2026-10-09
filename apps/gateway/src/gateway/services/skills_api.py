@@ -53,8 +53,6 @@ async def _admin(call: GatewayCall):
     token = call.tokens.get(COOKIE_NAME)
     actor, auth_session = await identity.session_user(token)
     _check_csrf(call, token)
-    if actor.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     await identity.require_skill_admin(actor.id)
     await identity.require_step_up(auth_session)
     return actor
@@ -63,8 +61,6 @@ async def _admin(call: GatewayCall):
 async def _admin_read(call: GatewayCall):
     identity = _identity(call)
     actor, _ = await identity.session_user(call.tokens.get(COOKIE_NAME))
-    if actor.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     await identity.require_skill_admin(actor.id)
     return actor
 

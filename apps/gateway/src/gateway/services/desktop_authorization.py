@@ -4,6 +4,7 @@ from gateway.services.errors import GatewayError
 import base64
 import hashlib
 import hmac
+import json
 import secrets
 from datetime import timedelta
 from uuid import uuid4
@@ -88,7 +89,7 @@ class DesktopAuthorizationService:
                 ):
                     raise GatewayError('forbidden', 'Desktop authorization mismatch')
                 user = await session.get(User, auth_code.user_id)
-                if user is None or user.status != "active" or user.must_change_password:
+                if user is None or user.status != "active":
                     raise GatewayError('forbidden', 'Account unavailable')
                 claimed = await session.execute(update(DesktopAuthCode).where(
                     DesktopAuthCode.code_hash == auth_code.code_hash,
@@ -129,7 +130,7 @@ class DesktopAuthorizationService:
                     from gateway.services.device_approval_policy import device_approval_mode
                     approval = await device_approval_mode(session)
                     device = Device(
-                        id=str(uuid4()), name=device_name, public_key=canonical_key,
+                        id=str(uuid4()), name=device_name, owner_user_id=user.id, public_key=canonical_key,
                         public_key_fingerprint=fingerprint, app_instance_id=app_instance_id,
                         version=version, os=os, arch=arch, status="active" if approval == "automatic" else "pending",
                     )
@@ -138,7 +139,6 @@ class DesktopAuthorizationService:
                         session.add(AuditEvent(id=str(uuid4()), user_id=user.id, device_id=device.id,
                             action='device.auto_approved', result='success', metadata_json=None))
                 else:
-                    device.name = device_name
                     device.version = version
                     if os is not None and arch is not None:
                         device.os = os
@@ -162,6 +162,34 @@ class DesktopAuthorizationService:
                     device_public_key=device.public_key,
                 ) if device.status == "active" else None
                 return user, device, signed
+
+    async def transfer_owner(self, device_id: str, actor_id: str, user_id: str) -> None:
+        async with self.database.session() as session:
+            async with session.begin():
+                device = await session.get(Device, device_id)
+                user = await session.get(User, user_id)
+                if device is None or user is None or user.status != 'active':
+                    raise GatewayError('not_found', 'Device or owner unavailable')
+                if device.status == 'revoked':
+                    raise GatewayError('conflict', 'Device unavailable')
+                previous = device.owner_user_id
+                device.owner_user_id = user_id
+                device.policy_revision += 1
+                session.add(AuditEvent(id=str(uuid4()), user_id=actor_id, device_id=device_id,
+                    action='admin.device_owner_transferred', result='success',
+                    metadata_json=json.dumps({'previous_owner_user_id': previous, 'owner_user_id': user_id})))
+
+    async def rename_device(self, device_id: str, actor_id: str, name: str) -> None:
+        async with self.database.session() as session:
+            async with session.begin():
+                device = await session.get(Device, device_id)
+                if device is None:
+                    raise GatewayError('not_found', 'Device not found')
+                previous = device.name
+                device.name = name
+                session.add(AuditEvent(id=str(uuid4()), user_id=actor_id, device_id=device_id,
+                    action='admin.device_renamed', result='success',
+                    metadata_json=json.dumps({'previous_name': previous, 'name': name}, ensure_ascii=False)))
 
     async def approve_device(self, device_id: str, actor_id: str) -> None:
         async with self.database.session() as session:

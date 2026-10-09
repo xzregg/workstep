@@ -214,3 +214,35 @@ test('group recycle bin offers restore and password-confirmed permanent deletion
  fireEvent.click(within(dialog).getByRole('button',{name:'确认彻底删除'}))
  await waitFor(()=>assert.deepEqual(body,{group_ids:['g1'],action:'purge'}))
 })
+
+
+test('recycle bin supports selecting all groups and purging the selected batch',async()=>{
+ let body:unknown
+ globalThis.fetch=async(input,init)=>{
+  if(String(input)==='/api/auth/step-up')return Response.json({})
+  if(init?.method==='POST'){body=JSON.parse(String(init.body));return Response.json({updated:3})}
+  return Response.json({groups:String(input)==='/api/groups/deleted'?[{id:'g1',name:'研发'},{id:'g2',name:'产品'},{id:'g3',name:'销售'}]:[]})
+ }
+ render(<AdminGroupLifecyclePanel csrf="csrf" selected="" revision={0} onSelect={()=>{}} onChanged={()=>{}} />)
+ fireEvent.click(screen.getByRole('button',{name:'用户组回收站'}))
+ await screen.findByRole('checkbox',{name:'选择用户组研发'})
+ fireEvent.click(screen.getByRole('checkbox',{name:'全选用户组'}))
+ assert.ok(screen.getByText('已选 3 个组'))
+ fireEvent.click(screen.getByRole('button',{name:'彻底删除所选用户组'}))
+ const dialog=screen.getByRole('dialog',{name:'彻底删除用户组'})
+ fireEvent.change(within(dialog).getByLabelText('输入你的密码确认'),{target:{value:'password'}})
+ fireEvent.click(within(dialog).getByRole('button',{name:'确认彻底删除'}))
+ await waitFor(()=>assert.deepEqual(body,{group_ids:['g1','g2','g3'],action:'purge'}))
+})
+
+test('selecting group search results includes descendants but excludes unrelated groups',async()=>{
+ globalThis.fetch=async()=>Response.json({groups:[{id:'root',name:'研发',parent_id:null},{id:'child',name:'前端',parent_id:'root'},{id:'other',name:'销售',parent_id:null}]})
+ render(<AdminGroupLifecyclePanel csrf="csrf" selected="" revision={0} onSelect={()=>{}} onChanged={()=>{}} />)
+ await screen.findByRole('checkbox',{name:'选择用户组研发'})
+ fireEvent.change(screen.getByLabelText('搜索用户组'),{target:{value:'研发'}})
+ fireEvent.click(screen.getByRole('button',{name:'勾选搜索结果'}))
+ assert.ok(screen.getByText('已选 2 个组'))
+ fireEvent.change(screen.getByLabelText('搜索用户组'),{target:{value:''}})
+ assert.equal((screen.getByRole('checkbox',{name:'选择用户组销售'}) as HTMLInputElement).checked,false)
+ assert.equal((screen.getByRole('checkbox',{name:'全选用户组'}) as HTMLInputElement).indeterminate,true)
+})

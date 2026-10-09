@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { PasswordConfirmation, confirmStepUp, PasswordConfirmationRequired } from './PasswordConfirmation'
+import { useContext, useEffect, useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 
 type BillForm = { providerId: string; lineId: string; model: string; day: string;
@@ -8,6 +9,7 @@ const emptyForm: BillForm = { providerId: '', lineId: '', model: '', day: '',
   inputTokens: '', outputTokens: '', currency: 'USD', billedCost: '', password: '' }
 
 export function AdminUsageBillImport() {
+  const passwordRequired = useContext(PasswordConfirmationRequired)
   const [open, setOpen] = useState(false)
   const [csrf, setCsrf] = useState('')
   const [form, setForm] = useState<BillForm>(emptyForm)
@@ -45,8 +47,7 @@ export function AdminUsageBillImport() {
     setBusy(true); setError(''); setResult('')
     const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
     try {
-      const step = await fetch('/api/auth/step-up', { method: 'POST',
-        credentials: 'same-origin', headers, body: JSON.stringify({ password: form.password }) })
+      const step = await confirmStepUp(csrf, form.password, passwordRequired)
       if (!step.ok) throw new Error('管理员密码验证失败。')
       const response = await fetch('/api/admin/usage/provider-bills', { method: 'POST',
         credentials: 'same-origin', headers, body: JSON.stringify({
@@ -68,7 +69,7 @@ export function AdminUsageBillImport() {
   }
 
   const required = form.providerId.trim() && form.lineId.trim() && form.model.trim()
-    && form.day && form.inputTokens && form.outputTokens && form.billedCost && form.password
+    && form.day && form.inputTokens && form.outputTokens && form.billedCost && (!passwordRequired || form.password)
   const dirty = Object.entries(form).some(([key, value]) =>
     key !== 'currency' && Boolean(value))
   return <>
@@ -96,8 +97,7 @@ export function AdminUsageBillImport() {
           onChange={event => update('currency', event.target.value.toUpperCase())} /></label>
         <label>账单金额<input inputMode="decimal" value={form.billedCost}
           onChange={event => update('billedCost', event.target.value)} /></label>
-        <label>管理员密码<input type="password" autoComplete="current-password"
-          value={form.password} onChange={event => update('password', event.target.value)} /></label>
+        <PasswordConfirmation label="管理员密码" value={form.password} onChange={value => update('password', value)} />
       </div>
       {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在导入账单行…</p>}
       {error && <p role="alert" className="gateway-auth-error">{error}</p>}

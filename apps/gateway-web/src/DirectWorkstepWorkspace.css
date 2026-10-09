@@ -1,0 +1,18 @@
+@import '@workstep/gateway-ui/DeviceTabs.css';
+.gateway-my-workstep.gateway-admin-page { width: 100%; max-width: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: #fff; }
+.gateway-workspace-heading { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.gateway-direct-workspace { display: flex; flex-direction: column; height: calc(100dvh - 57px); min-height: 360px; background: #fff; }
+.gateway-direct-workspace:fullscreen { height: 100dvh; }
+.gateway-direct-projects { display: flex; align-items: center; gap: 16px; padding: 8px 16px; border-bottom: 1px solid #e8e8ed; font-size: 12px; color: #6e6e73; }
+.gateway-direct-projects [role="tablist"] { display: flex; gap: 6px; overflow: auto; }
+.gateway-my-workstep .gateway-direct-projects button { white-space: nowrap; background: #f5f5f7; color: #6e6e73; border: 1px solid transparent; min-height: 30px; font-size: 12px; }
+.gateway-my-workstep .gateway-direct-projects button[aria-selected="true"] { color: #0071e3; background: #fbfbfd; }
+.gateway-direct-state { padding: 24px; display: flex; align-items: center; justify-content: center; gap: 12px; background: #fff; flex: 1; }
+@media (max-width: 520px) {
+ .gateway-direct-projects { flex-direction: column; align-items: flex-start; }
+}
+
+.gateway-offline-workspace { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; }
+.gateway-offline-workspace > span { font-size: 32px; color: #86868b; margin-bottom: 20px; }
+.gateway-my-workstep .gateway-offline-workspace h3 { font-size: 20px; font-weight: 550; color: #424245; margin: 0 0 12px; }
+.gateway-my-workstep .gateway-offline-workspace p { font-size: 13px; color: #86868b; line-height: 1.8; margin: 0; }

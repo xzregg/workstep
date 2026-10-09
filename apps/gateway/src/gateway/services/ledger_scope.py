@@ -5,19 +5,13 @@ from gateway.contracts import GatewayCall
 from sqlalchemy import select, or_
 from gateway.services.identity import COOKIE_NAME
 from gateway.services.identity_api import _identity
-from gateway.models import AdminAssignment, Device, DeviceGroupMembership, DirectoryPerson, DirectoryMembership
+from gateway.models import Device, DeviceGroupMembership, DirectoryPerson, DirectoryMembership
 
 
 async def ledger_scope(call: GatewayCall, session, entity):
     identity = _identity(call)
     user, _ = await identity.session_user(call.tokens.get(COOKIE_NAME))
-    if user.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
-    assignments = (await session.scalars(select(AdminAssignment).where(
-        AdminAssignment.user_id == user.id,
-        AdminAssignment.role.in_(("super_admin", "audit_admin")),
-        AdminAssignment.revoked_at.is_(None),
-    ))).all()
+    assignments = await identity.admin_assignments_in_session(session, user.id, ("super_admin", "audit_admin"))
     if not assignments:
         raise GatewayError('forbidden', 'Audit administrator access required')
     if any(

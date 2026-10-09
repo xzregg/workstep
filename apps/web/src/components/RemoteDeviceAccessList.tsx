@@ -25,6 +25,7 @@ function inputDateTime(epochSeconds: number): string {
 
 export default function RemoteDeviceAccessList({ devices, onDeviceChange, onError }: Props) {
   const { t, locale } = useI18n()
+  const authorizedDevices = devices.filter(device => !device.revoked && device.status !== 'revoked')
   const [editing, setEditing] = useState<RemoteDevice | null>(null)
   const [revoking, setRevoking] = useState<RemoteDevice | null>(null)
   const [preset, setPreset] = useState<AccessDurationPreset>('permanent')
@@ -92,7 +93,7 @@ export default function RemoteDeviceAccessList({ devices, onDeviceChange, onErro
     }
   }
 
-  if (devices.length === 0) {
+  if (authorizedDevices.length === 0) {
     return (
       <div style={{ padding: '18px 0', color: 'var(--meta)', fontSize: 'calc(12px * var(--font-scale))' }}>
         {t('settings.noAuthorizedDevices')}
@@ -103,7 +104,7 @@ export default function RemoteDeviceAccessList({ devices, onDeviceChange, onErro
   return (
     <>
       <div style={{ display: 'grid', gap: 0 }}>
-        {devices.map((device) => {
+        {authorizedDevices.map((device) => {
           const status = device.status ?? (device.revoked ? 'revoked' : 'active')
           const statusLabel = status === 'revoked'
             ? t('settings.deviceRevoked')

@@ -89,3 +89,9 @@ async def revoke_platform_provider_assignment(request: Request, provider_id: str
 @router.post("/{provider_id}/disable", status_code=204)
 async def disable_platform_provider(request: Request, provider_id: str):
     return await invoke(_handle_disable_platform_provider, request=request, provider_id=provider_id)
+
+
+@router.post("/{provider_id}/credential")
+async def reveal_platform_provider_credential(request: Request, provider_id: str):
+    from gateway.services.providers_api import reveal_platform_provider_credential as handle
+    return await invoke(handle, request=request, provider_id=provider_id)

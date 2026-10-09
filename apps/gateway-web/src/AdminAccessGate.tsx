@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 
-type Access = { roles: string[]; must_change_password: boolean }
+type Access = { roles: string[]; must_change_password: boolean; password_confirmation_required?: boolean }
 type State = { path: string; status: 'checking' | 'ready' | 'anonymous' | 'error'; access: Access | null }
 
 export function useAdminAccess(): State {
@@ -48,7 +48,6 @@ export function AdminAccessGate({ state, allow, children }: {
     管理权限检查失败。<button type="button"
       onClick={() => window.dispatchEvent(new Event('gateway-auth-changed'))}>重试</button></p></section>
   if (state.status === 'anonymous') return <Navigate to={`/auth?next=${encodeURIComponent(location.pathname)}`} replace />
-  if (state.access?.must_change_password) return <Navigate to="/account" replace />
   const roles = state.access?.roles ?? []
   if (roles.length === 0 || (allow && !allow.some(role => roles.includes(role)))) {
     return <Navigate to="/" replace state={{ adminDenied: true }} />

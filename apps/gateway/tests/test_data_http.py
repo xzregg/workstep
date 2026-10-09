@@ -20,7 +20,8 @@ from urllib.parse import urlsplit
     ('http', 'd-device-1.localhost:8700', 'ws'),
     ('https', 'd-device-1.gateway.test:8700', 'wss'),
 ])
-async def test_proxy_redirect_and_websocket_policy_preserve_public_scheme(scheme, host, ws_scheme):
+@pytest.mark.parametrize('workspace', [False, True])
+async def test_proxy_redirect_and_websocket_policy_preserve_public_scheme(scheme, host, ws_scheme, workspace):
     class Socket:
         async def send_json(self, message):
             frame = ProxyFrame.model_validate(message)
@@ -28,7 +29,7 @@ async def test_proxy_redirect_and_websocket_policy_preserve_public_scheme(scheme
                 await connection.deliver(ProxyFrame(
                     stream_id=frame.stream_id, type=FrameType.http_response,
                     payload={'phase': 'start', 'status': 302,
-                             'headers': [['location', 'http://localhost:8765/login?next=project']]},
+                             'headers': [['location', 'http://localhost:8765/login?next=project'], ['x-frame-options', 'DENY']]},
                 ))
                 await connection.deliver(ProxyFrame(
                     stream_id=frame.stream_id, type=FrameType.http_response,
@@ -39,12 +40,15 @@ async def test_proxy_redirect_and_websocket_policy_preserve_public_scheme(scheme
     async def receive():
         return {'type': 'http.request', 'body': b'', 'more_body': False}
     request = StarletteRequest({
-        'type': 'http', 'method': 'GET', 'scheme': scheme, 'path': '/',
+        'type': 'http', 'method': 'GET', 'scheme': scheme, 'path': '/workspace/device-1/' if workspace else '/',
         'query_string': b'', 'headers': [(b'host', host.encode())],
         'server': (host.split(':')[0], 8700),
     }, receive)
     response = await invoke(connection.proxy_http, request=request, user_id='user-1', username='alice')
-    assert response.headers['location'] == f'{scheme}://{host}/login?next=project'
+    expected = '/workspace/device-1/login?next=project' if workspace else f'{scheme}://{host}/login?next=project'
+    assert response.headers['location'] == expected
+    assert ("frame-ancestors 'self'" if workspace else "frame-ancestors 'none'") in response.headers['content-security-policy']
+    assert 'x-frame-options' not in response.headers
     assert f"connect-src 'self' {ws_scheme}://{host}" in response.headers['content-security-policy']
     async for _ in response.body_iterator:
         pass

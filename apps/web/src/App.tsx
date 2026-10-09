@@ -1,3 +1,4 @@
+import { gatewayWorkspacePath } from './utils/gatewayWorkspacePath'
 import { BrandIcon } from './components/BrandIcon'
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
@@ -98,7 +99,7 @@ function WelcomeView() {
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={gatewayWorkspacePath() || undefined}>
       <GatewayRemoteFrame><GatedApp /></GatewayRemoteFrame>
     </BrowserRouter>
   )

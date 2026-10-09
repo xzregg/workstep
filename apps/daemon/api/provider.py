@@ -19,14 +19,18 @@ from services.project import project_manager
 router = APIRouter(prefix="/api/provider")
 
 
-def _managed_mode(request: Request) -> bool:
-    service = getattr(request.app.state, "gateway_client", None)
-    return bool(service is not None and service.managed_config is not None)
-
-
-def _reject_managed_mutation(request: Request) -> None:
-    if _managed_mode(request):
-        raise HTTPException(status_code=403, detail="供应商由 Gateway 管理")
+async def _reject_managed_mutation(request: Request, provider_id: str = "") -> None:
+    if provider_id and getattr(config_store, 'managed_gateway_id', None):
+        managed = await asyncio.to_thread(lambda: any(
+            item.get("id") == provider_id and item.get("managed")
+            for item in config_store.get_providers(include_unmanaged=True)))
+        if managed:
+            raise HTTPException(status_code=403, detail="该供应商由 Gateway 分发，请在网关修改")
+    from services.gateway_client.policy import require_managed_capability
+    try:
+        require_managed_capability("provider.local")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 class ProviderSaveRequest(BaseModel):
@@ -153,7 +157,7 @@ async def list_providers(project_id: str = ""):
 @router.post("")
 async def save_provider(req: ProviderSaveRequest, request: Request):
     """Create or update a provider; API keys keep engine-style masking."""
-    _reject_managed_mutation(request)
+    await _reject_managed_mutation(request, req.id)
     name = str(req.name or "").strip()
     type_id = str(req.type or "").strip().lower()
     base_url = provider_service.normalize_provider_base_url(req.base_url)
@@ -273,8 +277,6 @@ async def save_provider(req: ProviderSaveRequest, request: Request):
 @router.get("/import/sources")
 async def import_sources(request: Request):
     """Discover third-party sources that can feed providers into WorkStep."""
-    if _managed_mode(request):
-        return {"sources": []}
     candidates = await asyncio.to_thread(lambda: [
         candidate
         for candidate in provider_service.scan_cc_switch_providers()
@@ -303,7 +305,6 @@ async def import_sources(request: Request):
 
 @router.post("/import/cc-switch")
 async def import_cc_switch(req: ProviderImportRequest, request: Request):
-    _reject_managed_mutation(request)
     """Import selected CC Switch provider configurations into WorkStep."""
     candidates, existing_names = await asyncio.to_thread(
         lambda: (
@@ -384,7 +385,7 @@ async def import_cc_switch(req: ProviderImportRequest, request: Request):
 @router.delete("/{provider_id}")
 async def delete_provider(provider_id: str, request: Request):
     """Delete a provider; refuse while any engine or project still references it."""
-    _reject_managed_mutation(request)
+    await _reject_managed_mutation(request, provider_id)
     provider = await asyncio.to_thread(config_store.get_provider, provider_id)
     if provider is None:
         raise HTTPException(status_code=404, detail="供应商不存在")
@@ -458,7 +459,7 @@ async def test_provider(provider_id: str, req: ProviderTestRequest, request: Req
         })
         refresh_registry()
 
-    if not _managed_mode(request):
+    if not provider.get("managed"):
         await asyncio.to_thread(save_result)
     return {
         "provider_id": provider_id,
@@ -500,8 +501,7 @@ async def provider_models_selection(
     provider_id: str, body: ProviderModelsSelectRequest, request: Request
 ):
     """Persist the user-selected subset of models (checked in the dialog)."""
-    if _managed_mode(request):
-        raise HTTPException(status_code=403, detail="供应商模型目录由 Gateway 管理")
+    await _reject_managed_mutation(request, provider_id)
     provider = await asyncio.to_thread(_require_provider, provider_id)
     try:
         selected_protocol = provider_service.select_provider_protocol(
@@ -548,8 +548,8 @@ async def provider_models(
     解析地址（缺省取供应商默认协议）。
     """
     provider = await asyncio.to_thread(_require_provider, provider_id)
-    if refresh and _managed_mode(request):
-        raise HTTPException(status_code=403, detail="供应商模型目录由 Gateway 管理")
+    if refresh:
+        await _reject_managed_mutation(request, provider_id)
     try:
         selected_protocol = provider_service.select_provider_protocol(
             provider, protocol or None
@@ -625,8 +625,7 @@ async def provider_balance(provider_id: str):
 @router.post("/{provider_id}/reveal")
 async def reveal_provider_key(provider_id: str, request: Request):
     """Return the stored API key after an explicit reveal action."""
-    if _managed_mode(request):
-        raise HTTPException(status_code=403, detail="受管供应商密钥不可显示")
+    await _reject_managed_mutation(request, provider_id)
     provider = await asyncio.to_thread(_require_provider, provider_id)
     return JSONResponse(
         {"key": "api_key", "value": provider.get("api_key") or None},

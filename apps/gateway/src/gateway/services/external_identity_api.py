@@ -32,12 +32,16 @@ from gateway.services.organization_settings import option_key, source_options
 """Enterprise identity setup, scan callbacks and directory import."""
 
 
+from gateway.services.directory_schedule import SyncSchedule, next_run
+
+
 class SourceInput(BaseModel):
     provider: Literal["dingtalk", "wecom"]
     tenant_id: str = Field(min_length=1, max_length=128)
     client_id: str = Field(min_length=1, max_length=256)
     secret_env: str | None = Field(default=None, min_length=1, max_length=128)
     client_secret: str | None = Field(default=None, min_length=1, max_length=4096)
+    sync_schedule: SyncSchedule = Field(default_factory=SyncSchedule)
     login_enabled: bool = True
     sync_enabled: bool = True
     enabled: bool = True
@@ -65,6 +69,7 @@ class PersonInput(BaseModel):
     subject: str = Field(min_length=1, max_length=256)
     display_name: str = Field(min_length=1, max_length=256)
     department_ids: list[str]
+    active: bool = True
 
 
 class DirectorySnapshot(BaseModel):
@@ -74,6 +79,7 @@ class DirectorySnapshot(BaseModel):
 
 
 class SelectedDirectoryInput(BaseModel):
+    preview: bool = False
     department_ids: list[str] = Field(min_length=1, max_length=10000)
 
     @field_validator('department_ids')
@@ -153,7 +159,7 @@ async def create_source(call: GatewayCall, body: SourceInput):
     # Source ID is allocated before encryption so ciphertext is bound to its record.
     from uuid import uuid4
     credential_id = str(uuid4())
-    options = {"login_enabled": body.login_enabled, "sync_enabled": body.sync_enabled, "enabled": body.enabled, "selected_department_ids": []}
+    options = {"login_enabled": body.login_enabled, "sync_enabled": body.sync_enabled, "enabled": body.enabled, "selected_department_ids": [], "sync_schedule": body.sync_schedule.model_dump(), "next_sync_at": next_run(body.sync_schedule.model_dump()).isoformat() if next_run(body.sync_schedule.model_dump()) else None}
     if body.client_secret:
         options['encrypted_secret'] = call.gateway_signer.encrypt_provider_secret(credential_id, body.client_secret)
         options["credential_id"] = credential_id
@@ -204,6 +210,8 @@ async def list_sources(call: GatewayCall, q: str = '',
                     'enabled': bool(source.enabled),
                     'login_enabled': options.get(source.id, {}).get('login_enabled', True),
                     'sync_enabled': options.get(source.id, {}).get('sync_enabled', True),
+                    'sync_schedule': options.get(source.id, {}).get('sync_schedule', {'frequency': 'off'}),
+                    'next_sync_at': options.get(source.id, {}).get('next_sync_at'),
                     'secret_configured': bool(options.get(source.id, {}).get('encrypted_secret') or source.secret_env),
                     'callback_configured': bool(source.callback_token_env),
                     'created_at': source.created_at.isoformat(),
@@ -262,7 +270,7 @@ async def reconcile_directory(call: GatewayCall, source_id: str):
         raise GatewayError('upstream_failed', 'Directory provider unavailable') from exc
     try:
         return await service.full_sync(source_id, snapshot["departments"], snapshot["people"],
-                                       snapshot.get('cursor'), selected_department_ids=selected)
+                                       snapshot.get('cursor'), selected_department_ids=snapshot.get('selected_department_ids', selected), snapshot_complete=snapshot.get('complete', False))
     except Exception as exc:
         await service.record_sync_failure(source_id, 'snapshot_invalid' if isinstance(exc, GatewayError) and exc.reason == 'invalid' else 'snapshot_apply_failed')
         raise
@@ -361,7 +369,11 @@ async def update_source(call: GatewayCall, source_id: str, body: SourceInput):
             if body.client_secret:
                 options['credential_id'] = option_key(source_id)
                 options['encrypted_secret'] = call.gateway_signer.encrypt_provider_secret(option_key(source_id), body.client_secret)
-            options.update(login_enabled=body.login_enabled, sync_enabled=body.sync_enabled)
+            policy = body.sync_schedule.model_dump() if 'sync_schedule' in body.model_fields_set else options.get('sync_schedule', body.sync_schedule.model_dump())
+            if options.get('sync_schedule') != policy:
+                upcoming = next_run(policy)
+                options['next_sync_at'] = upcoming.isoformat() if upcoming else None
+            options.update(login_enabled=body.login_enabled, sync_enabled=body.sync_enabled, sync_schedule=policy)
             if row: row.value_json = json.dumps(options)
             else: session.add(PlatformSetting(key=option_key(source_id), value_json=json.dumps(options)))
             source.client_id, source.agent_id, source.enabled = body.client_id, body.agent_id, int(body.enabled)
@@ -388,10 +400,26 @@ async def preview_directory(call: GatewayCall, source_id: str):
 
 async def start_selected_sync(call: GatewayCall, source_id: str, body: SelectedDirectoryInput):
     await organization_manager(call, source_id=source_id, mutation=True)
-    return await call.directory_reconciler.jobs.start(source_id, body.department_ids)
+    return await call.directory_reconciler.jobs.start(source_id, body.department_ids, preview=body.preview)
 
 
 async def latest_selected_sync(call: GatewayCall, source_id: str):
     await organization_manager(call, source_id=source_id)
     await _service(call).source(source_id, purpose='sync')
     return await call.directory_reconciler.jobs.latest(source_id)
+
+
+class ConfirmDirectoryInput(BaseModel):
+    job_id: str = Field(min_length=1, max_length=64)
+
+
+async def confirm_selected_sync(call: GatewayCall, source_id: str, body: ConfirmDirectoryInput):
+    await organization_manager(call, source_id=source_id, mutation=True)
+    return await call.directory_reconciler.jobs.confirm(source_id, body.job_id)
+
+
+async def sync_history(call: GatewayCall, source_id: str):
+    await organization_manager(call, source_id=source_id)
+    async with call.database.session() as session:
+        row = await session.get(PlatformSetting, 'directory-history:' + source_id)
+        return {'jobs': json.loads(row.value_json) if row else []}

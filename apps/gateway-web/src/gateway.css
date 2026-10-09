@@ -1,3 +1,4 @@
+@import './AdminDeviceGroupsPage.css';
 :root {
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC', sans-serif;
   color: #1d1d1f;
@@ -450,12 +451,12 @@ a {
 }
 .gateway-admin-shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 100vh; color: var(--gateway-admin-ink); background: var(--gateway-admin-surface); }
 main > .gateway-portal-header {
- display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 28px;
- padding: 16px clamp(20px, 5vw, 64px); background: var(--gateway-admin-canvas);
+ display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 20px;
+ min-height: 57px; box-sizing: border-box; padding: 8px 24px; background: var(--gateway-admin-canvas);
  border-bottom: 1px solid var(--gateway-admin-separator);
 }
-.gateway-portal-header h1 { white-space: nowrap; letter-spacing: -.02em; color: var(--gateway-admin-ink); }
-.gateway-portal-header h1 span { margin-left: 4px; font-weight: 400; color: var(--gateway-admin-muted); }
+.gateway-portal-header h1 { margin: 0; font-size: 20px; white-space: nowrap; letter-spacing: -.02em; color: var(--gateway-admin-ink); }
+.gateway-portal-header h1 span { font-size: 12px; margin-left: 4px; font-weight: 400; color: var(--gateway-admin-muted); }
 .gateway-portal-header .gateway-portal-navigation {
  display: flex; justify-self: end; max-width: 100%; flex-wrap: nowrap; gap: 4px;
  overflow-x: auto; scrollbar-width: thin; padding: 4px;
@@ -474,10 +475,10 @@ main > .gateway-portal-header {
 .gateway-portal-sign-in:active { background: var(--gateway-admin-accent); }
 .gateway-portal-header a:focus-visible { outline: 2px solid var(--gateway-admin-accent); outline-offset: -2px; }
 @media (max-width: 1023px) {
- main > .gateway-portal-header { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 16px; }
+ main > .gateway-portal-header { grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; padding: 8px 12px; }
  .gateway-portal-header .gateway-portal-navigation { grid-row: 2; grid-column: 1 / -1; justify-self: stretch; }
  .gateway-portal-navigation a { min-height: var(--mobile-control-menu); padding: 0 12px; }
- .gateway-portal-sign-in { grid-column: 2; grid-row: 1; min-height: var(--mobile-control-regular); padding: 0 12px; }
+ .gateway-portal-sign-in { grid-column: 3; grid-row: 1; min-height: var(--mobile-control-regular); padding: 0 12px; }
 }
 .gateway-admin-sidebar { position: sticky; top: 0; height: 100dvh; box-sizing: border-box; display: flex; flex-direction: column; padding: 28px 20px; background: var(--gateway-admin-lifted); border-right: 1px solid var(--gateway-admin-separator); overflow-y: auto; }
 .gateway-admin-brand { display: flex; align-items: center; gap: 12px; color: var(--gateway-admin-ink); text-decoration: none; font-size: 16px; font-weight: 700; letter-spacing: -.02em; }
@@ -792,3 +793,44 @@ body:has(.gateway-dialog-backdrop) { overflow: hidden; }
 .gateway-device-presence { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 12px; font-size: 12px; color: #64748b; background: #f1f5f9; }
 .gateway-device-presence::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .gateway-device-presence--online { color: #15803d; background: #dcfce7; }
+
+/* Project management keeps discovery separate from publication and settings. */
+.gateway-projects-page > .gateway-admin-toolbar { justify-content: space-between; }
+.gateway-projects-page > .gateway-admin-toolbar h2 { margin: 0; margin-right: auto; }
+.gateway-project-list-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: 16px; margin: 24px 0 16px; }
+.gateway-project-list-toolbar .gateway-admin-search { flex: 1; margin: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.gateway-project-list-toolbar .gateway-admin-search input { flex: 1; min-width: 160px; }
+.gateway-project-list-toolbar .gateway-admin-filters { margin: 0; padding: 0; border: 0; background: transparent; }
+.gateway-project-no-access { color: #a15c00; }
+.gateway-publication-step { color: #0071e3; font-weight: 600; }
+.gateway-modal .gateway-project-grants { border: 0; padding: 0; margin: 0; }
+.gateway-modal .gateway-project-catalog { margin-top: 0; border-top: 0; }
+.gateway-modal button.gateway-project-secondary { background: #f5f5f7; color: #333; }
+.gateway-projects-page .gateway-device-actions button:last-child { background: #fff2f0; color: #b42318; }
+@media (max-width: 640px) {
+  .gateway-project-list-toolbar { align-items: stretch; }
+  .gateway-project-list-toolbar .gateway-admin-search label { width: 100%; }
+  .gateway-project-list-toolbar .gateway-admin-filters { width: 100%; }
+}
+
+.gateway-projects-page [role="status"]::before { content: ''; display: inline-block; width: 14px; height: 14px; margin-right: 8px; border: 2px solid #dbeafe; border-top-color: #0071e3; border-radius: 50%; vertical-align: middle; animation: gateway-project-loading 0.8s linear infinite; }
+@keyframes gateway-project-loading { to { transform: rotate(360deg); } }
+
+.gateway-grant-editor { display: flex; flex-direction: column; gap: 16px; }
+.gateway-grant-editor p { margin: 0; }
+.gateway-grant-editor > select { width: 100%; }
+.gateway-grant-editor .gateway-admin-search { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0; }
+.gateway-grant-editor .gateway-admin-search label { width: 100%; }
+.gateway-grant-editor .gateway-admin-search input { flex: 1; min-width: 120px; }
+.gateway-grant-subjects { margin: 0; padding: 12px; border: 1px solid #e8e8ed; border-radius: 12px; max-height: 240px; overflow-y: auto; }
+.gateway-grant-subjects legend { padding: 0 4px; font-weight: 600; }
+.gateway-grant-subject { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; cursor: pointer; overflow-wrap: anywhere; }
+.gateway-grant-subject:has(input:checked) { background: #eaf3ff; color: #0066cc; }
+.gateway-grant-subject:hover { background: #f5f5f7; }
+.gateway-grant-subject input[type="radio"] { flex: 0 0 16px; width: 16px; height: 16px; min-height: 0; margin: 0; padding: 0; }
+.gateway-grant-editor .gateway-admin-pagination { margin: 0; }
+.gateway-grant-permission { display: grid; gap: 8px; }
+.gateway-grant-permission p { color: #6e6e73; font-size: 13px; }
+.gateway-grant-summary { padding: 12px 16px; border-radius: 10px; background: #f5f5f7; font-weight: 600; }
+.gateway-grant-editor > input { width: 100%; }
+.gateway-modal-footer button.gateway-dialog-cancel { background: #f5f5f7; color: #333; }

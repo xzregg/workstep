@@ -15,6 +15,8 @@ class RemoteHttpRequest:
     query: dict[str, str] = field(default_factory=dict)
     headers: dict[str, str] = field(default_factory=dict)
     body: bytes = b""
+    # Attribution supplied by the authenticated forwarding daemon, not headers.
+    actor: dict[str, str] | None = None
 
 
 @dataclass(frozen=True)

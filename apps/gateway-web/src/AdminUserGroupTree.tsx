@@ -50,6 +50,10 @@ export function AdminUserGroupTree({ selected, onSelect, revision = 0, endpoint 
  })
  return <aside className="gateway-user-group-tree" aria-label="用户组树">
   <h3>用户组</h3><input aria-label="搜索用户组" placeholder="搜索用户组" value={query} onChange={event => setQuery(event.target.value)} />
+  {onCheck && <div className="gateway-tree-tools">
+   <label className="gateway-check-label"><TreeCheckbox label="全选用户组" checked={groups.length > 0 && groups.every(group=>checked?.includes(group.id))} partial={groups.some(group=>checked?.includes(group.id)) && !groups.every(group=>checked?.includes(group.id))} disabled={loading || !!error || !groups.length} onChange={value=>onCheck(value ? groups.map(group=>group.id) : [])}/>全选用户组</label>
+   {!!query.trim() && <button type="button" disabled={loading || !!error || !groups.some(group=>group.name.includes(query))} onClick={()=>onCheck([...new Set([...(checked ?? []),...groups.filter(group=>group.name.includes(query)).flatMap(group=>descendants(group.id))])])}>勾选搜索结果</button>}
+  </div>}
   {loading && <p role="status"><span className="gateway-spinner" /> 加载用户组…</p>}
   {error && <p role="alert">{error}<button type="button" onClick={() => setRetry(value => value+1)}>重试</button></p>}
   <div className="gateway-tree-scroll"><ul role="tree" aria-label="用户组">{allUsers && <li role="treeitem" aria-selected={!selected}><button type="button" className={!selected ? 'gateway-group-selected' : ''} onClick={() => onSelect('')}>全部用户</button></li>}{branch(groups.filter(node => !node.parent_id || !ids.has(node.parent_id)))}</ul></div>

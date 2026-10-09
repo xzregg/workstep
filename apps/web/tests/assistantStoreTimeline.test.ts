@@ -3,6 +3,30 @@ import test from 'node:test'
 
 import { createAssistantStore } from '../src/stores/assistantStore.ts'
 import { buildMessageTimeline } from '../src/utils/messageTimeline.ts'
+import { useUserSettingsStore } from '../src/stores/userSettingsStore.ts'
+
+test('a newly sent Gateway message shows its sender before realtime acknowledgement', () => {
+  const previous = useUserSettingsStore.getState()
+  useUserSettingsStore.setState({ userName: 'test', gatewayUsername: 'test', deviceId: 'device-a', deviceName: 'Device A' })
+  try {
+    const store = createAssistantStore({ channel: 'session_chat' })
+    store.getState().addUserMessage('chat', '完成了吗')
+    assert.equal(store.getState().sessions.chat.messages[0].author_name, 'test')
+  } finally {
+    useUserSettingsStore.setState(previous)
+  }
+})
+
+test('history backfills missing sender without replacing newer streamed content', () => {
+  const store = createAssistantStore({ channel: 'session_chat' })
+  store.getState().handleWsEvent({ type: 'TEXT_MESSAGE_START', channel: 'session_chat',
+    session_id: 'chat', messageId: 'user-one', role: 'user', content: '完成了吗' })
+  store.getState().hydrateSession('chat', [{ id: 'user-one', role: 'user', content: '旧内容',
+    status: 'succeeded', author_name: 'test', author_username: 'test' }])
+  const message = store.getState().sessions.chat.messages[0]
+  assert.equal(message.author_name, 'test')
+  assert.equal(message.content, '完成了吗')
+})
 
 for (const channel of ['session_chat', 'flow_gen', 'task_create']) {
   test(`${channel} HTTP acceptance creates one running reply and START backfills its metadata`, () => {

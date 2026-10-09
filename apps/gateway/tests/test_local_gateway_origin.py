@@ -52,7 +52,7 @@ def test_local_http_login_and_host_bound_device_ticket_keep_port(tmp_path):
         app.state.control_connections.is_online = lambda _device: True
         access = client.get("/api/devices/device-1/access")
         assert access.status_code == 200
-        assert access.json()["url"] == "http://d-device-1.localhost:8700/"
+        assert access.json()["url"] == "http://localhost:8700/workspace/device-1/"
         ticket = access.json()["ticket"]
         for host in ("d-device-2.localhost:8700", "d-device-1.localhost:8701"):
             assert client.post("/api/remote/redeem", headers={"Host": host},

@@ -83,13 +83,15 @@ def test_desktop_api_requires_runtime_token(monkeypatch):
     assert response.headers['referrer-policy'] == 'no-referrer'
 
 
-def test_desktop_loopback_url_remains_local_behind_container_forwarding(monkeypatch):
+def test_desktop_loopback_url_alone_cannot_replace_runtime_token(monkeypatch):
     monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
     monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')
 
-    with TestClient(_app(), base_url='http://127.0.0.1:8766') as client:
-        assert client.get('/api/private').status_code == 200
-        with client.websocket_connect('/ws', headers={'host': '127.0.0.1:8766', 'origin': 'http://127.0.0.1:8766'}) as websocket:
+    with TestClient(_app(), base_url='http://127.0.0.1:8766', client=('127.0.0.1', 43210)) as client:
+        assert client.get('/api/private').status_code == 401
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect('/ws', headers={'host': '127.0.0.1:8766', 'origin': 'http://127.0.0.1:8766'}): pass
+        with client.websocket_connect('/ws', headers={'X-WorkStep-Desktop-Token': 'runtime-secret'}) as websocket:
             assert websocket.receive_text() == 'ok'
 
 
@@ -155,7 +157,7 @@ def test_non_desktop_runtime_keeps_existing_access_behavior(monkeypatch):
             assert websocket.receive_text() == 'ok'
 
 
-def test_managed_runtime_requires_gateway_derived_local_session(monkeypatch):
+def test_managed_runtime_accepts_desktop_token_and_keeps_gateway_identity(monkeypatch):
     monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
     monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')
     app = _app()
@@ -167,11 +169,11 @@ def test_managed_runtime_requires_gateway_derived_local_session(monkeypatch):
         'managed_config': object(), 'local_sessions': sessions,
     })()
     with TestClient(app) as client:
-        missing = client.get('/api/private', headers={
+        desktop = client.get('/api/private', headers={
             'X-WorkStep-Desktop-Token': 'runtime-secret',
         })
-        assert missing.status_code == 401
-        assert missing.headers['x-workstep-managed-session-expired'] == '1'
+        assert desktop.status_code == 200
+        assert 'x-workstep-managed-session-expired' not in desktop.headers
         assert client.get('/api/private', headers={
             'X-WorkStep-Desktop-Token': 'runtime-secret',
             'X-WorkStep-Local-Session': local_token,
@@ -206,7 +208,7 @@ def test_managed_runtime_requires_gateway_derived_local_session(monkeypatch):
             assert websocket.receive_text() == 'ok'
 
 
-def test_managed_runtime_rejects_legacy_share_credentials(monkeypatch):
+def test_managed_runtime_keeps_lan_project_sharing_and_rejects_legacy_task_shares(monkeypatch):
     monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
     monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')
     app = _app()
@@ -221,15 +223,13 @@ def test_managed_runtime_rejects_legacy_share_credentials(monkeypatch):
                'X-WorkStep-Local-Session': local_token}
     with TestClient(app) as client:
         assert client.get('/api/managed/mode', headers=headers).json() == {'managed': True}
-        for path in ('/api/remote-project/share', '/api/remote-project/add',
-                     '/api/task-share/task-1/create'):
-            assert client.post(path, headers=headers).status_code == 403
+        for path in ('/api/remote-project/share', '/api/remote-project/add'):
+            assert client.post(path, headers=headers).status_code == 200
+        assert client.post('/api/task-share/task-1/create', headers=headers).status_code == 403
         assert client.get('/api/task-share/public/old-token/meta',
                           headers=headers).status_code == 403
-        with pytest.raises(WebSocketDisconnect) as denied:
-            with client.websocket_connect('/ws/remote-project', headers=headers):
-                pass
-        assert denied.value.code == 4403
+        with client.websocket_connect('/ws/remote-project', headers=headers) as ws:
+            assert ws.receive_text() == 'ok'
 
     with TestClient(_app()) as local_client:
         assert local_client.get('/api/managed/mode', headers=headers).json() == {'managed': False}
@@ -280,4 +280,63 @@ def test_normal_desktop_uses_correlated_browser_login_without_special_package(mo
         with client.websocket_connect('/ws', headers=headers) as ws:
             assert ws.receive_text() == 'ok'
         app.state.gateway_client.local_sessions.clear()
-        assert client.get('/api/private', headers=headers).status_code == 401
+        assert client.get('/api/private', headers=headers).status_code == 200
+        assert client.post('/api/private', headers=headers).status_code == 200
+        assert client.get('/', headers=headers, follow_redirects=False).status_code == 200
+        with client.websocket_connect('/ws', headers=headers) as ws:
+            assert ws.receive_text() == 'ok'
+
+
+@pytest.mark.parametrize('base_url', ['http://127.0.0.1:8766', 'http://10.88.0.5:8765'])
+def test_desktop_container_forwarding_survives_platform_session_expiry(monkeypatch, base_url):
+    monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
+    monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')
+    app, _, _ = _browser_managed_app()
+    app.state.gateway_client.local_sessions.clear()
+    headers = {'X-WorkStep-Desktop-Token': 'runtime-secret'}
+    with TestClient(app, base_url=base_url, client=('10.88.0.2', 43210)) as client:
+        assert client.get('/', headers=headers, follow_redirects=False).status_code == 200
+        assert client.get('/api/private', headers=headers).status_code == 200
+        assert client.post('/api/private', headers=headers).status_code == 200
+        with client.websocket_connect('/ws', headers=headers) as ws:
+            assert ws.receive_text() == 'ok'
+
+
+@pytest.mark.parametrize('peer', ['10.88.0.2', '10.88.0.3'])
+def test_container_ip_does_not_authorize_managed_requests(monkeypatch, peer):
+    monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
+    monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')
+    app, _, _ = _browser_managed_app()
+    app.state.gateway_client.local_sessions.clear()
+    with TestClient(app, base_url='http://10.88.0.5:8765', client=(peer, 43210)) as client:
+        forged = {'Host': '127.0.0.1:8766', 'Origin': 'http://127.0.0.1:8766', 'X-Forwarded-For': '127.0.0.1', 'X-Real-IP': '10.88.0.2'}
+        assert client.get('/api/private', headers=forged).status_code == 401
+        assert client.post('/api/private', headers=forged).status_code == 401
+        for headers in ({}, {'X-WorkStep-Desktop-Token': 'wrong'}, {'X-WorkStep-Desktop': '1'}):
+            assert client.get('/api/private', headers=headers).status_code == 401
+            with pytest.raises(WebSocketDisconnect):
+                with client.websocket_connect('/ws', headers=headers): pass
+
+
+@pytest.mark.parametrize('user_id,project_id,expected', [('owner',None,200),('guest',None,403),('owner','project-a',403)])
+def test_gateway_project_creation_is_reserved_for_device_owner(monkeypatch,user_id,project_id,expected):
+    from starlette.middleware.base import BaseHTTPMiddleware
+    app=_app()
+    app.state.gateway_client=type('Client',(),{'managed_config':object(),'current_user_id':'owner','device_id':'device-1'})()
+    actor=ManagedActor(user_id,user_id,'device-1','gateway-remote',0,project_id,'edit' if project_id else None)
+    class BridgeActor(BaseHTTPMiddleware):
+        async def dispatch(self,request,call_next):
+            request.scope['gateway_remote_actor']=actor
+            request.scope['gateway_device_owner']=user_id == 'owner'
+            return await call_next(request)
+    app.add_middleware(BridgeActor)
+    @app.post('/api/project/init')
+    @app.post('/api/fs/mkdir')
+    @app.get('/api/fs/browse')
+    async def allowed():return {'ok':True}
+    with TestClient(app) as client:
+        mode=client.get('/api/managed/mode').json()
+        assert mode.get('can_manage_remote_projects', False) is (expected==200)
+        assert client.post('/api/project/init',json={'path':'/demo'}).status_code==expected
+        assert client.get('/api/fs/browse').status_code==expected
+        assert client.post('/api/fs/mkdir',json={'path':'/demo','name':'project'}).status_code==expected

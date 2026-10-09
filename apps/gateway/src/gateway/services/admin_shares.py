@@ -13,7 +13,7 @@ from gateway.services.identity import COOKIE_NAME, IdentityService
 
 from gateway.services.identity_api import _check_csrf
 
-from gateway.models import AdminAssignment, AuditEvent, Device, PlatformProject, PlatformShare, PlatformShareSession, User
+from gateway.models import AuditEvent, Device, PlatformProject, PlatformShare, PlatformShareSession, User
 
 
 """Platform share inventory and administrator lifecycle controls."""
@@ -24,15 +24,11 @@ async def _admin(call: GatewayCall, *, mutation: bool = False) -> User:
     actor, _ = await IdentityService(call.database).session_user(token)
     if mutation:
         _check_csrf(call, token)
-    if actor.status != "active" or actor.must_change_password:
+    if actor.status != "active":
         raise GatewayError('forbidden', 'Administrator access required')
     async with call.database.session() as session:
-        assigned = await session.scalar(select(AdminAssignment.id).where(
-            AdminAssignment.user_id == actor.id,
-            AdminAssignment.role == "super_admin",
-            AdminAssignment.revoked_at.is_(None),
-        ))
-    if assigned is None:
+        assigned = await IdentityService.super_admin_in_session(session, actor.id)
+    if not assigned:
         raise GatewayError('forbidden', 'Administrator access required')
     return actor
 

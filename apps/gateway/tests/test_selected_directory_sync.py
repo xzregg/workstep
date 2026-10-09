@@ -125,7 +125,7 @@ def test_automatic_sync_waits_for_selection_and_restart_marks_unfinished_job_fai
         client.portal.call(check)
 
 
-def test_selected_sync_only_adds_and_reports_locally_deleted_records(tmp_path):
+def test_selected_sync_updates_and_reports_locally_deleted_records(tmp_path):
     import sqlite3
     app = create_app(GatewaySettings(data_dir=tmp_path))
     class NewConnector(Connector):
@@ -156,7 +156,7 @@ def test_selected_sync_only_adds_and_reports_locally_deleted_records(tmp_path):
         assert job['result']['people_deleted_skipped']==1
         assert job['result']['departments_deleted_skipped']==1
         with sqlite3.connect(tmp_path/'workstep_platform.db') as db:
-            assert db.execute("select display_name,active from directory_people where subject='old'").fetchone()==('原用户',1)
+            assert db.execute("select display_name,active from directory_people where subject='old'").fetchone()==('改名用户',1)
             assert db.execute("select active from directory_people where subject='missing'").fetchone()==(1,)
             assert db.execute("select status from user_groups").fetchone()==('deleted',)
 
@@ -175,3 +175,60 @@ def test_selected_sync_only_adds_and_reports_locally_deleted_records(tmp_path):
         assert job['result']['people_added']==0
         with sqlite3.connect(tmp_path/'workstep_platform.db') as db:
             assert db.execute("select count(*) from directory_people where subject='deleted'").fetchone()[0]==0
+
+
+def test_preview_does_not_apply_until_confirmed_and_history_is_durable(tmp_path):
+    import sqlite3
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    app.state.identity_connectors = {'dingtalk': Connector()}
+    with TestClient(app, base_url='https://gateway.test') as client:
+        csrf = _setup(client); headers = {'X-CSRF-Token': csrf}
+        source = client.post('/api/admin/identity-sources', headers=headers, json={
+            'provider': 'dingtalk', 'tenant_id': 'corp', 'client_id': 'app', 'client_secret': 'secret',
+        }).json()['id']
+        base = f'/api/admin/identity-sources/{source}'
+        response = client.post(base + '/sync-jobs', headers=headers, json={'department_ids': ['2'], 'preview': True})
+        for _ in range(100):
+            job = client.get(base + '/sync-jobs/latest').json()
+            if job['status'] in ('preview', 'failed'): break
+            time.sleep(.02)
+        assert job['status'] == 'preview', job
+        assert 'snapshot' not in job
+        with sqlite3.connect(tmp_path / 'workstep_platform.db') as db:
+            assert db.execute('select count(*) from directory_people').fetchone()[0] == 0
+        assert client.post(base + '/sync-jobs/confirm', json={'job_id': job['id']}).status_code == 403
+        assert client.post(base + '/sync-jobs/confirm', headers=headers, json={'job_id': 'wrong'}).status_code == 409
+        assert client.post(base + '/sync-jobs/confirm', headers=headers, json={'job_id': job['id']}).status_code == 202
+        for _ in range(100):
+            final = client.get(base + '/sync-jobs/latest').json()
+            if final['status'] in ('completed', 'failed'): break
+            time.sleep(.02)
+        assert final['status'] == 'completed', final
+        assert client.get(base + '/sync-history').json()['jobs'][0]['id'] == job['id']
+
+
+def test_schedule_api_validation_and_directory_notices_are_scoped_and_acknowledged(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        csrf = _setup(client); headers = {'X-CSRF-Token':csrf}
+        body={'provider':'dingtalk','tenant_id':'corp','client_id':'app','client_secret':'secret',
+              'sync_schedule':{'frequency':'weekly','time':'09:30','timezone':'Asia/Shanghai','weekday':1}}
+        assert client.post('/api/admin/identity-sources', headers=headers, json={**body,'sync_schedule':{'frequency':'daily','timezone':'invalid'}}).status_code == 422
+        source = client.post('/api/admin/identity-sources', headers=headers, json=body).json()['id']
+        listed = client.get('/api/admin/identity-sources').json()['sources'][0]
+        assert listed['sync_schedule'] == body['sync_schedule']
+        assert listed['next_sync_at']
+        endpoint=f'/api/admin/identity-sources/{source}/sync'
+        snapshot={'departments':[{'external_id':'2','display_name':'研发'}], 'people':[{'subject':'employee','display_name':'员工','department_ids':['2']}]}
+        assert client.post(endpoint, headers=headers, json=snapshot).status_code == 200
+        notices=client.get('/api/admin/directory-notices').json()['notices']
+        assert len(notices)==1
+        notice={'source_id':source,'at':notices[0]['at']}
+        assert client.post('/api/admin/directory-notices/read',json=notice).status_code == 403
+        assert client.post('/api/admin/directory-notices/read',headers=headers,json=notice).status_code == 200
+        assert client.get('/api/admin/directory-notices').json()['notices']==[]
+        # Unchanged snapshots must not notify again.
+        client.post(endpoint,headers=headers,json=snapshot)
+        assert client.get('/api/admin/directory-notices').json()['notices']==[]
+        client.post('/api/auth/logout',headers=headers)
+        assert client.get('/api/admin/directory-notices').status_code == 401

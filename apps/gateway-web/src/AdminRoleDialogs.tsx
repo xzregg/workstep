@@ -1,3 +1,4 @@
+import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useState } from 'react'
 import { AdminRoleScopePicker, roleScopes } from './AdminRoleScopePicker'
 import type { FormEvent } from 'react'
@@ -16,12 +17,12 @@ export function AdminGrantRoleDialog({ csrf, onSaved, onClose, delegated = false
   const [role, setRole] = useState('identity_admin')
   const [scope, setScope] = useState(delegated ? 'department' : 'platform')
   const [includeChildren, setIncludeChildren] = useState(true)
-  const [password, setPassword] = useState('')
+  const { password, setPassword, passwordRequired, passwordReady } = useStepUpPassword()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [confirmClose, setConfirmClose] = useState(false)
   const dirty = !!(userQuery || userId || scopeId || password || role !== 'identity_admin' || scope !== (delegated ? 'department' : 'platform'))
-  const canSubmit = !!(userId && password && (scope === 'platform' || scopeId))
+  const canSubmit = !!(userId && passwordReady && (scope === 'platform' || scopeId))
 
   async function findChoices(kind: 'users', query: string) {
     setBusy(true); setError('')
@@ -40,11 +41,7 @@ export function AdminGrantRoleDialog({ csrf, onSaved, onClose, delegated = false
     if (!canSubmit || busy) return
     setBusy(true); setError('')
     try {
-      const step = await fetch('/api/auth/step-up', {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-        body: JSON.stringify({ password }),
-      })
+      const step = await confirmStepUp(csrf, password, passwordRequired)
       if (!step.ok) throw new Error('密码验证失败。')
       const response = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/roles`, {
         method: 'POST', credentials: 'same-origin',
@@ -88,9 +85,7 @@ export function AdminGrantRoleDialog({ csrf, onSaved, onClose, delegated = false
         onChange={(nextScope, id) => { setScope(nextScope); setScopeId(id) }} />
       {scope === 'department' && <label className="gateway-role-checkbox"><input type="checkbox" checked={includeChildren}
         onChange={event => setIncludeChildren(event.target.checked)} /> 包含下级部门</label>}
-      <label htmlFor="role-step-password">输入你的密码确认</label>
-      <input id="role-step-password" type="password" autoComplete="current-password" value={password}
-        onChange={event => setPassword(event.target.value)} />
+      <PasswordConfirmation id="role-step-password" label="输入你的密码确认" value={password} onChange={setPassword} />
       {error && <p className="gateway-auth-error" role="alert">{error}</p>}
       <div className="gateway-dialog-actions">
         <button type="button" className="gateway-dialog-cancel" disabled={busy}
@@ -106,16 +101,13 @@ export function AdminGrantRoleDialog({ csrf, onSaved, onClose, delegated = false
 export function AdminRevokeRoleDialog({ role, csrf, onComplete, onClose }: {
   role: AdminRole; csrf: string; onComplete: () => void; onClose: () => void
 }) {
-  const [password, setPassword] = useState('')
+  const { password, setPassword, passwordRequired, passwordReady } = useStepUpPassword()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   async function confirm() {
     setBusy(true); setError('')
     try {
-      const step = await fetch('/api/auth/step-up', {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: JSON.stringify({ password }),
-      })
+      const step = await confirmStepUp(csrf, password, passwordRequired)
       if (!step.ok) throw new Error('密码验证失败。')
       const response = await fetch(`/api/admin/roles/${encodeURIComponent(role.id)}`, {
         method: 'DELETE', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf },
@@ -127,10 +119,8 @@ export function AdminRevokeRoleDialog({ role, csrf, onComplete, onClose }: {
     finally { setBusy(false) }
   }
   return <GatewayConfirmDialog title="撤销管理员权限" message={`撤销 ${role.display_name} 的 ${role.role} 权限？`}
-    confirmLabel="确认撤销" disabled={!password} busy={busy} onConfirm={() => void confirm()} onCancel={onClose}>
-    <label htmlFor="revoke-role-password">输入你的密码确认</label>
-    <input id="revoke-role-password" type="password" autoComplete="current-password" value={password}
-      onChange={event => setPassword(event.target.value)} />
+    confirmLabel="确认撤销" disabled={!passwordReady} busy={busy} onConfirm={() => void confirm()} onCancel={onClose}>
+    <PasswordConfirmation id="revoke-role-password" label="输入你的密码确认" value={password} onChange={setPassword} />
     {error && <p className="gateway-auth-error" role="alert">{error}</p>}
   </GatewayConfirmDialog>
 }

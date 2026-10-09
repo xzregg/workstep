@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
 import { JSDOM } from 'jsdom'
+import { OrganizationSyncNotice } from '../src/OrganizationSyncNotice'
+import { OrganizationSyncHistory } from '../src/OrganizationSyncHistory'
 import { OrganizationSyncSettings } from '../src/OrganizationSyncSettings'
 import { AdminUsersPage } from '../src/AdminUsersPage'
 import { MemoryRouter } from 'react-router-dom'
@@ -88,4 +90,49 @@ test('existing enterprise Corp ID can be corrected without replacing its source 
  fireEvent.click(screen.getByRole('button',{name:'保存配置'}))
  await waitFor(()=>assert.equal(saved?.tenant_id,'ding-correct'))
  assert.equal(saved?.client_secret,null)
+})
+
+
+test('application editor saves a weekly schedule with time zone and weekday', async()=>{
+ let saved: Record<string,unknown> | undefined
+ globalThis.fetch=async (_input,init)=>{
+  if(init?.method==='POST'){saved=JSON.parse(String(init.body));return Response.json({id:'source'})}
+  return Response.json({sources:[]})
+ }
+ render(<OrganizationSyncSettings csrf="csrf" />)
+ fireEvent.click(await screen.findByRole('button',{name:'添加钉钉应用'}))
+ fireEvent.change(screen.getByLabelText(/企业 Corp ID/),{target:{value:'ding-corp'}})
+ fireEvent.change(screen.getByLabelText('App Key / Client ID'),{target:{value:'app'}})
+ fireEvent.change(screen.getByLabelText('应用 Secret'),{target:{value:'secret'}})
+ fireEvent.change(screen.getByLabelText('自动同步频率'),{target:{value:'weekly'}})
+ fireEvent.change(screen.getByLabelText('执行时间'),{target:{value:'18:30'}})
+ fireEvent.change(screen.getByLabelText('星期'),{target:{value:'4'}})
+ fireEvent.click(screen.getByRole('button',{name:'保存配置'}))
+ await waitFor(()=>assert.deepEqual(saved?.sync_schedule,{frequency:'weekly',time:'18:30',timezone:'Asia/Shanghai',weekday:4}))
+})
+
+
+test('directory notice shows changes and marks only that notice read',async()=>{
+ let read:unknown
+ globalThis.fetch=async(input,init)=>{
+  if(String(input)==='/api/auth/session')return Response.json({csrf_token:'csrf'})
+  if(init?.method==='POST'){read=JSON.parse(String(init.body));return Response.json({ok:true})}
+  return Response.json({notices:[{source_id:'source',at:'2026-10-09T00:00:00Z',result:{people_departed:2}}]})
+ }
+ render(<MemoryRouter><OrganizationSyncNotice/></MemoryRouter>)
+ fireEvent.click(await screen.findByRole('button',{name:'组织同步 (1)'}))
+ await screen.findByText(/停用 2 人/)
+ fireEvent.click(screen.getByRole('button',{name:'标记已读'}))
+ await waitFor(()=>assert.deepEqual(read,{source_id:'source',at:'2026-10-09T00:00:00Z'}))
+ await screen.findByText('没有未读的组织同步提示。')
+})
+
+test('history owns loading and shows stored status changes',async()=>{
+ globalThis.fetch=async input=>{
+  assert.equal(String(input),'/api/admin/identity-sources/source/sync-history')
+  return Response.json({jobs:[{id:'job',status:'completed',started_at:'2026-10-09T00:00:00Z',result:{people_transferred:3,people_departed:2}}]})
+ }
+ render(<OrganizationSyncHistory sourceId="source" onClose={()=>{}}/>)
+ await screen.findByText(/调部门 3/)
+ assert.ok(screen.getByRole('dialog',{name:'组织同步记录'}))
 })

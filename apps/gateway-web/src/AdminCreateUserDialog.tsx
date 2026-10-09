@@ -39,7 +39,7 @@ export function AdminCreateUserDialog({ csrf, onSaved, onClose }: {
   return <div className="gateway-dialog-backdrop">
     <section className="gateway-confirm-dialog gateway-create-user-dialog" role="dialog" aria-modal="true" aria-label="创建用户">
       <h3>创建用户</h3>
-      <p>创建后，用户首次登录须修改初始密码。</p>
+      <p>创建后，用户可使用初始密码登录，并在个人账户中自行修改密码。</p>
       <form className="gateway-auth-form" onSubmit={event => void submit(event)}>
         <label htmlFor="admin-user-username">用户名</label>
         <input id="admin-user-username" autoComplete="off" value={username} onChange={event => setUsername(event.target.value)} required />

@@ -1,3 +1,4 @@
+import { gatewayResourceUrl } from '../utils/gatewayWorkspacePath'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { shareApi, type ReviewRun, type ShareMeta, type SharedTask, type TaskArtifact } from '../api/client'
 import { ApiError } from '../api/transport'
@@ -186,7 +187,7 @@ export function useSharedTaskSession(token?: string, api: SharedTaskApi = shareA
       setWsStatus('connecting')
       const url = api.buildWsUrl(sessionToken)
       if (url === null) return
-      const ws = new WebSocket(url)
+      const ws = new WebSocket(gatewayResourceUrl(url))
       wsRef.current = ws
       ws.onopen = () => {
         if (closed) return

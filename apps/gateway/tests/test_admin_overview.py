@@ -64,7 +64,9 @@ def test_overview_rejects_normal_user_and_limits_identity_admin_metrics(tmp_path
         csrf = client.post('/api/auth/login', json={
             'username': 'alice', 'password': 'AlicePassphrase-2026!',
         }).json()['csrf_token']
-        assert client.get('/api/admin/overview').status_code == 403
+        overview = client.get('/api/admin/overview')
+        assert overview.status_code == 200
+        assert overview.json()['devices'] is None
         assert client.post('/api/auth/password', headers={'X-CSRF-Token': csrf}, json={
             'current_password': 'AlicePassphrase-2026!', 'new_password': 'AliceNewPassphrase-2026!',
         }).status_code == 204

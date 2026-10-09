@@ -16,7 +16,7 @@ async def test_scheduled_reconciliation_reads_enabled_source(tmp_path):
     await database.start()
     try:
         service = ExternalIdentityService(database)
-        source = await service.create_source("wecom", "corp-a", "app", "SECRET_ENV", "1001", options={"selected_department_ids": ["2"]})
+        source = await service.create_source("wecom", "corp-a", "app", "SECRET_ENV", "1001", options={"selected_department_ids": ["2"], "sync_schedule": {"frequency": "daily"}, "next_sync_at": "2020-01-01T00:00:00+00:00"})
         called = asyncio.Event()
 
         class Connector:

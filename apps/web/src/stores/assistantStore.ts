@@ -12,6 +12,7 @@
  */
 
 import { create } from 'zustand'
+import { useUserSettingsStore } from './userSettingsStore.ts'
 import type { EngineInputItem } from '../api/client.ts'
 import {
   CUSTOM,
@@ -341,6 +342,7 @@ export function createAssistantStore(
 
     addUserMessage: (sessionId, content) => {
       const optimisticId = `user-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      const identity = useUserSettingsStore.getState()
       set((s) => {
         const session = s.sessions[sessionId] || emptySession()
         const message: AssistantChatMessage = {
@@ -349,6 +351,13 @@ export function createAssistantStore(
           content,
           status: 'succeeded',
           created_at: new Date().toISOString(),
+          ...(identity.userName.trim() ? {
+            author_name: identity.userName,
+            author_username: identity.gatewayUsername || identity.userName,
+            author_device_id: identity.deviceId,
+            author_device_name: identity.deviceName,
+            author_type: 'user',
+          } : {}),
         }
         return {
           sessions: upsertSession(s.sessions, sessionId, {
@@ -460,8 +469,16 @@ export function createAssistantStore(
         // A cached message can predate prompt persistence; backfill only the
         // missing prompt without replacing newer streamed content or inputs.
         const mergedWithPrompts = merged.map((message) => {
-          const storedPrompt = recovered.get(message.id)?.prompt
-          return !message.prompt && storedPrompt ? { ...message, prompt: storedPrompt } : message
+          const stored = recovered.get(message.id)
+          if (!stored) return message
+          const backfill: Partial<AssistantChatMessage> = {}
+          for (const key of ['author_id', 'author_username', 'author_name',
+            'initiated_by_user_id', 'initiated_by_username', 'author_device_id', 'author_device_name'] as const) {
+            if (!message[key] && stored[key]) backfill[key] = stored[key]
+          }
+          if (!message.author_type && stored.author_type) backfill.author_type = stored.author_type
+          if (!message.prompt && stored.prompt) backfill.prompt = stored.prompt
+          return Object.keys(backfill).length ? { ...message, ...backfill } : message
         })
         // 历史事件兼容两种形状：内部词汇（``type: 'a2ui'``，data 为载荷）与
         // 对外 AG-UI CUSTOM（``type: 'CUSTOM'``、``name: 'a2ui.surface'``）。

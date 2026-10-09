@@ -78,7 +78,7 @@ def test_platform_address_saved_live_and_restored_on_restart(tmp_path):
     restored = create_app(GatewaySettings(data_dir=tmp_path, public_origin='http://localhost:8700'))
     with TestClient(restored) as client:
         assert client.get('/api/client-releases').json()['public_origin'] == 'https://workstep.example.com'
-        assert restored.state.settings.device_url('pc').startswith('https://d-pc.workstep.example.com')
+        assert restored.state.settings.device_url('pc') == 'https://workstep.example.com/workspace/pc/'
 
 
 def test_platform_address_write_lock_keeps_health_responsive(tmp_path):

@@ -13,11 +13,35 @@ function memoryStorage() {
 }
 
 const resetStore = () => useUserSettingsStore.setState({
+  identitySource: 'local',
   userName: '',
   openMode: false,
   loaded: false,
   loading: false,
   error: '',
+})
+
+test('gateway account overrides the local name without overwriting local identity', async () => {
+  resetStore()
+  const originalFetch = globalThis.fetch
+  const originalWindow = globalThis.window
+  const storage = memoryStorage()
+  storage.setItem(BROWSER_ACTOR_STORAGE_KEY, JSON.stringify({ id:'local', name:'本地名字', deviceId:'local', deviceName:'WorkStep' }))
+  const before = storage.getItem(BROWSER_ACTOR_STORAGE_KEY)
+  Object.defineProperty(globalThis, 'window', { configurable:true, value:{ localStorage:storage, workstepDesktop:{} } })
+  let calls = 0
+  globalThis.fetch = async () => { calls++; return Response.json({ user_name:'网关用户', identity_source:'gateway', gateway_username:'alice', open_mode:false }) }
+  try {
+    await useUserSettingsStore.getState().load()
+    assert.equal(useUserSettingsStore.getState().userName, '网关用户')
+    assert.equal(useUserSettingsStore.getState().identitySource, 'gateway')
+    assert.equal(await useUserSettingsStore.getState().saveUserName('fake'), false)
+    assert.equal(calls, 1)
+    assert.equal(storage.getItem(BROWSER_ACTOR_STORAGE_KEY), before)
+  } finally {
+    globalThis.fetch = originalFetch
+    Object.defineProperty(globalThis, 'window', { configurable:true, value:originalWindow })
+  }
 })
 
 test('loading user settings does not inherit the host user name into a browser', async () => {

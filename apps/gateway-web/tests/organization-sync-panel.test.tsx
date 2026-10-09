@@ -28,7 +28,7 @@ test('only checked departments are submitted and progress is restored and update
  assert.equal((screen.getByRole('button',{name:'同步组织与用户'}) as HTMLButtonElement).disabled,true)
  fireEvent.click(checkbox)
  fireEvent.click(screen.getByRole('button',{name:'同步组织与用户'}))
- await waitFor(()=>assert.deepEqual(payload,{department_ids:['2']}))
+ await waitFor(()=>assert.deepEqual(payload,{department_ids:['2'],preview:true}))
  assert.ok(screen.getByRole('progressbar',{name:'部门读取进度'}))
  await screen.findByText(/同步完成：1 个组织、2 位用户/,{},{timeout:3000})
  assert.equal(done,1)
@@ -105,7 +105,7 @@ test('sync tree cascades parent selection and submits every descendant including
  fireEvent.change(screen.getByLabelText('搜索组织'),{target:{value:'研发'}})
  fireEvent.click(screen.getByRole('button',{name:'勾选搜索结果'}))
  fireEvent.click(screen.getByRole('button',{name:'同步组织与用户'}))
- await waitFor(()=>assert.deepEqual(payload,{department_ids:['2','3']}))
+ await waitFor(()=>assert.deepEqual(payload,{department_ids:['2','3'],preview:true}))
 })
 
 
@@ -113,4 +113,19 @@ test('completed sync reports additions and locally deleted skips',async()=>{
  globalThis.fetch=async input=>Response.json(String(input).endsWith('/directory-preview')?{departments:[],selected_department_ids:[]}:{status:'completed',result:{departments:9,people:59,departments_added:0,people_added:1,departments_deleted_skipped:9,people_deleted_skipped:58}})
  render(<OrganizationSyncPanel sourceId="source" provider="dingtalk" csrf="csrf" onClose={()=>{}} onCompleted={()=>{}} />)
  await screen.findByText(/跳过本地已删除：9 个组织、58 位用户/)
+})
+
+
+test('preview requires explicit confirmation before applying changes', async () => {
+ const writes: string[]=[]
+ globalThis.fetch=async (input,init)=>{
+  const url=String(input)
+  if(init?.method==='POST') {writes.push(url); return Response.json({id:'job',status:'queued'})}
+  return Response.json(url.endsWith('/directory-preview') ? {departments:[{external_id:'2',display_name:'研发'}],selected_department_ids:['2']} : {id:'job',status:'preview',department_ids:['2'],result:{people_departed:2,details:[]}})
+ }
+ render(<OrganizationSyncPanel sourceId="source" provider="wecom" csrf="csrf" onClose={()=>{}} onCompleted={()=>{}} />)
+ await screen.findByText(/变更预览/)
+ assert.equal(writes.length,0)
+ fireEvent.click(screen.getByRole('button',{name:'确认应用变更'}))
+ await waitFor(()=>assert.equal(writes[0],'/api/admin/identity-sources/source/sync-jobs/confirm'))
 })

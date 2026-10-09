@@ -2,7 +2,7 @@ from datetime import datetime
 
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, func, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, false, func, text, true
 
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -104,6 +104,7 @@ class PlatformProject(Base):
     host_project_id: Mapped[str] = mapped_column(String(128))
     name: Mapped[str] = mapped_column(String(256))
     access_mode: Mapped[str] = mapped_column(String(32), server_default="policy_only")
+    invitations_enabled: Mapped[bool] = mapped_column(Boolean, server_default=true())
     status: Mapped[str] = mapped_column(String(16), server_default="active")
     skill_revision: Mapped[int] = mapped_column(Integer, server_default="0")
     published_by_user_id: Mapped[str | None] = mapped_column(String(64))
@@ -123,5 +124,30 @@ class ProjectAccessGrant(Base):
     subject_id: Mapped[str] = mapped_column(String(64))
     access_level: Mapped[str] = mapped_column(String(16))
     assigned_by_user_id: Mapped[str | None] = mapped_column(String(64))
+    invitation_id: Mapped[str | None] = mapped_column(ForeignKey("project_invitations.id"))
+    invitation_blocked: Mapped[bool] = mapped_column(Boolean, server_default=false())
     created_at: Mapped[datetime] = timestamp()
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ProjectInvitation(Base):
+    __tablename__ = "project_invitations"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("platform_projects.id"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    access_level: Mapped[str] = mapped_column(String(16))
+    created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    status: Mapped[str] = mapped_column(String(16), server_default="active")
+    created_at: Mapped[datetime] = timestamp()
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ProjectInvitationAcceptance(Base):
+    __tablename__ = "project_invitation_acceptances"
+    __table_args__ = (UniqueConstraint("invitation_id", "user_id"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    invitation_id: Mapped[str] = mapped_column(ForeignKey("project_invitations.id"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    accepted_at: Mapped[datetime] = timestamp()

@@ -39,7 +39,10 @@ test('mobile chat input controls scroll only within the space before the send bu
   assert.match(source, /className="chat-input-toolbar-scroll"/)
   assert.match(mobileCss, /\.chat-input-toolbar-scroll\s*\{[^}]*flex:\s*1 1 auto[^}]*min-width:\s*0[^}]*overflow-x:\s*auto/s)
   assert.match(mobileCss, /\.chat-input-toolbar\s*\{[^}]*overflow:\s*hidden/s)
-  assert.match(mobileCss, /\.chat-input-send\s*\{[^}]*flex:\s*0 0 var\(--mobile-control-composer\)/s)
+  assert.match(mobileCss, /--mobile-control-send:\s*calc\(var\(--mobile-control-composer\) \* 1\.375\)/)
+  assert.match(mobileCss, /\.chat-input-send\s*\{[^}]*position:\s*absolute[^}]*width:\s*var\(--mobile-control-send\)[^}]*height:\s*var\(--mobile-control-send\)/s)
+  assert.match(mobileCss, /\.chat-input-toolbar\s*\{[^}]*padding-right:\s*calc\(var\(--mobile-control-send\) \+ var\(--mobile-control-gap\)\)/s)
+  assert.match(mobileCss, /\.chat-input-send > svg\s*\{[^}]*width:\s*calc\(13px \* 1\.375\)[^}]*height:\s*calc\(13px \* 1\.375\)/s)
   assert.doesNotMatch(mobileCss, /\.chat-input-send\s*\{[^}]*position:\s*sticky/s)
 })
 test('mobile task header keeps a plain compact id and moves bot and share to navigation', () => {

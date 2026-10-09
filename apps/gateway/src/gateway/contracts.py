@@ -57,6 +57,7 @@ class GatewayDependencies:
     settings: Any = None
     gateway_signer: Any = None
     control_connections: Any = None
+    notifications: Any = None
     identity_rate_limiter: Any = None
     identity_connectors: Any = None
     directory_callback_wake: Any = None
@@ -74,6 +75,8 @@ class GatewayCall(GatewayDependencies):
     tokens: Mapping[str, str] = field(default_factory=dict)
     proofs: ProofHeaders = field(default_factory=ProofHeaders)
     target: SplitResult = field(default_factory=lambda: urlsplit("http://localhost/"))
+    workspace_device_id: str | None = None
+    workspace_path: str = ""
     operation: str = "GET"
     peer: Any = None
     query_values: QueryValues = field(default_factory=QueryValues)
@@ -119,6 +122,7 @@ class CredentialGrant:
     key: str
     token: str | None = None
     lifetime: int | None = None
+    path: str = "/"
 
 
 @dataclass

@@ -1,3 +1,4 @@
+import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useEffect, useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 
@@ -21,7 +22,7 @@ export function AdminPublishProjectPanel({ csrf, revision, onPublished }: {
   const [projectRevision, setProjectRevision] = useState(0)
   const [projectLoading, setProjectLoading] = useState(false)
   const [selectedProject, setSelectedProject] = useState<Candidate | null>(null)
-  const [password, setPassword] = useState('')
+  const { password, setPassword, passwordRequired, passwordReady } = useStepUpPassword()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -63,8 +64,7 @@ export function AdminPublishProjectPanel({ csrf, revision, onPublished }: {
     setBusy(true); setError('')
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
-      const step = await fetch('/api/auth/step-up', { method: 'POST', credentials: 'same-origin', headers,
-        body: JSON.stringify({ password }) })
+      const step = await confirmStepUp(csrf, password, passwordRequired)
       if (!step.ok) throw new Error('密码验证失败。')
       const response = await fetch(`/api/admin/devices/${encodeURIComponent(selectedDevice.id)}/projects/${encodeURIComponent(selectedProject.host_project_id)}/publish`, {
         method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf },
@@ -77,14 +77,16 @@ export function AdminPublishProjectPanel({ csrf, revision, onPublished }: {
   }
 
   return <section className="gateway-project-grants">
-    <h3>从在线 PC 发布项目</h3>
+    <p className="gateway-publication-step">{selectedDevice ? '第 2 步 · 选择项目' : '第 1 步 · 选择宿主电脑'}</p>
     <p>Gateway 仅接收 PC 登记的项目 ID 和名称，不读取宿主目录路径或项目内容。</p>
+    {!selectedDevice && <>
     {deviceLoading && <p role="status">正在加载设备…</p>}
+    {!deviceLoading && devices.length === 0 && <p>暂无可用电脑。请先在 PC 客户端连接平台并登记设备。</p>}
     <ul className="gateway-device-list">{devices.map(device => <li key={device.id}>
       <div><strong>{device.name}</strong><p>{device.online ? '控制连接在线' : '离线'} · daemon {
         device.daemon_health === true ? '正常' : device.daemon_health === false ? '异常' : '未知'}</p></div>
-      <button type="button" disabled={!device.online} onClick={() => {
-        setSelectedDevice(device); setProjectPage(1); setProjectSearch(''); setProjectQuery(''); setProjects([])
+      <button type="button" disabled={!device.online || device.daemon_health === false} onClick={() => {
+        setSelectedDevice(device); setProjectPage(1); setProjectSearch(''); setProjectQuery(''); setProjects([]); setError(''); setProjectLoading(true)
       }}>查看可发布项目</button>
     </li>)}</ul>
     <div className="gateway-admin-pagination"><span>共 {deviceTotal} 台有效设备 · 第 {devicePage}/{
@@ -93,8 +95,12 @@ export function AdminPublishProjectPanel({ csrf, revision, onPublished }: {
         onClick={() => setDevicePage(value => value - 1)}>上一页</button>
       <button type="button" disabled={devicePage >= Math.ceil(deviceTotal / 25) || deviceLoading}
         onClick={() => setDevicePage(value => value + 1)}>下一页</button></div>
+    </>}
     {selectedDevice && <section className="gateway-project-catalog">
-      <h4>{selectedDevice.name} · 可发布项目</h4>
+      <div className="gateway-admin-toolbar"><h4>{selectedDevice.name} · 可发布项目</h4>
+        <button type="button" className="gateway-project-secondary" onClick={() => {
+          setSelectedDevice(null); setProjects([]); setError('')
+        }}>重新选择电脑</button></div>
       <form className="gateway-admin-search" onSubmit={event => {
         event.preventDefault(); setProjectPage(1); setProjectSearch(projectQuery.trim())
       }}><label htmlFor="publish-project-search">搜索 PC 项目</label>
@@ -106,8 +112,8 @@ export function AdminPublishProjectPanel({ csrf, revision, onPublished }: {
       <ul className="gateway-device-list">{projects.map(project => <li key={project.host_project_id}>
         <div><strong>{project.name}</strong><p>{project.host_project_id} · {
           project.published ? '已发布' : '未发布'}</p></div>
-        <button type="button" disabled={project.published} onClick={() => { setError(''); setSelectedProject(project) }}>
-          发布</button>
+        <button type="button" disabled={project.published || projectLoading} onClick={() => { setError(''); setSelectedProject(project) }}>
+          {project.published ? '已发布' : '发布'}</button>
       </li>)}</ul>
       <div className="gateway-admin-pagination"><span>共 {projectTotal} 个项目 · 第 {projectPage}/{
         Math.max(1, Math.ceil(projectTotal / 25))} 页</span>
@@ -121,11 +127,9 @@ export function AdminPublishProjectPanel({ csrf, revision, onPublished }: {
         重试</button></p>}
     {selectedProject && selectedDevice && <GatewayConfirmDialog title="发布平台项目"
       message={`从 ${selectedDevice.name} 发布「${selectedProject.name}」。提交时会再次向在线 PC 核对项目。`}
-      confirmLabel="确认发布" busy={busy} disabled={!password} onConfirm={() => void publish()}
+      confirmLabel="确认发布" busy={busy} disabled={!passwordReady} onConfirm={() => void publish()}
       onCancel={() => { setSelectedProject(null); setPassword('') }}>
-      <label htmlFor="publish-project-password">输入管理员密码确认</label>
-      <input id="publish-project-password" type="password" autoComplete="current-password" value={password}
-        onChange={event => setPassword(event.target.value)} />
+      <PasswordConfirmation id="publish-project-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
       {error && <p role="alert" className="gateway-auth-error">{error}</p>}
     </GatewayConfirmDialog>}
   </section>
@@ -134,15 +138,14 @@ export function AdminPublishProjectPanel({ csrf, revision, onPublished }: {
 export function AdminUnpublishProjectDialog({ project, csrf, onClose, onComplete }: {
   project: { id: string; name: string }; csrf: string; onClose: () => void; onComplete: () => void
 }) {
-  const [password, setPassword] = useState('')
+  const { password, setPassword, passwordRequired, passwordReady } = useStepUpPassword()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   async function unpublish() {
     setBusy(true); setError('')
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
-      const step = await fetch('/api/auth/step-up', { method: 'POST', credentials: 'same-origin', headers,
-        body: JSON.stringify({ password }) })
+      const step = await confirmStepUp(csrf, password, passwordRequired)
       if (!step.ok) throw new Error('密码验证失败。')
       const response = await fetch(`/api/admin/projects/${encodeURIComponent(project.id)}/unpublish`, {
         method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf },
@@ -154,10 +157,8 @@ export function AdminUnpublishProjectDialog({ project, csrf, onClose, onComplete
   }
   return <GatewayConfirmDialog title="取消项目发布"
     message={`确认取消「${project.name}」的发布？只移除 Gateway 登记和访问授权，不删除宿主 PC 的项目目录或数据。`}
-    confirmLabel="取消发布" busy={busy} disabled={!password} onConfirm={() => void unpublish()} onCancel={onClose}>
-    <label htmlFor="unpublish-project-password">输入管理员密码确认</label>
-    <input id="unpublish-project-password" type="password" autoComplete="current-password" value={password}
-      onChange={event => setPassword(event.target.value)} />
+    confirmLabel="取消发布" busy={busy} disabled={!passwordReady} onConfirm={() => void unpublish()} onCancel={onClose}>
+    <PasswordConfirmation id="unpublish-project-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}
   </GatewayConfirmDialog>
 }

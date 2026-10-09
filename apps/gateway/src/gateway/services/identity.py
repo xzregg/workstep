@@ -11,11 +11,12 @@ from uuid import uuid4
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
 from gateway.services.identity_errors import IdentityError
-from sqlalchemy import select, update, func
+from sqlalchemy import select, update, func, or_
 from sqlalchemy.exc import IntegrityError
 
 from gateway.database import GatewayDatabase
 from gateway.models import AdminAssignment, AuditEvent, AuthSession, DirectoryDepartment, DirectoryMembership, DirectoryPerson, IdentitySource, PlatformSetting, User
+from gateway.services.permission_subjects import active_group_ids
 
 SESSION_SECONDS = 24 * 60 * 60
 COOKIE_NAME = "workstep_gateway_session"
@@ -40,7 +41,7 @@ def csrf_token(token: str) -> str:
 
 def public_user(user: User) -> dict[str, str | bool]:
     return {"id": user.id, "username": user.username, "display_name": user.display_name,
-            "status": user.status, "must_change_password": bool(user.must_change_password)}
+            "status": user.status, "must_change_password": False}
 
 
 class IdentityService:
@@ -248,7 +249,9 @@ class IdentityService:
 
     async def change_password(self, user: User, auth_session: AuthSession,
                               current_password: str, new_password: str) -> None:
-        if not user.password_hash or not await self._verify_password(user.password_hash, current_password):
+        if auth_session.authentication_method == "scan":
+            await self.require_step_up(auth_session)
+        elif not user.password_hash or not await self._verify_password(user.password_hash, current_password):
             raise IdentityError("forbidden", "Current password is incorrect")
         new_hash = await self._hash_password(new_password)
         async with self.database.session() as session:
@@ -268,27 +271,19 @@ class IdentityService:
                 )
 
     async def require_super_admin(self, user_id: str) -> None:
-        async with self.database.session() as session:
-            assignment = await session.scalar(select(AdminAssignment.id).where(
-                AdminAssignment.user_id == user_id,
-                AdminAssignment.role == "super_admin",
-                AdminAssignment.revoked_at.is_(None),
-            ))
-            if assignment is None:
-                raise IdentityError("forbidden", "Administrator access required")
+        if not await self.is_super_admin(user_id):
+            raise IdentityError("forbidden", "Administrator access required")
 
     async def require_skill_admin(self, user_id: str) -> None:
         async with self.database.session() as session:
-            assignment = await session.scalar(select(AdminAssignment.id).where(
-                AdminAssignment.user_id == user_id,
-                AdminAssignment.role.in_(("super_admin", "skill_admin")),
-                AdminAssignment.scope_type == "platform",
-                AdminAssignment.revoked_at.is_(None),
-            ))
-            if assignment is None:
+            assignments = await self.admin_assignments_in_session(session, user_id, ("super_admin", "skill_admin"))
+            if not any(row.scope_type == "platform" for row in assignments):
                 raise IdentityError("forbidden", "Skill administrator access required")
 
     async def step_up(self, user: User, auth_session: AuthSession, password: str) -> None:
+        if auth_session.authentication_method == "scan":
+            await self.require_step_up(auth_session)
+            return
         if not user.password_hash or not await self._verify_password(user.password_hash, password):
             raise IdentityError("forbidden", "Password is incorrect")
         async with self.database.session() as session:
@@ -301,17 +296,42 @@ class IdentityService:
     async def require_step_up(self, auth_session: AuthSession) -> None:
         async with self.database.session() as session:
             current = await session.get(AuthSession, auth_session.id)
-            if current is None or current.step_up_expires_at is None or _as_utc(current.step_up_expires_at) <= _now():
+            if current is None or current.revoked_at or _as_utc(current.expires_at) <= _now():
+                raise IdentityError("unauthenticated", "Session expired")
+            if current.authentication_method == "scan":
+                return
+            if current.step_up_expires_at is None or _as_utc(current.step_up_expires_at) <= _now():
                 raise IdentityError("forbidden", "Recent password confirmation required")
 
     async def is_super_admin(self, user_id: str) -> bool:
         async with self.database.session() as session:
-            assignment = await session.scalar(select(AdminAssignment.id).where(
-                AdminAssignment.user_id == user_id,
-                AdminAssignment.role == "super_admin",
-                AdminAssignment.revoked_at.is_(None),
-            ))
-            return assignment is not None
+            return await self.super_admin_in_session(session, user_id)
+
+    @staticmethod
+    async def super_admin_in_session(session, user_id: str) -> bool:
+        return bool(await IdentityService.admin_assignments_in_session(session, user_id, ("super_admin",)))
+
+    @staticmethod
+    async def admin_assignments_in_session(session, user_id: str, roles=None):
+        query = select(AdminAssignment).where(
+            or_(AdminAssignment.user_id == user_id, AdminAssignment.group_id.in_(active_group_ids(user_id))),
+            AdminAssignment.revoked_at.is_(None),
+            select(User.id).where(User.id == user_id, User.status == "active").exists(),
+        )
+        if roles is not None:
+            query = query.where(AdminAssignment.role.in_(roles))
+        return (await session.scalars(query)).all()
+
+    @staticmethod
+    async def _bump_managed_policy_revision(session, user_id: str) -> None:
+        from gateway.models import Device, UserDevice
+        device_ids = select(UserDevice.device_id).where(
+            UserDevice.user_id == user_id, UserDevice.revoked_at.is_(None),
+        )
+        await session.execute(update(Device).where(Device.id.in_(device_ids)).values(
+            policy_revision=Device.policy_revision + 1,
+            provider_revision=Device.provider_revision + 1,
+        ))
 
     async def require_user_manager(self, actor_id: str, target_user_id: str | None = None,
                                    platform_only: bool = False) -> None:
@@ -339,11 +359,7 @@ class IdentityService:
     async def manageable_department_ids(self, session, actor_id: str, *,
                                         roles=("super_admin", "identity_admin", "org_admin", "department_admin")) -> set[str] | None:
         """None means platform-wide; a set contains readable department IDs."""
-        assignments = (await session.scalars(select(AdminAssignment).where(
-            AdminAssignment.user_id == actor_id,
-            AdminAssignment.revoked_at.is_(None),
-            AdminAssignment.role.in_(roles),
-        ))).all()
+        assignments = await self.admin_assignments_in_session(session, actor_id, roles)
         if any(assignment.role == "super_admin" or (
             assignment.role in ("identity_admin", "org_admin", "audit_admin") and assignment.scope_type == "platform"
         ) for assignment in assignments):
@@ -434,6 +450,8 @@ class IdentityService:
                     granted_by_user_id=actor_id,
                 )
                 session.add(assignment)
+                if role == "super_admin":
+                    await self._bump_managed_policy_revision(session, user_id)
                 session.add(AuditEvent(
                     id=str(uuid4()), user_id=actor_id,
                     action="admin.role.grant", result="success",
@@ -464,6 +482,8 @@ class IdentityService:
                     if user and user.is_recovery:
                         raise IdentityError("forbidden", "Recovery administrator is protected")
                 assignment.revoked_at = _now()
+                if assignment.role == "super_admin":
+                    await self._bump_managed_policy_revision(session, assignment.user_id)
                 session.add(AuditEvent(
                     id=str(uuid4()), user_id=actor_id,
                     action="admin.role.revoke", result="success",
@@ -481,7 +501,7 @@ class IdentityService:
                     raise IdentityError("not_found", "User not found")
                 user.password_hash = password_hash
                 user.password_changed_at = _now()
-                user.must_change_password = 1
+                user.must_change_password = 0
                 await session.execute(update(AuthSession).where(
                     AuthSession.user_id == user_id,
                     AuthSession.revoked_at.is_(None),
@@ -494,7 +514,7 @@ class IdentityService:
             id=str(uuid4()), username=username, display_name=display_name,
             password_hash=password_hash, password_changed_at=_now(),
             status=status, registration_source="admin_created", created_by_user_id=created_by,
-            must_change_password=1,
+            must_change_password=0,
         )
         try:
             async with self.database.session() as session:

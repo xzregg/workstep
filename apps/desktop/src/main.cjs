@@ -4,13 +4,12 @@ const path = require('node:path')
 const fs = require('node:fs/promises')
 const { SandboxManager } = require('./sandbox.cjs')
 const { registerSandboxIpc } = require('./sandbox-ipc.cjs')
-const { autoUpdater } = require('electron-updater')
 const { managedEnvironment, readManagedConfig } = require('./managed-config.cjs')
 const { loadOrCreateDeviceIdentity } = require('./credential-store.cjs')
 const { managedSessionExpired } = require('./managed-session.cjs')
 const { desktopWindowTitle } = require('./window-title.cjs')
 const { attachHideOnClose, createGracefulQuit } = require('./window-lifecycle.cjs')
-const { shouldOfferUpdate } = require('./update-version.cjs')
+const { createDesktopUpdateService, safeReleaseUrl } = require('./desktop-update.cjs')
 const { createSandboxStartupWindow, formatSandboxFailure, applyPendingImageSwitch } = require('./sandbox-startup-window.cjs')
 const {
   createAuthorizationRequest, parseAuthCallback, claimAuthCallback, exchangeDesktopCode,
@@ -29,14 +28,12 @@ const {
   isTrustedNavigation,
   projectsHaveActiveWork,
   sessionsHaveActiveWork,
-  updaterChannel,
   primaryNetworkIPv4,
 } = require('./security.cjs')
 
 let sandboxManager = null
 let backendProcess = null
 let stopping = null
-let installingUpdate = false
 let mainWindow = null
 let sandboxStartup = null
 let rootUrl = null
@@ -47,10 +44,12 @@ let managedCallbackResolve = null
 let managedCallbackTimeout = null
 let reauthenticating = null
 let controlStatusTimer = null
+let updateCheckTimer = null
 let tray = null
 let quitting = false
 let windowsVisible = true
 let gatewayLoginWindow = null
+let sandboxSwitchSignal = 0
 let pendingProtocolUrl = process.argv.find((value) => value.startsWith('workstep://')) ?? null
 
 async function completeConfiguredGatewayCallback(value) {
@@ -64,7 +63,11 @@ async function completeConfiguredGatewayCallback(value) {
     headers: { 'X-WorkStep-Desktop-Token': desktopToken },
     signal: AbortSignal.timeout(15_000),
   })
-  if (response.status !== 303) throw new Error(`Gateway callback rejected (${response.status})`)
+  if (response.status !== 303) {
+    const body = await response.json().catch(() => null)
+    const detail = typeof body?.detail === 'string' ? body.detail : `网关登录失败（${response.status}）`
+    throw new Error(detail)
+  }
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.reload()
     if (mainWindow.isMinimized()) mainWindow.restore()
@@ -88,7 +91,7 @@ function openProtocolUrl(value) {
       void completeConfiguredGatewayCallback(value).catch((error) => {
         console.error('Unable to complete configured Gateway login', error)
         const options = { type: 'error', title: '网关登录失败',
-          message: '无法完成网关登录，请返回设置后重试。', detail: String(error) }
+          message: '无法完成网关登录。', detail: error.message || String(error) }
         void (mainWindow ? dialog.showMessageBox(mainWindow, options) : dialog.showMessageBox(options))
       })
     } else {
@@ -161,7 +164,7 @@ async function authorizeManagedDesktop(managed) {
   })
   let callback
   try {
-    await shell.openExternal(pending.authorizationUrl)
+    openGatewayLoginWindow(pending.authorizationUrl)
     callback = await callbackPromise
   } finally {
     clearTimeout(managedCallbackTimeout)
@@ -241,7 +244,7 @@ function createWindow(url) {
     event.preventDefault()
     window.setTitle(title)
   })
-  window.webContents.on('will-navigate', (event, targetUrl) => {
+  const handleNavigation = (event, targetUrl) => {
     if (isTrustedNavigation(targetUrl, rootUrl)) return
     event.preventDefault()
     if (isGatewayDesktopLoginUrl(targetUrl)) {
@@ -249,9 +252,12 @@ function createWindow(url) {
       return
     }
     if (isAllowedExternalUrl(targetUrl)) void shell.openExternal(targetUrl)
-  })
+  }
+  window.webContents.on('will-navigate', handleNavigation)
+  window.webContents.on('will-redirect', handleNavigation)
   window.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
-    if (isAllowedExternalUrl(targetUrl)) void shell.openExternal(targetUrl)
+    if (isGatewayDesktopLoginUrl(targetUrl)) openGatewayLoginWindow(targetUrl)
+    else if (isAllowedExternalUrl(targetUrl)) void shell.openExternal(targetUrl)
     return { action: 'deny' }
   })
   window.webContents.on('will-attach-webview', (event) => event.preventDefault())
@@ -294,6 +300,29 @@ function showDesktopWindow() {
   window.show()
   if (window.isMinimized()) window.restore()
   window.focus()
+}
+
+async function hasActiveWork() {
+  if (!rootUrl || (!desktopToken && app.isPackaged)) return true
+  try {
+    const headers = { 'X-WorkStep-Desktop-Token': desktopToken,
+      ...(localSession ? { 'X-WorkStep-Local-Session': localSession } : {}) }
+    const response = await fetch(`${rootUrl}/api/project/list`, { headers })
+    if (!response.ok) return true
+    const projectsPayload = await response.json()
+    if (projectsHaveActiveWork(projectsPayload)) return true
+    for (const project of projectsPayload.projects) {
+      if (!project?.id || project?.type === 'remote') continue
+      const sessionsResponse = await fetch(
+        `${rootUrl}/api/chat-sessions?project_id=${encodeURIComponent(project.id)}`, { headers },
+      )
+      if (!sessionsResponse.ok || sessionsHaveActiveWork(await sessionsResponse.json())) return true
+    }
+    return false
+  } catch (error) {
+    console.error('Unable to verify active work', error)
+    return true
+  }
 }
 
 function configureTray() {
@@ -419,8 +448,18 @@ function beginManagedReauthentication(managed) {
 function configureManagedSessionRecovery(managed) {
   const parsed = new URL(rootUrl)
   session.defaultSession.webRequest.onCompleted({ urls: [`${parsed.origin}/*`] }, (details) => {
-    if (managedSessionExpired(details, rootUrl)) beginManagedReauthentication(managed)
+    if (!managedSessionExpired(details, rootUrl)) return
+    if (managed) {
+      beginManagedReauthentication(managed)
+    } else if (!reauthenticating && mainWindow && !mainWindow.isDestroyed()) {
+      // Configured gateways own their local session in the daemon. Reload the
+      // entry route so its expired session redirects to the embedded login.
+      reauthenticating = mainWindow.loadURL(`${rootUrl}/`)
+        .catch(error => console.error('Unable to reopen gateway login', error))
+        .finally(() => { reauthenticating = null })
+    }
   })
+  if (!managed) return
   controlStatusTimer = setInterval(() => {
     if (reauthenticating || !localSession) return
     void fetch(`${rootUrl}/api/managed/control-status`, {
@@ -436,75 +475,20 @@ function configureManagedSessionRecovery(managed) {
   controlStatusTimer.unref()
 }
 
-async function hasActiveWork() {
-  if (!rootUrl || (!desktopToken && app.isPackaged)) return true
-  try {
-    const response = await fetch(`${rootUrl}/api/project/list`, {
-      headers: { 'X-WorkStep-Desktop-Token': desktopToken,
-        ...(localSession ? { 'X-WorkStep-Local-Session': localSession } : {}) },
-    })
-    if (!response.ok) return true
-    const projectsPayload = await response.json()
-    if (projectsHaveActiveWork(projectsPayload)) return true
-    for (const project of projectsPayload.projects) {
-      if (!project?.id || project?.type === 'remote') continue
-      const sessionsResponse = await fetch(
-        `${rootUrl}/api/chat-sessions?project_id=${encodeURIComponent(project.id)}`,
-        { headers: { 'X-WorkStep-Desktop-Token': desktopToken,
-          ...(localSession ? { 'X-WorkStep-Local-Session': localSession } : {}) } },
-      )
-      if (!sessionsResponse.ok || sessionsHaveActiveWork(await sessionsResponse.json())) return true
-    }
-    return false
-  } catch (error) {
-    console.error('Unable to verify active work before update', error)
-    return true
-  }
-}
-
-async function promptForUpdateInstall() {
-  const active = await hasActiveWork()
-  if (active) {
-    await dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'WorkStep 更新已下载',
-      message: '更新将在稍后安装',
-      detail: '当前仍有任务或会话运行。请结束工作后重启 WorkStep，以免中断正在写入的数据。',
-      buttons: ['知道了'],
-    })
-    return
-  }
-  const result = await dialog.showMessageBox(mainWindow, {
-    type: 'info',
-    title: 'WorkStep 更新已下载',
-    message: '是否立即重启并安装更新？',
-    detail: '也可以选择稍后，在退出 WorkStep 后再安装。',
-    buttons: ['稍后', '立即重启并安装'],
-    defaultId: 1,
-    cancelId: 0,
-  })
-  if (result.response !== 1) return
-  installingUpdate = true
-  await stopBackend()
-  setTimeout(() => autoUpdater.quitAndInstall(false, true), 500)
-}
-
 function configureUpdater() {
-  if (!app.isPackaged) return
-  const channel = updaterChannel(process.platform, process.arch)
-  if (channel) autoUpdater.channel = channel
-  autoUpdater.autoInstallOnAppQuit = true
-  autoUpdater.on('update-downloaded', (info) => {
-    if (!shouldOfferUpdate(app.getVersion(), info?.version)) {
-      console.info('Ignoring stale desktop update', info?.version ?? 'unknown')
-      return
-    }
-    void promptForUpdateInstall()
-  })
-  autoUpdater.on('error', (error) => console.error('Auto update failed', error))
-  void autoUpdater.checkForUpdatesAndNotify().catch((error) => {
-    console.error('Unable to check for desktop updates', error)
-  })
+  const updater = createDesktopUpdateService(app)
+  ipcMain.removeHandler('workstep:update:status')
+  ipcMain.removeHandler('workstep:update:check')
+  ipcMain.removeHandler('workstep:update:open-download')
+  ipcMain.handle('workstep:update:status', () => updater.check())
+  ipcMain.handle('workstep:update:check', () => updater.check({ force: true }))
+  ipcMain.handle('workstep:update:open-download', (_event, url) => shell.openExternal(safeReleaseUrl(url)))
+  if (app.isPackaged) {
+    const check = () => void updater.check().catch(error => console.error('Unable to check for desktop updates', error))
+    check()
+    updateCheckTimer = setInterval(check, 24 * 60 * 60 * 1000)
+    updateCheckTimer.unref()
+  }
 }
 
 const handleGracefulQuit = createGracefulQuit({
@@ -516,7 +500,7 @@ const handleGracefulQuit = createGracefulQuit({
 
 app.on('before-quit', (event) => {
   if (controlStatusTimer) clearInterval(controlStatusTimer)
-  if (installingUpdate) { quitting = true; return }
+  if (updateCheckTimer) clearInterval(updateCheckTimer)
   handleGracefulQuit(event)
 })
 
@@ -560,9 +544,11 @@ app.whenReady().then(async () => {
       if (available.error) throw new Error(available.error)
       const selected = available.images.find(item => item.id === input)
       if (!selected) throw new Error('请选择扫描结果中的兼容镜像')
-      await sandboxManager.queueImageSwitch(input, selected.tags[0] || null)
-      app.relaunch()
-      app.quit()
+      const tag = selected.tags[0] || null
+      sandboxStartup.update({ phase: 'switching', message: `正在切换到 ${tag || input.slice(0, 19) + '…'}`, error: null })
+      await sandboxManager.queueImageSwitch(input, tag)
+      sandboxSwitchSignal += 1
+      return { queued: true, image: input, tag }
     }
   }
   for (const action of ['readLogs', 'copyLogs', 'openLogs', 'dockerImages', 'switchImage']) {
@@ -591,16 +577,26 @@ app.whenReady().then(async () => {
         onUserClose: (event, window) => { event.preventDefault(); windowsVisible = false; window.hide() },
       })
     }
-    if (sandboxSettings.pendingDockerImage) {
-      try { await applyPendingImageSwitch(sandboxManager) }
-      catch (error) {
-        const status = await sandboxManager.status()
-        sandboxStartup?.update({ ...status, phase: 'error', error: error instanceof Error ? error.message : String(error) })
-        return
+    const finishPendingImageSwitch = async () => {
+      let observedSwitchSignal = sandboxSwitchSignal
+      while ((await sandboxManager.settings()).pendingDockerImage) {
+        try { await applyPendingImageSwitch(sandboxManager); return true }
+        catch (error) {
+          const status = await sandboxManager.status()
+          sandboxStartup?.update({ ...status, phase: 'error', error: error instanceof Error ? error.message : String(error) })
+          while (observedSwitchSignal === sandboxSwitchSignal) await new Promise(resolve => setTimeout(resolve, 250))
+          observedSwitchSignal = sandboxSwitchSignal
+        }
       }
+      return false
     }
+    await finishPendingImageSwitch()
     for (;;) {
       try { rootUrl = await backendUrl(); break } catch (error) {
+        if ((await sandboxManager.settings()).pendingDockerImage) {
+          await finishPendingImageSwitch()
+          continue
+        }
         if (!(await sandboxManager.settings()).enabled) throw error
         const status = await sandboxManager.status()
         sandboxStartup?.update({ ...status, phase: 'error', error: error instanceof Error ? error.message : String(error) })
@@ -626,7 +622,7 @@ app.whenReady().then(async () => {
     const initialPath = pendingProtocolUrl ? protocolPath(pendingProtocolUrl) : '/'
     createWindow(`${rootUrl}${initialPath}`)
     sandboxStartup?.close(); sandboxStartup = null
-    if (managed) configureManagedSessionRecovery(managed)
+    configureManagedSessionRecovery(managed)
     configureUpdater()
   } catch (error) {
     await dialog.showMessageBox({
