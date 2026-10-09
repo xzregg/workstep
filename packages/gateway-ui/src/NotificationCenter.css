@@ -1,0 +1,56 @@
+.gateway-notifications { position: relative; justify-self: end; }
+.gateway-portal-header .gateway-notification-trigger { position: relative; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; color: #6e6e73; background: transparent; border: 1px solid #e8e8ed; border-radius: 12px; }
+.gateway-notification-trigger > span { position: absolute; top: -5px; right: -7px; min-width: 17px; padding: 1px 4px; border-radius: 12px; background: #dc2626; color: white; font-size: 11px; }
+.gateway-notification-panel { position: absolute; top: 44px; right: 0; z-index: 100; width: min(420px,calc(100vw - 24px)); max-height: min(640px,calc(100dvh - 90px)); display: flex; flex-direction: column; background: #fff; border: 1px solid #e8e8ed; border-radius: 12px; box-shadow: 0 12px 42px color-mix(in srgb,#1d1d1f 12%,transparent); overflow: hidden; color: #424245; }
+.gateway-notification-panel > header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid #e8e8ed; }
+.gateway-notification-panel > header > div { flex: 1; min-width: 0; }
+.gateway-notification-panel small { display: block; font-size: 11px; color: #86868b; margin-top: 4px; }
+.gateway-notification-panel button { background: transparent; color: #0071e3; border: 0; border-radius: 12px; padding: 6px; }
+.gateway-notification-panel > header > button:last-child { padding: 0; width: 28px; height: 28px; font-size: 20px; }
+.gateway-notification-panel ul { list-style: none; padding: 0; margin: 0; overflow-y: auto; flex: 1; }
+.gateway-notification-panel li { border-bottom: 1px solid #e8e8ed; }
+.gateway-notification-panel li.gateway-notification-unread { background: #fbfbfd; }
+.gateway-notification-panel li > button { display: flex; flex-direction: column; gap: 6px; text-align: left; width: 100%; padding: 14px 16px; color: #424245; }
+.gateway-notification-panel li > button:hover { background: #f5f5f7; }
+.gateway-notification-panel strong { font-size: 13px; overflow-wrap: anywhere; }
+.gateway-notification-panel li span { font-size: 12px; color: #6e6e73; }
+.gateway-notification-panel time { font-size: 11px; color: #86868b; }
+.gateway-notification-panel p { margin: 0; padding: 14px 16px; font-size: 12px; }
+.gateway-notification-empty { color: #86868b; }
+main > .gateway-portal-header:has(.gateway-notifications) { grid-template-columns: auto minmax(0,1fr) auto auto; }
+main > .gateway-portal-header:has(.gateway-notifications) .gateway-portal-sign-in { grid-column: 4; grid-row: 1; }
+main > .gateway-portal-header:has(.gateway-notifications) .gateway-notifications { grid-column: 3; grid-row: 1; }
+.gateway-portal-header .gateway-portal-navigation { min-width: 0; }
+@media (max-width:1023px) {
+ main.gateway-workspace-portal > .gateway-portal-header { grid-template-columns: auto minmax(0,1fr) auto auto; }
+ main.gateway-workspace-portal > .gateway-portal-header .gateway-portal-navigation { grid-column: 2; grid-row: 1; }
+ .gateway-portal-header .gateway-notification-trigger { width: var(--mobile-control-regular,32px); height: var(--mobile-control-regular,32px); }
+ .gateway-notification-panel { position: fixed; top: 64px; right: 12px; }
+}
+
+/* Shared header controls for the portal and the remote workspace. */
+:is(.gateway-portal-header, .gateway-remote-banner) :is(.gateway-header-control, .gateway-portal-navigation a, .gateway-portal-sign-in, .gateway-notification-trigger) {
+ box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center;
+ height: 32px; min-height: 32px; padding: 0 12px; border: 1px solid #e8e8ed;
+ border-radius: 8px; background: #fff; color: #424245; font-size: 13px;
+ font-weight: 500; line-height: 1; text-decoration: none; white-space: nowrap;
+ box-shadow: none; cursor: pointer;
+}
+:is(.gateway-portal-header, .gateway-remote-banner) :is(.gateway-header-control, .gateway-portal-navigation a, .gateway-portal-sign-in, .gateway-notification-trigger):hover {
+ background: #f5f5f7; border-color: #d2d2d7; color: #1d1d1f;
+}
+:is(.gateway-portal-header, .gateway-remote-banner) :is(.gateway-header-control, .gateway-portal-navigation a, .gateway-portal-sign-in, .gateway-notification-trigger):focus-visible {
+ outline: 2px solid #0071e3; outline-offset: 2px;
+}
+.gateway-portal-header .gateway-portal-navigation a[aria-current="page"] {
+ background: #edf5ff; border-color: #b5d5fa; color: #0071e3;
+}
+:is(.gateway-portal-header, .gateway-remote-banner) .gateway-notification-trigger {
+ width: 32px; min-width: 32px; padding: 0;
+}
+.gateway-notification-trigger svg { width: 18px; height: 18px; }
+@media (max-width: 1023px) {
+ :is(.gateway-portal-header, .gateway-remote-banner) :is(.gateway-header-control, .gateway-portal-navigation a, .gateway-portal-sign-in, .gateway-notification-trigger) {
+  height: var(--mobile-control-regular, 32px); min-height: var(--mobile-control-regular, 32px);
+ }
+}

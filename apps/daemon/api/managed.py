@@ -10,7 +10,11 @@ router = APIRouter(prefix="/api/managed")
 @router.get("/mode")
 async def managed_mode(request: Request):
     service = getattr(request.app.state, "gateway_client", None)
-    return {"managed": bool(service is not None and service.managed_config is not None)}
+    result = {"managed": bool(service is not None and service.managed_config is not None)}
+    if request.scope.get('gateway_remote_actor') is not None:
+        from api.desktop_security import gateway_device_owner
+        result['can_manage_remote_projects'] = gateway_device_owner(request)
+    return result
 
 
 class BootstrapInput(BaseModel):

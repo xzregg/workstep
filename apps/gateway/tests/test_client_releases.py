@@ -21,7 +21,7 @@ def test_admin_publishes_gateway_scoped_release_and_all_users_share_download(tmp
     artifact.write_bytes(b"signed managed installer")
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:
-        assert client.get("/api/client-releases").json() == {"releases": []}
+        assert client.get("/api/client-releases").json() == {"releases": [], "public_origin": None}
         setup = client.post("/api/platform/setup", json={
             "username": "owner", "display_name": "Owner", "password": "OwnerPassphrase-2026!",
             "recovery_username": "recovery", "recovery_password": "RecoveryPassphrase-2026!",

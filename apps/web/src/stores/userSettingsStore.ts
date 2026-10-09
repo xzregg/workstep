@@ -6,6 +6,8 @@ interface UserSettingsState {
   gitScanDepth: number
   saveGitScanDepth: (depth: number) => Promise<void>
   userName: string
+  identitySource: 'local' | 'gateway'
+  gatewayUsername: string
   openMode: boolean
   defaultProjectDirectory: string
   saveDefaultProjectDirectory: (directory: string) => Promise<void>
@@ -27,6 +29,8 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
     set({ gitScanDepth: settings.git_scan_depth })
   },
   userName: '',
+  identitySource: 'local',
+  gatewayUsername: '',
   openMode: false,
   defaultProjectDirectory: '',
   saveDefaultProjectDirectory: async (directory) => {
@@ -45,7 +49,8 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
     try {
       let settings = await systemSettingsApi.get()
       let restoredActor = actor
-      if (typeof window !== 'undefined' && window.workstepDesktop) {
+      const gatewayIdentity = settings.identity_source === 'gateway'
+      if (!gatewayIdentity && typeof window !== 'undefined' && window.workstepDesktop) {
         // Desktop ports can change across launches; config belongs to the
         // active native/sandbox Home, unlike origin-scoped browser storage.
         if (!settings.user_name && actor?.name) settings = await systemSettingsApi.updateUserName(actor.name)
@@ -56,7 +61,9 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
       set({
         defaultProjectDirectory: settings.default_project_directory || '',
         gitScanDepth: settings.git_scan_depth ?? 5,
-        userName: restoredActor?.name || '',
+        userName: gatewayIdentity ? settings.user_name : restoredActor?.name || '',
+        identitySource: gatewayIdentity ? 'gateway' : 'local',
+        gatewayUsername: settings.gateway_username || '',
         openMode: settings.open_mode,
         deviceId: restoredActor?.deviceId || '',
         deviceName: restoredActor?.deviceName || '',
@@ -75,6 +82,7 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
     }
   },
   saveUserName: async (name) => {
+    if (get().identitySource === 'gateway') return false
     const userName = name.trim()
     if (!userName) return false
     set({ loading: true, error: '' })

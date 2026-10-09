@@ -16,8 +16,16 @@ function merge(target, incoming, overwrite) {
   }
   return result
 }
+function localProviderWarnings(config) {
+  const warnings = []
+  for (const item of Array.isArray(config.providers) ? config.providers : []) {
+    const urls = [item.base_url, ...Object.values(object(item.protocol_base_urls) ? item.protocol_base_urls : {})]
+    if (urls.some(value => { try { return ['localhost', '127.0.0.1', '[::1]', '::1'].includes(new URL(value).hostname) } catch { return false } })) warnings.push(String(item.name || item.id))
+  }
+  return warnings
+}
 function migrateConfig(source, target, options) {
-  const config = structuredClone(target), warnings = [], ids = new Map()
+  const config = structuredClone(target), ids = new Map()
   if (options.providers) {
     const providers = Array.isArray(config.providers) ? structuredClone(config.providers) : []
     for (const raw of Array.isArray(source.providers) ? source.providers : []) {
@@ -67,12 +75,13 @@ function migrateConfig(source, target, options) {
     const incoming = pick(source, ['git_scan_depth'])
     if (object(source.user)) incoming.user = pick(source.user, ['name'])
     if (object(source.concurrency)) incoming.concurrency = pick(source.concurrency, ['max_tasks', 'max_chats', 'schedule_exempt'])
+    if (object(source.remote_access)) incoming.remote_access = pick(source.remote_access, [
+      'enabled', 'external_base_url', 'host_id', 'access_password_salt',
+      'access_password_hash', 'access_password_set_at',
+    ])
     Object.assign(config, merge(config, incoming, options.overwrite))
   }
-  for (const item of options.providers && Array.isArray(config.providers) ? config.providers : []) {
-    const urls = [item.base_url, ...Object.values(object(item.protocol_base_urls) ? item.protocol_base_urls : {})]
-    if (urls.some(value => { try { return ['localhost', '127.0.0.1', '[::1]', '::1'].includes(new URL(value).hostname) } catch { return false } })) warnings.push(String(item.name || item.id))
-  }
+  const warnings = options.providers ? localProviderWarnings(config) : []
   return { config, warnings }
 }
 async function readConfig(file) {
@@ -108,4 +117,4 @@ async function mapProjects(config, catalog, selected) {
   return entries
 }
 
-module.exports = { migrateConfig, readConfig, projectCatalog, mapProjects }
+module.exports = { migrateConfig, readConfig, projectCatalog, mapProjects, localProviderWarnings }

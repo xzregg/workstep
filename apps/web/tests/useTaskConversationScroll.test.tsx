@@ -4,6 +4,47 @@ import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { useTaskConversationScroll } from '../src/hooks/useTaskConversationScroll'
+import type { ActionRunLike } from '../src/utils/actionConversation'
+
+test('task shortcut output triggers follow without treating unchanged polling as new content', async () => {
+  const { window } = installDomEnvironment()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const historyMessages: unknown[] = []
+  const liveMessages = {}
+  const events: unknown[] = []
+  const run = { user_message_id: 'u', reply_message_id: 'a', title: '构建', output: '', status: 'running', started_at: '' }
+  function Transcript({ runs }: { runs: ActionRunLike[] }) {
+    const scroll = useTaskConversationScroll({ historyMessages, liveMessages, events, content: '', actionRuns: runs })
+    return <>
+      <div ref={scroll.scrollRef} onWheelCapture={scroll.onWheelCapture} />
+      <output>{scroll.unreadMessages ? 'unread' : 'read'}</output>
+    </>
+  }
+  const render = (runs: ActionRunLike[]) => act(async () => root.render(<Transcript runs={runs} />))
+  try {
+    await render([])
+    const viewport = container.querySelector('div')!
+    let height = 500
+    Object.defineProperties(viewport, { scrollHeight: { get: () => height }, clientHeight: { value: 100 } })
+    await render([run])
+    assert.equal(viewport.scrollTop, 400)
+    height = 800
+    await render([{ ...run, output: '输出' }])
+    assert.equal(viewport.scrollTop, 700)
+    await act(async () => viewport.dispatchEvent(new window.WheelEvent('wheel', { bubbles: true, deltaY: -10 })))
+    viewport.scrollTop = 200
+    await render([{ ...run, output: '输出' }])
+    assert.equal(container.querySelector('output')?.textContent, 'read')
+    await render([{ ...run, output: '输出\n完成', status: 'succeeded' }])
+    assert.equal(viewport.scrollTop, 200)
+    assert.equal(container.querySelector('output')?.textContent, 'unread')
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})
 
 test('task transcript follows new messages until the user scrolls away', async () => {
   const { window } = installDomEnvironment()

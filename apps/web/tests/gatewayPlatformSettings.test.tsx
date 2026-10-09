@@ -4,11 +4,18 @@ import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { I18nProvider } from '../src/i18n'
-import GatewayPlatformSettings from '../src/pages/GatewayPlatformSettings'
+import GatewayPlatformSettings, { validGatewayPlatformUrl } from '../src/pages/GatewayPlatformSettings'
 import RemoteAccessSettings from '../src/pages/RemoteAccessSettings'
 import { useManagedModeStore } from '../src/stores/managedModeStore'
 
-test('remote access contains gateway authentication and switches legacy access only in ordinary mode', async () => {
+test('gateway settings accept private-network HTTP origins but reject public HTTP', () => {
+ assert.equal(validGatewayPlatformUrl('http://192.168.52.156:8700'), true)
+ assert.equal(validGatewayPlatformUrl('http://10.0.0.8:8700'), true)
+ assert.equal(validGatewayPlatformUrl('http://8.8.8.8:8700'), false)
+ assert.equal(validGatewayPlatformUrl('http://gateway.example.com:8700'), false)
+})
+
+test('remote access keeps gateway and LAN project settings available together on the device', async () => {
  const { window } = installDomEnvironment()
  const original = globalThis.fetch
  const calls: string[] = []
@@ -29,8 +36,8 @@ test('remote access contains gateway authentication and switches legacy access o
   assert.ok(calls.some(url=>url.includes('/remote-project/settings')))
   assert.equal(container.querySelector('.gateway-platform-settings'),null)
   await act(async()=>useManagedModeStore.setState({managed:true}))
-  assert.equal(container.querySelectorAll('.remote-access-tabs button').length,1)
-  assert.equal(container.querySelector<HTMLInputElement>('input')?.value,'http://localhost:8700')
+  assert.equal(container.querySelectorAll('.remote-access-tabs button').length,2)
+  assert.equal(container.querySelector('.gateway-platform-settings'),null)
  } finally {
   await act(async()=>root.unmount()); globalThis.fetch=original;useManagedModeStore.setState({managed:null,loading:false});container.remove();await window.happyDOM.close()
  }
@@ -173,3 +180,31 @@ test('permission errors remain visible and can be retried', async () => {
   assert.ok(container.querySelector('[role=alert] button'))
  } finally { await act(async () => root.unmount()); globalThis.fetch = original; container.remove(); await window.happyDOM.close() }
 })
+
+
+for (const address of ['http://192.168.52.156:8700/workspace/device-one/settings', 'https://d-device-one.gateway.example.com/settings']) {
+ test(`gateway remote browser cannot edit or submit connection settings at ${address}`, async()=>{
+  const {window}=installDomEnvironment();window.location.href=address
+  const original=globalThis.fetch;const writes:string[]=[]
+  globalThis.fetch=async(input,init)=>{
+   if(init?.method && init.method!=='GET')writes.push(String(input))
+   return Response.json({url:'http://192.168.52.156:8700',enabled:true,authenticated:true,online:true,package_locked:false})
+  }
+  const container=document.body.appendChild(document.createElement('div'));const root=createRoot(container)
+  try {
+   await act(async()=>root.render(<I18nProvider><GatewayPlatformSettings/></I18nProvider>))
+   assert.equal(container.querySelector<HTMLInputElement>('input[type=url]')?.disabled,true)
+   assert.equal(container.querySelector<HTMLInputElement>('input[type=checkbox]')?.disabled,true)
+   assert.equal(container.querySelector<HTMLButtonElement>('button[type=submit]')?.disabled,true)
+   assert.match(container.textContent ?? '',/请在设备本地/)
+   await act(async()=>container.querySelector('form')!.dispatchEvent(new window.Event('submit',{bubbles:true,cancelable:true})))
+   assert.deepEqual(writes,[])
+   useManagedModeStore.setState({managed:false,loading:false})
+   await act(async()=>root.render(<I18nProvider><RemoteAccessSettings/></I18nProvider>))
+   const tabs=container.querySelectorAll<HTMLButtonElement>('.remote-access-tabs button')
+   assert.equal(tabs.length,1)
+   assert.equal(tabs[0].disabled,true)
+   assert.ok(container.querySelector('.gateway-platform-form--readonly'))
+  } finally {await act(async()=>root.unmount());globalThis.fetch=original;container.remove();await window.happyDOM.close()}
+ })
+}

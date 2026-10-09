@@ -63,8 +63,8 @@ export function GatewayRegistrationForm({ mode, onRegistered, onClosed, onBack }
     <label htmlFor="portal-display-name">显示名称</label>
     <input id="portal-display-name" required maxLength={256} disabled={busy} value={account.display_name}
       onChange={event => setAccount({ ...account, display_name: event.target.value })} />
-    <label htmlFor="portal-password">密码（至少 12 位）</label>
-    <input id="portal-password" type="password" autoComplete="new-password" required minLength={12}
+    <label htmlFor="portal-password">密码（至少 8 位）</label>
+    <input id="portal-password" type="password" autoComplete="new-password" required minLength={8}
       maxLength={128} disabled={busy} value={account.password}
       onChange={event => setAccount({ ...account, password: event.target.value })} />
     <label htmlFor="portal-password-confirmation">确认密码</label>

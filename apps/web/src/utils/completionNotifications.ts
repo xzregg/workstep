@@ -1,4 +1,7 @@
+import { postAndroidCompletion } from '@workstep/gateway-ui/androidNotifications'
+import { gatewayWorkspacePath } from './gatewayWorkspacePath'
 import type { SandboxBridge } from './desktopSandbox'
+import type { DesktopUpdateBridge } from '../components/DesktopUpdateSettings'
 import { completionScopeName } from './completionNotificationContext'
 export { completionScopeName } from './completionNotificationContext'
 export interface CompletionNotice {
@@ -70,13 +73,19 @@ export class CompletionDeduplicator {
 }
 
 type NativeBridge = { postMessage: (message: string) => void }
-type DesktopBridge = { sandbox?: SandboxBridge; notify: (notice: CompletionNotice & { url: string }) => void }
+type DesktopBridge = { sandbox?: SandboxBridge; updates?: DesktopUpdateBridge; notify: (notice: CompletionNotice & { url: string }) => void }
 
 declare global {
   interface Window {
     WorkStepAndroid?: NativeBridge
     workstepDesktop?: DesktopBridge
   }
+}
+
+export function postAndroidNotification(message:{type:string;id?:string;projectId?:string;url?:string;[key:string]:unknown}):void {
+ const prefix=gatewayWorkspacePath()
+ const device=prefix?decodeURIComponent(prefix.split('/')[2]):undefined
+ postAndroidCompletion(message,device)
 }
 
 const deduplicator = new CompletionDeduplicator()
@@ -89,12 +98,12 @@ export function watchPendingCompletion(projectId: string, scope: { sessionId?: s
   const scopeId = scope.sessionId || scope.taskId
   if (!scopeId) return
   try {
-    window.WorkStepAndroid?.postMessage(JSON.stringify({
+    postAndroidNotification({
       type: 'watch', id: pendingCompletionId(projectId, scopeId), projectId,
       sessionId: scope.sessionId || null, taskId: scope.taskId || null,
       scopeName: completionScopeName(projectId, scope),
       url: window.location.pathname + window.location.search,
-    }))
+    })
   } catch (error) { console.warn('[Android] reply watch failed:', error) }
 }
 
@@ -102,7 +111,7 @@ export function unwatchPendingCompletion(projectId: string, scope: { sessionId?:
   const scopeId = scope.sessionId || scope.taskId
   if (!scopeId) return
   try {
-    window.WorkStepAndroid?.postMessage(JSON.stringify({ type: 'unwatch', id: pendingCompletionId(projectId, scopeId) }))
+    postAndroidNotification({ type: 'unwatch', id: pendingCompletionId(projectId, scopeId) })
   } catch (error) { console.warn('[Android] reply unwatch failed:', error) }
 }
 
@@ -115,11 +124,11 @@ export function watchAcceptedCompletion(projectId: string,
   // A fast reply may finish before the HTTP acknowledgement arrives.
   if (deduplicator.has(id)) return
   try {
-    window.WorkStepAndroid?.postMessage(JSON.stringify({ type: 'watch', id, projectId,
+    postAndroidNotification({ type: 'watch', id, projectId,
       sessionId: scope.sessionId || null, taskId: scope.taskId || null,
       scopeName: completionScopeName(projectId, scope),
       url: window.location.pathname + window.location.search,
-    }))
+    })
   } catch (error) { console.warn('[Android] accepted reply watch failed:', error) }
 }
 
@@ -134,7 +143,7 @@ export function notifyCompletion(notice: CompletionNotice, url: string): void {
       : `${notice.taskId ? '任务' : '会话'}「${name}」的回复${success ? '已完成' : '失败'}`,
   }
   if (window.WorkStepAndroid) {
-    window.WorkStepAndroid.postMessage(JSON.stringify({ type: 'notify', ...notice, scopeName: name, url }))
+    postAndroidNotification({ type: 'notify', ...notice, scopeName: name, url })
     return
   }
   if (window.workstepDesktop) {

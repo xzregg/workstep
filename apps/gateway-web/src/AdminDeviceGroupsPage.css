@@ -1,0 +1,5 @@
+.gateway-device-scope-form { max-width: 720px; }
+.gateway-device-scope-form > h3 { grid-column: 1 / -1; margin: 20px 0 4px; padding-top: 16px; border-top: 1px solid var(--gateway-admin-separator); font-size: 15px; }
+.gateway-device-scope-form > h3:first-child { margin-top: 0; padding-top: 0; border: 0; }
+.gateway-device-scope-form .gateway-device-scope-summary { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--gateway-admin-surface); color: var(--gateway-admin-secondary); font-size: 13px; }
+.gateway-device-scope-form .gateway-device-scope-help { grid-column: 1 / -1; margin: 0; color: var(--gateway-admin-muted); font-size: 13px; }

@@ -53,8 +53,6 @@ async def _admin(call: GatewayCall):
     token = call.tokens.get(COOKIE_NAME)
     actor, auth_session = await identity.session_user(token)
     _check_csrf(call, token)
-    if actor.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     await identity.require_skill_admin(actor.id)
     await identity.require_step_up(auth_session)
     return actor
@@ -63,8 +61,6 @@ async def _admin(call: GatewayCall):
 async def _admin_read(call: GatewayCall):
     identity = _identity(call)
     actor, _ = await identity.session_user(call.tokens.get(COOKIE_NAME))
-    if actor.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     await identity.require_skill_admin(actor.id)
     return actor
 
@@ -93,6 +89,7 @@ async def compile_skill_manifest(database, signer, gateway_id: str,
                 .join(SkillPackage, SkillPackage.id == ProjectSkillAssignment.skill_id)
                 .join(GroupProject, (GroupProject.group_id == ProjectSkillAssignment.source_group_id)
                       & (GroupProject.platform_project_id == project.id))
+                .join(UserGroup, UserGroup.id == GroupProject.group_id)
                 .join(GroupSkillCatalog,
                       (GroupSkillCatalog.group_id == ProjectSkillAssignment.source_group_id)
                       & (GroupSkillCatalog.skill_id == ProjectSkillAssignment.skill_id)
@@ -100,6 +97,7 @@ async def compile_skill_manifest(database, signer, gateway_id: str,
                 .where(ProjectSkillAssignment.platform_project_id == project.id,
                        ProjectSkillAssignment.revoked_at.is_(None),
                        GroupProject.revoked_at.is_(None),
+                       UserGroup.status == 'active',
                        GroupSkillCatalog.revoked_at.is_(None),
                        SkillVersion.status == "approved",
                        SkillPackage.status == "active")
@@ -557,6 +555,7 @@ async def download_skill_version(call: GatewayCall, version_id: str):
             .join(GroupProject,
                   (GroupProject.group_id == ProjectSkillAssignment.source_group_id)
                   & (GroupProject.platform_project_id == PlatformProject.id))
+            .join(UserGroup, UserGroup.id == GroupProject.group_id)
             .join(GroupSkillCatalog,
                   (GroupSkillCatalog.group_id == ProjectSkillAssignment.source_group_id)
                   & (GroupSkillCatalog.skill_version_id == SkillVersion.id))
@@ -567,6 +566,7 @@ async def download_skill_version(call: GatewayCall, version_id: str):
                    PlatformProject.device_id == claims["device_id"],
                    PlatformProject.status == "active",
                    GroupProject.revoked_at.is_(None),
+                   UserGroup.status == 'active',
                    GroupSkillCatalog.revoked_at.is_(None)))
     if version is None or not re.fullmatch(r"[0-9a-f-]{36}\.zip", version.storage_name):
         raise GatewayError('forbidden', 'Skill version unavailable')

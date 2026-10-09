@@ -7,9 +7,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 
-from gateway.services.identity import COOKIE_NAME, _now
+from gateway.services.identity import COOKIE_NAME, IdentityService, _now
+from gateway.services.permission_subjects import active_group_ids
 
 from gateway.services.identity_api import _super_admin_request
 
@@ -22,7 +23,7 @@ from gateway.models import AuditEvent, CapabilityAssignment, Device, GroupCapabi
 
 
 class CapabilityTargetInput(BaseModel):
-    capability: Literal["task.create", "project.publish", "share.create"]
+    capability: Literal["task.create", "project.publish", "share.create", "engine.install", "provider.local"]
     scope_type: Literal["global", "device", "project"]
     scope_id: str | None = Field(default=None, max_length=64)
 
@@ -30,7 +31,7 @@ class CapabilityTargetInput(BaseModel):
     def valid_scope(self):
         if (self.scope_type == "global" and self.scope_id is not None) or (
                 self.scope_type != "global" and not self.scope_id
-        ) or (self.capability == "project.publish" and self.scope_type == "project"):
+        ) or (self.capability in ("project.publish", "engine.install", "provider.local") and self.scope_type == "project"):
             raise ValueError("Invalid capability scope")
         return self
 
@@ -61,13 +62,79 @@ async def bump_group_capability_revisions(session, group_id: str) -> None:
         GroupCapabilityAssignment.group_id == group_id,
         GroupCapabilityAssignment.revoked_at.is_(None),
     )
-    device_ids = (await session.scalars(select(PlatformProject.device_id).where(
+    device_ids = set((await session.scalars(select(PlatformProject.device_id).where(
         PlatformProject.id.in_(project_ids),
-    ).distinct())).all()
+    ).distinct())).all())
+    # Include removed members so their daemon drops previously inherited permissions.
+    member_ids = select(GroupMembership.user_id).where(GroupMembership.group_id == group_id)
+    device_ids.update((await session.scalars(select(UserDevice.device_id).where(
+        UserDevice.user_id.in_(member_ids), UserDevice.revoked_at.is_(None),
+    ))).all())
     if device_ids:
         await session.execute(update(Device).where(Device.id.in_(device_ids)).values(
             policy_revision=Device.policy_revision + 1,
+            provider_revision=Device.provider_revision + 1,
         ))
+
+
+async def capability_rules(session, user_id: str):
+    return (await session.scalars(select(CapabilityAssignment).where(
+        or_(CapabilityAssignment.user_id == user_id,
+            CapabilityAssignment.group_id.in_(active_group_ids(user_id))),
+        CapabilityAssignment.revoked_at.is_(None),
+    ))).all()
+
+
+def rules_allow(rules, capability: str, device_id: str, project_id: str | None = None):
+    applicable = [rule for rule in rules if rule.capability == capability and (
+        rule.scope_type == "global" or
+        (rule.scope_type == "device" and rule.scope_id == device_id) or
+        (project_id is not None and rule.scope_type == "project" and rule.scope_id == project_id))]
+    return any(rule.effect == "allow" for rule in applicable) and not any(
+        rule.effect == "deny" for rule in applicable)
+
+
+async def compiled_project_scopes(session, device_id: str, user_id: str,
+                                  capability: str, assignments) -> tuple[list[str], list[str]]:
+    group_rules = (await session.scalars(select(GroupCapabilityAssignment).where(
+        GroupCapabilityAssignment.group_id.in_(active_group_ids(user_id)),
+        GroupCapabilityAssignment.capability == capability,
+        GroupCapabilityAssignment.revoked_at.is_(None),
+    ))).all()
+    project_rows = (await session.scalars(select(PlatformProject).where(
+        PlatformProject.device_id == device_id, PlatformProject.status == "active",
+    ))).all()
+    broad_denied = any(item.capability == capability and item.effect == "deny" and (
+        item.scope_type == "global" or
+        (item.scope_type == "device" and item.scope_id == device_id)) for item in assignments)
+    allowed_projects, denied_projects = [], []
+    for project in project_rows:
+        project_rules = [item for item in (*assignments, *group_rules)
+                         if item.capability == capability and (
+                             (item.project_id == project.id and project.access_mode == "remote_published")
+                             if isinstance(item, GroupCapabilityAssignment)
+                             else (item.scope_type == "project" and item.scope_id == project.id))]
+        denied = any(item.effect == "deny" for item in project_rules)
+        if denied:
+            denied_projects.append(project.host_project_id)
+        elif not broad_denied and any(item.effect == "allow" for item in project_rules):
+            allowed_projects.append(project.host_project_id)
+    return sorted(allowed_projects), sorted(denied_projects)
+
+
+async def compiled_device_capabilities(database, device_id: str, user_id: str
+                                       ) -> dict[str, bool | list[str]]:
+    async with database.session() as session:
+        super_admin = await IdentityService.super_admin_in_session(session, user_id)
+        rules = await capability_rules(session, user_id) if not super_admin else []
+        allowed_projects, denied_projects = ([], []) if super_admin else await compiled_project_scopes(
+            session, device_id, user_id, "share.create", rules)
+        return {"task_share_project_ids": allowed_projects,
+                "task_share_denied_project_ids": denied_projects,
+                **{field: super_admin or rules_allow(rules, capability, device_id)
+                   for field, capability in (("allow_local_providers", "provider.local"),
+                                            ("task_share", "share.create"),
+                                            ("engine_install", "engine.install"))}}
 
 
 async def compiled_device_policy(database, device_id: str, user_id: str
@@ -76,54 +143,13 @@ async def compiled_device_policy(database, device_id: str, user_id: str
         device = await session.get(Device, device_id)
         if device is None:
             raise ValueError("Device not found")
-        assignments = (await session.scalars(select(CapabilityAssignment).where(
-            CapabilityAssignment.user_id == user_id,
-            CapabilityAssignment.capability.in_(("task.create", "project.publish")),
-            CapabilityAssignment.revoked_at.is_(None),
-        ))).all()
-        group_ids = (await session.scalars(select(GroupMembership.group_id).join(
-            UserGroup, UserGroup.id == GroupMembership.group_id,
-        ).where(GroupMembership.user_id == user_id,
-                GroupMembership.revoked_at.is_(None),
-                UserGroup.status == "active"))).all()
-        group_rules = (await session.scalars(select(GroupCapabilityAssignment).where(
-            GroupCapabilityAssignment.group_id.in_(group_ids),
-            GroupCapabilityAssignment.capability == "task.create",
-            GroupCapabilityAssignment.revoked_at.is_(None),
-        ))).all() if group_ids else []
-        project_rows = (await session.scalars(
-            select(PlatformProject).where(PlatformProject.device_id == device_id,
-                                          PlatformProject.status == "active"),
-        )).all()
-        projects = {row.id: row.host_project_id for row in project_rows}
-        published_projects = {row.id for row in project_rows
-                              if row.access_mode == "remote_published"}
-    def allowed(capability: str) -> bool:
-        relevant = [item for item in assignments if item.capability == capability
-                    and (item.scope_type == "global"
-                         or (item.scope_type == "device" and item.scope_id == device_id))]
-        return any(item.effect == "allow" for item in relevant) and not any(
-            item.effect == "deny" for item in relevant)
-    broad = [item for item in assignments if item.capability == "task.create"
-             and (item.scope_type == "global"
-                  or (item.scope_type == "device" and item.scope_id == device_id))]
-    broad_denied = any(item.effect == "deny" for item in broad)
-    project_rules = {platform_id: [item for item in (*assignments, *group_rules)
-                                   if item.capability == "task.create"
-                                   and ((item.project_id == platform_id and platform_id in published_projects)
-                                        if isinstance(item, GroupCapabilityAssignment)
-                                        else (item.scope_type == "project" and item.scope_id == platform_id))]
-                     for platform_id in projects}
-    allowed_projects = sorted(host_id for platform_id, host_id in projects.items()
-                              if not broad_denied and any(
-                                  item.effect == "allow" for item in project_rules[platform_id]
-                              ) and not any(item.effect == "deny"
-                                            for item in project_rules[platform_id]))
-    denied_projects = sorted(host_id for platform_id, host_id in projects.items()
-                             if any(item.effect == "deny"
-                                    for item in project_rules[platform_id]))
-    return (device.policy_revision, allowed("task.create"),
-            allowed("project.publish"), allowed_projects, denied_projects)
+        if await IdentityService.super_admin_in_session(session, user_id):
+            return device.policy_revision, True, True, [], []
+        assignments = await capability_rules(session, user_id)
+        allowed_projects, denied_projects = await compiled_project_scopes(
+            session, device_id, user_id, "task.create", assignments)
+        return (device.policy_revision, rules_allow(assignments, "task.create", device_id),
+                rules_allow(assignments, "project.publish", device_id), allowed_projects, denied_projects)
 
 
 class GroupProjectCapabilityInput(BaseModel):

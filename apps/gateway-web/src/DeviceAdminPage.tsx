@@ -1,10 +1,15 @@
+import { AdminDeviceOwnerDialog } from './AdminDeviceOwnerDialog'
 import { AdminRecordTable, AdminRecordRow } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
+import { AdminAccessGrants } from './AdminAccessGrants'
+import { GatewayModal } from './GatewayModal'
 import { GatewayLoginForm } from './GatewayLoginForm'
 import { AdminDeviceActionDialog } from './AdminDeviceActionDialog'
+import { AdminDeviceNameDialog } from './AdminDeviceNameDialog'
 import type { AdminDevice, DeviceAction } from './AdminDeviceActionDialog'
 
 type DeviceFilters = { status: string; q: string; sort: string; direction: string; page: number; pageSize: number }
+const deviceStatusLabel: Record<string, string> = { pending: '待审批', active: '已启用', disabled: '已停用', revoked: '已撤销' }
 
 export function buildDeviceListQuery(filters: DeviceFilters): string {
   const params = new URLSearchParams({ sort: filters.sort, direction: filters.direction,
@@ -18,13 +23,16 @@ export function DeviceAdminPage() {
   const [status, setStatus] = useState<'checking' | 'login' | 'ready'>('checking')
   const [csrf, setCsrf] = useState('')
   const [devices, setDevices] = useState<AdminDevice[]>([])
-  const [filters, setFilters] = useState<DeviceFilters>({ status: 'pending', q: '', sort: 'created_at',
+  const [filters, setFilters] = useState<DeviceFilters>({ status: '', q: '', sort: 'created_at',
     direction: 'desc', page: 1, pageSize: 25 })
   const [searchDraft, setSearchDraft] = useState('')
   const [total, setTotal] = useState(0)
   const [revision, setRevision] = useState(0)
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<{ device: AdminDevice; action: DeviceAction } | null>(null)
+  const [grantDevice, setGrantDevice] = useState<AdminDevice | null>(null)
+  const [ownerDevice, setOwnerDevice] = useState<AdminDevice | null>(null)
+  const [renameDevice, setRenameDevice] = useState<AdminDevice | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -90,6 +98,7 @@ export function DeviceAdminPage() {
         <button type="submit">搜索</button>
       </form>
       <div className="gateway-admin-filters">
+      <button type="button" disabled={loading} onClick={() => setRevision(value => value + 1)}>刷新设备</button>
       <label htmlFor="device-filter">设备状态</label>
       <select id="device-filter" value={filters.status} onChange={event => setFilters(current => (
         { ...current, status: event.target.value, page: 1 }))}>
@@ -108,16 +117,24 @@ export function DeviceAdminPage() {
       </div>
       {loading && <p role="status">正在加载设备…</p>}
       <AdminRecordTable>{devices.map((device) => <AdminRecordRow key={device.id}>
-        <div><strong>{device.name}</strong><p>{device.id} · {device.version ?? '版本未知'} · {device.status}</p>
+        <div><strong>{device.name}</strong> <span className={device.online ? 'gateway-device-presence gateway-device-presence--online' : 'gateway-device-presence'}>{device.online ? '在线' : '离线'}</span><p>设备 ID：{device.id} · {device.version ?? '版本未知'} · {deviceStatusLabel[device.status] ?? device.status}</p>
+          <p>所有者：{device.owner_name ?? '未确定'}{device.owner_user_id ? ` · ${device.owner_user_id}` : ''}</p>
+          {device.status === 'revoked' && <p>该设备身份已撤销，不能直接重新启用。需要重新接入时，可彻底删除后再次登录登记。</p>}
+          <p>连接 IP：{device.connection_ip ?? (device.online ? '未知' : '离线，暂无连接 IP')}</p>
           <p>控制连接：{device.online ? '在线' : '离线'} · daemon 健康：{
             device.daemon_health === true ? '正常' : device.daemon_health === false ? '异常' : '未知'
           }</p><p>客户端版本：{device.update_available === true
             ? `有新版本 ${device.latest_version}`
             : device.update_available === false ? '已是最新' : '版本状态未知'}</p></div>
         <div className="gateway-device-actions">
+          <button type="button" onClick={() => setRenameDevice(device)}>修改名称</button>
+          {device.status !== 'revoked' && <button type="button" onClick={() => setOwnerDevice(device)}>转移所有者</button>}
+          {device.status === 'active' && <button type="button" onClick={() => setGrantDevice(device)}>管理授权</button>}
           {device.status === 'pending' && <button type="button" onClick={() => setSelected({ device, action: 'approve' })}>批准</button>}
+          {device.status === 'disabled' && <button type="button" onClick={() => setSelected({ device, action: 'enable' })}>重新启用</button>}
           {device.status === 'active' && <button type="button" onClick={() => setSelected({ device, action: 'disable' })}>停用</button>}
           {device.status !== 'revoked' && <button type="button" onClick={() => setSelected({ device, action: 'revoke' })}>撤销</button>}
+          <button type="button" onClick={() => setSelected({ device, action: 'delete' })}>彻底删除</button>
         </div>
       </AdminRecordRow>)}</AdminRecordTable>
       {!loading && !error && devices.length === 0 && <p>当前筛选下没有设备。</p>}
@@ -129,10 +146,23 @@ export function DeviceAdminPage() {
           { ...current, page: current.page + 1 }))}>下一页</button>
       </div>
     </>}
+    {grantDevice && <GatewayModal title={`${grantDevice.name} · 设备授权`} onClose={() => setGrantDevice(null)}
+      footer={<button type="button" onClick={() => setGrantDevice(null)}>关闭</button>}>
+      <AdminAccessGrants id={grantDevice.id} name={grantDevice.name} kind="devices" csrf={csrf}
+        onChanged={() => setRevision(value => value + 1)} />
+    </GatewayModal>}
     {selected && <AdminDeviceActionDialog device={selected.device} action={selected.action} csrf={csrf}
       onClose={() => setSelected(null)} onComplete={() => {
         setSelected(null)
         setRevision(value => value + 1)
+      }} />}
+    {ownerDevice && <AdminDeviceOwnerDialog device={ownerDevice} csrf={csrf}
+      onClose={() => setOwnerDevice(null)} onComplete={() => {
+        setOwnerDevice(null); setRevision(value => value + 1)
+      }} />}
+    {renameDevice && <AdminDeviceNameDialog device={renameDevice} csrf={csrf}
+      onClose={() => setRenameDevice(null)} onComplete={() => {
+        setRenameDevice(null); setRevision(value => value + 1)
       }} />}
     {error && <p className="gateway-auth-error" role="alert">{error} {status === 'ready' &&
       <button type="button" onClick={() => setRevision(value => value + 1)}>重试</button>}</p>}

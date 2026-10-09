@@ -45,7 +45,7 @@ import { useI18n } from '../i18n'
 import { resolveMessageError } from '../pages/taskDetailChat'
 import QuickPromptButton from './QuickPromptButton'
 import { ActionConversationMessage } from './TaskActionShortcuts'
-import { mergeActionMessages } from '../utils/actionConversation'
+import { actionConversationScrollKey, mergeActionMessages } from '../utils/actionConversation'
 
 export interface AssistantChatCopy {
   emptyIntro: string
@@ -303,6 +303,7 @@ export default function AssistantChatPanel({
   } = useChatComposerResize()
   const lastContent = messages.at(-1)?.content ?? ''
   const lastEventsCount = messages.at(-1)?.events?.length ?? 0
+  const actionScrollKey = actionConversationScrollKey(actionRuns)
   // 输入区上方的悬浮面板（如「待插入消息」）会遮住会话底部：
   // 留白与跟随钉底走共用 hook，面板经插槽透传也能自行注册。
   const { registerOverlay, overlayPaddingBottom } = useComposerOverlayClearance({
@@ -361,7 +362,7 @@ export default function AssistantChatPanel({
     list.scrollTop = target
     setScrolledToBottom(isNearConversationBottom(list.scrollHeight, target, list.clientHeight))
     setHasUnreadMessages(false)
-  }, [messages.length, lastContent, lastEventsCount, scrollKey, a2uiMessages])
+  }, [messages.length, lastContent, lastEventsCount, scrollKey, a2uiMessages, actionScrollKey])
 
   // 移动端浏览器可能在首次渲染后调整 viewport（地址栏收缩等），
   // 多次延迟钉底确保消息列表在最新位置。

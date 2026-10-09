@@ -27,13 +27,25 @@ class DirectoryConnector:
     calls = 0
     fail = False
 
-    async def fetch_directory(self, source):
+    async def fetch_directory(self, source, *, selected_department_ids=None):
+        assert selected_department_ids == ['2']
         if self.fail:
             raise TimeoutError("provider unavailable")
         self.calls += 1
-        return {"departments": [], "people": [{
-            "subject": "employee-1", "display_name": "张三", "department_ids": [],
+        return {"departments": [{"external_id": "2", "display_name": "研发"}], "people": [{
+            "subject": "employee-1", "display_name": "张三", "department_ids": ["2"],
         }]}
+
+
+async def _choose_department(database, source_id):
+    from gateway.models import PlatformSetting
+    from gateway.services.organization_settings import option_key
+    async with database.session() as session:
+        async with session.begin():
+            row = await session.get(PlatformSetting, option_key(source_id))
+            options = json.loads(row.value_json)
+            options['selected_department_ids'] = ['2']
+            row.value_json = json.dumps(options)
 
 
 def _source(client, provider, tenant):
@@ -48,6 +60,7 @@ def _source(client, provider, tenant):
              "secret_env": "OAUTH_SECRET", "agent_id": "agent-1" if provider == "wecom" else None,
              "callback_token_env": "CALLBACK_TOKEN", "callback_aes_key_env": "CALLBACK_AES_KEY"})
     assert source.status_code == 201, source.text
+    client.portal.call(_choose_department, client.app.state.database, source.json()["id"])
     return source.json()["id"]
 
 
@@ -137,10 +150,10 @@ async def test_slow_directory_callback_keeps_health_responsive(monkeypatch, tmp_
     release = asyncio.Event()
 
     class SlowConnector(DirectoryConnector):
-        async def fetch_directory(self, source):
+        async def fetch_directory(self, source, *, selected_department_ids=None):
             entered.set()
             await release.wait()
-            return await super().fetch_directory(source)
+            return await super().fetch_directory(source, selected_department_ids=selected_department_ids)
 
     app.state.identity_connectors = {"dingtalk": SlowConnector()}
     async with app.router.lifespan_context(app):
@@ -155,6 +168,7 @@ async def test_slow_directory_callback_keeps_health_responsive(monkeypatch, tmp_
             }, json={"provider": "dingtalk", "tenant_id": "tenant-a", "client_id": "app-key",
                      "secret_env": "OAUTH_SECRET", "callback_token_env": "CALLBACK_TOKEN",
                      "callback_aes_key_env": "CALLBACK_AES_KEY"})
+            await _choose_department(app.state.database, source.json()["id"])
             crypto = CallbackCrypto(token="callback-token", encoding_aes_key=AES_KEY,
                                     owner_key="app-key")
             event = crypto.encrypt(b'{"EventType":"user_add_org"}', timestamp="123", nonce="nonce")

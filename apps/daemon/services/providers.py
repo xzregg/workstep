@@ -168,7 +168,9 @@ async def fetch_and_save_models(
 
 
 def require_managed_model(provider: dict, model: str) -> None:
-    if config_store.managed_gateway_id:
+    if config_store.managed_gateway_id and config_store.get_provider(str(provider.get('id') or '')) is None:
+        raise ValueError('所选供应商授权已失效，请重新选择供应商')
+    if config_store.managed_gateway_id and provider.get("managed"):
         current = config_store.get_provider(str(provider.get('id') or ''))
         if (current is None
                 or current.get('managed_gateway_id') != config_store.managed_gateway_id

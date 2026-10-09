@@ -103,6 +103,7 @@ test('provider editor protects changes and submits configuration with step-up', 
     const url = String(input)
     requests.push({ url, init })
     if (url === '/api/auth/step-up') return Response.json({})
+    if (url === '/api/admin/providers/provider-1/credential') return Response.json({ api_key: 'old-secret' })
     if (url === '/api/admin/providers' || url === '/api/admin/providers/provider-1') {
       return Response.json({ id: 'provider-1' })
     }
@@ -114,7 +115,7 @@ test('provider editor protects changes and submits configuration with step-up', 
   fireEvent.change(within(dialog).getByLabelText('供应商名称'), { target: { value: 'Company API' } })
   fireEvent.click(within(dialog).getByRole('checkbox', { name: 'OpenAI Responses' }))
   fireEvent.change(within(dialog).getByLabelText('OpenAI Responses 地址'), {
-    target: { value: 'https://api.example.test' },
+    target: { value: 'http://127.0.0.1:8080/v1' },
   })
   fireEvent.change(within(dialog).getByLabelText('允许模型（每行一个）'), { target: { value: 'model-a' } })
   fireEvent.change(within(dialog).getByLabelText('model-a 输入单价'), { target: { value: '1' } })
@@ -136,6 +137,9 @@ test('provider editor protects changes and submits configuration with step-up', 
     cache_read_per_million: '2', cache_write_per_million: '2',
   })
   assert.equal(JSON.parse(String(create?.init?.body)).api_key, 'secret-key')
+  assert.deepEqual(JSON.parse(String(create?.init?.body)).protocol_base_urls, {
+    openai_responses: 'http://127.0.0.1:8080/v1',
+  })
   cleanup()
 
   const provider = { id: 'provider-1', name: 'Company API', type: 'custom', enabled: true,
@@ -147,6 +151,12 @@ test('provider editor protects changes and submits configuration with step-up', 
   const edit = screen.getByRole('dialog', { name: '编辑供应商' })
   fireEvent.change(within(edit).getByLabelText('价格版本'), { target: { value: 'v2' } })
   fireEvent.change(within(edit).getByLabelText('输入管理员密码确认'), { target: { value: 'password' } })
+  assert.equal(requests.some(request => request.url.endsWith('/credential')), false)
+  fireEvent.click(within(edit).getByRole('button', { name: '显示当前凭据' }))
+  await waitFor(() => assert.equal((within(edit).getByLabelText('当前凭据') as HTMLInputElement).value, 'old-secret'))
+  assert.equal((within(edit).getByLabelText('新凭据（留空则保留当前凭据）') as HTMLInputElement).value, '')
+  fireEvent.click(within(edit).getByRole('button', { name: '隐藏当前凭据' }))
+  assert.equal((within(edit).getByLabelText('当前凭据') as HTMLInputElement).value, '••••••••')
   fireEvent.click(within(edit).getByRole('button', { name: '保存供应商' }))
   await waitFor(() => assert.equal(saved, 2))
   const update = requests.find(request => request.url === '/api/admin/providers/provider-1')

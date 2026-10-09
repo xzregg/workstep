@@ -1,3 +1,4 @@
+import { gatewayResourceUrl } from './gatewayWorkspacePath'
 import type {
   A2uiClientAction,
   A2uiMessage,
@@ -246,7 +247,7 @@ export function normalizeA2uiMessages(
           if (!match) return component
           return {
             ...component,
-            url: `/api/fs/serve/${encodeURIComponent(match[1])}?project_id=${encodeURIComponent(projectId)}`,
+            url: gatewayResourceUrl(`/api/fs/serve/${encodeURIComponent(match[1])}?project_id=${encodeURIComponent(projectId)}`),
           }
         }),
       },

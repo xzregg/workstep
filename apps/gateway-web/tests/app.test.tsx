@@ -7,7 +7,7 @@ import { App } from '../src/App'
 test('portal and admin route have separate entry points', () => {
   const portal = renderToString(<MemoryRouter initialEntries={['/']}><App /></MemoryRouter>)
   const admin = renderToString(<MemoryRouter initialEntries={['/admin']}><App /></MemoryRouter>)
-  assert.match(portal, /我的项目/)
+  assert.match(portal, /我的 WorkStep/)
   assert.match(admin, /正在检查管理权限/)
   assert.doesNotMatch(portal, /管理后台/)
 })

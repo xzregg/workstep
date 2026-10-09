@@ -14,7 +14,7 @@ def test_engine_packages_live_outside_uv_environment(tmp_path, monkeypatch):
         assert package_dir == tmp_path / "runtime" / "python-packages"
         assert package_dir.is_dir()
         assert os.environ["WORKSTEP_ENGINE_PACKAGE_DIR"] == str(package_dir)
-        assert sys.path[0] == str(package_dir)
+        assert sys.path[-1] == str(package_dir)
     finally:
         sys.path[:] = original_path
         if original_dir is None:

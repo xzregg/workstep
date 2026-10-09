@@ -16,12 +16,15 @@ from dingtalk_stream import AckMessage, ChatbotHandler, ChatbotMessage, Credenti
 
 from services.channels.base import ChannelAdapter, ChannelCapabilities, ChannelAttachment, IncomingMessage, OutgoingMessage, ChannelCard, ChannelAction
 from services.channels.media import fetch_media
+from services.channels.card_status import CardStatus
 
 
 logger = logging.getLogger(__name__)
 CARD_TOPIC = '/v1.0/card/instances/callback'
-# Public Markdown-button template shipped by the official DingTalk Python SDK.
-DEFAULT_CARD_TEMPLATE_ID = '1366a1eb-bc54-4859-ac88-517c56a9acb1.schema'
+# soimy/openclaw-channel-dingtalk's public v2 template; variable contract:
+# docs/assets/card-data-mock-v2.json. See docs/channel-message-protocol.md.
+DEFAULT_CARD_TEMPLATE_ID = '675cde2f-f526-40cb-b828-f5b2b57b8b77.schema'
+BUTTON_CARD_TEMPLATE_ID = '1366a1eb-bc54-4859-ac88-517c56a9acb1.schema'
 
 
 class _CardHandler(CallbackHandler):
@@ -31,17 +34,28 @@ class _CardHandler(CallbackHandler):
 
     async def process(self, callback):
         raw = callback.data
-        content = raw.get('content') or {}
-        if isinstance(content, str):
-            try:
-                content = json.loads(content)
-            except ValueError:
-                return AckMessage.STATUS_OK, 'Invalid card payload'
-        private = content.get('cardPrivateData') or {}
-        ids = private.get('actionIds') or []
-        if ids:
+        def object_value(value):
+            if isinstance(value, str):
+                try:
+                    value = json.loads(value)
+                except ValueError:
+                    return {}
+            return value if isinstance(value, dict) else {}
+        sources = [object_value(raw.get('content')), object_value(raw.get('value')), raw]
+        action = ''
+        for source in sources:
+            private = object_value(source.get('cardPrivateData'))
+            ids = private.get('actionIds') or []
+            action = str(ids[0]) if isinstance(ids, list) and ids else str(source.get('actionValue') or source.get('eventKey') or '')
+            if action:
+                break
+        if action:
+            if action in {'btn_stop', 'stop'}:
+                action = 'stop'
+            space = str(raw.get('spaceId') or '')
+            conversation_id = '' if 'IM_ROBOT.' in space or raw.get('spaceType') == 'IM_ROBOT' else space.removeprefix('dtv1.card//IM_GROUP.').removeprefix('IM_GROUP.')
             click = ChannelAction(self._adapter._bot['id'], str(raw.get('outTrackId') or ''),
-                str(ids[0]), str(raw.get('userId') or ''), conversation_id=str(raw.get('spaceId') or ''))
+                action, str(raw.get('userId') or ''), conversation_id=conversation_id)
             task = asyncio.create_task(self._adapter._card_action(click))
             self._adapter._action_tasks.add(task)
             task.add_done_callback(self._adapter._action_tasks.discard)
@@ -107,6 +121,11 @@ class DingTalkAdapter(ChannelAdapter):
         self._reply_cards = {}
         self._card_message_ids = {}
         self._running_reply_cards = {}
+        self._card_status = {}
+        self._reply_metadata = {}
+        self._card_templates = {}
+        self._streamed_cards = set()
+        self._card_locks = {}
         self._client = DingTalkStreamClient(Credential(bot["app_id"], bot["secret"]))
         self._client.register_callback_handler(
             ChatbotMessage.TOPIC, _MessageHandler(bot["id"], on_message),
@@ -120,6 +139,11 @@ class DingTalkAdapter(ChannelAdapter):
         self._reply_cards.clear()
         self._card_message_ids.clear()
         self._running_reply_cards.clear()
+        self._card_status.clear()
+        self._reply_metadata.clear()
+        self._card_templates.clear()
+        self._streamed_cards.clear()
+        self._card_locks.clear()
         for task in tuple(self._action_tasks):
             task.cancel()
         if self._action_tasks:
@@ -225,15 +249,30 @@ class DingTalkAdapter(ChannelAdapter):
 
     def _card_data(self, card: ChannelCard) -> dict:
         message_id = card.message_id or self._card_message_ids.get(card.id, '')
+        # Keep Markdown fields for previously configured custom templates.
+        # AI cards require their own content keys and a string flowStatus.
+        status = self._card_status.get(card.id)
+        # Avoid the template's per-Markdown-field size limit on long replies.
+        blocks = [{'type':0, 'markdown':card.text[offset:offset + 2500], 'text':'', 'mediaId':''}
+                  for offset in range(0, len(card.text), 2500)]
         return {"title":card.title, "markdown":card.text, "tips":'消息 ID: ' + message_id if message_id else '',
-                "sys_full_json_obj":json.dumps({"msgButtons":[{"text":b.label,"id":b.key,"request":True,"color":"red" if b.danger else "blue"} for b in card.buttons]}, ensure_ascii=False)}
+                "config":json.dumps({"autoLayout":True, "enableForward":False}),
+                "quoteContent":status.metadata.get('quote', card.title) if status else card.title,
+                "content":'', "copy_content":card.text,
+                "blockList":json.dumps(blocks, ensure_ascii=False), "statusLine":status.render() if status else '',
+                "hasAction":str(bool(card.running and card.buttons)).lower(),
+                "stop_action":str(bool(card.running and card.buttons)).lower(),
+                "msgTitle":card.title, "msgContent":card.text,
+                "flowStatus":'2' if card.running or (status and status.finished is None) else '3',
+                "sys_full_json_obj":json.dumps({"order":["msgTitle", "msgContent", "msgButtons"],
+                    "msgButtons":[{"text":b.label,"id":b.key,"request":True,"color":"red" if b.danger else "blue"} for b in card.buttons]}, ensure_ascii=False)}
 
     async def _card_api(self, method, payload):
         timeout = aiohttp.ClientTimeout(total=10)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             token = await self._token(session)
-            url = 'https://api.dingtalk.com/v1.0/card/instances' + ('/createAndDeliver' if method == 'POST' else '')
-            async with session.request(method, url, json=payload, headers={'x-acs-dingtalk-access-token':token}) as response:
+            url = 'https://api.dingtalk.com/v1.0/card/' + ('streaming' if method == 'STREAM' else 'instances' + ('/createAndDeliver' if method == 'POST' else ''))
+            async with session.request('PUT' if method == 'STREAM' else method, url, json=payload, headers={'x-acs-dingtalk-access-token':token}) as response:
                 response.raise_for_status()
                 result = await response.json()
             if result.get('code') or result.get('errcode') not in (None, 0):
@@ -241,18 +280,34 @@ class DingTalkAdapter(ChannelAdapter):
             return result
 
     async def send_card(self, recipient: IncomingMessage, card: ChannelCard) -> None:
+        if card.running:
+            card = replace(card, title=recipient.text.strip() or card.title, text='…')
         group = recipient.conversation_type == 'group'
         space = 'IM_GROUP' if group else 'IM_ROBOT'
         target = recipient.conversation_id if group else recipient.sender_id
+        template = self._bot.get('card_template_id') or DEFAULT_CARD_TEMPLATE_ID
+        if template == DEFAULT_CARD_TEMPLATE_ID and card.buttons and not card.running:
+            template = BUTTON_CARD_TEMPLATE_ID
+        self._card_templates[card.id] = template
+        self._card_status[card.id] = CardStatus(dict(self._reply_metadata.pop(self._reply_key(recipient), {})))
+        self._card_status[card.id].metadata['quote'] = card.title
+        self._card_status[card.id].api_calls = 1
+        if card.buttons and not card.running:
+            self._card_status[card.id].finished = self._card_status[card.id].started
         payload = {
-            'cardTemplateId':self._bot.get('card_template_id') or DEFAULT_CARD_TEMPLATE_ID,
+            'cardTemplateId':template,
             'outTrackId':card.id, 'callbackType':'STREAM', 'userIdType':1,
             'cardData':{'cardParamMap':self._card_data(card)},
             'openSpaceId':f'dtv1.card//{space}.{target}',
             ('imGroupOpenSpaceModel' if group else 'imRobotOpenSpaceModel'):{'supportForward':False},
             ('imGroupOpenDeliverModel' if group else 'imRobotOpenDeliverModel'):{'robotCode':self._bot['app_id'], **({} if group else {'spaceType':'IM_ROBOT'})},
         }
-        await self._card_api('POST',payload)
+        try:
+            await self._card_api('POST',payload)
+        except BaseException:
+            self._card_status.pop(card.id, None)
+            self._card_templates.pop(card.id, None)
+            raise
         if card.message_id:
             self._card_message_ids[card.id] = card.message_id
         if card.running:
@@ -260,24 +315,80 @@ class DingTalkAdapter(ChannelAdapter):
             self._running_reply_cards[card.id] = card
 
     async def update_card(self, recipient: IncomingMessage, card: ChannelCard) -> None:
+        lock = self._card_locks.setdefault(card.id, asyncio.Lock())
+        async with lock:
+            await self._update_card(recipient, card)
+
+    async def _stream_card(self, card_id, text, *, finalize=False):
+        await self._card_api('STREAM', {'outTrackId':card_id, 'guid':uuid.uuid4().hex,
+            'key':'content', 'content':text, 'isFull':True, 'isFinalize':finalize, 'isError':False})
+
+    async def _update_card(self, recipient: IncomingMessage, card: ChannelCard) -> None:
         previous = self._running_reply_cards.get(card.id)
         closing = card.running and not card.buttons
         if closing and previous is not None:
             # Expiring the stop action must preserve the latest reply body.
             card = replace(previous, buttons=(), running=False, message_id=card.message_id or previous.message_id)
-        await self._card_api('PUT', {'outTrackId':card.id,'cardData':{'cardParamMap':self._card_data(card)}})
+        elif previous is not None and card.title == 'WorkStep':
+            card = replace(card, title=previous.title)
+        if previous is not None and not previous.running:
+            card = replace(card, buttons=(), running=False)
+        status = self._card_status.get(card.id)
+        if status:
+            status.api_calls += 1
+            if previous is not None and not card.running and status.finished is None:
+                status.finished = time.monotonic()
+        data = self._card_data(card)
+        native = self._card_templates.get(card.id) == DEFAULT_CARD_TEMPLATE_ID
+        live = data['flowStatus'] == '2'
+        if native and not live and card.id in self._streamed_cards:
+            try:
+                await self._stream_card(card.id, '', finalize=True)
+            except Exception:
+                logger.warning('DingTalk stream finalization failed; committing completed blocks', exc_info=True)
+            self._streamed_cards.discard(card.id)
+        if native and live and len(card.text) <= 2500:
+            data['blockList'] = '[]'
+        await self._card_api('PUT', {'outTrackId':card.id,'cardData':{'cardParamMap':data},
+                                    'cardUpdateOptions':{'updateCardDataByKey':True}})
+        if native and live:
+            await self._stream_card(card.id, card.text if len(card.text) <= 2500 else '')
+            self._streamed_cards.add(card.id)
         if previous is not None:
             if closing:
                 self._running_reply_cards.pop(card.id, None)
+                self._card_status.pop(card.id, None)
+                self._card_templates.pop(card.id, None)
             else:
                 self._running_reply_cards[card.id] = card
+        elif not card.running and not card.buttons and status and status.finished is not None:
+            self._card_status.pop(card.id, None)
+            self._card_templates.pop(card.id, None)
 
     def _reply_key(self, recipient: IncomingMessage) -> str:
         return uuid.uuid5(uuid.NAMESPACE_URL, f'workstep:dingtalk:reply:{recipient.bot_id}:{recipient.conversation_id}:{recipient.message_id}').hex
 
+    def set_reply_metadata(self, message: IncomingMessage, metadata: dict) -> None:
+        key = self._reply_key(message)
+        status = self._card_status.get(self._reply_cards.get(key))
+        if status:
+            status.metadata.update({k: v for k, v in metadata.items() if v})
+        else:
+            self._reply_metadata[key] = metadata
+
+    def observe_reply(self, message: IncomingMessage, event: dict) -> None:
+        status = self._card_status.get(self._reply_cards.get(self._reply_key(message)))
+        if status:
+            status.observe(event)
+
     def release_reply(self, message: IncomingMessage) -> None:
         card_id = self._reply_cards.pop(self._reply_key(message), None)
         self._card_message_ids.pop(card_id, None)
+        self._reply_metadata.pop(self._reply_key(message), None)
+        if card_id not in self._running_reply_cards:
+            self._card_status.pop(card_id, None)
+            self._card_templates.pop(card_id, None)
+            self._card_locks.pop(card_id, None)
 
     async def update_reply(self, message: IncomingMessage, text: str) -> None:
         key = self._reply_key(message)
@@ -344,6 +455,9 @@ class DingTalkAdapter(ChannelAdapter):
             card_id = self._reply_cards.get(self._reply_key(recipient))
             if card_id:
                 try:
+                    status = self._card_status.get(card_id)
+                    if status and status.finished is None:
+                        status.finished = time.monotonic()
                     await self.update_card(recipient, ChannelCard(card_id, 'WorkStep', message.text))
                 except Exception:
                     logger.warning('DingTalk progress card update failed; sending full result', exc_info=True)
@@ -376,5 +490,5 @@ class DingTalkAdapter(ChannelAdapter):
         if not result.get('downloadUrl'):
             raise RuntimeError('钉钉附件下载地址获取失败')
         data = await fetch_media(result['downloadUrl'], self.CAPABILITIES.limit(attachment.kind),
-                                 ('dingtalk.com','alicdn.com','aliyuncs.com'))
+                                 ('dingtalk.com','alicdn.com','aliyuncs.com'), upgrade_http=True)
         return data, attachment.name

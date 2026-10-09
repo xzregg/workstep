@@ -1,3 +1,4 @@
+import { GatewayDateRange } from './GatewayDateRange'
 import { AdminRecordTable, AdminRecordRow } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -70,10 +71,8 @@ export function AdminAuditPage() {
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>审计记录</h2><Link to="/admin">返回管理概览</Link></div>
     <form className="gateway-usage-filters" onSubmit={event => { event.preventDefault(); apply() }}>
-      <label>开始时间<input type="datetime-local" value={draft.from_time}
-        onChange={event => setDraft(current => ({ ...current, from_time: event.target.value }))} /></label>
-      <label>结束时间<input type="datetime-local" value={draft.to_time}
-        onChange={event => setDraft(current => ({ ...current, to_time: event.target.value }))} /></label>
+      <GatewayDateRange from={draft.from_time} to={draft.to_time}
+        onChange={range => setDraft(current => ({ ...current, ...range }))} />
       <label>用户 ID<input value={draft.user_id} maxLength={64}
         onChange={event => setDraft(current => ({ ...current, user_id: event.target.value }))} /></label>
       <label>平台项目 ID<input value={draft.project_id} maxLength={64}

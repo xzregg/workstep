@@ -10,10 +10,18 @@ contextBridge.exposeInMainWorld('workstepDesktop', {
     chooseDirectory: () => ipcRenderer.invoke('workstep:sandbox:chooseDirectory'),
     prepare: (settings) => ipcRenderer.invoke('workstep:sandbox:prepare', settings),
     switchMode: (enabled) => ipcRenderer.invoke('workstep:sandbox:switchMode', enabled),
+    switchImage: (image) => ipcRenderer.invoke('workstep:sandbox:switchImage', image),
     importConfig: (kind) => ipcRenderer.invoke('workstep:sandbox:importConfig', kind),
     migrateSettings: (options) => ipcRenderer.invoke('workstep:sandbox:migrateSettings', options),
     remove: () => ipcRenderer.invoke('workstep:sandbox:remove'),
     logs: () => ipcRenderer.invoke('workstep:sandbox:logs'),
+    readLogs: () => ipcRenderer.invoke('workstep:sandbox:readLogs'),
+    copyLogs: () => ipcRenderer.invoke('workstep:sandbox:copyLogs'),
   },
   notify: (notice) => ipcRenderer.send('workstep:notify', notice),
+  updates: {
+    status: () => ipcRenderer.invoke('workstep:update:status'),
+    check: () => ipcRenderer.invoke('workstep:update:check'),
+    openDownload: (url) => ipcRenderer.invoke('workstep:update:open-download', url),
+  },
 })

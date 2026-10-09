@@ -8,7 +8,7 @@ from gateway.services.identity import COOKIE_NAME, IdentityService
 
 from gateway.services.management_scope import device_scope
 
-from gateway.models import AdminAssignment, AuditEvent, Device, PlatformProject, ProjectAccessGrant, User
+from gateway.models import AuditEvent, Device, PlatformProject, ProjectAccessGrant, User
 
 
 """Scoped summary for the Gateway management landing page."""
@@ -17,14 +17,9 @@ from gateway.models import AdminAssignment, AuditEvent, Device, PlatformProject,
 async def admin_overview(call: GatewayCall):
     identity = IdentityService(call.database)
     actor, _ = await identity.session_user(call.tokens.get(COOKIE_NAME))
-    if actor.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
 
     async with call.database.session() as session:
-        assignments = (await session.scalars(select(AdminAssignment).where(
-            AdminAssignment.user_id == actor.id,
-            AdminAssignment.revoked_at.is_(None),
-        ))).all()
+        assignments = await identity.admin_assignments_in_session(session, actor.id)
         if not assignments:
             raise GatewayError('forbidden', 'Administrator access required')
         roles = {assignment.role for assignment in assignments}

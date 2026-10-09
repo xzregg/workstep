@@ -46,6 +46,7 @@ class AuthSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     step_up_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    authentication_method: Mapped[str] = mapped_column(String(16), server_default="password")
     device_id: Mapped[str | None] = mapped_column(String(64))
     device_name: Mapped[str | None] = mapped_column(String(256))
     project_id: Mapped[str | None] = mapped_column(String(64))
@@ -57,7 +58,8 @@ class AdminAssignment(Base):
     __table_args__ = (Index("ix_admin_user_role", "user_id", "role"),)
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    group_id: Mapped[str | None] = mapped_column(ForeignKey("user_groups.id"), index=True)
     role: Mapped[str] = mapped_column(String(32))
     scope_type: Mapped[str] = mapped_column(String(32), server_default="platform")
     scope_id: Mapped[str | None] = mapped_column(String(64))

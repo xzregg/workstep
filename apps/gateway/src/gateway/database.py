@@ -18,7 +18,7 @@ from gateway.config import GatewaySettings
 from gateway.models import PlatformSetting
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
-HEAD_REVISION = "0035_device_management_scopes"
+HEAD_REVISION = "0042_project_invitations"
 
 
 def safe_database_location(url: str) -> tuple[str, str]:

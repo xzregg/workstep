@@ -173,7 +173,7 @@ async def _handle_client_message(
             subscription.active = new_sub.active
             main.event_bus.set_filter(queue, _make_subscription_predicate(subscription))
             project_id = str(msg.get("project_id") or "")
-            if not scoped_project_id and main.remote_project_registry.get(project_id) is not None:
+            if not scoped_project_id and await asyncio.to_thread(main.remote_project_registry.get, project_id) is not None:
                 try:
                     await main.remote_project_client.subscribe(project_id, msg)
                 except Exception as exc:

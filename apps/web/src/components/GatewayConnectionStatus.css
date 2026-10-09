@@ -1,0 +1,28 @@
+.gateway-connection-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  padding: 3px 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-family: var(--font-body);
+  font-weight: 500;
+  line-height: 16px;
+  cursor: pointer;
+}
+.gateway-connection-status [role="status"] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gateway-connection-spinner { flex-shrink: 0; }
+.gateway-connection-status:hover { color: var(--text-primary); }
+.gateway-connection-status:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.gateway-connection-dot { width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: currentColor; }
+.gateway-connection-status--online { color: var(--success); }
+.gateway-connection-status--notAuthenticated,
+.gateway-connection-status--unavailable { color: var(--danger); }
+.gateway-connection-spinner { animation: gateway-connection-spin 1s linear infinite; }
+@keyframes gateway-connection-spin { to { transform: rotate(360deg); } }

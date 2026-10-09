@@ -1,7 +1,7 @@
 import { AdminRecordTable, AdminRecordRow } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { AdminGrantRoleDialog, AdminRevokeRoleDialog } from './AdminRoleDialogs'
 
 export type AdminRole = {
@@ -81,7 +81,7 @@ export function AdminRolesPage({ delegated = false }: { delegated?: boolean }) {
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <h2>管理员权限</h2>
     {access === 'checking' && <p role="status">正在检查登录状态…</p>}
-    {access === 'forbidden' && <p role="alert">当前账号没有管理员权限配置资格，或需要先<Link to="/account">修改初始密码</Link>。</p>}
+    {access === 'forbidden' && <p role="alert">当前账号没有管理员权限配置资格。</p>}
     {access === 'ready' && <>
       <div className="gateway-admin-toolbar">
         <form className="gateway-admin-search" onSubmit={search}>

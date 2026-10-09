@@ -69,7 +69,9 @@ find "$desktop_dir/dist" -maxdepth 1 -type f \( \
   -name 'WorkStep-macos-arm64.zip' -o \
   -name 'WorkStep-macos-arm64.zip.blockmap' \
 \) -delete
-run_yarn dist:mac:local --config.mac.artifactName="WorkStep-${version}-macos-\${arch}.\${ext}"
+run_yarn dist:mac:local \
+  --config.electronFuses.enableCookieEncryption=false \
+  --config.mac.artifactName="WorkStep-${version}-macos-\${arch}.\${ext}"
 codesign --verify --deep --strict "$desktop_dir/dist/mac-arm64/WorkStep.app"
 rm -rf "$desktop_dir/dist/mac-arm64"
 shasum -a 256 "$desktop_dir/dist/WorkStep-$version-macos-arm64.dmg"

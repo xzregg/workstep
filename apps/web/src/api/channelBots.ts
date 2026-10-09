@@ -36,6 +36,9 @@ export interface BotDraft {
   default_task_id: string
 }
 
+export interface PrivateWhitelistUser { sender_id: string; sender_name: string }
+export interface PrivateWhitelist { enabled: boolean; users: PrivateWhitelistUser[]; candidates: PrivateWhitelistUser[] }
+
 export interface DiscussionGroup {
   bot_id: string
   group_id: string
@@ -48,6 +51,17 @@ const json = (body: unknown, method: string) => ({ method, body: JSON.stringify(
 const taskPath = (taskId: string) => `/task/${encodeURIComponent(taskId)}/discussion-groups`
 
 export const channelBotApi = {
+  groupWhitelist: async (id: string): Promise<PrivateWhitelist> => {
+    const value = await request<{ enabled: boolean; groups: { group_id: string; group_name: string }[]; candidates: { group_id: string; group_name: string }[] }>(`/channel-bots/${encodeURIComponent(id)}/group-whitelist`)
+    const map = (row: { group_id: string; group_name: string }) => ({ sender_id: row.group_id, sender_name: row.group_name })
+    return { enabled: value.enabled, users: value.groups.map(map), candidates: value.candidates.map(map) }
+  },
+  saveGroupWhitelist: async (id: string, value: Pick<PrivateWhitelist, 'enabled' | 'users'>) => {
+    await request(`/channel-bots/${encodeURIComponent(id)}/group-whitelist`, json({ enabled: value.enabled, groups: value.users.map(row => ({ group_id: row.sender_id, group_name: row.sender_name })) }, 'PUT'))
+    return { ...value, candidates: value.users }
+  },
+  privateWhitelist: (id: string) => request<PrivateWhitelist>(`/channel-bots/${encodeURIComponent(id)}/private-whitelist`),
+  savePrivateWhitelist: (id: string, value: Pick<PrivateWhitelist, 'enabled' | 'users'>) => request<PrivateWhitelist>(`/channel-bots/${encodeURIComponent(id)}/private-whitelist`, json(value, 'PUT')),
   list: () => request<ChannelBot[]>('/channel-bots'),
   create: (draft: BotDraft) => request<ChannelBot>('/channel-bots', json(draft, 'POST')),
   update: (id: string, draft: Partial<BotDraft>) => request<ChannelBot>(`/channel-bots/${encodeURIComponent(id)}`, json(draft, 'PATCH')),

@@ -43,6 +43,7 @@ def normalize_quick_buttons(buttons: list, *, max_buttons: int = 20) -> list[dic
         seen.add(button_id)
         result = {
             "id": button_id,
+            "enabled": item.get("enabled") is not False,
             "label": label,
             "prompt": prompt if kind == "prompt" else "",
             "kind": kind,

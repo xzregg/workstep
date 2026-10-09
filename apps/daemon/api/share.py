@@ -64,6 +64,11 @@ def _require_interactive_share(ctx: dict) -> None:
 @router.post("/{task_id}/create")
 async def create_share(task_id: str, req: CreateShareRequest, pid: str = Query(..., alias="project_id")):
     """Create or replace the share link for a task. Password is optional."""
+    from services.gateway_client.policy import require_managed_capability
+    try:
+        require_managed_capability("task.share", project_id=pid)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     if req.password and len(req.password) < 4:
         raise HTTPException(status_code=422, detail="Password must be at least 4 characters")
     try:

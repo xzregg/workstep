@@ -4,6 +4,8 @@ import { JSDOM } from 'jsdom'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { PortalAuthPage } from '../src/PortalAuthPage'
 import { RegistrationPendingPage } from '../src/RegistrationPendingPage'
+import { ProjectsPage } from '../src/ProjectsPage'
+import { DesktopLoginPage } from '../src/DesktopLoginPage'
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://gateway.test/auth' })
 Object.assign(globalThis, { window: dom.window, document: dom.window.document,
@@ -12,6 +14,46 @@ Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.
 const { cleanup, fireEvent, render, screen, waitFor } = await import('@testing-library/react')
 const originalFetch = globalThis.fetch
 afterEach(() => { cleanup(); globalThis.fetch = originalFetch })
+
+test('scan-only login hides password and registration and never displays tenant numbers', async()=>{
+ globalThis.fetch=async(input)=>{
+  const url=String(input)
+  if(url==='/api/platform/status')return Response.json({initialized:true})
+  if(url==='/api/auth/session')return new Response(null,{status:401})
+  if(url==='/api/auth/registration-policy')return Response.json({mode:'open',password_login_enabled:false})
+  if(url==='/api/auth/identity-sources')return Response.json({sources:[{id:'ding',provider:'dingtalk',tenant_id:'5055796336'},{id:'wx',provider:'wecom',tenant_id:'private-corp'}]})
+  throw Error(url)
+ }
+ mount()
+ await screen.findByRole('button',{name:'钉钉扫码登录'})
+ assert.ok(screen.getByRole('button',{name:'企业微信扫码登录'}))
+ assert.equal(screen.queryByLabelText('用户名'),null)
+ assert.equal(screen.queryByLabelText('密码'),null)
+ assert.equal(screen.queryByRole('button',{name:'注册账号'}),null)
+ assert.equal(document.body.textContent?.includes('5055796336'),false)
+ assert.equal(document.body.textContent?.includes('private-corp'),false)
+ assert.equal(document.querySelectorAll('.gateway-identity-icon').length,2)
+})
+
+test('desktop authentication and centralized workbench login respect scan-only policy',async()=>{
+ globalThis.fetch=async(input)=>{
+  const url=String(input)
+  if(url==='/api/platform/status')return Response.json({initialized:true})
+  if(url==='/api/auth/session')return new Response(null,{status:401})
+  if(url==='/api/auth/registration-policy')return Response.json({mode:'closed',password_login_enabled:false})
+  if(url==='/api/auth/identity-sources')return Response.json({sources:[{id:'ding',provider:'dingtalk',tenant_id:'private-123'}]})
+  throw Error(url)
+ }
+ const query='gateway_id=gateway-test&app_instance_id=app-test&state='+'s'.repeat(32)+'&nonce='+'n'.repeat(32)+'&code_challenge='+'A'.repeat(43)
+ render(<MemoryRouter initialEntries={['/desktop/login?'+query]}><DesktopLoginPage/></MemoryRouter>)
+ await screen.findByRole('button',{name:'钉钉扫码登录'})
+ assert.equal(screen.queryByLabelText('用户名'),null)
+ assert.equal(document.body.textContent?.includes('private-123'),false)
+ cleanup()
+ render(<MemoryRouter><Routes><Route path="/" element={<ProjectsPage/>}/><Route path="/auth" element={<PortalAuthPage/>}/></Routes></MemoryRouter>)
+ await screen.findByRole('button',{name:'钉钉扫码登录'})
+ assert.equal(screen.queryByLabelText('用户名'),null)
+})
 
 function mockPortal(mode = 'open', register: (init?: RequestInit) => Promise<Response> = async () => Response.json({}, { status: 201 })) {
   const calls: string[] = []
@@ -44,7 +86,7 @@ async function openRegistration() {
 function fill(username = 'alice') {
   fireEvent.change(screen.getByLabelText('用户名'), { target: { value: username } })
   fireEvent.change(screen.getByLabelText('显示名称'), { target: { value: 'Alice' } })
-  fireEvent.change(screen.getByLabelText('密码（至少 12 位）'), { target: { value: 'AlicePassphrase-2026!' } })
+  fireEvent.change(screen.getByLabelText('密码（至少 8 位）'), { target: { value: 'AlicePassphrase-2026!' } })
   fireEvent.change(screen.getByLabelText('确认密码'), { target: { value: 'AlicePassphrase-2026!' } })
 }
 
@@ -171,4 +213,15 @@ test('empty platform shows administrator setup using normal registration', async
  fill(); fireEvent.click(screen.getByRole('button', { name: '注册' }))
  await screen.findByText('进入管理后台')
  assert.equal((submitted as { username: string }).username, 'alice')
+})
+
+test('opening the home page of an empty platform redirects to administrator setup', async () => {
+ globalThis.fetch = async input => {
+  if (String(input) === '/api/auth/session') return new Response(null, { status: 401 })
+  if (String(input) === '/api/platform/status') return Response.json({ initialized: false })
+  throw new Error(`Unexpected request: ${input}`)
+ }
+ render(<MemoryRouter><Routes><Route path="/" element={<ProjectsPage />} /><Route path="/auth" element={<PortalAuthPage />} /></Routes></MemoryRouter>)
+ await screen.findByRole('heading', { name: '设置超级管理员' })
+ assert.match(document.body.textContent ?? '', /首位注册用户将成为超级管理员/)
 })

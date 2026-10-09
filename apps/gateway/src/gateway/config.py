@@ -9,7 +9,7 @@ from workstep_gateway_protocol.origin import is_loopback_hostname, validate_gate
 class GatewaySettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="WORKSTEP_GATEWAY_")
 
-    host: str = "127.0.0.1"
+    host: str = "0.0.0.0"
     port: int = Field(default=8766, ge=1, le=65535)
     data_dir: Path = Path.home() / ".workstep-gateway"
     web_dist: Path | None = None
@@ -40,7 +40,8 @@ class GatewaySettings(BaseSettings):
         return f"d-{device_id}.{host}" + (f":{parsed.port}" if parsed.port else "")
 
     def device_url(self, device_id: str) -> str:
-        return f"{urlsplit(self.public_origin).scheme}://{self.device_authority(device_id)}/"
+        from urllib.parse import quote
+        return f"{self.public_origin}/workspace/{quote(device_id, safe='')}/"
 
     def is_device_authority(self, authority: str) -> bool:
         expected = self.device_authority("placeholder")

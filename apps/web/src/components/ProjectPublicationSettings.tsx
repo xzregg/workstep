@@ -69,6 +69,12 @@ export default function ProjectPublicationSettings({ projectId }: { projectId: s
         {status.can_manage && <a href={`${status.gateway_url}/admin/projects`}>
           {t('projectSettings.access.manage')}
         </a>}
+        {status.can_invite && status.project_id && <div className="project-publication-invite">
+          <a href={`${status.gateway_url.replace(/\/$/, '')}/project-invitations?project_id=${encodeURIComponent(status.project_id)}`}>
+            {t('projectSettings.access.invite')}
+          </a>
+          <p>{t('projectSettings.access.inviteHint')}</p>
+        </div>}
       </>}
     </>}
     <div onClick={event => event.stopPropagation()}>

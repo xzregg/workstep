@@ -33,11 +33,11 @@ test('workflow shortcut settings lists project buttons with individual use check
     </I18nProvider>))
     const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!
     assert.match(dialog.textContent || '', /快捷按钮/)
-    const boxes = [...dialog.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+    const projectButtons = dialog.querySelector<HTMLElement>('[data-testid="project-quick-buttons"]')!
+    const boxes = [...projectButtons.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
     assert.equal(boxes.length, 2)
     assert.equal(boxes[0].checked, true)
     assert.equal(boxes[1].checked, false)
-    const projectButtons = dialog.querySelector<HTMLElement>('[data-testid="project-quick-buttons"]')!
     assert.equal(projectButtons.style.display, 'flex')
     assert.equal(projectButtons.style.flexWrap, 'wrap')
     assert.equal(projectButtons.querySelector('label')?.style.display, 'inline-flex')

@@ -49,6 +49,36 @@ def _bind(project):
     return db_proxy.activate(project.db)
 
 
+@pytest.mark.asyncio
+async def test_managed_local_share_creation_requires_live_share_permission(manager, tmp_path, monkeypatch):
+    import main
+    from fastapi import FastAPI
+    from api.share import router
+    from types import SimpleNamespace
+    from services.gateway_client.policy import ManagedPolicyCache, verify_policy_snapshot
+    from services.remote_access import ActorSnapshot, actor_context
+    from tests.test_gateway_policy import _signed_policy
+    project, task = _create_task_in_project(manager, tmp_path / "controlled-share")
+    monkeypatch.setattr(main, "project_manager", manager)
+    cache = ManagedPolicyCache()
+    monkeypatch.setattr(main, "gateway_client", SimpleNamespace(managed_config=object(), policy_cache=cache))
+    app = FastAPI()
+    app.include_router(router)
+    url = f"/api/task-share/{task['id']}/create?project_id={project.id}"
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        with actor_context(ActorSnapshot("user-1", "Alice", "device-1", "PC", "managed")):
+            assert (await client.post(url, json={})).status_code == 403
+            token, pem, pin = _signed_policy(task_share_project_ids=[project.id])
+            cache.apply(verify_policy_snapshot(token, pem, pin, "gateway-test", "device-1", "user-1"))
+            created = await client.post(url, json={})
+            assert created.status_code == 200, created.text
+            assert created.json()["token"]
+            token, pem, pin = _signed_policy(policy_revision=3, task_share=True,
+                                            task_share_denied_project_ids=[project.id])
+            cache.apply(verify_policy_snapshot(token, pem, pin, "gateway-test", "device-1", "user-1"))
+            assert (await client.post(url, json={})).status_code == 403
+
+
 def test_resolve_share_session_finds_share_across_project_dbs(manager, tmp_path):
     """A minted session resolves even when the proxy is bound to another project."""
     project_a, task_a = _create_task_in_project(manager, tmp_path / "proj-a")

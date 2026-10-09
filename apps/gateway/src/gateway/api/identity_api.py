@@ -9,7 +9,22 @@ from fastapi import APIRouter, Query, Request, Response
 
 from gateway.services.identity_api import AccountInput, SetupInput, LoginInput, ChangePasswordInput, StepUpInput, ResetPasswordInput, AdminCreateInput, GrantRoleInput, RegistrationPolicyInput
 
+from gateway.services.admin_user_operations import BulkUserInput, bulk_users as _handle_bulk_users
+from gateway.services.login_policy import LoginPolicyInput, set_login_policy as _handle_login_policy
+
+from gateway.services.platform_address import PlatformAddressInput, set_platform_address as _handle_platform_address
+
 router = APIRouter(prefix="/api")
+
+
+@router.put('/admin/login-policy')
+async def set_login_policy(request: Request, body: LoginPolicyInput):
+    return await invoke(_handle_login_policy, request=request, body=body)
+
+
+@router.post('/admin/users/bulk')
+async def bulk_users(request: Request, body: BulkUserInput):
+    return await invoke(_handle_bulk_users, request=request, body=body)
 
 
 @router.post("/platform/setup", status_code=201)
@@ -70,7 +85,7 @@ async def admin_create_user(request: Request, body: AdminCreateInput):
 @router.get("/admin/users")
 async def admin_list_users(request: Request, q: str = Query("", max_length=128),
                            group_id: str | None = Query(None, max_length=64),
-                           status: Literal["active", "pending", "disabled"] | None = None,
+                           status: Literal["active", "pending", "disabled", "deleted"] | None = None,
                            sort: Literal["username", "display_name", "created_at"] = "created_at",
                            direction: Literal["asc", "desc"] = "desc",
                            page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100)):
@@ -127,3 +142,15 @@ async def admin_platform_settings(request: Request):
 @router.post("/admin/users/{user_id}/reset-password", status_code=204)
 async def admin_reset_password(request: Request, user_id: str, body: ResetPasswordInput):
     return await invoke(_handle_admin_reset_password, request=request, user_id=user_id, body=body)
+
+
+@router.put('/admin/platform-address')
+async def set_platform_address(request: Request, body: PlatformAddressInput):
+    return await invoke(_handle_platform_address, request=request, body=body)
+
+
+from gateway.services.device_approval_policy import DeviceApprovalPolicyInput, set_device_approval_policy
+
+@router.put('/admin/device-approval-policy')
+async def device_approval_policy(request: Request, body: DeviceApprovalPolicyInput):
+    return await invoke(set_device_approval_policy, request=request, body=body)

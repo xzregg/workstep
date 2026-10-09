@@ -38,6 +38,8 @@ def _device_host(call: GatewayCall) -> str:
     origin = call.settings.public_origin
     if origin is None:
         raise GatewayError('unavailable', 'Public Gateway origin is not configured')
+    if call.workspace_device_id:
+        return call.settings.device_authority(call.workspace_device_id)
     host = call.proofs.get('host', '').lower()
     if not call.settings.is_device_authority(host):
         raise GatewayError('forbidden', 'Device host required')
@@ -48,11 +50,9 @@ async def _active_access(call: GatewayCall, user_id: str, device_id: str) -> Non
     async with call.database.session() as session:
         user = await session.get(User, user_id)
         device = await session.get(Device, device_id)
-        assignment = await session.scalar(select(UserDevice).where(
-            UserDevice.device_id == device_id, UserDevice.user_id == user_id,
-            UserDevice.revoked_at.is_(None),
-        ))
-    if (not user or user.status != "active" or user.must_change_password
+        from gateway.services.device_grants import has_device_access
+        assignment = await has_device_access(session,user_id,device_id)
+    if (not user or user.status != "active"
             or not device or device.status != "active" or not assignment):
         raise GatewayError('forbidden', 'Device access denied')
     if not call.control_connections.is_online(device_id):
@@ -66,7 +66,7 @@ async def _active_project_access(call: GatewayCall, user_id: str, device_id: str
         device = await session.get(Device, device_id)
         project = await session.get(PlatformProject, project_id)
         level = await effective_project_access(session, user_id, project_id)
-    if (not user or user.status != "active" or user.must_change_password
+    if (not user or user.status != "active"
             or not device or device.status != "active" or not project
             or project.device_id != device_id or project.host_project_id != host_project_id
             or project.status != "active" or project.access_mode != "remote_published"
@@ -114,6 +114,15 @@ async def proxy_remote_request(call: GatewayCall):
     user, device_id, auth_session, host_project_id = await _remote_identity(call)
     provider_ids, _ = await compiled_provider_access(call.database, device_id, user.id)
     provider_grant_expires_at = int(time.time()) + 300
+    owner_routes = {'/api/project/init', '/api/project/register', '/api/fs/mkdir'}
+    native_directory = call.target.path in {'/api/fs/browse', '/api/fs/search'} and not call.query_values.get('project_id')
+    device_owner = False
+    if not auth_session.project_id and (call.target.path in owner_routes or native_directory or call.target.path == '/api/managed/mode'):
+        async with call.database.session() as session:
+            device = await session.get(Device, device_id)
+            device_owner = device is not None and device.owner_user_id == user.id
+    if (call.target.path in owner_routes or native_directory) and not device_owner:
+        raise GatewayError('forbidden', 'Device ownership required')
     task_create = False
     if auth_session.project_id:
         if call.operation == 'POST' and call.target.path in ('/api/task/create', '/api/task/copy'):
@@ -137,7 +146,7 @@ async def proxy_remote_request(call: GatewayCall):
             await _check_provider_grants(call, device_id, user.id, provider_ids)
             await _active_access(call, user.id, device_id)
 
-        return await connection.proxy_http(call, authorization_check=authorize_pc_stream, user_id=user.id, username=user.username, display_name=user.display_name, provider_ids=provider_ids, provider_grant_expires_at=provider_grant_expires_at)
+        return await connection.proxy_http(call, device_owner=device_owner, authorization_check=authorize_pc_stream, user_id=user.id, username=user.username, display_name=user.display_name, provider_ids=provider_ids, provider_grant_expires_at=provider_grant_expires_at)
     except (ConnectionError, asyncio.TimeoutError) as exc:
         raise GatewayError('upstream_failed', 'Device data connection unavailable') from exc
 
@@ -157,6 +166,9 @@ async def redeem_device_ticket(call: GatewayCall):
         claims = call.gateway_signer.verify_access_ticket(ticket[0], gateway_id=call.settings.gateway_id, audience=host)
     except (ValueError, KeyError, UnicodeDecodeError) as exc:
         raise GatewayError('forbidden', 'Invalid device access ticket') from exc
+    next_path = fields.get('next', [''])[0]
+    if next_path and not (next_path.startswith('tasks?') or next_path.startswith('chat?')):
+        raise GatewayError('invalid', 'Invalid workspace destination')
     device_id, user_id = claims["device_id"], claims["user_id"]
     if host != call.settings.device_authority(device_id):
         raise GatewayError('forbidden', 'Ticket device mismatch')
@@ -185,8 +197,11 @@ async def redeem_device_ticket(call: GatewayCall):
                 session.add(auth_session)
     except IntegrityError as exc:
         raise GatewayError('conflict', 'Ticket already used') from exc
-    response = RedirectTarget('/')
-    response.grants.append(CredentialGrant(COOKIE_NAME, token, lifetime=3600))
+    response = RedirectTarget((call.workspace_path or '/') + next_path)
+    response.grants.append(CredentialGrant('workstep_remote_session' if call.workspace_path else COOKIE_NAME, token, lifetime=3600, path=call.workspace_path or '/'))
+    if call.workspace_device_id:
+        response.grants.append(CredentialGrant('workstep_remote_ws_session', token, lifetime=3600,
+                                               path='/ws/workspace/' + call.workspace_device_id))
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -214,12 +229,14 @@ async def remote_session(call: GatewayCall):
 
 
 async def remote_project_grants(call: GatewayCall):
-    _, _, auth_session, _ = await _remote_identity(call)
+    user, device_id, auth_session, _ = await _remote_identity(call)
     if auth_session.project_id is None:
         raise GatewayError('forbidden', 'Project session required')
     async with call.database.session() as session:
         rows = await project_grant_rows(session, auth_session.project_id)
-    return {"grants": [{key: row[key] for key in (
+        device = await session.get(Device, device_id)
+        can_invite = bool(device and device.owner_user_id == user.id)
+    return {"can_invite": can_invite, "grants": [{key: row[key] for key in (
         "subject_type", "subject_id", "subject_name", "access_level",
     )} for row in rows]}
 
@@ -272,3 +289,19 @@ async def proxy_remote_websocket(ws: GatewaySocket, path: str):
         await ws.close(code=4403)
     except (ConnectionError, asyncio.TimeoutError):
         await ws.close(code=1013)
+
+
+async def remote_devices(call: GatewayCall):
+    user, _, auth, _ = await _remote_identity(call)
+    if auth.project_id:
+        raise GatewayError('forbidden', 'Whole-device session required')
+    from gateway.services.user_devices_api import assigned_devices_for_user
+    return await assigned_devices_for_user(call, user.id)
+
+
+async def remote_device_access(call: GatewayCall, device_id: str):
+    user, _, auth, _ = await _remote_identity(call)
+    if auth.project_id:
+        raise GatewayError('forbidden', 'Whole-device session required')
+    from gateway.services.user_devices_api import device_access_for_user
+    return await device_access_for_user(call, device_id, user.id)

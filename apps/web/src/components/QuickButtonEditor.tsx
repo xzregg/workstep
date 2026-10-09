@@ -12,6 +12,7 @@ import MarqueeText from './MarqueeText'
 import QuickPromptButton from './QuickPromptButton'
 import Select from './Select'
 import Textarea from './Textarea'
+import './QuickButtonEditor.css'
 
 export interface QuickButtonDraft {
   id: string
@@ -19,6 +20,7 @@ export interface QuickButtonDraft {
   prompt: string
   content: string
   kind: '' | 'prompt' | 'display' | 'action'
+  enabled?: boolean
   immediateSend: boolean
   actionId: string
   scriptPath: string
@@ -38,6 +40,7 @@ export function quickButtonToDraft(button: ChatQuickButton): QuickButtonDraft {
   }
   return {
     id: button.id, label: title, prompt: button.prompt || '', content: button.content || (legacyHtml ? button.label : ''),
+    enabled: button.enabled !== false,
     kind: button.kind || 'prompt', immediateSend: button.immediate_send === true,
     actionId: button.action_id || '', scriptPath: button.script_path || '',
     cwdMode: button.cwd_mode || 'task', requireConfirmation: button.require_confirmation !== false,
@@ -48,6 +51,7 @@ export function quickButtonToDraft(button: ChatQuickButton): QuickButtonDraft {
 export function quickButtonFromDraft(button: QuickButtonDraft): ChatQuickButton {
   return {
     id: button.id, label: button.label.trim(), prompt: button.kind === 'prompt' ? button.prompt.trim() : '',
+    enabled: button.enabled !== false,
     content: button.kind === 'display' ? button.content.trim() : '',
     kind: button.kind || 'prompt', immediate_send: button.kind === 'prompt' && button.immediateSend,
     ...(button.kind === 'action' ? {
@@ -117,12 +121,16 @@ export default function QuickButtonEditor({ projectId, workflowId, buttons, onCh
         })}
         <Button variant="ghost" onClick={() => {
           const id = `qb-${randomUuid()}`
-          change([...buttons, { id, label: '', prompt: '', content: '', kind: '', immediateSend: false, actionId: '', scriptPath: '', cwdMode: 'task', requireConfirmation: true, confirmationInputPrompt: '' }])
+          change([...buttons, { id, label: '', prompt: '', content: '', kind: '', enabled: true, immediateSend: false, actionId: '', scriptPath: '', cwdMode: 'task', requireConfirmation: true, confirmationInputPrompt: '' }])
           onSelect(id)
         }} style={{ width: '100%', justifyContent: 'flex-start' }}>{t('projectSettings.assistant.addButton')}</Button>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         {selected ? <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <label className="quick-button-enabled-control">
+            <input type="checkbox" role="switch" checked={selected.enabled !== false} onChange={(event) => update({ enabled: event.target.checked })} />
+            {t('projectSettings.assistant.buttonEnabled')}
+          </label>
           <Field label={t('projectSettings.assistant.buttonType')}>
             <Select data-testid="quick-button-type" value={selected.kind} onChange={(event) => update({ kind: event.target.value as QuickButtonDraft['kind'] })}>
               <option value="">{t('projectSettings.assistant.buttonTypePlaceholder')}</option>

@@ -980,3 +980,19 @@ Claude/Qoder 的 append 是本次进程启动配置，不是向历史追加多�
 
 
 任务 Git 工作区的自动背景在独立系统注入模式下，固定规则与任务路径由 `assemble_step_system_prompt` 提供；正文的 `Task Git workspace` 只列已挂载仓库，避免同轮重复路径。`assemble_retry_prompt(..., separate_instructions=True)` 只比较仓库变动，兼容旧 `input_prompt` 仍带路径的快照，不把格式迁移误判为工作区变化。旧无独立系统入口的调用保持完整正文路径。查看仍记录实际输入，已有 DB 提示词不改写。
+
+## 引擎在选择列表中的显示
+
+设置 → 执行引擎的「在选择列表中显示」开关仅影响选择列表。Codex CLI 与 Claude Code CLI 默认关闭，其他引擎默认开启；显式设置保存在 `engine_visibility`。关闭不会删除适配器、清除配置或禁止已有任务步骤和会话继续执行。引擎目录返回 `enabled`，所有选择入口应过滤 `enabled: false`，同时保留既有选择值及其配置元数据。
+
+## 用户自定义引擎（接口 v1）
+
+设置 → 执行引擎 → 自定义接入会创建一个普通项目对话，预填接入提示词，由 `workstep-cli` 引导按需阅读规范，不加载独立技能。草稿默认在 `$WORKSTEP_CONFIG_DIR/runtime/engine-workspaces/<id>`；有容器项目根目录限制时草稿在允许的项目根目录 `workstep-engine-workspaces/<id>`。正式注册目录统一是 `$WORKSTEP_CONFIG_DIR/runtime/engines/<engine-id>`，不写应用安装目录，因此桌面应用升级与只读源码打包不影响用户引擎。
+
+可移植包由 manifest.json、一个 Python 入口及 files 白名单声明的测试/资源组成；规范与步骤见 [接入指南](../apps/daemon/data/skills/workstep-cli/references/custom-engine.md) 和 [接口契约](../apps/daemon/data/skills/workstep-cli/references/custom-engine-contract.md)。CLI 可 inspect 指定目录或 py 文件，然后 install/configure/validate/register；install/validate 可异步查询或取消。只有公开验收通过，签名及代码/依赖/配置指纹一致才允许原子注册。注册后需要重启；已加载代理发现文件变化会拒绝执行并要求重新验收。
+
+每个引擎自行实现异步 install，按系统/架构判断下载依赖，获取 staged target_dir 而不修改后台 Python 环境；SDK import 必须延迟到依赖存在后。Python SDK、CLI、Node 桥接均可接入，Node 并非桌面包保证提供的运行时，需要引擎检测并安装或说明环境要求。导出 ZIP 仅携带源码/测试/资源及安全测试摘要，不含 dependencies/cache/凭据；接收方按其平台重新安装与验证。支持复用现有供应商及自定义供应商，按协议声明进行匹配；配置 schema 自动生成设置表单，敏感值脱敏。
+
+主进程只扫描清单和安装元数据，不执行用户模块。用户代码在独立进程运行，管理请求有超时，取消/停止会终止进程树，畸形响应和导入异常不会终止后台。`WORKSTEP_SKIP_CUSTOM_ENGINES=1` 可跳过所有自定义引擎恢复启动。进程隔离保护后台稳定性，用户代码仍有宿主机文件和网络权限。设置的“显示在引擎选择中”只控制下拉可见性；自定义引擎“停用运行”才停止并禁止调用。
+
+公共验收包含实际文本回复与事件转译、专属 unittest、生命周期与停止、协调禁用工具、执行→下游→审核调用链，以及声明的会话/分叉与可选能力真实场景。调用链探测验证引擎公共接口，不在用户项目写入真实任务或工作流。第三方联网验收由用户接入时执行；仓库测试通过本地适配器与真实子进程覆盖隔离和 API，不依赖网络或供应商密钥。

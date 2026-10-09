@@ -5,10 +5,12 @@ import { useUserSettingsStore } from '../stores/userSettingsStore'
 import { useOnboardingStore } from '../stores/onboardingStore'
 import Button from './Button'
 import Input from './Input'
+import GatewayDesktopAuthentication from './GatewayDesktopAuthentication'
 
 export default function FirstUseDialog() {
   const { t } = useI18n()
   const userName = useUserSettingsStore((state) => state.userName)
+  const identitySource = useUserSettingsStore((state) => state.identitySource)
   const loaded = useUserSettingsStore((state) => state.loaded)
   const loading = useUserSettingsStore((state) => state.loading)
   const error = useUserSettingsStore((state) => state.error)
@@ -22,7 +24,9 @@ export default function FirstUseDialog() {
     void load()
   }, [load])
 
-  if (!loaded || userName.trim()) return null
+  if (!loaded) return null
+  if (identitySource === 'gateway') return <GatewayDesktopAuthentication />
+  if (userName.trim()) return null
 
   const startGuide = async () => {
     if (await saveUserName(draft)) startOnboarding()

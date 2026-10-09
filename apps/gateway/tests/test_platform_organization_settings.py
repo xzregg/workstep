@@ -92,7 +92,7 @@ def test_application_update_waiting_for_database_lock_keeps_health_responsive(tm
         event.listen(engine, 'before_cursor_execute', before_execute)
         async def scenario():
             async with AsyncClient(transport=ASGITransport(app=app), base_url='https://gateway.test', cookies=client.cookies) as actor:
-                pending = asyncio.create_task(actor.put(f'/api/admin/identity-sources/{source}', headers={'X-CSRF-Token': csrf}, json={**body, 'client_id': 'updated'}))
+                pending = asyncio.create_task(actor.put(f'/api/admin/identity-sources/{source}', headers={'X-CSRF-Token': csrf}, json={**body, 'tenant_id': 'ding-updated'}))
                 try:
                     assert await asyncio.to_thread(reached_write.wait, 2)
                     assert (await asyncio.wait_for(actor.get('/api/health'), .5)).status_code == 200
@@ -106,3 +106,25 @@ def test_application_update_waiting_for_database_lock_keeps_health_responsive(tm
                 client.portal.call(scenario)
         finally:
             event.remove(engine, 'before_cursor_execute', before_execute)
+
+
+def test_corp_id_correction_keeps_source_and_synced_associations(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        headers = {'X-CSRF-Token': _setup(client)}
+        body = {'provider': 'dingtalk', 'tenant_id': 'wrong-agent-id', 'client_id': 'app', 'client_secret': 'test-secret'}
+        source = client.post('/api/admin/identity-sources', headers=headers, json=body).json()['id']
+        snapshot = {'departments': [{'external_id': 'root', 'display_name': '公司'}], 'people': [{'subject': 'employee', 'display_name': '员工', 'department_ids': ['root']}]}
+        assert client.post(f'/api/admin/identity-sources/{source}/sync', headers=headers, json=snapshot).status_code == 200
+        before = client.get('/api/admin/user-groups/tree').json()
+        corrected = {**body, 'tenant_id': 'ding-correct', 'client_secret': None}
+        response = client.put(f'/api/admin/identity-sources/{source}', headers=headers, json=corrected)
+        assert response.status_code == 200, response.text
+        listing = client.get('/api/admin/identity-sources').json()['sources'][0]
+        assert listing['id'] == source and listing['tenant_id'] == 'ding-correct' and listing['secret_configured']
+        assert client.get('/api/admin/user-groups/tree').json() == before
+        assert client.put(f'/api/admin/identity-sources/{source}', json=corrected).status_code == 403
+        other = client.post('/api/admin/identity-sources', headers=headers, json={**body, 'tenant_id': 'ding-other'}).json()['id']
+        duplicate = client.put(f'/api/admin/identity-sources/{other}', headers=headers, json=corrected)
+        assert duplicate.status_code == 409
+        assert client.put(f'/api/admin/identity-sources/{source}', headers=headers, json={**corrected, 'provider': 'wecom', 'agent_id': '1'}).status_code == 422

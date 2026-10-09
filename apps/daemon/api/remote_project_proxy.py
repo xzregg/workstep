@@ -9,6 +9,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from services.remote_registry import RemoteProjectRegistry
 from services.remote_protocol import RemoteHttpRequest
+from services.remote_access import get_current_actor
 
 logger = logging.getLogger(__name__)
 
@@ -46,14 +47,7 @@ class RemoteProjectProxyMiddleware(BaseHTTPMiddleware):
             self._registry.get, project_id
         ) is None:
             return await call_next(request)
-        gateway_client = getattr(request.app.state, "gateway_client", None)
-        if (gateway_client is not None
-                and getattr(gateway_client, "managed_config", None) is not None):
-            return JSONResponse(
-                {"detail": "legacy remote projects are unavailable in managed mode"},
-                status_code=403,
-            )
-
+        actor = get_current_actor()
         forwarded = RemoteHttpRequest(
             request_id=str(uuid.uuid4()),
             method=request.method,
@@ -61,6 +55,11 @@ class RemoteProjectProxyMiddleware(BaseHTTPMiddleware):
             query={key: value for key, value in request.query_params.items()},
             headers={key: value for key, value in request.headers.items()},
             body=body,
+            actor={
+                'actor_id': actor.actor_id,
+                'user_name': actor.user_name,
+                'username': actor.username or '',
+            } if actor is not None else None,
         )
         try:
             response = await self._client_manager.request(project_id, forwarded)

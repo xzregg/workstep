@@ -142,3 +142,34 @@ test('an uninstalled engine drops out of the picker list', async () => {
     await window.happyDOM.close()
   }
 })
+
+
+test('visibility changes publish immediately without removing engine metadata', () => {
+  resetEngineAvailabilityStoreForTests()
+  publishEngineCatalog([engine('claude', { enabled: true })])
+  const revision = useEngineAvailabilityStore.getState().revision
+  publishEngineCatalog([engine('claude', { enabled: false })])
+  assert.equal(useEngineAvailabilityStore.getState().revision, revision + 1)
+  assert.equal(useEngineAvailabilityStore.getState().engines[0].enabled, false)
+})
+
+
+test('hidden engines disappear live and a saved selection stays unchanged', async () => {
+  const { window, document } = installDomEnvironment()
+  resetEngineAvailabilityStoreForTests()
+  publishEngineCatalog([engine('claude'), engine('codex')])
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  try {
+    await act(async () => { root.render(<I18nProvider><ComposerHost /></I18nProvider>) })
+    await act(async () => { publishEngineCatalog([engine('claude', { enabled: false }), engine('codex', { enabled: false })]) })
+    assert.equal(document.querySelector('option[value="codex"]'), null)
+    assert.equal(document.querySelector('option[value="claude"]')?.hasAttribute('hidden'), true)
+    assert.equal(document.querySelector('select')?.value, 'claude')
+    await act(async () => { publishEngineCatalog([engine('claude', { enabled: true }), engine('codex', { enabled: true })]) })
+    assert.equal(document.querySelector('option[value="claude"]')?.hasAttribute('hidden'), false)
+    assert.equal(optionState(document, 'codex').disabled, false)
+  } finally {
+    await act(async () => { root.unmount() })
+    await window.happyDOM.close()
+  }
+})

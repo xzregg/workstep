@@ -57,11 +57,27 @@ def _active_device(client):
     return device_id, token, private_key, csrf
 
 
+def _ordinary_device_owner(client, user_id, csrf):
+    roles = client.get("/api/admin/roles?role=super_admin").json()["roles"]
+    role_id = next(role["id"] for role in roles if role["user_id"] == user_id)
+    assert client.delete(f"/api/admin/roles/{role_id}",
+                         headers={"X-CSRF-Token": csrf}).status_code == 204
+    client.cookies.clear()
+    login = client.post("/api/auth/login", json={
+        "username": "recovery", "password": "RecoveryPassphrase-2026!",
+    })
+    csrf = login.json()["csrf_token"]
+    assert client.post("/api/auth/step-up", headers={"X-CSRF-Token": csrf}, json={
+        "password": "RecoveryPassphrase-2026!",
+    }).status_code == 200
+    return csrf
+
+
 def _handshake(ws, token, device_key, *, wrong_challenge=False, wrong_delegation=False,
-               wrong_config_proof=False):
+               wrong_config_proof=False, control_key=None, reconnect_token=None):
     challenge = ws.receive_json()
     assert challenge["kind"] == "challenge"
-    control_key = Ed25519PrivateKey.generate()
+    control_key = control_key or Ed25519PrivateKey.generate()
     public_key = control_key.public_key().public_bytes(
         serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
     ).decode()
@@ -91,15 +107,58 @@ def _handshake(ws, token, device_key, *, wrong_challenge=False, wrong_delegation
                   "control_delegation_signature": delegation,
                   "control_challenge_proof": proof,
                   "config_public_key_pem": config_public_key,
-                  "config_key_proof": config_proof})
+                  "config_key_proof": config_proof,
+                  "reconnect_token": reconnect_token})
     return config_key
 
 
-def test_control_socket_authenticates_device_and_tracks_connection(tmp_path):
+def test_control_reconnect_after_login_expiry_and_gateway_restart(tmp_path, monkeypatch):
+    settings = GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test")
+    control_key = Ed25519PrivateKey.generate()
+    with TestClient(create_app(settings), base_url="https://gateway.test") as client:
+        device_id, token, device_key, _ = _active_device(client)
+        with client.websocket_connect('/ws/control') as ws:
+            _handshake(ws, token, device_key, control_key=control_key)
+            renewal = ws.receive_json()['reconnect_token']
+    future = time.time() + 901
+    monkeypatch.setattr(time, 'time', lambda: future)
+    with TestClient(create_app(settings), base_url="https://gateway.test") as client:
+        with client.websocket_connect('/ws/control') as ws:
+            _handshake(ws, token, device_key, control_key=control_key, reconnect_token=renewal)
+            hello = ws.receive_json()
+            assert hello['device_id'] == device_id
+            assert hello['reconnect_token'] != renewal
+        for credential, key in ((None, control_key), (renewal, Ed25519PrivateKey.generate()), ('tampered', control_key)):
+            with client.websocket_connect('/ws/control') as ws:
+                _handshake(ws, token, device_key, control_key=key, reconnect_token=credential)
+                with pytest.raises(WebSocketDisconnect) as error:
+                    ws.receive_json()
+                assert error.value.code == 4401
+        future += 31 * 24 * 60 * 60
+        with client.websocket_connect('/ws/control') as ws:
+            _handshake(ws, token, device_key, control_key=control_key, reconnect_token=renewal)
+            with pytest.raises(WebSocketDisconnect):
+                ws.receive_json()
+        future -= 31 * 24 * 60 * 60
+        async def revoke():
+            from sqlalchemy import update
+            from gateway.models import Device
+            async with client.app.state.database.session() as session:
+                async with session.begin():
+                    await session.execute(update(Device).where(Device.id == device_id).values(status='revoked'))
+        client.portal.call(revoke)
+        with client.websocket_connect('/ws/control') as ws:
+            _handshake(ws, token, device_key, control_key=control_key, reconnect_token=renewal)
+            with pytest.raises(WebSocketDisconnect):
+                ws.receive_json()
+
+
+@pytest.mark.parametrize("peer_ip", ["198.51.100.7", "2001:db8::7"])
+def test_control_socket_authenticates_device_and_tracks_connection(tmp_path, peer_ip):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
-    with TestClient(app, base_url="https://gateway.test") as client:
+    with TestClient(app, base_url="https://gateway.test", client=(peer_ip, 50000)) as client:
         device_id, token, device_key, csrf = _active_device(client)
-        with client.websocket_connect("/api/control/ws") as ws:
+        with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             hello = ws.receive_json()
             assert hello["kind"] == "hello"
@@ -118,12 +177,13 @@ def test_control_socket_authenticates_device_and_tracks_connection(tmp_path):
             policy = json.loads(base64.urlsafe_b64decode(hello["policy_snapshot"].split(".")[1] + "=="))
             assert policy["device_id"] == device_id
             assert policy["user_id"]
-            assert policy["allow_local_providers"] is False
+            assert policy["allow_local_providers"] is True
             ws.send_json({"kind": "policy_applied", "revision": policy["policy_revision"]})
             assert ws.receive_json()["kind"] == "policy_applied_ack"
             with sqlite3.connect(tmp_path / "workstep_platform.db") as database:
                 assert database.execute("SELECT applied_policy_revision FROM device_connections").fetchone() == (0,)
             listed = client.get("/api/admin/devices", headers={"X-CSRF-Token": csrf}).json()["devices"]
+            assert listed[0]["connection_ip"] == peer_ip
             assert listed[0]["online"] is True
             assert listed[0]["daemon_health"] is None
             ws.send_json({"kind": "heartbeat", "daemon_health": True})
@@ -135,8 +195,28 @@ def test_control_socket_authenticates_device_and_tracks_connection(tmp_path):
             assert ws.receive_json()["kind"] == "heartbeat_ack"
             assert client.get("/api/admin/devices").json()["devices"][0]["daemon_health"] is False
         listed = client.get("/api/admin/devices").json()["devices"]
+        assert listed[0]["connection_ip"] is None
         assert listed[0]["online"] is False
         assert listed[0]["daemon_health"] is None
+
+
+def test_deleted_device_is_disconnected_and_old_control_authorization_cannot_reconnect(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id='gateway-test'))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        device_id, token, device_key, csrf = _active_device(client)
+        with client.websocket_connect('/ws/control') as ws:
+            _handshake(ws, token, device_key)
+            assert ws.receive_json()['device_id'] == device_id
+            assert client.delete(f'/api/admin/devices/{device_id}',
+                                 headers={'X-CSRF-Token': csrf}).status_code == 204
+            with pytest.raises(WebSocketDisconnect) as disconnected:
+                ws.receive_json()
+            assert disconnected.value.code == 4003
+        with client.websocket_connect('/ws/control') as ws:
+            _handshake(ws, token, device_key)
+            with pytest.raises(WebSocketDisconnect) as rejected:
+                ws.receive_json()
+            assert rejected.value.code == 4401
 
 
 def test_control_delivers_signed_device_command_and_records_result(tmp_path):
@@ -149,7 +229,7 @@ def test_control_delivers_signed_device_command_and_records_result(tmp_path):
         })
         assert created.status_code == 200, created.text
         command_id = created.json()["commands"][0]["id"]
-        with client.websocket_connect("/api/control/ws") as ws:
+        with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             hello = ws.receive_json()
             assert hello["command"]["kind"] == "device_command"
@@ -177,7 +257,7 @@ def test_project_runtime_snapshot_is_scoped_to_live_device_and_published_project
                 (id,device_id,host_project_id,name,access_mode,status)
                 VALUES ('private-1',?,'host-2','Private','policy_only','active')""", (device_id,))
         assert client.get("/api/admin/projects").json()["projects"][0]["running_tasks"] is None
-        with client.websocket_connect("/api/control/ws") as ws:
+        with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             assert ws.receive_json()["kind"] == "hello"
             ws.send_json({"kind": "project_runtime", "version": 1, "device_id": device_id,
@@ -210,7 +290,7 @@ def test_project_runtime_rejects_invalid_counts(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:
         device_id, token, device_key, _ = _active_device(client)
-        with client.websocket_connect("/api/control/ws") as ws:
+        with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             assert ws.receive_json()["kind"] == "hello"
             ws.send_json({"kind": "project_runtime", "version": 1, "device_id": device_id,
@@ -231,7 +311,7 @@ def test_control_accepts_usage_batch_and_acks_after_commit(tmp_path):
                  "device_id": device_id, "user_id": user_id, "model": "model-a",
                  "input_tokens": 10, "output_tokens": 2, "total_tokens": 12,
                  "occurred_at": datetime.now(timezone.utc).isoformat()}
-        with client.websocket_connect("/api/control/ws") as ws:
+        with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             assert ws.receive_json()["kind"] == "hello"
             ws.send_json({"kind": "usage_batch", "version": 1,
@@ -258,7 +338,7 @@ def test_control_accepts_audit_batch_and_acks_after_commit(tmp_path):
             "actor_type": "user", "metadata": {"source": "manual"},
             "occurred_at": datetime.now(timezone.utc).isoformat(),
         }
-        with client.websocket_connect("/api/control/ws") as ws:
+        with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             assert ws.receive_json()["kind"] == "hello"
             ws.send_json({"kind": "audit_batch", "version": 1,
@@ -281,7 +361,7 @@ def test_control_records_project_skill_application_for_own_device(tmp_path):
                 "access_mode,status,skill_revision) VALUES (?,?,?,?,?,?,?)",
                 ("platform-1", device_id, "host-1", "Project", "policy_only", "active", 1),
             )
-        with client.websocket_connect("/api/control/ws") as ws:
+        with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             assert ws.receive_json()["kind"] == "hello"
             ws.send_json({"kind": "skill_applied", "version": 1, "projects": [{
@@ -308,7 +388,7 @@ def test_admin_publishes_from_live_catalog_and_unpublishes_offline(tmp_path):
         device_id, token, device_key, csrf = _active_device(client)
         headers = {"X-CSRF-Token": csrf}
         with ThreadPoolExecutor(max_workers=1) as pool:
-            with client.websocket_connect("/api/control/ws") as ws:
+            with client.websocket_connect("/ws/control") as ws:
                 _handshake(ws, token, device_key)
                 assert ws.receive_json()["kind"] == "hello"
                 listing = pool.submit(client.get,
@@ -376,7 +456,7 @@ def test_project_catalog_rejects_host_paths(tmp_path):
     with TestClient(app, base_url="https://gateway.test") as client:
         device_id, token, device_key, _ = _active_device(client)
         with ThreadPoolExecutor(max_workers=1) as pool:
-            with client.websocket_connect("/api/control/ws") as ws:
+            with client.websocket_connect("/ws/control") as ws:
                 _handshake(ws, token, device_key)
                 assert ws.receive_json()["kind"] == "hello"
                 listing = pool.submit(client.get,
@@ -397,7 +477,8 @@ def test_device_explicitly_publishes_and_unpublishes_its_project(tmp_path):
     with TestClient(app, base_url="https://gateway.test") as client:
         device_id, token, device_key, csrf = _active_device(client)
         owner_id = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "==="))["user_id"]
-        with client.websocket_connect("/api/control/ws") as ws:
+        csrf = _ordinary_device_owner(client, owner_id, csrf)
+        with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             assert ws.receive_json()["kind"] == "hello"
             ws.send_json({"kind": "project_publish", "version": 1,
@@ -406,7 +487,8 @@ def test_device_explicitly_publishes_and_unpublishes_its_project(tmp_path):
             assert ws.receive_json() == {"kind": "project_publish_ack", "version": 1,
                                          "device_id": device_id, "host_project_id": "host-1",
                                          "project_id": None, "status": "unpublished",
-                                         "grants": [], "can_manage": True,
+                                         "grants": [], "can_manage": False,
+                                         "can_invite": True,
                                          "can_publish": False}
             ws.send_json({"kind": "project_publish", "version": 1,
                           "action": "publish", "host_project_id": "host-1",
@@ -417,7 +499,7 @@ def test_device_explicitly_publishes_and_unpublishes_its_project(tmp_path):
             "scope_id": device_id, "effect": "allow",
         }, headers={"X-CSRF-Token": csrf})
         assert denied.status_code == 200, denied.text
-        with client.websocket_connect("/api/control/ws") as ws:
+        with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             assert ws.receive_json()["kind"] == "hello"
             ws.send_json({"kind": "project_publish", "version": 1,
@@ -433,7 +515,8 @@ def test_device_explicitly_publishes_and_unpublishes_its_project(tmp_path):
             assert ws.receive_json() == {"kind": "project_publish_ack", "version": 1,
                                          "device_id": device_id, "host_project_id": "host-1",
                                          "project_id": platform_id, "status": "published",
-                                         "grants": [], "can_manage": True,
+                                         "grants": [], "can_manage": False,
+                                         "can_invite": True,
                                          "can_publish": True}
             with sqlite3.connect(tmp_path / "workstep_platform.db") as database:
                 assert database.execute(
@@ -456,6 +539,7 @@ def test_project_scoped_task_create_is_compiled_for_the_host_project(tmp_path):
     with TestClient(app, base_url="https://gateway.test") as client:
         device_id, token, device_key, csrf = _active_device(client)
         user_id = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "==="))["user_id"]
+        csrf = _ordinary_device_owner(client, user_id, csrf)
         with sqlite3.connect(tmp_path / "workstep_platform.db") as database:
             database.execute(
                 "INSERT INTO platform_projects (id,device_id,host_project_id,name,"
@@ -467,7 +551,7 @@ def test_project_scoped_task_create_is_compiled_for_the_host_project(tmp_path):
             "scope_id": "platform-1", "effect": "allow",
         }, headers={"X-CSRF-Token": csrf})
         assert grant.status_code == 200, grant.text
-        with client.websocket_connect("/api/control/ws") as ws:
+        with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             hello = ws.receive_json()
             policy = json.loads(base64.urlsafe_b64decode(
@@ -483,7 +567,7 @@ def test_locked_usage_ledger_does_not_delay_control_heartbeat(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:
         device_id, token, device_key, _ = _active_device(client)
-        with client.websocket_connect("/api/control/ws") as ws:
+        with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             assert ws.receive_json()["kind"] == "hello"
             with sqlite3.connect(tmp_path / "workstep_platform.db", timeout=5) as holder:
@@ -520,7 +604,7 @@ def test_usage_backpressure_is_global_and_preserves_control_health(tmp_path, mon
     with TestClient(app, base_url="https://gateway.test") as client:
         app.state.usage_batch_slots = asyncio.Semaphore(1)
         device_id, token, device_key, _ = _active_device(client)
-        with client.websocket_connect("/api/control/ws") as ws:
+        with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             assert ws.receive_json()["kind"] == "hello"
             def send(batch_id):
@@ -566,7 +650,7 @@ def test_slow_usage_write_times_out_and_can_be_retried(tmp_path, monkeypatch):
     with TestClient(app, base_url="https://gateway.test") as client:
         app.state.usage_batch_timeout_seconds = 0.02
         device_id, token, device_key, _ = _active_device(client)
-        with client.websocket_connect("/api/control/ws") as ws:
+        with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             assert ws.receive_json()["kind"] == "hello"
             batch = {"kind": "usage_batch", "version": 1, "batch_id": "timeout",
@@ -590,7 +674,7 @@ def test_control_opens_one_time_data_connection_on_demand(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:
         device_id, token, device_key, _ = _active_device(client)
-        with client.websocket_connect("/api/control/ws") as control:
+        with client.websocket_connect("/ws/control") as control:
             _handshake(control, token, device_key)
             assert control.receive_json()["kind"] == "hello"
             pending = client.portal.start_task_soon(
@@ -599,12 +683,12 @@ def test_control_opens_one_time_data_connection_on_demand(tmp_path):
             command = control.receive_json()
             assert command["kind"] == "open_data"
             assert command["device_id"] == device_id
-            with client.websocket_connect("/api/data/ws") as data:
+            with client.websocket_connect("/ws/data") as data:
                 data.send_json({"kind": "data_hello", "token": command["token"]})
                 assert data.receive_json() == {"kind": "data_ready", "version": 1,
                                                "device_id": device_id}
                 assert pending.result(timeout=3).device_id == device_id
-                with client.websocket_connect("/api/data/ws") as replay:
+                with client.websocket_connect("/ws/data") as replay:
                     replay.send_json({"kind": "data_hello", "token": command["token"]})
                     try:
                         replay.receive_json()
@@ -622,7 +706,7 @@ def test_control_opens_one_time_data_connection_on_demand(tmp_path):
             )
             next_command = control.receive_json()
             assert next_command["kind"] == "open_data"
-            with client.websocket_connect("/api/data/ws") as data:
+            with client.websocket_connect("/ws/data") as data:
                 data.send_json({"kind": "data_hello", "token": next_command["token"],
                                 "flow_control": True})
                 assert data.receive_json() == {"kind": "data_ready", "version": 1,
@@ -635,7 +719,7 @@ def test_slow_data_connection_does_not_delay_gateway_health_or_control_heartbeat
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:
         device_id, token, device_key, _ = _active_device(client)
-        with client.websocket_connect("/api/control/ws") as control:
+        with client.websocket_connect("/ws/control") as control:
             _handshake(control, token, device_key)
             assert control.receive_json()["kind"] == "hello"
             pending = client.portal.start_task_soon(
@@ -654,21 +738,21 @@ def test_control_socket_rejects_wrong_proof(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:
         device_id, token, device_key, csrf = _active_device(client)
-        with client.websocket_connect("/api/control/ws") as ws:
+        with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key, wrong_challenge=True)
             try:
                 ws.receive_json()
                 assert False, "Wrong proof must be rejected"
             except WebSocketDisconnect as exc:
                 assert exc.code == 4401
-        with client.websocket_connect("/api/control/ws") as ws:
+        with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key, wrong_delegation=True)
             try:
                 ws.receive_json()
                 assert False, "Undelegated control key must be rejected"
             except WebSocketDisconnect as exc:
                 assert exc.code == 4401
-        with client.websocket_connect("/api/control/ws") as ws:
+        with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key, wrong_config_proof=True)
             with pytest.raises(WebSocketDisconnect) as exc:
                 ws.receive_json()
@@ -679,7 +763,7 @@ def test_device_revocation_closes_existing_control_socket(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:
         device_id, token, device_key, csrf = _active_device(client)
-        with client.websocket_connect("/api/control/ws") as ws:
+        with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             assert ws.receive_json()["kind"] == "hello"
             assert client.post(f"/api/admin/devices/{device_id}/revoke",
@@ -689,7 +773,7 @@ def test_device_revocation_closes_existing_control_socket(tmp_path):
                 assert False, "Revocation must close active control socket"
             except WebSocketDisconnect as exc:
                 assert exc.code == 4003
-        with client.websocket_connect("/api/control/ws") as ws:
+        with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             try:
                 ws.receive_json()
@@ -703,7 +787,7 @@ def test_disabled_account_stops_policy_renewal(tmp_path):
     with TestClient(app, base_url="https://gateway.test") as client:
         device_id, token, device_key, _ = _active_device(client)
         user_id = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))["user_id"]
-        with client.websocket_connect("/api/control/ws") as ws:
+        with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             assert ws.receive_json()["kind"] == "hello"
             with sqlite3.connect(tmp_path / "workstep_platform.db") as database:
@@ -716,12 +800,62 @@ def test_disabled_account_stops_policy_renewal(tmp_path):
                 assert exc.code == 4003
 
 
+def test_super_admin_receives_all_managed_capabilities_and_loses_them_on_revocation(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
+    with TestClient(app, base_url="https://gateway.test") as client:
+        device_id, token, device_key, csrf = _active_device(client)
+        user_id = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))["user_id"]
+        roles = client.get("/api/admin/roles?role=super_admin").json()["roles"]
+        role_id = next(role["id"] for role in roles if role["user_id"] == user_id)
+        # An explicit capability deny must not downgrade the platform super administrator.
+        assert client.post(f"/api/admin/capabilities/{user_id}", headers={"X-CSRF-Token": csrf}, json={
+            "capability": "task.create", "scope_type": "device", "scope_id": device_id,
+            "effect": "deny",
+        }).status_code == 200
+        with client.websocket_connect("/ws/control") as ws:
+            _handshake(ws, token, device_key)
+            policy = json.loads(base64.urlsafe_b64decode(
+                ws.receive_json()["policy_snapshot"].split(".")[1] + "=="))
+            for capability in ("task_create", "project_publish", "task_share",
+                               "engine_install", "allow_local_providers"):
+                assert policy[capability] is True, capability
+            assert policy["task_create_denied_project_ids"] == []
+            assert client.delete(f"/api/admin/roles/{role_id}",
+                                 headers={"X-CSRF-Token": csrf}).status_code == 204
+            ws.send_json({"kind": "heartbeat"})
+            revoked = json.loads(base64.urlsafe_b64decode(
+                ws.receive_json()["policy_snapshot"].split(".")[1] + "=="))
+            assert revoked["policy_revision"] > policy["policy_revision"]
+            for capability in ("task_create", "project_publish", "task_share",
+                               "engine_install", "allow_local_providers"):
+                assert revoked[capability] is False, capability
+            client.cookies.clear()
+            login = client.post("/api/auth/login", json={
+                "username": "recovery", "password": "RecoveryPassphrase-2026!",
+            })
+            recovery_headers = {"X-CSRF-Token": login.json()["csrf_token"]}
+            assert client.post("/api/auth/step-up", headers=recovery_headers, json={
+                "password": "RecoveryPassphrase-2026!",
+            }).status_code == 200
+            assert client.post(f"/api/admin/users/{user_id}/roles", headers=recovery_headers, json={
+                "role": "super_admin", "scope_type": "platform",
+            }).status_code == 201
+            ws.send_json({"kind": "heartbeat"})
+            restored = json.loads(base64.urlsafe_b64decode(
+                ws.receive_json()["policy_snapshot"].split(".")[1] + "=="))
+            assert restored["policy_revision"] > revoked["policy_revision"]
+            for capability in ("task_create", "project_publish", "task_share",
+                               "engine_install", "allow_local_providers"):
+                assert restored[capability] is True, capability
+
+
 def test_capability_assignment_changes_signed_policy_revision(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:
         device_id, token, device_key, csrf = _active_device(client)
         user_id = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))["user_id"]
-        with client.websocket_connect("/api/control/ws") as ws:
+        csrf = _ordinary_device_owner(client, user_id, csrf)
+        with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             initial = ws.receive_json()
             initial_policy = json.loads(base64.urlsafe_b64decode(initial["policy_snapshot"].split(".")[1] + "=="))
@@ -773,7 +907,7 @@ def test_control_delivers_encrypted_provider_bundle_and_records_application(tmp_
                            headers={"X-CSRF-Token": csrf}, json={
                                "subject_type": "user", "subject_id": user_id,
                            }).status_code == 200
-        with client.websocket_connect("/api/control/ws") as ws:
+        with client.websocket_connect("/ws/control") as ws:
             _handshake(ws, token, device_key)
             hello = ws.receive_json()
             assert "secret-api-key" not in json.dumps(hello)
@@ -806,6 +940,7 @@ def test_admin_provider_probe_runs_on_assigned_pc_and_returns_only_safe_result(t
     with TestClient(app, base_url="https://gateway.test") as client:
         device_id, token, device_key, csrf = _active_device(client)
         user_id = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))["user_id"]
+        csrf = _ordinary_device_owner(client, user_id, csrf)
         provider = client.post("/api/admin/providers", headers={"X-CSRF-Token": csrf}, json={
             "name": "Company API", "type": "custom", "protocols": ["openai_responses"],
             "protocol_base_urls": {"openai_responses": "https://api.example.test"},
@@ -827,7 +962,7 @@ def test_admin_provider_probe_runs_on_assigned_pc_and_returns_only_safe_result(t
         targets_path = f"/api/admin/providers/{provider_id}/test-targets"
         assert client.get(targets_path).json()["devices"] == []
         with ThreadPoolExecutor(max_workers=1) as pool:
-            with client.websocket_connect("/api/control/ws") as ws:
+            with client.websocket_connect("/ws/control") as ws:
                 _handshake(ws, token, device_key)
                 assert ws.receive_json()["kind"] == "hello"
                 targets = client.get(targets_path, params={"q": "Alice"}).json()

@@ -10,6 +10,7 @@ from sqlalchemy.orm import aliased
 from gateway.services.identity import COOKIE_NAME, IdentityService
 
 from gateway.models import DirectoryDepartment, DirectoryMembership, DirectoryPerson, IdentitySource, User
+from gateway.services.directory_names import directory_name
 
 
 """Scoped, read-only organization directory for management pages."""
@@ -18,8 +19,6 @@ from gateway.models import DirectoryDepartment, DirectoryMembership, DirectoryPe
 async def _scope(call: GatewayCall, session) -> set[str] | None:
     identity = IdentityService(call.database)
     actor, _ = await identity.session_user(call.tokens.get(COOKIE_NAME))
-    if actor.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     return await identity.manageable_department_ids(session, actor.id)
 
 
@@ -98,7 +97,7 @@ async def list_departments(call: GatewayCall, source_id: str | None = None,
                 .group_by(DirectoryDepartment.source_id, DirectoryDepartment.parent_external_id))).all()
             child_counts = {(source, external): count for source, external, count in child_rows}
         departments = [{'id': row.id, 'source_id': row.source_id, 'external_id': row.external_id,
-                        'display_name': row.display_name, 'parent_external_id': row.parent_external_id,
+                        'display_name': directory_name(row.display_name, row.parent_external_id, provider, tenant_id), 'parent_external_id': row.parent_external_id,
                         'active': bool(row.active), 'provider': provider, 'tenant_id': tenant_id,
                         'direct_members': member_counts.get(row.id, 0),
                         'child_count': child_counts.get((row.source_id, row.external_id), 0)}

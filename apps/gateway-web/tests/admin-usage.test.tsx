@@ -9,9 +9,13 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', {
 })
 Object.assign(globalThis, { window: dom.window, document: dom.window.document,
   HTMLElement: dom.window.HTMLElement, MutationObserver: dom.window.MutationObserver,
-  Event: dom.window.Event })
+  Event: dom.window.Event, getComputedStyle: dom.window.getComputedStyle,
+  SVGElement: dom.window.SVGElement, Element: dom.window.Element, ShadowRoot: dom.window.ShadowRoot })
+dom.window.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent() { return false }, media: '', onchange: null })
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator })
-const { cleanup, fireEvent, render, screen, waitFor } = await import('@testing-library/react')
+globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
+const { cleanup, fireEvent, render, screen, waitFor, configure } = await import('@testing-library/react')
+configure({ asyncUtilTimeout: 5000 })
 const originalFetch = globalThis.fetch
 afterEach(() => { cleanup(); globalThis.fetch = originalFetch })
 
@@ -82,11 +86,11 @@ test('usage page filters summaries and locates unmetered and metered events', as
   fireEvent.click(screen.getByRole('button', { name: '重试' }))
   await screen.findByText('model-b')
   assert.match(document.body.textContent ?? '', /总 Token 未知 · 估算成本 未完成计量/)
-  fireEvent.change(screen.getByLabelText('开始时间'), { target: { value: '2026-09-30T10:00' } })
-  fireEvent.change(screen.getByLabelText('结束时间'), { target: { value: '2026-09-29T10:00' } })
-  fireEvent.click(screen.getByRole('button', { name: '查询用量' }))
-  assert.match(screen.getByRole('alert').textContent ?? '', /结束时间必须晚于开始时间/)
-  fireEvent.change(screen.getByLabelText('开始时间'), { target: { value: '2026-09-28T10:00' } })
+  const initialQuery = new URLSearchParams(urls.find(url => url.startsWith('/api/admin/usage?'))!.split('?')[1])
+  assert.ok(initialQuery.get('from_time'))
+  assert.ok(initialQuery.get('to_time'))
+  const duration = Date.parse(initialQuery.get('to_time')!) - Date.parse(initialQuery.get('from_time')!)
+  assert.ok(duration >= 28 * 86400000 && duration <= 31 * 86400000)
   fireEvent.change(screen.getByLabelText('计量来源'), { target: { value: 'reported_by_device' } })
   fireEvent.change(screen.getByLabelText('模型'), { target: { value: 'model-a' } })
   fireEvent.click(screen.getByRole('button', { name: '查询用量' }))
@@ -99,8 +103,8 @@ test('usage page filters summaries and locates unmetered and metered events', as
   assert.match(document.body.textContent ?? '', /请求 request-2/)
   assert.ok(urls.some(url => url.includes('/events?') && url.includes('page=2')))
   fireEvent.change(screen.getByLabelText('对账供应商 ID'), { target: { value: 'provider-1' } })
-  fireEvent.change(screen.getByLabelText('对账开始日期'), { target: { value: '2026-09-29' } })
-  fireEvent.change(screen.getByLabelText('对账结束日期'), { target: { value: '2026-09-29' } })
+  fireEvent.click(await screen.findByPlaceholderText('对账开始日期'))
+  fireEvent.click(await screen.findByText('最近 7 天'))
   fireEvent.click(screen.getByRole('button', { name: '查看账单差异' }))
   await screen.findByText(/model-a · 差异/)
   assert.match(document.body.textContent ?? '', /账单 0.000040 USD/)
@@ -165,4 +169,39 @@ test('read-only usage page exposes scoped reports without global bill controls',
   assert.equal(screen.queryByRole('button', { name: '导入供应商账单' }), null)
   assert.equal(screen.queryByLabelText('对账供应商 ID'), null)
   assert.ok(paths.every(path => !path.includes('/reconciliation')))
+})
+
+test('reset restores the recent month and clears other filters', async () => {
+  const paths: string[] = []
+  globalThis.fetch = async input => {
+    paths.push(String(input))
+    return Response.json({ events: [], total: 0, groups: [], group_total: 0, event_count: 0, unmetered_count: 0, input_tokens: null, output_tokens: null, cache_read_tokens: null, cache_write_tokens: null, total_tokens: null, estimated_cost: null, billed_cost: null, currency: null })
+  }
+  render(<MemoryRouter><AdminUsagePage readOnly /></MemoryRouter>)
+  await screen.findByText('当前条件下没有计量事件。')
+  fireEvent.change(screen.getByLabelText('模型'), { target: { value: 'model-a' } })
+  fireEvent.click(screen.getByRole('button', { name: '查询用量' }))
+  await waitFor(() => assert.ok(paths.some(path => path.includes('model=model-a'))))
+  fireEvent.click(screen.getByRole('button', { name: '清除筛选' }))
+  await waitFor(() => {
+    const query = new URLSearchParams(paths.filter(path => path.startsWith('/api/admin/usage?')).at(-1)!.split('?')[1])
+    assert.ok(query.get('from_time') && query.get('to_time'))
+    assert.equal(query.get('model'), null)
+  })
+})
+
+test('calendar shortcut changes the range sent to the usage API', async () => {
+  const paths: string[] = []
+  globalThis.fetch = async input => {
+    paths.push(String(input))
+    return Response.json({ events: [], total: 0, groups: [], group_total: 0, event_count: 0, unmetered_count: 0, input_tokens: null, output_tokens: null, cache_read_tokens: null, cache_write_tokens: null, total_tokens: null, estimated_cost: null, billed_cost: null, currency: null })
+  }
+  render(<MemoryRouter><AdminUsagePage readOnly /></MemoryRouter>)
+  fireEvent.click(await screen.findByPlaceholderText('开始时间'))
+  fireEvent.click(await screen.findByText('最近 7 天'))
+  fireEvent.click(screen.getByRole('button', { name: '查询用量' }))
+  await waitFor(() => {
+    const query = new URLSearchParams(paths.filter(path => path.startsWith('/api/admin/usage?')).at(-1)!.split('?')[1])
+    assert.equal(Date.parse(query.get('to_time')!) - Date.parse(query.get('from_time')!), 7 * 86400000)
+  })
 })

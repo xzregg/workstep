@@ -22,4 +22,9 @@ def test_startup_script_builds_portal_and_launches_daemon_entrypoint(tmp_path, m
     assert "http://localhost:8700" in result.stdout
     commands = log.read_text().splitlines()
     assert commands[:2] == ["yarn build", "yarn build:gateway-share"]
-    assert commands[2] == "uv run --no-sync uvicorn main:app --host 127.0.0.1 --port 8700" + (" --reload" if reload else "")
+    assert commands[2] == "uv run --no-sync uvicorn main:app --host 0.0.0.0 --port 8700" + (" --reload" if reload else "")
+
+
+def test_settings_default_listens_on_all_interfaces():
+    from gateway.config import GatewaySettings
+    assert GatewaySettings().host == "0.0.0.0"

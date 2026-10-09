@@ -9,6 +9,13 @@ from gateway.config import GatewaySettings
 ACCOUNT = {"username": "first", "display_name": "首位用户", "password": "FirstPassphrase-2026!"}
 
 
+def test_first_registration_password_minimum_is_eight_characters(tmp_path):
+    with TestClient(create_app(GatewaySettings(data_dir=tmp_path)), base_url="https://gateway.test") as client:
+        assert client.post('/api/auth/register', json={**ACCOUNT, 'password': '1234567'}).status_code == 422
+        assert client.post('/api/auth/register', json={**ACCOUNT, 'password': '12345678'}).status_code == 201
+        assert client.get('/api/auth/session').json()['admin_roles'] == ['super_admin']
+
+
 def test_first_registration_initializes_and_grants_super_admin(tmp_path):
     with TestClient(create_app(GatewaySettings(data_dir=tmp_path)), base_url="https://gateway.test") as client:
         result = client.post("/api/auth/register", json={**ACCOUNT, "role": "super_admin"})

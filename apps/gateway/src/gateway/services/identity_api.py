@@ -26,7 +26,7 @@ USERNAME = re.compile(r"^[a-z][a-z0-9_-]{2,63}$")
 class AccountInput(BaseModel):
     username: str
     display_name: str = Field(min_length=1, max_length=256)
-    password: str = Field(min_length=12, max_length=128)
+    password: str = Field(min_length=8, max_length=128)
 
     @field_validator("username")
     @classmethod
@@ -45,7 +45,7 @@ class AccountInput(BaseModel):
 
 class SetupInput(AccountInput):
     recovery_username: str
-    recovery_password: str = Field(min_length=12, max_length=128)
+    recovery_password: str = Field(min_length=8, max_length=128)
     registration_mode: Literal["open", "open_with_approval", "closed"]
 
     @model_validator(mode="after")
@@ -64,7 +64,7 @@ class LoginInput(BaseModel):
 
 class ChangePasswordInput(BaseModel):
     current_password: str
-    new_password: str = Field(min_length=12, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class StepUpInput(BaseModel):
@@ -72,7 +72,7 @@ class StepUpInput(BaseModel):
 
 
 class ResetPasswordInput(BaseModel):
-    new_password: str = Field(min_length=12, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class AdminCreateInput(AccountInput):
@@ -129,10 +129,8 @@ def _check_csrf(call: GatewayCall, token: str) -> None:
 
 async def _active_admin_roles(call: GatewayCall, user_id: str) -> list[str]:
     async with call.database.session() as database_session:
-        roles = (await database_session.scalars(select(AdminAssignment.role).where(
-            AdminAssignment.user_id == user_id,
-            AdminAssignment.revoked_at.is_(None),
-        ))).all()
+        assignments = await IdentityService.admin_assignments_in_session(database_session, user_id)
+        roles = [row.role for row in assignments]
     return sorted(set(roles))
 
 
@@ -141,8 +139,6 @@ async def _super_admin_request(call: GatewayCall):
     identity = _identity(call)
     user, _ = await identity.session_user(token)
     _check_csrf(call, token)
-    if user.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     await identity.require_super_admin(user.id)
     return identity, user
 
@@ -150,8 +146,6 @@ async def _super_admin_request(call: GatewayCall):
 async def _super_admin_read(call: GatewayCall):
     identity = _identity(call)
     user, _ = await identity.session_user(call.tokens.get(COOKIE_NAME))
-    if user.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     await identity.require_super_admin(user.id)
     return identity, user
 
@@ -162,8 +156,6 @@ async def _user_manager_request(call: GatewayCall, target_user_id: str | None = 
     identity = _identity(call)
     user, _ = await identity.session_user(token)
     _check_csrf(call, token)
-    if user.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     await identity.require_user_manager(user.id, target_user_id, platform_only)
     return identity, user
 
@@ -175,8 +167,6 @@ async def _role_manager(call: GatewayCall, *, mutation=False):
     from .management_scope import organization_manager
     identity = _identity(call)
     actor, auth_session = await identity.session_user(call.tokens.get(COOKIE_NAME))
-    if actor.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     if mutation:
         _check_csrf(call, call.tokens.get(COOKIE_NAME))
         await identity.require_step_up(auth_session)
@@ -221,7 +211,13 @@ async def register(call: GatewayCall, response: ReplyEffects, body: AccountInput
 
 
 async def registration_policy(call: GatewayCall):
-    return {"mode": await _identity(call).registration_mode()}
+    from gateway.services.login_policy import password_login_enabled
+    async with call.database.session() as session:
+        enabled = await password_login_enabled(session)
+        from gateway.services.device_approval_policy import device_approval_mode
+        approval = await device_approval_mode(session)
+    return {"mode": await _identity(call).registration_mode() if enabled else 'closed',
+            "password_login_enabled": enabled}
 
 
 async def login(call: GatewayCall, response: ReplyEffects, body: LoginInput):
@@ -233,15 +229,17 @@ async def login(call: GatewayCall, response: ReplyEffects, body: LoginInput):
 
 async def session(call: GatewayCall):
     token = call.tokens.get(COOKIE_NAME)
-    user, _ = await _identity(call).session_user(token)
+    user, auth_session = await _identity(call).session_user(token)
     return {"user": public_user(user), "csrf_token": csrf_token(token),
+            "password_confirmation_required": auth_session.authentication_method != "scan",
             "admin_roles": await _active_admin_roles(call, user.id)}
 
 
 async def admin_access(call: GatewayCall):
-    user, _ = await _identity(call).session_user(call.tokens.get(COOKIE_NAME))
+    user, auth_session = await _identity(call).session_user(call.tokens.get(COOKIE_NAME))
     return {"roles": await _active_admin_roles(call, user.id),
-            "must_change_password": bool(user.must_change_password)}
+            "password_confirmation_required": auth_session.authentication_method != "scan",
+            "must_change_password": False}
 
 
 async def logout(call: GatewayCall, response: ReplyEffects):
@@ -279,14 +277,12 @@ async def admin_create_user(call: GatewayCall, body: AdminCreateInput):
 
 async def admin_list_users(call: GatewayCall, q: str = '',
                            group_id: str | None = None,
-                           status: Literal["active", "pending", "disabled"] | None = None,
+                           status: Literal["active", "pending", "disabled", "deleted"] | None = None,
                            sort: Literal["username", "display_name", "created_at"] = "created_at",
                            direction: Literal["asc", "desc"] = "desc",
                            page: int = 1, page_size: int = 25):
     identity = _identity(call)
     actor, _ = await identity.session_user(call.tokens.get(COOKIE_NAME))
-    if actor.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     async with call.database.session() as session:
         scoped_ids = await identity.manageable_user_ids(session, actor.id)
         conditions = []
@@ -299,6 +295,8 @@ async def admin_list_users(call: GatewayCall, q: str = '',
             conditions.append(User.id.in_(select(GroupMembership.user_id).where(GroupMembership.group_id == group_id, GroupMembership.revoked_at.is_(None))))
         if status:
             conditions.append(User.status == status)
+        else:
+            conditions.append(User.status != 'deleted')
         if q.strip():
             escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             pattern = f"%{escaped}%"
@@ -311,6 +309,8 @@ async def admin_list_users(call: GatewayCall, q: str = '',
         rows = (await session.scalars(select(User).where(*conditions)
             .order_by(ordered, User.id).offset((page - 1) * page_size).limit(page_size))).all()
         users = [{**public_user(user), "registration_source": user.registration_source,
+                  "login_username": user.username if user.password_hash else None,
+                  "is_recovery": bool(user.is_recovery),
                   "created_at": user.created_at.isoformat()} for user in rows]
     return {"users": users, "total": total, "page": page, "page_size": page_size}
 
@@ -401,7 +401,8 @@ async def admin_list_departments(call: GatewayCall, q: str = '',
                                  direction: Literal["asc", "desc"] = "asc",
                                  page: int = 1, page_size: int = 25):
     await _super_admin_read(call)
-    conditions = [DirectoryDepartment.active == 1]
+    from gateway.services.directory_departments import assignable_department
+    conditions = [assignable_department()]
     if q.strip():
         escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
@@ -434,10 +435,17 @@ async def admin_set_registration_policy(call: GatewayCall, body: RegistrationPol
 async def admin_platform_settings(call: GatewayCall):
     identity, _ = await _super_admin_read(call)
     settings = call.settings
+    from gateway.services.login_policy import password_login_enabled
+    async with call.database.session() as session:
+        enabled = await password_login_enabled(session)
+        from gateway.services.device_approval_policy import device_approval_mode
+        approval = await device_approval_mode(session)
     return {
         "gateway_id": settings.gateway_id,
         "public_origin": settings.public_origin,
         "registration_mode": await identity.registration_mode(),
+        "password_login_enabled": enabled,
+        "device_approval_mode": approval,
         "session_seconds": SESSION_SECONDS,
         "protocol_version": call.protocol_version,
         "data_dir": str(settings.data_dir),

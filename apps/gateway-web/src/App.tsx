@@ -1,11 +1,11 @@
-import { Link, Route, Routes, useLocation } from 'react-router-dom'
+import { PasswordConfirmationRequired } from './PasswordConfirmation'
+import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AdminLayout } from './AdminLayout'
 import { PortalHeader } from './PortalHeader'
 import { DesktopLoginPage } from './DesktopLoginPage'
 import { AdminDeviceGroupsPage } from './AdminDeviceGroupsPage'
 import { DeviceAdminPage } from './DeviceAdminPage'
 import { ClientDownloadPage } from './ClientDownloadPage'
-import { DeviceListPage } from './DeviceListPage'
 import { ProjectsPage } from './ProjectsPage'
 import { PortalAuthPage } from './PortalAuthPage'
 import { AccountPage } from './AccountPage'
@@ -13,9 +13,9 @@ import { AdminUsersPage } from './AdminUsersPage'
 import { AdminRolesPage } from './AdminRolesPage'
 import { AdminOverviewPage } from './AdminOverviewPage'
 import { AdminAccessGate, useAdminAccess } from './AdminAccessGate'
-import { AdminOrgPage } from './AdminOrgPage'
 import { AdminDeviceOperationsPage } from './AdminDeviceOperationsPage'
 import { AdminProjectsPage } from './AdminProjectsPage'
+import { AdminPermissionsPage } from './AdminPermissionsPage'
 import { AdminProvidersPage } from './AdminProvidersPage'
 import { AdminScopedProviderAssignmentsPage } from './AdminScopedProviderAssignmentsPage'
 import { AdminUsagePage } from './AdminUsagePage'
@@ -26,8 +26,11 @@ import { AdminSkillsPage } from './AdminSkillsPage'
 import { AdminGroupsPage } from './AdminGroupsPage'
 import { PublicSharePage } from './PublicSharePage'
 import { GatewayShareCreatePage } from './GatewayShareCreatePage'
+import { ProjectInvitationsPage } from './ProjectInvitationsPage'
+import { ProjectInvitationAcceptPage } from './ProjectInvitationAcceptPage'
 import { AdminSharesPage } from './AdminSharesPage'
 import { RegistrationPendingPage } from './RegistrationPendingPage'
+import { LegacyCompletionDestinationPage } from './LegacyCompletionDestinationPage'
 
 export function App({ deviceHost = typeof window !== 'undefined' && window.location.hostname.startsWith('d-') }: { deviceHost?: boolean }) {
   const location = useLocation()
@@ -38,21 +41,24 @@ export function App({ deviceHost = typeof window !== 'undefined' && window.locat
 
 function GatewayPortalApp() {
   const location = useLocation()
+  const authenticationNext = new URLSearchParams(location.search).get('next')
+  const deviceAuthentication = location.pathname === '/desktop/login'
+    || (['/auth', '/auth/pending'].includes(location.pathname) && authenticationNext?.startsWith('/desktop/login?'))
   const adminAccess = useAdminAccess()
-  const hasAdminAccess = adminAccess.status === 'ready' && !!adminAccess.access?.roles.length &&
-    !adminAccess.access.must_change_password
+  const hasAdminAccess = adminAccess.status === 'ready' && !!adminAccess.access?.roles.length
   return (
-    <main>
-      {!location.pathname.startsWith('/admin') && <PortalHeader hasAdminAccess={hasAdminAccess} />}
+    <PasswordConfirmationRequired.Provider value={adminAccess.access?.password_confirmation_required !== false}><main className={location.pathname === '/' ? 'gateway-workspace-portal' : undefined}>
+      {!location.pathname.startsWith('/admin') && !deviceAuthentication && <PortalHeader hasAdminAccess={hasAdminAccess} signedIn={adminAccess.status === 'ready'} checking={adminAccess.status === 'checking'} />}
       <AdminPortalRegion admin={location.pathname.startsWith('/admin')} roles={adminAccess.access?.roles ?? []}>
       <Routes>
         <Route path="/" element={<ProjectsPage />} />
+        <Route path="/tasks" element={<LegacyCompletionDestinationPage />} />
+        <Route path="/chat" element={<LegacyCompletionDestinationPage />} />
         <Route path="/groups" element={<GroupSkillsPage />} />
         <Route path="/admin" element={<AdminAccessGate state={adminAccess}><AdminOverviewPage /></AdminAccessGate>} />
         <Route path="/admin/users" element={<AdminAccessGate state={adminAccess}
           allow={['super_admin', 'identity_admin', 'org_admin', 'department_admin']}><AdminUsersPage /></AdminAccessGate>} />
-        <Route path="/admin/org" element={<AdminAccessGate state={adminAccess}
-          allow={['super_admin', 'identity_admin', 'org_admin', 'department_admin']}><AdminOrgPage roles={adminAccess.access?.roles ?? []} /></AdminAccessGate>} />
+        <Route path="/admin/org" element={<Navigate to="/admin/users" replace />} />
         <Route path="/admin/admins" element={<AdminAccessGate state={adminAccess}
           allow={['super_admin', 'org_admin']}><AdminRolesPage delegated={!adminAccess.access?.roles.includes('super_admin')} /></AdminAccessGate>} />
         <Route path="/admin/devices" element={<AdminAccessGate state={adminAccess}
@@ -63,6 +69,8 @@ function GatewayPortalApp() {
           allow={['super_admin', 'device_admin', 'org_admin', 'department_admin']}><AdminDeviceOperationsPage /></AdminAccessGate>} />
         <Route path="/admin/projects" element={<AdminAccessGate state={adminAccess}
           allow={['super_admin', 'org_admin', 'department_admin']}><AdminProjectsPage /></AdminAccessGate>} />
+        <Route path="/admin/permissions" element={<AdminAccessGate state={adminAccess}
+          allow={['super_admin']}><AdminPermissionsPage /></AdminAccessGate>} />
         <Route path="/admin/shares" element={<AdminAccessGate state={adminAccess}
           allow={['super_admin']}><AdminSharesPage /></AdminAccessGate>} />
         <Route path="/admin/providers" element={<AdminAccessGate state={adminAccess}
@@ -79,8 +87,10 @@ function GatewayPortalApp() {
         <Route path="/admin/settings" element={<AdminAccessGate state={adminAccess}
           allow={['super_admin']}><AdminPlatformSettingsPage /></AdminAccessGate>} />
         <Route path="/devices/empty" element={<ClientDownloadPage />} />
-        <Route path="/devices" element={<DeviceListPage />} />
+        <Route path="/devices" element={<Navigate to="/" replace />} />
         <Route path="/shares/new" element={<GatewayShareCreatePage />} />
+        <Route path="/project-invitations" element={<ProjectInvitationsPage />} />
+        <Route path="/project-invitations/:token" element={<ProjectInvitationAcceptPage />} />
         <Route path="/desktop/login" element={<DesktopLoginPage />} />
         <Route path="/auth" element={<PortalAuthPage />} />
         <Route path="/account" element={<AccountPage />} />
@@ -88,7 +98,7 @@ function GatewayPortalApp() {
         <Route path="*" element={<section><h2>页面不存在</h2><Link to="/">返回工作台</Link></section>} />
       </Routes>
       </AdminPortalRegion>
-    </main>
+    </main></PasswordConfirmationRequired.Provider>
   )
 }
 

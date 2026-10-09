@@ -105,7 +105,7 @@ async def test_dingtalk_stream_card_notifies_once_on_completion_and_keeps_loop_r
     assert len(calls) == 1
     assert calls[0]['at']['atUserIds'] == ['u1']
     assert calls[0]['text']['content'] == '@u1\n回复已完成，请查看上方消息。'
-    assert adapter._card_api.await_args.args[1]['cardData']['cardParamMap']['markdown'] == '完整正文'
+    assert next(c for c in reversed(adapter._card_api.await_args_list) if c.args[0] in ('POST', 'PUT')).args[1]['cardData']['cardParamMap']['markdown'] == '完整正文'
 
 
 async def test_dingtalk_card_failure_sends_full_reply_with_one_mention(monkeypatch):
@@ -137,11 +137,11 @@ async def test_dingtalk_stop_card_keeps_message_id_in_stream_updates():
     await adapter.send_card(message, ChannelCard('stop', '处理中', '点击中止',
         (ChannelButton('0', '中止'),), running=True, message_id='assistant-id'))
     await adapter.update_reply(message, '正文更新')
-    assert adapter._card_api.await_args.args[1]['cardData']['cardParamMap']['tips'] == '消息 ID: assistant-id'
-    buttons = json.loads(adapter._card_api.await_args.args[1]['cardData']['cardParamMap']['sys_full_json_obj'])['msgButtons']
+    assert next(c for c in reversed(adapter._card_api.await_args_list) if c.args[0] in ('POST', 'PUT')).args[1]['cardData']['cardParamMap']['tips'] == '消息 ID: assistant-id'
+    buttons = json.loads(next(c for c in reversed(adapter._card_api.await_args_list) if c.args[0] in ('POST', 'PUT')).args[1]['cardData']['cardParamMap']['sys_full_json_obj'])['msgButtons']
     assert buttons[0]['text'] == '中止'
     await adapter.send_text(message, '最终正文')
     await adapter.update_card(message, ChannelCard('stop', '已结束', '点击中止', running=True, message_id='assistant-id'))
-    data = adapter._card_api.await_args.args[1]['cardData']['cardParamMap']
+    data = next(c for c in reversed(adapter._card_api.await_args_list) if c.args[0] in ('POST', 'PUT')).args[1]['cardData']['cardParamMap']
     assert data['tips'] == '消息 ID: assistant-id'
     assert data['markdown'] == '最终正文'

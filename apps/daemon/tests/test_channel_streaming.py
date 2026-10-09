@@ -100,7 +100,7 @@ async def test_dingtalk_progress_replaces_one_card_and_final_does_not_add_text()
     await adapter.update_reply(message, '@编写\n部分正文')
     await adapter.send_text(message, '@编写\n完整正文\n\n已完成')
     calls = adapter._card_api.await_args_list
-    assert [c.args[0] for c in calls] == ['POST','PUT','PUT']
+    assert [c.args[0] for c in calls] == ['POST','PUT','STREAM','STREAM','PUT']
     assert len({c.args[1]['outTrackId'] for c in calls}) == 1
     assert calls[-1].args[1]['cardData']['cardParamMap']['markdown'] == '@编写\n完整正文\n\n已完成'
     adapter._send_text.assert_not_awaited()
@@ -176,9 +176,9 @@ async def test_dingtalk_stop_button_stays_on_the_streaming_reply_and_finish_keep
     await adapter.update_reply(message, '部分正文')
     await adapter.update_reply(message, '更多正文')
     calls = adapter._card_api.await_args_list
-    assert [c.args[0] for c in calls] == ['POST', 'PUT', 'PUT']
+    assert [c.args[0] for c in calls] == ['POST', 'PUT', 'STREAM', 'PUT', 'STREAM']
     assert {c.args[1]['outTrackId'] for c in calls} == {'stop-card'}
-    for call in calls:
+    for call in (c for c in calls if c.args[0] != 'STREAM'):
         buttons = json.loads(call.args[1]['cardData']['cardParamMap']['sys_full_json_obj'])['msgButtons']
         assert [button['text'] for button in buttons] == ['终止']
     await adapter.send_text(message, '完整正文')
@@ -210,7 +210,8 @@ async def test_wecom_running_reply_uses_independent_stop_card(conversation_type)
     assert bodies[1]['chatid'] == 'room'
     assert bodies[1]['template_card']['main_title']['title'] == '处理中'
     assert bodies[1]['template_card']['button_list'][0]['style'] == 3
-    assert '消息 ID: assistant' in bodies[1]['template_card']['sub_title_text']
+    assert bodies[1]['template_card']['main_title']['desc'] == 'ID: assistant'
+    assert not bodies[1]['template_card']['sub_title_text']
     assert bodies[0]['stream']['content'] == ('' if conversation_type == 'single' else '正在处理…')
     assert bodies[4]['stream']['content'] == '完整正文' + ('\n\n<@user>' if conversation_type == 'group' else '')
     assert bodies[4]['stream']['finish'] is True
@@ -267,3 +268,20 @@ async def test_dingtalk_stop_callback_preserves_reply_and_releases_completed_con
     assert adapter._card_api.await_args.args[1]['cardData']['cardParamMap']['markdown'] == '已停止。'
     assert not adapter._reply_cards
     assert not adapter._running_reply_cards
+
+
+async def test_wecom_reply_control_uses_compact_execution_metadata():
+    from types import SimpleNamespace
+    from services.channels.base import ChannelButton, ChannelCard
+    adapter = WeComAdapter({'id': 'bot'}, AsyncMock(), AsyncMock())
+    adapter._client = SimpleNamespace(send_message=AsyncMock())
+    message = IncomingMessage('bot', 'incoming', 'single', 'room', 'user', '')
+    adapter.set_reply_metadata(message, {'engine': 'codex_sdk', 'model': 'gpt-5.4'})
+    await adapter.send_card(message, ChannelCard('stop', '回复控制',
+        '点击中止可停止本次运行。\n消息 ID: assistant',
+        (ChannelButton('0', '中止', danger=True),), running=True, message_id='assistant'))
+    template = adapter._client.send_message.await_args.args[1]['template_card']
+    assert template['main_title']['desc'] == 'Codex * gpt-5.4\nID: assistant'
+    assert template['sub_title_text'] == ''
+    assert template['button_list'] == [{'text': '中止', 'key': '0', 'style': 3}]
+    assert not adapter._reply_metadata

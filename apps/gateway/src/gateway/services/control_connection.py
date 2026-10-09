@@ -42,7 +42,7 @@ from workstep_gateway_protocol import (FrameType, ProxyFrame,
 
 from gateway.models import Device, DeviceConnection, DeviceProjectSkillState, DeviceProviderApplication, PlatformProject, User, UserDevice
 
-from gateway.services.capabilities import compiled_device_policy
+from gateway.services.capabilities import compiled_device_policy, compiled_device_capabilities
 
 from gateway.services.providers_api import compile_provider_bundle, compiled_provider_access
 
@@ -117,9 +117,13 @@ async def authenticate_device(ws: GatewaySocket, message: dict, nonce: str) -> t
                 or claims.get('iss') != ws.settings.gateway_id
                 or not isinstance(claims.get("iat"), int)
                 or not isinstance(claims.get("exp"), int)
-                or claims["iat"] > now + 60 or claims["exp"] <= now
+                or claims["iat"] > now + 60
                 or claims["exp"] - claims["iat"] > 900):
             raise ValueError("Expired control credential")
+        if claims["exp"] <= now:
+            from .control_credentials import verify_reconnect_token
+            verify_reconnect_token(signer, ws.settings.gateway_id, token,
+                                   control_public_key_pem, message.get('reconnect_token'))
         device_id = claims["device_id"]
         public_key_pem = claims["device_public_key"]
         device_key = serialization.load_pem_public_key(public_key_pem.encode())
@@ -181,6 +185,16 @@ class ControlConnections:
 
     def is_online(self, device_id: str) -> bool:
         return device_id in self._active
+
+    def connection_ip(self, device_id: str) -> str | None:
+        connection = self._active.get(device_id)
+        if connection is None or connection[1].peer is None:
+            return None
+        return connection[1].peer.host
+
+    def notification_sources(self) -> list[tuple[str, str]]:
+        return [(device_id, self._control_users[device_id]) for device_id in self._active
+                if device_id in self._control_users]
 
     def active_user(self, device_id: str) -> str | None:
         return self._control_users.get(device_id) if self.is_online(device_id) else None
@@ -502,6 +516,7 @@ class DataConnection:
                          project_id: str | None = None,
                          access_level: str | None = None,
                          task_create: bool = False,
+                         device_owner: bool = False,
                          provider_ids: list[str] | None = None,
                          provider_grant_expires_at: int | None = None,
                          share_ticket: str | None = None,
@@ -616,7 +631,7 @@ class DataConnection:
                     "user_id": user_id, "username": username,
                     "display_name": display_name or username,
                     "project_id": project_id, "access_level": access_level,
-                    "task_create": task_create,
+                    "task_create": task_create, "device_owner": device_owner,
                     "provider_ids": provider_ids,
                     "provider_grant_expires_at": provider_grant_expires_at,
                 })
@@ -687,7 +702,7 @@ class DataConnection:
                         and all(isinstance(item, str) for item in pair)
                         and pair[0].lower() not in ("connection", "transfer-encoding",
                                                     "content-length", "set-cookie",
-                                                    "content-security-policy",
+                                                    "content-security-policy", "x-frame-options",
                                                     "access-control-allow-origin")):
                     value = pair[1]
                     if pair[0].lower() == "location":
@@ -695,14 +710,24 @@ class DataConnection:
                         if parsed.hostname in ("127.0.0.1", "localhost"):
                             value = urlunsplit((public_scheme, remote_host, parsed.path,
                                                 parsed.query, parsed.fragment))
+                    if pair[0].lower() == 'location' and call.workspace_path:
+                        parsed = urlsplit(value)
+                        if value.startswith('/') and not value.startswith('//'):
+                            value = call.workspace_path.rstrip('/') + value
+                        elif parsed.netloc == remote_host:
+                            value = call.workspace_path.rstrip('/') + parsed.path + ('?' + parsed.query if parsed.query else '')
                     response.headers.append(pair[0], value)
             response.headers["Content-Security-Policy"] = "; ".join((
                 "default-src 'self'", "script-src 'self' 'unsafe-inline'",
                 "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob: https:",
                 "font-src 'self' data:", f"connect-src 'self' {websocket_scheme}://{remote_host}",
                 "object-src 'none'", "base-uri 'self'", "form-action 'self'",
-                "frame-ancestors 'none'",
+                "frame-ancestors 'self'" if call.workspace_path else "frame-ancestors 'none'",
             ))
+            if call.workspace_path and not call.target.path.startswith('/api/') and any(key.lower() == 'content-type' and value.startswith('text/html') for key, value in response.headers.extra):
+                from gateway.services.workspace_paths import rewrite_workspace_html
+                response.chunks = rewrite_workspace_html(response.chunks, call.workspace_path)
+                response.headers["Cache-Control"] = "no-store"
             return response
         except Exception:
             upload_task.cancel()
@@ -949,12 +974,18 @@ async def control_socket(ws: GatewaySocket):
                 session.add(DeviceConnection(id=connection_id, device_id=device_id))
         await ws.control_connections.claim(device_id, user_id, connection_id, ws, config_public_key_pem, send_json)
         signer = ws.gateway_signer
+        from .control_credentials import issue_reconnect_token
+        def reconnect_token():
+            return issue_reconnect_token(signer, ws.settings.gateway_id,
+                                         hello['authorization'], hello['control_public_key_pem'])
         policy_revision, task_create, project_publish, task_create_projects, task_create_denied_projects = await compiled_device_policy(ws.database, device_id, user_id)
         provider_ids, models = await compiled_provider_access(ws.database, device_id, user_id)
-        policy = signer.sign_policy_snapshot(gateway_id=ws.settings.gateway_id, device_id=device_id, user_id=user_id, revision=policy_revision, task_create=task_create, project_publish=project_publish, task_create_project_ids=task_create_projects, task_create_denied_project_ids=task_create_denied_projects, allowed_provider_ids=provider_ids, allowed_models=models)
+        capabilities = await compiled_device_capabilities(ws.database, device_id, user_id)
+        policy = signer.sign_policy_snapshot(gateway_id=ws.settings.gateway_id, device_id=device_id, user_id=user_id, revision=policy_revision, task_create=task_create, project_publish=project_publish, task_create_project_ids=task_create_projects, task_create_denied_project_ids=task_create_denied_projects, allowed_provider_ids=provider_ids, allowed_models=models, **capabilities)
         provider_bundle = await compile_provider_bundle(ws.database, signer, ws.settings.gateway_id, device_id, user_id, config_public_key_pem)
         skill_manifest = await compile_skill_manifest(ws.database, signer, ws.settings.gateway_id, device_id, user_id)
         await send_json({"kind": "hello", "version": 1, "device_id": device_id,
+                            "reconnect_token": reconnect_token(),
                             "gateway_public_key_pem": signer.public_key_pem,
                             "policy_snapshot": policy,
                             "provider_bundle": provider_bundle,
@@ -1133,6 +1164,8 @@ async def control_socket(ws: GatewaySocket):
                         published = bool(project and project.status == "active"
                                          and project.access_mode == "remote_published")
                         grants = await project_grant_rows(session, project.id) if published else []
+                        host_device = await session.get(Device, device_id)
+                        can_invite = bool(host_device and host_device.owner_user_id == user_id)
                     can_manage = await IdentityService(ws.database).is_super_admin(user_id)
                     _, _, can_publish, _, _ = await compiled_device_policy(ws.database, device_id, user_id)
                     await send_json({"kind": "project_publish_ack", "version": 1,
@@ -1145,6 +1178,7 @@ async def control_socket(ws: GatewaySocket):
                                          "access_level",
                                      )} for row in grants],
                                      "can_manage": can_manage,
+                                     "can_invite": can_invite,
                                      "can_publish": can_publish})
                     continue
                 _, _, may_publish, _, _ = await compiled_device_policy(ws.database, device_id, user_id)
@@ -1246,10 +1280,12 @@ async def control_socket(ws: GatewaySocket):
                 return
             policy_revision, task_create, project_publish, task_create_projects, task_create_denied_projects = await compiled_device_policy(ws.database, device_id, user_id)
             provider_ids, models = await compiled_provider_access(ws.database, device_id, user_id)
-            policy = signer.sign_policy_snapshot(gateway_id=ws.settings.gateway_id, device_id=device_id, user_id=user_id, revision=policy_revision, task_create=task_create, project_publish=project_publish, task_create_project_ids=task_create_projects, task_create_denied_project_ids=task_create_denied_projects, allowed_provider_ids=provider_ids, allowed_models=models)
+            capabilities = await compiled_device_capabilities(ws.database, device_id, user_id)
+            policy = signer.sign_policy_snapshot(gateway_id=ws.settings.gateway_id, device_id=device_id, user_id=user_id, revision=policy_revision, task_create=task_create, project_publish=project_publish, task_create_project_ids=task_create_projects, task_create_denied_project_ids=task_create_denied_projects, allowed_provider_ids=provider_ids, allowed_models=models, **capabilities)
             provider_bundle = await compile_provider_bundle(ws.database, signer, ws.settings.gateway_id, device_id, user_id, config_public_key_pem)
             skill_manifest = await compile_skill_manifest(ws.database, signer, ws.settings.gateway_id, device_id, user_id)
             await send_json({"kind": "heartbeat_ack", "version": 1,
+                                "reconnect_token": reconnect_token(),
                                 "device_id": device_id, "policy_snapshot": policy,
                                 "provider_bundle": provider_bundle,
                                 "skill_manifest": skill_manifest,

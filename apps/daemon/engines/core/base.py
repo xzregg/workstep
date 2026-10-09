@@ -468,8 +468,7 @@ class BaseLLMEngine(ABC):
         return ProviderRuntimeConfig(model=model)
 
     def require_native_credentials_allowed(self) -> None:
-        if getattr(self.provider_config_store(), 'managed_gateway_id', None):
-            raise ValueError('受管模式不支持使用该引擎的本机原生凭据')
+        """Gateway distribution does not disable engine-native credentials."""
 
     def resolve_provider_runtime(
         self,
@@ -482,8 +481,6 @@ class BaseLLMEngine(ABC):
         if not model:
             model = config_store.get_engine_default_model(self.ENGINE_ID) or None
         if not selected:
-            if getattr(config_store, "managed_gateway_id", None):
-                raise ValueError("受管模式需要当前用户获授权的供应商")
             if self.provider_required():
                 raise ValueError("该引擎需要先选择供应商")
             return self.build_native_runtime(model)
@@ -504,24 +501,17 @@ class BaseLLMEngine(ABC):
     def resolve_provider_id(self, provider_id: str | None = None) -> str:
         """Resolve an explicit provider override against the engine default."""
         selected = str(provider_id or "").strip()
-        if not selected:
-            config_store = self.provider_config_store()
-            get_managed_default = getattr(config_store, "get_managed_default_provider", None)
-            if callable(get_managed_default):
-                selected = str(get_managed_default() or "").strip()
-        if not selected:
-            selected = str(
-                self.get_config_values().get("provider_id") or ""
-            ).strip()
-        if selected:
-            return selected
         config_store = self.provider_config_store()
+        get_managed_default = getattr(config_store, "get_managed_default_provider", None)
+        managed_default = get_managed_default() if callable(get_managed_default) else ""
         get_engine_provider = getattr(config_store, "get_engine_provider", None)
-        return (
-            str(get_engine_provider(self.ENGINE_ID) or "").strip()
-            if callable(get_engine_provider)
-            else ""
-        )
+        if not selected:
+            selected = str(self.get_config_values().get("provider_id") or "").strip()
+        if not selected and callable(get_engine_provider):
+            selected = str(get_engine_provider(self.ENGINE_ID) or "").strip()
+        if managed_default and (not selected or config_store.get_provider(selected) is None):
+            return str(managed_default)
+        return selected
 
     @classmethod
     def provider_config_field(cls) -> EngineConfigField | None:
@@ -576,7 +566,7 @@ class BaseLLMEngine(ABC):
             get_managed_default = getattr(config_store, "get_managed_default_provider", None)
             managed_default = get_managed_default() if callable(get_managed_default) else ""
             if managed_default:
-                values["provider_id"] = managed_default
+                values["provider_id"] = self.resolve_provider_id()
             elif "provider_id" not in values:
                 values["provider_id"] = config_store.get_engine_provider(self.ENGINE_ID)
         return values

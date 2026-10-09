@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 
 type Overview = {
   roles: string[]
@@ -38,7 +38,7 @@ export function AdminOverviewPage() {
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
     <div className="gateway-admin-toolbar"><h2>管理概览</h2></div>
     {access === 'checking' && !error && <p role="status">正在加载管理概览…</p>}
-    {access === 'forbidden' && <p role="alert">当前账号没有管理后台权限，或需要先<Link to="/account">修改初始密码</Link>。</p>}
+    {access === 'forbidden' && <p role="alert">当前账号没有管理后台权限。</p>}
     {error && <p className="gateway-auth-error" role="alert">{error} <button type="button"
       onClick={() => setRevision(value => value + 1)}>重试</button></p>}
     {access === 'ready' && overview && <>

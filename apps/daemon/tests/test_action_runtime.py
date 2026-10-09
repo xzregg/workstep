@@ -759,3 +759,26 @@ async def test_slow_chat_action_message_write_does_not_block_health(action_clien
     assert health.status_code == 200
     assert time.monotonic() - before < 0.5
     assert (await request).status_code == 200
+
+
+@pytest.mark.anyio
+async def test_disabled_quick_button_is_hidden_and_cannot_run(action_client):
+    client, manager, project = action_client
+
+    def disable(_project):
+        setting = ProjectSetting.get(ProjectSetting.key == "chat_quick_buttons")
+        buttons = json.loads(setting.value_json)
+        buttons[0]["enabled"] = False
+        setting.value_json = json.dumps(buttons)
+        setting.save()
+
+    await manager.run_db(project.id, disable)
+    listing = await client.get(f"/api/tasks/task-action/actions?project_id={project.id}")
+    assert listing.status_code == 200, listing.text
+    assert listing.json()["buttons"] == []
+    denied = await client.post(
+        f"/api/tasks/task-action/actions/run?project_id={project.id}",
+        json={"button_id": "restart", "source": "project", "confirmed": True},
+    )
+    assert denied.status_code == 404, denied.text
+    assert await manager.run_db(project.id, lambda _project: Task.get_by_id("task-action").messages.count()) == 0

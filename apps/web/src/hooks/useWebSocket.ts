@@ -1,3 +1,5 @@
+import { postAndroidNotification } from '../utils/completionNotifications'
+import { gatewayFetch, gatewayResourceUrl } from '../utils/gatewayWorkspacePath'
 /**
  * useWebSocket — WebSocket connection with auto-reconnect.
  *
@@ -116,7 +118,7 @@ export function useWebSocket() {
   useEffect(() => {
     flushSubscription()
     const project = useProjectStore.getState().activeProject
-    window.WorkStepAndroid?.postMessage(JSON.stringify({ type: 'project', projectId: project?.id || '' }))
+    postAndroidNotification({ type: 'project', projectId: project?.id || '' })
     if (project) {
       void syncBrowserPush({
         projectId: project.id, projectName: project.name,
@@ -159,7 +161,7 @@ export function useWebSocket() {
       ) return
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const ws = new WebSocket(`${protocol}//${window.location.host}/ws`)
+      const ws = new WebSocket(gatewayResourceUrl(`${protocol}//${window.location.host}/ws`))
       wsRef.current = ws
       connectTimeout = setTimeout(() => {
         if (wsRef.current === ws && ws.readyState === WebSocket.CONNECTING) ws.close()
@@ -184,7 +186,7 @@ export function useWebSocket() {
           if (disconnectedAt && document.visibilityState === 'hidden') {
             const since = disconnectedAt
             const subscription = buildSubscription()
-            void fetch(`/api/completion-notifications/recent?${new URLSearchParams({
+            void gatewayFetch(`/api/completion-notifications/recent?${new URLSearchParams({
               project_id: projectId, since: String(since),
             })}`).then(async (response) => {
               if (!response.ok) return
@@ -240,10 +242,10 @@ export function useWebSocket() {
               sessionId: parsed.session_id || null,
               taskId,
             }
-            window.WorkStepAndroid?.postMessage(JSON.stringify({
+            postAndroidNotification({
               type: 'watch', ...watch, scopeName: completionScopeName(watch.projectId, watch),
               url: notificationUrlFor({ ...watch, outcome: 'succeeded', title: '', body: '' }),
-            }))
+            })
           }
           if (parsed.type === 'RUN_STARTED' && parsed.project_id && parsed.task_id && parsed.step_key) {
             const watch = {
@@ -252,16 +254,16 @@ export function useWebSocket() {
               taskId: parsed.task_id,
               stepKey: parsed.step_key,
             }
-            window.WorkStepAndroid?.postMessage(JSON.stringify({
+            postAndroidNotification({
               type: 'watch', ...watch, scopeName: completionScopeName(watch.projectId, watch),
               url: notificationUrlFor({ ...watch, sessionId: null, outcome: 'succeeded', title: '', body: '' }),
-            }))
+            })
           }
           const notice = completionNotice(parsed)
           if (notice) {
             notifyCompletion(notice, notificationUrlFor(notice))
-            window.WorkStepAndroid?.postMessage(JSON.stringify({ type: 'unwatch', id: parsed.step_key
-              ? `${parsed.project_id}:${parsed.task_id}:step:${parsed.step_key}` : notice.id }))
+            postAndroidNotification({ type: 'unwatch', id: parsed.step_key
+              ? `${parsed.project_id}:${parsed.task_id}:step:${parsed.step_key}` : notice.id })
             if (notice.sessionId) unwatchPendingCompletion(notice.projectId, { sessionId: notice.sessionId })
             if (notice.taskId) unwatchPendingCompletion(notice.projectId, { taskId: notice.taskId })
           }

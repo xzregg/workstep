@@ -4,8 +4,8 @@ import { Link, useNavigate } from 'react-router-dom'
 
 type User = { username: string; display_name: string; must_change_password: boolean }
 
-export function validPasswordChange(current: string, next: string, confirmation: string): boolean {
-  return !!current && next.length >= 12 && next.length <= 128 && next !== current && next === confirmation
+export function validPasswordChange(current: string, next: string, confirmation: string, passwordRequired = true): boolean {
+  return (!passwordRequired || !!current) && next.length >= 8 && next.length <= 128 && next !== current && next === confirmation
 }
 
 export function AccountPage() {
@@ -13,6 +13,7 @@ export function AccountPage() {
   const [status, setStatus] = useState<'checking' | 'ready' | 'expired'>('checking')
   const [user, setUser] = useState<User | null>(null)
   const [csrf, setCsrf] = useState('')
+  const [passwordRequired, setPasswordRequired] = useState(true)
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [confirmation, setConfirmation] = useState('')
@@ -28,6 +29,7 @@ export function AccountPage() {
         const session = await response.json()
         if (!controller.signal.aborted) {
           setUser(session.user)
+          setPasswordRequired(session.password_confirmation_required !== false)
           setCsrf(session.csrf_token)
           setStatus('ready')
         }
@@ -38,7 +40,7 @@ export function AccountPage() {
 
   async function changePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!validPasswordChange(current, next, confirmation)) return
+    if (!validPasswordChange(current, next, confirmation, passwordRequired)) return
     setBusy(true); setError(''); setNotice('')
     try {
       const response = await fetch('/api/auth/password', {
@@ -77,19 +79,18 @@ export function AccountPage() {
         <div><dt>显示名称</dt><dd>{user.display_name}</dd></div>
         <div><dt>用户名</dt><dd>{user.username}</dd></div>
       </dl>
-      {user.must_change_password && <p role="status">请先修改初始密码。</p>}
       <form className="gateway-auth-form gateway-account-form" onSubmit={event => void changePassword(event)}>
         <h3>修改密码</h3>
-        <label htmlFor="account-current-password">当前密码</label>
+        {passwordRequired && <><label htmlFor="account-current-password">当前密码</label>
         <input id="account-current-password" type="password" autoComplete="current-password" value={current}
-          onChange={event => setCurrent(event.target.value)} required />
-        <label htmlFor="account-new-password">新密码（至少 12 位）</label>
+          onChange={event => setCurrent(event.target.value)} required /></>}
+        <label htmlFor="account-new-password">新密码（至少 8 位）</label>
         <input id="account-new-password" type="password" autoComplete="new-password" value={next}
-          onChange={event => setNext(event.target.value)} required minLength={12} />
+          onChange={event => setNext(event.target.value)} required minLength={8} />
         <label htmlFor="account-confirm-password">确认新密码</label>
         <input id="account-confirm-password" type="password" autoComplete="new-password" value={confirmation}
           onChange={event => setConfirmation(event.target.value)} required />
-        <button type="submit" disabled={busy || !validPasswordChange(current, next, confirmation)}>
+        <button type="submit" disabled={busy || !validPasswordChange(current, next, confirmation, passwordRequired)}>
           {busy ? '正在保存…' : '保存新密码'}
         </button>
       </form>

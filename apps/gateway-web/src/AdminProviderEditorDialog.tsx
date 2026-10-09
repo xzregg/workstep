@@ -1,3 +1,4 @@
+import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 
@@ -33,7 +34,8 @@ export function AdminProviderEditorDialog({ provider, csrf, onClose, onSaved }: 
   const [priceVersion, setPriceVersion] = useState(provider?.prices.version ?? 'v1')
   const [prices, setPrices] = useState<Prices>(provider?.prices.models ?? {})
   const [apiKey, setApiKey] = useState('')
-  const [password, setPassword] = useState('')
+  const [currentKey, setCurrentKey] = useState<string | null>(null)
+  const { password, setPassword, passwordRequired, passwordReady } = useStepUpPassword()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [discard, setDiscard] = useState(false)
@@ -42,7 +44,7 @@ export function AdminProviderEditorDialog({ provider, csrf, onClose, onSaved }: 
   const protocolUrlsValid = selectedProtocols.length > 0 && selectedProtocols.every(protocol => {
     try {
       const url = new URL(urls[protocol] ?? '')
-      return url.protocol === 'https:' && !!url.hostname && !url.username && !url.password && !url.hash
+      return ['http:', 'https:'].includes(url.protocol) && !!url.hostname && !url.username && !url.password && !url.hash
     } catch { return false }
   })
   const modelsValid = models.length <= 1000 && new Set(models).size === models.length &&
@@ -53,7 +55,7 @@ export function AdminProviderEditorDialog({ provider, csrf, onClose, onSaved }: 
   })
   const valid = !!name.trim() && name === name.trim() && !!type.trim() && type === type.trim() &&
     !!priceVersion.trim() && protocolUrlsValid && modelsValid && pricesValid &&
-    (!!provider || !!apiKey) && !!password
+    (!!provider || !!apiKey) && passwordReady
   const dirty = name !== (provider?.name ?? '') || type !== (provider?.type ?? 'custom') ||
     JSON.stringify(selectedProtocols) !== JSON.stringify(provider?.protocols ?? []) ||
     JSON.stringify(urls) !== JSON.stringify(provider?.protocol_base_urls ?? {}) ||
@@ -61,13 +63,30 @@ export function AdminProviderEditorDialog({ provider, csrf, onClose, onSaved }: 
     priceVersion !== (provider?.prices.version ?? 'v1') ||
     JSON.stringify(prices) !== JSON.stringify(provider?.prices.models ?? {}) || !!apiKey || !!password
 
+  async function revealCredential() {
+    if (!provider || busy || !passwordReady) return
+    if (currentKey !== null) { setCurrentKey(null); return }
+    setBusy(true); setError('')
+    try {
+      const step = await confirmStepUp(csrf, password, passwordRequired)
+      if (!step.ok) throw new Error('密码验证失败。')
+      const response = await fetch(`/api/admin/providers/${encodeURIComponent(provider.id)}/credential`, {
+        method: 'POST', credentials: 'same-origin', cache: 'no-store',
+        headers: { 'X-CSRF-Token': csrf },
+      })
+      if (!response.ok) throw new Error('读取当前凭据失败。')
+      const result = await response.json() as { api_key: string }
+      setCurrentKey(result.api_key)
+    } catch (reason) { setError(reason instanceof Error ? reason.message : '读取当前凭据失败。') }
+    finally { setBusy(false) }
+  }
+
   async function save() {
     if (!valid) return
     setBusy(true); setError('')
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
-      const step = await fetch('/api/auth/step-up', { method: 'POST', credentials: 'same-origin', headers,
-        body: JSON.stringify({ password }) })
+      const step = await confirmStepUp(csrf, password, passwordRequired)
       if (!step.ok) throw new Error('密码验证失败。')
       const priced: Record<string, Record<string, string>> = {}
       for (const model of models) {
@@ -102,7 +121,7 @@ export function AdminProviderEditorDialog({ provider, csrf, onClose, onSaved }: 
       <input id="provider-name" value={name} maxLength={256} onChange={event => setName(event.target.value)} />
       <label htmlFor="provider-type">供应商类型</label>
       <input id="provider-type" value={type} maxLength={64} onChange={event => setType(event.target.value)} />
-      <fieldset className="gateway-provider-protocols"><legend>协议与 HTTPS 地址</legend>
+      <fieldset className="gateway-provider-protocols"><legend>协议与 API 地址</legend>
         {protocols.map(([protocol, label]) => <div key={protocol}>
           <label><input type="checkbox" checked={selectedProtocols.includes(protocol)} onChange={event =>
             setSelectedProtocols(current => event.target.checked ? [...current, protocol] : current.filter(value => value !== protocol))
@@ -123,13 +142,20 @@ export function AdminProviderEditorDialog({ provider, csrf, onClose, onSaved }: 
             value={prices[model]?.[field] ?? ''} onChange={event => setPrices(current => ({
               ...current, [model]: { ...current[model], [field]: event.target.value },
             }))} /></label>)}</fieldset>)}
+      {provider?.has_key && <>
+        <label htmlFor="provider-current-key">当前凭据</label>
+        <input id="provider-current-key" readOnly autoComplete="off"
+          type={currentKey === null ? 'password' : 'text'} value={currentKey ?? '••••••••'} />
+        <button type="button" disabled={busy || (currentKey === null && !passwordReady)}
+          onClick={() => void revealCredential()}>
+          {currentKey === null ? '显示当前凭据' : '隐藏当前凭据'}
+        </button>
+      </>}
       <label htmlFor="provider-api-key">{provider ? '新凭据（留空则保留当前凭据）' : '供应商凭据'}</label>
       <input id="provider-api-key" type="password" autoComplete="new-password" value={apiKey}
         onChange={event => setApiKey(event.target.value)} />
-      <label htmlFor="provider-admin-password">输入管理员密码确认</label>
-      <input id="provider-admin-password" type="password" autoComplete="current-password" value={password}
-        onChange={event => setPassword(event.target.value)} />
-      {!protocolUrlsValid && selectedProtocols.length > 0 && <p>请填写所选协议的 HTTPS 地址。</p>}
+      <PasswordConfirmation id="provider-admin-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
+      {!protocolUrlsValid && selectedProtocols.length > 0 && <p>请填写所选协议的 HTTP 或 HTTPS 地址。</p>}
       {!modelsValid && <p>模型名称重复或超过长度限制。</p>}
       {!pricesValid && <p>已填写单价的模型需要完整的四项非负单价。</p>}
       {error && <p role="alert" className="gateway-auth-error">{error}</p>}
@@ -142,15 +168,14 @@ export function AdminProviderEditorDialog({ provider, csrf, onClose, onSaved }: 
 export function AdminProviderDisableDialog({ provider, csrf, onClose, onSaved }: {
   provider: ManagedProvider; csrf: string; onClose: () => void; onSaved: () => void
 }) {
-  const [password, setPassword] = useState('')
+  const { password, setPassword, passwordRequired, passwordReady } = useStepUpPassword()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   async function disable() {
     setBusy(true); setError('')
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
-      const step = await fetch('/api/auth/step-up', { method: 'POST', credentials: 'same-origin', headers,
-        body: JSON.stringify({ password }) })
+      const step = await confirmStepUp(csrf, password, passwordRequired)
       if (!step.ok) throw new Error('密码验证失败。')
       const response = await fetch(`/api/admin/providers/${encodeURIComponent(provider.id)}/disable`, {
         method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf },
@@ -161,10 +186,8 @@ export function AdminProviderDisableDialog({ provider, csrf, onClose, onSaved }:
     finally { setBusy(false) }
   }
   return <GatewayConfirmDialog title="停用供应商" message={`停用「${provider.name}」后，设备将收到新的配置版本。`}
-    confirmLabel="确认停用" busy={busy} disabled={!password} onConfirm={() => void disable()} onCancel={onClose}>
-    <label htmlFor="disable-provider-password">输入管理员密码确认</label>
-    <input id="disable-provider-password" type="password" autoComplete="current-password" value={password}
-      onChange={event => setPassword(event.target.value)} />
+    confirmLabel="确认停用" busy={busy} disabled={!passwordReady} onConfirm={() => void disable()} onCancel={onClose}>
+    <PasswordConfirmation id="disable-provider-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}
   </GatewayConfirmDialog>
 }

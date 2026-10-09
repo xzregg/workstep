@@ -9,6 +9,7 @@ from dataclasses import replace
 
 from aibot import WSClient, WSClientOptions
 
+from services.channels.card_status import execution_header
 from services.channels.base import ChannelAdapter, ChannelCapabilities, ChannelAttachment, IncomingMessage, OutgoingMessage, ChannelCard, ChannelAction, ChannelQuote
 from services.channels.media import fetch_media
 
@@ -48,6 +49,7 @@ class WeComAdapter(ChannelAdapter):
         self._task: asyncio.Task | None = None
         self._stopped = False
         self._last_error = ""
+        self._reply_metadata = {}
 
     async def start(self) -> None:
         self._stopped = False
@@ -215,13 +217,25 @@ class WeComAdapter(ChannelAdapter):
         await self._client.reply_stream(self._reply_frame(message), self._stream_id(message), text, finish=finish)
 
 
+    def set_reply_metadata(self, message: IncomingMessage, metadata: dict) -> None:
+        self._reply_metadata[(message.conversation_id, message.message_id)] = dict(metadata)
+
     async def send_card(self, recipient: IncomingMessage, card: ChannelCard) -> None:
         if not self._client:
             raise RuntimeError("企业微信机器人未连接")
         numbered = any(len(button.label) > 4 for button in card.buttons)
         description = card.text
+        compact_description = ''
+        if card.running:
+            metadata = self._reply_metadata.pop((recipient.conversation_id, recipient.message_id), {})
+            header = execution_header(metadata)
+            details = [header] if header else []
+            if card.message_id:
+                details.append('ID: ' + card.message_id)
+            compact_description = '\n'.join(details)
+            description = ''
         identifier = '消息 ID: ' + card.message_id if card.message_id else ''
-        if identifier and identifier not in description:
+        if not card.running and identifier and identifier not in description:
             description += '\n' + identifier
         if numbered:
             description += '\n\n' + '\n'.join(f'{index + 1}. {button.label}' for index, button in enumerate(card.buttons))
@@ -235,7 +249,7 @@ class WeComAdapter(ChannelAdapter):
         # Active button cards require a nonempty title (41016 otherwise),
         # even though the SDK's shared TemplateCard type makes it optional.
         template = {"card_type":"button_interaction", "task_id":card.id,
-                    "main_title":{"title":title}, "sub_title_text":description,
+                    "main_title":{"title":title, **({"desc":compact_description} if compact_description else {})}, "sub_title_text":description,
                     "button_list":[{"text":str(index + 1) if numbered else button.label,"key":button.key, **({'style':3} if button.danger else {})}
                                    for index, button in enumerate(card.buttons)]}
         # Send controls independently: successful combined-reply ACKs did not

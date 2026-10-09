@@ -1,7 +1,9 @@
+import { AdminProjectGrantDialog } from '../src/AdminProjectGrantDialog'
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
 import { JSDOM } from 'jsdom'
 import { MemoryRouter } from 'react-router-dom'
+import { AdminAccessGrants } from '../src/AdminAccessGrants'
 import { AdminProjectsPage } from '../src/AdminProjectsPage'
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://gateway.test/admin/projects' })
@@ -73,10 +75,11 @@ test('project management searches metadata and grants and revokes access', async
   fireEvent.click(screen.getByRole('button', { name: '新增授权' }))
   const dialog = screen.getByRole('dialog', { name: '授予项目访问' })
   fireEvent.change(within(dialog).getByLabelText('对象类型'), { target: { value: 'group' } })
-  await within(dialog).findByRole('option', { name: 'Engineering' })
+  await within(dialog).findByRole('radio', { name: 'Engineering' })
   fireEvent.change(within(dialog).getByLabelText('对象类型'), { target: { value: 'user' } })
-  await within(dialog).findByRole('option', { name: 'alice' })
-  fireEvent.change(within(dialog).getByLabelText('授权对象'), { target: { value: 'user-1' } })
+  await within(dialog).findByRole('radio', { name: 'alice' })
+  fireEvent.click(within(dialog).getByRole('radio', { name: 'alice' }))
+  assert.match(dialog.textContent ?? '', /已选择：alice/)
   fireEvent.click(within(dialog).getByRole('button', { name: '取消' }))
   const discard = screen.getByRole('dialog', { name: '放弃项目授权修改' })
   fireEvent.click(within(discard).getByRole('button', { name: '取消' }))
@@ -112,4 +115,56 @@ test('project management searches metadata and grants and revokes access', async
   fireEvent.click(within(revokeRule).getByRole('button', { name: '撤销规则' }))
   await waitFor(() => assert.ok(requests.some(request => request.url.endsWith('/task-create-groups/group-1')
     && request.init?.method === 'DELETE')))
+})
+
+test('whole-device grants use the shared user/group selector and revoke endpoint',async()=>{
+ const calls:Array<{url:string;init?:RequestInit}>=[]
+ let grants:any[]=[]
+ globalThis.fetch=async(input,init)=>{
+ const url=String(input);calls.push({url,init})
+ if(url.startsWith('/api/admin/project-grant-subjects?'))return Response.json({subjects:[{id:'g',name:'研发组'}],total:1})
+ if(url==='/api/auth/step-up')return Response.json({})
+ if(init?.method==='POST'){grants=[{id:'x',subject_type:'group',subject_id:'g',subject_name:'研发组',access_level:'edit'}];return Response.json({id:'x'})}
+ if(init?.method==='DELETE'){grants=[];return new Response(null,{status:204})}
+ return Response.json({grants})
+ }
+ render(<AdminAccessGrants id="d" name="设备A" kind="devices" csrf="token" onChanged={()=>{}} />)
+ await screen.findByText('尚无访问授权。')
+ fireEvent.click(screen.getByRole('button',{name:'新增授权'}))
+ const dialog=screen.getByRole('dialog',{name:'授予设备访问'})
+ fireEvent.change(within(dialog).getByLabelText('对象类型'),{target:{value:'group'}})
+ await within(dialog).findByRole('radio',{name:'研发组'})
+ fireEvent.click(within(dialog).getByRole('radio',{name:'研发组'}))
+ assert.equal(within(dialog).queryByRole('option',{name:'只读'}),null)
+ fireEvent.change(within(dialog).getByLabelText('输入管理员密码确认'),{target:{value:'pw'}})
+ fireEvent.click(within(dialog).getByRole('button',{name:'保存授权'}))
+ await screen.findByText('研发组')
+ const post=calls.find(call=>call.init?.method==='POST' && call.url.includes('/devices/'))!
+ assert.equal(post.url,'/api/admin/devices/d/grants')
+ assert.deepEqual(JSON.parse(String(post.init?.body)),{subject_type:'group',subject_id:'g',access_level:'edit'})
+ fireEvent.click(await screen.findByRole('button',{name:'撤销'}))
+ const revoke=screen.getByRole('dialog',{name:'撤销设备授权'})
+ fireEvent.change(within(revoke).getByLabelText('输入管理员密码确认'),{target:{value:'pw'}})
+ fireEvent.click(within(revoke).getByRole('button',{name:'撤销授权'}))
+ await waitFor(()=>assert.ok(calls.some(call=>call.url==='/api/admin/devices/d/grants/group/g' && call.init?.method==='DELETE')))
+})
+
+test('grant search keeps the selected recipient and hides pagination for a single page', async () => {
+  const calls: string[] = []
+  globalThis.fetch = async input => {
+    const url = String(input); calls.push(url)
+    return Response.json({ subjects: url.includes('q=missing') ? [] : [{ id: 'alice', name: 'Alice' }], total: url.includes('q=missing') ? 0 : 1 })
+  }
+  render(<AdminProjectGrantDialog projectId="p" name="演示项目" csrf="token" onClose={() => {}} onSaved={() => {}} />)
+  const dialog = screen.getByRole('dialog', { name: '授予项目访问' })
+  fireEvent.click(await within(dialog).findByRole('radio', { name: 'Alice' }))
+  assert.equal(within(dialog).queryByRole('button', { name: '下一页' }), null)
+  fireEvent.change(within(dialog).getByLabelText('搜索授权对象'), { target: { value: 'missing' } })
+  fireEvent.click(within(dialog).getByRole('button', { name: '搜索' }))
+  await within(dialog).findByText('没有匹配的用户，请尝试其他关键词。')
+  assert.ok(within(dialog).getByText('已选择：Alice · 只读'))
+  fireEvent.change(within(dialog).getByLabelText('对象类型'), { target: { value: 'group' } })
+  await waitFor(() => assert.ok(calls.some(url => url.includes('subject_type=group'))))
+  assert.ok(within(dialog).getByText('请选择一个授权对象'))
+  assert.equal((within(dialog).getByRole('button', { name: '保存授权' }) as HTMLButtonElement).disabled, true)
 })

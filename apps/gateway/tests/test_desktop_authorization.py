@@ -184,6 +184,50 @@ def test_admin_can_list_pending_devices_for_approval(tmp_path):
         assert client.get("/api/admin/devices").status_code == 401
 
 
+def test_admin_can_rename_device_without_changing_its_identity_or_relogin_name(tmp_path):
+    with TestClient(create_app(GatewaySettings(data_dir=tmp_path, gateway_id='gateway-test')),
+                    base_url='https://gateway.test') as client:
+        csrf = _setup(client); headers = {'X-CSRF-Token': csrf}
+        key = _public_key()
+        device_id = _redeem(client, _authorize(client, csrf), key).json()['device']['id']
+        path = f'/api/admin/devices/{device_id}/name'
+        assert client.put(path, headers=headers, json={'name': '钊荣的工作电脑'}).status_code == 403
+        assert client.post('/api/auth/step-up', headers=headers,
+                           json={'password': 'OwnerPassphrase-2026!'}).status_code == 200
+        assert client.put(path, headers=headers, json={'name': '  '}).status_code == 422
+        assert client.put(path, headers=headers, json={'name': 'PC', 'id': 'other'}).status_code == 422
+        assert client.put(path, headers=headers, json={'name': ' 钊荣的工作电脑 '}).status_code == 204
+        assert client.post(f'/api/admin/devices/{device_id}/approve', headers=headers).status_code == 204
+        login = _redeem(client, _authorize(client, csrf), key)
+        assert login.status_code == 200
+        assert login.json()['device']['id'] == device_id
+        listed = client.get('/api/admin/devices').json()['devices']
+        assert [(device['id'], device['name']) for device in listed] == [(device_id, '钊荣的工作电脑')]
+
+
+def test_permanently_deleted_device_can_register_again_with_the_same_installation_key(tmp_path):
+    with TestClient(create_app(GatewaySettings(data_dir=tmp_path, gateway_id='gateway-test')),
+                    base_url='https://gateway.test') as client:
+        csrf = _setup(client); headers = {'X-CSRF-Token': csrf}
+        key = _public_key()
+        old_id = _redeem(client, _authorize(client, csrf), key).json()['device']['id']
+        assert client.delete(f'/api/admin/devices/{old_id}', headers=headers).status_code == 403
+        client.post('/api/auth/step-up', headers=headers, json={'password': 'OwnerPassphrase-2026!'})
+        client.post(f'/api/admin/devices/{old_id}/revoke', headers=headers)
+        stale_code = _authorize(client, csrf)
+        assert client.delete(f'/api/admin/devices/{old_id}', headers=headers).status_code == 204
+        assert client.get('/api/admin/devices').json()['devices'] == []
+        assert client.get('/api/devices').json()['devices'] == []
+        assert _redeem(client, stale_code, key).status_code == 401
+        registered = _redeem(client, _authorize(client, csrf), key)
+        assert registered.status_code == 200, registered.text
+        assert registered.json()['device']['id'] != old_id
+        assert registered.json()['device']['status'] == 'pending'
+        assert registered.json()['device_authorization'] is None
+        assert client.post(f'/api/admin/devices/{old_id}/approve', headers=headers).status_code == 404
+        assert 'admin.device_deleted' in client.get('/api/admin/audit').text
+
+
 def test_admin_device_list_filters_sorts_and_pages_on_server(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id="gateway-test"))
     with TestClient(app, base_url="https://gateway.test") as client:
@@ -204,3 +248,112 @@ def test_admin_device_list_filters_sorts_and_pages_on_server(tmp_path):
         assert result.json()["page"] == 2
         assert [device["name"] for device in result.json()["devices"]] == ["Team PC 02", "Team PC 03"]
         assert client.get("/api/admin/devices?page_size=101").status_code == 422
+
+
+def test_device_approval_policy_controls_new_devices_only(tmp_path):
+    with TestClient(create_app(GatewaySettings(data_dir=tmp_path,gateway_id='gateway-test')),base_url='https://gateway.test') as client:
+        csrf=_setup(client); headers={'X-CSRF-Token':csrf}
+        url='/api/admin/device-approval-policy'
+        assert client.get('/api/admin/platform-settings').json()['device_approval_mode']=='manual'
+        assert client.put(url,headers=headers,json={'mode':'automatic'}).status_code==403
+        client.post('/api/auth/step-up',headers=headers,json={'password':'OwnerPassphrase-2026!'})
+        assert client.put(url,headers=headers,json={'mode':'automatic'}).status_code==200
+        assert client.put(url,headers=headers,json={'mode':'invalid'}).status_code==422
+        key=_public_key()
+        result=_redeem(client,_authorize(client,csrf),key)
+        assert result.status_code==200,result.text
+        assert result.json()['device']['status']=='active'
+        assert result.json()['device_authorization']
+        assert client.put(url,headers=headers,json={'mode':'manual'}).status_code==200
+        assert _redeem(client,_authorize(client,csrf),key).json()['device']['status']=='active'
+
+
+def test_device_policy_slow_sql_keeps_health_responsive(tmp_path):
+    import asyncio
+    import threading
+    import time
+    from httpx import ASGITransport, AsyncClient
+    from sqlalchemy import event
+    app=create_app(GatewaySettings(data_dir=tmp_path,gateway_id='gateway-test'))
+    with TestClient(app,base_url='https://gateway.test') as client:
+        csrf=_setup(client); headers={'X-CSRF-Token':csrf}
+        client.post('/api/auth/step-up',headers=headers,json={'password':'OwnerPassphrase-2026!'})
+        reached=threading.Event()
+        def before_execute(connection,cursor,statement,parameters,context,many):
+            if statement.startswith(('INSERT INTO platform_settings','UPDATE platform_settings')):
+                reached.set(); time.sleep(.6)
+        engine=app.state.database.engine.sync_engine
+        event.listen(engine,'before_cursor_execute',before_execute)
+        async def scenario():
+            async with AsyncClient(transport=ASGITransport(app=app),base_url='https://gateway.test',cookies=client.cookies) as actor:
+                pending=asyncio.create_task(actor.put('/api/admin/device-approval-policy',headers=headers,json={'mode':'automatic'}))
+                try:
+                    assert await asyncio.to_thread(reached.wait,2)
+                    assert (await asyncio.wait_for(actor.get('/api/health'),.5)).status_code==200
+                    assert not pending.done()
+                finally:
+                    response=await pending
+                assert response.status_code==200
+        try: client.portal.call(scenario)
+        finally: event.remove(engine,'before_cursor_execute',before_execute)
+
+
+def test_owner_survives_device_login_switch_and_requires_explicit_transfer(tmp_path):
+    with TestClient(create_app(GatewaySettings(data_dir=tmp_path, gateway_id='gateway-test')),
+                    base_url='https://gateway.test') as client:
+        csrf = _setup(client); key = _public_key(); headers = {'X-CSRF-Token': csrf}
+        first = _redeem(client, _authorize(client, csrf), key).json()
+        device_id = first['device']['id']; owner_id = first['user']['id']
+        recovery = client.get('/api/admin/users').json()['users']
+        next_owner = next(user['id'] for user in recovery if user['username'] == 'recovery')
+        # A second verified device login must not implicitly transfer ownership.
+        code = _authorize(client, csrf)
+        with sqlite3.connect(tmp_path / 'workstep_platform.db') as connection:
+            connection.execute('UPDATE desktop_auth_codes SET user_id=? WHERE code_hash=?',
+                               (next_owner, hashlib.sha256(code.encode()).hexdigest()))
+            connection.execute('UPDATE users SET must_change_password=0 WHERE id=?', (next_owner,))
+        switched = _redeem(client, code, key)
+        assert switched.status_code == 200, switched.text
+        assert switched.json()['user']['id'] == next_owner
+        path = f'/api/admin/devices/{device_id}/owner'
+        assert client.get('/api/admin/devices').json()['devices'][0]['owner_user_id'] == owner_id
+        assert client.put(path, headers=headers, json={'user_id': next_owner}).status_code == 403
+        client.post('/api/auth/step-up', headers=headers, json={'password': 'OwnerPassphrase-2026!'})
+        assert client.put(path, headers=headers, json={'user_id': 'missing'}).status_code == 404
+        assert client.put(path, headers=headers, json={'user_id': next_owner}).status_code == 204
+        assert _redeem(client, _authorize(client, csrf), key).status_code == 200
+        device = client.get('/api/admin/devices').json()['devices'][0]
+        assert device['owner_user_id'] == next_owner
+        assert device['owner_name'] == 'Recovery Administrator'
+        assert 'admin.device_owner_transferred' in client.get('/api/admin/audit').text
+
+
+def test_owner_transfer_slow_database_keeps_health_responsive(tmp_path):
+    import asyncio
+    import threading
+    import time
+    from httpx import ASGITransport, AsyncClient
+    from sqlalchemy import event
+    app = create_app(GatewaySettings(data_dir=tmp_path, gateway_id='gateway-test'))
+    with TestClient(app, base_url='https://gateway.test') as client:
+        csrf = _setup(client); headers = {'X-CSRF-Token': csrf}
+        device_id = _redeem(client, _authorize(client, csrf), _public_key()).json()['device']['id']
+        user_id = next(user['id'] for user in client.get('/api/admin/users').json()['users'] if user['username'] == 'recovery')
+        client.post('/api/auth/step-up', headers=headers, json={'password': 'OwnerPassphrase-2026!'})
+        reached = threading.Event()
+        def slow_sql(connection, cursor, statement, parameters, context, many):
+            if statement.startswith('UPDATE devices SET owner_user_id'):
+                reached.set(); time.sleep(.6)
+        engine = app.state.database.engine.sync_engine
+        event.listen(engine, 'before_cursor_execute', slow_sql)
+        async def scenario():
+            async with AsyncClient(transport=ASGITransport(app=app), base_url='https://gateway.test', cookies=client.cookies) as actor:
+                pending = asyncio.create_task(actor.put(f'/api/admin/devices/{device_id}/owner', headers=headers, json={'user_id': user_id}))
+                try:
+                    assert await asyncio.to_thread(reached.wait, 2)
+                    assert (await asyncio.wait_for(actor.get('/api/health'), .5)).status_code == 200
+                    assert not pending.done()
+                finally: response = await pending
+                assert response.status_code == 204
+        try: client.portal.call(scenario)
+        finally: event.remove(engine, 'before_cursor_execute', slow_sql)

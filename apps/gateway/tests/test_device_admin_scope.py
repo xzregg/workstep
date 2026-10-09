@@ -62,6 +62,11 @@ def test_device_group_admin_cannot_manage_other_device_or_grant_itself_content_a
         assert client.get(f'/api/admin/device-operations/{private_batch}').status_code == 403
         assert client.post('/api/admin/devices/private/disable', headers=headers).status_code == 403
         assert client.post('/api/admin/devices/visible/disable', headers=headers).status_code == 204
+        assert client.put('/api/admin/devices/private/name', headers=headers, json={'name': 'Hidden PC'}).status_code == 403
+        assert client.put('/api/admin/devices/visible/name', headers=headers, json={'name': 'Team PC'}).status_code == 204
+        renamed = client.get('/api/admin/devices').json()['devices'][0]
+        assert (renamed['id'], renamed['name'], renamed['status']) == ('visible', 'Team PC', 'disabled')
+        assert client.delete('/api/admin/devices/private', headers=headers).status_code == 403
         audited = client.get('/api/admin/audit')
         assert audited.status_code == 200, audited.text
         assert 'seed-visible' in audited.text and 'seed-private' not in audited.text

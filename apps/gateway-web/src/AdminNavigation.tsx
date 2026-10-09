@@ -5,8 +5,8 @@ const modules = [
  { path: '/admin', label: '管理概览', roles: [] },
  { path: '/admin/users', label: '用户管理', roles: ['identity_admin', 'org_admin', 'department_admin'] },
  { path: '/admin/groups', label: '用户组管理', roles: ['super_admin'] },
- { path: '/admin/org', label: '组织目录', roles: ['identity_admin', 'org_admin', 'department_admin'] },
  { path: '/admin/admins', label: '管理员权限', roles: ['org_admin'] },
+ { path: '/admin/permissions', label: '权限管理', roles: ['super_admin'] },
  { path: '/admin/devices', label: '设备管理', roles: ['device_admin', 'org_admin', 'department_admin'] },
  { path: '/admin/device-groups', label: '设备组与部门', roles: ['super_admin'] },
  { path: '/admin/device-operations', label: '设备作业', roles: ['device_admin', 'org_admin', 'department_admin'] },
@@ -19,7 +19,7 @@ const modules = [
  { path: '/admin/settings', label: '平台设置', roles: ['super_admin'] },
 ]
 const groups = [
- { title: '用户与权限', paths: ['/admin/users', '/admin/groups', '/admin/org', '/admin/admins'] },
+ { title: '用户与权限', paths: ['/admin/users', '/admin/groups', '/admin/permissions', '/admin/admins'] },
  { title: '设备管理', paths: ['/admin/devices', '/admin/device-groups', '/admin/device-operations'] },
  { title: '资源管理', paths: ['/admin/projects', '/admin/shares', '/admin/providers', '/admin/skills'] },
  { title: '统计与审计', paths: ['/admin/usage', '/admin/audit'] },

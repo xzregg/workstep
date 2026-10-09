@@ -29,7 +29,8 @@ test('sandbox preparation is explicit, mode switching confirms, and failures pre
       current = { ...current, phase: 'ready', settings: { ...settings, prepared: true } }; return current
     },
     switchMode: async () => { switches++ },
-    importConfig: async () => current, remove: async () => current, logs: async () => {},
+    switchImage: async () => {},
+    importConfig: async () => current, remove: async () => current, logs: async () => {}, readLogs: async () => '', copyLogs: async () => {},
   } }
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   const button = (text: string) => [...document.querySelectorAll('button')].find(b => b.textContent === text)!
@@ -89,6 +90,35 @@ test('ordinary browser has no sandbox controls', async () => {
   } finally { await act(async () => root.unmount()); await window.happyDOM.close() }
 })
 
+test('prepared sandbox shows runtime health, port, phase, and log location', async () => {
+  const { document, window } = installDomEnvironment()
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  const current: SandboxStatus = { settings: { enabled: true, prepared: true, root: '/sandbox', project: '/project', mounts: [], dockerImage: 'sha256:old' }, phase: 'running', progress: null, error: null, running: true, health: 'healthy', hostPort: 8766, logDirectory: '/sandbox/desktop', supported: true }
+  let copied = 0
+  window.workstepDesktop = { notify() {}, sandbox: {
+    status: async () => current, hostProjects: async () => [], dockerImages: async () => ({ images: [], error: null }), chooseDirectory: async () => null,
+    prepareRuntime: async () => current, prepareImage: async () => current, prepare: async () => current,
+    migrateSettings: async () => current, switchMode: async () => {}, switchImage: async () => {}, importConfig: async () => current,
+    remove: async () => current, logs: async () => {}, readLogs: async () => '启动阶段日志\nphase=error\n容器日志\nImportError', copyLogs: async () => { copied++ },
+  } }
+  const root = createRoot(document.body.appendChild(document.createElement('div')))
+  try {
+    await act(async () => root.render(<I18nProvider><SandboxSettings /></I18nProvider>))
+    assert.match(document.body.textContent!, /运行状态运行正常/)
+    assert.match(document.body.textContent!, /当前阶段运行中/)
+    assert.match(document.body.textContent!, /后台端口8766/)
+    assert.match(document.body.textContent!, /日志目录\/sandbox\/desktop/)
+    const imageButton = [...document.querySelectorAll('button')].find(button => button.textContent === '更换镜像')!
+    assert.equal(imageButton.disabled, false)
+    await act(async () => imageButton.click())
+    assert.ok(document.querySelector('#sandbox-image'))
+    await act(async () => [...document.querySelectorAll('button')].find(button => button.textContent === '查看日志')!.click())
+    assert.match(document.body.textContent!, /ImportError/)
+    await act(async () => [...document.querySelectorAll('button')].find(button => button.textContent === '复制日志')!.click())
+    assert.equal(copied, 1)
+  } finally { await act(async () => root.unmount()); await window.happyDOM.close() }
+})
+
 test('saving never switches mode, failed migration remains retryable, and initial suggested projects are not dirty', async () => {
   const { document, window } = installDomEnvironment()
   useLocaleStore.setState({ locale: 'zh-CN' })
@@ -99,7 +129,7 @@ test('saving never switches mode, failed migration remains retryable, and initia
     prepareRuntime: async () => current, prepareImage: async () => current,
     prepare: async settings => { current = { ...current, settings: { ...settings, prepared: true } }; return current },
     migrateSettings: async () => { migrations++; if (fail) throw new Error('配置导入失败'); return current },
-    switchMode: async () => { switches++ }, importConfig: async () => current, remove: async () => current, logs: async () => {},
+    switchMode: async () => { switches++ }, switchImage: async () => {}, importConfig: async () => current, remove: async () => current, logs: async () => {}, readLogs: async () => '', copyLogs: async () => {},
   } }
   const root = createRoot(document.body.appendChild(document.createElement('div')))
   const button = (text: string) => [...document.querySelectorAll('button')].find(b => b.textContent === text)!

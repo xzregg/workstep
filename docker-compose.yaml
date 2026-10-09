@@ -1,3 +1,5 @@
+version: "3.7"
+
 services:
   workstep:
     build:
@@ -5,6 +7,7 @@ services:
       dockerfile: Dockerfile
     image: workstep:latest
     container_name: workstep
+    command: ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8765"]
     ports:
       - "${WORKSTEP_PORT:-8755}:8765"
     environment:
@@ -27,3 +30,29 @@ services:
       start_period: 40s
       retries: 3
     restart: unless-stopped
+
+  # 网关默认关闭；取消以下 gateway 配置块的注释即可启用。
+#   gateway:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile
+#     image: workstep:latest
+#     container_name: workstep-gateway
+#     command: ["python", "-m", "uvicorn", "gateway.app:app", "--host", "0.0.0.0", "--port", "8765"]
+#     ports:
+#       - "${WORKSTEP_GATEWAY_PORT:-8700}:8765"
+#     environment:
+#       TZ: Asia/Shanghai
+#       # 本机默认地址；远程部署设置为用户实际访问的 HTTPS 地址。
+#       WORKSTEP_GATEWAY_PUBLIC_ORIGIN: ${WORKSTEP_GATEWAY_PUBLIC_ORIGIN:-http://localhost:8700}
+#       WORKSTEP_GATEWAY_GATEWAY_ID: ${WORKSTEP_GATEWAY_GATEWAY_ID:-local-development}
+#     volumes:
+#       # 网关数据库、签名私钥和运行时独立持久化。
+#       - ${WORKSTEP_GATEWAY_HOME:-./data/gateway-home}:/root
+#     healthcheck:
+#       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8765/api/health"]
+#       interval: 30s
+#       timeout: 5s
+#       start_period: 40s
+#       retries: 3
+#     restart: unless-stopped

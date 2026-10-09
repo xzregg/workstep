@@ -102,7 +102,7 @@ def test_engine_packages_use_a_writable_user_directory(tmp_path, monkeypatch):
 
     assert resolved == package_dir
     assert package_dir.is_dir()
-    assert sys.path[0] == str(package_dir)
+    assert sys.path[-1] == str(package_dir)
 
 
 def test_desktop_runtime_uses_config_home_and_exposes_packages_to_child_python(tmp_path, monkeypatch):
@@ -150,7 +150,7 @@ def test_desktop_runtime_preserves_custom_python_package_directory(tmp_path, mon
     monkeypatch.setenv("WORKSTEP_ENGINE_PACKAGE_DIR", str(package_dir))
     monkeypatch.setattr(sys, "path", list(sys.path))
     server.prepare_runtime_environment()
-    assert sys.path[0] == str(package_dir)
+    assert sys.path[-1] == str(package_dir)
     assert os.environ["PYTHONPATH"].split(os.pathsep)[0] == str(package_dir)
 
 
@@ -193,7 +193,7 @@ def test_desktop_main_prepares_runtime_before_loading_daemon(tmp_path, monkeypat
 
     def load_app(host, port):
         assert os.environ["NPM_CONFIG_PREFIX"] == str(tmp_path / "runtime/npm")
-        assert sys.path[0] == str(tmp_path / "runtime/python-packages")
+        assert sys.path[-1] == str(tmp_path / "runtime/python-packages")
         return object()
 
     async def serve(app, sock, port):

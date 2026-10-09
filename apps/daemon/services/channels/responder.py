@@ -47,6 +47,15 @@ class ChatSessionResponder:
             return False
         return await module.stop_current(session_id, project_id=project_id, expected_message_id=assistant_message_id)
 
+    def reply_metadata(self, turn_id: str) -> dict:
+        module = self._module_for('channel_chat')
+        state = module._turn_states.get(turn_id, {})
+        session = module._sessions.get(state.get('memory_key'))
+        return {'model': getattr(session, 'model', '') or '',
+                'engine': getattr(session, 'engine', '') or '',
+                'thinking_effort': state.get('thinking_effort') or '',
+                'assistant': '渠道助手'}
+
     async def __call__(
         self,
         project_id: str,

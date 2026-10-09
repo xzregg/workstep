@@ -244,3 +244,68 @@ async def test_project_proxy_task_actions_are_project_scoped(
         assert (await health_client.get("/api/health")).status_code == 200
     assert time.monotonic() - started < 0.5
     assert await pending == 404
+
+
+@pytest.mark.anyio
+async def test_project_bridge_chat_create_load_send_reload(api_context, monkeypatch):
+    """Exercise the real chat API and database through the device tunnel."""
+    import main
+    from agent_assistants.chat_session import ChatSessionModule
+    from streaming.bus import EventBus
+
+    client, tmp_path = api_context
+    directory = tmp_path / "remote-chat"
+    directory.mkdir()
+    initialized = await client.post("/api/project/init", json={"path": str(directory)})
+    assert initialized.status_code == 200
+    project_id = initialized.json()["id"]
+    bus = EventBus()
+    module = ChatSessionModule(bus, main.project_manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    monkeypatch.setattr(module, "start_queued_turn", lambda turn_id: None)
+    monkeypatch.setattr(main.gateway_client, "managed_config", object())
+
+    async def request(method, path, body=None, level="edit", query_project=None):
+        frames = []
+        async def capture(frame):
+            frames.append(frame)
+        query = f"project_id={query_project or project_id}"
+        if method == "GET" and path.startswith("/api/chat-sessions/"):
+            query += "&limit=300&offset=0"
+        bridge = ManagedHttpBridge(main.app, "chat-chain", {
+            "method": method, "path": path, "query": query,
+            "headers": [["content-type", "application/json"], ["idempotency-key", "chat-chain-turn"]],
+            "user_id": "test", "username": "test", "project_id": project_id,
+            "access_level": level,
+        }, capture, "device-1")
+        bridge.start_task()
+        if body is not None:
+            await bridge.feed(ProxyFrame(stream_id="chat-chain", type=FrameType.http_request,
+                payload={"phase": "body", "data": base64.b64encode(json.dumps(body).encode()).decode()}))
+        await bridge.feed(ProxyFrame(stream_id="chat-chain", type=FrameType.http_request,
+            payload={"phase": "end"}))
+        await asyncio.wait_for(bridge._task, timeout=5)
+        content = b"".join(base64.b64decode(frame.payload["data"])
+            for frame in frames if frame.payload.get("phase") == "body")
+        return frames[0].payload["status"], json.loads(content)
+
+    try:
+        status, created = await request("POST", "/api/chat-sessions", {
+            "project_id": project_id, "title": "远程对话", "engine": "claude"})
+        assert status == 200, created
+        path = f"/api/chat-sessions/{created['id']}"
+        status, history = await request("GET", path)
+        assert status == 200, history
+        assert history["id"] == created["id"]
+        status, accepted = await request("POST", path + "/chat", {
+            "project_id": project_id, "content": "链路测试"})
+        assert status == 200, accepted
+        status, history = await request("GET", path)
+        assert status == 200, history
+        assert any(message["content"] == "链路测试" for message in history["messages"])
+        assert (await request("GET", path, query_project="private"))[0] == 403
+        assert (await request("POST", path + "/chat", {
+            "project_id": project_id, "content": "只读禁止写入"}, level="read"))[0] == 403
+    finally:
+        await module.shutdown()
+        await bus.close()

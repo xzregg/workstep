@@ -8,7 +8,10 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, IPvAnyAddress
 
-from api.desktop_security import desktop_request_authenticated
+from api.desktop_security import (
+    desktop_request_authenticated,
+    desktop_runtime_authenticated,
+)
 
 from services.config import config_store
 from services.remote_project import (
@@ -114,7 +117,10 @@ async def update_remote_access_settings(req: RemoteAccessSettingsRequest, reques
 @router.get("/access/status")
 async def remote_access_status(request: Request):
     required = await asyncio.to_thread(remote_access_service.access_password_required)
-    local = _is_loopback(_client_host(request.headers, request.client))
+    local = (
+        desktop_runtime_authenticated(request)
+        or _is_loopback(_client_host(request.headers, request.client))
+    )
     token = request.cookies.get(ACCESS_COOKIE_NAME)
     authorized = local or not required or await asyncio.to_thread(
         remote_access_service.verify_access_token, token
@@ -166,8 +172,13 @@ async def create_remote_project_share(req: CreateShareRequest, request: Request)
 async def add_remote_project(req: AddRemoteProjectRequest):
     if client_manager is None:
         raise HTTPException(status_code=503, detail="Remote project client is unavailable")
+    import main
+
     if not await asyncio.to_thread(config_store.get_user_name):
-        raise HTTPException(status_code=400, detail="请先在系统设置中填写使用者名称")
+        try:
+            await asyncio.to_thread(main._local_actor)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
         return await client_manager.add_share(req.share_string)
     except (ValueError, PermissionError) as exc:

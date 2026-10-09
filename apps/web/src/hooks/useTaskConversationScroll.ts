@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MutableRefObject, type RefObject, type UIEvent, type WheelEvent } from 'react'
 import type { LiveMessage } from '../stores/taskStore'
+import { actionConversationScrollKey, type ActionRunLike } from '../utils/actionConversation'
 import {
   conversationBottomScrollTop,
   hasActiveSelectionWithin,
@@ -15,6 +16,7 @@ type ScrollOptions = {
   liveMessages: Record<string, LiveMessage>
   events: unknown[]
   content: string
+  actionRuns?: ActionRunLike[]
   chatScrollRef?: RefObject<HTMLDivElement | null>
   chatEndRef?: RefObject<HTMLDivElement | null>
   shouldFollowMessagesRef?: MutableRefObject<boolean>
@@ -28,7 +30,7 @@ type ScrollOptions = {
 
 /** Owns follow, unread, media resize, and scroll interaction for a task transcript. */
 export function useTaskConversationScroll({
-  historyMessages, liveMessages, events, content,
+  historyMessages, liveMessages, events, content, actionRuns,
   chatScrollRef, chatEndRef, shouldFollowMessagesRef, lastProgrammaticScrollTopRef,
   stepLastMessageRefs, pendingStepScrollRef, hasUnreadMessages,
   onUnreadMessagesChange, onLoadOlderHistory,
@@ -50,6 +52,7 @@ export function useTaskConversationScroll({
   const lastScrollHeightRef = useRef(0)
   const contentRef = useRef<HTMLDivElement>(null)
   const [scrolledToBottom, setScrolledToBottom] = useState(true)
+  const actionScrollKey = actionConversationScrollKey(actionRuns)
   const unreadMessages = hasUnreadMessages ?? localUnread
   const setUnreadMessages = useCallback((value: boolean) => {
     if (hasUnreadMessages === undefined) setLocalUnread(value)
@@ -87,7 +90,7 @@ export function useTaskConversationScroll({
       setUnreadMessages(true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historyMessages, liveMessages, events, content])
+  }, [historyMessages, liveMessages, events, content, actionScrollKey])
 
   useEffect(() => {
     const container = scrollRef.current
