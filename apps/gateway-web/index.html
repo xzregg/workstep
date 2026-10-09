@@ -1,5 +1,24 @@
 <!doctype html>
 <html lang="zh-CN">
-  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>WORKSTEP 平台</title></head>
-  <body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
+  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>WORKSTEP 平台</title><style>
+.app-loading {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #64748b;
+}
+.app-loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #dce3ee;
+  border-top-color: #4b7bec;
+  border-radius: 50%;
+  animation: app-loading-spin 1s linear infinite;
+}
+@keyframes app-loading-spin { to { transform: rotate(360deg); } }
+</style>
+  </head>
+  <body><div id="root"><div class="app-loading" role="status"><span class="app-loading-spinner" aria-hidden="true"></span>正在加载 WorkStep…</div></div><script type="module" src="/src/main.tsx"></script></body>
 </html>

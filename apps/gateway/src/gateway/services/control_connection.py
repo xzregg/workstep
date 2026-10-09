@@ -500,7 +500,13 @@ class DataConnection:
     async def deliver(self, frame: ProxyFrame) -> None:
         queue = self._streams.get(frame.stream_id)
         if queue is not None:
-            await queue.put(frame)
+            # Credit windows provide backpressure per stream. Waiting here on a
+            # legacy/overrunning peer would stop reads for every other stream,
+            # including the window updates needed to make progress.
+            try:
+                queue.put_nowait(frame)
+            except asyncio.QueueFull as exc:
+                raise ConnectionError("Managed data receive queue full") from exc
 
     def fail_streams(self, error: Exception) -> None:
         for queue in self._streams.values():
@@ -901,6 +907,8 @@ async def data_socket(ws: GatewaySocket):
                 await ws.close(code=4400)
                 return
             await connection.deliver(frame)
+    except ConnectionError:
+        await ws.close(code=1013, reason="Managed data receive queue full")
     except (asyncio.TimeoutError, SocketClosed):
         pass
     finally:

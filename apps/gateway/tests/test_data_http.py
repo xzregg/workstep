@@ -558,3 +558,15 @@ async def test_slow_authorization_cannot_exceed_device_stream_capacity():
             if not isinstance(result, Exception):
                 async for _ in result.body_iterator: pass
     assert connection._streams == {}
+
+
+@pytest.mark.asyncio
+async def test_full_stream_queue_cannot_hold_the_shared_socket_reader():
+    connection = DataConnection('device-1', object())
+    connection._streams['slow'] = asyncio.Queue(maxsize=32)
+    frame = ProxyFrame(stream_id='slow', type=FrameType.websocket_data,
+                       payload={'data': 'eA==', 'kind': 'text'})
+    for _ in range(32):
+        await connection.deliver(frame)
+    with pytest.raises(ConnectionError, match='queue full'):
+        await asyncio.wait_for(connection.deliver(frame), timeout=0.1)

@@ -388,3 +388,57 @@ async def test_control_revocation_discards_cached_policy():
     assert client.authorization_required is True
     assert cache.current is None
     await client.stop()
+
+
+@pytest.mark.asyncio
+async def test_overflowing_data_stream_releases_socket_and_keeps_health_responsive():
+    app = FastAPI()
+    entered = asyncio.Event()
+    cancelled = asyncio.Event()
+    @app.get('/api/slow')
+    async def slow():
+        entered.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+    @app.get('/api/health')
+    async def health():
+        return {'status': 'ok'}
+    class Socket:
+        closed = False
+        def __init__(self):
+            self.incoming = asyncio.Queue()
+            self.incoming.put_nowait(json.dumps({'kind': 'data_ready', 'version': 1, 'device_id': 'device-1'}))
+            start = ProxyFrame(stream_id='slow', type=FrameType.http_request, payload={
+                'phase': 'start', 'method': 'GET', 'path': '/api/slow', 'headers': [],
+                'user_id': 'user-1', 'username': 'alice',
+            })
+            self.incoming.put_nowait(start.model_dump_json())
+            for _ in range(33):
+                self.incoming.put_nowait(ProxyFrame(stream_id='slow', type=FrameType.http_request,
+                    payload={'phase': 'body', 'data': 'eA=='}).model_dump_json())
+        async def send(self, value):
+            pass
+        async def recv(self):
+            await asyncio.sleep(0)
+            return await self.incoming.get()
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_):
+            self.closed = True
+    socket = Socket()
+    client = GatewayControlClient('https://gateway.example', gateway_id='gateway-test',
+        public_key_fingerprint='0' * 64, user_id='user-1', policy_cache=ManagedPolicyCache(),
+        asgi_app=app, connector=lambda *_args, **_kwargs: socket)
+    task = asyncio.create_task(client._run_data('device-1', 'data-token'))
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=1)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://localhost') as api:
+            assert (await asyncio.wait_for(api.get('/api/health'), timeout=0.15)).json() == {'status': 'ok'}
+        await asyncio.wait_for(task, timeout=0.2)
+        await asyncio.wait_for(cancelled.wait(), timeout=0.2)
+        assert socket.closed
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)

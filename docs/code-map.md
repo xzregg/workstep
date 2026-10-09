@@ -638,3 +638,7 @@ Gateway 项目管理 `/admin/projects` 由 `apps/gateway-web/src/AdminProjectsPa
 引擎模型刷新由 `apps/daemon/api/engine.py::list_engine_models` 持有：绑定供应商时始终只重新读取已保存的勾选缓存（包括空选择），不拉取或覆盖全量模型；尚无缓存时返回空列表，原生账号仍刷新引擎目录。供应商全量预览与勾选保存仍归 `api/provider.py::provider_models_preview/provider_models_selection`。回归见 `tests/test_api_engine_config.py::test_engine_refresh_preserves_provider_selection`、`test_native_engine_models_are_persisted_and_reused`。
 
 侧栏项目拖动由 `apps/web/src/components/Layout.tsx` 组装，`stores/projectStore.ts::reorderProjects` 乐观排序并保存；本地与远程项目统一支持移动。`api/project.py::list_projects` 按本机配置 `project_order` 合并排序，`services/project.py::reorder_projects` 保存统一顺序并兼容原本地项目顺序。行为测试为 `tests/test_project_reorder.py` 与 Web `tests/projectReorder.test.ts`。
+
+首页加载：`components/AppLoading.tsx` 为路由加载及 `RemoteAccessGate.tsx` 远程访问检查提供统一旋转加载状态，样式在 `index.css`。Web 与 Gateway Web 的 `index.html` 在主脚本下载前提供静态加载提示，由 React 首次挂载替换。行为测试：`apps/web/tests/remoteAccessGate.test.tsx` 的慢网络等待及完成状态；两个前端生产构建验证静态加载入口。
+
+网关共享数据连接防阻塞：Gateway `services/control_connection.py::DataConnection.deliver` 与 daemon `services/gateway_client/bridge.py::feed` 使用非等待入队；正常背压仍由每流 32 帧的信用窗口控制，旧协议或异常发送端导致队列溢出时显式终止数据连接并清理请求，避免读取循环等待单个队列而阻断其他请求和信用回执。Gateway 保留控制连接，后续请求可重新建立数据连接；当前连接上的请求需重试。回归：Gateway `test_data_http.py`、`test_control_connection.py`；daemon `test_gateway_http_bridge.py`、`test_gateway_control_client.py`，覆盖溢出、真实 Socket 恢复、慢盘与数据库锁健康 canary。

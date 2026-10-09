@@ -434,3 +434,19 @@ def test_remote_provider_grant_cannot_extend_its_trusted_lifetime():
     assert _provider_scope({'provider_ids': ['supplier'], 'provider_grant_expires_at': expires}) == (frozenset({'supplier'}), expires)
     with pytest.raises(ValueError):
         _provider_scope({'provider_ids': ['supplier'], 'provider_grant_expires_at': expires + 3600})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('bridge_class,frame_type', [
+    (ManagedHttpBridge, FrameType.http_request),
+    (ManagedWebSocketBridge, FrameType.websocket_data),
+])
+async def test_full_bridge_queue_cannot_hold_the_shared_socket_reader(bridge_class, frame_type):
+    async def capture(frame):
+        pass
+    bridge = bridge_class(None, 'slow', {}, capture, 'device-1')
+    frame = ProxyFrame(stream_id='slow', type=frame_type, payload={})
+    for _ in range(32):
+        await bridge.feed(frame)
+    with pytest.raises(ConnectionError, match='queue full'):
+        await asyncio.wait_for(bridge.feed(frame), timeout=0.1)

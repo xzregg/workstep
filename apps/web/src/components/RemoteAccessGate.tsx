@@ -1,3 +1,4 @@
+import AppLoading from './AppLoading'
 import ResizablePanel from './ResizablePanel'
 import { useEffect, useState, type ReactNode } from 'react'
 import { remoteProjectApi } from '../api/client'
@@ -54,7 +55,7 @@ export default function RemoteAccessGate({ children }: { children: ReactNode }) 
     }
   }
 
-  if (!checked) return null
+  if (!checked) return <AppLoading />
   if (unlocked) return <>{children}</>
 
   return (
