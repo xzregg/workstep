@@ -6,6 +6,7 @@ export default defineConfig(({ mode }) => ({
     base: '/workspace-assets/', build: { outDir: 'dist-gateway-share', assetsDir: '' },
   } : {}),
   plugins: [react()],
+  resolve: { dedupe: ['react','react-dom','react-router-dom'] },
   server: {
     proxy: {
       // Project-relative upload URLs: {project}/.workstep/uploads/{file}

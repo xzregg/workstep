@@ -23,6 +23,7 @@ class Device(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(256))
+    owner_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), index=True)
     department_id: Mapped[str | None] = mapped_column(ForeignKey("directory_departments.id"), index=True)
     public_key: Mapped[str] = mapped_column(Text)
     public_key_fingerprint: Mapped[str | None] = mapped_column(String(64))
@@ -110,14 +111,26 @@ class UserDevice(Base):
 
 class CapabilityAssignment(Base):
     __tablename__ = "capability_assignments"
-    __table_args__ = (UniqueConstraint("user_id", "capability", "scope_type", "scope_id"),)
+    __table_args__ = (UniqueConstraint("user_id", "capability", "scope_type", "scope_id"),
+                     UniqueConstraint("group_id", "capability", "scope_type", "scope_id"))
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    group_id: Mapped[str | None] = mapped_column(ForeignKey("user_groups.id"), index=True)
     capability: Mapped[str] = mapped_column(String(64))
     scope_type: Mapped[str] = mapped_column(String(16))
     scope_id: Mapped[str] = mapped_column(String(64), server_default="")
     effect: Mapped[str] = mapped_column(String(16))
     assigned_by_user_id: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = timestamp()
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class GroupDevice(Base):
+    __tablename__ = 'group_devices'
+    __table_args__ = (UniqueConstraint('group_id', 'device_id'),)
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    group_id: Mapped[str] = mapped_column(ForeignKey('user_groups.id'), index=True)
+    device_id: Mapped[str] = mapped_column(ForeignKey('devices.id'), index=True)
     created_at: Mapped[datetime] = timestamp()
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

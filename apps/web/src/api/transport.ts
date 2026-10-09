@@ -1,9 +1,12 @@
+import { workspaceCatalogPath } from './workspaceScope'
+import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
+import { gatewayFetch, gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
 /** REST API client for the WorkStep daemon. */
 
 import { browserActorHeaders } from '../utils/browserActor'
 import { zhCNT } from '../i18n'
 
-export const BASE = '/api'
+export const BASE = gatewayWorkspacePath() + '/api'
 /** Default page size for loading full event logs / message histories. */
 export const FULL_PAGE_LIMIT = 30000
 
@@ -40,8 +43,18 @@ async function readApiResponse<T>(res: Response, path: string): Promise<T> {
 }
 
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  if (isGatewayRemoteBrowser() && options?.body && typeof options.body === 'string') {
+    let projectId = ''
+    try { projectId = JSON.parse(options.body)?.project_id ?? '' } catch { /* Multipart/text is not a project body. */ }
+    if (typeof projectId === 'string' && projectId) path = await workspaceCatalogPath(path, projectId)
+  }
+  if (isGatewayRemoteBrowser()) {
+    const pathProject = path.match(/^\/(?:projects|skills\/projects|git\/projects)\/([^/?]+)/)?.[1]
+    if (pathProject) path = await workspaceCatalogPath(path, decodeURIComponent(pathProject))
+    else if (path === '/schedule/preview') path = await workspaceCatalogPath(path)
+  }
   const run = async () => {
-    const res = await fetch(`${BASE}${path}`, {
+    const res = await gatewayFetch(`${BASE}${path}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
@@ -84,7 +97,7 @@ export async function shareRequest<T>(
   options?: RequestInit,
 ): Promise<T> {
   const run = async () => {
-    const res = await fetch(`${BASE}${path}`, {
+    const res = await gatewayFetch(`${BASE}${path}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',

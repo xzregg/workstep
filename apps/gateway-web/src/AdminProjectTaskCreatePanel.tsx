@@ -1,3 +1,4 @@
+import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useEffect, useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 
@@ -17,7 +18,7 @@ function CapabilityDialog({ projectId, csrf, assignment, onClose, onSaved }: {
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
-  const [password, setPassword] = useState('')
+  const { password, setPassword, passwordRequired, passwordReady } = useStepUpPassword()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [discard, setDiscard] = useState(false)
@@ -44,8 +45,7 @@ function CapabilityDialog({ projectId, csrf, assignment, onClose, onSaved }: {
     setBusy(true); setError('')
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
-      const step = await fetch('/api/auth/step-up', { method: 'POST', credentials: 'same-origin', headers,
-        body: JSON.stringify({ password }) })
+      const step = await confirmStepUp(csrf, password, passwordRequired)
       if (!step.ok) throw new Error('密码验证失败。')
       const url = subjectType === 'user'
         ? `/api/admin/capabilities/${encodeURIComponent(subjectId)}`
@@ -64,7 +64,7 @@ function CapabilityDialog({ projectId, csrf, assignment, onClose, onSaved }: {
   return <>
     <GatewayConfirmDialog title={assignment ? '调整任务创建能力' : '授予任务创建能力'}
       message="项目访问还需要单独的可编辑授权；任务创建能力本身不开放项目内容。"
-      confirmLabel="保存能力" busy={busy} disabled={!subjectId || !password || loading}
+      confirmLabel="保存能力" busy={busy} disabled={!subjectId || !passwordReady || loading}
       onConfirm={() => void save()} onCancel={() => dirty ? setDiscard(true) : onClose()}>
       {assignment ? <p>对象：{assignment.subjectType === 'user' ? '用户' : '用户组'} · {assignment.subjectName}</p> : <>
         <label htmlFor="task-create-type">对象类型</label>
@@ -90,9 +90,7 @@ function CapabilityDialog({ projectId, csrf, assignment, onClose, onSaved }: {
       <label htmlFor="task-create-effect">效果</label>
       <select id="task-create-effect" value={effect} onChange={event => setEffect(event.target.value as 'allow' | 'deny')}>
         <option value="allow">允许创建</option><option value="deny">禁止创建</option></select>
-      <label htmlFor="task-create-password">输入管理员密码确认</label>
-      <input id="task-create-password" type="password" autoComplete="current-password" value={password}
-        onChange={event => setPassword(event.target.value)} />
+      <PasswordConfirmation id="task-create-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
       {error && <p role="alert" className="gateway-auth-error">{error}</p>}
     </GatewayConfirmDialog>
     {discard && <GatewayConfirmDialog title="放弃任务能力修改" message="当前表单有未保存内容。"
@@ -103,15 +101,14 @@ function CapabilityDialog({ projectId, csrf, assignment, onClose, onSaved }: {
 function RevokeCapabilityDialog({ projectId, csrf, assignment, onClose, onSaved }: {
   projectId: string; csrf: string; assignment: Assignment; onClose: () => void; onSaved: () => void
 }) {
-  const [password, setPassword] = useState('')
+  const { password, setPassword, passwordRequired, passwordReady } = useStepUpPassword()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   async function revoke() {
     setBusy(true); setError('')
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
-      const step = await fetch('/api/auth/step-up', { method: 'POST', credentials: 'same-origin', headers,
-        body: JSON.stringify({ password }) })
+      const step = await confirmStepUp(csrf, password, passwordRequired)
       if (!step.ok) throw new Error('密码验证失败。')
       const url = assignment.subjectType === 'user'
         ? `/api/admin/capabilities/${encodeURIComponent(assignment.subjectId)}/revoke`
@@ -126,10 +123,8 @@ function RevokeCapabilityDialog({ projectId, csrf, assignment, onClose, onSaved 
     finally { setBusy(false) }
   }
   return <GatewayConfirmDialog title="撤销任务创建能力" message={`确认撤销 ${assignment.subjectName} 的项目任务创建规则？`}
-    confirmLabel="撤销规则" busy={busy} disabled={!password} onConfirm={() => void revoke()} onCancel={onClose}>
-    <label htmlFor="task-create-revoke-password">输入管理员密码确认</label>
-    <input id="task-create-revoke-password" type="password" autoComplete="current-password" value={password}
-      onChange={event => setPassword(event.target.value)} />
+    confirmLabel="撤销规则" busy={busy} disabled={!passwordReady} onConfirm={() => void revoke()} onCancel={onClose}>
+    <PasswordConfirmation id="task-create-revoke-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}
   </GatewayConfirmDialog>
 }

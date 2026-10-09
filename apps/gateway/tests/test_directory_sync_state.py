@@ -53,7 +53,7 @@ def test_directory_sync_records_cursor_counts_and_provider_failure(tmp_path):
         assert second.status_code == 200, second.text
         state = client.get('/api/admin/identity-sources').json()['sources'][0]['sync_state']
         assert state['cursor'] == 'cursor-2'
-        assert state['changes'] == {
+        assert {key: state['changes'][key] for key in ('departments_added', 'departments_updated', 'departments_moved', 'departments_deleted', 'people_added', 'people_updated', 'people_transferred', 'people_departed')} == {
             'departments_added': 1, 'departments_updated': 1, 'departments_moved': 0,
             'departments_deleted': 1, 'people_added': 1, 'people_updated': 1,
             'people_transferred': 1, 'people_departed': 0,

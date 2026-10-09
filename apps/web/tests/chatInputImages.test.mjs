@@ -1,15 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import ts from 'typescript'
-
-const utilitySource = await readFile(new URL('../src/utils/markdownImages.ts', import.meta.url), 'utf8')
-const compiled = ts.transpileModule(utilitySource, {
-  compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
-}).outputText
-const { removeMarkdownImage, resolveMarkdownImageSrc, splitMarkdownImages } = await import(
-  `data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`
-)
+import { removeMarkdownImage, resolveMarkdownImageSrc, splitMarkdownImages } from '../src/utils/markdownImages.ts'
 const chatInputSource = await readFile(new URL('../src/components/ChatInput.tsx', import.meta.url), 'utf8')
 const mobileCss = await readFile(new URL('../src/mobile.css', import.meta.url), 'utf8')
 

@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from sqlalchemy import select, update
 
-from gateway.models import AuditEvent, Device, PlatformProject, ProjectAccessGrant
+from gateway.models import AuditEvent, Device, PlatformProject, ProjectAccessGrant, ProjectInvitation
 
 
 async def record_project_publication(database, *, device_id: str, user_id: str,
@@ -45,6 +45,9 @@ async def record_project_publication(database, *, device_id: str, user_id: str,
                     project.published_by_user_id = user_id
                     project.published_at = now
                 else:
+                    await session.execute(update(ProjectInvitation).where(
+                        ProjectInvitation.project_id == project.id,
+                    ).values(status='revoked'))
                     await session.execute(update(ProjectAccessGrant).where(
                         ProjectAccessGrant.project_id == project.id,
                         ProjectAccessGrant.revoked_at.is_(None),

@@ -21,9 +21,7 @@
     "bundle:managed": "node scripts/create-managed-bundle.cjs",
     "dist:managed": "node scripts/build-managed.cjs"
   },
-  "dependencies": {
-    "electron-updater": "6.8.9"
-  },
+  "dependencies": {},
   "devDependencies": {
     "electron": "43.4.0",
     "electron-builder": "26.15.3"

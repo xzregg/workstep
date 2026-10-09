@@ -256,6 +256,7 @@ class _RemoteProjectConnection:
             "path": request.path,
             "query": request.query,
             "headers": request.headers,
+            "actor": request.actor,
         }
         try:
             async with self._send_lock:

@@ -191,3 +191,28 @@ test('history loads latest 300, deduplicates older requests and stops at the end
     await window.happyDOM.close()
   }
 })
+
+
+test('403 retains selected session, exposes the error and permits retry; only 404 is missing', async () => {
+ const { window } = installDomEnvironment()
+ const original = chatSessionApi.get
+ let missing = 0, status = 403
+ let history!: ReturnType<typeof useChatSessionHistory>
+ function Harness() {
+  history = useChatSessionHistory({ sessionId: 's', projectId: 'p', onLoaded: () => {}, onMissing: () => missing++ })
+  return null
+ }
+ const root = createRoot(document.body.appendChild(document.createElement('div')))
+ try {
+  chatSessionApi.get = (async () => { throw Object.assign(new Error('Project proxy scope unavailable'), { status }) }) as never
+  await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
+  assert.equal(missing, 0)
+  assert.match(history.historyError, /403.*Project proxy scope unavailable/)
+  status = 404
+  await act(async () => history.retryHistory())
+  assert.equal(missing, 1)
+ } finally {
+  await act(async () => root.unmount()); chatSessionApi.get = original
+  useChatSessionStore.setState({ sessions: {} }); await window.happyDOM.close()
+ }
+})

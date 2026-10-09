@@ -1,5 +1,8 @@
-import GatewayDeviceSidebar from './GatewayDeviceSidebar'
-import { useEffect, useState, type ReactNode } from 'react'
+import GatewayDeviceTabs from './GatewayDeviceTabs'
+import GatewayWorkspaceNotifications from './GatewayWorkspaceNotifications'
+import { gatewayWorkspacePath } from '../utils/gatewayWorkspacePath'
+import '@workstep/gateway-ui/DeviceTabs.css'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useI18n } from '../i18n'
 import './GatewayRemoteFrame.css'
 import { gatewayRemotePortalUrl } from '../utils/gatewayRemote'
@@ -9,6 +12,7 @@ import Spinner from './Spinner'
 
 export default function GatewayRemoteFrame({ children }: { children: ReactNode }) {
   const { t } = useI18n()
+  const embedded = typeof window !== 'undefined' && window.parent !== window && window.frameElement?.getAttribute('data-workstep-embedded') === 'true'
   const gatewayUrl = gatewayRemotePortalUrl()
   const context = useGatewaySessionStore(state => state.session)
   const sessionError = useGatewaySessionStore(state => state.error)
@@ -16,6 +20,9 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
   const [ready, setReady] = useState(false)
   const [error, setError] = useState(false)
   const disconnected = error || !!sessionError
+  const lastContext=useRef(context)
+  if(context)lastContext.current=context
+  const displayContext=context ?? lastContext.current
 
   useEffect(() => {
     if (!gatewayUrl) return
@@ -44,14 +51,15 @@ export default function GatewayRemoteFrame({ children }: { children: ReactNode }
 
   if (!gatewayUrl) return <>{children}</>
   return <div className="gateway-remote-frame">
-    <div className="gateway-remote-banner" role="status">
-      <strong>{context?.device_name ?? t('gatewayRemote.loading')}</strong>
-      <span>{disconnected ? t('gatewayRemote.disconnected') : ready && context ? t('gatewayRemote.online') : t('gatewayRemote.loading')}</span>
-      {context && <span>{context.username}</span>}
-      <a href={context?.gateway_url ?? gatewayUrl}>{t('gatewayRemote.back')}</a>
-    </div>
+    {!embedded && <div className="gateway-remote-banner" role="status">
+      {displayContext ? <GatewayDeviceTabs currentDeviceId={displayContext.device_id} currentProjectId={displayContext.project_id}/> :
+        <strong>{t('gatewayRemote.loading')}</strong>}
+      {disconnected && <span>{t('gatewayRemote.disconnected')}</span>}
+      {displayContext && <span className="gateway-remote-username" title={displayContext.username}>{displayContext.username}</span>}
+      <a className="gateway-header-control" href={new URL('/account', displayContext?.gateway_url ?? gatewayUrl).href}>{t('gatewayRemote.back')}</a>
+      {gatewayWorkspacePath() && <GatewayWorkspaceNotifications/>}
+    </div>}
     <div className="gateway-remote-body">
-      {ready && context && !context.project_id && <GatewayDeviceSidebar currentDeviceId={context.device_id}/>}
       <div className="gateway-remote-content">{ready && context ? children : <div className="gateway-remote-loading" role="status">
       {!disconnected && <Spinner size={16} />}
       {disconnected ? t('gatewayRemote.disconnected') : t('gatewayRemote.loading')}

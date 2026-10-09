@@ -1,16 +1,23 @@
 # ============================================================
-# 阶段 1：前端构建（web + landing）
+# 阶段 1：前端构建（web + gateway-web + landing）
 # 完整 node:24-bookworm 提供 yarn（corepack）与编译工具，产物仅拷贝进最终镜像
 # ============================================================
-FROM --platform=$BUILDPLATFORM node:24-bookworm AS web-build
+FROM node:24-bookworm AS web-build
 
 WORKDIR /app/apps/web
+COPY packages/gateway-ui /app/packages/gateway-ui
 COPY apps/web/package.json apps/web/yarn.lock ./
 RUN npm config set registry https://registry.npmjs.org \
     && corepack enable && corepack prepare yarn@1.22.22 --activate \
     && yarn config set registry https://registry.npmjs.org \
     && yarn install --frozen-lockfile
 COPY apps/web ./
+RUN yarn build && yarn build:gateway-share
+
+WORKDIR /app/apps/gateway-web
+COPY apps/gateway-web/package.json apps/gateway-web/yarn.lock ./
+RUN yarn install --frozen-lockfile
+COPY apps/gateway-web ./
 RUN yarn build
 
 WORKDIR /app/apps/landing
@@ -101,11 +108,20 @@ RUN command -v python && python --version \
 
 # 后端源码（清理字节码缓存）
 COPY apps/daemon ./
+COPY apps/gateway /app/apps/gateway
+# Both services use daemon's locked environment. Gateway additions are resolved
+# against that lock; never run a second uv sync that would remove daemon packages.
+COPY scripts/container-gateway-requirements.txt /app/container-gateway-requirements.txt
+RUN uv pip install --python .venv/bin/python -r /app/container-gateway-requirements.txt \
+    && uv pip install --python .venv/bin/python --no-deps -e /app/apps/gateway \
+    && uv pip check --python .venv/bin/python
 RUN find /app -name '__pycache__' -type d -prune -exec rm -rf {} + \
     && rm -rf /root/.cache
 
 # 前端构建产物（settings.py 中 web_dist=../web/dist、landing_dist=../landing/dist）
 COPY --from=web-build /app/apps/web/dist ../web/dist
+COPY --from=web-build /app/apps/web/dist-gateway-share ../web/dist-gateway-share
+COPY --from=web-build /app/apps/gateway-web/dist ../gateway-web/dist
 COPY --from=web-build /app/apps/landing/dist ../landing/dist
 
 # An immutable seed remains visible when HOME is bind-mounted. First startup
@@ -116,7 +132,8 @@ RUN python /usr/local/share/workstep-runtime/prepare.py /root/.workstep/runtime/
     && tar -C /root/.workstep/runtime -cf /usr/local/share/workstep-runtime/base.tar base \
     && sha256sum /usr/local/share/workstep-runtime/base.tar | cut -d ' ' -f 1 \
        > /usr/local/share/workstep-runtime/base.sha256
-COPY --chmod=755 scripts/container-entrypoint.sh /usr/local/bin/workstep-entrypoint
+COPY scripts/container-entrypoint.sh /usr/local/bin/workstep-entrypoint
+RUN chmod 755 /usr/local/bin/workstep-entrypoint
 
 # Persist /root as one HOME mount; mount project roots separately.
 

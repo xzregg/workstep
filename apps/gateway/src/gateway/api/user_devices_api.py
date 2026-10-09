@@ -27,3 +27,19 @@ async def assign_device_user(request: Request, device_id: str, body: AssignUserI
 @router.post("/admin/devices/{device_id}/users/{user_id}/revoke", status_code=204)
 async def revoke_device_user(request: Request, device_id: str, user_id: str):
     return await invoke(_handle_revoke_device_user, request=request, device_id=device_id, user_id=user_id)
+
+
+from typing import Literal
+from gateway.services.device_grants import DeviceGrantInput, list_device_grants, set_device_grant, revoke_device_grant
+
+@router.get('/admin/devices/{device_id}/grants')
+async def device_grants(request: Request, device_id: str):
+    return await invoke(list_device_grants, request=request, device_id=device_id)
+
+@router.post('/admin/devices/{device_id}/grants')
+async def assign_device_grant(request: Request, device_id: str, body: DeviceGrantInput):
+    return await invoke(set_device_grant, request=request, device_id=device_id, body=body)
+
+@router.delete('/admin/devices/{device_id}/grants/{subject_type}/{subject_id}', status_code=204)
+async def remove_device_grant(request: Request, device_id: str, subject_type: Literal['user','group'], subject_id: str):
+    return await invoke(revoke_device_grant, request=request, device_id=device_id, subject_type=subject_type, subject_id=subject_id)

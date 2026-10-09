@@ -56,8 +56,6 @@ async def _actor(call: GatewayCall, *, write: bool):
     token = call.tokens.get(COOKIE_NAME)
     service = _identity(call)
     user, _ = await service.session_user(token)
-    if user.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     if write:
         _check_csrf(call, token)
     return service, user

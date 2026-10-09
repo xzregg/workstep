@@ -1,3 +1,4 @@
+import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 import type { AdminUser } from './AdminUsersPage'
@@ -6,7 +7,7 @@ export function AdminUserActionDialog({ user, action, csrf, onComplete, onClose 
   user: AdminUser; action: 'approve' | 'disable'; csrf: string
   onComplete: () => void; onClose: () => void
 }) {
-  const [password, setPassword] = useState('')
+  const { password, setPassword, passwordRequired, passwordReady } = useStepUpPassword()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const approval = action === 'approve'
@@ -15,11 +16,7 @@ export function AdminUserActionDialog({ user, action, csrf, onComplete, onClose 
     setBusy(true); setError('')
     try {
       if (!approval) {
-        const step = await fetch('/api/auth/step-up', {
-          method: 'POST', credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-          body: JSON.stringify({ password }),
-        })
+        const step = await confirmStepUp(csrf, password, passwordRequired)
         if (!step.ok) throw new Error('密码验证失败。')
       }
       const response = await fetch(`/api/admin/users/${encodeURIComponent(user.id)}/${action}`, {
@@ -33,11 +30,9 @@ export function AdminUserActionDialog({ user, action, csrf, onComplete, onClose 
 
   return <GatewayConfirmDialog title={approval ? '批准用户' : '停用用户'}
     message={`${user.display_name}${approval ? '将获准登录。' : '的所有登录会话将失效。'}`}
-    confirmLabel={approval ? '批准' : '确认停用'} busy={busy} disabled={!approval && !password}
+    confirmLabel={approval ? '批准' : '确认停用'} busy={busy} disabled={!approval && !passwordReady}
     onConfirm={() => void confirm()} onCancel={onClose}>
-    {!approval && <><label htmlFor="admin-user-step-password">输入你的密码确认</label>
-      <input id="admin-user-step-password" type="password" autoComplete="current-password" value={password}
-        onChange={event => setPassword(event.target.value)} /></>}
+    {!approval && <><PasswordConfirmation id="admin-user-step-password" label="输入你的密码确认" value={password} onChange={setPassword} /></>}
     {error && <p className="gateway-auth-error" role="alert">{error}</p>}
   </GatewayConfirmDialog>
 }

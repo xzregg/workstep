@@ -1,0 +1,4 @@
+.project-sharing-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--border-soft); }
+.project-sharing-tabs button { min-height: 32px; padding: 0 12px; border-radius: var(--radius-xs); background: transparent; color: var(--muted); }
+.project-sharing-tabs button[aria-selected="true"] { background: var(--bg); color: var(--fg); font-weight: 600; }
+@media (max-width: 1023px) { .project-sharing-tabs button { min-height: var(--mobile-control-regular); } }

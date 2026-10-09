@@ -1,3 +1,4 @@
+import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { AdminRecordTable, AdminRecordRow } from './AdminRecordTable'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -30,7 +31,7 @@ function OperationCreate({ csrf, onCreated }: { csrf: string; onCreated: () => v
   const [concurrency, setConcurrency] = useState(1)
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [confirming, setConfirming] = useState(false)
-  const [password, setPassword] = useState('')
+  const { password, setPassword, passwordRequired, passwordReady } = useStepUpPassword()
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -60,8 +61,7 @@ function OperationCreate({ csrf, onCreated }: { csrf: string; onCreated: () => v
     setBusy(true); setError('')
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
-      const step = await fetch('/api/auth/step-up', { method: 'POST', credentials: 'same-origin', headers,
-        body: JSON.stringify({ password }) })
+      const step = await confirmStepUp(csrf, password, passwordRequired)
       if (!step.ok) throw new Error('密码验证失败。')
       const response = await fetch('/api/admin/device-operations', { method: 'POST', credentials: 'same-origin', headers,
         body: JSON.stringify({ action, engine_id: engineId, version: needsVersion ? version : null,
@@ -108,12 +108,10 @@ function OperationCreate({ csrf, onCreated }: { csrf: string; onCreated: () => v
     {error && <p role="alert" className="gateway-auth-error">{error} {!confirming &&
       <button type="button" onClick={() => setRevision(value => value + 1)}>重试加载</button>}</p>}
     {confirming && <GatewayConfirmDialog title="确认批量作业" message={`目标 ${selected.length} 台 · ${actionNames[action]} ${engineId}${needsVersion ? ` ${version}` : ''} · 并发 ${concurrency} 台 · 预计下载量暂无法估算。确认后目标不会随筛选变化。`}
-      confirmLabel="创建作业" busy={busy} disabled={!password} onConfirm={() => void create()}
+      confirmLabel="创建作业" busy={busy} disabled={!passwordReady} onConfirm={() => void create()}
       onCancel={() => { setConfirming(false); setPassword('') }}>
       <p>第三方安装条款：{termsAccepted ? '已确认' : '未确认'}。目标：{selected.map(target => target.name).join('、')}</p>
-      <label htmlFor="operation-password">输入管理员密码确认</label>
-      <input id="operation-password" type="password" autoComplete="current-password" value={password}
-        onChange={event => setPassword(event.target.value)} />
+      <PasswordConfirmation id="operation-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
       {error && <p role="alert" className="gateway-auth-error">{error}</p>}
     </GatewayConfirmDialog>}
   </section>
@@ -127,7 +125,7 @@ function OperationHistory({ csrf, revision }: { csrf: string; revision: number }
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [retry, setRetry] = useState<Batch | null>(null)
-  const [password, setPassword] = useState('')
+  const { password, setPassword, passwordRequired, passwordReady } = useStepUpPassword()
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -149,8 +147,7 @@ function OperationHistory({ csrf, revision }: { csrf: string; revision: number }
     setBusy(true); setError('')
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
-      const step = await fetch('/api/auth/step-up', { method: 'POST', credentials: 'same-origin', headers,
-        body: JSON.stringify({ password }) })
+      const step = await confirmStepUp(csrf, password, passwordRequired)
       if (!step.ok) throw new Error('密码验证失败。')
       const response = await fetch(`/api/admin/device-operations/${encodeURIComponent(batch.id)}/retry-failed`, {
         method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf },
@@ -182,11 +179,9 @@ function OperationHistory({ csrf, revision }: { csrf: string; revision: number }
       <button type="button" disabled={page >= Math.ceil(total / 25) || loading}
         onClick={() => setPage(value => value + 1)}>下一页</button></div>
     {retry && <GatewayConfirmDialog title="重试失败设备" message={`只为作业 ${retry.id} 中失败或过期的设备创建新作业，共 ${retry.commands.filter(command => command.status === 'failed' || command.status === 'expired').length} 台。`}
-      confirmLabel="创建重试作业" busy={busy} disabled={!password} onConfirm={() => void retryFailed(retry)}
+      confirmLabel="创建重试作业" busy={busy} disabled={!passwordReady} onConfirm={() => void retryFailed(retry)}
       onCancel={() => { setRetry(null); setPassword('') }}>
-      <label htmlFor="retry-operation-password">输入管理员密码确认</label>
-      <input id="retry-operation-password" type="password" autoComplete="current-password" value={password}
-        onChange={event => setPassword(event.target.value)} />
+      <PasswordConfirmation id="retry-operation-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
       {error && <p role="alert" className="gateway-auth-error">{error}</p>}
     </GatewayConfirmDialog>}
   </section>

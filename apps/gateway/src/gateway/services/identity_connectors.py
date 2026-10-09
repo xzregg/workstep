@@ -78,7 +78,9 @@ class DingTalkConnector:
                 children = _checked(await client.post(
                     "https://oapi.dingtalk.com/topapi/v2/department/listsub",
                     params={"access_token": token}, json={"dept_id": current, "language": "zh_CN"},
-                )).get("result") or []
+                )).get("result")
+                if not isinstance(children, list):
+                    raise ValueError("Invalid DingTalk department list")
                 for child in children:
                     department_id = int(child["dept_id"])
                     if department_id in seen:
@@ -93,7 +95,8 @@ class DingTalkConnector:
                     })
             if departments_only:
                 return {"departments": departments, "people": []}
-            departments, selected = _selected_departments(departments, selected_department_ids)
+            complete, whole_company = await _directory_scope(client, source, token, departments, selected_department_ids)
+            departments, selected = _selected_departments(departments, selected_department_ids, allow_missing=whole_company)
             if progress: await progress('fetching', 0, len(selected), None)
             people = {}
             for completed, department_id in enumerate(selected, 1):
@@ -104,8 +107,10 @@ class DingTalkConnector:
                         params={"access_token": token},
                         json={"dept_id": department_id, "cursor": cursor, "size": 100,
                               "language": "zh_CN"},
-                    )).get("result") or {}
-                    for member in page.get("list") or []:
+                    )).get("result")
+                    if not isinstance(page, dict) or not isinstance(page.get('list'), list) or page.get('has_more') not in (True, False, 1, 0, 'true', 'True', 'false', 'False'):
+                        raise ValueError('Invalid DingTalk member list or pagination')
+                    for member in page['list']:
                         subject = member.get("unionid")
                         if not subject:
                             raise ValueError("DingTalk directory member lacks unionid")
@@ -123,7 +128,7 @@ class DingTalkConnector:
                 else:
                     raise ValueError("DingTalk member pagination limit reached")
                 if progress: await progress('fetching', completed, len(selected), str(department_id))
-            return {"departments": departments, "people": list(people.values())}
+            return {"departments": departments, "people": list(people.values()), "complete": complete, "selected_department_ids": None if selected_department_ids is None else list(dict.fromkeys([*selected_department_ids, *(str(id) for id in selected)]))}
 
 
 class WeComConnector:
@@ -170,8 +175,8 @@ class WeComConnector:
             raw_departments = _checked(await client.get(
                 "https://qyapi.weixin.qq.com/cgi-bin/department/list",
                 params={"access_token": token},
-            )).get("department") or []
-            if not raw_departments:
+            )).get("department")
+            if not isinstance(raw_departments, list) or not raw_departments:
                 raise ValueError("WeCom directory has no visible departments")
             known = {int(item["id"]) for item in raw_departments}
             departments = [{
@@ -180,7 +185,8 @@ class WeComConnector:
             } for item in raw_departments]
             if departments_only:
                 return {"departments": departments, "people": []}
-            departments, selected = _selected_departments(departments, selected_department_ids)
+            complete, whole_company = await _directory_scope(client, source, token, departments, selected_department_ids)
+            departments, selected = _selected_departments(departments, selected_department_ids, allow_missing=whole_company)
             if progress: await progress('fetching', 0, len(selected), None)
             people = {}
             for completed, department_id in enumerate(selected, 1):
@@ -188,26 +194,64 @@ class WeComConnector:
                     "https://qyapi.weixin.qq.com/cgi-bin/user/list",
                     params={"access_token": token, "department_id": department_id,
                             "fetch_child": 0},
-                )).get("userlist") or []
+                )).get("userlist")
+                if not isinstance(members, list):
+                    raise ValueError('Invalid WeCom member list')
                 for member in members:
                     subject = member.get("userid")
                     if not subject:
                         raise ValueError("WeCom directory member lacks userid")
                     people[subject] = {
+                        **({"active": member["status"] not in (2, 5)} if "status" in member else {}),
                         "subject": subject, "display_name": member.get("name") or subject,
                         "department_ids": [str(item) for item in member.get("department", [])
                                            if str(item) in {str(id) for id in selected}],
                     }
                 if progress: await progress('fetching', completed, len(selected), str(department_id))
-            return {"departments": departments, "people": list(people.values())}
+            return {"departments": departments, "people": list(people.values()), "complete": complete, "selected_department_ids": None if selected_department_ids is None else list(dict.fromkeys([*selected_department_ids, *(str(id) for id in selected)]))}
 
 
-def _selected_departments(departments, selected_department_ids):
+def _selected_departments(departments, selected_department_ids, *, allow_missing=False):
     known = {item['external_id'] for item in departments}
     selected = known if selected_department_ids is None else set(selected_department_ids)
-    if not selected or not selected <= known:
+    # A selected parent continues to include newly created descendants.
+    changed = True
+    while changed:
+        descendants = {item['external_id'] for item in departments if item.get('parent_external_id') in selected}
+        changed = not descendants <= selected
+        selected |= descendants
+    if not selected or (not allow_missing and not selected <= known):
         raise ValueError('Selected department is unavailable')
-    filtered = [{**item, 'parent_external_id': item.get('parent_external_id')
-                 if item.get('parent_external_id') in selected else None}
-                for item in departments if item['external_id'] in selected]
+    filtered = [item for item in departments if item['external_id'] in selected]
     return filtered, [int(item['external_id']) for item in filtered]
+
+
+async def _directory_scope(client, source, token, departments, selected):
+    """Only infer removals when the application can read entire selected departments.
+
+    A successful member list alone may be restricted to individually visible users.
+    Missing/unsupported scope metadata therefore leaves removals unverified.
+    """
+    try:
+        if source.provider == 'dingtalk':
+            data = _checked(await client.get('https://oapi.dingtalk.com/auth/scopes', params={'access_token': token}))
+            granted = data.get('auth_org_scopes', {}).get('authed_dept')
+        else:
+            if not source.agent_id: return False, False
+            data = _checked(await client.get('https://qyapi.weixin.qq.com/cgi-bin/agent/get', params={'access_token': token, 'agentid': source.agent_id}))
+            granted = data.get('allow_partys', {}).get('partyid')
+        if not isinstance(granted, list) or not granted: return False, False
+        granted = {str(value) for value in granted}
+        parents = {item['external_id']: item.get('parent_external_id') for item in departments}
+        whole_company = '1' in granted
+        def covered(department_id):
+            seen = set()
+            while department_id and department_id not in seen:
+                if department_id in granted: return True
+                seen.add(department_id)
+                department_id = parents.get(department_id)
+            return False
+        chosen = selected if selected is not None else list(parents)
+        return bool(chosen) and all(whole_company or covered(id) for id in chosen), whole_company
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return False, False

@@ -5,15 +5,13 @@ from gateway.contracts import GatewayCall
 from sqlalchemy import select
 from gateway.services.identity import COOKIE_NAME, IdentityService
 from gateway.services.identity_api import _check_csrf
-from gateway.models import AdminAssignment, Device, DeviceGroupMembership
+from gateway.models import Device, DeviceGroupMembership
 
 DEVICE_ROLES = ("super_admin", "device_admin", "org_admin", "department_admin")
 
 
 async def device_scope(session, identity: IdentityService, actor_id: str, *, roles=DEVICE_ROLES) -> set[str] | None:
-    assignments = (await session.scalars(select(AdminAssignment).where(
-        AdminAssignment.user_id == actor_id, AdminAssignment.revoked_at.is_(None),
-        AdminAssignment.role.in_(roles)))).all()
+    assignments = await identity.admin_assignments_in_session(session, actor_id, roles)
     if not assignments:
         raise GatewayError('forbidden', 'Device management denied')
     if any(row.role == "super_admin" or (row.role in ("device_admin", "org_admin")
@@ -36,8 +34,6 @@ async def device_manager(call: GatewayCall, *, device_ids: list[str] | None = No
     identity = IdentityService(call.database)
     token = call.tokens.get(COOKIE_NAME)
     actor, auth_session = await identity.session_user(token)
-    if actor.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     if mutation:
         _check_csrf(call, token)
         await identity.require_step_up(auth_session)
@@ -52,14 +48,10 @@ async def organization_manager(call: GatewayCall, *, source_id: str | None = Non
     identity = IdentityService(call.database)
     token = call.tokens.get(COOKIE_NAME)
     actor, _ = await identity.session_user(token)
-    if actor.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     if mutation:
         _check_csrf(call, token)
     async with call.database.session() as session:
-        assignments = (await session.scalars(select(AdminAssignment).where(
-            AdminAssignment.user_id == actor.id, AdminAssignment.revoked_at.is_(None),
-            AdminAssignment.role.in_(("super_admin", "org_admin"))))).all()
+        assignments = await identity.admin_assignments_in_session(session, actor.id, ("super_admin", "org_admin"))
     if not assignments:
         raise GatewayError('forbidden', 'Organization management denied')
     allowed = None if any(row.role == "super_admin" or row.scope_type == "platform"

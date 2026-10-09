@@ -3,7 +3,7 @@
 import asyncio
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -12,6 +12,11 @@ from services.config import config_store
 from services.project_scope import assert_within_projects_root
 
 router = APIRouter(prefix="/api/system-settings")
+
+
+def _configured_gateway_mode() -> bool:
+    configured = config_store.get('gateway_platform', {})
+    return bool(isinstance(configured, dict) and configured.get('enabled', configured.get('authorized', False)))
 
 
 class SystemSettingsRequest(BaseModel):
@@ -110,10 +115,16 @@ def _model_pricing_response(pricing: dict) -> dict:
 
 
 @router.get("")
-async def get_system_settings():
+async def get_system_settings(request: Request):
+    actor = getattr(request.state, 'managed_actor', None)
+    gateway = getattr(request.app.state, 'gateway_client', None)
+    gateway_mode = bool(gateway and gateway.managed_config)
     def load() -> dict:
+        platform_identity = gateway_mode or _configured_gateway_mode()
         return {
-            "user_name": config_store.get_user_name(),
+            "user_name": (actor.display_name or actor.username) if actor else ('' if platform_identity else config_store.get_user_name()),
+            "identity_source": 'gateway' if actor or platform_identity else 'local',
+            "gateway_username": actor.username if actor else '',
             "open_mode": config_store.get_open_mode(),
             "git_scan_depth": config_store.get_git_scan_depth(),
             "default_project_directory": config_store.get("default_project_directory", ""),
@@ -124,7 +135,11 @@ async def get_system_settings():
 
 
 @router.put("")
-async def set_system_settings(req: SystemSettingsRequest):
+async def set_system_settings(req: SystemSettingsRequest, request: Request):
+    gateway = getattr(request.app.state, 'gateway_client', None)
+    if req.user_name is not None and (getattr(request.state, 'managed_actor', None) or (gateway and gateway.managed_config)
+                                    or await asyncio.to_thread(_configured_gateway_mode)):
+        raise HTTPException(status_code=403, detail='网关账号由平台管理，不能在本地修改')
     directory = req.default_project_directory
     if directory is not None:
         def validate_directory() -> str:
@@ -150,7 +165,7 @@ async def set_system_settings(req: SystemSettingsRequest):
         await asyncio.to_thread(config_store.set, "default_project_directory", directory)
     if req.git_scan_depth is not None:
         await asyncio.to_thread(config_store.set, "git_scan_depth", req.git_scan_depth)
-    return await get_system_settings()
+    return await get_system_settings(request)
 
 
 @router.get("/model-pricing")

@@ -70,6 +70,53 @@ test('startup queues an image switch without leaving sandbox mode for the user',
   } finally { await fs.rm(base, { recursive: true, force: true }) }
 })
 
+test('image switch cancels startup and stops the current container before it is queued', async () => {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-sandbox-switch-order-'))
+  const manager = new SandboxManager({ stateDir: path.join(base, 'state') })
+  const image = 'sha256:' + 'd'.repeat(64)
+  const calls = []
+  manager.stop = async () => calls.push('stop')
+  const originalSave = manager.save.bind(manager)
+  manager.save = async settings => { calls.push('save'); await originalSave(settings) }
+  manager.startGeneration = 4
+
+  try {
+    await manager.save({ enabled: true, prepared: true, root: base, project: base, mounts: [] })
+    calls.length = 0
+    await manager.queueImageSwitch(image, 'workstep:latest')
+    assert.deepEqual(calls, ['stop', 'save'])
+    assert.equal(manager.startGeneration, 5)
+  } finally { await fs.rm(base, { recursive: true, force: true }) }
+})
+
+test('preparation reuses an already imported Podman image for the same Docker ID', async () => {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-sandbox-reuse-image-'))
+  const root = path.join(base, 'sandbox'), project = path.join(base, 'project')
+  const dockerImage = 'sha256:' + 'd'.repeat(64)
+  const podmanImage = 'sha256:' + 'e'.repeat(64)
+  await fs.mkdir(project)
+  await fs.mkdir(root)
+  const canonicalRoot = await fs.realpath(root)
+  const canonicalProject = await fs.realpath(project)
+  const manager = new SandboxManager({ stateDir: path.join(base, 'state'), platform: 'linux', arch: 'x64' })
+  const calls = []
+  manager.setup = async () => ({
+    command: async args => { calls.push(args); return '{}' },
+    podman: async args => { calls.push(args); return '' }, machine: 'test',
+  })
+  manager.inspectImage = async (_command, image) => {
+    calls.push(['inspect', image])
+    if (image !== podmanImage) throw new Error('unexpected image')
+    return podmanImage
+  }
+  try {
+    await manager.save({ enabled: false, prepared: true, root: canonicalRoot, project: canonicalProject, mounts: [], dockerImage, image: podmanImage })
+    const status = await manager.prepare({ root: canonicalRoot, project: canonicalProject, mounts: [], dockerImage })
+    assert.equal(status.settings.image, podmanImage)
+    assert.deepEqual(calls, [['inspect', podmanImage]])
+  } finally { await fs.rm(base, { recursive: true, force: true }) }
+})
+
 test('Compose Home survives failed preparation, retry and sandbox removal', async () => {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-compose-home-'))
   try {

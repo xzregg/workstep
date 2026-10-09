@@ -1,7 +1,8 @@
+import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useEffect, useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 
-type Assignment = { id: string; subject_type: 'user' | 'device'; subject_id: string;
+type Assignment = { id: string; subject_type: 'user' | 'group' | 'device'; subject_id: string;
   subject_name: string | null; is_default: boolean }
 type Target = { id: string; name?: string; display_name?: string; username?: string }
 
@@ -17,7 +18,7 @@ function AssignmentActionDialog({ providerId, csrf, assignment, onClose, onSaved
   const [targetId, setTargetId] = useState('')
   const [loading, setLoading] = useState(false)
   const [revision, setRevision] = useState(0)
-  const [password, setPassword] = useState('')
+  const { password, setPassword, passwordRequired, passwordReady } = useStepUpPassword()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [discard, setDiscard] = useState(false)
@@ -49,8 +50,7 @@ function AssignmentActionDialog({ providerId, csrf, assignment, onClose, onSaved
     setBusy(true); setError('')
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
-      const step = await fetch('/api/auth/step-up', { method: 'POST', credentials: 'same-origin', headers,
-        body: JSON.stringify({ password }) })
+      const step = await confirmStepUp(csrf, password, passwordRequired)
       if (!step.ok) throw new Error('密码验证失败。')
       const subject_type = assignment?.subject_type ?? kind
       const subject_id = assignment?.subject_id ?? targetId
@@ -70,7 +70,7 @@ function AssignmentActionDialog({ providerId, csrf, assignment, onClose, onSaved
       message={assignment ? `撤销 ${assignment.subject_name ?? assignment.subject_id} 的供应商使用权。`
         : '仅向选定用户或 PC 分配该供应商；设备配置会按新的版本同步。'}
       confirmLabel={assignment ? '撤销授权' : '确认分配'} busy={busy}
-      disabled={!password || (!assignment && (!targetId || loading))}
+      disabled={!passwordReady || (!assignment && (!targetId || loading))}
       onConfirm={() => void submit()}
       onCancel={() => assignment || !dirty ? onClose() : setDiscard(true)}>
       {!assignment && <>
@@ -97,9 +97,7 @@ function AssignmentActionDialog({ providerId, csrf, assignment, onClose, onSaved
             onClick={() => { setTargetId(''); setPage(value => value + 1) }}>下一页</button></div>
         {loading && <p role="status">正在加载对象…</p>}
       </>}
-      <label htmlFor="provider-assignment-password">输入管理员密码确认</label>
-      <input id="provider-assignment-password" type="password" autoComplete="current-password"
-        value={password} onChange={event => setPassword(event.target.value)} />
+      <PasswordConfirmation id="provider-assignment-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
       {error && <p role="alert" className="gateway-auth-error">{error} {!assignment &&
         <button type="button" onClick={() => setRevision(value => value + 1)}>重试加载</button>}</p>}
     </GatewayConfirmDialog>
@@ -111,7 +109,7 @@ function AssignmentActionDialog({ providerId, csrf, assignment, onClose, onSaved
 function DefaultProviderDialog({ providerId, csrf, assignment, onClose, onSaved }: {
   providerId: string; csrf: string; assignment: Assignment; onClose: () => void; onSaved: () => void
 }) {
-  const [password, setPassword] = useState('')
+  const { password, setPassword, passwordRequired, passwordReady } = useStepUpPassword()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const enable = !assignment.is_default
@@ -120,8 +118,7 @@ function DefaultProviderDialog({ providerId, csrf, assignment, onClose, onSaved 
     setBusy(true); setError('')
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
-      const step = await fetch('/api/auth/step-up', { method: 'POST', credentials: 'same-origin', headers,
-        body: JSON.stringify({ password }) })
+      const step = await confirmStepUp(csrf, password, passwordRequired)
       if (!step.ok) throw new Error('密码验证失败。')
       const response = await fetch(`/api/admin/providers/${encodeURIComponent(providerId)}/assign/default`, {
         method: 'PUT', credentials: 'same-origin', headers,
@@ -136,13 +133,11 @@ function DefaultProviderDialog({ providerId, csrf, assignment, onClose, onSaved 
 
   return <GatewayConfirmDialog title={enable ? '设置默认供应商' : '取消默认供应商'}
     message={`${assignment.subject_name ?? assignment.subject_id}（${
-      assignment.subject_type === 'user' ? '用户' : 'PC'}）${
-      enable ? '将优先使用此供应商。用户默认优先于 PC 默认。' : '将不再默认使用此供应商。'}`}
-    confirmLabel={enable ? '确认设置' : '确认取消'} busy={busy} disabled={!password}
+      assignment.subject_type === 'user' ? '用户' : assignment.subject_type === 'group' ? '用户组' : 'PC'}）${
+      enable ? '将优先使用此供应商。默认优先级为用户、用户组、PC。' : '将不再默认使用此供应商。'}`}
+    confirmLabel={enable ? '确认设置' : '确认取消'} busy={busy} disabled={!passwordReady}
     onConfirm={() => void submit()} onCancel={onClose}>
-    <label htmlFor="provider-default-password">输入管理员密码确认</label>
-    <input id="provider-default-password" type="password" autoComplete="current-password"
-      value={password} onChange={event => setPassword(event.target.value)} />
+    <PasswordConfirmation id="provider-default-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}
   </GatewayConfirmDialog>
 }
@@ -179,7 +174,7 @@ export function AdminProviderAssignments({ providerId, enabled, csrf, onChanged 
 
   function saved() { setEdit(null); setRevision(value => value + 1); onChanged() }
   return <section className="gateway-project-grants">
-    <div className="gateway-admin-toolbar"><h3>用户与 PC 授权</h3>
+    <div className="gateway-admin-toolbar"><h3>用户、组与 PC 授权</h3>
       <button type="button" disabled={!enabled} onClick={() => setEdit('new')}>新增分配</button></div>
     <form className="gateway-admin-search" onSubmit={event => {
       event.preventDefault(); setPage(1); setSearch(query.trim())
@@ -193,7 +188,7 @@ export function AdminProviderAssignments({ providerId, enabled, csrf, onChanged 
     {!loading && !error && assignments.length === 0 && <p>当前条件下没有授权。</p>}
     <ul className="gateway-device-list">{assignments.map(assignment => <li key={assignment.id}>
       <div><strong>{assignment.subject_name ?? assignment.subject_id}</strong><p>{
-        assignment.subject_type === 'user' ? '用户' : 'PC'}</p>
+        assignment.subject_type === 'user' ? '用户' : assignment.subject_type === 'group' ? '用户组' : 'PC'}</p>
         {assignment.is_default && <span>默认供应商</span>}</div>
       <div className="gateway-device-actions"><button type="button"
         disabled={!enabled && !assignment.is_default} onClick={() => setDefaultEdit(assignment)}>{

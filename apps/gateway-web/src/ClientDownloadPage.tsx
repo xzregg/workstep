@@ -58,6 +58,7 @@ export function ClientDownloadPage() {
   return <section className="gateway-admin-page gateway-download-page">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台</span>
     <h2>安装 WorkStep</h2>
+    <p>没有自己的设备？<Link to="/project-invitations">添加别人分享的项目</Link>，通过浏览器即可使用已授权项目。</p>
     <p>设备绑定并上线后，将自动进入“我的 WorkStep”。<Link to="/">返回我的 WorkStep</Link></p>
     <p>选择电脑的系统和架构，下载此网关统一提供的受管安装包。安装后在桌面端登录并登记这台电脑。</p>
     <div className="gateway-download-address"><span>平台地址：</span><PlatformAddress address={address}/></div>

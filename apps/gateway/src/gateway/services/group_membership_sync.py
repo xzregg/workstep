@@ -21,8 +21,9 @@ async def reconcile_department_groups(session, *, source_id: str | None = None,
             if group is None and department.active:
                 group = UserGroup(id=str(uuid4()), name=department.display_name, slug='dept-' + department.id, source_type='external_department', external_department_id=department.id, status='active', created_by_user_id='system:directory-sync')
                 session.add(group)
-            if group and not additions_only:
+            if group and group.status != 'deleted' and not additions_only:
                 group.name = department.display_name
+                group.status = 'active' if department.active else 'disabled'
                 # Deleted departments lose synced members; preserving the group keeps its audit and local roles.
         await session.flush()
     query = select(UserGroup, DirectoryDepartment).join(
@@ -42,7 +43,7 @@ async def reconcile_department_groups(session, *, source_id: str | None = None,
                 DirectoryMembership,
                 DirectoryMembership.person_id == DirectoryPerson.id,
             ).join(User, User.id == DirectoryPerson.user_id).where(DirectoryMembership.department_id == department.id,
-                    User.status != 'deleted',
+                    User.status == 'active',
                     DirectoryPerson.active == 1))).all())
         existing = {row.user_id: row for row in (await session.scalars(
             select(GroupMembership).where(GroupMembership.group_id == group.id),

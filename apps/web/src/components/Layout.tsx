@@ -1,4 +1,5 @@
 import { useGatewayProjectPermissions } from '../hooks/useGatewayProjectPermissions'
+import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
 import SidebarConversationTabs from './SidebarConversationTabs'
 import ChatSessionSourceBadge from './ChatSessionSourceBadge'
 import { useVisualViewport } from '../hooks/useVisualViewport'
@@ -30,6 +31,7 @@ import ProjectShareDialog from './ProjectShareDialog'
 import WorkflowCreateDialog from './WorkflowCreateDialog'
 import SidebarStatusIndicator from './SidebarStatusIndicator'
 import SandboxModeBadge from './SandboxModeBadge'
+import GatewayConnectionStatus from './GatewayConnectionStatus'
 import { loadSidebarSectionState, saveSidebarSectionState } from '../utils/sidebarSectionState'
 import LayoutOnboardingActions from './LayoutOnboardingActions'
 import SidebarRenameField from './SidebarRenameField'
@@ -477,8 +479,9 @@ export default function Layout({ onSelectProject, children }: Props) {
         <div className="layout-sidebar-header">
           <div className="layout-sidebar-brand">
             <BrandIcon size={18} />
-            WorkStep
+            <span className="layout-sidebar-brand-name">WorkStep</span>
             <SandboxModeBadge />
+            <GatewayConnectionStatus onOpenSettings={() => { setSettingsSection('remote'); setShowSettings(true) }} />
             <a
               href="/landing"
               className="layout-sidebar-intro"
@@ -1106,7 +1109,7 @@ export default function Layout({ onSelectProject, children }: Props) {
               >
                 {t('chatSession.addSessionTitle')}
               </SidebarActionItem>
-              {menuTarget.type !== 'remote' && (
+              {menuTarget.type !== 'remote' && !isGatewayRemoteBrowser() && (
                 <SidebarActionItem
                   icon="share"
                   onClick={() => { setShareProject(menuTarget); setMoreMenu(null) }}
@@ -1259,7 +1262,7 @@ export default function Layout({ onSelectProject, children }: Props) {
         onConnected={handleProjectConnected}
       />
 
-      <ProjectShareDialog project={managedMode !== true ? shareProject : null}
+      <ProjectShareDialog project={!isGatewayRemoteBrowser() ? shareProject : null}
         onClose={() => setShareProject(null)} />
 
       <WorkflowCreateDialog

@@ -59,7 +59,7 @@ test('saving the default directory opens project browsing there; clearing restor
   }
 })
 
-test('managed project connection omits the legacy share-string mode', async () => {
+test('managed local desktop retains remote project connection', async () => {
   const { document, window } = installDomEnvironment()
   const originalFetch = globalThis.fetch
   globalThis.fetch = async input => {
@@ -76,8 +76,12 @@ test('managed project connection omits the legacy share-string mode', async () =
   try {
     await act(async () => root.render(<I18nProvider><ProjectConnectionDialog open
       onClose={() => {}} onConnected={() => {}} /></I18nProvider>))
-    assert.doesNotMatch(document.body.textContent ?? '', /远程项目/)
+    const remoteButton = Array.from(document.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent === '远程项目')!
+    assert.ok(remoteButton)
     assert.equal(document.querySelector('#remote-share-string'), null)
+    await act(async () => remoteButton.click())
+    assert.ok(document.querySelector('#remote-share-string'))
   } finally {
     await act(async () => root.unmount())
     useManagedModeStore.setState({ managed: null, loading: false })

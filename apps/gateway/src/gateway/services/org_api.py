@@ -19,8 +19,6 @@ from gateway.services.directory_names import directory_name
 async def _scope(call: GatewayCall, session) -> set[str] | None:
     identity = IdentityService(call.database)
     actor, _ = await identity.session_user(call.tokens.get(COOKIE_NAME))
-    if actor.must_change_password:
-        raise GatewayError('forbidden', 'Password change required')
     return await identity.manageable_department_ids(session, actor.id)
 
 

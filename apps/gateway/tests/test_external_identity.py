@@ -252,7 +252,8 @@ def test_provider_reconciliation_is_atomic_and_provisions_closed_registration(tm
         reconcile_url = f"/api/admin/identity-sources/{source_id}/reconcile"
         reconciled = client.post(reconcile_url, headers={"X-CSRF-Token": csrf})
         assert reconciled.status_code == 200, reconciled.text
-        assert reconciled.json() == {"departments": 1, "people": 1}
+        assert reconciled.json()["departments"] == 1
+        assert reconciled.json()["people"] == 1
         connector.failing = True
         assert client.post(reconcile_url, headers={"X-CSRF-Token": csrf}).status_code == 502
         with __import__("sqlite3").connect(tmp_path / "workstep_platform.db") as connection:
@@ -380,3 +381,33 @@ def test_oauth_callback_uses_saved_platform_domain_for_web_and_desktop(tmp_path)
             assert result.status_code == 200, result.text
             callback = parse_qs(urlparse(result.json()['authorization_url']).query)['redirect_uri'][0]
             assert callback == f'https://workstep.example.com/api/auth/external/{source}/callback'
+
+
+def test_scan_admin_mutations_do_not_require_password_but_keep_csrf_and_roles(tmp_path):
+    app = create_app(GatewaySettings(data_dir=tmp_path))
+    app.state.identity_connectors = {'dingtalk': FakeConnector()}
+    with TestClient(app, base_url='https://gateway.test') as client:
+        csrf = _setup(client)
+        source = _source(client, csrf)
+        bound = client.post(f'/api/auth/external/{source}/bind/start', headers={'X-CSRF-Token':csrf})
+        state = parse_qs(urlparse(bound.json()['authorization_url']).query)['state'][0]
+        assert client.get(f'/api/auth/external/{source}/callback?state={state}&code=valid-code').status_code == 200
+        # Binding alone must not change a password-authenticated session.
+        assert client.get('/api/auth/session').json()['password_confirmation_required'] is True
+        assert client.put('/api/admin/registration-policy',headers={'X-CSRF-Token':csrf},json={'mode':'open'}).status_code == 403
+        client.cookies.clear()
+        state = _start(client, source)
+        assert client.get(f'/api/auth/external/{source}/callback?state={state}&code=valid-code').status_code == 200
+        session = client.get('/api/auth/session').json()
+        assert session['password_confirmation_required'] is False
+        assert client.get('/api/auth/admin-access').json()['password_confirmation_required'] is False
+        assert client.put('/api/admin/registration-policy',json={'mode':'open'}).status_code == 403
+        headers={'X-CSRF-Token':session['csrf_token']}
+        assert client.put('/api/admin/registration-policy',headers=headers,json={'mode':'open'}).status_code == 200
+        assert client.post('/api/auth/step-up',headers=headers,json={'password':''}).status_code == 200
+        assert client.post('/api/auth/password',headers=headers,json={'current_password':'','new_password':'UpdatedOwnerPass-2026!'}).status_code == 204
+        client.post('/api/auth/logout', headers=headers)
+        login = client.post('/api/auth/login',json={'username':'owner','password':'UpdatedOwnerPass-2026!'})
+        assert login.status_code == 200
+        assert client.get('/api/auth/session').json()['password_confirmation_required'] is True
+        assert client.put('/api/admin/registration-policy',headers={'X-CSRF-Token':login.json()['csrf_token']},json={'mode':'closed'}).status_code == 403

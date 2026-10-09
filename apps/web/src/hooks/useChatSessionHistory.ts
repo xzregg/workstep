@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { chatSessionApi, type ChatSessionDetail } from '../api/client'
 import { useI18n } from '../i18n'
 import { useChatSessionStore } from '../stores/chatSessionStore'
@@ -26,12 +26,18 @@ interface Options {
 
 /** Loads a selected session and its paged event details into the shared store. */
 export function useChatSessionHistory({ sessionId, messageSessionId, projectId, onLoaded, onMissing }: Options) {
+  const [historyError, setHistoryError] = useState('')
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const retryRef = useRef<() => void>(() => {})
+  const retryHistory = useCallback(() => retryRef.current(), [])
   const pageRef = useRef({ key: '', offset: 0, hasOlder: false, loading: false })
   const { t } = useI18n()
   const callbacks = useRef({ onLoaded, onMissing })
   callbacks.current = { onLoaded, onMissing }
 
   useEffect(() => {
+    setHistoryError('')
+    setHistoryLoading(false)
     if (!sessionId || !projectId) return
     let active = true
     const page = { key: `${projectId}/${sessionId}`, offset: 0, hasOlder: false, loading: true }
@@ -43,6 +49,8 @@ export function useChatSessionHistory({ sessionId, messageSessionId, projectId, 
     const load = (refresh = false) => {
       if (inFlight) { refreshPending = true; return }
       inFlight = true
+      setHistoryError('')
+      setHistoryLoading(true)
       page.loading = true
       const unchangedMessages = useChatSessionStore.getState().sessions[sessionId]?.messages || []
       void chatSessionApi.get(sessionId, projectId, PAGE_SIZE, 0)
@@ -60,20 +68,25 @@ export function useChatSessionHistory({ sessionId, messageSessionId, projectId, 
             unchangedMessages,
           )
         })
-        .catch(() => {
+        .catch((reason) => {
           page.loading = false
-          if (active && !refresh) callbacks.current.onMissing()
+          if (!active) return
+          if (reason?.status === 404 && !refresh) callbacks.current.onMissing()
+          else setHistoryError(`${reason?.status ? `HTTP ${reason.status}: ` : ''}${reason instanceof Error ? reason.message : t('chatSession.loadFailed')}`)
         })
         .finally(() => {
           inFlight = false
+          if (active) setHistoryLoading(false)
           if (active && refreshPending) { refreshPending = false; load(true) }
         })
     }
+    retryRef.current = () => load()
     const recovered = () => load(true)
     window.addEventListener('workstep:reconnected', recovered)
     load()
     return () => {
       active = false
+      retryRef.current = () => {}
       window.removeEventListener('workstep:reconnected', recovered)
       pageRef.current = { key: '', offset: 0, hasOlder: false, loading: false }
     }
@@ -141,5 +154,5 @@ export function useChatSessionHistory({ sessionId, messageSessionId, projectId, 
     }
   }, [sessionId, messageSessionId, projectId, t])
 
-  return { loadMessageEvents, loadOlderHistory }
+  return { loadMessageEvents, loadOlderHistory, historyError, historyLoading, retryHistory }
 }

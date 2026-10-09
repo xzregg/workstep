@@ -7,7 +7,6 @@ import hmac
 import os
 import re
 from contextlib import nullcontext
-from urllib.parse import urlparse
 
 from fastapi import WebSocket
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -68,8 +67,17 @@ SHARE_INTERVENTION_WRITE = re.compile(
 )
 
 
+def gateway_device_owner(request: Request) -> bool:
+    actor = request.scope.get('gateway_remote_actor')
+    return bool(actor is not None and actor.project_id is None
+                and request.scope.get('gateway_device_owner') is True)
+
+
 def _remote_filesystem_denied(request: Request) -> bool:
     path = request.url.path
+    if path in ('/api/project/init', '/api/project/register', '/api/fs/browse', '/api/fs/search', '/api/fs/mkdir'):
+        if gateway_device_owner(request): return False
+        if path == '/api/fs/mkdir': return True
     if path in REMOTE_NATIVE_PATHS:
         return True
     if path in REMOTE_PROJECT_SCOPED_FS or path.startswith("/api/fs/raw/") or path.startswith("/api/fs/serve/"):
@@ -96,23 +104,11 @@ def desktop_request_authenticated(request: Request) -> bool:
     return _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER))
 
 
-def desktop_runtime_authenticated(request: Request) -> bool:
-    return _desktop_token() is not None and _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER))
-
-
-def desktop_loopback_target(request: Request) -> bool:
-    """Keep host-loopback browser access local across Podman port forwarding."""
-    if os.environ.get("WORKSTEP_DESKTOP_RUNTIME") != "1" or not _loopback_name(request.url.hostname):
-        return False
-    for header in ("origin", "referer"):
-        value = request.headers.get(header)
-        if value and not _loopback_name(urlparse(value).hostname):
-            return False
-    return True
-
-
-def _loopback_name(value: str | None) -> bool:
-    return str(value or "").strip("[]").lower() in {"localhost", "127.0.0.1", "::1"}
+def desktop_runtime_authenticated(request: Request | WebSocket) -> bool:
+    """Verify the per-launch Electron credential, never a client-supplied flag."""
+    return (_desktop_token() is not None
+            and "gateway_remote_actor" not in request.scope
+            and _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)))
 
 
 def _remote_access_enabled(app) -> bool:
@@ -124,10 +120,12 @@ async def desktop_websocket_allowed(ws: WebSocket) -> bool:
     """Require the Electron main-process header in packaged desktop mode."""
 
     gateway_client = getattr(ws.app.state, "gateway_client", None)
-    if (gateway_client is not None
-            and getattr(gateway_client, "managed_config", None) is not None
-            and ws.url.path == "/ws/remote-project"):
-        return False
+    if ws.url.path == "/ws/remote-project":
+        # Native LAN connections authenticate their project invitation/device
+        # credential in the remote host handler, independently of Gateway login.
+        return ('gateway_remote_actor' not in ws.scope and (
+            desktop_runtime_authenticated(ws)
+            or await asyncio.to_thread(_remote_access_enabled, ws.app)))
     remote_actor = ws.scope.get("gateway_remote_actor")
     if (remote_actor is not None and gateway_client is not None
             and getattr(gateway_client, "managed_config", None) is not None):
@@ -137,47 +135,40 @@ async def desktop_websocket_allowed(ws: WebSocket) -> bool:
         return True
 
     if not _valid_token(ws.headers.get(DESKTOP_TOKEN_HEADER)):
-        if _desktop_loopback_websocket(ws):
-            return True
-        if gateway_client is not None and getattr(gateway_client, "managed_config", None) is not None:
-            return False
+        # The main feed also checks the LAN access key after this boundary.
         return await asyncio.to_thread(_remote_access_enabled, ws.app)
     # 显式 session header 兼容 TLS 终结反代；浏览器自动携带的 cookie
     # 必须另行校验 Origin，避免跨站 WebSocket 使用本机会话。
     if gateway_client is None or getattr(gateway_client, "managed_config", None) is None:
         return True
-    if ws.cookies.get(PLATFORM_COOKIE) and not ws.headers.get(LOCAL_SESSION_HEADER):
+    desktop_authenticated = desktop_runtime_authenticated(ws)
+    if not desktop_authenticated and ws.cookies.get(PLATFORM_COOKIE) and not ws.headers.get(LOCAL_SESSION_HEADER):
         expected_origin = f"{'https' if ws.url.scheme == 'wss' else 'http'}://{ws.url.netloc}"
         if ws.headers.get('origin') != expected_origin:
             return False
     browser_login = getattr(ws.app.state, 'gateway_browser_login', None)
-    desktop_session = getattr(browser_login, 'desktop_local_session', None) if _desktop_token() and _valid_token(ws.headers.get(DESKTOP_TOKEN_HEADER)) else None
+    desktop_session = getattr(browser_login, 'desktop_local_session', None) if desktop_authenticated else None
     actor = gateway_client.local_sessions.resolve(ws.headers.get(LOCAL_SESSION_HEADER) or ws.cookies.get(PLATFORM_COOKIE) or desktop_session)
+    if actor is None and desktop_authenticated:
+        actor = getattr(gateway_client, 'current_actor', None)
     if actor is None:
-        return False
+        return desktop_authenticated
     ws.scope["managed_actor"] = actor
     return True
-
-
-def _desktop_loopback_websocket(ws: WebSocket) -> bool:
-    target = urlparse(f"//{ws.headers.get('host') or ''}").hostname or ws.url.hostname
-    if os.environ.get("WORKSTEP_DESKTOP_RUNTIME") != "1" or not _loopback_name(target):
-        return False
-    origin = ws.headers.get("origin")
-    return not origin or _loopback_name(urlparse(origin).hostname)
 
 
 class DesktopSecurityMiddleware(BaseHTTPMiddleware):
     """Authenticate privileged desktop APIs and attach browser hardening headers."""
 
     async def dispatch(self, request: Request, call_next):
+        desktop_authenticated = desktop_runtime_authenticated(request)
         protected = request.url.path.startswith(("/api/", "/docs", "/redoc", "/openapi.json"))
         gateway_client = getattr(request.app.state, "gateway_client", None)
         managed = gateway_client is not None and getattr(gateway_client, "managed_config", None) is not None
         actor = request.scope.get("gateway_remote_actor")
         remote_bridge = actor is not None and managed
         remote_access = (
-            protected and not managed
+            (protected or request.url.path == "/") and not remote_bridge
             and not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER))
             and await asyncio.to_thread(_remote_access_enabled, request.app)
         )
@@ -227,23 +218,23 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
             return response
         if managed and protected and not remote_bridge and request.url.path not in ("/api/managed/bootstrap", "/api/health", "/api/gateway-platform/settings", "/api/gateway-platform/login", "/api/gateway-platform/callback"):
             browser_login = getattr(request.app.state, 'gateway_browser_login', None)
-            desktop_session = getattr(browser_login, 'desktop_local_session', None) if _desktop_token() and _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)) else None
+            desktop_session = getattr(browser_login, 'desktop_local_session', None) if desktop_authenticated else None
             actor = gateway_client.local_sessions.resolve(request.headers.get(LOCAL_SESSION_HEADER) or request.cookies.get(PLATFORM_COOKIE) or desktop_session)
-        if (managed and actor is not None and request.cookies.get(PLATFORM_COOKIE)
+            if actor is None and desktop_authenticated:
+                actor = getattr(gateway_client, 'current_actor', None)
+        if (managed and not desktop_authenticated and actor is not None and request.cookies.get(PLATFORM_COOKIE)
                 and not request.headers.get(LOCAL_SESSION_HEADER) and request.method not in ("GET", "HEAD", "OPTIONS")
                 and request.headers.get("origin") != str(request.base_url).rstrip("/")):
             return JSONResponse({"detail": "same-origin request required"}, status_code=403)
-        if (managed and not remote_bridge and request.url.path == "/"
+        if (managed and not remote_bridge and not desktop_authenticated and not remote_access and request.url.path == "/"
                 and getattr(request.app.state, "gateway_browser_login", None) is not None
-                and gateway_client.local_sessions.resolve(request.headers.get(LOCAL_SESSION_HEADER) or request.cookies.get(PLATFORM_COOKIE)
-                    or (getattr(getattr(request.app.state, "gateway_browser_login", None), "desktop_local_session", None) if _desktop_token() and _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)) else None)) is None):
+                and gateway_client.local_sessions.resolve(request.headers.get(LOCAL_SESSION_HEADER) or request.cookies.get(PLATFORM_COOKIE)) is None):
             return RedirectResponse("/gateway/login", status_code=303)
         denied = protected and (
             (not remote_bridge and not remote_access
              and request.url.path != "/api/gateway-platform/callback"
-             and not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER))
-             and not desktop_loopback_target(request))
-            or (managed and not remote_bridge and request.url.path not in ("/api/managed/bootstrap", "/api/health", "/api/gateway-platform/settings", "/api/gateway-platform/login", "/api/gateway-platform/callback") and actor is None)
+             and not _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)))
+            or (managed and not remote_bridge and not desktop_authenticated and not remote_access and request.url.path not in ("/api/managed/bootstrap", "/api/health", "/api/gateway-platform/settings", "/api/gateway-platform/login", "/api/gateway-platform/callback") and actor is None)
         )
         if denied:
             response = JSONResponse(
@@ -251,8 +242,7 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
             )
             if managed and protected and _valid_token(request.headers.get(DESKTOP_TOKEN_HEADER)):
                 response.headers["X-WorkStep-Managed-Session-Expired"] = "1"
-        elif managed and request.url.path.startswith((
-                "/api/remote-project/", "/api/task-share/")):
+        elif managed and request.url.path.startswith('/api/task-share/'):
             response = JSONResponse(
                 {"detail": "legacy sharing is unavailable in managed mode"}, status_code=403,
             )

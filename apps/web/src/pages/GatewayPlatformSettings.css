@@ -7,3 +7,6 @@
 .gateway-platform-hint { color: var(--fg-muted); font-size: 12px; margin: 0; }
 .gateway-platform-spinner { animation: gateway-platform-spin 1s linear infinite; }
 @keyframes gateway-platform-spin { to { transform: rotate(360deg); } }
+
+.gateway-platform-form--readonly { opacity: 0.55; }
+.gateway-platform-form--readonly input, .gateway-platform-form--readonly button { cursor: not-allowed; }

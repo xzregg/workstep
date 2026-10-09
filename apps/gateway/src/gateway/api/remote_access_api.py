@@ -28,6 +28,11 @@ async def remote_project_grants(request: Request):
     return await invoke(_handle_remote_project_grants, request=request)
 
 
+@websocket_router.websocket("/ws/workspace/{workspace_device_id}")
+async def workspace_websocket(ws: WebSocket, workspace_device_id: str):
+    return await invoke(_handle_proxy_remote_websocket, ws=ws, path="ws")
+
+
 @websocket_router.websocket("/{path:path}")
 async def proxy_remote_websocket(ws: WebSocket, path: str):
     return await invoke(_handle_proxy_remote_websocket, ws=ws, path=path)

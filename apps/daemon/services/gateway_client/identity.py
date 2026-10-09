@@ -42,7 +42,9 @@ class ManagedAuthorizationVerifier:
         self.public_key_fingerprint = public_key_fingerprint
         self.client_factory = client_factory or (lambda: httpx.AsyncClient(timeout=10))
 
-    async def verify(self, authorization: str, device_proof: str) -> ManagedActor:
+    async def verify(self, authorization: str, device_proof: str, *,
+                     reconnect_token: str | None = None,
+                     control_public_key_pem: str | None = None) -> ManagedActor:
         async with self.client_factory() as client:
             response = await client.get(f"{self.gateway_origin}/api/platform/gateway-key")
             if response.status_code != 200:
@@ -69,9 +71,13 @@ class ManagedAuthorizationVerifier:
                     or claims.get("iss") != self.gateway_id
                     or not isinstance(claims.get("iat"), int)
                     or not isinstance(claims.get("exp"), int)
-                    or claims["iat"] > now + 60 or claims["exp"] <= now
-                    or claims["exp"] - claims["iat"] > 900):
+                    or claims["iat"] > now + 60
+                    or not 0 < claims["exp"] - claims["iat"] <= 900):
                 raise ValueError("Gateway authorization expired or mismatched")
+            if claims['exp'] <= now:
+                if not reconnect_token or not control_public_key_pem:
+                    raise ValueError('Gateway authorization expired')
+                self._verify_reconnect(public_key, authorization, control_public_key_pem, reconnect_token, now)
             device_key = serialization.load_pem_public_key(claims["device_public_key"].encode())
             if not isinstance(device_key, Ed25519PublicKey):
                 raise ValueError("Device key must be Ed25519")
@@ -98,6 +104,27 @@ class ManagedAuthorizationVerifier:
             policy_revision=claims["policy_revision"],
             display_name=claims.get("display_name") or claims["username"],
         )
+
+    def _verify_reconnect(self, key, authorization, control_public, token, now):
+        if len(token) > 2048:
+            raise ValueError('Invalid reconnect credential')
+        payload, signature = token.split('.')
+        key.verify(_decode(signature), payload.encode())
+        claims = json.loads(_decode(payload))
+        control = serialization.load_pem_public_key(control_public.encode())
+        if not isinstance(control, Ed25519PublicKey):
+            raise ValueError('Invalid control key')
+        expected = {
+            'kind': 'control.reconnect', 'gateway_id': self.gateway_id,
+            'authorization_hash': hashlib.sha256(authorization.encode()).hexdigest(),
+            'control_key_hash': hashlib.sha256(control.public_bytes(
+                serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)).hexdigest(),
+        }
+        if (not isinstance(claims, dict) or any(claims.get(k) != v for k, v in expected.items())
+                or type(claims.get('iat')) is not int or type(claims.get('exp')) is not int
+                or claims['iat'] > now + 60 or claims['exp'] <= now
+                or not 0 < claims['exp'] - claims['iat'] <= 30 * 24 * 3600):
+            raise ValueError('Invalid reconnect credential')
 
 
 class ManagedLocalSessions:

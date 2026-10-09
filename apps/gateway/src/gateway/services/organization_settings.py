@@ -31,7 +31,6 @@ async def application_secret(database, signer, source):
 async def user_group_tree(call: GatewayCall):
     identity = IdentityService(call.database)
     actor, _ = await identity.session_user(call.tokens.get(COOKIE_NAME))
-    if actor.must_change_password: raise GatewayError('forbidden', 'Password change required')
     async with call.database.session() as session:
         users = await identity.manageable_user_ids(session, actor.id)
         departments = await identity.manageable_department_ids(session, actor.id)

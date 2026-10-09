@@ -29,11 +29,11 @@ def control_url(origin: str) -> str:
     validate_gateway_origin(origin)
     parsed = urlsplit(origin)
     scheme = "wss" if parsed.scheme == "https" else "ws"
-    return f"{scheme}://{parsed.netloc}/api/control/ws"
+    return f"{scheme}://{parsed.netloc}/ws/control"
 
 
 def data_url(origin: str) -> str:
-    return control_url(origin).removesuffix("/control/ws") + "/data/ws"
+    return control_url(origin).removesuffix("/control") + "/data"
 
 
 class GatewayControlClient:
@@ -41,7 +41,7 @@ class GatewayControlClient:
                  user_id: str, policy_cache: ManagedPolicyCache,
                  connector=connect, heartbeat_seconds: float = 20, asgi_app=None,
                  provider_store=None, usage_outbox=None, audit_outbox=None,
-                 skill_sync=None):
+                 skill_sync=None, on_reconnect_token=None):
         self.url = control_url(origin)
         self.origin = origin
         self.gateway_id = gateway_id
@@ -55,6 +55,7 @@ class GatewayControlClient:
         self.usage_outbox = usage_outbox
         self.audit_outbox = audit_outbox
         self.skill_sync = skill_sync
+        self.on_reconnect_token = on_reconnect_token
         self.command_executor = (ManagedCommandExecutor(provider_store, execute_engine_command,
                                                        recover=recover_engine_command)
                                  if provider_store is not None else None)
@@ -71,6 +72,7 @@ class GatewayControlClient:
         self._project_ack_messages: asyncio.Queue | None = None
         self._project_request_lock = asyncio.Lock()
         self._verified_gateway_key: str | None = None
+        self._reconnect_token: str | None = None
 
     async def _probe_daemon_health(self) -> bool | None:
         if self.asgi_app is None:
@@ -87,11 +89,12 @@ class GatewayControlClient:
 
     def start(self, authorization: str, device_id: str,
               control_private_key_pem: str, control_public_key_pem: str,
-              delegation_signature: str) -> None:
+              delegation_signature: str, *, reconnect_token: str | None = None) -> None:
         if self._task and not self._task.done():
             raise RuntimeError("Control client already started")
         self._stop.clear()
         self.authorization_required = False
+        self._reconnect_token = reconnect_token
         private_key = serialization.load_pem_private_key(control_private_key_pem.encode(), password=None)
         if not isinstance(private_key, Ed25519PrivateKey):
             raise ValueError("Control key must be Ed25519")
@@ -213,6 +216,7 @@ class GatewayControlClient:
                     )).rstrip(b"=").decode()
                     await socket.send(json.dumps({
                         "authorization": authorization,
+                        "reconnect_token": self._reconnect_token,
                         "control_public_key_pem": public_key_pem,
                         "control_delegation_signature": delegation_signature,
                         "control_challenge_proof": challenge_proof,
@@ -241,6 +245,10 @@ class GatewayControlClient:
                         self.gateway_id, device_id, self.user_id,
                     ))
                     self._verified_gateway_key = gateway_key
+                    if isinstance(hello.get('reconnect_token'), str):
+                        self._reconnect_token = hello['reconnect_token']
+                        if self.on_reconnect_token is not None:
+                            await self.on_reconnect_token(self._reconnect_token)
                     await self._ack_policy(socket, messages, device_id)
                     await self._apply_provider_bundle(socket, messages, hello,
                                                       gateway_key, device_id)
@@ -283,6 +291,10 @@ class GatewayControlClient:
                             ack["policy_snapshot"], gateway_key, self.public_key_fingerprint,
                             self.gateway_id, device_id, self.user_id,
                         ))
+                        if isinstance(ack.get('reconnect_token'), str):
+                            self._reconnect_token = ack['reconnect_token']
+                            if self.on_reconnect_token is not None:
+                                await self.on_reconnect_token(self._reconnect_token)
                         await self._ack_policy(socket, messages, device_id)
                         await self._apply_provider_bundle(socket, messages, ack,
                                                           gateway_key, device_id)
@@ -556,10 +568,13 @@ class GatewayControlClient:
                         if bridge:
                             bridge.cancel()
                             streams.pop(frame.stream_id, None)
-                    elif frame.type == FrameType.window_update and bridge:
+                    elif frame.type == FrameType.window_update:
                         if not flow_control or frame.payload != {"credits": 1}:
                             raise ValueError("Invalid managed data window update")
-                        bridge.grant_credit()
+                        # A consumer may acknowledge after the response task
+                        # has already released its stream slot.
+                        if bridge:
+                            bridge.grant_credit()
                     elif frame.type in (FrameType.http_request, FrameType.websocket_data,
                                         FrameType.websocket_close) and bridge:
                         await bridge.feed(frame)

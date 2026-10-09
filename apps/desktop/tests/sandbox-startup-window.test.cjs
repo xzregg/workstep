@@ -3,33 +3,41 @@ const assert = require('node:assert/strict')
 
 const { createSandboxStartupWindow, startupViewState, formatSandboxFailure, applyPendingImageSwitch } = require('../src/sandbox-startup-window.cjs')
 
+test('an enabled sandbox can apply its queued image during startup', async () => {
+  let enabled = true
+  const manager = {
+    settings: async () => ({ enabled, root: '/sandbox', pendingDockerImage: 'sha256:' + 'a'.repeat(64) }),
+    setEnabled: async value => { enabled = value },
+    prepare: async input => {
+      assert.equal(enabled, false, 'image preparation requires sandbox disabled')
+      assert.equal(input.keepMachineRunning, true)
+    },
+  }
+  assert.equal(await applyPendingImageSwitch(manager), true)
+  assert.equal(enabled, true)
+})
+
 test('pending startup image is prepared and sandbox mode is restored automatically', async () => {
   const calls = []
   const image = 'sha256:' + 'a'.repeat(64)
   const manager = {
     settings: async () => ({ root: '/sandbox', project: '/project', mounts: [], pendingDockerImage: image, registeredProjects: ['/project'] }),
-    prepareImage: async input => calls.push(['image', input]),
     prepare: async input => calls.push(['prepare', input]),
     setEnabled: async enabled => calls.push(['enabled', enabled]),
   }
   assert.equal(await applyPendingImageSwitch(manager), true)
   assert.deepEqual(calls, [
-    ['image', { root: '/sandbox', dockerImage: image }],
-    ['prepare', { root: '/sandbox', project: '/project', mounts: [], dockerImage: image }],
+    ['prepare', { root: '/sandbox', project: '/project', mounts: [], dockerImage: image, keepMachineRunning: true }],
     ['enabled', true],
   ])
 })
 
-test('pending image switch follows its Docker tag when the scanned ID was replaced', async () => {
+test('pending image switch follows its updated Docker tag even when the old image is cached', async () => {
   const oldImage = 'sha256:' + 'a'.repeat(64)
   const newImage = 'sha256:' + 'b'.repeat(64)
   const calls = []
   const manager = {
     settings: async () => ({ root: '/sandbox', project: '/project', mounts: [], pendingDockerImage: oldImage, pendingDockerImageTag: 'workstep:latest' }),
-    prepareImage: async input => {
-      calls.push(['image', input.dockerImage])
-      if (input.dockerImage === oldImage) throw new Error(`No such image: ${oldImage}`)
-    },
     dockerImages: async () => ({ images: [{ id: newImage, tags: ['workstep:latest'], size: 1 }], error: null }),
     prepare: async input => calls.push(['prepare', input.dockerImage]),
     setEnabled: async enabled => calls.push(['enabled', enabled]),
@@ -37,8 +45,22 @@ test('pending image switch follows its Docker tag when the scanned ID was replac
 
   assert.equal(await applyPendingImageSwitch(manager), true)
   assert.deepEqual(calls, [
-    ['image', oldImage], ['image', newImage], ['prepare', newImage], ['enabled', true],
+    ['prepare', newImage], ['enabled', true],
   ])
+})
+
+test('failed fast image switch restores enabled mode and leaves the pending request recoverable', async () => {
+  const image = 'sha256:' + 'c'.repeat(64)
+  const calls = []
+  let enabled = true
+  const manager = {
+    settings: async () => ({ enabled, root: '/sandbox', project: '/project', mounts: [], pendingDockerImage: image }),
+    setEnabled: async value => { enabled = value; calls.push(['enabled', value]) },
+    prepare: async () => { throw new Error('import interrupted') },
+  }
+  await assert.rejects(applyPendingImageSwitch(manager), /import interrupted/)
+  assert.equal(enabled, true)
+  assert.deepEqual(calls, [['enabled', false], ['enabled', true]])
 })
 
 test('sandbox startup view exposes useful progress and failure details', () => {
@@ -47,6 +69,9 @@ test('sandbox startup view exposes useful progress and failure details', () => {
   })
   assert.deepEqual(startupViewState({ phase: 'download', progress: { received: 25, total: 100 } }), {
     phase: 'download', label: '正在下载沙箱运行环境', progress: 9, error: null,
+  })
+  assert.deepEqual(startupViewState({ phase: 'switching', message: '正在切换到 workstep:latest' }), {
+    phase: 'switching', label: '正在切换到 workstep:latest', progress: 10, error: null,
   })
   assert.deepEqual(startupViewState({ phase: 'error', error: 'health timeout' }), {
     phase: 'error', label: '沙箱启动失败', progress: null, error: 'health timeout',

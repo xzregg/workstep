@@ -9,7 +9,7 @@ import Button from './Button'
 import DirectoryBrowser from './DirectoryBrowser'
 import Field from './Field'
 import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
-import { useManagedMode } from '../hooks/useManagedMode'
+import { useManagedModeStore } from '../stores/managedModeStore'
 
 interface ProjectConnectionDialogProps {
   open: boolean
@@ -23,7 +23,9 @@ export default function ProjectConnectionDialog({
   onConnected,
 }: ProjectConnectionDialogProps) {
   const { t } = useI18n()
-  const managedMode = useManagedMode()
+  const canManageRemoteProjects = useManagedModeStore(state => state.canManageRemoteProjects)
+  const remoteBrowser = isGatewayRemoteBrowser()
+  const remoteDenied = remoteBrowser && !canManageRemoteProjects
   const initProject = useProjectStore((state) => state.initProject)
   const addRemoteProject = useProjectStore((state) => state.addRemoteProject)
   const [mode, setMode] = useState<'local' | 'remote'>('local')
@@ -38,16 +40,12 @@ export default function ProjectConnectionDialog({
   const loadSettings = useUserSettingsStore((state) => state.load)
 
   useEffect(() => {
-    if (open && !isGatewayRemoteBrowser()) void loadSettings()
-  }, [open, loadSettings])
-
-  useEffect(() => {
-    if (managedMode === true) setMode('local')
-  }, [managedMode])
+    if (open && !remoteDenied) void loadSettings()
+  }, [open, loadSettings, remoteDenied])
 
   if (!open) return null
 
-  if (isGatewayRemoteBrowser()) return <div className="modal-overlay" onClick={onClose}>
+  if (remoteDenied) return <div className="modal-overlay" onClick={onClose}>
     <ResizablePanel className="modal" onClick={(event) => event.stopPropagation()}>
       <div className="modal-header"><span className="modal-title">{t('layout.initTitle')}</span></div>
       <div className="modal-body"><p>{t('gatewayRemote.localOnly')}</p></div>
@@ -112,7 +110,7 @@ export default function ProjectConnectionDialog({
             >
               {t('layout.localProject')}
             </Button>
-            {managedMode !== true && <Button
+            {!remoteBrowser && <Button
               variant={mode === 'remote' ? 'primary' : 'ghost'}
               onClick={() => { setMode('remote'); setPath(''); setError('') }}
             >

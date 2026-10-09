@@ -1,3 +1,4 @@
+import { gatewayFetch } from '../utils/gatewayWorkspacePath'
 import { ApiError, fileDataUrl, singleFlight } from './transport'
 import type { SharedTaskApi } from './share'
 
@@ -9,7 +10,7 @@ const gitReadPath = (action: string, data: Record<string, string> = {}) => `/git
 
 async function read<T>(token: string, path: string, csrf = '', options?: RequestInit): Promise<T> {
   const run = async () => {
-    const response = await fetch(base(token) + path, {
+    const response = await gatewayFetch(base(token) + path, {
       ...options, credentials: 'same-origin', headers: {
         'Content-Type': 'application/json', ...(csrf ? { 'X-Share-CSRF': csrf } : {}),
         ...options?.headers,

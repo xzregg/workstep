@@ -3,10 +3,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import GatewayDeviceSidebar from '../src/components/GatewayDeviceSidebar'
+import GatewayDeviceSidebar from '../src/components/GatewayDeviceTabs'
 import { I18nProvider } from '../src/i18n'
 
-test('remote device sidebar switches through a ticket and keeps offline devices disabled', async()=>{
+test('remote device tabs switch directly through a ticket with offline devices disabled', async()=>{
  const {window}=installDomEnvironment();window.happyDOM.setURL('http://d-one.localhost:8700/')
  const original=globalThis.fetch;const originalSubmit=window.HTMLFormElement.prototype.submit
  let action='';let ticket='';let attempts=0
@@ -22,7 +22,7 @@ test('remote device sidebar switches through a ticket and keeps offline devices 
   await act(async()=>root.render(<I18nProvider><GatewayDeviceSidebar currentDeviceId="one"/></I18nProvider>))
   const button=(name:string)=>Array.from(element.querySelectorAll('button')).find(b=>b.textContent?.includes(name))!
   assert.equal(button('离线电脑').disabled,true)
-  assert.equal(button('当前电脑').getAttribute('aria-pressed'),'true')
+  assert.equal(button('当前电脑').getAttribute('aria-selected'),'true')
   await act(async()=>button('另一电脑').click())
   assert.match(element.querySelector('[role=alert]')?.textContent??'',/离线/)
   await act(async()=>button('另一电脑').click())

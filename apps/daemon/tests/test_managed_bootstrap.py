@@ -12,7 +12,7 @@ from services.gateway_client.identity import ManagedAuthorizationVerifier
 from types import SimpleNamespace
 
 
-def test_bootstrap_uses_desktop_secret_once_then_local_session(monkeypatch):
+def test_bootstrap_keeps_desktop_access_separate_from_gateway_identity(monkeypatch):
     monkeypatch.setenv("WORKSTEP_DESKTOP_RUNTIME", "1")
     monkeypatch.setenv("WORKSTEP_DESKTOP_TOKEN", "desktop-secret")
     app = FastAPI()
@@ -49,7 +49,9 @@ def test_bootstrap_uses_desktop_secret_once_then_local_session(monkeypatch):
 
     @app.get("/api/private")
     async def private(request: Request):
-        actor = request.state.managed_actor
+        actor = getattr(request.state, 'managed_actor', None)
+        if actor is None:
+            return {'user_id': None, 'device_id': None}
         return {"user_id": actor.user_id, "device_id": actor.device_id}
 
     with TestClient(app) as client:
@@ -68,7 +70,7 @@ def test_bootstrap_uses_desktop_secret_once_then_local_session(monkeypatch):
         }).json() == {"user_id": "user-1", "device_id": "device-1"}
         assert client.get("/api/private", headers={
             "X-WorkStep-Desktop-Token": "desktop-secret",
-        }).status_code == 401
+        }).json() == {'user_id': 'user-1', 'device_id': 'device-1'}
         assert starts == [("signed-authorization", "device-1")]
         assert client.get("/api/managed/control-status", headers={
             "X-WorkStep-Desktop-Token": "desktop-secret",

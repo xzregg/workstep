@@ -87,7 +87,7 @@ async def purge_users(session, ids):
         if not columns: continue
         condition = or_(*(column.in_(ids) for column in columns))
         if table.name not in safe and await session.scalar(select(table.columns[0]).where(condition).limit(1)) is not None:
-            raise GatewayError('conflict', '请先转移或移除该用户拥有的用户组、分享或 Skills，再彻底删除。')
+            raise GatewayError('conflict', '请先转移或移除该用户拥有的设备、用户组、分享或 Skills，再彻底删除。')
         refs.append((table,condition))
     # Remember external subjects so subsequent imports cannot silently recreate purged accounts.
     identities = (await session.scalars(select(ExternalIdentity).where(ExternalIdentity.user_id.in_(ids)))).all()

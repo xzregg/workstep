@@ -28,6 +28,7 @@ from gateway.api.client_releases import router as client_releases_router
 from gateway.services.control_connection import ControlConnections
 from gateway.api.control_connection import router as control_router
 from gateway.api.capabilities import router as capabilities_router
+from gateway.api.permissions import router as permissions_router
 from gateway.api.user_devices_api import router as user_devices_router
 from gateway.api.remote_access_api import router as remote_access_router, websocket_router as remote_websocket_router
 from gateway.services.remote_access_api import proxy_remote_request
@@ -39,11 +40,14 @@ from gateway.api.audit_ledger import router as audit_router
 from gateway.api.groups_api import router as groups_router
 from gateway.api.skills_api import router as skills_router, admin_group_router as admin_group_skills_router, project_skill_router, device_skill_router
 from gateway.api.project_access_api import router as project_access_router
+from gateway.api.project_invitations import router as project_invitations_router
 from gateway.api.platform_shares import router as platform_shares_router
 from gateway.api.admin_shares import router as admin_shares_router
 from gateway.api.admin_overview import router as admin_overview_router
 from gateway.api.org_api import router as org_router
 from gateway.api.device_groups_api import router as device_groups_router
+from gateway.api.notifications import router as notifications_router,compat_router as legacy_notifications_router
+from gateway.services.notifications import NotificationService
 
 
 def create_app(settings: GatewaySettings | None = None) -> FastAPI:
@@ -64,6 +68,8 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
             GatewaySigner.load_or_create, settings.data_dir / "gateway-signing-key.pem",
         )
         app.state.ready = True
+        app.state.notifications = NotificationService(database,app.state.control_connections,settings)
+        app.state.notifications.task = asyncio.create_task(app.state.notifications.run())
         stop_reconciliation = asyncio.Event()
         callback_wake = asyncio.Event()
         app.state.directory_callback_wake = callback_wake
@@ -81,6 +87,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
             yield
         finally:
             app.state.ready = False
+            await app.state.notifications.close()
             stop_reconciliation.set()
             callback_wake.set()
             await reconciler.jobs.close()
@@ -113,6 +120,18 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def device_host_boundary(request: Request, call_next):
+        path_parts = request.url.path.split('/', 3)
+        if len(path_parts) == 4 and path_parts[1] == 'workspace' and path_parts[2]:
+            local_path = '/' + path_parts[3]
+            gateway_route = (local_path in ('/api/remote/redeem', '/api/remote/session', '/api/remote/project-grants', '/api/remote/devices')
+                or (local_path.startswith('/api/remote/devices/') and local_path.endswith('/access') and len(local_path.split('/')) == 6))
+            if not gateway_route:
+                try:
+                    return await invoke(proxy_remote_request, request=request)
+                except IdentityError as exc:
+                    return await identity_error_response(request, exc)
+                except GatewayError as exc:
+                    return await gateway_error_response(request, exc)
         if settings.public_origin:
             host = request.headers.get("host", "").lower()
             if settings.is_device_authority(host):
@@ -151,6 +170,8 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(identity_router)
+    app.include_router(notifications_router)
+    app.include_router(legacy_notifications_router)
     app.include_router(admin_overview_router)
     app.include_router(org_router)
     app.include_router(device_groups_router)
@@ -160,8 +181,10 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(client_releases_router)
     app.include_router(control_router)
     app.include_router(capabilities_router)
+    app.include_router(permissions_router)
     app.include_router(user_devices_router)
     app.include_router(remote_access_router)
+    app.include_router(remote_access_router, prefix="/workspace/{workspace_device_id}")
     app.include_router(remote_websocket_router)
     app.include_router(providers_router)
     app.include_router(device_commands_router)
@@ -173,6 +196,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(project_skill_router)
     app.include_router(device_skill_router)
     app.include_router(project_access_router)
+    app.include_router(project_invitations_router)
     app.include_router(platform_shares_router)
     app.include_router(admin_shares_router)
     install_share_viewer(app, settings)

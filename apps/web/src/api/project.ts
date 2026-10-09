@@ -1,3 +1,4 @@
+import { workspaceCatalogPath } from './workspaceScope'
 import { request } from './transport'
 import type { ProjectConcurrencyResult, ProjectSettingsResult } from './client'
 import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
@@ -44,6 +45,7 @@ export interface ProjectPublicationStatus {
   }[]
   can_manage: boolean
   can_publish: boolean
+  can_invite?: boolean
   gateway_url: string
 }
 
@@ -111,13 +113,13 @@ export const projectApi = {
         body: JSON.stringify({ steps }),
       },
     ),
-  settings: (projectId: string, withShare = false) =>
+  settings: async (projectId: string, withShare = false) =>
     request<ProjectSettingsResult>(
-      `/projects/${encodeURIComponent(projectId)}/settings${withShare ? '?with_share=true' : ''}`,
+      await workspaceCatalogPath(`/projects/${encodeURIComponent(projectId)}/settings${withShare ? '?with_share=true' : ''}`, projectId),
     ),
-  concurrency: (projectId: string) =>
+  concurrency: async (projectId: string) =>
     request<ProjectConcurrencyResult>(
-      `/projects/${encodeURIComponent(projectId)}/settings/concurrency`,
+      await workspaceCatalogPath(`/projects/${encodeURIComponent(projectId)}/settings/concurrency`, projectId),
     ),
   setConcurrency: (
     projectId: string,

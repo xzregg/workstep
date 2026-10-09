@@ -40,7 +40,8 @@ class GatewaySettings(BaseSettings):
         return f"d-{device_id}.{host}" + (f":{parsed.port}" if parsed.port else "")
 
     def device_url(self, device_id: str) -> str:
-        return f"{urlsplit(self.public_origin).scheme}://{self.device_authority(device_id)}/"
+        from urllib.parse import quote
+        return f"{self.public_origin}/workspace/{quote(device_id, safe='')}/"
 
     def is_device_authority(self, authority: str) -> bool:
         expected = self.device_authority("placeholder")
