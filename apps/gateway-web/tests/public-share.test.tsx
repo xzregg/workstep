@@ -6,6 +6,7 @@ import { PublicSharePage } from '../src/PublicSharePage'
 const dom = new JSDOM('<html><body></body></html>', { url: 'http://localhost:8700/share/token' })
 Object.assign(globalThis, { window: dom.window, document: dom.window.document,
   HTMLElement: dom.window.HTMLElement, MutationObserver: dom.window.MutationObserver, Event: dom.window.Event })
+Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator })
 const { cleanup, render, screen } = await import('@testing-library/react')
 
 test('portal share navigation reloads the canonical WorkStep entry', () => {
