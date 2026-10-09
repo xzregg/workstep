@@ -841,7 +841,7 @@ async def test_provider_list_includes_saved_model_status(engine_client, monkeypa
 
 @pytest.mark.anyio
 async def test_engine_pydantic_ai_models_uses_saved_copy(engine_client, monkeypatch):
-    """引擎模型接口默认读已保存副本；refresh=1 才重新拉取。"""
+    """引擎刷新仅在没有供应商目录时拉取，已有目录只读。"""
     client, store = engine_client
     provider = _add_provider(store)
     store.set_pydantic_ai_engine_config(
@@ -871,7 +871,7 @@ async def test_engine_pydantic_ai_models_uses_saved_copy(engine_client, monkeypa
     assert calls["count"] == 1
     refreshed_again = await client.get("/api/engine/pydantic_ai/models?refresh=1")
     assert refreshed_again.json()["models"] != []
-    assert calls["count"] == 2
+    assert calls["count"] == 1
 
 
 @pytest.mark.anyio
@@ -911,7 +911,7 @@ async def test_engine_deepseek_harness_models_delegates_to_bound_provider(
     engine_client,
     monkeypatch,
 ):
-    """DeepSeek Harness 复用绑定供应商的模型缓存与刷新接口。"""
+    """DeepSeek Harness 刷新保留绑定供应商已有模型目录。"""
     client, store = engine_client
     provider = _add_provider(store)
     store.set_deepseek_harness_config(
@@ -948,7 +948,7 @@ async def test_engine_deepseek_harness_models_delegates_to_bound_provider(
     }]
     assert first.json()["fetched_at"] is not None
     assert refreshed.status_code == 200
-    assert calls["count"] == 2
+    assert calls["count"] == 1
 
 
 @pytest.mark.anyio
@@ -1054,6 +1054,60 @@ async def test_compatible_engine_models_use_provider_cache(engine_client, monkey
         {"id": "gpt-gateway", "label": "GPT Gateway", "description": None}
     ]
     assert result["fetched_at"] == "2026-08-20T00:00:00+00:00"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("engine_id", ["codex", "codex_sdk", "pydantic_ai"])
+@pytest.mark.parametrize("selected", [[{"id": "chosen", "label": "Chosen", "description": None}], []])
+async def test_engine_refresh_preserves_provider_selection(
+    engine_client, monkeypatch, engine_id, selected
+):
+    client, store = engine_client
+    provider = _add_provider(store, type_id="openai", protocol="openai_responses")
+    from engines.core.base import ProviderRuntimeConfig
+
+    class BoundEngine:
+        def resolve_provider_runtime(self, provider_id=""):
+            return ProviderRuntimeConfig(provider_id=provider_id, protocol="openai_responses")
+
+    monkeypatch.setattr(engine_api, "create_engine", lambda _: BoundEngine())
+    monkeypatch.setattr(engine_api, "refresh_registry", lambda **_: None)
+    calls = []
+
+    async def fetch_models(*args, **kwargs):
+        calls.append(True)
+        return [EngineModel(id="chosen", label="Chosen"), EngineModel(id="unselected", label="Unselected")]
+
+    monkeypatch.setattr(provider_service, "fetch_models", fetch_models)
+    saved = await client.post(f"/api/provider/{provider['id']}/models/selection", json={
+        "protocol": "openai_responses", "models": selected,
+    })
+    assert saved.status_code == 200
+    before = store.get_provider_models(provider["id"], "openai_responses")
+    get_models = store.get_provider_models
+
+    def slow_get_models(*args):
+        time.sleep(0.25)
+        return get_models(*args)
+
+    monkeypatch.setattr(store, "get_provider_models", slow_get_models)
+    started = time.perf_counter()
+    refresh = asyncio.create_task(client.get(
+        f"/api/engine/{engine_id}/models?provider_id={provider['id']}&refresh=1"
+    ))
+    await asyncio.sleep(0.02)
+    health = await client.get("/api/health")
+    elapsed = time.perf_counter() - started
+    response = await refresh
+    monkeypatch.setattr(store, "get_provider_models", get_models)
+    assert health.status_code == 200
+    assert elapsed < 0.15
+    assert response.json()["error"] is None
+    assert response.json()["models"] == selected
+    assert store.get_provider_models(provider["id"], "openai_responses") == before
+    assert calls == []
+    provider_response = await client.get(f"/api/provider/{provider['id']}/models?protocol=openai_responses")
+    assert provider_response.json()["models"] == selected
 
 
 @pytest.mark.anyio

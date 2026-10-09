@@ -634,3 +634,5 @@ Gateway 项目管理 `/admin/projects` 由 `apps/gateway-web/src/AdminProjectsPa
 权限管理交互：`PermissionDialogs.tsx` 的新分配使用按类别排列的多选权限，共用授权对象、公共作用范围与公共允许/禁止规则；没有共同范围的项禁选。保存复用逐条权限 API 与一次二次认证，部分成功后锁定目标及规则，重试跳过已保存项；单条调整仍保持原规则语义。`PermissionSubjectTable.tsx` 按对象类型与 ID 汇总，展开后查看每项权限、范围和规则，保留逐条调整/撤销，`AdminPermissionsPage.tsx` 装配并统计对象及规则数量。`AdminPermissionsPage.css` 将放弃修改确认框设为内容高度，窄屏也不继承全屏高度，桌面缩放拖柄保留。行为入口为 `admin-permissions.test.tsx`（多选、范围兼容、部分成功重试、同 ID 不同对象类型、汇总与逐条操作）。
 
 直接远程项目设置：`streaming/remote_host.py::_build_route_catalog` 将 `/api/projects/{project_id}/…` 和项目技能路径识别为 path 绑定，转发时将本地 `remote:…` 别名替换为已认证的宿主项目 ID；测试 `test_remote_project.py::test_remote_project_settings_path_is_bound_to_host_identity`。
+
+引擎模型刷新由 `apps/daemon/api/engine.py::list_engine_models` 持有：绑定供应商且已有模型目录时只重新读取已保存的勾选结果（包括空选择），不拉取或覆盖全量模型；尚无目录时允许首次拉取，原生账号仍刷新引擎目录。供应商全量预览与勾选保存仍归 `api/provider.py::provider_models_preview/provider_models_selection`。回归见 `tests/test_api_engine_config.py::test_engine_refresh_preserves_provider_selection`、`test_native_engine_models_are_persisted_and_reused`。
