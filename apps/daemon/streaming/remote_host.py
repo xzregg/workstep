@@ -85,7 +85,9 @@ def _build_route_catalog(app: FastAPI) -> list[_RouteDescriptor]:
                 if isinstance(item, dict) and item.get("in") == "query"
             }
             binding: Literal["query", "json_body", "path"] | None = None
-            if path_template.startswith('/api/git/projects/{project_id}/'):
+            if path_template.startswith(('/api/git/projects/{project_id}/',
+                                         '/api/projects/{project_id}/',
+                                         '/api/skills/projects/{project_id}')):
                 binding = 'path'
             elif "project_id" in query_names:
                 binding = "query"

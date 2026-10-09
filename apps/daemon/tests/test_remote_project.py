@@ -2145,3 +2145,20 @@ async def test_socket_cancellation_does_not_leave_child_tasks_running():
     await asyncio.gather(*leaked, return_exceptions=True)
 
     assert leaked == []
+
+
+async def test_remote_project_settings_path_is_bound_to_host_identity():
+    app = FastAPI()
+    @app.get("/api/projects/{project_id}/settings")
+    async def settings(project_id: str):
+        return {"project_id": project_id}
+    dispatcher = RemoteRouteDispatcher(app)
+    principal = RemotePrincipal(project_id="host-project", actor=ActorSnapshot(
+        actor_id="remote-user", user_name="Test", device_id="device", device_name="Device", source="remote"))
+    try:
+        response = await dispatcher.dispatch(RemoteHttpRequest(
+            "settings", "GET", "/api/projects/remote:alias/settings", query={"project_id": "remote:alias"}), principal)
+        assert response.status == 200
+        assert response.json()["project_id"] == "host-project"
+    finally:
+        await dispatcher.aclose()

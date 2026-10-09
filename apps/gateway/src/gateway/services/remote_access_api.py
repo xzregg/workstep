@@ -229,12 +229,14 @@ async def remote_session(call: GatewayCall):
 
 
 async def remote_project_grants(call: GatewayCall):
-    _, _, auth_session, _ = await _remote_identity(call)
+    user, device_id, auth_session, _ = await _remote_identity(call)
     if auth_session.project_id is None:
         raise GatewayError('forbidden', 'Project session required')
     async with call.database.session() as session:
         rows = await project_grant_rows(session, auth_session.project_id)
-    return {"grants": [{key: row[key] for key in (
+        device = await session.get(Device, device_id)
+        can_invite = bool(device and device.owner_user_id == user.id)
+    return {"can_invite": can_invite, "grants": [{key: row[key] for key in (
         "subject_type", "subject_id", "subject_name", "access_level",
     )} for row in rows]}
 

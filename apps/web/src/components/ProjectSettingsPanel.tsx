@@ -110,12 +110,12 @@ function LocalProjectSettingsPanel({
     { key: 'quickButtons', label: t('projectSettings.tabs.quickButtons') },
     { key: 'skills', label: t('skillCenter.nav') },
     { key: 'concurrency', label: t('projectSettings.tabs.concurrency') },
-    ...(!isGatewayRemoteBrowser() && project?.type !== 'remote'
+    ...(project?.type !== 'remote'
       ? [{ key: 'share' as const, label: t('projectSettings.tabs.share') }] : []),
   ], [t, project?.type])
 
   useEffect(() => {
-    if (activeTab === 'share' && (isGatewayRemoteBrowser() || project?.type === 'remote')) setActiveTab('general')
+    if (activeTab === 'share' && project?.type === 'remote') setActiveTab('general')
   }, [activeTab, project?.type])
 
   const loadSettings = useCallback(async () => {
@@ -150,7 +150,7 @@ function LocalProjectSettingsPanel({
 
   // Share devices polling while the share tab is open.
   useEffect(() => {
-    if (!projectId || activeTab !== 'share') return
+    if (!projectId || activeTab !== 'share' || isGatewayRemoteBrowser()) return
     let active = true
     const refresh = () => {
       void remoteProjectApi.devices(projectId).then((result) => {

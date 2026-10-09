@@ -8,7 +8,7 @@ import GatewayTaskShareLink from '../src/components/GatewayTaskShareLink'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { useGatewaySessionStore } from '../src/stores/gatewaySessionStore'
 
-test('remote settings reuse grants UI and task sharing stays on the Gateway main host', async () => {
+for (const canInvite of [false, true]) test(`remote settings expose sharing with owner invitation permission: ${canInvite}`, async () => {
   const { window } = installDomEnvironment()
   useLocaleStore.setState({ locale: 'zh-CN' })
   window.happyDOM.setURL('http://d-device-1.localhost:8700/')
@@ -17,7 +17,7 @@ test('remote settings reuse grants UI and task sharing stays on the Gateway main
   globalThis.fetch = async input => {
     calls.push(String(input))
     assert.equal(String(input), '/api/remote/project-grants')
-    return Response.json({ grants: [{ subject_type: 'group', subject_id: 'group-1',
+    return Response.json({ can_invite: canInvite, grants: [{ subject_type: 'group', subject_id: 'group-1',
       subject_name: 'Backend', access_level: 'read' }] })
   }
   useGatewaySessionStore.setState({ session: {
@@ -33,12 +33,14 @@ test('remote settings reuse grants UI and task sharing stays on the Gateway main
       <GatewayTaskShareLink taskId="task-1" projectId="host-1" />
     </I18nProvider>))
     assert.equal(calls.length, 0)
-    const accessTab = [...element.querySelectorAll('button')].find(button => button.textContent === '访问授权')
-    assert.ok(accessTab)
-    await act(async () => accessTab.click())
+    const shareTab = [...element.querySelectorAll('button')].find(button => button.textContent === '分享')
+    assert.ok(shareTab)
+    await act(async () => shareTab.click())
     assert.match(element.textContent ?? '', /用户组 · Backend · 只读/)
     assert.deepEqual(calls, ['/api/remote/project-grants'])
-    assert.equal(element.querySelector('a')?.getAttribute('href'),
+    assert.equal([...element.querySelectorAll('a')].some(link => link.getAttribute('href') ===
+      'http://localhost:8700/project-invitations?project_id=platform-1'), canInvite)
+    assert.equal(element.querySelector('.task-detail-share-button')?.getAttribute('href'),
       'http://localhost:8700/shares/new?project_id=platform-1&task_id=task-1')
     await act(async () => useGatewaySessionStore.setState(state => ({
       session: { ...state.session!, share_create: false, can_manage_project_access: true },
