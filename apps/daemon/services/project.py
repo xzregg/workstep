@@ -622,8 +622,8 @@ class ProjectManager:
     def reorder_projects(self, ordered_ids: list[str]) -> None:
         """Reorder registered projects by an explicit id list.
 
-        Unknown ids (e.g. remote projects) keep their relative order at the
-        end. Persists the new order to the config store.
+        Persist the local project order and the combined local and remote
+        sidebar order, retaining unmentioned local projects at the end.
         """
         by_id = {proj.id: proj for proj in self._projects.values()}
         ordered = []
@@ -634,6 +634,7 @@ class ProjectManager:
         ordered.extend(by_id.values())
         self._projects = {str(proj.path): proj for proj in ordered}
         self._save_config()
+        config_store.set("project_order", list(dict.fromkeys(ordered_ids)))
 
     def unregister(self, project_id: str) -> Project | None:
         """Forget a project without deleting anything from its workspace."""

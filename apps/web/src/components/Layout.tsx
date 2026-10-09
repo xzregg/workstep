@@ -568,7 +568,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                 onPointerUp={cancelSidebarLongPress}
                 onPointerCancel={cancelSidebarLongPress}
                 onPointerLeave={cancelSidebarLongPress}
-                draggable={canEdit && p.type === 'local' && renameId !== p.path}
+                draggable={canEdit && renameId !== p.path}
                 onDragStart={(e) => {
                   e.stopPropagation()
                   e.dataTransfer.effectAllowed = 'move'
@@ -576,7 +576,6 @@ export default function Layout({ onSelectProject, children }: Props) {
                   setDragProjectId(p.id)
                 }}
                 onDragOver={(e) => {
-                  if (p.type !== 'local') return
                   e.preventDefault()
                   e.dataTransfer.dropEffect = 'move'
                   if (dropProjectId !== p.id) setDropProjectId(p.id)
@@ -588,7 +587,6 @@ export default function Layout({ onSelectProject, children }: Props) {
                 onDrop={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
-                  if (p.type !== 'local') return
                   const dragId = dragProjectId || e.dataTransfer.getData('text/plain')
                   const targetId = p.id
                   setDragProjectId(null)
