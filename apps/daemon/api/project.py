@@ -64,7 +64,7 @@ async def rename_project(req: RenameRequest):
 
 @router.post("/reorder")
 async def reorder_projects(req: ReorderProjectsRequest):
-    """Reorder registered local projects by id."""
+    """Persist the combined local and remote sidebar order."""
     await asyncio.to_thread(project_manager.reorder_projects, req.ordered_ids)
     return {"reordered": True}
 
@@ -85,7 +85,12 @@ async def list_projects():
         for project in local_projects
     ]
     remote = await asyncio.to_thread(remote_project_registry.list_public)
-    return {"projects": [*local, *remote]}
+    from services import project as project_service
+
+    ordered_ids = await asyncio.to_thread(project_service.config_store.get, "project_order", [])
+    order = {project_id: index for index, project_id in enumerate(ordered_ids)}
+    projects = sorted([*local, *remote], key=lambda project: order.get(project["id"], len(order)))
+    return {"projects": projects}
 
 
 @router.get("/{project_id}/summary")
