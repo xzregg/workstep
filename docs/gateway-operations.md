@@ -4,7 +4,7 @@
 
 ## 域名、TLS 与进程
 
-1. 准备 `gateway.example.com` 与 `*.gateway.example.com` 的 DNS 记录，均指向同一反向代理。主域承载门户、公开任务分享及 `/api/control/ws`、`/api/data/ws`；`d-<device-id>.gateway.example.com` 承载设备工作台。反向代理必须保留原始 `Host`、HTTPS scheme、WebSocket Upgrade 及长连接，不应把设备子域改写为主域。
+1. 准备 `gateway.example.com` 与 `*.gateway.example.com` 的 DNS 记录，均指向同一反向代理。主域承载门户、公开任务分享及 `/ws/control`、`/ws/data`；`d-<device-id>.gateway.example.com` 承载设备工作台。反向代理必须保留原始 `Host`、HTTPS scheme、WebSocket Upgrade 及长连接，不应把设备子域改写为主域。
 2. 为主域和设备通配符域名配置可信 TLS 证书。正式部署的浏览器与受管客户端使用 HTTPS/WSS；本机验收允许回环地址和 `.localhost` 使用 HTTP/WS，例如 `http://localhost:8700`，不允许非回环 HTTP。反向代理至 Gateway 的监听地址应仅在可信网络可达；Gateway 默认监听 `127.0.0.1:8766`。
 3. 为服务进程设置持久数据目录和稳定配置：`WORKSTEP_GATEWAY_GATEWAY_ID`、`WORKSTEP_GATEWAY_PUBLIC_ORIGIN=https://gateway.example.com`、`WORKSTEP_GATEWAY_DATA_DIR`、`WORKSTEP_GATEWAY_WEB_DIST`、`WORKSTEP_GATEWAY_WORKSPACE_WEB_DIST`。数据库默认是数据目录下的 `workstep_platform.db`；使用 PostgreSQL 时设置 `WORKSTEP_GATEWAY_DATABASE_URL=postgresql+asyncpg://...`。门户先在 `apps/gateway-web` 执行 `yarn build`，将 `dist` 部署到 `WEB_DIST` 指向的位置；在 `apps/web` 执行 `yarn build:gateway-share`，将 `dist-gateway-share` 部署到 `WORKSPACE_WEB_DIST` 指向的位置，供公开分享复用原任务详情。
 4. 在仓库根目录以服务管理器运行 `uv run --project apps/gateway uvicorn gateway.app:app --host 127.0.0.1 --port 8766`。保持单实例；启动时执行 Alembic 迁移，未知迁移版本或数据库不可用会拒绝启动。检查主域 `/api/health` 返回 `{"status":"ok"}`，再验证门户登录、设备控制连接和设备子域工作台。
@@ -31,3 +31,11 @@
 构建受管包时使用 `apps/desktop` 的 `yarn bundle:managed` 和 `yarn dist:managed`。构建环境提供 `WORKSTEP_GATEWAY_ID`、`WORKSTEP_GATEWAY_ORIGIN`、`WORKSTEP_GATEWAY_PUBLIC_KEY_FILE`、`WORKSTEP_MANAGED_SIGNING_KEY_FILE`、`WORKSTEP_MANAGED_BUNDLE_DIR`；包中 Gateway ID、主域和公钥必须与部署一致。按 [桌面发布清单](releasing.md)完成代码签名、校验和及干净机器验证，再把包放入 Gateway 数据目录 `releases/`，经管理员二次认证注册不可变版本和最低协议版本。先给试点设备安装，核对登录、控制心跳、项目访问及任务执行，再扩大分发。
 
 回滚客户端时使用已登记且仍兼容当前 Gateway 协议的旧包；不要在旧包中修改受管配置或复用新版本的文件名。若服务端协议或数据库迁移已改变，先按上节恢复对应快照，再回滚客户端。设备被撤销或停用时，门户访问和数据通道应立即失效；运维人员应在设备页确认状态，并检查审计事件。
+
+## WebSocket 反向代理路径
+
+新客户端统一访问 `/ws/control`、`/ws/data`、`/ws/notifications`；同源设备工作台访问 `/ws/workspace/{device_id}`，设备子域仍使用 `/ws`。GET、POST 和页面路径保持不变。旧 `/api/control/ws`、`/api/data/ws`、`/api/notifications/ws`、`/workspace/{device_id}/ws` 保留兼容，迁移期间仍须支持 Upgrade。
+
+Nginx 可用 `location = /ws` 和 `location ^~ /ws/` 单独匹配新 WebSocket 路径。`proxy_pass` 不带 URI 后缀，保留 Host、查询参数、Cookie、Upgrade、Connection 和 HTTPS scheme，设置足够的长连接超时。工作台兑换票据时同时签发 HTTP 和 WebSocket 路径各自的设备会话 Cookie；已打开的旧工作台需重新进入设备入口完成兑换后使用新路径。
+
+路径统一不意味着支持拆成独立 HTTP/WS 进程。控制连接和数据连接使用进程内状态，目前仍须代理到同一网关实例；如需分别监听端口，应确保共享同一实例的连接状态。

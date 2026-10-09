@@ -72,9 +72,9 @@ uv run --project apps/daemon --group dev pytest apps/desktop/tests/test_backend_
 3. 生成 `build-artifacts/{win,mac,linux}/backend/main.dist/`，其中包含 Python runtime 与 daemon 源码。
 4. 把完整 standalone 目录注入 Electron 的 `resources/backend/`。
 5. 生成 NSIS `.exe`、`.dmg`/更新用 `.zip`、`.AppImage` 和更新元数据。
-6. 创建草稿 GitHub Release；人工发布后客户端才会收到更新。
+6. 创建草稿 GitHub Release；人工发布后才会成为客户端可检测的新版本。
 
-更新下载完成后不会直接退出应用。桌面壳先检查所有项目是否仍有运行中的任务或会话；繁忙时只提示稍后更新，空闲时也必须由用户确认，之后才执行：停止 sidecar → 等待进程退出 → 额外等待 500ms → `quitAndInstall`。
+桌面端不自动下载或安装更新。正式包启动时最多每天查询一次 GitHub 最新 Release，并把结果缓存在本机；用户也可以在“设置 → 系统设置 → 桌面更新”中手动检查。发现更高版本后，只显示“前往 GitHub 下载”按钮并用系统浏览器打开 Release 页面。仅推送 `main` 不会触发更新，必须发布版本号更高的 GitHub Release。
 
 生产 sidecar 每次启动都会生成新的随机令牌。令牌只保留在 Electron 主进程与 sidecar 环境中，由主进程为桌面后台的 HTTP/WebSocket 请求注入；渲染进程不会获得令牌。沙箱和非沙箱模式都首选宿主机端口 `8766`，冲突时才回退到空闲端口。后台监听宿主机网络接口，但远程访问未开启时业务 API 仍要求桌面令牌；开启后，局域网浏览器再按远程访问设置及访问密钥鉴权。外部导航、新窗口、WebView 和浏览器权限请求均由桌面壳限制。
 

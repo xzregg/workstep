@@ -1,4 +1,5 @@
 import SandboxSettings from '../components/SandboxSettings'
+import GatewayLogoutButton from '../components/GatewayLogoutButton'
 import ConfirmDialog from '../components/ConfirmDialog'
 import AgentAssistantSettings from './AgentAssistantSettings'
 import BotSettings from './BotSettings'
@@ -20,6 +21,7 @@ import ProviderSettings from './ProviderSettings'
 import RemoteAccessSettings from './RemoteAccessSettings'
 import ModelPricingSettings from './ModelPricingSettings'
 import GlobalConcurrencySettings from './GlobalConcurrencySettings'
+import DesktopUpdateSettings from '../components/DesktopUpdateSettings'
 import { useI18n } from '../i18n'
 import { useOnboardingStore } from '../stores/onboardingStore'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
@@ -60,6 +62,7 @@ export default function SettingsPage({
   const selectSection = (section: SettingsSection) => sandboxDirty.current ? setPendingExit({ section }) : setActiveSection(section)
   useOverlay(true, closeSettings, settingsDialogRef, compactLayout)
   const userName = useUserSettingsStore((state) => state.userName)
+  const gatewayIdentity = useUserSettingsStore((state) => state.identitySource === 'gateway')
   const userSettingsLoading = useUserSettingsStore((state) => state.loading)
   const userSettingsError = useUserSettingsStore((state) => state.error)
   const saveUserName = useUserSettingsStore((state) => state.saveUserName)
@@ -149,7 +152,7 @@ export default function SettingsPage({
       <section className="settings-content">
         <EngineSettingsPanel hidden={activeSection !== 'engines'} refreshRevision={engineRefreshRevision}
           preferredProviderProtocol={preferredProviderProtocol} focusTarget={focusTarget}
-          onConfigurationChanged={onConfigurationChanged} />
+          onConfigurationChanged={onConfigurationChanged} onConversationStarted={closeSettings} />
         {activeSection !== 'engines' && (activeSection === 'providers' ? (
 
           <ProviderSettings
@@ -180,33 +183,35 @@ export default function SettingsPage({
               {t('settings.systemIntro')}
             </p>
             <div className="settings-system-group">
-              <h2 className="settings-system-heading">{t('settings.userName')}</h2>
+              <h2 className="settings-system-heading">{t(gatewayIdentity ? 'gatewayPlatform.account' : 'settings.userName')}</h2>
               <p className="settings-system-description settings-system-description--name">
-                {t('settings.userNameIntro')}
+                {t(gatewayIdentity ? 'gatewayPlatform.accountHint' : 'settings.userNameIntro')}
               </p>
               <div className="settings-system-name-form">
                 <Input
                   value={userNameDraft}
+                  readOnly={gatewayIdentity}
                   onChange={(event) => {
                     setUserNameDraft(event.target.value)
                     setUserNameSaved(false)
                   }}
                   onKeyDown={(event) => {
-                    if (event.key === 'Enter' && userNameDraft.trim() && !userSettingsLoading) void handleSaveUserName()
+                    if (!gatewayIdentity && event.key === 'Enter' && userNameDraft.trim() && !userSettingsLoading) void handleSaveUserName()
                   }}
                   placeholder={t('settings.userNamePlaceholder')}
                   aria-label={t('settings.userName')}
                   maxLength={80}
                   className="settings-system-name-input"
                 />
-                <Button
+                {gatewayIdentity && <GatewayLogoutButton />}
+                {!gatewayIdentity && <Button
                   variant="primary"
                   loading={userSettingsLoading}
                   disabled={!userNameDraft.trim()}
                   onClick={() => void handleSaveUserName()}
                 >
                   {t('common.save')}
-                </Button>
+                </Button>}
               </div>
               {userNameSaved && (
                 <div role="status" className="settings-system-feedback settings-system-feedback--success">
@@ -220,6 +225,7 @@ export default function SettingsPage({
               )}
             </div>
             <ProjectDirectorySetting />
+            <DesktopUpdateSettings />
             {typeof Notification !== 'undefined' && !window.WorkStepAndroid && !window.workstepDesktop && (
               <div className="settings-system-group">
                 <h2 className="settings-system-heading">{t('settings.browserNotifications')}</h2>

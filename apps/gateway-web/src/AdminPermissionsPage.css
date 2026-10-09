@@ -1,0 +1,39 @@
+.gateway-permissions-page .gateway-admin-toolbar h2 { margin: 0; }
+.gateway-permission-summary { max-width: 70ch; }
+.gateway-permission-filters { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; margin: 24px 0; }
+.gateway-permission-filters > div { flex: 1 1 220px; min-width: 0; }
+.gateway-permission-filters label, .gateway-permission-picker label { display: block; margin-bottom: 8px; font-weight: 600; }
+.gateway-permission-filters select, .gateway-permission-picker select { width: 100%; }
+.gateway-permission-filters > button { align-self: flex-start; margin-top: 30px; }
+.gateway-permission-search { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.gateway-permission-search input { flex: 1; min-width: 0; }
+.gateway-permission-search button { flex: none; }
+.gateway-permission-picker .gateway-admin-pagination { font-size: 12px; gap: 8px; }
+.gateway-permission-picker .gateway-admin-pagination button { min-height: 32px; padding: 4px 8px; }
+.gateway-permission-detail { display: block; color: var(--gateway-admin-secondary, #6e6e73); font-size: 12px; margin-top: 4px; }
+.gateway-permission-table { min-width: 680px; }
+.gateway-permission-table th:last-child, .gateway-permission-table td:last-child { width: 156px; }
+.gateway-permission-effect { font-weight: 600; }
+.gateway-permission-effect--allow { color: #15803d; }
+.gateway-permission-effect--deny { color: #dc2626; }
+.gateway-permission-note { color: var(--gateway-admin-secondary, #6e6e73); font-size: 13px; line-height: 1.6; }
+.gateway-permission-scope-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.gateway-modal.gateway-permission-dialog { width: min(640px, calc(100vw - 32px)); }
+.gateway-modal.gateway-permission-discard { width: min(480px, calc(100vw - 32px)); height: auto; min-height: 0; max-height: calc(100dvh - 32px); top: 50%; bottom: auto; transform: translateY(-50%); }
+.gateway-permission-discard .gateway-modal-body { flex: 0 1 auto; }
+.gateway-permission-selection { border: 1px solid var(--gateway-admin-border); border-radius: var(--gateway-admin-control-radius); padding: 12px; margin: 0 0 16px; }
+.gateway-permission-selection h4 { margin: 12px 0 8px; color: var(--gateway-admin-secondary); }
+.gateway-permission-selection .gateway-permission-checkbox { margin-bottom: 8px; }
+.gateway-permission-subject-rules { list-style: none; margin: 0; padding: 0; }
+.gateway-permission-subject-rules li { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--gateway-admin-separator); }
+.gateway-permission-subject-rules li > div:first-child { flex: 1; min-width: 180px; }
+.gateway-permission-dialog select { width: 100%; margin-bottom: 12px; }
+.gateway-permission-dialog .gateway-permission-picker { margin-bottom: 16px; }
+.gateway-permission-dialog label.gateway-permission-checkbox { display: flex; align-items: center; gap: 8px; }
+.gateway-permission-checkbox input[type="checkbox"] { width: 16px; height: 16px; min-height: 16px; margin: 0; padding: 0; flex: none; }
+@media (max-width: 767px) {
+  .gateway-modal.gateway-permission-discard { height: auto !important; }
+  .gateway-permission-filters { display: block; }
+  .gateway-permission-filters > div { margin-bottom: 16px; }
+  .gateway-permission-filters > button { margin-top: 0; }
+}

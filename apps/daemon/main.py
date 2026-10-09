@@ -83,7 +83,7 @@ from streaming.ws import (
     parse_subscription,
     register_websocket_routes,
 )
-from services.remote_project import ActorSnapshot, RemoteAccessService, RemoteProjectClientManager, RemoteProjectRegistry
+from services.remote_project import ActorSnapshot, RemoteAccessService, RemoteProjectClientManager, RemoteProjectRegistry, get_current_actor
 from api.remote_access_guard import BrowserActorMiddleware
 from api.remote_access_guard import RemoteAccessGuardMiddleware
 from api.remote_project_proxy import RemoteProjectProxyMiddleware
@@ -97,7 +97,20 @@ completion_push = CompletionPushService(event_bus)
 
 
 def _local_actor() -> ActorSnapshot:
+    request_actor = get_current_actor()
+    if request_actor is not None and request_actor.source == 'managed':
+        return request_actor
     device = config_store.get_device_identity()
+    gateway_actor = gateway_client.current_actor if gateway_client.managed_config else None
+    if gateway_actor is not None:
+        return ActorSnapshot(
+            actor_id=gateway_actor.user_id,
+            user_name=gateway_actor.display_name or gateway_actor.username,
+            device_id=device['device_id'],
+            device_name=device['device_name'],
+            source='managed',
+            username=gateway_actor.username,
+        )
     user_name = config_store.get_user_name()
     if not user_name:
         raise ValueError("请先在系统设置中填写使用者名称")
@@ -209,6 +222,8 @@ async def lifespan(app: FastAPI):
         await git_service.close()
         from services.engine_runtime import runtime_manager
         await runtime_manager.shutdown()
+        from services.custom_engines import custom_engine_manager
+        await custom_engine_manager.shutdown()
         try:
             from engines.deepseek_harness import DeepSeekHarnessEngine
             await asyncio.to_thread(DeepSeekHarnessEngine.shutdown_pool)
@@ -251,12 +266,13 @@ app.include_router(managed_router)
 app.include_router(platform_share_router)
 instrument_fastapi(app)
 app.mount("/static", StaticFiles(directory="static"), name="static")
-app.add_middleware(DesktopSecurityMiddleware)
 app.add_middleware(
     RemoteProjectProxyMiddleware,
     registry=remote_project_registry,
     client_manager=remote_project_client,
 )
+# Authorize before the remote proxy can return a response without entering routes.
+app.add_middleware(DesktopSecurityMiddleware)
 app.add_middleware(
     RemoteAccessGuardMiddleware,
     access_service=remote_access_service,

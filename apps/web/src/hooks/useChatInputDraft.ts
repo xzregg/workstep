@@ -57,7 +57,7 @@ export function useChatInputDraft({
 
   useEffect(() => () => {
     const owner = draftOwnerRef.current
-    if (owner) writeDraft(owner, valueRef.current)
+    if (owner) writeDraft(owner, restoredValueRef.current ?? valueRef.current)
   }, [])
 
   return valueRef

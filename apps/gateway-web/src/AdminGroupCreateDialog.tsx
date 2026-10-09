@@ -1,3 +1,4 @@
+import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 
@@ -11,12 +12,12 @@ export function AdminGroupCreateDialog({ csrf, onDone, onClose }: {
   const [departmentQuery, setDepartmentQuery] = useState('')
   const [departments, setDepartments] = useState<Array<{ id: string; display_name: string; provider: string }>>([])
   const [departmentId, setDepartmentId] = useState('')
-  const [password, setPassword] = useState('')
+  const { password, setPassword, passwordRequired, passwordReady } = useStepUpPassword()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [discard, setDiscard] = useState(false)
   const dirty = Boolean(name || slug || description || password || departmentId || departmentQuery)
-  const valid = Boolean(csrf && password && name && name.trim() === name
+  const valid = Boolean(csrf && passwordReady && name && name.trim() === name
     && /^[a-z0-9][a-z0-9_-]*$/.test(slug)
     && (sourceType === 'manual' || departmentId))
 
@@ -36,8 +37,7 @@ export function AdminGroupCreateDialog({ csrf, onDone, onClose }: {
     setBusy(true); setError('')
     const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
     try {
-      const step = await fetch('/api/auth/step-up', { method: 'POST',
-        credentials: 'same-origin', headers, body: JSON.stringify({ password }) })
+      const step = await confirmStepUp(csrf, password, passwordRequired)
       if (!step.ok) throw new Error('管理员密码验证失败。')
       const response = await fetch('/api/groups', { method: 'POST', credentials: 'same-origin',
         headers, body: JSON.stringify({ name, slug, description, source_type: sourceType,
@@ -71,8 +71,7 @@ export function AdminGroupCreateDialog({ csrf, onDone, onClose }: {
           <option value="">选择部门</option>{departments.map(item => <option key={item.id} value={item.id}>
             {item.display_name} · {item.provider}</option>)}</select></label>
       </>}
-      <label>管理员密码<input type="password" autoComplete="current-password" value={password}
-        onChange={event => setPassword(event.target.value)} /></label>
+      <PasswordConfirmation label="管理员密码" value={password} onChange={setPassword} />
     </div>
     {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在创建用户组…</p>}
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}

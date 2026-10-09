@@ -60,3 +60,21 @@ test('persisted Action messages are updated without duplication', () => {
   assert.equal(merged.length, 2)
   assert.equal(merged[1].content, run.output)
 })
+
+test('persisted Action replies arriving before their users are reordered without moving ordinary messages', () => {
+  const messages = [
+    { id: 'before', content: '之前' },
+    { id: run.reply_message_id, content: '', engine: 'action' },
+    { id: 'ordinary', content: '普通消息' },
+    { id: run.user_message_id, content: '执行快捷动作', engine: 'action' },
+    { id: 'after', content: '之后' },
+  ]
+  const merged = mergeActionMessages(messages, [run], message => message.engine === 'action', () => {
+    throw new Error('existing messages must be reused')
+  })
+  assert.deepEqual(merged.map(message => message.id), ['before', 'action-user', 'action-reply', 'ordinary', 'after'])
+  assert.equal(merged[2].content, run.output)
+  assert.deepEqual(mergeActionMessages(merged, [run], message => message.engine === 'action', () => {
+    throw new Error('existing messages must be reused')
+  }).map(message => message.id), merged.map(message => message.id))
+})

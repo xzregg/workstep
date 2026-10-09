@@ -265,9 +265,9 @@ async def test_proactive_dingtalk_updates_same_card_in_each_group(setup):
     await bus.publish(event('a','TEXT_MESSAGE_START'))
     await until(lambda: adapter._card_api.await_count == 2)
     await bus.publish(event('a','TEXT_MESSAGE_CHUNK',delta='部分'))
-    await until(lambda: adapter._card_api.await_count == 4)
+    await until(lambda: sum(c.args[0] == 'PUT' for c in adapter._card_api.await_args_list) == 2)
     await bus.publish(event('a','TEXT_MESSAGE_CHUNK',delta='正文'))
-    await until(lambda: adapter._card_api.await_count == 6)
+    await until(lambda: sum(c.args[0] == 'PUT' for c in adapter._card_api.await_args_list) == 4)
     await bus.publish(event('a','TEXT_MESSAGE_END',status='succeeded',content='完整正文'))
     await until(lambda: not forwarder._messages)
     calls = adapter._card_api.await_args_list

@@ -220,6 +220,7 @@ export interface ChatSessionDetail extends ChatSessionSummary {
 }
 
 export interface ChatQuickButton {
+  enabled?: boolean
   id: string
   label: string
   prompt: string

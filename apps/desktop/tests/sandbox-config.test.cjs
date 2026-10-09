@@ -3,7 +3,15 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
-const { migrateConfig, mapProjects } = require('../src/sandbox-config.cjs')
+const { migrateConfig, mapProjects, localProviderWarnings } = require('../src/sandbox-config.cjs')
+
+test('local provider warnings reflect the providers currently present', () => {
+  assert.deepEqual(localProviderWarnings({ providers: [
+    { name: 'Local', base_url: 'http://localhost:12345/v1' },
+    { name: 'Remote', base_url: 'https://example.com/v1' },
+  ] }), ['Local'])
+  assert.deepEqual(localProviderWarnings({ providers: [] }), [])
+})
 
 test('migration keeps supplier secrets and bindings together, excludes paths and protects target settings', () => {
   const source = {
@@ -22,11 +30,24 @@ test('migration keeps supplier secrets and bindings together, excludes paths and
   assert.deepEqual(config.pydantic_ai_engine, { provider_id: 'one', model: 'test-model' })
   assert.deepEqual(config.codex_engine, { approval_policy: 'on-request' })
   assert.equal(config.user.name, 'existing')
-  for (const key of ['engine_binary_paths', 'projects', 'remote_access', 'device']) assert.equal(config[key], undefined)
+  for (const key of ['engine_binary_paths', 'projects', 'device']) assert.equal(config[key], undefined)
+  assert.deepEqual(config.remote_access, { enabled: true })
   assert.ok(warnings.some(w => w.includes('Local')))
   assert.ok(!JSON.stringify(warnings).includes('test-secret'))
   assert.equal(migrateConfig(source, {}, { engines: true }).config.pydantic_ai_engine.provider_id, undefined)
   assert.equal(migrateConfig(source, { user: { name: 'existing' } }, { preferences: true, overwrite: true }).config.user.name, 'tester')
+})
+
+test('preference migration keeps remote access password without copying invites or devices', () => {
+  const { config } = migrateConfig({ remote_access: {
+    enabled: true, internal_base_url: 'http://192.168.1.2:8766', external_base_url: 'https://work.example',
+    host_id: 'host-id', access_password_salt: 'salt', access_password_hash: 'hash', access_password_set_at: 123,
+    invites: [{ token: 'invite' }], devices: [{ credential: 'device' }],
+  } }, {}, { preferences: true })
+  assert.deepEqual(config.remote_access, {
+    enabled: true, external_base_url: 'https://work.example', host_id: 'host-id',
+    access_password_salt: 'salt', access_password_hash: 'hash', access_password_set_at: 123,
+  })
 })
 
 test('project registration maps only explicitly selected mounted projects and preserves identity', async () => {

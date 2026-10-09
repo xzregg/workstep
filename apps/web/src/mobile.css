@@ -2,6 +2,7 @@
   --mobile-button-height: 32px;
   --mobile-control-compact: var(--mobile-button-height);
   --mobile-control-composer: var(--mobile-button-height);
+  --mobile-control-send: calc(var(--mobile-control-composer) * 1.375);
   --mobile-control-regular: var(--mobile-button-height);
   --mobile-control-touch: 44px;
   --mobile-control-menu: 44px;
@@ -782,7 +783,8 @@
   .chat-input-toolbar {
     flex-wrap: nowrap !important;
     overflow: hidden;
-    min-height: var(--mobile-control-regular) !important;
+    min-height: var(--mobile-control-send) !important;
+    padding-right: calc(var(--mobile-control-send) + var(--mobile-control-gap));
   }
   .chat-input-toolbar-scroll {
     display: flex;
@@ -804,12 +806,23 @@
     height: var(--mobile-control-composer) !important;
     min-height: var(--mobile-control-composer) !important;
   }
-  /* 发送按钮独立占据 toolbar 右侧，不与横滚按钮区重叠；无输入时隐藏。 */
+  /* 发送按钮固定在输入框右下角，工具栏为它预留空间；无输入时隐藏。 */
   .chat-input-send {
-    flex: 0 0 var(--mobile-control-composer) !important;
-    width: var(--mobile-control-composer) !important;
-    height: var(--mobile-control-composer) !important;
-    min-height: var(--mobile-control-composer) !important;
+    position: absolute;
+    right: var(--mobile-control-gap);
+    bottom: var(--mobile-control-gap);
+    width: var(--mobile-control-send) !important;
+    height: var(--mobile-control-send) !important;
+    min-height: var(--mobile-control-send) !important;
+    padding: 0;
+  }
+  .chat-input-send > svg {
+    width: calc(13px * 1.375);
+    height: calc(13px * 1.375);
+  }
+  .chat-input-send .chat-input-stop-glyph {
+    width: calc(12px * 1.375);
+    height: calc(12px * 1.375);
   }
   .chat-input-send:disabled {
     display: none !important;

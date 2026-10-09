@@ -1,0 +1,17 @@
+{
+  "name": "@workstep/gateway-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./DeviceTabs": "./src/DeviceTabs.tsx",
+    "./NotificationCenterView": "./src/NotificationCenterView.tsx",
+    "./openRemoteAccess": "./src/openRemoteAccess.ts",
+    "./androidNotifications": "./src/androidNotifications.ts",
+    "./NotificationCenter.css": "./src/NotificationCenter.css",
+    "./DeviceTabs.css": "./src/DeviceTabs.css"
+  },
+  "peerDependencies": {
+    "react": "^19.2.7"
+  }
+}

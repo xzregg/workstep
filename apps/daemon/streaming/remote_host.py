@@ -8,7 +8,7 @@ import inspect
 import json
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal
 
 import httpx
@@ -85,7 +85,9 @@ def _build_route_catalog(app: FastAPI) -> list[_RouteDescriptor]:
                 if isinstance(item, dict) and item.get("in") == "query"
             }
             binding: Literal["query", "json_body", "path"] | None = None
-            if path_template.startswith('/api/git/projects/{project_id}/'):
+            if path_template.startswith(('/api/git/projects/{project_id}/',
+                                         '/api/projects/{project_id}/',
+                                         '/api/skills/projects/{project_id}')):
                 binding = 'path'
             elif "project_id" in query_names:
                 binding = "query"
@@ -152,7 +154,22 @@ class RemoteRouteDispatcher:
             payload["project_id"] = principal.project_id
             body = json.dumps(payload, ensure_ascii=False).encode()
 
-        actor_token = _current_actor.set(principal.actor)
+        actor = principal.actor
+        if request.actor is not None:
+            attribution = request.actor
+            if (not isinstance(attribution, dict)
+                    or any(not isinstance(attribution.get(key), str)
+                           for key in ('actor_id', 'user_name', 'username'))
+                    or not attribution['actor_id'].strip()
+                    or not attribution['user_name'].strip()
+                    or any(len(attribution[key]) > 256 for key in ('actor_id', 'user_name', 'username'))):
+                raise ValueError('Invalid remote request actor identity')
+            # Keep device credentials, project scope and access level from the
+            # authenticated connection; delegation only changes attribution.
+            actor = replace(actor, actor_id=attribution['actor_id'],
+                            user_name=attribution['user_name'],
+                            username=attribution['username'] or None)
+        actor_token = _current_actor.set(actor)
         try:
             response = await self._client.request(
                 request.method,
@@ -374,6 +391,7 @@ async def serve_remote_project_socket(
                     query={str(k): str(v) for k, v in dict(message.get("query") or {}).items()},
                     headers={str(k): str(v) for k, v in dict(message.get("headers") or {}).items()},
                     body=body,
+                    actor=message.get('actor'),
                 )
                 response = await dispatcher.dispatch(request, principal)
                 discover_authorized_ids(request.path, response)

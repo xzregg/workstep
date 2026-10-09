@@ -14,5 +14,7 @@ def prepare_engine_package_dir() -> Path:
     os.environ["WORKSTEP_ENGINE_PACKAGE_DIR"] = str(package_dir)
     if str(package_dir) in sys.path:
         sys.path.remove(str(package_dir))
-    sys.path.insert(0, str(package_dir))
+    # Optional engines must not replace dependencies locked by the daemon
+    # environment (for example logfire's OpenTelemetry packages).
+    sys.path.append(str(package_dir))
     return package_dir

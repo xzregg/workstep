@@ -203,9 +203,23 @@ async def test_gateway_bridge_streams_body_and_attaches_remote_actor_without_blo
         await asyncio.wait_for(blocked._task, timeout=1)
         assert blocked_frames[0].payload["status"] == 403
 
+    owner_frames = []
+    async def capture_owner(frame): owner_frames.append(frame)
+    owner = ManagedHttpBridge(app, 'owner', {
+        'method': 'GET', 'path': '/api/fs/browse', 'query': '', 'headers': [],
+        'user_id': 'owner-a', 'username': 'alice', 'device_owner': True,
+    }, capture_owner, 'device-1')
+    owner.start_task()
+    await asyncio.wait_for(owner._task, timeout=1)
+    assert owner_frames[0].payload['status'] == 200
+
 
 @pytest.mark.asyncio
-async def test_project_scoped_bridge_denies_unknown_and_cross_project_api():
+async def test_project_scoped_bridge_denies_unknown_and_cross_project_api(monkeypatch):
+    # Audit persistence has separate database tests; this fixture owns only a
+    # lightweight ASGI app and must not initialize the global production daemon.
+    async def audit(*args): pass
+    monkeypatch.setattr('api.desktop_security.record_remote_request_failure', audit)
     app = FastAPI()
     app.state.gateway_client = type("Client", (), {"managed_config": object()})()
     app.add_middleware(DesktopSecurityMiddleware)
@@ -246,6 +260,10 @@ async def test_project_scoped_bridge_denies_unknown_and_cross_project_api():
     async def health():
         return {"status": "ok"}
 
+    @app.get('/api/chat-sessions/{session_id}')
+    async def session_detail(session_id: str):
+        return {'id': session_id, 'messages': [], 'running': False}
+
     async def response_status(method: str, path: str, query: str) -> int:
         frames = []
         async def capture(frame):
@@ -259,6 +277,8 @@ async def test_project_scoped_bridge_denies_unknown_and_cross_project_api():
         await asyncio.wait_for(bridge._task, timeout=1)
         return frames[0].payload["status"]
 
+    assert await response_status('GET', '/api/chat-sessions/session-1', 'project_id=host-1&limit=300&offset=0') == 200
+    assert await response_status('GET', '/api/chat-sessions/session-1', 'project_id=host-2&limit=300&offset=0') == 403
     assert await response_status("GET", "/api/task/list", "project_id=host-1") == 200
     assert await response_status("GET", "/api/task/task-1", "project_id=host-1") == 200
     assert await response_status("GET", "/api/task/task-1", "project_id=host-2") == 403

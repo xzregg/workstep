@@ -8,11 +8,13 @@ from fastapi import APIRouter, WebSocket
 router = APIRouter()
 
 
+@router.websocket("/ws/data")
 @router.websocket("/api/data/ws")
 async def data_socket(ws: WebSocket):
     return await invoke(_handle_data_socket, ws=ws)
 
 
+@router.websocket("/ws/control")
 @router.websocket("/api/control/ws")
 async def control_socket(ws: WebSocket):
     return await invoke(_handle_control_socket, ws=ws)

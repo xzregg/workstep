@@ -417,3 +417,62 @@ def test_switching_from_project_local_preserves_original_recoverably(
     disabled = list((project / ".workstep" / "skills-disabled").glob("review-*"))
     assert len(disabled) == 1
     assert "description: local" in (disabled[0] / "SKILL.md").read_text()
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_builtin_relocation_migrates_legacy_selection(tmp_path: Path, enabled: bool) -> None:
+    old = write_skill(tmp_path / "old-package" / "review", "review", "old")
+    current = write_skill(tmp_path / "new-package" / "review", "review", "new")
+    project = tmp_path / "project"
+    center = SkillCenter(source_roots={"builtin": current.parent})
+    manifest_path = center._paths(project)[1]
+    legacy_id = center._skill_id(old)
+    center._write_manifest(manifest_path, {"version": 1, "entries": {
+        legacy_id: {"name": "review", "source": "builtin", "source_path": str(tmp_path / "removed-package" / "review"),
+                    "enabled": enabled, "valid": True, "sync_status": "synced"},
+    }})
+    skills = center.list_project(project)
+    assert len(skills) == 1
+    assert skills[0].source_path == str(current)
+    assert skills[0].enabled is enabled
+    assert skills[0].skill_id != legacy_id
+    relocated = SkillCenter(source_roots={"builtin": old.parent}).list_project(project)
+    assert relocated[0].skill_id == skills[0].skill_id
+    assert relocated[0].enabled is enabled
+
+
+def test_builtin_migration_preserves_personal_selection(tmp_path: Path) -> None:
+    builtin = write_skill(tmp_path / "bundle" / "review", "review")
+    personal = write_skill(tmp_path / "personal" / "review", "review")
+    center = SkillCenter(source_roots={"builtin": builtin.parent, "agents": personal.parent})
+    project = tmp_path / "project"
+    center._write_manifest(center._paths(project)[1], {"version": 1, "entries": {
+        "old-builtin": {"name": "review", "source": "builtin", "source_path": "/missing/review",
+                        "enabled": True, "valid": True, "sync_status": "missing"},
+        center._skill_id(personal): {"name": "review", "source": "agents", "source_path": str(personal),
+                                    "enabled": True, "valid": True, "sync_status": "synced"},
+    }})
+    skills = center.list_project(project)
+    assert len(skills) == 2
+    assert [skill.source for skill in skills if skill.enabled] == ["agents"]
+
+
+def test_builtin_stable_choice_wins_over_duplicate_legacy_records(tmp_path: Path) -> None:
+    builtin = write_skill(tmp_path / "bundle" / "review", "review")
+    center = SkillCenter(source_roots={"builtin": builtin.parent})
+    project = tmp_path / "project"
+    skill = center.list_project(project)[0]
+    center.set_enabled(project, skill.skill_id, False)
+    manifest_path = center._paths(project)[1]
+    manifest = json.loads(manifest_path.read_text())
+    for key in ("old-package", "another-package"):
+        manifest["entries"][key] = {
+            "name": "review", "source": "builtin", "source_path": f"/missing/{key}/review",
+            "enabled": True, "valid": True, "sync_status": "missing",
+        }
+    center._write_manifest(manifest_path, manifest)
+    skills = center.list_project(project)
+    assert len(skills) == 1
+    assert skills[0].enabled is False
+    assert skills[0].conflict is False
+    assert set(json.loads(manifest_path.read_text())["entries"]) == {skill.skill_id}

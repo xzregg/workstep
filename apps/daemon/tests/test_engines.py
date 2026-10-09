@@ -346,17 +346,15 @@ async def test_base_engine_acp_session_defaults_are_safe_noops(tmp_path):
 
 
 def test_registry_has_claude():
-    """Codex/Claude CLI modules are retained but not registered."""
+    """CLI engines remain registered even when hidden from selectors."""
     from engines.codex import CodexEngine
     from engines.claude_code import ClaudeCodeEngine
     from engines.core.registry import _ALL_ENGINES
 
     assert CodexEngine.ENGINE_ID == "codex"
     assert ClaudeCodeEngine.ENGINE_ID == "claude"
-    assert "claude" not in _ALL_ENGINES
-    assert "codex" not in _ALL_ENGINES
-    assert "claude" not in ENGINE_REGISTRY
-    assert "codex" not in ENGINE_REGISTRY
+    assert "claude" in _ALL_ENGINES
+    assert "codex" in _ALL_ENGINES
 
 
 def test_create_engine():
@@ -573,7 +571,7 @@ def test_get_available_engines():
     """get_available_engines returns list with install status."""
     engines = get_available_engines()
     assert len(engines) >= 1
-    assert not any(e["id"] in ("claude", "codex") for e in engines)
+    assert {"claude", "codex"} <= {e["id"] for e in engines}
     claude_entry = next(e for e in engines if e["id"] == "hermes")
     assert "installed" in claude_entry
     assert isinstance(claude_entry["installed"], bool)
@@ -596,16 +594,15 @@ def test_registry_marks_python_sdk_engines_as_updatable():
 
 
 def test_claude_resolve_binary():
-    """Hidden CLI modules stay importable but unregistered."""
+    """CLI modules remain registered and expose binary discovery."""
     from engines.core.registry import _ALL_ENGINES, ENGINE_REGISTRY, get_available_engines
     ClaudeCodeEngine._binary_override = getattr(ClaudeCodeEngine, '_binary_override', None)
     binary = ClaudeCodeEngine.resolve_binary()
     # May be None if claude not installed — that's OK
     assert binary is None or isinstance(binary, str)
-    assert "claude" not in _ALL_ENGINES
-    assert "codex" not in _ALL_ENGINES
-    assert "claude" not in ENGINE_REGISTRY
-    assert all(e["id"] not in ("claude", "codex") for e in get_available_engines())
+    assert "claude" in _ALL_ENGINES
+    assert "codex" in _ALL_ENGINES
+    assert all(isinstance(e["enabled"], bool) for e in get_available_engines())
 
 
 def test_claude_supports_resume():
@@ -899,3 +896,27 @@ def test_claude_map_event_unknown_returns_none():
     engine = ClaudeCodeEngine()
     assert engine._map_event({"type": "unknown"}) is None
     assert engine._map_event({"type": "ping"}) is None
+
+
+def test_engine_visibility_defaults_and_persistence(tmp_path, monkeypatch):
+    from services.config import ConfigStore
+    import services.config as config_module
+    monkeypatch.setattr(config_module, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(config_module, "CONFIG_FILE", tmp_path / "config.json")
+    store = ConfigStore()
+    assert store.is_engine_enabled("codex") is False
+    assert store.is_engine_enabled("claude") is False
+    assert store.is_engine_enabled("hermes") is True
+    store.set_engine_enabled("codex", True)
+    store.set_engine_enabled("hermes", False)
+    restored = ConfigStore()
+    assert restored.is_engine_enabled("codex") is True
+    assert restored.is_engine_enabled("hermes") is False
+
+
+def test_hidden_engine_can_still_be_created(monkeypatch):
+    from engines.codex import CodexEngine
+    monkeypatch.setattr(CodexEngine, "is_installed", staticmethod(lambda: True))
+    monkeypatch.setattr(engine_registry.config_store, "is_engine_enabled", lambda _: False)
+    monkeypatch.delitem(ENGINE_REGISTRY, "codex", raising=False)
+    assert isinstance(create_engine("codex"), CodexEngine)

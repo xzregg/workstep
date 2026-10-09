@@ -96,7 +96,7 @@ def _available_buttons(project_id: str, task: Task, step_key: str | None) -> lis
                 not isinstance(selected_ids, list) or button.get("id") in selected_ids
             )
         ]
-    return local + workflow_buttons + inherited
+    return [button for button in local + workflow_buttons + inherited if button.get("enabled") is not False]
 
 
 def _serialize(run: ActionRun) -> dict:
@@ -251,7 +251,7 @@ class ActionRuntime:
                 & ActionRun.active_key.startswith(f"project:{project_id}:action:")
             ))
             return {
-                "buttons": _buttons_from_setting(project_id),
+                "buttons": [button for button in _buttons_from_setting(project_id) if button.get("enabled") is not False],
                 "runs": [_serialize(run) for run in runs],
                 "active_runs": [_serialize(run) for run in active],
             }
@@ -358,7 +358,8 @@ class ActionRuntime:
             if session is None:
                 raise ActionError("聊天会话不存在", 404)
             button = next((item for item in _buttons_from_setting(project_id)
-                           if item.get("id") == button_id and item.get("kind") == "action"), None)
+                           if item.get("id") == button_id and item.get("kind") == "action"
+                           and item.get("enabled") is not False), None)
             if button is None:
                 raise ActionError("Action 快捷按钮不存在", 404)
             if button.get("require_confirmation", True) and not confirmed:

@@ -78,8 +78,12 @@ class GatewaySigner:
     def sign_policy_snapshot(self, *, gateway_id: str, device_id: str, user_id: str,
                              revision: int = 0, task_create: bool = False,
                              project_publish: bool = False,
+                             allow_local_providers: bool = False,
+                             task_share: bool = False, engine_install: bool = False,
                              task_create_project_ids: list[str] | None = None,
                              task_create_denied_project_ids: list[str] | None = None,
+                             task_share_project_ids: list[str] | None = None,
+                             task_share_denied_project_ids: list[str] | None = None,
                              allowed_provider_ids: list[str] | None = None,
                              allowed_models: list[str] | None = None,
                              ttl_seconds: int = 600) -> str:
@@ -91,10 +95,12 @@ class GatewaySigner:
             "policy_revision": revision, "iat": now, "exp": now + ttl_seconds,
             "allowed_provider_ids": allowed_provider_ids or [],
             "allowed_models": allowed_models or [],
-            "allow_local_providers": False, "task_create": task_create,
+            "allow_local_providers": allow_local_providers, "task_create": task_create,
             "task_create_project_ids": task_create_project_ids or [],
             "task_create_denied_project_ids": task_create_denied_project_ids or [],
-            "project_publish": project_publish, "task_share": False, "engine_install": False,
+            "task_share_project_ids": task_share_project_ids or [],
+            "task_share_denied_project_ids": task_share_denied_project_ids or [],
+            "project_publish": project_publish, "task_share": task_share, "engine_install": engine_install,
         }, separators=(",", ":"), sort_keys=True).encode())
         signing_input = f"{header}.{payload}"
         return f"{signing_input}.{_b64(self.private_key.sign(signing_input.encode()))}"

@@ -8,6 +8,7 @@ import ProjectPublicationSettings from '../src/components/ProjectPublicationSett
 import ProjectSettingsPanel from '../src/components/ProjectSettingsPanel'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { useManagedModeStore } from '../src/stores/managedModeStore'
+import { useGatewayConnectionStore } from '../src/stores/gatewayConnectionStore'
 
 test('managed local project settings shows grants and safely changes publication', async () => {
   installDomEnvironment()
@@ -23,7 +24,7 @@ test('managed local project settings shows grants and safely changes publication
       { subject_type: 'group', subject_id: 'group-1', subject_name: 'Backend', access_level: 'read' },
       { subject_type: 'user', subject_id: 'user-1', subject_name: 'Alice', access_level: 'edit' },
     ] : [],
-    can_manage: true, can_publish: true, gateway_url: 'https://gateway.test',
+    can_manage: true, can_publish: true, can_invite: true, gateway_url: 'https://gateway.test',
   })
   projectApi.setPublication = async (_projectId, next) => {
     changes.push(next)
@@ -39,6 +40,8 @@ test('managed local project settings shows grants and safely changes publication
     assert.match(container.textContent ?? '', /用户组 · Backend · 只读/)
     assert.match(container.textContent ?? '', /用户 · Alice · 可编辑/)
     assert.equal(container.querySelector('a')?.getAttribute('href'), 'https://gateway.test/admin/projects')
+    const invite = [...container.querySelectorAll('a')].find(link => link.textContent === '分享项目（网关邀请）')
+    assert.equal(invite?.getAttribute('href'), 'https://gateway.test/project-invitations?project_id=platform-1')
     const unpublish = [...container.querySelectorAll('button')].find(button => button.textContent === '取消发布')
     assert.ok(unpublish)
     await act(async () => unpublish.click())
@@ -56,10 +59,13 @@ test('managed local project settings shows grants and safely changes publication
   }
 })
 
-test('managed local settings mounts access grants tab', async () => {
+for (const url of ['', 'https://gateway.test']) test(`share contains access authorization only with a Gateway address: ${url}`, async () => {
   installDomEnvironment()
   useLocaleStore.setState({ locale: 'zh-CN' })
-  useManagedModeStore.setState({ managed: true, loading: false })
+  useManagedModeStore.setState({ managed: false, loading: false })
+  const originalRefresh = useGatewayConnectionStore.getState().refresh
+  const status = { url, enabled: false, authenticated: false, online: false, pending_device: false, package_locked: false }
+  useGatewayConnectionStore.setState({ status, refresh: async () => status })
   const originalSettings = projectApi.settings
   const originalStatus = projectApi.publication
   projectApi.settings = async () => ({
@@ -76,15 +82,21 @@ test('managed local settings mounts access grants tab', async () => {
     await act(async () => root.render(<I18nProvider><ProjectSettingsPanel
       project={{ id: 'host-1', name: 'Project', path: '/tmp/project', steps: [], workflows: [], type: 'local' }}
       onClose={() => {}} /></I18nProvider>))
-    const tab = [...container.querySelectorAll('button')].find(button => button.textContent === '访问授权')
-    assert.ok(tab)
-    await act(async () => tab.click())
-    assert.match(container.textContent ?? '', /尚未发布到 Gateway/)
+    assert.equal([...container.querySelectorAll('button')].some(button => button.textContent === '访问授权'), false)
+    const share = [...container.querySelectorAll('button')].find(button => button.textContent === '分享')!
+    await act(async () => share.click())
+    const tab = container.querySelector<HTMLButtonElement>('[role="tab"][data-share-tab="gateway"]')
+    assert.equal(Boolean(tab), Boolean(url))
+    if (tab) {
+      await act(async () => tab.click())
+      assert.match(container.textContent ?? '', /尚未发布到 Gateway/)
+    }
   } finally {
     await act(async () => root.unmount())
     container.remove()
     projectApi.settings = originalSettings
     projectApi.publication = originalStatus
     useManagedModeStore.setState({ managed: null })
+    useGatewayConnectionStore.setState({ status: null, refresh: originalRefresh })
   }
 })

@@ -31,7 +31,7 @@ from gateway.services.identity import COOKIE_NAME, IdentityService
 
 from gateway.services.identity_api import _check_csrf
 
-from gateway.models import AdminAssignment, AuditEvent, CapabilityAssignment, Device, PlatformProject, PlatformShare, PlatformShareSession, User
+from gateway.models import AuditEvent, Device, PlatformProject, PlatformShare, PlatformShareSession, User
 
 from gateway.services.project_access_api import effective_project_access
 
@@ -214,26 +214,28 @@ async def _share_git_branch_body(call: GatewayCall, kind: str) -> bytes:
 
 
 async def can_create_platform_share(session, user_id: str, project: PlatformProject) -> bool:
-    admin = await session.scalar(select(AdminAssignment.id).where(
-        AdminAssignment.user_id == user_id,
-        AdminAssignment.role == "super_admin",
-        AdminAssignment.revoked_at.is_(None),
-    ))
-    if admin is not None:
+    from gateway.services.identity import IdentityService
+    from gateway.services.capabilities import capability_rules
+    from gateway.services.permission_subjects import active_group_ids
+    from gateway.models import GroupCapabilityAssignment
+    if await IdentityService.super_admin_in_session(session, user_id):
         return True
     access = await effective_project_access(session, user_id, project.id)
     if access != "edit":
         return False
-    rules = (await session.scalars(select(CapabilityAssignment).where(
-        CapabilityAssignment.user_id == user_id,
-        CapabilityAssignment.capability == "share.create",
-        CapabilityAssignment.revoked_at.is_(None),
+    rules = await capability_rules(session, user_id)
+    group_rules = (await session.scalars(select(GroupCapabilityAssignment).where(
+        GroupCapabilityAssignment.group_id.in_(active_group_ids(user_id)),
+        GroupCapabilityAssignment.project_id == project.id,
+        GroupCapabilityAssignment.capability == "share.create",
+        GroupCapabilityAssignment.revoked_at.is_(None),
     ))).all()
-    applicable = [rule for rule in rules if rule.scope_type == "global"
+    applicable = [rule for rule in rules if rule.capability == "share.create" and (
+                  rule.scope_type == "global"
                   or (rule.scope_type == "device" and rule.scope_id == project.device_id)
-                  or (rule.scope_type == "project" and rule.scope_id == project.id)]
-    return (any(rule.effect == "allow" for rule in applicable)
-            and not any(rule.effect == "deny" for rule in applicable))
+                  or (rule.scope_type == "project" and rule.scope_id == project.id))]
+    return (any(rule.effect == "allow" for rule in (*applicable, *group_rules))
+            and not any(rule.effect == "deny" for rule in (*applicable, *group_rules)))
 
 
 async def _live_share(call: GatewayCall, token: str) -> PlatformShare:
@@ -345,7 +347,7 @@ async def create_platform_share(call: GatewayCall, body: CreateShareInput):
     auth_token = call.tokens.get(COOKIE_NAME)
     actor, _ = await IdentityService(call.database).session_user(auth_token)
     _check_csrf(call, auth_token)
-    if actor.status != "active" or actor.must_change_password:
+    if actor.status != "active":
         raise GatewayError('forbidden', 'Account unavailable')
     if body.expires_at is not None:
         expiry = _utc(body.expires_at)
@@ -390,7 +392,7 @@ async def list_own_platform_shares(call: GatewayCall,
                                    project_id: str = None,
                                    task_id: str = None):
     actor, _ = await IdentityService(call.database).session_user(call.tokens.get(COOKIE_NAME))
-    if actor.status != "active" or actor.must_change_password:
+    if actor.status != "active":
         raise GatewayError('forbidden', 'Account unavailable')
     async with call.database.session() as session:
         rows = (await session.scalars(select(PlatformShare).where(
@@ -417,12 +419,8 @@ async def revoke_platform_share(call: GatewayCall, share_id: str):
             share = await session.get(PlatformShare, share_id)
             if share is None:
                 raise GatewayError('not_found', 'Share unavailable')
-            admin = await session.scalar(select(AdminAssignment.id).where(
-                AdminAssignment.user_id == actor.id,
-                AdminAssignment.role == "super_admin",
-                AdminAssignment.revoked_at.is_(None),
-            ))
-            if actor.id != share.created_by_user_id and admin is None:
+            admin = await IdentityService.super_admin_in_session(session, actor.id)
+            if actor.id != share.created_by_user_id and not admin:
                 raise GatewayError('forbidden', 'Share management unavailable')
             if share.revoked_at is None:
                 project = await session.get(PlatformProject, share.project_id)

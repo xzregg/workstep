@@ -95,6 +95,17 @@
   color: var(--danger);
 }
 
+.desktop-update-version {
+  margin: 0 0 10px;
+  font-size: calc(12px * var(--font-scale));
+}
+
+.desktop-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .settings-system-page .settings-switch {
   background: var(--border);
 }

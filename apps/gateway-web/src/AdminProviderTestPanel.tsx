@@ -1,3 +1,4 @@
+import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useEffect, useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 
@@ -19,7 +20,7 @@ export function AdminProviderTestPanel({ providerId, providerName, csrf, onClose
   const [targets, setTargets] = useState<Target[]>([])
   const [total, setTotal] = useState(0)
   const [deviceId, setDeviceId] = useState('')
-  const [password, setPassword] = useState('')
+  const { password, setPassword, passwordRequired, passwordReady } = useStepUpPassword()
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [loadError, setLoadError] = useState('')
@@ -46,8 +47,7 @@ export function AdminProviderTestPanel({ providerId, providerName, csrf, onClose
     setBusy(true); setError(''); setResult(null)
     try {
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
-      const step = await fetch('/api/auth/step-up', { method: 'POST', credentials: 'same-origin', headers,
-        body: JSON.stringify({ password }) })
+      const step = await confirmStepUp(csrf, password, passwordRequired)
       if (!step.ok) throw new Error('密码验证失败。')
       const response = await fetch(`/api/admin/providers/${encodeURIComponent(providerId)}/test`, {
         method: 'POST', credentials: 'same-origin', headers,
@@ -66,7 +66,7 @@ export function AdminProviderTestPanel({ providerId, providerName, csrf, onClose
   return <>
     <GatewayConfirmDialog title="测试供应商连接"
       message={`在目标 PC 上测试「${providerName}」连接。只返回状态和脱敏错误码。`}
-      confirmLabel="发送测试命令" busy={busy} disabled={!deviceId || !password || loading || !!loadError}
+      confirmLabel="发送测试命令" busy={busy} disabled={!deviceId || !passwordReady || loading || !!loadError}
       onConfirm={() => void submit()} onCancel={() => dirty ? setDiscard(true) : onClose()}>
       <form className="gateway-admin-search" onSubmit={event => {
         event.preventDefault(); setDeviceId(''); setPage(1); setSearch(query.trim())
@@ -88,9 +88,7 @@ export function AdminProviderTestPanel({ providerId, providerName, csrf, onClose
       {loading && <p role="status">正在加载在线 PC…</p>}
       {loadError && <p role="alert" className="gateway-auth-error">{loadError} <button type="button"
         onClick={() => setRevision(value => value + 1)}>重试加载</button></p>}
-      <label htmlFor="provider-test-password">输入管理员密码确认</label>
-      <input id="provider-test-password" type="password" autoComplete="current-password"
-        value={password} onChange={event => setPassword(event.target.value)} />
+      <PasswordConfirmation id="provider-test-password" label="输入管理员密码确认" value={password} onChange={setPassword} />
       {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在测试连接…</p>}
       {error && <p role="alert" className="gateway-auth-error">{error}</p>}
       {result && <p role="status">{result.status === 'succeeded' ? '连接成功'

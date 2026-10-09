@@ -98,8 +98,10 @@ async def set_department(call: GatewayCall, device_id: str, body: DepartmentInpu
             if not device:
                 raise GatewayError('not_found', 'Device not found')
             if body.department_id:
-                department = await session.get(DirectoryDepartment, body.department_id)
-                if not department or not department.active:
+                from gateway.services.directory_departments import assignable_department
+                department = await session.scalar(select(DirectoryDepartment).where(
+                    DirectoryDepartment.id == body.department_id, assignable_department()))
+                if department is None:
                     raise GatewayError('invalid', 'Active department required')
             device.department_id = body.department_id
             _audit(session, actor, "admin.device.department_changed", device_id=device_id)

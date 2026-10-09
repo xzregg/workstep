@@ -72,6 +72,7 @@ async def test_dingtalk_fetches_all_departments_and_paginated_members(monkeypatc
 
     def handler(request):
         calls.append(request)
+        if request.url.path.endswith('/auth/scopes'): return httpx.Response(200, json={'errcode': 0, 'auth_org_scopes': {'authed_dept': [1]}})
         if request.url.path.endswith("/oauth2/accessToken"):
             return httpx.Response(200, json={"accessToken": "app-token"})
         if request.url.path.endswith("/department/listsub"):
@@ -123,3 +124,75 @@ async def test_wecom_fetches_directory_with_stable_member_ids(monkeypatch):
     snapshot = await connector.fetch_directory(source)
     assert snapshot["people"] == [{"subject": "employee-1", "display_name": "张三", "department_ids": ["2"]}]
     assert len(snapshot["departments"]) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('provider', ['dingtalk', 'wecom'])
+async def test_directory_preview_does_not_fetch_members_and_selected_sync_only_requests_checked_departments(monkeypatch, provider):
+    import json
+    monkeypatch.setenv('SELECTED_APP_SECRET', 'secret')
+    source = IdentitySource(id='source', provider=provider, tenant_id='corp', client_id='app', secret_env='SELECTED_APP_SECRET')
+    requested = []
+    def handler(request):
+        path = request.url.path
+        if path.endswith('/auth/scopes'): return httpx.Response(200, json={'errcode': 0, 'auth_org_scopes': {'authed_dept': [2]}})
+        if path.endswith('accessToken'): return httpx.Response(200, json={'accessToken': 'token'})
+        if path.endswith('gettoken'): return httpx.Response(200, json={'errcode': 0, 'access_token': 'token'})
+        if path.endswith('department/list'): return httpx.Response(200, json={'errcode': 0, 'department': [{'id': 1, 'parentid': 0, 'name': '公司'}, {'id': 2, 'parentid': 1, 'name': '研发'}, {'id': 3, 'parentid': 1, 'name': '销售'}]})
+        if path.endswith('department/listsub'):
+            children = [{'dept_id': 2, 'parent_id': 1, 'name': '研发'}, {'dept_id': 3, 'parent_id': 1, 'name': '销售'}] if json.loads(request.content)['dept_id'] == 1 else []
+            return httpx.Response(200, json={'errcode': 0, 'result': children})
+        department = json.loads(request.content)['dept_id'] if provider == 'dingtalk' else int(request.url.params['department_id'])
+        requested.append(department)
+        member = {'unionid': 'alice', 'name': 'Alice', 'dept_id_list': [2, 3]} if provider == 'dingtalk' else {'userid': 'alice', 'name': 'Alice', 'department': [2, 3]}
+        return httpx.Response(200, json={'errcode': 0, 'result': {'list': [member], 'has_more': False}, 'userlist': [member]})
+    connector_type = DingTalkConnector if provider == 'dingtalk' else WeComConnector
+    connector = connector_type(lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    preview = await connector.fetch_directory(source, departments_only=True)
+    assert len(preview['departments']) == 3 and not requested
+    if provider == 'dingtalk':
+        assert preview['departments'][0]['display_name'] == '钉钉组织'
+    progress = []
+    async def update(*values): progress.append(values)
+    result = await connector.fetch_directory(source, selected_department_ids=['2'], progress=update)
+    assert requested == [2]
+    assert result['departments'] == [{'external_id': '2', 'display_name': '研发', 'parent_external_id': '1'}]
+    assert result['people'][0]['department_ids'] == ['2']
+    assert progress[-1][:3] == ('fetching', 1, 1)
+    with pytest.raises(ValueError): await connector.fetch_directory(source, selected_department_ids=['999'])
+    assert requested == [2]
+
+
+@pytest.mark.asyncio
+async def test_scope_verification_requires_full_department_access():
+    from gateway.services.identity_connectors import _directory_scope
+    departments = [{'external_id': '1'}, {'external_id': '2', 'parent_external_id': '1'}]
+    source = IdentitySource(provider='wecom', agent_id='1001')
+    for payload, expected in [({'allow_userinfos': {'user': [{'userid': 'one'}]}}, (False, False)),
+                              ({'allow_partys': {'partyid': [1]}}, (True, True)),
+                              ({'allow_partys': {'partyid': [3]}}, (False, False))]:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(200, json=payload))) as client:
+            assert await _directory_scope(client, source, 'token', departments, ['2']) == expected
+
+
+@pytest.mark.asyncio
+async def test_wecom_missing_member_list_is_not_an_empty_complete_snapshot(monkeypatch):
+    monkeypatch.setenv('DIRECTORY_SECRET','secret')
+    source=IdentitySource(id='source',provider='wecom',tenant_id='corp',client_id='corp',agent_id='1001',secret_env='DIRECTORY_SECRET')
+    def handler(request):
+        if request.url.path.endswith('gettoken'):return httpx.Response(200,json={'access_token':'token'})
+        if request.url.path.endswith('department/list'):return httpx.Response(200,json={'department':[{'id':1,'parentid':0,'name':'公司'}]})
+        if request.url.path.endswith('agent/get'):return httpx.Response(200,json={'allow_partys':{'partyid':[1]}})
+        return httpx.Response(200,json={'errcode':0})
+    connector=WeComConnector(lambda:httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    with pytest.raises(ValueError,match='member list'):
+        await connector.fetch_directory(source)
+
+
+def test_selected_parent_includes_new_descendants_without_importing_unselected_siblings():
+    from gateway.services.identity_connectors import _selected_departments
+    departments=[{'external_id':'1'},{'external_id':'2','parent_external_id':'1'},
+                 {'external_id':'3','parent_external_id':'2'},{'external_id':'4','parent_external_id':'1'}]
+    snapshot, selected=_selected_departments(departments,['2'])
+    assert selected==[2,3]
+    assert {item['external_id'] for item in snapshot}=={'2','3'}

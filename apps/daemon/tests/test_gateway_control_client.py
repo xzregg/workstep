@@ -56,8 +56,8 @@ from services.gateway_client.control import GatewayControlClient, control_url, d
 
 
 def test_control_url_is_fixed_to_managed_gateway():
-    assert control_url("https://gateway.example") == "wss://gateway.example/api/control/ws"
-    assert data_url("https://gateway.example") == "wss://gateway.example/api/data/ws"
+    assert control_url("https://gateway.example") == "wss://gateway.example/ws/control"
+    assert data_url("https://gateway.example") == "wss://gateway.example/ws/data"
 
 
 @pytest.mark.asyncio
@@ -92,6 +92,13 @@ async def test_completed_data_streams_release_the_connection_slot(flow_control):
                     asyncio.get_running_loop().call_later(0.001, self.next_request)
 
         def next_request(self):
+            if flow_control and self.responses:
+                # The response consumer acknowledges after the ASGI task has
+                # finished and released its slot, as a real Gateway does.
+                self.incoming.put_nowait(ProxyFrame(
+                    stream_id=f"stream-{self.responses - 1}", type=FrameType.window_update,
+                    payload={"credits": 1},
+                ).model_dump_json())
             self.incoming.put_nowait(ProxyFrame(
                 stream_id=f"stream-{self.responses}", type=FrameType.http_request,
                 payload={"phase": "start", "method": "GET", "path": "/api/ping",
@@ -125,6 +132,61 @@ async def test_completed_data_streams_release_the_connection_slot(flow_control):
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('saved_token', [None, 'saved-renewal'])
+async def test_gateway_restart_reconnects_with_latest_renewed_credential(saved_token):
+    policy, gateway_key, fingerprint = _gateway_policy()
+    reconnected = asyncio.Event()
+    attempts = []
+
+    class Socket:
+        def __init__(self):
+            self.messages = asyncio.Queue()
+            self.messages.put_nowait(json.dumps({'kind':'challenge','nonce':'fresh-nonce-0123456789ABCDEFGHIJKLMN'}))
+            self.number = len(attempts)
+            self.policy_acks = 0
+
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_): return None
+        async def recv(self):
+            message = await self.messages.get()
+            if isinstance(message, Exception): raise message
+            return json.dumps(message) if isinstance(message, dict) else message
+
+        async def send(self, raw):
+            message = json.loads(raw)
+            if 'authorization' in message:
+                attempts.append(message)
+                self.messages.put_nowait({'kind':'hello','version':1,'device_id':'device-1',
+                    'gateway_public_key_pem':gateway_key,'policy_snapshot':policy,'reconnect_token':'initial-renewal'})
+            elif message.get('kind') == 'policy_applied':
+                self.policy_acks += 1
+                self.messages.put_nowait({'kind':'policy_applied_ack','version':1,'device_id':'device-1','revision':0})
+                if self.number == 0 and self.policy_acks == 2:
+                    self.messages.put_nowait(ConnectionClosedError(Close(1001,'Gateway restarting'),None))
+            elif message.get('kind') == 'heartbeat':
+                self.messages.put_nowait({'kind':'heartbeat_ack','version':1,'device_id':'device-1',
+                    'policy_snapshot':policy,'reconnect_token':'heartbeat-renewal'})
+                if self.number == 1: reconnected.set()
+
+    saved_tokens = []
+    async def persist(token): saved_tokens.append(token)
+    client = GatewayControlClient('https://gateway.example', gateway_id='gateway-test',
+        public_key_fingerprint=fingerprint, user_id='user-1', policy_cache=ManagedPolicyCache(),
+        connector=lambda *args, **kwargs: Socket(), heartbeat_seconds=0.01, on_reconnect_token=persist)
+    private_pem, public_pem = _control_keys()
+    client.start('authorization','device-1',private_pem,public_pem,'delegation', reconnect_token=saved_token)
+    try:
+        await asyncio.wait_for(reconnected.wait(),timeout=3)
+        assert len(attempts) == 2
+        assert attempts[0]['reconnect_token'] == saved_token
+        assert attempts[1]['reconnect_token'] == 'heartbeat-renewal'
+        assert 'heartbeat-renewal' in saved_tokens
+        assert client.authorization_required is False
+    finally:
+        await client.stop()
 
 
 @pytest.mark.asyncio
@@ -202,7 +264,7 @@ async def test_control_client_handshake_heartbeat_and_shutdown():
     assert cache.current and cache.current.device_id == "device-1"
     assert sent[0]["authorization"] == "authorization"
     assert sent[0]["control_delegation_signature"] == "delegation"
-    assert urls[0][0] == "wss://gateway.example/api/control/ws"
+    assert urls[0][0] == "wss://gateway.example/ws/control"
     sockets[0].messages.put_nowait(json.dumps({
         "kind": "open_data", "version": 1, "device_id": "device-1",
         "token": "data-token-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ",

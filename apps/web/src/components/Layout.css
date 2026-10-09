@@ -11,15 +11,18 @@
 .layout-sidebar-brand {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 4px;
+  padding: 8px 0;
   font-weight: 600;
   font-size: calc(13px * var(--font-scale));
   font-family: var(--font-display);
 }
+.layout-sidebar-brand > svg { flex-shrink: 0; }
+.layout-sidebar-brand-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .layout-sidebar-intro {
   margin-left: auto;
-  padding: 2px 8px;
+  flex-shrink: 0;
+  padding: 2px 4px;
   font-size: calc(11px * var(--font-scale));
   font-weight: 500;
   border-radius: 6px;
@@ -154,7 +157,9 @@
 .layout-bulk-delete-error { padding: 8px 0; font-size: calc(12px * var(--font-scale)); color: var(--danger); }
 
 .layout-sidebar-sandbox-badge {
-  flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding: 2px 5px;
   border-radius: 5px;
   background: var(--surface);

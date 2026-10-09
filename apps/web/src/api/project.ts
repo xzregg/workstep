@@ -1,3 +1,4 @@
+import { workspaceCatalogPath } from './workspaceScope'
 import { request } from './transport'
 import type { ProjectConcurrencyResult, ProjectSettingsResult } from './client'
 import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
@@ -44,6 +45,7 @@ export interface ProjectPublicationStatus {
   }[]
   can_manage: boolean
   can_publish: boolean
+  can_invite?: boolean
   gateway_url: string
 }
 
@@ -91,7 +93,7 @@ export const projectApi = {
     const session = useGatewaySessionStore.getState().session
     if (session?.host_project_id) {
       if (session.host_project_id !== projectId) throw new Error('项目不在当前授权范围内。')
-      const result = await request<Pick<ProjectPublicationStatus, 'grants'>>('/remote/project-grants')
+      const result = await request<Pick<ProjectPublicationStatus, 'grants' | 'can_invite'>>('/remote/project-grants')
       return { ...result, project_id: session.project_id, status: 'published',
         can_publish: false, can_manage: !!session.can_manage_project_access,
         gateway_url: session.gateway_url.replace(/\/devices$/, '') }
@@ -111,13 +113,13 @@ export const projectApi = {
         body: JSON.stringify({ steps }),
       },
     ),
-  settings: (projectId: string, withShare = false) =>
+  settings: async (projectId: string, withShare = false) =>
     request<ProjectSettingsResult>(
-      `/projects/${encodeURIComponent(projectId)}/settings${withShare ? '?with_share=true' : ''}`,
+      await workspaceCatalogPath(`/projects/${encodeURIComponent(projectId)}/settings${withShare ? '?with_share=true' : ''}`, projectId),
     ),
-  concurrency: (projectId: string) =>
+  concurrency: async (projectId: string) =>
     request<ProjectConcurrencyResult>(
-      `/projects/${encodeURIComponent(projectId)}/settings/concurrency`,
+      await workspaceCatalogPath(`/projects/${encodeURIComponent(projectId)}/settings/concurrency`, projectId),
     ),
   setConcurrency: (
     projectId: string,

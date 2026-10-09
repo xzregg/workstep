@@ -1,3 +1,4 @@
+import { gatewayFetch } from './gatewayWorkspacePath'
 type PushWatch = {
   projectId: string
   projectName: string
@@ -32,7 +33,7 @@ export async function enableBrowserPush(): Promise<boolean> {
   if (!available()) return false
   const permission = await Notification.requestPermission()
   if (permission !== 'granted') return false
-  const response = await fetch('/api/completion-notifications/public-key')
+  const response = await gatewayFetch('/api/completion-notifications/public-key')
   if (!response.ok) return false
   const { public_key: publicKey } = await response.json() as { public_key: string }
   const worker = await registration()
@@ -54,7 +55,7 @@ export async function syncBrowserPush(watch: PushWatch): Promise<void> {
   const worker = await registration()
   const subscription = await worker.pushManager.getSubscription()
   if (!subscription) return
-  const response = await fetch('/api/completion-notifications/subscriptions', {
+  const response = await gatewayFetch('/api/completion-notifications/subscriptions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -76,7 +77,7 @@ export async function clearBrowserPushWatch(): Promise<void> {
   const worker = await navigator.serviceWorker.getRegistration('/completion-sw.js')
   const subscription = await worker?.pushManager.getSubscription()
   if (!subscription) return
-  await fetch('/api/completion-notifications/subscriptions', {
+  await gatewayFetch('/api/completion-notifications/subscriptions', {
     method: 'DELETE', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ endpoint: subscription.endpoint, keys: subscription.toJSON().keys }),
   })

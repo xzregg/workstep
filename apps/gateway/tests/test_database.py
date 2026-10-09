@@ -291,3 +291,28 @@ async def test_device_scope_upgrade_preserves_existing_device_and_project_grants
             assert db.execute('SELECT * FROM device_groups').fetchall() == []
             assert db.execute('PRAGMA foreign_key_check').fetchall() == []
     await asyncio.to_thread(verify)
+
+
+@pytest.mark.asyncio
+async def test_owner_migration_uses_registration_evidence_not_access_grants(tmp_path):
+    from alembic import command
+    settings = GatewaySettings(data_dir=tmp_path)
+    await asyncio.to_thread(command.upgrade, migration_config(settings.effective_database_url), '0038_scan_sessions')
+    def seed():
+        with sqlite3.connect(tmp_path / 'workstep_platform.db') as connection:
+            for uid in ('a', 'b'):
+                connection.execute("INSERT INTO users(id, username, display_name, status, must_change_password) VALUES (?, ?, ?, 'active', 0)", (uid, uid, uid))
+            for device in ('registered', 'unknown'):
+                connection.execute("INSERT INTO devices(id, name, public_key, app_instance_id) VALUES (?, ?, 'key', ?)", (device, device, device))
+            connection.execute("INSERT INTO user_devices(id, user_id, device_id) VALUES ('grant', 'b', 'unknown')")
+            for uid, date in [('a', '2026-01-01'), ('b', '2026-02-01')]:
+                connection.execute("INSERT INTO desktop_auth_codes(code_hash, user_id, gateway_id, app_instance_id, state_hash, nonce_hash, pkce_challenge, expires_at, used_at) VALUES (?, ?, 'gw', 'registered', 'state', 'nonce', 'challenge', ?, ?)", (uid, uid, date, date))
+    await asyncio.to_thread(seed)
+    database = GatewayDatabase(settings)
+    await database.start()
+    try:
+        from gateway.models import Device
+        async with database.session() as session:
+            assert (await session.get(Device, 'registered')).owner_user_id == 'a'
+            assert (await session.get(Device, 'unknown')).owner_user_id is None
+    finally: await database.close()

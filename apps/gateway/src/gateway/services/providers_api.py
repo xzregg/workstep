@@ -1,5 +1,5 @@
 from gateway.services.errors import GatewayError
-from gateway.contracts import GatewayCall
+from gateway.contracts import GatewayCall, JsonValue
 import asyncio
 
 import json
@@ -17,13 +17,14 @@ from sqlalchemy import and_, func, or_, select, update
 
 from sqlalchemy.exc import IntegrityError
 
-from gateway.services.management_scope import project_manager, require_grant_subject
+from gateway.services.management_scope import project_manager, require_grant_subject, grant_subject_ids
 
 from gateway.services.identity import COOKIE_NAME, IdentityService
+from gateway.services.permission_subjects import active_group_ids, active_super_admin_user_ids
 
 from gateway.services.identity_api import _super_admin_read, _super_admin_request
 
-from gateway.models import AuditEvent, Device, DeviceProviderApplication, PlatformProvider, ProviderAssignment, User, UserDevice
+from gateway.models import AuditEvent, Device, DeviceProviderApplication, GroupMembership, PlatformProvider, ProviderAssignment, User, UserDevice, UserGroup
 
 
 """Managed provider catalog, assignments and per-device desired bundles."""
@@ -53,14 +54,14 @@ class ProviderInput(BaseModel):
 
     @field_validator("protocol_base_urls")
     @classmethod
-    def secure_urls(cls, value: dict[str, str]) -> dict[str, str]:
+    def endpoint_urls(cls, value: dict[str, str]) -> dict[str, str]:
         if len(value) > 8:
             raise ValueError("Too many provider endpoints")
         for url in value.values():
             parsed = urlsplit(url)
-            if (parsed.scheme != "https" or not parsed.hostname or parsed.username
+            if (parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username
                     or parsed.password or parsed.fragment or len(url) > 2048):
-                raise ValueError("Provider endpoints must use HTTPS")
+                raise ValueError("Provider endpoints must use HTTP or HTTPS")
         return value
 
 
@@ -82,6 +83,10 @@ def _validate_catalog(body: ProviderInput) -> None:
 
 
 async def _bump_assigned_devices(session, subject_type: str, subject_id: str) -> None:
+    if subject_type == "group":
+        from gateway.services.capabilities import bump_group_capability_revisions
+        await bump_group_capability_revisions(session, subject_id)
+        return
     if subject_type == "device":
         await session.execute(update(Device).where(Device.id == subject_id).values(
             provider_revision=Device.provider_revision + 1,
@@ -105,7 +110,7 @@ class ProviderAssignInput(BaseModel):
     @field_validator("subject_type")
     @classmethod
     def valid_subject_type(cls, value: str) -> str:
-        if value not in ("user", "device"):
+        if value not in ("user", "group", "device"):
             raise ValueError("Unknown provider assignment scope")
         return value
 
@@ -138,9 +143,36 @@ def _public_provider(provider: PlatformProvider) -> dict:
 
 async def _assignment_admin(call: GatewayCall, body: ProviderAssignInput):
     identity, actor, _ = await project_manager(call, device_id=body.subject_id if body.subject_type == 'device' else None, mutation=True)
-    if body.subject_type == "user":
-        await require_grant_subject(call, identity, actor.id, 'user', body.subject_id)
+    if body.subject_type in ("user", "group"):
+        await require_grant_subject(call, identity, actor.id, body.subject_type, body.subject_id)
+        async with call.database.session() as session:
+            subject = await session.get(User if body.subject_type == "user" else UserGroup, body.subject_id)
+            if not subject or subject.status != "active":
+                raise GatewayError('not_found', 'Provider subject unavailable')
     return actor
+
+
+def provider_assignment_scope(user_id: str, device_id: str):
+    return or_(
+        (ProviderAssignment.subject_type == "user") & (ProviderAssignment.subject_id == user_id),
+        (ProviderAssignment.subject_type == "group") & ProviderAssignment.subject_id.in_(active_group_ids(user_id)),
+        (ProviderAssignment.subject_type == "device") & (ProviderAssignment.subject_id == device_id),
+    )
+
+
+async def _assigned_group_members(session, group_ids):
+    return (await session.execute(select(GroupMembership.group_id, GroupMembership.user_id)
+        .join(UserGroup).join(User, User.id == GroupMembership.user_id).where(
+            GroupMembership.group_id.in_(group_ids), GroupMembership.revoked_at.is_(None),
+            UserGroup.status == "active", User.status == "active"))).all() if group_ids else []
+
+
+async def _effective_providers(session, user_id, device_id):
+    query = select(PlatformProvider).where(PlatformProvider.enabled == 1)
+    if not await IdentityService.super_admin_in_session(session, user_id):
+        query = query.join(ProviderAssignment, ProviderAssignment.provider_id == PlatformProvider.id).where(
+            ProviderAssignment.revoked_at.is_(None), provider_assignment_scope(user_id, device_id))
+    return (await session.scalars(query.distinct().order_by(PlatformProvider.id))).all()
 
 
 async def compile_provider_bundle(database, signer, gateway_id: str, device_id: str,
@@ -156,23 +188,14 @@ async def compile_provider_bundle(database, signer, gateway_id: str, device_id: 
                 or not relationship):
             raise ValueError("Provider bundle target unavailable")
         revision = device.provider_revision
-        providers = (await session.scalars(select(PlatformProvider).join(
-            ProviderAssignment, ProviderAssignment.provider_id == PlatformProvider.id,
-        ).where(PlatformProvider.enabled == 1, ProviderAssignment.revoked_at.is_(None),
-                or_(
-                    (ProviderAssignment.subject_type == "user") & (ProviderAssignment.subject_id == user_id),
-                    (ProviderAssignment.subject_type == "device") & (ProviderAssignment.subject_id == device_id),
-                )).distinct())).all()
+        providers = await _effective_providers(session, user_id, device_id)
         default_assignments = (await session.scalars(select(ProviderAssignment).where(
             ProviderAssignment.is_default == 1,
             ProviderAssignment.revoked_at.is_(None),
-            or_(
-                (ProviderAssignment.subject_type == "user") & (ProviderAssignment.subject_id == user_id),
-                (ProviderAssignment.subject_type == "device") & (ProviderAssignment.subject_id == device_id),
-            ),
-        ))).all()
+            provider_assignment_scope(user_id, device_id),
+        ).order_by(ProviderAssignment.created_at, ProviderAssignment.id))).all()
         available_ids = {provider.id for provider in providers}
-        default_provider_id = next((assignment.provider_id for scope in ("user", "device")
+        default_provider_id = next((assignment.provider_id for scope in ("user", "group", "device")
                                     for assignment in default_assignments
                                     if assignment.subject_type == scope
                                     and assignment.provider_id in available_ids), "")
@@ -196,13 +219,7 @@ async def compile_provider_bundle(database, signer, gateway_id: str, device_id: 
 
 async def compiled_provider_access(database, device_id: str, user_id: str) -> tuple[list[str], list[str]]:
     async with database.session() as session:
-        providers = (await session.scalars(select(PlatformProvider).join(
-            ProviderAssignment, ProviderAssignment.provider_id == PlatformProvider.id,
-        ).where(PlatformProvider.enabled == 1, ProviderAssignment.revoked_at.is_(None),
-                or_(
-                    (ProviderAssignment.subject_type == "user") & (ProviderAssignment.subject_id == user_id),
-                    (ProviderAssignment.subject_type == "device") & (ProviderAssignment.subject_id == device_id),
-                )).distinct())).all()
+        providers = await _effective_providers(session, user_id, device_id)
     ids = sorted(provider.id for provider in providers)
     models = sorted({model for provider in providers
                      for model in json.loads(provider.models_json)})
@@ -245,6 +262,11 @@ async def list_platform_providers(call: GatewayCall,
             ProviderAssignment.revoked_at.is_(None),
         ))).all() if provider_ids else []
         user_ids = {item.subject_id for item in assignments if item.subject_type == "user"}
+        group_ids = {item.subject_id for item in assignments if item.subject_type == "group"}
+        group_members = await _assigned_group_members(session, group_ids)
+        user_ids.update(user_id for _, user_id in group_members)
+        super_admins = set((await session.scalars(active_super_admin_user_ids())).all())
+        user_ids.update(super_admins)
         device_ids = {item.subject_id for item in assignments if item.subject_type == "device"}
         users = {user.id for user in (await session.scalars(select(User).where(
             User.id.in_(user_ids), User.status == "active",
@@ -271,10 +293,12 @@ async def list_platform_providers(call: GatewayCall,
         own = [item for item in assignments if item.provider_id == provider.id]
         assigned_users = {item.subject_id for item in own
                           if item.subject_type == "user" and item.subject_id in users}
+        assigned_groups = {item.subject_id for item in own if item.subject_type == "group"}
+        inherited_users = {user_id for group_id, user_id in group_members if group_id in assigned_groups}
         assigned_devices = {item.subject_id for item in own
                             if item.subject_type == "device" and item.subject_id in device_ids}
         targets = set(assigned_devices)
-        for user_id in assigned_users:
+        for user_id in assigned_users | inherited_users | (super_admins if provider.enabled else set()):
             targets.update(targets_by_user.get(user_id, ()))
         status = {"applied": 0, "pending": 0, "failed": 0, "offline": 0}
         for device_id in targets:
@@ -290,6 +314,7 @@ async def list_platform_providers(call: GatewayCall,
         item.update({"model_count": len(item["models"]),
                      "price_version": item["prices"].get("version"),
                      "assignment_users": len(assigned_users),
+                     "assignment_groups": len(assigned_groups),
                      "assignment_devices": len(assigned_devices),
                      "target_devices": len(targets), "application": status})
         result.append(item)
@@ -362,6 +387,9 @@ async def list_provider_test_targets(call: GatewayCall, provider_id: str,
         ))).all()
         direct = {item.subject_id for item in assignments if item.subject_type == "device"}
         users = {item.subject_id for item in assignments if item.subject_type == "user"}
+        groups = {item.subject_id for item in assignments if item.subject_type == "group"}
+        users.update(user_id for _, user_id in await _assigned_group_members(session, groups))
+        users.update((await session.scalars(active_super_admin_user_ids())).all())
         eligible = {device_id for device_id, user_id in connected.items()
                     if device_id in direct or user_id in users}
         conditions = [Device.id.in_(eligible), Device.status == "active"]
@@ -402,6 +430,23 @@ async def create_platform_provider(call: GatewayCall, body: ProviderInput):
     except IntegrityError as exc:
         raise GatewayError('conflict', 'Provider name already exists') from exc
     return _public_provider(provider)
+
+
+async def reveal_platform_provider_credential(call: GatewayCall, provider_id: str):
+    actor = await _admin(call)
+    async with call.database.session() as session:
+        async with session.begin():
+            provider = await session.get(PlatformProvider, provider_id)
+            if not provider:
+                raise GatewayError('not_found', 'Provider unavailable')
+            encrypted = provider.secret_ciphertext
+            session.add(AuditEvent(
+                id=str(uuid4()), user_id=actor.id, action="admin.provider_credential_viewed",
+                result="success", metadata_json=json.dumps({"provider_id": provider_id}),
+            ))
+    secret = await asyncio.to_thread(call.gateway_signer.decrypt_provider_secret,
+                                     provider_id, encrypted)
+    return JsonValue({"api_key": secret}, headers={"Cache-Control": "no-store"})
 
 
 async def update_platform_provider(call: GatewayCall, provider_id: str, body: ProviderUpdateInput):
@@ -445,26 +490,30 @@ async def list_platform_provider_assignments(call: GatewayCall, provider_id: str
                                              page: int = 1,
                                              page_size: int = 25):
     identity, actor, devices = await project_manager(call)
-    base = select(ProviderAssignment, User.username, Device.name).outerjoin(
+    base = select(ProviderAssignment, User.username, Device.name, UserGroup.name).outerjoin(
         User, and_(ProviderAssignment.subject_type == "user",
                    ProviderAssignment.subject_id == User.id),
     ).outerjoin(Device, and_(ProviderAssignment.subject_type == "device",
-                             ProviderAssignment.subject_id == Device.id))
+                             ProviderAssignment.subject_id == Device.id)).outerjoin(
+        UserGroup, and_(ProviderAssignment.subject_type == "group", ProviderAssignment.subject_id == UserGroup.id))
     conditions = [ProviderAssignment.provider_id == provider_id,
                   ProviderAssignment.revoked_at.is_(None)]
     if q.strip():
         escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
         conditions.append(or_(User.username.ilike(pattern, escape="\\"),
+                              UserGroup.name.ilike(pattern, escape="\\"),
                               Device.name.ilike(pattern, escape="\\"),
                               ProviderAssignment.subject_id.ilike(pattern, escape="\\")))
     async with call.database.session() as session:
         if devices is not None:
             users = await identity.manageable_user_ids(
                 session, actor.id, roles=("super_admin", "org_admin", "department_admin"))
+            groups = await grant_subject_ids(session, identity, actor.id, "group")
             conditions.append(or_(
                 and_(ProviderAssignment.subject_type == "device", ProviderAssignment.subject_id.in_(devices)),
                 and_(ProviderAssignment.subject_type == "user", ProviderAssignment.subject_id.in_(users or set())),
+                and_(ProviderAssignment.subject_type == "group", ProviderAssignment.subject_id.in_(groups or set())),
             ))
         if not await session.get(PlatformProvider, provider_id):
             raise GatewayError('not_found', 'Provider unavailable')
@@ -475,9 +524,9 @@ async def list_platform_provider_assignments(call: GatewayCall, provider_id: str
     return {"assignments": [{
         "id": assignment.id, "subject_type": assignment.subject_type,
         "subject_id": assignment.subject_id,
-        "subject_name": username if assignment.subject_type == "user" else device_name,
+        "subject_name": {"user": username, "device": device_name, "group": group_name}.get(assignment.subject_type),
         "is_default": bool(assignment.is_default),
-    } for assignment, username, device_name in assignments],
+    } for assignment, username, device_name, group_name in assignments],
         "total": total, "page": page, "page_size": page_size}
 
 
@@ -488,7 +537,7 @@ async def assign_platform_provider(call: GatewayCall, provider_id: str, body: Pr
             provider = await session.get(PlatformProvider, provider_id)
             if not provider or not provider.enabled:
                 raise GatewayError('not_found', 'Provider unavailable')
-            target = await session.get(User if body.subject_type == "user" else Device,
+            target = await session.get({"user": User, "group": UserGroup, "device": Device}[body.subject_type],
                                        body.subject_id)
             if not target or target.status != "active":
                 raise GatewayError('not_found', 'Assignment target unavailable')

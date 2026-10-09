@@ -83,3 +83,19 @@ test('quota loads when entering a running conversation and switching its engine'
     await window.happyDOM.close()
   }
 })
+
+
+test('gateway workspace does not read device-native account quota', async () => {
+ const { window } = installDomEnvironment()
+ window.history.replaceState({}, '', '/workspace/device-1/chat')
+ const original = engineApi.quota
+ let calls = 0
+ engineApi.quota = (async () => { calls++; return { quota: null } }) as never
+ const root = createRoot(document.body.appendChild(document.createElement('div')))
+ try {
+  await act(async () => root.render(<QuotaHarness engine="codex_sdk" running={false} />))
+  assert.equal(calls, 0)
+  await act(async () => document.querySelector<HTMLButtonElement>('button')!.click())
+  assert.equal(calls, 0)
+ } finally { await act(async () => root.unmount()); engineApi.quota = original; await window.happyDOM.close() }
+})

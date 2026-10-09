@@ -1,3 +1,4 @@
+import { PasswordConfirmation, confirmStepUp, useStepUpPassword } from './PasswordConfirmation'
 import { useState } from 'react'
 import { GatewayConfirmDialog } from './GatewayConfirmDialog'
 
@@ -23,12 +24,12 @@ export function AdminSkillActionDialog({ action, csrf, onDone, onClose }: {
   const [version, setVersion] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [reason, setReason] = useState('')
-  const [password, setPassword] = useState('')
+  const { password, setPassword, passwordRequired, passwordReady } = useStepUpPassword()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [discard, setDiscard] = useState(false)
 
-  const valid = Boolean(csrf && password && (action.kind !== 'create' ||
+  const valid = Boolean(csrf && passwordReady && (action.kind !== 'create' ||
     (name.trim() === name && name && /^[a-z0-9][a-z0-9-]*$/.test(slug))) &&
     (action.kind !== 'upload' || (version && file && file.size > 0 && file.size <= 8 * 1024 * 1024)) &&
     (action.kind !== 'revoke' || reason.trim()))
@@ -39,8 +40,7 @@ export function AdminSkillActionDialog({ action, csrf, onDone, onClose }: {
     setBusy(true); setError('')
     const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
     try {
-      const step = await fetch('/api/auth/step-up', { method: 'POST',
-        credentials: 'same-origin', headers, body: JSON.stringify({ password }) })
+      const step = await confirmStepUp(csrf, password, passwordRequired)
       if (!step.ok) throw new Error('管理员密码验证失败。')
       let url: string
       let method = 'POST'
@@ -98,8 +98,7 @@ export function AdminSkillActionDialog({ action, csrf, onDone, onClose }: {
       </>}
       {action.kind === 'revoke' && <label>撤销原因<input value={reason} maxLength={512}
         onChange={event => setReason(event.target.value)} /></label>}
-      <label>管理员密码<input type="password" autoComplete="current-password" value={password}
-        onChange={event => setPassword(event.target.value)} /></label>
+      <PasswordConfirmation label="管理员密码" value={password} onChange={setPassword} />
     </div>
     {busy && <p role="status"><span className="gateway-spinner" aria-hidden="true" /> 正在处理 Skill…</p>}
     {error && <p role="alert" className="gateway-auth-error">{error}</p>}

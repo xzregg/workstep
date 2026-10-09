@@ -1,6 +1,8 @@
 import asyncio
 import json
 import os
+import logging
+import httpx
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -18,6 +20,7 @@ from .usage import build_usage_event
 from .skill_sync_client import ManagedSkillSyncService
 from services.project import project_manager
 from .policy import require_managed_capability
+from . import connection_credentials
 
 
 class GatewayClientService:
@@ -35,6 +38,9 @@ class GatewayClientService:
         self.audit_outbox = ProjectAuditOutbox(project_manager)
         self.device_id = None
         self.current_user_id = None
+        self.current_actor = None
+        self.authorization_required = False
+        self._restore_task = None
         self.skill_sync = None
         self.workflow_runtime = None
 
@@ -61,6 +67,7 @@ class GatewayClientService:
                         == self.policy_cache.current.user_id
                     and provider_id in self.policy_cache.current.allowed_provider_ids
                 ),
+                local_provider_guard=self._local_provider_allowed,
             )
             self.verifier = ManagedAuthorizationVerifier(
                 self.managed_config.gateway_id,
@@ -75,35 +82,82 @@ class GatewayClientService:
                     self.workflow_runtime.project_has_active_runs(project_id)
                 ),
             )
+            self._restore_task = asyncio.create_task(self._restore_with_retry())
+
+    def _local_provider_allowed(self) -> bool:
+        from services.remote_access import get_current_actor
+        actor = get_current_actor()
+        policy = self.policy_cache.current
+        return bool(policy and policy.allows("provider.local") and (
+            actor is None or (actor.source == "managed" and actor.project_id is None
+                              and actor.actor_id == policy.user_id)))
+
+    async def _restore_with_retry(self):
+        while True:
+            try:
+                await self.restore_connection()
+                return
+            except (OSError, ConnectionError, httpx.HTTPError):
+                await asyncio.sleep(10)
+            except Exception:
+                self.authorization_required = True
+                logging.getLogger(__name__).warning('Gateway saved connection requires authorization')
+                return
+
+    async def restore_connection(self):
+        origin = self.managed_config.gateway_origin
+        saved = await asyncio.to_thread(connection_credentials.load, origin)
+        if not saved:
+            self.authorization_required = True
+            return
+        actor = await self.verifier.verify(saved['authorization'], saved['proof'],
+            reconnect_token=saved.get('reconnect_token'), control_public_key_pem=saved['control_public'])
+        await self._connect_actor(actor, saved)
+
+    async def _connect_actor(self, actor, saved):
+        self.device_id = actor.device_id
+        self.current_user_id = actor.user_id
+        self.current_actor = actor
+        self.authorization_required = False
+        if self.control_client is not None:
+            await self.control_client.stop()
+        self.policy_cache.clear()
+        origin = self.managed_config.gateway_origin
+        async def persist(token):
+            saved['reconnect_token'] = token
+            writing = asyncio.create_task(asyncio.to_thread(connection_credentials.save, origin, dict(saved)))
+            try:
+                await asyncio.shield(writing)
+            except asyncio.CancelledError:
+                await writing
+                raise
+        self.control_client = self.control_client_factory(
+            origin, gateway_id=self.managed_config.gateway_id,
+            public_key_fingerprint=self.managed_config.gateway_public_key_fingerprint,
+            user_id=actor.user_id, policy_cache=self.policy_cache, asgi_app=self.asgi_app,
+            provider_store=config_store, usage_outbox=self.usage_outbox,
+            audit_outbox=self.audit_outbox, skill_sync=self.skill_sync, on_reconnect_token=persist,
+        )
+        args = (saved['authorization'], actor.device_id, saved['control_private'],
+                saved['control_public'], saved['delegation'])
+        if saved.get('reconnect_token'):
+            self.control_client.start(*args, reconnect_token=saved['reconnect_token'])
+        else:
+            self.control_client.start(*args)
 
     async def bootstrap(self, authorization: str, proof: str, control_private_key_pem: str,
                         control_public_key_pem: str, delegation_signature: str):
         if self.managed_config is None or self.verifier is None:
             raise ValueError("Managed Gateway is unavailable")
         actor = await self.verifier.verify(authorization, proof)
-        self.device_id = actor.device_id
-        self.current_user_id = actor.user_id
-        if self.control_client is not None:
-            await self.control_client.stop()
-        if self.policy_cache.current and (
-                self.policy_cache.current.user_id != actor.user_id
-                or self.policy_cache.current.device_id != actor.device_id):
-            self.policy_cache.clear()
-        self.control_client = self.control_client_factory(
-            self.managed_config.gateway_origin,
-            gateway_id=self.managed_config.gateway_id,
-            public_key_fingerprint=self.managed_config.gateway_public_key_fingerprint,
-            user_id=actor.user_id, policy_cache=self.policy_cache,
-            asgi_app=self.asgi_app,
-            provider_store=config_store,
-            usage_outbox=self.usage_outbox,
-            audit_outbox=self.audit_outbox,
-            skill_sync=self.skill_sync,
-        )
-        self.control_client.start(
-            authorization, actor.device_id, control_private_key_pem,
-            control_public_key_pem, delegation_signature,
-        )
+        if self._restore_task and self._restore_task is not asyncio.current_task():
+            self._restore_task.cancel()
+            await asyncio.gather(self._restore_task, return_exceptions=True)
+            self._restore_task = None
+        saved = dict(authorization=authorization, proof=proof, control_private=control_private_key_pem,
+                     control_public=control_public_key_pem, delegation=delegation_signature)
+        await asyncio.to_thread(connection_credentials.save, self.managed_config.gateway_origin, saved)
+        await self._connect_actor(actor, saved)
         return self.local_sessions.create(actor), actor
 
     async def record_message_usage(self, *, project_id: str | None,
@@ -168,6 +222,10 @@ class GatewayClientService:
         return {**result, "gateway_url": self.managed_config.gateway_origin}
 
     async def close(self) -> None:
+        if self._restore_task:
+            self._restore_task.cancel()
+            await asyncio.gather(self._restore_task, return_exceptions=True)
+            self._restore_task = None
         if self.control_client is not None:
             await self.control_client.stop()
             self.control_client = None
@@ -175,4 +233,5 @@ class GatewayClientService:
         self.local_sessions.clear()
         self.device_id = None
         self.current_user_id = None
-        config_store.set_managed_gateway_id(None)
+        self.current_actor = None
+        await asyncio.to_thread(config_store.set_managed_gateway_id, None)

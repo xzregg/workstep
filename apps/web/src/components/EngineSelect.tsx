@@ -4,6 +4,7 @@ import { useI18n, type TFunction } from '../i18n'
 import Select from './Select'
 
 export interface EngineSelectOption {
+  enabled?: boolean
   id: string
   installed: boolean
   configured: boolean
@@ -68,9 +69,8 @@ export function engineOptionLabel(
     t,
     allowUnconfiguredBuiltin,
   )
-  const builtin = engine.built_in ? t('engine.builtinPrefix') : ''
   const availabilitySuffix = availability ? t('engine.availabilitySuffix', { availability }) : ''
-  return `${builtin}${engineLabel(engine.id, t)}${availabilitySuffix}`
+  return `${engineLabel(engine.id, t)}${availabilitySuffix}`
 }
 
 export default function EngineSelect({
@@ -88,7 +88,7 @@ export default function EngineSelect({
 }: EngineSelectProps) {
   const { t } = useI18n()
   const visibleEngines = engines.filter((engine) => (
-    engine.installed || engine.built_in
+    engine.enabled !== false && (engine.installed || engine.built_in)
   ))
   const managedEngines = visibleEngines.filter((engine) => (
     engine.built_in
@@ -122,8 +122,8 @@ export default function EngineSelect({
         <option value={defaultOption.value}>{defaultOption.label}</option>
       )}
       {value && !currentIsListed && (
-        <option value={value} disabled>
-          {engineLabel(value, t)}{t('engine.unavailableSuffix')}
+        <option value={value} disabled hidden={engines.some((engine) => engine.id === value && engine.enabled === false)}>
+          {engineLabel(value, t)}{engines.some((engine) => engine.id === value && engine.enabled === false) ? '' : t('engine.unavailableSuffix')}
         </option>
       )}
       {managedEngines.length > 0 && (

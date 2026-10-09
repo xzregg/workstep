@@ -97,3 +97,36 @@ test('project creation defaults to following project and sends explicit external
     useUserSettingsStore.setState({ load: originalLoad })
   }
 })
+
+
+for (const owner of [true,false]) {
+ test(`gateway project picker permits device owner only: ${owner}`,async()=>{
+  const {window}=installDomEnvironment();window.location.href='http://192.168.52.156:8700/workspace/device-one/'
+  useLocaleStore.setState({locale:'zh-CN'})
+  useManagedModeStore.setState({managed:true,loading:false,canManageRemoteProjects:owner})
+  const originalFetch=globalThis.fetch;const originalInit=useProjectStore.getState().initProject;const originalLoad=useUserSettingsStore.getState().load
+  useUserSettingsStore.setState({loaded:true,defaultProjectDirectory:'/demo',load:async()=>{}})
+  let added=0
+  useProjectStore.setState({initProject:async()=>{added++;return {id:'new',name:'demo',path:'/demo',steps:[],workflows:[]}}})
+  globalThis.fetch=async()=>Response.json({path:'/demo',parent:'/',entries:[{name:'project',path:'/demo/project',type:'directory'}]})
+  const container=document.body.appendChild(document.createElement('div'));const root=createRoot(container)
+  try {
+   await act(async()=>root.render(<I18nProvider><ProjectConnectionDialog open onClose={()=>{}} onConnected={()=>{}}/></I18nProvider>))
+   if(owner) {
+    const directory=container.querySelector('[role=option]')!
+    assert.ok(directory)
+    await act(async()=>directory.dispatchEvent(new MouseEvent('click',{bubbles:true})))
+    const confirm=[...container.querySelectorAll('button')].find(button=>button.textContent==='确定')!
+    await act(async()=>confirm.click())
+    assert.equal(added,1)
+   } else {
+    assert.equal(container.querySelector('[role=listbox]'),null)
+    assert.equal(added,0)
+   }
+  } finally {
+   await act(async()=>root.unmount());container.remove();globalThis.fetch=originalFetch
+   useProjectStore.setState({initProject:originalInit});useUserSettingsStore.setState({load:originalLoad})
+   useManagedModeStore.setState({managed:null,canManageRemoteProjects:false});await window.happyDOM.close()
+  }
+ })
+}

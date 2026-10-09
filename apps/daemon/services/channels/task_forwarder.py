@@ -31,6 +31,8 @@ class _LiveMessage:
     job: asyncio.Task | None = None
     delivered: asyncio.Future | None = None
     previous_delivery: asyncio.Future | None = None
+    metadata: dict = field(default_factory=dict)
+    usage_event: dict | None = None
 
 
 class ChannelTaskForwarder:
@@ -53,7 +55,7 @@ class ChannelTaskForwarder:
         if self._task is not None:
             return
         self._queue = self._bus.subscribe(lambda event: (
-            event.get('type') in MESSAGE_EVENTS and bool(event.get('project_id'))
+            (event.get('type') in MESSAGE_EVENTS or (event.get('type') == 'CUSTOM' and event.get('name') == 'workstep.usage')) and bool(event.get('project_id'))
             and bool(event.get('task_id')) and bool(event.get('messageId'))
         ))
         self._task = asyncio.create_task(self._run())
@@ -123,6 +125,8 @@ class ChannelTaskForwarder:
             if key in self._completed or event.get('role') == 'user':
                 continue
             state = self._messages.get(key)
+            if state is None and event.get('type') == 'CUSTOM':
+                continue
             if state is None:
                 state = self._messages[key] = _LiveMessage(key)
                 state.delivered = asyncio.get_running_loop().create_future()
@@ -137,6 +141,11 @@ class ChannelTaskForwarder:
                 if sequence <= state.sequences.get(kind, -1):
                     continue
                 state.sequences[kind] = sequence
+            for name in ('model', 'engine', 'thinking_effort'):
+                if event.get(name):
+                    state.metadata[name] = event[name]
+            if kind == 'CUSTOM':
+                state.usage_event = event
             if kind == 'TEXT_MESSAGE_CHUNK':
                 state.text += str(event.get('delta') or '')
             elif kind == 'TEXT_MESSAGE_CONTENT' or kind == 'TEXT_MESSAGE_START':
@@ -281,6 +290,7 @@ class ChannelTaskForwarder:
             if self._controls and is_origin and not state.status:
                 scope = await self._controls.begin(recipient, state.key[0], task_id=state.key[1],
                     assistant_message_id=state.key[2], step_key=step_key, title='@' + title)
+            self._reply_status(adapter, recipient, state, title)
             supports_streaming = getattr(adapter, 'supports_streaming_reply', None)
             streaming = supports_streaming(recipient) if supports_streaming else bool(recipient.reply_context and getattr(getattr(adapter, 'CAPABILITIES', None), 'streaming', False))
             progress_active = streaming and await self._progress(adapter, recipient, state, prefix + '正在执行…')
@@ -311,6 +321,7 @@ class ChannelTaskForwarder:
                 if destination is None:
                     return
                 adapter, recipient = destination
+                self._reply_status(adapter, recipient, state, title)
                 if state.status:
                     if state.previous_delivery is not None:
                         await asyncio.shield(state.previous_delivery)
@@ -328,6 +339,7 @@ class ChannelTaskForwarder:
                     if progress_active:
                         sent = text
                     last_sent = asyncio.get_running_loop().time()
+
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -342,3 +354,14 @@ class ChannelTaskForwarder:
             if isinstance(adapter, ChannelAdapter) and recipient is not None:
                 adapter.release_reply(recipient)
             state.wakes.remove(wake)
+
+    def _reply_status(self, adapter, recipient, state, title):
+        prepare = getattr(adapter, 'set_reply_metadata', None)
+        observe = getattr(adapter, 'observe_reply', None)
+        if prepare:
+            prepare(recipient, {**state.metadata, 'assistant': title})
+        if observe:
+            if state.usage_event:
+                observe(recipient, state.usage_event)
+            if state.status:
+                observe(recipient, {'type': 'TEXT_MESSAGE_END'})

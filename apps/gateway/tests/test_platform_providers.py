@@ -51,7 +51,7 @@ def test_admin_assigns_encrypted_provider_without_exposing_secret(tmp_path):
                                            device_id="device-1", access_level="edit"))
         client.portal.call(seed_device)
         body = {"name": "Company API", "type": "custom", "protocols": ["openai_responses"],
-                "protocol_base_urls": {"openai_responses": "https://api.example.test"},
+                "protocol_base_urls": {"openai_responses": "http://127.0.0.1:8080/v1"},
                 "api_key": "secret-api-key", "models": ["model-a"],
                 "prices": {"model-a": {"input_per_million": "1.00",
                                         "output_per_million": "2.00"}}}
@@ -61,13 +61,22 @@ def test_admin_assigns_encrypted_provider_without_exposing_secret(tmp_path):
                     headers={"X-CSRF-Token": csrf})
         assert client.post("/api/admin/providers", json={
             **body, "protocols": ["unknown"],
-            "protocol_base_urls": {"unknown": "https://api.example.test"},
+            "protocol_base_urls": {"unknown": "http://127.0.0.1:8080/v1"},
         }, headers={"X-CSRF-Token": csrf}).status_code == 422
         created = client.post("/api/admin/providers", json=body,
                               headers={"X-CSRF-Token": csrf})
         assert created.status_code == 200, created.text
         provider_id = created.json()["id"]
         assert "secret-api-key" not in created.text
+        reveal_url = f"/api/admin/providers/{provider_id}/credential"
+        assert client.post(reveal_url).status_code == 403
+        revealed = client.post(reveal_url, headers={"X-CSRF-Token": csrf})
+        assert revealed.status_code == 200
+        assert revealed.json() == {"api_key": "secret-api-key"}
+        assert revealed.headers["cache-control"] == "no-store"
+        assert client.post("/api/admin/providers/missing/credential",
+                           headers={"X-CSRF-Token": csrf}).status_code == 404
+
         async def stored_ciphertext():
             async with app.state.database.session() as session:
                 return await session.scalar(select(PlatformProvider.secret_ciphertext).where(

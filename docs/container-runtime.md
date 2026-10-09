@@ -43,7 +43,60 @@ Dockerfile 支持将用户选择的沙箱目录下的 `home/` 整体挂载为 `/
 3. 首次初始化或镜像基础运行时变化时，校验摘要并在 Home 内解包到临时目录，
    成功后替换 `base/`。中断后可以恢复上一份基础运行时。
 4. 更新 Volta 自身的可执行文件，保留其下载目录和用户配置。
-5. 使用镜像构建时锁定的 daemon 虚拟环境执行命令，不在启动时重新解析依赖。
+5. 使用镜像构建时锁定的共享 Python 虚拟环境执行命令，不在启动时重新解析依赖。
+
+## 同一镜像启动 WorkStep 或 Gateway
+
+Compose 使用显式 `version: "3.7"`，按 Docker Engine 19.03.13 / API 1.40 的语法范围维护，
+命令使用旧版 `docker-compose`（兼容 1.24.0）；新版也可使用 `docker compose`。
+Dockerfile 不依赖 `$BUILDPLATFORM`、`COPY --chmod` 或 BuildKit 专用指令，入口执行权限
+通过普通 `RUN chmod` 设置。引擎版本与 Compose 版本是两个独立版本号。
+
+`workstep:latest` 包含 daemon、Gateway 后端、WorkStep Web、Gateway 门户、Gateway
+工作台构建和官网。两个后端共用镜像内 `/app/apps/daemon/.venv`，公共依赖只安装一次；
+应用源码、服务入口和数据目录保持独立。
+
+`docker-compose.yaml` 提供两个独立 service，共用相同镜像和构建配置：
+
+| service | 启动入口 | 默认访问地址 | Home 挂载 |
+|---|---|---|---|
+| `workstep` | `main:app` | `http://localhost:8755` | `./data/home:/root` |
+| `gateway` | `gateway.app:app` | `http://localhost:8700` | `./data/gateway-home:/root` |
+
+网关配置默认整块注释，直接启动只运行 WorkStep。需要网关时，先取消
+`docker-compose.yaml` 中 `gateway` 配置块的注释，再同时启动：
+
+```bash
+docker-compose -f docker-compose.yaml up -d --build
+```
+
+单独启动 WorkStep 或网关（网关命令须先启用配置块）：
+
+```bash
+docker-compose -f docker-compose.yaml up -d --build workstep
+docker-compose -f docker-compose.yaml up -d --build gateway
+```
+
+指定 service 不会停止另一个已运行的 service；停止时执行 `docker-compose -f docker-compose.yaml stop workstep`
+或 `docker-compose -f docker-compose.yaml stop gateway`。两者没有启动依赖，均在各自容器内监听 8765 并使用
+`/api/health` 健康检查。用户可修改各自 `command`，无需更换镜像。
+
+网关端口可用 `WORKSTEP_GATEWAY_PORT` 修改，Home 可用 `WORKSTEP_GATEWAY_HOME` 修改。
+网关本机默认外部地址是 `http://localhost:8700`；修改宿主端口或远程部署时，须同步设置
+`WORKSTEP_GATEWAY_PUBLIC_ORIGIN` 为实际访问地址，公开部署使用 HTTPS。部署时设置稳定的
+`WORKSTEP_GATEWAY_GATEWAY_ID`，例如 `production-gateway`。这些变量可以在 `.env`
+中配置，也可直接修改 Compose 中的 `environment`。
+
+Gateway 数据库和签名私钥位于 `/root/.workstep-gateway/`，由网关独立 Home 挂载持久化，
+重建容器继续使用。两个容器分别持久化运行时和应用数据，不挂载同一个 Home。
+
+网关补充依赖记录在 `scripts/container-gateway-requirements.txt`，以 daemon 的
+`uv.lock` 为版本约束生成。修改后端依赖或锁文件后执行
+`python3 scripts/lock-container-gateway.py` 重新生成，再构建镜像；构建时
+`uv pip check` 校验两个应用的依赖兼容性，启动时不安装包。
+
+`python3 scripts/verify-shared-image.py workstep:latest` 在临时、无凭据 Home 下验证
+两种启动命令、健康检查、页面、共享依赖和重建后的网关私钥保留；测试容器自动删除。
 
 `base/` 由镜像管理，镜像更新时可能替换；用户安装的引擎和包应放在同级的
 `npm/`、`python-packages/` 或 `volta/`，不能写入 `base/`。

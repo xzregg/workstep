@@ -20,8 +20,7 @@ from services.config import config_store
 logger = logging.getLogger(__name__)
 
 
-# 暂不注册的引擎（文件保留，仅跳过自动发现）。Codex CLI / Claude Code CLI 先隐藏。
-_DISABLED_ENGINES = {"codex", "claude_code"}
+# 选择列表的显示开关独立于注册；关闭的引擎仍可执行历史配置。
 
 def _discover_engine_classes() -> dict[str, type[AcpEngineBase]]:
     """扫描 ``engines/`` 一级模块，收集声明了 ``ENGINE_ID`` 的引擎类。"""
@@ -29,7 +28,7 @@ def _discover_engine_classes() -> dict[str, type[AcpEngineBase]]:
     module_names = sorted(
         module.name
         for module in pkgutil.iter_modules(_engines_pkg.__path__)
-        if not module.name.startswith("_") and module.name not in _DISABLED_ENGINES
+        if not module.name.startswith("_")
     )
     for name in module_names:
         try:
@@ -45,6 +44,13 @@ def _discover_engine_classes() -> dict[str, type[AcpEngineBase]]:
                 and getattr(obj, "ENGINE_ID", None)
             ):
                 found.setdefault(obj.ENGINE_ID, obj)
+    if __import__("os").environ.get("WORKSTEP_CUSTOM_WORKER") != "1":
+        from engines.core.custom_proxy import discover_custom_engines
+        for engine_id, cls in discover_custom_engines().items():
+            if engine_id in found:
+                logger.warning("自定义引擎 ID 与内置引擎冲突，已跳过：%s", engine_id)
+            else:
+                found[engine_id] = cls
     return found
 
 
@@ -52,7 +58,7 @@ def _discover_engine_classes() -> dict[str, type[AcpEngineBase]]:
 _ALL_ENGINES: dict[str, type[AcpEngineBase]] = _discover_engine_classes()
 
 # 协调 Agent 默认引擎未配置/不可用时，按此优先级回退；新引擎自动追加到末尾。
-# 注：codex / claude（CLI）暂隐藏，不在回退链中。
+# CLI 引擎默认隐藏，但仍注册并可用于已有配置。
 _COORDINATOR_BASE_ORDER = [
     "hermes",
     "pydantic_ai",
@@ -179,7 +185,9 @@ def get_available_engines() -> list[dict]:
         configured_path = config_store.get_engine_binary_path(backend)
         if resolved:
             instance = resolved()
-            if issubclass(resolved, AcpEngineBase) and instance._is_acp_native:
+            if getattr(resolved, "_metadata", {}).get("custom"):
+                mode = resolved._metadata.get("mode", "cli")
+            elif issubclass(resolved, AcpEngineBase) and instance._is_acp_native:
                 mode = "acp"
             elif backend == "pydantic_ai":
                 mode = "agent"
@@ -195,6 +203,7 @@ def get_available_engines() -> list[dict]:
             caps = instance.capabilities
             result.append({
                 "id": backend,
+                "enabled": config_store.is_engine_enabled(backend),
                 "installed": True,
                 "configured": instance.is_configured(),
                 "verified": config_store.is_engine_verified(backend),
@@ -232,6 +241,7 @@ def get_available_engines() -> list[dict]:
         else:
             result.append({
                 "id": backend,
+                "enabled": config_store.is_engine_enabled(backend),
                 "installed": False,
                 "configured": False,
                 "verified": False,
@@ -268,6 +278,14 @@ def get_available_engines() -> list[dict]:
                 "binary_path": target.resolve_binary() if target else None,
                 "configured_path": configured_path or None,
             })
+    for entry in result:
+        cls = _ALL_ENGINES[entry["id"]]
+        metadata = getattr(cls, "_metadata", {})
+        if metadata.get("custom"):
+            entry.update(custom=True, name=metadata.get("name", entry["id"]),
+                         description=metadata.get("description", ""),
+                         mode=metadata.get("mode", "cli"),
+                         disabled=entry["id"] in config_store.get("disabled_custom_engines", []))
     _SCAN_CACHE = result
     return list(result)
 

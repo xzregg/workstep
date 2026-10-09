@@ -189,7 +189,7 @@ export default function ChatPage() {
     closePrompt: t('aiFlow.closePrompt'),
   }), [t, compact])
   const quickPromptItems = useMemo(
-    () => quickButtons.map((button) => ({
+    () => quickButtons.filter((button) => button.enabled !== false).map((button) => ({
       id: button.id,
       label: button.label,
       prompt: button.prompt,
@@ -275,7 +275,7 @@ export default function ChatPage() {
     }
   }, [sessionParam, activeProject?.id, resetEnhance, setSendError])
 
-  const { loadMessageEvents, loadOlderHistory } = useChatSessionHistory({
+  const { loadMessageEvents, loadOlderHistory, historyError, historyLoading, retryHistory } = useChatSessionHistory({
     sessionId: sessionParam,
     messageSessionId: sessionId,
     projectId: activeProject?.id,
@@ -393,6 +393,18 @@ export default function ChatPage() {
         />
       </div>
     )
+  }
+
+  if (historyLoading && sessionId && !messages.length) {
+    return <div className="chat-session-empty" role="status"><Icon name="loader-circle" className="spin" />{t('common.loading')}</div>
+  }
+
+  if (historyError && sessionId) {
+    return <div className="chat-session-empty" role="alert">
+      <EmptyState icon={<Icon name="bot" size={40} strokeWidth={1.5} />}
+        title={t('chatSession.title')} description={historyError}
+        action={<Button variant="primary" onClick={retryHistory}>{t('common.retry')}</Button>} />
+    </div>
   }
 
   if (!sessionId) {

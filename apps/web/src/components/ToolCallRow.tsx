@@ -2,6 +2,9 @@ import { useMemo, useState } from 'react'
 import Icon, { type IconName } from './Icon'
 import { MessageCopyButton } from './MessageResponseFooter'
 import FilePreviewDialog from './FilePreviewDialog'
+import GitDiffDialog from './git/GitDiffDialog'
+import type { GitDiff } from '../api/git'
+import './git/git.css'
 import { useI18n, type TFunction } from '../i18n'
 import { durationMilliseconds, formatDuration } from '../utils/datetime'
 import type { ToolActivity } from '../utils/messageTimeline'
@@ -78,6 +81,21 @@ function ToolCallDetail({ input, result, t }: {
       )}
     </div>
   )
+}
+
+/** 工具补丁是该次编辑的快照，不能用当前工作区差异替代历史编辑。 */
+function recordedFileDiff(input: unknown, path: string, sourcePath?: string): GitDiff | undefined {
+  if (typeof input === 'string') {
+    try { input = JSON.parse(input) } catch { return }
+  }
+  if (!input || typeof input !== 'object') return
+  const args = input as Record<string, unknown>
+  const changes = Array.isArray(args.changes) ? args.changes : [args]
+  const change = changes.find(item => item && typeof item === 'object' &&
+    [item.path, item.file_path, item.filePath].some(value => value === path || value === sourcePath))
+  if (!change || typeof change.diff !== 'string' || !/^@@ -\d+/m.test(change.diff)) return
+  return { path, old_path: path, base: null, target: null, patch: change.diff,
+    before: '', after: '', binary: false, truncated: false, submodule: false }
 }
 
 function basename(path: string): string {
@@ -171,6 +189,8 @@ export default function ToolCallRow({
     durationMilliseconds(activity.startedAt, endedAt) ?? Number.NaN,
     t,
   )
+  const recordedDiff = useMemo(() => kind === 'edit' && previewFile
+    ? recordedFileDiff(activity.input, previewFile.path, targetInfo.fileTarget) : undefined, [kind, activity.input, previewFile, targetInfo.fileTarget])
   const previewTitle = fileLink ? t('md.previewFile', { name: fileLink.name }) : ''
 
   return (
@@ -220,7 +240,15 @@ export default function ToolCallRow({
         />
       )}
       {previewFile && projectId && (
-        <FilePreviewDialog
+        recordedDiff ? <GitDiffDialog
+          id={projectId}
+          files={[previewFile.path]}
+          path={previewFile.path}
+          comparison={{}}
+          recordedDiff={recordedDiff}
+          onSelect={() => {}}
+          onClose={() => setPreviewFile(null)}
+        /> : <FilePreviewDialog
           path={previewFile.path}
           name={previewFile.name}
           line={previewFile.line}

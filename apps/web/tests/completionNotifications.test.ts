@@ -74,6 +74,23 @@ test('Android reply watch is registered before the assistant start event', async
   await window.happyDOM.close()
 })
 
+test('gateway workspace registers a device-scoped watch using the old APK bridge',async()=>{
+ const {window}=installDomEnvironment()
+ window.happyDOM.setURL('https://gateway.test/workspace/device/chat?project=Demo&session=s')
+ const sent:any[]=[]
+ window.WorkStepAndroid={postMessage:raw=>sent.push(JSON.parse(raw))}
+ try {
+  watchPendingCompletion('p',{sessionId:'s'})
+  watchAcceptedCompletion('p',{sessionId:'s'},'gateway-reply')
+  assert.equal(sent[0].projectId,'gateway/device/p')
+  assert.equal(sent[0].id,'gateway/device/p:s:pending')
+  assert.equal(sent[1].type,'unwatch')
+  assert.equal(sent[1].id,sent[0].id)
+  assert.equal(sent[2].id,'gateway/device/p:s:gateway-reply')
+  assert.equal(new URL(sent[2].url,'https://gateway.test').searchParams.get('project'),'gateway/device/p')
+ }finally{await window.happyDOM.close()}
+})
+
 test('accepted reply replaces the pending watch with its exact message id', async () => {
   const { window } = installDomEnvironment()
   const sent: Array<{ type: string; id: string }> = []

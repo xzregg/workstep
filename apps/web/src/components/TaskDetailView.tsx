@@ -513,6 +513,7 @@ export default function TaskDetailView({
     onWheelCapture, onKeyDownCapture, onScroll, jumpToLatest,
   } = useTaskConversationScroll({
     historyMessages, liveMessages, events, content,
+    actionRuns: taskActions.runs,
     chatScrollRef, chatEndRef, shouldFollowMessagesRef, lastProgrammaticScrollTopRef,
     stepLastMessageRefs, pendingStepScrollRef, hasUnreadMessages,
     onUnreadMessagesChange, onLoadOlderHistory,

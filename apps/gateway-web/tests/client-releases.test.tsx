@@ -10,7 +10,7 @@ test('empty device portal offers the shared managed installer', () => {
   assert.match(html, /安装 WorkStep/)
   assert.match(html, /安装包/)
   assert.match(html, /平台地址/)
-  assert.match(html, /我的电脑/)
+  assert.match(html, /我的 WorkStep/)
 })
 
 test('installer hands off only after an assigned PC is online', () => {

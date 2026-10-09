@@ -53,7 +53,7 @@ def test_directory_sync_records_cursor_counts_and_provider_failure(tmp_path):
         assert second.status_code == 200, second.text
         state = client.get('/api/admin/identity-sources').json()['sources'][0]['sync_state']
         assert state['cursor'] == 'cursor-2'
-        assert state['changes'] == {
+        assert {key: state['changes'][key] for key in ('departments_added', 'departments_updated', 'departments_moved', 'departments_deleted', 'people_added', 'people_updated', 'people_transferred', 'people_departed')} == {
             'departments_added': 1, 'departments_updated': 1, 'departments_moved': 0,
             'departments_deleted': 1, 'people_added': 1, 'people_updated': 1,
             'people_transferred': 1, 'people_departed': 0,
@@ -69,10 +69,20 @@ def test_directory_sync_records_cursor_counts_and_provider_failure(tmp_path):
         assert client.get('/api/admin/identity-sources').json()['sources'][0]['sync_state']['last_error_code'] == 'snapshot_invalid'
 
         class BrokenConnector:
-            async def fetch_directory(self, _source):
+            async def fetch_directory(self, _source, *, selected_department_ids=None):
                 raise RuntimeError('private provider detail')
 
         app.state.identity_connectors['wecom'] = BrokenConnector()
+        from gateway.models import PlatformSetting
+        from gateway.services.organization_settings import option_key
+        async def choose_scope():
+            async with app.state.database.session() as session:
+                async with session.begin():
+                    row = await session.get(PlatformSetting, option_key(source_id))
+                    options = __import__('json').loads(row.value_json)
+                    options['selected_department_ids'] = ['a']
+                    row.value_json = __import__('json').dumps(options)
+        client.portal.call(choose_scope)
         result = client.post(f'/api/admin/identity-sources/{source_id}/reconcile',
                              headers={'X-CSRF-Token': csrf})
         assert result.status_code == 502

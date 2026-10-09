@@ -8,8 +8,14 @@ def test_mobile_callback_origin_accepts_the_browser_entry(origin):
     assert validate_daemon_origin(origin) == origin
 
 
-@pytest.mark.parametrize('origin', ['http://192.168.1.10:8700', 'http://gateway.example.com'])
-def test_callback_support_does_not_relax_gateway_trust(origin):
+@pytest.mark.parametrize('origin', ['http://10.0.0.8:8700', 'http://172.16.20.8:8700',
+                                    'http://192.168.52.156:8700', 'http://[fd00::8]:8700'])
+def test_gateway_origin_accepts_private_network_http(origin):
+    assert validate_gateway_origin(origin) == origin
+
+
+@pytest.mark.parametrize('origin', ['http://8.8.8.8:8700', 'http://gateway.example.com'])
+def test_callback_support_does_not_allow_public_gateway_http(origin):
     with pytest.raises(ValueError): validate_gateway_origin(origin)
 
 

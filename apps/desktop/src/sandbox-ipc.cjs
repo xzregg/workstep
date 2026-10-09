@@ -1,7 +1,7 @@
 const path = require('node:path')
 const { isTrustedNavigation } = require('./security.cjs')
 
-function registerSandboxIpc({ ipcMain, dialog, shell, manager, window: getWindow, rootUrl: getRootUrl, hasActiveWork, restart }) {
+function registerSandboxIpc({ ipcMain, dialog, shell, clipboard, manager, window: getWindow, rootUrl: getRootUrl, hasActiveWork, restart }) {
   const approved = new Set()
   function trusted(event) {
     const window = getWindow()
@@ -16,7 +16,8 @@ function registerSandboxIpc({ ipcMain, dialog, shell, manager, window: getWindow
     return new Set([existing.root, existing.project, ...(existing.mounts || []).map(m => m.source), ...projects.map(p => p.path), ...approved])
   }
   async function prepareStage(input, method) {
-    await idle()
+    if (manager.busy) throw new Error('沙箱操作正在进行，请稍后重试')
+    if (manager.running) throw new Error('请先关闭沙箱并重启，再准备辅助软件或镜像')
     if (!input?.root || !(await permittedPaths()).has(input.root)) throw new Error('请通过目录选择按钮授权沙箱目录')
     return manager[method](input)
   }
@@ -44,6 +45,15 @@ function registerSandboxIpc({ ipcMain, dialog, shell, manager, window: getWindow
       await manager.setEnabled(enabled)
       try { await restart() } catch (error) { await manager.save(previous); throw error }
     },
+    switchImage: async image => {
+      await idle()
+      const available = await manager.dockerImages()
+      if (available.error) throw new Error(available.error)
+      const selected = available.images.find(item => item.id === image)
+      if (!selected) throw new Error('请选择扫描结果中的兼容镜像')
+      await manager.queueImageSwitch(image, selected.tags[0] || null)
+      await restart()
+    },
     importConfig: async kind => { await idle(); return manager.importConfig(kind) },
     migrateSettings: async options => { await idle(); return manager.migrateSettings(options) },
     remove: async () => { await idle(); if (manager.running || (await manager.settings()).enabled) throw new Error('请先关闭沙箱并重启，再删除数据'); return manager.remove() },
@@ -53,6 +63,8 @@ function registerSandboxIpc({ ipcMain, dialog, shell, manager, window: getWindow
       const settings = (await manager.status()).settings
       if (settings.root) await shell.openPath(path.join(settings.root, 'desktop'))
     },
+    readLogs: () => manager.readLogs(),
+    copyLogs: async () => { clipboard.writeText(await manager.readLogs()) },
   }
   for (const [action, handler] of Object.entries(handlers)) {
     const channel = `workstep:sandbox:${action}`

@@ -10,6 +10,7 @@ export async function workspaceCatalogPath(path: string, projectId = ''): Promis
       if (projectId && projectId !== session.host_project_id) throw new Error('项目范围不匹配')
       projectId = session.host_project_id
       params.delete('refresh')
+      params.delete('with_share')
     }
   }
   if (projectId) params.set('project_id', projectId)

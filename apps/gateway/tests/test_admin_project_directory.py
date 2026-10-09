@@ -69,7 +69,8 @@ def test_admin_project_directory_is_paged_and_contains_only_published_metadata(t
         assert groups.json()['subjects'][0]['name'] == 'Engineering'
         assert client.get('/api/admin/project-grant-subjects?subject_type=group&page_size=101').status_code == 422
         assert client.get('/api/admin/projects/project-local/grants').status_code == 404
-        assert client.get('/api/projects/project-a/access').status_code == 403
+        # Super administrators have project access; the seeded device is offline.
+        assert client.get('/api/projects/project-a/access').status_code == 409
 
         client.cookies.clear()
         assert client.get('/api/admin/projects').status_code == 401

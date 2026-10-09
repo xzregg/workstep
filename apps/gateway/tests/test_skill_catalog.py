@@ -388,6 +388,10 @@ def test_same_skill_from_two_groups_survives_one_source_revocation(tmp_path):
         assert client.post(f"/api/groups/{groups[0]}/projects/project-1/skills",
                            json={"skill_version_id": version_id},
                            headers=headers).status_code == 200
+        assert client.post('/api/groups/bulk', json={'group_ids': groups, 'action': 'delete'}, headers=headers).status_code == 200
+        assert manifest_skills() == []
+        assert client.post('/api/groups/bulk', json={'group_ids': groups, 'action': 'restore'}, headers=headers).status_code == 200
+        assert len(manifest_skills()) == 1
         assert client.delete(
             f"/api/groups/{groups[0]}/projects/project-1/skills/{skill_id}",
             headers=headers,

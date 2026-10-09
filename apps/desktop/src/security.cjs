@@ -1,9 +1,31 @@
+const { validateGatewayOrigin } = require('./gateway-origin.cjs')
+
 function parseUrl(value) {
   try {
     return new URL(value)
   } catch {
     return null
   }
+}
+
+function isGatewayDesktopLoginUrl(value) {
+  const target = parseUrl(value)
+  if (!target || target.pathname !== '/desktop/login' || target.hash) return false
+  try { validateGatewayOrigin(target.origin) } catch { return false }
+  const required = ['gateway_id', 'app_instance_id', 'state', 'nonce', 'code_challenge']
+  const redirect = target.searchParams.get('redirect_uri')
+  if (redirect) {
+    const callback = parseUrl(redirect)
+    const loopback = callback && (callback.hostname === 'localhost' || callback.hostname === '127.0.0.1'
+      || callback.hostname === '[::1]')
+    if (!loopback || !['http:', 'https:'].includes(callback.protocol)
+        || callback.pathname !== '/api/gateway-platform/callback' || callback.username
+        || callback.password || callback.search || callback.hash) return false
+  }
+  const allowedCount = required.length + (redirect ? 1 : 0)
+  return [...target.searchParams].length === allowedCount
+    && (!redirect || target.searchParams.getAll('redirect_uri').length === 1)
+    && required.every(key => target.searchParams.getAll(key).length === 1 && target.searchParams.get(key))
 }
 
 function isTrustedNavigation(value, rootUrl) {
@@ -31,11 +53,6 @@ function sessionsHaveActiveWork(payload) {
   return payload.sessions.some((session) => session?.running === true)
 }
 
-function updaterChannel(platform, arch) {
-  if (platform !== 'darwin' && platform !== 'win32') return null
-  return `latest-${arch}`
-}
-
 function primaryNetworkIPv4(interfaces = require('node:os').networkInterfaces()) {
   const candidates = Object.values(interfaces).flat().filter((item) => (
     item && (item.family === 'IPv4' || item.family === 4) && !item.internal
@@ -52,9 +69,9 @@ function primaryNetworkIPv4(interfaces = require('node:os').networkInterfaces())
 
 module.exports = {
   isAllowedExternalUrl,
+  isGatewayDesktopLoginUrl,
   isTrustedNavigation,
   projectsHaveActiveWork,
   sessionsHaveActiveWork,
-  updaterChannel,
   primaryNetworkIPv4,
 }

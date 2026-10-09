@@ -10,10 +10,10 @@ const {
 } = require('../src/sidecar.cjs')
 const {
   isAllowedExternalUrl,
+  isGatewayDesktopLoginUrl,
   isTrustedNavigation,
   projectsHaveActiveWork,
   sessionsHaveActiveWork,
-  updaterChannel,
   primaryNetworkIPv4,
 } = require('../src/security.cjs')
 
@@ -89,6 +89,24 @@ test('only ordinary web links may be delegated to the system browser', () => {
   assert.equal(isAllowedExternalUrl('workstep://open'), false)
 })
 
+test('only a complete Gateway desktop login URL opens in the embedded auth window', () => {
+  const query = new URLSearchParams({
+    gateway_id: 'gateway-test', app_instance_id: 'app-test',
+    state: 's'.repeat(32), nonce: 'n'.repeat(32), code_challenge: 'A'.repeat(43),
+  })
+  assert.equal(isGatewayDesktopLoginUrl(`http://192.168.52.156:8700/desktop/login?${query}`), true)
+  assert.equal(isGatewayDesktopLoginUrl(`https://gateway.example.com/desktop/login?${query}`), true)
+  query.set('redirect_uri', 'http://127.0.0.1:8766/api/gateway-platform/callback')
+  assert.equal(isGatewayDesktopLoginUrl(`https://gateway.example.com/desktop/login?${query}`), true)
+  query.set('redirect_uri', 'https://evil.example.com/api/gateway-platform/callback')
+  assert.equal(isGatewayDesktopLoginUrl(`https://gateway.example.com/desktop/login?${query}`), false)
+  query.delete('redirect_uri')
+  assert.equal(isGatewayDesktopLoginUrl(`http://8.8.8.8:8700/desktop/login?${query}`), false)
+  assert.equal(isGatewayDesktopLoginUrl(`https://gateway.example.com/admin?${query}`), false)
+  query.set('extra', 'value')
+  assert.equal(isGatewayDesktopLoginUrl(`https://gateway.example.com/desktop/login?${query}`), false)
+})
+
 test('updates are blocked while any project has active work', () => {
   assert.equal(projectsHaveActiveWork({ projects: [] }), false)
   assert.equal(projectsHaveActiveWork({
@@ -111,14 +129,6 @@ test('updates are blocked while any chat session has active work', () => {
   assert.equal(sessionsHaveActiveWork({ sessions: [{ running: false }] }), false)
   assert.equal(sessionsHaveActiveWork({ sessions: [{ running: true }] }), true)
   assert.equal(sessionsHaveActiveWork(null), true)
-})
-
-test('desktop update channels keep macOS and Windows architectures separate', () => {
-  assert.equal(updaterChannel('darwin', 'arm64'), 'latest-arm64')
-  assert.equal(updaterChannel('darwin', 'x64'), 'latest-x64')
-  assert.equal(updaterChannel('win32', 'x64'), 'latest-x64')
-  assert.equal(updaterChannel('win32', 'ia32'), 'latest-ia32')
-  assert.equal(updaterChannel('linux', 'x64'), null)
 })
 
 test('desktop remote access advertises a LAN address instead of a VM address', () => {

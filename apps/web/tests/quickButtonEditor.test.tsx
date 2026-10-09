@@ -85,3 +85,34 @@ test('workflow and stage shortcut editors can add buttons without crypto.randomU
     await window.happyDOM.close()
   }
 })
+
+
+test('shortcut enabled switch preserves disabled configuration and defaults legacy buttons to enabled', async () => {
+  const { window } = installDomEnvironment()
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const legacy = { id: 'prompt', label: '生成实现', prompt: '实现', kind: 'prompt' as const }
+  let saved: ReturnType<typeof quickButtonFromDraft> | undefined
+  function Harness() {
+    const [buttons, setButtons] = useState([quickButtonToDraft(legacy)])
+    return <QuickButtonEditor projectId="project-1" buttons={buttons} onChange={setButtons} selectedId="prompt" onSelect={() => {}} onSave={() => { saved = quickButtonFromDraft(buttons[0]) }} />
+  }
+  try {
+    assert.equal(quickButtonToDraft(legacy).enabled, true)
+    await act(async () => root.render(<I18nProvider><Harness /></I18nProvider>))
+    const toggle = container.querySelector<HTMLInputElement>('[role="switch"]')!
+    assert.equal(toggle.checked, true)
+    await act(async () => toggle.click())
+    assert.equal(toggle.checked, false)
+    const save = [...container.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === '保存')!
+    await act(async () => save.click())
+    assert.equal(saved?.enabled, false)
+    assert.equal(saved?.prompt, '实现')
+    assert.equal(quickButtonToDraft(saved!).enabled, false)
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    await window.happyDOM.close()
+  }
+})

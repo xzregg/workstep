@@ -72,7 +72,7 @@ def test_admin_access_navigation_uses_the_same_session(tmp_path):
         assert client.get("/api/auth/admin-access").status_code == 401
         _setup(client)
         assert client.get("/api/auth/admin-access").json() == {
-            "roles": ["super_admin"], "must_change_password": False,
+            "roles": ["super_admin"], "must_change_password": False, "password_confirmation_required": True,
         }
 
 
@@ -214,7 +214,7 @@ def test_admin_password_reset_requires_step_up(tmp_path):
         assert client.post("/api/auth/step-up", json={"password": "OwnerPassphrase-2026!"}, headers={"X-CSRF-Token": csrf}).status_code == 200
         assert client.post(url, json=body, headers={"X-CSRF-Token": csrf}).status_code == 204
         with sqlite3.connect(tmp_path / "workstep_platform.db") as connection:
-            assert connection.execute("SELECT must_change_password FROM users WHERE id=?", (user_id,)).fetchone() == (1,)
+            assert connection.execute("SELECT must_change_password FROM users WHERE id=?", (user_id,)).fetchone() == (0,)
         client.cookies.clear()
         assert client.post("/api/auth/login", json={"username": "alice", "password": "AlicePassphrase-2026!"}).status_code == 401
         assert client.post("/api/auth/login", json={"username": "alice", "password": "TemporaryPassphrase-2026!"}).status_code == 200
@@ -298,8 +298,8 @@ def test_platform_identity_admin_can_manage_users_but_cannot_grant_roles(tmp_pat
             "username": "alice", "password": "AlicePassphrase-2026!",
         }).json()["csrf_token"]
         assert client.post("/api/admin/users", headers={"X-CSRF-Token": csrf}, json={
-            "username": "blocked", "display_name": "Blocked", "password": "BlockedPassphrase-2026!",
-        }).status_code == 403
+            "username": "initial", "display_name": "Initial", "password": "InitialPassphrase-2026!",
+        }).status_code == 201
         assert client.post("/api/auth/password", headers={"X-CSRF-Token": csrf}, json={
             "current_password": "AlicePassphrase-2026!", "new_password": "AliceNewPassphrase-2026!",
         }).status_code == 204
@@ -496,7 +496,7 @@ def test_admin_can_change_registration_policy_without_restart(tmp_path):
     app = create_app(GatewaySettings(data_dir=tmp_path))
     with TestClient(app, base_url="https://gateway.test") as client:
         csrf = _setup(client, mode="closed").json()["csrf_token"]
-        assert client.get("/api/auth/registration-policy").json() == {"mode": "closed"}
+        assert client.get("/api/auth/registration-policy").json() == {"mode": "closed", "password_login_enabled": True}
         assert client.put("/api/admin/registration-policy", json={"mode": "open"}, headers={
             "X-CSRF-Token": csrf,
         }).status_code == 403
@@ -506,7 +506,7 @@ def test_admin_can_change_registration_policy_without_restart(tmp_path):
         assert client.put("/api/admin/registration-policy", json={"mode": "open"}, headers={
             "X-CSRF-Token": csrf,
         }).status_code == 200
-        assert client.get("/api/auth/registration-policy").json() == {"mode": "open"}
+        assert client.get("/api/auth/registration-policy").json() == {"mode": "open", "password_login_enabled": True}
         client.cookies.clear()
         assert client.post("/api/auth/register", json={
             "username": "alice", "display_name": "Alice", "password": "AlicePassphrase-2026!",

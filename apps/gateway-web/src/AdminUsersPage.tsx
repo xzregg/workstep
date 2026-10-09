@@ -1,15 +1,15 @@
 import { AdminUserGroupTree } from './AdminUserGroupTree'
 import { AdminGroupCreateDialog } from './AdminGroupCreateDialog'
-import { AdminRecordTable } from './AdminRecordTable'
+import { AdminUserTable } from './AdminUserTable'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AdminCreateUserDialog } from './AdminCreateUserDialog'
-import { AdminUserActionDialog } from './AdminUserActionDialog'
 
 export type AdminUser = {
-  id: string; username: string; display_name: string; status: 'active' | 'pending' | 'disabled'
+  id: string; username: string; display_name: string; status: 'active' | 'pending' | 'disabled' | 'deleted'
   registration_source: string; must_change_password: boolean; created_at: string
+  login_username?: string | null; is_recovery?: boolean
 }
 
 type Filters = { q: string; status: string; sort: string; direction: string; page: number; pageSize: number; groupId?: string }
@@ -31,14 +31,13 @@ export function AdminUsersPage() {
   const [total, setTotal] = useState(0)
   const [searchDraft, setSearchDraft] = useState('')
   const [filters, setFilters] = useState<Filters>({ q: '', status: '', sort: 'created_at',
-    direction: 'desc', page: 1, pageSize: 25 })
+    direction: 'desc', page: 1, pageSize: 100 })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
   const [createOpen, setCreateOpen] = useState(false)
   const [groupCreateOpen, setGroupCreateOpen] = useState(false)
   const [superAdmin, setSuperAdmin] = useState(false)
-  const [action, setAction] = useState<{ user: AdminUser; kind: 'approve' | 'disable' } | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -81,14 +80,18 @@ export function AdminUsersPage() {
 
   return <section className="gateway-admin-page">
     <span className="gateway-auth-eyebrow">WORKSTEP 平台 · ADMIN</span>
-    <h2>用户管理</h2>
+    <h2>{filters.status === 'deleted' ? '用户回收站' : '用户管理'}</h2>
+    {superAdmin && <Link to={filters.groupId ? `/admin/permissions?subject_type=group&subject_id=${encodeURIComponent(filters.groupId)}` : '/admin/permissions'}>管理用户与组权限</Link>}
+    <div className="gateway-device-actions"><button type="button" onClick={() => setFilters(current => ({ ...current, status: '', groupId: undefined, page: 1 }))}>用户列表</button><button type="button" onClick={() => setFilters(current => ({ ...current, status: 'deleted', groupId: undefined, q: '', page: 1 }))}>回收站</button></div>
+    {filters.status === 'deleted' && <p>删除的用户可单项或批量恢复；恢复后为停用状态，可返回用户列表启用。彻底删除需要管理员密码确认，完成后无法恢复。</p>}
     {access === 'checking' && <p role="status">正在检查登录状态…</p>}
-    {access === 'forbidden' && <p role="alert">当前账号没有用户管理权限，或需要先<Link to="/account">修改初始密码</Link>。</p>}
+    {access === 'forbidden' && <p role="alert">当前账号没有用户管理权限。</p>}
     {access === 'ready' && <div className="gateway-users-workspace">
       <div className="gateway-users-tree-panel"><AdminUserGroupTree selected={filters.groupId ?? ''} revision={revision} onSelect={groupId => setFilters(current => ({ ...current, groupId, page: 1 }))} />
        {superAdmin && <button type="button" onClick={() => setGroupCreateOpen(true)}>创建用户组</button>}
       </div><div className="gateway-users-table-panel">
       <div className="gateway-admin-toolbar">
+        <button type="button" disabled={loading} onClick={refresh}>刷新用户与用户组</button>
         <form onSubmit={search} className="gateway-admin-search">
           <label htmlFor="admin-user-search">搜索用户</label>
           <input id="admin-user-search" value={searchDraft} onChange={event => setSearchDraft(event.target.value)}
@@ -103,6 +106,7 @@ export function AdminUsersPage() {
           { ...current, status: event.target.value, page: 1 }))}>
           <option value="">全部</option><option value="active">已启用</option>
           <option value="pending">待审核</option><option value="disabled">已停用</option>
+          <option value="deleted">已删除</option>
         </select>
         <label htmlFor="admin-user-sort">排序</label>
         <select id="admin-user-sort" value={filters.sort} onChange={event => setFilters(current => (
@@ -118,18 +122,9 @@ export function AdminUsersPage() {
       {loading && <p role="status">正在加载用户…</p>}
       {error && <p className="gateway-auth-error" role="alert">{error} <button type="button" onClick={refresh}>重试</button></p>}
       {!loading && !error && users.length === 0 && <p>当前条件下没有用户。</p>}
-      {!error && <AdminRecordTable columns={['用户', '用户名', '状态', '注册来源', '操作']}>{users.map(user => <tr key={user.id}>
-        <td><strong>{user.display_name}</strong>{user.must_change_password && <p>首次登录需修改密码</p>}</td>
-        <td>{user.username}</td>
-        <td>{user.status === 'pending' ? '待审核' : user.status === 'disabled' ? '已停用' : '已启用'}</td>
-        <td>{user.registration_source}</td>
-        <td><div className="gateway-device-actions">
-          {user.status === 'pending' && <button type="button" onClick={() => setAction({ user, kind: 'approve' })}>批准</button>}
-          {user.status !== 'disabled' && <button type="button" onClick={() => setAction({ user, kind: 'disable' })}>停用</button>}
-        </div></td>
-      </tr>)}</AdminRecordTable>}
+      {!error && <AdminUserTable users={users} csrf={csrf} loading={loading} resetKey={filters} onRefresh={refresh}/>}
       <div className="gateway-admin-pagination">
-        <span>共 {total} 位用户 · 第 {filters.page}/{pages} 页</span>
+        <span>共 {total} 位用户 · 每页 {filters.pageSize} 位 · 第 {filters.page}/{pages} 页</span>
         <button type="button" disabled={filters.page <= 1 || loading} onClick={() => setFilters(current => (
           { ...current, page: current.page - 1 }))}>上一页</button>
         <button type="button" disabled={filters.page >= pages || loading} onClick={() => setFilters(current => (
@@ -139,7 +134,5 @@ export function AdminUsersPage() {
     {groupCreateOpen && <AdminGroupCreateDialog csrf={csrf} onClose={() => setGroupCreateOpen(false)} onDone={id => { setGroupCreateOpen(false); setFilters(current => ({ ...current, groupId: id, page: 1 })); refresh() }} />}
     {createOpen && <AdminCreateUserDialog csrf={csrf} onClose={() => setCreateOpen(false)}
       onSaved={() => { setCreateOpen(false); setFilters(current => ({ ...current, page: 1 })); refresh() }} />}
-    {action && <AdminUserActionDialog user={action.user} action={action.kind} csrf={csrf}
-      onClose={() => setAction(null)} onComplete={() => { setAction(null); refresh() }} />}
   </section>
 }

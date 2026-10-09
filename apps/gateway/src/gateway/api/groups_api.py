@@ -7,7 +7,26 @@ from fastapi import APIRouter, Query, Request
 
 from gateway.services.groups_api import GroupInput, MemberInput, GroupProjectInput
 
+from gateway.services.group_member_operations import BulkMemberInput, bulk_members as _handle_bulk_members
+
 router = APIRouter(prefix="/api/groups")
+
+from gateway.services.group_operations import BulkGroupInput, bulk_groups as _bulk_groups, deleted_groups as _deleted_groups
+
+
+@router.post('/bulk')
+async def bulk_groups(request: Request, body: BulkGroupInput):
+    return await invoke(_bulk_groups, request=request, body=body)
+
+
+@router.get('/deleted')
+async def deleted_groups(request: Request):
+    return await invoke(_deleted_groups, request=request)
+
+
+@router.post('/{group_id}/members/bulk')
+async def bulk_members(request: Request, group_id: str, body: BulkMemberInput):
+    return await invoke(_handle_bulk_members, request=request, group_id=group_id, body=body)
 
 
 @router.post("", status_code=201)

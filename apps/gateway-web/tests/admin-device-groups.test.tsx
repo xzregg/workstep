@@ -33,7 +33,10 @@ test('device group membership requires password and preserves a failed operation
     fireEvent.change(screen.getByLabelText('设备'), { target: { value: 'd1' } })
     const submit = screen.getByRole('button', { name: '加入设备组' }) as HTMLButtonElement
     assert.equal(submit.disabled, true)
+    const remove = screen.getByRole('button', { name: '移出设备组' }) as HTMLButtonElement
+    assert.equal(remove.disabled, true)
     fireEvent.change(screen.getByLabelText('输入你的密码确认'), { target: { value: 'password-123' } })
+    assert.equal(remove.disabled, true)
     fireEvent.click(submit)
     await screen.findByRole('alert')
     assert.equal((screen.getByLabelText('设备组') as HTMLSelectElement).value, 'g1')

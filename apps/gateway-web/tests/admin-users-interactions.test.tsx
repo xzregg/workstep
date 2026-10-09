@@ -55,7 +55,7 @@ test('create user shows a server conflict and allows a successful retry', async 
   render(<AdminCreateUserDialog csrf="csrf" onSaved={() => { saved++ }} onClose={() => {}} />)
   fireEvent.change(screen.getByLabelText('用户名'), { target: { value: 'alice' } })
   fireEvent.change(screen.getByLabelText('显示名称'), { target: { value: 'Alice' } })
-  fireEvent.change(screen.getByLabelText('初始密码（至少 12 位）'), { target: { value: 'strong-password-123' } })
+  fireEvent.change(screen.getByLabelText('初始密码（至少 8 位）'), { target: { value: 'strong-password-123' } })
   const submit = screen.getByRole('button', { name: '创建用户' })
   assert.equal((submit as HTMLButtonElement).disabled, false)
   fireEvent.click(submit)
@@ -111,11 +111,80 @@ test('device page retries load errors and pages server results', async () => {
   await screen.findByRole('alert')
   fireEvent.click(screen.getByRole('button', { name: '重试' }))
   await screen.findByText('Alice PC')
+  assert.equal((screen.getByLabelText('设备状态') as HTMLSelectElement).value, '')
+  assert.ok(requests.filter(url => url.startsWith('/api/admin/devices?')).every(url => !new URLSearchParams(url.split('?')[1]).has('status')))
+  assert.ok(screen.getByText('离线'))
   fireEvent.change(screen.getByLabelText('搜索设备'), { target: { value: 'Alice' } })
   fireEvent.click(screen.getByRole('button', { name: '搜索' }))
   await waitFor(() => assert.ok(requests.some(url => url.includes('q=Alice'))))
   fireEvent.click(screen.getByRole('button', { name: '下一页' }))
   await waitFor(() => assert.ok(requests.some(url => url.includes('page=2'))))
+})
+
+test('disabled device can be reenabled through an administrator confirmation', async () => {
+  let status = 'disabled'
+  globalThis.fetch = async input => {
+    const url = String(input)
+    if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
+    if (url.startsWith('/api/admin/devices?')) return Response.json({ devices: [
+      { id: 'device-1', name: 'Alice PC', version: '1', status, online: false },
+    ], total: 1 })
+    if (url === '/api/auth/step-up') return new Response(null, { status: 200 })
+    if (url === '/api/admin/devices/device-1/approve') {
+      status = 'active'; return new Response(null, { status: 204 })
+    }
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+  render(<DeviceAdminPage />)
+  fireEvent.click(await screen.findByRole('button', { name: '重新启用' }))
+  const dialog = screen.getByRole('dialog', { name: '重新启用设备' })
+  fireEvent.change(within(dialog).getByLabelText('输入管理员密码确认'), { target: { value: 'test-admin-password' } })
+  fireEvent.click(within(dialog).getByRole('button', { name: '确认重新启用' }))
+  await screen.findByRole('button', { name: '停用' })
+  assert.equal(status, 'active')
+})
+
+test('revoked device offers a name edit and explains why reenable is unavailable', async () => {
+  globalThis.fetch = async input => {
+    const url = String(input)
+    if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
+    if (url.startsWith('/api/admin/devices?')) return Response.json({ devices: [
+      { id: 'device-1', name: 'Container PC', version: '1', status: 'revoked', online: false },
+    ], total: 1 })
+    throw new Error(`Unexpected fetch: ${url}`)
+  }
+  render(<DeviceAdminPage />)
+  fireEvent.click(await screen.findByRole('button', { name: '修改名称' }))
+  assert.ok(screen.getByRole('dialog', { name: '修改设备名称' }))
+  assert.equal((screen.getByLabelText('设备名称') as HTMLInputElement).value, 'Container PC')
+  assert.equal(screen.queryByRole('button', { name: '重新启用' }), null)
+  assert.ok(screen.getByText(/该设备身份已撤销，不能直接重新启用。/))
+})
+
+test('permanent deletion is available for revoked devices and refreshes the list after confirmation', async () => {
+  let deleted = false
+  globalThis.fetch = async (input, init) => {
+    const url = String(input)
+    if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
+    if (url.startsWith('/api/admin/devices?')) return Response.json({ devices: deleted ? [] : [
+      { id: 'device-1', name: 'Container PC', version: '1', status: 'revoked', online: false },
+    ], total: deleted ? 0 : 1 })
+    if (url === '/api/auth/step-up') return new Response(null, { status: 200 })
+    assert.equal(url, '/api/admin/devices/device-1')
+    assert.equal(init?.method, 'DELETE')
+    deleted = true; return new Response(null, { status: 204 })
+  }
+  render(<DeviceAdminPage />)
+  fireEvent.click(await screen.findByRole('button', { name: '彻底删除' }))
+  const dialog = screen.getByRole('dialog', { name: '彻底删除设备' })
+  assert.match(dialog.textContent ?? '', /本机项目和文件保留/)
+  assert.match(dialog.textContent ?? '', /重新登记/)
+  const confirm = within(dialog).getByRole('button', { name: '确认彻底删除' }) as HTMLButtonElement
+  assert.equal(confirm.disabled, true)
+  fireEvent.change(within(dialog).getByLabelText('输入管理员密码确认'), { target: { value: 'test-password' } })
+  fireEvent.click(confirm)
+  await screen.findByText('当前筛选下没有设备。')
+  assert.equal(deleted, true)
 })
 
 test('device page distinguishes outdated and unknown client versions', async () => {
@@ -124,7 +193,7 @@ test('device page distinguishes outdated and unknown client versions', async () 
     if (url === '/api/auth/session') return Response.json({ csrf_token: 'csrf' })
     if (url.startsWith('/api/admin/devices?')) return Response.json({ devices: [
       { id: 'old', name: 'Old PC', version: '1.2.0', status: 'active', online: true,
-        daemon_health: true, latest_version: '1.10.0', update_available: true },
+        connection_ip: '2001:db8::7', daemon_health: true, latest_version: '1.10.0', update_available: true },
       { id: 'legacy', name: 'Legacy PC', version: '1.0.0', status: 'active', online: false,
         daemon_health: null, latest_version: null, update_available: null },
     ], total: 2 })
@@ -134,6 +203,8 @@ test('device page distinguishes outdated and unknown client versions', async () 
   fireEvent.change(await screen.findByLabelText('设备状态'), { target: { value: 'active' } })
   const old = (await screen.findByText('Old PC')).closest('tr')!
   const legacy = screen.getByText('Legacy PC').closest('tr')!
+  assert.match(old.textContent ?? '', /连接 IP：2001:db8::7/)
+  assert.match(legacy.textContent ?? '', /离线，暂无连接 IP/)
   assert.match(old.textContent ?? '', /有新版本 1\.10\.0/)
   assert.match(legacy.textContent ?? '', /版本状态未知/)
 })
@@ -353,6 +424,8 @@ test('management tab appears after signing in on the workbench', async () => {
   let signedIn = false
   globalThis.fetch = async input => {
     const url = String(input)
+    if (url === '/api/platform/status') return Response.json({ initialized: true })
+    if (url === '/api/auth/registration-policy') return Response.json({ mode: 'open', password_login_enabled: true })
     if (url === '/api/auth/admin-access') return signedIn
       ? Response.json({ roles: ['super_admin'], must_change_password: false })
       : new Response(null, { status: 401 })
@@ -495,4 +568,41 @@ test('organization delegation form exposes department roles and scopes only', as
   assert.deepEqual(Array.from(role.options).map(option => option.value).sort(), ['audit_admin', 'department_admin', 'identity_admin'])
   const scope = screen.getByLabelText('管理范围') as HTMLSelectElement
   assert.deepEqual(Array.from(scope.options).map(option => option.value), ['department'])
+})
+
+
+test('refresh reloads both synced users and the organization tree', async () => {
+ let synced = false
+ let userReads = 0; let groupReads = 0
+ globalThis.fetch = async input => {
+  const url = String(input)
+  if (url === '/api/auth/session') return Response.json({csrf_token:'csrf'})
+  if (url === '/api/admin/user-groups/tree') { groupReads++; return Response.json({groups: synced ? [{id:'g1',name:'同步部门',parent_id:null,member_count:1}] : []}) }
+  if (url.startsWith('/api/admin/users?')) { userReads++; return Response.json({users: synced ? [{id:'u1',username:'ext_1',display_name:'同步成员',status:'active',registration_source:'directory_sync',created_at:'2026-10-08'}] : [],total:synced ? 1 : 0}) }
+  throw Error(url)
+ }
+ render(<MemoryRouter><AdminUsersPage /></MemoryRouter>)
+ await screen.findByText('当前条件下没有用户。')
+ await screen.findByText('尚无用户组，可创建或同步组织。')
+ synced = true
+ fireEvent.click(screen.getByRole('button',{name:'刷新用户与用户组'}))
+ await screen.findByText('同步成员')
+ await screen.findByRole('button',{name:/同步部门/})
+ assert.equal(userReads,2); assert.equal(groupReads,2)
+})
+
+
+test('user recycle bin filters deleted accounts and offers permanent deletion',async()=>{
+ globalThis.fetch=async input=>{
+  const url=String(input)
+  if(url==='/api/auth/session')return Response.json({csrf_token:'csrf',admin_roles:['super_admin']})
+  if(url.includes('user-groups/tree'))return Response.json({groups:[]})
+  return Response.json({users:url.includes('status=deleted')?[{id:'u1',username:'alice',display_name:'已删用户',status:'deleted',registration_source:'local',created_at:'2026-10-08'}]:[],total:1})
+ }
+ render(<MemoryRouter><AdminUsersPage /></MemoryRouter>)
+ fireEvent.click(screen.getByRole('button',{name:'回收站'}))
+ await screen.findByText('已删用户')
+ fireEvent.click(screen.getByRole('button',{name:'彻底删除'}))
+ assert.ok(screen.getByRole('dialog',{name:'批量彻底删除用户'}))
+ assert.match(document.body.textContent??'',/无法恢复/)
 })

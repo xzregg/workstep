@@ -13,10 +13,28 @@ def gateway_call(request: Request) -> GatewayCall:
     state = getattr(request.scope.get("app"), "state", None)
     resource_fields = [item.name for item in fields(GatewayDependencies)]
     resources = {name: getattr(state, name) for name in resource_fields if hasattr(state, name)}
+    target = urlsplit(str(request.url))
+    tokens = dict(request.cookies)
+    workspace_device_id = None
+    workspace_path = ''
+    parts = target.path.split('/', 3)
+    if isinstance(request, WebSocket) and len(parts) == 4 and parts[1:3] == ['ws', 'workspace'] and parts[3] and '/' not in parts[3]:
+        workspace_device_id = parts[3]
+        workspace_path = '/workspace/' + workspace_device_id + '/'
+        target = target._replace(path='/ws')
+        from gateway.services.identity import COOKIE_NAME
+        tokens[COOKIE_NAME] = tokens.get('workstep_remote_ws_session', '')
+    elif len(parts) == 4 and parts[1] == 'workspace' and parts[2]:
+        workspace_device_id = parts[2]
+        workspace_path = '/workspace/' + parts[2] + '/'
+        target = target._replace(path='/' + parts[3])
+        from gateway.services.identity import COOKIE_NAME
+        tokens[COOKIE_NAME] = tokens.get('workstep_remote_session', '')
     return GatewayCall(
         **resources,
-        tokens=dict(request.cookies), proofs=ProofHeaders(request.headers),
-        target=urlsplit(str(request.url)), operation=getattr(request, "method", "GET"),
+        workspace_device_id=workspace_device_id, workspace_path=workspace_path,
+        tokens=tokens, proofs=ProofHeaders(request.headers),
+        target=target, operation=getattr(request, "method", "GET"),
         peer=request.client, query_values=QueryValues(tuple(request.query_params.multi_items())),
         wire_headers=tuple(request.scope.get("headers", ())),
         payload=request.stream if isinstance(request, Request) else None,
@@ -86,7 +104,7 @@ def render_result(result, call: GatewayCall, response: Response | None = None, e
         for name, value in getattr(headers, "extra", ()):
             output.headers.append(name, value)
         for grant in grants:
-            options = dict(path="/", secure=call.settings.cookie_secure, httponly=True, samesite="lax")
+            options = dict(path=grant.path, secure=call.settings.cookie_secure, httponly=True, samesite="lax")
             if grant.token is None:
                 output.delete_cookie(grant.key, **options)
             else:

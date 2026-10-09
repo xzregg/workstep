@@ -1,3 +1,4 @@
+import { gatewayFetch } from '../utils/gatewayWorkspacePath'
 import { workspaceCatalogPath } from './workspaceScope'
 import { browserActorHeaders } from '../utils/browserActor'
 import { BASE, fileDataUrl, request } from './transport'
@@ -13,6 +14,8 @@ export * from './project'
 export * from './conversations'
 
 export interface SystemSettings {
+  identity_source?: 'local' | 'gateway'
+  gateway_username?: string
   git_scan_depth: number
   user_name: string
   open_mode: boolean
@@ -134,8 +137,8 @@ export function invalidateTemplates(): void {
 }
 
 export const templateApi = {
-  list: () => request<{ templates: TemplateInfo[] }>('/templates/list'),
-  get: (id: string) => request<TemplateInfo>(`/templates/${encodeURIComponent(id)}`),
+  list: async () => request<{ templates: TemplateInfo[] }>(await workspaceCatalogPath('/templates/list')),
+  get: async (id: string) => request<TemplateInfo>(await workspaceCatalogPath(`/templates/${encodeURIComponent(id)}`)),
   save: (template: {
     id: string
     name: string
@@ -303,7 +306,7 @@ export const fsApi = {
     ),
   uploadImage: async (file: File, projectId: string, prefix?: string) => {
     const dataUrl = await fileDataUrl(file)
-    const res = await fetch(
+    const res = await gatewayFetch(
       `${BASE}/fs/upload/image?project_id=${encodeURIComponent(projectId)}`,
       {
         method: 'POST',
@@ -317,7 +320,7 @@ export const fsApi = {
   },
   uploadFile: async (file: File, projectId: string, prefix?: string) => {
     const dataUrl = await fileDataUrl(file)
-    const res = await fetch(
+    const res = await gatewayFetch(
       `${BASE}/fs/upload/file?project_id=${encodeURIComponent(projectId)}`,
       {
         method: 'POST',

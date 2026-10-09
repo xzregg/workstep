@@ -9,6 +9,7 @@ import platform
 import secrets
 import time
 from pathlib import Path
+from typing import Any, NamedTuple
 from urllib.parse import urlencode
 
 import httpx
@@ -18,8 +19,15 @@ from workstep_gateway_protocol import ManagedGatewayPayload
 from workstep_gateway_protocol.origin import validate_gateway_origin, validate_daemon_origin
 from services.config import config_store
 from services import config as config_module
+from . import connection_credentials
 
 COOKIE = 'workstep_platform_local_session'
+
+
+class GatewayLoginCompletion(NamedTuple):
+    local_session: str
+    actor: Any
+    desktop: bool
 
 
 def normalize_origin(value: str) -> str:
@@ -61,9 +69,12 @@ class GatewayBrowserLogin:
     async def settings(self):
         stored = await asyncio.to_thread(config_store.get, 'gateway_platform', {})
         client = self.gateway.control_client
+        restoring = getattr(self.gateway, '_restore_task', None)
         return {'url': stored.get('url', ''), 'configured': bool(stored.get('url')),
             'enabled': bool(os.environ.get('WORKSTEP_MANAGED_BUNDLE_DIR') or stored.get('enabled', stored.get('authorized', False))),
             'authenticated': bool(self.gateway.current_user_id), 'online': bool(client and client.online),
+            'authorization_required': bool(getattr(self.gateway, 'authorization_required', False) or (client and getattr(client, 'authorization_required', False))),
+            'reconnecting': bool(restoring and not restoring.done()),
             'pending_device': bool(stored.get('pending_device')), 'package_locked': bool(os.environ.get('WORKSTEP_MANAGED_BUNDLE_DIR'))}
 
     async def save_settings(self, origin: str, enabled: bool):
@@ -86,7 +97,21 @@ class GatewayBrowserLogin:
                 self.gateway.managed_config = None
                 self.gateway.verifier = None
                 self.gateway.skill_sync = None
+            if (changed or not enabled) and old.get('url'):
+                await asyncio.to_thread(connection_credentials.delete, old['url'])
             return await self.settings()
+
+    async def logout(self):
+        async with self.lock:
+            stored = await asyncio.to_thread(config_store.get, 'gateway_platform', {})
+            stored = {**stored, 'authorized': False, 'pending_device': False}
+            self.pending = None
+            self.desktop_local_session = None
+            await self.gateway.close()
+            self.gateway.authorization_required = True
+            if stored.get('url'):
+                await asyncio.to_thread(connection_credentials.delete, stored['url'])
+            await asyncio.to_thread(config_store.set, 'gateway_platform', stored)
 
     async def begin(self, origin: str, callback_origin: str, *, desktop: bool = False) -> str:
         origin = normalize_origin(origin)
@@ -118,7 +143,7 @@ class GatewayBrowserLogin:
             await asyncio.to_thread(config_store.set, 'gateway_platform', stored)
             query = {'gateway_id': data['gateway_id'], 'app_instance_id': identity['app_instance_id'],
                 'state': state, 'nonce': nonce, 'code_challenge': _encode(hashlib.sha256(verifier.encode()).digest()),
-                'redirect_uri': callback_origin + '/api/gateway-platform/callback'}
+                **({} if desktop else {'redirect_uri': callback_origin + '/api/gateway-platform/callback'})}
             return origin + '/desktop/login?' + urlencode(query)
 
     async def complete(self, code: str, state: str, *, callback_origin: str | None = None):
@@ -164,4 +189,4 @@ class GatewayBrowserLogin:
             await self.gateway.start()
             result = await self.gateway.bootstrap(authorization, proof, control_private, control_public, delegation)
             self.desktop_local_session = result[0] if pending["desktop"] else None
-            return result
+            return GatewayLoginCompletion(result[0], result[1], bool(pending["desktop"]))

@@ -13,7 +13,6 @@ import { useI18n } from '../i18n'
 import { copyText } from '../utils/clipboard'
 import { useChatListStore } from '../stores/chatSessionStore'
 import { resolveAccessExpiresAt, type AccessDurationPreset } from '../utils/remoteDeviceAccess'
-import { useManagedMode } from '../hooks/useManagedMode'
 import { isGatewayRemoteBrowser } from '../utils/gatewayRemote'
 import Button from './Button'
 import ConcurrencyLimitInput from './ConcurrencyLimitInput'
@@ -24,7 +23,7 @@ import QuickButtonEditor, { type QuickButtonDraft, quickButtonToDraft, quickButt
 import RemoteDeviceAccessList from './RemoteDeviceAccessList'
 import Select from './Select'
 import SkillCenterSettings from '../pages/SkillCenterSettings'
-import ProjectPublicationSettings from './ProjectPublicationSettings'
+import ProjectSharingTabs from './ProjectSharingTabs'
 import GatewayProjectSettings from './GatewayProjectSettings'
 import { useGatewaySessionStore } from '../stores/gatewaySessionStore'
 
@@ -34,7 +33,7 @@ interface ProjectSettingsPanelProps {
   onProjectRenamed?: (name: string) => void
 }
 
-type TabKey = 'general' | 'assistant' | 'quickButtons' | 'skills' | 'concurrency' | 'access' | 'share'
+type TabKey = 'general' | 'assistant' | 'quickButtons' | 'skills' | 'concurrency' | 'share'
 
 function randomId(): string {
   return `qb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -60,7 +59,6 @@ function LocalProjectSettingsPanel({
   onProjectRenamed,
 }: ProjectSettingsPanelProps) {
   const { t } = useI18n()
-  const managedMode = useManagedMode()
   const projectId = project?.id
   const [activeTab, setActiveTab] = useState<TabKey>('general')
 
@@ -112,16 +110,13 @@ function LocalProjectSettingsPanel({
     { key: 'quickButtons', label: t('projectSettings.tabs.quickButtons') },
     { key: 'skills', label: t('skillCenter.nav') },
     { key: 'concurrency', label: t('projectSettings.tabs.concurrency') },
-    ...(managedMode === true && !isGatewayRemoteBrowser() && project?.type !== 'remote'
-      ? [{ key: 'access' as const, label: t('projectSettings.tabs.access') }] : []),
-    ...(managedMode === true ? [] : [{ key: 'share' as const, label: t('projectSettings.tabs.share') }]),
-  ], [t, managedMode, project?.type])
+    ...(project?.type !== 'remote'
+      ? [{ key: 'share' as const, label: t('projectSettings.tabs.share') }] : []),
+  ], [t, project?.type])
 
   useEffect(() => {
-    if (managedMode === true && activeTab === 'share') setActiveTab('general')
-    if (activeTab === 'access' && (managedMode !== true || isGatewayRemoteBrowser()
-        || project?.type === 'remote')) setActiveTab('general')
-  }, [managedMode, activeTab, project?.type])
+    if (activeTab === 'share' && project?.type === 'remote') setActiveTab('general')
+  }, [activeTab, project?.type])
 
   const loadSettings = useCallback(async () => {
     if (!projectId) return
@@ -155,7 +150,7 @@ function LocalProjectSettingsPanel({
 
   // Share devices polling while the share tab is open.
   useEffect(() => {
-    if (!projectId || activeTab !== 'share' || managedMode === true) return
+    if (!projectId || activeTab !== 'share' || isGatewayRemoteBrowser()) return
     let active = true
     const refresh = () => {
       void remoteProjectApi.devices(projectId).then((result) => {
@@ -168,7 +163,7 @@ function LocalProjectSettingsPanel({
       active = false
       window.clearInterval(timer)
     }
-  }, [projectId, activeTab, managedMode])
+  }, [projectId, activeTab])
 
   if (!project) return null
 
@@ -458,8 +453,6 @@ function LocalProjectSettingsPanel({
               />
             ) : activeTab === 'skills' ? (
               <SkillCenterSettings project={project} embedded />
-            ) : activeTab === 'access' ? (
-              <ProjectPublicationSettings projectId={projectId || ''} />
             ) : activeTab === 'concurrency' ? (
               <div style={tabBodyStyle}>
                 <p style={{ margin: 0, color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>
@@ -543,6 +536,7 @@ function LocalProjectSettingsPanel({
                 </div>
               </div>
             ) : (
+              <ProjectSharingTabs projectId={projectId || ''}>
               <div style={tabBodyStyle}>
                 <p style={{ margin: 0, color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>
                   {t('projectSettings.share.generateHint')}
@@ -625,6 +619,7 @@ function LocalProjectSettingsPanel({
                   />
                 </div>
               </div>
+              </ProjectSharingTabs>
             )}
           </section>
         </div>

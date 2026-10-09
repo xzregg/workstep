@@ -7,8 +7,8 @@ from services.gateway_client.control import control_url, data_url
                                            ("https://gateway.test:8700", "wss")])
 def test_local_gateway_uses_matching_control_and_data_transport(origin, scheme):
     authority = origin.split("://", 1)[1]
-    assert control_url(origin) == f"{scheme}://{authority}/api/control/ws"
-    assert data_url(origin) == f"{scheme}://{authority}/api/data/ws"
+    assert control_url(origin) == f"{scheme}://{authority}/ws/control"
+    assert data_url(origin) == f"{scheme}://{authority}/ws/data"
 
 
 def test_nonlocal_http_control_url_is_rejected():

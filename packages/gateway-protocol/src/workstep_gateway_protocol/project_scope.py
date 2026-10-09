@@ -53,11 +53,82 @@ _CHAT_SESSION_ACTION = re.compile(
     r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}/(?:live-message|stop)\Z")
 _CHAT_SESSION_TRANSITION = re.compile(
     r"/api/chat-sessions/[A-Za-z0-9_-]{1,128}/(?:fork|handoff)\Z")
+_SESSION_ACTION_CATALOG = re.compile(r"/api/project-actions/sessions/[A-Za-z0-9_-]{1,128}\Z")
+_SESSION_ACTION_RUN = re.compile(r"/api/project-actions/sessions/[A-Za-z0-9_-]{1,128}/run\Z")
+_TASK_HISTORY = re.compile(r"/api/task/[A-Za-z0-9_-]{1,128}/history\Z")
 _UPLOAD_FILE = re.compile(r"/api/fs/serve/[A-Za-z0-9_.-]{1,256}\Z")
 _PROJECT_RAW = re.compile(r"/api/fs/project-raw/[A-Za-z0-9_-]{1,128}/.+\Z")
 _ENGINE_MODELS = re.compile(r"/api/engine/[A-Za-z0-9_-]{1,128}/models\Z")
 _WORKSPACE_ASSET = re.compile(
     r"/(?:assets|static)/[A-Za-z0-9][A-Za-z0-9._/-]*\.(?:js|css|svg|png|jpe?g|webp|gif|ico|woff2?|ttf)\Z")
+
+
+# Project workspace services share the same project identity; route-specific
+# resource ownership is checked by their existing project/database handlers.
+_PROJECT_SERVICES = [
+    (r"/api/skills", {'GET'}, set()),
+    (r"/api/skills/rescan", {'POST'}, set()),
+    (r"/api/fs/memory", {'GET','PUT'}, set()),
+    (r"/api/task/[A-Za-z0-9_-]{1,128}/discussion-groups", {'GET','POST'}, set()),
+    (r"/api/task/[A-Za-z0-9_-]{1,128}/discussion-groups/[A-Za-z0-9_-]{1,128}/[A-Za-z0-9_-]{1,256}", {'DELETE'}, set()),
+    (r"/api/templates/(?:list|[A-Za-z0-9_-]{1,64})", {'GET'}, set()),
+    (r"/api/tasks/[A-Za-z0-9_-]{1,128}/actions", {'GET'}, {'step_key'}),
+    (r"/api/tasks/[A-Za-z0-9_-]{1,128}/actions/run", {'POST'}, set()),
+    (r"/api/action-runs/[A-Za-z0-9_-]{1,128}", {'GET'}, set()),
+    (r"/api/action-runs/[A-Za-z0-9_-]{1,128}/stop", {'POST'}, set()),
+    (r"/api/workflow/generate/chat", {'POST'}, set()),
+    (r"/api/workflow/generate/history", {'GET', 'DELETE'}, {'workflow_id'}),
+    (r"/api/workflow/generate/history/messages/[A-Za-z0-9_-]{1,128}/events", {'GET'}, {'workflow_id','cursor','limit'}),
+    (r"/api/workflow/generate/[A-Za-z0-9_-]{1,128}/stop", {'POST'}, set()),
+    (r"/api/task-draft/chat", {'POST'}, set()),
+    (r"/api/task-draft/[A-Za-z0-9_-]{1,128}/stop", {'POST'}, set()),
+    (r"/api/project/save-steps", {'POST'}, {'workflow_id'}),
+    (r"/api/schedule/list", {'GET'}, set()),
+    (r"/api/schedule/(?:create|preview)", {'POST'}, set()),
+    (r"/api/schedule/[A-Za-z0-9_-]{1,128}", {'GET','PATCH','DELETE'}, set()),
+    (r"/api/schedule/[A-Za-z0-9_-]{1,128}/(?:pause|resume)", {'POST'}, set()),
+    (r"/api/schedule/[A-Za-z0-9_-]{1,128}/runs", {'GET'}, {'limit','offset'}),
+    (r"/api/pending-message-inserts", {'GET','POST','DELETE'}, {'target_message_id'}),
+    (r"/api/pending-message-inserts/reorder", {'PUT'}, set()),
+    (r"/api/pending-message-inserts/[A-Za-z0-9_-]{1,128}", {'PATCH','DELETE'}, set()),
+    (r"/api/git/worktrees/[A-Za-z0-9_-]{1,128}/(?:status|branches|remotes|identity|history|changes|diff|blame|recoveries)", {'GET'}, {'ref','offset','commit','path'}),
+    (r"/api/git/worktrees/[A-Za-z0-9_-]{1,128}/(?:delete|branches|branches/delete|commit|discard|ignore|files/content|commit-message|fetch|fetch-remote|push|pull|switch|advance|merge|merge-into|recovery/preview|recovery/apply|push-branch)", {'POST'}, set()),
+    (r"/api/git/worktrees/[A-Za-z0-9_-]{1,128}/identity", {'PUT'}, set()),
+]
+_PROJECT_SERVICES = [(re.compile(pattern + r"\Z"), methods, keys) for pattern, methods, keys in _PROJECT_SERVICES]
+
+
+def _project_service_allowed(method, path, pairs, project_id, access_level):
+    params = dict(pairs)
+    if len(params) != len(pairs) or params.get('project_id') != project_id:
+        return False
+    if method != 'GET' and access_level != 'edit':
+        return False
+    for pattern, methods, keys in _PROJECT_SERVICES:
+        if method in methods and pattern.fullmatch(path) and set(params) <= {'project_id', *keys}:
+            return True
+    # Resources with project identity in the path never accept another project.
+    prefix = f'/api/git/projects/{project_id}/'
+    if path.startswith(prefix):
+        suffix = path[len(prefix):]
+        if method == 'GET' and suffix == 'repositories':
+            return set(params) <= {'project_id', 'refresh'}
+        if re.fullmatch(r'tasks/[A-Za-z0-9_-]{1,128}/(?:workspace|worktrees(?:/[A-Za-z0-9_-]{1,128})?)', suffix):
+            return method in ('GET','POST','DELETE') and set(params) <= {'project_id','force'}
+        return method == 'POST' and suffix == 'initialize' and set(params) == {'project_id'}
+    prefix = f'/api/projects/{project_id}/'
+    if path.startswith(prefix):
+        suffix = path[len(prefix):]
+        if suffix in ('settings', 'settings/concurrency'):
+            return method in ('GET','PUT') and set(params) <= {'project_id','with_share'} and params.get('with_share','false') == 'false'
+        if re.fullmatch(r'actions/[A-Za-z0-9_-]{1,128}/directory', suffix):
+            return method == 'POST' and set(params) <= {'project_id','workflow_id'}
+        if suffix == 'actions':
+            return method == 'POST' and set(params) == {'project_id'}
+    prefix = f'/api/skills/projects/{project_id}'
+    if path == prefix or path in (prefix + '/batch', prefix + '/rescan'):
+        return method in ('GET','POST','PUT','PATCH') and set(params) == {'project_id'}
+    return False
 
 
 def project_http_route_allowed(method: str, path: str,
@@ -66,6 +137,8 @@ def project_http_route_allowed(method: str, path: str,
                                task_create: bool = False) -> bool:
     if not project_id or access_level not in ("read", "edit"):
         return False
+    if _project_service_allowed(method, path, query_pairs, project_id, access_level):
+        return True
     if method in ("POST", "PUT", "PATCH", "DELETE"):
         if access_level != "edit":
             return False
@@ -117,6 +190,8 @@ def project_http_route_allowed(method: str, path: str,
         if path in ("/api/workflow/create", "/api/workflow/reorder"):
             return True
         if _WORKFLOW_ACTION.fullmatch(path):
+            return True
+        if _SESSION_ACTION_RUN.fullmatch(path):
             return True
         if path == "/api/chat-sessions" or _CHAT_SESSION_CHAT.fullmatch(path):
             return True
@@ -184,6 +259,11 @@ def project_http_route_allowed(method: str, path: str,
     archive_action = _TASK_ARCHIVE_EXPERIENCE.fullmatch(path)
     if archive_action and archive_action.group(1) == "draft":
         return len(query_pairs) == 1
+    if _TASK_HISTORY.fullmatch(path):
+        return (all(key in ("project_id", "limit", "offset") for key, _ in query_pairs)
+                and len(query_pairs) == len(dict(query_pairs)))
+    if _SESSION_ACTION_CATALOG.fullmatch(path):
+        return len(query_pairs) == 1
     if (_TASK_READ_DETAIL.fullmatch(path) or _TASK_STEP_CONFIG.fullmatch(path)
             or _TASK_STEP_HISTORY.fullmatch(path)):
         return len(query_pairs) == 1
@@ -198,5 +278,6 @@ def project_http_route_allowed(method: str, path: str,
     if path in ("/api/chat-sessions/quick-buttons", "/api/chat-sessions/system-prompt"):
         return len(query_pairs) == 1
     if _CHAT_SESSION_DETAIL.fullmatch(path):
-        return len(query_pairs) == 1
+        return (all(key in ("project_id", "limit", "offset") for key, _ in query_pairs)
+                and len(query_pairs) == len(dict(query_pairs)))
     return False

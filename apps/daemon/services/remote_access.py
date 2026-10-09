@@ -212,6 +212,10 @@ def _guard_exempt(path: str, method: str) -> bool:
         return True
     if path == "/api/health":
         return True
+    # OAuth-style Gateway callbacks are protected by one-time PKCE state and
+    # must remain reachable from the external system browser.
+    if path == "/api/gateway-platform/callback" and method.upper() == "GET":
+        return True
     if path.startswith("/api/task-share/public/"):
         return True
     if path == "/api/remote-project/access/status":

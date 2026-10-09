@@ -6,7 +6,7 @@ const { createHash, randomUUID } = require('node:crypto')
 const { setTimeout: delay } = require('node:timers/promises')
 const { run, installRuntime, ASSETS } = require('./sandbox-runtime.cjs')
 const { listDockerImages, importDockerImage } = require('./sandbox-docker.cjs')
-const { migrateConfig, readConfig, projectCatalog, mapProjects } = require('./sandbox-config.cjs')
+const { migrateConfig, readConfig, projectCatalog, mapProjects, localProviderWarnings } = require('./sandbox-config.cjs')
 
 const IMPORTS = { codex: ['.codex'], claude: ['.claude', '.claude.json'], agents: ['.agents'] }
 const contains = (parent, child) => child === parent || (!path.relative(parent, child).startsWith('..' + path.sep) && !path.isAbsolute(path.relative(parent, child)) && path.relative(parent, child) !== '..')
@@ -87,8 +87,10 @@ function containerArgs(config, platform, port, token, managedEnv = {}) {
 class SandboxManager {
   constructor({ stateDir, platform = process.platform, arch = process.arch, hostHome = os.homedir(), hostConfigFile, install = installRuntime, execute = run, image, report = () => {} }) {
     Object.assign(this, { stateDir, platform, arch, hostHome, install, execute, image, report })
+    this.startGeneration = 0
     this.hostConfigFile = hostConfigFile || path.join(hostHome, '.workstep/config.json')
     this.phase = 'idle'; this.progress = null; this.error = null; this.busy = false; this.running = false
+    this.health = 'stopped'; this.hostPort = null
   }
   async settings() {
     try { return JSON.parse(await fs.readFile(path.join(this.stateDir, 'sandbox.json'), 'utf8')) } catch (error) {
@@ -120,6 +122,12 @@ class SandboxManager {
     if (!active.root) {
       try { settings = { ...JSON.parse(await fs.readFile(path.join(this.stateDir, 'sandbox-pending.json'), 'utf8')), enabled: false, prepared: false } } catch (error) { if (error.code !== 'ENOENT') throw error }
     }
+    if (settings.root) {
+      try {
+        const sandboxConfig = await readConfig(path.join(settings.root, 'home/.workstep/config.json'))
+        settings = { ...settings, migrationWarnings: localProviderWarnings(sandboxConfig) }
+      } catch { /* status remains available while an existing config needs repair */ }
+    }
     const seed = await this.imageSeed(settings.root)
     let installed = false
     if (settings.root) {
@@ -128,7 +136,7 @@ class SandboxManager {
         installed = record.sha256 === ASSETS[`${this.platform}-${this.arch}`]?.sha256 && (await fs.stat(record.executable)).isFile()
       } catch { /* partially prepared runtimes can be retried */ }
     }
-    return { settings, onlineImage: Boolean(this.image), platform: this.platform, arch: this.arch, runtimeReady: installed || this.runtimeRoot === settings.root || Boolean(settings.prepared), imageReady: Boolean(seed) || Boolean(settings.prepared && this.compatibleImage(settings)), cachedDockerImage: seed?.source.startsWith('sha256:') ? seed.source : settings.dockerImage || null, phase: this.phase, progress: this.progress, error: this.error, running: this.running, supported: ['darwin-arm64', 'darwin-x64', 'win32-x64', 'linux-x64'].includes(`${this.platform}-${this.arch}`) }
+    return { settings, onlineImage: Boolean(this.image), platform: this.platform, arch: this.arch, runtimeReady: installed || this.runtimeRoot === settings.root || Boolean(settings.prepared), imageReady: Boolean(seed) || Boolean(settings.prepared && this.compatibleImage(settings)), cachedDockerImage: seed?.source.startsWith('sha256:') ? seed.source : settings.dockerImage || null, phase: this.phase, progress: this.progress, error: this.error, running: this.running, health: this.health, hostPort: this.hostPort, logDirectory: settings.root ? path.join(settings.root, 'desktop') : null, supported: ['darwin-arm64', 'darwin-x64', 'win32-x64', 'linux-x64'].includes(`${this.platform}-${this.arch}`) }
   }
   async stageRoot(input) {
     if (this.running || (await this.settings()).enabled) throw new Error('请先关闭沙箱并重启')
@@ -169,8 +177,13 @@ class SandboxManager {
   }
   async inspectImage(command, image) {
     const [details] = JSON.parse(await command(['image', 'inspect', image]))
-    if (details?.Os !== 'linux' || details?.Architecture !== (this.arch === 'x64' ? 'amd64' : this.arch) || !details?.Config?.Entrypoint?.includes('/usr/local/bin/workstep-entrypoint') || !/^sha256:[a-f0-9]{64}$/.test(details.Id)) throw new Error('镜像的架构或 WorkStep 入口不匹配')
-    return details.Id
+    const architecture = this.arch === 'x64' ? 'amd64' : this.arch
+    if (details?.Os !== 'linux') throw new Error('镜像系统不匹配：需要 Linux 镜像')
+    if (details?.Architecture !== architecture) throw new Error(`镜像架构不匹配：需要 ${architecture}，实际为 ${details?.Architecture || '未知'}`)
+    if (!details?.Config?.Entrypoint?.includes('/usr/local/bin/workstep-entrypoint')) throw new Error('镜像缺少 WorkStep 入口：/usr/local/bin/workstep-entrypoint')
+    // Podman reports a bare config digest; Docker commonly includes sha256:.
+    if (typeof details.Id !== 'string' || !/^(?:sha256:)?[a-f0-9]{64}$/.test(details.Id)) throw new Error('镜像 ID 无效')
+    return 'sha256:' + details.Id.replace(/^sha256:/, '')
   }
   async prepareImage(input) {
     return this.exclusive(async () => {
@@ -318,10 +331,20 @@ class SandboxManager {
       await fs.mkdir(this.stateDir, { recursive: true })
       await fs.writeFile(path.join(this.stateDir, 'sandbox-pending.json'), JSON.stringify(config), { mode: 0o600 })
       const session = await this.setup(config)
+      let preparedSuccessfully = false
       try {
         this.update('image')
         const seed = await this.imageSeed(config.root)
-        if (seed?.source === image) {
+        if (config.dockerImage && previous.dockerImage === image && previous.image) {
+          try {
+            config.image = await this.inspectImage(session.command, previous.image)
+          } catch {
+            // Podman storage may have been pruned or the VM may have been
+            // recreated. Fall back to importing the selected Docker image.
+            config.image = await importDockerImage({ root: config.root, id: image, execute: this.execute, command: session.command, platform: this.platform, arch: this.arch })
+          }
+        }
+        else if (seed?.source === image) {
           if (await fileDigest(seed.archive) !== seed.sha256) throw new Error('镜像缓存校验失败，请返回镜像步骤重新准备')
           await session.command(['load', '--input', seed.archive])
           config.image = await this.inspectImage(session.command, seed.id)
@@ -337,19 +360,23 @@ class SandboxManager {
         await this.save({ ...config, enabled: false, prepared: true })
         await fs.rm(path.join(this.stateDir, 'sandbox-pending.json'), { force: true })
         this.update('ready')
+        preparedSuccessfully = true
         return this.status()
       } finally {
         // Do not leave a preparation-only VM running beside the native backend.
-        if (this.platform !== 'linux') await session.podman(['machine', 'stop', session.machine])
+        if (this.platform !== 'linux' && (input.keepMachineRunning !== true || !preparedSuccessfully)) await session.podman(['machine', 'stop', session.machine])
       }
     })
   }
   async start(port, token, managedEnv = {}) {
+    const generation = ++this.startGeneration
     return this.exclusive(async () => {
+      this.health = 'starting'; this.hostPort = null
       const settings = await this.settings()
       const config = { ...settings, ...await validateSettings(settings) }
       if (!config.enabled || !config.prepared || !this.compatibleImage(config)) throw new Error('沙箱需要先完成当前版本的初始化')
       const session = await this.setup(config)
+      if (generation !== this.startGeneration) throw new Error('沙箱启动已取消')
       this.session = session; this.activeConfig = config; this.redactions = [token]
       this.update('starting')
       try {
@@ -367,23 +394,29 @@ class SandboxManager {
         const mapping = await session.command(['port', `workstep-${config.id}`, '8765/tcp'])
         const matched = /(?:127\.0\.0\.1|0\.0\.0\.0|\[::\]|::):(\d+)/.exec(mapping)
         if (!matched) throw new Error('无法取得沙箱后台端口')
+        this.hostPort = Number(matched[1])
         const url = `http://127.0.0.1:${matched[1]}`
         const deadline = Date.now() + 90000
+        const healthStarted = Date.now()
         let healthy = false
         while (Date.now() < deadline) {
+          if (generation !== this.startGeneration) throw new Error('沙箱启动已取消')
           try {
             const response = await fetch(`${url}/api/health`, { headers: { 'X-WorkStep-Desktop-Token': token }, signal: AbortSignal.timeout(2000) })
             if (response.ok && (await response.json()).status === 'ok') { healthy = true; break }
           } catch { /* startup still in progress */ }
+          const elapsed = Date.now() - healthStarted
+          this.report({ phase: 'starting', progress: null, percent: 75 + Math.min(20, Math.round(elapsed / 90000 * 20)) })
           await delay(500)
         }
         if (!healthy) throw new Error('沙箱后台健康检查超时，请查看容器日志')
-        this.running = true; this.update('running')
+        this.running = true; this.health = 'healthy'; this.update('running')
         return url
       } catch (error) {
         error.message = error.message.replaceAll(token, '[redacted]')
         await this.captureLogs().catch(() => {})
-        await this.stop().catch(() => {})
+        this.health = 'failed'
+        await this.stop({ preserveHealth: true }).catch(() => {})
         throw error
       }
     })
@@ -394,16 +427,38 @@ class SandboxManager {
     for (const secret of this.redactions || []) logs = logs.replaceAll(secret, '[redacted]')
     await fs.writeFile(path.join(this.activeConfig.root, 'desktop/daemon.log'), logs, { mode: 0o600 })
   }
-  async stop() {
+  async readLogs() {
+    await this.captureLogs().catch(() => {})
+    await this.logWrite
+    const settings = await this.settings()
+    const root = this.activeConfig?.root || settings.root
+    if (!root) return ''
+    const readTail = async name => {
+      const content = await fs.readFile(path.join(root, 'desktop', name), 'utf8').catch(error => {
+        if (error.code === 'ENOENT') return ''
+        throw error
+      })
+      let tail = content.slice(-200000)
+      for (const secret of this.redactions || []) tail = tail.replaceAll(secret, '[redacted]')
+      return tail
+    }
+    const [lifecycle, daemon] = await Promise.all([readTail('sandbox.log'), readTail('daemon.log')])
+    return [`=== 沙箱启动阶段日志 ===\n${lifecycle || '暂无'}\n`, `=== 容器日志 ===\n${daemon || '暂无'}\n`].join('\n')
+  }
+  async stop({ preserveHealth = false } = {}) {
     if (this.session && this.activeConfig) {
-      await this.captureLogs().catch(() => {})
       const { command, podman, machine } = this.session
-      const containers = JSON.parse(await command(['ps', '-a', '--filter', `label=com.workstep.sandbox=${this.activeConfig.id}`, '--format=json']))
-      for (const container of containers) await command(['stop', '--time=10', container.Id || container.ID])
-      if (this.platform !== 'linux') await podman(['machine', 'stop', machine])
-      this.session = null; this.activeConfig = null
+      try {
+        await this.captureLogs().catch(() => {})
+        const containers = JSON.parse(await command(['ps', '-a', '--filter', `label=com.workstep.sandbox=${this.activeConfig.id}`, '--format=json'], { timeout: 5000 }))
+        for (const container of containers) await command(['stop', '--time=5', container.Id || container.ID], { timeout: 12000 })
+        if (this.platform !== 'linux') await podman(['machine', 'stop', machine], { timeout: 15000 })
+      } finally {
+        this.session = null; this.activeConfig = null
+      }
     }
     this.running = false
+    if (!preserveHealth) { this.health = 'stopped'; this.hostPort = null }
   }
   async setEnabled(enabled) {
     return this.exclusive(async () => {
@@ -413,6 +468,18 @@ class SandboxManager {
       await this.save({ ...settings, enabled })
       return this.status()
     })
+  }
+  async disableForRestart() {
+    const settings = await this.settings()
+    await this.save({ ...settings, enabled: false })
+  }
+  async queueImageSwitch(dockerImage, dockerTag = null) {
+    if (!/^sha256:[a-f0-9]{64}$/.test(dockerImage || '')) throw new Error('请选择有效的本地 WorkStep 镜像')
+    if (dockerTag !== null && (typeof dockerTag !== 'string' || !dockerTag.trim())) throw new Error('镜像标签无效')
+    this.startGeneration += 1
+    await this.stop()
+    const settings = await this.settings()
+    await this.save({ ...settings, enabled: false, pendingDockerImage: dockerImage, pendingDockerImageTag: dockerTag })
   }
   async importConfig(kind) {
     return this.exclusive(async () => {
