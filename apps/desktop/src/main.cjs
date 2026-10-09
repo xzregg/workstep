@@ -49,6 +49,7 @@ let tray = null
 let quitting = false
 let windowsVisible = true
 let gatewayLoginWindow = null
+let gatewayLoginReturnUrl = null
 let sandboxSwitchSignal = 0
 let pendingProtocolUrl = process.argv.find((value) => value.startsWith('workstep://')) ?? null
 
@@ -69,7 +70,9 @@ async function completeConfiguredGatewayCallback(value) {
     throw new Error(detail)
   }
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.reload()
+    const returnUrl = gatewayLoginReturnUrl || rootUrl
+    gatewayLoginReturnUrl = null
+    await mainWindow.loadURL(returnUrl)
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.show()
     mainWindow.focus()
@@ -77,6 +80,10 @@ async function completeConfiguredGatewayCallback(value) {
 }
 
 function openProtocolUrl(value) {
+  if (value === 'workstep://auth/cancel') {
+    returnToLocalWorkspace()
+    return
+  }
   if (value.startsWith('workstep://auth/')) {
     if (managedPending && managedCallbackResolve) {
       try {
@@ -89,6 +96,7 @@ function openProtocolUrl(value) {
       }
     } else if (rootUrl && desktopToken) {
       void completeConfiguredGatewayCallback(value).catch((error) => {
+        returnToLocalWorkspace()
         console.error('Unable to complete configured Gateway login', error)
         const options = { type: 'error', title: '网关登录失败',
           message: '无法完成网关登录。', detail: error.message || String(error) }
@@ -108,7 +116,27 @@ function openProtocolUrl(value) {
   }
 }
 
+function returnToLocalWorkspace() {
+  if (!rootUrl || !mainWindow || mainWindow.isDestroyed()) return
+  const target = new URL(gatewayLoginReturnUrl || rootUrl)
+  target.searchParams.set('gateway_auth', 'cancelled')
+  gatewayLoginReturnUrl = null
+  void mainWindow.loadURL(target.href).catch(error => console.error('Unable to return to local workspace', error))
+  mainWindow.show()
+  mainWindow.focus()
+}
+
 function openGatewayLoginWindow(targetUrl) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (!gatewayLoginReturnUrl) {
+      const currentUrl = mainWindow.webContents.getURL()
+      gatewayLoginReturnUrl = isTrustedNavigation(currentUrl, rootUrl) ? currentUrl : rootUrl
+    }
+    void mainWindow.loadURL(targetUrl).catch(() => { if (gatewayLoginReturnUrl) returnToLocalWorkspace() })
+    mainWindow.show()
+    mainWindow.focus()
+    return
+  }
   if (gatewayLoginWindow && !gatewayLoginWindow.isDestroyed()) {
     void gatewayLoginWindow.loadURL(targetUrl)
     gatewayLoginWindow.show()
@@ -245,7 +273,13 @@ function createWindow(url) {
     window.setTitle(title)
   })
   const handleNavigation = (event, targetUrl) => {
+    if (gatewayLoginReturnUrl && targetUrl.startsWith('workstep://auth/')) {
+      event.preventDefault()
+      openProtocolUrl(targetUrl)
+      return
+    }
     if (isTrustedNavigation(targetUrl, rootUrl)) return
+    if (gatewayLoginReturnUrl && isAllowedExternalUrl(targetUrl)) return
     event.preventDefault()
     if (isGatewayDesktopLoginUrl(targetUrl)) {
       openGatewayLoginWindow(targetUrl)
@@ -256,9 +290,25 @@ function createWindow(url) {
   window.webContents.on('will-navigate', handleNavigation)
   window.webContents.on('will-redirect', handleNavigation)
   window.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
-    if (isGatewayDesktopLoginUrl(targetUrl)) openGatewayLoginWindow(targetUrl)
+    if (gatewayLoginReturnUrl && targetUrl.startsWith('workstep://auth/')) openProtocolUrl(targetUrl)
+    else if (gatewayLoginReturnUrl && isAllowedExternalUrl(targetUrl)) void window.loadURL(targetUrl)
+    else if (isGatewayDesktopLoginUrl(targetUrl)) openGatewayLoginWindow(targetUrl)
     else if (isAllowedExternalUrl(targetUrl)) void shell.openExternal(targetUrl)
     return { action: 'deny' }
+  })
+  window.webContents.on('before-input-event', (event, input) => {
+    if (gatewayLoginReturnUrl && input.type === 'keyDown' && input.key === 'Escape') {
+      event.preventDefault()
+      returnToLocalWorkspace()
+    }
+  })
+  window.webContents.on('did-fail-load', (_event, code, _description, _url, isMainFrame) => {
+    if (gatewayLoginReturnUrl && isMainFrame && code !== -3) returnToLocalWorkspace()
+  })
+  window.webContents.on('context-menu', () => {
+    if (gatewayLoginReturnUrl || !isTrustedNavigation(window.webContents.getURL(), rootUrl)) Menu.buildFromTemplate([
+      { label: '返回本地工作台', click: returnToLocalWorkspace },
+    ]).popup({ window })
   })
   window.webContents.on('will-attach-webview', (event) => event.preventDefault())
   ipcMain.removeAllListeners('workstep:notify')
@@ -286,6 +336,17 @@ function createWindow(url) {
   window.once('ready-to-show', () => { if (windowsVisible) window.show() })
   void window.loadURL(url)
   mainWindow = window
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
+    { label: 'WorkStep', submenu: [
+      { label: '返回本地工作台', accelerator: 'CmdOrCtrl+Shift+H', click: returnToLocalWorkspace },
+      { type: 'separator' },
+      { role: 'quit' },
+    ] },
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' },
+  ]))
   registerSandboxIpc({ ipcMain, dialog, shell, clipboard, manager: sandboxManager,
     window: () => mainWindow, rootUrl: () => rootUrl, hasActiveWork,
     restart: async () => { await stopBackend(); app.relaunch(); app.quit() },
@@ -334,6 +395,7 @@ function configureTray() {
   tray.setToolTip('WorkStep')
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '打开 WorkStep', click: showDesktopWindow },
+    { label: '返回本地工作台', click: returnToLocalWorkspace },
     { type: 'separator' },
     { label: '退出 WorkStep', click: () => app.quit() },
   ]))
