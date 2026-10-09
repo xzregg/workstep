@@ -1,6 +1,6 @@
 import { gatewayWorkspacePath } from './gatewayWorkspacePath'
 export function gatewayRemotePortalUrl(): string | null {
-  if (typeof window === 'undefined') return null
+  if (typeof window === 'undefined' || !window.location) return null
   if (gatewayWorkspacePath()) return window.location.origin + '/devices'
   const hostname = window.location.hostname
   const dot = hostname.indexOf('.')

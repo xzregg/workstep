@@ -15,6 +15,7 @@ export interface DomEnvironment {
 
 export function installDomEnvironment(): DomEnvironment {
   const window = new Window({ url: 'http://localhost/' })
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, writable: true, value: window.navigator })
   Object.assign(globalThis, {
     window,
     document: window.document,

@@ -40,7 +40,7 @@ test('workspace waits for its session and project, then removes content after se
     assert.ok(calls.includes('/api/remote/session'))
     assert.ok(calls.includes('/api/project/host-1/summary'))
     assert.equal(useProjectStore.getState().activeProject?.id, 'host-1')
-    assert.equal(element.querySelector('a')?.getAttribute('href'), 'http://localhost:8700/devices')
+    assert.equal(element.querySelector('a')?.getAttribute('href'), 'http://localhost:8700/account')
     fail = true
     await act(async () => { await assert.rejects(useGatewaySessionStore.getState().load(true)) })
     // The shared session state must revoke content immediately, before the next poll.
@@ -85,7 +85,7 @@ test('direct workspace has device Tabs and one aggregate feed, notification open
   assert.equal(element.querySelectorAll('[role=tab]').length,2)
   assert.equal(element.querySelector('.gateway-remote-banner')?.querySelectorAll('[role=tab]').length,2)
   assert.match(element.querySelector('.gateway-remote-banner')?.textContent ?? '', /Owner/)
-  assert.equal(element.querySelector('.gateway-remote-banner a')?.getAttribute('href'),'http://gateway.test/devices')
+  assert.equal(element.querySelector('.gateway-remote-banner a')?.getAttribute('href'),'http://gateway.test/account')
   assert.equal(element.querySelector('.gateway-remote-banner a')?.textContent,'Back to Gateway')
   assert.equal(element.querySelector('iframe'),null)
   assert.equal(sockets.length,1)

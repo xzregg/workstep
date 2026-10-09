@@ -26,12 +26,15 @@ Before tagging:
    reporting, branch rulesets, and the `release` Environment are enabled.
 5. Create and push the version tag. Do not reuse or move a published tag.
 
-The workflow creates unsigned platform installers (including separate Windows x64
-and Windows x86 builds with matching embedded Python runtimes), updater metadata,
+The workflow publishes a sandbox image for Linux amd64 and arm64 to GHCR under
+the release tag and `latest`, and pins its immutable digest into every desktop package.
+It creates unsigned installers for Windows x64, macOS arm64 and Linux x64, updater metadata,
 SHA-256 checksums, and a CycloneDX SBOM. It then creates a draft
 Release. Before publishing the draft, install every platform artifact on a clean
 machine and verify first launch, sidecar startup, deep links, task execution,
-update deferral while work is active, upgrade, and uninstall behavior.
+the Settings desktop version check and GitHub download link, upgrade, and uninstall behavior.
+Desktop updates only query the latest published GitHub Release daily; packages are
+downloaded and installed manually. Publishing the draft is an explicit release step.
 
 If a secret is ever committed, revoke it before rewriting Git history. Coordinate
 history rewriting with contributors and forks; deleting a branch or force-pushing
