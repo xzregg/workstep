@@ -10,13 +10,13 @@ COPY apps/web/package.json apps/web/yarn.lock ./
 RUN npm config set registry https://registry.npmjs.org \
     && corepack enable && corepack prepare yarn@1.22.22 --activate \
     && yarn config set registry https://registry.npmjs.org \
-    && yarn install --frozen-lockfile
+    && yarn install --frozen-lockfile --network-timeout 600000 --network-concurrency 4
 COPY apps/web ./
 RUN yarn build && yarn build:gateway-share
 
 WORKDIR /app/apps/gateway-web
 COPY apps/gateway-web/package.json apps/gateway-web/yarn.lock ./
-RUN yarn install --frozen-lockfile
+RUN yarn install --frozen-lockfile --network-timeout 600000 --network-concurrency 4
 COPY apps/gateway-web ./
 RUN yarn build
 
@@ -25,7 +25,7 @@ COPY apps/landing/package.json apps/landing/yarn.lock ./
 RUN npm config set registry https://registry.npmjs.org \
     && corepack enable && corepack prepare yarn@1.22.22 --activate \
     && yarn config set registry https://registry.npmjs.org \
-    && yarn install --frozen-lockfile
+    && yarn install --frozen-lockfile --network-timeout 600000 --network-concurrency 4
 COPY apps/landing ./
 # 官网以 /landing 子路径托管（与 start.sh 生产模式一致），否则资源路径错误
 RUN LANDING_BASE=/landing/ yarn build
