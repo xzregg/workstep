@@ -841,7 +841,7 @@ async def test_provider_list_includes_saved_model_status(engine_client, monkeypa
 
 @pytest.mark.anyio
 async def test_engine_pydantic_ai_models_uses_saved_copy(engine_client, monkeypatch):
-    """引擎刷新仅在没有供应商目录时拉取，已有目录只读。"""
+    """引擎刷新始终读取供应商缓存，无缓存时返回空列表。"""
     client, store = engine_client
     provider = _add_provider(store)
     store.set_pydantic_ai_engine_config(
@@ -864,14 +864,15 @@ async def test_engine_pydantic_ai_models_uses_saved_copy(engine_client, monkeypa
     assert empty.json()["models"] == []
     assert calls["count"] == 0
     refreshed = await client.get("/api/engine/pydantic_ai/models?refresh=1")
-    assert refreshed.json()["models"] != []
-    assert calls["count"] == 1
+    assert refreshed.json()["models"] == []
+    store.set_provider_models(provider["id"], [{"id": "deepseek-chat", "label": "DeepSeek Chat"}], "saved", "openai_chat_completions")
+    assert calls["count"] == 0
     second = await client.get("/api/engine/pydantic_ai/models")
     assert second.json()["models"] != []
-    assert calls["count"] == 1
+    assert calls["count"] == 0
     refreshed_again = await client.get("/api/engine/pydantic_ai/models?refresh=1")
     assert refreshed_again.json()["models"] != []
-    assert calls["count"] == 1
+    assert calls["count"] == 0
 
 
 @pytest.mark.anyio
@@ -936,6 +937,7 @@ async def test_engine_deepseek_harness_models_delegates_to_bound_provider(
     ))
 
     empty = await client.get("/api/engine/deepseek_harness/models")
+    store.set_provider_models(provider["id"], [{"id": "deepseek-v4-flash", "label": "DeepSeek V4 Flash"}], "saved", "openai_chat_completions")
     first = await client.get("/api/engine/deepseek_harness/models?refresh=1")
     refreshed = await client.get("/api/engine/deepseek_harness/models?refresh=1")
 
@@ -948,12 +950,12 @@ async def test_engine_deepseek_harness_models_delegates_to_bound_provider(
     }]
     assert first.json()["fetched_at"] is not None
     assert refreshed.status_code == 200
-    assert calls["count"] == 1
+    assert calls["count"] == 0
 
 
 @pytest.mark.anyio
 async def test_engine_pydantic_ai_models_delegates_to_provider(engine_client, monkeypatch):
-    """GET /api/engine/pydantic_ai/models 直接调用绑定供应商的模型接口。"""
+    """GET /api/engine/pydantic_ai/models 只读绑定供应商的模型缓存。"""
     client, store = engine_client
     provider = _add_provider(store)
     store.set_pydantic_ai_engine_config(
@@ -973,6 +975,7 @@ async def test_engine_pydantic_ai_models_delegates_to_provider(engine_client, mo
         "fetch_models",
         fake_models,
     )
+    store.set_provider_models(provider["id"], [{"id": "deepseek-chat", "label": "DeepSeek Chat"}], "saved", "openai_chat_completions")
     response = await client.get("/api/engine/pydantic_ai/models?refresh=1")
     assert response.status_code == 200
     payload = response.json()
@@ -981,10 +984,7 @@ async def test_engine_pydantic_ai_models_delegates_to_provider(engine_client, mo
         {"id": "deepseek-chat", "label": "DeepSeek Chat", "description": None}
     ]
     assert payload["error"] is None
-    assert called["provider"]["id"] == provider["id"]
-    assert called["provider"]["base_url"] == provider["base_url"]
-    assert called["provider"]["api_key"] == provider["api_key"]
-    assert called["protocol"] == "openai_chat_completions"
+    assert called == {}
 
 
 @pytest.mark.anyio
@@ -1009,11 +1009,12 @@ async def test_engine_pydantic_ai_models_provider_override(engine_client, monkey
         "fetch_models",
         fake_models,
     )
+    store.set_provider_models(other["id"], [{"id": "other-model", "label": "Other Model"}], "saved", "openai_chat_completions")
     response = await client.get(
         f"/api/engine/pydantic_ai/models?provider_id={other['id']}&refresh=1"
     )
     assert response.status_code == 200
-    assert called["provider"]["id"] == other["id"]
+    assert called == {}
     payload = response.json()
     assert payload["models"] == [
         {"id": "other-model", "label": "Other Model", "description": None}
