@@ -1967,19 +1967,22 @@ async def test_slow_credential_storage_does_not_block_event_loop(client, monkeyp
     import services.git as git_module
     original = git_module.save_credentials
     started = threading.Event()
+    release = threading.Event()
 
     def slow_save(path, credentials):
         started.set()
-        time.sleep(.2)
+        assert release.wait(5)
         original(path, credentials)
 
     monkeypatch.setattr(git_module, 'save_credentials', slow_save)
-    start = time.monotonic()
     request = asyncio.create_task(http.put('/api/git/credentials', json={
         'host': 'git.example.test', 'username': 'alice', 'token': 'secret-token'}))
-    await asyncio.wait_for(asyncio.to_thread(started.wait), .5)
-    await asyncio.wait_for(asyncio.sleep(.01), .1)
-    assert time.monotonic() - start < .15
+    try:
+        assert await asyncio.wait_for(asyncio.to_thread(started.wait), 2)
+        await asyncio.wait_for(asyncio.sleep(.01), .5)
+        assert not request.done()
+    finally:
+        release.set()
     assert (await request).status_code == 200
 
 
