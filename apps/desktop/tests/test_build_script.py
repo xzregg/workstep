@@ -10,7 +10,7 @@ import subprocess
 REPO_DIR = Path(__file__).resolve().parents[3]
 BUILD_SCRIPT = REPO_DIR / "build.sh"
 LOCAL_MACOS_PACKAGE_SCRIPT = REPO_DIR / "apps" / "desktop" / "package-local-macos.sh"
-PACKAGE_ACTION_SCRIPT = REPO_DIR / ".workstep" / "actions" / "package-macos" / "workstep-package-macos-action.sh"
+PACKAGE_ACTION_SCRIPT = REPO_DIR / "apps" / "desktop" / "package-macos-action.sh"
 BACKEND_BUILD_SCRIPTS = (
     REPO_DIR / "apps" / "desktop" / "build-backend.sh",
     REPO_DIR / "apps" / "desktop" / "build-backend.ps1",
