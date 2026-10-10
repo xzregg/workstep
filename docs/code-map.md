@@ -341,7 +341,7 @@ WorkStep Web `GatewayTaskShareLink.tsx` 在原 `TaskDetail.tsx` 中按远程会�
 | 页头、创建者、关闭操作 | `TaskDetailHeader.tsx` 触发关闭；`src/hooks/useTaskRoute.ts` 明确移除当前 URL 的 `task` 参数并保留当前项目/流程，不依赖上一条历史记录（可能仍是详情或移动端浮层） | `actorVisibility.test.mjs`、`taskDetailPageReuse.test.mjs`、`mobileTaskRoute.test.tsx`（任务切换、重复详情历史、触摸期间连续更新及浏览器后退） |
 | 任务弹窗位置、尺寸、四边四角缩放与键盘移动 | `TaskDetailWindow.tsx`；`TaskDetail.tsx` 只装配内容 | `taskDetailWindow.test.tsx` |
 | 任务描述展示、编辑保存及定时启动时间调整 | `TaskDetailDescription.tsx`；任务页启用编辑，分享页只读 | `taskDescriptionEditing.test.tsx`、`taskDetailProgressLayout.test.mjs` |
-| 步骤提示词快速编辑、保存和错误恢复 | `StepPromptEditor.tsx` 按任务绑定流程加载并调用 `workflowApi.updateStepPrompt`；daemon `api/workflow.py::update_step_prompt` 在数据库执行器内只修改指定阶段的 prompt；`TaskDetail.tsx` 传流程 ID 并刷新对应流程状态 | `stepPromptEditor.test.tsx`；`test_api_contracts.py::test_update_workflow_step_prompt_is_targeted_and_nonblocking` |
+| 步骤提示词快速编辑、保存和错误恢复 | `StepPromptEditor.tsx` 按任务绑定流程加载并调用 `workflowApi.updateStepPrompt`；daemon `api/workflow.py::update_step_prompt` 在数据库执行器内只修改指定阶段的 prompt；`TaskDetail.tsx` 传流程 ID 并刷新对应流程状态 | `stepPromptEditor.test.tsx`；`test_api_contracts.py::test_update_workflow_step_prompt_is_targeted_and_does_not_block_health`（CI 隔离敏感健康检查步骤） |
 | 当前步骤提示词展示与快捷编辑入口 | `TaskStepPrompt.tsx`；任务页可编辑，分享页只读；固定样式在 `src/index.css` 的 `task-step-prompt-*` 类 | `taskStepPrompt.test.tsx`、`taskDetailProgressLayout.test.mjs` |
 | 桌面、移动及产物轮次页签 | `TaskDetailTabs.tsx`；移动端主导航右侧通过 `actions` 显示绑定 BOT 和分享，`TaskDetailView.tsx` 按屏幕模式放置 `navigationActions`；任务 ID 保留在页头，移动端为无边框静态省略文本，点击复制完整 ID | `taskDetailTabs.test.tsx`、`chatInputLayout.test.mjs` |
 | 任务详情两栏分割比例、拖动与会话持久化 | `TaskDetailSplitLayout.tsx`；`TaskDetailView.tsx` 只装配步骤、对话和移动端产物内容 | `taskDetailSplitLayout.test.tsx` |
