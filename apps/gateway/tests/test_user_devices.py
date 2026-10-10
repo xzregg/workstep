@@ -202,6 +202,16 @@ def test_lan_path_workspace_scopes_cookie_http_and_switching(tmp_path, monkeypat
         assert redeemed.headers['location']=='/workspace/one/'
         assert 'Path=/workspace/one/' in redeemed.headers['set-cookie']
         assert client.get('/workspace/one/api/remote/session').json()['device_id']=='one'
+        for next_path in ('chat?project=Demo&session=last#message', 'tasks?project=Demo&task=t', 'canvas?project=Demo', 'git?project=Demo', '?project=Demo'):
+            ticket = client.get('/api/devices/one/access').json()['ticket']
+            resumed = client.post('/workspace/one/api/remote/redeem', data={'ticket':ticket, 'next':next_path}, follow_redirects=False)
+            assert resumed.status_code == 303, resumed.text
+            assert resumed.headers['location'] == '/workspace/one/' + next_path
+        for next_path in ('//evil.test', 'https://evil.test', '../two/', 'chat/../../two/', 'api/project/list', 'chat?x=\\evil', 'chat?x=\nheader'):
+            ticket = client.get('/api/devices/one/access').json()['ticket']
+            denied = client.post('/workspace/one/api/remote/redeem', data={'ticket':ticket, 'next':next_path}, follow_redirects=False)
+            assert denied.status_code == 422, denied.text
+
         assert client.get('/workspace/two/api/remote/session').status_code in (401,403)
         assert client.get('/api/auth/session').json()['user']['id']==setup['user']['id']
         class Data:
