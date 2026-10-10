@@ -1,5 +1,6 @@
 import asyncio
 import json
+from pathlib import Path
 import threading
 import time
 
@@ -49,6 +50,73 @@ async def test_user_name_round_trip_persists_to_global_config(system_settings_cl
 
     response = await client.get("/api/system-settings")
     assert response.json()["user_name"] == "小王"
+
+
+async def test_unicode_config_round_trip_with_windows_default_encoding(
+    system_settings_client, monkeypatch,
+):
+    client, config_file = system_settings_client
+    original_open = Path.open
+
+    def windows_open(self, mode='r', buffering=-1, encoding=None, errors=None, newline=None):
+        if self.parent == config_file.parent and 'b' not in mode and encoding in (None, 'locale'):
+            encoding = 'cp1252'
+        return original_open(self, mode, buffering, encoding, errors, newline)
+
+    monkeypatch.setattr(Path, 'open', windows_open)
+    name = '中文使用者🙂'
+    response = await client.put('/api/system-settings', json={'user_name': name})
+    assert response.status_code == 200
+    assert response.json()['user_name'] == name
+    assert json.loads(config_file.read_bytes().decode('utf-8'))['user']['name'] == name
+    # A NEW store has to read the file, not return the in-memory cache.
+    assert await asyncio.to_thread(ConfigStore().get_user_name) == name
+    system_settings_api.config_store.invalidate()
+    assert (await client.get('/api/system-settings')).json()['user_name'] == name
+
+
+@pytest.mark.parametrize('encoding,name', [('cp1252', 'François'), ('gbk', '中文使用者')])
+async def test_legacy_local_encoding_config_migrates_without_losing_settings(
+    system_settings_client, monkeypatch, encoding, name,
+):
+    client, config_file = system_settings_client
+    original = {'user': {'name': name}, 'projects': {'C:/existing': 'Existing'},
+                'device': {'device_id': 'existing-device', 'device_name': 'Existing'}}
+    config_file.write_bytes(json.dumps(original, ensure_ascii=False).encode(encoding))
+    # Older versions wrote using the OS locale; keep those settings on upgrade.
+    monkeypatch.setattr('locale.getencoding', lambda: encoding)
+    assert (await client.get('/api/system-settings')).json()['user_name'] == name
+    response = await client.put('/api/system-settings', json={'user_name': '升级后🙂'})
+    assert response.status_code == 200
+    saved = json.loads(config_file.read_bytes().decode('utf-8'))
+    assert saved == {**original, 'user': {'name': '升级后🙂'}}
+    assert await asyncio.to_thread(ConfigStore().get_user_name) == '升级后🙂'
+
+
+async def test_unicode_config_slow_write_does_not_block_health(
+    system_settings_client, monkeypatch,
+):
+    client, config_file = system_settings_client
+    original_write = Path.write_text
+    started, release = threading.Event(), threading.Event()
+
+    def slow_write(self, *args, **kwargs):
+        if self.parent == config_file.parent:
+            started.set()
+            release.wait(timeout=2)
+        return original_write(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, 'write_text', slow_write)
+    request = asyncio.create_task(client.put('/api/system-settings', json={'user_name': '中文🙂'}))
+    try:
+        assert await asyncio.to_thread(started.wait, 2)
+        assert not request.done(), 'config write blocked the event loop'
+        health = await asyncio.wait_for(client.get('/api/health'), timeout=0.3)
+        assert health.status_code == 200
+    finally:
+        release.set()
+        response = await request
+    assert response.status_code == 200
 
 
 async def test_open_mode_round_trip_persists_to_global_config(system_settings_client):

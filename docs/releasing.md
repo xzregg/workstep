@@ -58,10 +58,16 @@ downloaded and installed manually. Publishing the draft is an explicit release s
 内置 daemon 健康及版本、实际任务列表／设置界面、桌面认证边界、占用端口回退、
 `workstep://open` 深链接、退出时后台停止、重启后项目／任务／记忆保留和卸载后数据保留。
 还会下载上一个正式版，验证原安装包升级后的数据保留。
+旧版升级基线使用其支持的 ASCII 名称和项目路径建立数据；新包首次安装仍强制使用
+中文路径、中文名称及表情符号，升级后也必须成功保存中文名称并在再次重启后保留。
+这不代表旧版的中文配置缺陷已经消失。
 
 已发布包可独立补测：运行 `Desktop package smoke`，`ref` 指向验收脚本所在分支，
 设置 `acceptance_tag=v1.0.11`、`previous_tag=v1.0.10`。填写 `acceptance_tag` 时只运行
 Windows 验收，下载原 Release 的 EXE 和 `SHA256SUMS.txt`；不重新打包、移动标签或修改附件。
+修复代码可用同一流程构建并验收：`ref=dev`、`windows_only=true`、`acceptance_tag` 留空，
+`previous_tag` 指定已发布的升级基线。产物仅上传 Actions artifact，不创建标签、Release
+或镜像；即使 manifest 版本暂未递增，也不能把测试产物当作原已发布版本的替换包。
 脚本拒绝在开发者本机启动，演示配置、项目和用户数据均位于 runner 的临时目录。
 Playwright 仅作为开发依赖，通过临时回环调试端口连接实际窗口，不修改正式包的安全 fuses。
 
@@ -83,6 +89,8 @@ GitHub API 限流；不将其宣称为在线更新请求或浏览器下载跳转
 默认 `cp1252` 导致 `UnicodeEncodeError`。不能将该版本标为 Windows 功能验收通过，
 也不能通过给验收进程强制设置 `PYTHONUTF8=1` 来掩盖正式启动路径的错误。
 修复应进入新版本，再完整补测；已发布的 v1.0.11 标签和附件保持不变。
+源码修复采用显式 UTF-8 读写；对无法按 UTF-8 解码的旧配置，先使用当前机器的本地编码
+兼容读取，在下一次保存时迁移为 UTF-8，保留已有项目、设备身份和其他设置。
 
 If a secret is ever committed, revoke it before rewriting Git history. Coordinate
 history rewriting with contributors and forks; deleting a branch or force-pushing
