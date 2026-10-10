@@ -4,7 +4,7 @@ const { createHash } = require('node:crypto')
 const { EventEmitter } = require('node:events')
 const {
   validateVersion, installArguments, verifyChecksum, validateRuntime,
-  validatePersistence, waitFor, assertWindowsRunner, parseApiResponse, fixtureLabels, openSettings, closeDesktop, cleanupBrowser, installCompletionGuard,
+  validatePersistence, validateUninstallMemory, waitFor, assertWindowsRunner, parseApiResponse, fixtureLabels, openSettings, closeDesktop, cleanupBrowser, installCompletionGuard,
 } = require('../../../scripts/windows-desktop-acceptance.cjs')
 
 test('acceptance only runs on a GitHub Windows runner, never the developer desktop', () => {
@@ -115,6 +115,14 @@ test('restart and upgrade must preserve IDs, task content and project memory', (
   assert.throws(() => validatePersistence(fixture, { projects: [] }, task, { content: '# 验收记忆' }))
   assert.throws(() => validatePersistence(fixture, projects, { ...task, id: 'replacement' }, { content: '# 验收记忆' }))
   assert.throws(() => validatePersistence(fixture, projects, task, { content: '' }))
+})
+
+test('uninstall retains exact bytes while accepting Windows-native CRLF in the original file', () => {
+  const before = Buffer.from('# 中文记忆\r\n\r\n保留🙂\r\n')
+  const expected = '# 中文记忆\n\n保留🙂\n'
+  validateUninstallMemory(before, Buffer.from(before), expected)
+  assert.throws(() => validateUninstallMemory(before, Buffer.from(expected), expected))
+  assert.throws(() => validateUninstallMemory(before, before, 'lost content'))
 })
 
 test('polling times out as a failure instead of silently skipping acceptance', async () => {

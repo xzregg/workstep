@@ -161,7 +161,7 @@ jobs:
       - name: Verify native Windows socket isolation
         shell: pwsh
         run: |
-          uv run --no-project --with pytest==9.1.1 python -m pytest apps/desktop/tests/test_backend_entry.py -k 'socket or occupied or port or loopback or windows_reserves' -q
+          uv run --no-project --python 3.12 --with pytest==9.1.1 python -m pytest apps/desktop/tests/test_backend_entry.py -k 'socket or occupied or port or loopback or windows_reserves' -q
           if ($LASTEXITCODE -ne 0) { throw "Windows listener isolation failed" }
       - name: Build React application
         working-directory: apps/web
@@ -170,6 +170,7 @@ jobs:
         shell: pwsh
         run: ./apps/desktop/build-backend.ps1
       - name: Build unsigned Windows installer
+        id: windows_installer
         shell: pwsh
         working-directory: apps/desktop
         env:
@@ -211,6 +212,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ always() && steps.windows_installer.outcome == 'success' }}
         with:
           name: desktop-smoke-windows-x64
           path: |
